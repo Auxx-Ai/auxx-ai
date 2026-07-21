@@ -60,6 +60,9 @@ export interface UpdateCustomFieldInput {
     | { options: SelectOption[]; ai?: AiOptions }
     | (DisplayOptions & { ai?: AiOptions })
   addressComponents?: string[]
+  /** ADDRESS_STRUCT input variant: single free-text input (default, omitted
+   *  from storage) vs. separate structured sub-fields. */
+  inputMode?: 'single' | 'structured'
   icon?: string
   isCustom?: boolean
   active?: boolean
@@ -78,8 +81,16 @@ export interface UpdateCustomFieldInput {
  * @returns Result with updated field
  */
 export async function updateCustomField(input: UpdateCustomFieldInput) {
-  const { resourceFieldId, organizationId, options, addressComponents, type, isUnique, ...data } =
-    input
+  const {
+    resourceFieldId,
+    organizationId,
+    options,
+    addressComponents,
+    inputMode,
+    type,
+    isUnique,
+    ...data
+  } = input
 
   // Parse ResourceFieldId to get components
   const { fieldId: id } = parseResourceFieldId(resourceFieldId)
@@ -136,6 +147,7 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
       type === undefined &&
       isUnique === undefined &&
       addressComponents === undefined &&
+      inputMode === undefined &&
       Object.values(data).every((v) => v === undefined)
     if (!isTagsOptionsOnlyPatch) {
       return err({
@@ -208,7 +220,7 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   // Build updated options
   let updatedOptions: Record<string, any> | undefined
 
-  if (options !== undefined || addressComponents !== undefined) {
+  if (options !== undefined || addressComponents !== undefined || inputMode !== undefined) {
     let fieldOptions: Record<string, any> = {
       icon: input.icon,
       isCustom: input.isCustom,
@@ -258,6 +270,16 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     if (fieldType === FieldTypeEnum.ADDRESS_STRUCT) {
       if (addressComponents !== undefined) {
         fieldOptions.addressComponents = addressComponents
+      }
+      // Only persist the key for the non-default 'structured' mode — absence
+      // means 'single' (decision #4, plans/address-field/01-single-input-address-field.md).
+      // Explicitly clear a stale 'structured' when the caller reverts to 'single'.
+      if (inputMode !== undefined) {
+        if (inputMode === 'structured') {
+          fieldOptions.inputMode = 'structured'
+        } else {
+          delete fieldOptions.inputMode
+        }
       }
     }
 

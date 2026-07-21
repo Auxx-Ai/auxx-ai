@@ -8,11 +8,12 @@
 // extra join.
 
 import { database, schema } from '@auxx/database'
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { resolveAvailabilityForSubjects } from '../../availability'
 import { getOrgCache } from '../../cache'
+import { resolveDocumentSettings } from '../../documents'
 import { extractFieldValueScalar } from '../../field-values'
-import { formatAddress } from '../address'
 import { listDispatchWorkers } from '../workers'
 import { resolveOrgDepot } from './depot'
 import type { PlannerBoardResult, PlannerDayWindow, PlannerWorker, PlannerWorkOrder } from './types'
@@ -36,7 +37,7 @@ async function getPlannerWorkOrderProjections(
   organizationId: string,
   workOrderIds: string[]
 ): Promise<PlannerWorkOrder[]> {
-  const [instances, cf] = await Promise.all([
+  const [instances, cf, documentSettings] = await Promise.all([
     database
       .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
       .from(schema.EntityInstance)
@@ -55,7 +56,11 @@ async function getPlannerWorkOrderProjections(
         'work_order_address',
         'work_order_tags',
       ] as const),
+    // Org's business-address country (decision #10) — domestic country is omitted from the
+    // rendered address line; cache-backed via `getAllOrganizationSettings`, so this is cheap.
+    resolveDocumentSettings(organizationId),
   ])
+  const domesticCountry = documentSettings.business.address?.country
 
   const fieldIds = [
     cf.work_order_number,
@@ -120,7 +125,7 @@ async function getPlannerWorkOrderProjections(
       ? rows.find((r) => r.fieldId === cf.work_order_address!.id)
       : undefined
     const addressValue = addressRow
-      ? (extractFieldValueScalar(addressRow) as Record<string, unknown> | null)
+      ? (extractFieldValueScalar(addressRow) as Partial<AddressStructValue> | null)
       : null
     const tags = cf.work_order_tags
       ? rows
@@ -135,7 +140,7 @@ async function getPlannerWorkOrderProjections(
       status: statusRow ? (extractFieldValueScalar(statusRow) as string | null) : null,
       contactDisplayName: contactRelatedId ? (contactNameById.get(contactRelatedId) ?? null) : null,
       tags,
-      addressText: addressValue ? formatAddress(addressValue) : null,
+      addressText: addressValue ? formatAddress(addressValue, { domesticCountry }) || null : null,
     }
   })
 }

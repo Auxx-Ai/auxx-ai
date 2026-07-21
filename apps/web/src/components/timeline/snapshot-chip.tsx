@@ -10,12 +10,14 @@ import type {
 } from '@auxx/lib/timeline/client'
 import { legacyTypedFieldValueToSnapshot } from '@auxx/lib/timeline/client'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import DOMPurify from 'dompurify'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { useRecord } from '~/components/resources/hooks/use-record'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { TagsView } from '~/components/ui/tags-view'
+import { useSettings } from '~/hooks/use-settings'
 
 /**
  * Field-change row payload as it appears on the timeline. New rows carry
@@ -77,6 +79,7 @@ export function SnapshotValue({ snap }: { snap: TimelineFieldChangeSnapshotValue
  * Render a single snapshot chip per `fieldType`.
  */
 export function SnapshotChip({ snap }: { snap: TimelineFieldChangeSnapshot }) {
+  const { getSetting } = useSettings({})
   switch (snap.fieldType) {
     case 'TEXT':
     case 'EMAIL':
@@ -132,7 +135,10 @@ export function SnapshotChip({ snap }: { snap: TimelineFieldChangeSnapshot }) {
       )
 
     case 'ADDRESS_STRUCT': {
-      const formatted = formatAddressStruct(snap.value)
+      const business = getSetting('documents.business') as { address?: { country?: string } } | null
+      const formatted = formatAddress(snap.value as Partial<AddressStructValue>, {
+        domesticCountry: business?.address?.country,
+      })
       if (formatted) return <span>{formatted}</span>
       return (
         <code className='text-xs'>
@@ -150,21 +156,6 @@ export function SnapshotChip({ snap }: { snap: TimelineFieldChangeSnapshot }) {
         </code>
       )
   }
-}
-
-function formatAddressStruct(value: Record<string, unknown>): string {
-  const get = (k: string) => (typeof value[k] === 'string' ? (value[k] as string) : '')
-  const street1 = get('street1')
-  const street2 = get('street2')
-  const city = get('city')
-  const state = get('state')
-  const zipCode = get('zipCode')
-  const country = get('country')
-  const streetPart = [street1, street2].filter(Boolean).join(', ')
-  const cityStatePart = [city, [state, zipCode].filter(Boolean).join(' ')]
-    .filter(Boolean)
-    .join(', ')
-  return [streetPart, cityStatePart, country].filter(Boolean).join(', ')
 }
 
 function isOptionSnapshot(s: TimelineFieldChangeSnapshot): s is TimelineOptionSnapshot {

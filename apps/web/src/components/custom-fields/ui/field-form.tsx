@@ -26,7 +26,13 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { AddressComponentsEditor } from './address-component-editor'
+import {
+  AddressComponentsEditor,
+  type AddressInputMode,
+  AddressInputModeEditor,
+  formatAddressInputMode,
+  parseAddressInputMode,
+} from './address-component-editor'
 import { FieldTypeSelect } from './field-type-select'
 import { OptionsEditor } from './options-editor'
 
@@ -50,6 +56,7 @@ interface FieldFormProps {
       value: string
     }>
     addressComponents?: string[]
+    inputMode?: AddressInputMode
   }
   onSubmit: (values: any) => void // Accepts merged values
   onCancel?: () => void
@@ -100,6 +107,9 @@ export function FieldForm({
       'country',
     ]
   )
+  const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>(
+    parseAddressInputMode({ inputMode: initialValues?.inputMode })
+  )
   // Get the selected field type
   const selectedType = form.watch('type')
   // Update options when editing
@@ -116,6 +126,7 @@ export function FieldForm({
           'country',
         ]
       )
+      setAddressInputMode(parseAddressInputMode({ inputMode: initialValues.inputMode }))
     }
   }, [initialValues])
   // Handle form submission
@@ -127,6 +138,7 @@ export function FieldForm({
     }
     if (values.type === FieldType.ADDRESS_STRUCT) {
       submitObj.addressComponents = addressComponents
+      Object.assign(submitObj, formatAddressInputMode(addressInputMode))
     }
     // Validate options using the correct schema
     if (submitObj.options) {
@@ -143,7 +155,13 @@ export function FieldForm({
         return <OptionsEditor options={options} onChange={setOptions} />
       case 'ADDRESS_STRUCT':
         return (
-          <AddressComponentsEditor components={addressComponents} onChange={setAddressComponents} />
+          <>
+            <AddressInputModeEditor mode={addressInputMode} onChange={setAddressInputMode} />
+            <AddressComponentsEditor
+              components={addressComponents}
+              onChange={setAddressComponents}
+            />
+          </>
         )
       default:
         return null

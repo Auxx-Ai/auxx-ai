@@ -1,7 +1,9 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { registerInventoryDeductionRule } from '../data-connectors/inventory-bridge-rule-action'
 import { ensureVisitOnWorkOrderCreate, geocodeOnAddressChange } from '../dispatch/visit-hooks'
+import { normalizeAddressOnChange } from '../geocoding/address-normalize-hook'
 import { generateDraftOnCompletion } from '../money/auto-invoice'
 import {
   BILLING_PROJECTION_ATTRS,
@@ -51,6 +53,7 @@ import {
   registerEntityPostDeleteHooks,
   registerEntityPreDeleteHooks,
   registerFieldPreHooks,
+  registerFieldTypeChangeHooks,
 } from './registry'
 import { registerEntitySystemRules } from './system-entity-rules'
 import { registerFieldSystemRules } from './system-record-rules'
@@ -157,6 +160,14 @@ export function registerAllHooks(): void {
     recomputePriceOnMarkupChange,
     pauseMarkupOnPriceEdit,
   ])
+
+  // Address field (plans/address-field/01-single-input-address-field.md §5 items 2-3,
+  // decision #5/#13): field-type-keyed (NOT entity-scoped) so it runs for every ADDRESS_STRUCT
+  // field on every entity without flipping `hasEntityFieldChangeHooks` on for entities that have
+  // no address fields. On `work_order_address` this dispatches AFTER the entity-chain's own
+  // `geocodeOnAddressChange` (visit-hooks, still registered above) — two MapTiler calls per
+  // write there, accepted for v1 (§5 item 5).
+  registerFieldTypeChangeHooks(FieldTypeEnum.ADDRESS_STRUCT, [normalizeAddressOnChange])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

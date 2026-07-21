@@ -62,6 +62,8 @@ export class CustomFieldService {
       | { options: SelectOption[]; ai?: AiOptions }
       | (DisplayOptions & { ai?: AiOptions })
     addressComponents?: string[]
+    /** ADDRESS_STRUCT input variant — see addressFieldOptionsSchema. */
+    inputMode?: 'single' | 'structured'
     icon?: string
     isCustom?: boolean
     entityDefinitionId: string
@@ -99,6 +101,8 @@ export class CustomFieldService {
       | { options: SelectOption[]; ai?: AiOptions }
       | (DisplayOptions & { ai?: AiOptions })
     addressComponents?: string[]
+    /** ADDRESS_STRUCT input variant — see addressFieldOptionsSchema. */
+    inputMode?: 'single' | 'structured'
     icon?: string
     isCustom?: boolean
     active?: boolean

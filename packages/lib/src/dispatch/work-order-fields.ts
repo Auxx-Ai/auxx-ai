@@ -12,9 +12,10 @@ import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { getOrgCache } from '../cache'
+import { resolveDocumentSettings } from '../documents'
 import { FieldValueService } from '../field-values/field-value-service'
-import { formatAddress } from './address'
 
 /** The work-order attributes callers can project — mapped to their system attribute. */
 export type WorkOrderProjectionAttr =
@@ -73,6 +74,12 @@ export async function getWorkOrderProjections(
     .from(organizationId, 'customFields')
     .bySystemAttributes(systemAttributes)
 
+  // Org's business-address country (decision #10), only fetched when `address` is actually
+  // requested — cache-backed via `getAllOrganizationSettings`, so this is cheap either way.
+  const domesticCountry = attrs.includes('address')
+    ? (await resolveDocumentSettings(organizationId)).business.address?.country
+    : undefined
+
   // Map each field ref back to the attr it satisfies (batchGetValues echoes the ref we pass),
   // and build the batch refs.
   const attrByRef = new Map<string, WorkOrderProjectionAttr>()
@@ -103,7 +110,11 @@ export async function getWorkOrderProjections(
     if (!typed) continue
 
     if (attr === 'address') {
-      if (typed.type === 'json') entry.address = formatAddress(typed.value) ?? undefined
+      if (typed.type === 'json') {
+        entry.address =
+          formatAddress(typed.value as Partial<AddressStructValue>, { domesticCountry }) ||
+          undefined
+      }
     } else if (attr === 'contact') {
       if (typed.type === 'relationship') entry.contactRecordId = typed.recordId
     } else {

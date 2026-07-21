@@ -32,14 +32,20 @@ const inputGroupVariants = cva(
         translucent:
           'border-none bg-[#0519453d] text-white shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-white/30 [&_[data-slot=input-group-addon]]:text-white/60 [&_[data-slot=input-group-text]]:text-white/80 [&_[data-slot=input-group-control]]:placeholder:text-white/50',
       },
+      // Mirrors the Input size scale (input.tsx): sm = h-7 / text-xs.
+      size: {
+        default: '',
+        sm: 'h-7 [&_[data-slot=input-group-control]]:text-xs [&_[data-slot=input-group-control]]:px-2 max-sm:[&_[data-slot=input-group-control]]:text-base',
+      },
     },
-    defaultVariants: { variant: 'default' },
+    defaultVariants: { variant: 'default', size: 'default' },
   }
 )
 
 function InputGroup({
   className,
   variant,
+  size,
   ...props
 }: React.ComponentProps<'div'> & VariantProps<typeof inputGroupVariants>) {
   return (
@@ -47,7 +53,7 @@ function InputGroup({
       data-slot='input-group'
       data-variant={variant}
       role='group'
-      className={cn(inputGroupVariants({ variant, className }))}
+      className={cn(inputGroupVariants({ variant, size, className }))}
       {...props}
     />
   )

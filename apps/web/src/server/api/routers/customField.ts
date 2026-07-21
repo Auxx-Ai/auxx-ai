@@ -65,6 +65,9 @@ export const customFieldRouter = createTRPCRouter({
         defaultValue: z.string().optional(),
         options: fieldOptionsUnionSchema.optional(),
         addressComponents: z.array(z.string()).optional(),
+        /** ADDRESS_STRUCT input variant — 'structured' persists, 'single' clears
+         *  the key back to the implicit default. See addressFieldOptionsSchema. */
+        inputMode: z.enum(['single', 'structured']).optional(),
         icon: z.string().optional(),
         isCustom: z.boolean().optional(),
         entityDefinitionId: z.string(),
@@ -104,6 +107,9 @@ export const customFieldRouter = createTRPCRouter({
         defaultValue: z.string().optional(),
         options: fieldOptionsUnionSchema.optional(),
         addressComponents: z.array(z.string()).optional(),
+        /** ADDRESS_STRUCT input variant — 'structured' persists, 'single' clears
+         *  the key back to the implicit default. See addressFieldOptionsSchema. */
+        inputMode: z.enum(['single', 'structured']).optional(),
         icon: z.string().optional(),
         isCustom: z.boolean().optional(),
         active: z.boolean().optional(),

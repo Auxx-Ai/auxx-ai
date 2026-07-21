@@ -44,8 +44,10 @@ import { publishBatchFieldTriggerEvents, publishFieldTriggerEvents } from '../fi
 import {
   getEntityFieldChangeHooks,
   getFieldPreHooks,
+  getFieldTypeChangeHooks,
   hasEntityFieldChangeHooks,
   hasFieldPreHooks,
+  hasFieldTypeChangeHooks,
 } from '../field-hooks/registry'
 import type { FieldPreHookEvent } from '../field-hooks/types'
 import {
@@ -1635,7 +1637,7 @@ export async function addValuesBulk(
   if (insertedTypedByEntity.size > 0 && ctx.userId !== undefined) {
     const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
     const entitySlug = resource?.apiSlug ?? ''
-    if (hasEntityFieldChangeHooks(entitySlug)) {
+    if (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(fieldType)) {
       await dispatchAddRemoveFieldChangeEvents({
         ctx,
         field,
@@ -1705,7 +1707,9 @@ export async function removeValuesBulk(
   // listener presence so silent paths skip the read entirely.
   const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
   const entitySlug = resource?.apiSlug ?? ''
-  const willDispatchFieldChange = ctx.userId !== undefined && hasEntityFieldChangeHooks(entitySlug)
+  const willDispatchFieldChange =
+    ctx.userId !== undefined &&
+    (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(fieldType))
 
   const oldRowsByEntity = new Map<string, FieldValueRow[]>()
   if (willDispatchFieldChange) {
@@ -1887,9 +1891,12 @@ export async function setValueWithBuiltIn(
 
   // 3.6. Capture oldValue BEFORE the null-delete branch — both set and clear
   // paths need it to fire post-hooks identically. Gated on
-  // `hasEntityFieldChangeHooks` so entities without listeners pay nothing.
+  // `hasEntityFieldChangeHooks`/`hasFieldTypeChangeHooks` so writes nobody
+  // listens for (by entity OR by field type) pay nothing.
   const willFirePostHook =
-    publishEvents && ctx.userId !== undefined && hasEntityFieldChangeHooks(entitySlug)
+    publishEvents &&
+    ctx.userId !== undefined &&
+    (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(field.type as FieldType))
   const oldValue: TypedFieldValue | TypedFieldValue[] | null = willFirePostHook
     ? await getValue(ctx, { recordId, fieldId })
     : null
@@ -1905,7 +1912,12 @@ export async function setValueWithBuiltIn(
       oldValue,
       newValue as TypedFieldValue | TypedFieldValue[] | null
     )
-    for (const handler of getEntityFieldChangeHooks(entitySlug)) {
+    // Entity-scoped chain fires first, then the field's type-keyed chain (decision #13).
+    const handlers = [
+      ...getEntityFieldChangeHooks(entitySlug),
+      ...getFieldTypeChangeHooks(field.type as FieldType),
+    ]
+    for (const handler of handlers) {
       try {
         await handler({
           recordId,
@@ -2312,8 +2324,17 @@ export async function setBulkValues(
   // nothing here.
   const entitySlug = resource?.apiSlug ?? ''
   const entityType = resource?.entityType ?? null
+  // Bulk `setBulkValues` can touch several different custom fields (of different fieldTypes) in
+  // one call, so the type-keyed half of the probe checks every field being written, not just one
+  // — `field-type-keyed handlers dispatch per-field inside dispatchBulkFieldChangeEvents below.
+  const anyFieldTypeHasHooks = customFieldIds.some((fieldId) => {
+    const f = fieldMap.get(fieldId)
+    return f ? hasFieldTypeChangeHooks(f.type as FieldType) : false
+  })
   const willDispatchFieldChange =
-    ctx.userId !== undefined && customFieldIds.length > 0 && hasEntityFieldChangeHooks(entitySlug)
+    ctx.userId !== undefined &&
+    customFieldIds.length > 0 &&
+    (hasEntityFieldChangeHooks(entitySlug) || anyFieldTypeHasHooks)
 
   const oldValuesMap = willDispatchFieldChange
     ? await batchGetExistingFieldValues(
@@ -2628,6 +2649,16 @@ async function dispatchBulkFieldChangeEvents(args: {
   }
   if (writes.length === 0) return
 
+  // Entity-scoped chain is shared by every write in this batch; the field-type-keyed chain
+  // (decision #13) can differ per write since a bulk `setBulkValues` call may touch several
+  // different fieldTypes at once — computed per-write below, not hoisted like `entityHandlers`.
+  // Bail before paying for snapshot resolution when nothing registered could ever fire for any
+  // write in this batch.
+  const entityHandlers = getEntityFieldChangeHooks(entitySlug)
+  const distinctFieldTypes = new Set(writes.map((w) => w.field.type as FieldType))
+  const anyTypeHandlers = [...distinctFieldTypes].some((ft) => hasFieldTypeChangeHooks(ft))
+  if (entityHandlers.length === 0 && !anyTypeHandlers) return
+
   const bulkOperationId = generateId()
 
   let snapshots: Awaited<ReturnType<typeof resolveFieldChangeSnapshotsBulk>>
@@ -2647,15 +2678,13 @@ async function dispatchBulkFieldChangeEvents(args: {
 
   // Bound concurrency so a 1000-record bulk op doesn't spawn 1000+ handler
   // promises in parallel. Each chunk runs in parallel; chunks run serially.
-  const handlers = getEntityFieldChangeHooks(entitySlug)
-  if (handlers.length === 0) return
-
   const CHUNK_SIZE = 100
   for (let i = 0; i < writes.length; i += CHUNK_SIZE) {
     const chunk = writes.slice(i, i + CHUNK_SIZE)
     await Promise.all(
       chunk.map(async (w) => {
         const snapshot = snapshots.get(`${w.recordId}:${w.field.id}`)
+        const handlers = [...entityHandlers, ...getFieldTypeChangeHooks(w.field.type as FieldType)]
         for (const handler of handlers) {
           try {
             await handler({
@@ -2770,7 +2799,9 @@ async function dispatchAddRemoveFieldChangeEvents(
     snapshots = new Map()
   }
 
-  const handlers = getEntityFieldChangeHooks(entitySlug)
+  // `field`/`fieldType` are constant for this whole call (one field across many entities), so
+  // the combined chain can be computed once, unlike the per-write-varying `setBulkValues` path.
+  const handlers = [...getEntityFieldChangeHooks(entitySlug), ...getFieldTypeChangeHooks(fieldType)]
   if (handlers.length === 0) return
 
   const CHUNK_SIZE = 100

@@ -6,6 +6,7 @@
 // documented no-op seam for a later per-worker depot (decision #6).
 
 import { createHash } from 'node:crypto'
+import { formatAddressForGeocode } from '@auxx/utils/address'
 import { resolveDocumentSettings } from '../../documents'
 import { geocode } from '../../geocoding'
 import { getOrganizationSetting, updateOrganizationSetting } from '../../settings'
@@ -21,29 +22,6 @@ function hashSortedJson(value: Record<string, unknown>): string {
       return acc
     }, {})
   return createHash('sha1').update(JSON.stringify(sorted)).digest('hex')
-}
-
-interface BusinessAddressLike {
-  street1: string
-  street2?: string
-  city: string
-  state?: string
-  zipCode: string
-  country: string
-}
-
-/** Single-line join of an `AddressStruct`-shaped address into one geocodable string — mirrors
- * `my-schedule.ts`'s private `formatAddress`, adapted for the geocoder's input shape. */
-function formatAddressForGeocode(address: BusinessAddressLike): string {
-  const parts = [
-    address.street1,
-    address.street2,
-    address.city,
-    address.state,
-    address.zipCode,
-    address.country,
-  ]
-  return parts.filter((p): p is string => Boolean(p?.trim())).join(', ')
 }
 
 interface BusinessGeocodeCache {

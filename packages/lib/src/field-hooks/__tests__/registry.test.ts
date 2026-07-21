@@ -1,16 +1,22 @@
 // packages/lib/src/field-hooks/__tests__/registry.test.ts
 
+import type { FieldType } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
 import { describe, expect, it, vi } from 'vitest'
 import type { CachedField } from '../../field-values/types'
 import {
+  getEntityFieldChangeHooks,
   getEntityPreDeleteHooks,
   getFieldPreHooks,
+  getFieldTypeChangeHooks,
   hasFieldPreHooks,
+  hasFieldTypeChangeHooks,
+  registerEntityFieldChangeHooks,
   registerEntityPreDeleteHooks,
   registerFieldPreHooks,
+  registerFieldTypeChangeHooks,
 } from '../registry'
-import type { FieldPreHookEvent } from '../types'
+import type { EntityFieldChangeEvent, FieldPreHookEvent } from '../types'
 
 const TEST_RECORD: RecordId = 'fhk-test-record:abc' as RecordId
 
@@ -95,6 +101,81 @@ describe('field-hooks registry — pre-hooks', () => {
 
     registerFieldPreHooks('*', 'tag_parent', [async () => 'y'])
     expect(hasFieldPreHooks('any-other-slug', 'tag_parent')).toBe(true)
+  })
+})
+
+function buildFieldChangeEvent(
+  overrides: Partial<EntityFieldChangeEvent> = {}
+): EntityFieldChangeEvent {
+  return {
+    recordId: TEST_RECORD,
+    entityDefinitionId: 'fhk-test-def',
+    entityType: null,
+    entitySlug: 'fhk-tests',
+    field: { id: 'fld_1', type: 'ADDRESS_STRUCT' } as unknown as CachedField,
+    oldValue: null,
+    newValue: null,
+    oldDisplay: null,
+    newDisplay: null,
+    organizationId: 'org_1',
+    userId: 'user_1',
+    ...overrides,
+  }
+}
+
+describe('field-hooks registry — field-type-keyed post-write hooks (decision #13)', () => {
+  it('returns empty list / false when nothing registered for a fieldType', () => {
+    expect(getFieldTypeChangeHooks('fhk-empty-type' as FieldType)).toHaveLength(0)
+    expect(hasFieldTypeChangeHooks('fhk-empty-type' as FieldType)).toBe(false)
+  })
+
+  it('registers handlers keyed by fieldType, independent of entitySlug', async () => {
+    const fieldType = 'fhk-address-type' as FieldType
+    const otherType = 'fhk-other-type' as FieldType
+    const handler = vi.fn(async () => undefined)
+    registerFieldTypeChangeHooks(fieldType, [handler])
+
+    expect(getFieldTypeChangeHooks(fieldType)).toEqual([handler])
+    expect(hasFieldTypeChangeHooks(fieldType)).toBe(true)
+    // A different field type never registered here stays cheap/false — the
+    // whole point of type-keying instead of a '*' sentinel (decision #13).
+    expect(hasFieldTypeChangeHooks(otherType)).toBe(false)
+    expect(getFieldTypeChangeHooks(otherType)).toHaveLength(0)
+
+    await getFieldTypeChangeHooks(fieldType)[0]!(buildFieldChangeEvent())
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('appends multiple handlers under the same fieldType and preserves order', () => {
+    const fieldType = 'fhk-multi-type' as FieldType
+    const a = vi.fn(async () => undefined)
+    const b = vi.fn(async () => undefined)
+    registerFieldTypeChangeHooks(fieldType, [a])
+    registerFieldTypeChangeHooks(fieldType, [b])
+
+    expect(getFieldTypeChangeHooks(fieldType)).toEqual([a, b])
+  })
+
+  it('composes entity-scoped hooks before field-type-keyed hooks (the fire-point pattern)', () => {
+    const slug = 'fhk-compose-slug'
+    const fieldType = 'fhk-compose-type' as FieldType
+    const entityHandler = vi.fn(async () => undefined)
+    const typeHandler = vi.fn(async () => undefined)
+    registerEntityFieldChangeHooks(slug, [entityHandler])
+    registerFieldTypeChangeHooks(fieldType, [typeHandler])
+
+    // Mirrors the fire-point composition in field-value-mutations.ts: entity chain first,
+    // then the field's type-keyed chain (decision #13's ordering requirement) — NOT a '*'
+    // sentinel, so unrelated slugs/types are unaffected. Asserted structurally (position),
+    // not by invoking the chain: `getEntityFieldChangeHooks` also carries this process's
+    // real `'*'`-registered global hooks (`registerAllHooks` runs lazily on first access and
+    // stays registered for the rest of the suite) — calling those with a synthetic event
+    // would reach real infra (queues/redis), which this unit test has no business touching.
+    const handlers = [...getEntityFieldChangeHooks(slug), ...getFieldTypeChangeHooks(fieldType)]
+
+    expect(handlers[0]).toBe(entityHandler)
+    expect(handlers[handlers.length - 1]).toBe(typeHandler)
+    expect(handlers.indexOf(entityHandler)).toBeLessThan(handlers.indexOf(typeHandler))
   })
 })
 

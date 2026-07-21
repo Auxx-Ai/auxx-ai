@@ -3,10 +3,10 @@
 import { database, schema } from '@auxx/database'
 import { extractValue, type TypedFieldValue } from '@auxx/types'
 import { parseRecordId } from '@auxx/types/resource'
+import { type AddressStructValue, formatAddressForGeocode } from '@auxx/utils/address'
 import { and, eq } from 'drizzle-orm'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
 import { geocode } from '../geocoding'
-import { formatAddressForGeocode } from './address'
 import { ensureVisitForWorkOrder } from './visit-mutations'
 
 /**
@@ -40,7 +40,7 @@ export const geocodeOnAddressChange: EntityFieldChangeHandler = async (event) =>
 
   const typed = event.newValue as TypedFieldValue | TypedFieldValue[] | null
   const first = Array.isArray(typed) ? typed[0] : typed
-  const addressValue = first ? (extractValue(first) as Record<string, unknown> | null) : null
+  const addressValue = first ? (extractValue(first) as Partial<AddressStructValue> | null) : null
   if (!addressValue || typeof addressValue !== 'object') return
 
   const line = formatAddressForGeocode(addressValue)

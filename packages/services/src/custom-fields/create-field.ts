@@ -75,6 +75,9 @@ export interface CreateCustomFieldInput {
     | { options: SelectOption[]; ai?: AiOptions }
     | (DisplayOptions & { ai?: AiOptions })
   addressComponents?: string[]
+  /** ADDRESS_STRUCT input variant: single free-text input (default, omitted
+   *  from storage) vs. separate structured sub-fields. */
+  inputMode?: 'single' | 'structured'
   icon?: string
   isCustom?: boolean
   entityDefinitionId?: string | null
@@ -223,6 +226,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     defaultValue,
     options,
     addressComponents,
+    inputMode,
     icon,
     isCustom = true,
     entityDefinitionId,
@@ -437,6 +441,11 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   if (type === FieldTypeEnum.ADDRESS_STRUCT) {
     if (addressComponents) {
       fieldOptions.addressComponents = addressComponents
+    }
+    // Only persist the key for the non-default 'structured' mode — absence
+    // means 'single' (decision #4, plans/address-field/01-single-input-address-field.md).
+    if (inputMode === 'structured') {
+      fieldOptions.inputMode = 'structured'
     }
   }
 

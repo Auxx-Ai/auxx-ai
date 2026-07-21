@@ -10,6 +10,12 @@
       "import": "./dist/index.js",
       "default": "./src/index.ts"
     },
+    "./address": {
+      "types": "./src/address.ts",
+      "source": "./src/address.ts",
+      "import": "./dist/address.js",
+      "default": "./src/address.ts"
+    },
     "./arrays": {
       "types": "./src/arrays.ts",
       "source": "./src/arrays.ts",
