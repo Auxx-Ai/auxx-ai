@@ -96,7 +96,7 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
       title='Invoicing'
       description='Configure automated invoice drafts and PDF defaults for completed jobs and visits.'
       breadcrumbs={breadcrumbs}>
-      <div className='flex flex-col gap-8 p-3 sm:p-6'>
+      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <SettingsSection
           icon={Receipt}
           title='Automation'

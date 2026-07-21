@@ -224,7 +224,7 @@ export function ProductsServicesPage() {
       subHeader={
         <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} size='sm' items={TABS} />
       }>
-      <div className='grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
+      <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
         <div className='min-w-0'>
           {activeTab === 'products' ? (
             <ProductsList

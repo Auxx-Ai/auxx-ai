@@ -117,7 +117,7 @@ function QuotesSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[] 
           Preview PDF
         </Button>
       }>
-      <div className='flex flex-col gap-8 p-3 sm:p-6'>
+      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <SettingsSection
           icon={FileText}
           title='Quote PDF defaults'

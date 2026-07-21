@@ -163,7 +163,7 @@ function PaymentsSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[
       title='Payments'
       description='Collect payments online by connecting your Stripe account.'
       breadcrumbs={breadcrumbs}>
-      <div className='flex flex-col gap-8 p-3 sm:p-6'>
+      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <SettingsSection
           icon={CreditCard}
           title='Stripe'

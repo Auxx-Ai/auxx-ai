@@ -82,7 +82,8 @@ export default function SettingsPage({
   }, [])
 
   return (
-    <ScrollArea viewportRef={viewportRef} className='h-full w-full'>
+    // noFade: the sticky FormSaveBar sits at the viewport bottom — the edge fade would mask it.
+    <ScrollArea viewportRef={viewportRef} noFade className='h-full w-full'>
       {breadcrumbs.length > 0 && (
         <header className='w-full flex-none border-b overflow-hidden'>
           <div className='flex items-center gap-2 px-3 py-1.5 no-scrollbar overflow-x-auto'>
