@@ -1,10 +1,15 @@
 // packages/ui/src/components/event-calendar/utils.ts
 
-import { isSameDay } from 'date-fns'
+import { format, getMinutes, isSameDay } from 'date-fns'
 import type { CSSProperties } from 'react'
 
 import { DefaultEventColor } from './constants'
 import type { EventCalendarItem } from './types'
+
+/** Compact chip-style time — `9am` on the hour, `9:30am` otherwise. */
+export function formatTimeWithOptionalMinutes(date: Date): string {
+  return format(date, getMinutes(date) === 0 ? 'ha' : 'h:mma').toLowerCase()
+}
 
 /**
  * Sets the `--ec-color` custom property an event chip's Tailwind arbitrary-value

@@ -20,6 +20,7 @@ import { addMinutes, differenceInMinutes } from 'date-fns'
 import { createContext, type ReactNode, useContext, useEffect, useId, useState } from 'react'
 
 import { EventItem } from './event-item'
+import { TimeRangePill } from './time-range-pill'
 import type { CalendarView, EventCalendarItem, RenderEvent } from './types'
 
 type DraggableView = 'month' | 'week' | 'day' | 'resource'
@@ -262,7 +263,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
           modifiers={foreignActive ? [snapCenterToCursor] : []}>
           {activeEvent && activeView ? (
             <div
-              className='opacity-80'
+              className='relative opacity-80'
               style={
                 eventWidth
                   ? { width: `${eventWidth}px`, height: eventHeight ? `${eventHeight}px` : '100%' }
@@ -276,6 +277,18 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
                 currentTime={currentTime || undefined}
                 renderEvent={renderEvent}
               />
+              {/* Live snapped landing time (plan 35 §3) — month drags are whole-day, no pill. */}
+              {activeView !== 'month' && currentTime && (
+                <div className='absolute top-full left-0 mt-1'>
+                  <TimeRangePill
+                    start={currentTime}
+                    end={addMinutes(
+                      currentTime,
+                      differenceInMinutes(new Date(activeEvent.end), new Date(activeEvent.start))
+                    )}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             foreignActive && renderForeignOverlay?.(foreignActive)

@@ -77,6 +77,14 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   resourceDaysVisible?: number
   /** Horizontal timeline (`view='timeline'`) only — visible hour range. Defaults to the full day. */
   hourWindow?: TimelineHourWindow
+  /** Timeline zoom (plan 35): controlled px-per-hour. Omit for the view's internal state. */
+  timelineHourWidth?: number
+  /** Fires when a timeline zoom gesture (border drag / ctrl+wheel) commits a new px-per-hour. */
+  onTimelineHourWidthChange?: (px: number) => void
+  /** Timeline worker-rail width (plan 35): controlled px. Omit for the view's internal state. */
+  timelineRailWidth?: number
+  /** Fires when the timeline rail-width drag commits a new width. */
+  onTimelineRailWidthChange?: (px: number) => void
   backgroundEvents?: BackgroundEvent[]
   renderEvent?: RenderEvent<T>
   /** Id of the actively-selected event (its detail/popover open) — draws the in-color ring. */
@@ -111,6 +119,10 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   resources,
   resourceDaysVisible = 1,
   hourWindow = DefaultHourWindow,
+  timelineHourWidth,
+  onTimelineHourWidthChange,
+  timelineRailWidth,
+  onTimelineRailWidthChange,
   backgroundEvents,
   renderEvent,
   selectedEventId,
@@ -368,6 +380,10 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               weekStartsOn={weekStartsOn}
               backgroundEvents={backgroundEvents}
               hourWindow={hourWindow}
+              hourWidth={timelineHourWidth}
+              onHourWidthChange={onTimelineHourWidthChange}
+              railWidth={timelineRailWidth}
+              onRailWidthChange={onTimelineRailWidthChange}
               onEventSelect={handleEventSelect}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
