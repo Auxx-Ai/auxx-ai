@@ -53,14 +53,20 @@ export function OptionColorPicker({
           value={value}
           onValueChange={(v) => onChange(v as SelectOptionColor)}>
           {OPTION_COLORS.map((color) => (
-            <DropdownMenuRadioItem key={color.id} value={color.id} className='pl-1.5'>
-              <div
-                className={cn(
-                  'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10 mr-2',
-                  color.swatch
-                )}
-              />
-              {color.label}
+            <DropdownMenuRadioItem
+              key={color.id}
+              value={color.id}
+              indicator='check'
+              className='pl-1.5'>
+              <span className='flex items-center gap-2'>
+                <span
+                  className={cn(
+                    'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
+                    color.swatch
+                  )}
+                />
+                {color.label}
+              </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
