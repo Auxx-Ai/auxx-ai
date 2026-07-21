@@ -1,6 +1,10 @@
 // packages/lib/src/jobs/recording/transcribe-recording-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { UnrecoverableError } from 'bullmq'
+import type { BotStatus } from '../../recording/bot/types'
+import { FAILURE_TERMINAL_STATUSES } from '../../recording/bot/types'
+import { findRecording } from '../../recording/recording-queries'
 import { processTranscript } from '../../recording/transcription'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -26,6 +30,14 @@ export const transcribeRecordingJob = async (ctx: JobContext<TranscribeRecording
     recordingId,
     organizationId,
   })
+
+  // A bot that never recorded has no transcript to fetch — retrying won't help.
+  const recording = await findRecording({ id: recordingId, organizationId })
+  if (recording && FAILURE_TERMINAL_STATUSES.includes(recording.status as BotStatus)) {
+    throw new UnrecoverableError(
+      `Recording ${recordingId} ended without a recording (status: ${recording.status}) — no transcript to fetch`
+    )
+  }
 
   const result = await processTranscript({ recordingId, organizationId })
 

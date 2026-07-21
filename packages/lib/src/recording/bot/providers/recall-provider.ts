@@ -144,7 +144,7 @@ interface RecallMediaShortcuts {
 
 interface RecallBotResponse {
   id: string
-  status_changes: { code: string; created_at: string }[]
+  status_changes: { code: string; sub_code?: string | null; created_at: string }[]
   recordings?: { id: string; media_shortcuts?: RecallMediaShortcuts }[]
   media_shortcuts?: RecallMediaShortcuts
   metadata?: Record<string, unknown>
@@ -269,9 +269,13 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
         const endedChange = statusChanges.find(
           (s) => s.code === 'bot.call_ended' || s.code === 'bot.done'
         )
+        // The informative sub_code usually rides on call_ended, not the final done
+        // entry — take the last non-null one across the whole history.
+        const subCode = [...statusChanges].reverse().find((s) => s.sub_code)?.sub_code ?? undefined
 
         return ok({
           status: mappedStatus,
+          subCode,
           joinedAt: joinedChange ? new Date(joinedChange.created_at) : undefined,
           recordingStartedAt: recordingChange ? new Date(recordingChange.created_at) : undefined,
           recordingEndedAt: endedChange ? new Date(endedChange.created_at) : undefined,

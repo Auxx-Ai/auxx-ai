@@ -29,6 +29,7 @@ export {
   findRecording,
   findUpcomingCalendarEvents,
   getRecordingDetail,
+  hasCompletedTranscript,
   listRecordings,
   updateRecording,
 } from './recording-queries'

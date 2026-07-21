@@ -273,6 +273,7 @@ interface RecordingDetail {
   recording: CallRecordingEntity
   calendarEvent: CalendarEventEntity | null
   participants: MeetingParticipantEntity[]
+  hasTranscript: boolean
 }
 
 /** Get a single recording with its calendar event and meeting participants. */
@@ -282,6 +283,8 @@ export async function getRecordingDetail(
 ): Promise<RecordingDetail | undefined> {
   const recording = await findRecording({ id, organizationId })
   if (!recording) return undefined
+
+  const hasTranscript = await hasCompletedTranscript({ recordingId: recording.id, organizationId })
 
   let calendarEvent: CalendarEventEntity | null = null
   if (recording.calendarEventId) {
@@ -301,5 +304,24 @@ export async function getRecordingDetail(
       .where(eq(schema.MeetingParticipant.calendarEventId, recording.calendarEventId))
   }
 
-  return { recording, calendarEvent, participants }
+  return { recording, calendarEvent, participants, hasTranscript }
+}
+
+/** Whether a completed transcript exists for a recording. */
+export async function hasCompletedTranscript(params: {
+  recordingId: string
+  organizationId: string
+}): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.Transcript.id })
+    .from(schema.Transcript)
+    .where(
+      and(
+        eq(schema.Transcript.callRecordingId, params.recordingId),
+        eq(schema.Transcript.organizationId, params.organizationId),
+        eq(schema.Transcript.status, 'completed')
+      )
+    )
+    .limit(1)
+  return !!row
 }

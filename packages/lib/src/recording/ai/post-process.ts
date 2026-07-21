@@ -2,6 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { UnrecoverableError } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { publisher } from '../../events/publisher'
@@ -29,6 +30,36 @@ export async function runAIPostProcess(
   params: RunAIPostProcessParams
 ): Promise<Result<void, Error>> {
   const { db, organizationId, callRecordingId, scope = 'all', userId } = params
+
+  // Nothing to process without a transcript — fail fast with the real reason
+  // instead of fanning out generators that can only produce generic errors.
+  const [transcript] = await db
+    .select({ id: schema.Transcript.id, fullText: schema.Transcript.fullText })
+    .from(schema.Transcript)
+    .where(eq(schema.Transcript.callRecordingId, callRecordingId))
+    .limit(1)
+
+  if (!transcript?.fullText) {
+    const [recording] = await db
+      .select({ failureReason: schema.CallRecording.failureReason })
+      .from(schema.CallRecording)
+      .where(eq(schema.CallRecording.id, callRecordingId))
+      .limit(1)
+
+    const message = recording?.failureReason
+      ? `No transcript — ${recording.failureReason}`
+      : 'No transcript available for this recording'
+
+    await db
+      .update(schema.CallRecording)
+      .set({ aiProcessingStatus: 'failed', aiProcessingError: message })
+      .where(eq(schema.CallRecording.id, callRecordingId))
+
+    logger.warn('AI post-processing skipped — no transcript', { callRecordingId })
+    // UnrecoverableError: when thrown by the job wrapper, BullMQ skips retries —
+    // a missing transcript is permanent, not transient.
+    return err(new UnrecoverableError(message))
+  }
 
   await db
     .update(schema.CallRecording)

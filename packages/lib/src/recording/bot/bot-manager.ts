@@ -9,7 +9,12 @@ import { getOrganizationSetting } from '../../settings/settings-service'
 import { findRecording, updateRecording } from '../recording-queries'
 import { getProvider } from './providers'
 import type { BotProviderId, BotStatus } from './types'
-import { STATUS_ORDINAL, TERMINAL_STATUSES } from './types'
+import {
+  FAILURE_REASONS,
+  FAILURE_SUB_CODE_STATUS,
+  STATUS_ORDINAL,
+  TERMINAL_STATUSES,
+} from './types'
 
 const logger = createScopedLogger('recording:bot-manager')
 
@@ -182,20 +187,45 @@ export async function handleBotStatusChange(params: {
     return ok(recording)
   }
 
-  const updates: Record<string, unknown> = {
-    status: newStatus,
+  // A bot that ends 'completed'/'processing' without ever recording didn't
+  // succeed — downgrade to the truthful failure status (e.g. waiting-room
+  // timeout) instead of showing a green "Completed" for an empty recording.
+  let effectiveStatus = newStatus
+  if (
+    (newStatus === 'completed' || newStatus === 'processing') &&
+    !recording.startedAt &&
+    STATUS_ORDINAL[currentStatus] < STATUS_ORDINAL.recording
+  ) {
+    effectiveStatus =
+      (subCode ? FAILURE_SUB_CODE_STATUS[subCode] : undefined) ??
+      (currentStatus === 'waiting' ? 'timeout' : 'failed')
+    logger.info('Downgrading terminal status — bot never recorded', {
+      recordingId: recording.id,
+      currentStatus,
+      reportedStatus: newStatus,
+      effectiveStatus,
+      subCode,
+    })
   }
 
-  if (newStatus === 'recording' && !recording.startedAt) {
+  const updates: Record<string, unknown> = {
+    status: effectiveStatus,
+  }
+
+  if (effectiveStatus === 'recording' && !recording.startedAt) {
     updates.startedAt = new Date()
   }
 
-  if (TERMINAL_STATUSES.includes(newStatus) && !recording.endedAt) {
+  if (TERMINAL_STATUSES.includes(effectiveStatus) && !recording.endedAt) {
     updates.endedAt = new Date()
   }
 
-  if (['failed', 'kicked', 'denied', 'timeout'].includes(newStatus)) {
-    updates.failureReason = subCode ?? newStatus
+  if (['failed', 'kicked', 'denied', 'timeout'].includes(effectiveStatus)) {
+    updates.failureReason =
+      (subCode ? FAILURE_REASONS[subCode] : undefined) ??
+      FAILURE_REASONS[effectiveStatus] ??
+      subCode ??
+      effectiveStatus
   }
 
   if (metadata) {
@@ -210,7 +240,7 @@ export async function handleBotStatusChange(params: {
   logger.info('Bot status updated', {
     recordingId: recording.id,
     oldStatus: currentStatus,
-    newStatus,
+    newStatus: effectiveStatus,
     subCode,
   })
 
@@ -251,19 +281,20 @@ export async function pollBotStatus(params: {
     return err(statusResult.error)
   }
 
-  const { status: providerStatus } = statusResult.value
+  const { status: providerStatus, subCode } = statusResult.value
 
   if (providerStatus !== currentStatus) {
     const updateResult = await handleBotStatusChange({
       externalBotId: recording.externalBotId,
       newStatus: providerStatus,
+      subCode,
     })
 
     if (updateResult.isErr()) {
       return err(updateResult.error)
     }
 
-    return ok(providerStatus)
+    return ok(updateResult.value.status as BotStatus)
   }
 
   return ok(currentStatus)

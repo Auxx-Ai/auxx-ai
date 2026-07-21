@@ -3,17 +3,20 @@
 import { database as db, schema } from '@auxx/database'
 import type { AIPostProcessJobData, TranscribeRecordingJobData } from '@auxx/lib/jobs'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import type { BotStatus } from '@auxx/lib/recording'
 import {
   BOT_STATUSES,
   cancelBot,
   createInsightTemplate,
   createMeeting,
   deleteRecording,
+  FAILURE_TERMINAL_STATUSES,
   getInsightDetail,
   getRecordingDetail,
   getRecordingVideoUrl,
   getTranscript,
   getUtterances,
+  hasCompletedTranscript,
   listChapters,
   listInsights,
   listInsightTemplates,
@@ -60,6 +63,7 @@ export const recordingRouter = createTRPCRouter({
       ...detail.recording,
       calendarEvent: detail.calendarEvent,
       participants: detail.participants,
+      hasTranscript: detail.hasTranscript,
     }
   }),
 
@@ -355,6 +359,19 @@ export const recordingRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
 
+      // AI generation is impossible without a transcript — reject up front
+      // instead of enqueueing a job that can only fail.
+      const hasTranscript = await hasCompletedTranscript({
+        recordingId: input.recordingId,
+        organizationId,
+      })
+      if (!hasTranscript) {
+        throw new TRPCError({
+          code: 'UNPROCESSABLE_CONTENT',
+          message: 'No transcript available for this recording — nothing to regenerate from',
+        })
+      }
+
       // Mark the recording as processing so the UI reflects pending state immediately.
       await db
         .update(schema.CallRecording)
@@ -407,6 +424,12 @@ export const recordingRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Recording has no external bot ID — cannot refetch transcript',
+        })
+      }
+      if (FAILURE_TERMINAL_STATUSES.includes(recording.status as BotStatus)) {
+        throw new TRPCError({
+          code: 'UNPROCESSABLE_CONTENT',
+          message: 'The bot never recorded this meeting — there is no transcript to fetch',
         })
       }
 

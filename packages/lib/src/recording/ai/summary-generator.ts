@@ -83,20 +83,35 @@ export async function generateSummary(
     participants: participants.map((p) => ({ name: p.name, isHost: p.isOrganizer })),
   })
 
+  const invokeParams = {
+    provider,
+    model,
+    organizationId,
+    userId: userId ?? recording.createdById,
+    messages: [
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: buildSummaryUserPrompt(transcript.fullText) },
+    ],
+    parameters: { temperature: 0.2, max_tokens: 2000 },
+    context: { source: 'other' as const, recordingId: callRecordingId, kind: 'recording-summary' },
+  }
+
   try {
-    const response = await orchestrator.invoke({
-      provider,
-      model,
-      organizationId,
-      userId: userId ?? recording.createdById,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: buildSummaryUserPrompt(transcript.fullText) },
-      ],
-      parameters: { temperature: 0.2, max_tokens: 2000 },
-      structuredOutput: { enabled: true, schema: SUMMARY_JSON_SCHEMA },
-      context: { source: 'other', recordingId: callRecordingId, kind: 'recording-summary' },
-    })
+    let response: Awaited<ReturnType<typeof orchestrator.invoke>>
+    try {
+      response = await orchestrator.invoke({
+        ...invokeParams,
+        structuredOutput: { enabled: true, schema: SUMMARY_JSON_SCHEMA },
+      })
+    } catch (error) {
+      if (!isStructuredOutputUnsupported(error)) throw error
+      // The prompt already demands strict JSON, so plain text + safeParseJson works.
+      logger.warn('Model rejected structured output — retrying with prompt-based JSON', {
+        callRecordingId,
+        model,
+      })
+      response = await orchestrator.invoke(invokeParams)
+    }
 
     const raw: unknown = response.structured_output ?? safeParseJson(response.content)
     const parsed = SummaryResponseSchema.safeParse(raw)
@@ -139,6 +154,12 @@ function normalizeActionItems(items: SummaryResponse['actionItems']): ActionItem
     dueDate: item.dueDate,
     priority: item.priority,
   }))
+}
+
+/** Some models (BYO/custom) reject response_format json_schema — detectable only from the error. */
+function isStructuredOutputUnsupported(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /response_format|json_schema|structured.?output/i.test(message)
 }
 
 function safeParseJson(content: string | null | undefined): unknown {
