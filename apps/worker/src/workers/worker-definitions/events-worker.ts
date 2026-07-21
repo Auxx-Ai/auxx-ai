@@ -2,9 +2,13 @@ import {
   createAuditLog,
   createEventJob,
   createTimelineEvent,
+  deriveMessageReplySignal,
+  deriveThreadResolvedSignal,
   handleFieldTriggerJob,
   handleRecordRules,
   handleSyncRecordRules,
+  ingestBounceMessage,
+  projectSignalToTimeline,
   publishEventJob,
   publishThreadEventToRealtime,
   publishToAnalyticsJob,
@@ -41,6 +45,12 @@ const eventHandlersJobMappings = {
   handleRecordRules,
   handleSyncRecordRules,
   publishThreadEventToRealtime,
+  // Message-signal + bounce + signal-projection handlers, fanned out from
+  // publishEventJob (message:received, ticket:status:changed, signal:recorded).
+  deriveMessageReplySignal,
+  deriveThreadResolvedSignal,
+  ingestBounceMessage,
+  projectSignalToTimeline,
 }
 
 // IO-bound handlers; concurrency > 1 drops the queue-global FIFO ordering,
