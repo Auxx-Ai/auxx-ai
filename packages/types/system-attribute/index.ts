@@ -305,6 +305,7 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_discount',
   'line_item_sort_order',
   'line_item_visit_id',
+  'line_item_source_line',
   'line_item_catalog_item',
   'line_item_quote',
   'line_item_work_order',

@@ -49,6 +49,7 @@ import { migration043WorkOrderBillingAllocations } from './migrations/043-work-o
 import { migration044LinePricingFields } from './migrations/044-line-pricing-fields'
 import { migration045DefaultEntityDashboards } from './migrations/045-default-entity-dashboards'
 import { migration046LayeredDefaultViews } from './migrations/046-layered-default-views'
+import { migration047LineItemSourceLine } from './migrations/047-line-item-source-line'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -103,6 +104,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration044LinePricingFields,
   migration045DefaultEntityDashboards,
   migration046LayeredDefaultViews,
+  migration047LineItemSourceLine,
 ]
 
 /**
