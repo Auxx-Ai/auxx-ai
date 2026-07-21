@@ -1,5 +1,6 @@
 // src/lib/providers/outlook/outlook-provider.ts // Adjusted path
 
+import { randomBytes } from 'node:crypto'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
@@ -487,7 +488,7 @@ export class OutlookProvider
     const webhookSecret =
       (this.integration?.metadata as any)?.webhookSecret ||
       configService.get<string>('OUTLOOK_WEBHOOK_SECRET') ||
-      crypto.randomBytes(20).toString('hex') // Use stored or fallback/generate secret
+      randomBytes(20).toString('hex') // Use stored or fallback/generate secret
     const subscriptionPayload = {
       changeType: 'created,updated', // Notify on new and potentially updated messages
       notificationUrl: callbackUrl,
