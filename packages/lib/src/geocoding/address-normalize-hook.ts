@@ -3,8 +3,10 @@
 // Server-side geocoder normalization for ADDRESS_STRUCT field writes
 // (plans/address-field/01-single-input-address-field.md §5 item 3, decision #5). Registered as
 // a field-type-keyed post-write hook (decision #13, `field-hooks/registry.ts`), so it runs for
-// every ADDRESS_STRUCT field on every entity — not just `work_order_address` (dispatch's
-// visit-hooks geocode is untouched and still runs first on that field, see §5 item 5).
+// every ADDRESS_STRUCT field on every entity — not just `work_order_address`. Feature modules
+// that need the geocode result (dispatch visit pins) subscribe via
+// {@link registerAddressNormalizedListener} instead of geocoding again themselves — this is THE
+// one MapTiler call per address write (§9 follow-up 2 retired the v1 double-geocode).
 //
 // Field-change post-hooks are awaited inline in the save request
 // (`field-values/field-value-mutations.ts`), so this handler itself does only cheap synchronous
@@ -81,6 +83,50 @@ function stripSource(struct: AddressStructLike): AddressStructLike {
   return next
 }
 
+/** Struct delivered to normalized-address listeners — the stored components plus a guaranteed
+ * geocode stamp. */
+export type NormalizedAddressStruct = Partial<AddressStructValue> & { lat: number; lng: number }
+
+/** Fired once the hook has coordinates for a write — either freshly geocoded (after the quiet
+ * write-back landed) or already stamped on the incoming struct (idempotence-guard path, where
+ * no geocode runs). Never fired when the geocoder fails/no-ops — consumers just see no update. */
+export type AddressNormalizedListener = (
+  event: EntityFieldChangeEvent,
+  struct: NormalizedAddressStruct
+) => Promise<void> | void
+
+const normalizedListeners: AddressNormalizedListener[] = []
+
+/**
+ * Subscribe to address normalizations. Feature modules that need the geocode result (dispatch
+ * visit pins, `field-hooks/register-hooks.ts`) register here instead of making a second MapTiler
+ * call per write. The subscription direction keeps this module free of feature imports — dispatch
+ * already imports geocoding, so the reverse would cycle.
+ */
+export function registerAddressNormalizedListener(listener: AddressNormalizedListener): void {
+  normalizedListeners.push(listener)
+}
+
+/** Fan the geocoded struct out to listeners, each isolated — a listener failure is logged and
+ * never affects the others or the caller. No-op unless the struct carries numeric coordinates. */
+async function notifyAddressNormalized(
+  event: EntityFieldChangeEvent,
+  struct: AddressStructLike
+): Promise<void> {
+  if (typeof struct.lat !== 'number' || typeof struct.lng !== 'number') return
+  for (const listener of normalizedListeners) {
+    try {
+      await listener(event, struct as NormalizedAddressStruct)
+    } catch (error) {
+      logger.error('Address normalized listener failed', {
+        recordId: event.recordId,
+        fieldId: event.field.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+}
+
 /**
  * Post-write hook for ADDRESS_STRUCT fields (registered field-type-keyed, not entity-scoped —
  * fires for every ADDRESS_STRUCT field regardless of entity). Bails fast on cheap synchronous
@@ -103,6 +149,11 @@ export const normalizeAddressOnChange: EntityFieldChangeHandler = async (event) 
   if (hasStampedGeo) {
     const oldStruct = extractStruct(event.oldValue)
     if (oldStruct && componentHash(oldStruct) === componentHash(newStruct)) {
+      // Nothing to geocode, but listeners (visit pins) still get the already-stamped coords —
+      // a no-op resave used to re-pin through dispatch's own geocode hook, and this keeps that
+      // robustness for one cheap UPDATE. Fire-and-forget; notify never rejects (per-listener
+      // catch), so a bare void is safe.
+      void notifyAddressNormalized(event, newStruct)
       return
     }
   }
@@ -137,7 +188,10 @@ async function runNormalize(
     return
   }
 
-  await writeBack(event, struct, mergeAddress(struct, geocoded, source))
+  const merged = mergeAddress(struct, geocoded, source)
+  if (await writeBack(event, struct, merged)) {
+    await notifyAddressNormalized(event, merged)
+  }
 }
 
 /**
@@ -197,12 +251,15 @@ function mergeAddress(
  * edit). We then publish the realtime update ourselves so open drawers pick up the canonical
  * struct — publishing the FULL composed value, since a value-less realtime publish is silently
  * dropped by subscribers.
+ *
+ * Returns whether the write landed — `false` on the stale-write bail (the newer write's own
+ * normalize run owns the field, listeners included) or an empty write result.
  */
 async function writeBack(
   event: EntityFieldChangeEvent,
   original: AddressStructLike,
   merged: AddressStructLike
-): Promise<void> {
+): Promise<boolean> {
   const ctx = createFieldValueContext(event.organizationId, event.userId, undefined, undefined, {
     skipPreHooks: true,
   })
@@ -213,7 +270,7 @@ async function writeBack(
   const current = extractStruct(
     await getValue(ctx, { recordId: event.recordId, fieldId: event.field.id }, event.field)
   )
-  if (!current || componentHash(current) !== componentHash(original)) return
+  if (!current || componentHash(current) !== componentHash(original)) return false
 
   const result = await setValueWithBuiltIn(ctx, {
     recordId: event.recordId,
@@ -222,7 +279,7 @@ async function writeBack(
     publishEvents: false,
   })
 
-  if (result.values.length === 0) return
+  if (result.values.length === 0) return false
 
   const { entityInstanceId } = parseRecordId(event.recordId)
   const publishRecordId = event.field.entityDefinitionId
@@ -242,4 +299,6 @@ async function writeBack(
       error: error instanceof Error ? error.message : String(error),
     })
   })
+
+  return true
 }

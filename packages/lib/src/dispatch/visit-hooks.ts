@@ -1,12 +1,10 @@
 // packages/lib/src/dispatch/visit-hooks.ts
 
 import { database, schema } from '@auxx/database'
-import { extractValue, type TypedFieldValue } from '@auxx/types'
 import { parseRecordId } from '@auxx/types/resource'
-import { type AddressStructValue, formatAddressForGeocode } from '@auxx/utils/address'
 import { and, eq } from 'drizzle-orm'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
-import { geocode } from '../geocoding'
+import type { AddressNormalizedListener } from '../geocoding/address-normalize-hook'
 import { ensureVisitForWorkOrder } from './visit-mutations'
 
 /**
@@ -23,34 +21,32 @@ export const ensureVisitOnWorkOrderCreate: EntityFieldChangeHandler = async (eve
 }
 
 /**
- * Geocode a work order's address the instant it's set (create AND update — route planner
- * build contract item 8, amending 02 §6's original "geocode at schedule time" to "geocode at
- * address-set time": unscheduled backlog jobs need pins too). Keyed off `work_order_address`
- * (ADDRESS_STRUCT); no `oldValue === null` gate, unlike {@link ensureVisitOnWorkOrderCreate} —
- * the service address can change after creation and must re-geocode every time.
+ * Pin a work order's visit rows the instant its address geocodes (create AND update — route
+ * planner build contract item 8, amending 02 §6's original "geocode at schedule time" to
+ * "geocode at address-set time": unscheduled backlog jobs need pins too). Registered as an
+ * address-normalized LISTENER (`registerAddressNormalizedListener`, wired in
+ * `field-hooks/register-hooks.ts`), not a field-change hook: the ADDRESS_STRUCT normalize hook
+ * (`geocoding/address-normalize-hook.ts`) already geocodes every address write server-side, so
+ * this rides its result instead of making a second MapTiler call per write (plans/address-field
+ * §9 follow-up 2). The normalize chain runs fire-and-forget off the save request, so pins land
+ * moments after the save response — same visibility contract as before: no broadcast, the next
+ * board/map refetch picks them up.
  *
  * Writes `latitude`/`longitude`/`geocodedAt` directly onto ALL of that work order's visit rows
  * via a quiet Drizzle `UPDATE` — deliberately NOT through `afterVisitWrite` (geocoding isn't a
- * schedule mutation; no mirror/roll-up/broadcast needed, the next board/map refetch picks it
- * up). Failure or a missing `MAPTILER_API_KEY` is non-fatal — `geocode()` never throws, so a
- * `null` result just leaves the visit(s) unpinned.
+ * schedule mutation; no mirror/roll-up/broadcast needed). A failed geocode or missing
+ * `MAPTILER_API_KEY` never reaches this listener — the visit(s) just stay unpinned.
  */
-export const geocodeOnAddressChange: EntityFieldChangeHandler = async (event) => {
+export const syncVisitPinsOnAddressNormalized: AddressNormalizedListener = async (
+  event,
+  struct
+) => {
   if (event.field.systemAttribute !== 'work_order_address') return
-
-  const typed = event.newValue as TypedFieldValue | TypedFieldValue[] | null
-  const first = Array.isArray(typed) ? typed[0] : typed
-  const addressValue = first ? (extractValue(first) as Partial<AddressStructValue> | null) : null
-  if (!addressValue || typeof addressValue !== 'object') return
-
-  const line = formatAddressForGeocode(addressValue)
-  const result = await geocode(line)
-  if (!result) return
 
   const { entityInstanceId } = parseRecordId(event.recordId)
   await database
     .update(schema.WorkOrderVisit)
-    .set({ latitude: result.lat, longitude: result.lng, geocodedAt: new Date() })
+    .set({ latitude: struct.lat, longitude: struct.lng, geocodedAt: new Date() })
     .where(
       and(
         eq(schema.WorkOrderVisit.organizationId, event.organizationId),

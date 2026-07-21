@@ -1,10 +1,11 @@
 // packages/lib/src/dispatch/route-planner/backfill.ts
 //
 // One-time geocode backfill (plans/dispatch/09-route-planner.md §I): work orders whose
-// addresses were saved BEFORE the `geocodeOnAddressChange` hook existed have visit rows with
+// addresses were saved BEFORE address-set-time geocoding existed (today the
+// `syncVisitPinsOnAddressNormalized` listener in visit-hooks.ts) have visit rows with
 // null coordinates and therefore no map pin. This walks every ungeocoded visit, geocodes its
 // work order's `work_order_address` once, and stamps the coords onto all of that work order's
-// visit rows — the same quiet-UPDATE write the hook does. Safe to re-run (already-geocoded
+// visit rows — the same quiet-UPDATE write the listener does. Safe to re-run (already-geocoded
 // visits are excluded by the null-latitude filter). Called by
 // `apps/worker/scripts/backfill-geocode-visits.ts`.
 
