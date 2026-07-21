@@ -22,6 +22,7 @@ vi.mock('drizzle-orm', () => ({
 const storeCalls = {
   rotated: [] as Record<string, unknown>[],
   refreshSuccess: [] as { expiresAt: Date | null }[],
+  refreshFailure: [] as { permanent?: boolean; authError?: string }[],
 }
 const storeState = {
   record: {} as Record<string, unknown>,
@@ -30,7 +31,14 @@ const storeState = {
 
 vi.mock('@auxx/credentials/store', () => ({
   insertCredential: async () => ok({ id: 'cred-1' }),
-  recordRefreshFailure: async () => ok(undefined),
+  recordRefreshFailure: async (
+    _id: string,
+    _org: string,
+    opts?: { permanent?: boolean; authError?: string }
+  ) => {
+    storeCalls.refreshFailure.push(opts ?? {})
+    return ok(undefined)
+  },
   recordRefreshSuccess: async (_id: string, _org: string, opts: { expiresAt: Date | null }) => {
     storeCalls.refreshSuccess.push(opts)
     return ok(undefined)
@@ -100,6 +108,7 @@ beforeEach(() => {
   fetchCalls.length = 0
   storeCalls.rotated.length = 0
   storeCalls.refreshSuccess.length = 0
+  storeCalls.refreshFailure.length = 0
   dbState.updates.length = 0
   interpolated.clientSecret = undefined
   interpolated.refreshUrl = ''
@@ -195,5 +204,40 @@ describe('refreshCredentialTokens (mcp)', () => {
     interpolated.refreshUrl = ''
     await refreshCredentialTokens('cred-1', 'org-1')
     expect(fetchCalls[0]?.url).toBe('https://as.example.com/token')
+  })
+})
+
+describe('refreshCredentialTokens failure classification', () => {
+  it('treats an invalid_grant response as permanent (opens the breaker, flags reauth)', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      ok: false,
+      status: 400,
+      text: async () =>
+        JSON.stringify({
+          error: 'invalid_grant',
+          error_description: 'Token has been expired or revoked.',
+        }),
+    }))
+
+    const result = await refreshCredentialTokens('cred-1', 'org-1')
+
+    expect(result.success).toBe(false)
+    expect(result.circuitOpened).toBe(true)
+    expect(storeCalls.refreshFailure[0]?.permanent).toBe(true)
+    expect(storeCalls.refreshFailure[0]?.authError).toContain('invalid_grant')
+  })
+
+  it('keeps other token-endpoint failures retryable (breaker increments, no reauth jump)', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      ok: false,
+      status: 503,
+      text: async () => 'upstream down',
+    }))
+
+    const result = await refreshCredentialTokens('cred-1', 'org-1')
+
+    expect(result.success).toBe(false)
+    expect(result.circuitOpened).toBe(false)
+    expect(storeCalls.refreshFailure[0]?.permanent).toBe(false)
   })
 })

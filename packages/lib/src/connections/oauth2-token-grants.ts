@@ -160,10 +160,18 @@ export async function refreshCredentialTokens(
     const errorMessage = error instanceof Error ? error.message : String(error)
     logger.error('Token refresh failed', { credentialId, error: errorMessage })
 
-    // An invalid refresh token is permanent — jump the breaker straight to the open threshold.
+    // A revoked/invalid refresh token is permanent — no retry can recover it. `invalid_grant`
+    // is the RFC 6749 §5.2 code every provider returns for a dead refresh token (revoked,
+    // expired, or issued to a different client); the message check covers non-endpoint
+    // failures that name the refresh token. Permanent jumps the breaker straight to the open
+    // threshold AND flags the credential `requiresReauth` so the UI surfaces Reconnect.
     const isPermanentFailure =
-      errorMessage.includes('refresh token') && errorMessage.includes('invalid')
-    await recordRefreshFailure(credentialId, organizationId, { permanent: isPermanentFailure })
+      (error instanceof OAuth2TokenRequestError && error.oauthError === 'invalid_grant') ||
+      (errorMessage.includes('refresh token') && errorMessage.includes('invalid'))
+    await recordRefreshFailure(credentialId, organizationId, {
+      permanent: isPermanentFailure,
+      authError: errorMessage,
+    })
 
     const newFailureCount = isPermanentFailure ? CIRCUIT_OPEN_THRESHOLD : previousFailureCount + 1
     return {
@@ -268,6 +276,32 @@ interface TokenResponse {
 }
 
 /**
+ * A non-2xx response from an OAuth2 token endpoint, carrying the RFC 6749 §5.2 error code
+ * parsed from the response body (`invalid_grant`, `invalid_client`, …) so callers classify
+ * failures structurally instead of substring-matching the message.
+ */
+export class OAuth2TokenRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly oauthError: string | null
+  ) {
+    super(message)
+    this.name = 'OAuth2TokenRequestError'
+  }
+}
+
+/** Extract the RFC 6749 `error` code from a token-endpoint error body, tolerating non-JSON. */
+function parseOAuthErrorCode(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body)
+    return typeof parsed?.error === 'string' ? parsed.error : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * POST a form-encoded OAuth2 token request, applying `basic-auth` vs `request-body` client
  * authentication uniformly. Shared by the refresh-token and client-credentials grants so the two
  * never drift on header/auth handling. `body` carries the grant-specific params; the client
@@ -309,7 +343,11 @@ async function postOAuth2TokenRequest(
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`${failureLabel}: ${response.status} ${errorText}`)
+    throw new OAuth2TokenRequestError(
+      `${failureLabel}: ${response.status} ${errorText}`,
+      response.status,
+      parseOAuthErrorCode(errorText)
+    )
   }
 
   return response.json()

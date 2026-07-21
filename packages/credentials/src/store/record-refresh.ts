@@ -48,12 +48,16 @@ export async function recordRefreshSuccess(
 
 /**
  * Record a failed token refresh: increment the breaker (a `permanent` failure jumps straight to
- * the reconnect threshold) and stamp `lastRefreshFailureAt`. Org-scoped.
+ * the reconnect threshold) and stamp `lastRefreshFailureAt`. A permanent failure (revoked/invalid
+ * refresh token — e.g. OAuth2 `invalid_grant`) also sets the classified reauth state
+ * (`requiresReauth` / `lastAuthError`), since no retry can recover it — only a reconnect. That
+ * flag is what surfaces the Reconnect action in the UI; `recordRefreshSuccess` clears it.
+ * Org-scoped.
  */
 export async function recordRefreshFailure(
   id: string,
   organizationId: string,
-  options?: { permanent?: boolean }
+  options?: { permanent?: boolean; authError?: string }
 ): Promise<Result<void, CredentialStoreError>> {
   const now = new Date()
   const nextFailures = options?.permanent
@@ -67,6 +71,11 @@ export async function recordRefreshFailure(
         consecutiveRefreshFailures: nextFailures,
         lastRefreshFailureAt: now,
         updatedAt: now,
+        ...(options?.permanent && {
+          requiresReauth: true,
+          lastAuthError: options.authError ?? 'Token refresh permanently failed',
+          lastAuthErrorAt: now,
+        }),
       })
       .where(
         and(eq(schema.Credential.id, id), eq(schema.Credential.organizationId, organizationId))
