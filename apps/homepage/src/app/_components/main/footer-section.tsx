@@ -16,6 +16,10 @@ const links = [
         href: '/platform/messaging',
       },
       {
+        title: 'Dispatch',
+        href: '/platform/dispatch',
+      },
+      {
         title: 'Getting started',
         href: urls.signup,
       },
@@ -72,6 +76,27 @@ const links = [
       {
         title: 'Auxx.ai vs n8n',
         href: '/blog/auxx-ai-vs-n8n',
+      },
+    ],
+  },
+  {
+    group: 'Industries',
+    items: [
+      {
+        title: 'HVAC',
+        href: '/industries/hvac',
+      },
+      {
+        title: 'Plumbing',
+        href: '/industries/plumbing',
+      },
+      {
+        title: 'Pest Control',
+        href: '/industries/pest-control',
+      },
+      {
+        title: 'All industries',
+        href: '/industries',
       },
     ],
   },
@@ -150,7 +175,7 @@ export default function FooterSection() {
             </div>
           </div>
 
-          <div className='md:col-span-4 grid gap-6 sm:grid-cols-2 md:grid-cols-5'>
+          <div className='md:col-span-4 grid gap-6 sm:grid-cols-2 md:grid-cols-3'>
             {links.map((link, index) => (
               <div key={index} className='space-y-4 text-sm'>
                 <span className='block font-medium'>{link.group}</span>
