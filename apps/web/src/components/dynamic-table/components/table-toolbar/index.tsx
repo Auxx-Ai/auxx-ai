@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   CircleHelp,
   Download,
+  Printer,
   RefreshCw,
   Save,
   Search,
@@ -30,6 +31,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useExportColumns } from '~/components/data-export/hooks/use-export-columns'
 import { ExportProgressDialog } from '~/components/data-export/ui/export-progress-dialog'
 import { Tooltip } from '~/components/global/tooltip'
+import { PrintWizardDialog } from '~/components/print/ui/print-wizard-dialog'
 import { useResourceFields } from '~/components/resources/hooks'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
@@ -137,6 +139,10 @@ export function TableToolbar<TData = any>({
   const createExport = api.dataExport.create.useMutation()
   const [exportJobId, setExportJobId] = useState<string | null>(null)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+
+  // PDF print wizard — shares the same progress dialog as CSV export (`exportJobId`/
+  // `exportDialogOpen` above), just fed from a different job id.
+  const [printWizardOpen, setPrintWizardOpen] = useState(false)
 
   const startExport = async (exportType: 'view' | 'all') => {
     if (!entityDefinitionId) return
@@ -283,6 +289,13 @@ export function TableToolbar<TData = any>({
                 <Download />
                 Export all records as CSV
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={!entityDefinitionId}
+                onSelect={() => setPrintWizardOpen(true)}>
+                <Printer />
+                Print / save as PDF...
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -374,6 +387,19 @@ export function TableToolbar<TData = any>({
           jobId={exportJobId}
           open={exportDialogOpen}
           onOpenChange={setExportDialogOpen}
+        />
+      )}
+
+      {entityDefinitionId && printWizardOpen && (
+        <PrintWizardDialog
+          open={printWizardOpen}
+          onOpenChange={setPrintWizardOpen}
+          entityDefinitionId={entityDefinitionId}
+          tableId={tableId}
+          onCreated={(jobId) => {
+            setExportJobId(jobId)
+            setExportDialogOpen(true)
+          }}
         />
       )}
     </div>

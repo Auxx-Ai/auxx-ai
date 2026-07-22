@@ -53,6 +53,8 @@ export function ExportProgressDialog({ jobId, open, onOpenChange }: ExportProgre
   const processed = job?.processedRecords ?? 0
   const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
   const isRunning = status === 'pending' || status === 'processing'
+  const isPdf = job?.format === 'pdf'
+  const outputLabel = isPdf ? 'PDF' : 'CSV'
 
   const handleDownload = async () => {
     if (!jobId) return
@@ -82,7 +84,7 @@ export function ExportProgressDialog({ jobId, open, onOpenChange }: ExportProgre
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size='sm' position='tc'>
         <DialogHeader>
-          <DialogTitle>Export to CSV</DialogTitle>
+          <DialogTitle>{isPdf ? 'Print to PDF' : 'Export to CSV'}</DialogTitle>
           <DialogDescription>
             {status === 'completed'
               ? 'Your export is ready to download.'
@@ -143,7 +145,7 @@ export function ExportProgressDialog({ jobId, open, onOpenChange }: ExportProgre
               loading={getDownloadUrl.isPending}
               loadingText='Preparing...'>
               <Download />
-              Download CSV
+              Download {outputLabel}
             </Button>
           )}
           {(status === 'failed' || status === 'canceled') && (

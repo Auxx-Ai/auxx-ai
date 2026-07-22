@@ -36,6 +36,10 @@ export function DocumentHeader(props: {
   secondaryDateLabel?: string
   dateFormat: string
   logoBytes?: Buffer | null
+  /** Batch-print copy label (P4) — renders as a muted bordered chip next to the doc-type
+   * title ("Office Copy"). Header label ONLY, no watermark/tint (locked decision 4);
+   * `undefined` (the single-document render path) renders the header unchanged. */
+  copyLabel?: string
 }) {
   const {
     styles,
@@ -46,11 +50,15 @@ export function DocumentHeader(props: {
     secondaryDateLabel = 'Valid until',
     dateFormat,
     logoBytes,
+    copyLabel,
   } = props
   return (
     <View style={styles.headerRow}>
       <View>
-        <Text style={styles.h1}>{documentLabel}</Text>
+        <View style={styles.h1Row}>
+          <Text style={styles.h1}>{documentLabel}</Text>
+          {copyLabel ? <Text style={styles.copyLabelChip}>{copyLabel}</Text> : null}
+        </View>
         <Text style={styles.value}>{number}</Text>
       </View>
       <View style={{ alignItems: 'flex-end' }}>

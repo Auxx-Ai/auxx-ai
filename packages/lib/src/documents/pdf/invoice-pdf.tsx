@@ -62,8 +62,13 @@ function PaymentHistoryBlock(props: {
  * org's Stripe account is connected + chargesEnabled), and payment-instructions text
  * (`settings.invoice.paymentInstructions`, when non-empty).
  */
-export function InvoicePdf(props: { payload: InvoicePdfPayload; logoBytes?: Buffer | null }) {
-  const { payload, logoBytes } = props
+export function InvoicePdf(props: {
+  payload: InvoicePdfPayload
+  logoBytes?: Buffer | null
+  /** Batch-print copy label (P4) — see `DocumentHeader`'s `copyLabel`. */
+  copyLabel?: string
+}) {
+  const { payload, logoBytes, copyLabel } = props
   const { settings } = payload
   const styles = createDocumentStyles(settings)
   const currencyCode = settings.currency
@@ -81,6 +86,7 @@ export function InvoicePdf(props: { payload: InvoicePdfPayload; logoBytes?: Buff
           secondaryDateLabel='Due'
           dateFormat={settings.branding.dateFormat}
           logoBytes={logoBytes}
+          copyLabel={copyLabel}
         />
 
         <BillingPartyBlock styles={styles} business={settings.business} contact={payload.contact} />

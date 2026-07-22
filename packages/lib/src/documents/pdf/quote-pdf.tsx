@@ -28,8 +28,13 @@ import { createDocumentStyles, pageSizeFor } from './theme'
  * public quote-page's own payload carries it) and this wave intentionally doesn't plumb a new
  * setting through the PDF payload just for this note.
  */
-export function QuotePdf(props: { payload: QuotePdfPayload; logoBytes?: Buffer | null }) {
-  const { payload, logoBytes } = props
+export function QuotePdf(props: {
+  payload: QuotePdfPayload
+  logoBytes?: Buffer | null
+  /** Batch-print copy label (P4) — see `DocumentHeader`'s `copyLabel`. */
+  copyLabel?: string
+}) {
+  const { payload, logoBytes, copyLabel } = props
   const { settings } = payload
   const styles = createDocumentStyles(settings)
   const currencyCode = settings.currency
@@ -63,6 +68,7 @@ export function QuotePdf(props: { payload: QuotePdfPayload; logoBytes?: Buffer |
           secondaryDate={payload.validUntil}
           dateFormat={settings.branding.dateFormat}
           logoBytes={logoBytes}
+          copyLabel={copyLabel}
         />
 
         <BillingPartyBlock styles={styles} business={settings.business} contact={payload.contact} />

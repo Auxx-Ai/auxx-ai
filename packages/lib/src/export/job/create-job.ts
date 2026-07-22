@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { ConditionGroup } from '../../conditions/types'
-import type { ExportColumn, ExportType } from '../types'
+import type { ExportColumn, ExportJobFormat, ExportType, PrintConfig } from '../types'
 
 /** Input for creating an export job. Filters/sorting/columns are snapshotted. */
 export interface CreateExportJobInput {
@@ -17,6 +17,12 @@ export interface CreateExportJobInput {
   filters?: ConditionGroup[]
   sorting?: Array<{ id: string; desc: boolean }>
   fileName?: string
+  /** Output format — `'csv'` (default) or `'pdf'` (a print run, see `printConfig`). */
+  format?: ExportJobFormat
+  /** Print-run config snapshot — required when `format` is `'pdf'`. */
+  printConfig?: PrintConfig
+  /** `exportType: 'selection'` — frozen RecordId list, ordered as selected. */
+  recordIds?: string[]
 }
 
 /**
@@ -43,6 +49,9 @@ export async function createExportJob(
       filters: input.filters,
       sorting: input.sorting,
       fileName: input.fileName,
+      format: input.format ?? 'csv',
+      printConfig: input.printConfig,
+      recordIds: input.recordIds,
       status: 'pending',
       updatedAt: new Date(),
     })
