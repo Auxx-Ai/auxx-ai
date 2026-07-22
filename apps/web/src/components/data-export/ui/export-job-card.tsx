@@ -1,6 +1,7 @@
 // apps/web/src/components/data-export/ui/export-job-card.tsx
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   ListCard,
@@ -45,6 +46,7 @@ function statusTone(status: ExportJob['status']): ListCardStatusTone {
 const EXPORT_TYPE_LABEL: Record<string, string> = {
   view: 'Current view',
   all: 'All records',
+  selection: 'Selected records',
 }
 
 /**
@@ -107,6 +109,13 @@ export function ExportJobCard({ job, onDelete, onCancel }: ExportJobCardProps) {
       title={title}
       subtitle={`${EXPORT_TYPE_LABEL[job.exportType] ?? job.exportType} · ${formatRelativeTime(job.createdAt)}`}
       status={{ tone: statusTone(job.status), label: job.status }}
+      headerEnd={
+        job.format === 'pdf' ? (
+          <Badge size='xs' variant='violet'>
+            PDF
+          </Badge>
+        ) : undefined
+      }
       badges={badges}
       menuItems={menuItems}
       onClick={job.status === 'completed' ? () => void handleDownload() : undefined}

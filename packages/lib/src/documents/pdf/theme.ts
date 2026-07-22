@@ -47,6 +47,22 @@ export function createDocumentStyles(settings: ResolvedDocumentSettings) {
     },
     logo: { width: 120, maxHeight: 60, objectFit: 'contain' },
     h1: { fontSize: 18, fontWeight: 'bold', color: accent, marginBottom: 2 },
+    h1Row: { flexDirection: 'row', alignItems: 'center' },
+    /** Batch-print copy label chip (P4) — "Office Copy" next to the doc-type title. Header
+     * label ONLY, no watermark/tint (plans/printing/01-unified-print.md locked decision 4). */
+    copyLabelChip: {
+      fontSize: 8,
+      fontWeight: 'bold',
+      color: '#6b7280',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      borderWidth: 1,
+      borderColor: '#d1d5db',
+      borderRadius: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      marginLeft: 8,
+    },
     label: { fontSize: 8, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 },
     value: { fontSize: 9, color: '#111827' },
     bold: { fontWeight: 'bold' },

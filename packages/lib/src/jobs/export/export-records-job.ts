@@ -8,7 +8,6 @@ import type { ConditionGroup } from '../../conditions/types'
 import type { ExportColumn } from '../../export'
 import {
   buildRow,
-  extractRelationRecordIds,
   getExportJobByOrg,
   indexByRecord,
   publishExportJob,
@@ -16,19 +15,12 @@ import {
   updateExportJob,
 } from '../../export'
 import { FieldValueService } from '../../field-values/field-value-service'
-import type { TypedFieldValueResult } from '../../field-values/types'
 import { StorageManager } from '../../files/storage/storage-manager'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import type { JobContext } from '../types'
+import { fetchValues, hydrateRelationNames, PAGE_SIZE } from './shared'
 
 const logger = createScopedLogger('export-records-job')
-
-/** Records paged from `listFiltered` per iteration (also the `batchGetValues` id cap). */
-const PAGE_SIZE = 500
-/** `batchGetValues` caps field references at 50 — chunk wide views. */
-const FIELD_REF_CHUNK = 50
-/** Related-name hydration chunk (Postgres `IN (...)` param ceiling). */
-const NAME_CHUNK = 500
 
 /** Job payload for exporting entity records to CSV. */
 export interface ExportRecordsJobData {
@@ -160,58 +152,5 @@ export async function exportRecordsJob(ctx: JobContext<ExportRecordsJobData>): P
     await publishExportJob(organizationId, { exportJobId, kind: 'finished', status: 'failed' })
     logger.error('Export failed', { exportJobId, error: message })
     throw error
-  }
-}
-
-/**
- * Fetch field values for a page of records. `batchGetValues` caps field references
- * at 50, so wide views are fetched in chunks (same page re-queried per chunk) and
- * merged into one flat result array.
- */
-async function fetchValues(
-  fvs: FieldValueService,
-  recordIds: RecordId[],
-  fieldRefs: FieldReference[]
-): Promise<TypedFieldValueResult[]> {
-  if (fieldRefs.length <= FIELD_REF_CHUNK) {
-    const { values } = await fvs.batchGetValues({ recordIds, fieldReferences: fieldRefs })
-    return values
-  }
-
-  const all: TypedFieldValueResult[] = []
-  for (let i = 0; i < fieldRefs.length; i += FIELD_REF_CHUNK) {
-    const chunk = fieldRefs.slice(i, i + FIELD_REF_CHUNK)
-    const { values } = await fvs.batchGetValues({ recordIds, fieldReferences: chunk })
-    all.push(...values)
-  }
-  return all
-}
-
-/**
- * Resolve relation display names for a page. Collects every related RecordId from
- * this page's relationship values, skips ones already cached, and fetches the rest
- * in chunks via `handler.getByIds` (system + custom entities, cache-backed),
- * merging names into the job-level `nameCache`.
- */
-async function hydrateRelationNames(
-  handler: UnifiedCrudHandler,
-  results: TypedFieldValueResult[],
-  nameCache: Map<RecordId, string>
-): Promise<void> {
-  const needed = new Set<RecordId>()
-  for (const result of results) {
-    for (const id of extractRelationRecordIds(result)) {
-      if (!nameCache.has(id)) needed.add(id)
-    }
-  }
-  if (needed.size === 0) return
-
-  const ids = [...needed]
-  for (let i = 0; i < ids.length; i += NAME_CHUNK) {
-    const chunk = ids.slice(i, i + NAME_CHUNK)
-    const resolved = await handler.getByIds(chunk)
-    for (const [recordId, item] of Object.entries(resolved)) {
-      nameCache.set(recordId as RecordId, item.displayName)
-    }
   }
 }

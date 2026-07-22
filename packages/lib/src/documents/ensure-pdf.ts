@@ -13,10 +13,13 @@ import { MediaAssetService } from '../files/core/media-asset-service'
 import { createStorageManager } from '../files/storage/storage-manager'
 import { getQueue, Queues } from '../jobs/queues'
 import { UnifiedCrudHandler } from '../resources/crud'
-import { buildInvoicePdfPayload, buildQuotePdfPayload, type DocumentPdfPayload } from './payload'
+import type { DocumentPdfPayload } from './payload'
+import { getDocumentType, type RegisteredDocumentType } from './registry'
 import { renderDocumentPdf } from './render'
 
-/** Which PDF template/pointer-field a render-or-reuse call targets (money MI1 §H.1). */
+/** Which PDF template/pointer-field a render-or-reuse call targets (money MI1 §H.1). Kept as
+ * a literal alias for the two callers/back-compat wrappers below — the actual dispatch goes
+ * through the document-type registry (`./registry.ts`). */
 export type DocumentType = 'quote' | 'invoice'
 
 /** Result of {@link ensureDocumentPdf} / {@link ensureDocumentPdfViaQueue}. */
@@ -30,12 +33,15 @@ export interface EnsureDocumentPdfResult {
 /** @deprecated kept as a structural alias for the pre-MI1 name — prefer {@link EnsureDocumentPdfResult}. */
 export type EnsureQuotePdfResult = EnsureDocumentPdfResult
 
-/** The `EntityDefinition.id`-pointer systemAttribute each document type writes its
- * last-rendered `MediaAsset` id to (registered in `quote-fields.ts`/`invoice-fields.ts`). */
-const POINTER_ATTR = {
-  quote: 'quote_pdf_asset',
-  invoice: 'invoice_pdf_asset',
-} as const satisfies Record<DocumentType, string>
+/** Look up a registered document type or throw — every `DocumentType` literal is expected to
+ * have a registry entry (quote/invoice register in `./registry.ts`). */
+function getRegisteredOrThrow(documentType: DocumentType): RegisteredDocumentType {
+  const registered = getDocumentType(documentType)
+  if (!registered) {
+    throw new Error(`Unregistered document type: ${documentType}`)
+  }
+  return registered
+}
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -52,10 +58,7 @@ async function buildPdfPayload(params: {
   recordId: RecordId
 }): Promise<{ payload: DocumentPdfPayload; hash: string }> {
   const { documentType, organizationId, userId, recordId } = params
-  if (documentType === 'invoice') {
-    return buildInvoicePdfPayload({ organizationId, userId, invoiceRecordId: recordId })
-  }
-  return buildQuotePdfPayload({ organizationId, userId, quoteRecordId: recordId })
+  return getRegisteredOrThrow(documentType).buildPayload({ organizationId, userId, recordId })
 }
 
 /**
@@ -84,7 +87,7 @@ export async function ensureDocumentPdf(params: {
   })
 
   const fileName = `${payload.number || entityInstanceId}.pdf`
-  const pointerAttr = POINTER_ATTR[documentType]
+  const pointerAttr = getRegisteredOrThrow(documentType).pointerAttr
 
   // ─── Step 1/2: read the existing pointer + compare content hashes ──────────
   const cache = getOrgCache()

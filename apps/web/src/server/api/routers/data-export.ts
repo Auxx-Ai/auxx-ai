@@ -21,27 +21,80 @@ const exportColumnSchema = z.object({
   fieldRef: z.union([z.string(), z.array(z.string())]),
 })
 
+/** Mirrors `PrintHeaderFooter` (`@auxx/database`/`@auxx/lib/export`) — free-text token
+ * templates for one header/footer slot. */
+const printHeaderFooterSchema = z.object({
+  left: z.string().optional(),
+  center: z.string().optional(),
+  right: z.string().optional(),
+})
+
+/** Mirrors `PrintConfig` (plans/printing/01-unified-print.md §B). `list` is the only style
+ * the worker implements today (P2) — `detail`/`document` are accepted here so the wizard's
+ * contract doesn't need to change again in P3/P4, but the job fails them with a clear
+ * not-yet-implemented error. */
+const printConfigSchema = z.object({
+  style: z.enum(['list', 'detail', 'document']),
+  paperSize: z.enum(['a4', 'letter']),
+  orientation: z.enum(['auto', 'portrait', 'landscape']),
+  header: printHeaderFooterSchema.extend({ showLogo: z.boolean() }),
+  footer: printHeaderFooterSchema,
+  list: z.object({ fitMode: z.enum(['shrink', 'wrap']) }).optional(),
+  detail: z.object({ pageBreakPerRecord: z.boolean() }).optional(),
+  document: z
+    .object({
+      documentTypeId: z.string(),
+      copies: z.array(z.enum(['customer', 'office'])),
+      collation: z.enum(['per_record', 'stacks']),
+      options: z.record(z.string(), z.unknown()).optional(),
+    })
+    .optional(),
+})
+
 /**
- * Data export tRPC router. Creates background CSV export jobs driven by a table
- * view, reports their status, and hands back presigned download URLs.
+ * Data export tRPC router. Creates background CSV export / PDF print jobs driven by a table
+ * view (or a frozen record selection), reports their status, and hands back presigned
+ * download URLs.
  */
 export const dataExportRouter = createTRPCRouter({
-  /** Create an export job (snapshot the view) and enqueue the worker. */
+  /** Create an export/print job (snapshot the view or selection) and enqueue the worker. */
   create: protectedProcedure
     .input(
       z.object({
         entityDefinitionId: z.string(),
-        exportType: z.enum(['view', 'all']),
+        exportType: z.enum(['view', 'all', 'selection']),
         tableId: z.string().optional(),
         viewId: z.string().optional(),
         filters: z.array(conditionGroupSchema).optional(),
         sorting: z.array(z.object({ id: z.string(), desc: z.boolean() })).optional(),
-        columns: z.array(exportColumnSchema).min(1),
+        columns: z.array(exportColumnSchema),
+        /** `'csv'` (default, existing export path) or `'pdf'` (a print run — requires
+         * `printConfig`). */
+        format: z.enum(['csv', 'pdf']).default('csv'),
+        printConfig: printConfigSchema.optional(),
+        /** `exportType: 'selection'` — the frozen, ordered id list to print/export. */
+        recordIds: z.array(z.string()).max(5000).optional(),
         fileName: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+
+      if (input.exportType === 'selection' && (input.recordIds?.length ?? 0) === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Selection scope requires at least one recordId',
+        })
+      }
+      if (input.format === 'pdf' && !input.printConfig) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'PDF print jobs require printConfig' })
+      }
+      // Document-style print runs render whole per-record documents, not a column table —
+      // every other combination (CSV, list/detail print) needs at least one column.
+      const isDocumentStyle = input.format === 'pdf' && input.printConfig?.style === 'document'
+      if (input.columns.length === 0 && !isDocumentStyle) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'At least one column is required' })
+      }
 
       const columns: ExportColumn[] = input.columns.map((c) => ({
         label: c.label,
@@ -59,9 +112,13 @@ export const dataExportRouter = createTRPCRouter({
         filters: input.filters,
         sorting: input.sorting,
         fileName: input.fileName,
+        format: input.format,
+        printConfig: input.printConfig,
+        recordIds: input.recordIds,
       })
 
-      await getQueue(Queues.dataExportQueue).add('exportRecordsJob', {
+      const jobName = input.format === 'pdf' ? 'printRecordsJob' : 'exportRecordsJob'
+      await getQueue(Queues.dataExportQueue).add(jobName, {
         exportJobId: id,
         organizationId,
       })

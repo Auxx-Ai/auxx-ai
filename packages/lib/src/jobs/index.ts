@@ -112,6 +112,12 @@ export { sendEmailJob } from './email/send-email-job'
 export type { EmailPayloadByType, EmailType, SendEmailJobData } from './email/types'
 // Data export job
 export { type ExportRecordsJobData, exportRecordsJob } from './export/export-records-job'
+// Data print job (PDF export — plans/printing/01-unified-print.md §D)
+export {
+  MAX_PRINT_RECORDS_LIST,
+  type PrintRecordsJobData,
+  printRecordsJob,
+} from './export/print-records-job'
 // Flows
 export {
   createDocumentProcessingFlow,

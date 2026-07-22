@@ -21,6 +21,7 @@ import {
   Expand,
   Play,
   Plus,
+  Printer,
   Send,
   SquarePen,
   Trash2,
@@ -29,6 +30,7 @@ import { useRouter } from 'next/navigation'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
+import { ExportProgressDialog } from '~/components/data-export/ui/export-progress-dialog'
 import type { CellSelectionConfig } from '~/components/dynamic-table'
 import { PrimaryFieldCell } from '~/components/dynamic-table'
 import {
@@ -45,6 +47,7 @@ import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { KopilotContext } from '~/components/kopilot/context'
 import { MergeDialog } from '~/components/merge'
+import { PrintWizardDialog } from '~/components/print/ui/print-wizard-dialog'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import {
   getRecordLink,
@@ -150,6 +153,13 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [isAddToSequenceDialogOpen, setIsAddToSequenceDialogOpen] = useState(false)
+
+  // Print wizard (bulk-action entry — scope pinned to the frozen selection) + its progress
+  // dialog, wired exactly like the CSV export flow (`table-toolbar.tsx`'s toolbar entry).
+  const [printSelection, setPrintSelection] = useState<{ recordIds: RecordId[] } | null>(null)
+  const [isPrintWizardOpen, setIsPrintWizardOpen] = useState(false)
+  const [printJobId, setPrintJobId] = useState<string | null>(null)
+  const [printProgressOpen, setPrintProgressOpen] = useState(false)
 
   // Search bar conditions are records-specific (one global store).
   // DynamicResourceView can't import this store; we feed it the merged
@@ -349,6 +359,18 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
         },
       },
       {
+        label: 'Print…',
+        icon: Printer,
+        variant: 'outline' as const,
+        action: (rows: EntityRow[]) => {
+          if (!entityDefinitionId) return
+          setPrintSelection({
+            recordIds: rows.map((r) => toRecordId(entityDefinitionId, r.id)),
+          })
+          setIsPrintWizardOpen(true)
+        },
+      },
+      {
         label: 'Archive',
         icon: Archive,
         variant: 'outline' as const,
@@ -361,7 +383,7 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
         action: (rows: EntityRow[]) => handleBulkDelete(rows),
       },
     ],
-    [handleBulkArchive, handleBulkDelete, isContactResource, sequencesEnabled]
+    [handleBulkArchive, handleBulkDelete, isContactResource, sequencesEnabled, entityDefinitionId]
   )
 
   const { saveBulkMultipleFields } = useSaveFieldValue()
@@ -923,6 +945,28 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
           open={isAddToSequenceDialogOpen}
           onOpenChange={setIsAddToSequenceDialogOpen}
           recipientEntityInstanceIds={Array.from(selectedRowIds)}
+        />
+      )}
+
+      {/* Print wizard (bulk action) — scope pinned to the frozen selection. */}
+      {entityDefinitionId && isPrintWizardOpen && printSelection && (
+        <PrintWizardDialog
+          open={isPrintWizardOpen}
+          onOpenChange={setIsPrintWizardOpen}
+          entityDefinitionId={entityDefinitionId}
+          tableId={`entity-${entityDefinitionId}`}
+          selection={printSelection}
+          onCreated={(jobId) => {
+            setPrintJobId(jobId)
+            setPrintProgressOpen(true)
+          }}
+        />
+      )}
+      {printJobId && (
+        <ExportProgressDialog
+          jobId={printJobId}
+          open={printProgressOpen}
+          onOpenChange={setPrintProgressOpen}
         />
       )}
 
