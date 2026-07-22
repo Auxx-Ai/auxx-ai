@@ -6,6 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { getHours, getMinutes, isSameDay } from 'date-fns'
 
 import { StartHour } from './constants'
+import { useHourWindow } from './hour-window-context'
 import type { BackgroundEvent } from './types'
 
 interface BackgroundEventsLayerProps {
@@ -42,6 +43,10 @@ export function BackgroundEventsLayer({
   windowStartHour,
   windowEndHour,
 }: BackgroundEventsLayerProps) {
+  // Vertical (`'y'`) grids offset every segment's `top` by the visible window's first hour — the
+  // grid no longer starts at 00:00 when the board crops to working hours. `'x'` (timeline) takes
+  // its window via explicit props instead.
+  const { start: gridStartHour } = useHourWindow()
   const dayEvents = events.filter((bg) => {
     if (bg.resourceId !== undefined && bg.resourceId !== resourceId) return false
     if (bg.date !== undefined && !isSameDay(bg.date, day)) return false
@@ -94,7 +99,7 @@ export function BackgroundEventsLayer({
         const end = new Date(bg.end)
         const startHour = isSameDay(day, start) ? getHours(start) + getMinutes(start) / 60 : 0
         const endHour = isSameDay(day, end) ? getHours(end) + getMinutes(end) / 60 : 24
-        const top = (startHour - StartHour) * cellHeight
+        const top = (startHour - gridStartHour) * cellHeight
         const height = (endHour - startHour) * cellHeight
 
         return (

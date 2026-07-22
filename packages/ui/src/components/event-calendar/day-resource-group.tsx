@@ -7,11 +7,11 @@ import { isSameDay, isToday } from 'date-fns'
 import { memo } from 'react'
 
 import { BackgroundEventsLayer } from './background-events'
-import { StartHour } from './constants'
 import { CurrentTimeLine } from './current-time-line'
 import { DraggableEvent } from './draggable-event'
 import { DropPreview } from './drop-preview'
 import { DroppableCell } from './droppable-cell'
+import { useHourWindow } from './hour-window-context'
 import { positionEventsForDay } from './position-events'
 import type { BackgroundEvent, CalendarResource, EventCalendarItem, RenderEvent } from './types'
 import { isMultiDayEvent } from './utils'
@@ -75,6 +75,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
   currentTimePosition,
   hourHeight,
 }: DayResourceGroupProps<T>) {
+  const { start: windowStart } = useHourWindow()
   const day = dayAt(index)
   const today = isToday(day)
 
@@ -109,7 +110,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
         const resourceEvents = dayEvents.filter((event) => event.resourceId === resource.id)
         const positioned = positionEventsForDay(resourceEvents, day, {
           cellHeight: hourHeight,
-          startHour: StartHour,
+          startHour: windowStart,
         })
         return (
           <div key={resource.id} className='border-border/70 relative border-l first:border-l-0'>

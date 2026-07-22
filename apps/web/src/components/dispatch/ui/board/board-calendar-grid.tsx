@@ -25,7 +25,7 @@ import { useTimelineViewStore } from '../../stores/timeline-view-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import type { PasteAnchor } from './hooks/use-board-clipboard'
 import type { useBoardMutations } from './hooks/use-board-mutations'
-import { useTimelineHourWindow } from './hooks/use-timeline-hour-window'
+import { useVisibleHourWindow } from './hooks/use-visible-hour-window'
 import { type SlotClickTarget, SlotCreatePopover } from './slot-create-popover'
 import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
 import { isPastVisitEvent } from './utils'
@@ -223,7 +223,9 @@ export function BoardCalendarGrid({
   // through unchanged and no longer shares `resource`'s rendering.
   const calendarView = view === 'day' ? 'resource' : view
 
-  const hourWindow = useTimelineHourWindow()
+  // Union the window with the loaded events' hours so a visit outside working hours (e.g. 1am)
+  // still shows its row on every time-grid view — the crop never clips real work (plan 41).
+  const hourWindow = useVisibleHourWindow(events)
 
   // Per-device timeline zoom + rail width (plan 35) — persisted, gesture commits write back.
   const timelineHourWidth = useTimelineViewStore((s) => s.hourWidth)
