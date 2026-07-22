@@ -19,9 +19,11 @@ import React, { useCallback, useState } from 'react'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
 import { DemoBanner } from '~/components/demo/demo-banner'
+import { isSidebarFavoriteDrag } from '~/components/favorites/drag-eligibility'
 import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-drag-end'
 import { AppDragOverlay } from '~/components/global/app-drag-overlay'
 import AppSidebar from '~/components/global/sidebar'
+import { SidebarDragPeek } from '~/components/global/sidebar/sidebar-drag-peek'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
 import { KopilotRuntime } from '~/components/kopilot/ui/kopilot-runtime'
 import { useThreadMutation } from '~/components/threads/hooks'
@@ -31,12 +33,21 @@ import {
   useDehydratedOrganizationId,
 } from '~/providers/dehydrated-state-provider'
 
-type Props = { user?: any; children: React.ReactNode }
+type Props = {
+  user?: any
+  children: React.ReactNode
+  /** SSR-provided from the `sidebar_state` cookie so the sidebar doesn't flash open on load. */
+  defaultSidebarOpen?: boolean
+  /** SSR-provided from the `sidebar_state_width` cookie so the width doesn't flash on load. */
+  defaultSidebarWidth?: number
+}
 
 export const Dashboard = ({
   // slug,
   user,
   children,
+  defaultSidebarOpen,
+  defaultSidebarWidth,
 }: Props) => {
   const pathname = usePathname()
   const router = useRouter()
@@ -101,7 +112,7 @@ export const Dashboard = ({
         return
       }
 
-      if (activeData.type === 'favorite') {
+      if (isSidebarFavoriteDrag(active)) {
         handleFavoriteDragEnd(activeData as Parameters<typeof handleFavoriteDragEnd>[0], overData)
       }
     },
@@ -109,12 +120,13 @@ export const Dashboard = ({
   )
 
   return (
-    <SidebarProvider>
+    <SidebarProvider resizable defaultOpen={defaultSidebarOpen} defaultWidth={defaultSidebarWidth}>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}>
+        <SidebarDragPeek />
         <DndStateProvider activeDndItem={activeDndItem}>
           <div className='flex h-screen overflow-hidden w-full'>
             <AppSidebar className='min-w-0' user={user} />

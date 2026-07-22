@@ -149,7 +149,7 @@ function CollapsibleSidebarSectionComponent({
           )}
 
           {avatar ? avatar : icon ? <span className='[&_svg]:size-4'>{icon}</span> : null}
-          <span className='group-data-[collapsible=icon]:hidden'>{title}</span>
+          <span>{title}</span>
 
           {!isEditMode && (
             <button
@@ -159,12 +159,12 @@ function CollapsibleSidebarSectionComponent({
                 e.stopPropagation()
                 toggleOpen()
               }}
-              className='inline-flex items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
+              className='inline-flex items-center text-muted-foreground'>
               <CollapsibleChevron open={isOpen} />
             </button>
           )}
 
-          <div className='ml-auto flex items-center group-data-[collapsible=icon]:hidden'>
+          <div className='ml-auto flex items-center'>
             {typeof count === 'number' && count > 0 && (
               <span
                 className={cn(

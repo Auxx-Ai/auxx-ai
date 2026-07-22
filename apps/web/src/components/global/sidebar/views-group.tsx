@@ -233,11 +233,7 @@ export function ViewsSection({
       if (visibleViews.length === 0) {
         return (
           <SidebarMenuSubItem>
-            <SidebarMenuButton
-              variant='dashed'
-              size='sm'
-              onClick={() => setShowCreateView(true)}
-              className='group-data-[collapsible=icon]:hidden'>
+            <SidebarMenuButton variant='dashed' size='sm' onClick={() => setShowCreateView(true)}>
               Create a view
             </SidebarMenuButton>
           </SidebarMenuSubItem>
@@ -292,9 +288,7 @@ export function ViewsSection({
   const isAnyViewActive = pathname?.startsWith('/app/mail/views/')
 
   const actions = (
-    <DropdownMenuItem
-      onClick={() => setShowCreateView(true)}
-      className='group-data-[collapsible=icon]:hidden!'>
+    <DropdownMenuItem onClick={() => setShowCreateView(true)}>
       <TableProperties />
       Create view
     </DropdownMenuItem>

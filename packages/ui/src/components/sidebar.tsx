@@ -6,12 +6,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { Sheet, SheetContent } from '@auxx/ui/components/sheet'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@auxx/ui/components/tooltip'
+import { SimpleTooltip, type TooltipContent, TooltipProvider } from '@auxx/ui/components/tooltip'
 import { useIsMobile } from '@auxx/ui/hooks/use-mobile'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
@@ -24,9 +19,14 @@ const SIDEBAR_COOKIE_NAME = 'sidebar_state'
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = '16rem'
 const SIDEBAR_WIDTH_MOBILE = '18rem'
-// const SIDEBAR_WIDTH_ICON = '1.5rem'
-const SIDEBAR_WIDTH_ICON = '3rem'
-const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
+const SIDEBAR_MIN_WIDTH = 200
+const SIDEBAR_MAX_WIDTH = 400
+const SIDEBAR_DEFAULT_WIDTH = 256
+/** Distance from the screen edge (px) the cursor must reach for a resize drag to snap collapsed. */
+const SIDEBAR_COLLAPSE_EDGE = 24
+/** Hover-intent delay (ms) before the collapsed sidebar peeks in — kept short so it feels snappy. */
+const SIDEBAR_PEEK_OPEN_DELAY = 20
+const SIDEBAR_KEYBOARD_SHORTCUT = '.'
 
 type SidebarContext = {
   state: 'expanded' | 'collapsed'
@@ -36,6 +36,34 @@ type SidebarContext = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  /** Whether this provider owns a drag-resizable width (opt-in). */
+  resizable: boolean
+  /** Current sidebar width in px (only meaningful when `resizable`). */
+  width: number
+  /** Set the live width during a drag — does NOT persist the cookie (see `persistWidth`). */
+  setWidth: (width: number) => void
+  /** Persist the given width to the `${persistKey}_width` cookie (call on drag end). */
+  persistWidth: (width: number) => void
+  minWidth: number
+  maxWidth: number
+  defaultWidth: number
+  /** True while a resize drag is in progress — containers drop their width transition. */
+  isResizing: boolean
+  setIsResizing: (resizing: boolean) => void
+  /** Whether the collapsed sidebar is floating in as a hover/drag peek overlay. */
+  peek: boolean
+  setPeek: (peek: boolean) => void
+  /** When set, the peek overlay is pinned open (used by DnD spring-loading). */
+  holdPeek: boolean
+  setHoldPeek: (hold: boolean) => void
+  /** Open the peek overlay after a short hover-intent delay. */
+  requestPeekOpen: () => void
+  /** Cancel a pending peek-open (mouse left the hot zone before it fired). */
+  cancelPeekOpen: () => void
+  /** Close the peek overlay after a short delay (no-op while `holdPeek`). */
+  requestPeekClose: () => void
+  /** Cancel a pending peek-close (mouse re-entered the overlay). */
+  cancelPeekClose: () => void
 }
 
 const SidebarContext = React.createContext<SidebarContext | null>(null)
@@ -49,6 +77,19 @@ function useSidebar() {
   return context
 }
 
+/** True on pointers that can hover (mouse/trackpad) — gates the peek hot zone off touch. */
+function useHoverCapable() {
+  const [hoverable, setHoverable] = React.useState(false)
+  React.useEffect(() => {
+    const mq = window.matchMedia('(hover: hover)')
+    setHoverable(mq.matches)
+    const onChange = () => setHoverable(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return hoverable
+}
+
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
@@ -56,6 +97,10 @@ function SidebarProvider({
   className,
   style,
   width,
+  resizable = false,
+  minWidth = SIDEBAR_MIN_WIDTH,
+  maxWidth = SIDEBAR_MAX_WIDTH,
+  defaultWidth = SIDEBAR_DEFAULT_WIDTH,
   persistKey = SIDEBAR_COOKIE_NAME,
   keyboardShortcut = SIDEBAR_KEYBOARD_SHORTCUT,
   nested = false,
@@ -65,7 +110,20 @@ function SidebarProvider({
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** Static CSS width (e.g. `'16rem'`) for non-resizable sidebars. Ignored when `resizable`. */
   width?: string
+  /**
+   * Opt into drag-to-resize. When true, `--sidebar-width` is driven by `width` state (px),
+   * a `SidebarResizeHandle` + hover-peek overlay render inside the fixed `Sidebar`, and the
+   * width is persisted to a `${persistKey}_width` cookie. Defaults to `false` (static width).
+   */
+  resizable?: boolean
+  /** Min drag width in px (default 200). */
+  minWidth?: number
+  /** Max drag width in px (default 400). */
+  maxWidth?: number
+  /** Initial/reset width in px (default 256) — pass from the `${persistKey}_width` cookie for SSR. */
+  defaultWidth?: number
   /**
    * Cookie name used to persist the open state on every `setOpen` call. Pass `false` to skip
    * the cookie write entirely (e.g. a nested module sidebar that persists state elsewhere).
@@ -76,7 +134,7 @@ function SidebarProvider({
   /**
    * Key that toggles the sidebar when held with Cmd/Ctrl. Pass `false` to skip registering
    * the `window` keydown listener (e.g. a nested module sidebar shouldn't fight the app-shell
-   * sidebar for the same shortcut). Defaults to `'b'`.
+   * sidebar for the same shortcut). Defaults to `'.'`.
    */
   keyboardShortcut?: string | false
   /**
@@ -112,6 +170,62 @@ function SidebarProvider({
     [setOpenProp, open, persistKey]
   )
 
+  // Live drag width (px). Independent of open/closed — collapsing never resets it.
+  const [width_, setWidth] = React.useState(defaultWidth)
+  const [isResizing, setIsResizing] = React.useState(false)
+  const persistWidth = React.useCallback(
+    (w: number) => {
+      if (persistKey) {
+        document.cookie = `${persistKey}_width=${Math.round(w)}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      }
+    },
+    [persistKey]
+  )
+
+  // Hover/drag peek overlay (collapsed state, fixed variant only).
+  const [peek, setPeek] = React.useState(false)
+  const [holdPeek, setHoldPeek] = React.useState(false)
+  const holdPeekRef = React.useRef(holdPeek)
+  holdPeekRef.current = holdPeek
+  const peekOpenTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const peekCloseTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelPeekOpen = React.useCallback(() => {
+    if (peekOpenTimer.current) clearTimeout(peekOpenTimer.current)
+    peekOpenTimer.current = null
+  }, [])
+  const cancelPeekClose = React.useCallback(() => {
+    if (peekCloseTimer.current) clearTimeout(peekCloseTimer.current)
+    peekCloseTimer.current = null
+  }, [])
+  const requestPeekOpen = React.useCallback(() => {
+    cancelPeekClose()
+    if (peekOpenTimer.current) return
+    peekOpenTimer.current = setTimeout(() => {
+      peekOpenTimer.current = null
+      setPeek(true)
+    }, SIDEBAR_PEEK_OPEN_DELAY)
+  }, [cancelPeekClose])
+  const requestPeekClose = React.useCallback(() => {
+    cancelPeekOpen()
+    if (holdPeekRef.current) return
+    if (peekCloseTimer.current) return
+    peekCloseTimer.current = setTimeout(() => {
+      peekCloseTimer.current = null
+      setPeek(false)
+    }, 150)
+  }, [cancelPeekOpen])
+
+  // Expanding always clears any peek overlay + pin.
+  React.useEffect(() => {
+    if (open) {
+      cancelPeekOpen()
+      cancelPeekClose()
+      setPeek(false)
+      setHoldPeek(false)
+    }
+  }, [open, cancelPeekOpen, cancelPeekClose])
+
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
@@ -137,9 +251,57 @@ function SidebarProvider({
   const state = open ? 'expanded' : 'collapsed'
 
   const contextValue = React.useMemo<SidebarContext>(
-    () => ({ state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar }),
-    [state, open, setOpen, isMobile, openMobile, toggleSidebar]
+    () => ({
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+      resizable,
+      width: width_,
+      setWidth,
+      persistWidth,
+      minWidth,
+      maxWidth,
+      defaultWidth,
+      isResizing,
+      setIsResizing,
+      peek,
+      setPeek,
+      holdPeek,
+      setHoldPeek,
+      requestPeekOpen,
+      cancelPeekOpen,
+      requestPeekClose,
+      cancelPeekClose,
+    }),
+    [
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      toggleSidebar,
+      resizable,
+      width_,
+      persistWidth,
+      minWidth,
+      maxWidth,
+      defaultWidth,
+      isResizing,
+      peek,
+      holdPeek,
+      requestPeekOpen,
+      cancelPeekOpen,
+      requestPeekClose,
+      cancelPeekClose,
+    ]
   )
+
+  // `--sidebar-width`: driven by drag state when resizable, otherwise the static string prop.
+  const sidebarWidth = resizable ? `${width_}px` : width || SIDEBAR_WIDTH
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -147,8 +309,7 @@ function SidebarProvider({
         <div
           style={
             {
-              '--sidebar-width': width || SIDEBAR_WIDTH,
-              '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
+              '--sidebar-width': sidebarWidth,
               ...style,
             } as React.CSSProperties
           }
@@ -176,10 +337,21 @@ function Sidebar({
 }: React.ComponentProps<'div'> & {
   side?: 'left' | 'right'
   variant?: 'sidebar' | 'floating' | 'inset'
-  collapsible?: 'offcanvas' | 'icon' | 'none'
+  collapsible?: 'offcanvas' | 'none'
   fixed?: boolean // New prop for non-fixed sidebar
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const {
+    isMobile,
+    state,
+    openMobile,
+    setOpenMobile,
+    resizable,
+    isResizing,
+    peek,
+    cancelPeekClose,
+    cancelPeekOpen,
+    requestPeekClose,
+  } = useSidebar()
 
   // Simple sidebar, no collapsible behavior
   if (collapsible === 'none') {
@@ -220,30 +392,52 @@ function Sidebar({
         data-state={state}
         data-collapsible={state === 'collapsed' ? collapsible : ''}
         data-variant={variant}
-        data-side={side}>
+        data-side={side}
+        data-resizing={isResizing ? '' : undefined}
+        data-peek={peek ? '' : undefined}>
         {/* This is what handles the sidebar gap on desktop */}
         <div
           className={cn(
             'relative h-svh w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear ',
             'group-data-[collapsible=offcanvas]:w-0',
             'group-data-[side=right]:rotate-180',
-            variant === 'floating' || variant === 'inset'
-              ? 'group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]'
-              : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)'
+            'group-data-[resizing]:transition-none'
           )}
         />
         <div
           className={cn(
-            'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex ',
+            // z-30 keeps the panel above page content + its sticky `z-10` headers at all times —
+            // notably while animating open from a peek, when content briefly overlaps the panel.
+            'fixed inset-y-0 z-30 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex ',
             side === 'left'
-              ? 'left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]'
-              : 'right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]',
+              ? 'left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] group-data-[peek]:left-0!'
+              : 'right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] group-data-[peek]:right-0!',
             // Adjust the padding for floating and inset variants.
             variant === 'floating' || variant === 'inset'
-              ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
-              : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l ', //dark:border-neutral-900/70 border-neutral-950/20
+              ? 'p-2'
+              : 'group-data-[side=left]:border-r group-data-[side=right]:border-l ', //dark:border-neutral-900/70 border-neutral-950/20
+            // Peek overlay: float above content + sticky headers (below dialogs); slide in fast.
+            'group-data-[peek]:z-40 group-data-[peek]:shadow-xl group-data-[peek]:duration-100',
+            'group-data-[resizing]:transition-none',
             className
           )}
+          onMouseEnter={
+            resizable
+              ? () => {
+                  cancelPeekClose()
+                  cancelPeekOpen()
+                }
+              : undefined
+          }
+          // Don't auto-close the peek while a resize drag is in flight — the pointer leaves the
+          // panel bounds as the width follows it, but the user is still adjusting the width.
+          onMouseLeave={
+            resizable
+              ? () => {
+                  if (!isResizing) requestPeekClose()
+                }
+              : undefined
+          }
           {...props}>
           <div className='absolute right-0 inset-y-0 border-x border-r-white/60 dark:border-r-white/5 border-l-black/10 dark:border-l-black/50 '></div>
           <div
@@ -251,7 +445,12 @@ function Sidebar({
             className='flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm select-none'>
             {children}
           </div>
+          {/* Handle is live while expanded OR peeking, so the width can be adjusted in either
+              state. Skipped when fully collapsed (off-canvas) — there it would sit at the screen
+              edge on top of the peek hot zone. */}
+          {resizable && (peek || state === 'expanded') && <SidebarResizeHandle side={side} />}
         </div>
+        {resizable && <SidebarPeekHotZone side={side} />}
       </div>
     )
   } else {
@@ -289,46 +488,143 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
   const { toggleSidebar, state } = useSidebar()
 
   return (
-    <Button
-      data-sidebar='trigger'
-      variant='ghost'
-      size='icon'
-      className={cn(
-        'h-7 w-7',
-        state === 'expanded' ? 'cursor-w-resize' : 'cursor-e-resize',
-        className
-      )}
-      onClick={(event) => {
-        onClick?.(event)
-        toggleSidebar()
-      }}
-      {...props}>
-      <PanelLeft />
-      <span className='sr-only'>Toggle Sidebar</span>
-    </Button>
+    <SimpleTooltip
+      content={state === 'expanded' ? 'Collapse sidebar' : 'Expand sidebar'}
+      shortcut={['⌘', '.']}>
+      <Button
+        data-sidebar='trigger'
+        variant='ghost'
+        size='icon'
+        className={cn(
+          'h-7 w-7',
+          state === 'expanded' ? 'cursor-w-resize' : 'cursor-e-resize',
+          className
+        )}
+        onClick={(event) => {
+          onClick?.(event)
+          toggleSidebar()
+        }}
+        {...props}>
+        <PanelLeft />
+        <span className='sr-only'>Toggle Sidebar</span>
+      </Button>
+    </SimpleTooltip>
   )
 }
 
-function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
-  const { toggleSidebar } = useSidebar()
+/**
+ * Attio-style drag-to-resize strip straddling the fixed sidebar's inner edge. Rendered
+ * automatically inside a `resizable` `Sidebar` — consumers don't mount it. Live-updates the
+ * provider `width` (clamped to `[minWidth, maxWidth]`), snaps to collapsed when dragged well
+ * below `minWidth`, persists the width on release, and resets to `defaultWidth` on double-click.
+ */
+function SidebarResizeHandle({ side }: { side: 'left' | 'right' }) {
+  const {
+    width,
+    setWidth,
+    persistWidth,
+    minWidth,
+    maxWidth,
+    defaultWidth,
+    setIsResizing,
+    setOpen,
+  } = useSidebar()
+
+  // Latest committed width, read at drag end for persistence (state is async).
+  const widthRef = React.useRef(width)
+  widthRef.current = width
+
+  const handleMouseDown = React.useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      setIsResizing(true)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+
+      const startX = e.clientX
+      const startWidth = widthRef.current
+      let collapsed = false
+
+      const cleanup = () => {
+        setIsResizing(false)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        // Snap to collapsed only once the cursor is dragged right up to the screen edge — not
+        // merely when the width bottoms out at the minimum (Attio behavior).
+        const atEdge =
+          side === 'left'
+            ? moveEvent.clientX <= SIDEBAR_COLLAPSE_EDGE
+            : moveEvent.clientX >= window.innerWidth - SIDEBAR_COLLAPSE_EDGE
+        if (atEdge) {
+          collapsed = true
+          cleanup()
+          setOpen(false)
+          return
+        }
+
+        // Dragging toward the inner edge grows the sidebar (mirror for a right sidebar).
+        const delta = side === 'left' ? moveEvent.clientX - startX : startX - moveEvent.clientX
+        const clamped = Math.min(maxWidth, Math.max(minWidth, startWidth + delta))
+        widthRef.current = clamped
+        setWidth(clamped)
+      }
+
+      const handleMouseUp = () => {
+        cleanup()
+        // Width state keeps its last value when we snap to collapsed, so re-expanding restores it.
+        if (!collapsed) persistWidth(widthRef.current)
+      }
+
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    },
+    [side, minWidth, maxWidth, setWidth, persistWidth, setIsResizing, setOpen]
+  )
+
+  const handleDoubleClick = React.useCallback(() => {
+    widthRef.current = defaultWidth
+    setWidth(defaultWidth)
+    persistWidth(defaultWidth)
+  }, [defaultWidth, setWidth, persistWidth])
 
   return (
-    <button
-      data-sidebar='rail'
-      aria-label='Toggle Sidebar'
-      tabIndex={-1}
-      onClick={toggleSidebar}
-      title='Toggle Sidebar'
+    <div
+      role='separator'
+      aria-orientation='vertical'
+      aria-label='Resize sidebar'
+      onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
       className={cn(
-        'absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex',
-        'in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize',
-        '[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize',
-        'group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar',
-        '[[data-side=left][data-collapsible=offcanvas]_&]:-right-2',
-        '[[data-side=right][data-collapsible=offcanvas]_&]:-left-2',
-        className
-      )}
-      {...props}
+        'group/resize absolute inset-y-0 z-20 flex w-2 cursor-col-resize items-stretch justify-center',
+        side === 'left' ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'
+      )}>
+      {/* Accent line on the border, revealed on hover / while dragging. */}
+      <div className='w-px bg-transparent transition-colors group-hover/resize:bg-info' />
+    </div>
+  )
+}
+
+/**
+ * Left-edge hot zone that floats the collapsed sidebar in as a peek overlay on hover. Only
+ * rendered on hover-capable pointers while the sidebar is collapsed and not already peeking.
+ */
+function SidebarPeekHotZone({ side }: { side: 'left' | 'right' }) {
+  const { state, peek, requestPeekOpen, cancelPeekOpen } = useSidebar()
+  const hoverable = useHoverCapable()
+
+  if (!hoverable || state !== 'collapsed' || peek) return null
+
+  return (
+    <div
+      aria-hidden
+      onMouseEnter={requestPeekOpen}
+      onMouseLeave={cancelPeekOpen}
+      className={cn('fixed inset-y-0 z-40 w-3', side === 'left' ? 'left-0' : 'right-0')}
     />
   )
 }
@@ -388,16 +684,11 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
 function SidebarContent({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
     <ScrollArea
-      className={cn(
-        'relative min-h-0 flex-1 group-data-[collapsible=icon]:overflow-x-hidden',
-        className
-      )}
+      className={cn('relative min-h-0 flex-1', className)}
       fadeClassName='before:bg-gradient-to-b before:from-black/10 before:shadow-[inset_0_1px_0_rgba(0,0,0,0.1)] after:bg-gradient-to-t after:from-black/10 after:shadow-[inset_0_-1px_0_rgba(0,0,0,0.1)]'
       scrollbarClassName='w-1'
       {...props}>
-      <div
-        data-sidebar='content'
-        className='flex flex-col gap-0.5 py-2 pe-0.5 sm:pe-2 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pe-0'>
+      <div data-sidebar='content' className='flex flex-col gap-0.5 py-2 pe-0.5 sm:pe-2'>
         {children}
       </div>
     </ScrollArea>
@@ -429,7 +720,6 @@ function SidebarGroupLabel({
       data-sidebar='group-label'
       className={cn(
         'flex h-6 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-hidden ring-sidebar-ring transition-[margin,opa] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0',
-        'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0',
         className
       )}
       {...props}
@@ -451,7 +741,6 @@ function SidebarGroupAction({
         'absolute right-3 top-3.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0',
         // Increases the hit area of the button on mobile.
         'after:absolute after:-inset-2 md:after:hidden',
-        'group-data-[collapsible=icon]:hidden',
         className
       )}
       {...props}
@@ -509,7 +798,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full items-center gap-2 group-data-[collapsible=icon]:gap-0 rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
+  'peer/menu-button flex w-full items-center gap-2 rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -522,7 +811,7 @@ const sidebarMenuButtonVariants = cva(
       size: {
         default: 'h-8 text-sm',
         sm: 'h-7 text-xs',
-        lg: 'h-12 text-sm group-data-[collapsible=icon]:p-0!',
+        lg: 'h-12 text-sm',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },
@@ -534,7 +823,9 @@ function SidebarMenuButton({
   isActive = false,
   variant = 'default',
   size = 'default',
-  tooltip,
+  // Accepted for call-site compatibility but no longer rendered — the collapsed-state tooltip
+  // only existed for the removed icon mode (the sidebar now slides fully off-canvas).
+  tooltip: _tooltip,
   className,
   ...props
 }: React.ComponentProps<'button'> & {
@@ -543,9 +834,8 @@ function SidebarMenuButton({
   tooltip?: string | React.ComponentProps<typeof TooltipContent>
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const Comp = asChild ? SlotPrimitive.Slot : 'button'
-  const { isMobile, state } = useSidebar()
 
-  const button = (
+  return (
     <Comp
       data-sidebar='menu-button'
       data-size={size}
@@ -553,26 +843,6 @@ function SidebarMenuButton({
       className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
       {...props}
     />
-  )
-
-  if (!tooltip) {
-    return button
-  }
-
-  if (typeof tooltip === 'string') {
-    tooltip = { children: tooltip }
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
-        side='right'
-        align='center'
-        hidden={state !== 'collapsed' || isMobile}
-        {...tooltip}
-      />
-    </Tooltip>
   )
 }
 
@@ -594,7 +864,6 @@ function SidebarMenuAction({
         'peer-data-[size=sm]/menu-button:top-1',
         'peer-data-[size=default]/menu-button:top-1.5',
         'peer-data-[size=lg]/menu-button:top-2.5',
-        'group-data-[collapsible=icon]:hidden ',
         showOnHover &&
           'group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground md:opacity-0',
         className
@@ -614,7 +883,6 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
         'peer-data-[size=sm]/menu-button:top-1',
         'peer-data-[size=default]/menu-button:top-1.5',
         'peer-data-[size=lg]/menu-button:top-2.5',
-        'group-data-[collapsible=icon]:hidden',
         className
       )}
       {...props}
@@ -669,7 +937,6 @@ function SidebarMenuSub({
       className={cn(
         'flex min-w-0 flex-col gap-0.5 py-0.5',
         inset && 'mx-3.5 translate-x-px border-l border-sidebar-border px-2.5',
-        'group-data-[collapsible=icon]:hidden ',
         className
       )}
       {...props}
@@ -685,7 +952,8 @@ function SidebarMenuSubButton({
   asChild = false,
   size = 'md',
   isActive,
-  tooltip,
+  // Accepted for call-site compatibility but no longer rendered (see `SidebarMenuButton`).
+  tooltip: _tooltip,
   className,
   ...props
 }: React.ComponentProps<'a'> & {
@@ -695,9 +963,8 @@ function SidebarMenuSubButton({
   tooltip?: string | React.ComponentProps<typeof TooltipContent>
 }) {
   const Comp = asChild ? SlotPrimitive.Slot : 'a'
-  const { isMobile, state } = useSidebar()
 
-  const button = (
+  return (
     <Comp
       data-sidebar='menu-sub-button'
       data-size={size}
@@ -707,31 +974,10 @@ function SidebarMenuSubButton({
         'data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground',
         size === 'sm' && 'text-xs',
         size === 'md' && 'text-sm',
-        'group-data-[collapsible=icon]:hidden ',
         className
       )}
       {...props}
     />
-  )
-
-  if (!tooltip) {
-    return button
-  }
-
-  if (typeof tooltip === 'string') {
-    tooltip = { children: tooltip }
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
-        side='right'
-        align='center'
-        hidden={state !== 'collapsed' || isMobile}
-        {...tooltip}
-      />
-    </Tooltip>
   )
 }
 
@@ -757,7 +1003,6 @@ export {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarProvider,
-  SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,

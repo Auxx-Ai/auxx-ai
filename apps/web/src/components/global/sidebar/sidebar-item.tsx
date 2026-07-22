@@ -86,7 +86,7 @@ export function SidebarItem({
         {color && !icon && (
           <div
             className={cn(
-              'mr-2 size-2 rounded-full group-data-[collapsible=icon]:hidden',
+              'mr-2 size-2 rounded-full',
               getOptionColor(color as SelectOptionColor).swatch
             )}
           />
@@ -111,13 +111,13 @@ export function SidebarItem({
                 onEditCancel?.()
               }
             }}
-            className='h-5 min-w-0 grow rounded bg-background px-1 text-sm outline-none ring-1 ring-border group-data-[collapsible=icon]:hidden'
+            className='h-5 min-w-0 grow rounded bg-background px-1 text-sm outline-none ring-1 ring-border'
           />
         ) : (
-          <span className='truncate group-data-[collapsible=icon]:hidden'>{name}</span>
+          <span className='truncate'>{name}</span>
         )}
       </div>
-      <div className='flex items-center group-data-[collapsible=icon]:hidden shrink-0'>{end}</div>
+      <div className='flex items-center shrink-0'>{end}</div>
     </>
   )
 

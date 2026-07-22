@@ -163,9 +163,7 @@ export function EntityFolder({
               />
             ) : (
               <>
-                <span className='truncate group-data-[collapsible=icon]:hidden'>
-                  {folder.title}
-                </span>
+                <span className='truncate'>{folder.title}</span>
                 <button
                   type='button'
                   data-no-toggle
@@ -174,7 +172,7 @@ export function EntityFolder({
                     toggleSection(sectionId)
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
-                  className='ml-1 inline-flex shrink-0 items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
+                  className='ml-1 inline-flex shrink-0 items-center text-muted-foreground'>
                   <CollapsibleChevron open={isOpen} />
                 </button>
               </>
@@ -183,7 +181,7 @@ export function EntityFolder({
 
           {showMenu && !editing && (
             <div
-              className='flex items-center group-data-[collapsible=icon]:hidden'
+              className='flex items-center'
               data-no-toggle
               onClick={(e) => {
                 e.stopPropagation()

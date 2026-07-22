@@ -306,9 +306,7 @@ function DemoSidebarBanner() {
         }}>
         <BorderBeam />
         <Clock className='size-4 text-info' />
-        <span className='group-data-[collapsible=icon]:hidden ps-3 pe-4 tabular-nums text-info'>
-          {remaining} remaining
-        </span>
+        <span className='ps-3 pe-4 tabular-nums text-info'>{remaining} remaining</span>
       </SidebarButton>
     </div>
   )
@@ -351,7 +349,7 @@ function UpgradeButton() {
           onClick={() => setDialogOpen(true)}>
           <BorderBeam />
           <Zap className='size-4' />
-          <span className='group-data-[collapsible=icon]:hidden ps-3 pe-4'>
+          <span className='ps-3 pe-4'>
             {daysRemaining} {daysText} left on trial
           </span>
         </SidebarButton>

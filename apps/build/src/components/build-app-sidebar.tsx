@@ -1,7 +1,7 @@
 // apps/build/src/components/build-app-sidebar.tsx
 'use client'
 
-import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from '@auxx/ui/components/sidebar'
+import { Sidebar, SidebarContent, SidebarHeader } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
 import type { DehydratedBuildUser } from '~/lib/dehydration'
 import { BuildNavMain } from './build-nav-main'
@@ -18,14 +18,13 @@ type BuildAppSidebarProps = {
  */
 export function BuildAppSidebar({ user, accountSlug, ...props }: BuildAppSidebarProps) {
   return (
-    <Sidebar collapsible='icon' {...props}>
+    <Sidebar {...props}>
       <SidebarHeader>
         <BuildNavUser user={user} accountSlug={accountSlug} />
       </SidebarHeader>
       <SidebarContent className='gap-0'>
         <BuildNavMain accountSlug={accountSlug} />
       </SidebarContent>
-      <SidebarRail />
     </Sidebar>
   )
 }

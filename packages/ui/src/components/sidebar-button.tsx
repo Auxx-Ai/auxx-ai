@@ -26,13 +26,7 @@ const SidebarButton: React.FC<SidebarButtonProps> = ({
   const { isMobile, state } = useSidebar()
 
   const button = (
-    <Button
-      className={cn(
-        // Auto-transform to icon button when sidebar is collapsed
-        'group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2',
-        className
-      )}
-      {...props}>
+    <Button className={cn(className)} {...props}>
       {children}
     </Button>
   )
