@@ -7,6 +7,7 @@ import {
   rotateSecrets,
   updateCredential,
 } from '@auxx/credentials/store'
+import { database } from '@auxx/database'
 import {
   logger,
   mergeConnectionVariables,
@@ -41,18 +42,27 @@ function pickSecrets(data: {
 /**
  * Save app connection (OAuth callback or manual secret)
  *
- * Creates or updates an app connection with encrypted credentials. This function implements
- * an upsert pattern - it will update an existing connection if one exists for the same
- * app/organization/user combination, or create a new one if not.
+ * Persists an app connection with encrypted credentials. There are three distinct paths:
  *
- * The function handles two primary use cases:
- * 1. OAuth2 flow completion: Saves access_token, refresh_token, and expiry from OAuth callback
- * 2. Manual secret entry: Saves API keys or secrets entered directly by the user
+ * 1. **Explicit reconnect** (`options.connectionId` given) — rotates the tokens/secrets of that
+ *    specific credential and resets its refresh circuit breaker. No new row, no
+ *    `connection-added` event.
+ * 2. **Identity dedup** (fresh connect, app declares a `connection-identify` handler) — the
+ *    handler returns a stable provider identity (realm id, workspace id, account email). If an
+ *    existing connection in the same visibility scope already carries that identity
+ *    (`metadata.__identity`), it is updated in place (same as an explicit reconnect) instead of
+ *    creating a duplicate. Returns `matchedExisting: true` so callers can toast.
+ * 3. **Fresh insert** (fresh connect, no identity match or no handler) — inserts a new
+ *    credential and fires the `connection-added` app event so the app can run its setup
+ *    (register webhooks, resolve a `{ label }`, etc.).
+ *
+ * The function handles two credential shapes:
+ * - OAuth2 flow completion: access_token, refresh_token, and expiry from an OAuth callback
+ * - Manual secret entry: API keys or secrets entered directly by the user
  *
  * Secret credential data is encrypted via the credential store (insertCredential/rotateSecrets)
- * before being stored; non-secret data goes in plaintext `metadata`. The function also triggers
- * a 'connection-added' app event
- * (for new connections) to notify any registered event handlers in the app.
+ * before being stored; non-secret data (including the reserved `metadata.__identity` dedup key)
+ * goes in plaintext `metadata`.
  *
  * Connection scoping:
  * - If userId is null: Creates an organization-scoped connection (shared across all users)
@@ -82,9 +92,12 @@ function pickSecrets(data: {
  * @param {Record<string, any>} [connectionData.metadata] - Additional metadata like scopes,
  *                                                          token type, user info, etc.
  *
- * @returns {Promise<Result<string, Error>>}
+ * @returns {Promise<Result<{ credentialId: string; matchedExisting: boolean }, Error>>}
  *          A Result containing either:
- *          - Success: The credential ID (string) of the created or updated connection
+ *          - Success: `{ credentialId, matchedExisting }` — the credential ID of the
+ *            created/updated connection, and whether it matched an existing connection by
+ *            provider identity (`true`) rather than being freshly inserted (`false`). An
+ *            explicit reconnect returns `matchedExisting: false` (it is not a silent dedup).
  *          - Error: Database error or CONNECTION_CREATE_FAILED if creation fails
  *
  * @example
@@ -191,58 +204,108 @@ export async function saveAppConnection(
   if (options?.connectionId) {
     logger.info('Reconnecting existing app connection:', { credentialId: options.connectionId })
 
-    const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
-
-    // OAuth mint (the callback route) carries fresh tokens and legitimately replaces everything;
-    // a manual secret edit carries only secretFields/secret + plain vars and must MERGE so editing
-    // one field never wipes the stored secret or drops a plain var the user didn't re-supply.
-    const isOAuthMint =
-      connectionData.accessToken !== undefined || connectionData.refreshToken !== undefined
-
-    if (isOAuthMint) {
-      const rotated = await rotateSecrets(options.connectionId, organizationId, secrets, {
-        expiresAt,
-      })
-      if (rotated.isErr()) {
-        return err(rotated.error)
-      }
-
-      // Refresh the plaintext companion metadata alongside the rotated secrets.
-      const metaUpdated = await updateCredential(options.connectionId, organizationId, { metadata })
-      if (metaUpdated.isErr()) {
-        return err(metaUpdated.error)
-      }
-    } else {
-      const reconnected = await mergeManualConnectionEdit(options.connectionId, organizationId, {
-        secretFields: connectionData.secretFields,
-        secret: connectionData.secret,
-        plainVariables: (metadata.connectionVariables ?? {}) as Record<string, unknown>,
-      })
-      if (reconnected.isErr()) {
-        return err(reconnected.error)
-      }
-    }
-
-    // A successful re-auth clears any open refresh circuit breaker. Without this the
-    // connection keeps surfacing as "expired" (consecutiveRefreshFailures >= threshold)
-    // even though it now holds a fresh token — recordRefreshSuccess resets the breaker
-    // and stamps lastRefreshAt alongside the already-rotated expiry.
-    const breakerReset = await recordRefreshSuccess(options.connectionId, organizationId, {
-      expiresAt,
-    })
-    if (breakerReset.isErr()) {
-      return err(breakerReset.error)
+    const updated = await updateExistingConnection(
+      options.connectionId,
+      organizationId,
+      connectionData
+    )
+    if (updated.isErr()) {
+      return err(updated.error)
     }
 
     // No app-field provisioning here — connector sync setup runs the authoritative
     // reconcile (create/drift/orphan) and parks visibly on any error, so a field the
     // catalog gained since this connection was created self-heals on the next sync.
     logger.info('Successfully reconnected app connection:', { credentialId: options.connectionId })
-    return ok(options.connectionId)
+    // An explicit reconnect is not a silent identity dedup — matchedExisting is false.
+    return ok({ credentialId: options.connectionId, matchedExisting: false })
   }
 
   // Create new connection with auto-generated label
   logger.info('Creating new app connection')
+
+  // Identity dedup (fresh connect): if this app declares a `connection-identify` handler,
+  // ask it for the freshly minted connection's stable provider identity BEFORE inserting.
+  // A pre-insert match updates the existing row in place instead of minting a duplicate —
+  // no new row, no `connection-added` re-fire (setup already ran for that account). The gate
+  // reads the active deployment's catalog (same source triggerAppEvent uses); a missing
+  // catalog or list means today's behavior — a plain insert.
+  const declaredEvents = await loadDeclaredEvents(appInstallationId)
+  if (declaredEvents.includes('connection-identify')) {
+    const identifyType: 'oauth2-code' | 'secret' = connectionData.accessToken
+      ? 'oauth2-code'
+      : 'secret'
+    // Token is already in hand — no persistence yet, so no `id` is sent to identify.
+    const identifyValue = connectionData.accessToken || connectionData.secret || ''
+    const identifyFields = mergeConnectionVariables(metadata, {
+      fields: connectionData.secretFields,
+    })
+
+    const identifyResult = await triggerAppEvent({
+      appInstallationId,
+      eventType: 'connection-identify',
+      payload: {
+        connection: {
+          type: identifyType,
+          value: identifyValue,
+          ...(Object.keys(identifyFields).length > 0 && { fields: identifyFields }),
+          metadata: safeSerializeMetadata(connectionData.metadata),
+        },
+      },
+    })
+
+    if (identifyResult.isErr()) {
+      // A failing/absent identify handler must never block the connect — fall through to
+      // a plain insert (store nothing to match on).
+      logger.error('connection-identify handler failed; proceeding without dedup', {
+        appInstallationId,
+        error: identifyResult.error.message,
+      })
+    } else {
+      const handlerResult = identifyResult.value.result
+      const identifier =
+        handlerResult && typeof handlerResult === 'object' && 'identifier' in handlerResult
+          ? String((handlerResult as { identifier?: unknown }).identifier ?? '').trim()
+          : ''
+
+      // Empty identifier → app opted out of dedup for this connect → plain insert.
+      if (identifier) {
+        // Persist the identity on plaintext metadata so future connects (and this insert)
+        // can match it. Mutating `metadata` here also updates `connectionData.metadata`
+        // when the caller supplied one; otherwise link them so the update path below (which
+        // recomputes metadata from connectionData) persists `__identity` too.
+        metadata.__identity = identifier
+        connectionData.metadata = metadata
+
+        // Same visibility scope as dedupeLabel — (appId, appInstallationId, userId). Org- and
+        // user-scoped rows are disjoint, so a personal and a workspace connection with the same
+        // identity stay two distinct rows.
+        const existing = await listCredentials({
+          organizationId,
+          kind: 'app',
+          appId,
+          appInstallationId,
+          userId,
+        })
+        const match = existing.isOk()
+          ? existing.value.find((row) => row.metadata?.__identity === identifier)
+          : undefined
+
+        if (match) {
+          const updated = await updateExistingConnection(match.id, organizationId, connectionData)
+          if (updated.isErr()) {
+            return err(updated.error)
+          }
+          logger.info('Matched existing connection by identity — updated in place', {
+            credentialId: match.id,
+            appInstallationId,
+          })
+          // Keep the matched row's isDefault flag; no new row, no connection-added.
+          return ok({ credentialId: match.id, matchedExisting: true })
+        }
+      }
+    }
+  }
 
   // Generate the initial label. Defaults to the app name, deduped within this
   // connection's own visibility scope (see dedupeLabel). An app's
@@ -375,7 +438,93 @@ export async function saveAppConnection(
     }
   }
 
-  return ok(created.id)
+  return ok({ credentialId: created.id, matchedExisting: false })
+}
+
+/**
+ * Update an existing connection's stored credentials in place — used by both the explicit
+ * reconnect path (`options.connectionId`) and the identity-dedup match path. Rotates the
+ * tokens/secrets and resets the refresh circuit breaker. Deliberately does NOT fire a
+ * `connection-added` event: the account's setup (webhooks, label) already exists.
+ */
+async function updateExistingConnection(
+  connectionId: string,
+  organizationId: string,
+  connectionData: {
+    accessToken?: string
+    refreshToken?: string
+    expiresAt?: string
+    secret?: string
+    secretFields?: Record<string, string>
+    metadata?: Record<string, any>
+  }
+) {
+  const secrets = pickSecrets(connectionData)
+  const metadata = (connectionData.metadata ?? {}) as Record<string, unknown>
+  const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
+
+  // OAuth mint (the callback route) carries fresh tokens and legitimately replaces everything;
+  // a manual secret edit carries only secretFields/secret + plain vars and must MERGE so editing
+  // one field never wipes the stored secret or drops a plain var the user didn't re-supply.
+  const isOAuthMint =
+    connectionData.accessToken !== undefined || connectionData.refreshToken !== undefined
+
+  if (isOAuthMint) {
+    const rotated = await rotateSecrets(connectionId, organizationId, secrets, { expiresAt })
+    if (rotated.isErr()) {
+      return err(rotated.error)
+    }
+
+    // Refresh the plaintext companion metadata alongside the rotated secrets.
+    const metaUpdated = await updateCredential(connectionId, organizationId, { metadata })
+    if (metaUpdated.isErr()) {
+      return err(metaUpdated.error)
+    }
+  } else {
+    const reconnected = await mergeManualConnectionEdit(connectionId, organizationId, {
+      secretFields: connectionData.secretFields,
+      secret: connectionData.secret,
+      plainVariables: (metadata.connectionVariables ?? {}) as Record<string, unknown>,
+    })
+    if (reconnected.isErr()) {
+      return err(reconnected.error)
+    }
+  }
+
+  // A successful re-auth clears any open refresh circuit breaker. Without this the
+  // connection keeps surfacing as "expired" (consecutiveRefreshFailures >= threshold)
+  // even though it now holds a fresh token — recordRefreshSuccess resets the breaker
+  // and stamps lastRefreshAt alongside the already-rotated expiry.
+  const breakerReset = await recordRefreshSuccess(connectionId, organizationId, { expiresAt })
+  if (breakerReset.isErr()) {
+    return err(breakerReset.error)
+  }
+
+  return ok(undefined)
+}
+
+/**
+ * Ids of app-side event handlers the installation's active deployment declares (e.g.
+ * `connection-identify`). Read from the deployment catalog — the same source
+ * `triggerAppEvent` uses. A missing installation / deployment / catalog / list yields `[]`,
+ * so the caller falls back to today's behavior (no identify hook).
+ */
+async function loadDeclaredEvents(appInstallationId: string): Promise<string[]> {
+  try {
+    const installation = await database.query.AppInstallation.findFirst({
+      where: (inst, { eq }) => eq(inst.id, appInstallationId),
+      with: {
+        currentDeployment: { columns: { catalog: true } },
+      },
+    })
+    return installation?.currentDeployment?.catalog?.events ?? []
+  } catch (error) {
+    logger.error('Failed to load declared events for connection-identify gate', {
+      appInstallationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return []
+  }
 }
 
 /**

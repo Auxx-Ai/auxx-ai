@@ -40,6 +40,7 @@ function renderPopupTerminationPage(payload: {
   credId?: string | null
   appId?: string | null
   error?: string | null
+  matchedExisting?: boolean
   originOfOpener: string
 }): NextResponse {
   const message = {
@@ -48,6 +49,7 @@ function renderPopupTerminationPage(payload: {
     credId: payload.credId ?? null,
     appId: payload.appId ?? null,
     error: payload.error ?? null,
+    matchedExisting: payload.matchedExisting ?? false,
   }
   const serializedMessage = JSON.stringify(message).replace(/</g, '\\u003c')
   const serializedOrigin = JSON.stringify(payload.originOfOpener).replace(/</g, '\\u003c')
@@ -374,19 +376,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       throw result.error
     }
 
+    const { credentialId, matchedExisting } = result.value
+
     logger.info('App connection created successfully', {
       appId,
       slug,
       installationId: metadata.installationId,
       global: metadata.global,
-      credentialId: result.value,
+      credentialId,
+      matchedExisting,
     })
 
     if (isPopup) {
       const popupResponse = renderPopupTerminationPage({
         ok: true,
-        credId: result.value,
+        credId: credentialId,
         appId: metadata.appId,
+        matchedExisting,
         originOfOpener,
       })
       popupResponse.cookies.delete('oauth_return_to')
@@ -395,7 +401,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Redirect back — use returnTo from state if available, else default to app connections page
     const successPath = metadata.returnTo || `/app/settings/apps/installed/${slug}/connections`
-    const redirectUrl = buildRedirectUrl(successPath, { oauth_success: 'true' })
+    const redirectUrl = buildRedirectUrl(successPath, {
+      oauth_success: 'true',
+      // A silent identity dedup update-in-place — the return hook toasts "already connected".
+      ...(matchedExisting && { already_connected: 'true' }),
+    })
     const response = NextResponse.redirect(redirectUrl)
     response.cookies.delete('oauth_return_to')
     return response

@@ -14,7 +14,9 @@ const recordRefreshSuccess = vi.fn()
 const mergeSecretFields = vi.fn()
 const mergeSecrets = vi.fn()
 const getCredential = vi.fn()
+const listCredentials = vi.fn()
 const triggerAppEvent = vi.fn()
+const findFirstAppInstallation = vi.fn()
 
 vi.mock('@auxx/credentials/store', () => ({
   insertCredential: (input: unknown) => insertCredential(input),
@@ -24,7 +26,18 @@ vi.mock('@auxx/credentials/store', () => ({
   mergeSecretFields: (...args: unknown[]) => mergeSecretFields(...args),
   mergeSecrets: (...args: unknown[]) => mergeSecrets(...args),
   getCredential: (...args: unknown[]) => getCredential(...args),
-  listCredentials: async () => ok([]),
+  listCredentials: (input: unknown) => listCredentials(input),
+}))
+
+// loadDeclaredEvents reads the active deployment's catalog to gate connection-identify.
+vi.mock('@auxx/database', () => ({
+  database: {
+    query: {
+      AppInstallation: {
+        findFirst: (...args: unknown[]) => findFirstAppInstallation(...args),
+      },
+    },
+  },
 }))
 
 vi.mock('@auxx/services/app-connections', () => ({
@@ -68,7 +81,10 @@ beforeEach(() => {
   getCredential
     .mockReset()
     .mockResolvedValue(ok({ metadata: { connectionVariables: { account_number: 'acc-1' } } }))
+  listCredentials.mockReset().mockResolvedValue(ok([]))
   triggerAppEvent.mockReset().mockResolvedValue(ok({ result: undefined }))
+  // Default: no declared events → identify gate off → today's plain-insert behavior.
+  findFirstAppInstallation.mockReset().mockResolvedValue(undefined)
 })
 
 describe('saveAppConnection — secret/plain split', () => {
@@ -78,7 +94,7 @@ describe('saveAppConnection — secret/plain split', () => {
       metadata: { connectionVariables: { account_number: 'acc-1' } },
     })
 
-    expect(res._unsafeUnwrap()).toBe('cred-1')
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
     const inserted = insertCredential.mock.calls[0]![0] as {
       secrets: Record<string, unknown>
       metadata: Record<string, unknown>
@@ -173,5 +189,136 @@ describe('saveAppConnection — secret/plain split', () => {
     }
     expect(event.payload.connection.fields).toBeUndefined()
     expect(event.payload.connection.value).toBe('sk')
+  })
+})
+
+describe('saveAppConnection — connection-identify dedup', () => {
+  // Gate on: active deployment declares the connection-identify handler.
+  const withIdentifyHook = () =>
+    findFirstAppInstallation.mockResolvedValue({
+      currentDeployment: { catalog: { events: ['connection-identify'] } },
+    })
+
+  // triggerAppEvent serves the identify call with `identifier`; every other event
+  // (connection-added) resolves to the neutral `{ result: undefined }`.
+  const identifyReturns = (identifier: string | undefined) =>
+    triggerAppEvent.mockImplementation((input: { eventType: string }) =>
+      Promise.resolve(
+        input.eventType === 'connection-identify'
+          ? ok({ result: identifier === undefined ? {} : { identifier } })
+          : ok({ result: undefined })
+      )
+    )
+
+  it('app WITHOUT the hook inserts on every connect (no dedup)', async () => {
+    // Default findFirst → no catalog events → gate off.
+    await saveAppConnection(...ARGS, { accessToken: 'tok-a', metadata: { realmId: 'r1' } })
+    await saveAppConnection(...ARGS, { accessToken: 'tok-b', metadata: { realmId: 'r1' } })
+
+    expect(insertCredential).toHaveBeenCalledTimes(2)
+    // No identify hook → no in-place update.
+    expect(rotateSecrets).not.toHaveBeenCalled()
+    // No connection-identify event was ever fired.
+    const identifyCalls = triggerAppEvent.mock.calls.filter(
+      (c) => (c[0] as { eventType: string }).eventType === 'connection-identify'
+    )
+    expect(identifyCalls).toHaveLength(0)
+  })
+
+  it('same identifier updates the existing row in place (no insert, no connection-added)', async () => {
+    withIdentifyHook()
+    identifyReturns('realm-1')
+    // A row with this identity already exists in scope.
+    listCredentials.mockResolvedValue(
+      ok([{ id: 'cred-existing', metadata: { __identity: 'realm-1' } }])
+    )
+
+    const res = await saveAppConnection(...ARGS, {
+      accessToken: 'fresh-tok',
+      metadata: { realmId: 'realm-1' },
+    })
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-existing', matchedExisting: true })
+    // Update in place — tokens rotated, breaker reset, no new row.
+    expect(insertCredential).not.toHaveBeenCalled()
+    expect(rotateSecrets).toHaveBeenCalledWith(
+      'cred-existing',
+      'org-1',
+      expect.objectContaining({ accessToken: 'fresh-tok' }),
+      { expiresAt: null }
+    )
+    expect(recordRefreshSuccess).toHaveBeenCalledWith('cred-existing', 'org-1', { expiresAt: null })
+    // __identity survives the metadata replacement so future connects keep matching.
+    expect(updateCredential).toHaveBeenCalledWith('cred-existing', 'org-1', {
+      metadata: expect.objectContaining({ __identity: 'realm-1' }),
+    })
+    // connection-added must NOT re-fire — setup already ran for this account.
+    const addedCalls = triggerAppEvent.mock.calls.filter(
+      (c) => (c[0] as { eventType: string }).eventType === 'connection-added'
+    )
+    expect(addedCalls).toHaveLength(0)
+  })
+
+  it('different identifier inserts a new row and persists __identity', async () => {
+    withIdentifyHook()
+    identifyReturns('realm-2')
+    // Existing row carries a different identity → no match.
+    listCredentials.mockResolvedValue(
+      ok([{ id: 'cred-existing', metadata: { __identity: 'realm-1' } }])
+    )
+
+    const res = await saveAppConnection(...ARGS, {
+      accessToken: 'tok',
+      metadata: { realmId: 'realm-2' },
+    })
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(insertCredential).toHaveBeenCalledTimes(1)
+    const inserted = insertCredential.mock.calls[0]![0] as { metadata: Record<string, unknown> }
+    expect(inserted.metadata.__identity).toBe('realm-2')
+    // connection-added fires for a genuinely new connection.
+    const addedCalls = triggerAppEvent.mock.calls.filter(
+      (c) => (c[0] as { eventType: string }).eventType === 'connection-added'
+    )
+    expect(addedCalls).toHaveLength(1)
+  })
+
+  it('empty identifier falls back to a plain insert (no __identity stored)', async () => {
+    withIdentifyHook()
+    identifyReturns('') // handler opts out of dedup for this connect
+    listCredentials.mockResolvedValue(ok([]))
+
+    const res = await saveAppConnection(...ARGS, {
+      accessToken: 'tok',
+      metadata: { realmId: '' },
+    })
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(insertCredential).toHaveBeenCalledTimes(1)
+    const inserted = insertCredential.mock.calls[0]![0] as { metadata: Record<string, unknown> }
+    expect(inserted.metadata.__identity).toBeUndefined()
+  })
+
+  it('same identifier in a different scope stays a separate row (scope isolation)', async () => {
+    withIdentifyHook()
+    identifyReturns('realm-1')
+    // The identity match query is scoped by userId — an org-scoped row (userId: null)
+    // carrying this identity is invisible to a user-scoped connect.
+    listCredentials.mockImplementation((input: { userId: string | null }) =>
+      Promise.resolve(
+        input.userId === null
+          ? ok([{ id: 'cred-org', metadata: { __identity: 'realm-1' }, isDefault: true }])
+          : ok([])
+      )
+    )
+
+    // User-scoped connect (createdById 'user-1', userId 'user-1').
+    const res = await saveAppConnection('app-1', 'inst-1', 'FedEx', 'org-1', 'user-1', 'user-1', {
+      accessToken: 'tok',
+      metadata: { realmId: 'realm-1' },
+    })
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(insertCredential).toHaveBeenCalledTimes(1)
   })
 })

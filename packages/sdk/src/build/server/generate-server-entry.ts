@@ -58,7 +58,7 @@ type LogFunction = (message: string) => void
  * // Find webhook modules
  * const webhooks = await findServerFunctionModules('/app/webhooks', 'webhook')
  */
-async function findServerFunctionModules(cwd: string, pattern: string) {
+export async function findServerFunctionModules(cwd: string, pattern: string) {
   try {
     return complete(await glob(`**/*.${pattern}.{js,ts}`, { nodir: true, cwd }))
   } catch (error) {

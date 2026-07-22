@@ -3,7 +3,7 @@
 'use client'
 
 import type { ConnectionVariable } from '@auxx/database'
-import { toastError } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
 import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
@@ -11,6 +11,13 @@ import { useOAuthPopup } from '~/hooks/use-oauth-popup'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 type Scope = 'user' | 'organization'
+
+/**
+ * Shown when a connect deduped onto an existing provider identity and updated it in place instead
+ * of minting a duplicate (see `saveAppConnection`'s `connection-identify` dedup). Kept consistent
+ * across all three delivery paths — popup, redirect, secret.
+ */
+const ALREADY_CONNECTED_MESSAGE = 'Already connected — reconnected the existing connection.'
 
 /**
  * The connection owner — an installed **app** (routes through `/api/apps/[slug]/oauth2/*` +
@@ -205,12 +212,15 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
 
   // Secret-save success/error are shared across the app and platform mutations. `args` is read
   // through the latest render (React Query stores option callbacks in a ref), so it stays current.
-  const onSecretSaved = (credId: string | null) => {
+  const onSecretSaved = (credId: string | null, matchedExisting = false) => {
     setFormOpen(false)
     if (args) invalidateForOwner(args.target.owner)
     if (credId) {
       setLastConnectedCredId(credId)
       if (args) onConnected?.(credId, args)
+    }
+    if (matchedExisting) {
+      toastSuccess({ title: 'Already connected', description: ALREADY_CONNECTED_MESSAGE })
     }
     setArgs(null)
   }
@@ -220,10 +230,11 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   }
 
   const saveAppSecret = api.apps.saveSecretConnection.useMutation({
-    onSuccess: (data) => onSecretSaved(data?.credentialId ?? null),
+    onSuccess: (data) => onSecretSaved(data?.credentialId ?? null, data?.matchedExisting ?? false),
     onError: onSecretError,
   })
   const savePlatformSecret = api.connections.save.useMutation({
+    // Platform (non-app) secret saves don't run the identity dedup — no `matchedExisting` flag.
     onSuccess: (data) => onSecretSaved(data?.credentialId ?? null),
     onError: onSecretError,
   })
@@ -278,13 +289,16 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         fallbackUrl,
         channelName: 'oauth-app-connect',
         verify: a.verify ?? buildConnectionVerify(utils, a),
-        onDone: (ok, credId) => {
+        onDone: (ok, credId, matchedExisting) => {
           invalidateForOwner(owner)
           setArgs(null)
           const resolvedId = credId ?? (ok ? (a.connectionId ?? null) : null)
           if (ok && resolvedId) {
             setLastConnectedCredId(resolvedId)
             onConnected?.(resolvedId, a)
+          }
+          if (ok && matchedExisting) {
+            toastSuccess({ title: 'Already connected', description: ALREADY_CONNECTED_MESSAGE })
           }
           // A failure toasts in the core; a cancel/timeout settles silently. Either way the popup's
           // `pending` flips false, so the caller's disabled state recovers.

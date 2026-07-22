@@ -23,15 +23,24 @@ export function useOAuthReturn() {
   const oauthSuccess = searchParams.get('oauth_success')
   const oauthError = searchParams.get('oauth_error')
   const oauthErrorMessage = searchParams.get('oauth_error_message')
+  // Set by the OAuth callback when the connect deduped onto an existing identity (update-in-place).
+  const alreadyConnected = searchParams.get('already_connected')
 
   useEffect(() => {
     if (!oauthSuccess && !oauthError) return
 
     if (oauthSuccess === 'true') {
-      toastSuccess({
-        title: 'Connection Successful',
-        description: 'Your app has been connected successfully!',
-      })
+      toastSuccess(
+        alreadyConnected === 'true'
+          ? {
+              title: 'Already connected',
+              description: 'Already connected — reconnected the existing connection.',
+            }
+          : {
+              title: 'Connection Successful',
+              description: 'Your app has been connected successfully!',
+            }
+      )
       void utils.apps.listConnections.invalidate()
       void utils.apps.listInstalled.invalidate()
       // Channel reconnects (Gmail/Outlook) ride the same return path — refresh their list so a
@@ -51,11 +60,12 @@ export function useOAuthReturn() {
     params.delete('oauth_success')
     params.delete('oauth_error')
     params.delete('oauth_error_message')
+    params.delete('already_connected')
 
     const remaining = params.toString()
     const cleanUrl = remaining
       ? `${window.location.pathname}?${remaining}`
       : window.location.pathname
     router.replace(cleanUrl)
-  }, [oauthSuccess, oauthError, oauthErrorMessage, router, searchParams, utils])
+  }, [oauthSuccess, oauthError, oauthErrorMessage, alreadyConnected, router, searchParams, utils])
 }
