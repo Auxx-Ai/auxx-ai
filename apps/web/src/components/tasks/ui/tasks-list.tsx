@@ -33,6 +33,8 @@ interface TasksListProps {
   sort?: TaskSortConfig
   /** Include completed tasks (can be overridden by filters) */
   includeCompleted?: boolean
+  /** Include snoozed tasks (excluded from open lists by default) */
+  includeSnoozed?: boolean
   /** Restrict to tasks created via these sources (the "Follow-ups" chip — build plan decision 16) */
   sources?: TaskSource[]
   /** Callback when create button is clicked (from empty state) */
@@ -69,6 +71,7 @@ export function TasksList({
   filters,
   sort = DEFAULT_SORT,
   includeCompleted = true,
+  includeSnoozed = false,
   sources,
   onCreateClick,
   showEntityReferences = false,
@@ -86,6 +89,7 @@ export function TasksList({
     priority: filterProps.priority,
     search: filterProps.search,
     includeCompleted: filterProps.includeCompleted ?? includeCompleted,
+    includeSnoozed,
     sources,
     limit,
   })

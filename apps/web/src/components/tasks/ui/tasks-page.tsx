@@ -30,6 +30,7 @@ export function TasksPage() {
     direction: 'asc',
   })
   const [includeCompleted, setIncludeCompleted] = useState(true)
+  const [includeSnoozed, setIncludeSnoozed] = useState(false)
   // "Follow-ups" chip — build plan decision 16: rule/AI-created tasks only. Kopilot
   // chat-created tasks are user-initiated (closer to manual) and stay out of the chip.
   const [followUpsOnly, setFollowUpsOnly] = useState(false)
@@ -60,6 +61,8 @@ export function TasksPage() {
               onSortChange={setSort}
               includeCompleted={includeCompleted}
               onIncludeCompletedChange={setIncludeCompleted}
+              includeSnoozed={includeSnoozed}
+              onIncludeSnoozedChange={setIncludeSnoozed}
               followUpsOnly={followUpsOnly}
               onFollowUpsOnlyChange={setFollowUpsOnly}
             />
@@ -69,6 +72,7 @@ export function TasksPage() {
             filters={filters}
             sort={sort}
             includeCompleted={includeCompleted}
+            includeSnoozed={includeSnoozed}
             sources={followUpsOnly ? ['rule', 'ai'] : undefined}
             showEntityReferences
           />

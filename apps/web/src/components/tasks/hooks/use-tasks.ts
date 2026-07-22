@@ -27,6 +27,8 @@ interface UseTasksOptions {
   includeCompleted?: boolean
   /** Include archived tasks */
   includeArchived?: boolean
+  /** Include snoozed tasks (excluded from open lists by default) */
+  includeSnoozed?: boolean
   /** Restrict to tasks created via these sources (e.g. the "Follow-ups" chip maps to rule/ai) */
   sources?: TaskSource[]
   /** Items per page */
@@ -71,6 +73,7 @@ export function useTasks({
   sort = DEFAULT_SORT,
   includeCompleted = false,
   includeArchived = false,
+  includeSnoozed = false,
   sources,
   limit = 50,
   enabled = true,
@@ -87,10 +90,21 @@ export function useTasks({
       search,
       includeCompleted,
       includeArchived,
+      includeSnoozed,
       sources,
       limit,
     }),
-    [recordId, assigneeIds, priority, search, includeCompleted, includeArchived, sources, limit]
+    [
+      recordId,
+      assigneeIds,
+      priority,
+      search,
+      includeCompleted,
+      includeArchived,
+      includeSnoozed,
+      sources,
+      limit,
+    ]
   )
 
   // Fetch tasks using query (not infinite for now - keeping it simple)
