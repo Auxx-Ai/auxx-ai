@@ -469,6 +469,31 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     description: 'Parent invoice relation for invoice-owned snapshot lines only',
   },
 
+  photos: {
+    id: toFieldId('photos'),
+    key: 'photos',
+    label: 'Photos',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'line_item_photos',
+    systemSortOrder: 'b1a',
+    nullable: true,
+    options: {
+      file: { allowMultiple: true, allowedFileTypes: ['image'], maxFiles: 10 },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Line-level scouting photos (plan 37b build spec) — surfaced via the line-builder ' +
+      'photo chip, not a generic dialog',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

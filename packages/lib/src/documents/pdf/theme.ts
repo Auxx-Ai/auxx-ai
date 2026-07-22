@@ -116,5 +116,16 @@ export function createDocumentStyles(settings: ResolvedDocumentSettings) {
       paddingTop: 8,
     },
     terms: { marginTop: 20, fontSize: 8, color: '#6b7280' },
+    // ─── Photos (plan 37b §5) ──────────────────────────────────────────────────
+    /** Wrapping row of small thumbnails under a line's description. */
+    lineThumbRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 },
+    lineThumbWrap: { width: 110, marginRight: 8, marginBottom: 8 },
+    lineThumb: { width: 110, height: 78, objectFit: 'cover', borderRadius: 3 },
+    photoCaption: { fontSize: 7, color: '#6b7280', marginTop: 2 },
+    photoSection: { marginTop: 20 },
+    /** 2-up grid for header-level ("Photos" section) photos. */
+    photoGridRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+    photoGridCell: { width: '48%', marginBottom: 14 },
+    photoGridImage: { width: '100%', height: 160, objectFit: 'cover', borderRadius: 3 },
   })
 }

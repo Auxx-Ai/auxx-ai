@@ -18,8 +18,9 @@ import {
   type LineItemUnit,
 } from '@auxx/lib/money/client'
 import { cn } from '@auxx/ui/lib/utils'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
+import { PhotoGallery } from '~/components/money/ui/public-document/photo-gallery'
 import { PublicDocumentTotals } from '~/components/money/ui/public-document/public-document-totals'
 
 /** One quote line as the public page needs it — decoupled from `@auxx/lib/money`'s payload
@@ -35,6 +36,8 @@ export interface QuoteSelectionLine {
   optional: boolean
   /** Seller's pre-accept default (checked = "included unless removed", money plan 18 decision 2). */
   optionalSelected: boolean
+  /** Site photos captured for this line (plan 37b §6) — already internal-filtered. */
+  photos?: { ref: string; caption?: string }[]
 }
 
 interface QuoteLinesWithSelectionProps {
@@ -48,6 +51,9 @@ interface QuoteLinesWithSelectionProps {
    * declined, expired, or still being revised) — selections are locked at accept (decision 3),
    * so there's nothing left to toggle and no accept form in the DOM to submit into anyway. */
   readOnly?: boolean
+  /** Base path of the token-scoped photo route (`/quote/{token}/photo`, plan 37b §6) — each
+   * line's thumbnails point here. */
+  photoBasePath: string
 }
 
 /** Formats a quantity without trailing zeros, up to 3 decimal places (`2.375`, `5`, `12`) —
@@ -64,6 +70,7 @@ export function QuoteLinesWithSelection({
   taxName,
   taxRate,
   readOnly = false,
+  photoBasePath,
 }: QuoteLinesWithSelectionProps) {
   // Page-local selection state, seeded from each optional line's seller default. Keyed by line
   // instance id — untouched (required) lines never enter this map.
@@ -110,53 +117,67 @@ export function QuoteLinesWithSelection({
             {lines.map((line) => {
               const unitSuffix = formatLineItemUnit(line.unit, 'document')
               const checked = isChecked(line)
+              const hasPhotos = !!line.photos?.length
               return (
-                <tr
-                  key={line.lineInstanceId}
-                  className={cn(
-                    'border-white/10 border-b last:border-0',
-                    line.optional ? 'text-white/60' : 'text-white/80'
-                  )}>
-                  <td className='py-2 pr-2'>
-                    <div className='flex items-start gap-2'>
-                      {line.optional ? (
-                        <input
-                          type='checkbox'
-                          name='selectedLineIds'
-                          value={line.lineInstanceId}
-                          form='accept-form'
-                          checked={checked}
-                          disabled={readOnly}
-                          onChange={() => toggle(line.lineInstanceId)}
-                          aria-label={`Include ${line.name}`}
-                          className='mt-0.5 h-4 w-4 shrink-0 rounded-sm border border-white/30 bg-transparent accent-white disabled:opacity-50'
-                        />
-                      ) : null}
-                      <div>
-                        <span>{line.name}</span>
+                <Fragment key={line.lineInstanceId}>
+                  <tr
+                    className={cn(
+                      'border-white/10 border-b last:border-0',
+                      line.optional ? 'text-white/60' : 'text-white/80',
+                      hasPhotos && 'border-b-0'
+                    )}>
+                    <td className='py-2 pr-2'>
+                      <div className='flex items-start gap-2'>
                         {line.optional ? (
-                          <span className='ml-2 inline-flex items-center gap-1 align-middle text-[10px] text-white/40 uppercase tracking-wide'>
-                            <span className='rounded-full border border-white/20 px-1.5 py-0.5'>
-                              Optional
-                            </span>
-                            {line.optionalSelected ? '(recommended)' : '(add-on)'}
-                          </span>
+                          <input
+                            type='checkbox'
+                            name='selectedLineIds'
+                            value={line.lineInstanceId}
+                            form='accept-form'
+                            checked={checked}
+                            disabled={readOnly}
+                            onChange={() => toggle(line.lineInstanceId)}
+                            aria-label={`Include ${line.name}`}
+                            className='mt-0.5 h-4 w-4 shrink-0 rounded-sm border border-white/30 bg-transparent accent-white disabled:opacity-50'
+                          />
                         ) : null}
+                        <div>
+                          <span>{line.name}</span>
+                          {line.optional ? (
+                            <span className='ml-2 inline-flex items-center gap-1 align-middle text-[10px] text-white/40 uppercase tracking-wide'>
+                              <span className='rounded-full border border-white/20 px-1.5 py-0.5'>
+                                Optional
+                              </span>
+                              {line.optionalSelected ? '(recommended)' : '(add-on)'}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className='py-2 text-right tabular-nums'>
-                    {unitSuffix ? `${formatQty(line.qty)} ${unitSuffix}` : formatQty(line.qty)}
-                  </td>
-                  <td className='py-2 text-right tabular-nums'>
-                    {unitSuffix && line.unitPrice !== null
-                      ? `${formatCurrency(line.unitPrice, currency)}/${unitSuffix}`
-                      : formatCurrency(line.unitPrice, currency)}
-                  </td>
-                  <td className='py-2 text-right tabular-nums'>
-                    {formatCurrency(line.lineTotal, currency)}
-                  </td>
-                </tr>
+                    </td>
+                    <td className='py-2 text-right tabular-nums'>
+                      {unitSuffix ? `${formatQty(line.qty)} ${unitSuffix}` : formatQty(line.qty)}
+                    </td>
+                    <td className='py-2 text-right tabular-nums'>
+                      {unitSuffix && line.unitPrice !== null
+                        ? `${formatCurrency(line.unitPrice, currency)}/${unitSuffix}`
+                        : formatCurrency(line.unitPrice, currency)}
+                    </td>
+                    <td className='py-2 text-right tabular-nums'>
+                      {formatCurrency(line.lineTotal, currency)}
+                    </td>
+                  </tr>
+                  {hasPhotos ? (
+                    <tr className='border-white/10 border-b last:border-0'>
+                      <td colSpan={4} className='pb-3'>
+                        <PhotoGallery
+                          photos={line.photos ?? []}
+                          photoBasePath={photoBasePath}
+                          size='sm'
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               )
             })}
           </tbody>

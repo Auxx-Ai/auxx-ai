@@ -35,7 +35,15 @@ export interface RegisteredDocumentType {
    * batch print runs (P4) — "Office Copy" for the office copy, `undefined` for the customer
    * copy and every single-document render (`ensure-pdf.ts`, `preview-pdf.ts`).
    */
-  Pdf: ComponentType<{ payload: DocumentPdfPayload; logoBytes?: Buffer | null; copyLabel?: string }>
+  Pdf: ComponentType<{
+    payload: DocumentPdfPayload
+    logoBytes?: Buffer | null
+    /** Resolved+downscaled bytes for every payload photo ref that resolved successfully,
+     * keyed by ref (plan 37b §5) — a ref with no entry means resolution failed and the
+     * component must skip it silently, same contract as `logoBytes`. */
+    photoBytes?: Map<string, Buffer>
+    copyLabel?: string
+  }>
   /** Wizard extras this type contributes (P4 — empty today, see `./client.ts`). */
   printOptions?: PrintOptionField[]
 }

@@ -236,10 +236,19 @@ export const nameConverter: FieldValueConverter = {
 }
 
 /**
- * FILE field value structure — one file reference per FieldValue row.
+ * FILE field value envelope — one file reference per FieldValue row, stored as the
+ * row's whole `valueJson`. `caption`/`internal` are additive on top of the original
+ * `{ ref }` shape (plans/dispatch/37b-scouting-quote-photos.md §2): existing bare
+ * `{ ref }` rows keep working, and every reader that only needs `.ref` is unaffected.
  */
 export interface FileValue {
-  ref: string // "asset:id" or "file:id"
+  /** "asset:<id>" or "file:<id>" */
+  ref: string
+  /** Optional caption rendered under the photo thumbnail. */
+  caption?: string
+  /** When true, the photo is internal-only — stripped server-side before it reaches
+   * customer-facing payloads (PDF, email, public quote/pay pages). */
+  internal?: boolean
 }
 
 const FILE_REF_PATTERN = /^(asset|file):.+/

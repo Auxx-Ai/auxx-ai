@@ -21,9 +21,12 @@ export function FileInputField() {
     uploadingFiles,
     canAddMore,
     remainingSlots,
+    supportsCameraCapture,
     openNativeFilePicker,
+    openCameraCapture,
     handleBrowseFilesSelected,
     removeFile,
+    updatePhotoMeta,
     browseOpen,
     setBrowseOpen,
   } = useFieldFileUpload({ recordId, fieldRef: field.id, fileOptions })
@@ -37,6 +40,8 @@ export function FileInputField() {
         onUpload={openNativeFilePicker}
         onBrowse={() => setBrowseOpen(true)}
         onRemove={removeFile}
+        onTakePhoto={supportsCameraCapture ? openCameraCapture : undefined}
+        onUpdateMeta={updatePhotoMeta}
       />
       {browseOpen && (
         <FileSelectDialog

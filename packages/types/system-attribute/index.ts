@@ -290,6 +290,7 @@ export const SYSTEM_ATTRIBUTES = [
   'quote_decline_reason',
   'quote_deposit_type',
   'quote_deposit_value',
+  'quote_photos', // scouting/quote photos gallery (plan 37b §1)
 
   // ─── Line Item fields ──────────────────────────────────────────
   'line_item_name',
@@ -310,6 +311,7 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_quote',
   'line_item_work_order',
   'line_item_invoice',
+  'line_item_photos', // scouting/line-level photos (plan 37b §1)
 
   // ─── Catalog Item fields ────────────────────────────────────────
   'catalog_item_name',
@@ -359,6 +361,7 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_progress_percent',
   'invoice_installment_name',
   'invoice_public_token',
+  'invoice_photos', // scouting/invoice photos gallery, parity with quote_photos (plan 37b §1)
   'invoice_line_items', // inverse of line_item_invoice
   'invoice_payments', // inverse of payment_invoice
 

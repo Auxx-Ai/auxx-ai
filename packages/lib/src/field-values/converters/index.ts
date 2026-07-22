@@ -66,7 +66,7 @@ import { actorConverter } from './actor'
 import { booleanConverter } from './boolean'
 import { calcConverter } from './calc'
 import { dateConverter } from './date'
-import { fileConverter, jsonConverter, nameConverter } from './json'
+import { type FileValue, fileConverter, jsonConverter, nameConverter } from './json'
 import { currencyConverter, numberConverter } from './number'
 import { phoneConverter } from './phone'
 import { relationshipConverter } from './relationship'
@@ -138,3 +138,4 @@ export {
   calcConverter,
   actorConverter,
 }
+export type { FileValue }

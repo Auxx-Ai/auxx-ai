@@ -152,9 +152,14 @@ export const fieldValueSchemas = {
       message: 'ADDRESS_STRUCT requires at least one address field',
     }),
 
-  // FILE JSON: { ref } — one file reference per FieldValue row ("asset:id" or "file:id")
+  // FILE JSON: { ref, caption?, internal? } — one file reference per FieldValue row
+  // ("asset:id" or "file:id"). `caption`/`internal` are additive (plans/dispatch/
+  // 37b-scouting-quote-photos.md §2) — kept here so a future caller doesn't strip
+  // them; `validateFileJson` has no callers today.
   fileJson: z.object({
     ref: z.string().regex(/^(asset|file):.+/),
+    caption: z.string().optional(),
+    internal: z.boolean().optional(),
   }),
 
   // Generic JSON fallback

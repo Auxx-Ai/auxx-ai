@@ -481,6 +481,29 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     description: 'Customer-facing terms (plain text, PDF-friendly)',
   },
 
+  photos: {
+    id: toFieldId('photos'),
+    key: 'photos',
+    label: 'Photos',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'quote_photos',
+    systemSortOrder: 'aH1',
+    nullable: true,
+    options: {
+      file: { allowMultiple: true, allowedFileTypes: ['image'], maxFiles: 10 },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Site photos captured for this quote (plan 37b scouting build spec)',
+  },
+
   pdfAsset: {
     id: toFieldId('pdfAsset'),
     key: 'pdfAsset',

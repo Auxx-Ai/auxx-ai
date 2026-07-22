@@ -12,6 +12,7 @@ import type {
   DiscountType,
   DocumentBrandingSettings,
   DocumentBusinessSettings,
+  PdfPhotoRef,
   QuotePdfContact,
   QuotePdfLineItem,
 } from '../documents/payload'
@@ -170,6 +171,9 @@ export interface PublicInvoicePayload {
   terms: string | null
   contact: QuotePdfContact
   lines: PublicInvoiceLine[]
+  /** Header-level photos (plan 37b §6), `invoice_photos` — already internal-filtered by
+   * `buildInvoicePdfPayload`. Backs the "Photos" gallery section on the public pay page. */
+  photos: PdfPhotoRef[]
   /** Integer cents. */
   subtotal: number
   discountType: DiscountType | null
@@ -270,6 +274,7 @@ export async function getPublicInvoicePayload(token: string): Promise<PublicInvo
     terms: payload.terms,
     contact: payload.contact,
     lines: payload.lines,
+    photos: payload.photos ?? [],
     subtotal: payload.subtotal,
     discountType: payload.discountType,
     discountValue: payload.discountValue,

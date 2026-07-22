@@ -13,6 +13,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Card } from '@auxx/ui/components/card'
 import { Loader2 } from 'lucide-react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
+import { PhotoGallery } from '~/components/money/ui/public-document/photo-gallery'
 import {
   PublicDocumentContact,
   PublicDocumentHeader,
@@ -43,6 +44,7 @@ export function PublicInvoiceDocument({
     dueDate,
     contact,
     lines,
+    photos,
     subtotal,
     discountAmount,
     taxName,
@@ -91,7 +93,18 @@ export function PublicInvoiceDocument({
 
         <PublicDocumentContact label='Billed to' name={contact.name} email={contact.email} />
 
-        <PublicDocumentLineItems lines={lines} currency={currency} />
+        <PublicDocumentLineItems
+          lines={lines}
+          currency={currency}
+          photoBasePath={`/pay/${token}/photo`}
+        />
+
+        {photos.length > 0 ? (
+          <div className='mt-6 border-white/10 border-t pt-4'>
+            <p className='text-white/50 text-xs uppercase tracking-wide'>Photos</p>
+            <PhotoGallery photos={photos} photoBasePath={`/pay/${token}/photo`} size='md' />
+          </div>
+        ) : null}
 
         <PublicDocumentTotals
           currency={currency}

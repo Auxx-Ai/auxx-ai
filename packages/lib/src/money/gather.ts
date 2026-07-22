@@ -9,6 +9,7 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
+import type { FileValue } from '../field-values/converters'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
@@ -36,6 +37,19 @@ function firstTyped(
 ): TypedFieldValue | undefined {
   if (!entry) return undefined
   return Array.isArray(entry) ? entry[0] : entry
+}
+
+/**
+ * Unwrap a `getFieldValues()` map entry for a FILE field into its raw `{ ref, caption?,
+ * internal? }` envelopes — one per photo (FILE is `MULTI_VALUE_FIELD_TYPES`, plans/dispatch/
+ * 37b-scouting-quote-photos.md §3). Unlike {@link firstTyped}, this keeps every row.
+ */
+function fileEnvelopes(entry: TypedFieldValue | TypedFieldValue[] | undefined): FileValue[] {
+  if (!entry) return []
+  const list = Array.isArray(entry) ? entry : [entry]
+  return list
+    .filter((v): v is Extract<TypedFieldValue, { type: 'json' }> => v.type === 'json')
+    .map((v) => v.value as unknown as FileValue)
 }
 
 const LINE_ROW_ATTRS = [
@@ -68,6 +82,7 @@ export const LINE_COPY_ATTRS = [
   'line_item_catalog_item',
   'line_item_work_order',
   'line_item_invoice',
+  'line_item_photos',
 ] as const
 
 /**
@@ -358,6 +373,9 @@ export async function copyLineOntoInvoice(input: {
   const discountTyped = get(lineCf.line_item_discount)
   const sortOrderTyped = get(lineCf.line_item_sort_order)
   const catalogItemTyped = get(lineCf.line_item_catalog_item)
+  const photos = lineCf.line_item_photos
+    ? fileEnvelopes(values.get(lineCf.line_item_photos.id))
+    : []
 
   // No `line_item_work_order`, no `line_item_quote` on copies (§B.3 invariant). Units flow to
   // invoices (plan 13 §6); optionality does not — invoice/work-order lines never carry it.
@@ -373,6 +391,11 @@ export async function copyLineOntoInvoice(input: {
     line_item_discount: discountTyped ? extractValue(discountTyped) : undefined,
     line_item_sort_order: sortOrderTyped ? extractValue(sortOrderTyped) : undefined,
     line_item_invoice: invoiceRecordId,
+    // FILE is multi-row (MULTI_VALUE_FIELD_TYPES) — pass the raw envelope array through
+    // as-is; `setFieldValues`' default 'set' mode writes one FieldValue row per photo (full
+    // `{ ref, caption?, internal? }` envelope), never a single jsonb-array row. Copies are
+    // by `.ref` — same MediaAsset, no duplication (plan 37b §3).
+    line_item_photos: photos.length > 0 ? photos : undefined,
     ...extraValues,
   }
   if (catalogItemTyped?.type === 'relationship') {

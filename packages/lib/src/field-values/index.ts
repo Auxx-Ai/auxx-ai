@@ -27,6 +27,7 @@ export {
   converters,
   currencyConverter,
   dateConverter,
+  type FileValue,
   fileConverter,
   jsonConverter,
   nameConverter,
