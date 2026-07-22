@@ -468,6 +468,31 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     description: 'Customer-facing terms (plain text, PDF-friendly)',
   },
 
+  photos: {
+    id: toFieldId('photos'),
+    key: 'photos',
+    label: 'Photos',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'invoice_photos',
+    systemSortOrder: 'aH1',
+    nullable: true,
+    options: {
+      file: { allowMultiple: true, allowedFileTypes: ['image'], maxFiles: 10 },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Photos attached directly to this invoice (plan 37b scouting build spec) — no ' +
+      'auto-copy from quote_photos',
+  },
+
   pdfAsset: {
     id: toFieldId('pdfAsset'),
     key: 'pdfAsset',

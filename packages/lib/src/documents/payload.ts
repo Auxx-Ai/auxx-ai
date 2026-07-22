@@ -8,6 +8,7 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { stableHash } from '@auxx/utils/hash'
 import { getOrgCache } from '../cache'
 import type { ConditionGroup } from '../conditions'
+import type { FileValue } from '../field-values/converters'
 import { formatToDisplayValue } from '../field-values/formatter'
 import type { TypedFieldValueResult } from '../field-values/types'
 import { getPaymentAccount } from '../money/payments/account-state'
@@ -19,6 +20,15 @@ import type { LineItemUnit } from '../money/units'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { ResolvedDocumentSettings } from './resolve-settings'
 import { resolveDocumentSettings } from './resolve-settings'
+
+/** A customer-safe photo reference on a PDF payload (plan 37b §5) — `internal: true` rows
+ * are dropped at `extractPhotos` build time, so this shape never carries that flag; PDF,
+ * email, and public-page payloads all read this same filtered shape. */
+export interface PdfPhotoRef {
+  /** `"asset:<id>"` or `"file:<id>"` — resolved to bytes by `render.ts`'s photo resolver. */
+  ref: string
+  caption?: string
+}
 
 /** One rendered line on the quote PDF's line-item table. */
 export interface QuotePdfLineItem {
@@ -41,6 +51,9 @@ export interface QuotePdfLineItem {
   optional: boolean
   /** Current selection state — meaningful only when `optional` is true. */
   optionalSelected: boolean
+  /** Site photos captured for this line (plan 37b §5), `line_item_photos`, in FieldValue
+   * `sortKey` order. Internal-only photos are already filtered out (never present here). */
+  photos?: PdfPhotoRef[]
 }
 
 /** Billing-party display fields — no street address on `contact` today (city/region/country only). */
@@ -89,6 +102,9 @@ export interface QuotePdfPayload {
   /** Integer cents. */
   total: number
   settings: ResolvedDocumentSettings
+  /** Header-level site photos (plan 37b §5), `quote_photos`, in FieldValue `sortKey` order.
+   * Internal-only photos are already filtered out (never present here). */
+  photos?: PdfPhotoRef[]
 }
 
 /** One payment-history row on the invoice PDF (money MI1 build spec §H.1) — a succeeded
@@ -151,6 +167,10 @@ export interface InvoicePdfPayload {
    * naturally busts the cached render. */
   payLink: string | null
   settings: ResolvedDocumentSettings
+  /** Header-level photos (plan 37b §5), `invoice_photos`, in FieldValue `sortKey` order. No
+   * auto-copy from `quote_photos` (decision 7) — office attaches directly. Internal-only
+   * photos are already filtered out (never present here). */
+  photos?: PdfPhotoRef[]
 }
 
 /** The render/content-hash dispatch union — `render.ts` and `ensure-pdf.ts` branch on
@@ -163,6 +183,27 @@ function firstTyped(
 ): TypedFieldValue | undefined {
   if (!entry) return undefined
   return Array.isArray(entry) ? entry[0] : entry
+}
+
+/**
+ * Extract a payload-safe photo list from a batched FILE field-value read (plan 37b §5) —
+ * `getValues`/`batchGetValues` already order FILE's multiple rows by `FieldValue.sortKey`
+ * (`field-value-queries.ts`), so this preserves capture order as-is. Drops `internal: true`
+ * rows here — the single server-side choke point that keeps internal photos out of every
+ * downstream consumer (PDF, email, and — once wired — the public quote/pay pages, since
+ * `PublicQuoteLine`/`PublicInvoiceLine` = `QuotePdfLineItem`).
+ */
+function extractPhotos(entry: TypedFieldValue | TypedFieldValue[] | undefined): PdfPhotoRef[] {
+  if (!entry) return []
+  const rows = Array.isArray(entry) ? entry : [entry]
+  const photos: PdfPhotoRef[] = []
+  for (const row of rows) {
+    if (row.type !== 'json' || !row.value) continue
+    const file = row.value as unknown as FileValue
+    if (!file.ref || file.internal === true) continue
+    photos.push(file.caption ? { ref: file.ref, caption: file.caption } : { ref: file.ref })
+  }
+  return photos
 }
 
 /**
@@ -286,6 +327,7 @@ async function loadPdfLines(
       'line_item_taxable',
       'line_item_optional',
       'line_item_optional_selected',
+      'line_item_photos',
     ] as const)
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
@@ -306,6 +348,7 @@ async function loadPdfLines(
     lineCf.line_item_taxable,
     lineCf.line_item_optional,
     lineCf.line_item_optional_selected,
+    lineCf.line_item_photos,
   ]
     .filter(Boolean)
     .map((f) => f!.id)
@@ -325,6 +368,7 @@ async function loadPdfLines(
     const taxableTyped = getLine(lineCf.line_item_taxable)
     const optionalTyped = getLine(lineCf.line_item_optional)
     const optionalSelectedTyped = getLine(lineCf.line_item_optional_selected)
+    const photosEntry = lineCf.line_item_photos ? values.get(lineCf.line_item_photos.id) : undefined
 
     lines.push({
       lineInstanceId,
@@ -339,6 +383,7 @@ async function loadPdfLines(
       optionalSelected: optionalSelectedTyped
         ? (extractValue(optionalSelectedTyped) as boolean)
         : true,
+      photos: extractPhotos(photosEntry),
     })
   }
 
@@ -386,6 +431,7 @@ export async function buildQuotePdfPayload(params: {
       'quote_discount_type',
       'quote_discount_value',
       'quote_contact',
+      'quote_photos',
     ] as const)
 
   const quoteFieldIds = [
@@ -399,6 +445,7 @@ export async function buildQuotePdfPayload(params: {
     cf.quote_discount_type,
     cf.quote_discount_value,
     cf.quote_contact,
+    cf.quote_photos,
   ]
     .filter(Boolean)
     .map((f) => f!.id)
@@ -426,6 +473,7 @@ export async function buildQuotePdfPayload(params: {
   const discountType = discountTypeTyped ? (extractValue(discountTypeTyped) as DiscountType) : null
   const discountValue = discountValueTyped ? (extractValue(discountValueTyped) as number) : null
   const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
+  const photos = extractPhotos(cf.quote_photos ? quoteValues.get(cf.quote_photos.id) : undefined)
 
   // ─── Contact display fields (billing party block) ──────────────────────────
   const contact = await loadPdfContact(cache, handler, organizationId, contactRecordId)
@@ -481,6 +529,7 @@ export async function buildQuotePdfPayload(params: {
     taxTotal: totals.taxTotal,
     total: totals.total,
     settings,
+    photos,
   }
 
   return { payload, hash: stableHash(payload) }
@@ -527,6 +576,7 @@ export async function buildInvoicePdfPayload(params: {
       'invoice_contact',
       'invoice_amount_paid',
       'invoice_balance',
+      'invoice_photos',
     ] as const)
 
   const invoiceFieldIds = [
@@ -542,6 +592,7 @@ export async function buildInvoicePdfPayload(params: {
     cf.invoice_contact,
     cf.invoice_amount_paid,
     cf.invoice_balance,
+    cf.invoice_photos,
   ]
     .filter(Boolean)
     .map((f) => f!.id)
@@ -573,6 +624,9 @@ export async function buildInvoicePdfPayload(params: {
   const discountType = discountTypeTyped ? (extractValue(discountTypeTyped) as DiscountType) : null
   const discountValue = discountValueTyped ? (extractValue(discountValueTyped) as number) : null
   const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
+  const photos = extractPhotos(
+    cf.invoice_photos ? invoiceValues.get(cf.invoice_photos.id) : undefined
+  )
 
   // ─── Contact display fields (billing party block) ──────────────────────────
   const contact = await loadPdfContact(cache, handler, organizationId, contactRecordId)
@@ -665,6 +719,7 @@ export async function buildInvoicePdfPayload(params: {
     payments,
     payLink,
     settings,
+    photos,
   }
 
   return { payload, hash: stableHash(payload) }

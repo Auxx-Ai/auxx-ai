@@ -10,6 +10,7 @@ import {
   DocumentHeader,
   type DocumentLineRow,
   LineItemsTable,
+  PhotoGrid,
   TotalsBlock,
 } from './parts'
 import { createDocumentStyles, pageSizeFor } from './theme'
@@ -31,10 +32,12 @@ import { createDocumentStyles, pageSizeFor } from './theme'
 export function QuotePdf(props: {
   payload: QuotePdfPayload
   logoBytes?: Buffer | null
+  /** Resolved photo bytes keyed by ref (plan 37b §5) — see `render.ts`'s photo resolver. */
+  photoBytes?: Map<string, Buffer>
   /** Batch-print copy label (P4) — see `DocumentHeader`'s `copyLabel`. */
   copyLabel?: string
 }) {
-  const { payload, logoBytes, copyLabel } = props
+  const { payload, logoBytes, photoBytes, copyLabel } = props
   const { settings } = payload
   const styles = createDocumentStyles(settings)
   const currencyCode = settings.currency
@@ -49,6 +52,7 @@ export function QuotePdf(props: {
       unit: line.unit,
       unitPrice: line.unitPrice,
       lineTotal: line.lineTotal,
+      photos: line.photos,
     }
     if (line.optional && !line.optionalSelected) {
       addOnLines.push(row)
@@ -85,6 +89,7 @@ export function QuotePdf(props: {
           lineDisplay={settings.quote.lineDisplay}
           showDescriptions={settings.quote.showDescriptions}
           currencyCode={currencyCode}
+          photoBytes={photoBytes}
         />
 
         {addOnLines.length > 0 ? (
@@ -96,12 +101,17 @@ export function QuotePdf(props: {
               lineDisplay={settings.quote.lineDisplay}
               showDescriptions={settings.quote.showDescriptions}
               currencyCode={currencyCode}
+              photoBytes={photoBytes}
             />
             <Text style={[styles.value, { marginTop: 6, fontSize: 8, color: '#6b7280' }]}>
               These add-ons aren&apos;t included in the total above — they can be added on the
               online quote page.
             </Text>
           </View>
+        ) : null}
+
+        {photoBytes ? (
+          <PhotoGrid styles={styles} photos={payload.photos ?? []} photoBytes={photoBytes} />
         ) : null}
 
         <TotalsBlock

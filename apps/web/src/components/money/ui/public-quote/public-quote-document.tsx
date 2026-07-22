@@ -13,6 +13,7 @@ import { Card } from '@auxx/ui/components/card'
 import { Download, Loader2 } from 'lucide-react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { formatDocumentDate } from '~/components/money/ui/public-document/format'
+import { PhotoGallery } from '~/components/money/ui/public-document/photo-gallery'
 import {
   PublicDocumentContact,
   PublicDocumentHeader,
@@ -46,6 +47,7 @@ export function PublicQuoteDocument({ token, payload, state, message }: PublicQu
     terms,
     contact,
     lines,
+    photos,
     discountType,
     discountValue,
     taxName,
@@ -102,7 +104,15 @@ export function PublicQuoteDocument({ token, payload, state, message }: PublicQu
           taxName={taxName}
           taxRate={taxRate}
           readOnly={!showAcceptDecline}
+          photoBasePath={`/quote/${token}/photo`}
         />
+
+        {photos.length > 0 ? (
+          <div className='mt-6 border-white/10 border-t pt-4'>
+            <p className='text-white/50 text-xs uppercase tracking-wide'>Photos</p>
+            <PhotoGallery photos={photos} photoBasePath={`/quote/${token}/photo`} size='md' />
+          </div>
+        ) : null}
 
         {terms ? (
           <div className='mt-6 border-white/10 border-t pt-4'>

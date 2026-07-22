@@ -211,6 +211,13 @@ export function LineBuilder({
       color: o.color,
     }))
   }, [lineItemFields])
+  // Field def for the photo chip (line-photo-chip.tsx, plan 37b §4) — `null` on a
+  // pre-migration org that hasn't picked up the `line_item.photos` registry field yet,
+  // in which case `LineRow` renders no chip at all.
+  const photosField = useMemo(
+    () => lineItemFields.find((f) => f.key === 'photos') ?? null,
+    [lineItemFields]
+  )
   // Catalog data is shared by every row picker. Editable builders preload it
   // once so opening a picker or resolving a product group never starts a fetch.
   const catalogEnabled = !!entityDefinitionId && !readOnly
@@ -1137,6 +1144,7 @@ export function LineBuilder({
                       rowIndex={row.rowIndex}
                       entityDefinitionId={entityDefinitionId}
                       categoryOptions={categoryOptions}
+                      photosField={photosField}
                       readOnly={readOnly}
                       currencyCode={currencyCode}
                       documentType={documentType}

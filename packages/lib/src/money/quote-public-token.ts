@@ -12,6 +12,7 @@ import type {
   DiscountType,
   DocumentBrandingSettings,
   DocumentBusinessSettings,
+  PdfPhotoRef,
   QuotePdfContact,
   QuotePdfLineItem,
 } from '../documents/payload'
@@ -161,6 +162,9 @@ export interface PublicQuotePayload {
   terms: string | null
   contact: QuotePdfContact
   lines: PublicQuoteLine[]
+  /** Header-level site photos (plan 37b §6), `quote_photos` — already internal-filtered by
+   * `buildQuotePdfPayload`. Backs the "Photos" gallery section on the public quote page. */
+  photos: PdfPhotoRef[]
   /** Integer cents. */
   subtotal: number
   discountType: DiscountType | null
@@ -314,6 +318,7 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
     terms: payload.terms,
     contact: payload.contact,
     lines: payload.lines,
+    photos: payload.photos ?? [],
     subtotal: payload.subtotal,
     discountType: payload.discountType,
     discountValue: payload.discountValue,

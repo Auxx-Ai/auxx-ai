@@ -1,6 +1,7 @@
 // packages/lib/src/field-values/field-value-mutations.ts
 
 import { type Database, schema } from '@auxx/database'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -1189,20 +1190,48 @@ export async function removeRelationValuesBulk(
  * Serialize an existing row's value column into the same string shape
  * `typedColumnMatch` returns — lets us dedup new inputs against existing
  * rows with a plain Set lookup.
+ *
+ * FILE identity special-case: FILE rows store `{ ref, caption?, internal? }`
+ * in `valueJson`. Whole-object string equality would treat a bare `{ ref }`
+ * upload-add as distinct from an already-captioned `{ ref, caption }` row for
+ * the same file, duplicating it. FILE dedup keys on `.ref` alone instead —
+ * every other `valueJson` field type (ADDRESS_STRUCT, NAME, JSON) keeps
+ * whole-object comparison.
  */
-function serializeRowMatch(row: FieldValueRow, column: TypedColumnMatch['column']): string | null {
+function serializeRowMatch(
+  row: FieldValueRow,
+  column: TypedColumnMatch['column'],
+  fieldType?: FieldType
+): string | null {
   const raw = (row as unknown as Record<string, unknown>)[column]
   if (raw === null || raw === undefined) return null
-  if (column === 'valueJson') return JSON.stringify(raw)
+  if (column === 'valueJson') {
+    if (fieldType === FieldTypeEnum.FILE) {
+      const ref = (raw as { ref?: unknown }).ref
+      if (typeof ref === 'string') return ref
+    }
+    return JSON.stringify(raw)
+  }
   if (column === 'valueBoolean') return String(raw)
   if (column === 'valueNumber') return String(raw)
   return String(raw)
 }
 
-/** Convert a TypedColumnMatch value to its string form for Set-based dedup. */
-function matchKey(m: TypedColumnMatch): string {
+/**
+ * Convert a TypedColumnMatch value to its string form for Set-based dedup.
+ * See `serializeRowMatch` for the FILE `.ref`-identity special-case.
+ */
+function matchKey(m: TypedColumnMatch, fieldType?: FieldType): string {
   if (m.column === 'valueBoolean') return String(m.value)
   if (m.column === 'valueNumber') return String(m.value)
+  if (m.column === 'valueJson' && fieldType === FieldTypeEnum.FILE) {
+    try {
+      const parsed = JSON.parse(m.value) as { ref?: unknown }
+      if (typeof parsed.ref === 'string') return parsed.ref
+    } catch {
+      // Fall through to whole-string compare below.
+    }
+  }
   return String(m.value)
 }
 
@@ -1337,7 +1366,7 @@ export async function addValues(
 
     const seen = new Set<string>()
     for (const row of existingRows) {
-      const k = serializeRowMatch(row, column)
+      const k = serializeRowMatch(row, column, fieldType)
       if (k !== null) seen.add(k)
     }
 
@@ -1345,7 +1374,7 @@ export async function addValues(
     const survivors: TypedFieldValueInput[] = []
     const surviving = new Set<string>()
     for (let i = 0; i < typedInputs.length; i++) {
-      const key = matchKey(matches[i]!)
+      const key = matchKey(matches[i]!, fieldType)
       if (seen.has(key) || surviving.has(key)) continue
       surviving.add(key)
       survivors.push(typedInputs[i]!)
@@ -1450,7 +1479,6 @@ export async function removeValues(
   if (matches.length === 0) return
 
   const column = matches[0]!.column
-  const matchValues = matches.map((m) => m.value)
 
   // Group by column to guard against mixed types (shouldn't happen — one
   // field = one type — but fail safely if it does).
@@ -1460,6 +1488,31 @@ export async function removeValues(
     )
   }
 
+  // FILE identity is `.ref` (see `serializeRowMatch`) — match on the extracted
+  // ref via `valueJson->>'ref'` instead of whole-envelope jsonb equality, so a
+  // remove call passing a bare `{ ref }` still finds a captioned/internal-flagged
+  // row for that same file.
+  const valueMatchClause =
+    fieldType === FieldTypeEnum.FILE && column === 'valueJson'
+      ? (() => {
+          const refs = matches
+            .map((m) => {
+              // `column === 'valueJson'` (checked above) guarantees `m.value`
+              // is the stringified JSON envelope for every match here.
+              try {
+                const parsed = JSON.parse(m.value as string) as { ref?: unknown }
+                return typeof parsed.ref === 'string' ? parsed.ref : null
+              } catch {
+                return null
+              }
+            })
+            .filter((ref): ref is string => ref !== null)
+          return refs.length > 0 ? inArray(sql`${schema.FieldValue.valueJson}->>'ref'`, refs) : null
+        })()
+      : buildMatchInClause(column, matches.map((m) => m.value) as any)
+
+  if (valueMatchClause === null) return
+
   await ctx.db
     .delete(schema.FieldValue)
     .where(
@@ -1467,7 +1520,7 @@ export async function removeValues(
         eq(schema.FieldValue.entityId, entityInstanceId),
         eq(schema.FieldValue.fieldId, fieldId),
         eq(schema.FieldValue.organizationId, ctx.organizationId),
-        buildMatchInClause(column, matchValues as any)
+        valueMatchClause
       )
     )
 
@@ -1590,7 +1643,7 @@ export async function addValuesBulk(
       oldRowsByEntity.set(entityId, existing)
       const seen = new Set<string>()
       for (const row of existing) {
-        const k = serializeRowMatch(row, column)
+        const k = serializeRowMatch(row, column, fieldType)
         if (k !== null) seen.add(k)
       }
 
@@ -1600,7 +1653,7 @@ export async function addValuesBulk(
       const localSeen = new Set<string>()
       const insertedTyped: TypedFieldValueInput[] = []
       for (let i = 0; i < typedInputs.length; i++) {
-        const key = matchKey(matches[i]!)
+        const key = matchKey(matches[i]!, fieldType)
         if (seen.has(key) || localSeen.has(key)) {
           skippedCount++
           continue

@@ -6,6 +6,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { Image, Text, View } from '@react-pdf/renderer'
 import { format } from 'date-fns'
 import { formatLineItemUnit, type LineItemUnit } from '../../money/units'
+import type { PdfPhotoRef } from '../payload'
 import type { DocumentBusinessSettings } from '../resolve-settings'
 import type { createDocumentStyles } from './theme'
 
@@ -149,6 +150,75 @@ export interface DocumentLineRow {
    * optional line as "Optional · included" in the main list (money plan 18 §7). Absent on
    * every other row (invoice lines, deselected add-ons rendered in their own block). */
   tag?: string | null
+  /** Site photos captured for this line (plan 37b §5) — rendered as a wrapping row of small
+   * captioned thumbnails under the description when `photoBytes` resolved at least one ref. */
+  photos?: PdfPhotoRef[]
+}
+
+/** Drops photo refs with no resolved bytes — `photoBytes` only ever contains refs `render.ts`
+ * successfully fetched + downscaled, so a ref with no entry means a missing/deleted asset or
+ * a failed downscale (plan 37b §5); every photo component skips it silently rather than
+ * rendering a broken image. */
+function resolvedPhotos(
+  photos: PdfPhotoRef[],
+  photoBytes: Map<string, Buffer>
+): Array<PdfPhotoRef & { bytes: Buffer }> {
+  return photos
+    .map((p) => ({ ...p, bytes: photoBytes.get(p.ref) }))
+    .filter((p): p is PdfPhotoRef & { bytes: Buffer } => p.bytes !== undefined)
+}
+
+/**
+ * Wrapping row of captioned thumbnails — shared by `LineItemsTable`'s per-line strip
+ * (~110pt) and `PhotoGrid`'s header-level 2-up gallery via different sizing styles (plan
+ * 37b §5). Caller must have already filtered to resolved photos.
+ */
+function PhotoThumbs(props: {
+  photos: Array<PdfPhotoRef & { bytes: Buffer }>
+  rowStyle: Styles[keyof Styles]
+  wrapStyle: Styles[keyof Styles]
+  imageStyle: Styles[keyof Styles]
+  captionStyle: Styles[keyof Styles]
+}) {
+  const { photos, rowStyle, wrapStyle, imageStyle, captionStyle } = props
+  return (
+    <View style={rowStyle}>
+      {photos.map((photo, i) => (
+        <View key={i} style={wrapStyle}>
+          <Image style={imageStyle} src={photo.bytes} />
+          {photo.caption ? <Text style={captionStyle}>{photo.caption}</Text> : null}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+/**
+ * Header-level "Photos" gallery — a 2-up captioned grid rendered after the line table for a
+ * document's own `photos` (quote's `quote_photos` / invoice's `invoice_photos`, plan 37b §5).
+ * Renders nothing when there are no photos, or none resolved to bytes.
+ */
+export function PhotoGrid(props: {
+  styles: Styles
+  photos: PdfPhotoRef[]
+  photoBytes: Map<string, Buffer>
+}) {
+  const { styles, photos, photoBytes } = props
+  const resolved = resolvedPhotos(photos, photoBytes)
+  if (resolved.length === 0) return null
+
+  return (
+    <View style={styles.photoSection}>
+      <Text style={[styles.label, { marginBottom: 6 }]}>Photos</Text>
+      <PhotoThumbs
+        photos={resolved}
+        rowStyle={styles.photoGridRow}
+        wrapStyle={styles.photoGridCell}
+        imageStyle={styles.photoGridImage}
+        captionStyle={styles.photoCaption}
+      />
+    </View>
+  )
 }
 
 /** Formats a quantity without trailing zeros, up to 3 decimal places (`2.375`, `5`, `12`) —
@@ -192,8 +262,11 @@ export function LineItemsTable(props: {
   lineDisplay: 'full' | 'amount_only'
   showDescriptions: boolean
   currencyCode: string
+  /** Resolved photo bytes keyed by ref (plan 37b §5) — omit/empty renders exactly as before
+   * (no thumbnail row under any line). */
+  photoBytes?: Map<string, Buffer>
 }) {
-  const { styles, lines, lineDisplay, showDescriptions, currencyCode } = props
+  const { styles, lines, lineDisplay, showDescriptions, currencyCode, photoBytes } = props
   const full = lineDisplay === 'full'
 
   return (
@@ -204,24 +277,38 @@ export function LineItemsTable(props: {
         {full ? <Text style={[styles.colUnitPrice, styles.label]}>Unit price</Text> : null}
         <Text style={[styles.colAmount, styles.label]}>Amount</Text>
       </View>
-      {lines.map((line, i) => (
-        <View key={i} style={styles.tableRow}>
-          <View style={styles.colDescription}>
-            <Text style={styles.lineName}>{line.name}</Text>
-            {line.tag ? <Text style={styles.lineTag}>{line.tag}</Text> : null}
-            {showDescriptions && line.description ? (
-              <Text style={styles.lineDescription}>{line.description}</Text>
+      {lines.map((line, i) => {
+        const linePhotos = photoBytes ? resolvedPhotos(line.photos ?? [], photoBytes) : []
+        return (
+          <View key={i} style={styles.tableRow}>
+            <View style={styles.colDescription}>
+              <Text style={styles.lineName}>{line.name}</Text>
+              {line.tag ? <Text style={styles.lineTag}>{line.tag}</Text> : null}
+              {showDescriptions && line.description ? (
+                <Text style={styles.lineDescription}>{line.description}</Text>
+              ) : null}
+              {linePhotos.length > 0 ? (
+                <PhotoThumbs
+                  photos={linePhotos}
+                  rowStyle={styles.lineThumbRow}
+                  wrapStyle={styles.lineThumbWrap}
+                  imageStyle={styles.lineThumb}
+                  captionStyle={styles.photoCaption}
+                />
+              ) : null}
+            </View>
+            {full ? (
+              <Text style={styles.colQty}>{formatDocQtyCell(line.qty, line.unit)}</Text>
             ) : null}
+            {full ? (
+              <Text style={styles.colUnitPrice}>
+                {formatDocUnitPriceCell(line.unitPrice, line.unit, currencyCode)}
+              </Text>
+            ) : null}
+            <Text style={styles.colAmount}>{formatCurrency(line.lineTotal, { currencyCode })}</Text>
           </View>
-          {full ? <Text style={styles.colQty}>{formatDocQtyCell(line.qty, line.unit)}</Text> : null}
-          {full ? (
-            <Text style={styles.colUnitPrice}>
-              {formatDocUnitPriceCell(line.unitPrice, line.unit, currencyCode)}
-            </Text>
-          ) : null}
-          <Text style={styles.colAmount}>{formatCurrency(line.lineTotal, { currencyCode })}</Text>
-        </View>
-      ))}
+        )
+      })}
     </View>
   )
 }

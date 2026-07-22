@@ -30,6 +30,7 @@ import {
   type LineItemUnit,
   parseQuantityWithUnit,
 } from '@auxx/lib/money/client'
+import type { ResourceField } from '@auxx/lib/resources/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -68,6 +69,7 @@ import { type RecordId, type RecordMeta, toRecordId } from '~/components/resourc
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { catalogItemToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
+import { LinePhotoChip } from './line-photo-chip'
 import {
   BASE_LINE_SYSTEM_ATTRIBUTES,
   DEFAULT_LINE_VALUES,
@@ -461,6 +463,7 @@ function LineNameCellView({
   onCommitDescription,
   onCommitCategory,
   onDelete,
+  photoChip,
 }: {
   name: string
   description: string | null
@@ -489,6 +492,11 @@ function LineNameCellView({
   onCommitCategory: (value: string | null) => void
   /** Delete this line (real record or draft). */
   onDelete: () => void
+  /**
+   * Scouting-photo chip (line-photo-chip.tsx, plan 37b §4) — `undefined` on a
+   * phantom draft row (no `EntityInstance` to attach photos to yet).
+   */
+  photoChip?: ReactNode
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -637,6 +645,7 @@ function LineNameCellView({
         </span>
         {stateBadges}
         {description && <TooltipExplanation text={description} />}
+        {photoChip}
       </div>
     )
   }
@@ -734,6 +743,9 @@ function LineNameCellView({
           <AlignLeft />
         </TreeRowButton>
       )}
+
+      {/* Scouting-photo chip (plan 37b §4) — undefined on draft rows. */}
+      {!focused && photoChip}
 
       {/* The `⋯` menu — always the cell's LAST flex child so its slot is
           stable whether the cell is at rest or editing (React keeps it
@@ -1044,6 +1056,7 @@ export function LineRow({
   rowIndex,
   entityDefinitionId,
   categoryOptions,
+  photosField,
   readOnly,
   currencyCode,
   documentType,
@@ -1059,6 +1072,9 @@ export function LineRow({
   rowIndex: number
   entityDefinitionId: string
   categoryOptions: CategoryOption[]
+  /** `line_item.photos` field def (plan 37b §4) — `null` skips the photo chip
+   * entirely (pre-migration org). */
+  photosField: ResourceField | null
   readOnly: boolean
   currencyCode: string
   documentType: 'quote' | 'work_order' | 'invoice'
@@ -1075,6 +1091,9 @@ export function LineRow({
   const systemAttributes = isQuote ? QUOTE_LINE_SYSTEM_ATTRIBUTES : BASE_LINE_SYSTEM_ATTRIBUTES
   const { values } = useSystemValues(recordId, systemAttributes, { autoFetch: false })
   const line = lineValuesFromSystemValues(values, isQuote)
+  // FILE is array-return (plan 37b §3) — `line_item_photos` reads back as an array of
+  // `{ ref, caption?, internal? }` envelopes (or is absent/empty when there are none).
+  const photoCount = Array.isArray(values.line_item_photos) ? values.line_item_photos.length : 0
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: record.id,
     disabled: readOnly,
@@ -1116,6 +1135,16 @@ export function LineRow({
             onCommitDescription={(description) => onUpdateLine(recordId, { description })}
             onCommitCategory={(category) => onUpdateLine(recordId, { category })}
             onDelete={() => deleteLine(record.id)}
+            photoChip={
+              photosField ? (
+                <LinePhotoChip
+                  recordId={recordId}
+                  field={photosField}
+                  photoCount={photoCount}
+                  readOnly={readOnly}
+                />
+              ) : undefined
+            }
           />
         }
         qty={

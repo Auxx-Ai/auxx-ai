@@ -11,6 +11,7 @@ import {
   DocumentHeader,
   formatDocDate,
   LineItemsTable,
+  PhotoGrid,
   TotalsBlock,
 } from './parts'
 import { createDocumentStyles, pageSizeFor } from './theme'
@@ -65,10 +66,12 @@ function PaymentHistoryBlock(props: {
 export function InvoicePdf(props: {
   payload: InvoicePdfPayload
   logoBytes?: Buffer | null
+  /** Resolved photo bytes keyed by ref (plan 37b §5) — see `render.ts`'s photo resolver. */
+  photoBytes?: Map<string, Buffer>
   /** Batch-print copy label (P4) — see `DocumentHeader`'s `copyLabel`. */
   copyLabel?: string
 }) {
-  const { payload, logoBytes, copyLabel } = props
+  const { payload, logoBytes, photoBytes, copyLabel } = props
   const { settings } = payload
   const styles = createDocumentStyles(settings)
   const currencyCode = settings.currency
@@ -97,7 +100,12 @@ export function InvoicePdf(props: {
           lineDisplay={settings.invoice.lineDisplay}
           showDescriptions={settings.invoice.showDescriptions}
           currencyCode={currencyCode}
+          photoBytes={photoBytes}
         />
+
+        {photoBytes ? (
+          <PhotoGrid styles={styles} photos={payload.photos ?? []} photoBytes={photoBytes} />
+        ) : null}
 
         <TotalsBlock
           styles={styles}

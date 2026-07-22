@@ -23,6 +23,7 @@ export {
   type InvoicePdfPayload,
   type InvoicePdfPaymentRow,
   loadPdfContact,
+  type PdfPhotoRef,
   type QuotePdfContact,
   type QuotePdfLineItem,
   type QuotePdfPayload,
@@ -35,7 +36,7 @@ export {
   listDocumentTypes,
   type RegisteredDocumentType,
 } from './registry'
-export { type RenderDocumentPdfOptions, renderDocumentPdf } from './render'
+export { type RenderDocumentPdfOptions, renderDocumentPdf, resolvePhotoRef } from './render'
 export {
   type DocumentBrandingSettings,
   type DocumentBusinessSettings,

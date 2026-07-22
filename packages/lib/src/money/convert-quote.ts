@@ -9,6 +9,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
+import type { FileValue } from '../field-values/converters'
 import { FieldValueService } from '../field-values/field-value-service'
 import { extractRelationshipRecordIds } from '../field-values/relationship-field'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
@@ -28,6 +29,22 @@ function firstTyped(
 ): TypedFieldValue | undefined {
   if (!entry) return undefined
   return Array.isArray(entry) ? entry[0] : entry
+}
+
+/**
+ * Unwrap a `getFieldValues()` map entry for a FILE field into its raw `{ ref, caption?,
+ * internal? }` envelopes — one per photo (FILE is `MULTI_VALUE_FIELD_TYPES`, plans/dispatch/
+ * 37b-scouting-quote-photos.md §3). Unlike {@link firstTyped}, this keeps every row: FILE
+ * always reads back as an array, but stays defensive (`Array.isArray`) in case a caller ever
+ * passes a bare single `TypedFieldValue`. Only `type: 'json'` rows are kept — the shape FILE
+ * values are stored as.
+ */
+function fileEnvelopes(entry: TypedFieldValue | TypedFieldValue[] | undefined): FileValue[] {
+  if (!entry) return []
+  const list = Array.isArray(entry) ? entry : [entry]
+  return list
+    .filter((v): v is Extract<TypedFieldValue, { type: 'json' }> => v.type === 'json')
+    .map((v) => v.value as unknown as FileValue)
 }
 
 /**
@@ -231,6 +248,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
       'line_item_optional',
       'line_item_optional_selected',
       'line_item_source_line',
+      'line_item_photos',
     ] as const)
 
   const { ids: lineInstanceIds } = await handler.listFiltered({
@@ -268,6 +286,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     lineCf.line_item_catalog_item,
     lineCf.line_item_optional,
     lineCf.line_item_optional_selected,
+    lineCf.line_item_photos,
   ]
     .filter(Boolean)
     .map((f) => f!.id)
@@ -290,6 +309,9 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     const catalogItemTyped = get(lineCf.line_item_catalog_item)
     const optionalTyped = get(lineCf.line_item_optional)
     const optionalSelectedTyped = get(lineCf.line_item_optional_selected)
+    const photos = lineCf.line_item_photos
+      ? fileEnvelopes(values.get(lineCf.line_item_photos.id))
+      : []
 
     // Deselected option (plan 18 §6, decision 5) — stays on the quote only, never becomes work.
     const optional = optionalTyped ? (extractValue(optionalTyped) as boolean) : false
@@ -312,6 +334,14 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
       line_item_discount: discountTyped ? extractValue(discountTyped) : undefined,
       line_item_sort_order: sortOrderTyped ? extractValue(sortOrderTyped) : undefined,
       line_item_work_order: workOrderRecordId,
+      // FILE is multi-row (MULTI_VALUE_FIELD_TYPES) — pass the raw envelope array through
+      // as-is. `setFieldValues`' default 'set' mode → `setValuesForEntity` →
+      // `validateAndConvertValue` detects the array + FILE's multi-value type and converts
+      // each element via `fileConverter.toTypedInput` individually, so `setValueWithType`
+      // DELETE+INSERTs one FieldValue row per photo (full `{ ref, caption?, internal? }`
+      // envelope preserved) — never a single row holding a jsonb array. Copies are by
+      // `.ref` (same MediaAsset), so no asset duplication (plan 37b §3).
+      line_item_photos: photos.length > 0 ? photos : undefined,
     }
     if (catalogItemTyped?.type === 'relationship') {
       copyValues.line_item_catalog_item = catalogItemTyped.recordId

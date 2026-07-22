@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/inputs/hooks/use-field-file-upload.ts
 'use client'
 
+import type { FileValue } from '@auxx/lib/field-values/client'
 import type { FileTypeCategory } from '@auxx/lib/files/client'
 import { getMimePatternsForCategories } from '@auxx/lib/files/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
@@ -14,6 +15,7 @@ import type { FileOptions } from '~/components/custom-fields/ui/file-options-edi
 import type { FileState } from '~/components/file-upload/stores'
 import { useUploadStore } from '~/components/file-upload/stores'
 import type { FileItem } from '~/components/files/files-store'
+import { convertHeicFiles } from '~/components/files/utils/convert-heic'
 import {
   buildFieldValueKey,
   useFieldValueStore,
@@ -306,6 +308,13 @@ interface UseFieldFileUploadOptions {
   fileOptions: FileOptions
 }
 
+/** Patch applied to one photo's envelope by the tile editor. */
+export interface PhotoMetaPatch {
+  /** `undefined` clears the caption. */
+  caption?: string
+  internal?: boolean
+}
+
 interface UseFieldFileUploadReturn {
   displayFiles: Array<{
     id: string // fieldValueId — for removal
@@ -313,6 +322,10 @@ interface UseFieldFileUploadReturn {
     name: string
     mimeType: string | null
     size: number | null
+    /** Caption from the FILE envelope (`{ ref, caption?, internal? }`). */
+    caption?: string
+    /** When true, the photo is internal-only (stripped from customer-facing payloads). */
+    internal?: boolean
   }>
   uploadingFiles: UploadingFile[]
   isUploading: boolean
@@ -334,9 +347,23 @@ interface UseFieldFileUploadReturn {
    * existing value).
    */
   remainingSlots: number
+  /** True when the field is images-only (`allowedFileTypes` is exactly `['image']`) —
+   * gates the camera-capture affordance (37b-scouting-quote-photos.md §4/§8). */
+  supportsCameraCapture: boolean
   openNativeFilePicker: () => void
+  /** Same picker, opened with `capture='environment'` so mobile browsers default to the
+   * device camera instead of the file/photo chooser. */
+  openCameraCapture: () => void
   handleBrowseFilesSelected: (files: FileItem[]) => Promise<void>
   removeFile: (fieldValueId: string) => Promise<void>
+  /**
+   * Edit a photo's caption/internal flag. Composes the FULL envelope array from the
+   * freshest store state and writes it via `fieldValue.set` (mode 'set') — the only
+   * sanctioned edit path (plans/dispatch/37b-scouting-quote-photos.md §2). Never
+   * edit via remove+add: `add` dedups on the bare `{ ref }` shape and would duplicate
+   * an already-captioned row.
+   */
+  updatePhotoMeta: (fieldValueId: string, patch: PhotoMetaPatch) => Promise<void>
   browseOpen: boolean
   setBrowseOpen: (open: boolean) => void
 }
@@ -344,6 +371,10 @@ interface UseFieldFileUploadReturn {
 // Stable empty array references
 const EMPTY_UPLOADING: UploadingFile[] = []
 const EMPTY_ARRAY: TypedFieldValue[] = []
+
+// Concrete (non-wildcard) accept list for images-only FILE fields — deliberately omits
+// `image/heic`/`image/heif`. See `openPicker`'s doc comment in the hook below for why.
+const IMAGE_ONLY_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif,image/bmp'
 
 // =============================================================================
 // HELPERS
@@ -404,15 +435,24 @@ export function useFieldFileUpload({
     })
   )
 
-  // Extract file refs from typed values
+  // Extract file refs from typed values — carries caption/internal through from the
+  // envelope (`{ ref, caption?, internal? }`), additive on top of the original `{ ref }`
+  // shape (plans/dispatch/37b-scouting-quote-photos.md §2).
   const fileRefs = useMemo(
     () =>
       typedValues
         .filter((tv) => tv.type === 'json' && (tv as JsonFieldValue).value?.ref)
         .map((tv) => {
-          const ref = (tv as JsonFieldValue).value.ref as string
-          const { sourceType, id } = parseFileRef(ref)
-          return { fieldValueId: tv.id, ref, sourceType, id }
+          const value = (tv as JsonFieldValue).value as unknown as FileValue
+          const { sourceType, id } = parseFileRef(value.ref)
+          return {
+            fieldValueId: tv.id,
+            ref: value.ref,
+            sourceType,
+            id,
+            caption: value.caption,
+            internal: value.internal,
+          }
         }),
     [typedValues]
   )
@@ -437,6 +477,8 @@ export function useFieldFileUpload({
           name: detail?.name ?? 'Unknown file',
           mimeType: detail?.mimeType ?? null,
           size: detail?.size ?? null,
+          caption: fr.caption,
+          internal: fr.internal,
         }
       })
       .filter((f) => f.name !== 'Unknown file' || fileDetails.length < fileRefs.length)
@@ -532,103 +574,146 @@ export function useFieldFileUpload({
   // allows 1 (replace); multi-file uses the strict remaining count.
   const effectiveSlots = fileOptions.allowMultiple ? remainingSlots : 1
 
+  // Images-only field (37b-scouting-quote-photos.md §1/§4/§8: `quote_photos` /
+  // `line_item_photos` / `invoice_photos` are `allowedFileTypes: ['image']`) — gates the
+  // camera-capture affordance.
+  const isImagesOnly =
+    fileOptions.allowedFileTypes?.length === 1 && fileOptions.allowedFileTypes[0] === 'image'
+
   /**
-   * Open native file picker. Registers completion handler BEFORE opening dialog.
-   * For single-file fields, always opens — upload replaces any existing value.
+   * Open the native file picker, optionally requesting camera capture.
+   *
+   * `capture` is deliberately combined with a concrete (non-wildcard) image MIME list
+   * rather than `getMimePatternsForCategories`'s `'image/*'` — that constraint is what
+   * makes iOS Safari transcode a HEIC capture/pick to JPEG itself before handing the
+   * file back (the 'image' category excludes `.heic`, `file-type-constants.ts:9-18`).
+   * `convertHeicFiles` below is the client-side backstop for whatever slips through.
+   * Registers the completion handler BEFORE opening the dialog. For single-file fields,
+   * always opens — upload replaces any existing value.
    */
-  const openNativeFilePicker = useCallback(async () => {
-    if (!canOpenPicker) return
+  const openPicker = useCallback(
+    async (capture?: 'environment') => {
+      if (!canOpenPicker) return
 
-    try {
-      // Create upload session in store
-      const store = useUploadStore.getState()
-      const sessionId = await store.createSessionWithGuard(uploaderId, {
-        entityType: 'CUSTOM_FIELD',
-        entityId: `field-${fieldRef}`,
-        behaviorConfig: {
-          allowMultiple: fileOptions.allowMultiple,
-          autoStart: false,
-        },
-        metadata: { fieldId: fieldRef },
-      })
+      try {
+        // Create upload session in store
+        const store = useUploadStore.getState()
+        const sessionId = await store.createSessionWithGuard(uploaderId, {
+          entityType: 'CUSTOM_FIELD',
+          entityId: `field-${fieldRef}`,
+          behaviorConfig: {
+            allowMultiple: fileOptions.allowMultiple,
+            autoStart: false,
+          },
+          metadata: { fieldId: fieldRef },
+        })
 
-      // Register or update completion handler (deduplicate)
-      const existing = completionHandlers.get(uploaderId)
-      if (!existing || Date.now() - existing.registeredAt >= 60_000) {
-        completionHandlers.set(uploaderId, {
-          recordId,
-          fieldRef,
-          storeKey,
-          allowMultiple: fileOptions.allowMultiple,
-          registeredAt: Date.now(),
+        // Register or update completion handler (deduplicate)
+        const existing = completionHandlers.get(uploaderId)
+        if (!existing || Date.now() - existing.registeredAt >= 60_000) {
+          completionHandlers.set(uploaderId, {
+            recordId,
+            fieldRef,
+            storeKey,
+            allowMultiple: fileOptions.allowMultiple,
+            registeredAt: Date.now(),
+          })
+        }
+
+        // Build accept string for file input. Images-only fields use a concrete list
+        // (no `image/heic`) instead of the `'image/*'` wildcard — see doc comment above.
+        const acceptTypes = isImagesOnly
+          ? IMAGE_ONLY_ACCEPT
+          : fileOptions.allowedFileTypes
+            ? getMimePatternsForCategories(fileOptions.allowedFileTypes as FileTypeCategory[]).join(
+                ','
+              )
+            : undefined
+
+        // Create detached native file input (survives React unmount)
+        const input = document.createElement('input')
+        input.type = 'file'
+        if (acceptTypes) input.accept = acceptTypes
+        if (capture) input.capture = capture
+        input.multiple = fileOptions.allowMultiple && effectiveSlots > 1
+        input.style.display = 'none'
+        document.body.appendChild(input)
+
+        input.onchange = async () => {
+          const rawFiles = Array.from(input.files ?? [])
+          document.body.removeChild(input)
+
+          if (rawFiles.length === 0) return
+
+          // Backstop transcode for any HEIC/HEIF that slipped past the accept-list
+          // constraint above (see `convert-heic.ts`).
+          const files = isImagesOnly ? await convertHeicFiles(rawFiles) : rawFiles
+
+          // Optimistic avatar preview: show the locally-selected image instantly
+          // via a blob URL. `handleUploadCompletion` swaps to a stable download
+          // URL on server success, or rolls back on failure.
+          if (isAvatarField(recordId, fieldRef) && files[0]) {
+            const blobUrl = URL.createObjectURL(files[0])
+            const { priorAvatarUrl } = optimisticallyWriteAvatar(recordId, blobUrl)
+            pendingAvatarByKey.set(uploaderId, {
+              recordId,
+              priorAvatarUrl,
+              blobUrl,
+            })
+          }
+
+          try {
+            const storeNow = useUploadStore.getState()
+            const addResult = await storeNow.addFilesWithValidation(files, uploaderId, {
+              maxFiles: effectiveSlots,
+            })
+            if (addResult.validationErrors.length > 0) {
+              console.error('[useFieldFileUpload] validation errors:', addResult.validationErrors)
+            }
+
+            await storeNow.startUploadForSession(sessionId)
+          } catch (err) {
+            console.error('[useFieldFileUpload] upload error:', err)
+            // Upload failed to start — rollback optimistic avatar.
+            const pending = pendingAvatarByKey.get(uploaderId)
+            if (pending) {
+              const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
+              useRecordStore.getState().updateRecord(entityDefinitionId, entityInstanceId, {
+                avatarUrl: pending.priorAvatarUrl,
+              })
+              if (pending.blobUrl) scheduleBlobRevoke(pending.blobUrl, 0)
+              pendingAvatarByKey.delete(uploaderId)
+            }
+          }
+        }
+
+        input.click()
+      } catch (error) {
+        toastError({
+          title: 'Upload failed',
+          description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
+    },
+    [
+      canOpenPicker,
+      uploaderId,
+      fieldRef,
+      recordId,
+      storeKey,
+      effectiveSlots,
+      fileOptions,
+      isImagesOnly,
+    ]
+  )
 
-      // Build accept string for file input
-      const acceptTypes = fileOptions.allowedFileTypes
-        ? getMimePatternsForCategories(fileOptions.allowedFileTypes as FileTypeCategory[]).join(',')
-        : undefined
+  const openNativeFilePicker = useCallback(() => {
+    void openPicker()
+  }, [openPicker])
 
-      // Create detached native file input (survives React unmount)
-      const input = document.createElement('input')
-      input.type = 'file'
-      if (acceptTypes) input.accept = acceptTypes
-      input.multiple = fileOptions.allowMultiple && effectiveSlots > 1
-      input.style.display = 'none'
-      document.body.appendChild(input)
-
-      input.onchange = async () => {
-        const files = Array.from(input.files ?? [])
-        document.body.removeChild(input)
-
-        if (files.length === 0) return
-
-        // Optimistic avatar preview: show the locally-selected image instantly
-        // via a blob URL. `handleUploadCompletion` swaps to a stable download
-        // URL on server success, or rolls back on failure.
-        if (isAvatarField(recordId, fieldRef) && files[0]) {
-          const blobUrl = URL.createObjectURL(files[0])
-          const { priorAvatarUrl } = optimisticallyWriteAvatar(recordId, blobUrl)
-          pendingAvatarByKey.set(uploaderId, {
-            recordId,
-            priorAvatarUrl,
-            blobUrl,
-          })
-        }
-
-        try {
-          const storeNow = useUploadStore.getState()
-          const addResult = await storeNow.addFilesWithValidation(files, uploaderId, {
-            maxFiles: effectiveSlots,
-          })
-          if (addResult.validationErrors.length > 0) {
-            console.error('[useFieldFileUpload] validation errors:', addResult.validationErrors)
-          }
-
-          await storeNow.startUploadForSession(sessionId)
-        } catch (err) {
-          console.error('[useFieldFileUpload] upload error:', err)
-          // Upload failed to start — rollback optimistic avatar.
-          const pending = pendingAvatarByKey.get(uploaderId)
-          if (pending) {
-            const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
-            useRecordStore.getState().updateRecord(entityDefinitionId, entityInstanceId, {
-              avatarUrl: pending.priorAvatarUrl,
-            })
-            if (pending.blobUrl) scheduleBlobRevoke(pending.blobUrl, 0)
-            pendingAvatarByKey.delete(uploaderId)
-          }
-        }
-      }
-
-      input.click()
-    } catch (error) {
-      toastError({
-        title: 'Upload failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
-      })
-    }
-  }, [canOpenPicker, uploaderId, fieldRef, recordId, storeKey, effectiveSlots, fileOptions])
+  const openCameraCapture = useCallback(() => {
+    void openPicker('environment')
+  }, [openPicker])
 
   /**
    * Handle files selected from FileSelectDialog. Routes through the shared
@@ -703,6 +788,55 @@ export function useFieldFileUpload({
     [removeValue, recordId, fieldRef, storeKey]
   )
 
+  /**
+   * Edit one photo's caption/internal flag (tile editor save). Builds the full envelope
+   * array from the freshest store state at call time — not from the `typedValues`
+   * closure — to minimize clobbering a concurrent upload's `add`
+   * (plans/dispatch/37b-scouting-quote-photos.md §2 concurrency caveat, accepted for v1).
+   */
+  const updatePhotoMeta = useCallback(
+    async (fieldValueId: string, patch: PhotoMetaPatch) => {
+      const fvStore = useFieldValueStore.getState()
+      const current = fvStore.values[storeKey]
+      const currentArr = (
+        Array.isArray(current) ? current : current ? [current] : []
+      ) as TypedFieldValue[]
+
+      const envelopes: FileValue[] = currentArr
+        .filter(
+          (tv): tv is JsonFieldValue =>
+            tv.type === 'json' && !!(tv.value as unknown as FileValue)?.ref
+        )
+        .map((tv) => {
+          const value = tv.value as unknown as FileValue
+          if (tv.id !== fieldValueId) {
+            return { ref: value.ref, caption: value.caption, internal: value.internal }
+          }
+          return {
+            ref: value.ref,
+            caption: patch.caption,
+            internal: patch.internal,
+          }
+        })
+
+      try {
+        const result = await vanillaApi.fieldValue.set.mutate({
+          recordId,
+          fieldId: fieldRef,
+          value: envelopes,
+        })
+        fvStore.setValue(storeKey, (result?.values ?? []) as TypedFieldValue[])
+      } catch (error) {
+        toastError({
+          title: 'Failed to save photo details',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+        throw error
+      }
+    },
+    [recordId, fieldRef, storeKey]
+  )
+
   return {
     displayFiles,
     uploadingFiles,
@@ -710,9 +844,12 @@ export function useFieldFileUpload({
     canAddMore,
     canAppend,
     remainingSlots: effectiveSlots,
+    supportsCameraCapture: isImagesOnly,
     openNativeFilePicker,
+    openCameraCapture,
     handleBrowseFilesSelected,
     removeFile,
+    updatePhotoMeta,
     browseOpen,
     setBrowseOpen,
   }

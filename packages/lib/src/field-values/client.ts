@@ -16,7 +16,7 @@ export {
   validateCalcExpression,
 } from '@auxx/utils/calc-expression'
 // Converters (for direct access if needed)
-export { converters } from './converters'
+export { converters, type FileValue } from './converters'
 
 // Re-export relationship type guards from converter (centralized location)
 export {
