@@ -128,7 +128,8 @@ export interface CreateAttachmentRequest {
 export interface UpdateAttachmentRequest {
   role?: AttachmentRole
   title?: string
-  caption?: string
+  /** `null` clears the caption; `undefined` leaves it unchanged. */
+  caption?: string | null
   sort?: number
   fileVersionId?: string
   assetVersionId?: string

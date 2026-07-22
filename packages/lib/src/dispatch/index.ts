@@ -42,28 +42,35 @@ export { pasteVisits } from './paste-visits'
 export type {
   AddMyAdhocQcItemInput,
   AddMyQcItemPhotoInput,
+  AddVisitQcItemPhotoInput,
   CreateQcItemTemplateInput,
   ListMyVisitQcItemsResult,
   MyVisitQcItem,
   MyVisitQcItemPhoto,
   RemoveMyQcItemPhotoInput,
+  RemoveVisitQcItemPhotoInput,
   ReorderQcItemTemplateUpdate,
   SetMyQcItemCheckedInput,
   SetMyQcItemNoteInput,
+  SetQcItemPhotoCaptionInput,
   UpdateQcItemTemplateInput,
 } from './qc'
 export {
   addMyAdhocQcItem,
   addMyQcItemPhoto,
+  addVisitQcItemPhoto,
   createQcItemTemplate,
   deleteQcItemTemplate,
   listMyVisitQcItems,
   listQcItemTemplates,
   listVisitQcItems,
   removeMyQcItemPhoto,
+  removeVisitQcItemPhoto,
   reorderQcItemTemplates,
   setMyQcItemChecked,
   setMyQcItemNote,
+  setMyQcItemPhotoCaption,
+  setVisitQcItemPhotoCaption,
   updateQcItemTemplate,
 } from './qc'
 export type {
@@ -138,6 +145,14 @@ export {
   setVisitStatus,
   unscheduleVisit,
 } from './visit-mutations'
+export type {
+  VisitReportChecklistItem,
+  VisitReportPayload,
+  VisitReportPhoto,
+} from './visit-report/payload'
+export { buildVisitReportPayload } from './visit-report/payload'
+export type { RenderVisitReportResult } from './visit-report/render'
+export { renderVisitReportPdf, renderVisitReportToAsset } from './visit-report/render'
 export type {
   NotifyVisitCanceledInput,
   NotifyVisitReassignedInput,
