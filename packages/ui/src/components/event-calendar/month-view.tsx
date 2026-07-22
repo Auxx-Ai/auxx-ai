@@ -324,16 +324,23 @@ export function MonthView<T extends EventCalendarItem = EventCalendarItem>({
   const programmaticScrollRef = useRef(false)
   const currentDateRef = useRef(currentDate)
   currentDateRef.current = currentDate
-  // Set when a scroll-settle emits onDateChange — that date echoing back as the
-  // `currentDate` prop must NOT re-scroll (the user is already looking at it).
-  const lastEmittedDateRef = useRef<number | null>(null)
+  // Set when a scroll-settle emits onDateChange — the consumer may echo a TRANSFORMED
+  // date back as `currentDate` (the dispatch board preserves the anchor's day-of-month),
+  // so the echo is matched by its resolved target row, not exact timestamp. Any echo
+  // resolving to the settled viewed month must NOT re-scroll (the user is already
+  // looking at it); genuine external navigation lands on a different target row.
+  const lastEmittedTargetIndexRef = useRef<number | null>(null)
 
   // Rows are fixed-height, so the target offset is exact math — scrolling directly
   // (instead of virtualizer.scrollToIndex) sidesteps its measurement-cache staleness.
   const lastRowHeightRef = useRef(rowHeight)
   useLayoutEffect(() => {
     const rowHeightChanged = lastRowHeightRef.current !== rowHeight
-    if (!rowHeightChanged && lastEmittedDateRef.current === currentDateRef.current.getTime()) return
+    const isEmitEcho = lastEmittedTargetIndexRef.current === targetIndex
+    // Consume the marker either way — after this change, a later navigation back to the
+    // same month is external and must scroll again.
+    lastEmittedTargetIndexRef.current = null
+    if (!rowHeightChanged && isEmitEcho) return
     const el = scrollRef.current
     if (!el) return
     lastRowHeightRef.current = rowHeight
@@ -377,11 +384,13 @@ export function MonthView<T extends EventCalendarItem = EventCalendarItem>({
       }
       const topLeft = weekStartAt(snapIndex)
       if (!isSameDay(topLeft, currentDateRef.current)) {
-        lastEmittedDateRef.current = topLeft.getTime()
+        lastEmittedTargetIndexRef.current = weekIndexOf(
+          startOfMonth(endOfWeek(topLeft, { weekStartsOn }))
+        )
         onDateChange?.(topLeft)
       }
     }, 160)
-  }, [rowHeight, weekCount, weekStartAt, onDateChange])
+  }, [rowHeight, weekCount, weekStartAt, weekIndexOf, weekStartsOn, onDateChange])
 
   useEffect(
     () => () => {

@@ -169,7 +169,17 @@ export function withPreservedDayOfMonth(
   weekStartsOn: WeekStartIndex
 ): Date {
   const viewedMonth = startOfMonth(endOfWeek(next, { weekStartsOn }))
-  return setDayOfMonth(viewedMonth, Math.min(prev.getDate(), getDaysInMonth(viewedMonth)))
+  const candidate = setDayOfMonth(
+    viewedMonth,
+    Math.min(prev.getDate(), getDaysInMonth(viewedMonth))
+  )
+  // A late-month day whose week ends in the NEXT month would itself "view" that next month
+  // and re-anchor the stream a month ahead of where the user settled — clamp to the last
+  // day whose week still ends inside the viewed month.
+  if (viewedMonthStart(candidate, weekStartsOn).getTime() === viewedMonth.getTime()) {
+    return candidate
+  }
+  return subDays(startOfWeek(candidate, { weekStartsOn }), 1)
 }
 
 /** Only visits with both `startTime`/`endTime` render on the grid. */
