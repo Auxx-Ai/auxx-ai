@@ -500,11 +500,11 @@ export const actorFieldOptionsSchema = baseFieldOptionsSchema.extend({
     .object({
       /**
        * Who this ACTOR field can reference.
-       * - `user`  / `group` / `agent` — single bucket.
+       * - `user`  / `group` / `agent` / `worker` — single bucket.
        * - `both` — users + groups (humans only; legacy default).
        * - `all`  — users + groups + agents.
        */
-      target: z.enum(['user', 'group', 'agent', 'both', 'all']),
+      target: z.enum(['user', 'group', 'agent', 'worker', 'both', 'all']),
       multiple: z.boolean(),
       roles: z.array(z.enum(['OWNER', 'ADMIN', 'USER'])).optional(),
       groupIds: z.array(z.string()).optional(),

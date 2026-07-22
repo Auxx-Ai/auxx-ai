@@ -17,7 +17,7 @@ const logger = createScopedLogger('dispatch:route-planner:route-order')
 export interface SetRouteOrderInput {
   organizationId: string
   userId: string
-  assigneeUserId: string
+  assigneeWorkerId: string
   /** The planned day, client-resolved ({@link PlannerDayWindow}). */
   window: Pick<PlannerDayWindow, 'from' | 'to'>
   /** `yyyy-MM-dd` label of the planned day, client-resolved — the Directions cache-key day
@@ -37,13 +37,13 @@ export interface SetRouteOrderInput {
  * since it isn't a mirrored field — `afterVisitWrite` is called without a `trigger`).
  */
 export async function setRouteOrder(input: SetRouteOrderInput): Promise<void> {
-  const { organizationId, userId, assigneeUserId, window, dateKey, visitIds, excludeSocketId } =
+  const { organizationId, userId, assigneeWorkerId, window, dateKey, visitIds, excludeSocketId } =
     input
   const { from, to } = window
 
   const nullOutConditions = [
     eq(schema.WorkOrderVisit.organizationId, organizationId),
-    eq(schema.WorkOrderVisit.assigneeUserId, assigneeUserId),
+    eq(schema.WorkOrderVisit.assigneeWorkerId, assigneeWorkerId),
     gte(schema.WorkOrderVisit.startTime, from),
     lte(schema.WorkOrderVisit.startTime, to),
     isNotNull(schema.WorkOrderVisit.routeOrder),
@@ -92,7 +92,7 @@ export async function setRouteOrder(input: SetRouteOrderInput): Promise<void> {
         await autoApplyRouteTimes({
           organizationId,
           userId,
-          assigneeUserId,
+          assigneeWorkerId,
           dateKey,
           window,
           visitIds,
@@ -102,7 +102,7 @@ export async function setRouteOrder(input: SetRouteOrderInput): Promise<void> {
     } catch (error) {
       logger.error('Auto-apply route times failed after reorder', {
         organizationId,
-        assigneeUserId,
+        assigneeWorkerId,
         dateKey,
         error: error instanceof Error ? error.message : String(error),
       })

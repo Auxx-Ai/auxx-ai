@@ -4,7 +4,7 @@
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { ListCard, type ListCardMenuItem } from '@auxx/ui/components/list-card'
 import { toastError } from '@auxx/ui/components/toast'
-import { CalendarOff, Eye, EyeOff, Lock, Pencil, Trash2, Users } from 'lucide-react'
+import { CalendarOff, Eye, EyeOff, Lock, Pencil, Trash2, Users, UsersRound } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
@@ -13,6 +13,9 @@ import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
+import { TeamCard } from './team-card'
+import { TeamDialog } from './team-dialog'
+import { TeamPlaceholderCard } from './team-placeholder-card'
 import { type DispatchWorkerRow, WorkerCard } from './worker-card'
 import { WorkerDialog, type WorkerDialogEditPage } from './worker-dialog'
 import { WorkerPlaceholderCard } from './worker-placeholder-card'
@@ -44,6 +47,8 @@ export function WorkersSettingsPage() {
     enabled: dispatchEnabled,
     staleTime: ORG_STATIC_STALE_TIME,
   })
+  const individualWorkers = (workers ?? []).filter((w) => w.type === 'individual')
+  const teams = (workers ?? []).filter((w) => w.type === 'team')
 
   // One dialog for both flows: a worker id opens it on that worker (on `initialPage`); opening
   // with null starts the create flow (member-select page) — see `WorkerDialog`.
@@ -55,6 +60,15 @@ export function WorkersSettingsPage() {
     setSelectedWorkerId(workerId)
     setInitialPage(page)
     setDialogOpen(true)
+  }
+
+  // Same one-dialog-for-both-flows shape as workers, for teams (45-teams.md §6).
+  const [teamDialogOpen, setTeamDialogOpen] = useState(false)
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
+
+  const openTeamDialog = (teamId: string | null) => {
+    setSelectedTeamId(teamId)
+    setTeamDialogOpen(true)
   }
 
   const utils = api.useUtils()
@@ -79,6 +93,17 @@ export function WorkersSettingsPage() {
       destructive: true,
     })
     if (confirmed) removeWorker.mutate({ workerId: worker.id })
+  }
+
+  async function handleRemoveTeam(team: DispatchWorkerRow) {
+    const confirmed = await confirm({
+      title: 'Remove team?',
+      description: `This removes "${team.name ?? 'this team'}" from the dispatch board. Its assigned visits keep their assignee — only the board column disappears.`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) removeWorker.mutate({ workerId: team.id })
   }
 
   const workerMenuItems = (worker: DispatchWorkerRow): ListCardMenuItem[] => [
@@ -109,6 +134,29 @@ export function WorkersSettingsPage() {
     },
   ]
 
+  const teamMenuItems = (team: DispatchWorkerRow): ListCardMenuItem[] => [
+    { label: 'Edit', icon: <Pencil />, onClick: () => openTeamDialog(team.id) },
+    team.isActive
+      ? {
+          label: 'Deactivate',
+          icon: <EyeOff />,
+          disabled: setWorkerActive.isPending,
+          onClick: () => setWorkerActive.mutate({ workerId: team.id, isActive: false }),
+        }
+      : {
+          label: 'Activate',
+          icon: <Eye />,
+          disabled: setWorkerActive.isPending,
+          onClick: () => setWorkerActive.mutate({ workerId: team.id, isActive: true }),
+        },
+    {
+      label: 'Remove team',
+      icon: <Trash2 />,
+      destructive: true,
+      onClick: () => handleRemoveTeam(team),
+    },
+  ]
+
   if (!dispatchEnabled) {
     return (
       <SettingsPage
@@ -130,7 +178,7 @@ export function WorkersSettingsPage() {
       title='Workers'
       description='Manage who can be scheduled on the dispatch board.'
       breadcrumbs={BREADCRUMBS}>
-      <div className='p-3 sm:p-6'>
+      <div className='flex flex-col gap-8 p-3 sm:p-6'>
         {isLoading ? (
           <SettingsSection icon={Users} title='Workers'>
             <WorkerGrid>
@@ -140,22 +188,41 @@ export function WorkersSettingsPage() {
             </WorkerGrid>
           </SettingsSection>
         ) : (
-          <SettingsSection
-            icon={Users}
-            title='Workers'
-            description='Active workers appear as columns on the board.'>
-            <WorkerGrid>
-              {(workers ?? []).map((worker: DispatchWorkerRow) => (
-                <WorkerCard
-                  key={worker.id}
-                  worker={worker}
-                  onClick={(w) => openWorkerDialog(w.id)}
-                  menuItems={workerMenuItems(worker)}
-                />
-              ))}
-              <WorkerPlaceholderCard onClick={() => openWorkerDialog(null)} />
-            </WorkerGrid>
-          </SettingsSection>
+          <>
+            <SettingsSection
+              icon={Users}
+              title='Workers'
+              description='Active workers appear as columns on the board.'>
+              <WorkerGrid>
+                {individualWorkers.map((worker: DispatchWorkerRow) => (
+                  <WorkerCard
+                    key={worker.id}
+                    worker={worker}
+                    onClick={(w) => openWorkerDialog(w.id)}
+                    menuItems={workerMenuItems(worker)}
+                  />
+                ))}
+                <WorkerPlaceholderCard onClick={() => openWorkerDialog(null)} />
+              </WorkerGrid>
+            </SettingsSection>
+
+            <SettingsSection
+              icon={UsersRound}
+              title='Teams'
+              description='A team is one dispatchable board row made of existing individual workers.'>
+              <WorkerGrid>
+                {teams.map((team: DispatchWorkerRow) => (
+                  <TeamCard
+                    key={team.id}
+                    team={team}
+                    onClick={(t) => openTeamDialog(t.id)}
+                    menuItems={teamMenuItems(team)}
+                  />
+                ))}
+                <TeamPlaceholderCard onClick={() => openTeamDialog(null)} />
+              </WorkerGrid>
+            </SettingsSection>
+          </>
         )}
       </div>
 
@@ -167,6 +234,15 @@ export function WorkersSettingsPage() {
         }}
         workerId={selectedWorkerId}
         initialPage={initialPage}
+      />
+
+      <TeamDialog
+        open={teamDialogOpen}
+        onOpenChange={(open) => {
+          setTeamDialogOpen(open)
+          if (!open) setSelectedTeamId(null)
+        }}
+        teamWorkerId={selectedTeamId}
       />
 
       <ConfirmDialog />

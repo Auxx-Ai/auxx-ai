@@ -42,6 +42,7 @@ import {
   UNASSIGNED_COLOR,
   visitToEvent,
   withPreservedDayOfMonth,
+  workerDisplayName,
 } from '../utils'
 
 const BOARD_VIEWS = ['day', 'timeline', 'week', 'month'] as const
@@ -167,19 +168,19 @@ export function useBoardData() {
   const showUnassigned = useMemo(() => !isWorkerHidden(hiddenWorkerIds, null), [hiddenWorkerIds])
 
   const workers = useMemo(
-    () =>
-      selectedWorkerIds ? allWorkers.filter((w) => selectedWorkerIds.has(w.userId)) : allWorkers,
+    () => (selectedWorkerIds ? allWorkers.filter((w) => selectedWorkerIds.has(w.id)) : allWorkers),
     [allWorkers, selectedWorkerIds]
   )
 
   // Resolve the stored `SelectOptionColor` id (e.g. 'amber', 'forest') to its full
   // `OPTION_COLORS` entry — chips render its badge/border classes (badge look), while
   // hex-consuming surfaces (sidebar dots, map pins) read `.hex` (several ids aren't valid CSS
-  // color names, so the raw id must never reach a CSS color slot).
-  const colorByUserId = useMemo(() => {
+  // color names, so the raw id must never reach a CSS color slot). Keyed by `worker.id` (a
+  // `DispatchWorker.id`) — teams have their own color and no `userId` to key off of.
+  const colorByWorkerId = useMemo(() => {
     const map = new Map<string, OptionColor>()
     for (const w of allWorkers) {
-      if (w.color) map.set(w.userId, getOptionColor(w.color as SelectOptionColor))
+      if (w.color) map.set(w.id, getOptionColor(w.color as SelectOptionColor))
     }
     return map
   }, [allWorkers])
@@ -202,8 +203,8 @@ export function useBoardData() {
     () =>
       scheduled
         .filter((v) => showCanceled || v.status !== 'canceled')
-        .map((v) => visitToEvent(v, workOrderById, colorByUserId)),
-    [scheduled, workOrderById, colorByUserId, showCanceled]
+        .map((v) => visitToEvent(v, workOrderById, colorByWorkerId)),
+    [scheduled, workOrderById, colorByWorkerId, showCanceled]
   )
 
   // Sidebar worker toggles hide that worker's visits in EVERY view — the checkbox means
@@ -244,8 +245,8 @@ export function useBoardData() {
           ]
         : []),
       ...workers.map((w) => ({
-        id: w.userId,
-        label: w.user?.name ?? w.user?.email ?? 'Worker',
+        id: w.id,
+        label: workerDisplayName(w),
         color: w.color ?? undefined,
         worker: w,
       })),
@@ -269,7 +270,7 @@ export function useBoardData() {
     boardMode,
     setBoardMode,
     resources,
-    colorByUserId,
+    colorByWorkerId,
     workOrderById,
     events,
     allEvents,

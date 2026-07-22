@@ -225,7 +225,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         enum?: Array<{ label: string; value: string }>
         fieldReference?: string
         relationshipType?: string
-        actor?: { target?: 'user' | 'group' | 'both'; multiple?: boolean }
+        actor?: { target?: 'user' | 'group' | 'worker' | 'both'; multiple?: boolean }
         multiSelect?: boolean
       } = {}
       if (field.options?.options?.length) {

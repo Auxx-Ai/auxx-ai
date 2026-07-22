@@ -48,8 +48,8 @@ export interface ActorPickerContentProps {
   /** Called when selection changes */
   onChange: (selected: ActorId[]) => void
 
-  /** Actor target: 'user', 'group', 'agent', 'both', or 'all' (default: 'both') */
-  target?: 'user' | 'group' | 'agent' | 'both' | 'all'
+  /** Actor target: 'user', 'group', 'agent', 'worker', 'both', or 'all' (default: 'both') */
+  target?: 'user' | 'group' | 'agent' | 'worker' | 'both' | 'all'
 
   /**
    * When `target === 'both'`, include agents in the user/agent sections.
@@ -218,7 +218,8 @@ export function ActorPickerContent({
       (a) => a.type === 'agent' && (!agentFilter || agentFilter(a.actorId))
     )
     const groups = availableItems.filter((a) => a.type === 'group')
-    return { users, agents, groups }
+    const workers = availableItems.filter((a) => a.type === 'worker')
+    return { users, agents, groups, workers }
   }, [availableItems, agentFilter])
 
   /**
@@ -264,7 +265,10 @@ export function ActorPickerContent({
   const hasGroupsSection =
     (target === 'group' || target === 'both' || target === 'all') &&
     groupedAvailable.groups.length > 0
-  const hasResultsSection = hasUsersSection || hasAgentsSection || hasGroupsSection
+  const hasWorkersSection =
+    (target === 'worker' || target === 'all') && groupedAvailable.workers.length > 0
+  const hasResultsSection =
+    hasUsersSection || hasAgentsSection || hasGroupsSection || hasWorkersSection
   const showGroupHeadings = target === 'both' || target === 'all'
 
   return (
@@ -348,6 +352,21 @@ export function ActorPickerContent({
         {hasGroupsSection && (
           <CommandGroup heading={showGroupHeadings ? 'Groups' : undefined} aria-label='Groups'>
             {groupedAvailable.groups.map((actor) => (
+              <ActorItem
+                key={actor.actorId}
+                actor={actor}
+                isSelected={isSelected(actor.actorId)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
+        )}
+
+        {/* Workers Section (individuals + teams together, one flat list) */}
+        {hasWorkersSection && (
+          <CommandGroup heading={showGroupHeadings ? 'Workers' : undefined} aria-label='Workers'>
+            {groupedAvailable.workers.map((actor) => (
               <ActorItem
                 key={actor.actorId}
                 actor={actor}

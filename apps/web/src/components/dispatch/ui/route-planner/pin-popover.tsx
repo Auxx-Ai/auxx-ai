@@ -14,7 +14,7 @@ import {
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { endOfDay, format, startOfDay } from 'date-fns'
-import { ArrowLeft, User, X } from 'lucide-react'
+import { ArrowLeft, User, Users, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
@@ -58,9 +58,14 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
   const { setRouteOrder, assignVisit } = useRoutePlannerMutations(dayWindow)
 
   const workOrder = board.workOrders.find((w) => w.id === visit.workOrderId)
-  const assigneeUserId = visit.assigneeUserId
-  const stops = assigneeUserId ? stopsForWorker(board, assigneeUserId) : []
+  const assigneeWorkerId = visit.assigneeWorkerId
+  const stops = assigneeWorkerId ? stopsForWorker(board, assigneeWorkerId) : []
   const currentIndex = stops.findIndex((v) => v.id === visit.id)
+  // The board only carries the workers visible on this planned day, but the current assignee is
+  // always one of them.
+  const assigneeWorker = assigneeWorkerId
+    ? board.workers.find((w) => w.id === assigneeWorkerId)
+    : undefined
 
   const workersQuery = api.dispatch.listWorkers.useQuery(undefined, {
     staleTime: ORG_STATIC_STALE_TIME,
@@ -69,26 +74,35 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
     () => (workersQuery.data ?? []).filter((w) => w.isActive),
     [workersQuery.data]
   )
+  // Reassignment here only offers individuals (a `user` actor picker) — worker/team picking
+  // (plan 45-teams.md §5A item 7) is a separate, not-yet-built picker surface. Resolve a picked
+  // user actor back to that individual's `DispatchWorker.id` for the mutation.
+  const workerIdByUserId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const w of activeWorkers) if (w.userId) map.set(w.userId, w.id)
+    return map
+  }, [activeWorkers])
   const allUserActors = useAvailableActors({ target: 'user' })
   const excludeIds = useMemo(() => {
-    if (activeWorkers.length === 0) return []
-    const workerUserIds = new Set(activeWorkers.map((w) => w.userId))
+    if (workerIdByUserId.size === 0) return []
     return allUserActors
-      .filter((a) => !workerUserIds.has(getActorRawId(a.actorId)))
+      .filter((a) => !workerIdByUserId.has(getActorRawId(a.actorId)))
       .map((a) => a.actorId)
-  }, [activeWorkers, allUserActors])
+  }, [workerIdByUserId, allUserActors])
 
-  const assigneeActorId = assigneeUserId ? toActorId('user', assigneeUserId) : null
+  // Individuals resolve to their user's identity; teams (`userId: null`) fall back to the
+  // worker row's own `name`/`color` in the render below.
+  const assigneeActorId = assigneeWorker?.userId ? toActorId('user', assigneeWorker.userId) : null
   const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
   const assigneeActor = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
 
   const handleMove = (indexValue: string) => {
-    if (!assigneeUserId) return
+    if (!assigneeWorkerId) return
     const index = Number(indexValue)
     const visitIds = stops.map((v) => v.id).filter((id) => id !== visit.id)
     visitIds.splice(index, 0, visit.id)
     setRouteOrder.mutate(
-      { assigneeUserId, from: dayWindow.from, to: dayWindow.to, visitIds },
+      { assigneeWorkerId, from: dayWindow.from, to: dayWindow.to, visitIds },
       {
         onSuccess: onClose,
         onError: (error) =>
@@ -101,10 +115,10 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
   }
 
   const handleRemoveFromRoute = () => {
-    if (!assigneeUserId) return
+    if (!assigneeWorkerId) return
     const visitIds = stops.map((v) => v.id).filter((id) => id !== visit.id)
     setRouteOrder.mutate(
-      { assigneeUserId, from: dayWindow.from, to: dayWindow.to, visitIds },
+      { assigneeWorkerId, from: dayWindow.from, to: dayWindow.to, visitIds },
       {
         onSuccess: onClose,
         onError: (error) =>
@@ -117,17 +131,18 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
   }
 
   const handleAssign = (actorId: (typeof allUserActors)[number]['actorId']) => {
-    const newAssigneeUserId = getActorRawId(actorId)
+    const newAssigneeWorkerId = workerIdByUserId.get(getActorRawId(actorId))
+    if (!newAssigneeWorkerId) return
     assignVisit.mutate(
-      { visitId: visit.id, assigneeUserId: newAssigneeUserId },
+      { visitId: visit.id, assigneeWorkerId: newAssigneeWorkerId },
       {
         onSuccess: () => {
-          const visitIds = stopsForWorker(board, newAssigneeUserId)
+          const visitIds = stopsForWorker(board, newAssigneeWorkerId)
             .map((v) => v.id)
             .filter((id) => id !== visit.id)
           visitIds.push(visit.id)
           setRouteOrder.mutate({
-            assigneeUserId: newAssigneeUserId,
+            assigneeWorkerId: newAssigneeWorkerId,
             from: dayWindow.from,
             to: dayWindow.to,
             visitIds,
@@ -197,6 +212,19 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
             </Avatar>
             {assigneeActor.name}
           </>
+        ) : assigneeWorker?.type === 'team' ? (
+          <>
+            <Avatar className='size-4'>
+              <AvatarFallback className='text-[9px]'>
+                {assigneeWorker.name ? (
+                  getInitials(assigneeWorker.name)
+                ) : (
+                  <Users className='size-3' />
+                )}
+              </AvatarFallback>
+            </Avatar>
+            {assigneeWorker.name ?? 'Team'}
+          </>
         ) : (
           <>
             <User /> Unassigned
@@ -204,7 +232,7 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
         )}
       </Button>
 
-      {assigneeUserId && stops.length > 0 && (
+      {assigneeWorkerId && stops.length > 0 && (
         <Select value={String(Math.max(currentIndex, 0))} onValueChange={handleMove}>
           <SelectTrigger size='sm' className='w-full'>
             <SelectValue placeholder='Move to position' />
@@ -219,7 +247,7 @@ export function PinPopoverContent({ visit, board, onClose }: PinPopoverContentPr
         </Select>
       )}
 
-      {assigneeUserId && (
+      {assigneeWorkerId && (
         <Button
           variant='ghost'
           size='sm'

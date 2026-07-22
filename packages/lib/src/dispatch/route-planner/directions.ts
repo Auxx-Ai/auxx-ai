@@ -193,21 +193,21 @@ async function fetchMapboxLegs(
  * Mapbox `driving-traffic` behind `MAPBOX_ACCESS_TOKEN`, else the straight-line/haversine
  * fallback (contract item 1) — never throws, always returns a usable `RouteGeometry`.
  * Content-addressed Redis cache (contract item 2): key =
- * `dispatch:route:{orgId}:{assigneeUserId}:{dateKey}:{hash}` where `hash` is a sha1 of the
+ * `dispatch:route:{orgId}:{assigneeWorkerId}:{dateKey}:{hash}` where `hash` is a sha1 of the
  * sorted-key JSON of `{ depotStart, depotEnd, stops }` — flipping either worker route-home
  * switch changes `depotStart`/`depotEnd`, which rotates the hash and thus the cache key. 24h
  * TTL, no invalidation — the key itself rotates and stale keys just expire unread.
  */
 export async function getRouteLegs(
   organizationId: string,
-  assigneeUserId: string,
+  assigneeWorkerId: string,
   dateKey: string,
   depotStart: LatLng | null,
   depotEnd: LatLng | null,
   orderedStops: RouteStop[]
 ): Promise<RouteGeometry> {
   const hash = hashRouteInput(depotStart, depotEnd, orderedStops)
-  const cacheKey = `dispatch:route:${organizationId}:${assigneeUserId}:${dateKey}:${hash}`
+  const cacheKey = `dispatch:route:${organizationId}:${assigneeWorkerId}:${dateKey}:${hash}`
 
   const cached = (await getRedisData(cacheKey)) as RouteGeometry | null
   if (cached) return cached
@@ -250,12 +250,10 @@ export async function getRouteLegs(
  */
 export async function getRouteGeometryForWorker(
   organizationId: string,
-  assigneeUserId: string,
+  assigneeWorkerId: string,
   window: PlannerDayWindow
 ): Promise<RouteGeometry> {
-  const worker = (await listDispatchWorkers(organizationId)).find(
-    (w) => w.userId === assigneeUserId
-  )
+  const worker = (await listDispatchWorkers(organizationId)).find((w) => w.id === assigneeWorkerId)
   if (!worker) throw new NotFoundError('Dispatch worker not found')
 
   const homePoint = await resolveRouteStart(organizationId, worker)
@@ -269,7 +267,7 @@ export async function getRouteGeometryForWorker(
     .where(
       and(
         eq(schema.WorkOrderVisit.organizationId, organizationId),
-        eq(schema.WorkOrderVisit.assigneeUserId, assigneeUserId),
+        eq(schema.WorkOrderVisit.assigneeWorkerId, assigneeWorkerId),
         gte(schema.WorkOrderVisit.startTime, from),
         lte(schema.WorkOrderVisit.startTime, to)
       )
@@ -280,5 +278,5 @@ export async function getRouteGeometryForWorker(
     .filter((r) => r.latitude !== null && r.longitude !== null)
     .map((r) => ({ visitId: r.id, lat: r.latitude as number, lng: r.longitude as number }))
 
-  return getRouteLegs(organizationId, assigneeUserId, dateKey, depotStart, depotEnd, orderedStops)
+  return getRouteLegs(organizationId, assigneeWorkerId, dateKey, depotStart, depotEnd, orderedStops)
 }

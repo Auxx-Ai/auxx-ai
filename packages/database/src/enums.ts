@@ -1768,8 +1768,9 @@ export const ResourcePermission = {
 // ACTOR FIELD ENUMS
 // ============================================================================
 
-/** Target type for ACTOR fields - determines what kind of entity the actor references */
-export const ActorTargetValues = ['user', 'group', 'both'] as const
+/** Target type for ACTOR fields - determines what kind of entity the actor references.
+ * `worker` targets dispatch `DispatchWorker` rows (individuals + teams — 45-teams.md §5A). */
+export const ActorTargetValues = ['user', 'group', 'worker', 'both'] as const
 export type ActorTarget = (typeof ActorTargetValues)[number]
 
 export const ActorTarget = {

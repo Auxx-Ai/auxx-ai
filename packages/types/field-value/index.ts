@@ -162,11 +162,11 @@ export interface RelationshipFieldValue extends BaseFieldValue {
 /** Actor value for ACTOR fields - references a user, group, or agent */
 export interface ActorFieldValue extends BaseFieldValue {
   type: 'actor'
-  /** Type of actor: 'user', 'group', or 'agent'. */
-  actorType: 'user' | 'group' | 'agent'
-  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group', Agent.id for 'agent'). */
+  /** Type of actor: 'user', 'group', 'agent', or 'worker'. */
+  actorType: 'user' | 'group' | 'agent' | 'worker'
+  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group', Agent.id for 'agent', DispatchWorker.id for 'worker'). */
   id: string
-  /** Full ActorId in format "user:xxx", "group:xxx", or "agent:xxx". */
+  /** Full ActorId in format "user:xxx", "group:xxx", "agent:xxx", or "worker:xxx". */
   actorId: ActorId
   /** Denormalized for display */
   displayName?: string
@@ -233,9 +233,9 @@ export interface RelationshipFieldValueInput {
 /** Actor value input */
 export interface ActorFieldValueInput {
   type: 'actor'
-  /** Type of actor: 'user', 'group', or 'agent'. */
-  actorType: 'user' | 'group' | 'agent'
-  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group', Agent.id for 'agent'). */
+  /** Type of actor: 'user', 'group', 'agent', or 'worker'. */
+  actorType: 'user' | 'group' | 'agent' | 'worker'
+  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group', Agent.id for 'agent', DispatchWorker.id for 'worker'). */
   id: string
 }
 
@@ -299,7 +299,7 @@ export const relationshipFieldValueInputSchema = z.object({
 /** Schema for actor value input */
 export const actorFieldValueInputSchema = z.object({
   type: z.literal('actor'),
-  actorType: z.enum(['user', 'group', 'agent']),
+  actorType: z.enum(['user', 'group', 'agent', 'worker']),
   id: z.string(),
 })
 
@@ -322,7 +322,7 @@ export const typedFieldValueInputSchema = z.discriminatedUnion('type', [
 /** Options for actor field type */
 export interface ActorFieldOptions {
   multiple?: boolean
-  target?: 'user' | 'group' | 'both'
+  target?: 'user' | 'group' | 'worker' | 'both'
 }
 
 /**
@@ -472,12 +472,12 @@ export function createTypedValueInput(
         'actorType' in rawValue &&
         'id' in rawValue
       ) {
-        const obj = rawValue as { actorType: 'user' | 'group'; id: string }
+        const obj = rawValue as { actorType: 'user' | 'group' | 'agent' | 'worker'; id: string }
         // Parse id if it's in ActorId format (e.g., "user:abc123")
         let rawId = obj.id
         if (typeof rawId === 'string' && rawId.includes(':')) {
           const parts = rawId.split(':')
-          if (parts.length === 2 && ['user', 'group'].includes(parts[0]!)) {
+          if (parts.length === 2 && ['user', 'group', 'agent', 'worker'].includes(parts[0]!)) {
             rawId = parts[1]!
           }
         }
@@ -488,8 +488,12 @@ export function createTypedValueInput(
         // Check if it's an ActorId format (e.g., "user:abc123")
         if (rawValue.includes(':')) {
           const parts = rawValue.split(':')
-          if (parts.length === 2 && ['user', 'group'].includes(parts[0]!)) {
-            return { type: 'actor', actorType: parts[0] as 'user' | 'group', id: parts[1]! }
+          if (parts.length === 2 && ['user', 'group', 'agent', 'worker'].includes(parts[0]!)) {
+            return {
+              type: 'actor',
+              actorType: parts[0] as 'user' | 'group' | 'agent' | 'worker',
+              id: parts[1]!,
+            }
           }
         }
         // Plain string - assume user type

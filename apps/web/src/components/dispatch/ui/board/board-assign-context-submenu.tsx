@@ -11,25 +11,22 @@ import {
 } from '@auxx/ui/components/context-menu'
 import { UserCog, UserX } from 'lucide-react'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
-import { useWorkerActorExcludes } from '../shared/use-worker-actor-excludes'
 
 interface BoardAssignContextSubmenuProps {
-  /** `null` = the "Unassigned" row. */
-  onSelect: (userId: string | null) => void
+  /** `null` = the "Unassigned" row. The id is a `DispatchWorker.id` (individual or team). */
+  onSelect: (workerId: string | null) => void
 }
 
 /**
- * The chip context menu's "Assign to…" submenu (plan 44 §6) — the same worker-filtered
- * `ActorPickerContent` + "Unassigned" row the bulk bar's `BoardAssignPicker` uses, hosted inside a
+ * The chip context menu's "Assign to…" submenu (plan 44 §6) — an `ActorPickerContent` scoped to the
+ * `worker` actor kind (45-teams.md §5A, individuals + teams) + an "Unassigned" row, hosted inside a
  * `ContextMenuSub` instead of a popover. Radix context menus aren't controllable via an `open`
  * prop, and a `CommandItem` selection isn't a menu-item selection, so the menu wouldn't auto-close
  * on pick — a synthetic Escape dismisses the whole menu after the assign fires.
  */
 export function BoardAssignContextSubmenu({ onSelect }: BoardAssignContextSubmenuProps) {
-  const excludeIds = useWorkerActorExcludes()
-
-  const pick = (userId: string | null) => {
-    onSelect(userId)
+  const pick = (workerId: string | null) => {
+    onSelect(workerId)
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
   }
 
@@ -55,11 +52,10 @@ export function BoardAssignContextSubmenu({ onSelect }: BoardAssignContextSubmen
         <ActorPickerContent
           value={[]}
           onChange={() => {}}
-          target='user'
+          target='worker'
           multi={false}
-          excludeIds={excludeIds}
           onSelectSingle={(actorId) => pick(getActorRawId(actorId))}
-          placeholder='Search workers...'
+          placeholder='Search workers…'
         />
       </ContextMenuSubContent>
     </ContextMenuSub>

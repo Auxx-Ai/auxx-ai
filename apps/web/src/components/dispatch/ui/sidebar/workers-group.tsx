@@ -12,15 +12,15 @@ import { useMemo, useState } from 'react'
 import { SourceToggleRow } from '~/components/calendar/ui/source-toggle-group'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { type BoardWorker, UNASSIGNED_RESOURCE_ID } from '../board/types'
-import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR } from '../board/utils'
+import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR, workerDisplayName } from '../board/utils'
 import { WorkerDialog } from '../worker-dialog'
 
 interface WorkersGroupProps {
   workers: BoardWorker[]
-  /** Per-worker `OPTION_COLORS` entry (`use-board-data.ts`'s `colorByUserId` — the stored
-   * `SelectOptionColor` id resolved to its palette entry; this row's dot reads `.hex`, since
-   * several palette ids can't render directly as a CSS color). */
-  colorByUserId: Map<string, OptionColor>
+  /** Per-worker `OPTION_COLORS` entry, keyed by `DispatchWorker.id` (`use-board-data.ts`'s
+   * `colorByWorkerId` — the stored `SelectOptionColor` id resolved to its palette entry; this
+   * row's dot reads `.hex`, since several palette ids can't render directly as a CSS color). */
+  colorByWorkerId: Map<string, OptionColor>
   hiddenWorkerIds: string[]
   onToggleWorker: (workerId: string) => void
   open: boolean
@@ -32,12 +32,14 @@ interface WorkersGroupProps {
 
 /**
  * Wrapper component to make a SourceToggleRow representing a worker droppable for backlog
- * items and route stops. For the synthetic "Unassigned" row, passes `null` as assigneeUserId
- * instead of the resource id.
+ * items and route stops. `id` is the row's board identity — a `DispatchWorker.id` (individual or
+ * team) or the synthetic Unassigned sentinel — and doubles as the route planner's own drop-target
+ * assignee (`PlannerWorkerListDropData.assigneeWorkerId`, plans/dispatch/45-teams.md §5A): `null`
+ * only for the Unassigned row, passed explicitly by the caller.
  */
 function DroppableWorkerRow({
   id,
-  userId,
+  dropAssigneeWorkerId,
   label,
   color,
   visible,
@@ -45,7 +47,7 @@ function DroppableWorkerRow({
   mode,
 }: {
   id: string
-  userId: string
+  dropAssigneeWorkerId: string | null
   label: string
   color: string
   visible: boolean
@@ -56,12 +58,11 @@ function DroppableWorkerRow({
   const isCompatibleDrag =
     active?.data.current?.type === 'planner-backlog' ||
     active?.data.current?.type === 'planner-stop'
-  const isUnassigned = userId === UNASSIGNED_RESOURCE_ID
   const { setNodeRef, isOver } = useDroppable({
-    id: `worker-row-${userId}`,
+    id: `worker-row-${id}`,
     data: {
       type: 'planner-worker-list',
-      assigneeUserId: isUnassigned ? null : userId,
+      assigneeWorkerId: dropAssigneeWorkerId,
     },
     disabled: mode !== 'map' || !isCompatibleDrag,
   })
@@ -97,7 +98,7 @@ function DroppableWorkerRow({
  */
 export function WorkersGroup({
   workers,
-  colorByUserId,
+  colorByWorkerId,
   hiddenWorkerIds,
   onToggleWorker,
   open,
@@ -135,17 +136,17 @@ export function WorkersGroup({
             <DroppableWorkerRow
               key={worker.id}
               id={worker.id}
-              userId={worker.userId}
-              label={worker.user?.name ?? worker.user?.email ?? 'Worker'}
-              color={colorByUserId.get(worker.userId)?.hex ?? DEFAULT_WORKER_COLOR}
-              visible={!hidden.has(worker.userId)}
-              onToggle={() => onToggleWorker(worker.userId)}
+              dropAssigneeWorkerId={worker.id}
+              label={workerDisplayName(worker)}
+              color={colorByWorkerId.get(worker.id)?.hex ?? DEFAULT_WORKER_COLOR}
+              visible={!hidden.has(worker.id)}
+              onToggle={() => onToggleWorker(worker.id)}
               mode={mode}
             />
           ))}
           <DroppableWorkerRow
             id={UNASSIGNED_RESOURCE_ID}
-            userId={UNASSIGNED_RESOURCE_ID}
+            dropAssigneeWorkerId={null}
             label='Unassigned'
             color={UNASSIGNED_COLOR}
             visible={!hidden.has(UNASSIGNED_RESOURCE_ID)}

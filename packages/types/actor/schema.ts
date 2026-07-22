@@ -10,19 +10,21 @@ import type { ActorId, ActorIdType } from './index'
 export const actorIdSchema = z.string().refine(
   (val) => {
     const parts = val.split(':')
-    return parts.length === 2 && ['user', 'group', 'agent'].includes(parts[0]!)
+    return parts.length === 2 && ['user', 'group', 'agent', 'worker'].includes(parts[0]!)
   },
   {
-    message: 'ActorId must be in format user:id, group:id, or agent:id',
+    message: 'ActorId must be in format user:id, group:id, agent:id, or worker:id',
   }
 ) as unknown as z.ZodType<ActorId>
 
 /**
  * Zod schema for ActorIdType. System users share the `user:` prefix;
- * agents have their own `agent:` prefix keyed by `Agent.id`.
+ * agents have their own `agent:` prefix keyed by `Agent.id`; dispatch workers use
+ * `worker:` keyed by `DispatchWorker.id`.
  */
 export const actorTypeSchema = z.enum([
   'user',
   'group',
   'agent',
+  'worker',
 ]) as unknown as z.ZodType<ActorIdType>

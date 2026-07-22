@@ -119,8 +119,8 @@ function routeLineCoordinates(geometry: RouteGeometry): [number, number][] {
   return coords
 }
 
-function removeWorkerRoute(map: maplibregl.Map, userId: string) {
-  const layerId = `planner-route-${userId}`
+function removeWorkerRoute(map: maplibregl.Map, workerId: string) {
+  const layerId = `planner-route-${workerId}`
   if (map.getLayer(layerId)) map.removeLayer(layerId)
   if (map.getSource(layerId)) map.removeSource(layerId)
 }
@@ -270,15 +270,16 @@ export function PlannerMap({
   )
 
   const visibleWorkerIds = useMemo(
-    () => filters.workerIds ?? new Set(board.workers.map((w) => w.userId)),
+    () => filters.workerIds ?? new Set(board.workers.map((w) => w.id)),
     [filters.workerIds, board.workers]
   )
 
-  const colorByUserId = useMemo(() => {
+  // Keyed by `DispatchWorker.id` (the column identity, not `userId` — teams have no `userId`).
+  const colorByWorkerId = useMemo(() => {
     const map = new Map<string, string>()
     for (const w of board.workers) {
       const color = resolveWorkerColor(w.color)
-      if (color) map.set(w.userId, color)
+      if (color) map.set(w.id, color)
     }
     return map
   }, [board.workers])
@@ -293,15 +294,15 @@ export function PlannerMap({
       if (visit.status === 'canceled') continue
       if (visit.latitude == null || visit.longitude == null) continue
       if (!matchesTagFilter(workOrderById.get(visit.workOrderId), filters.tags)) continue
-      if (visit.assigneeUserId && !visibleWorkerIds.has(visit.assigneeUserId)) continue
+      if (visit.assigneeWorkerId && !visibleWorkerIds.has(visit.assigneeWorkerId)) continue
 
       const unassignedColor = isDark
         ? MAP_UNASSIGNED_PIN_COLOR_DARK
         : MAP_UNASSIGNED_PIN_COLOR_LIGHT
-      const color = visit.assigneeUserId
-        ? (colorByUserId.get(visit.assigneeUserId) ?? unassignedColor)
+      const color = visit.assigneeWorkerId
+        ? (colorByWorkerId.get(visit.assigneeWorkerId) ?? unassignedColor)
         : unassignedColor
-      const order = visit.assigneeUserId && visit.routeOrder != null ? visit.routeOrder + 1 : null
+      const order = visit.assigneeWorkerId && visit.routeOrder != null ? visit.routeOrder + 1 : null
       result.push({ visit, color, order })
     }
     return result
@@ -311,7 +312,7 @@ export function PlannerMap({
     workOrderById,
     filters.tags,
     visibleWorkerIds,
-    colorByUserId,
+    colorByWorkerId,
     isDark,
   ])
 
@@ -320,12 +321,12 @@ export function PlannerMap({
   // `use-route-planner-mutations.ts`) so the pin tooltip and the side panel never disagree.
   const etaByVisitId = useMemo(() => {
     const map = new Map<string, Date>()
-    const workerByUserId = new Map(board.workers.map((w) => [w.userId, w]))
+    const workerById = new Map(board.workers.map((w) => [w.id, w]))
     for (const visit of [...board.visits, ...board.backlog]) {
-      if (!visit.assigneeUserId) continue
-      const geometry = geometryByWorker[visit.assigneeUserId]
+      if (!visit.assigneeWorkerId) continue
+      const geometry = geometryByWorker[visit.assigneeWorkerId]
       if (!geometry) continue
-      const start = dayStartAnchor(window, workerByUserId.get(visit.assigneeUserId), '08:00')
+      const start = dayStartAnchor(window, workerById.get(visit.assigneeWorkerId), '08:00')
       const arrival = estimateArrivalForVisit(start, geometry, visit.id)
       if (arrival) map.set(visit.id, arrival)
     }
@@ -416,18 +417,18 @@ export function PlannerMap({
     if (!map || !mapReady) return
 
     for (const worker of board.workers) {
-      if (!visibleWorkerIds.has(worker.userId)) {
-        removeWorkerRoute(map, worker.userId)
+      if (!visibleWorkerIds.has(worker.id)) {
+        removeWorkerRoute(map, worker.id)
         continue
       }
-      const geometry = geometryByWorker[worker.userId]
+      const geometry = geometryByWorker[worker.id]
       const coordinates = geometry ? routeLineCoordinates(geometry) : []
       if (coordinates.length < 2) {
-        removeWorkerRoute(map, worker.userId)
+        removeWorkerRoute(map, worker.id)
         continue
       }
 
-      const layerId = `planner-route-${worker.userId}`
+      const layerId = `planner-route-${worker.id}`
       const geojson = {
         type: 'Feature' as const,
         properties: {},

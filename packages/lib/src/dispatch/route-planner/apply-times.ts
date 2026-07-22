@@ -20,7 +20,7 @@ import { resolveAvailability } from '../../availability'
 import { NotFoundError } from '../../errors'
 import { resolveVisitDurationMinutes } from '../types'
 import { scheduleVisit } from '../visit-mutations'
-import { listDispatchWorkers } from '../workers'
+import { getDispatchWorker, listDispatchWorkers } from '../workers'
 import { resolveRouteStart } from './depot'
 import { getRouteLegs } from './directions'
 import type { PlannerDayWindow, RouteStop } from './types'
@@ -29,7 +29,7 @@ import type { PlannerDayWindow, RouteStop } from './types'
 export interface ApplyRouteTimesInput {
   organizationId: string
   userId: string
-  assigneeUserId: string
+  assigneeWorkerId: string
   /** `yyyy-MM-dd` label of the planned day, client-resolved — the Directions cache-key day. */
   dateKey: string
   /** The confirmed first-departure time (editable default: worker availability day-start). */
@@ -44,7 +44,7 @@ export interface ApplyRouteTimesInput {
 export interface AutoApplyRouteTimesInput {
   organizationId: string
   userId: string
-  assigneeUserId: string
+  assigneeWorkerId: string
   /** `yyyy-MM-dd` label of the planned day, client-resolved — the Directions cache-key day. */
   dateKey: string
   /** The planned day's client-resolved bounds ({@link PlannerDayWindow}) — `from` is the local
@@ -106,16 +106,14 @@ async function loadVisitRows(
  */
 async function loadLegSeconds(params: {
   organizationId: string
-  assigneeUserId: string
+  assigneeWorkerId: string
   dateKey: string
   visitIds: string[]
   rowsByVisitId: Map<string, ChainVisitRow>
 }): Promise<Map<string, number>> {
-  const { organizationId, assigneeUserId, dateKey, visitIds, rowsByVisitId } = params
+  const { organizationId, assigneeWorkerId, dateKey, visitIds, rowsByVisitId } = params
 
-  const worker = (await listDispatchWorkers(organizationId)).find(
-    (w) => w.userId === assigneeUserId
-  )
+  const worker = (await listDispatchWorkers(organizationId)).find((w) => w.id === assigneeWorkerId)
   if (!worker) throw new NotFoundError('Dispatch worker not found')
 
   const homePoint = await resolveRouteStart(organizationId, worker)
@@ -132,7 +130,7 @@ async function loadLegSeconds(params: {
 
   const geometry = await getRouteLegs(
     organizationId,
-    assigneeUserId,
+    assigneeWorkerId,
     dateKey,
     depotStart,
     depotEnd,
@@ -211,7 +209,7 @@ export async function applyRouteTimes(input: ApplyRouteTimesInput): Promise<void
   const {
     organizationId,
     userId,
-    assigneeUserId,
+    assigneeWorkerId,
     dateKey,
     firstDeparture,
     visitIds,
@@ -222,7 +220,7 @@ export async function applyRouteTimes(input: ApplyRouteTimesInput): Promise<void
   const rowsByVisitId = await loadVisitRows(organizationId, visitIds)
   const legSecondsByVisitId = await loadLegSeconds({
     organizationId,
-    assigneeUserId,
+    assigneeWorkerId,
     dateKey,
     visitIds,
     rowsByVisitId,
@@ -245,13 +243,15 @@ export async function applyRouteTimes(input: ApplyRouteTimesInput): Promise<void
  * server-side here) and no-ops when none remain or every remaining stop is a confirmed anchor
  * (§4.4 — nothing to write). First-departure seed per §3.2: if any active stop already has a
  * `startTime`, the previously chosen day start is preserved (`min(startTime)` minus the new
- * first stop's leg seconds); otherwise the worker's availability day-start for `dateKey`
- * (`resolveAvailability`, org-hours fallback) on top of `window.from`, falling back to 08:00 —
- * the apply-times dialog's exact seed. Conflicts at anchors are applied as-computed, same as
+ * first stop's leg seconds); otherwise an INDIVIDUAL assignee's availability day-start for
+ * `dateKey` (`resolveAvailability`, org-hours fallback) on top of `window.from`, falling back to
+ * 08:00 — the apply-times dialog's exact seed. A TEAM assignee has no single person's hours to
+ * seed from (45-teams.md §1.F — team availability shading is skipped in v1), so it falls
+ * straight through to the 08:00 default. Conflicts at anchors are applied as-computed, same as
  * the dialog path; the drift badge is the affordance.
  */
 export async function autoApplyRouteTimes(input: AutoApplyRouteTimesInput): Promise<void> {
-  const { organizationId, userId, assigneeUserId, dateKey, window, visitIds, excludeSocketId } =
+  const { organizationId, userId, assigneeWorkerId, dateKey, window, visitIds, excludeSocketId } =
     input
   if (visitIds.length === 0) return
 
@@ -268,7 +268,7 @@ export async function autoApplyRouteTimes(input: AutoApplyRouteTimesInput): Prom
   // Legs are fetched ONCE — the seed's first-stop leg and the chain reuse the same map.
   const legSecondsByVisitId = await loadLegSeconds({
     organizationId,
-    assigneeUserId,
+    assigneeWorkerId,
     dateKey,
     visitIds: activeVisitIds,
     rowsByVisitId,
@@ -285,13 +285,19 @@ export async function autoApplyRouteTimes(input: AutoApplyRouteTimesInput): Prom
     const firstLegSeconds = legSecondsByVisitId.get(activeVisitIds[0] as string) ?? 0
     firstDeparture = new Date(Math.min(...timedStartsMs) - firstLegSeconds * 1000)
   } else {
-    // Fresh, unapplied route — worker availability day-start (minutes since local midnight,
-    // resolved for the planned day) stamped onto the client-resolved local day start.
-    const days = await resolveAvailability(
-      { type: 'worker', organizationId, userId: assigneeUserId },
-      { from: dateKey, to: dateKey }
-    )
-    const startMinutes = days[0]?.ranges[0]?.start ?? 8 * 60
+    // Fresh, unapplied route — an INDIVIDUAL assignee's availability day-start (minutes since
+    // local midnight, resolved for the planned day) stamped onto the client-resolved local day
+    // start; a TEAM assignee has no single person's hours to seed from (§1.F) and falls through
+    // to the 08:00 default.
+    let startMinutes = 8 * 60
+    const assigneeWorker = await getDispatchWorker(organizationId, assigneeWorkerId)
+    if (assigneeWorker?.type === 'individual' && assigneeWorker.userId) {
+      const days = await resolveAvailability(
+        { type: 'worker', organizationId, userId: assigneeWorker.userId },
+        { from: dateKey, to: dateKey }
+      )
+      startMinutes = days[0]?.ranges[0]?.start ?? 8 * 60
+    }
     firstDeparture = new Date(window.from.getTime() + startMinutes * 60_000)
   }
 

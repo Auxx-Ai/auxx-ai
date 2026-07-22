@@ -34,7 +34,7 @@ import type { PasteAnchor } from './hooks/use-board-clipboard'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import { useVisibleHourWindow } from './hooks/use-visible-hour-window'
 import { type SlotClickTarget, SlotCreatePopover } from './slot-create-popover'
-import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
+import type { BoardResourceInput, BoardViewMode, BoardWorker, DispatchVisitEvent } from './types'
 import { isPastVisitEvent } from './utils'
 import { VisitChipContent, VisitChipMonthContent } from './visit-chip-content'
 import { VisitPopoverContent } from './visit-popover'
@@ -53,6 +53,9 @@ interface BoardCalendarGridProps {
   view: BoardViewMode
   weekStartsOn: 0 | 1 | 6
   resources: BoardResourceInput[]
+  /** Every active dispatch worker (individuals + teams) — `use-board-data.ts`'s `allWorkers`.
+   * Threaded straight through to the slot-create popover's assignee picker. */
+  workers: BoardWorker[]
   backgroundEvents: BackgroundEvent[]
   events: DispatchVisitEvent[]
   overlappingIds: Set<string>
@@ -108,6 +111,7 @@ export function BoardCalendarGrid({
   view,
   weekStartsOn,
   resources,
+  workers,
   backgroundEvents,
   events,
   overlappingIds,
@@ -367,9 +371,9 @@ export function BoardCalendarGrid({
   }, [menuTarget, resolveMenuTargetIds, onCopyIds])
 
   const handleAssignFromMenu = useCallback(
-    (assigneeUserId: string | null) => {
+    (assigneeWorkerId: string | null) => {
       if (menuTarget?.type !== 'chip') return
-      bulkActions?.assign(resolveMenuTargetIds(menuTarget.visitId), assigneeUserId)
+      bulkActions?.assign(resolveMenuTargetIds(menuTarget.visitId), assigneeWorkerId)
     },
     [menuTarget, resolveMenuTargetIds, bulkActions]
   )
@@ -510,6 +514,7 @@ export function BoardCalendarGrid({
         }}
         onSelectionChange={onSelectionChange}
         mutations={mutations}
+        workers={workers}
       />
     </>
   )

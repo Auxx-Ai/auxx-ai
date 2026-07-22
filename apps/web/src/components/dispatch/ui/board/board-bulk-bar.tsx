@@ -14,6 +14,7 @@ import { useCallback } from 'react'
 import { BoardAssignPicker } from './board-assign-picker'
 import type { BoardBulkActions } from './hooks/use-board-bulk-actions'
 import type { useBoardBulkRunner } from './hooks/use-board-bulk-runner'
+import type { BoardWorker } from './types'
 
 interface BoardBulkBarProps {
   selectedVisitIds: string[]
@@ -26,6 +27,9 @@ interface BoardBulkBarProps {
    * Cmd+C runs; the hook owns that keybinding, this button is just a visible affordance for
    * the same action, not a second registration). */
   onCopySelection: () => void
+  /** Every active dispatch worker (individuals + teams) — the "Assign to…" picker's flat list
+   * (`use-board-data.ts`'s `allWorkers`). */
+  workers: BoardWorker[]
 }
 
 /**
@@ -42,6 +46,7 @@ export function BoardBulkBar({
   bulkActions,
   onClearSelection,
   onCopySelection,
+  workers,
 }: BoardBulkBarProps) {
   const { isRunning, ConfirmDialog } = bulkRunner
   const count = selectedVisitIds.length
@@ -49,7 +54,7 @@ export function BoardBulkBar({
   const open = count >= 2
 
   const handleAssign = useCallback(
-    (assigneeUserId: string | null) => bulkActions.assign(selectedVisitIds, assigneeUserId),
+    (assigneeWorkerId: string | null) => bulkActions.assign(selectedVisitIds, assigneeWorkerId),
     [bulkActions, selectedVisitIds]
   )
 
@@ -98,7 +103,7 @@ export function BoardBulkBar({
         // toolbar's `ActorPicker`/`TagPicker`/`RecordPicker` usage has the identical pre-existing
         // mismatch at `bulk-action-toolbar.tsx:323`, just uncast there).
         component: BoardAssignPicker as ComponentType<PickerComponentProps>,
-        props: { onSelect: handleAssign },
+        props: { workers, onSelect: handleAssign },
       },
     },
     {

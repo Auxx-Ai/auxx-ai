@@ -29,12 +29,12 @@ import { scheduleVisit } from './visit-mutations'
  * to explain about not setting it; it's just never touched.
  *
  * @param input - organizationId, userId (acting user), contactRecordId, optional title (falls
- * back to the contact's displayName), the slot's startTime/endTime, optional assigneeUserId.
+ * back to the contact's displayName), the slot's startTime/endTime, optional assigneeWorkerId.
  * @returns The new work order's RecordId, the id of the visit that was scheduled onto it, and
  * the scheduled visit row itself (plan 39 §Phase-1 — feeds the acting tab's cache patch).
  */
 export async function createWorkOrder(input: CreateWorkOrderInput): Promise<CreateWorkOrderResult> {
-  const { organizationId, userId, contactRecordId, startTime, endTime, assigneeUserId } = input
+  const { organizationId, userId, contactRecordId, startTime, endTime, assigneeWorkerId } = input
   const handler = new UnifiedCrudHandler(organizationId, userId)
 
   let title = input.title?.trim()
@@ -80,7 +80,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput): Promise<Crea
     visitId: visit.id,
     startTime,
     endTime,
-    assigneeUserId,
+    assigneeWorkerId,
     excludeSocketId: input.excludeSocketId,
   })
 

@@ -157,7 +157,7 @@ export async function materializeVisits(
           // into endTime) so it survives an unschedule/reschedule round-trip; `timeConfirmedAt`
           // stays null — pattern-generated, nobody promised this time to a human (§4.2).
           durationMinutes,
-          assigneeUserId: rule.defaultAssigneeUserId,
+          assigneeWorkerId: rule.defaultAssigneeWorkerId,
           timezone: rule.timezone,
           status: 'scheduled',
           latitude: geocodedSibling?.latitude ?? null,

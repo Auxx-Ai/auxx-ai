@@ -54,7 +54,7 @@ export interface BoardResult {
 export interface VisitDayMarker {
   visitId: string
   startTime: Date
-  assigneeUserId: string | null
+  assigneeWorkerId: string | null
 }
 
 /**
@@ -235,7 +235,7 @@ export async function getVisitDayMarkers(
     .select({
       visitId: schema.WorkOrderVisit.id,
       startTime: schema.WorkOrderVisit.startTime,
-      assigneeUserId: schema.WorkOrderVisit.assigneeUserId,
+      assigneeWorkerId: schema.WorkOrderVisit.assigneeWorkerId,
     })
     .from(schema.WorkOrderVisit)
     .where(
@@ -250,7 +250,7 @@ export async function getVisitDayMarkers(
   return rows.map((row) => ({
     visitId: row.visitId,
     startTime: row.startTime as Date,
-    assigneeUserId: row.assigneeUserId,
+    assigneeWorkerId: row.assigneeWorkerId,
   }))
 }
 

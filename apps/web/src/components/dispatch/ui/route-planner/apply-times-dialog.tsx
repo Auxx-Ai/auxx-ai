@@ -194,7 +194,7 @@ export function ApplyTimesDialog({
     if (activeStops.length === 0) return
     applyRouteTimes.mutate(
       {
-        assigneeUserId: worker.userId,
+        assigneeWorkerId: worker.id,
         dateKey: date.dateKey,
         firstDeparture,
         visitIds: activeStops.map((v) => v.id),

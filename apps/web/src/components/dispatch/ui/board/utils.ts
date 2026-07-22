@@ -110,14 +110,25 @@ export function selectedWorkerIdsFromHidden(
   const hiddenReal = hiddenWorkerIds.filter((id) => id !== UNASSIGNED_RESOURCE_ID)
   if (hiddenReal.length === 0) return null
   const hidden = new Set(hiddenReal)
-  return new Set(allWorkers.filter((w) => !hidden.has(w.userId)).map((w) => w.userId))
+  return new Set(allWorkers.filter((w) => !hidden.has(w.id)).map((w) => w.id))
 }
 
 /** Whether a visit's assignee (or `null` for Unassigned) is hidden per the sidebar's Workers
  * group toggles — used both by `use-board-data.ts` (the Unassigned column/events) and the
- * mini-calendar density hook. */
-export function isWorkerHidden(hiddenWorkerIds: string[], assigneeUserId: string | null): boolean {
-  return hiddenWorkerIds.includes(assigneeUserId ?? UNASSIGNED_RESOURCE_ID)
+ * mini-calendar density hook. `assigneeWorkerId` is a `DispatchWorker.id`. */
+export function isWorkerHidden(
+  hiddenWorkerIds: string[],
+  assigneeWorkerId: string | null
+): boolean {
+  return hiddenWorkerIds.includes(assigneeWorkerId ?? UNASSIGNED_RESOURCE_ID)
+}
+
+/** Display label for a board worker column — an individual's user name/email, or a team's own
+ * label (`user: null` for teams). Shared by `use-board-data.ts`'s resource builder, the sidebar's
+ * Workers group, and the board's flat assignee pickers (plans/dispatch/45-teams.md §1.H). */
+export function workerDisplayName(worker: BoardWorker): string {
+  if (worker.type === 'team') return worker.name ?? 'Team'
+  return worker.user?.name ?? worker.user?.email ?? 'Worker'
 }
 
 /** A `SettingValue` read via `getSetting` may be a scalar or (defensively) a 1-item array. */
@@ -199,7 +210,7 @@ export function splitVisits(visits: BoardVisit[]) {
 export function visitToEvent(
   visit: BoardVisit & { startTime: Date; endTime: Date },
   workOrderById: Map<string, BoardWorkOrder>,
-  colorByUserId: Map<string, OptionColor>
+  colorByWorkerId: Map<string, OptionColor>
 ): DispatchVisitEvent {
   const workOrder = workOrderById.get(visit.workOrderId)
   const title = workOrder
@@ -207,11 +218,12 @@ export function visitToEvent(
     : 'Work order'
   // Chip coloring is the badge look (plan 11 follow-up): the assigned worker's stored palette
   // entry supplies `colorClasses`; the resolved hex is still stamped on `color` for non-chip
-  // consumers (sidebar dots, map pins).
-  const optionColor = visit.assigneeUserId
-    ? (colorByUserId.get(visit.assigneeUserId) ?? getOptionColor(DEFAULT_WORKER_COLOR_ID))
+  // consumers (sidebar dots, map pins). Keyed by `worker.id` — a `DispatchWorker.id`, not a
+  // `User.id` — so a team's own color resolves the same way an individual's does.
+  const optionColor = visit.assigneeWorkerId
+    ? (colorByWorkerId.get(visit.assigneeWorkerId) ?? getOptionColor(DEFAULT_WORKER_COLOR_ID))
     : getOptionColor(UNASSIGNED_COLOR_ID)
-  const color = visit.assigneeUserId ? optionColor.hex : UNASSIGNED_COLOR
+  const color = visit.assigneeWorkerId ? optionColor.hex : UNASSIGNED_COLOR
 
   return {
     id: visit.id,
@@ -220,9 +232,9 @@ export function visitToEvent(
     end: visit.endTime,
     color,
     colorClasses: toEventColorClasses(optionColor),
-    resourceId: visit.assigneeUserId ?? UNASSIGNED_RESOURCE_ID,
+    resourceId: visit.assigneeWorkerId ?? UNASSIGNED_RESOURCE_ID,
     workOrderId: visit.workOrderId,
-    assigneeUserId: visit.assigneeUserId,
+    assigneeWorkerId: visit.assigneeWorkerId,
     status: isVisitStatus(visit.status) ? visit.status : 'scheduled',
     dispatchedAt: visit.dispatchedAt ? new Date(visit.dispatchedAt).toISOString() : null,
     recurrenceRuleId: visit.recurrenceRuleId ?? null,

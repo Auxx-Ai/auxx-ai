@@ -24,6 +24,7 @@ import { UnifiedCrudHandler } from '../resources/crud'
 import type { VisitStatus } from './types'
 import { setVisitStatus } from './visit-mutations'
 import { getWorkOrderProjections } from './work-order-fields'
+import { resolveUserWorkerIds } from './workers'
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
@@ -36,13 +37,14 @@ function firstTyped(
 }
 
 /**
- * Load a visit and enforce the assignee guard (08 §6) — a worker touches only their own
- * visits. Shared by every worker-scoped mutation/read below except `listMyVisits`, which
- * filters by `assigneeUserId` in the query itself. Also reused by `qc.ts` for the worker-scoped
- * QC checklist fns (08 §5).
+ * Load a visit and enforce the assignee guard (08 §6, 45-teams.md §5.3) — a worker touches only
+ * visits assigned to their own individual worker row OR a team they're a member of. Shared by
+ * every worker-scoped mutation/read below except `listMyVisits`, which filters by
+ * `assigneeWorkerId` in the query itself. Also reused by `qc.ts` for the worker-scoped QC
+ * checklist fns (08 §5).
  *
  * @throws {NotFoundError} when the visit doesn't exist in this org.
- * @throws {ForbiddenError} when the visit isn't assigned to `userId`.
+ * @throws {ForbiddenError} when the visit isn't assigned to `userId`'s worker(s).
  */
 export async function loadOwnVisit(
   organizationId: string,
@@ -56,7 +58,8 @@ export async function loadOwnVisit(
     ),
   })
   if (!visit) throw new NotFoundError('Visit not found')
-  if (visit.assigneeUserId !== userId) {
+  const myWorkerIds = await resolveUserWorkerIds(organizationId, userId)
+  if (!visit.assigneeWorkerId || !myWorkerIds.includes(visit.assigneeWorkerId)) {
     throw new ForbiddenError('This visit is not assigned to you')
   }
   return visit
@@ -124,10 +127,15 @@ export interface MyVisitListItem {
 
 /**
  * List the signed-in worker's visits scheduled in `[from, to)`, oldest first (08 §2 "Data" —
- * the Schedule page's windowed fetch). Uses the `(assigneeUserId, startTime)` index.
+ * the Schedule page's windowed fetch). A visit is "mine" when its `assigneeWorkerId` is either
+ * my own individual worker row or a team I'm a member of (45-teams.md §5.3). Uses the
+ * `(assigneeWorkerId, startTime)` index.
  */
 export async function listMyVisits(input: ListMyVisitsInput): Promise<MyVisitListItem[]> {
   const { organizationId, userId, from, to } = input
+
+  const myWorkerIds = await resolveUserWorkerIds(organizationId, userId)
+  if (myWorkerIds.length === 0) return []
 
   const visits = await database
     .select()
@@ -135,7 +143,7 @@ export async function listMyVisits(input: ListMyVisitsInput): Promise<MyVisitLis
     .where(
       and(
         eq(schema.WorkOrderVisit.organizationId, organizationId),
-        eq(schema.WorkOrderVisit.assigneeUserId, userId),
+        inArray(schema.WorkOrderVisit.assigneeWorkerId, myWorkerIds),
         gte(schema.WorkOrderVisit.startTime, from),
         lt(schema.WorkOrderVisit.startTime, to)
       )

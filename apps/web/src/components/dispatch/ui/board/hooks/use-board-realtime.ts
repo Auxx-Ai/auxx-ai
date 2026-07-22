@@ -9,9 +9,9 @@ import {
   rewrapVisitDates,
   type VisitChangedPayload,
 } from '~/components/dispatch/visit-cache'
-import { useUser } from '~/hooks/use-user'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
+import { useViewerWorkerIds } from '../../shared/use-viewer-worker-ids'
 
 /**
  * Live board updates (07 §D.5, the `use-eval-cases-realtime.ts` recipe). Plan
@@ -28,7 +28,7 @@ import { api } from '~/trpc/react'
 export function useBoardRealtime() {
   const utils = api.useUtils()
   const queryClient = useQueryClient()
-  const { userId } = useUser()
+  const viewerWorkerIds = useViewerWorkerIds()
 
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
@@ -40,7 +40,7 @@ export function useBoardRealtime() {
           {
             visit: rewrapVisitDates(p.visit),
             workOrderStatus: p.workOrderStatus,
-            viewerUserId: userId ?? undefined,
+            viewerWorkerIds,
           }
         )
         return
@@ -49,7 +49,7 @@ export function useBoardRealtime() {
       // v3 sidebar plan §1.4 — the mini-calendar's day-marker dots follow the same broadcast.
       void utils.dispatch.getVisitDayMarkers.invalidate()
     },
-    [utils, queryClient, userId]
+    [utils, queryClient, viewerWorkerIds]
   )
 
   useOrgChannel({ onEvent })

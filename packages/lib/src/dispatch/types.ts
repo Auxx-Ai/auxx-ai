@@ -32,7 +32,7 @@ export interface CreateWorkOrderInput {
   title?: string
   startTime: Date
   endTime: Date
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
   excludeSocketId?: string
 }
 
@@ -65,7 +65,7 @@ export interface ScheduleVisitInput {
   startTime: Date
   endTime: Date
   /** Omit to leave the current assignee untouched; `null` explicitly unassigns. */
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
   timezone?: string
   /** Classification of this time-write (plan 20 §4.2): 'confirmed' (default) = a deliberate
    * human write — stamps `timeConfirmedAt` and syncs `durationMinutes` from the span;
@@ -81,7 +81,7 @@ export interface AssignVisitInput {
   organizationId: string
   userId: string
   visitId: string
-  assigneeUserId: string | null
+  assigneeWorkerId: string | null
   excludeSocketId?: string
 }
 
@@ -142,7 +142,7 @@ export interface AddVisitInput {
   workOrderInstanceId: string
   startTime?: Date | null
   endTime?: Date | null
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
   excludeSocketId?: string
 }
 

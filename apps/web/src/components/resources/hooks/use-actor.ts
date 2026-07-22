@@ -118,9 +118,9 @@ interface UseAvailableActorsOptions {
   /**
    * Filter to specific target.
    * 'both' = users + groups (humans only, agents excluded unless includeAgents).
-   * 'all'  = users + agents + groups.
+   * 'all'  = users + agents + groups + workers.
    */
-  target?: 'user' | 'group' | 'agent' | 'both' | 'all'
+  target?: 'user' | 'group' | 'agent' | 'worker' | 'both' | 'all'
   /** Filter users by role */
   roles?: ('OWNER' | 'ADMIN' | 'USER')[]
   /** Filter to specific group IDs */
@@ -151,6 +151,8 @@ export function useAvailableActors(options: UseAvailableActorsOptions = {}): Act
         actors = actors.filter((a) => a.type === 'group')
       } else if (target === 'agent') {
         actors = actors.filter((a) => a.type === 'agent')
+      } else if (target === 'worker') {
+        actors = actors.filter((a) => a.type === 'worker')
       } else if (target === 'both' || !target) {
         // users + groups; agents only if includeAgents
         actors = actors.filter((a) => {

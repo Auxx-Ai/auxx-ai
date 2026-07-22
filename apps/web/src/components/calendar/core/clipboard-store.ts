@@ -16,7 +16,7 @@ export interface CopiedVisitItem {
   title: string
   start: Date
   end: Date
-  assigneeUserId: string | null
+  assigneeWorkerId: string | null
 }
 
 interface CalendarClipboard {

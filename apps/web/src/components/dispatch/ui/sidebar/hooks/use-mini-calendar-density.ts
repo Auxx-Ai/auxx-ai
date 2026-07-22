@@ -40,7 +40,7 @@ export function useMiniCalendarDensity(
   const density = useMemo(() => {
     const map: Record<string, number> = {}
     for (const marker of query.data ?? []) {
-      if (isWorkerHidden(hiddenWorkerIds, marker.assigneeUserId)) continue
+      if (isWorkerHidden(hiddenWorkerIds, marker.assigneeWorkerId)) continue
       const key = format(new Date(marker.startTime), 'yyyy-MM-dd')
       map[key] = (map[key] ?? 0) + 1
     }

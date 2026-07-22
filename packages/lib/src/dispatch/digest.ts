@@ -20,6 +20,7 @@ import { and, eq, gte, isNotNull, lt, ne } from 'drizzle-orm'
 import { enqueueEmailJob } from '../jobs/email/enqueue-email-job'
 import { getUserSetting } from '../settings'
 import { getWorkOrderProjections } from './work-order-fields'
+import { resolveWorkerUserIds } from './workers'
 
 const logger = createScopedLogger('dispatch:digest')
 
@@ -133,7 +134,7 @@ async function runDigestForOrg(organizationId: string): Promise<void> {
     .select({
       id: schema.WorkOrderVisit.id,
       workOrderId: schema.WorkOrderVisit.workOrderId,
-      assigneeUserId: schema.WorkOrderVisit.assigneeUserId,
+      assigneeWorkerId: schema.WorkOrderVisit.assigneeWorkerId,
       startTime: schema.WorkOrderVisit.startTime,
       endTime: schema.WorkOrderVisit.endTime,
     })
@@ -141,7 +142,7 @@ async function runDigestForOrg(organizationId: string): Promise<void> {
     .where(
       and(
         eq(schema.WorkOrderVisit.organizationId, organizationId),
-        isNotNull(schema.WorkOrderVisit.assigneeUserId),
+        isNotNull(schema.WorkOrderVisit.assigneeWorkerId),
         gte(schema.WorkOrderVisit.startTime, start),
         lt(schema.WorkOrderVisit.startTime, end),
         ne(schema.WorkOrderVisit.status, 'canceled')
@@ -150,18 +151,20 @@ async function runDigestForOrg(organizationId: string): Promise<void> {
 
   if (visits.length === 0) return
 
-  const visitsByAssignee = new Map<string, DigestVisitRow[]>()
+  // Grouped by worker first (one row per team/individual); expanded to recipient users below —
+  // a team's digest goes to EVERY member (45-teams.md §5.4).
+  const visitsByWorker = new Map<string, DigestVisitRow[]>()
   for (const visit of visits) {
-    if (!visit.assigneeUserId || !visit.startTime || !visit.endTime) continue
-    const list = visitsByAssignee.get(visit.assigneeUserId) ?? []
+    if (!visit.assigneeWorkerId || !visit.startTime || !visit.endTime) continue
+    const list = visitsByWorker.get(visit.assigneeWorkerId) ?? []
     list.push({
       workOrderId: visit.workOrderId,
       startTime: visit.startTime,
       endTime: visit.endTime,
     })
-    visitsByAssignee.set(visit.assigneeUserId, list)
+    visitsByWorker.set(visit.assigneeWorkerId, list)
   }
-  if (visitsByAssignee.size === 0) return
+  if (visitsByWorker.size === 0) return
 
   const workOrderIds = Array.from(new Set(visits.map((v) => v.workOrderId)))
   const workOrderInfo = await getWorkOrderProjections(organizationId, undefined, workOrderIds, [
@@ -176,48 +179,51 @@ async function runDigestForOrg(organizationId: string): Promise<void> {
   })
   const scheduleUrl = `${WEBAPP_URL}/app/schedule`
 
-  for (const [assigneeUserId, assigneeVisits] of visitsByAssignee) {
-    try {
-      const digestEnabled = await getUserSetting({
-        organizationId,
-        userId: assigneeUserId,
-        key: 'notification.dispatch.dailyDigest',
-      })
-      if (digestEnabled !== true) continue
+  for (const [assigneeWorkerId, workerVisits] of visitsByWorker) {
+    const recipientUserIds = await resolveWorkerUserIds(organizationId, assigneeWorkerId)
+    for (const recipientUserId of recipientUserIds) {
+      try {
+        const digestEnabled = await getUserSetting({
+          organizationId,
+          userId: recipientUserId,
+          key: 'notification.dispatch.dailyDigest',
+        })
+        if (digestEnabled !== true) continue
 
-      const assignee = await database.query.User.findFirst({
-        where: eq(schema.User.id, assigneeUserId),
-      })
-      if (!assignee?.email) continue
+        const assignee = await database.query.User.findFirst({
+          where: eq(schema.User.id, recipientUserId),
+        })
+        if (!assignee?.email) continue
 
-      const sortedVisits = [...assigneeVisits].sort(
-        (a, b) => a.startTime.getTime() - b.startTime.getTime()
-      )
+        const sortedVisits = [...workerVisits].sort(
+          (a, b) => a.startTime.getTime() - b.startTime.getTime()
+        )
 
-      await enqueueEmailJob('visit-daily-digest', {
-        recipient: { email: assignee.email, name: assignee.name ?? undefined },
-        dateLabel,
-        timezone,
-        visits: sortedVisits.map((visit) => {
-          const info = workOrderInfo.get(visit.workOrderId)
-          return {
-            workOrderNumber: info?.number ?? '',
-            workOrderTitle: info?.title ?? 'Work order',
-            startTime: visit.startTime.toISOString(),
-            endTime: visit.endTime.toISOString(),
-            address: info?.address,
-          }
-        }),
-        scheduleUrl,
-        source: 'dispatch.dailyDigest',
-        organizationId,
-      })
-    } catch (error) {
-      logger.error('Failed to send dispatch daily digest to worker', {
-        error,
-        organizationId,
-        assigneeUserId,
-      })
+        await enqueueEmailJob('visit-daily-digest', {
+          recipient: { email: assignee.email, name: assignee.name ?? undefined },
+          dateLabel,
+          timezone,
+          visits: sortedVisits.map((visit) => {
+            const info = workOrderInfo.get(visit.workOrderId)
+            return {
+              workOrderNumber: info?.number ?? '',
+              workOrderTitle: info?.title ?? 'Work order',
+              startTime: visit.startTime.toISOString(),
+              endTime: visit.endTime.toISOString(),
+              address: info?.address,
+            }
+          }),
+          scheduleUrl,
+          source: 'dispatch.dailyDigest',
+          organizationId,
+        })
+      } catch (error) {
+        logger.error('Failed to send dispatch daily digest to worker', {
+          error,
+          organizationId,
+          recipientUserId,
+        })
+      }
     }
   }
 }

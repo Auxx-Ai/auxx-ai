@@ -79,10 +79,12 @@ export interface PlannerWorkOrder {
   addressText: string | null
 }
 
-/** One worker row on the planner board. */
+/** One worker row on the planner board (individual or team — 45-teams.md). */
 export interface PlannerWorker {
   id: string
-  userId: string
+  /** Backing user for individuals; null for teams. */
+  userId: string | null
+  type: 'individual' | 'team'
   color: string | null
   name: string | null
   email: string | null

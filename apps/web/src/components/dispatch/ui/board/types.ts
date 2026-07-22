@@ -45,13 +45,14 @@ export type BoardWorker = BoardResult['workers'][number]
 export type BoardVisit = BoardResult['visits'][number]
 export type BoardWorkOrder = BoardResult['workOrders'][number]
 
-/** The unassigned column's synthetic resource id — maps to `assigneeUserId: null`. */
+/** The unassigned column's synthetic resource id — maps to `assigneeWorkerId: null`. */
 export const UNASSIGNED_RESOURCE_ID = 'unassigned'
 
 /** A `WorkOrderVisit` row projected onto the calendar's event shape. */
 export interface DispatchVisitEvent extends EventCalendarItem {
   workOrderId: string
-  assigneeUserId: string | null
+  /** A `DispatchWorker.id` (individual or team) — never a `User.id` (plans/dispatch/45-teams.md). */
+  assigneeWorkerId: string | null
   status: VisitStatus
   dispatchedAt: string | null
   recurrenceRuleId: string | null

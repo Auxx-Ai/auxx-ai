@@ -121,7 +121,7 @@ export function VisitPopoverContent({
    * button only — closing the page without saving discards instead (`resetToRule` below). */
   const commitRecurrence = () => {
     if (!editor.wantsRecurrenceWrite || !editor.patternValid) return
-    const input = editor.buildSetRecurrenceInput(event.start, event.end, event.assigneeUserId)
+    const input = editor.buildSetRecurrenceInput(event.start, event.end, event.assigneeWorkerId)
     if (!input) return
     setRecurrence.mutate(input)
     editor.markSaved()
@@ -129,7 +129,7 @@ export function VisitPopoverContent({
 
   const hints = useScheduleHints({
     visitId: event.id,
-    assigneeUserId: event.assigneeUserId,
+    assigneeWorkerId: event.assigneeWorkerId,
     startTime: event.start,
     endTime: event.end,
     existingVisits,
@@ -249,7 +249,7 @@ export function VisitPopoverContent({
                       visitId: event.id,
                       startTime: start,
                       endTime: end,
-                      assigneeUserId: event.assigneeUserId,
+                      assigneeWorkerId: event.assigneeWorkerId,
                     })
                   } else {
                     mutations.applyToSeries.mutate({
@@ -267,21 +267,21 @@ export function VisitPopoverContent({
         />
 
         <AssigneeRow
-          value={event.assigneeUserId}
+          value={event.assigneeWorkerId}
           disabled={!canEdit}
-          onChange={(userId, scope) => {
+          onChange={(workerId, scope) => {
             if (scope === 'this') {
               mutations.scheduleVisit.mutate({
                 visitId: event.id,
                 startTime: event.start,
                 endTime: event.end,
-                assigneeUserId: userId,
+                assigneeWorkerId: workerId,
               })
             } else {
               mutations.applyToSeries.mutate({
                 visitId: event.id,
                 scope,
-                changes: { assigneeUserId: userId },
+                changes: { assigneeWorkerId: workerId },
               })
             }
           }}
@@ -363,7 +363,7 @@ export function VisitPopoverContent({
                     variant='outline'
                     onClick={handleDispatch}
                     loading={mutations.dispatchVisit.isPending}
-                    disabled={!event.assigneeUserId}>
+                    disabled={!event.assigneeWorkerId}>
                     {event.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
                   </Button>
                 }

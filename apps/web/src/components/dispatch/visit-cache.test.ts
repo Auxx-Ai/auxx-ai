@@ -28,7 +28,7 @@ function visit(overrides: Partial<BoardVisit> & { id: string }): BoardVisit {
     id: overrides.id,
     organizationId: 'org-1',
     workOrderId: overrides.workOrderId ?? 'wo-1',
-    assigneeUserId: overrides.assigneeUserId ?? null,
+    assigneeWorkerId: overrides.assigneeWorkerId ?? null,
     startTime: overrides.startTime ?? new Date('2026-07-21T09:00:00Z'),
     endTime: overrides.endTime ?? new Date('2026-07-21T10:00:00Z'),
     timezone: overrides.timezone ?? 'UTC',
@@ -189,15 +189,16 @@ describe('mergeJobVisits', () => {
 })
 
 describe('applyMyVisitsPatch', () => {
-  const viewerUserId = 'user-1'
+  const viewerWorkerId = 'worker-1'
+  const viewerWorkerIds = [viewerWorkerId]
 
   it('removes a row when the visit was reassigned away from the viewer', () => {
     const existing = myVisit({ id: 'v1' })
-    const reassigned = visit({ id: 'v1', assigneeUserId: 'someone-else' })
+    const reassigned = visit({ id: 'v1', assigneeWorkerId: 'someone-else' })
     const { rows, needsInvalidate } = applyMyVisitsPatch(
       [existing],
       reassigned,
-      viewerUserId,
+      viewerWorkerIds,
       WINDOW
     )
     expect(rows).toHaveLength(0)
@@ -208,10 +209,10 @@ describe('applyMyVisitsPatch', () => {
     const existing = myVisit({ id: 'v1' })
     const moved = visit({
       id: 'v1',
-      assigneeUserId: viewerUserId,
+      assigneeWorkerId: viewerWorkerId,
       startTime: new Date('2026-09-01T09:00:00Z'),
     })
-    const { rows } = applyMyVisitsPatch([existing], moved, viewerUserId, WINDOW)
+    const { rows } = applyMyVisitsPatch([existing], moved, viewerWorkerIds, WINDOW)
     expect(rows).toHaveLength(0)
   })
 
@@ -219,11 +220,11 @@ describe('applyMyVisitsPatch', () => {
     const existing = myVisit({ id: 'v1' })
     const unscheduled = visit({
       id: 'v1',
-      assigneeUserId: viewerUserId,
+      assigneeWorkerId: viewerWorkerId,
       startTime: null,
       endTime: null,
     })
-    const { rows } = applyMyVisitsPatch([existing], unscheduled, viewerUserId, WINDOW)
+    const { rows } = applyMyVisitsPatch([existing], unscheduled, viewerWorkerIds, WINDOW)
     expect(rows).toHaveLength(0)
   })
 
@@ -235,12 +236,17 @@ describe('applyMyVisitsPatch', () => {
     })
     const changed = visit({
       id: 'v1',
-      assigneeUserId: viewerUserId,
+      assigneeWorkerId: viewerWorkerId,
       status: 'en_route',
       startTime: new Date('2026-07-22T11:00:00Z'),
       endTime: new Date('2026-07-22T12:00:00Z'),
     })
-    const { rows, needsInvalidate } = applyMyVisitsPatch([existing], changed, viewerUserId, WINDOW)
+    const { rows, needsInvalidate } = applyMyVisitsPatch(
+      [existing],
+      changed,
+      viewerWorkerIds,
+      WINDOW
+    )
     expect(needsInvalidate).toBe(false)
     expect(rows).toHaveLength(1)
     expect(rows[0]?.status).toBe('en_route')
@@ -249,8 +255,8 @@ describe('applyMyVisitsPatch', () => {
   })
 
   it('flags needsInvalidate when the visit should now appear but has no cached row', () => {
-    const created = visit({ id: 'v1', assigneeUserId: viewerUserId })
-    const { rows, needsInvalidate } = applyMyVisitsPatch([], created, viewerUserId, WINDOW)
+    const created = visit({ id: 'v1', assigneeWorkerId: viewerWorkerId })
+    const { rows, needsInvalidate } = applyMyVisitsPatch([], created, viewerWorkerIds, WINDOW)
     expect(rows).toHaveLength(0)
     expect(needsInvalidate).toBe(true)
   })

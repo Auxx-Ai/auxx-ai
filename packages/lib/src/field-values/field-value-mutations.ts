@@ -3093,6 +3093,11 @@ function buildInsertData(
         // so reads can disambiguate from human users.
         return { actorId: value.id, relatedEntityDefinitionId: 'agent' }
       }
+      if (value.actorType === 'worker') {
+        // Dispatch worker — DispatchWorker.id in relatedEntityId (actorId FKs User.id, so a
+        // worker id can't live there), 'worker' marker to disambiguate from groups on read.
+        return { relatedEntityId: value.id, relatedEntityDefinitionId: 'worker' }
+      }
       // Group actor — relatedEntityId; relatedEntityDefinitionId set from field options.
       return { relatedEntityId: value.id }
     }
@@ -3144,6 +3149,9 @@ function buildUpdateData(value: TypedFieldValueInput): {
       }
       if (value.actorType === 'agent') {
         return { actorId: value.id, relatedEntityDefinitionId: 'agent' }
+      }
+      if (value.actorType === 'worker') {
+        return { relatedEntityId: value.id, relatedEntityDefinitionId: 'worker' }
       }
       return { relatedEntityId: value.id }
     }
@@ -3214,6 +3222,9 @@ export function buildFieldValueRow(params: {
       }
       if (value.actorType === 'agent') {
         return { ...base, actorId: value.id, relatedEntityDefinitionId: 'agent' }
+      }
+      if (value.actorType === 'worker') {
+        return { ...base, relatedEntityId: value.id, relatedEntityDefinitionId: 'worker' }
       }
       return { ...base, relatedEntityId: value.id }
     }

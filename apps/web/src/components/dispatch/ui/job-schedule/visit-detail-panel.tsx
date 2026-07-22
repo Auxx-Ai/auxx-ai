@@ -2,7 +2,6 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { toActorId } from '@auxx/types/actor'
 import { getFileRefDownloadUrl, toFileRef } from '@auxx/types/file-ref'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
@@ -34,9 +33,9 @@ import {
   useOpenRecord,
   useRecordDrill,
 } from '~/components/records/record-drill-panels'
-import { useActors } from '~/components/resources/hooks/use-actor'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { visitStatusLabel } from '../board/types'
 import { SchedulePopover } from '../schedule-popover'
@@ -47,6 +46,8 @@ import {
   resolveVisitDurationMinutes,
   restoreSeriesBoundaryConfirmOptions,
   VISIT_STATUS_BADGE_VARIANT,
+  workerAssigneeAvatarUrl,
+  workerAssigneeName,
 } from './job-schedule-utils'
 import { useSeriesRule } from './series-end'
 import { useJobVisits } from './use-job-visits'
@@ -92,9 +93,14 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
       toastError({ title: 'Error adding extras to contract', description: error.message }),
   })
 
-  const assigneeActorId = visit?.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
-  const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
-  const assignee = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
+  const workersQuery = api.dispatch.listWorkers.useQuery(undefined, {
+    staleTime: ORG_STATIC_STALE_TIME,
+  })
+  const assigneeWorker = workersQuery.data?.find((w) => w.id === visit?.assigneeWorkerId)
+  const assigneeName = workerAssigneeName(assigneeWorker)
+  const assignee = assigneeName
+    ? { name: assigneeName, avatarUrl: workerAssigneeAvatarUrl(assigneeWorker) }
+    : undefined
 
   // Plan 36 §B.1 — boundary detection for the Restore chooser (before the early returns:
   // hooks must run unconditionally).
@@ -228,7 +234,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
               visitId={visit.id}
               initialStartTime={visit.startTime ? new Date(visit.startTime) : undefined}
               initialEndTime={visit.endTime ? new Date(visit.endTime) : undefined}
-              initialAssigneeUserId={visit.assigneeUserId}
+              initialAssigneeWorkerId={visit.assigneeWorkerId}
               existingVisits={existingVisits}
               workOrderRecordId={recordId}
               recurrenceRuleId={visit.recurrenceRuleId}
@@ -250,7 +256,7 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
                 size='sm'
                 onClick={() => mutations.dispatchVisit.mutate({ visitId: visit.id })}
                 loading={mutations.dispatchVisit.isPending}
-                disabled={!visit.assigneeUserId}>
+                disabled={!visit.assigneeWorkerId}>
                 <Send /> {visit.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
               </Button>
             )}

@@ -39,6 +39,7 @@ import { SourceToggleGroup } from '~/components/calendar/ui/source-toggle-group'
 import { useResource } from '~/components/resources'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useScheduleSidebarStore } from '../stores/schedule-sidebar-store'
 
@@ -137,6 +138,17 @@ export function ScheduleCalendar({
   const { resource: workOrderResource } = useResource('work-orders')
   const utils = api.useUtils()
 
+  // `dispatch.myVisits` only ever returns the signed-in worker's OWN visits, so the assignee is
+  // always this user's own individual `DispatchWorker` row — resolve it once here rather than
+  // round-tripping a worker id through the source's payload.
+  const workersQuery = api.dispatch.listWorkers.useQuery(undefined, {
+    staleTime: ORG_STATIC_STALE_TIME,
+  })
+  const myWorkerId = useMemo(
+    () => workersQuery.data?.find((w) => w.userId === userId)?.id ?? null,
+    [workersQuery.data, userId]
+  )
+
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const weekStart = (scalarSetting(getSetting('organization.weekStart')) ?? 'monday') as
     | 'monday'
@@ -177,9 +189,8 @@ export function ScheduleCalendar({
   // Copy (plan 37c §8): enabled for everyone, but only `sourceId === 'visits'` events are
   // clipboard-eligible — meetings/tasks have no work order to paste onto, so they're narrowed
   // out here rather than filtered a second time inside `useCalendarClipboard`. `workOrderId`
-  // comes straight off `VisitEvent` (added alongside this phase); `assigneeUserId` isn't part of
-  // the source's payload at all — `dispatch.myVisits` only ever returns the signed-in worker's
-  // OWN visits, so it's always the current user, no need to round-trip it through the query.
+  // comes straight off `VisitEvent` (added alongside this phase); `assigneeWorkerId` isn't part
+  // of the source's payload at all — see `myWorkerId` above.
   const visitClipboardEvents = useMemo(
     () =>
       events
@@ -190,9 +201,9 @@ export function ScheduleCalendar({
           title: event.title,
           start: event.start,
           end: event.end,
-          assigneeUserId: userId,
+          assigneeWorkerId: myWorkerId,
         })),
-    [events, userId]
+    [events, myWorkerId]
   )
 
   const clipboard = useCalendarClipboard({

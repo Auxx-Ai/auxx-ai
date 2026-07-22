@@ -29,13 +29,13 @@ import type {
 //   this handler still only needs `visitId`.
 // - Stop row draggable (sidebar routes-group.tsx), inside a worker's `SortableContext`:
 //   `useSortable({ id: visitId })` combined with `data: { type: 'planner-stop', visitId,
-//   assigneeUserId, item } }` passed to the same `useSortable` call (dnd-kit merges `data` from
+//   assigneeWorkerId, item } }` passed to the same `useSortable` call (dnd-kit merges `data` from
 //   `useSortable`'s options onto the draggable/droppable it registers). Like the backlog row,
 //   `item` exists only for the shared drag-ghost overlay.
 // - Worker section droppable (routes-group.tsx) — catches drops on the section body itself
 //   (an empty list, or past the last row), not just a specific stop row:
-//   `useDroppable({ id: \`planner-worker-list-${assigneeUserId}\`, data: { type:
-//   'planner-worker-list', assigneeUserId } })`.
+//   `useDroppable({ id: \`planner-worker-list-${assigneeWorkerId}\`, data: { type:
+//   'planner-worker-list', assigneeWorkerId } })`.
 
 export interface PlannerBacklogDragData {
   type: 'planner-backlog'
@@ -44,14 +44,14 @@ export interface PlannerBacklogDragData {
 export interface PlannerStopDragData {
   type: 'planner-stop'
   visitId: string
-  assigneeUserId: string
+  assigneeWorkerId: string
   /** Ghost payload for `renderAppDragGhost` only — never read by the drag-end handler. */
   item?: BacklogItem
 }
 export interface PlannerWorkerListDropData {
   type: 'planner-worker-list'
   /** `null` = the sidebar Workers group's synthetic "Unassigned" row (workers-group.tsx). */
-  assigneeUserId: string | null
+  assigneeWorkerId: string | null
 }
 export type PlannerDragData = PlannerBacklogDragData | PlannerStopDragData
 export type PlannerDropData = PlannerStopDragData | PlannerWorkerListDropData
@@ -77,9 +77,9 @@ export function visitDurationMinutes(
 }
 
 /** Active (non-canceled) visits for one worker's day, ordered by `routeOrder` (nulls last). */
-export function stopsForWorker(board: PlannerBoard, assigneeUserId: string): PlannerVisit[] {
+export function stopsForWorker(board: PlannerBoard, assigneeWorkerId: string): PlannerVisit[] {
   return [...board.visits]
-    .filter((v) => v.assigneeUserId === assigneeUserId && v.status !== 'canceled')
+    .filter((v) => v.assigneeWorkerId === assigneeWorkerId && v.status !== 'canceled')
     .sort((a, b) => {
       if (a.routeOrder === null && b.routeOrder === null) return 0
       if (a.routeOrder === null) return 1
@@ -218,14 +218,14 @@ function patchVisitInBoard(
  * `routeOrder` but isn't in the list gets nulled out. */
 function patchRouteOrder(
   board: PlannerBoard,
-  assigneeUserId: string,
+  assigneeWorkerId: string,
   visitIds: string[]
 ): PlannerBoard {
   const orderIndex = new Map(visitIds.map((id, index) => [id, index]))
   return {
     ...board,
     visits: board.visits.map((v) => {
-      if (v.assigneeUserId !== assigneeUserId) return v
+      if (v.assigneeWorkerId !== assigneeWorkerId) return v
       const index = orderIndex.get(v.id)
       if (index !== undefined) return { ...v, routeOrder: index }
       return v.routeOrder !== null ? { ...v, routeOrder: null } : v
@@ -277,7 +277,9 @@ export function useRoutePlannerMutations(window: PlannerDayWindow) {
     onMutate: async (vars) => {
       await utils.dispatch.getRoutePlannerBoard.cancel(boardKey)
       return {
-        previous: patchBoard((board) => patchRouteOrder(board, vars.assigneeUserId, vars.visitIds)),
+        previous: patchBoard((board) =>
+          patchRouteOrder(board, vars.assigneeWorkerId, vars.visitIds)
+        ),
       }
     },
     onError: (error, _vars, ctx) => {
@@ -322,7 +324,7 @@ export function useRoutePlannerMutations(window: PlannerDayWindow) {
     onMutate: async (vars) => {
       await utils.dispatch.getRoutePlannerBoard.cancel(boardKey)
       const patch: Partial<PlannerVisit> = { startTime: vars.startTime, endTime: vars.endTime }
-      if (vars.assigneeUserId !== undefined) patch.assigneeUserId = vars.assigneeUserId
+      if (vars.assigneeWorkerId !== undefined) patch.assigneeWorkerId = vars.assigneeWorkerId
       return { previous: patchBoard((board) => patchVisitInBoard(board, vars.visitId, patch)) }
     },
     onError: (error, _vars, ctx) => {
@@ -337,7 +339,7 @@ export function useRoutePlannerMutations(window: PlannerDayWindow) {
       await utils.dispatch.getRoutePlannerBoard.cancel(boardKey)
       return {
         previous: patchBoard((board) =>
-          patchVisitInBoard(board, vars.visitId, { assigneeUserId: vars.assigneeUserId })
+          patchVisitInBoard(board, vars.visitId, { assigneeWorkerId: vars.assigneeWorkerId })
         ),
       }
     },
@@ -385,17 +387,17 @@ export function useRoutePlannerDragEnd({
       const overData = over.data.current as PlannerDropData | undefined
       if (!activeData || !overData) return
 
-      const targetAssigneeUserId = overData.assigneeUserId
-      if (targetAssigneeUserId === null) {
+      const targetAssigneeWorkerId = overData.assigneeWorkerId
+      if (targetAssigneeWorkerId === null) {
         // The Workers group's "Unassigned" row: a stop drops back to unassigned (no
         // `setRouteOrder` follow-up — the router input requires a real assignee); a backlog
         // item is already unassigned, so there's nothing to do.
         if (activeData.type === 'planner-stop') {
-          mutations.assignVisit.mutate({ visitId: activeData.visitId, assigneeUserId: null })
+          mutations.assignVisit.mutate({ visitId: activeData.visitId, assigneeWorkerId: null })
         }
         return
       }
-      const targetStops = stopsForWorker(board, targetAssigneeUserId)
+      const targetStops = stopsForWorker(board, targetAssigneeWorkerId)
       const targetIds = targetStops.map((v) => v.id)
       let dropIndex =
         overData.type === 'planner-stop' ? targetIds.indexOf(overData.visitId) : targetIds.length
@@ -407,8 +409,8 @@ export function useRoutePlannerDragEnd({
           board.visits.find((v) => v.id === activeData.visitId)
         if (!visit) return
 
-        const worker = board.workers.find((w) => w.userId === targetAssigneeUserId)
-        const geometry = geometryByWorker[targetAssigneeUserId]
+        const worker = board.workers.find((w) => w.id === targetAssigneeWorkerId)
+        const geometry = geometryByWorker[targetAssigneeWorkerId]
         const startTime =
           estimateArrival(dayStartAnchor(window, worker, '08:00'), geometry, dropIndex) ??
           createDateWithTime(window.from, 9, 0)
@@ -419,7 +421,7 @@ export function useRoutePlannerDragEnd({
             visitId: visit.id,
             startTime,
             endTime,
-            assigneeUserId: targetAssigneeUserId,
+            assigneeWorkerId: targetAssigneeWorkerId,
             // The human chose worker + drop position, not the time itself — this is
             // travel-only ETA math (plan 20 §4.2), not a promise to the customer.
             timeWriteKind: 'provisional',
@@ -429,7 +431,7 @@ export function useRoutePlannerDragEnd({
               const nextIds = [...targetIds]
               nextIds.splice(dropIndex, 0, visit.id)
               mutations.setRouteOrder.mutate({
-                assigneeUserId: targetAssigneeUserId,
+                assigneeWorkerId: targetAssigneeWorkerId,
                 from: window.from,
                 to: window.to,
                 visitIds: nextIds,
@@ -441,11 +443,11 @@ export function useRoutePlannerDragEnd({
       }
 
       // 'planner-stop'
-      if (activeData.assigneeUserId === targetAssigneeUserId) {
+      if (activeData.assigneeWorkerId === targetAssigneeWorkerId) {
         const oldIndex = targetIds.indexOf(activeData.visitId)
         if (oldIndex === -1 || oldIndex === dropIndex) return
         mutations.setRouteOrder.mutate({
-          assigneeUserId: targetAssigneeUserId,
+          assigneeWorkerId: targetAssigneeWorkerId,
           from: window.from,
           to: window.to,
           visitIds: arrayMove(targetIds, oldIndex, dropIndex),
@@ -454,13 +456,13 @@ export function useRoutePlannerDragEnd({
       }
 
       mutations.assignVisit.mutate(
-        { visitId: activeData.visitId, assigneeUserId: targetAssigneeUserId },
+        { visitId: activeData.visitId, assigneeWorkerId: targetAssigneeWorkerId },
         {
           onSuccess: () => {
             const nextIds = targetIds.filter((id) => id !== activeData.visitId)
             nextIds.splice(dropIndex, 0, activeData.visitId)
             mutations.setRouteOrder.mutate({
-              assigneeUserId: targetAssigneeUserId,
+              assigneeWorkerId: targetAssigneeWorkerId,
               from: window.from,
               to: window.to,
               visitIds: nextIds,

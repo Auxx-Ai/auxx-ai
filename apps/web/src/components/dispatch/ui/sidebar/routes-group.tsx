@@ -60,10 +60,11 @@ interface RoutesGroupProps {
   canEdit: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Per-worker sub-section open state, keyed `routes:<userId>` in the same store map as the
-   * group itself (`groupOpen`) — persisted so a dispatcher's per-worker collapse choices stick. */
+  /** Per-worker sub-section open state, keyed `routes:<workerId>` (a `DispatchWorker.id`) in the
+   * same store map as the group itself (`groupOpen`) — persisted so a dispatcher's per-worker
+   * collapse choices stick. */
   groupOpen: Record<string, boolean>
-  onWorkerOpenChange: (userId: string, open: boolean) => void
+  onWorkerOpenChange: (workerId: string, open: boolean) => void
   /** Stop row click (v4/02 Phase 3) — reports the row's work-order instance id AND visit id so
    * the board shell can open a `RecordDrawer` pre-drilled to the visit (same wiring as the
    * Backlog group's rows). */
@@ -93,7 +94,7 @@ export function RoutesGroup({
   const visibleWorkers =
     filters.workerIds === null
       ? board.workers
-      : board.workers.filter((w) => filters.workerIds!.has(w.userId))
+      : board.workers.filter((w) => filters.workerIds!.has(w.id))
 
   const workOrderById = new Map(board.workOrders.map((w) => [w.id, w]))
 
@@ -120,12 +121,12 @@ export function RoutesGroup({
               worker={worker}
               board={board}
               date={date}
-              geometry={geometryByWorker[worker.userId]}
+              geometry={geometryByWorker[worker.id]}
               workOrderById={workOrderById}
               canEdit={canEdit}
               autoApplyTimes={autoApplyTimes}
-              open={groupOpen[`routes:${worker.userId}`] ?? true}
-              onOpenChange={(o) => onWorkerOpenChange(worker.userId, o)}
+              open={groupOpen[`routes:${worker.id}`] ?? true}
+              onOpenChange={(o) => onWorkerOpenChange(worker.id, o)}
               onSelectVisit={onSelectVisit}
             />
           ))}
@@ -171,11 +172,11 @@ function WorkerStopSection({
     active?.data.current?.type === 'planner-backlog' ||
     active?.data.current?.type === 'planner-stop'
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
-    id: `planner-worker-list-${worker.userId}`,
-    data: { type: 'planner-worker-list', assigneeUserId: worker.userId },
+    id: `planner-worker-list-${worker.id}`,
+    data: { type: 'planner-worker-list', assigneeWorkerId: worker.id },
   })
 
-  const stops = stopsForWorker(board, worker.userId)
+  const stops = stopsForWorker(board, worker.id)
   const activeStops = stops.filter((v) => v.status !== 'done')
   const dayStart = dayStartAnchor(date, worker, '08:00')
   const workerName = worker.name ?? worker.email ?? 'Worker'
@@ -199,7 +200,7 @@ function WorkerStopSection({
     // `routeOrder` isn't nulled by the bulk write (contract item 4 nulls anything NOT in the list).
     setRouteOrder.mutate(
       {
-        assigneeUserId: worker.userId,
+        assigneeWorkerId: worker.id,
         from: date.from,
         to: date.to,
         visitIds: [...suggested, ...done.map((v) => v.id)],
@@ -337,12 +338,12 @@ function WorkerStopSection({
                   key={visit.id}
                   visit={visit}
                   index={index}
-                  assigneeUserId={worker.userId}
+                  assigneeWorkerId={worker.id}
                   workOrder={workOrderById.get(visit.workOrderId)}
                   eta={estimateArrivalForVisit(dayStart, geometry, visit.id)}
                   canEdit={canEdit}
                   onSelectVisit={onSelectVisit}
-                  onRemove={() => assignVisit.mutate({ visitId: visit.id, assigneeUserId: null })}
+                  onRemove={() => assignVisit.mutate({ visitId: visit.id, assigneeWorkerId: null })}
                 />
               ))}
             </SortableContext>
@@ -365,7 +366,8 @@ function WorkerStopSection({
 interface StopRowProps {
   visit: PlannerVisit
   index: number
-  assigneeUserId: string
+  /** The owning section's `DispatchWorker.id` — never a `User.id` (teams have none). */
+  assigneeWorkerId: string
   workOrder: PlannerWorkOrder | undefined
   eta: Date | null
   canEdit: boolean
@@ -376,7 +378,7 @@ interface StopRowProps {
 function StopRow({
   visit,
   index,
-  assigneeUserId,
+  assigneeWorkerId,
   workOrder,
   eta,
   canEdit,
@@ -387,13 +389,13 @@ function StopRow({
   const draggable = canEdit && !isDone
   // `item` rides along in the sortable's data (BacklogRow's exact recipe) so the shared
   // `AppDragOverlay`/`renderAppDragGhost` can render the cursor ghost without a cross-context
-  // store lookup — the drag-end handler itself only reads `visitId`/`assigneeUserId`.
+  // store lookup — the drag-end handler itself only reads `visitId`/`assigneeWorkerId`.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
     data: {
       type: 'planner-stop',
       visitId: visit.id,
-      assigneeUserId,
+      assigneeWorkerId,
       item: {
         visit,
         workOrder: workOrder
