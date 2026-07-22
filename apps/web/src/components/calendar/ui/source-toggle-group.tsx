@@ -9,7 +9,7 @@ import {
   SidebarMenuItem,
 } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
-import { Eye, EyeOff } from 'lucide-react'
+import { EyeOff } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
@@ -23,6 +23,12 @@ interface SourceToggleRowProps {
   color?: string
   visible: boolean
   onToggle: () => void
+  /** Leading visual. Defaults to a small color dot; pass a richer node (e.g. a `VisualIcon`
+   * avatar/glyph for dispatch workers) to override it. */
+  icon?: ReactNode
+  /** Extra classes on the row (e.g. a muted tint for a synthetic row). Merged before the
+   * hidden-state dim, so hiding still wins. */
+  className?: string
 }
 
 /**
@@ -32,26 +38,39 @@ interface SourceToggleRowProps {
  * bespoke groups (e.g. dispatch's `WorkersGroup`, which needs worker avatars) can reuse the
  * row without adopting `SourceToggleGroup`'s generic list rendering.
  */
-export function SourceToggleRow({ id, label, color, visible, onToggle }: SourceToggleRowProps) {
+export function SourceToggleRow({
+  id,
+  label,
+  color,
+  visible,
+  onToggle,
+  icon,
+  className,
+}: SourceToggleRowProps) {
   return (
     <SidebarMenuItem>
       <SidebarItem
         id={id}
         name={label}
         onClick={onToggle}
-        className={cn(!visible && 'text-muted-foreground/70')}
+        className={cn(className, !visible && 'text-muted-foreground/70')}
         icon={
-          <span
-            className='size-2 shrink-0 rounded-full'
-            style={{ backgroundColor: color ?? DEFAULT_TOGGLE_COLOR }}
-          />
+          icon ?? (
+            <span
+              className='size-2 shrink-0 rounded-full'
+              style={{ backgroundColor: color ?? DEFAULT_TOGGLE_COLOR }}
+            />
+          )
         }
         end={
-          visible ? (
-            <EyeOff className='hidden size-3.5 text-muted-foreground group-hover/menu-item:block' />
-          ) : (
-            <Eye className='size-3.5 text-muted-foreground opacity-60' />
-          )
+          <EyeOff
+            className={cn(
+              'size-3.5 text-muted-foreground',
+              // Visible: eye-off only reveals on hover (click to hide). Hidden: eye-off stays
+              // put as the persistent hidden-state indicator (click to show).
+              visible ? 'hidden group-hover/menu-item:block' : 'opacity-60'
+            )}
+          />
         }
       />
     </SidebarMenuItem>

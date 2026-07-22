@@ -46,7 +46,7 @@ export function BackgroundEventsLayer({
   // Vertical (`'y'`) grids offset every segment's `top` by the visible window's first hour — the
   // grid no longer starts at 00:00 when the board crops to working hours. `'x'` (timeline) takes
   // its window via explicit props instead.
-  const { start: gridStartHour } = useHourWindow()
+  const { start: gridStartHour, end: gridEndHour } = useHourWindow()
   const dayEvents = events.filter((bg) => {
     if (bg.resourceId !== undefined && bg.resourceId !== resourceId) return false
     if (bg.date !== undefined && !isSameDay(bg.date, day)) return false
@@ -99,8 +99,14 @@ export function BackgroundEventsLayer({
         const end = new Date(bg.end)
         const startHour = isSameDay(day, start) ? getHours(start) + getMinutes(start) / 60 : 0
         const endHour = isSameDay(day, end) ? getHours(end) + getMinutes(end) / 60 : 24
-        const top = (startHour - gridStartHour) * cellHeight
-        const height = (endHour - startHour) * cellHeight
+        // Clamp to the visible hour window (mirrors the `'x'` branch) — an unclamped segment
+        // running past the window's last hour overflows the grid and stretches the scroll area
+        // below the gutter/rail shadow.
+        const clampedStart = Math.min(Math.max(startHour, gridStartHour), gridEndHour)
+        const clampedEnd = Math.min(Math.max(endHour, gridStartHour), gridEndHour)
+        if (clampedEnd <= clampedStart) return null
+        const top = (clampedStart - gridStartHour) * cellHeight
+        const height = (clampedEnd - clampedStart) * cellHeight
 
         return (
           <div

@@ -29,6 +29,7 @@ import {
   TimelineRailWidthMin,
   TimelineRowPadding,
 } from './constants'
+import { HeaderScrollShadow, syncScrolledY } from './header-scroll-shadow'
 import { useDayStream } from './hooks/use-day-stream'
 import { useCalendarSelection } from './selection/calendar-selection-context'
 import { StickyRailShadow } from './sticky-rail-shadow'
@@ -358,6 +359,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   // the snap-scroll but still emit the (rounded) leftmost day.
   const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const handleScroll = useCallback(() => {
+    if (scrollRef.current) syncScrolledY(scrollRef.current)
     clearTimeout(settleTimeoutRef.current)
     settleTimeoutRef.current = setTimeout(() => {
       if (programmaticScrollRef.current) return
@@ -803,7 +805,10 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
           '--tl-zoom-comp': '0px',
         } as CSSProperties
       }>
-      <div ref={scrollRef} onScroll={handleScroll} className='min-h-0 flex-1 overflow-auto'>
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className='group/grid-scroll min-h-0 flex-1 overflow-auto'>
         <div
           className='relative flex flex-col'
           style={{
@@ -922,6 +927,8 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
                 </div>
               )
             })}
+
+            <HeaderScrollShadow />
           </div>
 
           {/* Sticky-left worker rail — pinned left only (no `top`: it scrolls vertically with the
