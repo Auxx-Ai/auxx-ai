@@ -6,7 +6,7 @@ import { type ActorId, getActorRawId, getActorType, toActorId } from '@auxx/type
 import type { RecordId } from '@auxx/types/resource'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
 import { TRPCError } from '@trpc/server'
-import { and, eq, gte, ilike, inArray, isNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../cache'
 import { parseRecordId, toRecordId } from '../field-values/relationship-field'
 import { hasDefinedProps, pickDefined } from '../utils/pick-defined'
@@ -104,7 +104,19 @@ export class TaskService {
     organizationId: string,
     userId: string
   ): Promise<TaskEntity> {
-    const { title, description, deadline, priority, assigneeActorIds, referencedEntities } = input
+    const {
+      title,
+      description,
+      deadline,
+      priority,
+      assigneeActorIds,
+      referencedEntities,
+      source,
+      sourceRuleId,
+      sourceSignalId,
+      autoCompleteOn,
+      snoozedUntil,
+    } = input
 
     const resolvedDeadline = deadline ? resolveDeadline(deadline) : null
     const searchText = generateSearchText(title, description)
@@ -128,6 +140,11 @@ export class TaskService {
           searchText,
           assignedUserCount: assignedUserIds?.length ?? 0,
           referenceCount: referencedEntities?.length ?? 0,
+          source: source ?? 'manual',
+          sourceRuleId: sourceRuleId ?? null,
+          sourceSignalId: sourceSignalId ?? null,
+          autoCompleteOn: autoCompleteOn ?? null,
+          snoozedUntil: snoozedUntil ?? null,
           updatedAt: new Date(),
         })
         .returning()
@@ -292,6 +309,8 @@ export class TaskService {
       archivedAt,
       assigneeActorIds,
       referencedEntities,
+      snoozedUntil,
+      autoCompleteOn,
     } = input
 
     // Check if task exists
@@ -317,6 +336,8 @@ export class TaskService {
       completedById,
       archivedAt:
         archivedAt !== undefined ? (archivedAt === null ? null : new Date(archivedAt)) : undefined,
+      snoozedUntil,
+      autoCompleteOn,
       updatedAt: new Date(),
     })
 
@@ -503,6 +524,8 @@ export class TaskService {
       deadlineTo,
       limit = 50,
       cursor,
+      sources,
+      includeSnoozed = false,
     } = options
 
     // Build where conditions
@@ -522,6 +545,16 @@ export class TaskService {
 
     if (priority && priority.length > 0) {
       conditions.push(inArray(schema.Task.priority, priority))
+    }
+
+    if (sources && sources.length > 0) {
+      conditions.push(inArray(schema.Task.source, sources))
+    }
+
+    if (!includeSnoozed) {
+      conditions.push(
+        or(isNull(schema.Task.snoozedUntil), lte(schema.Task.snoozedUntil, new Date()))!
+      )
     }
 
     if (deadlineFrom) {

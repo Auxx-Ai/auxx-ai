@@ -84,6 +84,17 @@ export interface ToolContext extends AgentDeps {
    * every production run, where the subject resolver reads `subject.anchors`.
    */
   evalFieldResolver?: EvalFieldResolver
+  /**
+   * Set only by `buildApprovalToolContext` (approvals/actions-service.ts) when
+   * replaying a previously-captured tool call at bundle-approval time (the
+   * Today/AI suggestion path). Absent for every live chat / headless-capture
+   * / workflow invocation — those tools were called by a human or are still
+   * only predicted, never actually executed via this context. Lets a tool's
+   * `execute()` tell "this write is landing because a human approved an AI
+   * suggestion" apart from "a human (or the Kopilot chat model) is directly
+   * calling me" without threading a new parameter through every call site.
+   */
+  runOrigin?: 'approval-bundle'
 }
 
 /**

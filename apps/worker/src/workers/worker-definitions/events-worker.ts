@@ -1,4 +1,5 @@
 import {
+  autoCompleteTasks,
   createAuditLog,
   createEventJob,
   createTimelineEvent,
@@ -6,6 +7,7 @@ import {
   deriveThreadResolvedSignal,
   handleFieldTriggerJob,
   handleRecordRules,
+  handleSignalRecordRules,
   handleSyncRecordRules,
   ingestBounceMessage,
   projectSignalToTimeline,
@@ -51,6 +53,10 @@ const eventHandlersJobMappings = {
   deriveThreadResolvedSignal,
   ingestBounceMessage,
   projectSignalToTimeline,
+  // Signal door (record rules) + auto-complete-on-reply — also fanned out from
+  // signal:recorded (plans/signals/06-follow-ups-build.md Steps 3 + 5).
+  handleSignalRecordRules,
+  autoCompleteTasks,
 }
 
 // IO-bound handlers; concurrency > 1 drops the queue-global FIFO ordering,

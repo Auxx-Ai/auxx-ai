@@ -3,7 +3,7 @@
 'use client'
 
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { TaskWithRelations } from '@auxx/lib/tasks'
+import type { TaskSource, TaskWithRelations } from '@auxx/lib/tasks'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
 import type { TaskViewMode } from '@auxx/types/task'
 import { Button } from '@auxx/ui/components/button'
@@ -33,6 +33,8 @@ interface TasksListProps {
   sort?: TaskSortConfig
   /** Include completed tasks (can be overridden by filters) */
   includeCompleted?: boolean
+  /** Restrict to tasks created via these sources (the "Follow-ups" chip — build plan decision 16) */
+  sources?: TaskSource[]
   /** Callback when create button is clicked (from empty state) */
   onCreateClick?: () => void
   /** Show entity reference badges on task items (useful in global mode) */
@@ -67,6 +69,7 @@ export function TasksList({
   filters,
   sort = DEFAULT_SORT,
   includeCompleted = true,
+  sources,
   onCreateClick,
   showEntityReferences = false,
   className,
@@ -83,6 +86,7 @@ export function TasksList({
     priority: filterProps.priority,
     search: filterProps.search,
     includeCompleted: filterProps.includeCompleted ?? includeCompleted,
+    sources,
     limit,
   })
 

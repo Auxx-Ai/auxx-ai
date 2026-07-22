@@ -9,7 +9,7 @@ import { Button, buttonVariants } from '@auxx/ui/components/button'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Switch } from '@auxx/ui/components/switch'
-import { Filter, X } from 'lucide-react'
+import { Filter, X, Zap } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   type Condition,
@@ -35,6 +35,10 @@ interface TaskFilterBarProps {
   includeCompleted: boolean
   /** Callback when includeCompleted changes */
   onIncludeCompletedChange: (value: boolean) => void
+  /** Whether the "Follow-ups" chip (source in rule/ai — build plan decision 16) is active */
+  followUpsOnly: boolean
+  /** Callback when the "Follow-ups" chip is toggled */
+  onFollowUpsOnlyChange: (value: boolean) => void
   /** Whether the filter bar is disabled */
   disabled?: boolean
 }
@@ -50,6 +54,8 @@ export function TaskFilterBar({
   onSortChange,
   includeCompleted,
   onIncludeCompletedChange,
+  followUpsOnly,
+  onFollowUpsOnlyChange,
   disabled = false,
 }: TaskFilterBarProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -182,6 +188,16 @@ export function TaskFilterBar({
             </div>
           </PopoverContent>
         </Popover>
+
+        {/* Follow-ups chip (source in rule/ai — build plan decision 16) */}
+        <Button
+          variant={followUpsOnly ? 'default' : 'ghost'}
+          size='sm'
+          disabled={disabled}
+          onClick={() => onFollowUpsOnlyChange(!followUpsOnly)}>
+          <Zap />
+          <span className='hidden sm:inline'>Follow-ups</span>
+        </Button>
 
         {/* Sort Select */}
         <TaskSortSelect value={sort} onChange={onSortChange} disabled={disabled} />

@@ -12,10 +12,11 @@ import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Bell, PenLine, Plus, Settings2, Trash2, Workflow, Zap } from 'lucide-react'
+import { Bell, ListTodo, PenLine, Plus, Settings2, Trash2, Workflow, Zap } from 'lucide-react'
 import { type ReactNode, useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { CreateTaskActionForm } from './create-task-action-form'
 import { RecordRuleFieldRefInput } from './record-rule-field-ref-input'
 
 /** A published workflow from `api.workflow.list`. */
@@ -28,6 +29,7 @@ const ACTION_LABELS: Record<RecordRuleAction['type'], string> = {
   notify: 'Notify members',
   'set-field': 'Set field',
   'enqueue-workflow': 'Run workflow',
+  'create-task': 'Create task',
 }
 
 const ACTION_TYPE_OPTIONS: SelectOption[] = (
@@ -40,6 +42,7 @@ const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
 function ActionIcon({ type }: { type: RecordRuleAction['type'] }): ReactNode {
   if (type === 'notify') return <Bell className='size-4' />
   if (type === 'set-field') return <PenLine className='size-4' />
+  if (type === 'create-task') return <ListTodo className='size-4' />
   return <Workflow className='size-4' />
 }
 
@@ -111,6 +114,7 @@ export function RecordRuleActionsPage({
         ? (fields.find((f) => (f.systemAttribute ?? String(f.id)) === action.fieldRef)?.label ??
             action.fieldRef)
         : 'No field'
+    if (action.type === 'create-task') return action.title || 'No title'
     return workflows.find((w) => w.id === action.workflowAppId)?.name || 'No workflow'
   }
 
@@ -189,6 +193,8 @@ export function RecordRuleActionsPage({
                     onUpdate(selectedIndex, { type: 'set-field', fieldRef: '', value: '' })
                   else if (type === 'enqueue-workflow')
                     onUpdate(selectedIndex, { type: 'enqueue-workflow', workflowAppId: '' })
+                  else if (type === 'create-task')
+                    onUpdate(selectedIndex, { type: 'create-task', title: '' })
                   else onUpdate(selectedIndex, { type: 'notify', userIds: [], message: '' })
                 }}
               />
@@ -261,6 +267,13 @@ export function RecordRuleActionsPage({
                   placeholder='Select workflow'
                 />
               </FieldPanelRow>
+            )}
+
+            {selected.type === 'create-task' && (
+              <CreateTaskActionForm
+                action={selected}
+                onChange={(next) => onUpdate(selectedIndex, next)}
+              />
             )}
           </FieldPanel>
         )}

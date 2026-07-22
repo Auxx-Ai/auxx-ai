@@ -23,6 +23,7 @@ export type {
   SignalWithLinks,
 } from './queries'
 export {
+  getSignalById,
   getSignalRollup,
   listSignals,
   listSignalsForRecordKeys,

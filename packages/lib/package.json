@@ -988,6 +988,12 @@
       "import": "./dist/signals/index.mjs",
       "default": "./src/signals/index.ts"
     },
+    "./signals/client": {
+      "types": "./src/signals/client.ts",
+      "source": "./src/signals/client.ts",
+      "import": "./dist/signals/client.mjs",
+      "default": "./src/signals/client.ts"
+    },
     "./signals/email-events": {
       "types": "./src/signals/email-events.ts",
       "source": "./src/signals/email-events.ts",

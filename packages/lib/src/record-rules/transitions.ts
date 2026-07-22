@@ -70,6 +70,9 @@ export function matchesFieldTransition(on: RecordRuleOn, oldValue: unknown, newV
       return !isEmpty(oldValue) && isEmpty(newValue)
     case 'created':
     case 'deleted':
+    case 'signal':
+      // Lifecycle and signal-door rules never match here — they dispatch from the bus
+      // (entity:created/deleted, signal:recorded), not the field-hook seam.
       return false
   }
 }

@@ -18,6 +18,9 @@ import {
   resolveFieldRefToId,
   updateRecordRule,
 } from '@auxx/lib/record-rules'
+// Server-only tRPC router — safe to import the full `@auxx/lib/signals` barrel (not
+// `/client`); the client-vs-server import rule only gates client components.
+import { SIGNAL_KIND_LIST } from '@auxx/lib/signals'
 import { assertWorkflowAppNotSystemOwned } from '@auxx/lib/workflows'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -44,7 +47,13 @@ const onSchema = z.enum([
   'cleared',
   'created',
   'deleted',
+  'signal',
 ])
+
+const signalKindSchema = z.enum(SIGNAL_KIND_LIST as [string, ...string[]])
+
+/** Mirrors the task router's `prioritySchema` (`apps/web/src/server/api/routers/task.ts`). */
+const taskPrioritySchema = z.enum(['low', 'medium', 'high'])
 
 const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set-field'), fieldRef: z.string().min(1), value: z.unknown() }),
@@ -54,6 +63,14 @@ const actionSchema = z.discriminatedUnion('type', [
     userIds: z.array(z.string().min(1)).min(1),
     message: z.string().min(1),
   }),
+  z.object({
+    type: z.literal('create-task'),
+    title: z.string().min(1).max(500),
+    assigneeIds: z.array(z.string().min(1)).optional(),
+    deadlineDays: z.number().int().positive().max(365).optional(),
+    priority: taskPrioritySchema.optional(),
+    autoCompleteOn: z.literal('contact_reply').optional(),
+  }),
 ])
 
 const ruleInputSchema = z.object({
@@ -62,6 +79,8 @@ const ruleInputSchema = z.object({
   fieldRef: z.string().min(1).nullable(),
   name: z.string().min(1).max(200),
   on: onSchema,
+  /** The watched signal kind, e.g. `'email:opened'`. Required ⇔ `on === 'signal'`. */
+  signalKind: signalKindSchema.nullable().optional(),
   condition: z.array(z.record(z.string(), z.unknown())).default([]),
   actions: z.array(actionSchema).min(1),
   enabled: z.boolean().default(true),
@@ -91,7 +110,8 @@ async function normalizeFieldRef(
   organizationId: string,
   input: { entityDefinitionId: string; fieldRef: string | null; on: RecordRuleOn }
 ): Promise<string | null> {
-  if (LIFECYCLE_TRANSITIONS.includes(input.on)) return null
+  // Signal-door rules (like lifecycle rules) have no watched field.
+  if (input.on === 'signal' || LIFECYCLE_TRANSITIONS.includes(input.on)) return null
   if (!input.fieldRef) return null // store-level validation rejects with a clear error
   return resolveFieldRefToId(organizationId, input.entityDefinitionId, input.fieldRef)
 }
@@ -138,6 +158,7 @@ export const recordRulesRouter = createTRPCRouter({
         fieldId,
         name: input.name,
         on: input.on,
+        signalKind: input.signalKind ?? null,
         condition: input.condition,
         actions: input.actions as RecordRuleAction[],
         enabled: input.enabled,

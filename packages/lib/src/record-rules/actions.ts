@@ -4,11 +4,19 @@
 // registry and must not create import cycles or break vi.mock in unit tests.
 
 import { createScopedLogger } from '@auxx/logger'
+import { toActorId } from '@auxx/types/actor'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import type { RecordSnapshot } from './resolver'
 import type { CachedRecordRule, RecordRuleAction, RecordRuleFireContext } from './types'
 
 const logger = createScopedLogger('record-rules-actions')
+
+/**
+ * `create-task` dedupe/completion cooldown window (decision 7): a task manually
+ * completed within this many days of the same rule+record firing again is treated as
+ * still "handled" — skip recreating it. Older completions no longer block.
+ */
+const CREATE_TASK_COOLDOWN_DAYS = 7
 
 /**
  * Batch event shape a native rule handler receives — signature-compatible with the
@@ -139,6 +147,99 @@ export async function executeRuleAction(
           },
         })
       }
+      return 'ok'
+    }
+
+    case 'create-task': {
+      // `deleted` firings have no record left to reference sensibly.
+      if (rule.on === 'deleted') return 'skipped'
+
+      const [{ database, schema }, { and, eq, gte, isNull, or }] = await Promise.all([
+        import('@auxx/database'),
+        import('drizzle-orm'),
+      ])
+
+      // Dedupe + completion cooldown (decision 7): one query joining Task + TaskReference,
+      // org-scoped, on the `(organizationId, sourceRuleId)` index — skip when a
+      // non-archived task from this same rule already references this record and is
+      // either still open or was completed within the cooldown window.
+      const cooldownCutoff = new Date(Date.now() - CREATE_TASK_COOLDOWN_DAYS * 24 * 60 * 60 * 1000)
+      const [duplicate] = await database
+        .select({ id: schema.Task.id })
+        .from(schema.Task)
+        .innerJoin(schema.TaskReference, eq(schema.TaskReference.taskId, schema.Task.id))
+        .where(
+          and(
+            eq(schema.Task.organizationId, ctx.organizationId),
+            eq(schema.Task.sourceRuleId, rule.id),
+            isNull(schema.Task.archivedAt),
+            eq(schema.TaskReference.referencedEntityInstanceId, ctx.entityInstanceId),
+            isNull(schema.TaskReference.deletedAt),
+            or(isNull(schema.Task.completedAt), gte(schema.Task.completedAt, cooldownCutoff))
+          )
+        )
+        .limit(1)
+
+      if (duplicate) {
+        logger.debug('Rule create-task skipped — dedupe/cooldown match', {
+          organizationId: ctx.organizationId,
+          ruleId: rule.id,
+          entityInstanceId: ctx.entityInstanceId,
+        })
+        return 'skipped'
+      }
+
+      // `{{record}}` interpolation — the fired record's display name (denormalized
+      // `EntityInstance.displayName`), falling back to the raw id when unset.
+      const [instance] = await database
+        .select({ displayName: schema.EntityInstance.displayName })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            eq(schema.EntityInstance.id, ctx.entityInstanceId),
+            eq(schema.EntityInstance.organizationId, ctx.organizationId)
+          )
+        )
+        .limit(1)
+      const recordName = instance?.displayName || ctx.entityInstanceId
+      const title = action.title.replaceAll('{{record}}', recordName)
+
+      const [{ createTaskService }, { SystemUserService }] = await Promise.all([
+        import('../tasks'),
+        import('../users/system-user-service'),
+      ])
+      const systemUserId = await SystemUserService.getSystemUserForActions(ctx.organizationId)
+
+      // Fired record + (when the signal carries a distinct contact) the contact too —
+      // deduped by instance id.
+      const referencedEntities: RecordId[] = [
+        toRecordId(ctx.entityDefinitionId, ctx.entityInstanceId),
+      ]
+      if (
+        ctx.signal?.contactEntityInstanceId &&
+        ctx.signal.contactEntityInstanceId !== ctx.entityInstanceId
+      ) {
+        referencedEntities.push(
+          toRecordId(ctx.entityDefinitionId, ctx.signal.contactEntityInstanceId)
+        )
+      }
+
+      await createTaskService(database).createTask(
+        {
+          title,
+          priority: action.priority,
+          assigneeActorIds: action.assigneeIds?.map((id) => toActorId('user', id)),
+          referencedEntities,
+          source: 'rule',
+          sourceRuleId: rule.id,
+          sourceSignalId: ctx.signal?.signalId,
+          autoCompleteOn: action.autoCompleteOn,
+          deadline: action.deadlineDays != null ? { days: action.deadlineDays } : undefined,
+        },
+        ctx.organizationId,
+        systemUserId
+      )
+
       return 'ok'
     }
 

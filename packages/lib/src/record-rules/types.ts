@@ -4,8 +4,13 @@
 // See plans/events/dynamic-field-rules-and-sync-events-plan.md.
 
 import type { ConditionGroup } from '../conditions/types'
+import type { TaskPriority } from '../tasks/types'
 
-/** Transition selector. Direction semantics live on the rule, NOT in conditions. */
+/**
+ * Transition selector. Direction semantics live on the rule, NOT in conditions.
+ * `'signal'` is the signal door (Step 3): `signalKind` NOT NULL, `fieldId` IS NULL — the
+ * counterpart of the lifecycle rules' `fieldId IS NULL` invariant (see `assertRuleShape`).
+ */
 export type RecordRuleOn =
   | 'changed'
   | 'increased'
@@ -14,6 +19,7 @@ export type RecordRuleOn =
   | 'cleared'
   | 'created'
   | 'deleted'
+  | 'signal'
 
 export const FIELD_TRANSITIONS: readonly RecordRuleOn[] = [
   'changed',
@@ -56,7 +62,31 @@ export interface NativeAction {
   handler: string
 }
 
-export type RecordRuleAction = SetFieldAction | EnqueueWorkflowAction | NotifyAction | NativeAction
+/**
+ * Create a follow-up task from the fired record (decision 11 — v1 scope). Registered as
+ * a normal (non-native) action: immediately usable on field/lifecycle/sync/signal doors
+ * alike, no `managed` gate. Dedupe + completion cooldown (decision 7) and
+ * `{{record}}` title interpolation are handled by the executor (`actions.ts`).
+ */
+export interface CreateTaskAction {
+  type: 'create-task'
+  /** May contain the literal token `{{record}}`, replaced with the fired record's display name. */
+  title: string
+  /** Fixed assignee user ids. No record-owner strategy yet (decision 11). */
+  assigneeIds?: string[]
+  /** Relative deadline in days from firing time, resolved the same way `createTask` does. */
+  deadlineDays?: number
+  priority?: TaskPriority
+  /** `'contact_reply'` — a later `message:replied` signal for the referenced contact auto-completes the task. */
+  autoCompleteOn?: 'contact_reply'
+}
+
+export type RecordRuleAction =
+  | SetFieldAction
+  | EnqueueWorkflowAction
+  | NotifyAction
+  | NativeAction
+  | CreateTaskAction
 
 /**
  * Does an action list contain a native action? THE shared predicate for routing a rule
@@ -82,10 +112,12 @@ export interface CachedRecordRule {
   id: string
   organizationId: string
   entityDefinitionId: string
-  /** null ⇔ lifecycle rule (`on: created|deleted`). */
+  /** null ⇔ lifecycle rule (`on: created|deleted`) or signal rule (`on: 'signal'`). */
   fieldId: string | null
   name: string
   on: RecordRuleOn
+  /** The watched signal kind, e.g. `'email:opened'`. Non-null ⇔ `on === 'signal'`. */
+  signalKind?: string | null
   condition: ConditionGroup[]
   actions: RecordRuleAction[]
   enabled: boolean
@@ -154,4 +186,14 @@ export interface RecordRuleFireContext {
    * `deleted` firings MUST provide it (the record is gone) — last-known values.
    */
   snapshot?: Record<string, unknown> | null
+  /**
+   * Signal-door provenance (`on: 'signal'` firings, see `handle-signal-record-rules.ts`) —
+   * read by actions that want to stamp signal provenance (e.g. a future `create-task`
+   * action's `sourceSignalId`). Absent for field/lifecycle/sync firings.
+   */
+  signal?: {
+    signalId: string
+    kind: string
+    contactEntityInstanceId?: string
+  }
 }

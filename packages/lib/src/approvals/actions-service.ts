@@ -437,6 +437,9 @@ export function buildApprovalToolContext(args: {
     turnId: args.traceId,
     signal: args.signal,
     now: Date.now(),
+    // Marks this as an AI-bundle apply-time execution (see ToolContext.runOrigin) —
+    // e.g. lets create_task tag `source: 'ai'` instead of 'kopilot'.
+    runOrigin: 'approval-bundle' as const,
   }
   // Approval-time execution has no persisted domain state to hydrate from; a
   // fresh store gives `sys:*` and (subject-less) field reads their gate-by-absence.

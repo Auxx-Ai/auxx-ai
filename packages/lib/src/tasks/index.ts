@@ -1,5 +1,8 @@
 // packages/lib/src/tasks/index.ts
 
+// Provenance union — defined on the Task schema, re-exported here so app-layer
+// callers don't need a separate '@auxx/database' import just for this type.
+export type { TaskSource } from '@auxx/database'
 // Filter and sort config (also available from @auxx/lib/tasks/client)
 export {
   DEFAULT_SORT_DIRECTIONS,

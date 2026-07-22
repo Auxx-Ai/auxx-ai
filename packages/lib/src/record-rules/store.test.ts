@@ -53,3 +53,103 @@ describe('assertRuleShape — native actions', () => {
     ).toThrow(/server-declared/)
   })
 })
+
+describe('assertRuleShape — signal door (decision 4)', () => {
+  const notify = [{ type: 'notify' as const, userIds: ['u'], message: 'm' }]
+
+  it('accepts a signal rule with a recognized signalKind and no fieldId', () => {
+    expect(() =>
+      assertRuleShape({ fieldId: null, on: 'signal', signalKind: 'email:opened', actions: notify })
+    ).not.toThrow()
+  })
+
+  it('rejects a signal rule carrying a fieldId', () => {
+    expect(() =>
+      assertRuleShape({
+        fieldId: 'fld_1',
+        on: 'signal',
+        signalKind: 'email:opened',
+        actions: notify,
+      })
+    ).toThrow(/must not have a fieldId/)
+  })
+
+  it('rejects a signal rule with no signalKind', () => {
+    expect(() =>
+      assertRuleShape({ fieldId: null, on: 'signal', signalKind: null, actions: notify })
+    ).toThrow(/requires a signalKind/)
+  })
+
+  it('rejects a signal rule with an unrecognized signalKind', () => {
+    expect(() =>
+      assertRuleShape({
+        fieldId: null,
+        on: 'signal',
+        signalKind: 'not:a:real:kind',
+        actions: notify,
+      })
+    ).toThrow(/Unknown signal kind/)
+  })
+
+  it('rejects signalKind on a non-signal rule', () => {
+    expect(() =>
+      assertRuleShape({ ...fieldRule, signalKind: 'email:opened', actions: notify })
+    ).toThrow(/only valid on a 'signal' rule/)
+  })
+})
+
+describe('assertRuleShape — stale signal:* conditions (decision 15)', () => {
+  const notify = [{ type: 'notify' as const, userIds: ['u'], message: 'm' }]
+
+  it('rejects a condition referencing a signal:* pseudo-field on a non-signal rule', () => {
+    expect(() =>
+      assertRuleShape({
+        ...fieldRule,
+        actions: notify,
+        condition: [
+          {
+            id: 'g1',
+            logicalOperator: 'AND',
+            conditions: [
+              { id: 'c1', fieldId: 'signal:openCount30d', operator: 'not empty', value: undefined },
+            ],
+          },
+        ] as never,
+      })
+    ).toThrow(/signal field/)
+  })
+
+  it('allows a signal:* condition on a signal rule', () => {
+    expect(() =>
+      assertRuleShape({
+        fieldId: null,
+        on: 'signal',
+        signalKind: 'email:opened',
+        actions: notify,
+        condition: [
+          {
+            id: 'g1',
+            logicalOperator: 'AND',
+            conditions: [{ id: 'c1', fieldId: 'signal:openCount30d', operator: '>=', value: 3 }],
+          },
+        ] as never,
+      })
+    ).not.toThrow()
+  })
+
+  it('allows ordinary field conditions on a non-signal rule', () => {
+    expect(() =>
+      assertRuleShape({
+        ...fieldRule,
+        actions: notify,
+        condition: [
+          {
+            id: 'g1',
+            logicalOperator: 'AND',
+            conditions: [{ id: 'c1', fieldId: 'status', operator: 'is', value: 'open' }],
+          },
+        ] as never,
+      })
+    ).not.toThrow()
+  })
+})

@@ -1,11 +1,13 @@
 // packages/lib/src/events/handlers/index.ts
 
 export { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
+export { autoCompleteTasks } from './auto-complete-tasks'
 export { createAuditLog } from './create-audit-log'
 export { createEventJob } from './create-event-job'
 export { createTimelineEvent } from './create-timeline-event'
 export { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
 export { handleRecordRules } from './handle-record-rules'
+export { handleSignalRecordRules } from './handle-signal-record-rules'
 export { handleSyncRecordRules } from './handle-sync-record-rules'
 export { ingestBounceMessage } from './ingest-bounce-message'
 export { projectSignalToTimeline } from './project-signal-to-timeline'

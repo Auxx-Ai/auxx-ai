@@ -7,13 +7,27 @@
 // See plans/events/dynamic-field-rules-and-sync-events-plan.md.
 
 import { createId } from '@paralleldrive/cuid2'
-import { type AnyPgColumn, boolean, index, jsonb, pgTable, text, timestamp } from './_shared'
+import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  sql,
+  text,
+  timestamp,
+  uniqueIndex,
+} from './_shared'
 import { CustomField } from './custom-field'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 import { User } from './user'
 
-/** Transition selector — field transitions require a fieldId; lifecycle rules have fieldId = null. */
+/**
+ * Transition selector — field transitions require a fieldId; lifecycle rules have
+ * fieldId = null; the signal door (`on = 'signal'`) requires `signalKind` and has
+ * fieldId = null (see `assertRuleShape`).
+ */
 export type RecordRuleOn =
   | 'changed'
   | 'increased'
@@ -22,6 +36,7 @@ export type RecordRuleOn =
   | 'cleared'
   | 'created'
   | 'deleted'
+  | 'signal'
 
 export const RecordRule = pgTable(
   'RecordRule',
@@ -50,6 +65,9 @@ export const RecordRule = pgTable(
     // not in `condition` — the condition evaluator sees one record snapshot and cannot
     // express old→new comparisons.
     on: text().$type<RecordRuleOn>().default('changed').notNull(),
+    // The watched signal kind, e.g. 'email:opened'. NULL unless `on = 'signal'` — the
+    // signal-door counterpart to `fieldId` (invariant enforced in `assertRuleShape`).
+    signalKind: text(),
     // Existing conditions system (`@auxx/lib/conditions` ConditionGroup[]). Groups are
     // AND'd; empty array = always match.
     condition: jsonb().$type<unknown[]>().default([]).notNull(),
@@ -62,6 +80,9 @@ export const RecordRule = pgTable(
     // discriminator (not a boolean) so a future managed feature knows WHICH feature owns the
     // row (e.g. to clean up). Extend the union as more managed features land.
     managed: text().$type<'inventory' | null>(),
+    // Idempotency key for starter suggested rules (`seedSuggestedRecordRules`, decision 8).
+    // NULL for ordinary user-authored rules. Unique per org when set (see index below).
+    templateKey: text(),
     enabled: boolean().default(true).notNull(),
     createdByUserId: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
@@ -83,6 +104,11 @@ export const RecordRule = pgTable(
       table.organizationId.asc().nullsLast(),
       table.entityDefinitionId.asc().nullsLast()
     ),
+    // Suggested-rule seeding idempotency (decision 8): one row per (org, templateKey).
+    // Partial — templateKey is null for the vast majority of (ordinary user) rules.
+    uniqueIndex('RecordRule_organizationId_templateKey_idx')
+      .using('btree', table.organizationId.asc().nullsLast(), table.templateKey.asc().nullsLast())
+      .where(sql`"templateKey" IS NOT NULL`),
   ]
 )
 

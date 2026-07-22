@@ -19,6 +19,10 @@ export {
   RECORD_RULE_RUN_RETENTION_JOB_NAME,
   recordRuleRunRetentionJob,
 } from './run-retention-job'
+export {
+  SUGGESTED_RECORD_RULE_TEMPLATES,
+  seedSuggestedRecordRules,
+} from './seed-suggested-rules'
 export { fetchResourceSnapshots } from './snapshot-fetcher'
 export {
   assertRuleShape,
