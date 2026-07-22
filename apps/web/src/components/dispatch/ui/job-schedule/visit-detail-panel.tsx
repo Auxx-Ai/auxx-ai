@@ -3,6 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { toActorId } from '@auxx/types/actor'
+import { getFileRefDownloadUrl, toFileRef } from '@auxx/types/file-ref'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -14,6 +15,7 @@ import { format } from 'date-fns'
 import {
   CalendarClock,
   CircleDollarSign,
+  Printer,
   ReceiptText,
   RotateCcw,
   Send,
@@ -75,6 +77,12 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
   const setVisitDuration = api.dispatch.setVisitDuration.useMutation({
     onError: (error) => toastError({ title: 'Error saving duration', description: error.message }),
     onSuccess: refresh,
+  })
+  const getVisitReportPdf = api.dispatch.getVisitReportPdf.useMutation({
+    onSuccess: (data) =>
+      window.open(getFileRefDownloadUrl(toFileRef('asset', data.assetId)), '_blank'),
+    onError: (error) =>
+      toastError({ title: 'Error rendering visit report', description: error.message }),
   })
   const utils = api.useUtils()
   const addExtrasToContract = api.money.addVisitExtrasToContract.useMutation({
@@ -281,8 +289,19 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
           </FieldPanelRow>
         </FieldPanel>
 
-        {/* Per-visit proof of work — the worker's captured QC checklist (notes + photos),
-            read-only dispatcher-side. Authoring stays on the worker surface's Notes tab. */}
+        {/* Per-visit proof of work — the worker's captured QC checklist (checks + notes are
+            worker attestations; photos are office-editable, 37d §4). "Print report" renders the
+            per-visit Visit report PDF on demand (37d §5). */}
+        <div className='flex justify-end'>
+          <Button
+            variant='outline'
+            size='sm'
+            loading={getVisitReportPdf.isPending}
+            loadingText='Rendering...'
+            onClick={() => getVisitReportPdf.mutate({ visitId: visit.id })}>
+            <Printer /> Print report
+          </Button>
+        </div>
         <VisitProofOfWork visitId={visit.id} />
 
         <div className='flex items-center justify-between gap-3 rounded-xl border bg-primary-100 p-3'>

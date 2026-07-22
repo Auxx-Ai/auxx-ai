@@ -24,6 +24,9 @@ interface PhotoTileEditorProps {
   name: string
   caption?: string
   internal?: boolean
+  /** Show the internal/customer visibility toggle (37b quote photos). QC photos have no
+   * internal split (37d), so they render caption-only via `showInternal={false}`. */
+  showInternal?: boolean
   onSave: (patch: { caption?: string; internal?: boolean }) => Promise<void> | void
   onRemove: () => void
 }
@@ -42,6 +45,7 @@ export function PhotoTileEditor({
   name,
   caption,
   internal,
+  showInternal = true,
   onSave,
   onRemove,
 }: PhotoTileEditorProps) {
@@ -62,7 +66,10 @@ export function PhotoTileEditor({
     setIsSaving(true)
     try {
       const trimmed = captionDraft.trim()
-      await onSave({ caption: trimmed ? trimmed : undefined, internal: internalDraft })
+      await onSave({
+        caption: trimmed ? trimmed : undefined,
+        ...(showInternal ? { internal: internalDraft } : {}),
+      })
       setOpen(false)
     } finally {
       setIsSaving(false)
@@ -77,7 +84,11 @@ export function PhotoTileEditor({
         className='flex flex-col gap-4 sm:max-w-sm'>
         <SheetHeader>
           <SheetTitle className='truncate'>{name}</SheetTitle>
-          <SheetDescription>Add a caption or hide this photo from the customer.</SheetDescription>
+          <SheetDescription>
+            {showInternal
+              ? 'Add a caption or hide this photo from the customer.'
+              : 'Add a caption.'}
+          </SheetDescription>
         </SheetHeader>
 
         <div className='flex flex-col gap-1.5'>
@@ -91,13 +102,15 @@ export function PhotoTileEditor({
           />
         </div>
 
-        <div className='flex items-center justify-between rounded-md border p-3'>
-          <div className='flex flex-col gap-0.5'>
-            <span className='text-sm font-medium'>Internal</span>
-            <span className='text-xs text-muted-foreground'>Hidden from customer</span>
+        {showInternal && (
+          <div className='flex items-center justify-between rounded-md border p-3'>
+            <div className='flex flex-col gap-0.5'>
+              <span className='text-sm font-medium'>Internal</span>
+              <span className='text-xs text-muted-foreground'>Hidden from customer</span>
+            </div>
+            <Switch checked={internalDraft} onCheckedChange={setInternalDraft} />
           </div>
-          <Switch checked={internalDraft} onCheckedChange={setInternalDraft} />
-        </div>
+        )}
 
         <SheetFooter className='mt-auto flex-row justify-between sm:justify-between'>
           <Button

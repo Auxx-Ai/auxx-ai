@@ -166,6 +166,24 @@ export async function reorderQcItemTemplates(
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Load a `VisitQcItem` scoped to the org — no assignee guard. Backs the office (dispatcher)
+ * photo mutations, which are org-scoped: any dispatch member may document a visit's checklist,
+ * not only its assigned worker (37d decision 3). `loadOwnQcItem` layers the assignee guard on top.
+ *
+ * @throws {NotFoundError} when the item doesn't exist in this org.
+ */
+async function loadQcItemInOrg(organizationId: string, itemId: string): Promise<VisitQcItemRow> {
+  const item = await database.query.VisitQcItem.findFirst({
+    where: and(
+      eq(schema.VisitQcItem.id, itemId),
+      eq(schema.VisitQcItem.organizationId, organizationId)
+    ),
+  })
+  if (!item) throw new NotFoundError('Quality check item not found')
+  return item
+}
+
+/**
  * Load a `VisitQcItem` scoped to the org, then guard its parent visit via `loadOwnVisit` — every
  * item-id worker fn below uses this so a worker can only touch checklist rows on their own visit.
  *
@@ -177,21 +195,17 @@ async function loadOwnQcItem(
   userId: string,
   itemId: string
 ): Promise<VisitQcItemRow> {
-  const item = await database.query.VisitQcItem.findFirst({
-    where: and(
-      eq(schema.VisitQcItem.id, itemId),
-      eq(schema.VisitQcItem.organizationId, organizationId)
-    ),
-  })
-  if (!item) throw new NotFoundError('Quality check item not found')
+  const item = await loadQcItemInOrg(organizationId, itemId)
   await loadOwnVisit(organizationId, userId, item.visitId)
   return item
 }
 
-/** One photo attached to a `VisitQcItem`, projected for the worker UI. */
+/** One photo attached to a `VisitQcItem`, projected for the worker + office UI. */
 export interface MyVisitQcItemPhoto {
   attachmentId: string
   assetId: string | null
+  /** Optional free-text caption (37d §2), stored on `Attachment.caption`. */
+  caption: string | null
 }
 
 /** One row of `listMyVisitQcItems`'s materialized checklist. */
@@ -202,6 +216,8 @@ export interface MyVisitQcItem {
   isRequired: boolean
   note: string | null
   checkedAt: Date | null
+  /** Who checked the item (null when unchecked) — surfaced on the visit report (37d §5). */
+  checkedByUserId: string | null
   sortOrder: number
   photos: MyVisitQcItemPhoto[]
 }
@@ -224,6 +240,7 @@ async function getPhotosByItemId(
       attachmentId: schema.Attachment.id,
       entityId: schema.Attachment.entityId,
       assetId: schema.Attachment.assetId,
+      caption: schema.Attachment.caption,
     })
     .from(schema.Attachment)
     .where(
@@ -233,10 +250,11 @@ async function getPhotosByItemId(
         inArray(schema.Attachment.entityId, itemIds)
       )
     )
+    .orderBy(asc(schema.Attachment.sort), asc(schema.Attachment.createdAt))
 
   for (const row of rows) {
     const photos = result.get(row.entityId) ?? []
-    photos.push({ attachmentId: row.attachmentId, assetId: row.assetId })
+    photos.push({ attachmentId: row.attachmentId, assetId: row.assetId, caption: row.caption })
     result.set(row.entityId, photos)
   }
   return result
@@ -271,6 +289,7 @@ async function readVisitQcItems(
       isRequired: item.isRequired,
       note: item.note,
       checkedAt: item.checkedAt,
+      checkedByUserId: item.checkedByUserId,
       sortOrder: item.sortOrder,
       photos: photosByItemId.get(item.id) ?? [],
     })),
@@ -421,27 +440,82 @@ export async function addMyAdhocQcItem(
   return created
 }
 
+// ─── Shared photo bodies (guard already applied by the public fns) ──────────────
+// The worker (`*My*`) and office (`*Visit*`) fns differ ONLY in their item-load guard
+// (`loadOwnQcItem` vs `loadQcItemInOrg`, 37d §2); everything past the guard is identical, so
+// it lives here once and takes a pre-resolved `itemId`.
+
+/** Attach an already-uploaded `MediaAsset` (see `useFileUpload`) to a checklist item. */
+async function attachQcItemPhoto(
+  organizationId: string,
+  userId: string,
+  itemId: string,
+  assetId: string
+): Promise<MyVisitQcItemPhoto> {
+  const attachment = await new AttachmentService(organizationId, userId).create({
+    entityType: 'visit_qc_item',
+    entityId: itemId,
+    assetId,
+  })
+  return { attachmentId: attachment.id, assetId: attachment.assetId, caption: attachment.caption }
+}
+
+/** Resolve an attachment and assert it belongs to the given checklist item, or throw. */
+async function loadQcItemPhoto(
+  organizationId: string,
+  itemId: string,
+  attachmentId: string
+): Promise<void> {
+  const attachment = await database.query.Attachment.findFirst({
+    where: and(
+      eq(schema.Attachment.id, attachmentId),
+      eq(schema.Attachment.organizationId, organizationId)
+    ),
+  })
+  if (!attachment || attachment.entityType !== 'visit_qc_item' || attachment.entityId !== itemId) {
+    throw new NotFoundError('Photo not found on this quality check item')
+  }
+}
+
+/** Detach a photo from a checklist item. */
+async function detachQcItemPhoto(
+  organizationId: string,
+  userId: string,
+  itemId: string,
+  attachmentId: string
+): Promise<void> {
+  await loadQcItemPhoto(organizationId, itemId, attachmentId)
+  await new AttachmentService(organizationId, userId).delete(attachmentId)
+}
+
+/** Set (or clear, `caption: null`) a photo's caption. */
+async function updateQcItemPhotoCaption(
+  organizationId: string,
+  userId: string,
+  itemId: string,
+  attachmentId: string,
+  caption: string | null
+): Promise<void> {
+  await loadQcItemPhoto(organizationId, itemId, attachmentId)
+  await new AttachmentService(organizationId, userId).update(attachmentId, { caption })
+}
+
+// ─── Worker (assignee-guarded) photo mutations ──────────────────────────────────
+
 /** Input for {@link addMyQcItemPhoto}. */
 export interface AddMyQcItemPhotoInput {
   itemId: string
   assetId: string
 }
 
-/** Attach an already-uploaded `MediaAsset` (see `useFileUpload`) to a checklist item. */
+/** Attach an already-uploaded `MediaAsset` (see `useFileUpload`) to the worker's own checklist item. */
 export async function addMyQcItemPhoto(
   organizationId: string,
   userId: string,
   input: AddMyQcItemPhotoInput
 ): Promise<MyVisitQcItemPhoto> {
   await loadOwnQcItem(organizationId, userId, input.itemId)
-
-  const attachment = await new AttachmentService(organizationId, userId).create({
-    entityType: 'visit_qc_item',
-    entityId: input.itemId,
-    assetId: input.assetId,
-  })
-
-  return { attachmentId: attachment.id, assetId: attachment.assetId }
+  return attachQcItemPhoto(organizationId, userId, input.itemId, input.assetId)
 }
 
 /** Input for {@link removeMyQcItemPhoto}. */
@@ -451,7 +525,7 @@ export interface RemoveMyQcItemPhotoInput {
 }
 
 /**
- * Detach a photo from a checklist item.
+ * Detach a photo from the worker's own checklist item.
  *
  * @throws {NotFoundError} when the attachment doesn't exist, or belongs to a different item/org.
  */
@@ -461,20 +535,81 @@ export async function removeMyQcItemPhoto(
   input: RemoveMyQcItemPhotoInput
 ): Promise<void> {
   await loadOwnQcItem(organizationId, userId, input.itemId)
+  await detachQcItemPhoto(organizationId, userId, input.itemId, input.attachmentId)
+}
 
-  const attachment = await database.query.Attachment.findFirst({
-    where: and(
-      eq(schema.Attachment.id, input.attachmentId),
-      eq(schema.Attachment.organizationId, organizationId)
-    ),
-  })
-  if (
-    !attachment ||
-    attachment.entityType !== 'visit_qc_item' ||
-    attachment.entityId !== input.itemId
-  ) {
-    throw new NotFoundError('Photo not found on this quality check item')
-  }
+/** Input for {@link setMyQcItemPhotoCaption} / {@link setVisitQcItemPhotoCaption}. */
+export interface SetQcItemPhotoCaptionInput {
+  itemId: string
+  attachmentId: string
+  /** `null` clears the caption. */
+  caption: string | null
+}
 
-  await new AttachmentService(organizationId, userId).delete(input.attachmentId)
+/** Set/clear the caption on a photo of the worker's own checklist item (37d §2). */
+export async function setMyQcItemPhotoCaption(
+  organizationId: string,
+  userId: string,
+  input: SetQcItemPhotoCaptionInput
+): Promise<void> {
+  await loadOwnQcItem(organizationId, userId, input.itemId)
+  await updateQcItemPhotoCaption(
+    organizationId,
+    userId,
+    input.itemId,
+    input.attachmentId,
+    input.caption
+  )
+}
+
+// ─── Office (org-scoped, no assignee guard) photo mutations — 37d §2 ─────────────
+// Any dispatch member may add/caption/remove a visit's QC photos from the proof-of-work panel,
+// not just the assigned worker. Checks and per-item notes stay worker attestations (untouched).
+
+/** Input for {@link addVisitQcItemPhoto}. */
+export interface AddVisitQcItemPhotoInput {
+  itemId: string
+  assetId: string
+}
+
+/** Office: attach an already-uploaded `MediaAsset` to any org checklist item. */
+export async function addVisitQcItemPhoto(
+  organizationId: string,
+  userId: string,
+  input: AddVisitQcItemPhotoInput
+): Promise<MyVisitQcItemPhoto> {
+  await loadQcItemInOrg(organizationId, input.itemId)
+  return attachQcItemPhoto(organizationId, userId, input.itemId, input.assetId)
+}
+
+/** Input for {@link removeVisitQcItemPhoto}. */
+export interface RemoveVisitQcItemPhotoInput {
+  itemId: string
+  attachmentId: string
+}
+
+/** Office: detach a photo from any org checklist item. */
+export async function removeVisitQcItemPhoto(
+  organizationId: string,
+  userId: string,
+  input: RemoveVisitQcItemPhotoInput
+): Promise<void> {
+  await loadQcItemInOrg(organizationId, input.itemId)
+  await detachQcItemPhoto(organizationId, userId, input.itemId, input.attachmentId)
+}
+
+/** Office: set/clear the caption on a photo of any org checklist item. */
+export async function setVisitQcItemPhotoCaption(
+  organizationId: string,
+  userId: string,
+  input: SetQcItemPhotoCaptionInput
+): Promise<void> {
+  await loadQcItemInOrg(organizationId, input.itemId)
+  await updateQcItemPhotoCaption(
+    organizationId,
+    userId,
+    input.itemId,
+    input.attachmentId,
+    input.caption
+  )
 }

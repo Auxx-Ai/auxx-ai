@@ -14,11 +14,10 @@ import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Camera, Image as ImageIcon, Loader2, MessageSquare, X } from 'lucide-react'
+import { Image as ImageIcon, MessageSquare } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
-import { AttachmentThumbnail } from '~/components/files/utils/attachment-thumbnail'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { QcPhotoStrip } from './qc-photo-strip'
 
 type MyVisitQcItem = RouterOutputs['dispatch']['listMyVisitQcItems']['items'][number]
 
@@ -31,7 +30,6 @@ export function QcItemRow({ visitId, item }: QcItemRowProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [noteDraft, setNoteDraft] = useState(item.note ?? '')
   const savedNoteRef = useRef(item.note ?? '')
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const utils = api.useUtils()
 
@@ -73,39 +71,15 @@ export function QcItemRow({ visitId, item }: QcItemRowProps) {
     onError: (error) => toastError({ title: 'Error removing photo', description: error.message }),
   })
 
-  const fileUpload = useFileUpload({
-    entityType: 'visit_qc_item',
-    entityId: item.id,
-    onComplete: (results) => {
-      const result = results.results[0]
-      if (result?.success && result.metadata?.assetId) {
-        addPhoto.mutate({ itemId: item.id, assetId: result.metadata.assetId })
-      } else if (result?.error) {
-        toastError({ title: 'Error uploading photo', description: result.error })
-      }
-    },
-    onError: (error) => toastError({ title: 'Error uploading photo', description: error }),
+  const setCaption = api.dispatch.setMyQcItemPhotoCaption.useMutation({
+    onSuccess: () => utils.dispatch.listMyVisitQcItems.invalidate({ visitId }),
+    onError: (error) => toastError({ title: 'Error saving caption', description: error.message }),
   })
 
   const handleNoteBlur = () => {
     if (noteDraft === savedNoteRef.current) return
     savedNoteRef.current = noteDraft
     setNote.mutate({ itemId: item.id, note: noteDraft.trim() ? noteDraft : null })
-  }
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? [])
-    event.target.value = ''
-    if (files.length === 0) return
-    try {
-      await fileUpload.addFiles(files)
-      await fileUpload.startUpload()
-    } catch (error) {
-      toastError({
-        title: 'Error uploading photo',
-        description: error instanceof Error ? error.message : 'Upload failed',
-      })
-    }
   }
 
   const isChecked = !!item.checkedAt
@@ -162,45 +136,16 @@ export function QcItemRow({ visitId, item }: QcItemRowProps) {
           rows={2}
           className='text-sm'
         />
-        <div className='flex flex-wrap items-center gap-2'>
-          {item.photos.map((photo) => (
-            <div key={photo.attachmentId} className='relative'>
-              <AttachmentThumbnail attachmentId={photo.attachmentId} alt={item.title} />
-              <button
-                type='button'
-                onClick={() =>
-                  removePhoto.mutate({ itemId: item.id, attachmentId: photo.attachmentId })
-                }
-                disabled={removePhoto.isPending}
-                aria-label='Remove photo'
-                className='absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground'>
-                <X className='size-2.5' />
-              </button>
-            </div>
-          ))}
-          <button
-            type='button'
-            onClick={() => fileInputRef.current?.click()}
-            disabled={fileUpload.isUploading}
-            aria-label='Add photo'
-            className='flex size-12 items-center justify-center rounded-md border border-dashed text-muted-foreground hover:bg-accent/50'>
-            {fileUpload.isUploading ? (
-              <Loader2 className='size-4 animate-spin' />
-            ) : (
-              <Camera className='size-4' />
-            )}
-          </button>
-          {/* First repo-wide `capture=` usage — one attribute on the input `useFileUpload`
-              feeds; opens the device camera directly on mobile instead of the file picker. */}
-          <input
-            ref={fileInputRef}
-            type='file'
-            accept='image/*'
-            capture='environment'
-            className='hidden'
-            onChange={handleFileChange}
-          />
-        </div>
+        <QcPhotoStrip
+          itemId={item.id}
+          itemTitle={item.title}
+          photos={item.photos}
+          onAddPhoto={(assetId) => addPhoto.mutate({ itemId: item.id, assetId })}
+          onRemovePhoto={(attachmentId) => removePhoto.mutate({ itemId: item.id, attachmentId })}
+          onSetCaption={(attachmentId, caption) =>
+            setCaption.mutate({ itemId: item.id, attachmentId, caption })
+          }
+        />
       </div>
     </TreeRow>
   )

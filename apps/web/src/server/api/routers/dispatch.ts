@@ -6,6 +6,7 @@ import {
   addMyAdhocQcItem,
   addMyQcItemPhoto,
   addVisit,
+  addVisitQcItemPhoto,
   advanceMyVisit,
   applyRouteTimes,
   assignVisit,
@@ -34,16 +35,20 @@ import {
   pauseEngagement,
   removeDispatchWorker,
   removeMyQcItemPhoto,
+  removeVisitQcItemPhoto,
+  renderVisitReportToAsset,
   reorderQcItemTemplates,
   restoreVisit,
   resumeEngagement,
   scheduleVisit,
   setMyQcItemChecked,
   setMyQcItemNote,
+  setMyQcItemPhotoCaption,
   setRecurrenceRule,
   setRouteOrder,
   setSeriesEnd,
   setVisitDuration,
+  setVisitQcItemPhotoCaption,
   setVisitStatus,
   setWorkerActive,
   unscheduleVisit,
@@ -695,6 +700,39 @@ export const dispatchRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return listVisitQcItems(ctx.session.organizationId, input.visitId)
     }),
+  // 37d §2 — office (dispatcher) photo capture: org-scoped, NO assignee guard, so any dispatch
+  // admin can document a visit's checklist from the proof-of-work panel. Admin-gated to match the
+  // `listVisitQcItems` read this panel is built on. Checks/notes stay worker attestations.
+  addVisitQcItemPhoto: dispatchAdminProcedure
+    .input(z.object({ itemId: z.string(), assetId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return addVisitQcItemPhoto(ctx.session.organizationId, ctx.session.user.id, input)
+    }),
+  removeVisitQcItemPhoto: dispatchAdminProcedure
+    .input(z.object({ itemId: z.string(), attachmentId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await removeVisitQcItemPhoto(ctx.session.organizationId, ctx.session.user.id, input)
+      return { success: true }
+    }),
+  setVisitQcItemPhotoCaption: dispatchAdminProcedure
+    .input(
+      z.object({ itemId: z.string(), attachmentId: z.string(), caption: z.string().nullable() })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await setVisitQcItemPhotoCaption(ctx.session.organizationId, ctx.session.user.id, input)
+      return { success: true }
+    }),
+  // 37d §5 — render the per-visit "Visit report" PDF on demand (visits aren't FieldValue-backed
+  // entities, so no pointer cache) and return the short-lived asset id to open via the file proxy.
+  getVisitReportPdf: dispatchAdminProcedure
+    .input(z.object({ visitId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return renderVisitReportToAsset({
+        organizationId: ctx.session.organizationId,
+        actorId: ctx.session.user.id,
+        visitId: input.visitId,
+      })
+    }),
 
   // 08-worker-surface.md §5 — the worker-scoped checklist path. Member-level (not admin-gated):
   // the row-level assignee guard lives in the lib layer (`loadOwnVisit`/`loadOwnQcItem`), so
@@ -728,6 +766,14 @@ export const dispatchRouter = createTRPCRouter({
     .input(z.object({ itemId: z.string(), attachmentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await removeMyQcItemPhoto(ctx.session.organizationId, ctx.session.user.id, input)
+      return { success: true }
+    }),
+  setMyQcItemPhotoCaption: dispatchProcedure
+    .input(
+      z.object({ itemId: z.string(), attachmentId: z.string(), caption: z.string().nullable() })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await setMyQcItemPhotoCaption(ctx.session.organizationId, ctx.session.user.id, input)
       return { success: true }
     }),
 
