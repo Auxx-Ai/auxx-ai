@@ -8,6 +8,8 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId } from '@auxx/types/resource'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
+import { getQueue, Queues } from '../jobs/queues'
+import { getOrganizationSetting } from '../settings/settings-service'
 import { enrollInvoiceSentSequences, enrollWorkOrderCompletedSequences } from './hooks'
 import { reanchorSequenceRuns } from './reanchor'
 
@@ -63,6 +65,46 @@ export const enrollInvoiceReminderOnSent: EntityFieldChangeHandler = async (even
     await enrollInvoiceSentSequences(event.organizationId, entityInstanceId)
   } catch (error) {
     logger.error('Failed to enroll invoice:sent sequences', {
+      organizationId: event.organizationId,
+      invoiceInstanceId: entityInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
+ * `invoice:sent` — QuickBooks mirror (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3).
+ * Same draft→sent door as {@link enrollInvoiceReminderOnSent}, enqueued rather than run inline
+ * (D8 — the queue route also covers the actor-less Stripe `paid` path elsewhere, and keeps this
+ * hook from blocking the field write on an outbound QBO API call). Gated by
+ * `quickbooks.syncInvoices` up front so the queue sees no churn when the org has the feature
+ * off. Deterministic `jobId` de-dupes rapid re-sends of the same invoice.
+ */
+export const enqueueQuickbooksInvoiceSyncOnSent: EntityFieldChangeHandler = async (event) => {
+  if (event.field.systemAttribute !== 'invoice_status') return
+  const oldStatus = extractStringValue(event.oldValue)
+  const newStatus = extractStringValue(event.newValue)
+  if (oldStatus !== 'draft' || newStatus !== 'sent') return
+
+  const { entityInstanceId } = parseRecordId(event.recordId)
+  try {
+    const syncEnabled = await getOrganizationSetting({
+      organizationId: event.organizationId,
+      key: 'quickbooks.syncInvoices',
+    })
+    if (!syncEnabled) return
+
+    await getQueue(Queues.quickbooksInvoiceSyncQueue).add(
+      'syncQuickbooksInvoice',
+      {
+        organizationId: event.organizationId,
+        invoiceInstanceId: entityInstanceId,
+        actorUserId: event.userId,
+      },
+      { jobId: `qb-invoice-sync:${entityInstanceId}` }
+    )
+  } catch (error) {
+    logger.error('Failed to enqueue QuickBooks invoice sync on invoice:sent', {
       organizationId: event.organizationId,
       invoiceInstanceId: entityInstanceId,
       error: error instanceof Error ? error.message : String(error),

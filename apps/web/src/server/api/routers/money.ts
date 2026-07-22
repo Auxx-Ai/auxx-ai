@@ -39,6 +39,7 @@ import {
   saveBillingInstallments,
   setInvoiceSchedule,
   syncAccountState,
+  syncInvoiceToQuickbooks,
   voidInvoice,
 } from '@auxx/lib/money'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
@@ -391,6 +392,21 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         invoiceInstanceId: entityInstanceId,
+      })
+    }),
+
+  // Manual "Sync to QuickBooks" action (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3) —
+  // calls the orchestrator directly (not via the queue) so the UI gets the result inline; the
+  // draft→sent field-change hook (`enqueueQuickbooksInvoiceSyncOnSent`) uses the same
+  // orchestrator through the queue for the automatic path.
+  syncInvoiceToQuickbooks: moneyProcedure
+    .input(z.object({ invoiceRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
+      return syncInvoiceToQuickbooks({
+        organizationId: ctx.session.organizationId,
+        invoiceInstanceId: entityInstanceId,
+        actorUserId: ctx.session.user.id,
       })
     }),
 

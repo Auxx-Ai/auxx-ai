@@ -333,7 +333,7 @@ export default function IntegrationList() {
             title='Browse apps'
             description='Discover new apps to help you work better'>
             <div className='flex flex-col gap-6 justify-start w-full'>
-              <div className='sticky pt-20 -mt-20  top-0'>
+              <div className='sticky pt-20 -mt-20 top-0 z-11'>
                 <div className='grid sm:grid-cols-3 pb-4 sm:pb-0'>
                   <Input
                     placeholder='Search apps'

@@ -59,4 +59,6 @@ export enum Queues {
   dataConnectorQueue = 'data-connector',
   // Learned-KB extraction (AI memory from resolved threads) queue
   learnedExtractionQueue = 'learned-extraction',
+  // QuickBooks invoice sync queue (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
+  quickbooksInvoiceSyncQueue = 'quickbooks-invoice-sync',
 }

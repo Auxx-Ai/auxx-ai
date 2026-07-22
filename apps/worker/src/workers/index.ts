@@ -29,6 +29,7 @@ import { startMessageSyncWorker } from './worker-definitions/message-sync-worker
 import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-worker'
 import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
 import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-worker'
+import { startQuickbooksInvoiceSyncWorker } from './worker-definitions/quickbooks-invoice-sync-worker'
 import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
 import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
@@ -123,6 +124,9 @@ export async function startWorkers() {
   // Quote/invoice PDF render worker (money MQ2)
   const documentPdfWorker = startDocumentPdfWorker()
 
+  // QuickBooks invoice sync worker (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
+  const quickbooksInvoiceSyncWorker = startQuickbooksInvoiceSyncWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -156,6 +160,7 @@ export async function startWorkers() {
     knowledgeSourceWorker,
     dataConnectorWorker,
     documentPdfWorker,
+    quickbooksInvoiceSyncWorker,
   ]
 
   return Promise.all(workers)

@@ -231,6 +231,11 @@ export {
   type ThreadProviderStatusSyncJobData,
   threadProviderStatusSyncJob,
 } from './messages/thread-provider-status-sync-job'
+// Money (QuickBooks invoice sync — plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
+export {
+  type SyncQuickbooksInvoiceJobData,
+  syncQuickbooksInvoiceJob,
+} from './money/sync-quickbooks-invoice-job'
 // OAuth2
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
 // Polling

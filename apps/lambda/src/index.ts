@@ -118,6 +118,10 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   // config pickers) invoke a tool through the shared `invokeAppToolForOptions`
   // core, which signs as `app-tool-options`. See packages/lib/src/apps/tool-options.ts.
   'app-tool-options': ['tool'],
+  // Platform-initiated app-tool orchestration: backend business logic driving an
+  // installed app's tools directly (QuickBooks invoice/payment sync, future outbound
+  // integration syncs). See packages/lib/src/money/quickbooks/invoke-quickbooks-tool.ts.
+  'integration-sync': ['tool'],
 }
 
 /** Maximum payload size (5 MB) */
