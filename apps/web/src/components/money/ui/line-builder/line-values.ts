@@ -52,11 +52,11 @@ export const BASE_LINE_SYSTEM_ATTRIBUTES = [
   'line_item_qty',
   'line_item_unit',
   'line_item_unit_price',
-  // Not part of `LineValues`/`linePatchToFieldValues` — the photo chip
-  // (line-photo-chip.tsx) reads/writes this field directly via
-  // `PropertyProvider`/`FileInputField`, not the semantic patch path. Riding
-  // along in the same prefetch batch just gives the chip its count for free
-  // (plan 37b §4).
+  // Not part of `LineValues`/`linePatchToFieldValues` — the photo popover
+  // (line-photo-popover.tsx) reads/writes this field directly via
+  // `useFieldFileUpload`, not the semantic patch path. Riding along in the
+  // same prefetch batch just gives the trigger its count for free
+  // (plans 37b §4 / 40).
   'line_item_photos',
 ]
 

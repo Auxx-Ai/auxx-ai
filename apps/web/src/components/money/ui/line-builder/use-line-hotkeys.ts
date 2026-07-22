@@ -3,7 +3,13 @@
 import { useHotkey } from '@tanstack/react-hotkeys'
 
 /** Row-level action a shortcut triggers on the focused line row. */
-export type LineRowAction = 'description' | 'category' | 'optional' | 'taxable' | 'delete'
+export type LineRowAction =
+  | 'description'
+  | 'category'
+  | 'photos'
+  | 'optional'
+  | 'taxable'
+  | 'delete'
 
 /**
  * CustomEvent name carrying a {@link LineRowAction} — dispatched by
@@ -30,6 +36,8 @@ type UseLineHotkeysOptions = {
  *
  * - `Mod+Shift+D` — add/edit description
  * - `Mod+Shift+L` — set/change category
+ * - `Mod+Shift+P` — open the line's photo popover (`Mod+Shift+P` is Firefox's
+ *   private-window shortcut; Chrome/Safari leave it free, acceptable)
  * - `Mod+Shift+O` — toggle optional (quotes only)
  * - `Mod+Shift+X` — toggle tax exempt
  * - `Mod+Backspace` — delete the row
@@ -59,6 +67,7 @@ export function useLineHotkeys({ containerRef, isQuote, readOnly }: UseLineHotke
 
   useHotkey('Mod+Shift+D', () => dispatchAction('description'), options)
   useHotkey('Mod+Shift+L', () => dispatchAction('category'), options)
+  useHotkey('Mod+Shift+P', () => dispatchAction('photos'), options)
   useHotkey('Mod+Shift+O', () => dispatchAction('optional'), {
     ...options,
     enabled: !readOnly && isQuote,
