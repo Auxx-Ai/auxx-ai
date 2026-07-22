@@ -7,15 +7,17 @@ import { isSameDay, isToday } from 'date-fns'
 import { memo } from 'react'
 
 import { BackgroundEventsLayer } from './background-events'
-import { CurrentTimeLineClass, MinEventDurationMinutes, TimelineLaneHeight } from './constants'
+import {
+  CurrentTimeLineClass,
+  MinEventDurationMinutes,
+  TimelineLaneGap,
+  TimelineRowPadding,
+} from './constants'
 import { DraggableEvent } from './draggable-event'
 import { DropPreviewX } from './drop-preview'
 import { DroppableCell } from './droppable-cell'
 import type { BackgroundEvent, CalendarResource, EventCalendarItem, RenderEvent } from './types'
 import { getAllEventsForDay, isMultiDayEvent } from './utils'
-
-/** Vertical gap (px) subtracted from a lane's full height so stacked chips show a hairline seam. */
-const LaneGap = 2
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -44,16 +46,20 @@ interface TimelineDaySectionProps<T extends EventCalendarItem = EventCalendarIte
   /** COMMITTED px-per-hour — feeds the resize hook's px→minutes math only; all layout inside the
    * section is day-percentages, so mid-gesture zoom never needs this to update. */
   hourWidth: number
-  /** Per-resource row height (px), same index order as `resources` — identical every rendered day. */
-  rowHeights: number[]
-  /** Per-resource row top offset (px, prefix sum of `rowHeights`). */
-  rowTops: number[]
+  /** COMMITTED lane height (px) — feeds the drag ghost's measured height only; all vertical
+   * layout inside the section is `calc()` over `--tl-lane-height` (plan 43), so a mid-gesture
+   * lane drag never needs this to update. */
+  laneHeight: number
+  /** Per-resource max lane count, same index order as `resources` — identical every rendered day. */
+  rowLaneCounts: number[]
+  /** Per-resource lane-count prefix sum — row tops derive from it via `--tl-lane-height`. */
+  rowLaneStarts: number[]
   /**
-   * Rendered section height (px) — `max(sum of rowHeights, viewport height below the header)`,
+   * Rendered section height (a CSS `max()`/`calc()` expression over `--tl-lane-height`) —
    * computed by the shell so the day grid (and its vertical day border) always fills the screen
    * even when a few worker rows don't.
    */
-  bodyHeight: number
+  bodyHeight: string
   /**
    * Lane assignment keyed by `${resourceId}|${dayISOString}` — lanes are assigned per resource
    * PER RENDERED DAY (a multi-day event can occupy a different lane on each day segment it
@@ -99,8 +105,9 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
   backgroundEvents,
   hourWindow,
   hourWidth,
-  rowHeights,
-  rowTops,
+  laneHeight,
+  rowLaneCounts,
+  rowLaneStarts,
   bodyHeight,
   laneMapsByResource,
   onEventSelect,
@@ -147,14 +154,25 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
       }}
       data-today={today || undefined}>
       {resources.map((resource, ri) => {
-        const rowTop = rowTops[ri] ?? 0
-        const rowHeight = rowHeights[ri] ?? TimelineLaneHeight
+        const rowLanes = rowLaneCounts[ri] ?? 1
+        // All vertical geometry is calc() over `--tl-lane-height` with gesture-stable lane-count
+        // multipliers (plan 43) — a live lane-height drag restyles every row/chip with one CSS-var
+        // write and zero section re-renders (the plan-35 §5.4 trick, rotated to the y-axis).
+        const rowTop = `calc(${rowLaneStarts[ri] ?? 0} * var(--tl-lane-height) + ${
+          ri * TimelineRowPadding
+        }px)`
+        const rowHeight = `calc(${rowLanes} * var(--tl-lane-height) + ${TimelineRowPadding}px)`
         const assignment = laneMapsByResource.get(`${resource.id}|${dayIso}`)
         const laneMap = assignment?.lanes
         const dayLanes = Math.max(1, assignment?.laneCount ?? 1)
         // Center THIS day's lane stack in the (window-max-sized) row — a lone chip on a worker
         // whose row is tall because of a stacked day elsewhere sits centered, not top-pinned.
-        const laneOffsetY = Math.max(0, (rowHeight - (dayLanes * TimelineLaneHeight - LaneGap)) / 2)
+        // (`dayLanes ≤ rowLanes` always, so the un-clamped expression is never negative.)
+        const chipTop = (lane: number) =>
+          `calc((${rowLanes - dayLanes} * var(--tl-lane-height) + ${
+            TimelineRowPadding + TimelineLaneGap
+          }px) / 2 + ${lane} * var(--tl-lane-height))`
+        const chipHeight = `calc(var(--tl-lane-height) - ${TimelineLaneGap}px)`
 
         const resourceTimedEvents = dayEvents.filter((event) => event.resourceId === resource.id)
         const resourceSpanningEvents = spanningDayEvents.filter(
@@ -170,7 +188,7 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
               events={backgroundEvents}
               day={day}
               resourceId={resource.id}
-              cellHeight={TimelineLaneHeight}
+              cellHeight={laneHeight}
               orientation='x'
               windowStartHour={windowStart}
               windowEndHour={windowEnd}
@@ -187,8 +205,8 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                   key={`span-${event.id}`}
                   className='absolute right-0 left-0 z-10 px-0.5'
                   style={{
-                    top: laneOffsetY + lane * TimelineLaneHeight,
-                    height: TimelineLaneHeight - LaneGap,
+                    top: chipTop(lane),
+                    height: chipHeight,
                   }}
                   onClick={(e) => e.stopPropagation()}>
                   <DraggableEvent
@@ -198,7 +216,7 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                     cellSize={hourWidth}
                     onClick={(e) => handleEventClick(event, e)}
                     showTime
-                    height={TimelineLaneHeight - LaneGap}
+                    height={laneHeight - TimelineLaneGap}
                     onResize={onEventResize}
                     renderEvent={renderEvent}
                     isSelected={selectedIds?.has(event.id) ?? false}
@@ -236,10 +254,10 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                     key={event.id}
                     className='absolute z-10 px-0.5'
                     style={{
-                      top: laneOffsetY + lane * TimelineLaneHeight,
+                      top: chipTop(lane),
                       left: `${leftPct}%`,
                       width: `${widthPct}%`,
-                      height: TimelineLaneHeight - LaneGap,
+                      height: chipHeight,
                     }}
                     onClick={(e) => e.stopPropagation()}>
                     <DraggableEvent
@@ -249,7 +267,7 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                       cellSize={hourWidth}
                       onClick={(e) => handleEventClick(event, e)}
                       showTime
-                      height={TimelineLaneHeight - LaneGap}
+                      height={laneHeight - TimelineLaneGap}
                       onResize={onEventResize}
                       renderEvent={renderEvent}
                       isSelected={selectedIds?.has(event.id) ?? false}

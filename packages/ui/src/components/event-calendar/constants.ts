@@ -74,8 +74,18 @@ export const TimelineHourWidth = 96
 export const TimelineHourWidthMin = 40
 export const TimelineHourWidthMax = 240
 
-/** Height (px) of one event lane within a timeline worker row (plan 33). */
-export const TimelineLaneHeight = 28
+/** Default height (px) of one event lane within a timeline worker row (plan 33; resizable, plan 43). */
+export const TimelineLaneHeight = 44
+
+/** Drag-resize clamps (px) for the timeline's lane height (plan 43). */
+export const TimelineLaneHeightMin = 24
+export const TimelineLaneHeightMax = 72
+
+/** Extra padding (px) added on top of `maxLanes × laneHeight` when sizing a timeline worker row. */
+export const TimelineRowPadding = 8
+
+/** Vertical gap (px) subtracted from a timeline lane so stacked chips show a hairline seam. */
+export const TimelineLaneGap = 2
 
 /** Default width (px) of the sticky-left worker rail in the horizontal timeline view (plan 33). */
 export const TimelineRailWidth = 160

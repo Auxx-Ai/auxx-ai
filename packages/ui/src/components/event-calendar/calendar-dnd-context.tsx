@@ -2,6 +2,7 @@
 
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import {
   type Active,
   DndContext,
@@ -304,7 +305,9 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
           modifiers={foreignActive ? [snapCenterToCursor] : []}>
           {activeEvent && activeView ? (
             <div
-              className='relative opacity-80'
+              // Ghost matches the source chip's height-tiered content (plan 43) — a query
+              // container only when the height is explicit (see `draggable-event.tsx`).
+              className={cn('relative opacity-80', eventHeight && '[container-type:size]')}
               style={
                 eventWidth
                   ? { width: `${eventWidth}px`, height: eventHeight ? `${eventHeight}px` : '100%' }

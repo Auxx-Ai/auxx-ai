@@ -27,9 +27,16 @@ interface VisitChipContentProps {
  * left bar, and a dispatched indicator. Worker identity is carried by `event.color` (the
  * default chip tint, still applied by the surrounding `EventItem` wrapper the calendar
  * renders — `renderEvent` only replaces this inner content, not the outer chip shell).
+ *
+ * Height-tiered via container queries against the chip shell (plan 43 — `draggable-event.tsx`
+ * makes explicitly-sized chips `container-type: size`): under 40px the contact inlines after
+ * the title on one line; at ≥ 40px it gets its own line; at ≥ 56px the work order's address
+ * appears as a third line. Duration-tall week/day chips hit the same tiers for free. With no
+ * query container (e.g. a bare render outside the calendar) only the one-line base renders.
  */
 export function VisitChipContent({ event, isOverlapping }: VisitChipContentProps) {
   const contact = event.workOrder?.contactDisplayName
+  const address = event.workOrder?.addressText
   const canceled = event.status === 'canceled'
   const done = event.status === 'done'
 
@@ -48,13 +55,27 @@ export function VisitChipContent({ event, isOverlapping }: VisitChipContentProps
       <div className='min-w-0 flex-1 py-0.5'>
         <div
           className={cn(
-            'flex items-center gap-1 truncate text-[10px] font-semibold sm:text-xs',
+            'flex items-center gap-1 text-[10px] font-semibold sm:text-xs',
             canceled && 'line-through'
           )}>
           {event.dispatchedAt && <Send className='size-3 shrink-0 opacity-70' />}
           <span className='truncate'>{event.title}</span>
+          {contact && (
+            <span className='min-w-0 truncate font-normal opacity-70 [@container(min-height:40px)]:hidden'>
+              · {contact}
+            </span>
+          )}
         </div>
-        {contact && <div className='truncate text-[10px] opacity-70'>{contact}</div>}
+        {contact && (
+          <div className='hidden truncate text-[10px] opacity-70 [@container(min-height:40px)]:block'>
+            {contact}
+          </div>
+        )}
+        {address && (
+          <div className='hidden truncate text-[10px] opacity-60 [@container(min-height:56px)]:block'>
+            {address}
+          </div>
+        )}
       </div>
     </div>
   )

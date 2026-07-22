@@ -409,6 +409,19 @@ export const SETTINGS_CATALOG = {
       'Board time-grid end hour (0-24). Unset = automatic — derived from working hours ' +
       '± 2h buffer.',
   },
+  // Dispatch board off-day column hiding (plan 42) — drops the week/timeline day columns for
+  // off-work days that have no scheduled visits; a booked off-day stays visible automatically, and
+  // a per-device "Show all days" toggle reveals the empties when scheduling into one.
+  'dispatch.board.hideEmptyOffDays': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Hide day columns for off-work days with no scheduled visits (week + timeline views). ' +
+      'Booked off-days stay visible.',
+  },
 
   // ── DOCUMENTS (quote/invoice PDF + email settings, money MQ2 build spec §A) ──────────────
   // `documents.taxRates` moved here from GENERAL (money MQ1 §G.1 shipped it under GENERAL —

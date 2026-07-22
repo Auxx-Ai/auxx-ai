@@ -6,8 +6,10 @@
 
 import { database, schema } from '@auxx/database'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { and, eq, gte, inArray, isNull, lt, lte, ne, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { resolveDocumentSettings } from '../documents'
 import { extractFieldValueScalar } from '../field-values'
 import { type DispatchWorkerWithUser, listDispatchWorkers } from './workers'
 
@@ -35,6 +37,9 @@ export interface BoardWorkOrder {
   /** Full `RecordId` (contact def + instance) so clients can hydrate via `useRecord`. */
   contactId: RecordId | null
   contactDisplayName: string | null
+  /** Rendered service-address line (domestic country omitted) — the chip's third content tier
+   * (plan 43); same `work_order_address` + `formatAddress` mechanism as the route planner. */
+  addressText: string | null
 }
 
 /** `getBoard` result — workers, visits (range + backlog), and their slim work orders. */
@@ -53,7 +58,7 @@ export interface VisitDayMarker {
 }
 
 /**
- * Resolve slim work-order projections (number/status/contact display name) for a bounded
+ * Resolve slim work-order projections (number/status/contact display name/address line) for a bounded
  * set of work-order instance ids — one narrow `FieldValue` query filtered to that set and
  * only the needed field ids, plus one bounded follow-up query to resolve the contact
  * relationship's display name. Both queries are bounded by the visible board set, never the
@@ -63,7 +68,7 @@ async function getSlimWorkOrderProjections(
   organizationId: string,
   workOrderIds: string[]
 ): Promise<BoardWorkOrder[]> {
-  const [instances, cf] = await Promise.all([
+  const [instances, cf, documentSettings] = await Promise.all([
     database
       .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
       .from(schema.EntityInstance)
@@ -79,10 +84,20 @@ async function getSlimWorkOrderProjections(
         'work_order_number',
         'work_order_status',
         'work_order_contact',
+        'work_order_address',
       ] as const),
+    // Org's business-address country — omitted from the rendered address line; cache-backed
+    // via `getAllOrganizationSettings`, so this is cheap (planner-board.ts precedent).
+    resolveDocumentSettings(organizationId),
   ])
+  const domesticCountry = documentSettings.business.address?.country
 
-  const fieldIds = [cf.work_order_number, cf.work_order_status, cf.work_order_contact]
+  const fieldIds = [
+    cf.work_order_number,
+    cf.work_order_status,
+    cf.work_order_contact,
+    cf.work_order_address,
+  ]
     .filter((f): f is NonNullable<typeof f> => Boolean(f))
     .map((f) => f.id)
 
@@ -141,6 +156,12 @@ async function getSlimWorkOrderProjections(
     const contact = contactRow?.relatedEntityId
       ? contactById.get(contactRow.relatedEntityId)
       : undefined
+    const addressRow = cf.work_order_address
+      ? rows.find((r) => r.fieldId === cf.work_order_address!.id)
+      : undefined
+    const addressValue = addressRow
+      ? (extractFieldValueScalar(addressRow) as Partial<AddressStructValue> | null)
+      : null
 
     return {
       id: instance.id,
@@ -149,6 +170,7 @@ async function getSlimWorkOrderProjections(
       status: statusRow ? (extractFieldValueScalar(statusRow) as string | null) : null,
       contactId: contact ? toRecordId(contact.entityDefinitionId, contact.id) : null,
       contactDisplayName: contact?.displayName ?? null,
+      addressText: addressValue ? formatAddress(addressValue, { domesticCountry }) || null : null,
     }
   })
 }

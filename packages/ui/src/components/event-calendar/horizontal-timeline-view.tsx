@@ -4,16 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import {
-  addDays,
-  addHours,
-  differenceInCalendarDays,
-  endOfDay,
-  format,
-  isSameDay,
-  isToday,
-  startOfDay,
-} from 'date-fns'
+import { addHours, endOfDay, format, isSameDay, isToday, startOfDay } from 'date-fns'
 import {
   type CSSProperties,
   useCallback,
@@ -27,16 +18,18 @@ import {
 import { assignLanes } from './assign-lanes'
 import {
   CurrentTimeLabelClass,
-  StreamEndYear,
-  StreamStartYear,
   TimelineHourWidth,
   TimelineHourWidthMax,
   TimelineHourWidthMin,
   TimelineLaneHeight,
+  TimelineLaneHeightMax,
+  TimelineLaneHeightMin,
   TimelineRailWidth,
   TimelineRailWidthMax,
   TimelineRailWidthMin,
+  TimelineRowPadding,
 } from './constants'
+import { useDayStream } from './hooks/use-day-stream'
 import { useCalendarSelection } from './selection/calendar-selection-context'
 import { StickyRailShadow } from './sticky-rail-shadow'
 import { type DayLaneAssignment, TimelineDaySection } from './timeline-day-section'
@@ -55,9 +48,6 @@ const DateLabelHeight = 32
 /** Height (px) of the hour-tick row (row 2 of the two-tier header). */
 const HourTickHeight = 24
 
-/** Extra padding (px) added on top of `maxLanes * TimelineLaneHeight` when sizing a worker row. */
-const RowPadding = 8
-
 /** Below this px-per-hour, hour-tick labels thin to every 2nd hour (borders stay hourly). */
 const HourLabelThinningWidth = 56
 
@@ -74,6 +64,8 @@ const clampHourWidth = (px: number) =>
   Math.min(TimelineHourWidthMax, Math.max(TimelineHourWidthMin, px))
 const clampRailWidth = (px: number) =>
   Math.min(TimelineRailWidthMax, Math.max(TimelineRailWidthMin, px))
+const clampLaneHeight = (px: number) =>
+  Math.min(TimelineLaneHeightMax, Math.max(TimelineLaneHeightMin, px))
 
 interface ZoomGesture {
   /** Live px-per-hour — flushed to `--tl-day-width` per move, committed to state on release. */
@@ -92,6 +84,16 @@ interface RailGesture {
   width: number
   startWidth: number
   startClientX: number
+}
+
+interface LaneGesture {
+  /** Live lane height (px) — integer-stepped per move, committed on release. */
+  height: number
+  startHeight: number
+  startClientY: number
+  /** Total lane count above (and including) the grabbed row — the border's content-y is
+   * `cumLanes × laneHeight + const`, so `Δheight = Δy / cumLanes` keeps it under the pointer. */
+  cumLanes: number
 }
 
 interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalendarItem> {
@@ -113,6 +115,10 @@ interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalenda
    * Omit for internal state. Drags report commits via `onRailWidthChange`. */
   railWidth?: number
   onRailWidthChange?: (px: number) => void
+  /** Controlled lane height (plan 43) — clamped to [`TimelineLaneHeightMin`, `TimelineLaneHeightMax`].
+   * Omit for internal state. Rail row-border drags report commits via `onLaneHeightChange`. */
+  laneHeight?: number
+  onLaneHeightChange?: (px: number) => void
   onEventSelect: (event: T, e: React.MouseEvent) => void
   /** Fires when a quarter-hour cell is clicked (§7 slot-create; also the empty-space clear-first
    * ordering the shared `onSlotClick` handler already enforces). */
@@ -125,6 +131,8 @@ interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalenda
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) day window — consumers fetch this. */
   onVisibleRangeChange?: (from: Date, to: Date) => void
+  /** Plan 42 — drop the day column for any date this returns true for (empty off-work days). */
+  isDayHidden?: (date: Date) => boolean
 }
 
 /**
@@ -162,6 +170,8 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   onHourWidthChange,
   railWidth: railWidthProp,
   onRailWidthChange,
+  laneHeight: laneHeightProp,
+  onLaneHeightChange,
   onEventSelect,
   onSlotClick,
   onEventResize,
@@ -169,6 +179,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   selectedIds,
   onDateChange,
   onVisibleRangeChange,
+  isDayHidden,
 }: HorizontalTimelineViewProps<T>) {
   const selection = useCalendarSelection()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -179,26 +190,17 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   // usage still gets working gestures.
   const [internalHourWidth, setInternalHourWidth] = useState(TimelineHourWidth)
   const [internalRailWidth, setInternalRailWidth] = useState(TimelineRailWidth)
+  const [internalLaneHeight, setInternalLaneHeight] = useState(TimelineLaneHeight)
   const hourWidth = clampHourWidth(hourWidthProp ?? internalHourWidth)
   const railWidth = clampRailWidth(railWidthProp ?? internalRailWidth)
+  const laneHeight = clampLaneHeight(laneHeightProp ?? internalLaneHeight)
 
   const windowStart = hourWindow.start
   const windowEnd = hourWindow.end
   const windowHours = Math.max(0, windowEnd - windowStart)
   const dayWidth = Math.max(1, windowHours * hourWidth)
 
-  const { epoch, dayCount } = useMemo(() => {
-    const start = startOfDay(new Date(StreamStartYear, 0, 1))
-    const count = differenceInCalendarDays(new Date(StreamEndYear, 0, 1), start) + 1
-    return { epoch: start, dayCount: count }
-  }, [])
-
-  const dayAt = useCallback((index: number) => addDays(epoch, index), [epoch])
-
-  const dayIndexOf = useCallback(
-    (date: Date) => Math.min(dayCount - 1, Math.max(0, differenceInCalendarDays(date, epoch))),
-    [epoch, dayCount]
-  )
+  const { dayCount, dayAt, dayIndexOf, slotsVersion } = useDayStream(isDayHidden)
 
   // The virtualizer reads day size through a ref so a throttle-free `measure()` after a zoom
   // commit sees the new width without waiting for a state-closure refresh (plan 35 §5.5).
@@ -220,27 +222,30 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   // React writes the committed style attr, then this re-asserts the live values pre-paint.
   const zoomGestureRef = useRef<ZoomGesture | null>(null)
   const railGestureRef = useRef<RailGesture | null>(null)
+  const laneGestureRef = useRef<LaneGesture | null>(null)
   const pendingScrollLeftRef = useRef<number | null>(null)
   const wheelCommitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Committed geometry + commit callbacks behind refs so the stable wheel listener and
   // timer-fired commits never read stale closures.
-  const geoRef = useRef({ hourWidth, railWidth, windowHours })
-  geoRef.current = { hourWidth, railWidth, windowHours }
-  const commitCallbacksRef = useRef({ onHourWidthChange, onRailWidthChange })
-  commitCallbacksRef.current = { onHourWidthChange, onRailWidthChange }
+  const geoRef = useRef({ hourWidth, railWidth, laneHeight, windowHours })
+  geoRef.current = { hourWidth, railWidth, laneHeight, windowHours }
+  const commitCallbacksRef = useRef({ onHourWidthChange, onRailWidthChange, onLaneHeightChange })
+  commitCallbacksRef.current = { onHourWidthChange, onRailWidthChange, onLaneHeightChange }
 
   const applyCssVars = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
     const liveHourWidth = zoomGestureRef.current?.hourWidth ?? geoRef.current.hourWidth
     const liveRailWidth = railGestureRef.current?.width ?? geoRef.current.railWidth
+    const liveLaneHeight = laneGestureRef.current?.height ?? geoRef.current.laneHeight
     const comp = zoomGestureRef.current?.comp ?? 0
     el.style.setProperty(
       '--tl-day-width',
       `${Math.max(1, geoRef.current.windowHours * liveHourWidth)}px`
     )
     el.style.setProperty('--tl-rail-width', `${liveRailWidth}px`)
+    el.style.setProperty('--tl-lane-height', `${liveLaneHeight}px`)
     el.style.setProperty('--tl-zoom-comp', `${comp}px`)
   }, [])
 
@@ -257,6 +262,12 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     const cb = commitCallbacksRef.current.onRailWidthChange
     if (cb) cb(px)
     else setInternalRailWidth(px)
+  }, [])
+
+  const commitLaneHeight = useCallback((px: number) => {
+    const cb = commitCallbacksRef.current.onLaneHeightChange
+    if (cb) cb(px)
+    else setInternalLaneHeight(px)
   }, [])
 
   // ── sizing: dayWidth is window-derived (see above) — this effect only measures how much width
@@ -293,6 +304,9 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   const lastEmittedDateRef = useRef<number | null>(null)
   const lastDayWidthRef = useRef(dayWidth)
   const lastScrollLeftRef = useRef(0)
+  // A slot-mapping change (off-day hidden/revealed, plan 42) shifts which day a fixed scrollLeft
+  // shows — force a re-anchor even when parked, since the guard below would otherwise skip it.
+  const lastSlotsVersionRef = useRef(slotsVersion)
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -314,7 +328,14 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
       return () => clearTimeout(timeout)
     }
     const dayWidthChanged = lastDayWidthRef.current !== dayWidth
-    if (!dayWidthChanged && lastEmittedDateRef.current === currentDateRef.current.getTime()) return
+    const slotsChanged = lastSlotsVersionRef.current !== slotsVersion
+    lastSlotsVersionRef.current = slotsVersion
+    if (
+      !dayWidthChanged &&
+      !slotsChanged &&
+      lastEmittedDateRef.current === currentDateRef.current.getTime()
+    )
+      return
     lastDayWidthRef.current = dayWidth
     programmaticScrollRef.current = true
     const targetOffset = targetIndex * dayWidth
@@ -324,7 +345,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
       programmaticScrollRef.current = false
     }, 300)
     return () => clearTimeout(timeout)
-  }, [targetIndex, dayWidth])
+  }, [targetIndex, dayWidth, slotsVersion])
 
   // ── scroll → snap → currentDate ──────────────────────────────────────────
   // Same JS settle-snap as week/resource-timeline. This container scrolls BOTH axes — the settle
@@ -578,6 +599,65 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     'data-marquee-ignore': true,
   }
 
+  // ── lane-height gesture (plan 43) ────────────────────────────────────────
+  // Dragging ANY rail row's bottom border rescales the GLOBAL lane height. The grabbed border's
+  // content-y is `cumLanes × laneHeight + const`, so `Δheight = Δy / cumLanes` keeps the border
+  // under the pointer with no scroll compensation; integer-stepping the live value means the
+  // release commit changes nothing visually. Live geometry rides `--tl-lane-height` (see the
+  // row-geometry comment below) — a move is one style write, zero re-renders. The ref's
+  // `.current` is (re)assigned AFTER the row-geometry memo below — `beginLaneResize` only reads
+  // it at pointer-down time.
+  const laneGeomRef = useRef<{ rowLaneCounts: number[]; rowLaneStarts: number[] }>({
+    rowLaneCounts: [],
+    rowLaneStarts: [],
+  })
+
+  const beginLaneResize = useCallback((e: React.PointerEvent<HTMLDivElement>, ri: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const committed = geoRef.current.laneHeight
+    const { rowLaneCounts: counts, rowLaneStarts: starts } = laneGeomRef.current
+    laneGestureRef.current = {
+      height: committed,
+      startHeight: committed,
+      startClientY: e.clientY,
+      cumLanes: Math.max(1, (starts[ri] ?? 0) + (counts[ri] ?? 1)),
+    }
+  }, [])
+
+  const moveLaneResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = laneGestureRef.current
+      if (!gesture) return
+      e.stopPropagation()
+      const next = clampLaneHeight(
+        Math.round(gesture.startHeight + (e.clientY - gesture.startClientY) / gesture.cumLanes)
+      )
+      if (next === gesture.height) return
+      gesture.height = next
+      applyCssVars()
+    },
+    [applyCssVars]
+  )
+
+  const endLaneResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = laneGestureRef.current
+      if (!gesture) return
+      e.stopPropagation()
+      laneGestureRef.current = null
+      if (gesture.height !== geoRef.current.laneHeight) commitLaneHeight(gesture.height)
+      else applyCssVars()
+    },
+    [applyCssVars, commitLaneHeight]
+  )
+
+  /** Double-click a row border → reset to the default lane height. */
+  const resetLaneHeight = useCallback(() => {
+    if (geoRef.current.laneHeight !== TimelineLaneHeight) commitLaneHeight(TimelineLaneHeight)
+  }, [commitLaneHeight])
+
   // ── visible window → consumer fetch range ────────────────────────────────
   const virtualItems = virtualizer.getVirtualItems()
   const firstIndex = virtualItems[0]?.index
@@ -600,9 +680,9 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   // multi-day event can land in a different lane on each day segment it spans, so the day must
   // be part of the key — see `TimelineDaySection`'s doc comment. Each value carries `laneCount`
   // too, which the section needs to center that day's stack in the row (plan 35 §1).
-  const { rowHeights, rowTops, laneMapsByResource } = useMemo(() => {
+  const { rowLaneCounts, rowLaneStarts, laneMapsByResource } = useMemo(() => {
     const laneMapsByResource = new Map<string, DayLaneAssignment>()
-    const rowHeights: number[] = []
+    const rowLaneCounts: number[] = []
 
     for (const resource of resources) {
       let maxLanes = 1
@@ -644,24 +724,34 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
           if (laneCount > maxLanes) maxLanes = laneCount
         }
       }
-      rowHeights.push(maxLanes * TimelineLaneHeight + RowPadding)
+      rowLaneCounts.push(maxLanes)
     }
 
-    const rowTops: number[] = []
+    const rowLaneStarts: number[] = []
     let acc = 0
-    for (const h of rowHeights) {
-      rowTops.push(acc)
-      acc += h
+    for (const count of rowLaneCounts) {
+      rowLaneStarts.push(acc)
+      acc += count
     }
 
-    return { rowHeights, rowTops, laneMapsByResource }
+    return { rowLaneCounts, rowLaneStarts, laneMapsByResource }
   }, [resources, events, firstIndex, lastIndex, dayAt, windowStart, windowEnd])
+  laneGeomRef.current = { rowLaneCounts, rowLaneStarts }
 
-  const totalRowsHeight = rowHeights.reduce((sum, h) => sum + h, 0)
+  // All vertical row geometry hangs off `--tl-lane-height` via calc() over gesture-STABLE lane
+  // counts (plan 43, mirroring plan 35 §5.4's x-axis trick) — a lane-height drag frame is one
+  // style-property write, zero section re-renders.
+  const totalLanes = rowLaneCounts.reduce((sum, count) => sum + count, 0)
+  const rowTopExpr = (ri: number) =>
+    `calc(${rowLaneStarts[ri] ?? 0} * var(--tl-lane-height) + ${ri * TimelineRowPadding}px)`
+  const rowHeightExpr = (ri: number) =>
+    `calc(${rowLaneCounts[ri] ?? 1} * var(--tl-lane-height) + ${TimelineRowPadding}px)`
   const headerHeight = DateLabelHeight + HourTickHeight
   // The body (rows + day sections + their vertical day borders) fills at least the visible
   // viewport below the header — the grid never stops short above empty screen space.
-  const bodyHeight = Math.max(totalRowsHeight, viewportHeight - headerHeight)
+  const bodyHeightExpr = `max(calc(${totalLanes} * var(--tl-lane-height) + ${
+    resources.length * TimelineRowPadding
+  }px), ${Math.max(0, viewportHeight - headerHeight)}px)`
 
   // ── current time: 60s-interval state, window-relative (NOT `useCurrentTimeIndicator`'s 24h-%
   // math — this view's x-axis is `hourWindow`, not the full day). The effect has an empty
@@ -703,6 +793,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
             // on top of these pre-paint (see `applyCssVars`).
             '--tl-day-width': `${dayWidth}px`,
             '--tl-rail-width': `${railWidth}px`,
+            '--tl-lane-height': `${laneHeight}px`,
             '--tl-zoom-comp': '0px',
           } as CSSProperties
         }>
@@ -710,7 +801,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
           className='relative'
           style={{
             width: `calc(var(--tl-rail-width) + ${dayCount} * var(--tl-day-width))`,
-            minHeight: headerHeight + bodyHeight,
+            minHeight: `calc(${headerHeight}px + ${bodyHeightExpr})`,
           }}>
           {/* Two-tier sticky header: date labels + hour ticks. */}
           <div
@@ -836,16 +927,27 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
           <div
             className='bg-background sticky left-0 z-20'
             style={{ width: 'var(--tl-rail-width)' }}>
-            <div className='relative' style={{ height: bodyHeight }}>
+            <div className='relative' style={{ height: bodyHeightExpr }}>
               {resources.map((resource, ri) => (
                 <div
                   key={resource.id}
                   className='border-border/70 text-muted-foreground/80 absolute right-0 left-0 flex items-center border-b px-2 text-sm'
                   style={{
-                    top: rowTops[ri] ?? 0,
-                    height: rowHeights[ri] ?? TimelineLaneHeight,
+                    top: rowTopExpr(ri),
+                    height: rowHeightExpr(ri),
                   }}>
                   {resource.header ?? resource.label}
+                  {/* Lane-height drag handle — the row's bottom border (plan 43). Any row's
+                      border rescales the global lane height; double-click resets. */}
+                  <div
+                    onPointerDown={(e) => beginLaneResize(e, ri)}
+                    onPointerMove={moveLaneResize}
+                    onPointerUp={endLaneResize}
+                    onPointerCancel={endLaneResize}
+                    onDoubleClick={resetLaneHeight}
+                    data-marquee-ignore
+                    className='hover:bg-border/70 absolute inset-x-0 -bottom-[2px] z-20 h-[5px] cursor-row-resize touch-none select-none'
+                  />
                 </div>
               ))}
               {/* Rail-width drag handle (body segment). */}
@@ -868,9 +970,10 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
               backgroundEvents={backgroundEvents}
               hourWindow={hourWindow}
               hourWidth={hourWidth}
-              rowHeights={rowHeights}
-              rowTops={rowTops}
-              bodyHeight={bodyHeight}
+              laneHeight={laneHeight}
+              rowLaneCounts={rowLaneCounts}
+              rowLaneStarts={rowLaneStarts}
+              bodyHeight={bodyHeightExpr}
               laneMapsByResource={laneMapsByResource}
               onEventSelect={onEventSelect}
               onSlotClick={onSlotClick}

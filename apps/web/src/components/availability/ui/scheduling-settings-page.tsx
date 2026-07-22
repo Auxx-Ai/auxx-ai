@@ -85,6 +85,7 @@ const ROUTES_BOARD_DRAFT_KEYS = [
   'dispatch.routes.autoApplyTimes',
   'dispatch.board.visibleHourStart',
   'dispatch.board.visibleHourEnd',
+  'dispatch.board.hideEmptyOffDays',
 ] as const
 
 /**
@@ -274,6 +275,12 @@ export function SchedulingSettingsPage() {
                 description='Automatic — working hours ± 2h buffer. Set both start and end to override.'
                 placeholder='Automatic'
                 {...controlledRoutesBoard('dispatch.board.visibleHourEnd')}
+              />
+              <SettingsFieldRow
+                settingKey='dispatch.board.hideEmptyOffDays'
+                title='Hide empty off-days'
+                description='Drop day columns for off-work days with no scheduled visits on week and timeline views. A booked off-day stays visible; use “Show all days” on the board to reveal the rest.'
+                {...controlledRoutesBoard('dispatch.board.hideEmptyOffDays')}
               />
             </FieldPanel>
           </SettingsSection>
