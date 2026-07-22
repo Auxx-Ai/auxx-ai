@@ -7,7 +7,7 @@ import { toActorId } from '@auxx/types/actor'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
-import { getCachedMembersByUserIds } from '../../cache'
+import { getCachedAgentsByUserIds, getCachedMembersByUserIds, getOrgCache } from '../../cache'
 import type { FieldOptions } from '../../custom-fields/field-options'
 import { RESOURCE_DISPLAY_CONFIG } from '../../resources/registry/display-config'
 import { RESOURCE_TABLE_MAP, type TableId } from '../../resources/registry/field-registry'
@@ -301,10 +301,12 @@ function resolveActorValue(
 /**
  * Hydrate names for actor values emitted from system-table columns.
  *
- * Values retain their actor discriminator so group/agent hydration can be
- * added here without changing the resolver's public result shape. Unknown or
- * deleted actors intentionally keep no display name, allowing the generic
- * placeholder fallback path to render its configured value.
+ * Resolution order mirrors `ActorService.getByIds` (the UI's actor resolver),
+ * cache-first: org members → agents addressed via their synthetic user id →
+ * the org's system user — and only then a direct `User` lookup for the rest
+ * (ex-members). Actors still unknown after all four steps keep no display
+ * name, allowing the generic placeholder fallback path to render its
+ * configured value.
  */
 async function hydrateActorDisplayNames(
   ctx: FieldValueContext,
@@ -326,6 +328,43 @@ async function hydrateActorDisplayNames(
   for (const user of users) {
     const displayName = user.user?.name?.trim()
     if (displayName) displayNameById.set(user.userId, displayName)
+  }
+
+  let unresolved = [...userIds].filter((id) => !displayNameById.has(id))
+
+  // Agents acting through their synthetic user id (cache-backed) — show the agent's name,
+  // matching ActorService's compatibility shim.
+  if (unresolved.length > 0) {
+    const agents = await getCachedAgentsByUserIds(ctx.organizationId, unresolved)
+    for (const agent of agents) {
+      const name = agent.name?.trim()
+      if (agent.userId && name) displayNameById.set(agent.userId, name)
+    }
+    unresolved = unresolved.filter((id) => !displayNameById.has(id))
+  }
+
+  // The org's system user (cached id) — automation/workflow-created records. Display name
+  // matches `ActorService.fetchSystemUser`.
+  if (unresolved.length > 0) {
+    const systemUserId = await getOrgCache()
+      .get(ctx.organizationId, 'systemUser')
+      .catch(() => null)
+    if (systemUserId && unresolved.includes(systemUserId)) {
+      displayNameById.set(systemUserId, 'Auxx.ai')
+      unresolved = unresolved.filter((id) => id !== systemUserId)
+    }
+  }
+
+  // Last resort: direct User lookup — covers removed members whose id is still on records.
+  if (unresolved.length > 0) {
+    const rows = await ctx.db
+      .select({ id: schema.User.id, name: schema.User.name })
+      .from(schema.User)
+      .where(inArray(schema.User.id, unresolved))
+    for (const row of rows) {
+      const name = row.name?.trim()
+      if (name) displayNameById.set(row.id, name)
+    }
   }
 
   for (const result of results) {
