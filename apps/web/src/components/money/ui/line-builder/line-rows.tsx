@@ -18,10 +18,11 @@
 //
 // Row anatomy: the name cell owns everything textual about the line — name
 // input (`/` or the pick button opens the catalog picker), state badges
-// (category / tax-exempt / optional, clickable to change), a description
-// button when one exists, and the `⋯` row menu (description, optional,
-// taxable, delete). Qty/rate are chromeless inline editors; total is
-// computed. The drag grip floats in the left gutter, hover-revealed.
+// (category / tax-exempt / optional, clickable to change), description and
+// photo buttons when the line has one/some, and the `⋯` row menu (description,
+// category, images, optional, taxable, delete). Qty/rate are chromeless inline
+// editors; total is computed. The drag grip floats in the left gutter,
+// hover-revealed.
 
 import {
   computeLineTotal,
@@ -49,6 +50,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
   AlignLeft,
+  Camera,
   Check,
   ChevronsUpDown,
   CircleCheck,
@@ -69,7 +71,7 @@ import { type RecordId, type RecordMeta, toRecordId } from '~/components/resourc
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { catalogItemToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
-import { LinePhotoChip } from './line-photo-chip'
+import { LinePhotoPopover } from './line-photo-popover'
 import {
   BASE_LINE_SYSTEM_ATTRIBUTES,
   DEFAULT_LINE_VALUES,
@@ -425,13 +427,14 @@ function OptionalLineTag({
  * Cell anatomy, left to right:
  * - name text (swaps to the input on focus; pick is the one editing-only
  *   action — it rewrites the line's identity, so it belongs to the name edit)
- * - state badges at rest — only for states actually set: category (click to
- *   change), tax-exempt `T`, optional `O` + pre-check checkbox (setting
- *   category comes from a catalog pick; marking optional lives in the `⋯` menu)
+ * - state badges at rest — only for states actually set: tax-exempt `T`,
+ *   optional `O` + pre-check checkbox (marking optional lives in the `⋯` menu)
  * - standing right-edge controls — a description button (only when a
- *   description exists; ADDING one lives in the `⋯` menu) and the `⋯` row
- *   menu ({@link LineRowMenu}); both in-flow, so they never overlap the
- *   editing UI
+ *   description exists; ADDING one lives in the `⋯` menu), the category badge
+ *   (click to change; pinned here rather than drifting with the name text,
+ *   since the `⋯` menu beside it is the one control that's (almost) always
+ *   drawn), and the `⋯` row menu ({@link LineRowMenu}); all in-flow, so they
+ *   never overlap the editing UI
  *
  * Editing a description swaps the cell for an autosize textarea in place —
  * the line never grows a permanent second row. Purely presentational: values
@@ -464,6 +467,8 @@ function LineNameCellView({
   onCommitCategory,
   onDelete,
   photoChip,
+  hasPhotos = false,
+  onOpenPhotos,
 }: {
   name: string
   description: string | null
@@ -493,10 +498,19 @@ function LineNameCellView({
   /** Delete this line (real record or draft). */
   onDelete: () => void
   /**
-   * Scouting-photo chip (line-photo-chip.tsx, plan 37b §4) — `undefined` on a
-   * phantom draft row (no `EntityInstance` to attach photos to yet).
+   * Scouting-photo popover (line-photo-popover.tsx, plans 37b §4 / 40) —
+   * `undefined` on a phantom draft row (no `EntityInstance` to attach photos
+   * to yet). Its trigger only mounts when the line has photos or the popover
+   * is held open, so the slot renders nothing at rest on a photo-less line.
    */
   photoChip?: ReactNode
+  /** Whether the line has photos — drives the `⋯` menu's Add/Edit images label. */
+  hasPhotos?: boolean
+  /**
+   * Open the photo popover (plan 40) — `undefined` hides the `⋯` menu item and
+   * disables the ⇧P shortcut (draft rows, orgs missing the registry field).
+   */
+  onOpenPhotos?: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -555,6 +569,9 @@ function LineNameCellView({
       case 'category':
         openCategoryMenu()
         break
+      case 'photos':
+        onOpenPhotos?.()
+        break
       case 'optional':
         if (showOptionalControls) onToggleOptional(!optional)
         break
@@ -576,18 +593,24 @@ function LineNameCellView({
     return () => cell.removeEventListener(LINE_ROW_ACTION_EVENT, onAction)
   }, [])
 
+  // Category sits on its own — pinned next to the `⋯` menu (the only
+  // right-edge control that's (almost) always drawn) instead of drifting with
+  // the name text like the other state badges.
+  const categoryBadge = (
+    <CategoryBadge
+      category={category}
+      options={categoryOptions}
+      readOnly={readOnly}
+      open={categoryMenuOpen}
+      onOpenChange={setCategoryMenuOpen}
+      onCommitCategory={onCommitCategory}
+    />
+  )
+
   // The at-rest state-badge cluster — shared verbatim by the read-only and
   // editable renders below; each badge renders only when its state is set.
   const stateBadges = (
     <>
-      <CategoryBadge
-        category={category}
-        options={categoryOptions}
-        readOnly={readOnly}
-        open={categoryMenuOpen}
-        onOpenChange={setCategoryMenuOpen}
-        onCommitCategory={onCommitCategory}
-      />
       <TaxExemptBadge taxable={taxable} />
       {showOptionalControls && optional && (
         <OptionalLineTag
@@ -646,6 +669,7 @@ function LineNameCellView({
         {stateBadges}
         {description && <TooltipExplanation text={description} />}
         {photoChip}
+        {categoryBadge}
       </div>
     )
   }
@@ -744,8 +768,13 @@ function LineNameCellView({
         </TreeRowButton>
       )}
 
-      {/* Scouting-photo chip (plan 37b §4) — undefined on draft rows. */}
+      {/* Scouting-photo popover (plans 37b §4 / 40) — undefined on draft rows;
+          renders nothing at rest without photos (adding lives in the `⋯` menu). */}
       {!focused && photoChip}
+
+      {/* Category badge — pinned beside the `⋯` menu (see `categoryBadge`
+          above) rather than drifting with the name text. */}
+      {!focused && categoryBadge}
 
       {/* The `⋯` menu — always the cell's LAST flex child so its slot is
           stable whether the cell is at rest or editing (React keeps it
@@ -756,11 +785,13 @@ function LineNameCellView({
         showOptionalToggle={showOptionalControls}
         hasDescription={!!description}
         hasCategory={!!category}
+        hasPhotos={hasPhotos}
         onEditDescription={() => setDescriptionDraft(description ?? '')}
-        // Deferred one frame: the category menu is a second Radix dropdown —
-        // opening it while the `⋯` menu is still tearing down would let the
-        // closing layer's dismiss handling swallow it.
+        // Deferred one frame: the category menu / photo popover is a second
+        // Radix layer — opening it while the `⋯` menu is still tearing down
+        // would let the closing layer's dismiss handling swallow it.
         onSetCategory={() => requestAnimationFrame(openCategoryMenu)}
+        onOpenPhotos={onOpenPhotos ? () => requestAnimationFrame(() => onOpenPhotos()) : undefined}
         onToggleTaxable={onToggleTaxable}
         onToggleOptional={onToggleOptional}
         onDelete={onDelete}
@@ -966,8 +997,9 @@ function MenuShortcut({ keys }: { keys: string[] }) {
  * ever overlapping the editing buttons. Always visible (it occupies its flex
  * slot either way), styled like the other row action buttons; mouse/touch
  * only (`tabIndex={-1}`, mirroring the qty unit-dropdown precedent). Holds
- * the line-level actions: description, category, optional toggle (quotes
- * only), taxable toggle, delete — each item shows its row shortcut
+ * the line-level actions: description, category, images (real rows only —
+ * a draft has no record to attach photos to), optional toggle (quotes only),
+ * taxable toggle, delete — each item shows its row shortcut
  * (use-line-hotkeys.ts). The drag grip stays drag-only.
  */
 function LineRowMenu({
@@ -976,8 +1008,10 @@ function LineRowMenu({
   showOptionalToggle,
   hasDescription,
   hasCategory,
+  hasPhotos,
   onEditDescription,
   onSetCategory,
+  onOpenPhotos,
   onToggleTaxable,
   onToggleOptional,
   onDelete,
@@ -987,8 +1021,11 @@ function LineRowMenu({
   showOptionalToggle: boolean
   hasDescription: boolean
   hasCategory: boolean
+  hasPhotos: boolean
   onEditDescription: () => void
   onSetCategory: () => void
+  /** `undefined` hides the images item (draft rows, missing registry field). */
+  onOpenPhotos?: () => void
   onToggleTaxable: (next: boolean) => void
   onToggleOptional: (next: boolean) => void
   onDelete: () => void
@@ -1023,6 +1060,13 @@ function LineRowMenu({
           {hasCategory ? 'Change category' : 'Add category'}
           <MenuShortcut keys={['⇧', 'L']} />
         </DropdownMenuItem>
+        {onOpenPhotos && (
+          <DropdownMenuItem onSelect={onOpenPhotos}>
+            <Camera />
+            {hasPhotos ? 'Edit images' : 'Add images'}
+            <MenuShortcut keys={['⇧', 'P']} />
+          </DropdownMenuItem>
+        )}
         {showOptionalToggle && (
           <DropdownMenuItem onSelect={() => onToggleOptional(!optional)}>
             <Tag />
@@ -1094,6 +1138,9 @@ export function LineRow({
   // FILE is array-return (plan 37b §3) — `line_item_photos` reads back as an array of
   // `{ ref, caption?, internal? }` envelopes (or is absent/empty when there are none).
   const photoCount = Array.isArray(values.line_item_photos) ? values.line_item_photos.length : 0
+  // Photo popover open state lives here (not in LinePhotoPopover) so the `⋯`
+  // menu's "Add images" and the ⇧P shortcut can open it (plan 40).
+  const [photosOpen, setPhotosOpen] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: record.id,
     disabled: readOnly,
@@ -1137,14 +1184,18 @@ export function LineRow({
             onDelete={() => deleteLine(record.id)}
             photoChip={
               photosField ? (
-                <LinePhotoChip
+                <LinePhotoPopover
                   recordId={recordId}
                   field={photosField}
                   photoCount={photoCount}
                   readOnly={readOnly}
+                  open={photosOpen}
+                  onOpenChange={setPhotosOpen}
                 />
               ) : undefined
             }
+            hasPhotos={photoCount > 0}
+            onOpenPhotos={photosField && !readOnly ? () => setPhotosOpen(true) : undefined}
           />
         }
         qty={

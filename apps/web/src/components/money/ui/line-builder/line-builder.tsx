@@ -211,9 +211,9 @@ export function LineBuilder({
       color: o.color,
     }))
   }, [lineItemFields])
-  // Field def for the photo chip (line-photo-chip.tsx, plan 37b §4) — `null` on a
-  // pre-migration org that hasn't picked up the `line_item.photos` registry field yet,
-  // in which case `LineRow` renders no chip at all.
+  // Field def for the photo popover (line-photo-popover.tsx, plans 37b §4 / 40) —
+  // `null` on a pre-migration org that hasn't picked up the `line_item.photos`
+  // registry field yet, in which case `LineRow` renders no photo affordance at all.
   const photosField = useMemo(
     () => lineItemFields.find((f) => f.key === 'photos') ?? null,
     [lineItemFields]
