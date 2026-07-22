@@ -211,6 +211,10 @@ export function ScheduleCalendar({
   // settle is enough. It can't rely on the realtime `dispatch:visit-changed` broadcast alone: the
   // acting client's own socket id is excluded from its own broadcast (the board's optimistic
   // patch is what stands in for it there), and paste is only ever invoked BY this same client.
+  // Plan `dispatch/39-visit-cache-sync.md` §Phase-1's batch-op rule: `pasteVisits` is the one
+  // deliberate multi-row mutation (N new work orders' worth of rows in one round trip) — no
+  // single-row response protocol fits, so this keeps the settle-invalidate rather than adopting
+  // `applyVisitToCaches`.
   const pasteVisits = api.dispatch.pasteVisits.useMutation({
     onSuccess: (result) => {
       if (result.failures.length > 0) {

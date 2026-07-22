@@ -30,7 +30,8 @@ import { scheduleVisit } from './visit-mutations'
  *
  * @param input - organizationId, userId (acting user), contactRecordId, optional title (falls
  * back to the contact's displayName), the slot's startTime/endTime, optional assigneeUserId.
- * @returns The new work order's RecordId and the id of the visit that was scheduled onto it.
+ * @returns The new work order's RecordId, the id of the visit that was scheduled onto it, and
+ * the scheduled visit row itself (plan 39 §Phase-1 — feeds the acting tab's cache patch).
  */
 export async function createWorkOrder(input: CreateWorkOrderInput): Promise<CreateWorkOrderResult> {
   const { organizationId, userId, contactRecordId, startTime, endTime, assigneeUserId } = input
@@ -83,5 +84,5 @@ export async function createWorkOrder(input: CreateWorkOrderInput): Promise<Crea
     excludeSocketId: input.excludeSocketId,
   })
 
-  return { workOrderRecordId: created.recordId, visitId: scheduled.id }
+  return { workOrderRecordId: created.recordId, visitId: scheduled.id, visit: scheduled }
 }

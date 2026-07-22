@@ -23,6 +23,7 @@ import {
   getRouteGeometryForWorker,
   getRoutePlannerBoard,
   getVisitDayMarkers,
+  getWorkOrderStatus,
   listDispatchWorkers,
   listMyVisitQcItems,
   listMyVisits,
@@ -84,6 +85,24 @@ const dispatchAdminProcedure = dispatchProcedure.use(async ({ ctx, next }) => {
 /** Echo-suppression convention (07 §B.4, the `agent.ts:234` precedent). */
 function excludeSocketId(ctx: { headers: Headers }): string | undefined {
   return ctx.headers.get('x-realtime-socket-id') ?? undefined
+}
+
+/** Roll-up sync (plan 39 `dispatch/39-visit-cache-sync.md` §Phase-1): the work-order status
+ * roll-up (`rollUpWorkOrderStatus`, `lifecycle.ts`) runs inside the mutation but its result is
+ * otherwise discarded — this is the one read-back, merged onto the returned visit row so the
+ * acting tab's cache patch (`applyVisitToCaches`) can reconcile board/drawer chip status without
+ * a second round trip. Skipped for `assignVisit` (no roll-up rule of its own) and `pasteVisits`
+ * (multi-work-order, out of scope for a single merged status). */
+async function withWorkOrderStatus<T extends { workOrderId: string }>(
+  ctx: { session: { organizationId: string; user: { id: string } } },
+  visit: T
+): Promise<T & { workOrderStatus: string | undefined }> {
+  const workOrderStatus = await getWorkOrderStatus(
+    ctx.session.organizationId,
+    ctx.session.user.id,
+    visit.workOrderId
+  )
+  return { ...visit, workOrderStatus }
 }
 
 const addressStructSchema = z.object({
@@ -182,7 +201,7 @@ export const dispatchRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return scheduleVisit({
+      const visit = await scheduleVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
@@ -193,6 +212,7 @@ export const dispatchRouter = createTRPCRouter({
         timeWriteKind: input.timeWriteKind,
         excludeSocketId: excludeSocketId(ctx),
       })
+      return withWorkOrderStatus(ctx, visit)
     }),
   assignVisit: dispatchAdminProcedure
     .input(z.object({ visitId: z.string(), assigneeUserId: z.string().nullable() }))
@@ -208,23 +228,25 @@ export const dispatchRouter = createTRPCRouter({
   unscheduleVisit: dispatchAdminProcedure
     .input(z.object({ visitId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return unscheduleVisit({
+      const visit = await unscheduleVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
         excludeSocketId: excludeSocketId(ctx),
       })
+      return withWorkOrderStatus(ctx, visit)
     }),
   setVisitStatus: dispatchAdminProcedure
     .input(z.object({ visitId: z.string(), status: z.enum(VISIT_STATUS_VALUES) }))
     .mutation(async ({ ctx, input }) => {
-      return setVisitStatus({
+      const visit = await setVisitStatus({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
         status: input.status,
         excludeSocketId: excludeSocketId(ctx),
       })
+      return withWorkOrderStatus(ctx, visit)
     }),
   // "Skip this and future visits" — tombstones the target occurrence AND ends its series
   // there (`until` stamp + later-scheduled-row cleanup). Single-row cancels keep going
@@ -243,12 +265,13 @@ export const dispatchRouter = createTRPCRouter({
   dispatchVisit: dispatchAdminProcedure
     .input(z.object({ visitId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return dispatchVisit({
+      const visit = await dispatchVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
         excludeSocketId: excludeSocketId(ctx),
       })
+      return withWorkOrderStatus(ctx, visit)
     }),
   // Plan 30 §A.1 — bring a canceled visit back to `scheduled` IN PLACE (never a new time).
   // `resumeSeries` (plan 36 §A.2): on the series boundary visit only, also clears the
@@ -256,13 +279,14 @@ export const dispatchRouter = createTRPCRouter({
   restoreVisit: dispatchAdminProcedure
     .input(z.object({ visitId: z.string(), resumeSeries: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
-      return restoreVisit({
+      const visit = await restoreVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
         resumeSeries: input.resumeSeries,
         excludeSocketId: excludeSocketId(ctx),
       })
+      return withWorkOrderStatus(ctx, visit)
     }),
 
   // §B.6 — the board's single read. Members read it (read-only board interactions).
@@ -413,7 +437,7 @@ export const dispatchRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
-      return addVisit({
+      const visit = await addVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         workOrderInstanceId: entityInstanceId,
@@ -422,6 +446,7 @@ export const dispatchRouter = createTRPCRouter({
         assigneeUserId: input.assigneeUserId,
         excludeSocketId: excludeSocketId(ctx),
       })
+      return withWorkOrderStatus(ctx, visit)
     }),
 
   // Plan 37c §7 — slot-click create's "New job" path: builds a minimal work order from a
@@ -438,7 +463,7 @@ export const dispatchRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return createWorkOrder({
+      const result = await createWorkOrder({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         contactRecordId: input.contactRecordId,
@@ -448,6 +473,12 @@ export const dispatchRouter = createTRPCRouter({
         assigneeUserId: input.assigneeUserId,
         excludeSocketId: excludeSocketId(ctx),
       })
+      const workOrderStatus = await getWorkOrderStatus(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        result.visit.workOrderId
+      )
+      return { ...result, workOrderStatus }
     }),
 
   // Plan 37c §4.4 — copy/paste's one deliberate batch mutation: N new rule-less, scheduled
@@ -491,7 +522,9 @@ export const dispatchRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
       const visits = await listVisitsForWorkOrder(ctx.session.organizationId, entityInstanceId)
-      if (visits.length === 0) return visits
+      // `[]`, not `visits` — returning the bare rows here made the output type a union of
+      // bare|enriched row arrays, which broke `JobVisit` consumers (plan 39 `mergeJobVisits`).
+      if (visits.length === 0) return []
 
       const allocations = await ctx.db
         .select({

@@ -9,9 +9,16 @@
 
 'use client'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { addWeeks, format, startOfDay } from 'date-fns'
 import { useCallback, useMemo } from 'react'
 import { visitTitle } from '~/components/calendar/sources/visits-source'
+import {
+  applyVisitToCaches,
+  rewrapVisitDates,
+  type VisitChangedPayload,
+} from '~/components/dispatch/visit-cache'
+import { useUser } from '~/hooks/use-user'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -62,12 +69,31 @@ export function useMySchedule() {
   const meetingsQuery = api.calendar.myMeetings.useQuery({ from, to })
 
   const utils = api.useUtils()
+  const queryClient = useQueryClient()
+  const { userId } = useUser()
+
+  // Plan 39 §Phase-2: a `kind: 'row'` broadcast rewraps its wire-string dates and patches every
+  // cached `myVisits` window via `applyVisitToCaches` (scoped internally to `viewerUserId`)
+  // instead of invalidating. `kind: 'bulk'` and any old-shape/malformed payload fall back to the
+  // pre-Phase-2 scoped invalidate.
   const onEvent = useCallback(
-    (event: string) => {
+    (event: string, payload: unknown) => {
       if (event !== 'dispatch:visit-changed') return
+      const p = payload as VisitChangedPayload | undefined
+      if (p?.kind === 'row' && p.visit && userId) {
+        applyVisitToCaches(
+          { utils, queryClient },
+          {
+            visit: rewrapVisitDates(p.visit),
+            workOrderStatus: p.workOrderStatus,
+            viewerUserId: userId,
+          }
+        )
+        return
+      }
       void utils.dispatch.myVisits.invalidate({ from, to })
     },
-    [utils, from, to]
+    [utils, queryClient, userId, from, to]
   )
   useOrgChannel({ onEvent })
 

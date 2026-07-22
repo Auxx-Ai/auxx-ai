@@ -49,19 +49,26 @@ const RESET_TRIGGERS: ReadonlySet<LifecycleTrigger> = new Set(['canceled', 'unsc
  * plain `FieldValueService` — the `convertRequestToWorkOrder` pre-hook-bypass precedent —
  * so manual dispatcher status edits stay allowed and no guard fights this write.
  * Transitions only move FORWARD from the current status, except the cancel/unschedule reset.
+ *
+ * Returns the status actually left on the work order after the call — the plan
+ * `dispatch/39-visit-cache-sync.md` §Phase-2 widen so `afterVisitWrite` can put it straight on
+ * the realtime broadcast instead of a second read-back: the `targetStatus` when the roll-up
+ * wrote it, the already-loaded current status when the forward-only guard blocked the write,
+ * `undefined` when no roll-up ran at all (no `work_order_status` field, or the recurring
+ * engagement early-return — engagement-level status is never visit-mirrored).
  */
 export async function rollUpWorkOrderStatus(
   organizationId: string,
   userId: string,
   workOrderId: string,
   trigger: LifecycleTrigger
-): Promise<void> {
+): Promise<string | undefined> {
   const targetStatus = TRIGGER_TARGET_STATUS[trigger]
   const cf = await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes(['work_order_status', 'work_order_job_type'] as const)
   const statusField = cf.work_order_status
-  if (!statusField) return
+  if (!statusField) return undefined
 
   // Resolve the type-slug to the real `entityDefinitionId` UUID — the field-change hook
   // dispatch inside `setValuesForEntity` looks up the resource by `entityDefinitionId` via
@@ -85,7 +92,7 @@ export async function rollUpWorkOrderStatus(
     })
     const jobTypeFirst = Array.isArray(jobTypeTyped) ? jobTypeTyped[0] : jobTypeTyped
     const jobType = jobTypeFirst ? (extractValue(jobTypeFirst) as string) : undefined
-    if (jobType === 'recurring') return
+    if (jobType === 'recurring') return undefined
   }
 
   if (!RESET_TRIGGERS.has(trigger)) {
@@ -95,11 +102,12 @@ export async function rollUpWorkOrderStatus(
     const current = currentFirst ? (extractValue(currentFirst) as string) : undefined
     const currentRank = current !== undefined ? (STATUS_RANK[current] ?? -1) : -1
     const targetRank = STATUS_RANK[targetStatus] ?? -1
-    if (targetRank <= currentRank) return // forward-only guard
+    if (targetRank <= currentRank) return current // forward-only guard blocked — unchanged
   }
 
   await fieldValueService.setValuesForEntity({
     recordId,
     values: [{ fieldId: statusField.id, value: targetStatus }],
   })
+  return targetStatus
 }

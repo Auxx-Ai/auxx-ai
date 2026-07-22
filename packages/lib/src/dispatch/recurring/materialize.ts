@@ -176,9 +176,12 @@ export async function materializeVisits(
 
   const userId = opts.userId ?? (await systemActorUserId(rule.organizationId))
   await mirrorVisitOntoWorkOrder(rule.organizationId, userId, rule.subjectId)
+  // `kind: 'bulk'` — materialization can insert/update an unbounded run of occurrences; no
+  // single row describes it. `visitId` here is the RULE id (there is no one visit), kept only
+  // for the top-level shape every consumer still keys `workOrderId` off (plan 39 §2.3).
   await publishVisitChanged(
     rule.organizationId,
-    { visitId: rule.id, workOrderId: rule.subjectId },
+    { visitId: rule.id, workOrderId: rule.subjectId, kind: 'bulk' },
     { excludeSocketId: opts.excludeSocketId }
   )
 }
@@ -246,7 +249,13 @@ export async function maybeEndExhaustedEngagement(rule: RecurrenceRuleRow): Prom
     values: [{ fieldId: cf.work_order_status.id, value: 'ended' }],
   })
   await mirrorVisitOntoWorkOrder(rule.organizationId, userId, rule.subjectId)
-  await publishVisitChanged(rule.organizationId, { visitId: rule.id, workOrderId: rule.subjectId })
+  // `kind: 'bulk'` — an engagement-level status write, not a visit row; `visitId` is the RULE
+  // id (plan 39 §2.3, the `materializeVisits` precedent above).
+  await publishVisitChanged(rule.organizationId, {
+    visitId: rule.id,
+    workOrderId: rule.subjectId,
+    kind: 'bulk',
+  })
 }
 
 /**

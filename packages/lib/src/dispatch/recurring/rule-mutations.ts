@@ -466,11 +466,13 @@ export async function setSeriesEnd(input: SetSeriesEndInput): Promise<Recurrence
 
   if (status === 'paused') {
     // Pause already deleted the future rows — never regenerate them here (resume owns that).
-    // Mirror + broadcast directly so other tabs still refresh the rule state.
+    // Mirror + broadcast directly so other tabs still refresh the rule state. `kind: 'bulk'` —
+    // a rule-level (tombstone) write, no single visit row describes it; `visitId` is the RULE
+    // id (plan 39 §2.3).
     await mirrorVisitOntoWorkOrder(organizationId, userId, rule.subjectId)
     await publishVisitChanged(
       organizationId,
-      { visitId: rule.id, workOrderId: rule.subjectId },
+      { visitId: rule.id, workOrderId: rule.subjectId, kind: 'bulk' },
       { excludeSocketId }
     )
   } else {
