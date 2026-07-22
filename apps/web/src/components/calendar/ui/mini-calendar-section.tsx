@@ -45,7 +45,7 @@ export function MiniCalendarSection({
 }: MiniCalendarSectionProps) {
   const band = view === 'week' ? { from: date, to: addDays(date, 6) } : visibleRange
   return (
-    <div className='border-sidebar-border border-b'>
+    <div className='border-sidebar-border border-b pb-2'>
       <MiniMonthCalendar
         selected={date}
         onSelect={onDateChange}

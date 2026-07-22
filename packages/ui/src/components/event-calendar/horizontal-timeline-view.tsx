@@ -185,8 +185,11 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
 }: HorizontalTimelineViewProps<T>) {
   const selection = useCalendarSelection()
   const scrollRef = useRef<HTMLDivElement>(null)
+  // The non-scrolling view root — carries the `--tl-*` CSS vars (so the single full-height rail
+  // handle, a sibling of the scroll area, can read `--tl-rail-width`) and is the positioning
+  // context for that handle.
+  const rootRef = useRef<HTMLDivElement>(null)
   const [snapEnabled, setSnapEnabled] = useState(true)
-  const [viewportHeight, setViewportHeight] = useState(0)
 
   // Controlled-or-internal zoom/rail state — web passes the persisted store values; standalone
   // usage still gets working gestures.
@@ -236,7 +239,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   commitCallbacksRef.current = { onHourWidthChange, onRailWidthChange, onLaneHeightChange }
 
   const applyCssVars = useCallback(() => {
-    const el = scrollRef.current
+    const el = rootRef.current
     if (!el) return
     const liveHourWidth = zoomGestureRef.current?.hourWidth ?? geoRef.current.hourWidth
     const liveRailWidth = railGestureRef.current?.width ?? geoRef.current.railWidth
@@ -280,8 +283,6 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     const applySize = () => {
       const avail = Math.max(1, el.clientWidth - railWidth)
       setSnapEnabled(dayWidth <= avail)
-      // Body min-height: the row/day grid stretches to fill the viewport even with few workers.
-      setViewportHeight(el.clientHeight)
     }
     applySize()
     const observer = new ResizeObserver(applySize)
@@ -749,11 +750,14 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   const rowHeightExpr = (ri: number) =>
     `calc(${rowLaneCounts[ri] ?? 1} * var(--tl-lane-height) + ${TimelineRowPadding}px)`
   const headerHeight = DateLabelHeight + HourTickHeight
-  // The body (rows + day sections + their vertical day borders) fills at least the visible
-  // viewport below the header — the grid never stops short above empty screen space.
+  // The body (rows + day sections + their vertical day borders) fills at least the viewport below
+  // the header — the grid never stops short above empty screen space. Uses CSS `100%` (against the
+  // scroll viewport) rather than the JS-measured `viewportHeight`, so it's correct on the very
+  // first paint after a refresh — `viewportHeight` starts at 0 and only fills after a measure pass,
+  // which was the "gutter not full height for a beat" flash.
   const bodyHeightExpr = `max(calc(${totalLanes} * var(--tl-lane-height) + ${
     resources.length * TimelineRowPadding
-  }px), ${Math.max(0, viewportHeight - headerHeight)}px)`
+  }px), calc(100% - ${headerHeight}px))`
 
   // ── current time: 60s-interval state, window-relative (NOT `useCurrentTimeIndicator`'s 24h-%
   // math — this view's x-axis is `hourWindow`, not the full day). The effect has an empty
@@ -784,23 +788,24 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     `translateX(calc(var(--tl-rail-width) + ${index} * var(--tl-day-width) + var(--tl-zoom-comp, 0px)))`
 
   return (
-    <div data-slot='horizontal-timeline-view' className='flex min-h-0 flex-1 flex-col'>
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className='min-h-0 flex-1 overflow-auto'
-        style={
-          {
-            // Committed geometry — the always-run layout effect re-asserts live gesture values
-            // on top of these pre-paint (see `applyCssVars`).
-            '--tl-day-width': `${dayWidth}px`,
-            '--tl-rail-width': `${railWidth}px`,
-            '--tl-lane-height': `${laneHeight}px`,
-            '--tl-zoom-comp': '0px',
-          } as CSSProperties
-        }>
+    <div
+      ref={rootRef}
+      data-slot='horizontal-timeline-view'
+      className='relative flex min-h-0 flex-1 flex-col'
+      style={
+        {
+          // Committed geometry — the always-run layout effect re-asserts live gesture values
+          // on top of these pre-paint (see `applyCssVars`). Lives on the root so both the scroll
+          // content (descendants) and the sibling rail handle can read the vars.
+          '--tl-day-width': `${dayWidth}px`,
+          '--tl-rail-width': `${railWidth}px`,
+          '--tl-lane-height': `${laneHeight}px`,
+          '--tl-zoom-comp': '0px',
+        } as CSSProperties
+      }>
+      <div ref={scrollRef} onScroll={handleScroll} className='min-h-0 flex-1 overflow-auto'>
         <div
-          className='relative'
+          className='relative flex flex-col'
           style={{
             width: `calc(var(--tl-rail-width) + ${dayCount} * var(--tl-day-width))`,
             minHeight: `calc(${headerHeight}px + ${bodyHeightExpr})`,
@@ -814,11 +819,6 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
               className='bg-background text-muted-foreground/70 sticky left-0 z-10 flex items-center justify-center text-sm'
               style={{ width: 'var(--tl-rail-width)', height: headerHeight }}>
               <span className='max-[479px]:sr-only'>{format(new Date(), 'O')}</span>
-              {/* Rail-width drag handle (corner segment) — one continuous strip with the rail's. */}
-              <div
-                {...railResizeHandleProps}
-                className='hover:bg-border/70 absolute inset-y-0 right-0 z-20 w-[5px] cursor-col-resize touch-none select-none'
-              />
               <StickyRailShadow />
             </div>
 
@@ -924,41 +924,38 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
             })}
           </div>
 
-          {/* Sticky-left worker rail — pinned left only (no `top`: it scrolls vertically with
-              the rows below; its flow position already starts below the sticky header). */}
+          {/* Sticky-left worker rail — pinned left only (no `top`: it scrolls vertically with the
+              rows below; its flow position already starts below the sticky header). `flex-1` makes
+              it fill the flex-col container's full height (measurement-free — no `viewportHeight`),
+              so its `bg-background` never stops short of the bottom on refresh or across zoom. */}
           <div
-            className='bg-background sticky left-0 z-20'
+            className='bg-background sticky left-0 z-20 flex-1'
             style={{ width: 'var(--tl-rail-width)' }}>
-            <div className='relative' style={{ height: bodyHeightExpr }}>
-              {resources.map((resource, ri) => (
-                <div
-                  key={resource.id}
-                  className='border-border/70 text-muted-foreground/80 absolute right-0 left-0 flex items-center border-b px-2 text-sm'
-                  style={{
-                    top: rowTopExpr(ri),
-                    height: rowHeightExpr(ri),
-                  }}>
-                  {resource.header ?? resource.label}
-                  {/* Lane-height drag handle — the row's bottom border (plan 43). Any row's
-                      border rescales the global lane height; double-click resets. */}
-                  <div
-                    onPointerDown={(e) => beginLaneResize(e, ri)}
-                    onPointerMove={moveLaneResize}
-                    onPointerUp={endLaneResize}
-                    onPointerCancel={endLaneResize}
-                    onDoubleClick={resetLaneHeight}
-                    data-marquee-ignore
-                    className='hover:bg-border/70 absolute inset-x-0 -bottom-[2px] z-20 h-[5px] cursor-row-resize touch-none select-none'
-                  />
-                </div>
-              ))}
-              {/* Rail-width drag handle (body segment). */}
+            {resources.map((resource, ri) => (
               <div
-                {...railResizeHandleProps}
-                className='hover:bg-border/70 absolute inset-y-0 right-0 z-20 w-[5px] cursor-col-resize touch-none select-none'
-              />
-              <StickyRailShadow />
-            </div>
+                key={resource.id}
+                className='border-border/70 text-muted-foreground/80 absolute right-0 left-0 flex items-center border-b px-2 text-sm'
+                style={{
+                  top: rowTopExpr(ri),
+                  height: rowHeightExpr(ri),
+                }}>
+                {resource.header ?? resource.label}
+                {/* Lane-height drag handle — the row's bottom border (plan 43). Any row's
+                    border rescales the global lane height; double-click resets. */}
+                <div
+                  onPointerDown={(e) => beginLaneResize(e, ri)}
+                  onPointerMove={moveLaneResize}
+                  onPointerUp={endLaneResize}
+                  onPointerCancel={endLaneResize}
+                  onDoubleClick={resetLaneHeight}
+                  data-marquee-ignore
+                  className='hover:bg-border/70 absolute inset-x-0 -bottom-[2px] z-20 h-[5px] cursor-row-resize touch-none select-none'
+                />
+              </div>
+            ))}
+            {/* Right-edge rail shadow — anchors to the flex-1 gutter directly (its `inset-y-0`
+                needs a real parent height; an inner `h-full` wrapper collapsed to 0 under flex). */}
+            <StickyRailShadow />
           </div>
 
           {virtualItems.map((v) => (
@@ -987,6 +984,19 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
             />
           ))}
         </div>
+      </div>
+
+      {/* Single full-height rail-width handle — lives in the non-scrolling root at the rail's right
+          edge (`left: var(--tl-rail-width)`). The rail is sticky-pinned, so its right edge is always
+          at that x regardless of horizontal scroll; a fixed handle here stays aligned while spanning
+          the FULL height (header included) as one hover target. Regular border hairline at rest,
+          `bg-info` (and slightly thicker) on hover to signal it drags. `-translate-x-full` keeps the
+          grab strip inside the rail (off the day grid); the visible line sits on the seam. */}
+      <div
+        {...railResizeHandleProps}
+        className='group absolute inset-y-0 z-40 w-[6px] -translate-x-full cursor-col-resize touch-none select-none'
+        style={{ left: 'var(--tl-rail-width)' }}>
+        <div className='bg-border/70 absolute inset-y-0 right-0 w-px transition-all group-hover:w-[2px] group-hover:bg-info' />
       </div>
     </div>
   )

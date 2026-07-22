@@ -213,6 +213,11 @@ export function SlotCreatePopover({
         align='start'
         sideOffset={8}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        // Opened from the right-click context menu: as that menu unmounts, Radix restores focus
+        // (landing on <body>) a tick AFTER this popover opens, and that focus-outside would
+        // otherwise instantly dismiss it (the "flash at 0,0 then vanish" bug). Ignoring focus-outside
+        // dismissal keeps it open; outside-CLICK (`onPointerDownOutside`) and Escape still close it.
+        onFocusOutside={(e) => e.preventDefault()}
         className='w-96 rounded-3xl shadow-xl'>
         {target && (
           <Tabs value={tab} onValueChange={(v) => setTab(v as SlotCreateTab)}>

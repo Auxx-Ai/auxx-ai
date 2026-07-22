@@ -144,7 +144,7 @@ export function DispatchSidebar({
     <ModuleSidebar
       open={open}
       onOpenChange={setOpen}
-      className='py-0 [&_[data-sidebar=content]]:pt-0!'
+      className='py-0 [&_[data-sidebar=content]]:pt-0! [&_[data-sidebar=content]]:pe-0!'
       footer={
         /* Plan 30 §B.1 — "Show canceled" pinned footer toggle. Default off (canceled/skipped
          * visits hidden from the board + mini-calendar day markers). Rooted in a `<div>` (not

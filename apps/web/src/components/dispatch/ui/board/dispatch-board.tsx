@@ -99,17 +99,20 @@ export function DispatchBoard() {
   // same value for the month-anchor reducer) and reused here for the toolbar/grid/sidebar.
   const weekStartsOn = data.weekStartsOn
 
-  // Availability is a per-PERSON concept (a schedule belongs to a `User`, not a board column) —
-  // team rows have no `userId` and are excluded here, not remapped to `worker.id`.
-  const workerUserIds = useMemo(
-    () => data.workers.flatMap((w) => (w.userId ? [w.userId] : [])),
+  // Availability is a per-PERSON concept (a schedule belongs to a `User`, not a board column), so
+  // we pass BOTH ids: `userId` to look the schedule up by, and the worker `id` to tag the resulting
+  // background band with (the shading hook keys the band on the column id, not the user). Teams have
+  // no `userId` (no per-team schedule model) — they pass through as `null` and the hook falls them
+  // back to org hours so their row isn't left reading as available 24/7.
+  const shadingWorkers = useMemo(
+    () => data.workers.map((w) => ({ id: w.id, userId: w.userId ?? null })),
     [data.workers]
   )
   const { backgroundEvents, isNonWorkingDay } = useAvailabilityShading({
     view: data.view,
     range: data.range,
     fetchWindow: data.fetchWindow,
-    workerUserIds,
+    workers: shadingWorkers,
   })
 
   const overlappingIds = useMemo(() => computeOverlappingVisitIds(data.events), [data.events])
