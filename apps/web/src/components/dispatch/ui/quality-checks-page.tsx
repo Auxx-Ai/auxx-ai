@@ -6,26 +6,11 @@ import { FieldType } from '@auxx/database/enums'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
+import { SortableList } from '@auxx/ui/components/sortable'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils'
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
 import { Lock, Plus } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { QcItemTemplateRow } from '~/components/dispatch/ui/quality-check-tree-row'
@@ -155,21 +140,14 @@ export function QualityChecksPage() {
   const selected = orderedTemplates.find((t) => t.id === selectedId) ?? null
   const isDraftSelected = draft !== null && selectedId === draft.draftId
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = orderedTemplates.findIndex((t) => t.id === active.id)
-    const newIndex = orderedTemplates.findIndex((t) => t.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-
-    // The draft (if any) never enters `orderedTemplates` — it's local state rendered as a
-    // trailing row outside the sortable list — so it can never appear in this payload.
-    const reordered = arrayMove(orderedTemplates, oldIndex, newIndex)
+  // The draft (if any) never enters `orderedTemplates` — it's local state rendered as a
+  // trailing row outside the sortable list — so it can never appear in this payload.
+  const handleReorder = (ids: string[]) => {
+    const byId = new Map(orderedTemplates.map((t) => [t.id, t]))
+    const reordered = ids
+      .map((id) => byId.get(id))
+      .filter((t): t is QcItemTemplateRow => t !== undefined)
+    if (reordered.length !== orderedTemplates.length) return
     setOrderOverride(reordered)
     reorderTemplates.mutate(reordered.map((t, i) => ({ id: t.id, sortOrder: i })))
   }
@@ -372,27 +350,19 @@ export function QualityChecksPage() {
             ) : (
               <div className='flex flex-col gap-0.5'>
                 {orderedTemplates.length > 0 && (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                    modifiers={[restrictToVerticalAxis]}>
-                    <SortableContext
-                      items={orderedTemplates.map((t) => t.id)}
-                      strategy={verticalListSortingStrategy}>
-                      {orderedTemplates.map((template) => (
-                        <QualityCheckTreeRow
-                          key={template.id}
-                          template={template}
-                          isSelected={selectedId === template.id}
-                          onSelect={() => selectRow(template.id)}
-                          onToggleActive={() => handleToggleActive(template)}
-                          onDelete={() => handleDelete(template)}
-                          isPending={updateTemplate.isPending}
-                        />
-                      ))}
-                    </SortableContext>
-                  </DndContext>
+                  <SortableList items={orderedTemplates.map((t) => t.id)} onReorder={handleReorder}>
+                    {orderedTemplates.map((template) => (
+                      <QualityCheckTreeRow
+                        key={template.id}
+                        template={template}
+                        isSelected={selectedId === template.id}
+                        onSelect={() => selectRow(template.id)}
+                        onToggleActive={() => handleToggleActive(template)}
+                        onDelete={() => handleDelete(template)}
+                        isPending={updateTemplate.isPending}
+                      />
+                    ))}
+                  </SortableList>
                 )}
 
                 {draft && !draft.recordId && (
