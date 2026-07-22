@@ -198,9 +198,12 @@ export function WorkOrderBillingCard({ recordId, entityInstanceId }: DrawerTabPr
       <BillingActionDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        workOrderRecordId={recordId}
-        billing={billing}
-        mode={action.kind === 'create_extra' ? 'extra' : 'primary'}
+        scope={{
+          kind: 'workOrder',
+          workOrderRecordId: recordId,
+          billing,
+          mode: action.kind === 'create_extra' ? 'extra' : 'primary',
+        }}
       />
     </div>
   )

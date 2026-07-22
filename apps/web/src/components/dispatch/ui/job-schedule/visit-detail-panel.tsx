@@ -392,10 +392,13 @@ export function VisitDetailPanel({ recordId, itemId }: RecordDrillContext) {
         <BillingActionDialog
           open={billingOpen}
           onOpenChange={setBillingOpen}
-          workOrderRecordId={recordId}
-          billing={billing}
-          initialVisitIds={[visit.id]}
-          mode={billing.basis === 'fixed_contract' ? 'extra' : billingMode}
+          scope={{
+            kind: 'workOrder',
+            workOrderRecordId: recordId,
+            billing,
+            initialVisitIds: [visit.id],
+            mode: billing.basis === 'fixed_contract' ? 'extra' : billingMode,
+          }}
         />
       </div>
     </ScrollArea>

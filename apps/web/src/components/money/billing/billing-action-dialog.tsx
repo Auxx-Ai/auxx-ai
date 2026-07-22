@@ -2,48 +2,78 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
+import type { DateRange } from '@auxx/ui/components/date-range-picker'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
 import { toastError } from '@auxx/ui/components/toast'
-import { format } from 'date-fns'
+import { addMonths, endOfMonth, format, startOfMonth } from 'date-fns'
 import { CalendarClock, CircleDollarSign, Percent, ReceiptText } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
+import { useResource } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
-import type { WorkOrderBillingView } from './types'
+import { BatchGeneratePage, BatchPreviewPage, BatchScopePage } from './batch-invoice-pages'
+import { EMPTY_WORK_ORDER_BILLING, type WorkOrderBillingView } from './types'
 
-type Page = 'choose' | 'review'
+type Page = 'choose' | 'review' | 'scope' | 'preview' | 'generate'
 type FixedChoice = 'remaining' | 'percentage' | 'fixed' | `installment:${string}`
+
+/**
+ * Discriminated scope for the shared billing dialog (plans/dispatch/37a-batch-advance-invoicing.md
+ * §3): `workOrder` is the original single-work-order flow (basis-routed invoice creation);
+ * `batch` drives the period + filter → preview → generate advance-invoicing flow across many
+ * work orders. Every `billing.*` read below is gated on `scope.kind === 'workOrder'` — batch
+ * scope carries no `WorkOrderBillingView`.
+ */
+export type BillingDialogScope =
+  | {
+      kind: 'workOrder'
+      workOrderRecordId: RecordId
+      billing: WorkOrderBillingView
+      initialVisitIds?: string[]
+      mode?: 'primary' | 'extra'
+    }
+  | { kind: 'batch'; initialRange?: { from: Date; to: Date } }
 
 interface BillingActionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  workOrderRecordId: RecordId
-  billing: WorkOrderBillingView
-  initialVisitIds?: string[]
-  mode?: 'primary' | 'extra'
+  scope: BillingDialogScope
 }
 
-/** Route a work order's billing basis to its explicit allocation-backed invoice command. */
-export function BillingActionDialog({
-  open,
-  onOpenChange,
-  workOrderRecordId,
-  billing,
-  initialVisitIds,
-  mode = 'primary',
-}: BillingActionDialogProps) {
-  const [page, setPage] = useState<Page>('choose')
+/** Default batch period: next calendar month (plan §3, decision "default: next calendar month"). */
+function defaultBatchRange(): DateRange {
+  const nextMonthStart = addMonths(startOfMonth(new Date()), 1)
+  return { from: nextMonthStart, to: endOfMonth(nextMonthStart) }
+}
+
+/** Route a work order's billing basis to its explicit allocation-backed invoice command, or —
+ * in batch scope — drive the period/filter → preview → generate advance-invoicing flow. */
+export function BillingActionDialog({ open, onOpenChange, scope }: BillingActionDialogProps) {
+  const isBatch = scope.kind === 'batch'
+  // Batch scope carries no `WorkOrderBillingView` — fall back to the empty placeholder so the
+  // single-work-order render tree below (never mounted while `isBatch`) can read `billing.*`
+  // unconditionally instead of threading optional chaining through every picker.
+  const billing = scope.kind === 'workOrder' ? scope.billing : EMPTY_WORK_ORDER_BILLING
+  const workOrderRecordId = scope.kind === 'workOrder' ? scope.workOrderRecordId : undefined
+  const mode = scope.kind === 'workOrder' ? (scope.mode ?? 'primary') : 'primary'
+  const initialVisitIds = scope.kind === 'workOrder' ? scope.initialVisitIds : undefined
+
+  const [page, setPage] = useState<Page>(isBatch ? 'scope' : 'choose')
   const [fixedChoice, setFixedChoice] = useState<FixedChoice>('remaining')
   const [inputValue, setInputValue] = useState<number | null>(null)
+  // Deps stay granular (not `scope` itself — call sites build it inline, so its identity churns
+  // every parent render and would reset the open dialog's page/selection mid-flow).
   const defaultVisits = useMemo(() => {
+    if (isBatch) return []
     if (initialVisitIds?.length) return initialVisitIds
     // Extra mode defaults to DONE visits' extras only — upcoming visits' staged extras are
     // opt-in (plan money/19 §2: pre-billing is deliberate, never the default).
@@ -55,19 +85,75 @@ export function BillingActionDialog({
       ]
     }
     return billing.eligibleVisits.map((visit) => visit.id)
-  }, [billing.eligibleVisits, billing.extraWork, initialVisitIds, mode])
+  }, [billing.eligibleVisits, billing.extraWork, initialVisitIds, mode, isBatch])
   const [visitIds, setVisitIds] = useState<string[]>(defaultVisits)
   const utils = api.useUtils()
 
+  // ─── Batch scope state (plan §3, batch pages) ───────────────────────────
+  const [batchRange, setBatchRange] = useState<DateRange>(
+    scope.kind === 'batch' && scope.initialRange ? scope.initialRange : defaultBatchRange()
+  )
+  const [batchFilters, setBatchFilters] = useState<ConditionGroup[]>([])
+  const [batchSelectedIds, setBatchSelectedIds] = useState<Set<RecordId>>(new Set())
+  const { resource: invoiceResource } = useResource('invoices')
+
+  const previewBatch = api.money.previewInvoiceBatch.useQuery(
+    { range: batchRange, filters: batchFilters },
+    { enabled: isBatch && page === 'preview' }
+  )
+
+  useEffect(() => {
+    if (!previewBatch.data) return
+    setBatchSelectedIds(
+      new Set(
+        previewBatch.data.rows
+          .filter((row) => !row.excludedReason)
+          .map((row) => row.workOrderRecordId)
+      )
+    )
+  }, [previewBatch.data])
+
+  const rowLabelByWorkOrderId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const row of previewBatch.data?.rows ?? []) {
+      map.set(row.workOrderRecordId, row.contactName ?? 'Work order')
+    }
+    return map
+  }, [previewBatch.data])
+
+  const runBatch = api.money.runInvoiceBatch.useMutation({
+    onSuccess: async () => {
+      if (!invoiceResource?.id) return
+      await utils.record.listFiltered.invalidate({ entityDefinitionId: invoiceResource.id })
+    },
+    onError: (error) =>
+      toastError({ title: 'Error generating batch invoices', description: error.message }),
+  })
+
+  const submitBatch = () => {
+    setPage('generate')
+    runBatch.mutate({ range: batchRange, workOrderRecordIds: [...batchSelectedIds] })
+  }
+
+  const batchInitialRange = scope.kind === 'batch' ? scope.initialRange : undefined
+  const resetRunBatch = runBatch.reset
+
   useEffect(() => {
     if (!open) return
-    setPage('choose')
+    setPage(isBatch ? 'scope' : 'choose')
     setFixedChoice('remaining')
     setInputValue(null)
     setVisitIds(defaultVisits)
-  }, [open, defaultVisits])
+    if (isBatch) {
+      setBatchRange(batchInitialRange ?? defaultBatchRange())
+      setBatchFilters([])
+      setBatchSelectedIds(new Set())
+      resetRunBatch()
+    }
+  }, [open, defaultVisits, isBatch, batchInitialRange, resetRunBatch])
 
   const invalidate = async () => {
+    if (!workOrderRecordId) return
     await utils.money.getWorkOrderBillingState.invalidate({ workOrderRecordId })
     onOpenChange(false)
   }
@@ -119,6 +205,7 @@ export function BillingActionDialog({
         : true
 
   const submit = () => {
+    if (!workOrderRecordId) return
     if (isExtra) {
       createExtra.mutate({ workOrderRecordId, visitIds })
       return
@@ -146,117 +233,195 @@ export function BillingActionDialog({
     createFixed.mutate({ workOrderRecordId, amount: fixedAmount })
   }
 
-  const title = isExtra
-    ? 'Invoice extra work'
-    : billing.basis === 'fixed_contract'
-      ? 'Create contract invoice'
-      : billing.basis === 'per_visit'
-        ? 'Create visit invoice'
-        : 'Generate recurring charge'
+  const title = isBatch
+    ? 'Batch invoice'
+    : isExtra
+      ? 'Invoice extra work'
+      : billing.basis === 'fixed_contract'
+        ? 'Create contract invoice'
+        : billing.basis === 'per_visit'
+          ? 'Create visit invoice'
+          : 'Generate recurring charge'
+
+  const description = isBatch
+    ? 'Preview and create draft invoices for every qualifying work order in a period.'
+    : 'Review the billable work before creating an editable draft.'
+
+  const crumbs = isBatch
+    ? [
+        {
+          label: 'Period & filters',
+          onClick: page !== 'scope' ? () => setPage('scope') : undefined,
+        },
+        ...(page === 'preview' || page === 'generate'
+          ? [
+              {
+                label: 'Preview',
+                onClick: page === 'generate' ? () => setPage('preview') : undefined,
+              },
+            ]
+          : []),
+        ...(page === 'generate' ? [{ label: 'Results' }] : []),
+      ]
+    : [{ label: page === 'choose' ? chooseLabel(billing, isExtra) : 'Review' }]
+
+  const onBack = isBatch
+    ? page === 'preview'
+      ? () => setPage('scope')
+      : undefined
+    : page === 'review'
+      ? () => setPage('choose')
+      : undefined
+
+  const previewRows = previewBatch.data?.rows ?? []
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size='content' position='tc' innerClassName='p-0'>
-        <DialogNav
-          title={title}
-          description='Review the billable work before creating an editable draft.'
-          onBack={page === 'review' ? () => setPage('choose') : undefined}
-          crumbs={[{ label: page === 'choose' ? chooseLabel(billing, isExtra) : 'Review' }]}
-        />
+        <DialogNav title={title} description={description} onBack={onBack} crumbs={crumbs} />
         <DialogNavPages value={page}>
-          <DialogNavPage value='choose' size='md'>
-            <div className='space-y-4 p-4'>
-              {isExtra ? (
-                <ExtraWorkPicker billing={billing} value={visitIds} onChange={setVisitIds} />
-              ) : billing.basis === 'per_visit' ? (
-                <VisitPicker billing={billing} value={visitIds} onChange={setVisitIds} />
-              ) : billing.basis === 'fixed_contract' ? (
-                <FixedAmountPicker
-                  billing={billing}
-                  choice={fixedChoice}
-                  onChoice={setFixedChoice}
-                  inputValue={inputValue}
-                  onInputValue={setInputValue}
+          {isBatch ? (
+            <>
+              <DialogNavPage value='scope' size='md'>
+                <BatchScopePage
+                  range={batchRange}
+                  onRangeChange={setBatchRange}
+                  filters={batchFilters}
+                  onFiltersChange={setBatchFilters}
+                  onCancel={() => onOpenChange(false)}
+                  onContinue={() => setPage('preview')}
                 />
-              ) : (
-                <FieldPanel orientation='horizontal' defaultLabelWidth={160} className='p-0'>
-                  <PreviewRow
-                    label='Recurring charge'
-                    value={formatCurrency(billing.billingAmount, billing.currencyCode)}
-                  />
-                </FieldPanel>
-              )}
-            </div>
-            <DialogFooter>
-              <Button type='button' variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
-                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-              </Button>
-              <Button
-                variant='outline'
-                size='sm'
-                disabled={!canContinue}
-                onClick={() => setPage('review')}
-                data-dialog-submit>
-                Review <KbdSubmit variant='outline' size='sm' />
-              </Button>
-            </DialogFooter>
-          </DialogNavPage>
-          <DialogNavPage value='review' size='md'>
-            <div className='space-y-3 p-4 text-sm'>
-              <FieldPanel orientation='horizontal' defaultLabelWidth={170} className='p-0'>
-                <PreviewRow
-                  label='Amount on this invoice'
-                  value={formatCurrency(
-                    amount ||
-                      (isExtra
-                        ? selectedExtraAmount(billing, visitIds)
-                        : selectedVisitAmount(billing, visitIds)),
-                    billing.currencyCode
-                  )}
+              </DialogNavPage>
+              <DialogNavPage value='preview' size='lg'>
+                <BatchPreviewPage
+                  rows={previewRows}
+                  isLoading={previewBatch.isLoading}
+                  selectedIds={batchSelectedIds}
+                  onToggle={(id, checked) =>
+                    setBatchSelectedIds((current) => {
+                      const next = new Set(current)
+                      if (checked) next.add(id)
+                      else next.delete(id)
+                      return next
+                    })
+                  }
+                  onCancel={() => onOpenChange(false)}
+                  onGenerate={submitBatch}
+                  canGenerate={batchSelectedIds.size > 0}
                 />
-                {billing.basis === 'fixed_contract' && !isExtra && (
-                  <>
-                    <PreviewRow
-                      label='Contract value'
-                      value={formatCurrency(billing.billingAmount, billing.currencyCode)}
+              </DialogNavPage>
+              <DialogNavPage value='generate' size='md'>
+                <BatchGeneratePage
+                  isPending={runBatch.isPending}
+                  results={runBatch.data?.results}
+                  error={runBatch.error?.message}
+                  rowLabelByWorkOrderId={rowLabelByWorkOrderId}
+                  invoiceEntityDefinitionId={invoiceResource?.id}
+                  onClose={() => onOpenChange(false)}
+                />
+              </DialogNavPage>
+            </>
+          ) : (
+            <>
+              <DialogNavPage value='choose' size='md'>
+                <div className='space-y-4 p-4'>
+                  {isExtra ? (
+                    <ExtraWorkPicker billing={billing} value={visitIds} onChange={setVisitIds} />
+                  ) : billing.basis === 'per_visit' ? (
+                    <VisitPicker billing={billing} value={visitIds} onChange={setVisitIds} />
+                  ) : billing.basis === 'fixed_contract' ? (
+                    <FixedAmountPicker
+                      billing={billing}
+                      choice={fixedChoice}
+                      onChoice={setFixedChoice}
+                      inputValue={inputValue}
+                      onInputValue={setInputValue}
                     />
+                  ) : (
+                    <FieldPanel orientation='horizontal' defaultLabelWidth={160} className='p-0'>
+                      <PreviewRow
+                        label='Recurring charge'
+                        value={formatCurrency(billing.billingAmount, billing.currencyCode)}
+                      />
+                    </FieldPanel>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => onOpenChange(false)}>
+                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    disabled={!canContinue}
+                    onClick={() => setPage('review')}
+                    data-dialog-submit>
+                    Review <KbdSubmit variant='outline' size='sm' />
+                  </Button>
+                </DialogFooter>
+              </DialogNavPage>
+              <DialogNavPage value='review' size='md'>
+                <div className='space-y-3 p-4 text-sm'>
+                  <FieldPanel orientation='horizontal' defaultLabelWidth={170} className='p-0'>
                     <PreviewRow
-                      label='Remaining after draft'
+                      label='Amount on this invoice'
                       value={formatCurrency(
-                        Math.max(0, billing.remaining - amount),
+                        amount ||
+                          (isExtra
+                            ? selectedExtraAmount(billing, visitIds)
+                            : selectedVisitAmount(billing, visitIds)),
                         billing.currencyCode
                       )}
                     />
-                  </>
-                )}
-                {(isExtra || billing.basis === 'per_visit') && (
-                  <PreviewRow label='Visits included' value={String(visitIds.length)} />
-                )}
-              </FieldPanel>
-              <p className='text-xs text-muted-foreground'>
-                Tax and document discounts are calculated when the draft is created.
-              </p>
-            </div>
-            <DialogFooter>
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                onClick={() => onOpenChange(false)}
-                disabled={isPending}>
-                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-              </Button>
-              <Button
-                variant='outline'
-                size='sm'
-                loading={isPending}
-                loadingText='Creating...'
-                onClick={submit}
-                data-dialog-submit>
-                Create draft <KbdSubmit variant='outline' size='sm' />
-              </Button>
-            </DialogFooter>
-          </DialogNavPage>
+                    {billing.basis === 'fixed_contract' && !isExtra && (
+                      <>
+                        <PreviewRow
+                          label='Contract value'
+                          value={formatCurrency(billing.billingAmount, billing.currencyCode)}
+                        />
+                        <PreviewRow
+                          label='Remaining after draft'
+                          value={formatCurrency(
+                            Math.max(0, billing.remaining - amount),
+                            billing.currencyCode
+                          )}
+                        />
+                      </>
+                    )}
+                    {(isExtra || billing.basis === 'per_visit') && (
+                      <PreviewRow label='Visits included' value={String(visitIds.length)} />
+                    )}
+                  </FieldPanel>
+                  <p className='text-xs text-muted-foreground'>
+                    Tax and document discounts are calculated when the draft is created.
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => onOpenChange(false)}
+                    disabled={isPending}>
+                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    loading={isPending}
+                    loadingText='Creating...'
+                    onClick={submit}
+                    data-dialog-submit>
+                    Create draft <KbdSubmit variant='outline' size='sm' />
+                  </Button>
+                </DialogFooter>
+              </DialogNavPage>
+            </>
+          )}
         </DialogNavPages>
       </DialogContent>
     </Dialog>
@@ -496,7 +661,7 @@ function ExtraWorkPicker({
   )
 }
 
-function PreviewRow({ label, value }: { label: string; value: string }) {
+export function PreviewRow({ label, value }: { label: string; value: string }) {
   return (
     <FieldPanelRow title={label}>
       <div className='flex min-h-8 items-center justify-end px-2 font-medium tabular-nums'>

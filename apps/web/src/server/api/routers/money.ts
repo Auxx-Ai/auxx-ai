@@ -2,6 +2,7 @@
 
 import type { PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
+import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
 import {
@@ -29,10 +30,12 @@ import {
   markInvoiceSent,
   markQuoteSent,
   prepareDocumentEmail,
+  previewInvoiceBatch,
   recomputeTotals,
   recordManualPayment,
   refundTransaction,
   reorderLines,
+  runInvoiceBatch,
   saveBillingInstallments,
   setInvoiceSchedule,
   syncAccountState,
@@ -318,6 +321,40 @@ export const moneyRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         workOrderInstanceId: parseRecordId(input.workOrderRecordId).entityInstanceId,
         visitId: input.visitId,
+      })
+    ),
+
+  // ─── Batch advance invoicing (plans/dispatch/37a-batch-advance-invoicing.md) ────
+
+  previewInvoiceBatch: moneyProcedure
+    .input(
+      z.object({
+        range: z.object({ from: z.date(), to: z.date() }),
+        filters: conditionGroupsSchema,
+      })
+    )
+    .query(async ({ ctx, input }) =>
+      previewInvoiceBatch({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        range: input.range,
+        filters: input.filters,
+      })
+    ),
+
+  runInvoiceBatch: moneyProcedure
+    .input(
+      z.object({
+        range: z.object({ from: z.date(), to: z.date() }),
+        workOrderRecordIds: z.array(recordIdSchema).min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) =>
+      runInvoiceBatch({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        range: input.range,
+        workOrderRecordIds: input.workOrderRecordIds,
       })
     ),
 

@@ -166,8 +166,7 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
       <BillingActionDialog
         open={actionOpen}
         onOpenChange={setActionOpen}
-        workOrderRecordId={recordId}
-        billing={billing}
+        scope={{ kind: 'workOrder', workOrderRecordId: recordId, billing }}
       />
       <BillingPlanDialog
         open={planOpen}
@@ -185,9 +184,7 @@ export function WorkOrderBillingTab({ recordId, variant = 'tab' }: DetailViewTab
       <BillingActionDialog
         open={extraOpen}
         onOpenChange={setExtraOpen}
-        workOrderRecordId={recordId}
-        billing={billing}
-        mode='extra'
+        scope={{ kind: 'workOrder', workOrderRecordId: recordId, billing, mode: 'extra' }}
       />
     </div>
   )

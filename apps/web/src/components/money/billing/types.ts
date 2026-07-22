@@ -91,7 +91,10 @@ export interface ContactBillingView {
   recentInvoices: BillingInvoiceRow[]
 }
 
-const EMPTY_WORK_ORDER_BILLING: WorkOrderBillingView = {
+/** Placeholder billing view for the batch dialog scope, which carries no `WorkOrderBillingView`
+ * — lets `BillingActionDialog` reuse its single-work-order render tree's derived values
+ * (never rendered in batch scope) without threading `billing?.` everywhere. */
+export const EMPTY_WORK_ORDER_BILLING: WorkOrderBillingView = {
   basis: 'per_visit',
   timing: 'as_needed',
   state: 'not_ready',

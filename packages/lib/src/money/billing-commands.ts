@@ -3,7 +3,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, ne } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
@@ -334,7 +334,8 @@ export async function createFixedContractInvoice(
   return projectCommittedInvoice({ ...input, result })
 }
 
-/** Create one allocation-backed invoice for selected completed visits. */
+/** Create one allocation-backed invoice for selected visits — `'done'` only by default, or (with
+ * `input.advance`) any non-canceled visit, for batch/advance invoicing before the work happens. */
 export async function createVisitInvoice(
   input: CreateVisitInvoiceInput
 ): Promise<CreateInvoiceFromWorkOrderResult> {
@@ -348,13 +349,17 @@ export async function createVisitInvoice(
       where: and(
         eq(schema.WorkOrderVisit.organizationId, input.organizationId),
         eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId),
-        eq(schema.WorkOrderVisit.status, 'done'),
+        input.advance
+          ? ne(schema.WorkOrderVisit.status, 'canceled')
+          : eq(schema.WorkOrderVisit.status, 'done'),
         inArray(schema.WorkOrderVisit.id, [...new Set(input.visitIds)])
       ),
     })
     if (visits.length !== new Set(input.visitIds).size) {
       throw new BadRequestError(
-        'Every selected visit must be completed and belong to this work order'
+        input.advance
+          ? 'Every selected visit must belong to this work order and not be canceled'
+          : 'Every selected visit must be completed and belong to this work order'
       )
     }
     const source = await getSourceLines({ ...input, db })
