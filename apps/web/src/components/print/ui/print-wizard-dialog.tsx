@@ -79,10 +79,12 @@ export function PrintWizardDialog({
 
   // The registered document type for this entity, if any (quote/invoice today) — drives
   // whether the Document style card is enabled and preselects it when entered from a
-  // quote/invoice table (plans/printing/01-unified-print.md §E page 1).
+  // quote/invoice table (plans/printing/01-unified-print.md §E page 1). Descriptors carry the
+  // entityType slug, not the per-org EntityDefinition.id, so match on `resource.entityType`.
+  const entityType = resource?.entityType
   const documentDescriptor = useMemo(
-    () => DOCUMENT_TYPE_DESCRIPTORS.find((d) => d.entityDefinitionId === entityDefinitionId),
-    [entityDefinitionId]
+    () => DOCUMENT_TYPE_DESCRIPTORS.find((d) => d.entityType === entityType),
+    [entityType]
   )
 
   const [page, setPage] = useState<WizardPage>('style-scope')
@@ -229,7 +231,7 @@ export function PrintWizardDialog({
                 onStyleChange={setStyle}
                 scope={scope}
                 onScopeChange={setScope}
-                entityDefinitionId={entityDefinitionId}
+                hasDocumentType={documentDescriptor != null}
                 selectionCount={selection?.recordIds.length}
               />
             </DialogNavPage>

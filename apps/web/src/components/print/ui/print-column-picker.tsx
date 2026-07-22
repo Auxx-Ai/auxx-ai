@@ -48,7 +48,7 @@ export function PrintColumnPicker({ columns, entityDefinitionId, style }: PrintC
           description='Add at least one below to print.'
         />
       ) : (
-        <SortableList items={selected.map(columnKey)} onReorder={reorder} className='gap-0.5'>
+        <SortableList items={selected.map(columnKey)} onReorder={reorder} className='space-y-0.5'>
           {selected.map((column) => (
             <PrintColumnRow
               key={columnKey(column)}

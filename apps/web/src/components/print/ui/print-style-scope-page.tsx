@@ -3,7 +3,6 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { DOCUMENT_TYPE_DESCRIPTORS } from '@auxx/lib/documents/client'
 import type { ExportType, PrintStyle } from '@auxx/lib/export/client'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
@@ -17,7 +16,9 @@ interface PrintStyleScopePageProps {
   onStyleChange: (style: PrintStyle) => void
   scope: ExportType
   onScopeChange: (scope: ExportType) => void
-  entityDefinitionId: string
+  /** Whether the entity has a registered document type (quote/invoice) — resolved by the
+   * wizard from the entity's `entityType` slug against `DOCUMENT_TYPE_DESCRIPTORS`. */
+  hasDocumentType: boolean
   /** Present only when opened from the bulk-action bar — pins scope to 'selection'. */
   selectionCount?: number
 }
@@ -35,13 +36,9 @@ export function PrintStyleScopePage({
   onStyleChange,
   scope,
   onScopeChange,
-  entityDefinitionId,
+  hasDocumentType,
   selectionCount,
 }: PrintStyleScopePageProps) {
-  const hasDocumentType = DOCUMENT_TYPE_DESCRIPTORS.some(
-    (d) => d.entityDefinitionId === entityDefinitionId
-  )
-
   const scopeOptions =
     selectionCount != null
       ? [{ value: 'selection', label: `Selected records (${selectionCount})` }]

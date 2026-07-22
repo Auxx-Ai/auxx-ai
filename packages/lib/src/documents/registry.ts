@@ -21,8 +21,9 @@ import { QuotePdf } from './pdf/quote-pdf'
 export interface RegisteredDocumentType {
   /** Matches `DocumentType` ('quote' | 'invoice') and the client descriptor's `id`. */
   id: string
-  /** `EntityDefinition.id` this document type renders records of. */
-  entityDefinitionId: string
+  /** `EntityDefinition.entityType` slug this document type renders records of — resolve to a
+   * per-org `EntityDefinition.id` via `requireCachedEntityDefId` before comparing against one. */
+  entityType: string
   /** systemAttribute of the last-rendered pdf-asset pointer field (`ensure-pdf.ts`). */
   pointerAttr: string
   buildPayload(params: {
@@ -50,7 +51,7 @@ export interface RegisteredDocumentType {
 
 /** Per-type renderer wiring — the part `./client.ts`'s descriptors can't carry (react-pdf +
  * server-only payload builders). Merged with `DOCUMENT_TYPE_DESCRIPTORS` below so
- * id/entityDefinitionId are defined exactly once. */
+ * id/entityType are defined exactly once. */
 const RENDER_ENTRIES: Array<
   Pick<RegisteredDocumentType, 'id' | 'pointerAttr' | 'buildPayload' | 'Pdf'>
 > = [
@@ -86,7 +87,7 @@ const REGISTRY: Record<string, RegisteredDocumentType> = Object.fromEntries(
     }
     const registered: RegisteredDocumentType = {
       ...entry,
-      entityDefinitionId: descriptor.entityDefinitionId,
+      entityType: descriptor.entityType,
       printOptions: descriptor.printOptions,
     }
     return [entry.id, registered]
@@ -104,11 +105,11 @@ export function listDocumentTypes(): RegisteredDocumentType[] {
 }
 
 /**
- * Look up the registered document type for an entity definition — e.g. a records-page bulk
- * action deciding whether the "Document" print style card should be enabled.
+ * Look up the registered document type for an entity's `entityType` slug — e.g. a
+ * records-page bulk action deciding whether the "Document" print style card should be enabled.
  */
-export function getDocumentTypeByEntityDefinitionId(
-  entityDefinitionId: string
+export function getDocumentTypeByEntityType(
+  entityType: string
 ): RegisteredDocumentType | undefined {
-  return listDocumentTypes().find((d) => d.entityDefinitionId === entityDefinitionId)
+  return listDocumentTypes().find((d) => d.entityType === entityType)
 }
