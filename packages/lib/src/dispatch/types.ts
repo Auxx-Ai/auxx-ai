@@ -1,6 +1,9 @@
 // packages/lib/src/dispatch/types.ts
 
+import type { schema } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
+
+type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
 /** Input for {@link createWorkOrderFromTicket} — the SECONDARY intake path (01 §8). */
 export interface CreateFromTicketInput {
@@ -37,6 +40,10 @@ export interface CreateWorkOrderInput {
 export interface CreateWorkOrderResult {
   workOrderRecordId: RecordId
   visitId: string
+  /** The scheduled visit row (plan 39 §Phase-1) — lets the acting-tab cache patch
+   * (`applyVisitToCaches`) reconcile every visit-holding cache off this one response instead
+   * of a second round trip. */
+  visit: WorkOrderVisitRow
 }
 
 // ════════════════════════════════════════════════════════════════════════════

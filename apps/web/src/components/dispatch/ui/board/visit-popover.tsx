@@ -103,6 +103,9 @@ export function VisitPopoverContent({
     recurrenceRuleId: event.recurrenceRuleId,
   })
 
+  // Rule mutations are bulk-shaped (an unbounded row set, not one visit) — this settle-invalidate
+  // stays as-is rather than converting to `applyVisitToCaches` (plan `dispatch/39-visit-cache-
+  // sync.md` §2.4 "what this deliberately is NOT" / the batch-rule carve-out).
   const setRecurrence = api.dispatch.setRecurrence.useMutation({
     onError: (error) =>
       toastError({ title: 'Error saving recurrence', description: error.message }),

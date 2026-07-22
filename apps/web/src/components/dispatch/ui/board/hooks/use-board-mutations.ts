@@ -4,7 +4,9 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
+import { applyVisitToCaches } from '~/components/dispatch/visit-cache'
 import { parseRecordId, type RecordId } from '~/components/resources'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
@@ -46,15 +48,45 @@ interface PasteVisitVars {
 
 /**
  * All visit-mutating writes the board makes, each with an optimistic patch of the
- * `dispatch.getBoard` cache (snapshot → patch → rollback-on-error → invalidate-on-settle —
- * the `use-task-completion.ts` recipe adapted to `setQueriesData`-style cache surgery).
+ * `dispatch.getBoard` cache (snapshot → patch → rollback-on-error). Plan
+ * `dispatch/39-visit-cache-sync.md` §Phase-1: single-row mutations (`scheduleVisit`,
+ * `assignVisit`, `unscheduleVisit`, `setVisitStatus`, `dispatchVisit`, `addVisit`,
+ * `createWorkOrder`) reconcile on success via `applyResponse` (`visit-cache.ts`'s
+ * `applyVisitToCaches`) instead of invalidating on settle — it patches every cached `getBoard`
+ * window (not just this hook's own `range`) plus `listVisits`/`myVisits` if open in this tab, so
+ * e.g. a drawer's Schedule section stays in sync with a board drag in the SAME tab. Batch/series
+ * ops (`applyToSeries`, `cancelVisitFollowing`, `pasteVisits`) keep the old settle-invalidate —
+ * one mutation can touch an unbounded row set, so a single-row response can't describe it.
  * Realtime echo suppression is free (the acting client's socket id travels on the mutation
  * header automatically — `apps/web/src/trpc/react.tsx`), so no extra bookkeeping is needed
  * here beyond the local optimistic patch.
  */
 export function useBoardMutations(range: DateRange) {
   const utils = api.useUtils()
-  const { organizationId } = useUser()
+  const queryClient = useQueryClient()
+  const { organizationId, userId } = useUser()
+
+  // Plan 39 §Phase-1 — the acting tab's single write path: feed every single-row mutation's own
+  // response into `applyVisitToCaches` instead of invalidating `getBoard`/`getVisitDayMarkers` on
+  // settle. `viewerUserId` (this tab's signed-in user) only matters if a `myVisits` cache happens
+  // to be open in the same tab — harmless to pass unconditionally.
+  const applyResponse = useCallback(
+    (
+      visit: BoardVisit & { workOrderStatus?: string },
+      staleIds?: { removeStaleVisitId?: string; removeStaleWorkOrderId?: string }
+    ) => {
+      applyVisitToCaches(
+        { utils, queryClient },
+        {
+          visit,
+          workOrderStatus: visit.workOrderStatus,
+          viewerUserId: userId ?? undefined,
+          ...staleIds,
+        }
+      )
+    },
+    [utils, queryClient, userId]
+  )
 
   const patchVisit = useCallback(
     (visitId: string, patch: Partial<BoardVisit>): BoardResult | undefined => {
@@ -77,6 +109,9 @@ export function useBoardMutations(range: DateRange) {
     [range, utils]
   )
 
+  // Blanket invalidate — kept ONLY for the batch/series mutations below (`applyToSeries`,
+  // `cancelVisitFollowing`, `pasteVisits`); every single-row mutation uses `applyResponse`
+  // instead (plan 39 §Phase-1).
   const settle = useCallback(() => {
     void utils.dispatch.getBoard.invalidate()
     // v3 sidebar plan §1.4 — keep the mini-calendar's day-marker dots fresh alongside the board.
@@ -104,7 +139,7 @@ export function useBoardMutations(range: DateRange) {
         description: error.message,
       })
     },
-    onSettled: settle,
+    onSuccess: (visit) => applyResponse(visit),
   })
 
   const assignVisit = api.dispatch.assignVisit.useMutation({
@@ -119,7 +154,9 @@ export function useBoardMutations(range: DateRange) {
         description: error.message,
       })
     },
-    onSettled: settle,
+    // No `workOrderStatus` on this response — `assignVisit` has no roll-up rule of its own
+    // (`visit-mutations.ts`'s doc comment).
+    onSuccess: (visit) => applyResponse(visit),
   })
 
   const unscheduleVisit = api.dispatch.unscheduleVisit.useMutation({
@@ -136,7 +173,7 @@ export function useBoardMutations(range: DateRange) {
         description: error.message,
       })
     },
-    onSettled: settle,
+    onSuccess: (visit) => applyResponse(visit),
   })
 
   const setVisitStatus = api.dispatch.setVisitStatus.useMutation({
@@ -151,7 +188,7 @@ export function useBoardMutations(range: DateRange) {
         description: error.message,
       })
     },
-    onSettled: settle,
+    onSuccess: (visit) => applyResponse(visit),
   })
 
   const dispatchVisit = api.dispatch.dispatchVisit.useMutation({
@@ -168,7 +205,7 @@ export function useBoardMutations(range: DateRange) {
         description: error.message,
       })
     },
-    onSettled: settle,
+    onSuccess: (visit) => applyResponse(visit),
   })
 
   // Series-wide edits ('following'/'all' scope) touch rows beyond this visit — no optimistic
@@ -272,10 +309,11 @@ export function useBoardMutations(range: DateRange) {
       await utils.dispatch.getBoard.cancel(range)
       const vars = rawVars as AddVisitVars
       const previous = utils.dispatch.getBoard.getData(range)
+      const tempVisitId = generateId('temp-visit')
       if (previous && vars.startTime && vars.endTime) {
         const now = new Date()
         const tempVisit: BoardVisit = {
-          id: generateId('temp-visit'),
+          id: tempVisitId,
           organizationId: organizationId ?? '',
           workOrderId: parseRecordId(vars.workOrderRecordId).entityInstanceId,
           assigneeUserId: vars.assigneeUserId ?? null,
@@ -301,29 +339,34 @@ export function useBoardMutations(range: DateRange) {
           visits: [...previous.visits, tempVisit],
         })
       }
-      return { previous }
+      return { previous, tempVisitId }
     },
     onError: (error, _vars, ctx) => {
       rollback(ctx?.previous)
       toastError({ title: 'Error adding visit', description: error.message })
     },
-    onSettled: settle,
+    // Response apply also purges the optimistic temp row (`ctx.tempVisitId`) — otherwise the
+    // real row lands ALONGSIDE the placeholder instead of replacing it (ids never match).
+    onSuccess: (visit, _vars, ctx) =>
+      applyResponse(visit, { removeStaleVisitId: ctx?.tempVisitId }),
   })
 
   // Plan 37c §7, item 1 — slot-click create's "New job" path. Unlike every other board
   // mutation, the work order itself doesn't exist in the cache yet either — the optimistic
   // patch inserts a synthetic `BoardWorkOrder` (client-known title, `number: null`) ALONGSIDE
   // the temp visit row (the `pasteVisits` recipe), so the chip renders the real title instead of
-  // `visitToEvent`'s no-work-order fallback for the brief window before the settle invalidate
-  // swaps in the real (numbered) work order.
+  // `visitToEvent`'s no-work-order fallback for the brief window before the response apply swaps
+  // in the real (numbered) work order (plan 39 §Phase-1 — `removeStaleWorkOrderId`/
+  // `removeStaleVisitId` purge the placeholders so the real row replaces rather than duplicates).
   const createWorkOrder = api.dispatch.createWorkOrder.useMutation({
     onMutate: async (rawVars) => {
       await utils.dispatch.getBoard.cancel(range)
       const vars = rawVars as CreateWorkOrderVars
       const previous = utils.dispatch.getBoard.getData(range)
+      const tempWorkOrderId = generateId('temp-work-order')
+      const tempVisitId = generateId('temp-visit')
       if (previous) {
         const now = new Date()
-        const tempWorkOrderId = generateId('temp-work-order')
         const tempWorkOrder: BoardWorkOrder = {
           id: tempWorkOrderId,
           displayName: vars.title?.trim() || 'New job',
@@ -333,7 +376,7 @@ export function useBoardMutations(range: DateRange) {
           contactDisplayName: null,
         }
         const tempVisit: BoardVisit = {
-          id: generateId('temp-visit'),
+          id: tempVisitId,
           organizationId: organizationId ?? '',
           workOrderId: tempWorkOrderId,
           assigneeUserId: vars.assigneeUserId ?? null,
@@ -360,13 +403,19 @@ export function useBoardMutations(range: DateRange) {
           visits: [...previous.visits, tempVisit],
         })
       }
-      return { previous }
+      return { previous, tempWorkOrderId, tempVisitId }
     },
     onError: (error, _vars, ctx) => {
       rollback(ctx?.previous)
       toastError({ title: 'Error creating work order', description: error.message })
     },
-    onSettled: settle,
+    // Response apply also purges the optimistic temp visit + work order (ids never match the
+    // server's real ones) — otherwise they'd land ALONGSIDE the real row instead of replacing it.
+    onSuccess: (result, _vars, ctx) =>
+      applyResponse(
+        { ...result.visit, workOrderStatus: result.workOrderStatus },
+        { removeStaleVisitId: ctx?.tempVisitId, removeStaleWorkOrderId: ctx?.tempWorkOrderId }
+      ),
   })
 
   return {

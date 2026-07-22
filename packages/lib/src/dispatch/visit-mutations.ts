@@ -18,7 +18,7 @@ import {
   onVisitCompleted,
 } from '../sequences/hooks'
 import { reanchorSequenceRuns } from '../sequences/reanchor'
-import { publishVisitChanged } from './broadcast'
+import { publishVisitChanged, serializeVisitRow } from './broadcast'
 import { type LifecycleTrigger, rollUpWorkOrderStatus } from './lifecycle'
 import { mirrorVisitOntoWorkOrder } from './mirror'
 // Direct module import (not the ./recurring barrel) — the barrel pulls engagement-actions,
@@ -79,18 +79,33 @@ export async function ensureVisitForWorkOrder(
  * `trigger` is omitted — e.g. `assignVisit`, which has no roll-up rule of its own), then
  * broadcast the change. Exported standalone so the M2c engine's rolling-window
  * materializer can reuse it after a bulk visit write.
+ *
+ * Plan `dispatch/39-visit-cache-sync.md` §Phase-2: the broadcast carries the composed row
+ * (`kind: 'row'`) plus whatever `rollUpWorkOrderStatus` left on the work order, so other tabs
+ * can patch their caches (`applyVisitToCaches`) instead of refetching a list.
  */
 export async function afterVisitWrite(
   visit: WorkOrderVisitRow,
   opts: { userId: string; trigger?: LifecycleTrigger; excludeSocketId?: string }
 ): Promise<void> {
   await mirrorVisitOntoWorkOrder(visit.organizationId, opts.userId, visit.workOrderId)
-  if (opts.trigger) {
-    await rollUpWorkOrderStatus(visit.organizationId, opts.userId, visit.workOrderId, opts.trigger)
-  }
+  const workOrderStatus = opts.trigger
+    ? await rollUpWorkOrderStatus(
+        visit.organizationId,
+        opts.userId,
+        visit.workOrderId,
+        opts.trigger
+      )
+    : undefined
   await publishVisitChanged(
     visit.organizationId,
-    { visitId: visit.id, workOrderId: visit.workOrderId },
+    {
+      visitId: visit.id,
+      workOrderId: visit.workOrderId,
+      kind: 'row',
+      visit: serializeVisitRow(visit),
+      workOrderStatus,
+    },
     { excludeSocketId: opts.excludeSocketId }
   )
 }
@@ -300,7 +315,22 @@ export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderV
       .returning()
     const status = await getWorkOrderStatus(organizationId, userId, existing.workOrderId)
     if (updatedRule && status !== 'paused') {
+      // `materializeVisits` broadcasts its own `kind: 'bulk'` event unconditionally at the end
+      // (plan 39 §Phase-2) — that's the signal other tabs need to refresh the regenerated tail
+      // + series summary on top of the `kind: 'row'` visit-restore broadcast just above, so no
+      // extra publish is needed here.
       await materializeVisits(updatedRule, { userId, excludeSocketId })
+    } else if (updatedRule) {
+      // Paused engagement: no `materializeVisits` call (pause owns deletion, resume only
+      // regenerates once un-paused), so nothing else broadcasts the rule write above. The
+      // `kind: 'row'` visit-restore broadcast can't signal a rule-level `until` change — publish
+      // a second, explicit `kind: 'bulk'` event so other tabs' `getRecurrence` cache doesn't go
+      // stale (plan 39 §Phase-2, the restoreVisit(resumeSeries) broadcast decision).
+      await publishVisitChanged(
+        organizationId,
+        { visitId: updatedRule.id, workOrderId: existing.workOrderId, kind: 'bulk' },
+        { excludeSocketId }
+      )
     }
   }
 

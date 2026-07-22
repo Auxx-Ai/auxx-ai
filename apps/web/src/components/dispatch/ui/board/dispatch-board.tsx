@@ -45,7 +45,8 @@ import { VisitChipContent } from './visit-chip-content'
 /**
  * The dispatch board (07-m2-build.md §D.2) — the `/app/dispatch` module home. Day view is
  * `resources` mode (workers + a first "Unassigned" column); week shows every worker
- * color-coded; month is display-only. All writes funnel through `dispatch.scheduleVisit`
+ * color-coded; month drags are whole-day moves (time-of-day preserved, no resize — 37c §6
+ * revised M2a's display-only month). All writes funnel through `dispatch.scheduleVisit`
  * (drag/resize/backlog-drop) or the chip popover's status/dispatch mutations.
  *
  * `boardMode === 'map'` (09-route-planner.md §A) swaps the calendar grid for `RoutePlannerView`.
@@ -230,7 +231,9 @@ export function DispatchBoard() {
       resourceId?: string,
       groupIds?: string[]
     ) => {
-      if (data.view === 'month') return
+      // Month drops commit too (37c §6 revised M2a's display-only month): the dnd layer builds
+      // `newStart` from the target day with the visit's original time-of-day and duration
+      // preserved, and month cells carry no `resourceId`, so the assignee stays untouched.
       const assigneeUserId =
         resourceId !== undefined
           ? resourceId === UNASSIGNED_RESOURCE_ID
@@ -283,7 +286,7 @@ export function DispatchBoard() {
         }
       }
     },
-    [data.view, mutations.scheduleVisit, eventsById, bulkRunner]
+    [mutations.scheduleVisit, eventsById, bulkRunner]
   )
 
   const handleEventResize = useCallback(

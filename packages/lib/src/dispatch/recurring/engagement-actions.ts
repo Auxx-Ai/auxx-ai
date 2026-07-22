@@ -119,7 +119,9 @@ async function writeEngagementStatus(
 }
 
 /** Mirror + broadcast once (07 §B.3/§B.4) — used by pause/end, which don't otherwise run
- * `materializeVisits` (resume does, and that already mirrors + broadcasts). */
+ * `materializeVisits` (resume does, and that already mirrors + broadcasts). `kind: 'bulk'` —
+ * an engagement-level (pause/end) write, no single visit row describes it; `visitId` is the
+ * RULE id (plan 39 §2.3). */
 async function mirrorAndBroadcast(
   rule: RecurrenceRuleRow,
   userId: string,
@@ -128,7 +130,7 @@ async function mirrorAndBroadcast(
   await mirrorVisitOntoWorkOrder(rule.organizationId, userId, rule.subjectId)
   await publishVisitChanged(
     rule.organizationId,
-    { visitId: rule.id, workOrderId: rule.subjectId },
+    { visitId: rule.id, workOrderId: rule.subjectId, kind: 'bulk' },
     { excludeSocketId }
   )
 }

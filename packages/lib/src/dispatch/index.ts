@@ -5,8 +5,8 @@
 
 export type { BoardResult, BoardWorkOrder, GetBoardRange, VisitDayMarker } from './board'
 export { getBoard, getVisitDayMarkers, listVisitsForWorkOrder } from './board'
-export type { VisitChangedPayload } from './broadcast'
-export { publishVisitChanged } from './broadcast'
+export type { SerializedVisitRow, VisitChangedPayload } from './broadcast'
+export { publishVisitChanged, serializeVisitRow } from './broadcast'
 export { convertRequestToWorkOrder } from './convert-to-work-order'
 export { createWorkOrderFromTicket } from './create-from-ticket'
 export { createWorkOrder } from './create-work-order'
