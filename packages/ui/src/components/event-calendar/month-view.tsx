@@ -47,7 +47,10 @@ interface MonthWeekRowProps<T extends EventCalendarItem = EventCalendarItem> {
   events: T[]
   weekStartAt: (index: number) => Date
   onEventSelect: (event: T, e: React.MouseEvent) => void
-  onSlotClick?: (startTime: Date) => void
+  /** Plain empty-cell click — clear-only (plan 44); create lives on `onSlotDoubleClick`. */
+  onSlotClick?: () => void
+  /** Double-click an empty day cell → create a default-duration event at `DefaultStartHour` (plan 44). */
+  onSlotDoubleClick?: (startTime: Date, e: React.MouseEvent) => void
   renderEvent?: RenderEvent<T>
   /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
   selectedIds?: ReadonlySet<string>
@@ -68,6 +71,7 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
   weekStartAt,
   onEventSelect,
   onSlotClick,
+  onSlotDoubleClick,
   renderEvent,
   selectedIds,
   isNonWorkingDay,
@@ -111,8 +115,8 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
               date={day}
               onClick={(e) => {
                 // Cmd/ctrl+click the cell (background or date label — the whole cell shares one
-                // click target) grabs the whole day's events into the selection (§3.2) instead
-                // of starting a slot-create click.
+                // click target) grabs the whole day's events into the selection (§3.2). A plain
+                // click is clear-only now (plan 44) — create moved to double-click below.
                 if (
                   selection.handleDayGrab(
                     allEvents.map((ev) => ev.id),
@@ -121,9 +125,12 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
                 ) {
                   return
                 }
+                onSlotClick?.()
+              }}
+              onDoubleClick={(e) => {
                 const startTime = new Date(day)
                 startTime.setHours(DefaultStartHour, 0, 0)
-                onSlotClick?.(startTime)
+                onSlotDoubleClick?.(startTime, e)
               }}>
               <div className='mt-1 flex select-none items-center gap-1'>
                 {isFirstOfMonth && (
@@ -232,7 +239,10 @@ interface MonthViewProps<T extends EventCalendarItem = EventCalendarItem> {
   events: T[]
   weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6
   onEventSelect: (event: T, e: React.MouseEvent) => void
-  onSlotClick?: (startTime: Date) => void
+  /** Plain empty-cell click — clear-only (plan 44); create lives on `onSlotDoubleClick`. */
+  onSlotClick?: () => void
+  /** Double-click an empty day cell → create a default-duration event at `DefaultStartHour` (plan 44). */
+  onSlotDoubleClick?: (startTime: Date, e: React.MouseEvent) => void
   renderEvent?: RenderEvent<T>
   /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
   selectedIds?: ReadonlySet<string>
@@ -258,6 +268,7 @@ export function MonthView<T extends EventCalendarItem = EventCalendarItem>({
   weekStartsOn,
   onEventSelect,
   onSlotClick,
+  onSlotDoubleClick,
   renderEvent,
   selectedIds,
   onDateChange,
@@ -482,6 +493,7 @@ export function MonthView<T extends EventCalendarItem = EventCalendarItem>({
               weekStartAt={weekStartAt}
               onEventSelect={onEventSelect}
               onSlotClick={onSlotClick}
+              onSlotDoubleClick={onSlotDoubleClick}
               renderEvent={renderEvent}
               selectedIds={selectedIds}
               isNonWorkingDay={isNonWorkingDay}

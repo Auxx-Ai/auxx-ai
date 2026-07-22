@@ -12,13 +12,15 @@ import { Ban, Copy, Inbox, Send, UserCog } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useCallback } from 'react'
 import { BoardAssignPicker } from './board-assign-picker'
+import type { BoardBulkActions } from './hooks/use-board-bulk-actions'
 import type { useBoardBulkRunner } from './hooks/use-board-bulk-runner'
-import type { useBoardMutations } from './hooks/use-board-mutations'
 
 interface BoardBulkBarProps {
   selectedVisitIds: string[]
-  mutations: ReturnType<typeof useBoardMutations>
   bulkRunner: ReturnType<typeof useBoardBulkRunner>
+  /** The shared, id-parameterized bulk actions (plan 44 §6) — the same instance the chip context
+   * menu drives, so both paths run the identical confirm/loop/toast behavior. */
+  bulkActions: BoardBulkActions
   onClearSelection: () => void
   /** Plan 37c §5.1's Copy action — `use-board-clipboard.ts`'s `copySelection` (also what
    * Cmd+C runs; the hook owns that keybinding, this button is just a visible affordance for
@@ -26,75 +28,45 @@ interface BoardBulkBarProps {
   onCopySelection: () => void
 }
 
-const noun = (n: number) => `${n} visit${n === 1 ? '' : 's'}`
-
 /**
  * The board's floating bulk-action bar (plan 37c §5.1) — mounted unconditionally by
  * `dispatch-board.tsx` (only while `canEdit`, member boards never render it) so the
  * Delete/Backspace hotkey below stays live at a single-visit selection too, even though the
  * visible `ActionBar` itself only opens at 2+ (a plain single click keeps today's
- * chip+popover behavior, no bar noise). Every action is a sequential loop
- * (`useBoardBulkRunner`) over the SAME single-visit mutations `use-board-mutations.ts`
- * already exposes — no new endpoints, no series-scope chooser (bulk = "this visit" edits).
+ * chip+popover behavior, no bar noise). Every action runs through the shared `bulkActions`
+ * (plan 44 §6) — the same runner the chip context menu uses.
  */
 export function BoardBulkBar({
   selectedVisitIds,
-  mutations,
   bulkRunner,
+  bulkActions,
   onClearSelection,
   onCopySelection,
 }: BoardBulkBarProps) {
-  const { run, isRunning, ConfirmDialog } = bulkRunner
+  const { isRunning, ConfirmDialog } = bulkRunner
   const count = selectedVisitIds.length
   const hasSelection = count > 0
   const open = count >= 2
 
   const handleAssign = useCallback(
-    (assigneeUserId: string | null) => {
-      void run(
-        selectedVisitIds,
-        (visitId) => mutations.assignVisit.mutateAsync({ visitId, assigneeUserId }),
-        {
-          failureTitle: 'Some visits could not be assigned',
-          failureNoun: 'visits',
-        }
-      )
-    },
-    [run, selectedVisitIds, mutations.assignVisit]
+    (assigneeUserId: string | null) => bulkActions.assign(selectedVisitIds, assigneeUserId),
+    [bulkActions, selectedVisitIds]
   )
 
-  const handleDispatch = useCallback(() => {
-    void run(selectedVisitIds, (visitId) => mutations.dispatchVisit.mutateAsync({ visitId }), {
-      failureTitle: 'Some visits could not be dispatched',
-      failureNoun: 'visits',
-    })
-  }, [run, selectedVisitIds, mutations.dispatchVisit])
+  const handleDispatch = useCallback(
+    () => bulkActions.dispatch(selectedVisitIds),
+    [bulkActions, selectedVisitIds]
+  )
 
-  const handleMoveToBacklog = useCallback(() => {
-    void run(selectedVisitIds, (visitId) => mutations.unscheduleVisit.mutateAsync({ visitId }), {
-      failureTitle: 'Some visits could not be moved to the backlog',
-      failureNoun: 'visits',
-      onDone: onClearSelection,
-    })
-  }, [run, selectedVisitIds, mutations.unscheduleVisit, onClearSelection])
+  const handleMoveToBacklog = useCallback(
+    () => bulkActions.moveToBacklog(selectedVisitIds),
+    [bulkActions, selectedVisitIds]
+  )
 
-  const handleCancel = useCallback(() => {
-    void run(
-      selectedVisitIds,
-      (visitId) => mutations.setVisitStatus.mutateAsync({ visitId, status: 'canceled' }),
-      {
-        confirm: {
-          title: `Cancel ${noun(selectedVisitIds.length)}?`,
-          description: 'This cannot be undone.',
-          confirmText: 'Cancel visits',
-          destructive: true,
-        },
-        failureTitle: 'Some visits could not be canceled',
-        failureNoun: 'visits',
-        onDone: onClearSelection,
-      }
-    )
-  }, [run, selectedVisitIds, mutations.setVisitStatus, onClearSelection])
+  const handleCancel = useCallback(
+    () => bulkActions.cancel(selectedVisitIds),
+    [bulkActions, selectedVisitIds]
+  )
 
   // Delete/Backspace → the same bulk-cancel confirm flow, for ANY non-empty selection (not
   // just when the bar itself is visible at 2+) — mirrors a single chip's popover Cancel

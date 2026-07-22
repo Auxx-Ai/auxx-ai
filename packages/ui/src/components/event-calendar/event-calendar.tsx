@@ -12,6 +12,7 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import {
   addDays,
+  addMinutes,
   addMonths,
   addWeeks,
   endOfDay,
@@ -63,13 +64,14 @@ import {
   type HoveredSlot,
   useCalendarSelectionEngine,
 } from './selection/calendar-selection-context'
-import { MarqueeOverlay } from './selection/marquee-overlay'
+import { EmptySpaceDragLayer } from './selection/empty-space-drag'
 import type {
   BackgroundEvent,
   CalendarResource,
   CalendarView,
   EventCalendarItem,
   RenderEvent,
+  SlotCreateIntent,
   TimelineHourWindow,
 } from './types'
 import { WeekView } from './week-view'
@@ -80,6 +82,22 @@ const DefaultHourWindow: TimelineHourWindow = { start: StartHour, end: EndHour }
 /** Module-level default — an inline `[]` default would recompute `selectedIdSet` (and the
  * selection engine's live snapshot) every render for consumers that don't control selection. */
 const EmptySelectedEventIds: string[] = []
+
+/** Default duration (minutes) a double-click create spans — the grid-side default when a consumer
+ * doesn't override it (plan 44). */
+const DefaultCreateDurationMinutes = 60
+
+/** Round a slot time to the nearest 15-minute mark — create gestures always land on quarter slots. */
+function roundToQuarterHour(date: Date): Date {
+  const rounded = new Date(date)
+  const minutes = rounded.getMinutes()
+  const remainder = minutes % 15
+  if (remainder !== 0) {
+    rounded.setMinutes(remainder < 7.5 ? minutes - remainder : minutes + (15 - remainder))
+  }
+  rounded.setSeconds(0, 0)
+  return rounded
+}
 
 const clampHourHeight = (px: number) =>
   Math.min(WeekCellsHeightMax, Math.max(WeekCellsHeightMin, px))
@@ -151,7 +169,15 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
    * instead and never call this, so a popover/drawer wired here never opens on a modifier-click.
    * Carries the mouse event so a consumer can read further modifiers if it needs to. */
   onEventClick?: (event: T, e: React.MouseEvent) => void
-  onSlotClick?: (startTime: Date, resourceId?: string) => void
+  /** Fires when the user commits a create gesture on empty space (plan 44) — a double-click
+   * (default 60m) in any view, or a cmd/ctrl+drag (painted range) in the time views. Single clicks
+   * never create. Carries a viewport `anchor` (the dblclick position / drag-release point) so a
+   * consumer can open a create popover exactly there. */
+  onSlotCreate?: (intent: SlotCreateIntent) => void
+  /** Controlled create ghost (plan 44 decision C) — echo the in-flight create's range back while a
+   * create popover is open and the grid renders a translucent block at that slot. `null` = no ghost.
+   * Time views only (month has no per-slot geometry to resolve against). */
+  pendingCreateSlot?: { start: Date; end: Date; resourceId?: string } | null
   /** Plan 37c §4 — when provided, every hovered-slot report (pointer-enter on a day/time cell)
    * also lands here, mirroring the selection engine's own internal ref. Lets a consumer read
    * "what's hovered right now" for a Cmd+V paste anchor or a right-click menu without owning a
@@ -210,7 +236,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   selectedEventIds = EmptySelectedEventIds,
   onSelectionChange,
   onEventClick,
-  onSlotClick,
+  onSlotCreate,
+  pendingCreateSlot,
   onEventDrop,
   onEventResize,
   hideToolbar,
@@ -289,17 +316,28 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
     if (isPlainClick) onEventClick?.(event, e)
   }
 
-  const handleSlotClick = (startTime: Date, resourceId?: string) => {
-    // "Click away to deselect": a non-empty selection swallows this click entirely — it must
-    // never also open a slot-create affordance. An empty selection falls through unchanged.
-    selectionEngine.handleEmptyClick(() => {
-      const minutes = startTime.getMinutes()
-      const remainder = minutes % 15
-      if (remainder !== 0) {
-        startTime.setMinutes(remainder < 7.5 ? minutes - remainder : minutes + (15 - remainder))
-        startTime.setSeconds(0, 0)
-      }
-      onSlotClick?.(startTime, resourceId)
+  // Plain empty-space click is clear-only now (plan 44): a non-empty selection is cleared, an
+  // empty selection is a no-op. Create moved to double-click / cmd+drag below.
+  const handleSlotClick = () => {
+    selectionEngine.handleEmptyClick()
+  }
+
+  // Double-click empty space → create at the 15-min-snapped slot with a default duration, anchored
+  // at the click position (plan 44). `resourceId` is the clicked worker column (day/timeline);
+  // week/month never carry one.
+  const handleSlotDoubleClick = (
+    startTime: Date,
+    resourceId: string | undefined,
+    e: React.MouseEvent
+  ) => {
+    if (!onSlotCreate) return
+    const start = roundToQuarterHour(startTime)
+    onSlotCreate({
+      start,
+      end: addMinutes(start, DefaultCreateDurationMinutes),
+      resourceId,
+      anchor: { x: e.clientX, y: e.clientY },
+      gesture: 'dblclick',
     })
   }
 
@@ -609,6 +647,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               weekStartsOn={weekStartsOn}
               onEventSelect={handleEventSelect}
               onSlotClick={handleSlotClick}
+              onSlotDoubleClick={(startTime, e) => handleSlotDoubleClick(startTime, undefined, e)}
               renderEvent={renderEvent}
               selectedIds={selectedIdSet}
               onDateChange={onDateChange}
@@ -624,6 +663,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               backgroundEvents={backgroundEvents}
               onEventSelect={handleEventSelect}
               onSlotClick={handleSlotClick}
+              onSlotDoubleClick={(startTime, e) => handleSlotDoubleClick(startTime, undefined, e)}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedIds={selectedIdSet}
@@ -640,6 +680,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               backgroundEvents={backgroundEvents}
               onEventSelect={handleEventSelect}
               onSlotClick={handleSlotClick}
+              onSlotDoubleClick={(startTime, e) => handleSlotDoubleClick(startTime, undefined, e)}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedIds={selectedIdSet}
@@ -657,6 +698,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
                 backgroundEvents={backgroundEvents}
                 onEventSelect={handleEventSelect}
                 onSlotClick={handleSlotClick}
+                onSlotDoubleClick={handleSlotDoubleClick}
                 onEventResize={onEventResize}
                 renderEvent={renderEvent}
                 selectedIds={selectedIdSet}
@@ -683,6 +725,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
                 onLaneHeightChange={onTimelineLaneHeightChange}
                 onEventSelect={handleEventSelect}
                 onSlotClick={handleSlotClick}
+                onSlotDoubleClick={handleSlotDoubleClick}
                 onEventResize={onEventResize}
                 renderEvent={renderEvent}
                 selectedIds={selectedIdSet}
@@ -732,7 +775,12 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             {body}
           </CalendarDndProvider>
         )}
-        <MarqueeOverlay containerRef={viewContainerRef} engine={selectionEngine} />
+        <EmptySpaceDragLayer
+          containerRef={viewContainerRef}
+          engine={selectionEngine}
+          onDragCreate={onSlotCreate}
+          pendingCreateSlot={pendingCreateSlot}
+        />
       </CalendarSelectionProvider>
     </div>
   )

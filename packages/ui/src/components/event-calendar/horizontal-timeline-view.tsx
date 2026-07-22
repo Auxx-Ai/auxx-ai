@@ -120,9 +120,10 @@ interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalenda
   laneHeight?: number
   onLaneHeightChange?: (px: number) => void
   onEventSelect: (event: T, e: React.MouseEvent) => void
-  /** Fires when a quarter-hour cell is clicked (§7 slot-create; also the empty-space clear-first
-   * ordering the shared `onSlotClick` handler already enforces). */
-  onSlotClick?: (startTime: Date, resourceId?: string) => void
+  /** Plain empty-cell click — clear-only (plan 44); create lives on `onSlotDoubleClick`. */
+  onSlotClick?: () => void
+  /** Double-click an empty cell → create a default-duration event at that slot/worker (plan 44). */
+  onSlotDoubleClick?: (startTime: Date, resourceId: string, e: React.MouseEvent) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
   /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
@@ -174,6 +175,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   onLaneHeightChange,
   onEventSelect,
   onSlotClick,
+  onSlotDoubleClick,
   onEventResize,
   renderEvent,
   selectedIds,
@@ -977,6 +979,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
               laneMapsByResource={laneMapsByResource}
               onEventSelect={onEventSelect}
               onSlotClick={onSlotClick}
+              onSlotDoubleClick={onSlotDoubleClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedIds={selectedIds}

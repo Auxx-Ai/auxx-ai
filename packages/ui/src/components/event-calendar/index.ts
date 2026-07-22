@@ -75,6 +75,7 @@ export type {
   EventColorClasses,
   RenderEvent,
   RenderEventContext,
+  SlotCreateIntent,
   TimelineHourWindow,
 } from './types'
 // Utils

@@ -67,8 +67,10 @@ interface TimelineDaySectionProps<T extends EventCalendarItem = EventCalendarIte
    */
   laneMapsByResource: Map<string, DayLaneAssignment>
   onEventSelect: (event: T, e: React.MouseEvent) => void
-  /** Fires when a quarter-hour cell is clicked (§7 slot-create). */
-  onSlotClick?: (startTime: Date, resourceId?: string) => void
+  /** Plain empty-cell click — clear-only (plan 44); create lives on `onSlotDoubleClick`. */
+  onSlotClick?: () => void
+  /** Double-click an empty cell → create a default-duration event at that slot/worker (plan 44). */
+  onSlotDoubleClick?: (startTime: Date, resourceId: string, e: React.MouseEvent) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
   /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
@@ -112,6 +114,7 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
   laneMapsByResource,
   onEventSelect,
   onSlotClick,
+  onSlotDoubleClick,
   onEventResize,
   renderEvent,
   selectedIds,
@@ -304,12 +307,14 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                     date={day}
                     time={quarterHourTime}
                     resourceId={resource.id}
-                    onClick={() => {
+                    axis='x'
+                    onClick={() => onSlotClick?.()}
+                    onDoubleClick={(e) => {
                       const hours = Math.floor(quarterHourTime)
                       const minutes = Math.round((quarterHourTime - hours) * 60)
                       const startTime = new Date(day)
                       startTime.setHours(hours, minutes, 0, 0)
-                      onSlotClick?.(startTime, resource.id)
+                      onSlotDoubleClick?.(startTime, resource.id, e)
                     }}
                   />
                 </div>

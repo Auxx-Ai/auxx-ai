@@ -46,6 +46,21 @@ export interface EventCalendarItem {
   badge?: ReactNode
 }
 
+/**
+ * A create gesture committed on empty grid space (plan 44) — a double-click (default 60m
+ * duration) in any view, or a cmd/ctrl+drag (the painted range) in the time views. Single clicks
+ * never create. Carries a viewport `anchor` point (the dblclick position or drag-release point) so
+ * a consumer can open its create popover exactly there without capturing the pointer separately.
+ */
+export interface SlotCreateIntent {
+  start: Date
+  /** dblclick → `start` + 60m; drag → the painted quarter-hour-snapped range. */
+  end: Date
+  resourceId?: string
+  anchor: { x: number; y: number }
+  gesture: 'dblclick' | 'drag'
+}
+
 /** A column in `resources` day mode — one per worker/vehicle/etc. */
 export interface CalendarResource {
   id: string

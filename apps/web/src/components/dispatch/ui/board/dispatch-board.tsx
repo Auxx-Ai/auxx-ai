@@ -32,6 +32,7 @@ import { BoardToolbar } from './board-toolbar'
 import { EventDockPanel } from './event-dock-panel'
 import { computeGroupDragUpdates } from './group-drag'
 import { useAvailabilityShading } from './hooks/use-availability-shading'
+import { useBoardBulkActions } from './hooks/use-board-bulk-actions'
 import { useBoardBulkRunner } from './hooks/use-board-bulk-runner'
 import { useBoardClipboard } from './hooks/use-board-clipboard'
 import { useBoardData } from './hooks/use-board-data'
@@ -122,6 +123,13 @@ export function DispatchBoard() {
   // drives `run()`) and the grid (which dims `pendingVisitIds` chips), so both read the same
   // in-flight set.
   const bulkRunner = useBoardBulkRunner()
+  // Id-parameterized bulk actions (plan 44 §6) — one instance shared by the bulk bar (targets the
+  // selection) and the grid's chip context menu (targets its resolved right-click ids).
+  const bulkActions = useBoardBulkActions({
+    mutations,
+    bulkRunner,
+    onClearSelection: clearSelection,
+  })
 
   // Dockable event panel (plan 21) — a board-scoped push column, separate from the page-level
   // `useDockedPanels` dock further below that drives the record drawer; this
@@ -475,6 +483,7 @@ export function DispatchBoard() {
                 hasClipboard={clipboard.hasClipboard}
                 onCopyIds={clipboard.copyIds}
                 onPasteAt={clipboard.openPasteDialogAt}
+                bulkActions={bulkActions}
               />
             </div>
           </CalendarDndProvider>
@@ -495,8 +504,8 @@ export function DispatchBoard() {
         <BoardBulkBar
           selectedVisitIds={selectedVisitIds}
           onCopySelection={clipboard.copySelection}
-          mutations={mutations}
           bulkRunner={bulkRunner}
+          bulkActions={bulkActions}
           onClearSelection={clearSelection}
         />
       )}

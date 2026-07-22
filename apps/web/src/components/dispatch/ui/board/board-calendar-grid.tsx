@@ -7,24 +7,29 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@auxx/ui/components/context-menu'
 import {
   type BackgroundEvent,
   type CalendarResource,
+  DefaultStartHour,
   EventCalendar,
   EventPopover,
   type HoveredSlot,
   type RenderEventContext,
+  type SlotCreateIntent,
 } from '@auxx/ui/components/event-calendar'
-import { format } from 'date-fns'
-import { ClipboardPaste, Copy } from 'lucide-react'
+import { addMinutes, format } from 'date-fns'
+import { Ban, CalendarPlus, ClipboardPaste, Copy, Inbox, Send } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSettings } from '~/hooks/use-settings'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import { useTimelineViewStore } from '../../stores/timeline-view-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
+import { BoardAssignContextSubmenu } from './board-assign-context-submenu'
+import type { BoardBulkActions } from './hooks/use-board-bulk-actions'
 import type { PasteAnchor } from './hooks/use-board-clipboard'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import { useVisibleHourWindow } from './hooks/use-visible-hour-window'
@@ -40,7 +45,7 @@ import { WorkerColumnHeader } from './worker-column-header'
  * `draggable-event.tsx`/`agenda-view.tsx`); anything else is treated as empty-space. */
 type BoardMenuTarget =
   | { type: 'chip'; visitId: string }
-  | { type: 'slot'; slot: HoveredSlot | null }
+  | { type: 'slot'; slot: HoveredSlot | null; anchor: { x: number; y: number } }
 
 interface BoardCalendarGridProps {
   date: Date
@@ -85,6 +90,9 @@ interface BoardCalendarGridProps {
   /** Opens the paste-options dialog anchored at the given target (`null` = fall back to the
    * board's current date, no time) — the context menu's "Paste here". */
   onPasteAt?: (target: PasteAnchor | null) => void
+  /** Shared bulk actions (plan 44 §6) — the chip context menu's Assign/Dispatch/Backlog/Cancel run
+   * through the SAME runner the bulk bar uses. Undefined on member (`!canEdit`) boards. */
+  bulkActions?: BoardBulkActions
 }
 
 /**
@@ -120,6 +128,7 @@ export function BoardCalendarGrid({
   hasClipboard,
   onCopyIds,
   onPasteAt,
+  bulkActions,
 }: BoardCalendarGridProps) {
   const setEventDockOpen = useDispatchSidebarStore((s) => s.setEventDockOpen)
   // Docking transfers the currently controlled popover into the panel. Radix may report the
@@ -297,20 +306,32 @@ export function BoardCalendarGrid({
   // selection-targeted. Resolved once per `contextmenu` event, not re-derived on render.
   const [menuTarget, setMenuTarget] = useState<BoardMenuTarget | null>(null)
 
-  // Slot-click create (plan 37c §7) — `onSlotClick` carries no mouse event, so the click's
-  // viewport position (for the popover's virtual anchor) is captured separately: an
-  // `onClickCapture` on the wrapper fires BEFORE the cell's own `onClick` (capture phase runs
-  // top-down ahead of the bubble-phase target handler that calls `onSlotClick`), so by the time
-  // `handleSlotClick` reads this ref it already holds the position of the click that triggered
-  // it — same synchronous-ordering trick `handleContextMenu` below uses for its own target.
-  const lastPointerPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const handlePointerCapture = useCallback((e: React.MouseEvent) => {
-    lastPointerPosRef.current = { x: e.clientX, y: e.clientY }
-  }, [])
+  // Slot create (plan 44) — the grid's `SlotCreateIntent` already carries the gesture's viewport
+  // anchor (dblclick position / cmd+drag release point), so the old `onClickCapture` position
+  // capture is gone; the popover anchors straight off `intent.anchor`.
   const [slotClickTarget, setSlotClickTarget] = useState<SlotClickTarget | null>(null)
-  const handleSlotClick = useCallback((startTime: Date, resourceId?: string) => {
-    setSlotClickTarget({ startTime, resourceId, anchor: lastPointerPosRef.current })
+  const handleSlotCreate = useCallback((intent: SlotCreateIntent) => {
+    setSlotClickTarget({
+      startTime: intent.start,
+      endTime: intent.end,
+      resourceId: intent.resourceId,
+      anchor: intent.anchor,
+    })
   }, [])
+
+  // Ghost persist (decision C): while the create popover is open, echo its range back to the grid
+  // so the translucent block stays over the slot; clearing the target removes it.
+  const pendingCreateSlot = useMemo(
+    () =>
+      slotClickTarget
+        ? {
+            start: slotClickTarget.startTime,
+            end: slotClickTarget.endTime,
+            resourceId: slotClickTarget.resourceId,
+          }
+        : null,
+    [slotClickTarget]
+  )
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -319,30 +340,82 @@ export function BoardCalendarGrid({
       setMenuTarget(
         visitId
           ? { type: 'chip', visitId }
-          : { type: 'slot', slot: hoveredSlotRef?.current ?? null }
+          : {
+              type: 'slot',
+              slot: hoveredSlotRef?.current ?? null,
+              anchor: { x: e.clientX, y: e.clientY },
+            }
       )
     },
     [hoveredSlotRef]
   )
 
-  // Right-click a chip outside the current selection → select just it, then copy (§5.3);
-  // right-click one already in the selection → copy the whole selection, mirroring Cmd+C.
+  // Right-clicked chip inside the selection → the action targets the whole selection; outside →
+  // the selection collapses to just it first (plan 44 §6, generalizing Copy's 37c §5.3 rule).
+  const resolveMenuTargetIds = useCallback(
+    (visitId: string): string[] => {
+      if (selectedEventIds.includes(visitId)) return selectedEventIds
+      onSelectionChange([visitId])
+      return [visitId]
+    },
+    [selectedEventIds, onSelectionChange]
+  )
+
   const handleCopyFromMenu = useCallback(() => {
     if (menuTarget?.type !== 'chip') return
-    const { visitId } = menuTarget
-    if (selectedEventIds.includes(visitId)) {
-      onCopyIds?.(selectedEventIds)
-    } else {
-      onSelectionChange([visitId])
-      onCopyIds?.([visitId])
-    }
-  }, [menuTarget, selectedEventIds, onSelectionChange, onCopyIds])
+    onCopyIds?.(resolveMenuTargetIds(menuTarget.visitId))
+  }, [menuTarget, resolveMenuTargetIds, onCopyIds])
+
+  const handleAssignFromMenu = useCallback(
+    (assigneeUserId: string | null) => {
+      if (menuTarget?.type !== 'chip') return
+      bulkActions?.assign(resolveMenuTargetIds(menuTarget.visitId), assigneeUserId)
+    },
+    [menuTarget, resolveMenuTargetIds, bulkActions]
+  )
+
+  const handleDispatchFromMenu = useCallback(() => {
+    if (menuTarget?.type !== 'chip') return
+    bulkActions?.dispatch(resolveMenuTargetIds(menuTarget.visitId))
+  }, [menuTarget, resolveMenuTargetIds, bulkActions])
+
+  const handleBacklogFromMenu = useCallback(() => {
+    if (menuTarget?.type !== 'chip') return
+    bulkActions?.moveToBacklog(resolveMenuTargetIds(menuTarget.visitId))
+  }, [menuTarget, resolveMenuTargetIds, bulkActions])
+
+  const handleCancelFromMenu = useCallback(() => {
+    if (menuTarget?.type !== 'chip') return
+    bulkActions?.cancel(resolveMenuTargetIds(menuTarget.visitId))
+  }, [menuTarget, resolveMenuTargetIds, bulkActions])
 
   const handlePasteFromMenu = useCallback(() => {
     if (menuTarget?.type !== 'slot') return
     const { slot } = menuTarget
     onPasteAt?.(slot ? { day: slot.date, time: slot.time, resourceId: slot.resourceId } : null)
   }, [menuTarget, onPasteAt])
+
+  // "New event here" (plan 44 §5) — open the same slot-create popover from the right-clicked slot:
+  // its hovered day/time (rounded to the quarter; month → `DefaultStartHour`) + worker, anchored at
+  // the right-click coords.
+  const handleNewEventHere = useCallback(() => {
+    if (menuTarget?.type !== 'slot') return
+    const { slot, anchor } = menuTarget
+    const startTime = new Date(slot?.date ?? date)
+    if (slot?.time !== undefined) {
+      const hours = Math.floor(slot.time)
+      const minutes = Math.round((slot.time - hours) * 60)
+      startTime.setHours(hours, minutes, 0, 0)
+    } else {
+      startTime.setHours(DefaultStartHour, 0, 0, 0)
+    }
+    setSlotClickTarget({
+      startTime,
+      endTime: addMinutes(startTime, 60),
+      resourceId: slot?.resourceId,
+      anchor,
+    })
+  }, [menuTarget, date])
 
   const calendar = (
     <EventCalendar<DispatchVisitEvent>
@@ -369,7 +442,8 @@ export function BoardCalendarGrid({
       onSelectionChange={onSelectionChange}
       onEventClick={handleEventClick}
       onEventResize={canEdit && view !== 'month' ? onEventResize : undefined}
-      onSlotClick={canEdit ? handleSlotClick : undefined}
+      onSlotCreate={canEdit ? handleSlotCreate : undefined}
+      pendingCreateSlot={pendingCreateSlot}
       hideToolbar
       isNonWorkingDay={isNonWorkingDay}
       // Month never hides day cells — week/timeline/day drop (skip) empty off-days.
@@ -393,24 +467,39 @@ export function BoardCalendarGrid({
          * root (className='flex-1' above) still lands as the direct flex child its parent row
          * (`dispatch-board.tsx`'s `flex flex-1 overflow-hidden`) expects. */}
         <ContextMenuTrigger asChild>
-          <div
-            className='contents'
-            onContextMenu={handleContextMenu}
-            onClickCapture={handlePointerCapture}>
+          <div className='contents' onContextMenu={handleContextMenu}>
             {calendar}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className='w-48'>
+        <ContextMenuContent className='w-52'>
           {menuTarget?.type === 'chip' ? (
-            <ContextMenuItem onSelect={handleCopyFromMenu}>
-              <Copy /> Copy
-              <ContextMenuShortcut>⌘C</ContextMenuShortcut>
-            </ContextMenuItem>
+            <>
+              <ContextMenuItem onSelect={handleCopyFromMenu}>
+                <Copy /> Copy
+                <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+              </ContextMenuItem>
+              <BoardAssignContextSubmenu onSelect={handleAssignFromMenu} />
+              <ContextMenuItem onSelect={handleDispatchFromMenu}>
+                <Send /> Dispatch
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={handleBacklogFromMenu}>
+                <Inbox /> Move to backlog
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem variant='destructive' onSelect={handleCancelFromMenu}>
+                <Ban /> Cancel
+              </ContextMenuItem>
+            </>
           ) : (
-            <ContextMenuItem disabled={!hasClipboard} onSelect={handlePasteFromMenu}>
-              <ClipboardPaste /> Paste here
-              <ContextMenuShortcut>⌘V</ContextMenuShortcut>
-            </ContextMenuItem>
+            <>
+              <ContextMenuItem onSelect={handleNewEventHere}>
+                <CalendarPlus /> New event here
+              </ContextMenuItem>
+              <ContextMenuItem disabled={!hasClipboard} onSelect={handlePasteFromMenu}>
+                <ClipboardPaste /> Paste here
+                <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+              </ContextMenuItem>
+            </>
           )}
         </ContextMenuContent>
       </ContextMenu>
