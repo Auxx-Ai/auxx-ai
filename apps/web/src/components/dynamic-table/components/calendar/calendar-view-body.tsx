@@ -112,7 +112,7 @@ export function CalendarViewBody() {
         onViewChange={() => {}}
         onRangeChange={handleRangeChange}
         events={events}
-        onEventClick={(event) => onCardClick?.({ id: event.id })}
+        onEventClick={(event, _e) => onCardClick?.({ id: event.id })}
         onEventDrop={handleEventDrop}
         onSlotClick={handleSlotClick}
         hideToolbar

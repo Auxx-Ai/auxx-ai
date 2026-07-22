@@ -60,6 +60,8 @@ export { MonthView } from './month-view'
 // Positioning util (day/week/resource share this — see position-events.ts)
 export { type PositionedEvent, positionEventsForDay } from './position-events'
 export { ResourceTimelineView } from './resource-timeline-view'
+// Selection (plan 37c) — the hovered-slot shape consumers thread into `hoveredSlotRef`.
+export type { HoveredSlot } from './selection/calendar-selection-context'
 export { TimeRangePill } from './time-range-pill'
 // Types
 export type {

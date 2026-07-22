@@ -60,11 +60,13 @@ interface TimelineDaySectionProps<T extends EventCalendarItem = EventCalendarIte
    * spans), so the outer key must include the day, not just the resource.
    */
   laneMapsByResource: Map<string, DayLaneAssignment>
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
+  /** Fires when a quarter-hour cell is clicked (§7 slot-create). */
+  onSlotClick?: (startTime: Date, resourceId?: string) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   /** Fraction (0..1) of the hour window "now" falls at — `null` when outside the window. */
   nowPosition: number | null
 }
@@ -102,9 +104,10 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
   bodyHeight,
   laneMapsByResource,
   onEventSelect,
+  onSlotClick,
   onEventResize,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   nowPosition,
 }: TimelineDaySectionProps<T>) {
   const day = dayAt(index)
@@ -129,7 +132,7 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
     e.stopPropagation()
-    onEventSelect(event)
+    onEventSelect(event, e)
   }
 
   return (
@@ -198,7 +201,7 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                     height={TimelineLaneHeight - LaneGap}
                     onResize={onEventResize}
                     renderEvent={renderEvent}
-                    isSelected={event.id === selectedEventId}
+                    isSelected={selectedIds?.has(event.id) ?? false}
                     isFirstDay={isFirstDay}
                     isLastDay={isLastDay}
                   />
@@ -249,7 +252,7 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                       height={TimelineLaneHeight - LaneGap}
                       onResize={onEventResize}
                       renderEvent={renderEvent}
-                      isSelected={event.id === selectedEventId}
+                      isSelected={selectedIds?.has(event.id) ?? false}
                       isFirstDay={!isClampedStart}
                       isLastDay={!isClampedEnd}
                     />
@@ -264,7 +267,9 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
               windowEndHour={windowEnd}
             />
 
-            {/* Quarter-hour droppable cells — no `onClick`, click-to-create is out of scope. */}
+            {/* Quarter-hour droppable cells — clicking one reports the already-computed
+                day/quarterHourTime/resourceId as a slot click (§7), through the same
+                clear-selection-first ordering every other view's cells share. */}
             {Array.from({ length: slotCount }, (_, slot) => {
               const quarterHourTime = windowStart + slot * 0.25
               return (
@@ -281,6 +286,13 @@ function TimelineDaySectionInner<T extends EventCalendarItem = EventCalendarItem
                     date={day}
                     time={quarterHourTime}
                     resourceId={resource.id}
+                    onClick={() => {
+                      const hours = Math.floor(quarterHourTime)
+                      const minutes = Math.round((quarterHourTime - hours) * 60)
+                      const startTime = new Date(day)
+                      startTime.setHours(hours, minutes, 0, 0)
+                      onSlotClick?.(startTime, resource.id)
+                    }}
                   />
                 </div>
               )

@@ -8,16 +8,17 @@ import { useMemo } from 'react'
 
 import { AgendaDaysToShow } from './constants'
 import { EventItem } from './event-item'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 import type { EventCalendarItem, RenderEvent } from './types'
 import { getAgendaEventsForDay } from './utils'
 
 interface AgendaViewProps<T extends EventCalendarItem = EventCalendarItem> {
   currentDate: Date
   events: T[]
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
 }
 
 export function AgendaView<T extends EventCalendarItem = EventCalendarItem>({
@@ -25,15 +26,16 @@ export function AgendaView<T extends EventCalendarItem = EventCalendarItem>({
   events,
   onEventSelect,
   renderEvent,
-  selectedEventId,
+  selectedIds,
 }: AgendaViewProps<T>) {
+  const selection = useCalendarSelection()
   const days = useMemo(() => {
     return Array.from({ length: AgendaDaysToShow }, (_, i) => addDays(new Date(currentDate), i))
   }, [currentDate])
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
     e.stopPropagation()
-    onEventSelect(event)
+    onEventSelect(event, e)
   }
 
   const hasEvents = days.some((day) => getAgendaEventsForDay(events, day).length > 0)
@@ -61,16 +63,25 @@ export function AgendaView<T extends EventCalendarItem = EventCalendarItem>({
                 {format(day, 'd MMM, EEEE')}
               </span>
               <div className='mt-6 space-y-2'>
-                {/* Site 1/1: agenda card. */}
+                {/* Site 1/1: agenda card. Agenda bypasses `DraggableEvent` (no drag/resize here),
+                    so it registers into the marquee's chip registry itself — selection rendering
+                    only, agenda is a plain list with no spatial marquee. */}
                 {dayEvents.map((event) => (
-                  <EventItem
+                  <div
                     key={event.id}
-                    event={event}
-                    view='agenda'
-                    onClick={(e) => handleEventClick(event, e)}
-                    isSelected={event.id === selectedEventId}
-                    renderEvent={renderEvent}
-                  />
+                    ref={(node) => {
+                      if (node) selection.registerChip(event.id, node)
+                      return () => selection.unregisterChip(event.id)
+                    }}
+                    data-event-id={event.id}>
+                    <EventItem
+                      event={event}
+                      view='agenda'
+                      onClick={(e) => handleEventClick(event, e)}
+                      isSelected={selectedIds?.has(event.id) ?? false}
+                      renderEvent={renderEvent}
+                    />
+                  </div>
                 ))}
               </div>
             </div>
