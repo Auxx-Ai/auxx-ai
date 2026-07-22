@@ -36,12 +36,21 @@ export type AppEventError =
  * Connection data for event payload
  */
 export interface EventConnectionData {
-  /** Unique identifier for the connection */
-  id: string
+  /**
+   * Unique identifier for the connection. Present for post-insert events
+   * (`connection-added`/`connection-removed`); omitted for the pre-insert
+   * `connection-identify` event, where nothing is persisted yet.
+   */
+  id?: string
   /** Type of connection authentication */
   type: 'oauth2-code' | 'secret'
   /** The connection credential value (access token, API key, etc.) */
   value: string
+  /**
+   * Merged connection variables (plain + secret-flagged) so handlers can read
+   * user-defined connection vars. Secrets win on key collision.
+   */
+  fields?: Record<string, string>
   /** Optional metadata associated with the connection */
   metadata?: Record<string, unknown>
 }
@@ -54,7 +63,7 @@ export interface EventConnectionData {
  */
 export async function triggerAppEvent(params: {
   appInstallationId: string
-  eventType: 'connection-added' | 'connection-removed'
+  eventType: 'connection-added' | 'connection-removed' | 'connection-identify'
   payload: {
     connection?: EventConnectionData
   }

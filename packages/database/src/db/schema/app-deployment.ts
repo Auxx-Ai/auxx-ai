@@ -351,6 +351,10 @@ export interface CatalogPayload {
   fields?: CatalogAppField[]
   /** App-declared data connectors (optional — older catalogs omit it). */
   dataConnectors?: CatalogDataConnector[]
+  /** Ids of app-side event handlers this deployment declares, e.g.
+   *  'connection-added', 'connection-identify'. Missing/older catalogs omit it →
+   *  treat as []. */
+  events?: string[]
 }
 
 /** Drizzle table for AppDeployment */

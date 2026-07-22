@@ -10,6 +10,8 @@ interface OAuthDonePayload {
   ok: boolean
   credId?: string | null
   error?: string | null
+  /** True when the connect matched an existing identity and updated it in place (no new row). */
+  matchedExisting?: boolean
 }
 
 export interface OpenOAuthPopupOptions {
@@ -21,8 +23,11 @@ export interface OpenOAuthPopupOptions {
   channelName: string
   /** `window.open` target name (defaults to `auxx-oauth`). */
   windowName?: string
-  /** Settled exactly once: `ok` + the connected credId when known. */
-  onDone: (ok: boolean, credId?: string | null) => void
+  /**
+   * Settled exactly once: `ok` + the connected credId when known. `matchedExisting` is true when
+   * the connect deduped onto an existing identity (update-in-place) — the caller toasts it.
+   */
+  onDone: (ok: boolean, credId?: string | null, matchedExisting?: boolean) => void
   /**
    * Authoritative success backstop, polled every {@link verifyIntervalMs}. Resolve to a credId
    * (or `true`) once the connect is observed server-side; `null`/`false` while still pending.
@@ -107,7 +112,7 @@ export function useOAuthPopup() {
         ok: boolean,
         credId?: string | null,
         error?: string | null,
-        opts?: { closePopup?: boolean }
+        opts?: { closePopup?: boolean; matchedExisting?: boolean }
       ) => {
         if (settled) return
         settled = true
@@ -122,14 +127,17 @@ export function useOAuthPopup() {
         if (!ok && error) {
           toastError({ title: 'Failed to connect', description: error })
         }
-        onDone(ok, credId ?? null)
+        onDone(ok, credId ?? null, opts?.matchedExisting ?? false)
       }
 
       const handleDone = (payload: OAuthDonePayload) => {
         finish(
           payload.ok,
           payload.credId,
-          payload.ok ? undefined : payload.error || 'Connection failed'
+          payload.ok ? undefined : payload.error || 'Connection failed',
+          {
+            matchedExisting: payload.matchedExisting ?? false,
+          }
         )
       }
 

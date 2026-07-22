@@ -252,7 +252,7 @@ export const shopifyRouter = createTRPCRouter({
       }
       // The credential id for the claimed shop (reconnected or freshly inserted). Used to
       // flip the primary connection to this shop whenever we establish a Shopify anchor.
-      const claimedCredentialId = saveResult.value
+      const claimedCredentialId = saveResult.value.credentialId
 
       await redis.del(claimKey)
       cookieStore.delete(CLAIM_COOKIE_NAME)

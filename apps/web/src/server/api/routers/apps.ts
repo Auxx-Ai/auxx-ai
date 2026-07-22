@@ -590,11 +590,13 @@ export const appsRouter = createTRPCRouter({
         })
       }
 
+      const { credentialId, matchedExisting } = result.value
+
       // Connection test for the no-browser `client-credentials` grant: mint once now so a bad
       // client id/secret surfaces immediately rather than on first runtime use. The minted token
       // is cached on the credential for reuse.
       if (def.connectionType === 'client-credentials') {
-        const minted = await mintClientCredentialToken(result.value, organizationId)
+        const minted = await mintClientCredentialToken(credentialId, organizationId)
         if (!minted.success) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -603,7 +605,7 @@ export const appsRouter = createTRPCRouter({
         }
       }
 
-      return { success: true, credentialId: result.value }
+      return { success: true, credentialId, matchedExisting }
     }),
 
   /**

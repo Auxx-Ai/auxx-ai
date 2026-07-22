@@ -63,6 +63,52 @@ export interface ConnectionAddedResult {
 }
 
 /**
+ * Connection view passed to `connection-identify` — pre-insert, so no `id`
+ * (nothing is persisted yet; the freshly minted credential value + metadata are
+ * handed to the handler before any DB write).
+ */
+export type IdentifyConnection = Omit<Connection, 'id'>
+
+/**
+ * Result an app's `connection-identify` event handler returns so the platform
+ * can dedupe a fresh connect against existing connections in the same scope.
+ *
+ * The handler lives at `src/events/connection-identify.event.ts` and is a
+ * **pure, side-effect-free, PRE-insert** hook. It runs *before* the credential
+ * is written, receives the freshly minted credential value + metadata (no
+ * `connection.id`, nothing persisted yet), and returns a stable provider
+ * identity string for dedup — a realm id, workspace id, account email, etc.
+ *
+ * The handler MAY read the provider (e.g. `GET /me`) to derive the identity, but
+ * MUST NOT mutate provider state (no webhook registration, no writes). All
+ * setup + webhook side effects stay in `connection-added`, which runs *after*
+ * insert only for genuinely new connections. When the returned `identifier`
+ * matches an existing connection the platform updates that row in place (rotates
+ * tokens) and does NOT re-fire `connection-added`.
+ *
+ * @example
+ * // src/events/connection-identify.event.ts
+ * import type {
+ *   IdentifyConnection,
+ *   ConnectionIdentifyResult,
+ * } from '@auxx/sdk/server'
+ *
+ * export default async function connectionIdentify(
+ *   { connection }: { connection: IdentifyConnection },
+ * ): Promise<ConnectionIdentifyResult> {
+ *   // Metadata-derived (QuickBooks): realmId rides the OAuth callback.
+ *   const realmId = connection.metadata?.realmId as string | undefined
+ *   return realmId ? { identifier: realmId } : {}
+ *   // API-derived: call `GET /me` with connection.value, return { identifier: me.email }.
+ * }
+ */
+export interface ConnectionIdentifyResult {
+  /** Stable provider identity for dedup — realm id, workspace id, account email.
+   *  Omit/empty to skip dedup for this connect. */
+  identifier?: string
+}
+
+/**
  * Error thrown when connection is not found.
  * Platform catches this and prompts user to authenticate.
  */

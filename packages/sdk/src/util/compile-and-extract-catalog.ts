@@ -4,8 +4,9 @@ import * as esbuild from 'esbuild'
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
+import { findServerFunctionModules } from '../build/server/generate-server-entry.js'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
-import { complete, errored, type Result } from '../errors.js'
+import { complete, errored, isErrored, type Result } from '../errors.js'
 import type {
   ActionInputHint,
   AgentSurface,
@@ -299,6 +300,10 @@ export interface CatalogPayload {
   fields?: CatalogAppField[]
   /** App-declared data connectors (optional — older catalogs omit it). */
   dataConnectors?: CatalogDataConnector[]
+  /** Ids of app-side event handlers this deployment declares, e.g.
+   *  'connection-added', 'connection-identify'. Missing/older catalogs omit it →
+   *  treat as []. */
+  events?: string[]
 }
 
 export type CompileAndExtractCatalogError =
@@ -795,6 +800,17 @@ export async function compileAndExtractCatalog(): Promise<
     })
   }
 
+  // Declared event handlers — files under the events dir (`src/events` by
+  // convention). Not part of the projected `app` literal, so scan the filesystem
+  // the same way the server-entry generator does: `*.event.{js,ts}` → strip the
+  // suffix to the handler id (e.g. 'connection-identify'). A missing events dir
+  // is not an error — treat as no declared events.
+  const eventsDirAbsolute = path.join(srcDirAbsolute, 'events')
+  const eventModulesResult = await findServerFunctionModules(eventsDirAbsolute, 'event')
+  const eventIds = isErrored(eventModulesResult)
+    ? []
+    : eventModulesResult.value.map((p) => p.replace(/\.event\.(js|ts)$/, ''))
+
   const catalog: CatalogPayload = {
     tools: cataloguedTools,
     triggers: cataloguedTriggers,
@@ -811,6 +827,7 @@ export async function compileAndExtractCatalog(): Promise<
     actions: cataloguedActions,
     fields: cataloguedFields,
     dataConnectors: cataloguedDataConnectors,
+    events: eventIds,
   }
 
   // Roundtrip-serializable check — catches non-serializable values left on
