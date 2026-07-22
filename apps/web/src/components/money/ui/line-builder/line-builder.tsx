@@ -664,9 +664,13 @@ export function LineBuilder({
    */
   const createDraft = useCallback(
     async (draftId: string, overrides: LinePatch = {}) => {
-      // The first real edit promotes an initial loading placeholder to a normal
-      // draft, so an arriving persisted list cannot remove the user's work.
-      initialDraftIdsRef.current.delete(draftId)
+      // The first real edit retires the whole initial-placeholder concept: the
+      // edited draft materializes into a real record, and the remaining seeded
+      // rows demote to ordinary empty drafts instead of being cleared as stale
+      // placeholders. Clearing the WHOLE set (not just this id) is what keeps
+      // the other default rows on screen after you fill one in — placeholder
+      // replacement only ever runs before the user has touched anything.
+      initialDraftIdsRef.current.clear()
       if (creatingDraftIdsRef.current.has(draftId)) {
         mutateDrafts((prev) =>
           prev.map((d) => (d.draftId === draftId ? { ...d, ...overrides } : d))
