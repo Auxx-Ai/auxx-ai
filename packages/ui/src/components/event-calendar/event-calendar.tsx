@@ -152,8 +152,17 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
    * "what's hovered right now" for a Cmd+V paste anchor or a right-click menu without owning a
    * selection engine of its own. Ref-only, never causes a re-render. */
   hoveredSlotRef?: React.MutableRefObject<HoveredSlot | null>
-  /** The calendar never mutates — every write (move or resize) round-trips through these. */
-  onEventDrop?: (event: T, newStart: Date, newEnd: Date, resourceId?: string) => void
+  /**
+   * The calendar never mutates — every write (move or resize) round-trips through these.
+   * `groupIds` (plan 37c §6) — see `CalendarDndProvider`'s `onEventDrop` doc.
+   */
+  onEventDrop?: (
+    event: T,
+    newStart: Date,
+    newEnd: Date,
+    resourceId?: string,
+    groupIds?: string[]
+  ) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   /** Hide the built-in date-nav/view-switcher header when the consumer brings their own toolbar chrome. */
   hideToolbar?: boolean

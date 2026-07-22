@@ -40,6 +40,14 @@ interface CalendarDndContextValue<T extends EventCalendarItem = EventCalendarIte
   eventHeight: number | null
   /** Chip width (px) of the drag source — set only for horizontal (timeline) chips. */
   eventWidth: number | null
+  /**
+   * Group drag-move (plan `37c-calendar-create-copy-paste.md` §6) — the full set of ids moving
+   * together (including the drag source), non-null only when the dragged chip was part of a
+   * multi-selection (size > 1) at drag start. `DraggableEvent` reads this to dim every OTHER
+   * selected chip while the drag is in flight; the `DragOverlay` ghost reads its size for the
+   * "×N" count badge.
+   */
+  activeGroupIds: Set<string> | null
 }
 
 const CalendarDndContext = createContext<CalendarDndContextValue>({
@@ -52,6 +60,7 @@ const CalendarDndContext = createContext<CalendarDndContextValue>({
   currentResourceId: null,
   eventHeight: null,
   eventWidth: null,
+  activeGroupIds: null,
 })
 
 export const useCalendarDnd = () => useContext(CalendarDndContext)
@@ -63,8 +72,19 @@ interface CalendarDndProviderProps<T extends EventCalendarItem = EventCalendarIt
    * droppable cells (move = reschedule/reassign). The calendar itself never
    * mutates — this is the only place a write happens, and it's the
    * consumer's job to call their own mutation.
+   *
+   * `groupIds` (plan 37c §6) — present (length > 1) only when the dragged chip was part of a
+   * multi-selection: every id in the selection, INCLUDING the dragged one, so the consumer's
+   * write semantics (delta math, worker blast-radius) live entirely on their side — dnd-kit
+   * itself only ever drags the one chip.
    */
-  onEventDrop?: (event: T, newStart: Date, newEnd: Date, resourceId?: string) => void
+  onEventDrop?: (
+    event: T,
+    newStart: Date,
+    newEnd: Date,
+    resourceId?: string,
+    groupIds?: string[]
+  ) => void
   /**
    * Escape hatch for composition: fires on every drag end regardless of
    * whether the dragged item is a calendar event. Mount `CalendarDndProvider`
@@ -99,6 +119,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   const [eventHeight, setEventHeight] = useState<number | null>(null)
   const [eventWidth, setEventWidth] = useState<number | null>(null)
   const [foreignActive, setForeignActive] = useState<Active | null>(null)
+  const [activeGroupIds, setActiveGroupIds] = useState<Set<string> | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -128,7 +149,17 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
     const data = active.data.current as
-      | { event?: T; view?: DraggableView; height?: number; width?: number }
+      | {
+          event?: T
+          view?: DraggableView
+          height?: number
+          width?: number
+          /** See `DraggableEvent` — reads the REAL selection engine (this provider may be
+           * mounted ambiently, above the calendar's own `CalendarSelectionProvider`, so it can't
+           * read that context itself) and, as a side effect, collapses the selection to just
+           * this chip when it's dragged from outside it. */
+          onGroupDragStart?: () => string[] | null
+        }
       | undefined
     if (!data?.event) {
       setForeignActive(active)
@@ -142,6 +173,8 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     setCurrentTime(new Date(data.event.start))
     setEventHeight(data.height ?? null)
     setEventWidth(data.width ?? null)
+    const groupIds = data.onGroupDragStart?.() ?? null
+    setActiveGroupIds(groupIds && groupIds.length > 1 ? new Set(groupIds) : null)
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -190,6 +223,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
     setEventHeight(null)
     setEventWidth(null)
     setForeignActive(null)
+    setActiveGroupIds(null)
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -222,7 +256,13 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
         const newEnd = addMinutes(newStart, durationMinutes)
 
         if (newStart.getTime() !== originalStart.getTime()) {
-          onEventDrop?.(calendarEvent, newStart, newEnd, overData.resourceId)
+          onEventDrop?.(
+            calendarEvent,
+            newStart,
+            newEnd,
+            overData.resourceId,
+            activeGroupIds ? Array.from(activeGroupIds) : undefined
+          )
         }
       }
     }
@@ -249,6 +289,7 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
           currentResourceId,
           eventHeight,
           eventWidth,
+          activeGroupIds,
         }}>
         {children}
 
@@ -277,6 +318,14 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
                 currentTime={currentTime || undefined}
                 renderEvent={renderEvent}
               />
+              {/* Group drag-move count badge (plan 37c §6) — only when the drag source was part
+                  of a multi-selection; makes the "every selected visit moves together, and gets
+                  the target worker if the row changed" blast radius visible mid-drag. */}
+              {activeGroupIds && activeGroupIds.size > 1 && (
+                <div className='bg-primary text-primary-foreground absolute -top-2 -right-2 z-50 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow'>
+                  ×{activeGroupIds.size}
+                </div>
+              )}
               {/* Live snapped landing time (plan 35 §3) — month drags are whole-day, no pill. */}
               {activeView !== 'month' && currentTime && (
                 <div className='absolute top-full left-0 mt-1'>

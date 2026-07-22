@@ -13,6 +13,7 @@ import {
   closeMyVisit,
   convertRequestToWorkOrder,
   createQcItemTemplate,
+  createWorkOrder,
   createWorkOrderFromTicket,
   deleteQcItemTemplate,
   dispatchVisit,
@@ -416,6 +417,32 @@ export const dispatchRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         workOrderInstanceId: entityInstanceId,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        assigneeUserId: input.assigneeUserId,
+        excludeSocketId: excludeSocketId(ctx),
+      })
+    }),
+
+  // Plan 37c §7 — slot-click create's "New job" path: builds a minimal work order from a
+  // contact + title + slot times (not a conversion — see `createFromTicket`/`convertToWorkOrder`
+  // above for the source-copying flows). Admin-gated like the rest of visit machinery (§B).
+  createWorkOrder: dispatchAdminProcedure
+    .input(
+      z.object({
+        contactRecordId: recordIdSchema,
+        title: z.string().optional(),
+        startTime: z.coerce.date(),
+        endTime: z.coerce.date(),
+        assigneeUserId: z.string().nullable().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return createWorkOrder({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        contactRecordId: input.contactRecordId,
+        title: input.title,
         startTime: input.startTime,
         endTime: input.endTime,
         assigneeUserId: input.assigneeUserId,

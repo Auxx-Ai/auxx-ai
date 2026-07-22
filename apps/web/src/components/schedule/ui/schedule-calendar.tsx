@@ -5,8 +5,11 @@
 // `EventCalendar` grid, sourced from the `visits`/`meetings` calendar-source registry (plan
 // 01-source-registry-refactor.md). No drag-move/resize/create (decision I′ — the schedule grid
 // is display-only; scheduling stays the dispatch board's job) — `onEventClick` is the only
-// interaction, dispatched by `event.sourceId` to the click targets `schedule-page.tsx` owns
-// (decision D′).
+// click-through interaction, dispatched by `event.sourceId` to the click targets
+// `schedule-page.tsx` owns (decision D′). Phase 6 (plan `37c-calendar-create-copy-paste.md` §8)
+// adds the second layer on top of that: multi-select (free from the grid's generic selection
+// engine) and visit copy/paste — copy is open to everyone, paste is admin/owner-gated because
+// every dispatch write is `dispatchAdminProcedure`.
 
 'use client'
 
@@ -17,17 +20,26 @@ import {
   type RenderEventContext,
 } from '@auxx/ui/components/event-calendar'
 import { ModuleSidebar } from '@auxx/ui/components/module-sidebar'
-import { useMemo } from 'react'
+import { toastError } from '@auxx/ui/components/toast'
+import { useMemo, useState } from 'react'
 import { hiddenIdsForGroup } from '~/components/calendar/core/source-visibility'
 import type { CalendarSource, SourcedEvent } from '~/components/calendar/core/types'
+import { useCalendarClipboard } from '~/components/calendar/core/use-calendar-clipboard'
 import type { CalendarRangeView, DateRange } from '~/components/calendar/core/use-calendar-range'
 import { meetingsSource } from '~/components/calendar/sources/meetings-source'
 import type { TaskEvent } from '~/components/calendar/sources/tasks-source'
 import { tasksSource } from '~/components/calendar/sources/tasks-source'
-import { visitsSource } from '~/components/calendar/sources/visits-source'
+import { type VisitEvent, visitsSource } from '~/components/calendar/sources/visits-source'
 import { MiniCalendarSection } from '~/components/calendar/ui/mini-calendar-section'
+import {
+  PasteVisitsDialog,
+  type PasteWorkerOption,
+} from '~/components/calendar/ui/paste-visits-dialog'
 import { SourceToggleGroup } from '~/components/calendar/ui/source-toggle-group'
+import { useResource } from '~/components/resources'
 import { useSettings } from '~/hooks/use-settings'
+import { useUser } from '~/hooks/use-user'
+import { api } from '~/trpc/react'
 import { useScheduleSidebarStore } from '../stores/schedule-sidebar-store'
 
 /** Sidebar group id for the visits/meetings source toggle rows. */
@@ -36,6 +48,11 @@ const KINDS_GROUP = 'kinds'
 /** Stable empty default — an inline `[]` would recreate `EventCalendar`'s `selectedIdSet` every
  * render whenever nothing is selected. */
 const EmptySelection: string[] = []
+
+/** The paste dialog's worker-retarget list — always empty on schedule (no per-worker resource
+ * columns exist on this grid, so the "assign all to <worker>" option never applies); a stable
+ * reference so `PasteVisitsDialog`'s memo doesn't recompute every render. */
+const EmptyWorkers: PasteWorkerOption[] = []
 
 /**
  * Module-level static source list — hook rules require a page's source list never change
@@ -74,7 +91,12 @@ interface ScheduleCalendarProps {
   onVisitClick: (visitId: string) => void
   onMeetingClick: (meetingId: string) => void
   onTaskClick: (task: TaskEvent['task']) => void
-  /** Event id whose detail drawer/sheet is open — draws the in-color selection ring. */
+  /** Event id whose detail drawer/sheet is open — only used to SEED the initial multi-selection
+   * (below) so switching from list view with something already open still shows a ring on
+   * mount; once mounted, selection is purely gesture-driven (plan 37c §8) and no longer
+   * resynced from this prop (a plain click already keeps the two in lockstep — the grid's
+   * selection engine calls `onSelectionChange([id])` on the very same click that opens the
+   * drawer via `onEventClick`). */
   selectedEventId?: string | null
 }
 
@@ -102,6 +124,18 @@ export function ScheduleCalendar({
   const toggleHidden = useScheduleSidebarStore((s) => s.toggleHidden)
 
   const hiddenIds = hiddenIdsForGroup(hidden, KINDS_GROUP)
+
+  // Multi-selection (plan 37c §8) — grid-internal gesture layer (cmd/shift/marquee/day-grab/
+  // Escape) comes free from `EventCalendar`'s generic selection engine; this is just the
+  // controlled state it reads/writes. Seeded (not resynced) from `selectedEventId` — see the
+  // prop's doc comment.
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>(() =>
+    selectedEventId ? [selectedEventId] : []
+  )
+
+  const { isAdminOrOwner, userId } = useUser()
+  const { resource: workOrderResource } = useResource('work-orders')
+  const utils = api.useUtils()
 
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const weekStart = (scalarSetting(getSetting('organization.weekStart')) ?? 'monday') as
@@ -133,12 +167,64 @@ export function ScheduleCalendar({
     SOURCE_BY_ID[event.sourceId]?.renderEvent(event, ctx) ?? null
 
   // Plain-click-only (plan 37c §3.2 — the grid never calls this on a modifier-click), so
-  // behavior here is unchanged; multi-selection/copy-paste for this surface is a later phase.
+  // behavior here is unchanged from before multi-selection/copy-paste landed.
   const handleEventClick = (event: SourcedEvent, _e: React.MouseEvent) => {
     if (event.sourceId === 'visits') onVisitClick(event.id)
     else if (event.sourceId === 'meetings') onMeetingClick(event.id)
     else if (event.sourceId === 'tasks') onTaskClick((event as TaskEvent).task)
   }
+
+  // Copy (plan 37c §8): enabled for everyone, but only `sourceId === 'visits'` events are
+  // clipboard-eligible — meetings/tasks have no work order to paste onto, so they're narrowed
+  // out here rather than filtered a second time inside `useCalendarClipboard`. `workOrderId`
+  // comes straight off `VisitEvent` (added alongside this phase); `assigneeUserId` isn't part of
+  // the source's payload at all — `dispatch.myVisits` only ever returns the signed-in worker's
+  // OWN visits, so it's always the current user, no need to round-trip it through the query.
+  const visitClipboardEvents = useMemo(
+    () =>
+      events
+        .filter((event): event is VisitEvent => event.sourceId === 'visits')
+        .map((event) => ({
+          id: event.id,
+          workOrderId: event.workOrderId,
+          title: event.title,
+          start: event.start,
+          end: event.end,
+          assigneeUserId: userId,
+        })),
+    [events, userId]
+  )
+
+  const clipboard = useCalendarClipboard({
+    events: visitClipboardEvents,
+    selectedIds: selectedEventIds,
+    anchorDate: date,
+    workOrderDefId: workOrderResource?.id,
+    canCopy: true,
+    // Paste is admin/owner-only (every dispatch write is `dispatchAdminProcedure`) — non-admins
+    // get no Cmd+V, no dialog, no affordance at all (plan 37c §8, derived decision).
+    canPaste: isAdminOrOwner,
+  })
+
+  // No optimistic cache patch here (unlike the board's `use-board-mutations.ts` `pasteVisits`) —
+  // this surface has no local cache shape to patch against; `dispatch.myVisits` invalidate on
+  // settle is enough. It can't rely on the realtime `dispatch:visit-changed` broadcast alone: the
+  // acting client's own socket id is excluded from its own broadcast (the board's optimistic
+  // patch is what stands in for it there), and paste is only ever invoked BY this same client.
+  const pasteVisits = api.dispatch.pasteVisits.useMutation({
+    onSuccess: (result) => {
+      if (result.failures.length > 0) {
+        toastError({
+          title: 'Some visits could not be pasted',
+          description: `${result.failures.length} of ${result.created.length + result.failures.length} visits failed to paste`,
+        })
+      }
+    },
+    onError: (error) => toastError({ title: 'Error pasting visits', description: error.message }),
+    onSettled: () => {
+      void utils.dispatch.myVisits.invalidate()
+    },
+  })
 
   // The grid's keyboard shortcuts (`EventCalendar`'s M/W/D/A) can emit 'agenda'/'resource' too —
   // this shell only ever offers day/week/month, so filter those out before forwarding.
@@ -179,11 +265,24 @@ export function ScheduleCalendar({
         events={events}
         renderEvent={renderEvent}
         onEventClick={handleEventClick}
-        selectedEventIds={selectedEventId ? [selectedEventId] : EmptySelection}
+        selectedEventIds={selectedEventIds.length > 0 ? selectedEventIds : EmptySelection}
+        onSelectionChange={setSelectedEventIds}
+        hoveredSlotRef={clipboard.hoveredSlotRef}
         weekStartsOn={weekStartsOn}
         hideToolbar
         className='flex-1'
       />
+      {isAdminOrOwner && (
+        <PasteVisitsDialog
+          target={clipboard.pasteTarget}
+          onOpenChange={(open) => {
+            if (!open) clipboard.closePasteDialog()
+          }}
+          items={clipboard.clipboardItems ?? []}
+          workers={EmptyWorkers}
+          pasteVisits={pasteVisits}
+        />
+      )}
     </div>
   )
 }
