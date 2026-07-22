@@ -57,6 +57,12 @@ import { DayView, DayViewHeader } from './day-view'
 import { HorizontalTimelineView } from './horizontal-timeline-view'
 import { MonthView } from './month-view'
 import { ResourceTimelineView } from './resource-timeline-view'
+import {
+  CalendarSelectionProvider,
+  type HoveredSlot,
+  useCalendarSelectionEngine,
+} from './selection/calendar-selection-context'
+import { MarqueeOverlay } from './selection/marquee-overlay'
 import type {
   BackgroundEvent,
   CalendarResource,
@@ -69,6 +75,10 @@ import { WeekView } from './week-view'
 
 /** Module-level default — an inline `{}` default would break `TimelineDaySection`'s memo every render. */
 const DefaultHourWindow: TimelineHourWindow = { start: StartHour, end: EndHour }
+
+/** Module-level default — an inline `[]` default would recompute `selectedIdSet` (and the
+ * selection engine's live snapshot) every render for consumers that don't control selection. */
+const EmptySelectedEventIds: string[] = []
 
 const clampHourHeight = (px: number) =>
   Math.min(WeekCellsHeightMax, Math.max(WeekCellsHeightMin, px))
@@ -125,10 +135,23 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   onGridHourHeightChange?: (px: number) => void
   backgroundEvents?: BackgroundEvent[]
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (its detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
-  onEventClick?: (event: T) => void
+  /** Controlled multi-selection (plan `37c-calendar-create-copy-paste.md` §3) — the grid
+   * interprets every selection gesture (plain/cmd/shift-click, marquee, day-grab, Escape) and
+   * reports the result here; the consumer owns the actual state. Selected chips draw the
+   * in-color ring. */
+  selectedEventIds?: string[]
+  /** Fires whenever a selection gesture changes the set — always the full replacement set. */
+  onSelectionChange?: (ids: string[]) => void
+  /** Fires on a PLAIN chip click only (no modifier) — cmd/ctrl/shift-clicks manage selection
+   * instead and never call this, so a popover/drawer wired here never opens on a modifier-click.
+   * Carries the mouse event so a consumer can read further modifiers if it needs to. */
+  onEventClick?: (event: T, e: React.MouseEvent) => void
   onSlotClick?: (startTime: Date, resourceId?: string) => void
+  /** Plan 37c §4 — when provided, every hovered-slot report (pointer-enter on a day/time cell)
+   * also lands here, mirroring the selection engine's own internal ref. Lets a consumer read
+   * "what's hovered right now" for a Cmd+V paste anchor or a right-click menu without owning a
+   * selection engine of its own. Ref-only, never causes a re-render. */
+  hoveredSlotRef?: React.MutableRefObject<HoveredSlot | null>
   /** The calendar never mutates — every write (move or resize) round-trips through these. */
   onEventDrop?: (event: T, newStart: Date, newEnd: Date, resourceId?: string) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
@@ -165,7 +188,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   onGridHourHeightChange,
   backgroundEvents,
   renderEvent,
-  selectedEventId,
+  selectedEventIds = EmptySelectedEventIds,
+  onSelectionChange,
   onEventClick,
   onSlotClick,
   onEventDrop,
@@ -173,7 +197,20 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   hideToolbar,
   isNonWorkingDay,
   className,
+  hoveredSlotRef,
 }: EventCalendarProps<T>) {
+  // Memoized once here (not per-view) — every view flips its `isSelected` check from id-equality
+  // to `selectedIds.has(event.id)` against this single Set.
+  const selectedIdSet = useMemo(() => new Set(selectedEventIds), [selectedEventIds])
+  // Built once (see `useCalendarSelectionEngine`'s doc comment) so both this component's own
+  // gesture handlers below AND the provider it renders further down share the same instance.
+  const selectionEngine = useCalendarSelectionEngine(
+    events,
+    selectedIdSet,
+    onSelectionChange,
+    hoveredSlotRef
+  )
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -184,13 +221,18 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         return
       }
 
+      if (e.key === 'Escape' && selectedIdSet.size > 0) {
+        selectionEngine.clearSelection()
+        return
+      }
+
       const match = VIEW_OPTIONS.find((o) => o.shortcut.toLowerCase() === e.key.toLowerCase())
       if (match) onViewChange(match.value)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onViewChange])
+  }, [onViewChange, selectedIdSet, selectionEngine])
 
   // Month view is a continuous week stream (see MonthView): the "viewed month" is the month
   // of the anchor date's week END, and month nav lands on the target month's top-left cell.
@@ -219,16 +261,26 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
     else onDateChange(new Date())
   }
 
-  const handleEventSelect = (event: T) => onEventClick?.(event)
+  // Central gesture interpretation (§3.2) — every view's chip `onClick` funnels here through
+  // `onEventSelect`, passing its raw mouse event through instead of branching modifiers itself.
+  // `onEventClick` (the popover/drawer hook) only fires for a genuinely plain click.
+  const handleEventSelect = (event: T, e: React.MouseEvent) => {
+    const isPlainClick = selectionEngine.handleChipClick(event.id, e)
+    if (isPlainClick) onEventClick?.(event, e)
+  }
 
   const handleSlotClick = (startTime: Date, resourceId?: string) => {
-    const minutes = startTime.getMinutes()
-    const remainder = minutes % 15
-    if (remainder !== 0) {
-      startTime.setMinutes(remainder < 7.5 ? minutes - remainder : minutes + (15 - remainder))
-      startTime.setSeconds(0, 0)
-    }
-    onSlotClick?.(startTime, resourceId)
+    // "Click away to deselect": a non-empty selection swallows this click entirely — it must
+    // never also open a slot-create affordance. An empty selection falls through unchanged.
+    selectionEngine.handleEmptyClick(() => {
+      const minutes = startTime.getMinutes()
+      const remainder = minutes % 15
+      if (remainder !== 0) {
+        startTime.setMinutes(remainder < 7.5 ? minutes - remainder : minutes + (15 - remainder))
+        startTime.setSeconds(0, 0)
+      }
+      onSlotClick?.(startTime, resourceId)
+    })
   }
 
   const [rangeFrom, rangeTo] = useMemo<[Date, Date]>(() => {
@@ -269,7 +321,10 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         : `${format(start, 'MMM')} - ${format(end, 'MMM yyyy')}`
     }
     if (view === 'day' || view === 'resource' || view === 'timeline') {
-      return <DayViewHeader currentDate={date} />
+      // Day-grab (§3.2) only wires here for the plain 'day' view — resource/timeline render
+      // their own per-day date labels in-stream (possibly several visible at once) and grab
+      // from those instead, so this shared title stays a non-interactive header for them.
+      return <DayViewHeader currentDate={date} events={view === 'day' ? events : undefined} />
     }
     if (view === 'agenda') {
       const start = date
@@ -279,7 +334,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
         : `${format(start, 'MMM')} - ${format(end, 'MMM yyyy')}`
     }
     return format(date, 'MMMM yyyy')
-  }, [date, view, weekStartsOn])
+  }, [date, view, weekStartsOn, events])
 
   const dndContext = useCalendarDnd()
   const withinAmbientProvider = dndContext.isCalendarDndContext
@@ -534,7 +589,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onEventSelect={handleEventSelect}
             onSlotClick={handleSlotClick}
             renderEvent={renderEvent}
-            selectedEventId={selectedEventId}
+            selectedIds={selectedIdSet}
             onDateChange={onDateChange}
             onVisibleRangeChange={onRangeChange}
             isNonWorkingDay={isNonWorkingDay}
@@ -550,7 +605,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onSlotClick={handleSlotClick}
             onEventResize={onEventResize}
             renderEvent={renderEvent}
-            selectedEventId={selectedEventId}
+            selectedIds={selectedIdSet}
             onDateChange={onDateChange}
             onVisibleRangeChange={onRangeChange}
             hourHeight={effectiveGridHourHeight}
@@ -565,7 +620,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             onSlotClick={handleSlotClick}
             onEventResize={onEventResize}
             renderEvent={renderEvent}
-            selectedEventId={selectedEventId}
+            selectedIds={selectedIdSet}
             hourHeight={effectiveGridHourHeight}
           />
         )}
@@ -582,7 +637,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               onSlotClick={handleSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
-              selectedEventId={selectedEventId}
+              selectedIds={selectedIdSet}
               onDateChange={onDateChange}
               onVisibleRangeChange={onRangeChange}
               hourHeight={effectiveGridHourHeight}
@@ -602,9 +657,10 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               railWidth={timelineRailWidth}
               onRailWidthChange={onTimelineRailWidthChange}
               onEventSelect={handleEventSelect}
+              onSlotClick={handleSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
-              selectedEventId={selectedEventId}
+              selectedIds={selectedIdSet}
               onDateChange={onDateChange}
               onVisibleRangeChange={onRangeChange}
             />
@@ -615,7 +671,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             events={events}
             onEventSelect={handleEventSelect}
             renderEvent={renderEvent}
-            selectedEventId={selectedEventId}
+            selectedIds={selectedIdSet}
           />
         )}
       </div>
@@ -641,13 +697,16 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
           '--grid-all-day-padding-top': `${GridAllDayPaddingTop}px`,
         } as CSSProperties
       }>
-      {withinAmbientProvider ? (
-        body
-      ) : (
-        <CalendarDndProvider onEventDrop={onEventDrop} renderEvent={renderEvent}>
-          {body}
-        </CalendarDndProvider>
-      )}
+      <CalendarSelectionProvider engine={selectionEngine}>
+        {withinAmbientProvider ? (
+          body
+        ) : (
+          <CalendarDndProvider onEventDrop={onEventDrop} renderEvent={renderEvent}>
+            {body}
+          </CalendarDndProvider>
+        )}
+        <MarqueeOverlay containerRef={viewContainerRef} engine={selectionEngine} />
+      </CalendarSelectionProvider>
     </div>
   )
 }

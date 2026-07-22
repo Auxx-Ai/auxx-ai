@@ -6,6 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 
 import { useCalendarDnd } from './calendar-dnd-context'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 
 interface DroppableCellProps {
   id: string
@@ -16,7 +17,7 @@ interface DroppableCellProps {
   resourceId?: string
   children?: React.ReactNode
   className?: string
-  onClick?: () => void
+  onClick?: (e: React.MouseEvent<HTMLDivElement>) => void
 }
 
 export function DroppableCell({
@@ -29,6 +30,7 @@ export function DroppableCell({
   onClick,
 }: DroppableCellProps) {
   const { activeEvent } = useCalendarDnd()
+  const { reportHoveredSlot } = useCalendarSelection()
 
   const { setNodeRef, isOver } = useDroppable({
     id,
@@ -39,6 +41,7 @@ export function DroppableCell({
     <div
       ref={setNodeRef}
       onClick={onClick}
+      onPointerEnter={() => reportHoveredSlot({ date, time, resourceId })}
       className={cn(
         'data-dragging:bg-accent flex h-full flex-col overflow-hidden px-0.5 py-1 sm:px-1',
         className

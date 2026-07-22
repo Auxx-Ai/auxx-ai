@@ -37,6 +37,7 @@ import {
   TimelineRailWidthMax,
   TimelineRailWidthMin,
 } from './constants'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 import { StickyRailShadow } from './sticky-rail-shadow'
 import { type DayLaneAssignment, TimelineDaySection } from './timeline-day-section'
 import type {
@@ -112,11 +113,14 @@ interface HorizontalTimelineViewProps<T extends EventCalendarItem = EventCalenda
    * Omit for internal state. Drags report commits via `onRailWidthChange`. */
   railWidth?: number
   onRailWidthChange?: (px: number) => void
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
+  /** Fires when a quarter-hour cell is clicked (§7 slot-create; also the empty-space clear-first
+   * ordering the shared `onSlotClick` handler already enforces). */
+  onSlotClick?: (startTime: Date, resourceId?: string) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   /** Fires when a user scroll settles on a new leftmost day. */
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) day window — consumers fetch this. */
@@ -159,12 +163,14 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
   railWidth: railWidthProp,
   onRailWidthChange,
   onEventSelect,
+  onSlotClick,
   onEventResize,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   onDateChange,
   onVisibleRangeChange,
 }: HorizontalTimelineViewProps<T>) {
+  const selection = useCalendarSelection()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [snapEnabled, setSnapEnabled] = useState(true)
   const [viewportHeight, setViewportHeight] = useState(0)
@@ -567,6 +573,9 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
     onPointerUp: endRailResize,
     onPointerCancel: endRailResize,
     onDoubleClick: resetRail,
+    // Landmine for the marquee's pointerdown guard — a class-based selector here would be
+    // fragile against the two render sites (corner + body segments) below.
+    'data-marquee-ignore': true,
   }
 
   // ── visible window → consumer fetch range ────────────────────────────────
@@ -727,6 +736,14 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
               return (
                 <div
                   key={`label-${v.key}`}
+                  // Cmd/ctrl+click the day header grabs the whole day's events into the
+                  // selection (§3.2), across every worker row.
+                  onClick={(e) =>
+                    selection.handleDayGrab(
+                      getAllEventsForDay(events, day).map((ev) => ev.id),
+                      e
+                    )
+                  }
                   className='text-muted-foreground/80 border-border/70 absolute flex items-center justify-center gap-1.5 border-l text-sm'
                   style={{
                     top: 0,
@@ -791,6 +808,7 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
                       onPointerUp={endBorderZoom}
                       onPointerCancel={endBorderZoom}
                       onDoubleClick={() => resetZoom(v.index, hourIndex)}
+                      data-marquee-ignore
                       className='absolute inset-y-0 z-10 w-[7px] cursor-ew-resize touch-none select-none'
                       style={{ left: `calc(${(hourIndex / windowHours) * 100}% - 3px)` }}
                     />
@@ -855,9 +873,10 @@ export function HorizontalTimelineView<T extends EventCalendarItem = EventCalend
               bodyHeight={bodyHeight}
               laneMapsByResource={laneMapsByResource}
               onEventSelect={onEventSelect}
+              onSlotClick={onSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
-              selectedEventId={selectedEventId}
+              selectedIds={selectedIds}
               nowPosition={nowPosition}
             />
           ))}

@@ -4,16 +4,26 @@
 
 import type { RecordId } from '@auxx/lib/resources/client'
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from '@auxx/ui/components/context-menu'
+import {
   type BackgroundEvent,
   type CalendarResource,
   EventCalendar,
   EventPopover,
+  type HoveredSlot,
   type RenderEventContext,
 } from '@auxx/ui/components/event-calendar'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { ClipboardPaste, Copy } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import { useTimelineViewStore } from '../../stores/timeline-view-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
+import type { PasteAnchor } from './hooks/use-board-clipboard'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import { useTimelineHourWindow } from './hooks/use-timeline-hour-window'
 import type { BoardResourceInput, BoardViewMode, DispatchVisitEvent } from './types'
@@ -21,6 +31,13 @@ import { isPastVisitEvent } from './utils'
 import { VisitChipContent, VisitChipMonthContent } from './visit-chip-content'
 import { VisitPopoverContent } from './visit-popover'
 import { WorkerColumnHeader } from './worker-column-header'
+
+/** The board's right-click menu target (plan 37c §5.3) — resolved once per `contextmenu`
+ * event from `e.target.closest('[data-event-id]')` (chips self-tag that attribute in
+ * `draggable-event.tsx`/`agenda-view.tsx`); anything else is treated as empty-space. */
+type BoardMenuTarget =
+  | { type: 'chip'; visitId: string }
+  | { type: 'slot'; slot: HoveredSlot | null }
 
 interface BoardCalendarGridProps {
   date: Date
@@ -36,6 +53,15 @@ interface BoardCalendarGridProps {
   existingVisits: ExistingVisitForOverlap[]
   activeVisitId: string | null
   onActiveVisitChange: (visitId: string | null) => void
+  /** Multi-selection (plan 37c §3) — the grid's ring rendering + gestures; independent of
+   * `activeVisitId`, which stays the "which popover is open" concern. */
+  selectedEventIds: string[]
+  onSelectionChange: (ids: string[]) => void
+  /** Plan 37c §5.2 — visit ids the bulk bar's runner currently has in flight; dims their
+   * chips so a running bulk action reads as busy (the optimistic cache patches from
+   * `use-board-mutations.ts` already give the instant settle, this is just the "still
+   * working" affordance while the loop is mid-flight). */
+  pendingVisitIds?: Set<string>
   onRangeChange: (from: Date, to: Date) => void
   onEventResize: (event: DispatchVisitEvent, newStart: Date, newEnd: Date) => void
   onOpenRecord: (recordId: RecordId, drill?: { panel?: string; item?: string }) => void
@@ -44,6 +70,18 @@ interface BoardCalendarGridProps {
    * click routes to the panel instead of opening the floating `EventPopover`, so this suppresses
    * that popover entirely and renders a plain click target for the chip. */
   isDockOpen?: boolean
+  /** Plan 37c §4/§5 — threaded straight into `EventCalendar`; `use-board-clipboard.ts` owns the
+   * ref and reads it for the Cmd+V paste anchor. Also what the right-click menu's "Paste here"
+   * snapshots at click time. */
+  hoveredSlotRef?: React.MutableRefObject<HoveredSlot | null>
+  /** Whether the clipboard has anything copied — disables "Paste here" in the context menu. */
+  hasClipboard?: boolean
+  /** Copies the given visit ids (`use-board-clipboard.ts`'s `copyIds`) — the grid decides WHICH
+   * ids (selection-aware for the context menu's Copy item), the hook just writes the clipboard. */
+  onCopyIds?: (ids: string[]) => void
+  /** Opens the paste-options dialog anchored at the given target (`null` = fall back to the
+   * board's current date, no time) — the context menu's "Paste here". */
+  onPasteAt?: (target: PasteAnchor | null) => void
 }
 
 /**
@@ -67,11 +105,18 @@ export function BoardCalendarGrid({
   existingVisits,
   activeVisitId,
   onActiveVisitChange,
+  selectedEventIds,
+  onSelectionChange,
+  pendingVisitIds,
   onRangeChange,
   onEventResize,
   onOpenRecord,
   isNonWorkingDay,
   isDockOpen,
+  hoveredSlotRef,
+  hasClipboard,
+  onCopyIds,
+  onPasteAt,
 }: BoardCalendarGridProps) {
   const setEventDockOpen = useDispatchSidebarStore((s) => s.setEventDockOpen)
   // Docking transfers the currently controlled popover into the panel. Radix may report the
@@ -84,18 +129,32 @@ export function BoardCalendarGrid({
 
   const renderEvent = useCallback(
     (event: DispatchVisitEvent, ctx: RenderEventContext) => {
-      const chip =
+      const chipContent =
         ctx.view === 'month' ? (
           <VisitChipMonthContent event={event} />
         ) : (
           <VisitChipContent event={event} isOverlapping={overlappingIds.has(event.id)} />
         )
+      // Bulk-runner pending-dim (plan 37c §5.2) — no interaction while a bulk action is
+      // mid-flight for this visit; the optimistic cache patch handles the instant settle.
+      const chip = pendingVisitIds?.has(event.id) ? (
+        <div className='opacity-50 pointer-events-none'>{chipContent}</div>
+      ) : (
+        chipContent
+      )
 
       // Sticky mode (plan 21 decision #3): docked, so route the click straight into the
-      // panel — no floating popover, and no per-event popover state to manage here.
+      // panel — no floating popover, and no per-event popover state to manage here. Guarded
+      // against modifier-clicks (plan 37c §3.2) — cmd/ctrl/shift-click manages the selection
+      // only, via the grid's own gesture handling; it must not also flip the docked panel.
       if (isDockOpen) {
         return (
-          <div className='h-full w-full' onClick={() => onActiveVisitChange(event.id)}>
+          <div
+            className='h-full w-full'
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey) return
+              onActiveVisitChange(event.id)
+            }}>
             {chip}
           </div>
         )
@@ -141,6 +200,7 @@ export function BoardCalendarGrid({
       activeVisitId,
       onActiveVisitChange,
       overlappingIds,
+      pendingVisitIds,
       canEdit,
       mutations,
       existingVisits,
@@ -150,8 +210,10 @@ export function BoardCalendarGrid({
     ]
   )
 
+  // Grid never calls this on a modifier-click (plan 37c §3.2) — behavior is unchanged from
+  // before multi-selection, just carrying the mouse event through the new signature.
   const handleEventClick = useCallback(
-    (event: DispatchVisitEvent) => onActiveVisitChange(event.id),
+    (event: DispatchVisitEvent, _e: React.MouseEvent) => onActiveVisitChange(event.id),
     [onActiveVisitChange]
   )
 
@@ -185,7 +247,43 @@ export function BoardCalendarGrid({
     [resources]
   )
 
-  return (
+  // Right-click menu (plan 37c §5.3) — spatial-target-only, the bulk bar owns everything
+  // selection-targeted. Resolved once per `contextmenu` event, not re-derived on render.
+  const [menuTarget, setMenuTarget] = useState<BoardMenuTarget | null>(null)
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      const chipEl = (e.target as HTMLElement).closest?.('[data-event-id]')
+      const visitId = chipEl?.getAttribute('data-event-id')
+      setMenuTarget(
+        visitId
+          ? { type: 'chip', visitId }
+          : { type: 'slot', slot: hoveredSlotRef?.current ?? null }
+      )
+    },
+    [hoveredSlotRef]
+  )
+
+  // Right-click a chip outside the current selection → select just it, then copy (§5.3);
+  // right-click one already in the selection → copy the whole selection, mirroring Cmd+C.
+  const handleCopyFromMenu = useCallback(() => {
+    if (menuTarget?.type !== 'chip') return
+    const { visitId } = menuTarget
+    if (selectedEventIds.includes(visitId)) {
+      onCopyIds?.(selectedEventIds)
+    } else {
+      onSelectionChange([visitId])
+      onCopyIds?.([visitId])
+    }
+  }, [menuTarget, selectedEventIds, onSelectionChange, onCopyIds])
+
+  const handlePasteFromMenu = useCallback(() => {
+    if (menuTarget?.type !== 'slot') return
+    const { slot } = menuTarget
+    onPasteAt?.(slot ? { day: slot.date, time: slot.time, resourceId: slot.resourceId } : null)
+  }, [menuTarget, onPasteAt])
+
+  const calendar = (
     <EventCalendar<DispatchVisitEvent>
       date={date}
       view={calendarView}
@@ -204,12 +302,47 @@ export function BoardCalendarGrid({
       backgroundEvents={backgroundEvents}
       events={events}
       renderEvent={renderEvent}
-      selectedEventId={activeVisitId}
+      selectedEventIds={selectedEventIds}
+      onSelectionChange={onSelectionChange}
       onEventClick={handleEventClick}
       onEventResize={canEdit && view !== 'month' ? onEventResize : undefined}
       hideToolbar
       isNonWorkingDay={isNonWorkingDay}
+      hoveredSlotRef={hoveredSlotRef}
       className='flex-1'
     />
+  )
+
+  // Copy/paste's right-click affordance is admin-gated like every other write path (plan 37c
+  // derived decision) — members get the plain calendar, no `ContextMenu` wrapper at all.
+  if (!canEdit) return calendar
+
+  return (
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (!open) setMenuTarget(null)
+      }}>
+      {/* `display: contents` keeps this wrapper out of the flex layout — `EventCalendar`'s own
+       * root (className='flex-1' above) still lands as the direct flex child its parent row
+       * (`dispatch-board.tsx`'s `flex flex-1 overflow-hidden`) expects. */}
+      <ContextMenuTrigger asChild>
+        <div className='contents' onContextMenu={handleContextMenu}>
+          {calendar}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className='w-48'>
+        {menuTarget?.type === 'chip' ? (
+          <ContextMenuItem onSelect={handleCopyFromMenu}>
+            <Copy /> Copy
+            <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+          </ContextMenuItem>
+        ) : (
+          <ContextMenuItem disabled={!hasClipboard} onSelect={handlePasteFromMenu}>
+            <ClipboardPaste /> Paste here
+            <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }

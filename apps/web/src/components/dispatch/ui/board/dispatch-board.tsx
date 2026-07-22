@@ -25,13 +25,17 @@ import { PlannerDndProvider } from '../route-planner/planner-dnd-provider'
 import { RoutePlannerView } from '../route-planner/route-planner-view'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
 import { DispatchSidebar } from '../sidebar/dispatch-sidebar'
+import { BoardBulkBar } from './board-bulk-bar'
 import { BoardCalendarGrid } from './board-calendar-grid'
 import { BoardToolbar } from './board-toolbar'
 import { EventDockPanel } from './event-dock-panel'
 import { useAvailabilityShading } from './hooks/use-availability-shading'
+import { useBoardBulkRunner } from './hooks/use-board-bulk-runner'
+import { useBoardClipboard } from './hooks/use-board-clipboard'
 import { useBoardData } from './hooks/use-board-data'
 import { useBoardMutations } from './hooks/use-board-mutations'
 import { useBoardRealtime } from './hooks/use-board-realtime'
+import { PasteVisitsDialog } from './paste-visits-dialog'
 import type { DispatchVisitEvent } from './types'
 import { UNASSIGNED_RESOURCE_ID } from './types'
 import { computeOverlappingVisitIds } from './utils'
@@ -103,6 +107,16 @@ export function DispatchBoard() {
   const overlappingIds = useMemo(() => computeOverlappingVisitIds(data.events), [data.events])
 
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null)
+  // Multi-selection (plan 37c §3) — independent of `activeVisitId` ("which popover is open"):
+  // a plain click sets both (the grid fires `onSelectionChange` AND `onEventClick`), a
+  // cmd/shift-click only ever touches this.
+  const [selectedVisitIds, setSelectedVisitIds] = useState<string[]>([])
+  const clearSelection = useCallback(() => setSelectedVisitIds([]), [])
+
+  // Board-local bulk runner (plan 37c §5.2) — one instance shared by the bulk bar (which
+  // drives `run()`) and the grid (which dims `pendingVisitIds` chips), so both read the same
+  // in-flight set.
+  const bulkRunner = useBoardBulkRunner()
 
   // Dockable event panel (plan 21) — a board-scoped push column, separate from the page-level
   // `useDockedPanels` dock further below that drives the record drawer; this
@@ -132,6 +146,24 @@ export function DispatchBoard() {
     item: parseAsString,
   })
   const drawerRecordId = recordParam && isRecordId(recordParam) ? recordParam : null
+
+  // Clipboard + paste (plan 37c §4/§5, Phase 3, board only) — Cmd+C/Cmd+V keybindings, the
+  // hovered-slot ref `BoardCalendarGrid` feeds into `EventCalendar`, and the paste-options
+  // dialog's open/target state. `workOrderResource?.id` (the `work-orders` def id) is what
+  // turns a copied `DispatchVisitEvent.workOrderId` (an `EntityInstance` id) into the
+  // `RecordId` `dispatch.pasteVisits` wants — copy stays inert until resources have loaded.
+  // Gated off in map mode too (`!isMap`) — the calendar grid (and its selection) isn't even
+  // mounted there, so a stray Cmd+C/Cmd+V shouldn't silently act on a stale selection or pop
+  // the paste dialog open after switching back to the calendar.
+  const clipboard = useBoardClipboard({
+    events: data.events,
+    selectedVisitIds,
+    boardDate: data.date,
+    workOrderDefId: workOrderResource?.id,
+    canEdit: canEdit && data.boardMode !== 'map',
+  })
+  const pasteItems = useMemo(() => clipboard.clipboardItems ?? [], [clipboard.clipboardItems])
+
   const handleSelectVisit = useCallback(
     (sel: { workOrderId: string; visitId: string }) => {
       if (!workOrderResource) return
@@ -379,16 +411,43 @@ export function DispatchBoard() {
                 existingVisits={existingVisits}
                 activeVisitId={activeVisitId}
                 onActiveVisitChange={setActiveVisitId}
+                selectedEventIds={selectedVisitIds}
+                onSelectionChange={setSelectedVisitIds}
+                pendingVisitIds={bulkRunner.pendingVisitIds}
                 onRangeChange={data.handleRangeChange}
                 onEventResize={handleEventResize}
                 onOpenRecord={handleOpenRecord}
                 isNonWorkingDay={isNonWorkingDay}
                 isDockOpen={isEventDockOpen}
+                hoveredSlotRef={clipboard.hoveredSlotRef}
+                hasClipboard={clipboard.hasClipboard}
+                onCopyIds={clipboard.copyIds}
+                onPasteAt={clipboard.openPasteDialogAt}
               />
             </div>
           </CalendarDndProvider>
         )}
       </div>
+      {!isMap && canEdit && (
+        <PasteVisitsDialog
+          target={clipboard.pasteTarget}
+          onOpenChange={(open) => {
+            if (!open) clipboard.closePasteDialog()
+          }}
+          items={pasteItems}
+          workers={data.workers}
+          pasteVisits={mutations.pasteVisits}
+        />
+      )}
+      {!isMap && canEdit && (
+        <BoardBulkBar
+          selectedVisitIds={selectedVisitIds}
+          onCopySelection={clipboard.copySelection}
+          mutations={mutations}
+          bulkRunner={bulkRunner}
+          onClearSelection={clearSelection}
+        />
+      )}
       {overlays}
     </MainPageContent>
   )

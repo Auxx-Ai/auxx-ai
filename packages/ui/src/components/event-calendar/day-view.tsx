@@ -16,27 +16,50 @@ import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { HourGutter } from './hour-gutter'
 import { positionEventsForDay } from './position-events'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 import type { BackgroundEvent, EventCalendarItem, RenderEvent } from './types'
-import { isMultiDayEvent } from './utils'
+import { getAllEventsForDay, isMultiDayEvent } from './utils'
 
 interface DayViewProps<T extends EventCalendarItem = EventCalendarItem> {
   currentDate: Date
   events: T[]
   backgroundEvents?: BackgroundEvent[]
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
   onSlotClick?: (startTime: Date) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   /** Px-per-hour of the timed grid — the zoomable vertical scale. Defaults to `WeekCellsHeight`. */
   hourHeight?: number
 }
 
-/** Big date header — day + month bold, year regular, weekday name below. */
-export function DayViewHeader({ currentDate }: { currentDate: Date }) {
+/**
+ * Big date header — day + month bold, year regular, weekday name below. Also the day-grab
+ * target for plain (non-resource) day view: cmd/ctrl+click toggles every event on `currentDate`
+ * into the selection (§3.2) — resource/timeline day views grab from their own in-stream date
+ * labels instead (they render one per visible day, this header only ever shows one).
+ */
+export function DayViewHeader<T extends EventCalendarItem = EventCalendarItem>({
+  currentDate,
+  events,
+}: {
+  currentDate: Date
+  /** Omit when this header isn't paired with a plain day view's event list (e.g. resource/timeline
+   * pass their own date labels through instead) — the header then renders without day-grab. */
+  events?: T[]
+}) {
+  const selection = useCalendarSelection()
   return (
-    <div className='px-2 py-3 sm:px-4'>
+    <div
+      className='px-2 py-3 sm:px-4'
+      onClick={(e) =>
+        events &&
+        selection.handleDayGrab(
+          getAllEventsForDay(events, currentDate).map((ev) => ev.id),
+          e
+        )
+      }>
       <div className='text-2xl font-bold'>
         {format(currentDate, 'd MMMM')}{' '}
         <span className='font-normal'>{format(currentDate, 'yyyy')}</span>
@@ -54,7 +77,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
   onSlotClick,
   onEventResize,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   hourHeight = WeekCellsHeight,
 }: DayViewProps<T>) {
   const hours = useMemo(() => {
@@ -99,7 +122,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
     e.stopPropagation()
-    onEventSelect(event)
+    onEventSelect(event, e)
   }
 
   const showAllDaySection = allDayEvents.length > 0
@@ -131,7 +154,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
                     allDayLane
                     isFirstDay={isFirstDay}
                     isLastDay={isLastDay}
-                    isSelected={event.id === selectedEventId}
+                    isSelected={selectedIds?.has(event.id) ?? false}
                     renderEvent={renderEvent}>
                     <div>{event.title}</div>
                   </EventItem>
@@ -181,7 +204,7 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
                   onResize={onEventResize}
                   cellSize={hourHeight}
                   renderEvent={renderEvent}
-                  isSelected={positioned.event.id === selectedEventId}
+                  isSelected={selectedIds?.has(positioned.event.id) ?? false}
                 />
               </div>
             </div>

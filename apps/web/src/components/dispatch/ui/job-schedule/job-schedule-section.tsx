@@ -44,9 +44,10 @@ export function JobScheduleSection({ recordId }: DetailViewTabProps) {
 
   const { upcoming, history } = splitJobVisits(visits)
   // The primary card's target visit — also the recurring engine's "next-upcoming visit"
-  // (06-recurring-engine.md §6): one-off has exactly one, so this stays jobType-agnostic.
-  // Never falls back into history (plan 30 §G.2) — no upcoming visits is an empty state,
-  // not a "next visit" mislabel on a done/canceled row.
+  // (06-recurring-engine.md §6): a one-off job can carry extra visits too (`addVisit`'s
+  // deliberate exception, plan 37c decision B), so this just picks the earliest upcoming
+  // one and stays jobType-agnostic. Never falls back into history (plan 30 §G.2) — no
+  // upcoming visits is an empty state, not a "next visit" mislabel on a done/canceled row.
   const primaryVisit = upcoming[0]
   // The primary visit already renders as the card — preview only the visits after it.
   const laterUpcoming = upcoming.slice(1)

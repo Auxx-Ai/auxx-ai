@@ -31,12 +31,12 @@ interface DayResourceGroupProps<T extends EventCalendarItem = EventCalendarItem>
   hours: Date[]
   events: T[]
   backgroundEvents: BackgroundEvent[]
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
   onSlotClick?: (startTime: Date, resourceId: string) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   /** Current-time line position (% of the hour grid) — shared math, rendered only when `isToday(day)`. */
   currentTimePosition: number
   /** Px-per-hour of the timed grid — the zoomable vertical scale (scroll-stable; changes only on zoom). */
@@ -71,7 +71,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
   onSlotClick,
   onEventResize,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   currentTimePosition,
   hourHeight,
 }: DayResourceGroupProps<T>) {
@@ -89,7 +89,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
     e.stopPropagation()
-    onEventSelect(event)
+    onEventSelect(event, e)
   }
 
   return (
@@ -142,7 +142,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
                     onResize={onEventResize}
                     cellSize={hourHeight}
                     renderEvent={renderEvent}
-                    isSelected={p.event.id === selectedEventId}
+                    isSelected={selectedIds?.has(p.event.id) ?? false}
                   />
                 </div>
               </div>

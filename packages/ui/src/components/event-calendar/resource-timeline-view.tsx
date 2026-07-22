@@ -30,6 +30,7 @@ import { DayResourceGroup } from './day-resource-group'
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { HourGutter } from './hour-gutter'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 import { StickyRailShadow } from './sticky-rail-shadow'
 import type { BackgroundEvent, CalendarResource, EventCalendarItem, RenderEvent } from './types'
 import { getAllEventsForDay, isMultiDayEvent } from './utils'
@@ -62,12 +63,12 @@ interface ResourceTimelineViewProps<T extends EventCalendarItem = EventCalendarI
   backgroundEvents?: BackgroundEvent[]
   /** How many days to aim for across the viewport — 1 (Day mode) or e.g. 3 (Timeline mode). */
   desiredDays?: number
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
   onSlotClick?: (startTime: Date, resourceId: string) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   /** Fires when a user scroll settles on a new leftmost day. */
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) day window — consumers fetch this. */
@@ -103,11 +104,12 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
   onSlotClick,
   onEventResize,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   onDateChange,
   onVisibleRangeChange,
   hourHeight = WeekCellsHeight,
 }: ResourceTimelineViewProps<T>) {
+  const selection = useCalendarSelection()
   const scrollRef = useRef<HTMLDivElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
   const [dayWidth, setDayWidth] = useState(480)
@@ -152,7 +154,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
     e.stopPropagation()
-    onEventSelect(event)
+    onEventSelect(event, e)
   }
 
   const virtualizer = useVirtualizer({
@@ -353,6 +355,14 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
               return (
                 <div
                   key={`label-${v.key}`}
+                  // Cmd/ctrl+click the day header grabs the whole day's events into the
+                  // selection (§3.2), across every worker column.
+                  onClick={(e) =>
+                    selection.handleDayGrab(
+                      getAllEventsForDay(events, day).map((ev) => ev.id),
+                      e
+                    )
+                  }
                   className='text-muted-foreground/80 border-border/70 absolute flex items-center justify-center gap-1.5 border-l text-sm'
                   style={{
                     top: 0,
@@ -442,7 +452,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
                               allDayLane
                               isFirstDay={isFirstDay}
                               isLastDay={isLastDay}
-                              isSelected={event.id === selectedEventId}
+                              isSelected={selectedIds?.has(event.id) ?? false}
                               renderEvent={renderEvent}>
                               <div
                                 className={cn('truncate', !isFirstDay && 'invisible')}
@@ -490,7 +500,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
               onSlotClick={onSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
-              selectedEventId={selectedEventId}
+              selectedIds={selectedIds}
               currentTimePosition={currentTimePosition}
               hourHeight={hourHeight}
             />

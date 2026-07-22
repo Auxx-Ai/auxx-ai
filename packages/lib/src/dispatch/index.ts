@@ -32,6 +32,13 @@ export {
 } from './my-schedule'
 export { dispatchVisit, getWorkOrderLabel } from './notify'
 export type {
+  PasteVisitItem,
+  PasteVisitsFailure,
+  PasteVisitsInput,
+  PasteVisitsResult,
+} from './paste-visits'
+export { pasteVisits } from './paste-visits'
+export type {
   AddMyAdhocQcItemInput,
   AddMyQcItemPhotoInput,
   CreateQcItemTemplateInput,

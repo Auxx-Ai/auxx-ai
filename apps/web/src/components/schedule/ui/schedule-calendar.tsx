@@ -33,6 +33,10 @@ import { useScheduleSidebarStore } from '../stores/schedule-sidebar-store'
 /** Sidebar group id for the visits/meetings source toggle rows. */
 const KINDS_GROUP = 'kinds'
 
+/** Stable empty default — an inline `[]` would recreate `EventCalendar`'s `selectedIdSet` every
+ * render whenever nothing is selected. */
+const EmptySelection: string[] = []
+
 /**
  * Module-level static source list — hook rules require a page's source list never change
  * across renders (plan 01 §3.1), so this lives outside the component.
@@ -128,7 +132,9 @@ export function ScheduleCalendar({
   const renderEvent = (event: SourcedEvent, ctx: RenderEventContext) =>
     SOURCE_BY_ID[event.sourceId]?.renderEvent(event, ctx) ?? null
 
-  const handleEventClick = (event: SourcedEvent) => {
+  // Plain-click-only (plan 37c §3.2 — the grid never calls this on a modifier-click), so
+  // behavior here is unchanged; multi-selection/copy-paste for this surface is a later phase.
+  const handleEventClick = (event: SourcedEvent, _e: React.MouseEvent) => {
     if (event.sourceId === 'visits') onVisitClick(event.id)
     else if (event.sourceId === 'meetings') onMeetingClick(event.id)
     else if (event.sourceId === 'tasks') onTaskClick((event as TaskEvent).task)
@@ -173,7 +179,7 @@ export function ScheduleCalendar({
         events={events}
         renderEvent={renderEvent}
         onEventClick={handleEventClick}
-        selectedEventId={selectedEventId}
+        selectedEventIds={selectedEventId ? [selectedEventId] : EmptySelection}
         weekStartsOn={weekStartsOn}
         hideToolbar
         className='flex-1'

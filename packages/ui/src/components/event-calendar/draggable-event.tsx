@@ -12,6 +12,7 @@ import { useCalendarDnd } from './calendar-dnd-context'
 import { TimelineHourWidth, WeekCellsHeight } from './constants'
 import { EventItem } from './event-item'
 import { useEventResize } from './hooks/use-event-resize'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 import { TimeRangePill } from './time-range-pill'
 import type { CalendarView, EventCalendarItem, RenderEvent } from './types'
 
@@ -59,6 +60,7 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
   cellSize,
 }: DraggableEventProps<T>) {
   const { activeId, hasDropHandler } = useCalendarDnd()
+  const selection = useCalendarSelection()
   const elementRef = useRef<HTMLDivElement>(null)
   const [dragHandlePosition, setDragHandlePosition] = useState<{ x: number; y: number } | null>(
     null
@@ -145,7 +147,13 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
       ref={(node) => {
         setNodeRef(node)
         elementRef.current = node
+        // Self-registers into the marquee's hit-test registry (React 19 callback-ref cleanup —
+        // runs before the next call or on unmount, so a re-render's re-invocation never leaves a
+        // stale entry behind).
+        if (node) selection.registerChip(event.id, node)
+        return () => selection.unregisterChip(event.id)
       }}
+      data-event-id={event.id}
       style={style}
       className={cn('group/event touch-none', canResize && 'relative')}>
       <EventItem
@@ -170,11 +178,13 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
             {/* Invisible left drag zone — resizes the start time. */}
             <div
               {...getResizeHandleProps('start')}
+              data-marquee-ignore
               className='absolute inset-y-0 left-0 w-2 cursor-ew-resize touch-none'
             />
             {/* Invisible right drag zone — resizes the end time. */}
             <div
               {...getResizeHandleProps('end')}
+              data-marquee-ignore
               className='absolute inset-y-0 right-0 w-2 cursor-ew-resize touch-none'
             />
           </>
@@ -183,11 +193,13 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
             {/* Invisible top drag zone — resizes the start time. */}
             <div
               {...getResizeHandleProps('start')}
+              data-marquee-ignore
               className='absolute inset-x-0 top-0 h-2 cursor-ns-resize touch-none'
             />
             {/* Invisible bottom drag zone — resizes the end time. */}
             <div
               {...getResizeHandleProps('end')}
+              data-marquee-ignore
               className='absolute inset-x-0 bottom-0 h-2 cursor-ns-resize touch-none'
             />
           </>

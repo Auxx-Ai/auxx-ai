@@ -29,6 +29,7 @@ import {
 import { DraggableEvent } from './draggable-event'
 import { DroppableCell } from './droppable-cell'
 import { EventItem } from './event-item'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 import type { EventCalendarItem, RenderEvent } from './types'
 import { getAllEventsForDay, getEventsForDay, getSpanningEventsForDay, sortEvents } from './utils'
 
@@ -45,11 +46,11 @@ interface MonthWeekRowProps<T extends EventCalendarItem = EventCalendarItem> {
   slotCount: number
   events: T[]
   weekStartAt: (index: number) => Date
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
   onSlotClick?: (startTime: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   isNonWorkingDay?: (date: Date) => boolean
 }
 
@@ -68,14 +69,15 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
   onEventSelect,
   onSlotClick,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   isNonWorkingDay,
 }: MonthWeekRowProps<T>) {
   const weekStart = weekStartAt(index)
+  const selection = useCalendarSelection()
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
     e.stopPropagation()
-    onEventSelect(event)
+    onEventSelect(event, e)
   }
 
   return (
@@ -107,12 +109,23 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
             <DroppableCell
               id={cellId}
               date={day}
-              onClick={() => {
+              onClick={(e) => {
+                // Cmd/ctrl+click the cell (background or date label — the whole cell shares one
+                // click target) grabs the whole day's events into the selection (§3.2) instead
+                // of starting a slot-create click.
+                if (
+                  selection.handleDayGrab(
+                    allEvents.map((ev) => ev.id),
+                    e
+                  )
+                ) {
+                  return
+                }
                 const startTime = new Date(day)
                 startTime.setHours(DefaultStartHour, 0, 0)
                 onSlotClick?.(startTime)
               }}>
-              <div className='mt-1 flex items-center gap-1'>
+              <div className='mt-1 flex select-none items-center gap-1'>
                 {isFirstOfMonth && (
                   <span className='text-sm font-semibold'>{format(day, 'MMM')}</span>
                 )}
@@ -142,7 +155,7 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
                         view='month'
                         isFirstDay={isFirstDay}
                         isLastDay={isLastDay}
-                        isSelected={event.id === selectedEventId}
+                        isSelected={selectedIds?.has(event.id) ?? false}
                         renderEvent={renderEvent}>
                         <div className='invisible' aria-hidden={true}>
                           {!event.allDay && <span>{format(new Date(event.start), 'h:mm')} </span>}
@@ -160,7 +173,7 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
                       onClick={(e) => handleEventClick(event, e)}
                       isFirstDay={isFirstDay}
                       isLastDay={isLastDay}
-                      isSelected={event.id === selectedEventId}
+                      isSelected={selectedIds?.has(event.id) ?? false}
                       renderEvent={renderEvent}
                     />
                   )
@@ -193,7 +206,7 @@ function MonthWeekRowInner<T extends EventCalendarItem = EventCalendarItem>({
                               view='month'
                               isFirstDay={isSameDay(day, new Date(event.start))}
                               isLastDay={isSameDay(day, new Date(event.end))}
-                              isSelected={event.id === selectedEventId}
+                              isSelected={selectedIds?.has(event.id) ?? false}
                               renderEvent={renderEvent}
                             />
                           ))}
@@ -218,11 +231,11 @@ interface MonthViewProps<T extends EventCalendarItem = EventCalendarItem> {
   currentDate: Date
   events: T[]
   weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
   onSlotClick?: (startTime: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   /** Fires when a user scroll settles on a new month — with the stream's top-left day. */
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) week window — consumers fetch this. */
@@ -246,7 +259,7 @@ export function MonthView<T extends EventCalendarItem = EventCalendarItem>({
   onEventSelect,
   onSlotClick,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   onDateChange,
   onVisibleRangeChange,
   isNonWorkingDay,
@@ -461,7 +474,7 @@ export function MonthView<T extends EventCalendarItem = EventCalendarItem>({
               onEventSelect={onEventSelect}
               onSlotClick={onSlotClick}
               renderEvent={renderEvent}
-              selectedEventId={selectedEventId}
+              selectedIds={selectedIds}
               isNonWorkingDay={isNonWorkingDay}
             />
           ))}

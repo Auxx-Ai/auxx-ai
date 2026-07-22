@@ -30,6 +30,7 @@ import {
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { HourGutter } from './hour-gutter'
+import { useCalendarSelection } from './selection/calendar-selection-context'
 import { StickyRailShadow } from './sticky-rail-shadow'
 import type { BackgroundEvent, EventCalendarItem, RenderEvent } from './types'
 import { getAllEventsForDay, isMultiDayEvent } from './utils'
@@ -53,12 +54,12 @@ interface WeekViewProps<T extends EventCalendarItem = EventCalendarItem> {
   events: T[]
   weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6
   backgroundEvents?: BackgroundEvent[]
-  onEventSelect: (event: T) => void
+  onEventSelect: (event: T, e: React.MouseEvent) => void
   onSlotClick?: (startTime: Date) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
-  /** Id of the actively-selected event (detail/popover open) — draws the in-color ring. */
-  selectedEventId?: string | null
+  /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
+  selectedIds?: ReadonlySet<string>
   /** Fires when a user scroll settles on a new leftmost day. */
   onDateChange?: (date: Date) => void
   /** Fires with the rendered (visible + overscan) day window — consumers fetch this. */
@@ -92,11 +93,12 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   onSlotClick,
   onEventResize,
   renderEvent,
-  selectedEventId,
+  selectedIds,
   onDateChange,
   onVisibleRangeChange,
   hourHeight = WeekCellsHeight,
 }: WeekViewProps<T>) {
+  const selection = useCalendarSelection()
   const scrollRef = useRef<HTMLDivElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
   const [dayWidth, setDayWidth] = useState(160)
@@ -132,7 +134,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {
     e.stopPropagation()
-    onEventSelect(event)
+    onEventSelect(event, e)
   }
 
   const virtualizer = useVirtualizer({
@@ -319,6 +321,14 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
               return (
                 <div
                   key={`label-${v.key}`}
+                  // Cmd/ctrl+click the day header grabs the whole day's events into the
+                  // selection (§3.2) — the label carries no other click behavior.
+                  onClick={(e) =>
+                    selection.handleDayGrab(
+                      getAllEventsForDay(events, day).map((ev) => ev.id),
+                      e
+                    )
+                  }
                   className='text-muted-foreground/80 absolute flex items-center justify-center gap-1.5 text-sm'
                   style={{
                     top: 0,
@@ -375,7 +385,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
                         allDayLane
                         isFirstDay={isFirstDay}
                         isLastDay={isLastDay}
-                        isSelected={event.id === selectedEventId}
+                        isSelected={selectedIds?.has(event.id) ?? false}
                         renderEvent={renderEvent}>
                         <div
                           className={cn('truncate', !isFirstDay && 'invisible')}
@@ -420,7 +430,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
               onSlotClick={onSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
-              selectedEventId={selectedEventId}
+              selectedIds={selectedIds}
               currentTimePosition={currentTimePosition}
               hourHeight={hourHeight}
             />

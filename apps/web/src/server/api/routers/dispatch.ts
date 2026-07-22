@@ -28,6 +28,7 @@ import {
   listQcItemTemplates,
   listVisitQcItems,
   listVisitsForWorkOrder,
+  pasteVisits,
   pauseEngagement,
   removeDispatchWorker,
   removeMyQcItemPhoto,
@@ -420,6 +421,41 @@ export const dispatchRouter = createTRPCRouter({
         assigneeUserId: input.assigneeUserId,
         excludeSocketId: excludeSocketId(ctx),
       })
+    }),
+
+  // Plan 37c §4.4 — copy/paste's one deliberate batch mutation: N new rule-less, scheduled
+  // visits in a single round trip (the paste-options dialog's confirm). Thin delegation to
+  // `pasteVisits` (a sequential loop over `addVisit`, no transaction — partial success is
+  // expected and reported back per item). Admin-gated like the rest of visit machinery (§B).
+  pasteVisits: dispatchAdminProcedure
+    .input(
+      z.object({
+        items: z
+          .array(
+            z.object({
+              workOrderRecordId: recordIdSchema,
+              startTime: z.coerce.date(),
+              endTime: z.coerce.date(),
+              assigneeUserId: z.string().nullable().optional(),
+            })
+          )
+          .min(1)
+          .max(200),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await pasteVisits({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        items: input.items.map((item) => ({
+          workOrderInstanceId: parseRecordId(item.workOrderRecordId).entityInstanceId,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          assigneeUserId: item.assigneeUserId,
+        })),
+        excludeSocketId: excludeSocketId(ctx),
+      })
+      return result
     }),
 
   // §F.3 (M2b job view) — visits for one work order, oldest-scheduled-first.

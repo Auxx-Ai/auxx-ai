@@ -3,7 +3,7 @@
 
 // Work-order drawer header action (dispatch M2 build spec §F.4, the
 // create-quote-action/create-invoice-action precedent): mounts the schedule
-// control (#7, `SchedulePopover`) targeting the job's next/only visit.
+// control (#7, `SchedulePopover`) targeting the job's next visit.
 // Admin-only client-side (`dispatch-board.tsx`'s `isAdminOrOwner` pattern) —
 // scheduling mutations are admin-gated server-side too (`dispatchAdminProcedure`).
 // `<div><Tooltip><Button/></Tooltip></div>` as the popover trigger is the
