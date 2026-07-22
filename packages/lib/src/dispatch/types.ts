@@ -1,5 +1,7 @@
 // packages/lib/src/dispatch/types.ts
 
+import type { RecordId } from '@auxx/types/resource'
+
 /** Input for {@link createWorkOrderFromTicket} — the SECONDARY intake path (01 §8). */
 export interface CreateFromTicketInput {
   organizationId: string
@@ -14,6 +16,27 @@ export interface ConvertRequestToWorkOrderInput {
   userId: string
   /** EntityInstance id of the source service request (not the RecordId). */
   requestInstanceId: string
+}
+
+/** Input for {@link createWorkOrder} — the slot-click create flow (plan 37c §7): the board's
+ * "New job" path, building a work order from nothing (not a conversion). */
+export interface CreateWorkOrderInput {
+  organizationId: string
+  userId: string
+  /** RecordId of the contact this job is for. */
+  contactRecordId: RecordId
+  /** Falls back to the contact's `EntityInstance.displayName` when omitted/blank. */
+  title?: string
+  startTime: Date
+  endTime: Date
+  assigneeUserId?: string | null
+  excludeSocketId?: string
+}
+
+/** Output of {@link createWorkOrder}. */
+export interface CreateWorkOrderResult {
+  workOrderRecordId: RecordId
+  visitId: string
 }
 
 // ════════════════════════════════════════════════════════════════════════════

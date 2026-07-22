@@ -19,9 +19,12 @@ type MyVisit = RouterOutputs['dispatch']['myVisits'][number]
 /** Emerald-500 — the visits source's default toggle-dot/chip color (decision D: color is per-surface). */
 const VISITS_COLOR = '#10b981'
 
-/** A `dispatch.myVisits` row mapped onto the shared event shape. */
+/** A `dispatch.myVisits` row mapped onto the shared event shape. `workOrderId` (plan 37c §8,
+ * Phase 6) is the `EntityInstance` id the copy handler needs to build a `RecordId` via
+ * `toRecordId(workOrderDefId, workOrderId)` — the same conversion the board does at copy time. */
 export interface VisitEvent extends SourcedEvent {
   status: MyVisit['status']
+  workOrderId: string
 }
 
 /**
@@ -76,6 +79,7 @@ export const visitsSource: CalendarSource<VisitEvent> = {
           color: VISITS_COLOR,
           sourceId: 'visits',
           status: visit.status,
+          workOrderId: visit.workOrder.id,
         })),
       [query.data]
     )

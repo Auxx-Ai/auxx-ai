@@ -1,4 +1,8 @@
-// apps/web/src/components/dispatch/ui/board/paste-visits-dialog.tsx
+// apps/web/src/components/calendar/ui/paste-visits-dialog.tsx
+//
+// Paste-options dialog (plan 37c §4.3) — moved here in Phase 6 (§8) so both the dispatch board
+// and the schedule surface can share one dialog instead of duplicating it; the board keeps
+// importing it from this shared location.
 
 'use client'
 
@@ -20,27 +24,41 @@ import { format } from 'date-fns'
 import { useEffect, useMemo, useState } from 'react'
 import { computePasteTimes, hoursToDate } from '~/components/calendar/core/clipboard-offset'
 import type { CopiedVisitItem } from '~/components/calendar/core/clipboard-store'
+import type { PasteAnchor } from '~/components/calendar/core/use-calendar-clipboard'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import type { PasteAnchor } from './hooks/use-board-clipboard'
-import type { useBoardMutations } from './hooks/use-board-mutations'
-import type { BoardWorker } from './types'
-import { UNASSIGNED_RESOURCE_ID } from './types'
+import type { api } from '~/trpc/react'
+
+/** The synthetic "Unassigned" resource-column id — mirrors `board/types.ts`'s
+ * `UNASSIGNED_RESOURCE_ID`, duplicated here (not imported) so this shared dialog doesn't reach
+ * into the dispatch feature tree for one string constant. A paste target whose `resourceId`
+ * equals this is treated the same as no resource column at all (no retarget option). */
+const UNASSIGNED_RESOURCE_ID = 'unassigned'
+
+/** Minimal worker shape the "assign all to <worker>" retarget option needs — duck-typed so any
+ * consumer's own worker list (the board's richer `BoardWorker`) satisfies it structurally without
+ * this shared dialog importing a feature-specific type. */
+export interface PasteWorkerOption {
+  userId: string
+  user?: { name: string | null; email: string | null } | null
+}
 
 export interface PasteVisitsDialogProps {
-  /** `null` = closed. Set by `use-board-clipboard.ts`'s Cmd+V handler or the context menu's
-   * "Paste here" — always the anchor at the moment the paste was invoked. */
+  /** `null` = closed. Set by a clipboard hook's Cmd+V handler or a context menu's "Paste here" —
+   * always the anchor at the moment the paste was invoked. */
   target: PasteAnchor | null
   onOpenChange: (open: boolean) => void
   items: CopiedVisitItem[]
-  workers: BoardWorker[]
-  pasteVisits: ReturnType<typeof useBoardMutations>['pasteVisits']
+  /** Worker rows the retarget option can offer — empty when the surface has no per-worker
+   * columns at all (schedule's week/day/month views never do, so it always passes `[]`). */
+  workers: PasteWorkerOption[]
+  pasteVisits: ReturnType<typeof api.dispatch.pasteVisits.useMutation>
 }
 
 type AssigneeMode = 'keep' | 'clear' | 'assign'
 type TimesMode = 'keep' | 'slot'
 
-function workerLabel(worker: BoardWorker): string {
+function workerLabel(worker: PasteWorkerOption): string {
   return worker.user?.name ?? worker.user?.email ?? 'Worker'
 }
 

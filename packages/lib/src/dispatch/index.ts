@@ -9,6 +9,7 @@ export type { VisitChangedPayload } from './broadcast'
 export { publishVisitChanged } from './broadcast'
 export { convertRequestToWorkOrder } from './convert-to-work-order'
 export { createWorkOrderFromTicket } from './create-from-ticket'
+export { createWorkOrder } from './create-work-order'
 export type { LifecycleTrigger } from './lifecycle'
 export { rollUpWorkOrderStatus } from './lifecycle'
 export { mirrorVisitOntoWorkOrder } from './mirror'
@@ -114,6 +115,8 @@ export type {
   AssignVisitInput,
   ConvertRequestToWorkOrderInput,
   CreateFromTicketInput,
+  CreateWorkOrderInput,
+  CreateWorkOrderResult,
   DispatchVisitInput,
   RestoreVisitInput,
   ScheduleVisitInput,

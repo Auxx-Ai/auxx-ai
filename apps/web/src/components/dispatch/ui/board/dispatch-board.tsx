@@ -12,6 +12,7 @@ import { addMinutes } from 'date-fns'
 import { Lock } from 'lucide-react'
 import { parseAsString, useQueryStates } from 'nuqs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PasteVisitsDialog } from '~/components/calendar/ui/paste-visits-dialog'
 import { renderAppDragGhost } from '~/components/global/app-drag-overlay'
 import { EmptyState } from '~/components/global/empty-state'
 import { RecordDrawer } from '~/components/records/record-drawer'
@@ -29,13 +30,13 @@ import { BoardBulkBar } from './board-bulk-bar'
 import { BoardCalendarGrid } from './board-calendar-grid'
 import { BoardToolbar } from './board-toolbar'
 import { EventDockPanel } from './event-dock-panel'
+import { computeGroupDragUpdates } from './group-drag'
 import { useAvailabilityShading } from './hooks/use-availability-shading'
 import { useBoardBulkRunner } from './hooks/use-board-bulk-runner'
 import { useBoardClipboard } from './hooks/use-board-clipboard'
 import { useBoardData } from './hooks/use-board-data'
 import { useBoardMutations } from './hooks/use-board-mutations'
 import { useBoardRealtime } from './hooks/use-board-realtime'
-import { PasteVisitsDialog } from './paste-visits-dialog'
 import type { DispatchVisitEvent } from './types'
 import { UNASSIGNED_RESOURCE_ID } from './types'
 import { computeOverlappingVisitIds } from './utils'
@@ -105,6 +106,9 @@ export function DispatchBoard() {
   })
 
   const overlappingIds = useMemo(() => computeOverlappingVisitIds(data.events), [data.events])
+  // Group drag-move (plan 37c §6) — looked up by id so `handleEventDrop` can find every OTHER
+  // selected visit's own start/end without re-deriving it from the drop event.
+  const eventsById = useMemo(() => new Map(data.events.map((e) => [e.id, e])), [data.events])
 
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null)
   // Multi-selection (plan 37c §3) — independent of `activeVisitId` ("which popover is open"):
@@ -219,7 +223,13 @@ export function DispatchBoard() {
   )
 
   const handleEventDrop = useCallback(
-    (event: DispatchVisitEvent, newStart: Date, newEnd: Date, resourceId?: string) => {
+    (
+      event: DispatchVisitEvent,
+      newStart: Date,
+      newEnd: Date,
+      resourceId?: string,
+      groupIds?: string[]
+    ) => {
       if (data.view === 'month') return
       const assigneeUserId =
         resourceId !== undefined
@@ -233,8 +243,47 @@ export function DispatchBoard() {
         endTime: newEnd,
         assigneeUserId,
       })
+
+      // Group drag-move (plan 37c §6) — `groupIds` (from the generic layer's selection-aware
+      // drag data) is only ever length > 1 when the dragged chip was part of a multi-selection.
+      // Every OTHER selected visit shifts by the same delta; assignee is carried to them ONLY
+      // when the drop actually changed the dragged chip's own worker column (`resourceId`
+      // differs from its OWN original `resourceId` — every resource/day/timeline column always
+      // reports SOME `resourceId`, even the one the chip started in, so this is the only correct
+      // "did the row change" test). Committed through the same §5.2 sequential-loop runner the
+      // bulk bar uses — no confirm (the drag itself is the intent), no new endpoint.
+      if (groupIds && groupIds.length > 1) {
+        const rowChanged = resourceId !== undefined && resourceId !== event.resourceId
+        const updates = computeGroupDragUpdates(
+          event.id,
+          new Date(event.start),
+          newStart,
+          groupIds,
+          eventsById,
+          rowChanged ? assigneeUserId : undefined
+        )
+        if (updates.length > 0) {
+          const updatesByVisitId = new Map(updates.map((u) => [u.visitId, u]))
+          void bulkRunner.run(
+            Array.from(updatesByVisitId.keys()),
+            (visitId) => {
+              const update = updatesByVisitId.get(visitId)!
+              return mutations.scheduleVisit.mutateAsync({
+                visitId,
+                startTime: update.startTime,
+                endTime: update.endTime,
+                assigneeUserId: update.assigneeUserId,
+              })
+            },
+            {
+              failureTitle: 'Some visits could not be moved',
+              failureNoun: 'visits',
+            }
+          )
+        }
+      }
     },
-    [data.view, mutations.scheduleVisit]
+    [data.view, mutations.scheduleVisit, eventsById, bulkRunner]
   )
 
   const handleEventResize = useCallback(

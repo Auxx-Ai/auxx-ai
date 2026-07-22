@@ -8,8 +8,28 @@ import { useCallback } from 'react'
 import { parseRecordId, type RecordId } from '~/components/resources'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
-import type { BoardResult, BoardVisit } from '../types'
+import type { BoardResult, BoardVisit, BoardWorkOrder } from '../types'
 import type { DateRange } from './use-board-data'
+
+/** `dispatch.addVisit`'s per-call input, post-coercion — same `unknown`-widening gotcha as
+ * `pasteVisits`'s `PasteVisitVars` above (`z.coerce.date()` + the recordId schema cast widen
+ * every field to `unknown` on the client-side mutation-variables type). Scoped to this
+ * optimistic patch only. */
+interface AddVisitVars {
+  workOrderRecordId: RecordId
+  startTime?: Date
+  endTime?: Date
+  assigneeUserId?: string | null
+}
+
+/** `dispatch.createWorkOrder`'s per-call input, post-coercion — same widening gotcha. */
+interface CreateWorkOrderVars {
+  contactRecordId: RecordId
+  title?: string
+  startTime: Date
+  endTime: Date
+  assigneeUserId?: string | null
+}
 
 /** `dispatch.pasteVisits`'s per-item input, post-coercion — `z.coerce.date()` (and the
  * `recordIdSchema` cast) make the CLIENT-side mutation-variables type widen every field to
@@ -242,6 +262,113 @@ export function useBoardMutations(range: DateRange) {
     onSettled: settle,
   })
 
+  // Plan 37c §7, item 2 — slot-click create's "Visit for existing job" path: the existing
+  // `dispatch.addVisit` endpoint (unchanged), wrapped with the board's own optimistic temp-row
+  // patch (the `pasteVisits` recipe above, singular) so the new visit's chip appears instantly.
+  // The target work order already exists in the cache, so (unlike `createWorkOrder` below) no
+  // synthetic `BoardWorkOrder` entry is needed — the title/number resolve immediately.
+  const addVisit = api.dispatch.addVisit.useMutation({
+    onMutate: async (rawVars) => {
+      await utils.dispatch.getBoard.cancel(range)
+      const vars = rawVars as AddVisitVars
+      const previous = utils.dispatch.getBoard.getData(range)
+      if (previous && vars.startTime && vars.endTime) {
+        const now = new Date()
+        const tempVisit: BoardVisit = {
+          id: generateId('temp-visit'),
+          organizationId: organizationId ?? '',
+          workOrderId: parseRecordId(vars.workOrderRecordId).entityInstanceId,
+          assigneeUserId: vars.assigneeUserId ?? null,
+          startTime: vars.startTime,
+          endTime: vars.endTime,
+          timezone: 'UTC',
+          status: 'scheduled',
+          routeOrder: null,
+          latitude: null,
+          longitude: null,
+          geocodedAt: null,
+          dispatchedAt: null,
+          timeConfirmedAt: now,
+          durationMinutes: Math.round((vars.endTime.getTime() - vars.startTime.getTime()) / 60_000),
+          recurrenceRuleId: null,
+          occurrenceDate: null,
+          isDetached: false,
+          createdAt: now,
+          updatedAt: now,
+        }
+        utils.dispatch.getBoard.setData(range, {
+          ...previous,
+          visits: [...previous.visits, tempVisit],
+        })
+      }
+      return { previous }
+    },
+    onError: (error, _vars, ctx) => {
+      rollback(ctx?.previous)
+      toastError({ title: 'Error adding visit', description: error.message })
+    },
+    onSettled: settle,
+  })
+
+  // Plan 37c §7, item 1 — slot-click create's "New job" path. Unlike every other board
+  // mutation, the work order itself doesn't exist in the cache yet either — the optimistic
+  // patch inserts a synthetic `BoardWorkOrder` (client-known title, `number: null`) ALONGSIDE
+  // the temp visit row (the `pasteVisits` recipe), so the chip renders the real title instead of
+  // `visitToEvent`'s no-work-order fallback for the brief window before the settle invalidate
+  // swaps in the real (numbered) work order.
+  const createWorkOrder = api.dispatch.createWorkOrder.useMutation({
+    onMutate: async (rawVars) => {
+      await utils.dispatch.getBoard.cancel(range)
+      const vars = rawVars as CreateWorkOrderVars
+      const previous = utils.dispatch.getBoard.getData(range)
+      if (previous) {
+        const now = new Date()
+        const tempWorkOrderId = generateId('temp-work-order')
+        const tempWorkOrder: BoardWorkOrder = {
+          id: tempWorkOrderId,
+          displayName: vars.title?.trim() || 'New job',
+          number: null,
+          status: 'new',
+          contactId: vars.contactRecordId,
+          contactDisplayName: null,
+        }
+        const tempVisit: BoardVisit = {
+          id: generateId('temp-visit'),
+          organizationId: organizationId ?? '',
+          workOrderId: tempWorkOrderId,
+          assigneeUserId: vars.assigneeUserId ?? null,
+          startTime: vars.startTime,
+          endTime: vars.endTime,
+          timezone: 'UTC',
+          status: 'scheduled',
+          routeOrder: null,
+          latitude: null,
+          longitude: null,
+          geocodedAt: null,
+          dispatchedAt: null,
+          timeConfirmedAt: now,
+          durationMinutes: Math.round((vars.endTime.getTime() - vars.startTime.getTime()) / 60_000),
+          recurrenceRuleId: null,
+          occurrenceDate: null,
+          isDetached: false,
+          createdAt: now,
+          updatedAt: now,
+        }
+        utils.dispatch.getBoard.setData(range, {
+          ...previous,
+          workOrders: [...previous.workOrders, tempWorkOrder],
+          visits: [...previous.visits, tempVisit],
+        })
+      }
+      return { previous }
+    },
+    onError: (error, _vars, ctx) => {
+      rollback(ctx?.previous)
+      toastError({ title: 'Error creating work order', description: error.message })
+    },
+    onSettled: settle,
+  })
+
   return {
     scheduleVisit,
     assignVisit,
@@ -251,5 +378,7 @@ export function useBoardMutations(range: DateRange) {
     applyToSeries,
     cancelVisitFollowing,
     pasteVisits,
+    addVisit,
+    createWorkOrder,
   }
 }

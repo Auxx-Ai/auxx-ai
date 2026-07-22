@@ -59,7 +59,7 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
   orientation = 'y',
   cellSize,
 }: DraggableEventProps<T>) {
-  const { activeId, hasDropHandler } = useCalendarDnd()
+  const { activeId, hasDropHandler, activeGroupIds } = useCalendarDnd()
   const selection = useCalendarSelection()
   const elementRef = useRef<HTMLDivElement>(null)
   const [dragHandlePosition, setDragHandlePosition] = useState<{ x: number; y: number } | null>(
@@ -81,6 +81,22 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
       dragHandlePosition,
       isFirstDay,
       isLastDay,
+      // Group drag-move (plan 37c §6) — called once from `CalendarDndProvider.handleDragStart`,
+      // which may be mounted ABOVE this chip's own `CalendarSelectionProvider` (an ambient
+      // provider composed by the consumer, e.g. dispatch's board — see that provider's doc
+      // comment) and so can't read the real selection engine via context itself; this chip
+      // already holds the real engine (`useCalendarSelection()` above), so the closure carries
+      // it across. Returns every selected id (this chip included) when it's dragged as part of
+      // a multi-selection (size > 1); as a side effect, dragging a chip OUTSIDE the current
+      // selection collapses the selection to just this chip first (mirrors a plain click).
+      onGroupDragStart: (): string[] | null => {
+        const selected = selection.getSelectedIds()
+        if (!selected.has(event.id)) {
+          selection.emitSelection(new Set([event.id]))
+          return null
+        }
+        return selected.size > 1 ? Array.from(selected) : null
+      },
     },
   })
 
@@ -115,6 +131,12 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
   // DragOverlay copy is the "moving" one — so we neither hide the origin nor apply the
   // pointer `transform` to it (that would make the origin chase the cursor as a second ghost).
   const isDragSource = isDragging || activeId === `${event.id}-${view}`
+
+  // Group drag-move (plan 37c §6) — every OTHER selected chip dims while the group is in
+  // flight, so the "these ids are moving together" blast radius reads clearly against the
+  // count badge on the ghost. The drag source itself is excluded (it already renders via the
+  // DragOverlay above, and `isDragSource` keeps its origin solid per the comment above).
+  const isGroupMoving = Boolean(activeGroupIds?.has(event.id)) && !isDragSource
 
   const effectiveSize =
     isResizing && previewSize !== null ? previewSize : orientation === 'x' ? width : height
@@ -155,7 +177,11 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
       }}
       data-event-id={event.id}
       style={style}
-      className={cn('group/event touch-none', canResize && 'relative')}>
+      className={cn(
+        'group/event touch-none',
+        canResize && 'relative',
+        isGroupMoving && 'pointer-events-none opacity-50'
+      )}>
       <EventItem
         event={event}
         view={view as CalendarView}
