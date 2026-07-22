@@ -37,8 +37,8 @@ type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
 export interface RecurrenceTemplate {
   startMinute: number
   durationMinutes: number
-  /** Omit or `null` for the unassigned rail. */
-  defaultAssigneeUserId?: string | null
+  /** Omit or `null` for the unassigned rail. DispatchWorker id (individual or team). */
+  defaultAssigneeWorkerId?: string | null
 }
 
 /** Input for {@link setRecurrenceRule}. */
@@ -157,7 +157,7 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
           effectiveFrom,
           startMinute: template.startMinute,
           durationMinutes: template.durationMinutes,
-          defaultAssigneeUserId: template.defaultAssigneeUserId ?? null,
+          defaultAssigneeWorkerId: template.defaultAssigneeWorkerId ?? null,
         })
         .where(eq(schema.RecurrenceRule.id, existing.id))
         .returning()
@@ -173,7 +173,7 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
           effectiveFrom,
           startMinute: template.startMinute,
           durationMinutes: template.durationMinutes,
-          defaultAssigneeUserId: template.defaultAssigneeUserId ?? null,
+          defaultAssigneeWorkerId: template.defaultAssigneeWorkerId ?? null,
         })
         .returning()
   if (!rule) throw new Error('Failed to upsert recurrence rule')

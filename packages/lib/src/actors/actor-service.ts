@@ -8,6 +8,7 @@ import type {
   GroupActor,
   SystemActor,
   UserActor,
+  WorkerActor,
 } from '@auxx/types/actor'
 import { parseActorId, toActorId } from '@auxx/types/actor'
 import {
@@ -21,6 +22,7 @@ import {
   getCachedMembersByUserIds,
   type OrgMemberInfo,
 } from '../cache'
+import { type DispatchWorkerWithUser, listDispatchWorkers } from '../dispatch/workers'
 import { SystemUserService } from '../users/system-user-service'
 
 // ============================================================================
@@ -34,10 +36,11 @@ export interface ListActorsOptions {
    * - 'user': humans only
    * - 'group': groups only
    * - 'agent': agents only
+   * - 'worker': dispatch workers only (individuals + teams)
    * - 'both': humans + groups (default; agents excluded unless includeAgents is true)
-   * - 'all': humans + groups + agents
+   * - 'all': humans + groups + agents + workers
    */
-  target?: 'user' | 'group' | 'agent' | 'both' | 'all'
+  target?: 'user' | 'group' | 'agent' | 'worker' | 'both' | 'all'
   /** Filter users by role */
   roles?: ('OWNER' | 'ADMIN' | 'USER')[]
   /** Filter to specific group IDs */
@@ -102,6 +105,11 @@ export class ActorService {
       results.push(...groups)
     }
 
+    if (target === 'worker' || target === 'all') {
+      const workers = await this.listWorkers()
+      results.push(...workers)
+    }
+
     return results
   }
 
@@ -117,6 +125,7 @@ export class ActorService {
     const userIds: string[] = []
     const groupIds: string[] = []
     const agentIds: string[] = []
+    const workerIds: string[] = []
 
     for (const actorId of actorIds) {
       try {
@@ -124,14 +133,16 @@ export class ActorService {
         if (type === 'user') userIds.push(id)
         else if (type === 'group') groupIds.push(id)
         else if (type === 'agent') agentIds.push(id)
+        else if (type === 'worker') workerIds.push(id)
       } catch {}
     }
 
     // Batch fetch
-    const [users, groups, agents] = await Promise.all([
+    const [users, groups, agents, workers] = await Promise.all([
       userIds.length > 0 ? this.fetchUsers(userIds) : [],
       groupIds.length > 0 ? this.fetchGroups(groupIds) : [],
       agentIds.length > 0 ? getCachedAgentsByIds(this.organizationId, agentIds) : [],
+      workerIds.length > 0 ? this.fetchWorkers(workerIds) : [],
     ])
 
     for (const user of users) {
@@ -144,6 +155,9 @@ export class ActorService {
       if (!agent.userId) continue // draft — no actor identity yet
       const actor = this.toAgentActor(agent)
       result.set(actor.actorId, actor)
+    }
+    for (const worker of workers) {
+      result.set(worker.actorId, worker)
     }
 
     // Compatibility shim: many legacy code paths (Thread.assigneeIds,
@@ -190,6 +204,11 @@ export class ActorService {
       return null
     }
 
+    if (type === 'worker') {
+      const workers = await this.fetchWorkers([id])
+      return workers[0] ?? null
+    }
+
     if (type === 'user') {
       const users = await this.fetchUsers([id])
       if (users[0]) return users[0]
@@ -230,6 +249,11 @@ export class ActorService {
     if (target === 'group' || target === 'both' || target === 'all') {
       const groups = await this.searchGroups(searchPattern, options, limit)
       results.push(...groups)
+    }
+
+    if (target === 'worker' || target === 'all') {
+      const workers = await this.searchWorkers(searchPattern, limit)
+      results.push(...workers)
     }
 
     // Sort by relevance (exact match first, then alphabetical)
@@ -444,6 +468,73 @@ export class ActorService {
       avatarUrl: group.avatarUrl ?? null,
       memberCount: group.metadata.memberCount ?? 0,
       visibility: (group.metadata.visibility as 'public' | 'private') ?? 'private',
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Private: Worker Operations
+  // ─────────────────────────────────────────────────────────────────
+
+  private async listWorkers(): Promise<WorkerActor[]> {
+    const rows = await listDispatchWorkers(this.organizationId)
+    return rows.filter((r) => r.isActive).map((r) => this.toWorkerActor(r))
+  }
+
+  private async fetchWorkers(workerIds: string[]): Promise<WorkerActor[]> {
+    const rows = await listDispatchWorkers(this.organizationId)
+    const idSet = new Set(workerIds)
+    return rows.filter((r) => idSet.has(r.id)).map((r) => this.toWorkerActor(r))
+  }
+
+  private async searchWorkers(pattern: string, limit?: number): Promise<WorkerActor[]> {
+    const rows = await listDispatchWorkers(this.organizationId)
+    const searchTerm = pattern.replace(/%/g, '').toLowerCase()
+    return rows
+      .filter((r) => r.isActive)
+      .filter((r) => {
+        const label = r.type === 'team' ? (r.name ?? '') : (r.user?.name ?? r.user?.email ?? '')
+        return label.toLowerCase().includes(searchTerm)
+      })
+      .map((r) => this.toWorkerActor(r))
+      .slice(0, limit ?? 50)
+  }
+
+  /**
+   * Resolve a `DispatchWorkerWithUser` row (individual or team) to a `WorkerActor`. Individuals
+   * mirror the backing user's identity (+ board color); teams surface their own name + a member
+   * avatar stack, mirroring how `GroupActor` expands its members (45-teams.md §5A).
+   */
+  private toWorkerActor(row: DispatchWorkerWithUser): WorkerActor {
+    const actorId = toActorId('worker', row.id)
+
+    if (row.type === 'team') {
+      return {
+        actorId,
+        type: 'worker',
+        name: row.name ?? 'Team',
+        avatarUrl: null,
+        workerId: row.id,
+        workerType: 'team',
+        color: row.color,
+        userId: null,
+        members: (row.members ?? []).map((m) => ({
+          id: m.userId ?? m.workerId,
+          name: m.name ?? 'Unknown',
+          image: m.image,
+        })),
+      }
+    }
+
+    return {
+      actorId,
+      type: 'worker',
+      name: row.user?.name ?? row.user?.email ?? 'Unknown',
+      avatarUrl: row.user?.image ?? null,
+      workerId: row.id,
+      workerType: 'individual',
+      color: row.color,
+      userId: row.userId,
+      members: [],
     }
   }
 }

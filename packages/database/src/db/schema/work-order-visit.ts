@@ -15,10 +15,10 @@ import {
   timestamp,
   uniqueIndex,
 } from './_shared'
+import { DispatchWorker } from './dispatch-worker'
 import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
 import { RecurrenceRule } from './recurrence-rule'
-import { User } from './user'
 
 /**
  * One visit = one scheduled (or not-yet-scheduled) trip to the site for a work order.
@@ -49,8 +49,9 @@ export const WorkOrderVisit = pgTable(
         onUpdate: 'cascade',
         onDelete: 'cascade',
       }),
-    /** null = unassigned rail on the board */
-    assigneeUserId: text().references((): AnyPgColumn => User.id, {
+    /** null = unassigned rail on the board. References the dispatchable worker row (individual or
+     * team), not a User directly — assignment is worker-based (plans/dispatch/45-teams.md §1.D). */
+    assigneeWorkerId: text().references((): AnyPgColumn => DispatchWorker.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
@@ -103,9 +104,9 @@ export const WorkOrderVisit = pgTable(
       table.endTime.asc().nullsLast()
     ),
     // Per-worker day/route query
-    index('WorkOrderVisit_assigneeUserId_startTime_idx').using(
+    index('WorkOrderVisit_assigneeWorkerId_startTime_idx').using(
       'btree',
-      table.assigneeUserId.asc().nullsLast(),
+      table.assigneeWorkerId.asc().nullsLast(),
       table.startTime.asc().nullsLast()
     ),
     // Record drawer lookup

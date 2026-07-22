@@ -43,7 +43,9 @@ interface DispatchSidebarProps {
   view?: 'day' | 'week' | 'month' | 'timeline'
   weekStartsOn: WeekStartIndex
   allWorkers: BoardWorker[]
-  colorByUserId: Map<string, OptionColor>
+  /** Per-worker `OPTION_COLORS` entry, keyed by `DispatchWorker.id` (`use-board-data.ts`'s
+   * `colorByWorkerId`). */
+  colorByWorkerId: Map<string, OptionColor>
   /** Calendar mode's flat backlog list (`use-board-data.ts`'s `backlogEvents`). */
   backlogEvents: BacklogItem[]
   /** Map mode's route planner read — all four are required together (map mode only). */
@@ -75,7 +77,7 @@ export function DispatchSidebar({
   view,
   weekStartsOn,
   allWorkers,
-  colorByUserId,
+  colorByWorkerId,
   backlogEvents,
   plannerBoard,
   plannerFilters,
@@ -120,7 +122,8 @@ export function DispatchSidebar({
     }
     const unscheduled = plannerBoard.backlog.filter((v) => matchesTagFilter(v.workOrderId))
     const unassignedToday = plannerBoard.visits.filter(
-      (v) => v.assigneeUserId === null && v.status !== 'canceled' && matchesTagFilter(v.workOrderId)
+      (v) =>
+        v.assigneeWorkerId === null && v.status !== 'canceled' && matchesTagFilter(v.workOrderId)
     )
     return [
       {
@@ -176,7 +179,7 @@ export function DispatchSidebar({
       />
       <WorkersGroup
         workers={allWorkers}
-        colorByUserId={colorByUserId}
+        colorByWorkerId={colorByWorkerId}
         hiddenWorkerIds={hiddenWorkerIds}
         onToggleWorker={toggleWorkerHidden}
         open={isGroupOpen('workers')}
@@ -211,7 +214,7 @@ export function DispatchSidebar({
           open={isGroupOpen('routes')}
           onOpenChange={(o) => setGroupOpen('routes', o)}
           groupOpen={groupOpen}
-          onWorkerOpenChange={(userId, o) => setGroupOpen(`routes:${userId}`, o)}
+          onWorkerOpenChange={(workerId, o) => setGroupOpen(`routes:${workerId}`, o)}
           onSelectVisit={onSelectVisit}
         />
       )}

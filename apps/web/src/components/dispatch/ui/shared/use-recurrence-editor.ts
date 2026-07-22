@@ -43,7 +43,7 @@ export interface SetRecurrenceInput {
   template: {
     startMinute: number
     durationMinutes: number
-    defaultAssigneeUserId: string | null
+    defaultAssigneeWorkerId: string | null
   }
   timezone: string
   effectiveFrom: string
@@ -209,7 +209,7 @@ export function useRecurrenceEditor({
   const buildSetRecurrenceInput = (
     inputStartTime: Date,
     inputEndTime: Date,
-    assigneeUserId: string | null
+    assigneeWorkerId: string | null
   ): SetRecurrenceInput | null => {
     if (!effectivePattern || !workOrderRecordId) return null
     return {
@@ -218,7 +218,7 @@ export function useRecurrenceEditor({
       template: {
         startMinute: inputStartTime.getHours() * 60 + inputStartTime.getMinutes(),
         durationMinutes: differenceInMinutes(inputEndTime, inputStartTime),
-        defaultAssigneeUserId: assigneeUserId,
+        defaultAssigneeWorkerId: assigneeWorkerId,
       },
       timezone: detectTimezone(),
       effectiveFrom: format(inputStartTime, 'yyyy-MM-dd'),

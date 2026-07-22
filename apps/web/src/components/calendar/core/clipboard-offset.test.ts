@@ -10,7 +10,7 @@ function item(overrides: Partial<CopiedVisitItem> & { start: Date; end: Date }):
     visitId: overrides.visitId ?? 'visit-1',
     workOrderRecordId: overrides.workOrderRecordId ?? 'work-order:wo-1',
     title: overrides.title ?? 'Job',
-    assigneeUserId: overrides.assigneeUserId ?? null,
+    assigneeWorkerId: overrides.assigneeWorkerId ?? null,
     ...overrides,
   }
 }

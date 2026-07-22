@@ -56,7 +56,7 @@ export function ScheduleWorkOrderAction({ recordId }: DrawerActionProps) {
       visitId={visit.id}
       initialStartTime={visit.startTime ? new Date(visit.startTime) : undefined}
       initialEndTime={visit.endTime ? new Date(visit.endTime) : undefined}
-      initialAssigneeUserId={visit.assigneeUserId}
+      initialAssigneeWorkerId={visit.assigneeWorkerId}
       workOrderRecordId={recordId}
       recurrenceRuleId={visit.recurrenceRuleId}
       onScheduled={refresh}

@@ -334,7 +334,9 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
       }
     case 'actor':
       // Actor storage: actorId column for users + agents (agents marked by
-      // relatedEntityDefinitionId='agent'); relatedEntityId for groups.
+      // relatedEntityDefinitionId='agent'); relatedEntityId for groups + dispatch workers
+      // (workers marked by relatedEntityDefinitionId='worker', since a DispatchWorker.id can't
+      // live in actorId — that column FKs User.id).
       if (row.actorId) {
         if (row.relatedEntityDefinitionId === 'agent') {
           return {
@@ -353,6 +355,15 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
           actorId: toActorId('user', row.actorId),
         }
       } else if (row.relatedEntityId) {
+        if (row.relatedEntityDefinitionId === 'worker') {
+          return {
+            ...base,
+            type: 'actor',
+            actorType: 'worker',
+            id: row.relatedEntityId,
+            actorId: toActorId('worker', row.relatedEntityId),
+          }
+        }
         return {
           ...base,
           type: 'actor',

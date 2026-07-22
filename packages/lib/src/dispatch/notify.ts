@@ -20,6 +20,7 @@ import { localDateKey, resolveOrgTimezone } from './digest'
 import type { DispatchVisitInput } from './types'
 import { afterVisitWrite } from './visit-mutations'
 import { getWorkOrderProjections } from './work-order-fields'
+import { resolveWorkerUserIds } from './workers'
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
@@ -43,8 +44,9 @@ export async function getWorkOrderLabel(
 /**
  * Dispatch (notify) a visit's assignee (07 §B.5). Requires `startTime`/`endTime` and an
  * assignee — `BadRequestError` otherwise. Stamps `dispatchedAt`, sends the in-app
- * notification, enqueues the dispatch email, then runs the shared mirror/roll-up/broadcast
- * (`afterVisitWrite`, trigger `dispatched`).
+ * notification, enqueues the dispatch email — to every user the assignee worker resolves to
+ * (a team dispatches ALL its members, 45-teams.md §5.4) — then runs the shared
+ * mirror/roll-up/broadcast (`afterVisitWrite`, trigger `dispatched`).
  */
 export async function dispatchVisit(input: DispatchVisitInput): Promise<WorkOrderVisitRow> {
   const { organizationId, userId, visitId, excludeSocketId } = input
@@ -59,7 +61,7 @@ export async function dispatchVisit(input: DispatchVisitInput): Promise<WorkOrde
   if (!visit.startTime || !visit.endTime) {
     throw new BadRequestError('Visit must be scheduled before it can be dispatched')
   }
-  if (!visit.assigneeUserId) {
+  if (!visit.assigneeWorkerId) {
     throw new BadRequestError('Visit must have an assignee before it can be dispatched')
   }
   if (visit.status !== 'scheduled') {
@@ -96,43 +98,47 @@ export async function dispatchVisit(input: DispatchVisitInput): Promise<WorkOrde
   const workOrderLabel = number && title ? `${number} — ${title}` : (number ?? title ?? 'your job')
   const workOrderUrl = `${WEBAPP_URL}/app/work-orders/${updated.workOrderId}`
 
-  const assignee = await database.query.User.findFirst({
-    where: eq(schema.User.id, updated.assigneeUserId!),
-  })
+  const recipientUserIds = await resolveWorkerUserIds(organizationId, updated.assigneeWorkerId!)
 
-  await new NotificationService().sendNotification({
-    // ⚠️ NotificationType.WORK_ORDER_DISPATCHED added to the schema pgEnum (needs a
-    // migration — not generated here, see the build report).
-    type: 'WORK_ORDER_DISPATCHED' as NotificationType,
-    userId: updated.assigneeUserId!,
-    actorId: userId,
-    entityId: updated.workOrderId,
-    entityType: 'work_order',
-    message: `You've been dispatched to ${workOrderLabel}`,
-    organizationId,
-    data: { visitId: updated.id },
-  })
-
-  // Plan 19 §4.9: the dispatch email is gated on `notification.dispatch.email` too (default
-  // true — an explicit `false` opts out); the in-app notification above always fires.
-  const emailEnabled = await getUserSetting({
-    organizationId,
-    userId: updated.assigneeUserId!,
-    key: 'notification.dispatch.email',
-  })
-  if (assignee?.email && emailEnabled !== false) {
-    await enqueueEmailJob('visit-dispatched', {
-      recipient: { email: assignee.email, name: assignee.name ?? undefined },
-      workOrderNumber: number ?? '',
-      workOrderTitle: title ?? 'Work order',
-      startTime: updated.startTime!.toISOString(),
-      endTime: updated.endTime!.toISOString(),
-      timezone: updated.timezone,
-      workOrderUrl,
-      source: 'dispatch.dispatchVisit',
-      organizationId,
-      actorId: userId,
+  for (const recipientUserId of recipientUserIds) {
+    const assignee = await database.query.User.findFirst({
+      where: eq(schema.User.id, recipientUserId),
     })
+
+    await new NotificationService().sendNotification({
+      // ⚠️ NotificationType.WORK_ORDER_DISPATCHED added to the schema pgEnum (needs a
+      // migration — not generated here, see the build report).
+      type: 'WORK_ORDER_DISPATCHED' as NotificationType,
+      userId: recipientUserId,
+      actorId: userId,
+      entityId: updated.workOrderId,
+      entityType: 'work_order',
+      message: `You've been dispatched to ${workOrderLabel}`,
+      organizationId,
+      data: { visitId: updated.id },
+    })
+
+    // Plan 19 §4.9: the dispatch email is gated on `notification.dispatch.email` too (default
+    // true — an explicit `false` opts out); the in-app notification above always fires.
+    const emailEnabled = await getUserSetting({
+      organizationId,
+      userId: recipientUserId,
+      key: 'notification.dispatch.email',
+    })
+    if (assignee?.email && emailEnabled !== false) {
+      await enqueueEmailJob('visit-dispatched', {
+        recipient: { email: assignee.email, name: assignee.name ?? undefined },
+        workOrderNumber: number ?? '',
+        workOrderTitle: title ?? 'Work order',
+        startTime: updated.startTime!.toISOString(),
+        endTime: updated.endTime!.toISOString(),
+        timezone: updated.timezone,
+        workOrderUrl,
+        source: 'dispatch.dispatchVisit',
+        organizationId,
+        actorId: userId,
+      })
+    }
   }
 
   await afterVisitWrite(updated, { userId, trigger: 'dispatched', excludeSocketId })

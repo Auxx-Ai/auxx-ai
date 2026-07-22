@@ -167,7 +167,7 @@ export async function scheduleVisit(input: ScheduleVisitInput): Promise<WorkOrde
     endTime,
     updatedAt: new Date(),
   }
-  if (input.assigneeUserId !== undefined) set.assigneeUserId = input.assigneeUserId
+  if (input.assigneeWorkerId !== undefined) set.assigneeWorkerId = input.assigneeWorkerId
   if (timezone !== undefined) set.timezone = timezone
   if (existing.recurrenceRuleId) set.isDetached = true
   if (existing.status === 'canceled') set.status = 'scheduled'
@@ -352,7 +352,8 @@ export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderV
  * to it even there.
  */
 export async function addVisit(input: AddVisitInput): Promise<WorkOrderVisitRow> {
-  const { organizationId, userId, workOrderInstanceId, startTime, endTime, assigneeUserId } = input
+  const { organizationId, userId, workOrderInstanceId, startTime, endTime, assigneeWorkerId } =
+    input
   const { excludeSocketId } = input
 
   const workOrder = await database.query.EntityInstance.findFirst({
@@ -386,7 +387,7 @@ export async function addVisit(input: AddVisitInput): Promise<WorkOrderVisitRow>
       visitId: created.id,
       startTime,
       endTime,
-      assigneeUserId,
+      assigneeWorkerId,
       excludeSocketId,
     })
   }
@@ -401,21 +402,21 @@ export async function addVisit(input: AddVisitInput): Promise<WorkOrderVisitRow>
  * own (01 §5 lists no assign-specific transition) — mirror + broadcast only.
  */
 export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVisitRow> {
-  const { organizationId, userId, visitId, assigneeUserId, excludeSocketId } = input
+  const { organizationId, userId, visitId, assigneeWorkerId, excludeSocketId } = input
 
   // M2c (06 §4.3): an assignee change on a series visit is also a "this visit" edit.
-  // Also carries assigneeUserId/dispatchedAt (plan 19 §4.9) to detect a reassignment.
+  // Also carries assigneeWorkerId/dispatchedAt (plan 19 §4.9) to detect a reassignment.
   const existing = await database.query.WorkOrderVisit.findFirst({
     where: and(
       eq(schema.WorkOrderVisit.id, visitId),
       eq(schema.WorkOrderVisit.organizationId, organizationId)
     ),
-    columns: { recurrenceRuleId: true, assigneeUserId: true, dispatchedAt: true },
+    columns: { recurrenceRuleId: true, assigneeWorkerId: true, dispatchedAt: true },
   })
   if (!existing) throw new NotFoundError('Visit not found')
 
   const set: Partial<typeof schema.WorkOrderVisit.$inferInsert> = {
-    assigneeUserId,
+    assigneeWorkerId,
     updatedAt: new Date(),
   }
   if (existing.recurrenceRuleId) set.isDetached = true
@@ -434,16 +435,18 @@ export async function assignVisit(input: AssignVisitInput): Promise<WorkOrderVis
 
   await afterVisitWrite(updated, { userId, excludeSocketId })
 
-  // Worker-facing reassignment notices (plan 19 §4.9): "removed" to the old assignee (if any)
-  // + "assigned" to the new one (if any) — gated on the visit having ever been dispatched.
+  // Worker-facing reassignment notices (plan 19 §4.9, 45-teams.md §5.2): "removed" to every user
+  // the OLD assignee worker resolves to (if any) + "assigned" to every user the NEW one resolves
+  // to (if any) — a team assignment notifies ALL its members. Gated on the visit having ever
+  // been dispatched. `notifyVisitReassigned` does the worker→user(s) resolution + diff itself.
   // Notification failures must never fail this mutation.
-  if (existing.dispatchedAt && existing.assigneeUserId !== assigneeUserId) {
+  if (existing.dispatchedAt && existing.assigneeWorkerId !== assigneeWorkerId) {
     try {
       await notifyVisitReassigned({
         organizationId,
         userId,
         visit: updated,
-        oldAssigneeUserId: existing.assigneeUserId,
+        oldAssigneeWorkerId: existing.assigneeWorkerId,
       })
     } catch (error) {
       logger.error('Failed to notify visit reassigned', { error, visitId })

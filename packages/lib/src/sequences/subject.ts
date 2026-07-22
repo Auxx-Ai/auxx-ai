@@ -165,7 +165,7 @@ export interface SubjectContext {
     id: string
     startTime: Date | null
     endTime: Date | null
-    assigneeUserId: string | null
+    assigneeWorkerId: string | null
     recurrenceRuleId: string | null
     occurrenceDate: string | null
   }
@@ -220,7 +220,7 @@ export async function resolveSubjectContext(
         workOrderId: true,
         startTime: true,
         endTime: true,
-        assigneeUserId: true,
+        assigneeWorkerId: true,
         recurrenceRuleId: true,
         occurrenceDate: true,
       },
@@ -231,7 +231,7 @@ export async function resolveSubjectContext(
         id: row.id,
         startTime: row.startTime,
         endTime: row.endTime,
-        assigneeUserId: row.assigneeUserId,
+        assigneeWorkerId: row.assigneeWorkerId,
         recurrenceRuleId: row.recurrenceRuleId,
         occurrenceDate: row.occurrenceDate,
       }

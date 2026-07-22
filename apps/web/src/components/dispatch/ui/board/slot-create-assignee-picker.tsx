@@ -2,42 +2,95 @@
 
 'use client'
 
-import { getActorRawId, toActorId } from '@auxx/types/actor'
-import { Command, CommandGroup, CommandItem, CommandList } from '@auxx/ui/components/command'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import {
+  Command,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { UserX } from 'lucide-react'
 import { useState } from 'react'
-import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
-import { useActors } from '~/components/resources/hooks/use-actor'
+import { getInitials } from '~/components/groups/utils/group-utils'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
-import { useWorkerActorExcludes } from '../shared/use-worker-actor-excludes'
+import type { BoardWorker } from './types'
+import { workerDisplayName } from './utils'
 
 export interface SlotCreateAssigneePickerProps {
-  /** `null` = unassigned. */
+  /** Every active dispatch worker (individuals + teams) — `use-board-data.ts`'s `allWorkers`. */
+  workers: BoardWorker[]
+  /** `null` = unassigned. A `DispatchWorker.id` — never a `User.id` (teams have none). */
   value: string | null
-  onChange: (userId: string | null) => void
+  onChange: (workerId: string | null) => void
   disabled?: boolean
 }
 
+/** Small overlapping avatar stack for a team row — up to 3 member faces, the flat picker's
+ * "team hint" (plans/dispatch/45-teams.md §1.H). */
+function TeamMemberAvatars({ members }: { members: BoardWorker['members'] }) {
+  const shown = (members ?? []).slice(0, 3)
+  if (shown.length === 0) return null
+  return (
+    <div className='flex -space-x-1.5'>
+      {shown.map((m) => (
+        <Avatar key={m.workerId} className='size-5 border border-background'>
+          <AvatarImage src={m.image ?? undefined} />
+          <AvatarFallback className='text-[9px]'>{getInitials(m.name ?? 'Worker')}</AvatarFallback>
+        </Avatar>
+      ))}
+    </div>
+  )
+}
+
+/** One flat assignee row's content — an individual renders its user's avatar/name; a team
+ * renders its own name plus a member-avatar hint. */
+function WorkerOption({ worker }: { worker: BoardWorker }) {
+  const label = workerDisplayName(worker)
+  if (worker.type === 'team') {
+    return (
+      <>
+        <Avatar className='size-5'>
+          <AvatarFallback className='text-[9px]'>{getInitials(label)}</AvatarFallback>
+        </Avatar>
+        <span className='min-w-0 flex-1 truncate'>{label}</span>
+        <TeamMemberAvatars members={worker.members} />
+      </>
+    )
+  }
+  return (
+    <>
+      <Avatar className='size-5'>
+        <AvatarImage src={worker.user?.image ?? undefined} />
+        <AvatarFallback className='text-[9px]'>{getInitials(label)}</AvatarFallback>
+      </Avatar>
+      <span className='min-w-0 flex-1 truncate'>{label}</span>
+    </>
+  )
+}
+
 /**
- * Single-select, worker-filtered assignee field for the slot-create popover (plan 37c §7) — the
- * same `ActorPickerContent` + `useWorkerActorExcludes` recipe `AssigneeRow`
- * (`../shared/assignee-row.tsx`) and the bulk bar's `BoardAssignPicker` already use, minus both
- * components' own coupling (`AssigneeRow` requires a `SeriesScopeProvider` ancestor for its
- * commit gate; `BoardAssignPicker` is shaped for `ActionBar`'s `anchorRef` picker contract) that
- * this plain create-form field — a local `useState`, no commit gate — doesn't need.
+ * Single-select assignee field for the slot-create popover (plan 37c §7, reworked onto worker
+ * rows by plan 45 §1.H) — a flat "Unassigned" + every active dispatch worker (individuals and
+ * teams alike) list, built straight from `use-board-data.ts`'s `allWorkers` (threaded down via
+ * `slot-create-popover.tsx`) rather than the user-only actor picker this used previously. A
+ * plain local `useState`, no commit gate.
  */
 export function SlotCreateAssigneePicker({
+  workers,
   value,
   onChange,
   disabled,
 }: SlotCreateAssigneePickerProps) {
   const [open, setOpen] = useState(false)
-  const excludeIds = useWorkerActorExcludes()
-  const assigneeActorId = value ? toActorId('user', value) : null
-  const hydrated = useActors(assigneeActorId ? [assigneeActorId] : [])
-  const assigneeActor = assigneeActorId ? hydrated.get(assigneeActorId) : undefined
-  const label = assigneeActor?.name ?? 'Worker'
+  const selectedWorker = value ? workers.find((w) => w.id === value) : undefined
+  const label = selectedWorker ? workerDisplayName(selectedWorker) : 'Worker'
+
+  const pick = (workerId: string | null) => {
+    onChange(workerId)
+    setOpen(false)
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -56,38 +109,27 @@ export function SlotCreateAssigneePicker({
         </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent className='w-72 p-0' align='start'>
-        <Command shouldFilter={false} className='rounded-lg rounded-b-none'>
+        <Command className='rounded-lg'>
+          <CommandInput placeholder='Search workers...' disabled={disabled} />
           <CommandList>
             <CommandGroup>
-              <CommandItem
-                onSelect={() => {
-                  onChange(null)
-                  setOpen(false)
-                }}
-                className='flex items-center gap-2'>
+              <CommandItem onSelect={() => pick(null)} className='flex items-center gap-2'>
                 <UserX className='size-4 text-muted-foreground' />
                 Unassigned
               </CommandItem>
+              {workers.map((worker) => (
+                <CommandItem
+                  key={worker.id}
+                  value={workerDisplayName(worker)}
+                  disabled={disabled}
+                  onSelect={() => pick(worker.id)}
+                  className='flex items-center gap-2'>
+                  <WorkerOption worker={worker} />
+                </CommandItem>
+              ))}
             </CommandGroup>
           </CommandList>
         </Command>
-        {/* Plain divider, not `CommandSeparator` — same reason as `board-assign-picker.tsx`: two
-         * independent `Command` roots stacked (the static "Unassigned" row, then the searchable
-         * `ActorPickerContent` worker list). */}
-        <div className='h-px bg-border/50 dark:bg-[#323842]/80' />
-        <ActorPickerContent
-          value={[]}
-          onChange={() => {}}
-          target='user'
-          multi={false}
-          disabled={disabled}
-          excludeIds={excludeIds}
-          onSelectSingle={(actorId) => {
-            onChange(getActorRawId(actorId))
-            setOpen(false)
-          }}
-          placeholder='Search workers...'
-        />
       </PopoverContent>
     </Popover>
   )

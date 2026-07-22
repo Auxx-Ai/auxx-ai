@@ -632,8 +632,8 @@ export const recurrenceRuleRelations = relations(RecurrenceRule, ({ one }) => ({
     fields: [RecurrenceRule.subjectId],
     references: [EntityInstance.id],
   }),
-  defaultAssignee: one(User, {
-    fields: [RecurrenceRule.defaultAssigneeUserId],
-    references: [User.id],
+  defaultAssignee: one(DispatchWorker, {
+    fields: [RecurrenceRule.defaultAssigneeWorkerId],
+    references: [DispatchWorker.id],
   }),
 }))

@@ -10,6 +10,7 @@ import { applyVisitToCaches } from '~/components/dispatch/visit-cache'
 import { parseRecordId, type RecordId } from '~/components/resources'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
+import { useViewerWorkerIds } from '../../shared/use-viewer-worker-ids'
 import type { BoardResult, BoardVisit, BoardWorkOrder } from '../types'
 import type { DateRange } from './use-board-data'
 
@@ -21,7 +22,7 @@ interface AddVisitVars {
   workOrderRecordId: RecordId
   startTime?: Date
   endTime?: Date
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
 }
 
 /** `dispatch.createWorkOrder`'s per-call input, post-coercion — same widening gotcha. */
@@ -30,7 +31,7 @@ interface CreateWorkOrderVars {
   title?: string
   startTime: Date
   endTime: Date
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
 }
 
 /** `dispatch.pasteVisits`'s per-item input, post-coercion — `z.coerce.date()` (and the
@@ -43,7 +44,7 @@ interface PasteVisitVars {
   workOrderRecordId: RecordId
   startTime: Date
   endTime: Date
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
 }
 
 /**
@@ -64,12 +65,13 @@ interface PasteVisitVars {
 export function useBoardMutations(range: DateRange) {
   const utils = api.useUtils()
   const queryClient = useQueryClient()
-  const { organizationId, userId } = useUser()
+  const { organizationId } = useUser()
+  const viewerWorkerIds = useViewerWorkerIds()
 
   // Plan 39 §Phase-1 — the acting tab's single write path: feed every single-row mutation's own
   // response into `applyVisitToCaches` instead of invalidating `getBoard`/`getVisitDayMarkers` on
-  // settle. `viewerUserId` (this tab's signed-in user) only matters if a `myVisits` cache happens
-  // to be open in the same tab — harmless to pass unconditionally.
+  // settle. `viewerWorkerIds` (this tab's signed-in user's worker rows) only matters if a
+  // `myVisits` cache happens to be open in the same tab — harmless to pass unconditionally.
   const applyResponse = useCallback(
     (
       visit: BoardVisit & { workOrderStatus?: string },
@@ -80,12 +82,12 @@ export function useBoardMutations(range: DateRange) {
         {
           visit,
           workOrderStatus: visit.workOrderStatus,
-          viewerUserId: userId ?? undefined,
+          viewerWorkerIds,
           ...staleIds,
         }
       )
     },
-    [utils, queryClient, userId]
+    [utils, queryClient, viewerWorkerIds]
   )
 
   const patchVisit = useCallback(
@@ -129,7 +131,7 @@ export function useBoardMutations(range: DateRange) {
         .getData(range)
         ?.visits.find((v) => v.id === vars.visitId)
       if (existing?.status === 'canceled') patch.status = 'scheduled'
-      if (vars.assigneeUserId !== undefined) patch.assigneeUserId = vars.assigneeUserId
+      if (vars.assigneeWorkerId !== undefined) patch.assigneeWorkerId = vars.assigneeWorkerId
       return { previous: patchVisit(vars.visitId, patch) }
     },
     onError: (error, _vars, ctx) => {
@@ -145,7 +147,7 @@ export function useBoardMutations(range: DateRange) {
   const assignVisit = api.dispatch.assignVisit.useMutation({
     onMutate: async (vars) => {
       await utils.dispatch.getBoard.cancel(range)
-      return { previous: patchVisit(vars.visitId, { assigneeUserId: vars.assigneeUserId }) }
+      return { previous: patchVisit(vars.visitId, { assigneeWorkerId: vars.assigneeWorkerId }) }
     },
     onError: (error, _vars, ctx) => {
       rollback(ctx?.previous)
@@ -256,7 +258,7 @@ export function useBoardMutations(range: DateRange) {
           id: generateId('temp-visit'),
           organizationId: organizationId ?? '',
           workOrderId: parseRecordId(item.workOrderRecordId).entityInstanceId,
-          assigneeUserId: item.assigneeUserId ?? null,
+          assigneeWorkerId: item.assigneeWorkerId ?? null,
           startTime: item.startTime,
           endTime: item.endTime,
           timezone: 'UTC',
@@ -316,7 +318,7 @@ export function useBoardMutations(range: DateRange) {
           id: tempVisitId,
           organizationId: organizationId ?? '',
           workOrderId: parseRecordId(vars.workOrderRecordId).entityInstanceId,
-          assigneeUserId: vars.assigneeUserId ?? null,
+          assigneeWorkerId: vars.assigneeWorkerId ?? null,
           startTime: vars.startTime,
           endTime: vars.endTime,
           timezone: 'UTC',
@@ -380,7 +382,7 @@ export function useBoardMutations(range: DateRange) {
           id: tempVisitId,
           organizationId: organizationId ?? '',
           workOrderId: tempWorkOrderId,
-          assigneeUserId: vars.assigneeUserId ?? null,
+          assigneeWorkerId: vars.assigneeWorkerId ?? null,
           startTime: vars.startTime,
           endTime: vars.endTime,
           timezone: 'UTC',

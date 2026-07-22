@@ -6,20 +6,21 @@
 import type { DispatchVisitEvent } from './types'
 
 /** One non-dragged selected visit's commit — mirrors `dispatch.scheduleVisit`'s input shape.
- * `assigneeUserId: undefined` means "omit the key" (the scheduleVisit gotcha, plan 37c §2.5):
- * `undefined` must never be conflated with `null` (explicitly unassigned). */
+ * `assigneeWorkerId: undefined` means "omit the key" (the scheduleVisit gotcha, plan 37c §2.5):
+ * `undefined` must never be conflated with `null` (explicitly unassigned). A `DispatchWorker.id`
+ * — never a `User.id`. */
 export interface GroupDragUpdate {
   visitId: string
   startTime: Date
   endTime: Date
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
 }
 
 /**
  * §6: every OTHER selected visit shifts by the SAME delta the dragged chip moved (relative
  * offsets preserved) via plain millisecond arithmetic on each visit's own `start`/`end` — this
  * also covers a month-view whole-day drag for free (a day's worth of milliseconds shifts the
- * date, not just the time-of-day). Assignee is carried ONLY when `groupAssigneeUserId` is
+ * date, not just the time-of-day). Assignee is carried ONLY when `groupAssigneeWorkerId` is
  * anything other than `undefined` — the caller resolves that once (comparing the drop's
  * resolved worker against the dragged chip's OWN original resource column) so every row here
  * gets identical assignee semantics: all-or-nothing, never a per-row guess.
@@ -33,7 +34,7 @@ export function computeGroupDragUpdates(
   newStart: Date,
   groupIds: string[],
   eventsById: ReadonlyMap<string, DispatchVisitEvent>,
-  groupAssigneeUserId: string | null | undefined
+  groupAssigneeWorkerId: string | null | undefined
 ): GroupDragUpdate[] {
   const deltaMs = newStart.getTime() - originalStart.getTime()
   const updates: GroupDragUpdate[] = []
@@ -47,7 +48,7 @@ export function computeGroupDragUpdates(
       visitId: id,
       startTime: new Date(new Date(event.start).getTime() + deltaMs),
       endTime: new Date(new Date(event.end).getTime() + deltaMs),
-      assigneeUserId: groupAssigneeUserId,
+      assigneeWorkerId: groupAssigneeWorkerId,
     })
   }
 

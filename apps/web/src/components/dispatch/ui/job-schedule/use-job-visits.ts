@@ -15,6 +15,7 @@ import { useUser } from '~/hooks/use-user'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
+import { useViewerWorkerIds } from '../shared/use-viewer-worker-ids'
 
 export type JobVisit = RouterOutputs['dispatch']['listVisits'][number]
 
@@ -28,8 +29,9 @@ export type JobVisit = RouterOutputs['dispatch']['listVisits'][number]
  * the server enforces it too (`dispatchAdminProcedure`).
  */
 export function useJobVisits(workOrderRecordId: RecordId) {
-  const { isAdminOrOwner, userId } = useUser()
+  const { isAdminOrOwner } = useUser()
   const canEdit = isAdminOrOwner
+  const viewerWorkerIds = useViewerWorkerIds()
   const utils = api.useUtils()
   const queryClient = useQueryClient()
   const workOrderInstanceId = getInstanceId(workOrderRecordId)
@@ -53,10 +55,10 @@ export function useJobVisits(workOrderRecordId: RecordId) {
     (visit: RouterOutputs['dispatch']['scheduleVisit']) => {
       applyVisitToCaches(
         { utils, queryClient },
-        { visit, workOrderStatus: visit.workOrderStatus, viewerUserId: userId ?? undefined }
+        { visit, workOrderStatus: visit.workOrderStatus, viewerWorkerIds }
       )
     },
-    [utils, queryClient, userId]
+    [utils, queryClient, viewerWorkerIds]
   )
 
   // Plan 39 §Phase-2: a `kind: 'row'` broadcast rewraps its wire-string dates and applies
@@ -148,7 +150,7 @@ export function useJobVisits(workOrderRecordId: RecordId) {
           label: 'this job',
           startTime: v.startTime,
           endTime: v.endTime,
-          assigneeUserId: v.assigneeUserId,
+          assigneeWorkerId: v.assigneeWorkerId,
         })),
     [visits]
   )

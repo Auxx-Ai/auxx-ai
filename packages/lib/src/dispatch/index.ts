@@ -163,10 +163,22 @@ export {
   notifyVisitReassigned,
   notifyVisitRescheduled,
 } from './worker-notifications'
-export type { DispatchWorkerWithUser, UpsertDispatchWorkerInput } from './workers'
+export type {
+  DispatchTeamMemberInfo,
+  DispatchWorkerType,
+  DispatchWorkerWithUser,
+  TeamInput,
+  UpsertDispatchWorkerInput,
+} from './workers'
 export {
+  createTeam,
+  getDispatchWorker,
   listDispatchWorkers,
   removeDispatchWorker,
+  resolveUserWorkerIds,
+  resolveWorkerUserIds,
+  setTeamMembers,
   setWorkerActive,
+  updateTeam,
   upsertDispatchWorker,
 } from './workers'

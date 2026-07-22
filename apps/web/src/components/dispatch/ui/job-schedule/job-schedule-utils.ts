@@ -2,6 +2,7 @@
 
 import type { Variant } from '@auxx/ui/components/badge'
 import { format, startOfDay } from 'date-fns'
+import type { RouterOutputs } from '~/trpc/react'
 import type { JobVisit } from './use-job-visits'
 
 /** Badge tone per visit status — mirrors `WORK_ORDER_STATUS_OPTIONS`' color choices. */
@@ -11,6 +12,25 @@ export const VISIT_STATUS_BADGE_VARIANT: Record<string, Variant> = {
   on_site: 'teal',
   done: 'green',
   canceled: 'red',
+}
+
+/** A `dispatch.listWorkers` row (45-teams.md) — individual (has `user`) or team (has `name`). */
+export type AssigneeWorkerRow = RouterOutputs['dispatch']['listWorkers'][number]
+
+/**
+ * Display name for a visit's `assigneeWorkerId`, resolved against the org's worker list
+ * (45-teams.md §5.1/§6): an individual shows its user's name/email, a team shows its own
+ * `name`. `undefined` when the worker isn't found (list still loading, or removed).
+ */
+export function workerAssigneeName(worker: AssigneeWorkerRow | undefined): string | undefined {
+  if (!worker) return undefined
+  if (worker.type === 'team') return worker.name ?? 'Team'
+  return worker.user?.name || worker.user?.email || undefined
+}
+
+/** Avatar image for a visit's assignee worker — individuals only; a team has no single avatar. */
+export function workerAssigneeAvatarUrl(worker: AssigneeWorkerRow | undefined): string | undefined {
+  return worker && worker.type === 'individual' ? (worker.user?.image ?? undefined) : undefined
 }
 
 /**

@@ -167,7 +167,7 @@ export async function getRoutePlannerBoard(
   )
   const filteredWorkers =
     workerIds && workerIds.length > 0
-      ? allWorkers.filter((w) => workerIds.includes(w.userId))
+      ? allWorkers.filter((w) => workerIds.includes(w.id))
       : allWorkers
 
   const [dayVisits, backlogVisits, availabilityDays, depot] = await Promise.all([
@@ -193,8 +193,14 @@ export async function getRoutePlannerBoard(
       ),
     // One batched resolve for ALL workers (index-aligned with `filteredWorkers`) — constant
     // 4 OperatingHours queries instead of 4 per worker.
+    // Individuals seed from the person's worker hours; teams have no single person's hours
+    // (§1.F — teams always render schedulable) so they fall back to org business hours.
     resolveAvailabilityForSubjects(
-      filteredWorkers.map((w) => ({ type: 'worker' as const, organizationId, userId: w.userId })),
+      filteredWorkers.map((w) =>
+        w.type === 'individual' && w.userId
+          ? { type: 'worker' as const, organizationId, userId: w.userId }
+          : { type: 'organization' as const, organizationId }
+      ),
       { from: dateKey, to: dateKey }
     ),
     resolveOrgDepot(organizationId),
@@ -203,8 +209,9 @@ export async function getRoutePlannerBoard(
   const workers: PlannerWorker[] = filteredWorkers.map((w, i) => ({
     id: w.id,
     userId: w.userId,
+    type: w.type,
     color: w.color,
-    name: w.user?.name ?? null,
+    name: w.type === 'team' ? w.name : (w.user?.name ?? null),
     email: w.user?.email ?? null,
     image: w.user?.image ?? null,
     availabilityStart: minutesToClock(availabilityDays[i]?.[0]?.ranges[0]?.start),

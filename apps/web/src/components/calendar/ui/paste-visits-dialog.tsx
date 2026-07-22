@@ -37,9 +37,12 @@ const UNASSIGNED_RESOURCE_ID = 'unassigned'
 
 /** Minimal worker shape the "assign all to <worker>" retarget option needs — duck-typed so any
  * consumer's own worker list (the board's richer `BoardWorker`) satisfies it structurally without
- * this shared dialog importing a feature-specific type. */
+ * this shared dialog importing a feature-specific type. Keyed by `id` (`DispatchWorker.id`, the
+ * column identity — teams have no `userId`); `user` is absent for a team, which falls back to
+ * `name` (its display label). */
 export interface PasteWorkerOption {
-  userId: string
+  id: string
+  name?: string | null
   user?: { name: string | null; email: string | null } | null
 }
 
@@ -59,7 +62,7 @@ type AssigneeMode = 'keep' | 'clear' | 'assign'
 type TimesMode = 'keep' | 'slot'
 
 function workerLabel(worker: PasteWorkerOption): string {
-  return worker.user?.name ?? worker.user?.email ?? 'Worker'
+  return worker.name ?? worker.user?.name ?? worker.user?.email ?? 'Worker'
 }
 
 /**
@@ -99,7 +102,7 @@ export function PasteVisitsDialog({
   const targetWorker = useMemo(
     () =>
       target?.resourceId && target.resourceId !== UNASSIGNED_RESOURCE_ID
-        ? (workers.find((w) => w.userId === target.resourceId) ?? null)
+        ? (workers.find((w) => w.id === target.resourceId) ?? null)
         : null,
     [target?.resourceId, workers]
   )
@@ -128,12 +131,12 @@ export function PasteVisitsDialog({
           workOrderRecordId: r.item.workOrderRecordId,
           startTime: r.startTime,
           endTime: r.endTime,
-          assigneeUserId:
+          assigneeWorkerId:
             assigneeMode === 'keep'
-              ? r.item.assigneeUserId
+              ? r.item.assigneeWorkerId
               : assigneeMode === 'clear'
                 ? null
-                : (targetWorker?.userId ?? null),
+                : (targetWorker?.id ?? null),
         })),
       },
       {

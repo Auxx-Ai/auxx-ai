@@ -14,6 +14,7 @@ import {
   closeMyVisit,
   convertRequestToWorkOrder,
   createQcItemTemplate,
+  createTeam,
   createWorkOrder,
   createWorkOrderFromTicket,
   deleteQcItemTemplate,
@@ -47,12 +48,14 @@ import {
   setRecurrenceRule,
   setRouteOrder,
   setSeriesEnd,
+  setTeamMembers,
   setVisitDuration,
   setVisitQcItemPhotoCaption,
   setVisitStatus,
   setWorkerActive,
   unscheduleVisit,
   updateQcItemTemplate,
+  updateTeam,
   upsertDispatchWorker,
   VISIT_STATUS_VALUES,
 } from '@auxx/lib/dispatch'
@@ -123,7 +126,7 @@ const addressStructSchema = z.object({
 const recurrenceTemplateSchema = z.object({
   startMinute: z.number().int().min(0).max(1439),
   durationMinutes: z.number().int().min(1),
-  defaultAssigneeUserId: z.string().nullable().optional(),
+  defaultAssigneeWorkerId: z.string().nullable().optional(),
 })
 
 export const dispatchRouter = createTRPCRouter({
@@ -191,6 +194,45 @@ export const dispatchRouter = createTRPCRouter({
       return setWorkerActive(ctx.session.organizationId, input.workerId, input.isActive)
     }),
 
+  // Teams (45-teams.md §6) — a `DispatchWorker` (type:'team') whose members are other
+  // individual workers. Same admin gate as the rest of worker CRUD.
+  createTeam: dispatchAdminProcedure
+    .input(
+      z.object({
+        name: z.string().optional(),
+        color: z.string().nullish(),
+        homeBase: addressStructSchema.nullable().optional(),
+        routeStartAtHome: z.boolean().optional(),
+        routeEndAtHome: z.boolean().optional(),
+        memberWorkerIds: z.array(z.string()).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return createTeam(ctx.session.organizationId, input)
+    }),
+  updateTeam: dispatchAdminProcedure
+    .input(
+      z.object({
+        teamWorkerId: z.string(),
+        name: z.string().optional(),
+        color: z.string().nullish(),
+        homeBase: addressStructSchema.nullable().optional(),
+        routeStartAtHome: z.boolean().optional(),
+        routeEndAtHome: z.boolean().optional(),
+        memberWorkerIds: z.array(z.string()).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { teamWorkerId, ...rest } = input
+      return updateTeam(ctx.session.organizationId, teamWorkerId, rest)
+    }),
+  setTeamMembers: dispatchAdminProcedure
+    .input(z.object({ teamWorkerId: z.string(), memberWorkerIds: z.array(z.string()) }))
+    .mutation(async ({ ctx, input }) => {
+      await setTeamMembers(ctx.session.organizationId, input.teamWorkerId, input.memberWorkerIds)
+      return { success: true }
+    }),
+
   // §B — Visit machinery (07-m2-build.md §B). Admin-gated per 04-ui §6/07 §D.2 (members are
   // read-only on the board); the worker-mobile plan later carves out scoped member writes
   // (e.g. assignee updating own visit status).
@@ -200,7 +242,7 @@ export const dispatchRouter = createTRPCRouter({
         visitId: z.string(),
         startTime: z.coerce.date(),
         endTime: z.coerce.date(),
-        assigneeUserId: z.string().nullable().optional(),
+        assigneeWorkerId: z.string().nullable().optional(),
         timezone: z.string().optional(),
         timeWriteKind: z.enum(['provisional', 'confirmed']).optional(),
       })
@@ -212,7 +254,7 @@ export const dispatchRouter = createTRPCRouter({
         visitId: input.visitId,
         startTime: input.startTime,
         endTime: input.endTime,
-        assigneeUserId: input.assigneeUserId,
+        assigneeWorkerId: input.assigneeWorkerId,
         timezone: input.timezone,
         timeWriteKind: input.timeWriteKind,
         excludeSocketId: excludeSocketId(ctx),
@@ -220,13 +262,13 @@ export const dispatchRouter = createTRPCRouter({
       return withWorkOrderStatus(ctx, visit)
     }),
   assignVisit: dispatchAdminProcedure
-    .input(z.object({ visitId: z.string(), assigneeUserId: z.string().nullable() }))
+    .input(z.object({ visitId: z.string(), assigneeWorkerId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
       return assignVisit({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         visitId: input.visitId,
-        assigneeUserId: input.assigneeUserId,
+        assigneeWorkerId: input.assigneeWorkerId,
         excludeSocketId: excludeSocketId(ctx),
       })
     }),
@@ -349,19 +391,19 @@ export const dispatchRouter = createTRPCRouter({
         from: z.date(),
         to: z.date(),
         dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        assigneeUserId: z.string(),
+        assigneeWorkerId: z.string(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { assigneeUserId, ...window } = input
-      return getRouteGeometryForWorker(ctx.session.organizationId, assigneeUserId, window)
+      const { assigneeWorkerId, ...window } = input
+      return getRouteGeometryForWorker(ctx.session.organizationId, assigneeWorkerId, window)
     }),
   // Bulk `routeOrder` write (drag-reorder / suggest-route / backlog slot-in follow-up) —
   // admin-gated like the rest of visit machinery (§B).
   setRouteOrder: dispatchAdminProcedure
     .input(
       z.object({
-        assigneeUserId: z.string(),
+        assigneeWorkerId: z.string(),
         from: z.date(),
         to: z.date(),
         dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -372,7 +414,7 @@ export const dispatchRouter = createTRPCRouter({
       await setRouteOrder({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
-        assigneeUserId: input.assigneeUserId,
+        assigneeWorkerId: input.assigneeWorkerId,
         window: { from: input.from, to: input.to },
         dateKey: input.dateKey,
         visitIds: input.visitIds,
@@ -385,7 +427,7 @@ export const dispatchRouter = createTRPCRouter({
   applyRouteTimes: dispatchAdminProcedure
     .input(
       z.object({
-        assigneeUserId: z.string(),
+        assigneeWorkerId: z.string(),
         dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         firstDeparture: z.date(),
         visitIds: z.array(z.string()).min(1),
@@ -395,7 +437,7 @@ export const dispatchRouter = createTRPCRouter({
       await applyRouteTimes({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
-        assigneeUserId: input.assigneeUserId,
+        assigneeWorkerId: input.assigneeWorkerId,
         dateKey: input.dateKey,
         firstDeparture: input.firstDeparture,
         visitIds: input.visitIds,
@@ -437,7 +479,7 @@ export const dispatchRouter = createTRPCRouter({
         workOrderRecordId: recordIdSchema,
         startTime: z.coerce.date().optional(),
         endTime: z.coerce.date().optional(),
-        assigneeUserId: z.string().nullable().optional(),
+        assigneeWorkerId: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -448,7 +490,7 @@ export const dispatchRouter = createTRPCRouter({
         workOrderInstanceId: entityInstanceId,
         startTime: input.startTime,
         endTime: input.endTime,
-        assigneeUserId: input.assigneeUserId,
+        assigneeWorkerId: input.assigneeWorkerId,
         excludeSocketId: excludeSocketId(ctx),
       })
       return withWorkOrderStatus(ctx, visit)
@@ -464,7 +506,7 @@ export const dispatchRouter = createTRPCRouter({
         title: z.string().optional(),
         startTime: z.coerce.date(),
         endTime: z.coerce.date(),
-        assigneeUserId: z.string().nullable().optional(),
+        assigneeWorkerId: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -475,7 +517,7 @@ export const dispatchRouter = createTRPCRouter({
         title: input.title,
         startTime: input.startTime,
         endTime: input.endTime,
-        assigneeUserId: input.assigneeUserId,
+        assigneeWorkerId: input.assigneeWorkerId,
         excludeSocketId: excludeSocketId(ctx),
       })
       const workOrderStatus = await getWorkOrderStatus(
@@ -499,7 +541,7 @@ export const dispatchRouter = createTRPCRouter({
               workOrderRecordId: recordIdSchema,
               startTime: z.coerce.date(),
               endTime: z.coerce.date(),
-              assigneeUserId: z.string().nullable().optional(),
+              assigneeWorkerId: z.string().nullable().optional(),
             })
           )
           .min(1)
@@ -514,7 +556,7 @@ export const dispatchRouter = createTRPCRouter({
           workOrderInstanceId: parseRecordId(item.workOrderRecordId).entityInstanceId,
           startTime: item.startTime,
           endTime: item.endTime,
-          assigneeUserId: item.assigneeUserId,
+          assigneeWorkerId: item.assigneeWorkerId,
         })),
         excludeSocketId: excludeSocketId(ctx),
       })
@@ -883,7 +925,7 @@ export const dispatchRouter = createTRPCRouter({
         changes: z.object({
           startMinute: z.number().int().min(0).max(1439).optional(),
           durationMinutes: z.number().int().min(1).optional(),
-          assigneeUserId: z.string().nullable().optional(),
+          assigneeWorkerId: z.string().nullable().optional(),
         }),
       })
     )
@@ -916,10 +958,10 @@ export const dispatchRouter = createTRPCRouter({
         template: {
           startMinute: input.changes.startMinute ?? rule.startMinute ?? 0,
           durationMinutes: input.changes.durationMinutes ?? rule.durationMinutes ?? 60,
-          defaultAssigneeUserId:
-            input.changes.assigneeUserId !== undefined
-              ? input.changes.assigneeUserId
-              : rule.defaultAssigneeUserId,
+          defaultAssigneeWorkerId:
+            input.changes.assigneeWorkerId !== undefined
+              ? input.changes.assigneeWorkerId
+              : rule.defaultAssigneeWorkerId,
         },
         timezone: rule.timezone,
         effectiveFrom,

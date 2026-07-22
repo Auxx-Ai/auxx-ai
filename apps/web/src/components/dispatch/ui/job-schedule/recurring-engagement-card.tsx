@@ -191,7 +191,7 @@ export function RecurringEngagementCard({
                 primaryVisit.startTime ? new Date(primaryVisit.startTime) : undefined
               }
               initialEndTime={primaryVisit.endTime ? new Date(primaryVisit.endTime) : undefined}
-              initialAssigneeUserId={primaryVisit.assigneeUserId}
+              initialAssigneeWorkerId={primaryVisit.assigneeWorkerId}
               existingVisits={existingVisits}
               workOrderRecordId={recordId}
               recurrenceRuleId={primaryVisit.recurrenceRuleId}

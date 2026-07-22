@@ -12,9 +12,9 @@ import {
   timestamp,
   uniqueIndex,
 } from './_shared'
+import { DispatchWorker } from './dispatch-worker'
 import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
-import { User } from './user'
 
 /**
  * A structured `RecurrencePattern` (frequency/interval/weekdays/monthDay/nthWeekday/until/count —
@@ -29,7 +29,7 @@ type RecurrenceRulePattern = Record<string, unknown>
  * `subjectType`/`subjectId` generalize the rule beyond dispatch visits — `'work_order_visits'`
  * is the first consumer, `'invoice_drafts'` (money MI2) reuses the same table with a second
  * `subjectType`. One rule per subject (unique below); the visit-template columns
- * (`startMinute`/`durationMinutes`/`defaultAssigneeUserId`) are nullable because non-visit
+ * (`startMinute`/`durationMinutes`/`defaultAssigneeWorkerId`) are nullable because non-visit
  * subjects don't need them.
  *
  * `effectiveFrom` is the three-way-edit anchor (06 §4.3): occurrences on/after this date follow
@@ -69,8 +69,10 @@ export const RecurrenceRule = pgTable(
     startMinute: integer(),
     /** Default visit duration in minutes; null for subject types without a visit template */
     durationMinutes: integer(),
-    /** null = unassigned rail; per-visit assignee override still possible after materialization */
-    defaultAssigneeUserId: text().references((): AnyPgColumn => User.id, {
+    /** null = unassigned rail; per-visit assignee override still possible after materialization.
+     * References the dispatchable worker row (individual or team), matching
+     * `WorkOrderVisit.assigneeWorkerId` (plans/dispatch/45-teams.md §5.7). */
+    defaultAssigneeWorkerId: text().references((): AnyPgColumn => DispatchWorker.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),

@@ -3,7 +3,7 @@
 'use client'
 
 import type { ActorId, ActorType } from '@auxx/types/actor'
-import { parseActorId } from '@auxx/types/actor'
+import { isWorkerActor, parseActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
@@ -21,14 +21,28 @@ import { useActor } from '~/components/resources/hooks/use-actor'
 export function ActorAvatar({
   type,
   avatarUrl,
+  isTeam,
   className,
 }: {
   type: ActorType
   avatarUrl?: string | null
+  /** For `type === 'worker'` only: renders the group-style glyph for a team worker. */
+  isTeam?: boolean
   /** Sizes the avatar box; the fallback glyph scales with it. Defaults to `size-4`. */
   className?: string
 }) {
-  const Glyph = type === 'system' ? Cog : type === 'group' ? Users : type === 'agent' ? Bot : User
+  const Glyph =
+    type === 'system'
+      ? Cog
+      : type === 'group'
+        ? Users
+        : type === 'agent'
+          ? Bot
+          : type === 'worker'
+            ? isTeam
+              ? Users
+              : User
+            : User
   return (
     <Avatar className={cn('size-4', className)} data-slot='actor-icon'>
       <AvatarImage src={avatarUrl ?? undefined} />
@@ -158,6 +172,12 @@ export function ActorBadge({
                   <Users data-slot='actor-fallback-icon' />
                 ) : type === 'agent' ? (
                   <Bot data-slot='actor-fallback-icon' />
+                ) : type === 'worker' ? (
+                  actor && isWorkerActor(actor) && actor.workerType === 'team' ? (
+                    <Users data-slot='actor-fallback-icon' />
+                  ) : (
+                    <User data-slot='actor-fallback-icon' />
+                  )
                 ) : (
                   <User data-slot='actor-fallback-icon' />
                 )}

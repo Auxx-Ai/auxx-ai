@@ -1,7 +1,6 @@
 // apps/web/src/components/dispatch/ui/job-schedule/visit-card.tsx
 'use client'
 
-import { toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -13,8 +12,9 @@ import { format } from 'date-fns'
 import { CalendarClock, RotateCcw, Send, TriangleAlert, User, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import type { RecordId } from '~/components/resources'
-import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
+import { api } from '~/trpc/react'
 import {
   VISIT_STATUS_FORWARD_ORDER,
   VISIT_STATUS_LABELS,
@@ -27,6 +27,8 @@ import {
   cancelVisitConfirmOptions,
   isVisitDispatchable,
   movedFromLabel,
+  workerAssigneeAvatarUrl,
+  workerAssigneeName,
 } from './job-schedule-utils'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
 import { VisitDateBlock } from './visit-date-block'
@@ -60,9 +62,14 @@ export function VisitCard({
   workOrderRecordId,
 }: VisitCardProps) {
   const [confirm, ConfirmDialog] = useConfirm()
-  const assigneeActorId = visit?.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
-  const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
-  const assignee = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
+  const workersQuery = api.dispatch.listWorkers.useQuery(undefined, {
+    staleTime: ORG_STATIC_STALE_TIME,
+  })
+  const assigneeWorker = workersQuery.data?.find((w) => w.id === visit?.assigneeWorkerId)
+  const assigneeName = workerAssigneeName(assigneeWorker)
+  const assignee = assigneeName
+    ? { name: assigneeName, avatarUrl: workerAssigneeAvatarUrl(assigneeWorker) }
+    : undefined
 
   if (!visit) {
     return <EmptySection icon={<CalendarClock className='size-5' />} title='No upcoming visits' />
@@ -166,7 +173,7 @@ export function VisitCard({
             {canDispatch && (
               <TreeRowButton
                 tooltipText={visit.dispatchedAt ? 'Re-dispatch' : 'Dispatch'}
-                disabled={mutations.dispatchVisit.isPending || !visit.assigneeUserId}
+                disabled={mutations.dispatchVisit.isPending || !visit.assigneeWorkerId}
                 onClick={handleDispatch}>
                 <Send />
               </TreeRowButton>
@@ -196,7 +203,7 @@ export function VisitCard({
               visitId={visit.id}
               initialStartTime={visit.startTime ? new Date(visit.startTime) : undefined}
               initialEndTime={visit.endTime ? new Date(visit.endTime) : undefined}
-              initialAssigneeUserId={visit.assigneeUserId}
+              initialAssigneeWorkerId={visit.assigneeWorkerId}
               existingVisits={existingVisits}
               workOrderRecordId={workOrderRecordId}
               recurrenceRuleId={visit.recurrenceRuleId}

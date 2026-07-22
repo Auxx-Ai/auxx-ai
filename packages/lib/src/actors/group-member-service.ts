@@ -173,6 +173,12 @@ export class GroupMemberService {
               if (agent?.userId) userIds.add(agent.userId)
             }
           }
+        } else if (type === 'worker') {
+          // Dispatch worker: an individual → its user, a team → its members' users
+          // (plans/dispatch/45-teams.md §5A). Lazy import to keep the actors↔dispatch edge one-way.
+          const { resolveWorkerUserIds } = await import('../dispatch/workers')
+          const workerUserIds = await resolveWorkerUserIds(this.organizationId, id)
+          for (const uid of workerUserIds) userIds.add(uid)
         }
       } catch {}
     }

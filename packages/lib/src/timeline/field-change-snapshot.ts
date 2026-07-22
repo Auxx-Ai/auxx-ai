@@ -93,12 +93,12 @@ export interface TimelineRelationshipSnapshot {
   entityType: string | null
 }
 
-/** ACTOR — user/group display label FROZEN at write time. */
+/** ACTOR — user/group/agent/worker display label FROZEN at write time. */
 export interface TimelineActorSnapshot {
   fieldType: 'ACTOR'
-  /** Pre-formatted ActorId (`user:<id>` / `group:<id>`). */
+  /** Pre-formatted ActorId (`user:<id>` / `group:<id>` / `agent:<id>` / `worker:<id>`). */
   actorId: ActorId
-  actorType: 'user' | 'group'
+  actorType: 'user' | 'group' | 'agent' | 'worker'
   /** Used as fallback when the actor can no longer be resolved client-side. */
   label: string
   /** Optional avatar reference at write time. */

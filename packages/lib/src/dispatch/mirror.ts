@@ -8,6 +8,7 @@
 
 import { database, schema } from '@auxx/database'
 import { extractValue } from '@auxx/types'
+import { toActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { and, asc, eq, gte, isNotNull, ne } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
@@ -64,9 +65,11 @@ async function resolveMirrorSourceVisit(
 /**
  * Mirror the visit-machinery source-of-truth fields onto the work order record (01 §3):
  * `startTime → work_order_scheduled_start`, `endTime → work_order_scheduled_end`,
- * `assigneeUserId → work_order_assignee`. `publishEvents: false` — this is a system mirror
- * of read-only fields (`work-order-fields.ts` marks them `creatable:false/updatable:false`),
- * not a user edit worth a timeline entry.
+ * `assigneeWorkerId → work_order_assignee` as a `worker:{workerId}` actor id — uniformly for
+ * both individuals and teams (45-teams.md §1.E/§1.H, §5.6); `useActor` resolves an individual to
+ * its user's identity/color, a team to its name + member avatar stack. `publishEvents: false` —
+ * this is a system mirror of read-only fields (`work-order-fields.ts` marks them
+ * `creatable:false/updatable:false`), not a user edit worth a timeline entry.
  */
 export async function mirrorVisitOntoWorkOrder(
   organizationId: string,
@@ -112,7 +115,7 @@ export async function mirrorVisitOntoWorkOrder(
   if (cf.work_order_assignee) {
     values.push({
       fieldId: cf.work_order_assignee.id,
-      value: source?.assigneeUserId ?? null,
+      value: source?.assigneeWorkerId ? toActorId('worker', source.assigneeWorkerId) : null,
     })
   }
   if (values.length === 0) return

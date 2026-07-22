@@ -28,7 +28,7 @@ export interface ExistingVisitForOverlap {
   label: string
   startTime: Date
   endTime: Date
-  assigneeUserId: string | null
+  assigneeWorkerId: string | null
 }
 
 export interface SchedulePopoverContentProps {
@@ -42,7 +42,7 @@ export interface SchedulePopoverContentProps {
   visitId?: string
   initialStartTime?: Date | null
   initialEndTime?: Date | null
-  initialAssigneeUserId?: string | null
+  initialAssigneeWorkerId?: string | null
   existingVisits?: ExistingVisitForOverlap[]
   onScheduled?: () => void
   onUnscheduled?: () => void
@@ -79,7 +79,7 @@ export function SchedulePopoverContent({
   visitId,
   initialStartTime,
   initialEndTime,
-  initialAssigneeUserId,
+  initialAssigneeWorkerId,
   existingVisits = [],
   onScheduled,
   onUnscheduled,
@@ -94,7 +94,9 @@ export function SchedulePopoverContent({
 
   // Staged values — track props initially, then the last committed values in scheduled mode so
   // later commits (e.g. an assignee change after a time change) compose off current state.
-  const [assigneeUserId, setAssigneeUserId] = useState<string | null>(initialAssigneeUserId ?? null)
+  const [assigneeWorkerId, setAssigneeWorkerId] = useState<string | null>(
+    initialAssigneeWorkerId ?? null
+  )
   const [startTime, setStartTime] = useState<Date | null>(initialStartTime ?? null)
   const [endTime, setEndTime] = useState<Date | null>(initialEndTime ?? null)
 
@@ -109,7 +111,13 @@ export function SchedulePopoverContent({
    * for a past pick is dishonest). Derived from the LIVE end time, not visit status (unavailable
    * here) — matches `isPastVisit`'s date-comparison half. */
   const isPast = Boolean(endTime && endTime.getTime() < Date.now())
-  const hints = useScheduleHints({ visitId, assigneeUserId, startTime, endTime, existingVisits })
+  const hints = useScheduleHints({
+    visitId,
+    assigneeWorkerId,
+    startTime,
+    endTime,
+    existingVisits,
+  })
 
   const scheduleVisit = api.dispatch.scheduleVisit.useMutation({
     onError: (error) => toastError({ title: 'Error scheduling visit', description: error.message }),
@@ -149,7 +157,7 @@ export function SchedulePopoverContent({
         visitId,
         startTime: change.start,
         endTime: change.end,
-        assigneeUserId,
+        assigneeWorkerId,
       })
       return
     }
@@ -163,25 +171,25 @@ export function SchedulePopoverContent({
     })
   }
 
-  const handleAssigneeChange = (userId: string | null, scope: SeriesScope) => {
-    setAssigneeUserId(userId)
+  const handleAssigneeChange = (workerId: string | null, scope: SeriesScope) => {
+    setAssigneeWorkerId(workerId)
     if (isDraft || !visitId) return
 
     if (scope === 'this') {
       // Times unchanged — only fire when the visit actually has times to schedule with.
       if (startTime && endTime) {
-        scheduleVisit.mutate({ visitId, startTime, endTime, assigneeUserId: userId })
+        scheduleVisit.mutate({ visitId, startTime, endTime, assigneeWorkerId: workerId })
       }
       return
     }
-    applyToSeries.mutate({ visitId, scope, changes: { assigneeUserId: userId } })
+    applyToSeries.mutate({ visitId, scope, changes: { assigneeWorkerId: workerId } })
   }
 
   /** Scheduled (non-draft) mode's cadence commit — fired by the Repeat editor's explicit Save
    * button; closing the page without saving discards instead (`resetToRule` below). */
   const commitRecurrence = () => {
     if (!editor.wantsRecurrenceWrite || !editor.patternValid || !startTime || !endTime) return
-    const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeUserId)
+    const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeWorkerId)
     if (!input) return
     setRecurrence.mutate(input)
     editor.markSaved()
@@ -200,11 +208,11 @@ export function SchedulePopoverContent({
     if (!visitId) {
       if (!workOrderRecordId) return
       addVisit.mutate(
-        { workOrderRecordId, startTime, endTime, assigneeUserId },
+        { workOrderRecordId, startTime, endTime, assigneeWorkerId },
         {
           onSuccess: () => {
             if (editor.wantsRecurrenceWrite) {
-              const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeUserId)
+              const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeWorkerId)
               if (input) {
                 setRecurrence.mutate(input)
                 return
@@ -218,13 +226,13 @@ export function SchedulePopoverContent({
     }
 
     if (editor.wantsRecurrenceWrite) {
-      const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeUserId)
+      const input = editor.buildSetRecurrenceInput(startTime, endTime, assigneeWorkerId)
       if (!input) return
       setRecurrence.mutate(input, { onSuccess: () => setScheduledYet(true) })
       return
     }
     scheduleVisit.mutate(
-      { visitId, startTime, endTime, assigneeUserId },
+      { visitId, startTime, endTime, assigneeWorkerId },
       { onSuccess: () => setScheduledYet(true) }
     )
   }
@@ -259,7 +267,7 @@ export function SchedulePopoverContent({
               }
         }
       />
-      <AssigneeRow value={assigneeUserId} onChange={handleAssigneeChange} />
+      <AssigneeRow value={assigneeWorkerId} onChange={handleAssigneeChange} />
       {workOrderRecordId && (
         <EventRepeatSection
           label={editor.repeatLabel}

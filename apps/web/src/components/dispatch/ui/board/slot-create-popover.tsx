@@ -14,6 +14,7 @@ import { type RecordId, useResource } from '~/components/resources'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import type { useBoardMutations } from './hooks/use-board-mutations'
 import { SlotCreateAssigneePicker } from './slot-create-assignee-picker'
+import type { BoardWorker } from './types'
 import { UNASSIGNED_RESOURCE_ID } from './types'
 
 /** The board's slot-create target (plan 44) — the create gesture's start/end/resource plus the
@@ -35,8 +36,10 @@ interface TimeAssigneeFieldsProps {
   onStartTimeChange: (date: Date) => void
   durationMinutes: number
   onDurationChange: (minutes: number) => void
-  assigneeUserId: string | null
-  onAssigneeChange: (userId: string | null) => void
+  /** Every active dispatch worker (individuals + teams) the picker below lists. */
+  workers: BoardWorker[]
+  assigneeWorkerId: string | null
+  onAssigneeChange: (workerId: string | null) => void
   disabled: boolean
 }
 
@@ -48,7 +51,8 @@ function TimeAssigneeFields({
   onStartTimeChange,
   durationMinutes,
   onDurationChange,
-  assigneeUserId,
+  workers,
+  assigneeWorkerId,
   onAssigneeChange,
   disabled,
 }: TimeAssigneeFieldsProps) {
@@ -77,7 +81,8 @@ function TimeAssigneeFields({
       </FieldPanelRow>
       <FieldPanelRow title='Assignee'>
         <SlotCreateAssigneePicker
-          value={assigneeUserId}
+          workers={workers}
+          value={assigneeWorkerId}
           onChange={onAssigneeChange}
           disabled={disabled}
         />
@@ -94,6 +99,9 @@ export interface SlotCreatePopoverProps {
    * temp row above has no real id to select yet). */
   onSelectionChange: (ids: string[]) => void
   mutations: Pick<ReturnType<typeof useBoardMutations>, 'createWorkOrder' | 'addVisit'>
+  /** Every active dispatch worker (individuals + teams) — threaded to the Assignee field's
+   * flat picker (`use-board-data.ts`'s `allWorkers`). */
+  workers: BoardWorker[]
 }
 
 /**
@@ -113,6 +121,7 @@ export function SlotCreatePopover({
   onOpenChange,
   onSelectionChange,
   mutations,
+  workers,
 }: SlotCreatePopoverProps) {
   const { resource: contactResource } = useResource('contacts')
   const { resource: workOrderResource } = useResource('work-orders')
@@ -123,7 +132,7 @@ export function SlotCreatePopover({
   const [title, setTitle] = useState('')
   const [startTime, setStartTime] = useState<Date>(() => target?.startTime ?? new Date())
   const [durationMinutes, setDurationMinutes] = useState(DEFAULT_DURATION_MINUTES)
-  const [assigneeUserId, setAssigneeUserId] = useState<string | null>(null)
+  const [assigneeWorkerId, setAssigneeWorkerId] = useState<string | null>(null)
 
   // Re-seed every time a NEW slot is clicked — never while already open for the current target
   // (the `PasteVisitsDialog` reset-on-target-change precedent). Assignee prefills from the
@@ -139,7 +148,7 @@ export function SlotCreatePopover({
     // Prefill the duration from the gesture's painted range (cmd+drag) — dblclick/menu targets
     // arrive as the 60m default anyway, so this is a no-op there.
     setDurationMinutes(Math.max(15, differenceInMinutes(target.endTime, target.startTime)))
-    setAssigneeUserId(
+    setAssigneeWorkerId(
       target.resourceId && target.resourceId !== UNASSIGNED_RESOURCE_ID ? target.resourceId : null
     )
   }, [target])
@@ -150,7 +159,13 @@ export function SlotCreatePopover({
     if (!contactRecordId) return
     const endTime = addMinutes(startTime, durationMinutes)
     mutations.createWorkOrder.mutate(
-      { contactRecordId, title: title.trim() || undefined, startTime, endTime, assigneeUserId },
+      {
+        contactRecordId,
+        title: title.trim() || undefined,
+        startTime,
+        endTime,
+        assigneeWorkerId,
+      },
       {
         onSuccess: (result) => {
           onSelectionChange([result.visitId])
@@ -164,7 +179,7 @@ export function SlotCreatePopover({
     if (!workOrderRecordId) return
     const endTime = addMinutes(startTime, durationMinutes)
     mutations.addVisit.mutate(
-      { workOrderRecordId, startTime, endTime, assigneeUserId },
+      { workOrderRecordId, startTime, endTime, assigneeWorkerId },
       {
         onSuccess: (visit) => {
           onSelectionChange([visit.id])
@@ -241,8 +256,9 @@ export function SlotCreatePopover({
                   onStartTimeChange={setStartTime}
                   durationMinutes={durationMinutes}
                   onDurationChange={setDurationMinutes}
-                  assigneeUserId={assigneeUserId}
-                  onAssigneeChange={setAssigneeUserId}
+                  workers={workers}
+                  assigneeWorkerId={assigneeWorkerId}
+                  onAssigneeChange={setAssigneeWorkerId}
                   disabled={isPending}
                 />
               </FieldPanel>
@@ -280,8 +296,9 @@ export function SlotCreatePopover({
                   onStartTimeChange={setStartTime}
                   durationMinutes={durationMinutes}
                   onDurationChange={setDurationMinutes}
-                  assigneeUserId={assigneeUserId}
-                  onAssigneeChange={setAssigneeUserId}
+                  workers={workers}
+                  assigneeWorkerId={assigneeWorkerId}
+                  onAssigneeChange={setAssigneeWorkerId}
                   disabled={isPending}
                 />
               </FieldPanel>

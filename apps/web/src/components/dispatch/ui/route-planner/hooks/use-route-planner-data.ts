@@ -65,11 +65,10 @@ export function useRoutePlannerData({
 
   // Only the visible (filtered) workers need a geometry query — matches the board's own
   // "filter narrows the rendered set, not the base query" convention (`use-board-data.ts`).
+  // Keyed by `worker.id` (the column identity) — teams have no `userId` to key by.
   const visibleWorkers = useMemo(
     () =>
-      filters.workerIds
-        ? board.workers.filter((w) => filters.workerIds!.has(w.userId))
-        : board.workers,
+      filters.workerIds ? board.workers.filter((w) => filters.workerIds!.has(w.id)) : board.workers,
     [board.workers, filters.workerIds]
   )
 
@@ -80,7 +79,7 @@ export function useRoutePlannerData({
             from: window.from,
             to: window.to,
             dateKey: window.dateKey,
-            assigneeUserId: w.userId,
+            assigneeWorkerId: w.id,
           })
         )
       : []
@@ -89,7 +88,7 @@ export function useRoutePlannerData({
   const geometryByWorker = useMemo(() => {
     const map: Record<string, RouteGeometry | undefined> = {}
     visibleWorkers.forEach((w, i) => {
-      map[w.userId] = geometryResults[i]?.data
+      map[w.id] = geometryResults[i]?.data
     })
     return map
   }, [visibleWorkers, geometryResults])

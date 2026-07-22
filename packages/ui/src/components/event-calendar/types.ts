@@ -22,7 +22,7 @@ export interface EventColorClasses {
 
 /**
  * Base event shape the calendar renders. Consumers extend this with their own
- * fields (e.g. a dispatch visit's `workOrderId`/`assigneeUserId`) via the `T`
+ * fields (e.g. a dispatch visit's `workOrderId`/`assigneeWorkerId`) via the `T`
  * generic on `EventCalendar`/`CalendarDndProvider` and the view components.
  *
  * Named `EventCalendarItem` (not `CalendarEvent`) to avoid colliding with the

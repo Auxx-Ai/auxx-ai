@@ -7,25 +7,24 @@ import type { SeriesScope } from '@auxx/ui/components/event-calendar'
 import { EventPeopleSection, useSeriesScope } from '@auxx/ui/components/event-calendar'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { useActors } from '~/components/resources/hooks/use-actor'
-import { useWorkerActorExcludes } from './use-worker-actor-excludes'
 
 export interface AssigneeRowProps {
+  /** The assigned `DispatchWorker.id` (individual or team), or `null` when unassigned. */
   value: string | null
-  onChange: (userId: string | null, scope: SeriesScope) => void
+  onChange: (workerId: string | null, scope: SeriesScope) => void
   disabled?: boolean
 }
 
 /**
- * Shared assignee row (decision #11) — an `EventPeopleSection` whose nested picker popover is a
- * worker-filtered `ActorPickerContent` (`useWorkerActorExcludes`). Selecting a worker gates the
- * commit through `useSeriesScope()` so series membership is handled identically to every other
- * committing section in the base. Used by both the board visit popover and the converged
- * schedule popover (schedule-popover.tsx:242-244, 357-368, 417-431).
+ * Shared assignee row (decision #11) — an `EventPeopleSection` whose nested picker popover is an
+ * `ActorPickerContent` scoped to the `worker` actor kind (45-teams.md §5A), so individuals and
+ * teams list together and selection yields a `DispatchWorker.id`. Selecting gates the commit
+ * through `useSeriesScope()` so series membership is handled identically to every other committing
+ * section in the base. Used by both the board visit popover and the converged schedule popover.
  */
 export function AssigneeRow({ value, onChange, disabled }: AssigneeRowProps) {
   const { gate } = useSeriesScope()
-  const excludeIds = useWorkerActorExcludes()
-  const assigneeActorId = value ? toActorId('user', value) : null
+  const assigneeActorId = value ? toActorId('worker', value) : null
   const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
   const assigneeActor = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
 
@@ -40,14 +39,13 @@ export function AssigneeRow({ value, onChange, disabled }: AssigneeRowProps) {
         <ActorPickerContent
           value={assigneeActorId ? [assigneeActorId] : []}
           onChange={() => {}}
-          target='user'
+          target='worker'
           multi={false}
-          excludeIds={excludeIds}
           onSelectSingle={(actorId) => {
             gate((scope) => onChange(getActorRawId(actorId), scope))
             close()
           }}
-          placeholder='Search workers...'
+          placeholder='Search workers…'
         />
       )}
     />

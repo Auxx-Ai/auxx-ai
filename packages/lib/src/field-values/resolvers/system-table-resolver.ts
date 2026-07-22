@@ -286,7 +286,11 @@ function resolveActorValue(
   field: SystemFieldDescriptor,
   value: unknown
 ): TypedFieldValue | null {
-  const actorTarget = ((field.fieldOptions as any)?.actor?.target ?? 'user') as 'user' | 'group'
+  const actorTarget = ((field.fieldOptions as any)?.actor?.target ?? 'user') as
+    | 'user'
+    | 'group'
+    | 'agent'
+    | 'worker'
   const id = String(value)
 
   return {

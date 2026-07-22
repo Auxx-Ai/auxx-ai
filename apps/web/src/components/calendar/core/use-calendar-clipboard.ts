@@ -36,7 +36,7 @@ export interface ClipboardVisitEvent {
   title: string
   start: Date
   end: Date
-  assigneeUserId: string | null
+  assigneeWorkerId: string | null
 }
 
 export interface UseCalendarClipboardOptions<E extends ClipboardVisitEvent> {
@@ -91,7 +91,7 @@ export function useCalendarClipboard<E extends ClipboardVisitEvent>({
         title: e.title,
         start: e.start,
         end: e.end,
-        assigneeUserId: e.assigneeUserId,
+        assigneeWorkerId: e.assigneeWorkerId,
       }))
       copyToClipboard(items)
     },

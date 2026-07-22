@@ -443,7 +443,7 @@ export async function setInvoiceSchedule(
           effectiveFrom: todayIso,
           startMinute: null,
           durationMinutes: null,
-          defaultAssigneeUserId: null,
+          defaultAssigneeWorkerId: null,
         })
         .returning()
   if (!rule) throw new Error('Failed to upsert invoice schedule rule')

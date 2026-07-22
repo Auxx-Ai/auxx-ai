@@ -23,7 +23,8 @@ interface UseBoardBulkActionsArgs {
  * Cancel IS the delete semantics on the board (visits cancel, never hard-delete — 37c §5.2).
  */
 export interface BoardBulkActions {
-  assign: (ids: string[], assigneeUserId: string | null) => void
+  /** `assigneeWorkerId` is a `DispatchWorker.id` (individual or team) — never a `User.id`. */
+  assign: (ids: string[], assigneeWorkerId: string | null) => void
   dispatch: (ids: string[]) => void
   moveToBacklog: (ids: string[]) => void
   cancel: (ids: string[]) => void
@@ -37,8 +38,8 @@ export function useBoardBulkActions({
   const { run } = bulkRunner
 
   const assign = useCallback(
-    (ids: string[], assigneeUserId: string | null) => {
-      void run(ids, (visitId) => mutations.assignVisit.mutateAsync({ visitId, assigneeUserId }), {
+    (ids: string[], assigneeWorkerId: string | null) => {
+      void run(ids, (visitId) => mutations.assignVisit.mutateAsync({ visitId, assigneeWorkerId }), {
         failureTitle: 'Some visits could not be assigned',
         failureNoun: 'visits',
       })

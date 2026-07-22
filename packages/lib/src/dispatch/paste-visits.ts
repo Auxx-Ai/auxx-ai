@@ -15,13 +15,13 @@ const logger = createScopedLogger('dispatch:paste-visits')
 
 /** One pasted visit — a target work order + the slot it lands on (§4.2 offset math already
  * applied client-side) + assignee intent (§4.3: omit to leave the fresh row unassigned,
- * `null` to explicitly clear, a userId to retarget). */
+ * `null` to explicitly clear, a workerId to retarget). */
 export interface PasteVisitItem {
   /** EntityInstance id of the work order (not the RecordId). */
   workOrderInstanceId: string
   startTime: Date
   endTime: Date
-  assigneeUserId?: string | null
+  assigneeWorkerId?: string | null
 }
 
 /** Input for {@link pasteVisits}. */
@@ -75,7 +75,7 @@ export async function pasteVisits(input: PasteVisitsInput): Promise<PasteVisitsR
         workOrderInstanceId: item.workOrderInstanceId,
         startTime: item.startTime,
         endTime: item.endTime,
-        assigneeUserId: item.assigneeUserId,
+        assigneeWorkerId: item.assigneeWorkerId,
         excludeSocketId,
       })
       created.push(visit)

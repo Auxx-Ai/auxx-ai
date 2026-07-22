@@ -22,6 +22,7 @@ import {
 import { NotFoundError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { listVisitQcItems } from '../qc'
+import { getDispatchWorker } from '../workers'
 
 /** A photo reference on the visit report — `"asset:<id>"`, resolved to bytes by `./render.ts`. */
 export interface VisitReportPhoto {
@@ -73,7 +74,9 @@ function firstTyped(
 /**
  * Build the visit-report payload for one `WorkOrderVisit` — mirrors `getMyVisitDetail`'s
  * work-order/contact reads (`my-schedule.ts`) and reuses `listVisitQcItems` for the checklist.
- * Assignee + per-item checker display names are resolved in one batched `User` read.
+ * The assignee label resolves off the `DispatchWorker` row (individual → its user's name, team
+ * → its own `name`, 45-teams.md §5.7); per-item checker display names resolve in the same
+ * batched `User` read.
  *
  * @throws {NotFoundError} when the visit doesn't exist in this org.
  */
@@ -141,9 +144,16 @@ export async function buildVisitReportPayload(params: {
 
   const contact = await loadPdfContact(cache, handler, organizationId, contactRecordId)
 
-  // Resolve assignee + per-item checker display names in one read.
+  // Resolve the assignee worker (individual → its user's name; team → its own `name`) + the
+  // per-item checker display names in one batched `User` read (45-teams.md §5.7).
+  const assigneeWorker = visit.assigneeWorkerId
+    ? await getDispatchWorker(organizationId, visit.assigneeWorkerId)
+    : null
+
   const userIds = new Set<string>()
-  if (visit.assigneeUserId) userIds.add(visit.assigneeUserId)
+  if (assigneeWorker?.type === 'individual' && assigneeWorker.userId) {
+    userIds.add(assigneeWorker.userId)
+  }
   for (const item of qc.items) if (item.checkedByUserId) userIds.add(item.checkedByUserId)
   const nameById = new Map<string, string>()
   if (userIds.size > 0) {
@@ -153,6 +163,13 @@ export async function buildVisitReportPayload(params: {
     })
     for (const u of users) nameById.set(u.id, u.name ?? '')
   }
+
+  const assigneeName =
+    assigneeWorker?.type === 'team'
+      ? assigneeWorker.name
+      : assigneeWorker?.userId
+        ? (nameById.get(assigneeWorker.userId) ?? null)
+        : null
 
   const items: VisitReportChecklistItem[] = qc.items.map((item) => ({
     title: item.title,
@@ -176,7 +193,7 @@ export async function buildVisitReportPayload(params: {
     startTime: visit.startTime ? visit.startTime.toISOString() : null,
     endTime: visit.endTime ? visit.endTime.toISOString() : null,
     status: visit.status,
-    assigneeName: visit.assigneeUserId ? nameById.get(visit.assigneeUserId) || null : null,
+    assigneeName,
     workOrderTitle: instance?.displayName ?? null,
     workOrderNumber,
     instructions,

@@ -99,7 +99,12 @@ export function DispatchBoard() {
   // same value for the month-anchor reducer) and reused here for the toolbar/grid/sidebar.
   const weekStartsOn = data.weekStartsOn
 
-  const workerUserIds = useMemo(() => data.workers.map((w) => w.userId), [data.workers])
+  // Availability is a per-PERSON concept (a schedule belongs to a `User`, not a board column) —
+  // team rows have no `userId` and are excluded here, not remapped to `worker.id`.
+  const workerUserIds = useMemo(
+    () => data.workers.flatMap((w) => (w.userId ? [w.userId] : [])),
+    [data.workers]
+  )
   const { backgroundEvents, isNonWorkingDay } = useAvailabilityShading({
     view: data.view,
     range: data.range,
@@ -226,7 +231,7 @@ export function DispatchBoard() {
         label: e.workOrder?.number ?? e.title,
         startTime: e.start,
         endTime: e.end,
-        assigneeUserId: e.assigneeUserId,
+        assigneeWorkerId: e.assigneeWorkerId,
       })),
     [data.allEvents]
   )
@@ -242,7 +247,7 @@ export function DispatchBoard() {
       // Month drops commit too (37c §6 revised M2a's display-only month): the dnd layer builds
       // `newStart` from the target day with the visit's original time-of-day and duration
       // preserved, and month cells carry no `resourceId`, so the assignee stays untouched.
-      const assigneeUserId =
+      const assigneeWorkerId =
         resourceId !== undefined
           ? resourceId === UNASSIGNED_RESOURCE_ID
             ? null
@@ -252,7 +257,7 @@ export function DispatchBoard() {
         visitId: event.id,
         startTime: newStart,
         endTime: newEnd,
-        assigneeUserId,
+        assigneeWorkerId,
       })
 
       // Group drag-move (plan 37c §6) — `groupIds` (from the generic layer's selection-aware
@@ -271,7 +276,7 @@ export function DispatchBoard() {
           newStart,
           groupIds,
           eventsById,
-          rowChanged ? assigneeUserId : undefined
+          rowChanged ? assigneeWorkerId : undefined
         )
         if (updates.length > 0) {
           const updatesByVisitId = new Map(updates.map((u) => [u.visitId, u]))
@@ -283,7 +288,7 @@ export function DispatchBoard() {
                 visitId,
                 startTime: update.startTime,
                 endTime: update.endTime,
-                assigneeUserId: update.assigneeUserId,
+                assigneeWorkerId: update.assigneeWorkerId,
               })
             },
             {
@@ -303,7 +308,7 @@ export function DispatchBoard() {
         visitId: event.id,
         startTime: newStart,
         endTime: newEnd,
-        assigneeUserId: event.assigneeUserId,
+        assigneeWorkerId: event.assigneeWorkerId,
       })
     },
     [mutations.scheduleVisit]
@@ -345,7 +350,7 @@ export function DispatchBoard() {
       const minutes = Math.round((overData.time - hours) * 60)
       startTime.setHours(hours, minutes, 0, 0)
       const endTime = addMinutes(startTime, 60)
-      const assigneeUserId =
+      const assigneeWorkerId =
         overData.resourceId !== undefined && overData.resourceId !== UNASSIGNED_RESOURCE_ID
           ? overData.resourceId
           : null
@@ -354,7 +359,7 @@ export function DispatchBoard() {
         visitId: activeData.visitId,
         startTime,
         endTime,
-        assigneeUserId,
+        assigneeWorkerId,
       })
     },
     [mutations.scheduleVisit, mutations.unscheduleVisit]
@@ -408,7 +413,7 @@ export function DispatchBoard() {
                 visibleRange={data.range}
                 weekStartsOn={weekStartsOn}
                 allWorkers={data.allWorkers}
-                colorByUserId={data.colorByUserId}
+                colorByWorkerId={data.colorByWorkerId}
                 backlogEvents={data.backlogEvents}
                 plannerBoard={planner.board}
                 plannerFilters={planner.filters}
@@ -442,7 +447,7 @@ export function DispatchBoard() {
                 view={data.view}
                 weekStartsOn={weekStartsOn}
                 allWorkers={data.allWorkers}
-                colorByUserId={data.colorByUserId}
+                colorByWorkerId={data.colorByWorkerId}
                 backlogEvents={data.backlogEvents}
                 onSelectVisit={handleSelectVisit}
               />
@@ -463,6 +468,7 @@ export function DispatchBoard() {
                 view={data.view}
                 weekStartsOn={weekStartsOn}
                 resources={data.resources}
+                workers={data.allWorkers}
                 backgroundEvents={backgroundEvents}
                 events={data.events}
                 overlappingIds={overlappingIds}
@@ -507,6 +513,7 @@ export function DispatchBoard() {
           bulkRunner={bulkRunner}
           bulkActions={bulkActions}
           onClearSelection={clearSelection}
+          workers={data.allWorkers}
         />
       )}
       {overlays}

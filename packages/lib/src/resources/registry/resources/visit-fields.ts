@@ -85,10 +85,10 @@ export const VISIT_FIELDS: Record<string, ResourceField> = {
     label: 'Assignee',
     type: BaseType.ACTOR,
     fieldType: FieldType.ACTOR,
-    dbColumn: 'assigneeUserId',
+    dbColumn: 'assigneeWorkerId',
     nullable: true,
     dynamicOptionsKey: 'teamMembers',
-    options: { actor: { target: 'user', multiple: false } },
+    options: { actor: { target: 'worker', multiple: false } },
     capabilities: {
       filterable: false,
       sortable: false,

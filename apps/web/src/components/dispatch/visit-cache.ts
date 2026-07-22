@@ -220,19 +220,23 @@ export interface MyVisitsPatchResult {
 }
 
 /** Decide + apply one cached `myVisits` window's patch. Rows are implicitly scoped to the
- * viewer server-side (no `assigneeUserId` field on the row itself) — a visit stays present only
- * while it's BOTH assigned to `viewerUserId` AND scheduled inside `window`; anything else
- * (reassigned away, unscheduled, dragged out of range) removes it. `status` never gates removal
- * on its own — `listMyVisits` keeps canceled rows visible (no status filter server-side). */
+ * viewer server-side (no `assigneeWorkerId` field on the row itself) — a visit stays present only
+ * while it's BOTH assigned to one of the viewer's worker rows (their own individual worker OR a
+ * team they belong to — `viewerWorkerIds`, mirroring `resolveUserWorkerIds` server-side) AND
+ * scheduled inside `window`; anything else (reassigned away, unscheduled, dragged out of range)
+ * removes it. `status` never gates removal on its own — `listMyVisits` keeps canceled rows
+ * visible (no status filter server-side). */
 export function applyMyVisitsPatch(
   rows: readonly MyVisitRow[],
   visit: BoardVisit,
-  viewerUserId: string,
+  viewerWorkerIds: readonly string[],
   window: VisitWindow
 ): MyVisitsPatchResult {
   const idx = rows.findIndex((r) => r.id === visit.id)
   const shouldBePresent =
-    visit.assigneeUserId === viewerUserId && isScheduledWithinWindow(visit.startTime, window)
+    !!visit.assigneeWorkerId &&
+    viewerWorkerIds.includes(visit.assigneeWorkerId) &&
+    isScheduledWithinWindow(visit.startTime, window)
 
   if (!shouldBePresent) {
     return {
@@ -266,13 +270,15 @@ export function applyMyVisitsPatch(
  * `WorkOrderVisit` row the mutation returned (SuperJSON — dates already real `Date` objects, no
  * rewrap needed). `workOrderStatus` is present whenever the mutation's roll-up ran server-side
  * (absent for `assignVisit`, which has no roll-up rule of its own — see
- * `apps/web/src/server/api/routers/dispatch.ts`'s `withWorkOrderStatus`). `viewerUserId` gates
+ * `apps/web/src/server/api/routers/dispatch.ts`'s `withWorkOrderStatus`). `viewerWorkerIds` gates
  * the `myVisits` patch only — omit it to skip that cache entirely (a call site that hasn't
- * threaded the signed-in user's id through). */
+ * threaded the signed-in user's worker ids through). */
 export interface VisitCachePatch {
   visit: BoardVisit
   workOrderStatus?: string
-  viewerUserId?: string
+  /** The viewer's worker ids (own individual worker + teams they belong to) — see
+   * `useViewerWorkerIds`. Gates the `myVisits` optimistic patch. */
+  viewerWorkerIds?: readonly string[]
   /** Slot-create's optimistic placeholder cleanup (`addVisit`/`createWorkOrder` — `use-board-
    * mutations.ts`): `onMutate` there inserts a client-generated temp row (`generateId`) before
    * the server assigns real ids. Pass its id here so the `getBoard` patch removes the
@@ -319,7 +325,8 @@ function listVisitsInput(
  */
 export function applyVisitToCaches(ctx: ApplyVisitToCachesCtx, patch: VisitCachePatch): void {
   const { utils, queryClient } = ctx
-  const { visit, workOrderStatus, viewerUserId, removeStaleVisitId, removeStaleWorkOrderId } = patch
+  const { visit, workOrderStatus, viewerWorkerIds, removeStaleVisitId, removeStaleWorkOrderId } =
+    patch
 
   const boardKey = getQueryKey(api.dispatch.getBoard, undefined, 'query')
   for (const query of queryClient.getQueryCache().findAll({ queryKey: boardKey })) {
@@ -351,13 +358,13 @@ export function applyVisitToCaches(ctx: ApplyVisitToCachesCtx, patch: VisitCache
     queryClient.setQueryData(query.queryKey, mergeJobVisits(old, visit))
   }
 
-  if (viewerUserId) {
+  if (viewerWorkerIds && viewerWorkerIds.length > 0) {
     const myVisitsKey = getQueryKey(api.dispatch.myVisits, undefined, 'query')
     for (const query of queryClient.getQueryCache().findAll({ queryKey: myVisitsKey })) {
       const window = windowInput(query.queryKey)
       const old = query.state.data as MyVisitRow[] | undefined
       if (!window || !old) continue
-      const { rows, needsInvalidate } = applyMyVisitsPatch(old, visit, viewerUserId, window)
+      const { rows, needsInvalidate } = applyMyVisitsPatch(old, visit, viewerWorkerIds, window)
       queryClient.setQueryData(query.queryKey, rows)
       if (needsInvalidate) void utils.dispatch.myVisits.invalidate(window)
     }

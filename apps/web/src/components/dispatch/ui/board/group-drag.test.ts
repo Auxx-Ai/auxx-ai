@@ -11,7 +11,7 @@ function visit(overrides: Partial<DispatchVisitEvent> & { id: string }): Dispatc
     start: overrides.start ?? new Date(2024, 0, 1, 9, 0),
     end: overrides.end ?? new Date(2024, 0, 1, 10, 0),
     workOrderId: overrides.workOrderId ?? 'wo-1',
-    assigneeUserId: overrides.assigneeUserId ?? null,
+    assigneeWorkerId: overrides.assigneeWorkerId ?? null,
     resourceId: overrides.resourceId ?? 'worker-a',
     status: overrides.status ?? 'scheduled',
     dispatchedAt: overrides.dispatchedAt ?? null,
@@ -66,9 +66,9 @@ describe('computeGroupDragUpdates', () => {
     expect(u2.endTime).toEqual(new Date(2024, 0, 4, 16, 0))
   })
 
-  it('omits assigneeUserId (untouched) when the caller passes undefined — no row change', () => {
+  it('omits assigneeWorkerId (untouched) when the caller passes undefined — no row change', () => {
     const dragged = visit({ id: 'dragged' })
-    const other = visit({ id: 'other', assigneeUserId: 'worker-b', resourceId: 'worker-b' })
+    const other = visit({ id: 'other', assigneeWorkerId: 'worker-b', resourceId: 'worker-b' })
     const eventsById = new Map([
       [dragged.id, dragged],
       [other.id, other],
@@ -84,8 +84,8 @@ describe('computeGroupDragUpdates', () => {
     )
 
     expect(updates).toHaveLength(1)
-    expect(updates[0]!.assigneeUserId).toBeUndefined()
-    expect('assigneeUserId' in updates[0]!).toBe(true)
+    expect(updates[0]!.assigneeWorkerId).toBeUndefined()
+    expect('assigneeWorkerId' in updates[0]!).toBe(true)
   })
 
   it('carries the resolved worker (including null for unassigned) to every other visit when the row changed', () => {
@@ -105,7 +105,7 @@ describe('computeGroupDragUpdates', () => {
       null // dropped on the Unassigned column
     )
 
-    expect(updates[0]!.assigneeUserId).toBeNull()
+    expect(updates[0]!.assigneeWorkerId).toBeNull()
   })
 
   it('skips a selected id that has fallen out of the fetched events window', () => {

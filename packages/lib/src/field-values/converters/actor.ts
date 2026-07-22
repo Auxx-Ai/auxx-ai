@@ -13,10 +13,11 @@ import type { FieldOptions, FieldValueConverter } from './index'
 /**
  * Converter for ACTOR field type.
  *
- * ACTOR fields reference a user, group, or agent.
- * - 'user'  → stores User.id in `actorId`.
- * - 'agent' → stores Agent.id in `actorId` + marker `'agent'` in `relatedEntityDefinitionId`.
- * - 'group' → stores in `relatedEntityId` / `relatedEntityDefinitionId`.
+ * ACTOR fields reference a user, group, agent, or worker.
+ * - 'user'   → stores User.id in `actorId`.
+ * - 'agent'  → stores Agent.id in `actorId` + marker `'agent'` in `relatedEntityDefinitionId`.
+ * - 'group'  → stores in `relatedEntityId` / `relatedEntityDefinitionId`.
+ * - 'worker' → stores DispatchWorker.id in `actorId` (dispatch individual or team).
  */
 export const actorConverter: FieldValueConverter = {
   /**
@@ -51,7 +52,12 @@ export const actorConverter: FieldValueConverter = {
       const obj = value as Record<string, unknown>
 
       // Check for actorType or type property
-      const actorType = (obj.actorType ?? obj.type) as 'user' | 'group' | 'agent' | undefined
+      const actorType = (obj.actorType ?? obj.type) as
+        | 'user'
+        | 'group'
+        | 'agent'
+        | 'worker'
+        | undefined
       const id = obj.id as string | undefined
 
       if (id) {
@@ -110,13 +116,13 @@ export const actorConverter: FieldValueConverter = {
     if (typeof value === 'object' && value !== null) {
       const obj = value as Record<string, unknown>
       if ('actorType' in obj && 'id' in obj) {
-        const actorType = obj.actorType as 'user' | 'group' | 'agent'
+        const actorType = obj.actorType as 'user' | 'group' | 'agent' | 'worker'
         const id = obj.id as string
         const actorId = obj.actorId ?? toActorId(actorType, id)
         return { actorType, id, actorId }
       }
       if ('type' in obj && 'id' in obj) {
-        const actorType = obj.type as 'user' | 'group' | 'agent'
+        const actorType = obj.type as 'user' | 'group' | 'agent' | 'worker'
         const id = obj.id as string
         const actorId = obj.actorId ?? toActorId(actorType, id)
         return { actorType, id, actorId }

@@ -1,15 +1,15 @@
 // apps/web/src/components/dispatch/ui/job-schedule/schedule-visit-row.tsx
 'use client'
 
-import { toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { CalendarClock, Repeat, RotateCcw, XCircle } from 'lucide-react'
 import { getInitials } from '~/components/groups/utils/group-utils'
 import type { RecordId } from '~/components/resources'
-import { useActors } from '~/components/resources/hooks/use-actor'
 import { useConfirm } from '~/hooks/use-confirm'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
+import { api } from '~/trpc/react'
 import { visitStatusLabel } from '../board/types'
 import { type ExistingVisitForOverlap, SchedulePopover } from '../schedule-popover'
 import {
@@ -18,6 +18,8 @@ import {
   movedFromLabel,
   restoreSeriesBoundaryConfirmOptions,
   VISIT_STATUS_BADGE_VARIANT,
+  workerAssigneeAvatarUrl,
+  workerAssigneeName,
 } from './job-schedule-utils'
 import { useSeriesRule } from './series-end'
 import type { JobVisit, UseJobVisitsResult } from './use-job-visits'
@@ -56,9 +58,14 @@ export function ScheduleVisitRow({
   depth,
 }: ScheduleVisitRowProps) {
   const [confirm, ConfirmDialog] = useConfirm()
-  const assigneeActorId = visit.assigneeUserId ? toActorId('user', visit.assigneeUserId) : null
-  const hydratedAssignee = useActors(assigneeActorId ? [assigneeActorId] : [])
-  const assignee = assigneeActorId ? hydratedAssignee.get(assigneeActorId) : undefined
+  const workersQuery = api.dispatch.listWorkers.useQuery(undefined, {
+    staleTime: ORG_STATIC_STALE_TIME,
+  })
+  const assigneeWorker = workersQuery.data?.find((w) => w.id === visit.assigneeWorkerId)
+  const assigneeName = workerAssigneeName(assigneeWorker)
+  const assignee = assigneeName
+    ? { name: assigneeName, avatarUrl: workerAssigneeAvatarUrl(assigneeWorker) }
+    : undefined
 
   const isSeries = Boolean(visit.recurrenceRuleId)
   const canCancel = visit.status !== 'canceled' && visit.status !== 'done'
@@ -141,7 +148,7 @@ export function ScheduleVisitRow({
                 visitId={visit.id}
                 initialStartTime={visit.startTime ? new Date(visit.startTime) : undefined}
                 initialEndTime={visit.endTime ? new Date(visit.endTime) : undefined}
-                initialAssigneeUserId={visit.assigneeUserId}
+                initialAssigneeWorkerId={visit.assigneeWorkerId}
                 existingVisits={existingVisits}
                 workOrderRecordId={workOrderRecordId}
                 recurrenceRuleId={visit.recurrenceRuleId}
