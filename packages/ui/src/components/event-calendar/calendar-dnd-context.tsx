@@ -256,7 +256,15 @@ export function CalendarDndProvider<T extends EventCalendarItem = EventCalendarI
         const durationMinutes = differenceInMinutes(originalEnd, originalStart)
         const newEnd = addMinutes(newStart, durationMinutes)
 
-        if (newStart.getTime() !== originalStart.getTime()) {
+        // Commit when EITHER the start time OR the resource column changed. In resource/day/timeline
+        // views (one row per assignee), dropping a chip onto a different worker at the SAME time
+        // slot is a pure reassignment — `newStart` is unchanged, so a time-only guard swallowed it
+        // silently. Every column always reports a `resourceId` (even the source's own), so the
+        // undefined check just skips views with no resource lane (plain week/month).
+        const resourceChanged =
+          overData.resourceId !== undefined && overData.resourceId !== calendarEvent.resourceId
+
+        if (newStart.getTime() !== originalStart.getTime() || resourceChanged) {
           onEventDrop?.(
             calendarEvent,
             newStart,

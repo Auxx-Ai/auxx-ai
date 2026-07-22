@@ -249,72 +249,74 @@ export function SchedulePopoverContent({
         hideAll: isPast,
       }}
       className={className}>
-      <EventDateTimeSection
-        start={startTime}
-        end={endTime}
-        warnings={hints}
-        renderTimeEditor={(props) => <InlineEventTimePicker {...props} />}
-        onChange={handleDateTimeChange}
-        // Plan 30 §D.1 — series visits never go back to the backlog (server rejects it too);
-        // the clear-date toggle is a series visit's disguised unschedule affordance, so hide it
-        // once `recurrenceRuleId` is set. Reschedule (this same card's date/time picker) and
-        // Skip (Status card, elsewhere) are the only exception verbs.
-        onDateToggle={
-          isDraft || recurrenceRuleId || !visitId
-            ? undefined
-            : (enabled) => {
-                if (!enabled) unscheduleVisit.mutate({ visitId })
-              }
-        }
-      />
-      <AssigneeRow value={assigneeWorkerId} onChange={handleAssigneeChange} />
-      {workOrderRecordId && (
-        <EventRepeatSection
-          label={editor.repeatLabel}
-          detail={
-            // Plan 30 §F.4 — a rule-less visit on an already-recurring work order can't pick up
-            // a cadence of its own (one rule per job); the hint explains why the row is locked.
-            editor.repeatLocked
-              ? 'This job already repeats — this is an extra visit.'
-              : editor.repeatMode === 'custom'
-                ? (editor.recurrenceSummary ?? undefined)
-                : undefined
+      <div className='space-y-2'>
+        <EventDateTimeSection
+          start={startTime}
+          end={endTime}
+          warnings={hints}
+          renderTimeEditor={(props) => <InlineEventTimePicker {...props} />}
+          onChange={handleDateTimeChange}
+          // Plan 30 §D.1 — series visits never go back to the backlog (server rejects it too);
+          // the clear-date toggle is a series visit's disguised unschedule affordance, so hide it
+          // once `recurrenceRuleId` is set. Reschedule (this same card's date/time picker) and
+          // Skip (Status card, elsewhere) are the only exception verbs.
+          onDateToggle={
+            isDraft || recurrenceRuleId || !visitId
+              ? undefined
+              : (enabled) => {
+                  if (!enabled) unscheduleVisit.mutate({ visitId })
+                }
           }
-          disabled={editor.repeatLocked}
-          renderEditor={(close) => (
-            <RepeatEditor
-              editor={editor}
-              // Draft mode has no Save — the staged Repeat commits with the Schedule button.
-              saving={setRecurrence.isPending}
-              onSave={
-                isDraft
-                  ? undefined
-                  : () => {
-                      commitRecurrence()
-                      close()
-                    }
-              }
-            />
-          )}
-          onOpenChange={(open) => {
-            // Non-draft close-without-save = discard (Save cleared `repeatsTouched` already);
-            // draft mode keeps its staged edits for the Schedule commit.
-            if (!open && !isDraft && editor.repeatsTouched) editor.resetToRule()
-          }}
         />
-      )}
-      {isDraft && (
-        <EventPopoverFooter>
-          <Button
-            size='sm'
-            className='w-full'
-            loading={scheduleVisit.isPending || addVisit.isPending || setRecurrence.isPending}
-            disabled={!canSave}
-            onClick={handleSchedule}>
-            Schedule
-          </Button>
-        </EventPopoverFooter>
-      )}
+        <AssigneeRow value={assigneeWorkerId} onChange={handleAssigneeChange} />
+        {workOrderRecordId && (
+          <EventRepeatSection
+            label={editor.repeatLabel}
+            detail={
+              // Plan 30 §F.4 — a rule-less visit on an already-recurring work order can't pick up
+              // a cadence of its own (one rule per job); the hint explains why the row is locked.
+              editor.repeatLocked
+                ? 'This job already repeats — this is an extra visit.'
+                : editor.repeatMode === 'custom'
+                  ? (editor.recurrenceSummary ?? undefined)
+                  : undefined
+            }
+            disabled={editor.repeatLocked}
+            renderEditor={(close) => (
+              <RepeatEditor
+                editor={editor}
+                // Draft mode has no Save — the staged Repeat commits with the Schedule button.
+                saving={setRecurrence.isPending}
+                onSave={
+                  isDraft
+                    ? undefined
+                    : () => {
+                        commitRecurrence()
+                        close()
+                      }
+                }
+              />
+            )}
+            onOpenChange={(open) => {
+              // Non-draft close-without-save = discard (Save cleared `repeatsTouched` already);
+              // draft mode keeps its staged edits for the Schedule commit.
+              if (!open && !isDraft && editor.repeatsTouched) editor.resetToRule()
+            }}
+          />
+        )}
+        {isDraft && (
+          <EventPopoverFooter>
+            <Button
+              size='sm'
+              className='w-full'
+              loading={scheduleVisit.isPending || addVisit.isPending || setRecurrence.isPending}
+              disabled={!canSave}
+              onClick={handleSchedule}>
+              Schedule
+            </Button>
+          </EventPopoverFooter>
+        )}
+      </div>
     </EventPopoverBody>
   )
 }

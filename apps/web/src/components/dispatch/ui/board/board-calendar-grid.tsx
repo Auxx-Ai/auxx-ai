@@ -413,6 +413,10 @@ export function BoardCalendarGrid({
     } else {
       startTime.setHours(DefaultStartHour, 0, 0, 0)
     }
+    // The popover survives the context menu's close-time focus churn via `onFocusOutside`
+    // preventDefault in `SlotCreatePopover` (Radix restores focus to <body> a tick after the menu
+    // unmounts, which would otherwise instantly dismiss the freshly-opened popover), so this can
+    // open synchronously.
     setSlotClickTarget({
       startTime,
       endTime: addMinutes(startTime, 60),

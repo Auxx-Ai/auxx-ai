@@ -37,12 +37,22 @@ export function useAvailabilityShading({
   view,
   range,
   fetchWindow: fetchWindowRange,
-  workerUserIds,
+  workers,
 }: {
   view: BoardViewMode
   range: DateRange
   fetchWindow: DateRange
-  workerUserIds: string[]
+  /**
+   * Worker column id ↔ user id. Availability is per-PERSON (a schedule belongs to a `User`), so we
+   * fetch it by `userId`; but the emitted background band must carry the WORKER id, because that's
+   * the resource-column id chips and shading are matched on (`use-board-data.ts` keys columns by
+   * `worker.id`). Keying the band by `userId` — as this once did — meant it never matched any
+   * column, so worker rows silently showed no off-hours shading (only Unassigned, keyed by the
+   * literal `UNASSIGNED_RESOURCE_ID`, lined up). Team rows have `userId: null` — there is no
+   * per-team schedule model, so they fall back to the ORG hours (same source as Unassigned)
+   * instead of reading as available 24/7.
+   */
+  workers: Array<{ id: string; userId: string | null }>
 }): {
   backgroundEvents: BackgroundEvent[]
   isNonWorkingDay: (date: Date) => boolean
@@ -81,15 +91,18 @@ export function useAvailabilityShading({
       { key: ORG_KEY, subject: { type: 'organization' } },
     ]
     if (view === 'day' || view === 'timeline') {
-      for (const userId of workerUserIds) {
+      for (const worker of workers) {
+        // Teams (`userId: null`) have no personal schedule — they reuse the always-present ORG
+        // subject, so nothing extra to fetch for them here.
+        if (!worker.userId) continue
         list.push({
-          key: workerKey(userId),
-          subject: { type: 'worker', userId },
+          key: workerKey(worker.userId),
+          subject: { type: 'worker', userId: worker.userId },
         })
       }
     }
     return list
-  }, [view, workerUserIds])
+  }, [view, workers])
 
   useResolvedDaysForSubjects(
     subjectList.map(({ subject }) => subject),
@@ -111,9 +124,12 @@ export function useAvailabilityShading({
 
   const backgroundEvents = useMemo(() => {
     if (view === 'day' || view === 'timeline') {
-      const events = workerUserIds.flatMap((userId) =>
-        visibleDays(workerKey(userId)).flatMap((day) =>
-          offHoursBackgroundEvents(new Date(`${day.date}T00:00:00`), day.ranges, userId)
+      // Band carries the WORKER id (the resource-column id), while availability is looked up by the
+      // worker's `userId` — see the `workers` prop doc for why the two must not be conflated. Teams
+      // (`userId: null`) read the ORG schedule so their row shades to org hours instead of 24/7.
+      const events = workers.flatMap((worker) =>
+        visibleDays(worker.userId ? workerKey(worker.userId) : ORG_KEY).flatMap((day) =>
+          offHoursBackgroundEvents(new Date(`${day.date}T00:00:00`), day.ranges, worker.id)
         )
       )
       const unassigned = visibleDays(ORG_KEY).flatMap((day) =>
@@ -131,7 +147,7 @@ export function useAvailabilityShading({
       )
     }
     return []
-  }, [view, workerUserIds, visibleDays])
+  }, [view, workers, visibleDays])
 
   // Non-working-day tint (month view): a resolved day wins (exception-aware); otherwise fall back to
   // the weekly baseline so weekends paint from the get-go. `getDay()` is 0=Sun, matching the server.
