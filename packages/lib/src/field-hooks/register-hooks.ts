@@ -36,6 +36,7 @@ import {
 } from '../money/totals-hooks'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import {
+  enqueueQuickbooksInvoiceSyncOnSent,
   enrollInvoiceReminderOnSent,
   enrollJobFollowUpOnCompletion,
   reanchorInvoiceOnDueDateChange,
@@ -145,10 +146,15 @@ export function registerAllHooks(): void {
   // payment-deletion paid→sent reversal does NOT re-enroll, decision #12), and re-anchor any
   // parked reminder wait when `invoice_due_date` changes (`reanchorInvoiceOnDueDateChange` —
   // required, not just an accelerator: it's the only path that can move an already-parked wait).
+  //
+  // QuickBooks invoice sync (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3):
+  // `enqueueQuickbooksInvoiceSyncOnSent` rides the same draft→sent door, enqueuing the mirror
+  // job (gated by `quickbooks.syncInvoices`) rather than syncing inline.
   registerEntityFieldChangeHooks('invoices', [
     recomputeOnInvoiceBillingChange,
     enrollInvoiceReminderOnSent,
     reanchorInvoiceOnDueDateChange,
+    enqueueQuickbooksInvoiceSyncOnSent,
     syncBillingOnInvoiceChange,
   ])
 

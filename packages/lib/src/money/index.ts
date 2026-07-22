@@ -132,6 +132,11 @@ export {
   resolveInvoiceByPublicToken,
 } from './public-token'
 export {
+  type SyncInvoiceResult,
+  type SyncInvoiceToQuickbooksInput,
+  syncInvoiceToQuickbooks,
+} from './quickbooks/sync-invoice'
+export {
   type AcceptQuoteByTokenInput,
   type AcceptQuoteByTokenResult,
   acceptQuoteByToken,

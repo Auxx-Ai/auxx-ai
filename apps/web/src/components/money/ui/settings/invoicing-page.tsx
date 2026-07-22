@@ -9,6 +9,7 @@ import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
+import { QuickbooksSettingsSection } from '~/components/money/ui/settings/quickbooks-section'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
@@ -62,6 +63,8 @@ const DRAFT_KEYS = [
   'documents.invoice.lineDisplay',
   'documents.invoice.showDescriptions',
   'documents.invoice.showPaymentHistory',
+  'quickbooks.syncInvoices',
+  'quickbooks.defaultIncomeAccountId',
 ] as const
 
 function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[] }) {
@@ -163,6 +166,11 @@ function InvoicingSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }
             />
           </FieldPanel>
         </SettingsSection>
+
+        <QuickbooksSettingsSection
+          syncInvoices={controlled('quickbooks.syncInvoices')}
+          defaultIncomeAccountId={controlled('quickbooks.defaultIncomeAccountId')}
+        />
 
         <FormSaveBar
           dirty={dirty}

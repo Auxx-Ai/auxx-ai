@@ -118,7 +118,7 @@ export default function SettingsPage({
         </header>
       )}
 
-      <div className='sticky top-0 z-10 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
+      <div className='sticky top-0 z-21 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
         <div
           className={cn(
             'flex flex-col sm:flex-row sm:items-center gap-2 bg-muted/50 px-5 py-3 pe-2 sm:pe-5',

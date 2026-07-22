@@ -65,6 +65,8 @@ export type EntityRefKind =
   | 'user'
   | 'article'
   | 'thread'
+  | 'invoice'
+  | 'catalog_item'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.
