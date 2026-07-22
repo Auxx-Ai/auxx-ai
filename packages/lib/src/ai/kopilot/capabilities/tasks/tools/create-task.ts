@@ -172,6 +172,10 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
       ]
       const linkedRecordIds = args.linkedRecordIds as string[] | undefined
 
+      // Bundle-approval replay (Today/AI suggestions) tags 'ai'; every other
+      // caller (live Kopilot chat, headless capture-mode prediction) is 'kopilot'.
+      const source = agentDeps.runOrigin === 'approval-bundle' ? 'ai' : 'kopilot'
+
       const taskService = createTaskService(db)
       const task = await taskService.createTask(
         {
@@ -181,6 +185,7 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
           priority,
           assigneeActorIds: assigneeIds,
           referencedEntities: linkedRecordIds,
+          source,
         },
         agentDeps.organizationId,
         agentDeps.userId

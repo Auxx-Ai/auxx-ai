@@ -3,7 +3,7 @@
 'use client'
 
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { TaskPriority, TaskWithRelations } from '@auxx/lib/tasks'
+import type { TaskPriority, TaskSource, TaskWithRelations } from '@auxx/lib/tasks'
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
 import { useCallback, useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
@@ -27,6 +27,8 @@ interface UseTasksOptions {
   includeCompleted?: boolean
   /** Include archived tasks */
   includeArchived?: boolean
+  /** Restrict to tasks created via these sources (e.g. the "Follow-ups" chip maps to rule/ai) */
+  sources?: TaskSource[]
   /** Items per page */
   limit?: number
   /** Disable fetching */
@@ -69,6 +71,7 @@ export function useTasks({
   sort = DEFAULT_SORT,
   includeCompleted = false,
   includeArchived = false,
+  sources,
   limit = 50,
   enabled = true,
 }: UseTasksOptions = {}): UseTasksResult {
@@ -84,9 +87,10 @@ export function useTasks({
       search,
       includeCompleted,
       includeArchived,
+      sources,
       limit,
     }),
-    [recordId, assigneeIds, priority, search, includeCompleted, includeArchived, limit]
+    [recordId, assigneeIds, priority, search, includeCompleted, includeArchived, sources, limit]
   )
 
   // Fetch tasks using query (not infinite for now - keeping it simple)

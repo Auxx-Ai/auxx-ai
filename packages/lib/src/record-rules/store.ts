@@ -4,7 +4,10 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, desc, eq } from 'drizzle-orm'
+import { collectConditionFieldIds } from '../conditions/collect-field-ids'
+import type { ConditionGroup } from '../conditions/types'
 import { BadRequestError, NotFoundError } from '../errors'
+import { isSignalKind, isSignalPseudoFieldId } from '../signals/client'
 import type {
   CachedRecordRule,
   RecordRuleAction,
@@ -18,6 +21,8 @@ export interface RecordRuleInput {
   fieldId: string | null
   name: string
   on: RecordRuleOn
+  /** The watched signal kind, e.g. `'email:opened'`. Required ⇔ `on === 'signal'`. */
+  signalKind?: string | null
   condition: unknown[]
   actions: RecordRuleAction[]
   enabled?: boolean
@@ -27,29 +32,67 @@ export interface RecordRuleInput {
 
 /**
  * Validate a user/DB rule's shape before it is persisted (the tRPC create/update path).
- * Invariant: fieldId IS NULL ⇔ on ∈ ('created','deleted'). `native` actions are allowed
- * ONLY on MANAGED rows (`managed != null`) — those are provisioned by a feature flow, never
- * from user input; user rules can neither declare native actions nor mix them with others.
- * The tRPC `actionSchema` has no native variant, keeping the public router doubly-safe.
+ * Invariants:
+ * - fieldId IS NULL ⇔ on ∈ ('created','deleted','signal').
+ * - on = 'signal' ⇔ signalKind NOT NULL (and a recognized `SignalKind`) AND fieldId IS NULL.
+ * - `native` actions are allowed ONLY on MANAGED rows (`managed != null`) — those are
+ *   provisioned by a feature flow, never from user input; user rules can neither declare
+ *   native actions nor mix them with others. The tRPC `actionSchema` has no native variant,
+ *   keeping the public router doubly-safe.
+ * - Conditions referencing a `signal:*` pseudo-field (decision 6) are rejected on any rule
+ *   that isn't `on === 'signal'` (decision 15) — they'd resolve `undefined` there, silently
+ *   making "is empty" match and firing unexpectedly.
  */
 export function assertRuleShape(
-  input: Pick<RecordRuleInput, 'fieldId' | 'on' | 'actions'> & { managed?: 'inventory' | null }
+  input: Pick<RecordRuleInput, 'fieldId' | 'on' | 'actions' | 'signalKind'> & {
+    managed?: 'inventory' | null
+    /** Optional here (some server-only callers, e.g. `createManagedRecordRule`, omit it). */
+    condition?: RecordRuleInput['condition']
+  }
 ): void {
+  const isSignal = input.on === 'signal'
   const isLifecycle = LIFECYCLE_TRANSITIONS.includes(input.on)
-  if (isLifecycle && input.fieldId) {
-    throw new BadRequestError(`A '${input.on}' rule must not have a fieldId`)
+
+  if (isSignal) {
+    if (input.fieldId) {
+      throw new BadRequestError("A 'signal' rule must not have a fieldId")
+    }
+    if (!input.signalKind) {
+      throw new BadRequestError("A 'signal' rule requires a signalKind")
+    }
+    if (!isSignalKind(input.signalKind)) {
+      throw new BadRequestError(`Unknown signal kind '${input.signalKind}'`)
+    }
+  } else {
+    if (input.signalKind) {
+      throw new BadRequestError("signalKind is only valid on a 'signal' rule")
+    }
+    if (isLifecycle && input.fieldId) {
+      throw new BadRequestError(`A '${input.on}' rule must not have a fieldId`)
+    }
+    if (!isLifecycle && !input.fieldId) {
+      throw new BadRequestError(`A '${input.on}' rule requires a fieldId`)
+    }
+    if (!FIELD_TRANSITIONS.includes(input.on) && !isLifecycle) {
+      throw new BadRequestError(`Unknown transition '${input.on}'`)
+    }
   }
-  if (!isLifecycle && !input.fieldId) {
-    throw new BadRequestError(`A '${input.on}' rule requires a fieldId`)
-  }
-  if (!FIELD_TRANSITIONS.includes(input.on) && !isLifecycle) {
-    throw new BadRequestError(`Unknown transition '${input.on}'`)
-  }
+
   if (!Array.isArray(input.actions) || input.actions.length === 0) {
     throw new BadRequestError('A rule needs at least one action')
   }
   if (hasNativeAction(input.actions) && !input.managed) {
     throw new BadRequestError('Native actions are server-declared only')
+  }
+
+  if (!isSignal && input.condition && input.condition.length > 0) {
+    const { fieldRefs } = collectConditionFieldIds(input.condition as ConditionGroup[])
+    const staleRef = fieldRefs.find((ref) => isSignalPseudoFieldId(ref))
+    if (staleRef) {
+      throw new BadRequestError(
+        `Condition references signal field '${staleRef}' on a non-signal rule`
+      )
+    }
   }
 }
 
@@ -88,6 +131,7 @@ export async function createRecordRule(
       fieldId: input.fieldId,
       name: input.name,
       on: input.on,
+      signalKind: input.signalKind ?? null,
       condition: input.condition,
       actions: input.actions,
       enabled: input.enabled ?? true,
@@ -158,6 +202,8 @@ export async function updateRecordRule(
   const next = {
     fieldId: input.fieldId !== undefined ? input.fieldId : existing.fieldId,
     on: input.on ?? (existing.on as RecordRuleOn),
+    signalKind: input.signalKind !== undefined ? input.signalKind : existing.signalKind,
+    condition: (input.condition ?? existing.condition) as unknown[],
     actions: (input.actions ?? existing.actions) as RecordRuleAction[],
     // Managed rows carry native actions; preserve the marker so re-validation (e.g. a
     // `setEnabled`-only update) doesn't reject their existing native actions.
@@ -174,6 +220,7 @@ export async function updateRecordRule(
       ...(input.fieldId !== undefined && { fieldId: input.fieldId }),
       ...(input.name !== undefined && { name: input.name }),
       ...(input.on !== undefined && { on: input.on }),
+      ...(input.signalKind !== undefined && { signalKind: input.signalKind }),
       ...(input.condition !== undefined && { condition: input.condition }),
       ...(input.actions !== undefined && { actions: input.actions }),
       ...(input.enabled !== undefined && { enabled: input.enabled }),
@@ -250,6 +297,7 @@ export function dehydrateRecordRule(row: {
   fieldId: string | null
   name: string
   on: string
+  signalKind?: string | null
   condition: unknown
   actions: unknown
   enabled: boolean
@@ -262,6 +310,7 @@ export function dehydrateRecordRule(row: {
     fieldId: row.fieldId,
     name: row.name,
     on: row.on as RecordRuleOn,
+    signalKind: row.signalKind ?? null,
     condition: Array.isArray(row.condition) ? (row.condition as CachedRecordRule['condition']) : [],
     actions: Array.isArray(row.actions) ? (row.actions as RecordRuleAction[]) : [],
     enabled: row.enabled,

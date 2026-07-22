@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/task.ts
 
-import { createTaskService, type TaskPriority } from '@auxx/lib/tasks'
+import { createTaskService, type TaskPriority, type TaskSource } from '@auxx/lib/tasks'
 import { type ActorId, isActorId } from '@auxx/types/actor'
 import { recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
@@ -37,6 +37,16 @@ const absoluteDateSchema = z.object({
 const prioritySchema = z.enum(['low', 'medium', 'high'])
 
 /**
+ * Task provenance values (see TaskSource)
+ */
+const sourceSchema = z.enum(['manual', 'rule', 'ai', 'kopilot'])
+
+/**
+ * Auto-complete condition values
+ */
+const autoCompleteOnSchema = z.literal('contact_reply')
+
+/**
  * Task router for CRUD operations on tasks
  */
 export const taskRouter = createTRPCRouter({
@@ -52,6 +62,9 @@ export const taskRouter = createTRPCRouter({
         priority: prioritySchema.optional(),
         assigneeActorIds: z.array(actorIdSchema).optional(),
         referencedEntities: z.array(recordIdSchema).optional(),
+        // Decision 13 — a task created with a contact reference can opt into
+        // auto-complete-on-reply at create time. `source` stays server-assigned ('manual').
+        autoCompleteOn: autoCompleteOnSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -113,6 +126,9 @@ export const taskRouter = createTRPCRouter({
         // Relations
         assigneeActorIds: z.array(actorIdSchema).optional(),
         referencedEntities: z.array(recordIdSchema).optional(),
+        // Snooze + auto-complete (decision 10, 13)
+        snoozedUntil: z.iso.datetime().optional().nullable(),
+        autoCompleteOn: autoCompleteOnSchema.optional().nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -130,6 +146,13 @@ export const taskRouter = createTRPCRouter({
           archivedAt: input.archivedAt,
           assigneeActorIds: input.assigneeActorIds,
           referencedEntities: input.referencedEntities,
+          snoozedUntil:
+            input.snoozedUntil !== undefined
+              ? input.snoozedUntil === null
+                ? null
+                : new Date(input.snoozedUntil)
+              : undefined,
+          autoCompleteOn: input.autoCompleteOn,
         },
         organizationId,
         userId
@@ -166,6 +189,8 @@ export const taskRouter = createTRPCRouter({
         deadlineTo: z.date().optional(),
         cursor: z.string().optional(),
         limit: z.number().min(1).max(100).default(50),
+        sources: z.array(sourceSchema).optional(),
+        includeSnoozed: z.boolean().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -186,6 +211,8 @@ export const taskRouter = createTRPCRouter({
         deadlineTo: input.deadlineTo,
         cursor: input.cursor,
         limit: input.limit,
+        sources: input.sources as TaskSource[] | undefined,
+        includeSnoozed: input.includeSnoozed,
       })
     }),
 

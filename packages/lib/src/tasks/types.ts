@@ -1,6 +1,6 @@
 // packages/lib/src/tasks/types.ts
 
-import type { TaskEntity, TaskReferenceEntity } from '@auxx/database'
+import type { TaskEntity, TaskReferenceEntity, TaskSource } from '@auxx/database'
 import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
 import type { Deadline } from '@auxx/types/task'
@@ -30,6 +30,16 @@ export interface CreateTaskInput {
   /** Actor IDs to assign (e.g., "user:abc123") */
   assigneeActorIds?: ActorId[]
   referencedEntities?: EntityReference[]
+  /** Provenance of this task. Defaults to 'manual' when omitted. */
+  source?: TaskSource
+  /** The RecordRule that created this task, when `source = 'rule'`. */
+  sourceRuleId?: string
+  /** The EntitySignal that triggered this task's creation, when applicable. */
+  sourceSignalId?: string
+  /** Auto-complete condition: a `message:replied` signal for the referenced contact. */
+  autoCompleteOn?: 'contact_reply'
+  /** When set (and in the future), excludes the task from default open lists. */
+  snoozedUntil?: Date
 }
 
 /**
@@ -71,6 +81,11 @@ export interface UpdateTaskInput {
   /** Actor IDs to assign (e.g., "user:abc123") */
   assigneeActorIds?: ActorId[]
   referencedEntities?: EntityReference[]
+
+  /** When set (and in the future), excludes the task from default open lists. Null clears it. */
+  snoozedUntil?: Date | null
+  /** Auto-complete condition. Null clears it. */
+  autoCompleteOn?: 'contact_reply' | null
 }
 
 /**
@@ -105,6 +120,10 @@ export interface TaskFilterOptions {
   deadlineTo?: Date
   cursor?: string
   limit?: number
+  /** Restrict results to tasks created via these sources. */
+  sources?: TaskSource[]
+  /** Include snoozed tasks (default false — snoozed tasks are excluded from open lists). */
+  includeSnoozed?: boolean
 }
 
 /**

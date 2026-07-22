@@ -4,6 +4,7 @@
 
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { ActorId } from '@auxx/types/actor'
+import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { ParsedText } from '~/components/editor/parsed-text'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
@@ -14,8 +15,9 @@ import {
   useTaskEffectiveCompletedAt,
   useTaskHasPendingCompletion,
 } from '../hooks/use-task-effective-state'
-import { formatTaskDeadline } from '../utils/group-tasks-by-period'
+import { formatTaskDeadline, formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 import { TaskCheckbox } from './task-checkbox'
+import { TaskOriginBadge } from './task-origin-badge'
 
 /**
  * Props for TaskItem component
@@ -51,6 +53,10 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
 
   const hasReferences = showEntityReferences && task.references && task.references.length > 0
   const hasAssignments = task.assignments && task.assignments.length > 0
+  const hasOrigin = task.source !== 'manual'
+  const isSnoozedIntoFuture =
+    !!task.snoozedUntil && new Date(task.snoozedUntil).getTime() > Date.now()
+  const hasPriorBadges = hasReferences || hasAssignments
 
   return (
     <div
@@ -113,6 +119,22 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
                   renderItem={(actorId) => <ActorBadge actorId={actorId as ActorId} size='sm' />}
                   maxDisplay={2}
                 />
+              )}
+
+              {hasPriorBadges && hasOrigin && (
+                <span className='inline-flex align-middle mx-1 h-4 w-px bg-border' />
+              )}
+
+              {hasOrigin && <TaskOriginBadge task={task} className='ms-1' />}
+
+              {(hasPriorBadges || hasOrigin) && isSnoozedIntoFuture && (
+                <span className='inline-flex align-middle mx-1 h-4 w-px bg-border' />
+              )}
+
+              {isSnoozedIntoFuture && (
+                <Badge variant='secondary' size='sm' className='ms-1 align-middle'>
+                  Snoozed until {formatTaskDeadlineDisplay(new Date(task.snoozedUntil as Date))}
+                </Badge>
               )}
             </div>
           </div>

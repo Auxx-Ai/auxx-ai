@@ -4,7 +4,7 @@
 // the org regardless of which sequence originally triggered it.
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, ilike, lt } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, lt } from 'drizzle-orm'
 
 export type SequenceSuppressionRow = typeof schema.SequenceSuppression.$inferSelect
 
@@ -27,6 +27,36 @@ export async function isSuppressed(
     columns: { id: true },
   })
   return !!row
+}
+
+/** One suppressed address from a batched lookup — email is normalized. */
+export interface SuppressedEmail {
+  email: string
+  reason: 'unsubscribe' | 'manual' | 'bounce'
+}
+
+/**
+ * Batched suppression lookup — returns only the suppressed subset of `emails` with reasons.
+ * The composer warning banner's one debounced query (follow-ups plan decision 9).
+ */
+export async function listSuppressedEmails(
+  db: Database,
+  organizationId: string,
+  emails: string[]
+): Promise<SuppressedEmail[]> {
+  const normalized = [...new Set(emails.map(normalizeEmail).filter(Boolean))]
+  if (normalized.length === 0) return []
+  const rows = await db.query.SequenceSuppression.findMany({
+    where: and(
+      eq(schema.SequenceSuppression.organizationId, organizationId),
+      inArray(schema.SequenceSuppression.email, normalized)
+    ),
+    columns: { email: true, reason: true },
+  })
+  return rows.map((row) => ({
+    email: row.email,
+    reason: row.reason as SuppressedEmail['reason'],
+  }))
 }
 
 export interface ListSuppressionsInput {

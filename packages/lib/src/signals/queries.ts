@@ -314,6 +314,34 @@ export async function listSignals(
 }
 
 /**
+ * One `EntitySignal` by id, org-scoped — the task origin line's "which signal created this
+ * follow-up" lookup (plans/signals/06-follow-ups-build.md Step 7). Returns `null` when the
+ * row was pruned by retention; callers degrade to rule-name-only copy.
+ */
+export async function getSignalById(
+  db: Database = database,
+  organizationId: string,
+  signalId: string
+): Promise<TypedResult<SignalWithLinks | null, Error>> {
+  try {
+    const [row] = await db
+      .select()
+      .from(schema.EntitySignal)
+      .where(
+        and(
+          eq(schema.EntitySignal.organizationId, organizationId),
+          eq(schema.EntitySignal.id, signalId)
+        )
+      )
+      .limit(1)
+
+    return Result.ok(row ? toSignalWithLinks(row, []) : null)
+  } catch (error) {
+    return Result.error(error instanceof Error ? error : new Error('getSignalById failed'))
+  }
+}
+
+/**
  * Single indexed read on the unique `(organizationId, entityInstanceId)` — the header
  * chips/digest renderer/suppression-check surface reads this instead of scanning `EntitySignal`
  * (plans/signals/01-signal-store.md "Rollups"). Returns `null` when no signal has ever been

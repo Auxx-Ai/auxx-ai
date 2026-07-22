@@ -93,12 +93,14 @@ export { enrollSubjectInSequence } from './subject-enroll'
 export type {
   ListSuppressionsInput,
   SequenceSuppressionRow,
+  SuppressedEmail,
   UpsertSuppressionInput,
 } from './suppression'
 // Suppression
 export {
   deleteSuppression,
   isSuppressed,
+  listSuppressedEmails,
   listSuppressions,
   normalizeEmail,
   upsertSuppression,

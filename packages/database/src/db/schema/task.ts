@@ -7,6 +7,13 @@ import { Organization } from './organization'
 import { User } from './user'
 
 /**
+ * Provenance of a task: who/what created it.
+ * `manual` = created directly by a user; `rule` = a record-rule create-task action;
+ * `ai` = the Today/approvals AI bundle path; `kopilot` = the Kopilot chat create_task tool.
+ */
+export type TaskSource = 'manual' | 'rule' | 'ai' | 'kopilot'
+
+/**
  * Task table for storing organization tasks with metadata
  * Tasks can be linked to multiple entity instances via TaskReference
  * Tasks can be assigned to multiple users via TaskAssignment
@@ -63,6 +70,30 @@ export const Task = pgTable(
     /** Priority level: low, medium, high, or null */
     priority: text(),
 
+    /** Provenance: who/what created this task (see TaskSource). Defaults to 'manual'. */
+    source: text().$type<TaskSource>().default('manual').notNull(),
+
+    /**
+     * The RecordRule that created this task, when `source = 'rule'`. Plain text on
+     * purpose (no FK): mirrors `RecordRuleRun.ruleId` — rules can be deleted while their
+     * tasks live on.
+     */
+    sourceRuleId: text(),
+
+    /**
+     * The EntitySignal that triggered this task's creation, when applicable. Plain text
+     * on purpose (no FK): signals prune at 180d and tasks must outlive them.
+     */
+    sourceSignalId: text(),
+
+    /**
+     * Auto-complete condition. `'contact_reply'` = a `message:replied` signal for the
+     * task's referenced contact completes it automatically (see decision 3: rendering is
+     * derived from `autoCompleteOn != null && completedAt != null && completedById IS NULL`,
+     * not a separate column).
+     */
+    autoCompleteOn: text().$type<'contact_reply' | null>(),
+
     /** Archived timestamp for soft delete (null = active) */
     archivedAt: timestamp({ precision: 3 }),
 
@@ -71,6 +102,12 @@ export const Task = pgTable(
      * Used to make the scanner idempotent — set once, never fired again.
      */
     firedAt: timestamp({ precision: 3 }),
+
+    /**
+     * When set (and in the future), the task is excluded from default open lists and
+     * deadline-scanner firing (decision 10). Null = not snoozed.
+     */
+    snoozedUntil: timestamp({ precision: 3 }),
 
     /** Combined searchable text from title + description (for full-text search) */
     searchText: text().notNull(),
@@ -133,6 +170,15 @@ export const Task = pgTable(
       .using('btree', table.deadline.asc().nullsLast())
       .where(sql`"firedAt" IS NULL AND "completedAt" IS NULL AND "archivedAt" IS NULL`),
 
+    // Rule-dedupe check-then-insert read path (decision 7): matches open/recently-completed
+    // tasks by rule + reference. Plain (non-partial) so the completion-cooldown read
+    // (completedAt within 7d) is covered by the same index, not just the open-task case.
+    index('Task_organizationId_sourceRuleId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.sourceRuleId.asc().nullsLast()
+    ),
+
     // Note: Full-text search GIN index should be added via raw SQL migration:
     // CREATE INDEX Task_searchText_gin ON "Task" USING GIN(to_tsvector('english', "searchText"))
   ]
@@ -140,3 +186,6 @@ export const Task = pgTable(
 
 /** Type for inserting into Task table */
 export type TaskInsert = typeof Task.$inferInsert
+
+/** Selected Task entity type */
+export type TaskEntity = typeof Task.$inferSelect

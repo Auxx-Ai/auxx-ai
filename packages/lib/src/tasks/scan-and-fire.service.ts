@@ -2,7 +2,7 @@
 
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull, lte } from 'drizzle-orm'
+import { and, eq, isNull, lte, or } from 'drizzle-orm'
 import { NotificationService } from '../notifications'
 
 type DbOrTx = Database | Transaction
@@ -58,7 +58,8 @@ export async function scanAndFireTaskDeadlines(
         isNull(schema.Task.firedAt),
         isNull(schema.Task.completedAt),
         isNull(schema.Task.archivedAt),
-        lte(schema.Task.deadline, now)
+        lte(schema.Task.deadline, now),
+        or(isNull(schema.Task.snoozedUntil), lte(schema.Task.snoozedUntil, now))!
       )
     )
     .limit(SCAN_BATCH_SIZE)

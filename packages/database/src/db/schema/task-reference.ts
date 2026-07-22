@@ -113,3 +113,6 @@ export const TaskReference = pgTable(
 
 /** Type for inserting into TaskReference table */
 export type TaskReferenceInsert = typeof TaskReference.$inferInsert
+
+/** Selected TaskReference entity type */
+export type TaskReferenceEntity = typeof TaskReference.$inferSelect

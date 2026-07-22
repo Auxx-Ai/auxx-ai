@@ -5,10 +5,12 @@ import { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import type { AuxxEvent, IEventsHandlers } from '../types'
+import { autoCompleteTasks } from './auto-complete-tasks'
 import { createAuditLog } from './create-audit-log'
 import { createTimelineEvent } from './create-timeline-event'
 import { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
 import { handleRecordRules } from './handle-record-rules'
+import { handleSignalRecordRules } from './handle-signal-record-rules'
 import { handleSyncRecordRules } from './handle-sync-record-rules'
 import { ingestBounceMessage } from './ingest-bounce-message'
 import { projectSignalToTimeline } from './project-signal-to-timeline'
@@ -113,7 +115,9 @@ export const EventHandlers: IEventsHandlers = {
   'entity:deleted': [createTimelineEvent, triggerResourceDispatch, handleRecordRules],
   'entity:field:updated': [createTimelineEvent],
 
-  'signal:recorded': [projectSignalToTimeline],
+  // Signal door (record rules) + auto-complete-on-reply, appended alongside the
+  // timeline projection (plans/signals/06-follow-ups-build.md Steps 3 + 5).
+  'signal:recorded': [projectSignalToTimeline, handleSignalRecordRules, autoCompleteTasks],
 
   // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation) + WORKFLOWS
   'stock_movement:created': [triggerResourceDispatch, handleRecordRules],

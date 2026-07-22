@@ -337,6 +337,9 @@ export const notificationType = pgEnum('NotificationType', [
   'VISIT_RESCHEDULED',
   'VISIT_CANCELED',
   'VISIT_REASSIGNED',
+  // Follow-ups Phase 4 (plans/signals/06-follow-ups-build.md, decision 1/12): a task with
+  // autoCompleteOn dissolved by a contact reply.
+  'TASK_AUTO_COMPLETED',
 ])
 export const orderAddressType = pgEnum('ORDER_ADDRESS_TYPE', ['SHIPPING', 'BILLING'])
 export const orderCancelReason = pgEnum('ORDER_CANCEL_REASON', [

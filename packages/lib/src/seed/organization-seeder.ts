@@ -12,6 +12,7 @@ import { SystemModelService } from '../ai/providers/system-model-service'
 import { DEFAULT_QUOTA_LIMITS, ModelType, ProviderQuotaType } from '../ai/providers/types'
 import { InboxService } from '../inboxes'
 import { KBService } from '../kb'
+import { seedSuggestedRecordRules } from '../record-rules'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { seedClientNotificationSequences } from '../sequences'
 import { buildSystemSnippetTemplates } from '../snippets'
@@ -197,6 +198,7 @@ export class OrganizationSeeder {
         this.seedTicketSequence(organizationId),
         this.seedKnowledgeBase(organizationId),
         this.seedClientNotificationSequences(organizationId),
+        this.seedSuggestedRecordRules(organizationId),
         isDemo
           ? this.seedDemoSubscription(organizationId)
           : this.seedTrialSubscription(organizationId),
@@ -321,6 +323,19 @@ export class OrganizationSeeder {
     logger.info(`Seeding client-notification sequences for organization: ${organizationId}`)
     await seedClientNotificationSequences(this.db, organizationId)
     logger.info(`Client-notification sequences seeded for organization: ${organizationId}`)
+  }
+  /**
+   * Seed the 3 starter suggested record rules (plans/signals/06-follow-ups-build.md decision
+   * 8) — unsubscribe-flag, hard-bounce-review, hot-contact-follow-up. All seeded
+   * `enabled: false` on the contact `EntityDefinition`; idempotent on
+   * `(organizationId, templateKey)`. Thin wrapper around the domain function so the
+   * existing-org backfill script (`scripts/backfill-suggested-record-rules.ts`) can call the
+   * exact same logic.
+   */
+  private async seedSuggestedRecordRules(organizationId: string): Promise<void> {
+    logger.info(`Seeding suggested record rules for organization: ${organizationId}`)
+    await seedSuggestedRecordRules(this.db, organizationId)
+    logger.info(`Suggested record rules seeded for organization: ${organizationId}`)
   }
   private async seedTicketSequence(organizationId: string) {
     logger.info(`Seeding record sequences for organization: ${organizationId}`)

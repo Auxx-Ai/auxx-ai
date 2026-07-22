@@ -3,7 +3,9 @@
 // thin wrapper over `@auxx/lib/signals`' `listSignalsForRecordKeys`; the router only resolves
 // org via `ctx.session` and unwraps the domain layer's `Result`.
 
+import { listSuppressedEmails } from '@auxx/lib/sequences'
 import {
+  getSignalById,
   getSignalRollup,
   listSignals,
   listSignalsForRecordKeys,
@@ -82,6 +84,35 @@ export const signalRouter = createTRPCRouter({
       }
       return result.value
     }),
+
+  /**
+   * One signal by id — the task origin line's "created by rule X after <signal>" context
+   * (follow-ups plan Step 7). `null` when the row was pruned by retention; the client
+   * degrades to rule-name-only copy.
+   */
+  byId: protectedProcedure
+    .input(z.object({ signalId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getSignalById(ctx.db, ctx.session.organizationId, input.signalId)
+      if (!result.ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: result.error.message,
+        })
+      }
+      return result.value
+    }),
+
+  /**
+   * Batched suppression check for the composer warning banner (follow-ups plan decision 9) —
+   * returns only the suppressed subset of `emails` with reasons. Reads `SequenceSuppression`
+   * directly (authoritative, unlike the rollup).
+   */
+  checkSuppression: protectedProcedure
+    .input(z.object({ emails: z.array(z.string()).min(1).max(100) }))
+    .query(({ ctx, input }) =>
+      listSuppressedEmails(ctx.db, ctx.session.organizationId, input.emails)
+    ),
 
   /**
    * The `EntitySignalRollup` row for one entity instance (header chips/digest renderer/

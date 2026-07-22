@@ -2,13 +2,14 @@
 
 'use client'
 
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { Condition, ConditionGroup } from '@auxx/lib/conditions/client'
 import {
   LIFECYCLE_TRANSITIONS,
   type RecordRuleAction,
   type RecordRuleOn,
 } from '@auxx/lib/record-rules/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { isSignalPseudoFieldId } from '@auxx/lib/signals/client'
 import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { toastError } from '@auxx/ui/components/toast'
@@ -25,11 +26,41 @@ export interface EditableRecordRule {
   fieldRef: string | null
   name: string
   on: string
+  /** The watched signal kind, e.g. `'email:opened'`. Non-null ⇔ `on === 'signal'`. */
+  signalKind?: string | null
   condition: unknown
   actions: unknown
   enabled: boolean
   /** Non-null ⇒ feature-provisioned + locked (edit/delete disabled in the UI). */
   managed?: 'inventory' | null
+}
+
+/** Walk a condition tree, dropping any condition that targets a `signal:*` pseudo-field. */
+function stripSignalCondition(condition: Condition): Condition | null {
+  if (typeof condition.fieldId === 'string' && isSignalPseudoFieldId(condition.fieldId)) {
+    return null
+  }
+  if (!condition.subConditions?.length) return condition
+  return {
+    ...condition,
+    subConditions: condition.subConditions.flatMap((sub) => {
+      const stripped = stripSignalCondition(sub)
+      return stripped ? [stripped] : []
+    }),
+  }
+}
+
+/** Strip stale `signal:*` conditions left over from a signal rule (decision 15) — mirrors the
+ * server's `assertRuleShape` rejection so switching the trigger away from `'signal'` doesn't
+ * leave a rule that fails to save. */
+function stripSignalConditions(groups: ConditionGroup[]): ConditionGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    conditions: group.conditions.flatMap((condition) => {
+      const stripped = stripSignalCondition(condition)
+      return stripped ? [stripped] : []
+    }),
+  }))
 }
 
 interface RecordRuleDialogProps {
@@ -53,6 +84,7 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
   const [entityDefinitionId, setEntityDefinitionId] = useState('')
   const [on, setOn] = useState<RecordRuleOn>('changed')
   const [fieldRef, setFieldRef] = useState('')
+  const [signalKind, setSignalKind] = useState('')
   const [groups, setGroups] = useState<ConditionGroup[]>([])
   const [actions, setActions] = useState<RecordRuleAction[]>([])
   const [selectedActionIndex, setSelectedActionIndex] = useState(0)
@@ -66,6 +98,7 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
     setEntityDefinitionId(rule?.entityDefinitionId ?? '')
     setOn((rule?.on as RecordRuleOn) ?? 'changed')
     setFieldRef(rule?.fieldRef ?? '')
+    setSignalKind(rule?.signalKind ?? '')
     setGroups(Array.isArray(rule?.condition) ? (rule.condition as ConditionGroup[]) : [])
     setActions(Array.isArray(rule?.actions) ? (rule.actions as RecordRuleAction[]) : [])
   }, [open, rule])
@@ -80,6 +113,9 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
     (r) => r.entityDefinitionId === entityDefinitionId
   )
   const fields: ResourceField[] = useMemo(() => selectedResource?.fields ?? [], [selectedResource])
+  // Decision 14 — "Signal received" only ever fires for contact-backed defs (signal payloads
+  // only carry `contact:<id>` record keys today).
+  const isContactDef = selectedResource?.entityType === 'contact'
 
   const workflows = useMemo(
     () => (workflowData?.workflows ?? []).filter((w: { enabled?: boolean }) => w.enabled),
@@ -90,10 +126,22 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
     setEntityDefinitionId(id)
     setFieldRef('')
     setGroups([])
+    // A signal trigger only makes sense on a contact-backed def — switching to a def that
+    // isn't one falls back to the default field trigger (decision 14).
+    const nextIsContactDef =
+      definitionOptions.find((r) => r.entityDefinitionId === id)?.entityType === 'contact'
+    if (on === 'signal' && !nextIsContactDef) {
+      setOn('changed')
+      setSignalKind('')
+    }
   }
   const onTriggerChange = (next: RecordRuleOn) => {
     setOn(next)
     if (LIFECYCLE_TRANSITIONS.includes(next)) setFieldRef('')
+    if (next !== 'signal') {
+      setSignalKind('')
+      setGroups((prev) => stripSignalConditions(prev))
+    }
   }
 
   const updateAction = (index: number, next: RecordRuleAction) =>
@@ -112,8 +160,11 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
     })
 
   const isPending = create.isPending || update.isPending
+  const isSignal = on === 'signal'
   const canGoToActions =
-    name.trim() !== '' && entityDefinitionId !== '' && (isLifecycle || fieldRef !== '')
+    name.trim() !== '' &&
+    entityDefinitionId !== '' &&
+    (isLifecycle || (isSignal ? signalKind !== '' : fieldRef !== ''))
   const canSave = canGoToActions && actions.length > 0
 
   const handleSave = async () => {
@@ -121,7 +172,8 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
       (a) =>
         (a.type === 'notify' && (a.userIds.length === 0 || a.message.trim() === '')) ||
         (a.type === 'set-field' && !a.fieldRef) ||
-        (a.type === 'enqueue-workflow' && !a.workflowAppId)
+        (a.type === 'enqueue-workflow' && !a.workflowAppId) ||
+        (a.type === 'create-task' && !a.title.trim())
     )
     if (invalidIndex >= 0) {
       setSelectedActionIndex(invalidIndex)
@@ -135,9 +187,10 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
 
     const payload = {
       entityDefinitionId,
-      fieldRef: isLifecycle ? null : fieldRef,
+      fieldRef: isLifecycle || isSignal ? null : fieldRef,
       name: name.trim(),
       on,
+      signalKind: isSignal ? signalKind : null,
       condition: groups.filter((g) => g.conditions.length > 0) as unknown as Record<
         string,
         unknown
@@ -180,10 +233,13 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
               onTriggerChange={onTriggerChange}
               fieldRef={fieldRef}
               onFieldRefChange={setFieldRef}
+              signalKind={signalKind}
+              onSignalKindChange={setSignalKind}
               groups={groups}
               onGroupsChange={setGroups}
               fields={fields}
               isLifecycle={isLifecycle}
+              isContactDef={isContactDef}
               canContinue={canGoToActions}
               onContinue={() => setPage('actions')}
               onCancel={onClose}

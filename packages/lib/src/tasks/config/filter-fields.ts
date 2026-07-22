@@ -14,6 +14,7 @@ export const TASK_FILTER_FIELD_IDS = [
   'createdBy',
   'status',
   'priority',
+  'source',
   'deadline',
   'deadlinePeriod',
 ] as const
@@ -91,6 +92,20 @@ export const TASK_FILTER_FIELDS: TaskFilterFieldDefinition[] = [
       { label: 'High', value: 'high' },
     ],
     description: 'Filter by priority level',
+  },
+  {
+    id: 'source',
+    label: 'Source',
+    type: BaseType.ENUM,
+    fieldType: 'SINGLE_SELECT',
+    operators: ['equals', 'not_equals', 'in', 'is_empty'],
+    options: [
+      { label: 'Manual', value: 'manual' },
+      { label: 'Rule', value: 'rule' },
+      { label: 'AI', value: 'ai' },
+      { label: 'Kopilot', value: 'kopilot' },
+    ],
+    description: 'Filter by how the task was created',
   },
   {
     id: 'deadline',

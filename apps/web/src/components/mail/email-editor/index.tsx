@@ -22,6 +22,7 @@ import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import { type ContentApplier, makeContentApplier } from '~/components/editor/inline-picker'
 import { useCountUpdates } from '~/components/mail/hooks'
+import { useSuppressionCheck } from '~/components/mail/hooks/use-suppression-check'
 import { useComposeStore } from '~/components/mail/store/compose-store'
 import { ChannelPicker } from '~/components/pickers/channel-picker'
 import { SignatureAddButton, SignaturePanel } from '~/components/signatures/ui'
@@ -154,6 +155,19 @@ function ReplyComposeEditorComponent({
   const toInputRef = useRef<RecipientInputHandle>(null)
   const ccInputRef = useRef<RecipientInputHandle>(null)
   const bccInputRef = useRef<RecipientInputHandle>(null)
+
+  // Suppression check (follow-ups plan decision 9) — informational only, does not block send:
+  // server-side enforcement only blocks automated sends, so a human 1:1 send still goes through.
+  const suppressedToRecipients = useSuppressionCheck(recipients.TO)
+  const suppressionWarningText = useMemo(() => {
+    if (suppressedToRecipients.length === 0) return null
+    const [first, ...rest] = suppressedToRecipients
+    const reasonCopy =
+      first.reason === 'bounce'
+        ? `${first.email} previously bounced — automated sends are blocked; this send will still go through`
+        : `${first.email} has unsubscribed — automated sends are blocked; this send will still go through`
+    return rest.length > 0 ? `${reasonCopy} (+${rest.length} more)` : reasonCopy
+  }, [suppressedToRecipients])
 
   // Resolve PlatformCapabilities for the currently-selected integration. The
   // composer renders the same Tiptap surface for every channel; capability
@@ -1317,6 +1331,15 @@ function ReplyComposeEditorComponent({
               {showRecipientField && showNoToWarning && (
                 <Badge variant='red' size='sm' className='absolute right-3 bottom-full z-10'>
                   Add a To recipient to send
+                </Badge>
+              )}
+              {showRecipientField && !showNoToWarning && suppressionWarningText && (
+                <Badge
+                  variant='amber'
+                  size='sm'
+                  className='absolute right-3 bottom-full z-10 max-w-[min(90%,32rem)] truncate'
+                  title={suppressionWarningText}>
+                  {suppressionWarningText}
                 </Badge>
               )}
               <div className='flex items-center gap-1 shrink-0 no-scrollbar md:gap-2'>
