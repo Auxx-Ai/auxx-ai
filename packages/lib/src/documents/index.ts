@@ -32,7 +32,7 @@ export {
 export { type RenderPreviewQuotePdfResult, renderPreviewQuotePdf } from './preview-pdf'
 export {
   getDocumentType,
-  getDocumentTypeByEntityDefinitionId,
+  getDocumentTypeByEntityType,
   listDocumentTypes,
   type RegisteredDocumentType,
 } from './registry'

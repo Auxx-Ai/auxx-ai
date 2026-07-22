@@ -10,7 +10,7 @@ import { and, eq } from 'drizzle-orm'
 import { PDFDocument } from 'pdf-lib'
 import type { ReactElement } from 'react'
 import { createElement } from 'react'
-import { getCachedOrgProfile, getCachedResource } from '../../cache'
+import { getCachedOrgProfile, getCachedResource, requireCachedEntityDefId } from '../../cache'
 import type { ConditionGroup } from '../../conditions/types'
 import type { DocumentPdfPayload } from '../../documents/payload'
 import { formatDocDate } from '../../documents/pdf/parts'
@@ -489,9 +489,13 @@ async function renderDocumentPrint(
   if (!documentType) {
     throw new Error(`Unregistered document type: ${documentConfig.documentTypeId}`)
   }
-  if (documentType.entityDefinitionId !== job.entityDefinitionId) {
+  const documentEntityDefId = await requireCachedEntityDefId(
+    organizationId,
+    documentType.entityType
+  )
+  if (documentEntityDefId !== job.entityDefinitionId) {
     throw new Error(
-      `Document type "${documentConfig.documentTypeId}" prints "${documentType.entityDefinitionId}" ` +
+      `Document type "${documentConfig.documentTypeId}" prints "${documentType.entityType}" ` +
         `records, but this print job targets "${job.entityDefinitionId}"`
     )
   }

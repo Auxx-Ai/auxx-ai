@@ -38,8 +38,10 @@ export type PrintOptionField =
 export interface DocumentTypeDescriptor {
   /** Matches `RegisteredDocumentType.id` ('quote' | 'invoice'). */
   id: string
-  /** `EntityDefinition.id` this document type renders records of. */
-  entityDefinitionId: string
+  /** `EntityDefinition.entityType` slug this document type renders records of — NOT the
+   * per-org generated `EntityDefinition.id`; callers resolve/compare via the entity's
+   * `entityType` (client `Resource.entityType`, server `requireCachedEntityDefId`). */
+  entityType: string
   /** Type-specific extras ONLY — `copies`/`collation` are CORE `document` print-config fields
    * the wizard renders for every document type; this carries the rest (invoice's `sortBy`).
    * Values land in `printConfig.document.options`. Empty for quote (P4). */
@@ -48,14 +50,14 @@ export interface DocumentTypeDescriptor {
 
 /**
  * All document types registered for "Document" print style. Single source of truth for
- * id/entityDefinitionId — the server registry (`./registry.ts`) imports this array and merges
+ * id/entityType — the server registry (`./registry.ts`) imports this array and merges
  * it with its `buildPayload`/`Pdf` wiring rather than redeclaring the ids.
  */
 export const DOCUMENT_TYPE_DESCRIPTORS: DocumentTypeDescriptor[] = [
-  { id: 'quote', entityDefinitionId: 'quote', printOptions: [] },
+  { id: 'quote', entityType: 'quote', printOptions: [] },
   {
     id: 'invoice',
-    entityDefinitionId: 'invoice',
+    entityType: 'invoice',
     printOptions: [
       {
         type: 'select',
