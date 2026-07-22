@@ -4,6 +4,7 @@
 // per-record path (batch-of-1 ≡ single). Boundaries (actions, store, cache, db) mocked.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { legacyActionTextToDoc } from './client'
 import type { CachedRecordRule, RecordRuleBatchEvent } from './types'
 
 const h = vi.hoisted(() => {
@@ -43,7 +44,7 @@ function rule(overrides: Partial<CachedRecordRule> = {}): CachedRecordRule {
     name: 'r',
     on: 'changed',
     condition: [],
-    actions: [{ type: 'notify', userIds: ['u1'], message: 'hi' }],
+    actions: [{ type: 'notify', userIds: ['u1'], message: legacyActionTextToDoc('hi') }],
     enabled: true,
     ...overrides,
   }
@@ -221,7 +222,7 @@ describe('fireRecordRulesBatch — non-native (batch-of-1 ≡ single)', () => {
       id: 'life',
       fieldId: null,
       on: 'created',
-      actions: [{ type: 'notify', userIds: ['u'], message: 'm' }],
+      actions: [{ type: 'notify', userIds: ['u'], message: legacyActionTextToDoc('m') }],
     })
     await fireRecordRulesBatch([created], {
       ...baseCtx,

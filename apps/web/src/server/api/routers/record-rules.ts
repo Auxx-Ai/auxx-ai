@@ -55,17 +55,27 @@ const signalKindSchema = z.enum(SIGNAL_KIND_LIST as [string, ...string[]])
 /** Mirrors the task router's `prioritySchema` (`apps/web/src/server/api/routers/task.ts`). */
 const taskPrioritySchema = z.enum(['low', 'medium', 'high'])
 
+/**
+ * Structural validation only for the token-bearing action fields (Tiptap docs with
+ * `placeholder` nodes — plans/signals/07-action-placeholders.md). The deep walk happens
+ * in the lib resolver at execution; mirrors `promptDocSchema` (promptTemplate router).
+ */
+const actionDocSchema = z.object({
+  type: z.literal('doc'),
+  content: z.array(z.unknown()).optional(),
+})
+
 const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set-field'), fieldRef: z.string().min(1), value: z.unknown() }),
   z.object({ type: z.literal('enqueue-workflow'), workflowAppId: z.string().min(1) }),
   z.object({
     type: z.literal('notify'),
     userIds: z.array(z.string().min(1)).min(1),
-    message: z.string().min(1),
+    message: actionDocSchema,
   }),
   z.object({
     type: z.literal('create-task'),
-    title: z.string().min(1).max(500),
+    title: actionDocSchema,
     assigneeIds: z.array(z.string().min(1)).optional(),
     deadlineDays: z.number().int().positive().max(365).optional(),
     priority: taskPrioritySchema.optional(),
@@ -173,10 +183,10 @@ export const recordRulesRouter = createTRPCRouter({
     .input(ruleInputSchema.partial().extend({ ruleId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
-      const { ruleId, fieldRef, ...rest } = input
+      const { ruleId, fieldRef, actions, ...rest } = input
       await assertNotManaged(ctx.db, organizationId, ruleId)
-      if (rest.actions) {
-        await assertActionsWorkflowsAccessible(ctx.db, organizationId, rest.actions)
+      if (actions) {
+        await assertActionsWorkflowsAccessible(ctx.db, organizationId, actions)
       }
       const fieldId =
         fieldRef !== undefined && rest.entityDefinitionId && rest.on
@@ -189,7 +199,7 @@ export const recordRulesRouter = createTRPCRouter({
       const rule = await updateRecordRule(ctx.db, organizationId, ruleId, {
         ...rest,
         ...(fieldId !== undefined && { fieldId }),
-        ...(rest.actions && { actions: rest.actions as RecordRuleAction[] }),
+        ...(actions && { actions: actions as RecordRuleAction[] }),
       })
       await onCacheEvent('record-rule.changed', { orgId: organizationId })
       return rule

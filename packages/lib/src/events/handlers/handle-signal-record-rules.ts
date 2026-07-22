@@ -106,6 +106,8 @@ export const handleSignalRecordRules = async ({ data: event }: { data: AuxxEvent
           signalId: representative.id,
           kind: data.kind,
           contactEntityInstanceId: data.contactEntityInstanceId ?? undefined,
+          subtype: data.subtype || undefined,
+          occurredAt: toIsoOrUndefined(data.occurredAt),
         },
       }
 
@@ -118,6 +120,13 @@ export const handleSignalRecordRules = async ({ data: event }: { data: AuxxEvent
       error: error instanceof Error ? error.message : String(error),
     })
   }
+}
+
+/** Event dates cross BullMQ as strings — normalize either form to ISO, dropping invalids. */
+function toIsoOrUndefined(value: Date | string | undefined | null): string | undefined {
+  if (!value) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
 }
 
 /**

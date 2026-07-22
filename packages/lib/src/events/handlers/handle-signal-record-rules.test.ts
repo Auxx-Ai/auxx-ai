@@ -7,6 +7,7 @@
 // signals-queries) mocked; the pure pseudo-field mapper runs for real via `__test__`.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { legacyActionTextToDoc } from '../../record-rules/client'
 import type { CachedRecordRule } from '../../record-rules/types'
 
 // Everything a `vi.mock` factory below reads must be created via `vi.hoisted` — a plain
@@ -67,7 +68,7 @@ function rule(overrides: Partial<CachedRecordRule> = {}): CachedRecordRule {
     on: 'signal',
     signalKind: 'email:opened',
     condition: [],
-    actions: [{ type: 'notify', userIds: ['u1'], message: 'hi' }],
+    actions: [{ type: 'notify', userIds: ['u1'], message: legacyActionTextToDoc('hi') }],
     enabled: true,
     ...overrides,
   }
@@ -152,7 +153,14 @@ describe('handleSignalRecordRules', () => {
       entityInstanceId: 'contact_1',
       source: 'interactive',
       newValue: { signalId: 'sig_1', kind: 'email:opened', subtype: 'open' },
-      signal: { signalId: 'sig_1', kind: 'email:opened', contactEntityInstanceId: 'contact_1' },
+      // Signal context now carries subtype + ISO occurredAt for action tokens (07).
+      signal: {
+        signalId: 'sig_1',
+        kind: 'email:opened',
+        contactEntityInstanceId: 'contact_1',
+        subtype: 'open',
+        occurredAt: new Date('2026-01-01').toISOString(),
+      },
     })
     // No matched rule has conditions — the snapshot fetch is skipped entirely (hot-path).
     expect(ctx.snapshot).toBeUndefined()
