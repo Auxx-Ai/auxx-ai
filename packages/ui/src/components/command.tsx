@@ -12,27 +12,12 @@ import {
 } from '@auxx/ui/components/dialog'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { SortableList } from '@auxx/ui/components/sortable'
 import { Switch } from '@auxx/ui/components/switch'
 import { TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { ScrollArea as BaseScrollArea } from '@base-ui-components/react/scroll-area'
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Command as CommandPrimitive } from 'cmdk'
 import {
@@ -862,52 +847,10 @@ interface CommandSortableProps {
 /**
  * CommandSortable component.
  * Wrapper that provides drag-and-drop sorting for CommandSortableItem children.
+ * Thin alias over the shared {@link SortableList} container.
  */
-function CommandSortable({
-  items,
-  onReorder,
-  disabled = false,
-  children,
-  className,
-}: CommandSortableProps) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  )
-
-  const handleDragEnd = React.useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-      if (over && active.id !== over.id) {
-        const oldIndex = items.indexOf(String(active.id))
-        const newIndex = items.indexOf(String(over.id))
-        if (oldIndex !== -1 && newIndex !== -1) {
-          onReorder(arrayMove(items, oldIndex, newIndex))
-        }
-      }
-    },
-    [items, onReorder]
-  )
-
-  if (disabled) {
-    return <div className={className}>{children}</div>
-  }
-
-  return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      modifiers={[restrictToVerticalAxis]}
-      onDragEnd={handleDragEnd}>
-      <SortableContext items={items} strategy={verticalListSortingStrategy}>
-        <div className={className}>{children}</div>
-      </SortableContext>
-    </DndContext>
-  )
+function CommandSortable(props: CommandSortableProps) {
+  return <SortableList {...props} />
 }
 
 /**

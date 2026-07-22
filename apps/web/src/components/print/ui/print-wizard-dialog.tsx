@@ -249,7 +249,11 @@ export function PrintWizardDialog({
                 />
               ) : (
                 <div className='p-3'>
-                  <PrintColumnPicker columns={columns} style={style} />
+                  <PrintColumnPicker
+                    columns={columns}
+                    entityDefinitionId={entityDefinitionId}
+                    style={style}
+                  />
                 </div>
               )}
             </DialogNavPage>

@@ -4,8 +4,10 @@
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, GripVertical } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import React from 'react'
 
@@ -341,6 +343,72 @@ export function TreeRow({
       line={line}>
       {children}
     </BaseTreeRow>
+  )
+}
+
+export interface SortableTreeRowProps extends TreeRowProps {
+  /** Unique sortable id — must appear in the parent `SortableList`'s `items`. */
+  id: string
+  /** Disable dragging for this row (renders a plain TreeRow, no grip). */
+  sortDisabled?: boolean
+}
+
+/**
+ * Drag-sortable {@link TreeRow} for use inside a `SortableList`
+ * (`@auxx/ui/components/sortable`). Registers with dnd-kit via `useSortable`;
+ * the grip handle is hover-revealed in the leading slot — a row without an
+ * `icon` fades the grip into the empty slot, a row with one cross-fades
+ * icon → grip (mirroring `chevronOnHover`). Flat sibling reordering only.
+ */
+export function SortableTreeRow({
+  id,
+  sortDisabled = false,
+  icon,
+  ...props
+}: SortableTreeRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: sortDisabled,
+  })
+
+  if (sortDisabled) return <TreeRow icon={icon} {...props} />
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? 0.8 : 1,
+  }
+
+  const grip = (
+    <span className='relative flex items-center justify-center'>
+      {icon !== undefined && (
+        <span
+          className={cn(
+            'flex items-center justify-center transition-opacity',
+            isDragging ? 'opacity-0' : 'group-hover/tree-row:opacity-0'
+          )}>
+          {icon}
+        </span>
+      )}
+      <span
+        {...attributes}
+        {...listeners}
+        onClick={stopPropagation}
+        className={cn(
+          'cursor-grab touch-none transition-opacity',
+          icon !== undefined && 'absolute inset-0 flex items-center justify-center',
+          isDragging ? 'opacity-100' : 'opacity-0 group-hover/tree-row:opacity-100'
+        )}>
+        <GripVertical className='size-4' />
+      </span>
+    </span>
+  )
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <TreeRow icon={grip} {...props} />
+    </div>
   )
 }
 
