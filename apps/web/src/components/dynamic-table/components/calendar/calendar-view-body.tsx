@@ -3,7 +3,7 @@
 
 import type { FieldType } from '@auxx/database/types'
 import { toRecordId } from '@auxx/lib/resources/client'
-import type { EventCalendarItem } from '@auxx/ui/components/event-calendar'
+import type { EventCalendarItem, SlotCreateIntent } from '@auxx/ui/components/event-calendar'
 import { EventCalendar } from '@auxx/ui/components/event-calendar'
 import { useCallback } from 'react'
 import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
@@ -80,15 +80,14 @@ export function CalendarViewBody() {
     ]
   )
 
-  // Click empty day to create (plan §3.3) — prefill the date axis and hand off
-  // to whatever create-dialog seam the host wired through `onAddNew`
-  // (`records-view.tsx` stores presets and opens `EntityInstanceDialog`). Degrades
-  // to a no-op when the host doesn't support presets (e.g. a future non-records
-  // consumer of the calendar view), matching `onCardClick?.`'s optional-chain style.
-  const handleSlotClick = useCallback(
-    (startTime: Date) => {
+  // Double-click an empty day to create (plan 44 — create moved off single-click) — prefill the
+  // date axis and hand off to whatever create-dialog seam the host wired through `onAddNew`
+  // (`records-view.tsx` stores presets and opens `EntityInstanceDialog`). Degrades to a no-op when
+  // the host doesn't support presets, matching `onCardClick?.`'s optional-chain style.
+  const handleSlotCreate = useCallback(
+    (intent: SlotCreateIntent) => {
       if (!calendarConfig?.dateFieldId) return
-      onAddNew?.({ [calendarConfig.dateFieldId]: startTime })
+      onAddNew?.({ [calendarConfig.dateFieldId]: intent.start })
     },
     [calendarConfig?.dateFieldId, onAddNew]
   )
@@ -114,7 +113,7 @@ export function CalendarViewBody() {
         events={events}
         onEventClick={(event, _e) => onCardClick?.({ id: event.id })}
         onEventDrop={handleEventDrop}
-        onSlotClick={handleSlotClick}
+        onSlotCreate={handleSlotCreate}
         hideToolbar
         className='flex-1 min-h-0'
       />

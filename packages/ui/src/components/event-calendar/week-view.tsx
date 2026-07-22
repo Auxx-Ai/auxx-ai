@@ -38,7 +38,10 @@ interface WeekViewProps<T extends EventCalendarItem = EventCalendarItem> {
   weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6
   backgroundEvents?: BackgroundEvent[]
   onEventSelect: (event: T, e: React.MouseEvent) => void
-  onSlotClick?: (startTime: Date) => void
+  /** Plain empty-cell click — clear-only (plan 44); create lives on `onSlotDoubleClick`. */
+  onSlotClick?: () => void
+  /** Double-click an empty cell → create a default-duration event at that slot (plan 44). */
+  onSlotDoubleClick?: (startTime: Date, e: React.MouseEvent) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
   /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
@@ -76,6 +79,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   backgroundEvents = NoBackgroundEvents,
   onEventSelect,
   onSlotClick,
+  onSlotDoubleClick,
   onEventResize,
   renderEvent,
   selectedIds,
@@ -415,6 +419,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
               backgroundEvents={backgroundEvents}
               onEventSelect={onEventSelect}
               onSlotClick={onSlotClick}
+              onSlotDoubleClick={onSlotDoubleClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedIds={selectedIds}

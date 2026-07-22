@@ -60,12 +60,11 @@ export interface CalendarSelectionEngine {
    */
   handleChipClick: (id: string, e: ModifierEvent) => boolean
   /**
-   * Click on empty grid space: a non-empty selection is cleared and the click is swallowed
-   * (never reaches `onEmpty`, i.e. never opens a slot-create affordance); an empty selection
-   * forwards to `onEmpty` unchanged. Also swallows the synthetic click that follows a marquee
-   * release (`markMarqueeReleased`).
+   * Click on empty grid space (plan 44 — clear-only): a non-empty selection is cleared and the
+   * click is swallowed; an empty selection is a no-op (create moved to double-click / cmd+drag).
+   * Also swallows the synthetic click that follows a marquee release (`markMarqueeReleased`).
    */
-  handleEmptyClick: (onEmpty: () => void) => void
+  handleEmptyClick: () => void
   /**
    * Cmd/ctrl+click a day (month cell/date label, or a week/day/timeline day header): toggles
    * every id in `dayEventIds` into the selection — all-selected clears them, otherwise unions
@@ -90,7 +89,7 @@ const DefaultEngine: CalendarSelectionEngine = {
   clearSelection: noop,
   markMarqueeReleased: noop,
   handleChipClick: () => true,
-  handleEmptyClick: (onEmpty) => onEmpty(),
+  handleEmptyClick: noop,
   handleDayGrab: () => false,
 }
 
@@ -226,7 +225,7 @@ export function useCalendarSelectionEngine<T extends EventCalendarItem>(
         emit(new Set([id]))
         return true
       },
-      handleEmptyClick: (onEmpty) => {
+      handleEmptyClick: () => {
         if (marqueeSuppressRef.current) {
           marqueeSuppressRef.current = false
           return
@@ -234,9 +233,7 @@ export function useCalendarSelectionEngine<T extends EventCalendarItem>(
         if (selectedIdsRef.current.size > 0) {
           anchorIdRef.current = null
           emit(new Set())
-          return
         }
-        onEmpty()
       },
       handleDayGrab: (dayEventIds, e) => {
         if (!(e.metaKey || e.ctrlKey)) return false

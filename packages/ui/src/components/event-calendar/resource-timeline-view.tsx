@@ -47,7 +47,10 @@ interface ResourceTimelineViewProps<T extends EventCalendarItem = EventCalendarI
   /** How many days to aim for across the viewport — 1 (Day mode) or e.g. 3 (Timeline mode). */
   desiredDays?: number
   onEventSelect: (event: T, e: React.MouseEvent) => void
-  onSlotClick?: (startTime: Date, resourceId: string) => void
+  /** Plain empty-cell click — clear-only (plan 44); create lives on `onSlotDoubleClick`. */
+  onSlotClick?: () => void
+  /** Double-click an empty cell → create a default-duration event at that slot/worker (plan 44). */
+  onSlotDoubleClick?: (startTime: Date, resourceId: string, e: React.MouseEvent) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
   /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
@@ -87,6 +90,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
   desiredDays = 1,
   onEventSelect,
   onSlotClick,
+  onSlotDoubleClick,
   onEventResize,
   renderEvent,
   selectedIds,
@@ -485,6 +489,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
               backgroundEvents={backgroundEvents}
               onEventSelect={onEventSelect}
               onSlotClick={onSlotClick}
+              onSlotDoubleClick={onSlotDoubleClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedIds={selectedIds}

@@ -32,7 +32,10 @@ interface DayResourceGroupProps<T extends EventCalendarItem = EventCalendarItem>
   events: T[]
   backgroundEvents: BackgroundEvent[]
   onEventSelect: (event: T, e: React.MouseEvent) => void
-  onSlotClick?: (startTime: Date, resourceId: string) => void
+  /** Plain empty-cell click — clear-only (plan 44); create lives on `onSlotDoubleClick`. */
+  onSlotClick?: () => void
+  /** Double-click an empty cell → create a default-duration event at that slot/worker (plan 44). */
+  onSlotDoubleClick?: (startTime: Date, resourceId: string, e: React.MouseEvent) => void
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   renderEvent?: RenderEvent<T>
   /** Selected event ids (multi-selection, §3) — draws the in-color ring on membership. */
@@ -69,6 +72,7 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
   backgroundEvents,
   onEventSelect,
   onSlotClick,
+  onSlotDoubleClick,
   onEventResize,
   renderEvent,
   selectedIds,
@@ -175,10 +179,11 @@ function DayResourceGroupInner<T extends EventCalendarItem = EventCalendarItem>(
                           quarter === 2 && 'top-[calc(var(--week-cells-height)/4*2)]',
                           quarter === 3 && 'top-[calc(var(--week-cells-height)/4*3)]'
                         )}
-                        onClick={() => {
+                        onClick={() => onSlotClick?.()}
+                        onDoubleClick={(e) => {
                           const startTime = new Date(day)
                           startTime.setHours(hourValue, quarter * 15)
-                          onSlotClick?.(startTime, resource.id)
+                          onSlotDoubleClick?.(startTime, resource.id, e)
                         }}
                       />
                     )

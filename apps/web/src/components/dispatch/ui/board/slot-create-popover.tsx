@@ -6,7 +6,7 @@ import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { addMinutes } from 'date-fns'
+import { addMinutes, differenceInMinutes } from 'date-fns'
 import { useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -16,12 +16,12 @@ import type { useBoardMutations } from './hooks/use-board-mutations'
 import { SlotCreateAssigneePicker } from './slot-create-assignee-picker'
 import { UNASSIGNED_RESOURCE_ID } from './types'
 
-/** The board's slot-click target (plan 37c §7) — the clicked cell's start/resource (from the
- * grid's `onSlotClick`) plus the click's viewport position, captured separately (`onSlotClick`
- * carries no mouse event) so the popover can anchor at the exact spot instead of the board's
- * current view. `null` = closed. */
+/** The board's slot-create target (plan 44) — the create gesture's start/end/resource plus the
+ * gesture's viewport anchor (the dblclick position / drag-release point / right-click coords), all
+ * carried by the grid's `SlotCreateIntent`, so the popover anchors exactly there. `null` = closed. */
 export interface SlotClickTarget {
   startTime: Date
+  endTime: Date
   resourceId?: string
   anchor: { x: number; y: number }
 }
@@ -97,13 +97,11 @@ export interface SlotCreatePopoverProps {
 }
 
 /**
- * Slot-click create popover (plan 37c §7) — opened by `BoardCalendarGrid`'s `onSlotClick`
- * (fires only when the selection is empty, §3.2). Anchored at the click's viewport position via
- * an invisible virtual anchor (`PopoverAnchor asChild` around a zero-size `position: fixed`
- * span) rather than a real chip element — the grid's `onSlotClick` carries no DOM node/mouse
- * event to anchor to the way `EventPopover`'s chip anchor does (`board-calendar-grid.tsx`
- * captures the click position separately, in an `onClickCapture` ahead of the cell's own
- * `onClick`, and hands it down as `target.anchor`).
+ * Slot-create popover (plan 44) — opened by `BoardCalendarGrid`'s `onSlotCreate` (double-click /
+ * cmd+drag), or by the context menu's "New event here". Anchored at the gesture's viewport point
+ * via an invisible virtual anchor (`PopoverAnchor asChild` around a zero-size `position: fixed`
+ * span) rather than a real chip element — the grid's `SlotCreateIntent` already carries that point
+ * as `anchor`, so no separate click-position capture is needed anymore.
  *
  * Two paths (decision D): **New job** builds a work order from a contact + optional title
  * (`dispatch.createWorkOrder`); **Existing job** finds a work order and adds a visit to it
@@ -138,7 +136,9 @@ export function SlotCreatePopover({
     setWorkOrderRecordId(null)
     setTitle('')
     setStartTime(target.startTime)
-    setDurationMinutes(DEFAULT_DURATION_MINUTES)
+    // Prefill the duration from the gesture's painted range (cmd+drag) — dblclick/menu targets
+    // arrive as the 60m default anyway, so this is a no-op there.
+    setDurationMinutes(Math.max(15, differenceInMinutes(target.endTime, target.startTime)))
     setAssigneeUserId(
       target.resourceId && target.resourceId !== UNASSIGNED_RESOURCE_ID ? target.resourceId : null
     )
