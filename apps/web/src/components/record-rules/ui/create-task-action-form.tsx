@@ -4,11 +4,13 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { RecordRuleAction } from '@auxx/lib/record-rules/client'
+import type { ResourceField } from '@auxx/lib/resources/client'
 import { getTaskFilterField } from '@auxx/lib/tasks/client'
 import { type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
+import { ActionTokenInput } from './action-token-input'
 
 /** The `create-task` variant of `RecordRuleAction` — the only shape this form edits. */
 export type CreateTaskAction = Extract<RecordRuleAction, { type: 'create-task' }>
@@ -28,6 +30,12 @@ function first(value: unknown): string {
 interface CreateTaskActionFormProps {
   action: CreateTaskAction
   onChange: (action: CreateTaskAction) => void
+  /** The rule's record type — roots the title's field tokens. */
+  entityDefinitionId: string
+  /** The record type's fields (threaded from the actions page). */
+  fields: ResourceField[]
+  /** Offer signal-context tokens in the title (`on === 'signal'` rules). */
+  isSignalRule: boolean
 }
 
 /**
@@ -35,15 +43,23 @@ interface CreateTaskActionFormProps {
  * deadline, priority, and the reply auto-complete toggle (decision 11, v1 scope). Split out
  * of `RecordRuleActionsPage` to keep that file under the split threshold.
  */
-export function CreateTaskActionForm({ action, onChange }: CreateTaskActionFormProps) {
+export function CreateTaskActionForm({
+  action,
+  onChange,
+  entityDefinitionId,
+  fields,
+  isSignalRule,
+}: CreateTaskActionFormProps) {
   return (
     <>
-      <FieldPanelRow title='Title' isRequired description="Use {{record}} for the record's name">
-        <FieldInputAdapter
-          fieldType={FieldType.TEXT}
+      <FieldPanelRow title='Title' isRequired description='Type { to insert a field…'>
+        <ActionTokenInput
           value={action.title}
-          onChange={(v) => onChange({ ...action, title: String(v ?? '') })}
-          placeholder='e.g. Follow up with {{record}}'
+          onChange={(doc) => onChange({ ...action, title: doc })}
+          entityDefinitionId={entityDefinitionId}
+          fields={fields}
+          isSignalRule={isSignalRule}
+          placeholder='Task title'
         />
       </FieldPanelRow>
 

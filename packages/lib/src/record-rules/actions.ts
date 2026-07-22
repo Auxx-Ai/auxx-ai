@@ -6,6 +6,8 @@
 import { createScopedLogger } from '@auxx/logger'
 import { toActorId } from '@auxx/types/actor'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
+import type { TiptapDoc } from '../tiptap/types'
+import { isActionDoc } from './client'
 import type { RecordSnapshot } from './resolver'
 import type { CachedRecordRule, RecordRuleAction, RecordRuleFireContext } from './types'
 
@@ -61,6 +63,22 @@ export function __clearNativeRuleHandlers(): void {
 }
 
 /**
+ * Resolve one text-bearing action field (create-task title / notify message) — a
+ * placeholder-token doc (plans/signals/07-action-placeholders.md). Builds the token
+ * context once per call. Defensive guard: a plain string (stale seeded row) passes
+ * through verbatim without any context lookups. Lazy-imports the resolver — it reaches
+ * the placeholders/cache cluster.
+ */
+async function resolveActionTextField(
+  value: TiptapDoc | string,
+  ctx: RecordRuleFireContext
+): Promise<string> {
+  if (typeof value === 'string') return value
+  const { buildRuleTokenContext, resolveActionDocToText } = await import('./resolve-action-tokens')
+  return resolveActionDocToText(value, await buildRuleTokenContext(ctx))
+}
+
+/**
  * Execute one action. Returns the outcome status; throws on failure (the engine
  * catches and records it — continue-and-report).
  */
@@ -74,6 +92,15 @@ export async function executeRuleAction(
     case 'set-field': {
       // `deleted` firings have no record left to write onto.
       if (rule.on === 'deleted') return 'skipped'
+      // Doc-shaped values resolve placeholder tokens (a solo token keeps the raw typed
+      // value); raw static values (string/number/boolean) write verbatim.
+      let value = action.value
+      if (isActionDoc(action.value)) {
+        const { buildRuleTokenContext, resolveActionValue } = await import(
+          './resolve-action-tokens'
+        )
+        value = await resolveActionValue(action.value, await buildRuleTokenContext(ctx))
+      }
       const [{ UnifiedCrudHandler }, { SystemUserService }] = await Promise.all([
         import('../resources/crud/unified-handler'),
         import('../users/system-user-service'),
@@ -83,7 +110,7 @@ export async function executeRuleAction(
       await handler.update(toRecordId(ctx.entityDefinitionId, ctx.entityInstanceId), {
         // fieldRef may be a field row id OR a systemAttribute — the mutation-side
         // field resolution accepts both.
-        [action.fieldRef]: action.value,
+        [action.fieldRef]: value,
       })
       return 'ok'
     }
@@ -129,6 +156,8 @@ export async function executeRuleAction(
     }
 
     case 'notify': {
+      // Placeholder-token docs flatten to text (stale plain strings send verbatim).
+      const message = await resolveActionTextField(action.message, ctx)
       const { NotificationService } = await import('../notifications/notification-service')
       const notifications = new NotificationService()
       for (const userId of action.userIds) {
@@ -137,7 +166,7 @@ export async function executeRuleAction(
           userId,
           entityId: ctx.entityInstanceId,
           entityType: ctx.entityDefinitionId,
-          message: action.message,
+          message,
           organizationId: ctx.organizationId,
           data: {
             source: 'record-rule',
@@ -189,20 +218,8 @@ export async function executeRuleAction(
         return 'skipped'
       }
 
-      // `{{record}}` interpolation — the fired record's display name (denormalized
-      // `EntityInstance.displayName`), falling back to the raw id when unset.
-      const [instance] = await database
-        .select({ displayName: schema.EntityInstance.displayName })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, ctx.entityInstanceId),
-            eq(schema.EntityInstance.organizationId, ctx.organizationId)
-          )
-        )
-        .limit(1)
-      const recordName = instance?.displayName || ctx.entityInstanceId
-      const title = action.title.replaceAll('{{record}}', recordName)
+      // Title resolution — placeholder-token docs flattened to text.
+      const title = await resolveActionTextField(action.title, ctx)
 
       const [{ createTaskService }, { SystemUserService }] = await Promise.all([
         import('../tasks'),

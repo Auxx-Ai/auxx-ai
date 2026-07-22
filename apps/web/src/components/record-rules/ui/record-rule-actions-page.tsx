@@ -3,10 +3,17 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import type { RecordRuleAction } from '@auxx/lib/record-rules/client'
+import { tryParsePlaceholderId } from '@auxx/lib/placeholders/client'
+import {
+  ACTION_TOKEN_RECORD_NAME,
+  actionDocToSummaryText,
+  type RecordRuleAction,
+  SIGNAL_CONTEXT_TOKENS,
+} from '@auxx/lib/record-rules/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { isFieldPath } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
@@ -16,6 +23,7 @@ import { Bell, ListTodo, PenLine, Plus, Settings2, Trash2, Workflow, Zap } from 
 import { type ReactNode, useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { ActionTokenInput, emptyActionDoc } from './action-token-input'
 import { CreateTaskActionForm } from './create-task-action-form'
 import { RecordRuleFieldRefInput } from './record-rule-field-ref-input'
 
@@ -25,7 +33,13 @@ interface WorkflowOption {
   name: string
 }
 
-const ACTION_LABELS: Record<RecordRuleAction['type'], string> = {
+/**
+ * The action shapes the rule editor edits — `native` actions are server-declared only
+ * (never accepted from the router or UI), so the editor's unions exclude them.
+ */
+export type EditableRuleAction = Exclude<RecordRuleAction, { type: 'native' }>
+
+const ACTION_LABELS: Record<EditableRuleAction['type'], string> = {
   notify: 'Notify members',
   'set-field': 'Set field',
   'enqueue-workflow': 'Run workflow',
@@ -33,13 +47,13 @@ const ACTION_LABELS: Record<RecordRuleAction['type'], string> = {
 }
 
 const ACTION_TYPE_OPTIONS: SelectOption[] = (
-  Object.keys(ACTION_LABELS) as RecordRuleAction['type'][]
+  Object.keys(ACTION_LABELS) as EditableRuleAction['type'][]
 ).map((type) => ({ value: type, label: ACTION_LABELS[type] }))
 
 /** The flush-in-a-FieldPanelRow trigger sizing shared by every action input. */
 const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
 
-function ActionIcon({ type }: { type: RecordRuleAction['type'] }): ReactNode {
+function ActionIcon({ type }: { type: EditableRuleAction['type'] }): ReactNode {
   if (type === 'notify') return <Bell className='size-4' />
   if (type === 'set-field') return <PenLine className='size-4' />
   if (type === 'create-task') return <ListTodo className='size-4' />
@@ -52,23 +66,17 @@ function first(value: unknown): string {
   return typeof v === 'string' ? v : ''
 }
 
-/** 'true'/'false'/numeric strings become their typed values; everything else stays a string. */
-function coerceValue(raw: string): unknown {
-  if (raw === 'true') return true
-  if (raw === 'false') return false
-  if (raw.trim() !== '' && !Number.isNaN(Number(raw))) return Number(raw)
-  return raw
-}
-
 interface RecordRuleActionsPageProps {
-  actions: RecordRuleAction[]
+  actions: EditableRuleAction[]
   selectedIndex: number
   onSelectedIndexChange: (index: number) => void
   onAdd: () => void
   onRemove: (index: number) => void
-  onUpdate: (index: number, action: RecordRuleAction) => void
+  onUpdate: (index: number, action: EditableRuleAction) => void
   entityDefinitionId: string
   fields: ResourceField[]
+  /** True on `on === 'signal'` rules — offers signal-context tokens in the token inputs. */
+  isSignalRule: boolean
   workflows: WorkflowOption[]
   isEdit: boolean
   canSave: boolean
@@ -90,6 +98,7 @@ export function RecordRuleActionsPage({
   onUpdate,
   entityDefinitionId,
   fields,
+  isSignalRule,
   workflows,
   isEdit,
   canSave,
@@ -104,7 +113,19 @@ export function RecordRuleActionsPage({
     [workflows]
   )
 
-  const summarize = (action: RecordRuleAction): string => {
+  /** Token id → display label for `actionDocToSummaryText` — 'Record name', signal labels,
+   * or the field's label (root-level tokens only; drilled paths degrade to the raw id). */
+  const resolveTokenLabel = (id: string): string | undefined => {
+    if (id === ACTION_TOKEN_RECORD_NAME) return 'Record name'
+    const signalToken = SIGNAL_CONTEXT_TOKENS.find((t) => t.id === id)
+    if (signalToken) return signalToken.label
+    const parsed = tryParsePlaceholderId(id)
+    if (parsed?.kind !== 'field') return undefined
+    const terminal = isFieldPath(parsed.fieldRef) ? parsed.fieldRef.at(-1) : parsed.fieldRef
+    return fields.find((f) => f.resourceFieldId === terminal)?.label
+  }
+
+  const summarize = (action: EditableRuleAction): string => {
     if (action.type === 'notify')
       return action.userIds.length > 0
         ? `${action.userIds.length} member${action.userIds.length === 1 ? '' : 's'}`
@@ -114,7 +135,8 @@ export function RecordRuleActionsPage({
         ? (fields.find((f) => (f.systemAttribute ?? String(f.id)) === action.fieldRef)?.label ??
             action.fieldRef)
         : 'No field'
-    if (action.type === 'create-task') return action.title || 'No title'
+    if (action.type === 'create-task')
+      return actionDocToSummaryText(action.title, resolveTokenLabel) || 'No title'
     return workflows.find((w) => w.id === action.workflowAppId)?.name || 'No workflow'
   }
 
@@ -188,14 +210,23 @@ export function RecordRuleActionsPage({
                 triggerProps={TRIGGER_PROPS}
                 value={selected.type}
                 onChange={(v) => {
-                  const type = first(v) as RecordRuleAction['type']
+                  const type = first(v) as EditableRuleAction['type']
                   if (type === 'set-field')
-                    onUpdate(selectedIndex, { type: 'set-field', fieldRef: '', value: '' })
+                    onUpdate(selectedIndex, {
+                      type: 'set-field',
+                      fieldRef: '',
+                      value: emptyActionDoc(),
+                    })
                   else if (type === 'enqueue-workflow')
                     onUpdate(selectedIndex, { type: 'enqueue-workflow', workflowAppId: '' })
                   else if (type === 'create-task')
-                    onUpdate(selectedIndex, { type: 'create-task', title: '' })
-                  else onUpdate(selectedIndex, { type: 'notify', userIds: [], message: '' })
+                    onUpdate(selectedIndex, { type: 'create-task', title: emptyActionDoc() })
+                  else
+                    onUpdate(selectedIndex, {
+                      type: 'notify',
+                      userIds: [],
+                      message: emptyActionDoc(),
+                    })
                 }}
               />
             </FieldPanelRow>
@@ -217,13 +248,13 @@ export function RecordRuleActionsPage({
                     placeholder='Add members to notify'
                   />
                 </FieldPanelRow>
-                <FieldPanelRow title='Message' isRequired>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
+                <FieldPanelRow title='Message' isRequired description='Type { to insert a field…'>
+                  <ActionTokenInput
                     value={selected.message}
-                    onChange={(v) =>
-                      onUpdate(selectedIndex, { ...selected, message: String(v ?? '') })
-                    }
+                    onChange={(doc) => onUpdate(selectedIndex, { ...selected, message: doc })}
+                    entityDefinitionId={entityDefinitionId}
+                    fields={fields}
+                    isSignalRule={isSignalRule}
                     placeholder='Notification message'
                   />
                 </FieldPanelRow>
@@ -241,13 +272,13 @@ export function RecordRuleActionsPage({
                     placeholder='Field to set'
                   />
                 </FieldPanelRow>
-                <FieldPanelRow title='Value'>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
-                    value={String(selected.value ?? '')}
-                    onChange={(v) =>
-                      onUpdate(selectedIndex, { ...selected, value: coerceValue(String(v ?? '')) })
-                    }
+                <FieldPanelRow title='Value' description='Type { to insert a field…'>
+                  <ActionTokenInput
+                    value={selected.value}
+                    onChange={(doc) => onUpdate(selectedIndex, { ...selected, value: doc })}
+                    entityDefinitionId={entityDefinitionId}
+                    fields={fields}
+                    isSignalRule={isSignalRule}
                     placeholder='Value'
                   />
                 </FieldPanelRow>
@@ -273,6 +304,9 @@ export function RecordRuleActionsPage({
               <CreateTaskActionForm
                 action={selected}
                 onChange={(next) => onUpdate(selectedIndex, next)}
+                entityDefinitionId={entityDefinitionId}
+                fields={fields}
+                isSignalRule={isSignalRule}
               />
             )}
           </FieldPanel>

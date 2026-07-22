@@ -2,7 +2,6 @@
 
 'use client'
 
-import type { TaskWithRelations } from '@auxx/lib/tasks'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -13,7 +12,6 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { addDays } from 'date-fns'
 import { AlarmClock } from 'lucide-react'
-import { useTaskMutations } from '../hooks/use-task-mutations'
 import { formatTaskDeadlineDisplay } from '../utils/group-tasks-by-period'
 
 /** Snooze duration presets offered by the dropdown (build plan Step 7). */
@@ -25,39 +23,40 @@ const SNOOZE_PRESETS = [
 
 /**
  * Snooze control for `TaskForm`'s footer picker cluster (edit mode only — a task must exist
- * to snooze). Excludes the task from default open lists until the chosen date (build plan
- * decision 10) via `api.task.update({ snoozedUntil })`.
+ * to snooze). Controlled like the other footer pickers: the chosen date is buffered in
+ * `TaskForm` state and only persisted on save (build plan decision 10).
  */
-export function TaskSnoozeButton({ task }: { task: TaskWithRelations }) {
-  const { updateTask } = useTaskMutations()
-
-  const snoozedUntil = task.snoozedUntil ? new Date(task.snoozedUntil) : null
-  const isSnoozed = !!snoozedUntil && snoozedUntil.getTime() > Date.now()
-
-  const setSnooze = (date: Date | null) => {
-    updateTask.mutate({ id: task.id, snoozedUntil: date ? date.toISOString() : null })
-  }
+export function TaskSnoozeButton({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: Date | null
+  onChange: (date: Date | null) => void
+  disabled?: boolean
+}) {
+  const isSnoozed = !!value && value.getTime() > Date.now()
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant='ghost' size='sm' disabled={updateTask.isPending}>
+        <Button variant='ghost' size='sm' disabled={disabled}>
           <AlarmClock />
-          {isSnoozed ? `Snoozed until ${formatTaskDeadlineDisplay(snoozedUntil)}` : 'Snooze'}
+          {isSnoozed ? `Snoozed until ${formatTaskDeadlineDisplay(value)}` : 'Snooze'}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='start'>
         {SNOOZE_PRESETS.map((preset) => (
           <DropdownMenuItem
             key={preset.label}
-            onSelect={() => setSnooze(addDays(new Date(), preset.days))}>
+            onSelect={() => onChange(addDays(new Date(), preset.days))}>
             {preset.label}
           </DropdownMenuItem>
         ))}
         {isSnoozed && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setSnooze(null)}>Unsnooze</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onChange(null)}>Unsnooze</DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>

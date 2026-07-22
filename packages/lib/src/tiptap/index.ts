@@ -11,7 +11,7 @@
 export { collectReferenceIds } from './collect-references'
 export { collectVariableIds } from './collect-variable-ids'
 export { isNonEmptyDoc, trimTrailingEmptyParagraphs } from './doc-shape'
-export { docToText } from './doc-to-text'
+export { type DocToTextOptions, docToText } from './doc-to-text'
 export { docToHtml, htmlToDoc, stripHtml } from './html'
 export {
   appendSequenceUnsubscribeFooter,

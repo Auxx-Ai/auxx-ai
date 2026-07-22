@@ -100,6 +100,8 @@ export function TaskForm({
   // "Complete on reply" toggle (build plan decision 13) — only meaningful/shown when a
   // contact is linked; see `hasContactReference` below.
   const [autoCompleteOn, setAutoCompleteOn] = useState(false)
+  // Snooze (build plan decision 10) — buffered like the other pickers, persisted on save.
+  const [snoozedUntil, setSnoozedUntil] = useState<Date | null>(null)
 
   // Does `linkedRecords` include a reference to the contact entity definition? Drives the
   // auto-complete toggle's visibility (decision 13).
@@ -198,6 +200,7 @@ export function TaskForm({
         setAssigneeActorIds(task.assignments ?? [])
         setLinkedRecords(task.references ?? [])
         setAutoCompleteOn(task.autoCompleteOn === 'contact_reply')
+        setSnoozedUntil(task.snoozedUntil ? new Date(task.snoozedUntil) : null)
       } else {
         // Create mode: start fresh
         setDeadline(undefined)
@@ -205,6 +208,7 @@ export function TaskForm({
         setAssigneeActorIds([])
         setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
         setAutoCompleteOn(false)
+        setSnoozedUntil(null)
       }
       // Defer editor operations using double requestAnimationFrame to ensure
       // we're outside React's render cycle and avoid flushSync errors
@@ -251,6 +255,7 @@ export function TaskForm({
     setAssigneeActorIds([])
     setLinkedRecords(defaultReferencedEntity ? [defaultReferencedEntity] : [])
     setAutoCompleteOn(false)
+    setSnoozedUntil(null)
     // Use double requestAnimationFrame to avoid flushSync errors
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -295,6 +300,7 @@ export function TaskForm({
         assigneeActorIds,
         referencedEntities: linkedRecords,
         autoCompleteOn: effectiveAutoComplete,
+        snoozedUntil: snoozedUntil ? snoozedUntil.toISOString() : null,
       }
       updateTask.mutate(input)
     }
@@ -313,6 +319,7 @@ export function TaskForm({
     assigneeActorIds,
     linkedRecords,
     effectiveAutoComplete,
+    snoozedUntil,
     createTask,
     updateTask,
     onClose,
@@ -442,7 +449,13 @@ export function TaskForm({
                 </RecordPicker>
 
                 {/* Snooze (edit mode only — build plan decision 10) */}
-                {mode === 'edit' && task && <TaskSnoozeButton task={task} />}
+                {mode === 'edit' && task && (
+                  <TaskSnoozeButton
+                    value={snoozedUntil}
+                    onChange={setSnoozedUntil}
+                    disabled={isSaving}
+                  />
+                )}
               </div>
 
               {/* Toggles (scroll with the pickers) */}

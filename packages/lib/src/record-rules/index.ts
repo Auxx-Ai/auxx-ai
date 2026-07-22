@@ -13,6 +13,12 @@ export {
 } from './capture-field-changes'
 export { fireRecordRules, fireRecordRulesBatch } from './engine'
 export { handleRecordRulesOnFieldChange } from './hook-handler'
+export {
+  buildRuleTokenContext,
+  type RuleTokenContext,
+  resolveActionDocToText,
+  resolveActionValue,
+} from './resolve-action-tokens'
 export { resolveFieldRefToId } from './resolve-field-ref'
 export { buildFieldKeyMap, makeSnapshotResolver, type RecordSnapshot } from './resolver'
 export {

@@ -5,6 +5,7 @@
 // transition + condition-ref + resolver helpers run for real.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { legacyActionTextToDoc } from '../../record-rules/client'
 import type { SyncChangeManifest } from '../../record-rules/sync-manifest-types'
 import type { CachedRecordRule } from '../../record-rules/types'
 
@@ -51,7 +52,7 @@ function rule(overrides: Partial<CachedRecordRule> = {}): CachedRecordRule {
     name: 'r',
     on: 'changed',
     condition: [],
-    actions: [{ type: 'notify', userIds: ['u1'], message: 'hi' }],
+    actions: [{ type: 'notify', userIds: ['u1'], message: legacyActionTextToDoc('hi') }],
     enabled: true,
     ...overrides,
   }

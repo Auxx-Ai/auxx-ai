@@ -6,6 +6,7 @@ import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { ActorId } from '@auxx/types/actor'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
+import { AlarmClock } from 'lucide-react'
 import { ParsedText } from '~/components/editor/parsed-text'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -132,7 +133,8 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
               )}
 
               {isSnoozedIntoFuture && (
-                <Badge variant='secondary' size='sm' className='ms-1 align-middle'>
+                <Badge variant='amber' size='sm' className='ms-1 align-middle'>
+                  <AlarmClock />
                   Snoozed until {formatTaskDeadlineDisplay(new Date(task.snoozedUntil as Date))}
                 </Badge>
               )}

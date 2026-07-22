@@ -2,7 +2,7 @@
 
 import type { TiptapNode } from './types'
 
-interface DocToTextOptions {
+export interface DocToTextOptions {
   /**
    * Optional resolver for inline `reference` nodes. Receives the `RecordId`
    * and returns the markdown text to inline (typically `[Title](recordId)`).
@@ -29,6 +29,14 @@ interface DocToTextOptions {
     subProcedures?: { id: string; name: string }[]
     codeBlocks?: { id: string; name: string }[]
   }
+  /**
+   * Optional resolver for inline `placeholder` chips (the snippet/sequence
+   * editor's token node — `attrs: { id, fallback?, format? }`, the full attrs
+   * bag is passed through). Receives the token id and returns the text to
+   * inline. When unset, the chip renders to `{{id}}` — the same form the
+   * node's own `renderText` produces.
+   */
+  placeholders?: (id: string, attrs?: Record<string, unknown>) => string
 }
 
 /**
@@ -159,6 +167,11 @@ function walkNode(
     const badge = renderStepBadge(id, options.procedureMaps)
     if (badge !== null) return badge
     return options.references ? options.references(id) : `[reference](${id})`
+  }
+  if (node.type === 'placeholder') {
+    const id = typeof node.attrs?.id === 'string' ? (node.attrs.id as string) : ''
+    if (!id) return ''
+    return options.placeholders ? options.placeholders(id, node.attrs) : `{{${id}}}`
   }
   if (node.type === 'variable-node') {
     const variableId =

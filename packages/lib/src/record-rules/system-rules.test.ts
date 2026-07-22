@@ -3,6 +3,7 @@
 // customFields / entityDefs lookups. Pure — no DB, no cache.
 
 import { afterEach, describe, expect, it } from 'vitest'
+import { legacyActionTextToDoc } from './client'
 import {
   __clearSystemRules,
   declareSystemRules,
@@ -23,7 +24,7 @@ describe('declareSystemRules — validation', () => {
           defSlug: 'vendor-parts',
           fieldRef: { systemAttribute: 'vendor_part_unit_price' },
           on: 'changed',
-          actions: [{ type: 'notify', userIds: ['u'], message: 'm' }],
+          actions: [{ type: 'notify', userIds: ['u'], message: legacyActionTextToDoc('m') }],
         },
       ])
     ).toThrow(/native/)
@@ -40,7 +41,7 @@ describe('declareSystemRules — validation', () => {
           on: 'changed',
           actions: [
             { type: 'native', handler: 'recalc' },
-            { type: 'notify', userIds: ['u'], message: 'm' },
+            { type: 'notify', userIds: ['u'], message: legacyActionTextToDoc('m') },
           ],
         },
       ])

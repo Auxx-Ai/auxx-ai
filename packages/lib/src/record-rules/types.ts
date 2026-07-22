@@ -5,6 +5,7 @@
 
 import type { ConditionGroup } from '../conditions/types'
 import type { TaskPriority } from '../tasks/types'
+import type { TiptapDoc } from '../tiptap/types'
 
 /**
  * Transition selector. Direction semantics live on the rule, NOT in conditions.
@@ -35,6 +36,12 @@ export const LIFECYCLE_TRANSITIONS: readonly RecordRuleOn[] = ['created', 'delet
 export interface SetFieldAction {
   type: 'set-field'
   fieldRef: string
+  /**
+   * Tiptap JSON doc with `placeholder` token nodes (plans/signals/07-action-placeholders.md).
+   * A doc whose only meaningful content is a single token resolves to the RAW value (type
+   * preserved); mixed content flattens to a string. Legacy pre-07 rows carry a raw value
+   * (string/number/…), written verbatim — hence `unknown` rather than `TiptapDoc | string`.
+   */
   value: unknown
 }
 
@@ -48,7 +55,11 @@ export interface EnqueueWorkflowAction {
 export interface NotifyAction {
   type: 'notify'
   userIds: string[]
-  message: string
+  /**
+   * Tiptap JSON doc with `placeholder` token nodes, flattened to text at execution
+   * (plans/signals/07-action-placeholders.md).
+   */
+  message: TiptapDoc
 }
 
 /**
@@ -65,13 +76,16 @@ export interface NativeAction {
 /**
  * Create a follow-up task from the fired record (decision 11 — v1 scope). Registered as
  * a normal (non-native) action: immediately usable on field/lifecycle/sync/signal doors
- * alike, no `managed` gate. Dedupe + completion cooldown (decision 7) and
- * `{{record}}` title interpolation are handled by the executor (`actions.ts`).
+ * alike, no `managed` gate. Dedupe + completion cooldown (decision 7) and placeholder-
+ * token title resolution are handled by the executor (`actions.ts`).
  */
 export interface CreateTaskAction {
   type: 'create-task'
-  /** May contain the literal token `{{record}}`, replaced with the fired record's display name. */
-  title: string
+  /**
+   * Tiptap JSON doc with `placeholder` token nodes, flattened to text at execution
+   * (plans/signals/07-action-placeholders.md).
+   */
+  title: TiptapDoc
   /** Fixed assignee user ids. No record-owner strategy yet (decision 11). */
   assigneeIds?: string[]
   /** Relative deadline in days from firing time, resolved the same way `createTask` does. */
@@ -195,5 +209,9 @@ export interface RecordRuleFireContext {
     signalId: string
     kind: string
     contactEntityInstanceId?: string
+    /** The signal's `subtype` (e.g. `'sequence_step'`), for `signal:subtype` action tokens. */
+    subtype?: string
+    /** ISO timestamp the signal occurred at, for `signal:occurredAt` action tokens. */
+    occurredAt?: string
   }
 }

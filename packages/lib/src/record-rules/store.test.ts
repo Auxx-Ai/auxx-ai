@@ -3,6 +3,7 @@
 // actions (the tRPC create/update path calls this). Pure — no DB.
 
 import { describe, expect, it } from 'vitest'
+import { legacyActionTextToDoc } from './client'
 import { assertRuleShape } from './store'
 
 const fieldRule = { fieldId: 'fld_1', on: 'changed' as const }
@@ -28,7 +29,10 @@ describe('assertRuleShape — native actions', () => {
 
   it('accepts a normal user rule', () => {
     expect(() =>
-      assertRuleShape({ ...fieldRule, actions: [{ type: 'notify', userIds: ['u'], message: 'm' }] })
+      assertRuleShape({
+        ...fieldRule,
+        actions: [{ type: 'notify', userIds: ['u'], message: legacyActionTextToDoc('m') }],
+      })
     ).not.toThrow()
   })
 
@@ -55,7 +59,7 @@ describe('assertRuleShape — native actions', () => {
 })
 
 describe('assertRuleShape — signal door (decision 4)', () => {
-  const notify = [{ type: 'notify' as const, userIds: ['u'], message: 'm' }]
+  const notify = [{ type: 'notify' as const, userIds: ['u'], message: legacyActionTextToDoc('m') }]
 
   it('accepts a signal rule with a recognized signalKind and no fieldId', () => {
     expect(() =>
@@ -99,7 +103,7 @@ describe('assertRuleShape — signal door (decision 4)', () => {
 })
 
 describe('assertRuleShape — stale signal:* conditions (decision 15)', () => {
-  const notify = [{ type: 'notify' as const, userIds: ['u'], message: 'm' }]
+  const notify = [{ type: 'notify' as const, userIds: ['u'], message: legacyActionTextToDoc('m') }]
 
   it('rejects a condition referencing a signal:* pseudo-field on a non-signal rule', () => {
     expect(() =>

@@ -4,20 +4,32 @@
 
 import type { Condition, ConditionGroup } from '@auxx/lib/conditions/client'
 import {
+  isActionDoc,
   LIFECYCLE_TRANSITIONS,
-  type RecordRuleAction,
   type RecordRuleOn,
 } from '@auxx/lib/record-rules/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { isSignalPseudoFieldId } from '@auxx/lib/signals/client'
+import { docToText, isNonEmptyDoc } from '@auxx/lib/tiptap'
 import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useRecordRules } from '../hooks/use-record-rules'
-import { RecordRuleActionsPage } from './record-rule-actions-page'
+import { emptyActionDoc } from './action-token-input'
+import { type EditableRuleAction, RecordRuleActionsPage } from './record-rule-actions-page'
 import { RecordRuleConfigurePage } from './record-rule-configure-page'
+
+/**
+ * Doc-aware completeness for token-bearing action fields. `isNonEmptyDoc` alone would
+ * reject a doc whose only content is a placeholder chip (it counts text/reference/mention
+ * nodes, not `placeholder`), so a token-only doc is rescued via `docToText`, which renders
+ * placeholder nodes as `{{id}}`.
+ */
+function hasActionContent(v: unknown): boolean {
+  return isActionDoc(v) && (isNonEmptyDoc(v) || docToText(v) !== '')
+}
 
 /** Rule shape the settings list hands to the dialog (router `list` output item). */
 export interface EditableRecordRule {
@@ -86,7 +98,7 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
   const [fieldRef, setFieldRef] = useState('')
   const [signalKind, setSignalKind] = useState('')
   const [groups, setGroups] = useState<ConditionGroup[]>([])
-  const [actions, setActions] = useState<RecordRuleAction[]>([])
+  const [actions, setActions] = useState<EditableRuleAction[]>([])
   const [selectedActionIndex, setSelectedActionIndex] = useState(0)
 
   // Re-seed form state whenever the dialog opens.
@@ -100,7 +112,7 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
     setFieldRef(rule?.fieldRef ?? '')
     setSignalKind(rule?.signalKind ?? '')
     setGroups(Array.isArray(rule?.condition) ? (rule.condition as ConditionGroup[]) : [])
-    setActions(Array.isArray(rule?.actions) ? (rule.actions as RecordRuleAction[]) : [])
+    setActions(Array.isArray(rule?.actions) ? (rule.actions as EditableRuleAction[]) : [])
   }, [open, rule])
 
   const isLifecycle = LIFECYCLE_TRANSITIONS.includes(on)
@@ -144,7 +156,7 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
     }
   }
 
-  const updateAction = (index: number, next: RecordRuleAction) =>
+  const updateAction = (index: number, next: EditableRuleAction) =>
     setActions((prev) => prev.map((a, i) => (i === index ? next : a)))
   const removeAction = (index: number) =>
     setActions((prev) => {
@@ -154,7 +166,10 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
     })
   const addAction = () =>
     setActions((prev) => {
-      const next: RecordRuleAction[] = [...prev, { type: 'notify', userIds: [], message: '' }]
+      const next: EditableRuleAction[] = [
+        ...prev,
+        { type: 'notify', userIds: [], message: emptyActionDoc() },
+      ]
       setSelectedActionIndex(next.length - 1)
       return next
     })
@@ -170,10 +185,10 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
   const handleSave = async () => {
     const invalidIndex = actions.findIndex(
       (a) =>
-        (a.type === 'notify' && (a.userIds.length === 0 || a.message.trim() === '')) ||
+        (a.type === 'notify' && (a.userIds.length === 0 || !hasActionContent(a.message))) ||
         (a.type === 'set-field' && !a.fieldRef) ||
         (a.type === 'enqueue-workflow' && !a.workflowAppId) ||
-        (a.type === 'create-task' && !a.title.trim())
+        (a.type === 'create-task' && !hasActionContent(a.title))
     )
     if (invalidIndex >= 0) {
       setSelectedActionIndex(invalidIndex)
@@ -256,6 +271,7 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
               onUpdate={updateAction}
               entityDefinitionId={entityDefinitionId}
               fields={fields}
+              isSignalRule={isSignal}
               workflows={workflows}
               isEdit={!!rule}
               canSave={canSave}

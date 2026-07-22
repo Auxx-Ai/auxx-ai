@@ -20,6 +20,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import type { ConditionGroup } from '../conditions/types'
+import { legacyActionTextToDoc } from './client'
 import { assertRuleShape } from './store'
 import type { CreateTaskAction, RecordRuleAction } from './types'
 
@@ -55,7 +56,7 @@ export const SUGGESTED_RECORD_RULE_TEMPLATES: SuggestedRuleTemplate[] = [
     actions: [
       {
         type: 'create-task',
-        title: 'Review unsubscribe from {{record}}',
+        title: legacyActionTextToDoc('Review unsubscribe from {{record}}'),
       } satisfies CreateTaskAction,
     ],
   },
@@ -65,7 +66,10 @@ export const SUGGESTED_RECORD_RULE_TEMPLATES: SuggestedRuleTemplate[] = [
     signalKind: 'email:bounced',
     condition: [],
     actions: [
-      { type: 'create-task', title: 'Fix invalid email for {{record}}' } satisfies CreateTaskAction,
+      {
+        type: 'create-task',
+        title: legacyActionTextToDoc('Fix invalid email for {{record}}'),
+      } satisfies CreateTaskAction,
     ],
   },
   {
@@ -76,7 +80,7 @@ export const SUGGESTED_RECORD_RULE_TEMPLATES: SuggestedRuleTemplate[] = [
     actions: [
       {
         type: 'create-task',
-        title: 'Follow up with {{record}} — opening but not replying',
+        title: legacyActionTextToDoc('Follow up with {{record}} — opening but not replying'),
         autoCompleteOn: 'contact_reply',
         deadlineDays: 2,
       } satisfies CreateTaskAction,

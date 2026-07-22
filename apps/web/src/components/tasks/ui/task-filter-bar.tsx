@@ -35,6 +35,10 @@ interface TaskFilterBarProps {
   includeCompleted: boolean
   /** Callback when includeCompleted changes */
   onIncludeCompletedChange: (value: boolean) => void
+  /** Whether to include snoozed tasks (excluded from open lists by default) */
+  includeSnoozed: boolean
+  /** Callback when includeSnoozed changes */
+  onIncludeSnoozedChange: (value: boolean) => void
   /** Whether the "Follow-ups" chip (source in rule/ai — build plan decision 16) is active */
   followUpsOnly: boolean
   /** Callback when the "Follow-ups" chip is toggled */
@@ -54,6 +58,8 @@ export function TaskFilterBar({
   onSortChange,
   includeCompleted,
   onIncludeCompletedChange,
+  includeSnoozed,
+  onIncludeSnoozedChange,
   followUpsOnly,
   onFollowUpsOnlyChange,
   disabled = false,
@@ -203,8 +209,22 @@ export function TaskFilterBar({
         <TaskSortSelect value={sort} onChange={onSortChange} disabled={disabled} />
       </ListToolbarGroup>
 
-      {/* Show Completed Toggle */}
+      {/* Show Snoozed / Show Completed Toggles */}
       <ListToolbarGroup align='end'>
+        <label
+          className={buttonVariants({
+            variant: 'ghost',
+            size: 'sm',
+            className: `gap-2 ${disabled ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`,
+          })}>
+          <span className='text-muted-foreground text-xs'>Show snoozed</span>
+          <Switch
+            size='sm'
+            checked={includeSnoozed}
+            onCheckedChange={onIncludeSnoozedChange}
+            disabled={disabled}
+          />
+        </label>
         <label
           className={buttonVariants({
             variant: 'ghost',

@@ -5,6 +5,7 @@
 // vitest (project memory), so the store is exercised at the function level only.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { legacyActionTextToDoc } from './client'
 import type { CachedRecordRule } from './types'
 
 const h = vi.hoisted(() => ({
@@ -39,7 +40,7 @@ function rule(overrides: Partial<CachedRecordRule> = {}): CachedRecordRule {
     name: 'Test rule',
     on: 'changed',
     condition: [],
-    actions: [{ type: 'notify', userIds: ['u1'], message: 'hi' }],
+    actions: [{ type: 'notify', userIds: ['u1'], message: legacyActionTextToDoc('hi') }],
     enabled: true,
     ...overrides,
   }
@@ -131,7 +132,7 @@ describe('fireRecordRules', () => {
   it('runs actions in order and logs an ok run', async () => {
     const r = rule({
       actions: [
-        { type: 'notify', userIds: ['u1'], message: 'first' },
+        { type: 'notify', userIds: ['u1'], message: legacyActionTextToDoc('first') },
         { type: 'set-field', fieldRef: 'fld_x', value: 1 },
       ],
     })
@@ -151,7 +152,7 @@ describe('fireRecordRules', () => {
     const r = rule({
       actions: [
         { type: 'set-field', fieldRef: 'fld_x', value: 1 },
-        { type: 'notify', userIds: ['u1'], message: 'still runs' },
+        { type: 'notify', userIds: ['u1'], message: legacyActionTextToDoc('still runs') },
       ],
     })
     await fireRecordRules([r], { ...baseCtx })
