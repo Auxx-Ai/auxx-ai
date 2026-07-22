@@ -8,18 +8,19 @@ import { SidebarGroup, SidebarGroupCollapse, SidebarMenu } from '@auxx/ui/compon
 import { cn } from '@auxx/ui/lib/utils'
 import { useDndContext, useDroppable } from '@dnd-kit/core'
 import { UserPlus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { SourceToggleRow } from '~/components/calendar/ui/source-toggle-group'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { VisualIcon } from '~/components/icons/ui/visual-icon'
 import { type BoardWorker, UNASSIGNED_RESOURCE_ID } from '../board/types'
-import { DEFAULT_WORKER_COLOR, UNASSIGNED_COLOR, workerDisplayName } from '../board/utils'
+import { workerDisplayName } from '../board/utils'
 import { WorkerDialog } from '../worker-dialog'
 
 interface WorkersGroupProps {
   workers: BoardWorker[]
   /** Per-worker `OPTION_COLORS` entry, keyed by `DispatchWorker.id` (`use-board-data.ts`'s
-   * `colorByWorkerId` — the stored `SelectOptionColor` id resolved to its palette entry; this
-   * row's dot reads `.hex`, since several palette ids can't render directly as a CSS color). */
+   * `colorByWorkerId` — the stored `SelectOptionColor` id resolved to its palette entry). The
+   * row's `VisualIcon` fallback reads `.id` (the palette id) to tint the photoless avatar glyph. */
   colorByWorkerId: Map<string, OptionColor>
   hiddenWorkerIds: string[]
   onToggleWorker: (workerId: string) => void
@@ -41,18 +42,20 @@ function DroppableWorkerRow({
   id,
   dropAssigneeWorkerId,
   label,
-  color,
+  icon,
   visible,
   onToggle,
   mode,
+  className,
 }: {
   id: string
   dropAssigneeWorkerId: string | null
   label: string
-  color: string
+  icon: ReactNode
   visible: boolean
   onToggle: () => void
   mode?: 'map' | 'calendar'
+  className?: string
 }) {
   const { active } = useDndContext()
   const isCompatibleDrag =
@@ -79,7 +82,14 @@ function DroppableWorkerRow({
           isOver &&
           'bg-primary/20 outline-primary/80 ring-2 ring-inset ring-primary/60'
       )}>
-      <SourceToggleRow id={id} label={label} color={color} visible={visible} onToggle={onToggle} />
+      <SourceToggleRow
+        id={id}
+        label={label}
+        icon={icon}
+        visible={visible}
+        onToggle={onToggle}
+        className={className}
+      />
     </div>
   )
 }
@@ -132,27 +142,47 @@ export function WorkersGroup({
       />
       <SidebarGroupCollapse open={open}>
         <SidebarMenu>
+          <DroppableWorkerRow
+            id={UNASSIGNED_RESOURCE_ID}
+            dropAssigneeWorkerId={null}
+            label='Unassigned'
+            icon={
+              <VisualIcon
+                fallbackIconId='user-x'
+                fallbackColor='gray'
+                size='sm'
+                inverse
+                frameClassName='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
+              />
+            }
+            className='text-primary-400'
+            visible={!hidden.has(UNASSIGNED_RESOURCE_ID)}
+            onToggle={() => onToggleWorker(UNASSIGNED_RESOURCE_ID)}
+            mode={mode}
+          />
           {workers.map((worker) => (
             <DroppableWorkerRow
               key={worker.id}
               id={worker.id}
               dropAssigneeWorkerId={worker.id}
               label={workerDisplayName(worker)}
-              color={colorByWorkerId.get(worker.id)?.hex ?? DEFAULT_WORKER_COLOR}
+              icon={
+                <VisualIcon
+                  value={worker.user?.image}
+                  fallbackIconId={worker.type === 'team' ? 'users' : 'user'}
+                  fallbackColor={colorByWorkerId.get(worker.id)?.id ?? 'indigo'}
+                  size='sm'
+                  inverse
+                  imageFallback
+                  fit='cover'
+                  frameClassName='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
+                />
+              }
               visible={!hidden.has(worker.id)}
               onToggle={() => onToggleWorker(worker.id)}
               mode={mode}
             />
           ))}
-          <DroppableWorkerRow
-            id={UNASSIGNED_RESOURCE_ID}
-            dropAssigneeWorkerId={null}
-            label='Unassigned'
-            color={UNASSIGNED_COLOR}
-            visible={!hidden.has(UNASSIGNED_RESOURCE_ID)}
-            onToggle={() => onToggleWorker(UNASSIGNED_RESOURCE_ID)}
-            mode={mode}
-          />
         </SidebarMenu>
       </SidebarGroupCollapse>
       <WorkerDialog open={addOpen} onOpenChange={setAddOpen} workerId={null} />

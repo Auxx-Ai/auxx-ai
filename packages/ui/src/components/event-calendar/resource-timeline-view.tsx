@@ -9,6 +9,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { EventGap, EventHeight, GridHeaderHeight, WeekCellsHeight } from './constants'
 import { DayResourceGroup } from './day-resource-group'
 import { EventItem } from './event-item'
+import { HeaderScrollShadow, syncScrolledY } from './header-scroll-shadow'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { useDayStream } from './hooks/use-day-stream'
 import { HourGutter } from './hour-gutter'
@@ -223,6 +224,7 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
   // viewport we skip the snap-scroll but still emit the (rounded) leftmost day.
   const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const handleScroll = useCallback(() => {
+    if (scrollRef.current) syncScrolledY(scrollRef.current)
     clearTimeout(settleTimeoutRef.current)
     settleTimeoutRef.current = setTimeout(() => {
       if (programmaticScrollRef.current) return
@@ -304,7 +306,14 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
 
   return (
     <div data-slot='resource-timeline-view' className='flex min-h-0 flex-1 flex-col'>
-      <div ref={scrollRef} onScroll={handleScroll} className='min-h-0 flex-1 overflow-auto'>
+      {/* `bg-background` lives on the scroll container (not the gutter): its height is always the
+          viewport (`flex-1`), zoom-independent, so the white sidebar fills full height and can never
+          collapse. The gutter keeps its own `bg-background` only to occlude horizontally-scrolled
+          day columns behind the sticky hour labels. */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className='group/grid-scroll bg-background min-h-0 flex-1 overflow-auto'>
         <div
           className='relative'
           style={{
@@ -315,10 +324,13 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
           <div
             className='bg-background/80 border-border/70 sticky top-0 z-30 border-b backdrop-blur-md'
             style={{ height: headerHeight }}>
-            {/* Corner — sticky on both axes: pinned left within the (already sticky-top) strip. */}
+            {/* Corner — sticky on both axes: pinned left within the (already sticky-top) strip.
+                Width comes from the SAME responsive class as `HourGutter` (not the JS-measured
+                `gutterWidth` state, which starts at a wrong 48 guess) so corner + gutter body
+                agree on the first paint — no width flash on refresh. */}
             <div
-              className='bg-background sticky left-0 z-10 flex flex-col'
-              style={{ width: gutterWidth, height: headerHeight }}>
+              className='bg-background sticky left-0 z-10 flex w-12 flex-col sm:w-14'
+              style={{ height: headerHeight }}>
               <div
                 className='text-muted-foreground/70 flex items-center justify-center text-sm'
                 style={{ height: DateLabelHeight + WorkerHeaderHeight }}>
@@ -459,10 +471,14 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
                 </div>
               )
             })}
+
+            <HeaderScrollShadow />
           </div>
 
           {/* Sticky hour gutter — pinned left only (no `top`: it scrolls vertically with the
-              hour grid; its flow position already starts below the sticky header). */}
+              hour grid; its flow position already starts below the sticky header). Opaque
+              `bg-background` occludes horizontally-scrolled day columns; full-height white below the
+              grid comes from the scroll container, not this element's height. */}
           <div ref={gutterRef} className='bg-background sticky left-0 z-20 w-fit'>
             <HourGutter
               hours={hours}
