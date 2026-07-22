@@ -39,9 +39,12 @@ export function CreateInvoiceAction({ recordId }: DrawerActionProps) {
       <BillingActionDialog
         open={open}
         onOpenChange={setOpen}
-        workOrderRecordId={recordId}
-        billing={billing}
-        mode={action.kind === 'create_extra' ? 'extra' : 'primary'}
+        scope={{
+          kind: 'workOrder',
+          workOrderRecordId: recordId,
+          billing,
+          mode: action.kind === 'create_extra' ? 'extra' : 'primary',
+        }}
       />
     </>
   )

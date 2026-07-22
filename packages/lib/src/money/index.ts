@@ -16,6 +16,17 @@ export {
   setInvoiceSchedule,
   sweepInvoiceDrafts,
 } from './auto-invoice'
+export {
+  type InvoiceBatchItemResult,
+  type InvoiceBatchRange,
+  type InvoiceBatchRow,
+  type PreviewInvoiceBatchInput,
+  type PreviewInvoiceBatchResult,
+  previewInvoiceBatch,
+  type RunInvoiceBatchInput,
+  type RunInvoiceBatchResult,
+  runInvoiceBatch,
+} from './batch-invoicing'
 export { allocateProportionally, resolveFixedInvoiceAmount } from './billing-allocation-math'
 export {
   allocateInvoiceLine,

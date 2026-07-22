@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
+import type { ReactNode } from 'react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { ExportProgressDialog } from '~/components/data-export/ui/export-progress-dialog'
@@ -86,6 +87,10 @@ interface RecordsViewProps {
   slug: string
   /** Base URL path for breadcrumbs and import links. Defaults to /app/custom/${slug} */
   basePath?: string
+  /** Extra actions rendered in the header action slot, next to the Create button (e.g. the
+   * invoices/work-orders "Batch invoice" entry point, plan
+   * plans/dispatch/37a-batch-advance-invoicing.md §3 decision #4). */
+  pageActions?: ReactNode
 }
 
 /**
@@ -95,7 +100,7 @@ interface RecordsViewProps {
  * only `MainPageContent` + contributions (`MainPageAction` for Create) — the
  * calling route (`EntityRouteLayout`) owns `MainPage`/`MainPageHeader`.
  */
-export function RecordsView({ slug, basePath }: RecordsViewProps) {
+export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
@@ -872,6 +877,7 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
       )}
 
       <MainPageAction>
+        {pageActions}
         <Button size='sm' className='h-7 rounded-lg' onClick={() => setIsCreateDialogOpen(true)}>
           <Plus className='size-4' />
           Create {resource.label}

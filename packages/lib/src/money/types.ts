@@ -210,6 +210,10 @@ export interface CreateFixedContractInvoiceInput extends WorkOrderBillingCommand
 /** Create one invoice containing one or more completed visits. */
 export interface CreateVisitInvoiceInput extends WorkOrderBillingCommandInput {
   visitIds: string[]
+  /** When `true`, accept any non-canceled visit status instead of requiring `'done'` — the
+   * batch/advance-invoicing path (bill before the work happens). Everything downstream
+   * (allocation, line copying, `finishInvoice`) is unchanged. */
+  advance?: boolean
 }
 
 /** Create one flat-rate charge for a recurrence occurrence or a manual period. */

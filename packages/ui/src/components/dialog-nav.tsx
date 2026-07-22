@@ -186,9 +186,16 @@ export function DialogNavPages({ value, children, className }: DialogNavPagesPro
     if (typeof height === 'number') measuredOnce.current = true
   }, [height])
 
-  const pages = Children.toArray(children).filter(
-    isValidElement
-  ) as ReactElement<DialogNavPageProps>[]
+  // Flatten one level of fragments so callers can group pages conditionally
+  // ({cond ? <>…pages…</> : <>…pages…</>}) — Children.toArray leaves fragments
+  // intact, which would hide their pages from the value match below.
+  const pages = Children.toArray(children)
+    .flatMap((child) =>
+      isValidElement(child) && child.type === Fragment
+        ? Children.toArray((child.props as { children?: ReactNode }).children)
+        : [child]
+    )
+    .filter(isValidElement) as ReactElement<DialogNavPageProps>[]
   const active = pages.find((page) => page.props.value === value)
   const widthRem = dialogSizeRem[active?.props.size ?? 'sm']
 
