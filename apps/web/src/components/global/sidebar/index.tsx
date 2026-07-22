@@ -7,7 +7,6 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarRail,
 } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
 import { GETTING_STARTED_GOALS } from '~/components/getting-started/client'
@@ -42,7 +41,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
 
   return (
     <SidebarStateProvider>
-      <Sidebar collapsible='icon' {...props}>
+      <Sidebar {...props}>
         <SidebarHeader>
           <SidebarMenu>
             <NavUser user={user} />
@@ -59,7 +58,6 @@ export default function AppSidebar({ user, ...props }: Prop) {
           <GettingStartedGroup checklistId='main' catalog={GETTING_STARTED_GOALS} />
           <AppFooter />
         </SidebarFooter>
-        <SidebarRail />
       </Sidebar>
       {dialogs}
     </SidebarStateProvider>

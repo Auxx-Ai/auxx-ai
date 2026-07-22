@@ -30,6 +30,7 @@ import {
   Headset,
   LogOut,
   Moon,
+  PanelLeftOpen,
   Plus,
   Shield,
   Sparkles,
@@ -66,7 +67,7 @@ type Prop = {
 }
 
 export function NavUser({ user }: Prop) {
-  const { isMobile } = useSidebar()
+  const { isMobile, peek, setOpen } = useSidebar()
   const [showNewOrgDialog, setShowNewOrgDialog] = useState(false)
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
   const router = useRouter()
@@ -145,8 +146,8 @@ export function NavUser({ user }: Prop) {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size='lg'
-              className='ps-1 w-auto pe-1.5  h-8 rounded-2xl ring-0 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:pe-0'>
-              <span className='relative inline-flex shrink-0 group-data-[collapsible=icon]:mx-auto'>
+              className='ps-1 w-auto pe-1.5  h-8 rounded-2xl ring-0 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
+              <span className='relative inline-flex shrink-0'>
                 <Avatar className='size-6 rounded-full ring-1 ring-ring/20'>
                   <AvatarImage src={displayImage!} alt={displayName} />
                   <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
@@ -156,7 +157,7 @@ export function NavUser({ user }: Prop) {
                   className='absolute -bottom-0.5 -right-0.5 size-2'
                 />
               </span>
-              <div className='grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden pe-2'>
+              <div className='grid flex-1 text-left text-sm leading-tight pe-2'>
                 <span className='truncate'>{displayName}</span>
               </div>
             </SidebarMenuButton>
@@ -340,22 +341,36 @@ export function NavUser({ user }: Prop) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        {kopilotEnabled && (
-          <Tooltip content='Kopilot' shortcut={['⌘', '⇧', 'K']}>
-            <button
-              type='button'
-              className='relative shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:hidden'
-              onClick={toggleKopilot}>
-              <Sparkles className='size-4' />
-              {hasUnreadNotification && (
-                <span
-                  aria-label='Unread Kopilot notification'
-                  className='absolute right-1 top-1 size-2 rounded-full bg-primary'
-                />
-              )}
-            </button>
-          </Tooltip>
-        )}
+        <div className='flex shrink-0 items-center gap-1'>
+          {kopilotEnabled && (
+            <Tooltip content='Kopilot' shortcut={['⌘', '⇧', 'K']}>
+              <button
+                type='button'
+                className='relative shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors'
+                onClick={toggleKopilot}>
+                <Sparkles className='size-4' />
+                {hasUnreadNotification && (
+                  <span
+                    aria-label='Unread Kopilot notification'
+                    className='absolute right-1 top-1 size-2 rounded-full bg-primary'
+                  />
+                )}
+              </button>
+            </Tooltip>
+          )}
+          {/* Only while peeking: pin the floating sidebar open (real expand, clears the peek). */}
+          {peek && (
+            <Tooltip content='Expand sidebar' shortcut={['⌘', '.']}>
+              <button
+                type='button'
+                aria-label='Expand sidebar'
+                className='shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors'
+                onClick={() => setOpen(true)}>
+                <PanelLeftOpen className='size-4' />
+              </button>
+            </Tooltip>
+          )}
+        </div>
       </SidebarMenuItem>
     </>
   )

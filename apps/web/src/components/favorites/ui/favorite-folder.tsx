@@ -173,9 +173,7 @@ export function FavoriteFolder({ folder, items, index }: FavoriteFolderProps) {
               />
             ) : (
               <>
-                <span className='truncate group-data-[collapsible=icon]:hidden'>
-                  {folder.title}
-                </span>
+                <span className='truncate'>{folder.title}</span>
                 <button
                   type='button'
                   data-no-toggle
@@ -184,14 +182,14 @@ export function FavoriteFolder({ folder, items, index }: FavoriteFolderProps) {
                     sidebarState.toggleSection(sectionId)
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
-                  className='ml-1 inline-flex shrink-0 items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
+                  className='ml-1 inline-flex shrink-0 items-center text-muted-foreground'>
                   <CollapsibleChevron open={isOpen} />
                 </button>
               </>
             )}
           </div>
 
-          <div className='flex items-center group-data-[collapsible=icon]:hidden'>
+          <div className='flex items-center'>
             {!editing && (
               <div
                 data-no-toggle

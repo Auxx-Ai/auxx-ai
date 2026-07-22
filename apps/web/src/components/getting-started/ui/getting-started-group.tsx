@@ -122,10 +122,10 @@ export function GettingStartedGroup({ checklistId, catalog, title = 'Getting sta
                   onClick={() => toggleSection(sectionId)}
                   className='group/gs relative h-7 cursor-pointer'>
                   <Rocket className='size-4' />
-                  <span className='group-data-[collapsible=icon]:hidden'>{title}</span>
+                  <span>{title}</span>
                   <CollapsibleChevron open={isOpen} className='ms-1 text-muted-foreground' />
 
-                  <div className='ms-auto flex items-center gap-1 group-data-[collapsible=icon]:hidden'>
+                  <div className='ms-auto flex items-center gap-1'>
                     <span className='text-xs text-muted-foreground'>
                       {done}/{total}
                     </span>
@@ -155,7 +155,7 @@ export function GettingStartedGroup({ checklistId, catalog, title = 'Getting sta
                 </div>
               </SidebarMenuButton>
 
-              <SidebarGroupCollapse open={isOpen} className='group-data-[collapsible=icon]:hidden'>
+              <SidebarGroupCollapse open={isOpen}>
                 <div className='px-2 pb-1.5 pt-1'>
                   <Progress value={(done / total) * 100} indicatorClassName='bg-info' />
                 </div>

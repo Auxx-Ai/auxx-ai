@@ -26,6 +26,10 @@ import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 interface AppLayoutWrapperProps {
   children: ReactNode
   user: any
+  /** SSR sidebar open state from cookie — forwarded to `Dashboard`'s `SidebarProvider`. */
+  defaultSidebarOpen?: boolean
+  /** SSR sidebar width (px) from cookie — forwarded to `Dashboard`'s `SidebarProvider`. */
+  defaultSidebarWidth?: number
 }
 
 /** Helper function to check if subscription is expired */
@@ -45,7 +49,12 @@ function isTrialExpired(subscription: DehydratedOrganization['subscription']): b
 /**
  * Client wrapper that checks subscription and conditionally renders Dashboard or SubscriptionEnded
  */
-export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
+export function AppLayoutWrapper({
+  children,
+  user,
+  defaultSidebarOpen,
+  defaultSidebarWidth,
+}: AppLayoutWrapperProps) {
   const organizations = useDehydratedOrganizations()
   const { organizationId: currentOrgId } = useOrganizationIdContext()
   const selfHosted = useIsSelfHosted()
@@ -85,7 +94,12 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
         <ChannelProvider>
           <ThreadDataProvider>
             <ThreadActionsProvider>
-              <Dashboard user={user}>{children}</Dashboard>
+              <Dashboard
+                user={user}
+                defaultSidebarOpen={defaultSidebarOpen}
+                defaultSidebarWidth={defaultSidebarWidth}>
+                {children}
+              </Dashboard>
               <FloatingComposeRoot />
               <FloatingTaskRoot />
               <GlobalCreateRoot />

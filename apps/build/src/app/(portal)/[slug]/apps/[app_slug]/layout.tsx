@@ -94,7 +94,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className='h-screen flex flex-1 flex-col w-full h-full'>
       <AddToOrgDialog open={addToOrgOpen} onOpenChange={setAddToOrgOpen} appId={app.id} />
-      <SidebarProvider>
+      <SidebarProvider resizable persistKey='build_sidebar'>
         <BuildAppSidebar user={user} accountSlug={slug} />
         <SidebarInset>
           <MainPage>

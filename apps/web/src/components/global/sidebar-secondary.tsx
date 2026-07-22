@@ -42,7 +42,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
         <div
           id='dropdown'
           className={cn(
-            'flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden transition-all duration-300 ease-in-out',
+            'flex min-h-0 flex-1 flex-col gap-2 overflow-auto transition-all duration-300 ease-in-out',
             // Mobile-specific classes
             isMobile && !isDropdownOpen && 'max-h-0 overflow-hidden',
             isMobile && isDropdownOpen && 'max-h-[70vh]',
@@ -90,12 +90,12 @@ function createSidebarGroup(
   }
 
   return (
-    <div className='relative flex w-full min-w-0 flex-col p-2 group-data-[collapsible=icon]:hidden'>
+    <div className='relative flex w-full min-w-0 flex-col p-2'>
       <div
         className={cn(
           'flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-hidden',
           'ring-sidebar-ring transition-[margin,opa] duration-200 ease-linear focus-visible:ring-2',
-          'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 [&>svg]:size-4 [&>svg]:shrink-0'
+          '[&>svg]:size-4 [&>svg]:shrink-0'
         )}>
         {title}
       </div>
@@ -114,7 +114,7 @@ function createSidebarGroup(
                 'group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50',
                 'data-[active=true]:bg-black/5 dark:data-[active=true]:bg-sidebar-accent dark:data-[active=true]:hover:bg-sidebar-accent data-[active=true]:text-foreground',
                 'data-[state=open]:hover:bg-black/5 data-[state=open]:hover:text-foreground ',
-                'group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
+                '[&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0'
               )}>
               {item.icon}
               <span>{item.label}</span>

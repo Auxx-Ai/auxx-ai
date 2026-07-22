@@ -7,7 +7,6 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarRail,
 } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
 import { NavUser } from '~/components/global/sidebar/nav-user'
@@ -38,7 +37,7 @@ type AdminAppSidebarProps = {
 function AdminVersionFooter() {
   const { version } = useEnv()
   return (
-    <div className='px-3 py-2 text-[11px] text-muted-foreground/60 truncate group-data-[collapsible=icon]:hidden'>
+    <div className='px-3 py-2 text-[11px] text-muted-foreground/60 truncate'>
       {version.appVersion} ({version.commit})
     </div>
   )
@@ -46,7 +45,7 @@ function AdminVersionFooter() {
 
 export function AdminAppSidebar({ user, ...props }: AdminAppSidebarProps) {
   return (
-    <Sidebar collapsible='icon' className='p-0' {...props}>
+    <Sidebar className='p-0' {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <NavUser user={user} />
@@ -58,7 +57,6 @@ export function AdminAppSidebar({ user, ...props }: AdminAppSidebarProps) {
       <SidebarFooter>
         <AdminVersionFooter />
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }

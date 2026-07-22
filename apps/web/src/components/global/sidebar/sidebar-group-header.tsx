@@ -57,7 +57,7 @@ export function SidebarGroupHeader({
       data-state={isOpen || isEditMode ? 'open' : 'closed'}
       onClick={handleRowClick}
       className={cn(
-        'flex items-center justify-between h-7.5 rounded-md hover:bg-sidebar-accent group-data-[collapsible=icon]:hidden cursor-pointer',
+        'flex items-center justify-between h-7.5 rounded-md hover:bg-sidebar-accent cursor-pointer',
         popoverOpen && 'bg-sidebar-accent',
         isEditMode && !isGroupVisible && 'opacity-50'
       )}>
