@@ -18,11 +18,9 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import {
-  EndHour,
   EventGap,
   EventHeight,
   GridHeaderHeight,
-  StartHour,
   StreamEndYear,
   StreamStartYear,
   WeekCellsHeight,
@@ -30,6 +28,7 @@ import {
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { HourGutter } from './hour-gutter'
+import { useHourWindow } from './hour-window-context'
 import { useCalendarSelection } from './selection/calendar-selection-context'
 import { StickyRailShadow } from './sticky-rail-shadow'
 import type { BackgroundEvent, EventCalendarItem, RenderEvent } from './types'
@@ -104,6 +103,8 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   const [dayWidth, setDayWidth] = useState(160)
   const [gutterWidth, setGutterWidth] = useState(48)
 
+  const { start: windowStart, end: windowEnd } = useHourWindow()
+
   const { epoch, dayCount } = useMemo(() => {
     const start = startOfDay(new Date(StreamStartYear, 0, 1))
     const count = differenceInCalendarDays(new Date(StreamEndYear, 0, 1), start) + 1
@@ -122,10 +123,10 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   // prop for the memoized WeekDayColumn below.
   const hours = useMemo(() => {
     return eachHourOfInterval({
-      start: addHours(epoch, StartHour),
-      end: addHours(epoch, EndHour - 1),
+      start: addHours(epoch, windowStart),
+      end: addHours(epoch, windowEnd - 1),
     })
-  }, [epoch])
+  }, [epoch, windowStart, windowEnd])
 
   const allDayEvents = useMemo(
     () => events.filter((event) => event.allDay || isMultiDayEvent(event)),

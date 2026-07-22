@@ -7,7 +7,7 @@ import { addHours, eachHourOfInterval, format, isSameDay, startOfDay } from 'dat
 import { useMemo } from 'react'
 
 import { BackgroundEventsLayer } from './background-events'
-import { EndHour, StartHour, WeekCellsHeight } from './constants'
+import { WeekCellsHeight } from './constants'
 import { CurrentTimeLine } from './current-time-line'
 import { DraggableEvent } from './draggable-event'
 import { DropPreview } from './drop-preview'
@@ -15,6 +15,7 @@ import { DroppableCell } from './droppable-cell'
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { HourGutter } from './hour-gutter'
+import { useHourWindow } from './hour-window-context'
 import { positionEventsForDay } from './position-events'
 import { useCalendarSelection } from './selection/calendar-selection-context'
 import type { BackgroundEvent, EventCalendarItem, RenderEvent } from './types'
@@ -80,13 +81,14 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
   selectedIds,
   hourHeight = WeekCellsHeight,
 }: DayViewProps<T>) {
+  const { start: windowStart, end: windowEnd } = useHourWindow()
   const hours = useMemo(() => {
     const dayStart = startOfDay(currentDate)
     return eachHourOfInterval({
-      start: addHours(dayStart, StartHour),
-      end: addHours(dayStart, EndHour - 1),
+      start: addHours(dayStart, windowStart),
+      end: addHours(dayStart, windowEnd - 1),
     })
-  }, [currentDate])
+  }, [currentDate, windowStart, windowEnd])
 
   const dayEvents = useMemo(() => {
     return events
@@ -115,9 +117,9 @@ export function DayView<T extends EventCalendarItem = EventCalendarItem>({
     () =>
       positionEventsForDay(timeEvents, currentDate, {
         cellHeight: hourHeight,
-        startHour: StartHour,
+        startHour: windowStart,
       }),
-    [currentDate, timeEvents, hourHeight]
+    [currentDate, timeEvents, hourHeight, windowStart]
   )
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {

@@ -17,11 +17,9 @@ import {
 } from 'date-fns'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  EndHour,
   EventGap,
   EventHeight,
   GridHeaderHeight,
-  StartHour,
   StreamEndYear,
   StreamStartYear,
   WeekCellsHeight,
@@ -30,6 +28,7 @@ import { DayResourceGroup } from './day-resource-group'
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
 import { HourGutter } from './hour-gutter'
+import { useHourWindow } from './hour-window-context'
 import { useCalendarSelection } from './selection/calendar-selection-context'
 import { StickyRailShadow } from './sticky-rail-shadow'
 import type { BackgroundEvent, CalendarResource, EventCalendarItem, RenderEvent } from './types'
@@ -118,6 +117,8 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
 
   const K = resources.length
 
+  const { start: windowStart, end: windowEnd } = useHourWindow()
+
   const { epoch, dayCount } = useMemo(() => {
     const start = startOfDay(new Date(StreamStartYear, 0, 1))
     const count = differenceInCalendarDays(new Date(StreamEndYear, 0, 1), start) + 1
@@ -136,10 +137,10 @@ export function ResourceTimelineView<T extends EventCalendarItem = EventCalendar
   // prop for the memoized DayResourceGroup below.
   const hours = useMemo(() => {
     return eachHourOfInterval({
-      start: addHours(epoch, StartHour),
-      end: addHours(epoch, EndHour - 1),
+      start: addHours(epoch, windowStart),
+      end: addHours(epoch, windowEnd - 1),
     })
-  }, [epoch])
+  }, [epoch, windowStart, windowEnd])
 
   const allDayByResource = useMemo(() => {
     const map = new Map<string, T[]>()

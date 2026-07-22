@@ -387,24 +387,26 @@ export const SETTINGS_CATALOG = {
       'When on, reordering a route automatically re-chains scheduled times for provisional ' +
       'stops (confirmed times hold as anchors)',
   },
-  // Dispatch board timeline view (plan 33 §2.3) — hour-window override for the horizontal
-  // timeline; unset (null) = auto-derive from the org weekly working-hours template ± 2h buffer.
-  'dispatch.board.timelineStartHour': {
+  // Dispatch board visible-hour window (plan 41) — crops the hour axis of ALL board time-grid
+  // views (day/week/resource/timeline) to working hours instead of a dead 0-24 grid. Unset
+  // (null) = auto-derive from the org weekly working-hours template ± 2h buffer; the client also
+  // unions in any real visit's hours so nothing outside the window is ever clipped.
+  'dispatch.board.visibleHourStart': {
     scope: 'GENERAL',
     access: 'org',
     fieldType: 'NUMBER',
     defaultValue: null,
     description:
-      'Timeline board view start hour (0-24). Unset = automatic — derived from working hours ' +
+      'Board time-grid start hour (0-24). Unset = automatic — derived from working hours ' +
       '± 2h buffer.',
   },
-  'dispatch.board.timelineEndHour': {
+  'dispatch.board.visibleHourEnd': {
     scope: 'GENERAL',
     access: 'org',
     fieldType: 'NUMBER',
     defaultValue: null,
     description:
-      'Timeline board view end hour (0-24). Unset = automatic — derived from working hours ' +
+      'Board time-grid end hour (0-24). Unset = automatic — derived from working hours ' +
       '± 2h buffer.',
   },
 

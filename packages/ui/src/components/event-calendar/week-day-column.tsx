@@ -7,11 +7,11 @@ import { isSameDay, isToday } from 'date-fns'
 import { memo } from 'react'
 
 import { BackgroundEventsLayer } from './background-events'
-import { StartHour } from './constants'
 import { CurrentTimeLine } from './current-time-line'
 import { DraggableEvent } from './draggable-event'
 import { DropPreview } from './drop-preview'
 import { DroppableCell } from './droppable-cell'
+import { useHourWindow } from './hour-window-context'
 import { positionEventsForDay } from './position-events'
 import type { BackgroundEvent, EventCalendarItem, RenderEvent } from './types'
 import { isMultiDayEvent } from './utils'
@@ -72,6 +72,7 @@ function WeekDayColumnInner<T extends EventCalendarItem = EventCalendarItem>({
   currentTimePosition,
   hourHeight,
 }: WeekDayColumnProps<T>) {
+  const { start: windowStart } = useHourWindow()
   const day = dayAt(index)
 
   const dayEvents = events.filter((event) => {
@@ -84,7 +85,7 @@ function WeekDayColumnInner<T extends EventCalendarItem = EventCalendarItem>({
   })
   const positioned = positionEventsForDay(dayEvents, day, {
     cellHeight: hourHeight,
-    startHour: StartHour,
+    startHour: windowStart,
   })
 
   const handleEventClick = (event: T, e: React.MouseEvent) => {

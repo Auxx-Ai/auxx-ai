@@ -55,6 +55,7 @@ import {
 } from './constants'
 import { DayView, DayViewHeader } from './day-view'
 import { HorizontalTimelineView } from './horizontal-timeline-view'
+import { HourWindowProvider } from './hour-window-context'
 import { MonthView } from './month-view'
 import { ResourceTimelineView } from './resource-timeline-view'
 import {
@@ -590,57 +591,26 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
             ? 'overflow-hidden'
             : 'overflow-y-auto'
         )}>
-        {view === 'month' && (
-          <MonthView
-            currentDate={date}
-            events={events}
-            weekStartsOn={weekStartsOn}
-            onEventSelect={handleEventSelect}
-            onSlotClick={handleSlotClick}
-            renderEvent={renderEvent}
-            selectedIds={selectedIdSet}
-            onDateChange={onDateChange}
-            onVisibleRangeChange={onRangeChange}
-            isNonWorkingDay={isNonWorkingDay}
-          />
-        )}
-        {view === 'week' && (
-          <WeekView
-            currentDate={date}
-            events={events}
-            weekStartsOn={weekStartsOn}
-            backgroundEvents={backgroundEvents}
-            onEventSelect={handleEventSelect}
-            onSlotClick={handleSlotClick}
-            onEventResize={onEventResize}
-            renderEvent={renderEvent}
-            selectedIds={selectedIdSet}
-            onDateChange={onDateChange}
-            onVisibleRangeChange={onRangeChange}
-            hourHeight={effectiveGridHourHeight}
-          />
-        )}
-        {view === 'day' && (
-          <DayView
-            currentDate={date}
-            events={events}
-            backgroundEvents={backgroundEvents}
-            onEventSelect={handleEventSelect}
-            onSlotClick={handleSlotClick}
-            onEventResize={onEventResize}
-            renderEvent={renderEvent}
-            selectedIds={selectedIdSet}
-            hourHeight={effectiveGridHourHeight}
-          />
-        )}
-        {view === 'resource' &&
-          (resources ? (
-            <ResourceTimelineView
+        <HourWindowProvider value={hourWindow}>
+          {view === 'month' && (
+            <MonthView
               currentDate={date}
               events={events}
-              resources={resources}
               weekStartsOn={weekStartsOn}
-              desiredDays={resourceDaysVisible}
+              onEventSelect={handleEventSelect}
+              onSlotClick={handleSlotClick}
+              renderEvent={renderEvent}
+              selectedIds={selectedIdSet}
+              onDateChange={onDateChange}
+              onVisibleRangeChange={onRangeChange}
+              isNonWorkingDay={isNonWorkingDay}
+            />
+          )}
+          {view === 'week' && (
+            <WeekView
+              currentDate={date}
+              events={events}
+              weekStartsOn={weekStartsOn}
               backgroundEvents={backgroundEvents}
               onEventSelect={handleEventSelect}
               onSlotClick={handleSlotClick}
@@ -651,38 +621,71 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               onVisibleRangeChange={onRangeChange}
               hourHeight={effectiveGridHourHeight}
             />
-          ) : null)}
-        {view === 'timeline' &&
-          (resources ? (
-            <HorizontalTimelineView
+          )}
+          {view === 'day' && (
+            <DayView
               currentDate={date}
               events={events}
-              resources={resources}
-              weekStartsOn={weekStartsOn}
               backgroundEvents={backgroundEvents}
-              hourWindow={hourWindow}
-              hourWidth={timelineHourWidth}
-              onHourWidthChange={onTimelineHourWidthChange}
-              railWidth={timelineRailWidth}
-              onRailWidthChange={onTimelineRailWidthChange}
               onEventSelect={handleEventSelect}
               onSlotClick={handleSlotClick}
               onEventResize={onEventResize}
               renderEvent={renderEvent}
               selectedIds={selectedIdSet}
-              onDateChange={onDateChange}
-              onVisibleRangeChange={onRangeChange}
+              hourHeight={effectiveGridHourHeight}
             />
-          ) : null)}
-        {view === 'agenda' && (
-          <AgendaView
-            currentDate={date}
-            events={events}
-            onEventSelect={handleEventSelect}
-            renderEvent={renderEvent}
-            selectedIds={selectedIdSet}
-          />
-        )}
+          )}
+          {view === 'resource' &&
+            (resources ? (
+              <ResourceTimelineView
+                currentDate={date}
+                events={events}
+                resources={resources}
+                weekStartsOn={weekStartsOn}
+                desiredDays={resourceDaysVisible}
+                backgroundEvents={backgroundEvents}
+                onEventSelect={handleEventSelect}
+                onSlotClick={handleSlotClick}
+                onEventResize={onEventResize}
+                renderEvent={renderEvent}
+                selectedIds={selectedIdSet}
+                onDateChange={onDateChange}
+                onVisibleRangeChange={onRangeChange}
+                hourHeight={effectiveGridHourHeight}
+              />
+            ) : null)}
+          {view === 'timeline' &&
+            (resources ? (
+              <HorizontalTimelineView
+                currentDate={date}
+                events={events}
+                resources={resources}
+                weekStartsOn={weekStartsOn}
+                backgroundEvents={backgroundEvents}
+                hourWindow={hourWindow}
+                hourWidth={timelineHourWidth}
+                onHourWidthChange={onTimelineHourWidthChange}
+                railWidth={timelineRailWidth}
+                onRailWidthChange={onTimelineRailWidthChange}
+                onEventSelect={handleEventSelect}
+                onSlotClick={handleSlotClick}
+                onEventResize={onEventResize}
+                renderEvent={renderEvent}
+                selectedIds={selectedIdSet}
+                onDateChange={onDateChange}
+                onVisibleRangeChange={onRangeChange}
+              />
+            ) : null)}
+          {view === 'agenda' && (
+            <AgendaView
+              currentDate={date}
+              events={events}
+              onEventSelect={handleEventSelect}
+              renderEvent={renderEvent}
+              selectedIds={selectedIdSet}
+            />
+          )}
+        </HourWindowProvider>
       </div>
     </>
   )

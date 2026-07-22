@@ -5,7 +5,8 @@
 import { differenceInMinutes, isSameDay } from 'date-fns'
 
 import { useCalendarDnd } from './calendar-dnd-context'
-import { StartHour, WeekCellsHeight } from './constants'
+import { WeekCellsHeight } from './constants'
+import { useHourWindow } from './hour-window-context'
 
 interface DropPreviewProps {
   /** The column's day — the outline shows only when the snapped drop target lands here. */
@@ -26,6 +27,7 @@ interface DropPreviewProps {
  */
 export function DropPreview({ day, resourceId, cellHeight = WeekCellsHeight }: DropPreviewProps) {
   const { activeEvent, currentTime, activeView, currentResourceId } = useCalendarDnd()
+  const { start: windowStart } = useHourWindow()
 
   // No timed drag in flight, or a month drag (whole-day, no time slot to outline).
   if (!activeEvent || !currentTime || activeView === 'month') return null
@@ -33,7 +35,7 @@ export function DropPreview({ day, resourceId, cellHeight = WeekCellsHeight }: D
   // Resource view packs many same-day columns side by side — gate on the hovered resource too.
   if (resourceId !== undefined && currentResourceId !== resourceId) return null
 
-  const startMinutes = (currentTime.getHours() - StartHour) * 60 + currentTime.getMinutes()
+  const startMinutes = (currentTime.getHours() - windowStart) * 60 + currentTime.getMinutes()
   const durationMinutes = differenceInMinutes(
     new Date(activeEvent.end),
     new Date(activeEvent.start)

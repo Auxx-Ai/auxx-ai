@@ -83,8 +83,8 @@ function scalarSetting(value: unknown): string | null {
  * `use24HourTime`, now owned by the General page's own draft). */
 const ROUTES_BOARD_DRAFT_KEYS = [
   'dispatch.routes.autoApplyTimes',
-  'dispatch.board.timelineStartHour',
-  'dispatch.board.timelineEndHour',
+  'dispatch.board.visibleHourStart',
+  'dispatch.board.visibleHourEnd',
 ] as const
 
 /**
@@ -259,21 +259,21 @@ export function SchedulingSettingsPage() {
           <SettingsSection
             icon={Clock}
             title='Board'
-            description='Dispatch board timeline view behavior.'>
+            description='Which hours the day, week and timeline board views show.'>
             <FieldPanel className='mt-1 p-0' resizeId='scheduling-board' defaultLabelWidth={260}>
               <SettingsFieldRow
-                settingKey='dispatch.board.timelineStartHour'
-                title='Timeline start hour'
-                description='Automatic — working hours ± 2h buffer. Set both start and end to override.'
+                settingKey='dispatch.board.visibleHourStart'
+                title='Visible start hour'
+                description='Crops the empty early hours off day/week/timeline. Automatic — working hours ± 2h buffer. Set both start and end to override. A visit scheduled outside this window always shows.'
                 placeholder='Automatic'
-                {...controlledRoutesBoard('dispatch.board.timelineStartHour')}
+                {...controlledRoutesBoard('dispatch.board.visibleHourStart')}
               />
               <SettingsFieldRow
-                settingKey='dispatch.board.timelineEndHour'
-                title='Timeline end hour'
+                settingKey='dispatch.board.visibleHourEnd'
+                title='Visible end hour'
                 description='Automatic — working hours ± 2h buffer. Set both start and end to override.'
                 placeholder='Automatic'
-                {...controlledRoutesBoard('dispatch.board.timelineEndHour')}
+                {...controlledRoutesBoard('dispatch.board.visibleHourEnd')}
               />
             </FieldPanel>
           </SettingsSection>

@@ -5,7 +5,7 @@
 import { format, isSameDay } from 'date-fns'
 import { useEffect, useState } from 'react'
 
-import { EndHour, StartHour } from '../constants'
+import { useHourWindow } from '../hour-window-context'
 
 export interface UseCurrentTimeIndicatorResult {
   /** Top offset, as a percentage of the day's rendered hour range. */
@@ -30,6 +30,7 @@ export function useCurrentTimeIndicator(
   currentDate: Date,
   view: 'day' | 'resource'
 ): UseCurrentTimeIndicatorResult {
+  const { start: windowStart, end: windowEnd } = useHourWindow()
   const [result, setResult] = useState<UseCurrentTimeIndicatorResult>({
     currentTimePosition: 0,
     currentTimeVisible: false,
@@ -41,9 +42,9 @@ export function useCurrentTimeIndicator(
       const now = new Date()
       const hours = now.getHours()
       const minutes = now.getMinutes()
-      const totalMinutes = (hours - StartHour) * 60 + minutes
+      const totalMinutes = (hours - windowStart) * 60 + minutes
       const dayStartMinutes = 0
-      const dayEndMinutes = (EndHour - StartHour) * 60
+      const dayEndMinutes = (windowEnd - windowStart) * 60
 
       const position = ((totalMinutes - dayStartMinutes) / (dayEndMinutes - dayStartMinutes)) * 100
 
@@ -57,7 +58,7 @@ export function useCurrentTimeIndicator(
     calculateTimePosition()
     const interval = setInterval(calculateTimePosition, 60000)
     return () => clearInterval(interval)
-  }, [currentDate])
+  }, [currentDate, windowStart, windowEnd])
 
   return result
 }
