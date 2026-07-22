@@ -130,6 +130,10 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   timelineRailWidth?: number
   /** Fires when the timeline rail-width drag commits a new width. */
   onTimelineRailWidthChange?: (px: number) => void
+  /** Timeline lane height (plan 43): controlled px. Omit for the view's internal state. */
+  timelineLaneHeight?: number
+  /** Fires when a timeline rail row-border drag commits a new lane height. */
+  onTimelineLaneHeightChange?: (px: number) => void
   /** Vertical-grid zoom: controlled px-per-hour for week/day/resource views. Omit for internal state. */
   gridHourHeight?: number
   /** Fires when a vertical-grid zoom gesture (ctrl+wheel / pinch) commits a new px-per-hour. */
@@ -167,8 +171,11 @@ export interface EventCalendarProps<T extends EventCalendarItem = EventCalendarI
   onEventResize?: (event: T, newStart: Date, newEnd: Date) => void
   /** Hide the built-in date-nav/view-switcher header when the consumer brings their own toolbar chrome. */
   hideToolbar?: boolean
-  /** Month view only — cells where this returns true get a muted background (closed days). */
+  /** Month/week off-day tint — cells where this returns true get a muted background (closed days). */
   isNonWorkingDay?: (date: Date) => boolean
+  /** Plan 42 — week/timeline only: drop the day column for any date this returns true for (empty
+   * off-work days). Sibling to `isNonWorkingDay` (tint) — this one removes the column entirely. */
+  isDayHidden?: (date: Date) => boolean
   className?: string
 }
 
@@ -194,6 +201,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   onTimelineHourWidthChange,
   timelineRailWidth,
   onTimelineRailWidthChange,
+  timelineLaneHeight,
+  onTimelineLaneHeightChange,
   gridHourHeight,
   onGridHourHeightChange,
   backgroundEvents,
@@ -206,6 +215,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
   onEventResize,
   hideToolbar,
   isNonWorkingDay,
+  isDayHidden,
   className,
   hoveredSlotRef,
 }: EventCalendarProps<T>) {
@@ -620,6 +630,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
               onDateChange={onDateChange}
               onVisibleRangeChange={onRangeChange}
               hourHeight={effectiveGridHourHeight}
+              isDayHidden={isDayHidden}
             />
           )}
           {view === 'day' && (
@@ -652,6 +663,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
                 onDateChange={onDateChange}
                 onVisibleRangeChange={onRangeChange}
                 hourHeight={effectiveGridHourHeight}
+                isDayHidden={isDayHidden}
               />
             ) : null)}
           {view === 'timeline' &&
@@ -667,6 +679,8 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
                 onHourWidthChange={onTimelineHourWidthChange}
                 railWidth={timelineRailWidth}
                 onRailWidthChange={onTimelineRailWidthChange}
+                laneHeight={timelineLaneHeight}
+                onLaneHeightChange={onTimelineLaneHeightChange}
                 onEventSelect={handleEventSelect}
                 onSlotClick={handleSlotClick}
                 onEventResize={onEventResize}
@@ -674,6 +688,7 @@ function EventCalendarInner<T extends EventCalendarItem = EventCalendarItem>({
                 selectedIds={selectedIdSet}
                 onDateChange={onDateChange}
                 onVisibleRangeChange={onRangeChange}
+                isDayHidden={isDayHidden}
               />
             ) : null)}
           {view === 'agenda' && (

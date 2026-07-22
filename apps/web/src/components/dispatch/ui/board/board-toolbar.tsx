@@ -8,6 +8,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { startOfWeek } from 'date-fns'
 import {
   CalendarDays,
+  CalendarPlus,
   CalendarRange,
   ChevronLeft,
   ChevronRight,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
+import { useTimelineViewStore } from '../../stores/timeline-view-store'
 import type { BoardViewMode } from './types'
 import { goToNextDate, goToPreviousDate, type WeekStartIndex } from './utils'
 
@@ -70,6 +72,12 @@ export function BoardToolbar({
 
   const sidebarOpen = useDispatchSidebarStore((s) => s.open)
   const setSidebarOpen = useDispatchSidebarStore((s) => s.setOpen)
+
+  // Per-device "show everything" reveal (plan 42 §4) — un-hides empty off-day columns AND widens
+  // the hour window to 0-24. Only meaningful on the multi-day week/timeline streams.
+  const showAllDays = useTimelineViewStore((s) => s.showAllDays)
+  const setShowAllDays = useTimelineViewStore((s) => s.setShowAllDays)
+  const showAllDaysApplies = !isMap && (view === 'week' || view === 'timeline')
 
   return (
     <div className='flex flex-wrap items-center gap-1 border-b p-1'>
@@ -151,6 +159,18 @@ export function BoardToolbar({
             <span className='hidden sm:inline'>Month</span>
           </RadioTabItem>
         </RadioTab>
+      )}
+
+      {showAllDaysApplies && (
+        <Tooltip content='Show all days and hours'>
+          <Button
+            variant={showAllDays ? 'secondary' : 'ghost'}
+            size='sm'
+            onClick={() => setShowAllDays(!showAllDays)}>
+            <CalendarPlus />
+            <span className='hidden sm:inline'>Show all days</span>
+          </Button>
+        </Tooltip>
       )}
 
       <div className='flex-1' />

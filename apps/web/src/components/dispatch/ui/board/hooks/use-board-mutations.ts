@@ -374,6 +374,7 @@ export function useBoardMutations(range: DateRange) {
           status: 'new',
           contactId: vars.contactRecordId,
           contactDisplayName: null,
+          addressText: null,
         }
         const tempVisit: BoardVisit = {
           id: tempVisitId,

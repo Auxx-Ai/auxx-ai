@@ -18,8 +18,10 @@ import {
   type HoveredSlot,
   type RenderEventContext,
 } from '@auxx/ui/components/event-calendar'
+import { format } from 'date-fns'
 import { ClipboardPaste, Copy } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSettings } from '~/hooks/use-settings'
 import { useDispatchSidebarStore } from '../../stores/dispatch-sidebar-store'
 import { useTimelineViewStore } from '../../stores/timeline-view-store'
 import type { ExistingVisitForOverlap } from '../schedule-popover'
@@ -223,15 +225,56 @@ export function BoardCalendarGrid({
   // through unchanged and no longer shares `resource`'s rendering.
   const calendarView = view === 'day' ? 'resource' : view
 
+  // Plan 42 — hide empty off-day columns on week/timeline: org switch + the per-device reveal.
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const hideEmptyOffDays = getSetting('dispatch.board.hideEmptyOffDays') === true
+  const showAllDays = useTimelineViewStore((s) => s.showAllDays)
+
+  // Days carrying at least one visit, memoized on a stable day-key digest (NOT the events-array
+  // identity) so `isDayHidden`'s identity — and thus the shared day-stream's slot rebuild — only
+  // churns when the actual booked-day set changes, not on every refetch/realtime patch (plan 42 §3).
+  const visitDayDigest = useMemo(() => {
+    const keys = new Set<string>()
+    for (const event of events) keys.add(format(new Date(event.start), 'yyyy-MM-dd'))
+    return Array.from(keys).sort().join(',')
+  }, [events])
+  const daysWithVisits = useMemo(
+    () => new Set(visitDayDigest ? visitDayDigest.split(',') : []),
+    [visitDayDigest]
+  )
+
+  // Hide a day only when it's off-work AND has zero visits — a booked off-day stays visible.
+  const isEmptyOffDay = useCallback(
+    (date: Date) => !!isNonWorkingDay?.(date) && !daysWithVisits.has(format(date, 'yyyy-MM-dd')),
+    [isNonWorkingDay, daysWithVisits]
+  )
+
+  // Hiding engages on week/timeline/day when the org switch is on and the reveal is off (day is
+  // a virtualized day STREAM too — scrolling/navigating just skips empty off-days; only month
+  // keeps every cell). Otherwise pass `undefined` so the day-stream stays in pure IDENTITY mode —
+  // no slot array built, no scroll re-anchor. Passing an always-false predicate instead would
+  // materialize the full slot array and re-anchor on every event load during a scroll (the
+  // "scroll resets position" bug).
+  const hidingActive =
+    hideEmptyOffDays && !showAllDays && (view === 'week' || view === 'timeline' || view === 'day')
+
   // Union the window with the loaded events' hours so a visit outside working hours (e.g. 1am)
   // still shows its row on every time-grid view — the crop never clips real work (plan 41).
-  const hourWindow = useVisibleHourWindow(events)
+  // "Show all days" is a full escape hatch: reveal every day AND widen hours to 0-24 (plan 42 §4).
+  const computedWindow = useVisibleHourWindow(events)
+  const hourWindow = useMemo(
+    () => (showAllDays ? { start: 0, end: 24 } : computedWindow),
+    [showAllDays, computedWindow]
+  )
 
-  // Per-device timeline zoom + rail width (plan 35) — persisted, gesture commits write back.
+  // Per-device timeline zoom + rail width (plan 35) + lane height (plan 43) — persisted,
+  // gesture commits write back.
   const timelineHourWidth = useTimelineViewStore((s) => s.hourWidth)
   const timelineRailWidth = useTimelineViewStore((s) => s.railWidth)
+  const timelineLaneHeight = useTimelineViewStore((s) => s.laneHeight)
   const setTimelineHourWidth = useTimelineViewStore((s) => s.setHourWidth)
   const setTimelineRailWidth = useTimelineViewStore((s) => s.setRailWidth)
+  const setTimelineLaneHeight = useTimelineViewStore((s) => s.setLaneHeight)
   // Vertical week/day grid zoom — same per-device persistence, committed by ctrl+wheel/pinch.
   const gridHourHeight = useTimelineViewStore((s) => s.gridHourHeight)
   const setGridHourHeight = useTimelineViewStore((s) => s.setGridHourHeight)
@@ -315,6 +358,8 @@ export function BoardCalendarGrid({
       onTimelineHourWidthChange={setTimelineHourWidth}
       timelineRailWidth={timelineRailWidth}
       onTimelineRailWidthChange={setTimelineRailWidth}
+      timelineLaneHeight={timelineLaneHeight}
+      onTimelineLaneHeightChange={setTimelineLaneHeight}
       gridHourHeight={gridHourHeight}
       onGridHourHeightChange={setGridHourHeight}
       backgroundEvents={backgroundEvents}
@@ -327,6 +372,8 @@ export function BoardCalendarGrid({
       onSlotClick={canEdit ? handleSlotClick : undefined}
       hideToolbar
       isNonWorkingDay={isNonWorkingDay}
+      // Month never hides day cells — week/timeline/day drop (skip) empty off-days.
+      isDayHidden={hidingActive ? isEmptyOffDay : undefined}
       hoveredSlotRef={hoveredSlotRef}
       className='flex-1'
     />

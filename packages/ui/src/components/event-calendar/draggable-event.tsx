@@ -180,6 +180,11 @@ export function DraggableEvent<T extends EventCalendarItem = EventCalendarItem>(
       className={cn(
         'group/event touch-none',
         canResize && 'relative',
+        // Height-tiered chip content (plan 43): the chip is a size query container so
+        // `renderEvent` content can adapt via `@container (min-height: …)` rules. Only where
+        // the height is explicit (positioned week/day/resource/timeline chips) — size
+        // containment on month's content-driven `height: auto` chips would collapse them.
+        (orientation === 'x' || height !== undefined) && '[container-type:size]',
         isGroupMoving && 'pointer-events-none opacity-50'
       )}>
       <EventItem

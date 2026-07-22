@@ -4,29 +4,13 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import {
-  addDays,
-  addHours,
-  differenceInCalendarDays,
-  eachHourOfInterval,
-  endOfDay,
-  format,
-  isSameDay,
-  isToday,
-  startOfDay,
-} from 'date-fns'
+import { addHours, eachHourOfInterval, endOfDay, format, isSameDay, isToday } from 'date-fns'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import {
-  EventGap,
-  EventHeight,
-  GridHeaderHeight,
-  StreamEndYear,
-  StreamStartYear,
-  WeekCellsHeight,
-} from './constants'
+import { EventGap, EventHeight, GridHeaderHeight, WeekCellsHeight } from './constants'
 import { EventItem } from './event-item'
 import { useCurrentTimeIndicator } from './hooks/use-current-time-indicator'
+import { useDayStream } from './hooks/use-day-stream'
 import { HourGutter } from './hour-gutter'
 import { useHourWindow } from './hour-window-context'
 import { useCalendarSelection } from './selection/calendar-selection-context'
@@ -65,6 +49,8 @@ interface WeekViewProps<T extends EventCalendarItem = EventCalendarItem> {
   onVisibleRangeChange?: (from: Date, to: Date) => void
   /** Px-per-hour of the timed grid — the zoomable vertical scale. Defaults to `WeekCellsHeight`. */
   hourHeight?: number
+  /** Plan 42 — drop the day column for any date this returns true for (empty off-work days). */
+  isDayHidden?: (date: Date) => boolean
 }
 
 /**
@@ -96,6 +82,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   onDateChange,
   onVisibleRangeChange,
   hourHeight = WeekCellsHeight,
+  isDayHidden,
 }: WeekViewProps<T>) {
   const selection = useCalendarSelection()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -105,18 +92,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
 
   const { start: windowStart, end: windowEnd } = useHourWindow()
 
-  const { epoch, dayCount } = useMemo(() => {
-    const start = startOfDay(new Date(StreamStartYear, 0, 1))
-    const count = differenceInCalendarDays(new Date(StreamEndYear, 0, 1), start) + 1
-    return { epoch: start, dayCount: count }
-  }, [])
-
-  const dayAt = useCallback((index: number) => addDays(epoch, index), [epoch])
-
-  const dayIndexOf = useCallback(
-    (date: Date) => Math.min(dayCount - 1, Math.max(0, differenceInCalendarDays(date, epoch))),
-    [epoch, dayCount]
-  )
+  const { epoch, dayCount, dayAt, dayIndexOf, slotsVersion } = useDayStream(isDayHidden)
 
   // Only depends on the hour-of-day, not any particular date — `epoch` is a stable
   // reference so this array's identity never changes, which keeps it a scroll-stable
@@ -182,10 +158,20 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
   const lastEmittedDateRef = useRef<number | null>(null)
   const lastDayWidthRef = useRef(dayWidth)
   const lastScrollLeftRef = useRef(0)
+  // A slot-mapping change (off-day hidden/revealed, plan 42) shifts which day a fixed scrollLeft
+  // shows — force a re-anchor even when parked, since the guard below would otherwise skip it.
+  const lastSlotsVersionRef = useRef(slotsVersion)
 
   useLayoutEffect(() => {
     const dayWidthChanged = lastDayWidthRef.current !== dayWidth
-    if (!dayWidthChanged && lastEmittedDateRef.current === currentDateRef.current.getTime()) return
+    const slotsChanged = lastSlotsVersionRef.current !== slotsVersion
+    lastSlotsVersionRef.current = slotsVersion
+    if (
+      !dayWidthChanged &&
+      !slotsChanged &&
+      lastEmittedDateRef.current === currentDateRef.current.getTime()
+    )
+      return
     const el = scrollRef.current
     if (!el) return
     lastDayWidthRef.current = dayWidth
@@ -197,7 +183,7 @@ export function WeekView<T extends EventCalendarItem = EventCalendarItem>({
       programmaticScrollRef.current = false
     }, 300)
     return () => clearTimeout(timeout)
-  }, [targetIndex, dayWidth])
+  }, [targetIndex, dayWidth, slotsVersion])
 
   // ── scroll → snap → currentDate ──────────────────────────────────────────
   // Same JS settle-snap as month-view (virtualization-safe, unlike CSS scroll-snap).
