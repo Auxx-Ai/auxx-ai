@@ -196,13 +196,15 @@ export const recordRouter = createTRPCRouter({
   /**
    * Get single record by RecordId
    */
-  getById: protectedProcedure
+  getById: capabilityProcedure
     .input(getByIdInputSchema.or(getByIdLegacyInputSchema))
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
 
         // Handle both RecordId and legacy separate params
         let recordId: RecordId
@@ -255,7 +257,7 @@ export const recordRouter = createTRPCRouter({
    * Get multiple records by IDs (batch)
    * Used for hydrating relationship field values
    */
-  getByIds: protectedProcedure
+  getByIds: capabilityProcedure
     .input(
       z.object({
         items: z.array(recordIdSchema).max(100),
@@ -265,7 +267,9 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         return await handler.getByIds(input.items as RecordId[])
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -279,12 +283,14 @@ export const recordRouter = createTRPCRouter({
   /**
    * Search records with optional global search support
    */
-  search: protectedProcedure.input(globalSearchInputSchema).query(async ({ ctx, input }) => {
+  search: capabilityProcedure.input(globalSearchInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
     const { apiSlug, entityDefinitionId, query, limit, cursor, entityDefinitionIds } = input
 
     try {
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+      })
 
       // Handler handles all resolution internally (apiSlug -> entityDefinitionId, system names -> UUIDs)
       return await handler.search({
@@ -321,12 +327,14 @@ export const recordRouter = createTRPCRouter({
    * primary_email" in one round-trip; without that, the extension pays
    * two iframe→API crossings per capture.
    */
-  lookupByField: protectedProcedure
+  lookupByField: capabilityProcedure
     .input(lookupByFieldInputSchema)
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         return await handler.lookupByField({
           entityDefinitionId: input.entityDefinitionId,
           // `fieldId` arrives as a plain string from zod; the handler brands it.
@@ -349,7 +357,7 @@ export const recordRouter = createTRPCRouter({
    * List record IDs with server-side filtering (Query Snapshot pattern)
    * Returns cached snapshot IDs for efficient pagination
    */
-  listFiltered: protectedProcedure
+  listFiltered: capabilityProcedure
     .input(
       z.object({
         /** Resource type: 'contact', 'ticket', 'entity_xxx' */
@@ -387,7 +395,9 @@ export const recordRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
 
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+      })
       return handler.listFiltered({
         entityDefinitionId: input.entityDefinitionId,
         filters: input.filters,
@@ -403,7 +413,7 @@ export const recordRouter = createTRPCRouter({
    * List all records with field values (for small datasets like tags, inboxes)
    * Supports resolution of entityDefinitionId ('tag' → UUID) or apiSlug ('tags' → UUID)
    */
-  listAll: protectedProcedure
+  listAll: capabilityProcedure
     .input(
       z.object({
         /** Entity definition ID - can be UUID or type like 'tag', 'contact' */
@@ -422,7 +432,9 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         return await handler.listAll(input)
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'

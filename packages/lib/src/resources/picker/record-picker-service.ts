@@ -6,6 +6,7 @@ import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
 import { getCachedEntityDefId, getCachedResource, getOrgCache } from '../../cache'
 import { getRecordIdentitiesForRecords } from '../../identity'
+import type { CapabilitySet } from '../../permissions/capabilities/capability-set'
 import {
   type CustomResource,
   isCustomResource,
@@ -58,12 +59,20 @@ export class RecordPickerService {
   private organizationId: string
   private userId?: string
   private cache: RecordPickerCacheService
+  /** Request-scoped read enforcement (§2.2); undefined for internal callers. */
+  private capabilities?: CapabilitySet
 
-  constructor(organizationId: string, userId: string | undefined, db: Database) {
+  constructor(
+    organizationId: string,
+    userId: string | undefined,
+    db: Database,
+    capabilities?: CapabilitySet
+  ) {
     this.db = db
     this.organizationId = organizationId
     this.userId = userId
     this.cache = new RecordPickerCacheService()
+    this.capabilities = capabilities
   }
 
   /**
@@ -647,6 +656,14 @@ export class RecordPickerService {
       grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }
 
+    // Read enforcement (§2.2): drop groups whose def the member can't view —
+    // filter the def set, never per-row queries.
+    if (this.capabilities) {
+      for (const defId of [...grouped.keys()]) {
+        if (!this.capabilities.canViewEntity(defId)) grouped.delete(defId)
+      }
+    }
+
     // Resolve entity definition type strings (e.g. 'ticket', 'contact') to UUIDs
     const resolvedGrouped = new Map<string, { ids: string[]; originalKey: string }>()
     for (const [entityDefinitionId, ids] of grouped) {
@@ -825,17 +842,53 @@ export class RecordPickerService {
    * @param params - Search parameters
    * @returns Paginated search results with metadata
    */
+  /** An empty {@link GlobalSearchResult} (read enforcement denials, §2.2). */
+  private emptySearchResult(query: string, startTime: number): GlobalSearchResult {
+    return {
+      items: [],
+      nextCursor: null,
+      hasMore: false,
+      processingTimeMs: performance.now() - startTime,
+      query,
+    }
+  }
+
   async search(params: GlobalSearchParams): Promise<GlobalSearchResult> {
     const startTime = performance.now()
-    const { query = '', entityDefinitionId, entityDefinitionIds, limit = 25, cursor } = params
+    const { query = '', entityDefinitionId, limit = 25, cursor } = params
+    let { entityDefinitionIds } = params
 
     const trimmedQuery = query.trim()
+
+    // Read enforcement (§2.2): filter the def scope, never per-row queries.
+    // - Scoped single def the member can't view → empty result.
+    // - Multi-def list → keep only viewable defs (empty list → empty result).
+    // - Global union (no scope) → post-filter the merged items below.
+    if (this.capabilities) {
+      if (entityDefinitionId && !this.capabilities.canViewEntity(entityDefinitionId)) {
+        return this.emptySearchResult(trimmedQuery, startTime)
+      }
+      if (entityDefinitionIds && entityDefinitionIds.length > 0) {
+        entityDefinitionIds = this.capabilities.filterViewableDefIds(entityDefinitionIds)
+        if (entityDefinitionIds.length === 0) {
+          return this.emptySearchResult(trimmedQuery, startTime)
+        }
+      }
+    }
 
     // Global union mode: no scope passed → union system tables + EntityInstance.
     // Unpaginated in v1; each kind contributes up to perKindCap items merge-sorted
     // by updatedAt desc.
     if (!entityDefinitionId && (!entityDefinitionIds || entityDefinitionIds.length === 0)) {
-      return this.searchGlobalUnion(trimmedQuery, limit, startTime)
+      const union = await this.searchGlobalUnion(trimmedQuery, limit, startTime)
+      if (!this.capabilities) return union
+      // Post-filter cross-type union rows by per-user def visibility.
+      return {
+        ...union,
+        items: union.items.filter((item) =>
+          this.capabilities!.canViewEntity(parseRecordId(item.recordId).entityDefinitionId)
+        ),
+      }
     }
 
     // Build entity definition filter

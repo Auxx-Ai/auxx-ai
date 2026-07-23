@@ -164,9 +164,13 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // (`broadcastUserKeys` at the emit site).
   'resource-access.changed': { user: ['userMailVisibility'], org: ['mailGrantIndex'] },
   // Type-level (entityInstanceId IS NULL) grant changes feed `defAccess` in the
-  // capability blob. A narrow event so the noisy instance-level
+  // capability blob (per-user) AND the org-wide `restrictedEntityDefIds` set
+  // (read-path enforcement §0). A narrow event so the noisy instance-level
   // `resource-access.changed` is NOT piggybacked (§9.0).
-  'resource-access.type.changed': { user: ['userCapabilities'] },
+  'resource-access.type.changed': {
+    user: ['userCapabilities'],
+    org: ['restrictedEntityDefIds'],
+  },
 
   // ── Capability grants (permissions plan §5.3) ──
   // Emitted by every PermissionGrant create/update/delete. User grants target a

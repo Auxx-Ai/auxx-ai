@@ -35,6 +35,7 @@ import { plansProvider } from './providers/plans-provider'
 import { publishedAppsProvider } from './providers/published-apps-provider'
 import { recordRulesProvider } from './providers/record-rules-provider'
 import { resourcesProvider } from './providers/resources-provider'
+import { restrictedEntityDefIdsProvider } from './providers/restricted-entity-def-ids-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
 import { userCapabilitiesProvider } from './providers/user-capabilities-provider'
@@ -66,6 +67,7 @@ export function registerAllProviders(
   orgCache.register('members', membersProvider)
   orgCache.register('memberRoleMap', memberRoleMapProvider)
   orgCache.register('hasPermissionGrants', hasPermissionGrantsProvider)
+  orgCache.register('restrictedEntityDefIds', restrictedEntityDefIdsProvider)
 
   // Org-scoped: business data
   orgCache.register('features', featuresProvider)

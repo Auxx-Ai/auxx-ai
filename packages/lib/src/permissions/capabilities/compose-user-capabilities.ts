@@ -24,7 +24,7 @@ export interface UserCapabilities {
 }
 
 /** Hierarchy rank for picking the highest ResourceAccess permission. */
-const PERMISSION_RANK: Record<ResourcePermission, number> = {
+export const PERMISSION_RANK: Record<ResourcePermission, number> = {
   view: 1,
   edit: 2,
   admin: 3,

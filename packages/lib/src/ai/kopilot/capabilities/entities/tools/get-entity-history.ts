@@ -288,7 +288,7 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const entityInstanceId = args.entityInstanceId as string
       const sinceDays = (args.sinceDays as number | undefined) ?? 90
       const includeArg = args.include as Category[] | undefined
@@ -306,6 +306,15 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
       })
 
       if (!instance) {
+        return {
+          success: false,
+          output: null,
+          error: `EntityInstance ${entityInstanceId} not found.`,
+        }
+      }
+
+      // Read enforcement (§3): a def the member can't view reads as not-found.
+      if (capabilities && !capabilities.canViewEntity(instance.entityDefinitionId)) {
         return {
           success: false,
           output: null,
@@ -350,7 +359,7 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
       ] = await Promise.all([threadsP, commentsP, timelineP, tasksP, fieldChangesP, meetingsP])
 
       // related-entities walks the threads we just loaded — must run after.
-      const relatedEntities = include.has('related')
+      let relatedEntities = include.has('related')
         ? await loadRelatedViaThreads(
             db,
             agentDeps.organizationId,
@@ -360,6 +369,14 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
             truncated
           )
         : []
+
+      // Read enforcement (§3): the related fan-out is multi-def — drop entities
+      // whose def the member can't view.
+      if (capabilities) {
+        relatedEntities = relatedEntities.filter((e) =>
+          capabilities.canViewEntity(e.entityDefinitionId)
+        )
+      }
 
       // Resolve actor names once for comments + field_changes + timeline.
       const userIds = new Set<string>()

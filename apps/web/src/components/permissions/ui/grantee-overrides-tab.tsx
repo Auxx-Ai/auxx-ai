@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
+import { useUser } from '~/hooks/use-user'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
 import { LeveledAreaGrid } from './leveled-area-grid'
 
@@ -40,11 +41,13 @@ const COPY: Record<
 
 /** Resolve a grantee's display name from the actor cache (falls back to email / Unknown). */
 function useGranteeName(granteeType: OverrideType, granteeId: string) {
+  const { userId } = useUser()
   const actorId = useMemo(() => toActorId(granteeType, granteeId), [granteeType, granteeId])
   const { actor, isLoading, isNotFound } = useActor({ actorId })
-  const name = isNotFound
+  const base = isNotFound
     ? 'Unknown'
     : actor?.name || (actor?.type === 'user' && actor?.email) || 'Unknown'
+  const name = granteeType === 'user' && granteeId === userId ? `${base} (You)` : base
   return { actor, isLoading, isNotFound, name }
 }
 
@@ -53,9 +56,10 @@ function useGranteeName(granteeType: OverrideType, granteeId: string) {
  * `TreeRow` list of grantees on top; selecting one reveals its full leveled grid
  * below. Every rung is selectable, but overrides only *raise* above the member
  * baseline — the raise-only rule is enforced server-side (Camp-1, v1.5 §L3), and
- * an override that lifts nothing is flagged "ignored" on the grantee. Clearing
- * every raised area leaves the row selectable but empty; the delete action
- * removes the grant. New grantees are added via the actor picker.
+ * an override that lifts nothing is flagged "ignored" on the grantee. Adding a
+ * grantee immediately persists an empty grant row (composes to nothing but
+ * survives reloads), and clearing every raised area keeps that row; only the
+ * delete action removes the grant.
  */
 export function GranteeOverridesTab({
   granteeType,
@@ -69,14 +73,9 @@ export function GranteeOverridesTab({
   const persisted = granteeType === 'group' ? groupGrants : userGrants
   const copy = COPY[granteeType]
 
-  // Grantees picked but not yet raised on any area (no row persisted yet).
-  const [pendingIds, setPendingIds] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const rows = useMemo(() => {
-    const ids = new Set(persisted.map((g) => g.granteeId))
-    return [...persisted.map((g) => g.granteeId), ...pendingIds.filter((id) => !ids.has(id))]
-  }, [persisted, pendingIds])
+  const rows = useMemo(() => persisted.map((g) => g.granteeId), [persisted])
 
   const actorIds = useMemo(() => rows.map((id) => toActorId(granteeType, id)), [rows, granteeType])
 
@@ -86,10 +85,10 @@ export function GranteeOverridesTab({
   const handleAdd = (nextActorIds: ActorId[]) => {
     const existing = new Set(rows)
     const added = nextActorIds.map(getActorRawId).filter((id) => !existing.has(id))
-    if (added.length > 0) {
-      setPendingIds((prev) => [...prev, ...added])
-      setSelectedId(added[0])
-    }
+    // Persist each new grantee as an empty grant row right away, so the list
+    // survives reloads even before any area is raised.
+    for (const id of added) save(granteeType, id, {})
+    if (added.length > 0) setSelectedId(added[0] ?? null)
   }
 
   const handleChange = (granteeId: string, area: Area, level: Level | undefined) => {
@@ -99,13 +98,10 @@ export function GranteeOverridesTab({
     else next[area] = level
 
     save(granteeType, granteeId, next)
-    if (Object.keys(next).length === 0)
-      setPendingIds((prev) => prev.filter((id) => id !== granteeId))
   }
 
   const handleRemove = (granteeId: string) => {
     remove(granteeType, granteeId)
-    setPendingIds((prev) => prev.filter((id) => id !== granteeId))
     if (selectedId === granteeId) setSelectedId(null)
   }
 
@@ -167,7 +163,6 @@ export function GranteeOverridesTab({
       {/* Selected grantee's leveled grid */}
       {selectedGranteeId ? (
         <GranteeAccessDetail
-          key={selectedGranteeId}
           granteeType={granteeType}
           granteeId={selectedGranteeId}
           values={persisted.find((g) => g.granteeId === selectedGranteeId)?.levels ?? {}}

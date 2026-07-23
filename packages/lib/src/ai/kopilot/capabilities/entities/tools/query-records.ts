@@ -194,7 +194,7 @@ Examples:
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const key = args.entity as string
       const filters = (args.filters as SimplifiedFilter[]) ?? []
       const logicalOperator = (args.logicalOperator as 'AND' | 'OR') ?? 'AND'
@@ -234,7 +234,30 @@ Examples:
       }
 
       const entityDefId = resource.entityDefinitionId ?? resource.id
-      const handler = new UnifiedCrudHandler(agentDeps.organizationId, agentDeps.userId, db)
+
+      // Read enforcement (§3): a def the member can't view returns nothing.
+      if (capabilities && !capabilities.canViewEntity(entityDefId)) {
+        return {
+          success: true,
+          output: {
+            entityType: resource.label,
+            items: [],
+            returned_count: 0,
+            total_matching: 0,
+            hasMore: false,
+            warnings: warnings.length > 0 ? warnings : undefined,
+          },
+        }
+      }
+      const handler = new UnifiedCrudHandler(
+        agentDeps.organizationId,
+        agentDeps.userId,
+        db,
+        undefined,
+        {
+          capabilities,
+        }
+      )
 
       // Front-door validation — reject malformed filters before SQL, surface hints to the LLM
       const { valid: validFilters, warnings: filterWarnings } = validateFilters(filters, resource)

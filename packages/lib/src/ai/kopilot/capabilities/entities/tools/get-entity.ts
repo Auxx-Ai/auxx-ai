@@ -87,14 +87,23 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
       }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const recordId = args.recordId as string
 
-      const pickerService = new RecordPickerService(agentDeps.organizationId, agentDeps.userId, db)
+      // Read enforcement (§3): the picker drops non-viewable defs, so `item` is
+      // absent for a restricted record. The gate is re-applied before the
+      // direct-DB fallback below so a restricted def can't leak through it.
+      const pickerService = new RecordPickerService(
+        agentDeps.organizationId,
+        agentDeps.userId,
+        db,
+        capabilities
+      )
       const items = await pickerService.getResourcesByIds([recordId])
       const item = items[recordId]
 
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      const canView = !capabilities || capabilities.canViewEntity(entityDefinitionId)
 
       if (item) {
         const enriched = await enrichEntitiesWithFieldValues({
@@ -102,6 +111,7 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
           userId: agentDeps.userId,
           db,
           entities: [{ recordId, entityDefinitionId, entityInstanceId }],
+          capabilities,
         })
         return {
           success: true,
@@ -117,14 +127,17 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
         }
       }
 
-      // Fallback: direct DB lookup when picker service fails (e.g. cache miss)
-      const instance = await db.query.EntityInstance.findFirst({
-        where: and(
-          eq(schema.EntityInstance.id, entityInstanceId),
-          eq(schema.EntityInstance.organizationId, agentDeps.organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId)
-        ),
-      })
+      // Fallback: direct DB lookup when picker service fails (e.g. cache miss).
+      // Skip it for a restricted def so the fallback can't bypass enforcement.
+      const instance = !canView
+        ? null
+        : await db.query.EntityInstance.findFirst({
+            where: and(
+              eq(schema.EntityInstance.id, entityInstanceId),
+              eq(schema.EntityInstance.organizationId, agentDeps.organizationId),
+              eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId)
+            ),
+          })
 
       if (instance) {
         logger.warn('Entity found via direct DB lookup but not via picker service', {
@@ -136,6 +149,7 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
           userId: agentDeps.userId,
           db,
           entities: [{ recordId, entityDefinitionId, entityInstanceId }],
+          capabilities,
         })
         return {
           success: true,

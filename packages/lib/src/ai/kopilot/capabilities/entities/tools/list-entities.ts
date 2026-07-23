@@ -21,7 +21,7 @@ const ListEntitiesOutput = z.object({
   count: z.number(),
 })
 
-export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefinition {
+export function createListEntitiesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entities',
     displayName: 'List entity types',
@@ -89,11 +89,17 @@ export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefiniti
     },
     execute: async (_args, agentDeps) => {
       const query = (_args.query as string | undefined)?.toLowerCase()
+      const { capabilities } = getDeps()
 
       let resources = await getCachedResources(agentDeps.organizationId)
 
-      // Filter out hidden resources
-      resources = resources.filter((r) => r.isVisible !== false)
+      // Filter out hidden resources (org-wide UI flag) AND, independently, defs
+      // the member can't view (per-user type grant, §3). `isVisible` ≠ `defAccess`.
+      resources = resources.filter(
+        (r) =>
+          r.isVisible !== false &&
+          (!capabilities || capabilities.canViewEntity(r.entityDefinitionId ?? r.id))
+      )
 
       // Filter by query if provided
       if (query) {

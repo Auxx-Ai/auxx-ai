@@ -640,7 +640,9 @@ export const dispatchRouter = createTRPCRouter({
           const service = new FieldValueService(
             ctx.session.organizationId,
             ctx.session.user.id,
-            ctx.db
+            ctx.db,
+            undefined,
+            { capabilities: ctx.capabilities }
           )
           const batch = await service.batchGetValues({
             recordIds: invoiceIds.map((id) => toRecordId('invoice', id)),

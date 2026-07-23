@@ -9,9 +9,10 @@ import {
   getTimelineEvents,
 } from '@auxx/services/timeline'
 import { type ActorId, toActorId } from '@auxx/types/actor'
-import type { RecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { getCachedMembersByUserIds } from '../cache/org-cache-helpers'
 import type { OrgMemberInfo } from '../cache/org-cache-keys'
+import type { CapabilitySet } from '../permissions/capabilities/capability-set'
 import type { TimelineEventType } from './event-types'
 import type {
   CreateTimelineEventInput,
@@ -101,7 +102,10 @@ export class TimelineService {
   /**
    * Get timeline for an entity with pagination and optional grouping
    */
-  async getTimeline(input: TimelineQueryInput): Promise<TimelineQueryResult> {
+  async getTimeline(
+    input: TimelineQueryInput,
+    capabilities?: CapabilitySet
+  ): Promise<TimelineQueryResult> {
     const {
       organizationId,
       recordId,
@@ -112,6 +116,11 @@ export class TimelineService {
       eventTypeFilter,
       eventTypeExcludeFilter,
     } = input
+
+    // Read enforcement (§2.2): a def the member can't view has no timeline.
+    if (capabilities && !capabilities.canViewEntity(parseRecordId(recordId).entityDefinitionId)) {
+      return { events: [], nextCursor: undefined, accurateAt: new Date() }
+    }
 
     // Decode cursor if provided
     const decodedCursor = cursor ? decodeTimelineCursor(cursor) : undefined
@@ -166,7 +175,8 @@ export class TimelineService {
   async getRelatedTimeline(
     organizationId: string,
     relatedRecordId: RecordId,
-    limit = 50
+    limit = 50,
+    capabilities?: CapabilitySet
   ): Promise<TimelineEventBase[]> {
     const result = await getRelatedTimelineEvents({
       organizationId,
@@ -184,7 +194,15 @@ export class TimelineService {
 
     const memberMap = await this.resolveActorMembers(organizationId, result.value)
 
-    return result.value.map((e) => this.mapEventToBase(e, memberMap))
+    const mapped = result.value.map((e) => this.mapEventToBase(e, memberMap))
+
+    // Read enforcement (§2.2): drop events whose record's def the member can't
+    // view — this is the multi-def path (each event may belong to a different
+    // entity type), previously ungated entirely.
+    if (!capabilities) return mapped
+    return mapped.filter((e) =>
+      capabilities.canViewEntity(parseRecordId(e.recordId).entityDefinitionId)
+    )
   }
 
   /**

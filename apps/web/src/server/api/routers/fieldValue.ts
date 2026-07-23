@@ -184,7 +184,7 @@ export const fieldValueRouter = createTRPCRouter({
    *   - ResourceFieldId: "contact:email" (direct field)
    *   - FieldPath: ["product:vendor", "vendor:name"] (relationship traversal)
    */
-  batchGet: protectedProcedure
+  batchGet: capabilityProcedure
     .input(
       z.object({
         recordIds: z.array(z.string()).max(500), // RecordId format
@@ -192,11 +192,14 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Read enforcement (§2.2) happens inside the service — it drops anchors
+      // and traversal refs on defs the member can't view.
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db,
-        ctx.headers.get('x-realtime-socket-id') ?? undefined
+        ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        { capabilities: ctx.capabilities }
       )
       return await service.batchGetValues({
         recordIds: input.recordIds as RecordId[],

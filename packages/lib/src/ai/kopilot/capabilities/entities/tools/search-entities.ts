@@ -123,12 +123,17 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
       }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const key = args.entityDefinitionId as string | undefined
       const query = args.query as string | undefined
       const limit = Math.min((args.limit as number) || 10, MAX_RESULTS)
 
-      const pickerService = new RecordPickerService(agentDeps.organizationId, agentDeps.userId, db)
+      const pickerService = new RecordPickerService(
+        agentDeps.organizationId,
+        agentDeps.userId,
+        db,
+        capabilities
+      )
 
       // Build entity type label lookup for cross-type search results
       const allResources = await getCachedResources(agentDeps.organizationId)
@@ -160,9 +165,14 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
           limit,
         }
       } else {
-        // Global search — all visible entity types
+        // Global search — all visible entity types. Layer the per-user def grant
+        // (§3) on top of the org-wide `isVisible` UI flag; they are independent.
         const visibleDefIds = allResources
-          .filter((r) => r.isVisible !== false)
+          .filter(
+            (r) =>
+              r.isVisible !== false &&
+              (!capabilities || capabilities.canViewEntity(r.entityDefinitionId ?? r.id))
+          )
           .map((r) => r.entityDefinitionId ?? r.id)
 
         searchParams = {
@@ -215,6 +225,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
           userId: agentDeps.userId,
           db,
           entities,
+          capabilities,
         })
 
         const enrichedItems = items.map((item) => {
