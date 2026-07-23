@@ -9,6 +9,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { Plus, Trash2, UsersRound } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useMemo } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { getGroupMetadata, useGroupMutations, useGroupsForUser } from '~/components/groups'
@@ -19,6 +20,7 @@ import type { Member } from '../types'
 
 /** Teams (groups) a member belongs to, with add + remove. */
 export function MemberTeamsSection({ member }: { member: Member }) {
+  const router = useRouter()
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -108,6 +110,7 @@ export function MemberTeamsSection({ member }: { member: Member }) {
               return (
                 <TreeRow
                   rowClassName='bg-primary-50 hover:bg-primary-100 '
+                  onDrill={() => router.push(`/app/settings/groups/${g.id}`)}
                   icon={<span className='text-sm'>{meta.icon || '👥'}</span>}
                   title={g.displayName}
                   secondary={meta.visibility === 'private' ? 'Private' : undefined}

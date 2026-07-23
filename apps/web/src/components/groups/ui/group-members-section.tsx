@@ -10,6 +10,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { Plus, Trash2, UsersRound } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useMemo } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { ActorPicker } from '~/components/pickers/actor-picker'
@@ -19,6 +20,7 @@ import { getInitials } from '../utils'
 
 /** User members of a group, with add (ActorPicker) + per-row remove. */
 export function GroupMembersSection({ groupId }: { groupId: string }) {
+  const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
 
   const { data: members, isLoading } = useGroupMembers(groupId)
@@ -105,6 +107,7 @@ export function GroupMembersSection({ groupId }: { groupId: string }) {
             renderRow={(m) => (
               <TreeRow
                 rowClassName='bg-primary-50 hover:bg-primary-100'
+                onDrill={() => router.push(`/app/settings/members/${m.memberRefId}`)}
                 icon={
                   <Avatar className='size-6'>
                     <AvatarImage src={m.user?.image || undefined} alt={m.user?.name || ''} />
