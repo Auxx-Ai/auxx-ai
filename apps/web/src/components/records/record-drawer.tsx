@@ -45,6 +45,7 @@ import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { useRecordDrawerReadOnly } from './use-record-drawer-read-only'
 
 /** Props for RecordDrawer */
 interface RecordDrawerProps {
@@ -76,6 +77,12 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+
+  // Restricted (read-only) mode for field seats — computed once here (the drawer
+  // root) and threaded into BaseEntityDrawer + used to gate every write
+  // affordance in this header. Full members (`records.edit`) get `false`, so the
+  // drawer is byte-identical to before (§11.4).
+  const readOnly = useRecordDrawerReadOnly()
 
   // Parse recordId to get components
   const { entityDefinitionId, entityInstanceId } = recordId
@@ -187,7 +194,22 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   // Confirm dialog for delete
   const [confirm, ConfirmDialog] = useConfirm()
 
-  const actions = drawerConfig?.actions
+  // In restricted mode every mutating action is forced off — this collapses
+  // `hasMoreActions` and the standalone delete button below, matching the
+  // read-only fields (§11.4, deliverable #4).
+  const actions = React.useMemo(() => {
+    const base = drawerConfig?.actions
+    if (!readOnly) return base
+    return {
+      ...base,
+      enableEdit: false,
+      enableRename: false,
+      enableArchive: false,
+      enableLink: false,
+      enableMerge: false,
+      enableDelete: false,
+    }
+  }, [drawerConfig?.actions, readOnly])
 
   /** Handle close */
   const handleClose = React.useCallback(() => {
@@ -267,6 +289,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         onWidthChange={setDockedWidth}
         minWidth={400}
         maxWidth={800}
+        readOnly={readOnly}
         focusComposerTrigger={focusComposerTrigger}
         onClose={handleClose}
         headerIcon={
@@ -279,8 +302,10 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         headerTitle={resource?.label || 'Record'}
         headerActions={
           <>
-            {/* Entity-specific header actions (compose for contacts, reply for tickets, etc.) */}
-            {entityType &&
+            {/* Entity-specific header actions (compose for contacts, reply for
+                tickets, etc.) — write affordances, hidden in restricted mode. */}
+            {!readOnly &&
+              entityType &&
               headerActionComponents.map((Action, i) => (
                 <Action
                   key={i}
@@ -293,14 +318,16 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 />
               ))}
 
-            {/* Run workflow */}
-            <ManualTriggerButton
-              recordId={recordId}
-              buttonVariant='ghost'
-              buttonSize='icon-xs'
-              buttonClassName='rounded-full'
-              tooltipContent='Run workflow'
-            />
+            {/* Run workflow — hidden in restricted mode (a mutating trigger). */}
+            {!readOnly && (
+              <ManualTriggerButton
+                recordId={recordId}
+                buttonVariant='ghost'
+                buttonSize='icon-xs'
+                buttonClassName='rounded-full'
+                tooltipContent='Run workflow'
+              />
+            )}
 
             {/* More actions dropdown */}
             {hasMoreActions && (
@@ -409,7 +436,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         }
         cardContent={
           <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
-            {avatarField && recordId && avatarFieldDef?.fieldType === 'FILE' ? (
+            {avatarField && recordId && avatarFieldDef?.fieldType === 'FILE' && !readOnly ? (
               <AvatarUploadIcon
                 recordId={recordId}
                 avatarUrl={cachedRecord?.avatarUrl as string}

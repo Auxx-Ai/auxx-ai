@@ -2,6 +2,7 @@
 // Client-safe timeline exports (no server dependencies)
 
 export {
+  COMMUNICATION_TIMELINE_EVENT_TYPES,
   ContactEventType,
   EntityInstanceEventType,
   SYSTEM_ENTITY_TYPES,

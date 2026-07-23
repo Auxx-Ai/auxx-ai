@@ -24,6 +24,7 @@ export const timelineRouter = createTRPCRouter({
         isGroupingDisabled: z.boolean().optional().default(false),
         actorFilter: z.array(z.string()).optional(),
         eventTypeFilter: z.array(z.string()).optional(),
+        eventTypeExcludeFilter: z.array(z.string()).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -70,6 +71,7 @@ export const timelineRouter = createTRPCRouter({
           isGroupingDisabled: input.isGroupingDisabled,
           actorFilter: input.actorFilter,
           eventTypeFilter: input.eventTypeFilter,
+          eventTypeExcludeFilter: input.eventTypeExcludeFilter,
         })
       } catch (error: any) {
         if (error instanceof TRPCError) throw error

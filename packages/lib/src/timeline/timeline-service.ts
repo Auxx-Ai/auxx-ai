@@ -110,6 +110,7 @@ export class TimelineService {
       isGroupingDisabled = false,
       actorFilter,
       eventTypeFilter,
+      eventTypeExcludeFilter,
     } = input
 
     // Decode cursor if provided
@@ -124,6 +125,7 @@ export class TimelineService {
       limit,
       actorFilter,
       eventTypeFilter,
+      eventTypeExcludeFilter,
     })
 
     if (result.isErr()) {

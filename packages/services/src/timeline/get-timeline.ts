@@ -3,7 +3,7 @@
 import { database, schema } from '@auxx/database'
 import type { TimelineEventEntity } from '@auxx/database/types'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, desc, eq, inArray, lt, or } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, notInArray, or } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 
@@ -25,6 +25,8 @@ export interface GetTimelineEventsInput {
   limit?: number
   actorFilter?: string[]
   eventTypeFilter?: string[]
+  /** Exclude these event types (e.g. communication/comment events in the restricted drawer). */
+  eventTypeExcludeFilter?: string[]
 }
 
 /**
@@ -51,7 +53,15 @@ export interface GetTimelineEventsOutput {
  * @returns Result with timeline events and pagination info
  */
 export async function getTimelineEvents(input: GetTimelineEventsInput) {
-  const { organizationId, recordId, cursor, limit = 100, actorFilter, eventTypeFilter } = input
+  const {
+    organizationId,
+    recordId,
+    cursor,
+    limit = 100,
+    actorFilter,
+    eventTypeFilter,
+    eventTypeExcludeFilter,
+  } = input
 
   // Parse recordId to get components
   const { entityDefinitionId: entityType, entityInstanceId: entityId } = parseRecordId(recordId)
@@ -83,6 +93,10 @@ export async function getTimelineEvents(input: GetTimelineEventsInput) {
 
   if (eventTypeFilter && eventTypeFilter.length > 0) {
     conditions.push(inArray(schema.TimelineEvent.eventType, eventTypeFilter))
+  }
+
+  if (eventTypeExcludeFilter && eventTypeExcludeFilter.length > 0) {
+    conditions.push(notInArray(schema.TimelineEvent.eventType, eventTypeExcludeFilter))
   }
 
   // Fetch events with one extra to check for more
