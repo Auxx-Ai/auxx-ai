@@ -12,6 +12,7 @@ import { usePathname } from 'next/navigation'
 import type * as React from 'react'
 import type { SidebarProps } from '~/constants/menu'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CollapsibleSidebarSection } from './collapsible-sidebar-section'
 import { SidebarGroupHeader } from './sidebar-group-header'
@@ -28,6 +29,7 @@ export function NavMain({ menu, itemActions }: Props) {
   const pathname = usePathname()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const { hasAccess } = useFeatureFlags()
+  const { can } = useAccess()
   const { isAdminOrOwner } = useUser()
   const isOpen = getGroupOpen('configurations')
 
@@ -47,14 +49,18 @@ export function NavMain({ menu, itemActions }: Props) {
     return fullUrl
   }
 
-  // Filter items by feature access (and admin-only gates for top-level entries)
+  // Filter items by feature access + Layer-2 capability (and admin-only gates
+  // for top-level entries). The capability check collapses a field seat's
+  // sidebar to just their granted surfaces automatically.
   const filteredItems = menu.items
     .filter((item) => !item.featureKey || hasAccess(item.featureKey))
+    .filter((item) => !item.permissionKey || can(item.permissionKey))
     .filter((item) => !item.adminOnly || isAdminOrOwner)
     .map((item) => ({
       ...item,
       items: item.items
         ?.filter((sub) => !sub.featureKey || hasAccess(sub.featureKey))
+        .filter((sub) => !sub.permissionKey || can(sub.permissionKey))
         .filter((sub) => !sub.adminOnly || isAdminOrOwner),
     }))
     .filter((item) => !item.items || item.items.length > 0)

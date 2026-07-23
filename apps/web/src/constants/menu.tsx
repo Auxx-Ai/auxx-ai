@@ -58,6 +58,8 @@ export type SidebarProps = {
   cloudOnly?: boolean
   /** Feature key required for this menu item to be visible */
   featureKey?: string
+  /** Layer-2 capability key required for this item to be visible (§7.3) */
+  permissionKey?: string
   /** When true, only admins/owners see this item */
   adminOnly?: boolean
 } & FieldProps
@@ -102,6 +104,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'agents',
     icon: <Bot />,
     featureKey: 'agents',
+    permissionKey: 'agents.manage',
     adminOnly: true,
   },
   {
@@ -117,6 +120,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'workflows',
     icon: <Zap />,
     featureKey: 'workflows',
+    permissionKey: 'workflows.manage',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
   {
@@ -125,6 +129,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'schedule',
     icon: <CalendarClock />,
     featureKey: 'dispatch',
+    permissionKey: 'dispatch.mySchedule',
   },
   {
     id: 'dispatch',
@@ -132,6 +137,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'dispatch',
     icon: <Truck />,
     featureKey: 'dispatch',
+    permissionKey: 'dispatch.board.view',
     skipParentSlug: true,
     // Navigable group: clicking the row opens the module home (settings until the
     // M2 board lands); the chevron toggles the sub-items independently.

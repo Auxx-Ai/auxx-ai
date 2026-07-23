@@ -51,6 +51,7 @@ export { shapeMailEventForLens } from './mail-event-shaping'
 export {
   flushMailBatch,
   publishAgentUpdated,
+  publishCapabilitiesChanged,
   publishCountsChanged,
   publishDataConnectorSync,
   publishDataExportJob,

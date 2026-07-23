@@ -1222,6 +1222,19 @@ export class MemberService {
       })
     }
 
+    // Recompose caches + nudge the client: a role change shifts the member's
+    // composed capability set (role defaults). Mirrors the seat-type path.
+    const { onCacheEvent } = await import('../cache')
+    await onCacheEvent('member.role.changed', {
+      orgId: organizationId,
+      userId: memberToUpdateId,
+    })
+    const { DehydrationCacheService } = await import('../dehydration/cache')
+    await new DehydrationCacheService().invalidateUser(memberToUpdateId)
+    // UX-only live merge for the affected member's open clients.
+    const { getRealtimeService, publishCapabilitiesChanged } = await import('../realtime')
+    await publishCapabilitiesChanged(getRealtimeService(), { userId: memberToUpdateId })
+
     logger.info('Member role updated successfully', {
       organizationId,
       memberToUpdateId,
@@ -1297,6 +1310,9 @@ export class MemberService {
       })
       const { DehydrationCacheService } = await import('../dehydration/cache')
       await new DehydrationCacheService().invalidateUser(memberToUpdateId)
+      // UX-only live merge — the seat ceiling changed this member's composed set.
+      const { getRealtimeService, publishCapabilitiesChanged } = await import('../realtime')
+      await publishCapabilitiesChanged(getRealtimeService(), { userId: memberToUpdateId })
     }
 
     logger.info('Member seat type updated successfully', {
