@@ -503,11 +503,12 @@ export function BaseEntityDrawer({
   readOnly: readOnlyProp,
 }: BaseEntityDrawerProps) {
   // Restricted (read-only) mode — the explicit prop from `RecordDrawer` wins;
-  // fall back to the member's derived state so drawers opened directly (contact,
-  // dispatch board) are restricted for field seats too (§11.4). One derivation
-  // for the whole frame stack: every `DrawerRecordFrame` (base + peek/drill)
-  // gets the same flag, so a drilled record is read-only just like its parent.
-  const derivedReadOnly = useRecordDrawerReadOnly()
+  // fall back to the member's derived per-def state so drawers opened directly
+  // (contact, dispatch board) are restricted for field seats / Read-only grantees
+  // too (§11.4). Derived from the BASE record's def: one flag for the whole frame
+  // stack, so a drilled record inherits the parent's read-only state.
+  const baseDefId = recordId ? parseRecordId(recordId).entityDefinitionId : undefined
+  const derivedReadOnly = useRecordDrawerReadOnly(baseDefId)
   const readOnly = readOnlyProp ?? derivedReadOnly
 
   // Cross-record peek stack — `frames = [recordId, ...peek]`. Called

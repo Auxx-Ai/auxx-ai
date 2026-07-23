@@ -66,6 +66,7 @@ import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-d
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { RecordDrawer } from './record-drawer'
 import { searchConditionsToGroup, useRecordsSearchStore } from './records-search-store'
@@ -115,6 +116,13 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   const { resource, isLoading } = useResource(slug)
   const entityDefinitionId = resource?.id
   const createHotkey = getCreateHotkey(resource?.apiSlug)
+
+  // Per-def write gate (Layer 2 × Layer 3) — hides the Create affordances for a
+  // member who can view but not edit this def (Read-only grantee / field seat).
+  // The server enforces regardless; this just avoids a click-then-403. Keyed by
+  // `entityDefinitionId` (the defAccess keyspace), not `resource.id`.
+  const { canEditEntity } = useAccess()
+  const canCreate = resource ? canEditEntity(resource.entityDefinitionId) : false
 
   // Imperative handle into DynamicResourceView for refresh + field-value reads
   // (paste/fill needs getValue from the inner syncer).
@@ -695,23 +703,29 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
         <EmptyState
           icon={Database}
           title={`No ${resource?.plural?.toLowerCase() ?? 'records'} found`}
-          description={`Create your first ${resource?.label?.toLowerCase() ?? 'record'}`}
+          description={
+            canCreate
+              ? `Create your first ${resource?.label?.toLowerCase() ?? 'record'}`
+              : `No ${resource?.plural?.toLowerCase() ?? 'records'} to show`
+          }
           button={
-            <Button size='sm' variant='outline' onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus />
-              Create {resource?.label ?? 'Record'}
-              {createHotkey && (
-                <KbdGroup variant='default' size='sm'>
-                  <Kbd>{createHotkey[0]}</Kbd>
-                  <Kbd>{createHotkey[1]}</Kbd>
-                </KbdGroup>
-              )}
-            </Button>
+            canCreate ? (
+              <Button size='sm' variant='outline' onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus />
+                Create {resource?.label ?? 'Record'}
+                {createHotkey && (
+                  <KbdGroup variant='default' size='sm'>
+                    <Kbd>{createHotkey[0]}</Kbd>
+                    <Kbd>{createHotkey[1]}</Kbd>
+                  </KbdGroup>
+                )}
+              </Button>
+            ) : undefined
           }
         />
       </div>
     ),
-    [resource?.plural, resource?.label, createHotkey, setIsCreateDialogOpen]
+    [resource?.plural, resource?.label, createHotkey, setIsCreateDialogOpen, canCreate]
   )
 
   // Memoized element — passing a fresh `<EmptyStateComponent />` inline made the
@@ -767,13 +781,17 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       emptyState={emptyStateElement}
       dockedPanels={dockedPanels}
       onRowSelectionChange={handleRowSelectionChange}
-      onAddNew={(presetValues) => {
-        setCreatePresetValues(presetValues)
-        setIsCreateDialogOpen(true)
-      }}
+      onAddNew={
+        canCreate
+          ? (presetValues) => {
+              setCreatePresetValues(presetValues)
+              setIsCreateDialogOpen(true)
+            }
+          : undefined
+      }
       entityLabel={resource.label}
       onCardClick={handleOpenDrawer}
-      onAddCard={() => setIsCreateDialogOpen(true)}
+      onAddCard={canCreate ? () => setIsCreateDialogOpen(true) : undefined}
       selectedKanbanCardIds={selectedKanbanCardIds}
       onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}
       importHref={`${resolvedBasePath}/import`}
@@ -878,16 +896,18 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
 
       <MainPageAction>
         {pageActions}
-        <Button size='sm' className='h-7 rounded-lg' onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className='size-4' />
-          Create {resource.label}
-          {createHotkey && (
-            <KbdGroup variant='default' size='sm'>
-              <Kbd>{createHotkey[0]}</Kbd>
-              <Kbd>{createHotkey[1]}</Kbd>
-            </KbdGroup>
-          )}
-        </Button>
+        {canCreate && (
+          <Button size='sm' className='h-7 rounded-lg' onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className='size-4' />
+            Create {resource.label}
+            {createHotkey && (
+              <KbdGroup variant='default' size='sm'>
+                <Kbd>{createHotkey[0]}</Kbd>
+                <Kbd>{createHotkey[1]}</Kbd>
+              </KbdGroup>
+            )}
+          </Button>
+        )}
       </MainPageAction>
 
       {mainContent}

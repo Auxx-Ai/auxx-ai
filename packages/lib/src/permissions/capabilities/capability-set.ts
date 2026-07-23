@@ -1,11 +1,17 @@
 // packages/lib/src/permissions/capabilities/capability-set.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
-import { satisfiesPermission } from '../../resource-access/constants'
-import { Area, Level, PERMISSION_REGISTRY_MAP, PermissionKey } from './registry'
-import { ENTITY_WRITE_KEYS, SEAT_CEILINGS } from './seat-policy'
+import {
+  type ClientCapabilities,
+  canEditRecord,
+  canViewRecord,
+  NON_RECORD_DEF_SLUGS,
+  type ResolvedRecordAccess,
+} from './entity-access'
+import { PERMISSION_REGISTRY_MAP, PermissionKey } from './registry'
+import { ENTITY_WRITE_KEYS } from './seat-policy'
 
 /**
  * Resolves the definition part of a RecordId (a system slug like `work_order`,
@@ -16,24 +22,6 @@ import { ENTITY_WRITE_KEYS, SEAT_CEILINGS } from './seat-policy'
  * the {@link PermissionKey.recordsEdit} default applies.
  */
 export type DefIdToSlug = (entityDefId: string) => string
-
-/**
- * Defs whose visibility is governed OUTSIDE the records area — mail and
- * messaging infrastructure. `canViewEntity` passes these through unconditionally:
- * the `records.view` verb must not hide them (a member with a lowered records
- * area still composes mail with signatures and inboxes), and their
- * `ResourceAccess` rows carry SHARING semantics (mail visibility, sequence/
- * snippet sharing), never def restriction. Keyed by entityType slug; membership
- * is checked on both the raw def-part and its resolved slug.
- */
-const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
-  'inbox',
-  'signature',
-  'thread',
-  'message',
-  'snippet',
-  'sequence',
-])
 
 /**
  * A resolved, request-scoped view of one member's Layer-2 capabilities (§6.1).
@@ -110,40 +98,33 @@ export class CapabilitySet {
   }
 
   /**
-   * The member's base records rung (Layer 2), derived from the already
-   * seat-clamped key set (v2 §1). Record data collapses to read vs write
-   * (decision §0.1 — `edit` covers create/update/delete); the coarse
-   * `records.delete`/`import` verbs stay org-wide keys, not a per-def rung.
-   * `undefined` = No Access. Note {@link PermissionKey.recordsViewLinked} (field
-   * seats) is NOT a base rung — its narrowed view is a {@link canViewEntity}
-   * carve-out, never a write rung.
+   * The normalized {@link ResolvedRecordAccess} view fed to the shared
+   * client-safe resolver ({@link canViewRecord} / {@link canEditRecord}). The
+   * `defAccess` / `restrictedDefIds` fields are already in the canonical
+   * `entityDefinitionId` keyspace (normalized in {@link getCapabilities}).
    */
-  private baseRecordsLevel(): ResourcePermission | undefined {
-    if (this.keys.has(PermissionKey.recordsEdit)) return ResourcePermission.edit
-    if (this.keys.has(PermissionKey.recordsView)) return ResourcePermission.view
-    return undefined
+  private resolved(): ResolvedRecordAccess {
+    return {
+      role: this.role,
+      seatType: this.seatType,
+      keys: this.keys,
+      defAccess: this.defAccess,
+      restrictedEntityDefIds: this.restrictedDefIds,
+    }
   }
 
   /**
-   * Layer 2 × Layer 3, most-specific-wins (v1.5 §5.1, revised 2026-07-23). The
-   * member's effective record permission for a def, or `undefined` (= No Access).
-   * Zero I/O.
-   *  - OWNER/ADMIN → `admin` (bypass — administer restrictions, never self-lock).
-   *  - restricted def → the member's own type-level grant REPLACES base
-   *    (`undefined` when they're not a grantee → locked out).
-   *  - unrestricted def → base records level fills in.
-   *  - seat ceiling clamps last: a worker's records ceiling is None → `undefined`.
+   * Serialize to the wire snapshot the client needs to run the SAME
+   * most-specific-wins math (dehydrated seed + `permissions.myCapabilities`).
    */
-  private effectiveRecordLevel(entityDefId: string): ResourcePermission | undefined {
-    if (this.role === 'OWNER' || this.role === 'ADMIN') return ResourcePermission.admin
-    const defId = this.defIdToDefinitionId(entityDefId)
-    const chosen = this.restrictedDefIds.has(defId)
-      ? this.defAccess[defId] // explicit per-def setting replaces base
-      : this.baseRecordsLevel() // unset def → base fills in
-    if (chosen === undefined) return undefined
-    // Records seat ceiling is Full (full seat) or None (worker) — no intermediate rung.
-    if (SEAT_CEILINGS[this.seatType][Area.records] === Level.None) return undefined
-    return chosen
+  toClientCapabilities(): ClientCapabilities {
+    return {
+      keys: [...this.keys],
+      defAccess: { ...this.defAccess },
+      restrictedEntityDefIds: [...this.restrictedDefIds],
+      role: this.role,
+      seatType: this.seatType,
+    }
   }
 
   /**
@@ -163,8 +144,7 @@ export class CapabilitySet {
     if (this.isMailInfraDef(entityDefId) || this.hasDedicatedWriteKey(entityDefId)) {
       return this.canWriteEntity(entityDefId)
     }
-    const level = this.effectiveRecordLevel(entityDefId)
-    return level !== undefined && satisfiesPermission(level, ResourcePermission.edit)
+    return canEditRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
   }
 
   /** {@link canEditEntity} as a throwing guard (403). */
@@ -204,15 +184,7 @@ export class CapabilitySet {
    */
   canViewEntity(entityDefId: string): boolean {
     if (this.isMailInfraDef(entityDefId)) return true
-    const level = this.effectiveRecordLevel(entityDefId)
-    if (level !== undefined && satisfiesPermission(level, ResourcePermission.view)) return true
-    // Field-seat carve-out: recordsViewLinked doesn't flow through base rungs.
-    if (this.keys.has(PermissionKey.recordsViewLinked)) {
-      const defId = this.defIdToDefinitionId(entityDefId)
-      if (!this.restrictedDefIds.has(defId)) return true
-      return this.defAccess[defId] !== undefined
-    }
-    return false
+    return canViewRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
   }
 
   /**

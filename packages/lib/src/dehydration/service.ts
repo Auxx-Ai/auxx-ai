@@ -12,8 +12,9 @@ import { configService } from '@auxx/credentials'
 import { getDeploymentMode } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
 import { execSync } from 'child_process'
-import { getCachedUserCapabilities, getOrgCache, getUserCache } from '../cache'
+import { getOrgCache, getUserCache } from '../cache'
 import type { CachedSubscription } from '../cache/org-cache-keys'
+import { getCapabilities } from '../permissions'
 import { SETTINGS_CATALOG } from '../settings'
 import type { DehydratedEnvironment, DehydratedOrganization, DehydratedState } from './types'
 
@@ -192,8 +193,9 @@ export class DehydrationService {
       ]),
       // User+org-scoped: settings
       this.userCache.getOrRecompute(userId, ['userSettings'], orgId),
-      // User+org-scoped: composed Layer-2 capability set (one cached read, no DB).
-      getCachedUserCapabilities(userId, orgId),
+      // User+org-scoped: resolved Layer-2 capability set (cache-backed, no DB) —
+      // the full CapabilitySet so the client seed carries defAccess (§11.1).
+      getCapabilities(userId, orgId),
     ])
 
     const { features, subscription, orgProfile, overages, channelProviders } = orgData
@@ -214,7 +216,7 @@ export class DehydrationService {
       demoExpiresAt: orgProfile.demoExpiresAt,
       subscription: toClientSubscription(subscription),
       features: features ?? {},
-      capabilities: capabilities.keys,
+      capabilities: capabilities.toClientCapabilities(),
       overages,
       settings: userData.userSettings,
       hasIntegrations,

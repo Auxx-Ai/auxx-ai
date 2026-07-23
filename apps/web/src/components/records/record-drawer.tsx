@@ -78,16 +78,16 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
-  // Restricted (read-only) mode for field seats — computed once here (the drawer
-  // root) and threaded into BaseEntityDrawer + used to gate every write
-  // affordance in this header. Full members (`records.edit`) get `false`, so the
-  // drawer is byte-identical to before (§11.4).
-  const readOnly = useRecordDrawerReadOnly()
-
   // Parse recordId to get components
   const { entityDefinitionId, entityInstanceId } = recordId
     ? parseRecordId(recordId)
     : { entityDefinitionId: '', entityInstanceId: '' }
+
+  // Restricted (read-only) mode — computed once here (the drawer root) and
+  // threaded into BaseEntityDrawer + used to gate every write affordance in this
+  // header. Per-def (`!canEditEntity`), so a Read-only grantee on this def is
+  // read-only while an Edit grantee is not; full members are unaffected (§11.4).
+  const readOnly = useRecordDrawerReadOnly(entityDefinitionId || undefined)
 
   // Get resource with fields
   const { resource } = useResource(entityDefinitionId ?? null)
