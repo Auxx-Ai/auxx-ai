@@ -7,7 +7,7 @@ import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count as drizzleCount, eq, ilike, inArray, or } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('search-router')
 
@@ -133,7 +133,7 @@ export const searchRouter = createTRPCRouter({
       return { hits: [] }
     }),
   // Search suggestions endpoint
-  suggestions: protectedProcedure
+  suggestions: capabilityProcedure
     .input(
       z.object({
         operator: z.string().optional(),
@@ -247,6 +247,8 @@ export const searchRouter = createTRPCRouter({
           break
         }
         case SearchOperator.TAG: {
+          // Read enforcement (§2.1): skip tag suggestions if the def is restricted.
+          if (!ctx.capabilities.canViewEntity('tag')) break
           // Get tags using unified entity system
           const result = await listAll(
             {

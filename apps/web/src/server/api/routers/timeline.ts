@@ -11,11 +11,11 @@ import {
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter } from '../trpc'
 
 export const timelineRouter = createTRPCRouter({
   /** Get timeline for an entity */
-  getTimeline: protectedProcedure
+  getTimeline: capabilityProcedure
     .input(
       z.object({
         recordId: recordIdSchema,
@@ -63,16 +63,19 @@ export const timelineRouter = createTRPCRouter({
           }
         }
 
-        return await timelineService.getTimeline({
-          organizationId,
-          recordId: input.recordId,
-          cursor: input.cursor,
-          limit: input.limit,
-          isGroupingDisabled: input.isGroupingDisabled,
-          actorFilter: input.actorFilter,
-          eventTypeFilter: input.eventTypeFilter,
-          eventTypeExcludeFilter: input.eventTypeExcludeFilter,
-        })
+        return await timelineService.getTimeline(
+          {
+            organizationId,
+            recordId: input.recordId,
+            cursor: input.cursor,
+            limit: input.limit,
+            isGroupingDisabled: input.isGroupingDisabled,
+            actorFilter: input.actorFilter,
+            eventTypeFilter: input.eventTypeFilter,
+            eventTypeExcludeFilter: input.eventTypeExcludeFilter,
+          },
+          ctx.capabilities
+        )
       } catch (error: any) {
         if (error instanceof TRPCError) throw error
         throw new TRPCError({
@@ -83,7 +86,7 @@ export const timelineRouter = createTRPCRouter({
     }),
 
   /** Get related timeline (e.g., all contact events for a ticket) */
-  getRelatedTimeline: protectedProcedure
+  getRelatedTimeline: capabilityProcedure
     .input(
       z.object({
         relatedRecordId: recordIdSchema,
@@ -98,7 +101,8 @@ export const timelineRouter = createTRPCRouter({
         return await timelineService.getRelatedTimeline(
           organizationId,
           input.relatedRecordId,
-          input.limit
+          input.limit,
+          ctx.capabilities
         )
       } catch (error: any) {
         throw new TRPCError({

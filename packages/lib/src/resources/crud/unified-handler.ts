@@ -20,6 +20,7 @@ import { FieldValueService } from '../../field-values'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
 import { upsertRecordIdentity } from '../../identity'
+import type { CapabilitySet } from '../../permissions/capabilities/capability-set'
 import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
@@ -176,12 +177,22 @@ export interface UnifiedCrudHandlerOptions {
    * to the internal `FieldValueService`.
    */
   bypassFieldGuards?: ReadonlySet<SystemAttribute>
+  /**
+   * Request-scoped {@link CapabilitySet} for entity-def read enforcement (v2 §2).
+   * Present ⇒ read methods gate each def through `canViewEntity`. **Absent ⇒ no
+   * enforcement** — so internal/system callers (seeders, workers, record-rules)
+   * stay unrestricted with no change. Request paths must thread `ctx.capabilities`
+   * (resolved once via `capabilityProcedure`).
+   */
+  capabilities?: CapabilitySet
 }
 
 export class UnifiedCrudHandler {
   fieldValueService: FieldValueService
   private db: Database
   private bypassFieldGuards: ReadonlySet<SystemAttribute>
+  /** Request-scoped read enforcement; undefined for internal/system callers. */
+  private capabilities?: CapabilitySet
 
   constructor(
     private organizationId: string,
@@ -192,6 +203,7 @@ export class UnifiedCrudHandler {
   ) {
     this.db = db ?? defaultDatabase
     this.bypassFieldGuards = options.bypassFieldGuards ?? new Set()
+    this.capabilities = options.capabilities
     this.fieldValueService = new FieldValueService(organizationId, userId, this.db, socketId, {
       bypassFieldGuards: this.bypassFieldGuards,
     })
@@ -325,7 +337,11 @@ export class UnifiedCrudHandler {
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    */
   async getById(recordId: RecordId) {
-    const { entityInstanceId } = parseRecordId(recordId)
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+    // Read enforcement (§2.1): a def the member can't view reads as not-found.
+    if (this.capabilities && !this.capabilities.canViewEntity(entityDefinitionId)) {
+      return null
+    }
     const result = await getEntityInstance({
       id: entityInstanceId,
       organizationId: this.organizationId,
@@ -403,6 +419,10 @@ export class UnifiedCrudHandler {
     candidates: LookupCandidate[]
     limit: number
   }): Promise<LookupByFieldResult> {
+    // Read enforcement (§2.1): a def the member can't view yields no matches.
+    if (this.capabilities && !this.capabilities.canViewEntity(params.entityDefinitionId)) {
+      return { items: [], hasMore: false }
+    }
     const entityDef = await this.resolveEntityDefinition(params.entityDefinitionId)
     const seen = new Set<RecordId>()
     const items: LookupMatch[] = []
@@ -750,6 +770,11 @@ export class UnifiedCrudHandler {
    * @param params - List all parameters (entityDefinitionId or apiSlug required)
    */
   async listAll(params: ListAllInput): Promise<ListAllResult> {
+    // Read enforcement (§2.1): a def the member can't view yields an empty list.
+    const defKey = params.entityDefinitionId ?? params.apiSlug
+    if (this.capabilities && defKey && !this.capabilities.canViewEntity(defKey)) {
+      return { items: [], entityDefinitionId: params.entityDefinitionId ?? '', fields: {} }
+    }
     return listAllQuery(
       { db: this.db, organizationId: this.organizationId, userId: this.userId },
       params
@@ -779,6 +804,11 @@ export class UnifiedCrudHandler {
     mode?: 'snapshot' | 'oneshot'
   }): Promise<ListFilteredResult> {
     const { entityDefinitionId, sorting = [], limit = 100, cursor, mode = 'snapshot' } = params
+
+    // Read enforcement (§2.1): a def the member can't view yields an empty page.
+    if (this.capabilities && !this.capabilities.canViewEntity(entityDefinitionId)) {
+      return { snapshotId: '', ids: [], total: 0, hasMore: false }
+    }
 
     // Resolve valueSource placeholders (e.g. currentUser) before any cache key
     // is computed so snapshots are isolated per viewer.
@@ -897,7 +927,12 @@ export class UnifiedCrudHandler {
   async getByIds(recordIds: RecordId[]) {
     if (recordIds.length === 0) return []
 
-    const service = new RecordPickerService(this.organizationId, this.userId, this.db)
+    const service = new RecordPickerService(
+      this.organizationId,
+      this.userId,
+      this.db,
+      this.capabilities
+    )
     return service.getResourcesByIds(recordIds)
   }
 
@@ -939,7 +974,27 @@ export class UnifiedCrudHandler {
       )
     }
 
-    const service = new RecordPickerService(this.organizationId, this.userId, this.db)
+    // Read enforcement (§2.2): a scoped def the member can't view yields nothing.
+    if (
+      this.capabilities &&
+      entityDefinitionId &&
+      !this.capabilities.canViewEntity(entityDefinitionId)
+    ) {
+      return {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+        processingTimeMs: 0,
+        query: query ?? '',
+      }
+    }
+
+    const service = new RecordPickerService(
+      this.organizationId,
+      this.userId,
+      this.db,
+      this.capabilities
+    )
 
     // System table types (thread, message, etc.) don't have EntityInstance rows.
     // Route to getResources() which queries the actual table via RESOURCE_TABLE_MAP.

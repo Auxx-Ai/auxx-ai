@@ -199,7 +199,22 @@ export async function batchGetValues(
   ctx: FieldValueContext,
   params: BatchGetValuesInput
 ): Promise<BatchFieldValueResult> {
-  const { recordIds, fieldReferences } = params
+  let { recordIds, fieldReferences } = params
+
+  // Read enforcement (v2 §2.2) — filter the def set in memory, never per-row:
+  // - drop anchor records whose def the member can't view;
+  // - drop relationship-traversal refs touching ANY non-viewable def (a path
+  //   must not traverse *through* a restricted def either).
+  // Direct refs stay: they only yield values for the already-gated anchors.
+  const caps = ctx.capabilities
+  if (caps) {
+    recordIds = recordIds.filter((rid) => caps.canViewEntity(parseRecordId(rid).entityDefinitionId))
+    fieldReferences = fieldReferences.filter(
+      (ref) =>
+        !isFieldPath(ref) ||
+        ref.every((seg) => caps.canViewEntity(parseResourceFieldId(seg).entityDefinitionId))
+    )
+  }
 
   if (recordIds.length === 0 || fieldReferences.length === 0) {
     return { values: [] }

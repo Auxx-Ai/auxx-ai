@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/types.ts
 
 import type { Database } from '@auxx/database'
+import type { CapabilitySet } from '../../../permissions/capabilities/capability-set'
 import type { AgentDeps, AgentToolDefinition } from '../../agent-framework/types'
 import type { SessionContext } from '../types'
 
@@ -13,6 +14,13 @@ export interface ToolDeps extends AgentDeps {
    * from here. Rebuilt fresh per request from the SSE route body.
    */
   sessionContext: SessionContext
+  /**
+   * Request-scoped entity-def read enforcement (v2 §3), resolved once per turn.
+   * Present ONLY when the acting user is a real org member (interactive Kopilot);
+   * **absent for autonomous/visitor/workflow turns**, which stay unrestricted.
+   * Entity tools that read records gate each def through `canViewEntity`.
+   */
+  capabilities?: CapabilitySet
 }
 
 /** Factory function that provides ToolDeps at execution time */

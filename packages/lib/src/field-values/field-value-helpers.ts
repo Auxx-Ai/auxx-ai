@@ -22,6 +22,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
+import type { CapabilitySet } from '../permissions/capabilities/capability-set'
 import { getRealtimeService, rooms } from '../realtime'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
@@ -69,6 +70,12 @@ export interface FieldValueContext {
    * don't re-fire the hooks.
    */
   skipPreHooks?: boolean
+  /**
+   * Request-scoped entity-def read enforcement (capability layer v2 §2.2).
+   * Present ⇒ `batchGetValues` drops anchors and traversal refs on defs the
+   * member can't view. Absent ⇒ no enforcement (internal/system callers).
+   */
+  capabilities?: CapabilitySet
 }
 
 // =============================================================================
@@ -79,6 +86,7 @@ export interface FieldValueContext {
 export interface CreateFieldValueContextOptions {
   bypassFieldGuards?: ReadonlySet<SystemAttribute>
   skipPreHooks?: boolean
+  capabilities?: CapabilitySet
 }
 
 const EMPTY_BYPASS: ReadonlySet<SystemAttribute> = new Set()
@@ -103,6 +111,7 @@ export function createFieldValueContext(
     validator: new FieldValueValidator(),
     bypassFieldGuards: options.bypassFieldGuards ?? EMPTY_BYPASS,
     skipPreHooks: options.skipPreHooks,
+    capabilities: options.capabilities,
   }
 }
 

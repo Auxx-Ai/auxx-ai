@@ -2,13 +2,14 @@
 
 'use client'
 
-import type { Actor, ActorId } from '@auxx/types/actor'
+import { type Actor, type ActorId, toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { CommandItem } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Check, Mail } from 'lucide-react'
+import { useUser } from '~/hooks/use-user'
 
 /**
  * Props for ActorItem display component
@@ -26,6 +27,8 @@ export interface ActorItemProps {
  * Shows avatar, name, and badge (member count for groups) or email tooltip icon (for users).
  */
 export function ActorItem({ actor, isSelected, onToggle, multi = true }: ActorItemProps) {
+  const { userId } = useUser()
+  const isYou = actor.type === 'user' && !!userId && actor.actorId === toActorId('user', userId)
   const handleSelect = () => {
     onToggle(actor.actorId)
   }
@@ -57,6 +60,7 @@ export function ActorItem({ actor, isSelected, onToggle, multi = true }: ActorIt
             <em className='text-muted-foreground'>Unknown</em>
           )}
         </span>
+        {isYou && <span className='text-muted-foreground shrink-0'>(You)</span>}
         {actor.type === 'user' && actor.name && actor.email && (
           <span title={actor.email}>
             <Mail className='size-3.5 text-muted-foreground shrink-0' />

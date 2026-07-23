@@ -3,7 +3,6 @@
 
 import { AREA_ORDER, type Area, type Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
-import { useMemo } from 'react'
 import { LevelControl } from './level-control'
 
 interface LeveledAreaGridProps {
@@ -58,12 +57,6 @@ export function LeveledAreaGrid({
   onChange,
   disabled = false,
 }: LeveledAreaGridProps) {
-  const inheritedFor = useMemo(
-    () => (area: Area) =>
-      mode === 'override' ? (baseline?.[area] ?? roleDefaults[area]) : roleDefaults[area],
-    [mode, baseline, roleDefaults]
-  )
-
   return (
     <div className='flex flex-col gap-4'>
       {AREA_GROUPS.map(({ group, areas }) => (
@@ -71,7 +64,9 @@ export function LeveledAreaGrid({
           <span className='px-1 text-xs font-semibold uppercase text-primary-600'>{group}</span>
           {areas.map((area) => {
             const meta = PERMISSION_AREAS[area]
-            const inherited = inheritedFor(area)
+            const value = values[area]
+            const inherited =
+              mode === 'override' ? (baseline?.[area] ?? roleDefaults[area]) : roleDefaults[area]
             return (
               <TreeRow
                 rowClassName='bg-primary-50 hover:bg-primary-100'
@@ -81,13 +76,9 @@ export function LeveledAreaGrid({
                 trailing={
                   <LevelControl
                     area={meta}
-                    value={values[area]}
+                    value={value}
                     inherited={inherited}
-                    ignored={
-                      mode === 'override' &&
-                      values[area] !== undefined &&
-                      (values[area] as Level) <= inherited
-                    }
+                    ignored={mode === 'override' && value !== undefined && value <= inherited}
                     onChange={(level) => onChange(area, level)}
                     disabled={disabled}
                   />

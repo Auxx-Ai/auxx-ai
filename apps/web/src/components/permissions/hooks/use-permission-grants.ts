@@ -14,26 +14,61 @@ export const MEMBER_BASELINE_GRANTEE_ID = 'org_member'
  * the member baseline (org policy), group overrides, and user overrides — plus
  * save/remove mutations that write sparse level maps through the grant service.
  *
- * A save of an empty map removes the row (falls back to inherit); a save of a
- * non-empty map upserts it. `listGrants` is invalidated after every write so the
- * grid re-hydrates. The `permission-grant.changed` realtime event separately
- * refreshes affected members' own capabilities.
+ * `save` always upserts — an empty map stores an empty override row, which
+ * composes to nothing but keeps the grantee listed across reloads; `remove`
+ * deletes the row. Writes update the `listGrants` cache optimistically
+ * (the server stores exactly the sparse map the client sends), so successful
+ * saves never refetch — only a failed write invalidates to re-sync. The
+ * `permission-grant.changed` realtime event separately refreshes affected
+ * members' own capabilities.
  */
 export function usePermissionGrants() {
   const utils = api.useUtils()
-  const grantsQuery = api.permissions.listGrants.useQuery()
-  const roleDefaultsQuery = api.permissions.roleDefaults.useQuery()
+  const grantsQuery = api.permissions.listGrants.useQuery(undefined, { staleTime: 30_000 })
+  // The USER role's code defaults — a server constant, never worth refetching.
+  const roleDefaultsQuery = api.permissions.roleDefaults.useQuery(undefined, {
+    staleTime: Number.POSITIVE_INFINITY,
+  })
 
-  const invalidate = useCallback(() => utils.permissions.listGrants.invalidate(), [utils])
+  /** Upsert (or drop, when `levels` is undefined) one grantee row in the cache. */
+  const setLocalGrant = useCallback(
+    (granteeType: GrantGranteeType, granteeId: string, levels?: Partial<Record<Area, Level>>) => {
+      utils.permissions.listGrants.setData(undefined, (prev) => {
+        if (!prev) return prev
+        const grants = prev.grants.filter(
+          (g) => !(g.granteeType === granteeType && g.granteeId === granteeId)
+        )
+        if (levels) grants.push({ granteeType, granteeId, levels })
+        return { grants }
+      })
+    },
+    [utils]
+  )
+  const resync = useCallback(() => utils.permissions.listGrants.invalidate(), [utils])
+
   const grant = api.permissions.grant.useMutation({
-    onSuccess: invalidate,
-    onError: (error) =>
-      toastError({ title: 'Error saving permission', description: error.message }),
+    onMutate: async (input) => {
+      await utils.permissions.listGrants.cancel()
+      setLocalGrant(
+        input.granteeType,
+        input.granteeId,
+        input.levels as Partial<Record<Area, Level>>
+      )
+    },
+    onError: (error) => {
+      toastError({ title: 'Error saving permission', description: error.message })
+      void resync()
+    },
   })
   const revoke = api.permissions.revoke.useMutation({
-    onSuccess: invalidate,
-    onError: (error) =>
-      toastError({ title: 'Error clearing permission', description: error.message }),
+    onMutate: async (input) => {
+      await utils.permissions.listGrants.cancel()
+      setLocalGrant(input.granteeType, input.granteeId)
+    },
+    onError: (error) => {
+      toastError({ title: 'Error clearing permission', description: error.message })
+      void resync()
+    },
   })
 
   const grants = useMemo(() => grantsQuery.data?.grants ?? [], [grantsQuery.data])
@@ -60,17 +95,13 @@ export function usePermissionGrants() {
     [roleDefaults, baseline]
   )
 
-  /** Upsert a grantee's sparse level map, or remove the row when it empties. */
+  /** Upsert a grantee's sparse level map (`{}` stores an empty override row). */
   const save = useCallback(
     (granteeType: GrantGranteeType, granteeId: string, levels: Partial<Record<Area, Level>>) => {
-      if (Object.keys(levels).length === 0) {
-        revoke.mutate({ granteeType, granteeId })
-      } else {
-        // Sparse by contract — the router's `z.record` input type isn't partial.
-        grant.mutate({ granteeType, granteeId, levels: levels as Record<Area, Level> })
-      }
+      // Sparse by contract — the router's `z.record` input type isn't partial.
+      grant.mutate({ granteeType, granteeId, levels: levels as Record<Area, Level> })
     },
-    [grant, revoke]
+    [grant]
   )
 
   const remove = useCallback(

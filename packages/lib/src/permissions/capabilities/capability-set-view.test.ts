@@ -1,0 +1,137 @@
+// packages/lib/src/permissions/capabilities/capability-set-view.test.ts
+
+import type { ResourcePermission } from '@auxx/database/enums'
+import { describe, expect, it } from 'vitest'
+import { CapabilitySet } from './capability-set'
+import { PermissionKey } from './registry'
+
+/**
+ * Read-path enforcement (v2 §0): `canViewEntity` combines the Layer-2 verb
+ * (`records.view`) with the Layer-3 noun (type-level def grants) under
+ * "absent = unrestricted" semantics.
+ */
+
+// A resolver that normalizes any slug/apiSlug/id form to the canonical
+// entityDefinitionId keyspace (the keyspace of defAccess / restrictedDefIds).
+const defIdToDefinitionId = (id: string) =>
+  id === 'invoice' || id === 'invoices' ? 'invoice-def' : id
+
+const build = (opts: {
+  hasView?: boolean
+  keys?: PermissionKey[]
+  defAccess?: Record<string, ResourcePermission>
+  restricted?: string[]
+  role?: 'OWNER' | 'ADMIN' | 'USER'
+}) =>
+  new CapabilitySet(
+    new Set(opts.keys ?? (opts.hasView === false ? [] : [PermissionKey.recordsView])),
+    opts.defAccess ?? {},
+    opts.role ?? 'USER',
+    'full',
+    (id) => id,
+    new Set(opts.restricted ?? []),
+    defIdToDefinitionId
+  )
+
+describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
+  it('a def with NO type-level grant is visible to everyone with records.view', () => {
+    const caps = build({ restricted: ['other-def'] })
+    expect(caps.canViewEntity('invoice-def')).toBe(true)
+  })
+
+  it('a restricted def is visible to a grantee', () => {
+    const caps = build({
+      restricted: ['invoice-def'],
+      defAccess: { 'invoice-def': 'view' },
+    })
+    expect(caps.canViewEntity('invoice-def')).toBe(true)
+  })
+
+  it('a restricted def is denied to a non-grantee', () => {
+    const caps = build({ restricted: ['invoice-def'], defAccess: {} })
+    expect(caps.canViewEntity('invoice-def')).toBe(false)
+  })
+
+  it('denies everything when records.view is absent, even for a grantee', () => {
+    const caps = build({
+      hasView: false,
+      restricted: ['invoice-def'],
+      defAccess: { 'invoice-def': 'view' },
+    })
+    expect(caps.canViewEntity('invoice-def')).toBe(false)
+    expect(caps.canViewEntity('anything')).toBe(false)
+  })
+
+  it('normalizes a slug/apiSlug argument to the canonical entityDefinitionId', () => {
+    const grantee = build({ restricted: ['invoice-def'], defAccess: { 'invoice-def': 'edit' } })
+    const outsider = build({ restricted: ['invoice-def'], defAccess: {} })
+    // 'invoice' and 'invoices' both resolve to 'invoice-def'.
+    expect(grantee.canViewEntity('invoice')).toBe(true)
+    expect(grantee.canViewEntity('invoices')).toBe(true)
+    expect(outsider.canViewEntity('invoice')).toBe(false)
+  })
+
+  it('with an empty restricted set, degrades to the coarse records.view verb', () => {
+    const withView = build({})
+    const withoutView = build({ hasView: false })
+    expect(withView.canViewEntity('invoice-def')).toBe(true)
+    expect(withoutView.canViewEntity('invoice-def')).toBe(false)
+  })
+
+  it('recordsViewLinked satisfies the verb layer (field seats; rows narrowed elsewhere)', () => {
+    const fieldSeat = build({ keys: [PermissionKey.recordsViewLinked] })
+    expect(fieldSeat.canViewEntity('invoice-def')).toBe(true)
+    // Restricted defs still require a grant for a field seat.
+    const restricted = build({
+      keys: [PermissionKey.recordsViewLinked],
+      restricted: ['invoice-def'],
+    })
+    expect(restricted.canViewEntity('invoice-def')).toBe(false)
+  })
+
+  it('mail-infrastructure defs bypass both layers (visibility governed by mail system)', () => {
+    // No records verb at all — inbox/signature reads must still pass.
+    const noVerb = build({ hasView: false })
+    expect(noVerb.canViewEntity('inbox')).toBe(true)
+    expect(noVerb.canViewEntity('signature')).toBe(true)
+    expect(noVerb.canViewEntity('thread')).toBe(true)
+    // Even listed as restricted (sharing rows must never restrict).
+    const restricted = build({ hasView: false, restricted: ['inbox'] })
+    expect(restricted.canViewEntity('inbox')).toBe(true)
+  })
+
+  it('OWNER/ADMIN bypass the noun layer but not the verb', () => {
+    const admin = build({ role: 'ADMIN', restricted: ['invoice-def'], defAccess: {} })
+    expect(admin.canViewEntity('invoice-def')).toBe(true)
+    const owner = build({ role: 'OWNER', restricted: ['invoice-def'], defAccess: {} })
+    expect(owner.canViewEntity('invoice-def')).toBe(true)
+    const adminNoVerb = build({ role: 'ADMIN', hasView: false, restricted: ['invoice-def'] })
+    expect(adminNoVerb.canViewEntity('invoice-def')).toBe(false)
+  })
+})
+
+describe('CapabilitySet.filterViewableDefIds', () => {
+  it('drops non-viewable defs, keeps viewable ones (pure in-memory)', () => {
+    const caps = build({
+      restricted: ['invoice-def', 'salary-def'],
+      defAccess: { 'invoice-def': 'view' },
+    })
+    // 'contact-def' unrestricted → kept; invoice granted → kept; salary restricted, not granted → dropped.
+    expect(caps.filterViewableDefIds(['contact-def', 'invoice-def', 'salary-def'])).toEqual([
+      'contact-def',
+      'invoice-def',
+    ])
+  })
+})
+
+describe('CapabilitySet.assertViewEntity', () => {
+  it('throws for a restricted def the member cannot see', () => {
+    const caps = build({ restricted: ['invoice-def'], defAccess: {} })
+    expect(() => caps.assertViewEntity('invoice-def')).toThrow()
+  })
+
+  it('does not throw for a viewable def', () => {
+    const caps = build({ restricted: ['invoice-def'], defAccess: { 'invoice-def': 'admin' } })
+    expect(() => caps.assertViewEntity('invoice-def')).not.toThrow()
+  })
+})

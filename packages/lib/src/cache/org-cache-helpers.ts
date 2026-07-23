@@ -198,6 +198,15 @@ export async function getCachedHasPermissionGrants(orgId: string): Promise<boole
   return getOrgCache().get(orgId, 'hasPermissionGrants')
 }
 
+/**
+ * The org-wide set of entity definitions carrying ≥1 type-level `ResourceAccess`
+ * grant (cached). Read-path enforcement (§0) uses this as the "absent =
+ * unrestricted" signal: a def NOT in this set is visible to everyone.
+ */
+export async function getCachedRestrictedEntityDefIds(orgId: string): Promise<string[]> {
+  return getOrgCache().get(orgId, 'restrictedEntityDefIds')
+}
+
 // ── Group cache helpers ──
 
 /**

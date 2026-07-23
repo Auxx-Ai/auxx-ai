@@ -43,7 +43,7 @@ import { createMcpCapabilities } from '@auxx/lib/ai/mcp'
 import { getCachedAgentById } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, getCapabilities } from '@auxx/lib/permissions'
 import { docToText } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -562,13 +562,18 @@ async function runInProcessPath(params: {
       })
     : Promise.resolve(null)
 
-  // Build domain config with capabilities
+  // Build domain config with capabilities. `userId` is the logged-in member, so
+  // resolve entity-def read enforcement (v2 §3) once per turn and share it across
+  // every tool. Autonomous/visitor/workflow agents build deps without this and
+  // stay unrestricted.
+  const capabilities = await getCapabilities(userId, organizationId)
   const getToolDeps = createToolDepsFactory({
     organizationId,
     userId,
     sessionId,
     signal: request.signal,
     sessionContext: { ...(context ?? {}), page },
+    capabilities,
   })
 
   const registry = createCapabilityRegistry()

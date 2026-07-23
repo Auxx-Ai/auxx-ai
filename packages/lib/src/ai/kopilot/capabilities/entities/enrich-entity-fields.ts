@@ -10,6 +10,7 @@ import { getCachedResource } from '../../../../cache/org-cache-helpers'
 import { rowsToTypedValues } from '../../../../field-values/field-value-helpers'
 import { formatToDisplayValue, formatToRawValue } from '../../../../field-values/formatter'
 import type { FieldValueRow } from '../../../../field-values/types'
+import type { CapabilitySet } from '../../../../permissions/capabilities/capability-set'
 import { RecordPickerService } from '../../../../resources/picker'
 import { isCustomResourceId } from '../../../../resources/registry/types'
 import { isRecordId } from '../../../../resources/resource-id'
@@ -35,16 +36,20 @@ export async function enrichEntitiesWithFieldValues(params: {
   userId: string
   db: Database
   entities: Array<{ recordId: string; entityDefinitionId: string; entityInstanceId: string }>
+  /** Read enforcement (§3): gates per-def groups + relationship-target resolution. */
+  capabilities?: CapabilitySet
 }): Promise<Map<string, Record<string, EnrichedField>>> {
-  const { organizationId, userId, db, entities } = params
+  const { organizationId, userId, db, entities, capabilities } = params
   const result = new Map<string, Record<string, EnrichedField>>()
 
   if (entities.length === 0) return result
 
-  // Group entities by entityDefinitionId for batch processing
+  // Group entities by entityDefinitionId for batch processing. Read enforcement
+  // (§3): skip def groups the member can't view.
   const grouped = new Map<string, typeof entities>()
   for (const entity of entities) {
     if (!isCustomResourceId(entity.entityDefinitionId)) continue
+    if (capabilities && !capabilities.canViewEntity(entity.entityDefinitionId)) continue
     const group = grouped.get(entity.entityDefinitionId) ?? []
     group.push(entity)
     grouped.set(entity.entityDefinitionId, group)
@@ -172,7 +177,8 @@ export async function enrichEntitiesWithFieldValues(params: {
 
   // Batch-resolve all relationship display names
   if (relationshipRecordIds.size > 0) {
-    const pickerService = new RecordPickerService(organizationId, userId, db)
+    // Pass capabilities so relationship targets on restricted defs don't resolve.
+    const pickerService = new RecordPickerService(organizationId, userId, db, capabilities)
     const resolved = await pickerService.getResourcesByIds([...relationshipRecordIds] as RecordId[])
 
     // Replace recordIds with display names in enriched displayValue

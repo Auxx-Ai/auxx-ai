@@ -5,6 +5,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getCachedResourceFields } from '../cache'
+import type { CapabilitySet } from '../permissions/capabilities/capability-set'
 import {
   type CachedField,
   createFieldValueContext,
@@ -51,6 +52,13 @@ export interface FieldValueServiceOptions {
    * by trusted code paths like the seeder.
    */
   bypassFieldGuards?: ReadonlySet<SystemAttribute>
+  /**
+   * Request-scoped entity-def read enforcement (capability layer v2 §2.2).
+   * Present ⇒ read methods gate defs through `canViewEntity`; absent ⇒ no
+   * enforcement (internal/system callers stay unrestricted). Request paths
+   * must thread `ctx.capabilities` (resolved once via `capabilityProcedure`).
+   */
+  capabilities?: CapabilitySet
 }
 
 export class FieldValueService {
@@ -66,6 +74,7 @@ export class FieldValueService {
   ) {
     this.ctx = createFieldValueContext(organizationId, userId, db, socketId, {
       bypassFieldGuards: options.bypassFieldGuards,
+      capabilities: options.capabilities,
     })
   }
 

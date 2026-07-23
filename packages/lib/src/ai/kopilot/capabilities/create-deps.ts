@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/create-deps.ts
 
 import { database } from '@auxx/database'
+import type { CapabilitySet } from '../../../permissions/capabilities/capability-set'
 import type { SessionContext } from '../types'
 import type { GetToolDeps, ToolDeps } from './types'
 
@@ -15,6 +16,12 @@ export function createToolDepsFactory(params: {
   signal?: AbortSignal
   /** UI session context from the current request body. Read by tools that need active-record ids. */
   sessionContext?: SessionContext
+  /**
+   * Pre-resolved read enforcement (v2 §3). Pass ONLY for interactive turns where
+   * the acting user is a real org member; omit for autonomous/visitor/workflow
+   * turns (they stay unrestricted). Resolved once and shared by every tool call.
+   */
+  capabilities?: CapabilitySet
 }): GetToolDeps {
   return (): ToolDeps => ({
     db: database,
@@ -23,5 +30,6 @@ export function createToolDepsFactory(params: {
     sessionId: params.sessionId,
     signal: params.signal,
     sessionContext: params.sessionContext ?? {},
+    capabilities: params.capabilities,
   })
 }

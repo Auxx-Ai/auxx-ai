@@ -83,15 +83,15 @@ export function LevelControl({
         value={String(effective)}
         onValueChange={(v) => onChange(Number(v) as Level)}
         size='xs'
-        radioGroupClassName='after:rounded-full'
-        className={cn('rounded-full', !isExplicit && 'opacity-60')}>
+        radioGroupClassName='after:rounded-lg'
+        className={cn('rounded-lg', !isExplicit && '')}>
         {levels.map((level) => (
           <RadioTabItem
             key={level}
             value={String(level)}
             size='xs'
             disabled={disabled}
-            className='h-full w-auto min-w-0 rounded-full px-2.5'>
+            className='h-full w-auto min-w-0 rounded-lg px-2.5'>
             {LEVEL_LABELS[level]}
           </RadioTabItem>
         ))}
