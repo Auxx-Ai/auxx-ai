@@ -39,6 +39,7 @@ interface InviteFormProps {
 }
 export default function InviteFormPopover({ children }: InviteFormProps) {
   const router = useRouter()
+  const utils = api.useUtils()
   const [isOpen, setIsOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const form = useForm<z.infer<typeof formSchema>>({
@@ -55,6 +56,10 @@ export default function InviteFormPopover({ children }: InviteFormProps) {
       })
       form.reset()
       setIsOpen(false)
+      // The Members list is client-fetched, so invalidate rather than relying on
+      // router.refresh (which only re-runs server components).
+      utils.member.invitations.invalidate()
+      utils.member.activeCount.invalidate()
       router.refresh()
     },
     onError: (error) => {

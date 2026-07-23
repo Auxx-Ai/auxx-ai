@@ -35,6 +35,12 @@ type Props = {
    * with a hardcoded top offset that can overlap the header on tall layouts.
    */
   subHeader?: React.ReactNode
+  /**
+   * Override classes on the sub-header wrapper. Defaults to a padded row
+   * (`px-3 py-2.5`) suited to pill tabs; pass `p-0` for a flush, full-width
+   * strip (e.g. an underlined `TabsList variant='outline'`).
+   */
+  subHeaderClassName?: string
   backLink?: string
 }
 
@@ -46,6 +52,7 @@ export default function SettingsPage({
   breadcrumbs,
   button,
   subHeader,
+  subHeaderClassName,
   backLink,
 }: Props) {
   breadcrumbs = breadcrumbs || []
@@ -83,7 +90,11 @@ export default function SettingsPage({
 
   return (
     // noFade: the sticky FormSaveBar sits at the viewport bottom — the edge fade would mask it.
-    <ScrollArea viewportRef={viewportRef} noFade className='h-full w-full'>
+    <ScrollArea
+      viewportRef={viewportRef}
+      noFade
+      className='h-full w-full'
+      scrollbarClassName='z-21'>
       {breadcrumbs.length > 0 && (
         <header className='w-full flex-none border-b overflow-hidden'>
           <div className='flex items-center gap-2 px-3 py-1.5 no-scrollbar overflow-x-auto'>
@@ -118,7 +129,7 @@ export default function SettingsPage({
         </header>
       )}
 
-      <div className='sticky top-0 z-21 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
+      <div className='sticky top-0 z-20 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
         <div
           className={cn(
             'flex flex-col sm:flex-row sm:items-center gap-2 bg-muted/50 px-5 py-3 pe-2 sm:pe-5',
@@ -135,8 +146,12 @@ export default function SettingsPage({
           </div>
           {button && <div className='sm:ml-auto shrink-0'>{button}</div>}
         </div>
-        {subHeader && <div className='border-t bg-background/60 px-3 py-2.5'>{subHeader}</div>}
-        <Separator className='bg-background' />
+        {subHeader && (
+          <div className={cn('border-t bg-background/60 px-3 py-2.5', subHeaderClassName)}>
+            {subHeader}
+          </div>
+        )}
+        {/* <Separator className='bg-background' /> */}
         <Separator />
         {/* Shadow that appears on scroll with edge flare */}
         <div

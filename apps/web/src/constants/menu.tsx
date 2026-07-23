@@ -333,12 +333,11 @@ export const SETTINGS_MENU: SidebarProps[] = [
     items: [
       {
         id: 'settings-members',
-        label: 'Members',
+        label: 'Members and Groups',
         slug: 'members',
         icon: <Users />,
         access: 'ADMIN',
       },
-      { id: 'settings-groups', label: 'Groups', slug: 'groups', icon: <Folder />, access: 'ADMIN' },
       { id: 'settings-inboxes', label: 'Inboxes', slug: 'inbox', icon: <Inbox />, access: 'ADMIN' },
 
       // {
