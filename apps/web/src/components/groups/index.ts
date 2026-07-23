@@ -19,12 +19,9 @@ export { getGroupsStoreState, useGroupsStore } from './store'
 // UI Components
 export {
   EntityMemberList,
-  FormGroupPicker,
   GroupBadge,
   GroupCard,
   GroupDetailDialog,
-  type GroupOption,
-  GroupPicker,
   GroupsBulkBar,
   GroupsTab,
   MemberList,

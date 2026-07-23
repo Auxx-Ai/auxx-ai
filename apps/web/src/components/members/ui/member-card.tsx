@@ -1,15 +1,14 @@
 // apps/web/src/components/members/ui/member-card.tsx
 'use client'
 
-import { OrganizationRole as Role } from '@auxx/database/enums'
-import type { OrganizationRole } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { ListCard, type ListCardMenuItem } from '@auxx/ui/components/list-card'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils/date'
-import { Clock, Mail, Shield, ShieldAlert, UserCircle2 } from 'lucide-react'
+import { Mail } from 'lucide-react'
 import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
 import type { DisplayMember } from '../types'
+import { getInitials, RoleIcon } from '../utils'
 
 interface MemberCardProps {
   item: DisplayMember
@@ -17,25 +16,6 @@ interface MemberCardProps {
   isSelf: boolean
   /** Role-gated dropdown actions, computed by the parent. Omit for no menu. */
   menuItems?: ListCardMenuItem[]
-}
-
-function getInitials(name?: string | null, email?: string | null) {
-  if (name) {
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2)
-  }
-  return email?.[0]?.toUpperCase() || '?'
-}
-
-function RoleIcon({ role }: { role: OrganizationRole | 'PENDING' }) {
-  if (role === 'PENDING') return <Clock className='size-3' />
-  if (role === Role.OWNER) return <ShieldAlert className='size-3' />
-  if (role === Role.ADMIN) return <Shield className='size-3' />
-  return <UserCircle2 className='size-3' />
 }
 
 /** One row in the Members tab — an active member or a pending invitation. */
@@ -88,6 +68,8 @@ export function MemberCard({ item, isSelf, menuItems }: MemberCardProps) {
   return (
     <ListCard
       layout='row'
+      // Members drill into their detail page; pending invites have no user yet.
+      href={item.type === 'member' ? `/app/settings/members/${item.data.userId}` : undefined}
       icon={
         <span className={cn('text-xs font-medium', isPending && 'opacity-60')}>{initials}</span>
       }
