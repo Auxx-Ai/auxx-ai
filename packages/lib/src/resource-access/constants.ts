@@ -2,7 +2,15 @@
 
 import { ResourcePermission } from '@auxx/database/enums'
 
-/** Permission hierarchy - higher index = more permissions */
+/**
+ * Permission hierarchy - higher index = more permissions.
+ *
+ * `ResourcePermission.none` is deliberately OMITTED: it is a baseline-only
+ * marker (capability layer v2 phase 3) meaning "def is restricted, grants
+ * nobody". Because {@link satisfiesPermission} does an `indexOf`, a `none`
+ * actual resolves to `-1` and therefore never satisfies any required
+ * permission — exactly the "grants nobody" semantic. Never add `none` here.
+ */
 export const PERMISSION_HIERARCHY: ResourcePermission[] = [
   ResourcePermission.view,
   ResourcePermission.edit,

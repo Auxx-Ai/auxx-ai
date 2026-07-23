@@ -97,8 +97,14 @@ export interface GroupPermissionInfo {
 // Permission Constants
 // ============================================================================
 
-/** Permission hierarchy for level comparison */
+/**
+ * Permission hierarchy for level comparison. `none` is the baseline lockdown
+ * marker (capability layer v2 phase 3) and ranks below every positive level, so
+ * a `none` actual satisfies nothing — group sharing never writes it, but it must
+ * be present for the exhaustive `Record<ResourcePermission, number>` type.
+ */
 export const PERMISSION_HIERARCHY: Record<ResourcePermission, number> = {
+  none: 0,
   view: 1,
   edit: 2,
   admin: 3,

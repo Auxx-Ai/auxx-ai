@@ -7,6 +7,7 @@ import { Spinner } from '@auxx/ui/components/spinner'
 import { Switch } from '@auxx/ui/components/switch'
 import { TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import React, { useEffect, useRef, useState } from 'react'
@@ -224,12 +225,26 @@ export function Field({
   )
 }
 
+const emptySectionVariants = cva(
+  'flex rounded-lg border bg-muted/30 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  {
+    variants: {
+      orientation: {
+        vertical:
+          'h-24 flex-col items-center justify-center px-6 text-center [&_[data-slot=empty-section-icon]]:mb-2',
+        horizontal: 'min-h-9 flex-row items-center justify-start gap-2 px-3 text-left',
+      },
+    },
+    defaultVariants: { orientation: 'vertical' },
+  }
+)
+
 /**
  * Props for EmptySection component
  */
-export interface EmptySectionProps {
+export interface EmptySectionProps extends VariantProps<typeof emptySectionVariants> {
   className?: string
-  /** Icon rendered above the title */
+  /** Icon rendered before (horizontal) or above (vertical) the title */
   icon?: React.ReactNode
   title: React.ReactNode
   description?: React.ReactNode
@@ -238,38 +253,36 @@ export interface EmptySectionProps {
 }
 
 /**
- * Empty state placeholder for a Section's body — centered icon, title, and
- * description inside a dashed/muted card. Pass `loading` to show a spinner
- * instead of the empty content.
+ * Empty state placeholder for a Section's body inside a muted card. The
+ * `vertical` orientation (default) stacks a centered icon, title, and
+ * description; `horizontal` lays them out on a single `TreeRow`-height row so
+ * swapping between empty and populated states causes no layout shift. Pass
+ * `loading` to show a spinner instead of the empty content.
  */
 export function EmptySection({
   className,
   icon,
   title,
   description,
+  orientation,
   loading = false,
 }: EmptySectionProps) {
   return (
-    <div
-      data-slot='empty-section'
-      className={cn(
-        'flex h-24 flex-col items-center justify-center rounded-lg border bg-muted/30 text-center px-6 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
-        className
-      )}>
+    <div data-slot='empty-section' className={cn(emptySectionVariants({ orientation }), className)}>
       {loading ? (
         <Spinner data-slot='empty-section-spinner' className='size-5 text-muted-foreground' />
       ) : (
         <>
           {icon && (
-            <div data-slot='empty-section-icon' className='mb-2 text-muted-foreground'>
+            <div data-slot='empty-section-icon' className='text-primary-400'>
               {icon}
             </div>
           )}
-          <p data-slot='empty-section-title' className='text-sm text-muted-foreground'>
+          <p data-slot='empty-section-title' className='text-sm text-primary-500'>
             {title}
           </p>
           {description && (
-            <p data-slot='empty-section-description' className='text-xs text-muted-foreground'>
+            <p data-slot='empty-section-description' className='text-xs text-primary-400'>
               {description}
             </p>
           )}

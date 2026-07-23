@@ -1,0 +1,84 @@
+// apps/web/src/components/permissions/ui/access-level-select.tsx
+'use client'
+
+import { ResourcePermission } from '@auxx/database/enums'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+
+/** The label + helper shown for each access level in the def-access selects. */
+export const ACCESS_LEVEL_LABELS: Record<ResourcePermission, { label: string; helper: string }> = {
+  [ResourcePermission.none]: { label: 'No Access', helper: 'Cannot see these records' },
+  [ResourcePermission.view]: { label: 'Read only', helper: 'Can view records' },
+  [ResourcePermission.edit]: { label: 'Read and write', helper: 'Can view and edit records' },
+  [ResourcePermission.admin]: { label: 'Full access', helper: 'Full access to records' },
+}
+
+/** Positive levels offered to grantee rows (removing the row is the revoke). */
+const POSITIVE_LEVELS: ResourcePermission[] = [
+  ResourcePermission.view,
+  ResourcePermission.edit,
+  ResourcePermission.admin,
+]
+
+/** All four levels, offered on the workspace baseline row (`includeNone`). */
+const ALL_LEVELS: ResourcePermission[] = [ResourcePermission.none, ...POSITIVE_LEVELS]
+
+interface AccessLevelSelectProps {
+  value: ResourcePermission
+  onChange: (value: ResourcePermission) => void
+  /** Include the `No Access` option — only the workspace baseline offers it. */
+  includeNone?: boolean
+  disabled?: boolean
+  size?: 'xs' | 'sm' | 'default'
+  variant?: 'default' | 'transparent'
+  className?: string
+}
+
+/**
+ * The access-level picker for the entity-def Access UI (capability layer v2
+ * phase 3): a `Select` over No Access / Read / Edit / Full mapping labels ⇄
+ * `ResourcePermission` (`none/view/edit/admin`). Baseline rows pass
+ * `includeNone`; grantee rows offer only the three positive levels (the remove
+ * button is the revoke). Controlled and dumb — persistence lives in the hook.
+ */
+export function AccessLevelSelect({
+  value,
+  onChange,
+  includeNone = false,
+  disabled = false,
+  size = 'sm',
+  variant = 'default',
+  className,
+}: AccessLevelSelectProps) {
+  const levels = includeNone ? ALL_LEVELS : POSITIVE_LEVELS
+  // Never feed Radix an unknown/none value on a positive-only select.
+  const safeValue = levels.includes(value) ? value : ResourcePermission.view
+
+  return (
+    <Select
+      value={safeValue}
+      onValueChange={(next) => onChange(next as ResourcePermission)}
+      disabled={disabled}>
+      <SelectTrigger size={size} variant={variant} className={className}>
+        <SelectValue placeholder='Access'>{ACCESS_LEVEL_LABELS[safeValue].label}</SelectValue>
+      </SelectTrigger>
+      <SelectContent align='end' className='min-w-52'>
+        {levels.map((level) => (
+          <SelectItem key={level} value={level} textValue={ACCESS_LEVEL_LABELS[level].label}>
+            <div className='flex flex-col items-start'>
+              <span>{ACCESS_LEVEL_LABELS[level].label}</span>
+              <span className='text-muted-foreground text-xs'>
+                {ACCESS_LEVEL_LABELS[level].helper}
+              </span>
+            </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}

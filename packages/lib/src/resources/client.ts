@@ -108,10 +108,12 @@ export type {
 } from './registry/types'
 // Resource types (system + custom)
 export {
+  isAccessManageable,
   isCustomResource,
   isCustomResourceId,
   isSystemResource,
   isSystemResourceId,
+  NON_RECORD_ENTITY_SLUGS,
 } from './registry/types'
 // RecordId utilities (branded string format: entityDefinitionId:entityInstanceId)
 export {

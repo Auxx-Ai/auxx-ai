@@ -146,7 +146,7 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           modifiers={[restrictToVerticalAxis]}>
-          <table className='text-sm w-full caption-bottom'>
+          <table className='text-sm w-full caption-bottom border-t'>
             <TableHeader>
               <TableRow>
                 <TableHead className='w-[40px]'></TableHead>

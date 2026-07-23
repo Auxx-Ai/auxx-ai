@@ -91,7 +91,7 @@ export function EntityAppearanceEditor({
   }
 
   return (
-    <div className='p-4 border-b'>
+    <div className='p-3 sm:p-6'>
       <SettingsSection className='mb-4' icon={Palette} title='Appearance'>
         {disabled && (
           <div className='text-xs text-muted-foreground italic mb-4'>

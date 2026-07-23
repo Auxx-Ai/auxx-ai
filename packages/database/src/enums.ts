@@ -1754,11 +1754,22 @@ export const ResourceGranteeType = {
   role: 'role',
 } as const
 
-/** Permission levels for resource access - hierarchical */
-export const ResourcePermissionValues = ['view', 'edit', 'admin'] as const
+/**
+ * Permission levels for resource access - hierarchical.
+ *
+ * `none` is a baseline-only marker used by the entity-def Access UI (capability
+ * layer v2 phase 3): a single `role:org_member @ none` type row marks a def
+ * restricted while granting nobody access, so only explicit team/member grants
+ * can see it. It is deliberately NOT part of the view/edit/admin hierarchy
+ * ({@link satisfiesPermission} never treats it as satisfying any requirement)
+ * and is skipped when composing `defAccess`. The column is `text()`, not a
+ * pgEnum, so extending this union needs no DB migration.
+ */
+export const ResourcePermissionValues = ['none', 'view', 'edit', 'admin'] as const
 export type ResourcePermission = (typeof ResourcePermissionValues)[number]
 
 export const ResourcePermission = {
+  none: 'none',
   view: 'view',
   edit: 'edit',
   admin: 'admin',

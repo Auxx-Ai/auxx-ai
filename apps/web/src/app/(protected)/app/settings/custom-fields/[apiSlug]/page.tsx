@@ -1,7 +1,9 @@
 // apps/web/src/app/(protected)/app/settings/custom-fields/[apiSlug]/page.tsx
 'use client'
 
+import { isAccessManageable } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { useParams } from 'next/navigation'
 import { useState } from 'react'
@@ -9,6 +11,7 @@ import { CustomFieldsList } from '~/components/custom-fields/ui/custom-fields-li
 import { EntityAppearanceEditor } from '~/components/custom-fields/ui/entity-appearance-editor'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import SettingsPage from '~/components/global/settings-page'
+import { DefAccessSection } from '~/components/permissions/ui/def-access-section'
 import { useResource } from '~/components/resources/hooks'
 import { useUser } from '~/hooks/use-user'
 
@@ -18,6 +21,8 @@ function CustomFieldsDetailPage() {
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Fields vs Permissions tab (Appearance stays visible above both).
+  const [tab, setTab] = useState<'fields' | 'permissions'>('fields')
 
   // Get resource from unified registry (handles both system and custom)
   const { resource, isLoading } = useResource(apiSlug)
@@ -82,8 +87,30 @@ function CustomFieldsDetailPage() {
         {/* Appearance editor - show for all, disable for system */}
         <EntityAppearanceEditor resource={resource} disabled={!!resource.entityType} />
 
-        {/* Custom fields list */}
-        <CustomFieldsList resource={resource} />
+        {/* Fields vs Permissions — Permissions only for in-scope CRM defs */}
+        {isAccessManageable(resource) ? (
+          <>
+            <div className='px-3 pt-3 sm:px-6 pb-6'>
+              <div className='w-56'>
+                <RadioTab
+                  value={tab}
+                  onValueChange={(v) => setTab(v as 'fields' | 'permissions')}
+                  size='sm'
+                  radioGroupClassName='w-full'>
+                  <RadioTabItem value='fields'>Fields</RadioTabItem>
+                  <RadioTabItem value='permissions'>Permissions</RadioTabItem>
+                </RadioTab>
+              </div>
+            </div>
+            {tab === 'fields' ? (
+              <CustomFieldsList resource={resource} />
+            ) : (
+              <DefAccessSection resource={resource} />
+            )}
+          </>
+        ) : (
+          <CustomFieldsList resource={resource} />
+        )}
       </SettingsPage>
 
       {/* Edit entity definition dialog (custom only) */}

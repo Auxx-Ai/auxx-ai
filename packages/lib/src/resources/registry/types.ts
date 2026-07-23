@@ -106,6 +106,35 @@ export function isCustomResource(resource: Resource): resource is CustomResource
 }
 
 /**
+ * Mail/messaging-infrastructure entity slugs whose visibility is governed OUTSIDE
+ * the records area (their `ResourceAccess` rows carry mail-sharing semantics, not
+ * def restriction). Client-safe mirror of the server-side `NON_RECORD_DEF_SLUGS`
+ * in `permissions/capabilities/capability-set.ts` — kept in sync by hand. The
+ * entity-def Access UI (capability layer v2 phase 3) is hidden for these.
+ */
+export const NON_RECORD_ENTITY_SLUGS: ReadonlySet<string> = new Set([
+  'inbox',
+  'signature',
+  'thread',
+  'message',
+  'snippet',
+  'sequence',
+])
+
+/**
+ * Whether a resource's type-level access is manageable via the entity-def Access
+ * UI: any CRM record def (system or custom) that is NOT a mail-infra def. Purely
+ * a UI-visibility gate — the server enforces admin authorization independently.
+ */
+export function isAccessManageable(resource: Resource): boolean {
+  return (
+    !NON_RECORD_ENTITY_SLUGS.has(resource.apiSlug) &&
+    !(resource.entityType != null && NON_RECORD_ENTITY_SLUGS.has(resource.entityType)) &&
+    !NON_RECORD_ENTITY_SLUGS.has(resource.id)
+  )
+}
+
+/**
  * Type guard to check if a string is a valid system TableId
  */
 export function isSystemResourceId(id: string): id is TableId {
