@@ -2,7 +2,7 @@
 
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { getIcon } from '@auxx/ui/components/icons'
 import {
   MainPage,
@@ -13,7 +13,9 @@ import {
 import { MainPageTabs, type MainPageTabsItem } from '@auxx/ui/components/main-page-tabs'
 import { ChartColumn } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { NoAccess } from '~/components/permissions/ui/no-access'
 import { useResources } from '~/components/resources'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 interface EntityRouteLayoutProps {
@@ -47,8 +49,19 @@ export function EntityRouteLayout({
 }: EntityRouteLayoutProps) {
   const { getResourceById } = useResources()
   const { hasAccess } = useFeatureFlags()
+  const { deniedBy } = useAccess()
   const resource = getResourceById(slug)
   const ResourceIcon = resource ? getIcon(resource.icon)?.icon : undefined
+
+  // Layer-2 read gate for direct-URL hits (e.g. a field seat deep-linking
+  // `/app/tickets`): tickets ride the `tickets.view` capability, every other
+  // entity list rides `records.view`. A `'permission'` denial (nothing to buy)
+  // renders the friendly NoAccess surface instead of an empty/broken shell;
+  // plan denials fall through so the existing upgrade surfaces still show.
+  const viewKey = slug === 'tickets' ? PermissionKey.ticketsView : PermissionKey.recordsView
+  if (deniedBy(viewKey) === 'permission') {
+    return <NoAccess area={resource?.plural ?? undefined} />
+  }
 
   const items: MainPageTabsItem[] = [
     {
