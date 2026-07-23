@@ -1059,18 +1059,17 @@ export class MemberService {
     }
     // Prevent removing the last owner
     if (targetMembership.role === 'OWNER') {
-      const ownerCountResult = await removerModel.count({
-        where: eq(schema.OrganizationMember.role, 'OWNER'),
-      })
+      const [ownerCount] = await this.db
+        .select({ value: count() })
+        .from(schema.OrganizationMember)
+        .where(
+          and(
+            eq(schema.OrganizationMember.organizationId, organizationId),
+            eq(schema.OrganizationMember.role, 'OWNER')
+          )
+        )
 
-      if (!ownerCountResult.ok) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to check owner count.',
-        })
-      }
-
-      if (ownerCountResult && ownerCountResult?.value <= 1) {
+      if ((ownerCount?.value ?? 0) <= 1) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Cannot remove the only owner. Transfer ownership first.',
@@ -1079,14 +1078,9 @@ export class MemberService {
     }
 
     // 4. Remove the member
-    const deleteResult = await removerModel.delete(targetMembership.id)
-
-    if (!deleteResult.ok) {
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to remove member.',
-      })
-    }
+    await this.db
+      .delete(schema.OrganizationMember)
+      .where(eq(schema.OrganizationMember.id, targetMembership.id))
 
     // Offboarding (mail-permissions §11.4): stop sync on the removed member's
     // personal channels. The inbox + threads keep personal visibility; admins
@@ -1189,18 +1183,17 @@ export class MemberService {
 
     // 4. Prevent removing the last owner by changing their role
     if (targetMembership.role === 'OWNER' && newRole !== 'OWNER') {
-      const ownerCountResult = await updaterModel.count({
-        where: eq(schema.OrganizationMember.role, 'OWNER'),
-      })
+      const [ownerCount] = await this.db
+        .select({ value: count() })
+        .from(schema.OrganizationMember)
+        .where(
+          and(
+            eq(schema.OrganizationMember.organizationId, organizationId),
+            eq(schema.OrganizationMember.role, 'OWNER')
+          )
+        )
 
-      if (!ownerCountResult.ok) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to check owner count.',
-        })
-      }
-
-      if (ownerCountResult?.value <= 1) {
+      if ((ownerCount?.value ?? 0) <= 1) {
         logger.warn('Attempted to change role of the last owner', {
           organizationId,
           memberToUpdateId,
@@ -1213,14 +1206,10 @@ export class MemberService {
     }
 
     // 5. Update the role
-    const updateResult = await updaterModel.update(targetMembership.id, { role: newRole })
-
-    if (!updateResult.ok) {
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to update member role.',
-      })
-    }
+    await this.db
+      .update(schema.OrganizationMember)
+      .set({ role: newRole, updatedAt: new Date() })
+      .where(eq(schema.OrganizationMember.id, targetMembership.id))
 
     // Recompose caches + nudge the client: a role change shifts the member's
     // composed capability set (role defaults). Mirrors the seat-type path.
