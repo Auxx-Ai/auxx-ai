@@ -47,6 +47,7 @@ interface PlanDefinition {
 const STATIC_LIMITS = {
   demo: {
     teammates: 1,
+    workerSeats: 0,
     channels: 1,
     workflowsLimit: 3,
     savedViews: 10,
@@ -59,6 +60,7 @@ const STATIC_LIMITS = {
   },
   free: {
     teammates: 1,
+    workerSeats: 0,
     channels: 1,
     workflowsLimit: 3,
     savedViews: 10,
@@ -71,6 +73,7 @@ const STATIC_LIMITS = {
   },
   starter: {
     teammates: -1,
+    workerSeats: 2,
     channels: 3,
     workflowsLimit: 15,
     savedViews: 20,
@@ -83,6 +86,7 @@ const STATIC_LIMITS = {
   },
   growth: {
     teammates: -1,
+    workerSeats: 10,
     channels: -1,
     workflowsLimit: -1,
     savedViews: -1,
@@ -95,6 +99,7 @@ const STATIC_LIMITS = {
   },
   enterprise: {
     teammates: -1,
+    workerSeats: -1,
     channels: -1,
     workflowsLimit: -1,
     savedViews: -1,
@@ -129,6 +134,10 @@ const BOOLEAN_GATES = {
     mcp: false,
     dataConnectors: true,
     mailPermissions: true,
+    dashboards: false,
+    dispatch: false,
+    sequences: false,
+    granularPermissions: false,
   },
   free: {
     knowledgeBase: true,
@@ -150,6 +159,10 @@ const BOOLEAN_GATES = {
     mcp: false,
     dataConnectors: true,
     mailPermissions: false,
+    dashboards: false,
+    dispatch: false,
+    sequences: false,
+    granularPermissions: false,
   },
   starter: {
     knowledgeBase: true,
@@ -171,6 +184,10 @@ const BOOLEAN_GATES = {
     mcp: false,
     dataConnectors: true,
     mailPermissions: false,
+    dashboards: false,
+    dispatch: false,
+    sequences: false,
+    granularPermissions: false,
   },
   growth: {
     knowledgeBase: true,
@@ -192,6 +209,10 @@ const BOOLEAN_GATES = {
     mcp: false,
     dataConnectors: true,
     mailPermissions: false,
+    dashboards: true,
+    dispatch: true,
+    sequences: true,
+    granularPermissions: true,
   },
   enterprise: {
     knowledgeBase: true,
@@ -213,6 +234,10 @@ const BOOLEAN_GATES = {
     mcp: false,
     dataConnectors: true,
     mailPermissions: true,
+    dashboards: true,
+    dispatch: true,
+    sequences: true,
+    granularPermissions: true,
   },
 } as const
 

@@ -216,19 +216,27 @@ export class MemberService {
       })
     }
 
-    // 5. Check teammate limit BEFORE creating invitation
+    // 5. Check seat limit BEFORE creating invitation (§2.G — hard block, seat-class
+    // aware). A field (worker) seat is checked against the workerSeats limit, a full
+    // seat against teammates; each class counts only its own active members + pending
+    // invitations so the two don't cross-consume each other's bundled limits.
     const featureService = new FeaturePermissionService(this.db)
-    const memberLimit = await featureService.getLimit(organizationId, FeatureKey.teammates)
+    const isWorkerSeat = seatType === 'worker'
+    const seatLimit = await featureService.getLimit(
+      organizationId,
+      isWorkerSeat ? FeatureKey.workerSeats : FeatureKey.teammates
+    )
 
-    if (typeof memberLimit === 'number' && memberLimit >= 0) {
-      // Count active members + pending invitations
+    if (typeof seatLimit === 'number' && seatLimit >= 0) {
+      // Count active members + pending invitations OF THIS SEAT CLASS
       const [memberCount] = await this.db
         .select({ value: count() })
         .from(schema.OrganizationMember)
         .where(
           and(
             eq(schema.OrganizationMember.organizationId, organizationId),
-            eq(schema.OrganizationMember.status, 'ACTIVE')
+            eq(schema.OrganizationMember.status, 'ACTIVE'),
+            eq(schema.OrganizationMember.seatType, seatType)
           )
         )
 
@@ -239,21 +247,25 @@ export class MemberService {
           and(
             eq(schema.OrganizationInvitation.organizationId, organizationId),
             eq(schema.OrganizationInvitation.status, 'PENDING'),
+            eq(schema.OrganizationInvitation.seatType, seatType),
             gt(schema.OrganizationInvitation.expiresAt, new Date())
           )
         )
 
       const totalUsed = (memberCount?.value ?? 0) + (pendingCount?.value ?? 0)
-      if (totalUsed >= memberLimit) {
-        logger.warn('Invitation blocked: teammate limit reached', {
+      if (totalUsed >= seatLimit) {
+        logger.warn('Invitation blocked: seat limit reached', {
           organizationId,
-          limit: memberLimit,
+          seatType,
+          limit: seatLimit,
           activeMembers: memberCount?.value,
           pendingInvites: pendingCount?.value,
         })
         throw new TRPCError({
           code: 'FORBIDDEN',
-          message: `You have reached your team member limit (${memberLimit}). Upgrade your plan to add more teammates.`,
+          message: isWorkerSeat
+            ? `You have reached your field seat limit (${seatLimit}). Upgrade your plan to add more field seats.`
+            : `You have reached your team member limit (${seatLimit}). Upgrade your plan to add more teammates.`,
         })
       }
     }
@@ -656,34 +668,45 @@ export class MemberService {
       invitationId: invitation.id,
     })
     const featureService = new FeaturePermissionService(this.db)
-    // 1. Check Feature Limit BEFORE Transaction
-    const memberLimit = await featureService.getLimit(organizationId, FeatureKey.teammates)
+    // 1. Check Feature Limit BEFORE Transaction (seat-class aware §2.G — a field
+    // (worker) seat consumes a worker seat, checked against workerSeats; a full seat
+    // against teammates). Each class counts only its own active members.
+    const seatClass: SeatType = invitation.seatType === 'worker' ? 'worker' : 'full'
+    const isWorkerSeat = seatClass === 'worker'
+    const memberLimit = await featureService.getLimit(
+      organizationId,
+      isWorkerSeat ? FeatureKey.workerSeats : FeatureKey.teammates
+    )
     let activeMemberCount = 0 // Initialize count
 
     if (typeof memberLimit === 'number' && memberLimit >= 0) {
-      // Check numeric limits (including 0)
+      // Check numeric limits (including 0) — scoped to the joining seat class
       const [countRow] = await this.db
         .select({ value: count() })
         .from(schema.OrganizationMember)
         .where(
           and(
             eq(schema.OrganizationMember.organizationId, organizationId),
-            eq(schema.OrganizationMember.status, 'ACTIVE')
+            eq(schema.OrganizationMember.status, 'ACTIVE'),
+            eq(schema.OrganizationMember.seatType, seatClass)
           )
         )
 
       activeMemberCount = countRow?.value ?? 0
 
       if (activeMemberCount >= memberLimit) {
-        logger.warn('Invitation acceptance blocked by helper: Member limit reached.', {
+        logger.warn('Invitation acceptance blocked by helper: Seat limit reached.', {
           organizationId,
           acceptingUserId,
+          seatType: seatClass,
           limit: memberLimit,
           current: activeMemberCount,
         })
         throw new TRPCError({
           code: 'FORBIDDEN',
-          message: `Cannot join organization: The member limit (${memberLimit}) for the current plan has been reached.`,
+          message: isWorkerSeat
+            ? `Cannot join organization: The field seat limit (${memberLimit}) for the current plan has been reached.`
+            : `Cannot join organization: The member limit (${memberLimit}) for the current plan has been reached.`,
         })
       }
       logger.info('Helper: Member limit check passed.', {
