@@ -2,6 +2,7 @@
 
 export { ContactTimelineTracker } from './contact-timeline-tracker'
 export {
+  COMMUNICATION_TIMELINE_EVENT_TYPES,
   ContactEventType,
   EntityInstanceEventType,
   SYSTEM_ENTITY_TYPES,

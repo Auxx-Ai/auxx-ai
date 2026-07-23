@@ -110,7 +110,8 @@ export interface TimelineQueryInput {
   limit?: number
   isGroupingDisabled?: boolean
   actorFilter?: string[] // Filter by actor IDs
-  eventTypeFilter?: TimelineEventType[] // Filter by event types
+  eventTypeFilter?: TimelineEventType[] // Filter by event types (inclusion)
+  eventTypeExcludeFilter?: TimelineEventType[] // Exclude event types (e.g. restricted drawer)
 }
 
 /** Timeline query result */

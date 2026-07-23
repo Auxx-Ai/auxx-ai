@@ -137,6 +137,29 @@ export enum ThreadEventType {
   MERGED_FROM = 'thread:merged_from',
 }
 
+/**
+ * Communication / comment timeline event types — emails, thread messages,
+ * replies, and notes across contact / ticket / custom entities. The restricted
+ * record drawer (field-seat read-only mode) excludes these so a field seat never
+ * sees customer-communication history on a linked record.
+ */
+export const COMMUNICATION_TIMELINE_EVENT_TYPES: string[] = [
+  ContactEventType.EMAIL_RECEIVED,
+  ContactEventType.EMAIL_SENT,
+  ContactEventType.NOTE_ADDED,
+  ContactEventType.NOTE_UPDATED,
+  ContactEventType.NOTE_DELETED,
+  TicketEventType.MESSAGE_RECEIVED,
+  TicketEventType.MESSAGE_SENT,
+  TicketEventType.REPLY_SENT,
+  TicketEventType.NOTE_ADDED,
+  TicketEventType.NOTE_UPDATED,
+  TicketEventType.NOTE_DELETED,
+  EntityInstanceEventType.NOTE_ADDED,
+  EntityInstanceEventType.NOTE_UPDATED,
+  EntityInstanceEventType.NOTE_DELETED,
+]
+
 /** All timeline event types (expandable for other entities) */
 export type TimelineEventType =
   | ContactEventType

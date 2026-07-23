@@ -188,6 +188,31 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
 }
 
 /**
+ * Drawer tab / overview-card values hidden in the restricted (read-only) drawer
+ * — the customer-communication surfaces a field seat must never see on a linked
+ * record (§11.4). Matched by either the bare tab/card value (`comments`) or the
+ * qualified `entityType:value` form (`contact:conversations`). Tabs/cards NOT in
+ * this set are unaffected, so full-member drawers stay byte-identical.
+ */
+const RESTRICTED_HIDDEN_DRAWER_TABS = new Set<string>([
+  'comments',
+  'contact:conversations',
+  'work_order:communications',
+])
+
+/**
+ * Whether a drawer tab or overview card is hidden in restricted (read-only) mode.
+ * @param entityType - The frame's entity type (e.g. `contact`, `work_order`)
+ * @param value - The tab or card value (e.g. `comments`, `conversations`)
+ */
+export function isRestrictedDrawerTab(entityType: string, value: string): boolean {
+  return (
+    RESTRICTED_HIDDEN_DRAWER_TABS.has(value) ||
+    RESTRICTED_HIDDEN_DRAWER_TABS.has(`${entityType}:${value}`)
+  )
+}
+
+/**
  * Get tab component loader for entityType and tab value
  * @returns Component loader or undefined if not found
  */

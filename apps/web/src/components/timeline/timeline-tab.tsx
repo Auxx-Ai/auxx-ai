@@ -20,6 +20,11 @@ interface TimelineTabProps {
   emptyTitle?: string
   /** Optional: custom empty state description */
   emptyDescription?: React.ReactNode
+  /**
+   * Optional: event types to exclude server-side (e.g. the restricted
+   * drawer hides communication/comment events for field seats).
+   */
+  excludeEventTypes?: string[]
 }
 
 /** Empty state configuration per system entity type */
@@ -98,6 +103,7 @@ export function TimelineTab({
   isGroupingDisabled = false,
   emptyTitle,
   emptyDescription,
+  excludeEventTypes,
 }: TimelineTabProps) {
   // Normalize incoming recordId to canonical `<entityDefinitionId>:<instanceId>`
   // form so legacy `toRecordId('contact', id)` callers still hit the correct
@@ -111,6 +117,7 @@ export function TimelineTab({
         recordId: normalizedRecordId,
         limit,
         isGroupingDisabled,
+        eventTypeExcludeFilter: excludeEventTypes,
       },
       {
         getNextPageParam: (lastPage) => lastPage.nextCursor,

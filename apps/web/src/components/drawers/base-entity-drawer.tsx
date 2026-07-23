@@ -3,6 +3,7 @@
 
 import type { DrawerTabCardDefinition, Resource } from '@auxx/lib/resources/client'
 import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
+import { COMMUNICATION_TIMELINE_EVENT_TYPES } from '@auxx/lib/timeline/client'
 import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -56,9 +57,10 @@ import {
   useDehydratedUser,
 } from '~/providers/dehydrated-state-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { useRecordDrawerReadOnly } from '../records/use-record-drawer-read-only'
 import { ThreadVisitCard } from './cards/thread-visit-card'
 import { DrawerCardActionsProvider } from './drawer-card-actions'
-import { getTabCardComponent, getTabComponent } from './drawer-tab-registry'
+import { getTabCardComponent, getTabComponent, isRestrictedDrawerTab } from './drawer-tab-registry'
 
 interface BaseEntityDrawerProps {
   /** RecordId in format "entityDefinitionId:entityInstanceId" */
@@ -91,6 +93,13 @@ interface BaseEntityDrawerProps {
   minWidth?: number
   /** Optional maxWidth for dockable drawer */
   maxWidth?: number
+  /**
+   * Restricted (read-only) mode — fields become non-editable, communication
+   * panels/tabs and edit affordances hide (§11.4). Defaults to the current
+   * member's derived read-only state when omitted, so drawers opened directly
+   * (contact/dispatch) are also restricted for field seats.
+   */
+  readOnly?: boolean
 }
 
 /**
@@ -145,6 +154,8 @@ interface DrawerRecordFrameProps {
   /** Host card content (person card, entity card, etc.) — rendered only when `isBase`. */
   cardContent?: React.ReactNode
   focusComposerTrigger?: number
+  /** Restricted (read-only) mode — threaded uniformly into every frame (§11.4). */
+  readOnly: boolean
 }
 
 /**
@@ -162,6 +173,7 @@ function DrawerRecordFrame({
   entityTypeOverride,
   cardContent,
   focusComposerTrigger = 0,
+  readOnly,
 }: DrawerRecordFrameProps) {
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const { hasAccess } = useFeatureFlags()
@@ -174,8 +186,11 @@ function DrawerRecordFrame({
   // Get resource metadata
   const { resource } = useResource(entityDefinitionId)
 
-  // Get record data
-  const { record } = useRecord({
+  // Get record data. `isNotFound` covers a drill/peek into a record the server
+  // denies for an out-of-scope field seat (`recordsViewLinked` row scope) — the
+  // batch fetch omits it, so we render a graceful "unavailable" state instead of
+  // an endless skeleton (§11.4, deliverable #5).
+  const { record, isNotFound, hasLoadedOnce } = useRecord({
     recordId,
     enabled: true,
   })
@@ -230,9 +245,12 @@ function DrawerRecordFrame({
       { value: 'comments', label: 'Comments', icon: MessagesSquare },
       { value: 'tasks', label: 'Tasks', icon: ListTodo },
     ]
+      // Restricted mode drops the communication/comment tabs (§11.4).
+      .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
 
     const additionalTabs = drawerConfig.additionalTabs
       .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
+      .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
       .map((tab) => ({
         value: tab.value,
         label: tab.label,
@@ -241,7 +259,7 @@ function DrawerRecordFrame({
 
     // Overview first, then entity-specific tabs, then the shared timeline/comments/tasks tabs
     return [overviewTab, ...additionalTabs, ...trailingTabs]
-  }, [drawerConfig, hasAccess])
+  }, [drawerConfig, hasAccess, readOnly, entityType])
 
   // Tab order persistence
   const tabOrderStorageKey = React.useMemo(() => {
@@ -295,6 +313,18 @@ function DrawerRecordFrame({
 
   if (!drawerConfig || !entityType) return null
 
+  // Restricted drill/peek into an out-of-scope record: the server denied the
+  // fetch (row scope), so show a graceful message rather than an endless
+  // skeleton. Gated on `readOnly` so full members keep byte-identical behavior
+  // for genuinely deleted records (deliverable #5).
+  if (readOnly && hasLoadedOnce && isNotFound) {
+    return (
+      <div className='flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground'>
+        This record isn’t available with your current access.
+      </div>
+    )
+  }
+
   // The existing tabbed overview body — rendered verbatim whether or not this
   // entityType has drill panels, so it becomes the root NavStackPanel's
   // content when it does (byte-identical render otherwise).
@@ -327,6 +357,7 @@ function DrawerRecordFrame({
                   entityInstanceId={entityInstanceId}
                   recordId={recordId}
                   record={record}
+                  readOnly={readOnly}
                 />
                 <Section
                   title='Details'
@@ -334,7 +365,7 @@ function DrawerRecordFrame({
                   initialOpen
                   collapsible={false}
                   icon={<HouseIcon className='size-4' />}>
-                  <EntityFields recordId={recordId} />
+                  <EntityFields recordId={recordId} readOnly={readOnly} canEdit={!readOnly} />
                 </Section>
                 {/* Context card: visit facts when opened over a chat thread */}
                 <ThreadVisitCard
@@ -348,6 +379,7 @@ function DrawerRecordFrame({
                   entityInstanceId={entityInstanceId}
                   recordId={recordId}
                   record={record}
+                  readOnly={readOnly}
                 />
               </ScrollArea>
             </TabsContent>
@@ -355,16 +387,24 @@ function DrawerRecordFrame({
             <TabsContent value='timeline' className='w-full h-full mt-0'>
               <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
                 <div className='p-3 flex-1 flex-col flex'>
-                  <TimelineTab recordId={recordId} />
+                  <TimelineTab
+                    recordId={recordId}
+                    excludeEventTypes={readOnly ? COMMUNICATION_TIMELINE_EVENT_TYPES : undefined}
+                  />
                 </div>
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value='comments' className='w-full h-full mt-0'>
-              <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
-                <DrawerComments recordId={recordId} focusComposerTrigger={focusComposerTrigger} />
-              </ScrollArea>
-            </TabsContent>
+            {/* Comments tab is dropped from the tab bar in restricted mode; keep
+                its content unmounted too so a stale `?tab=comments` deep link
+                can't surface it. */}
+            {!readOnly && (
+              <TabsContent value='comments' className='w-full h-full mt-0'>
+                <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+                  <DrawerComments recordId={recordId} focusComposerTrigger={focusComposerTrigger} />
+                </ScrollArea>
+              </TabsContent>
+            )}
 
             <TabsContent value='tasks' className='w-full h-full mt-0'>
               <TasksSection recordId={recordId} />
@@ -373,6 +413,7 @@ function DrawerRecordFrame({
             {/* Dynamic tabs from registry */}
             {drawerConfig.additionalTabs
               .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
+              .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType, tab.value))
               .map((tab) => (
                 <TabsContent key={tab.value} value={tab.value} className='w-full'>
                   <LazyTabComponent
@@ -459,7 +500,16 @@ export function BaseEntityDrawer({
   onWidthChange,
   minWidth = 400,
   maxWidth = 800,
+  readOnly: readOnlyProp,
 }: BaseEntityDrawerProps) {
+  // Restricted (read-only) mode — the explicit prop from `RecordDrawer` wins;
+  // fall back to the member's derived state so drawers opened directly (contact,
+  // dispatch board) are restricted for field seats too (§11.4). One derivation
+  // for the whole frame stack: every `DrawerRecordFrame` (base + peek/drill)
+  // gets the same flag, so a drilled record is read-only just like its parent.
+  const derivedReadOnly = useRecordDrawerReadOnly()
+  const readOnly = readOnlyProp ?? derivedReadOnly
+
   // Cross-record peek stack — `frames = [recordId, ...peek]`. Called
   // unconditionally (recordId may be null while the drawer is closed).
   const peek = useRecordPeekStack(recordId)
@@ -566,7 +616,7 @@ export function BaseEntityDrawer({
         actions={
           <>
             {isBaseTop && headerActions}
-            <AppRecordActions recordId={top} recordType={topEntityType} compact />
+            {!readOnly && <AppRecordActions recordId={top} recordType={topEntityType} compact />}
             {!isBaseTop && topRecordLink && (
               <Tooltip content='Open full page'>
                 <Button variant='ghost' size='icon-xs' onClick={() => router.push(topRecordLink)}>
@@ -607,6 +657,7 @@ export function BaseEntityDrawer({
                   entityTypeOverride={entityTypeOverride}
                   cardContent={cardContent}
                   focusComposerTrigger={focusComposerTrigger}
+                  readOnly={readOnly}
                 />
               </NavStackPanel>
             ))}
@@ -667,6 +718,7 @@ function TabCards({
   entityInstanceId,
   recordId,
   record,
+  readOnly,
 }: {
   tab: string
   position: 'before' | 'after'
@@ -675,8 +727,12 @@ function TabCards({
   entityInstanceId: string
   recordId: RecordId
   record?: Record<string, unknown>
+  readOnly?: boolean
 }) {
-  const cards = drawerConfig.tabCards?.[tab]?.filter((c) => (c.position ?? 'after') === position)
+  const cards = drawerConfig.tabCards?.[tab]
+    ?.filter((c) => (c.position ?? 'after') === position)
+    // Restricted mode drops communication overview cards (e.g. work_order:communications).
+    .filter((c) => !readOnly || !isRestrictedDrawerTab(entityType, c.value))
   if (!cards?.length) return null
 
   return (
