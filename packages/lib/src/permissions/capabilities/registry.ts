@@ -254,6 +254,12 @@ interface AreaRung {
 /** Metadata describing one capability area (its ladder + Layer-1/admin gates). */
 export interface AreaMetadata {
   area: Area
+  /** Human label for the settings grid row. */
+  label: string
+  /** One-line description shown beside the level control. */
+  description: string
+  /** Settings-UI grouping — mirrors `PermissionMetadata.group`. */
+  group: string
   /** Rungs in ascending level order; each lists only the keys it introduces. */
   rungs: AreaRung[]
   /** Never grantable below ADMIN — forced to `None` in the USER baseline. */
@@ -270,6 +276,9 @@ export interface AreaMetadata {
 export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.tickets]: {
     area: Area.tickets,
+    label: 'Tickets',
+    description: 'View conversations and reply to tickets.',
+    group: 'Tickets',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.ticketsView] },
       { level: Level.Edit, keys: [PermissionKey.ticketsReply] },
@@ -277,6 +286,9 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   },
   [Area.records]: {
     area: Area.records,
+    label: 'Records',
+    description: 'Read, edit, delete, and import CRM records.',
+    group: 'Records',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.recordsView] },
       { level: Level.Edit, keys: [PermissionKey.recordsEdit] },
@@ -285,24 +297,39 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   },
   [Area.recordsLinked]: {
     area: Area.recordsLinked,
+    label: 'Linked records',
+    description: 'Read-only access to records linked to the member’s own visits.',
+    group: 'Records',
     rungs: [{ level: Level.Full, keys: [PermissionKey.recordsViewLinked] }],
   },
   [Area.workflows]: {
     area: Area.workflows,
+    label: 'Workflows',
+    description: 'Create, edit, and run automation workflows.',
+    group: 'Automation',
     rungs: [{ level: Level.Full, keys: [PermissionKey.workflowsManage] }],
     featureKey: FeatureKey.workflows,
   },
   [Area.agents]: {
     area: Area.agents,
+    label: 'Agents',
+    description: 'Create and configure Kopilot agents.',
+    group: 'Automation',
     rungs: [{ level: Level.Full, keys: [PermissionKey.agentsManage] }],
     featureKey: FeatureKey.agents,
   },
   [Area.comments]: {
     area: Area.comments,
+    label: 'Comments',
+    description: 'Write, edit, and delete comments on records.',
+    group: 'Collaboration',
     rungs: [{ level: Level.Full, keys: [PermissionKey.commentsManage] }],
   },
   [Area.dispatchBoard]: {
     area: Area.dispatchBoard,
+    label: 'Dispatch board',
+    description: 'View the dispatch board, or assign and configure it.',
+    group: 'Dispatch',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.dispatchBoardView] },
       { level: Level.Full, keys: [PermissionKey.dispatchBoardManage] },
@@ -311,31 +338,49 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   },
   [Area.dispatchMySchedule]: {
     area: Area.dispatchMySchedule,
+    label: 'My schedule',
+    description: 'See and act on the member’s own assigned visits.',
+    group: 'Dispatch',
     rungs: [{ level: Level.Full, keys: [PermissionKey.dispatchMySchedule] }],
     featureKey: FeatureKey.dispatch,
   },
   [Area.dispatchVisitReports]: {
     area: Area.dispatchVisitReports,
+    label: 'Visit reports',
+    description: 'Check in, file visit reports, and upload photos.',
+    group: 'Dispatch',
     rungs: [{ level: Level.Full, keys: [PermissionKey.dispatchVisitReports] }],
     featureKey: FeatureKey.dispatch,
   },
   [Area.settings]: {
     area: Area.settings,
+    label: 'Settings',
+    description: 'Change organization-wide settings.',
+    group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.settingsManage] }],
     adminOnly: true,
   },
   [Area.billing]: {
     area: Area.billing,
+    label: 'Billing',
+    description: 'View and change the plan, seats, and billing.',
+    group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.billingManage] }],
     adminOnly: true,
   },
   [Area.members]: {
     area: Area.members,
+    label: 'Members',
+    description: 'Invite, remove, and change roles and seats of members.',
+    group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.membersManage] }],
     adminOnly: true,
   },
   [Area.permissions]: {
     area: Area.permissions,
+    label: 'Permissions',
+    description: 'Configure capability grants for roles, groups, and members.',
+    group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.permissionsManage] }],
     adminOnly: true,
     featureKey: FeatureKey.granularPermissions,

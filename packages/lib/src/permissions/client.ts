@@ -4,6 +4,8 @@
  * Does not pull in server-only dependencies.
  */
 
+// Type-only re-exports (erased at runtime — no server deps pulled in).
+export type { GranteeGrant, GrantGranteeType } from './capabilities/grant-service'
 // ── Capability registry (Layer 2) — client-safe: registry.ts only imports
 //    `FeatureKey` from `./types`, which is already client-exported above.
 export type { AreaMetadata, PermissionMetadata } from './capabilities/registry'

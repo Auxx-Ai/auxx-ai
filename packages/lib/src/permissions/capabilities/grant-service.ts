@@ -192,6 +192,38 @@ export async function getGranteeLevels(
   return parseAreaLevels(row.levels)
 }
 
+/** One stored grantee row, coerced to a trusted sparse levels map. */
+export interface GranteeGrant {
+  granteeType: GrantGranteeType
+  granteeId: string
+  levels: Partial<Record<Area, Level>>
+}
+
+/**
+ * List every stored grant row for an organization (role policy + group + user),
+ * each coerced through {@link parseAreaLevels}. Powers the permissions settings
+ * page — one query hydrates the member baseline and all group/user overrides.
+ */
+export async function listGranteeGrants(
+  organizationId: string,
+  db: Database = database
+): Promise<GranteeGrant[]> {
+  const rows = await db
+    .select({
+      granteeType: schema.PermissionGrant.granteeType,
+      granteeId: schema.PermissionGrant.granteeId,
+      levels: schema.PermissionGrant.levels,
+    })
+    .from(schema.PermissionGrant)
+    .where(eq(schema.PermissionGrant.organizationId, organizationId))
+
+  return rows.map((row) => ({
+    granteeType: row.granteeType,
+    granteeId: row.granteeId,
+    levels: parseAreaLevels(row.levels),
+  }))
+}
+
 /** An empty sparse levels payload (no area overrides — everything falls through). */
 export function emptyLevels(): Partial<Record<Area, Level>> {
   return {}

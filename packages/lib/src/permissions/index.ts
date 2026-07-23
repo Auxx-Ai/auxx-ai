@@ -4,11 +4,12 @@ export {
   type UserCapabilities,
 } from './capabilities/compose-user-capabilities'
 export { getCapabilities } from './capabilities/get-capabilities'
-export type { GranteeRef, GrantGranteeType } from './capabilities/grant-service'
+export type { GranteeGrant, GranteeRef, GrantGranteeType } from './capabilities/grant-service'
 export {
   clearGranteeLevels,
   emptyLevels,
   getGranteeLevels,
+  listGranteeGrants,
   setGranteeLevels,
 } from './capabilities/grant-service'
 export { resolveLinkedRecordIds } from './capabilities/record-view-scope'
