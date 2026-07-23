@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import Script from 'next/script'
 import type { ReactNode } from 'react'
 import { getSession } from '~/auth/session'
+import { CapabilitiesProvider } from '~/providers/capabilities-provider'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
 import { FeatureFlagProvider, OrganizationIdProvider } from '~/providers/feature-flag-provider'
 import { PostHogProvider } from '~/providers/posthog-provider'
@@ -73,7 +74,9 @@ export default async function ProtectedLayout({ children }: ProtectedLayoutProps
       <DehydratedStateProvider initialState={dehydratedState}>
         <OrganizationIdProvider>
           <FeatureFlagProvider>
-            <PostHogProvider>{children}</PostHogProvider>
+            <CapabilitiesProvider>
+              <PostHogProvider>{children}</PostHogProvider>
+            </CapabilitiesProvider>
           </FeatureFlagProvider>
         </OrganizationIdProvider>
       </DehydratedStateProvider>

@@ -328,6 +328,34 @@ export async function publishCountsChanged(realtimeService: RealtimeService, use
   await realtimeService.publish(rooms.user(userId), 'counts:changed', { userId }).catch(() => {})
 }
 
+/**
+ * Publish `capabilities:changed` — a signal to the client `CapabilitiesProvider`
+ * to refetch `permissions.myCapabilities` and swap its key set (permissions plan
+ * §7.2). UX-only: server enforcement never trusts the client copy, so a missed
+ * event just degrades to "stale until reload".
+ *
+ * Target a single user (`{ userId }` → their private room) when the affected
+ * member is known — e.g. a user grant or a single member's role/seat change; use
+ * the org-wide event (`{ orgId }` → the org events room) when a role/group grant
+ * can shift many members' composed sets.
+ *
+ * Fire-and-forget: errors swallowed so a Pusher hiccup never blocks the write.
+ */
+export async function publishCapabilitiesChanged(
+  realtimeService: RealtimeService,
+  target: { userId: string } | { orgId: string }
+) {
+  if ('userId' in target) {
+    await realtimeService
+      .publish(rooms.user(target.userId), 'capabilities:changed', { userId: target.userId })
+      .catch(() => {})
+    return
+  }
+  await realtimeService
+    .publish(rooms.orgEvents(target.orgId), 'capabilities:changed', { orgId: target.orgId })
+    .catch(() => {})
+}
+
 /** Publish `thread:deleted` on the inbox channels + grantee fanout. */
 export async function publishThreadDeleted(
   realtimeService: RealtimeService,

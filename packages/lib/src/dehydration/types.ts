@@ -1,5 +1,7 @@
 // packages/lib/src/dehydration/types.ts
 
+import type { PermissionKey } from '../permissions/capabilities/registry'
+
 /**
  * Window global interface for dehydrated state
  */
@@ -171,6 +173,9 @@ export interface DehydratedOrganization {
 
   // Feature permissions
   features: Record<string, boolean | number | '+'>
+
+  /** The ACTIVE org's composed Layer-2 capability keys for THIS user (§7.1). */
+  capabilities: PermissionKey[]
 
   /** Features that exceed the current plan's limits (empty if none) */
   overages: Array<{

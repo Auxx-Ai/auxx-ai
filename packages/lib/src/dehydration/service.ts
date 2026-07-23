@@ -12,7 +12,7 @@ import { configService } from '@auxx/credentials'
 import { getDeploymentMode } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
 import { execSync } from 'child_process'
-import { getOrgCache, getUserCache } from '../cache'
+import { getCachedUserCapabilities, getOrgCache, getUserCache } from '../cache'
 import type { CachedSubscription } from '../cache/org-cache-keys'
 import { SETTINGS_CATALOG } from '../settings'
 import type { DehydratedEnvironment, DehydratedOrganization, DehydratedState } from './types'
@@ -181,7 +181,7 @@ export class DehydrationService {
     userId: string,
     orgId: string
   ): Promise<DehydratedOrganization> {
-    const [orgData, userData] = await Promise.all([
+    const [orgData, userData, capabilities] = await Promise.all([
       // Org-scoped: features, subscription, profile, overages, channelProviders
       this.orgCache.getOrRecompute(orgId, [
         'features',
@@ -192,6 +192,8 @@ export class DehydrationService {
       ]),
       // User+org-scoped: settings
       this.userCache.getOrRecompute(userId, ['userSettings'], orgId),
+      // User+org-scoped: composed Layer-2 capability set (one cached read, no DB).
+      getCachedUserCapabilities(userId, orgId),
     ])
 
     const { features, subscription, orgProfile, overages, channelProviders } = orgData
@@ -212,6 +214,7 @@ export class DehydrationService {
       demoExpiresAt: orgProfile.demoExpiresAt,
       subscription: toClientSubscription(subscription),
       features: features ?? {},
+      capabilities: capabilities.keys,
       overages,
       settings: userData.userSettings,
       hasIntegrations,

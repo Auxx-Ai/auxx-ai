@@ -65,6 +65,9 @@ async function requireGranularPermissions(db: Database, organizationId: string):
  */
 async function emitGrantChanged(grantee: GranteeRef): Promise<void> {
   const dehydration = new DehydrationCacheService()
+  // Lazy import — the cache invalidation path lazily imports realtime, so this
+  // module must not statically import the realtime barrel back (import cycle).
+  const { getRealtimeService, publishCapabilitiesChanged } = await import('../../realtime')
 
   if (grantee.granteeType === 'user') {
     await onCacheEvent('permission-grant.changed', {
@@ -72,6 +75,8 @@ async function emitGrantChanged(grantee: GranteeRef): Promise<void> {
       userId: grantee.granteeId,
     })
     await dehydration.invalidateUser(grantee.granteeId)
+    // UX-only live merge: nudge just that user's client to refetch.
+    await publishCapabilitiesChanged(getRealtimeService(), { userId: grantee.granteeId })
     return
   }
 
@@ -81,6 +86,8 @@ async function emitGrantChanged(grantee: GranteeRef): Promise<void> {
     broadcastUserKeys: true,
   })
   await dehydration.invalidateOrganization(grantee.organizationId)
+  // Org-wide grant → nudge every open client in the org.
+  await publishCapabilitiesChanged(getRealtimeService(), { orgId: grantee.organizationId })
 }
 
 /**
