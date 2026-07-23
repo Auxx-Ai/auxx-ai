@@ -2,7 +2,7 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import type { ResourceGranteeType, ResourcePermission } from '../../enums'
-import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
+import { type AnyPgColumn, index, pgTable, text, timestamp, unique } from './_shared'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -106,16 +106,20 @@ export const ResourceAccess = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    // Unique access grant per entity + grantee combination
-    // Note: entityInstanceId can be null (type-level access)
-    uniqueIndex('ResourceAccess_entity_grantee_key').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.entityDefinitionId.asc().nullsLast(),
-      table.entityInstanceId.asc().nullsLast(),
-      table.granteeType.asc().nullsLast(),
-      table.granteeId.asc().nullsLast()
-    ),
+    // Unique access grant per entity + grantee combination. NULLS NOT DISTINCT so
+    // type-level rows (entityInstanceId null) collapse to one per grantee — a plain
+    // unique index treats NULLs as distinct, so `grantType`'s onConflictDoUpdate
+    // never fired for them and every change inserted a duplicate. Requires PG 15+
+    // (Railway pgvector qualifies). Also the arbiter for grant/set upserts.
+    unique('ResourceAccess_entity_grantee_key')
+      .on(
+        table.organizationId,
+        table.entityDefinitionId,
+        table.entityInstanceId,
+        table.granteeType,
+        table.granteeId
+      )
+      .nullsNotDistinct(),
 
     // Efficient lookups by entity definition (for type-level queries)
     index('ResourceAccess_entityDef_idx').using(

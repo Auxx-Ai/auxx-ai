@@ -1,6 +1,7 @@
 // apps/web/src/components/members/ui/member-detail.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import {
@@ -11,10 +12,16 @@ import {
   EmptyTitle,
 } from '@auxx/ui/components/empty'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Users } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { ShieldCheck, User, Users } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
+import { GranteeDefAccessSection } from '~/components/permissions/ui/grantee-def-access-section'
+import { GranteeLevelsSection } from '~/components/permissions/ui/grantee-levels-section'
 import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
 import { useUser } from '~/hooks/use-user'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import type { Member } from '../types'
 import { getInitials, RoleIcon } from '../utils'
@@ -34,6 +41,12 @@ const BREADCRUMBS_BASE = [
  */
 export function MemberDetail({ userId }: { userId: string }) {
   const { userId: viewerId, role: viewerRole } = useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  const { hasAccess } = useFeatureFlags()
+  const canEditPermissions = hasAccess(FeatureKey.granularPermissions)
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const tab = searchParams.get('tab') === 'permissions' ? 'permissions' : 'general'
   const { data, isLoading } = api.member.all.useQuery()
   const members = (data?.members ?? []) as unknown as Member[]
   const member = members.find((m) => m.userId === userId)
@@ -78,38 +91,78 @@ export function MemberDetail({ userId }: { userId: string }) {
   const displayName = member.user.name || member.user.email || 'Unnamed User'
 
   return (
-    <SettingsPage
-      icon={
-        <Avatar className='size-10 rounded-full'>
-          {member.user.image && (
-            <AvatarImage src={member.user.image} alt={member.user.name ?? ''} />
-          )}
-          <AvatarFallback>{getInitials(member.user.name, member.user.email)}</AvatarFallback>
-        </Avatar>
-      }
-      title={
-        <span className='inline-flex items-center gap-1.5'>
-          {member.user.name || 'Unnamed User'}
-          {isSelf && <span className='text-xs font-normal text-muted-foreground'>(You)</span>}
-        </span>
-      }
-      description={member.user.email}
-      button={
-        <div className='flex items-center gap-1.5'>
-          <Badge variant='user' size='xs'>
-            <RoleIcon role={member.role} />
-            <span>{member.role}</span>
-          </Badge>
-          <SeatTypeBadge seatType={member.seatType} />
-        </div>
-      }
-      breadcrumbs={[...BREADCRUMBS_BASE, { title: displayName }]}
-      backLink='/app/settings/members'>
-      <div className='space-y-8 p-3 sm:p-6'>
-        <MemberTeamsSection member={member} />
-        <MemberAccountsSection userId={member.userId} />
-        <MemberDangerSection member={member} viewerRole={viewerRole} viewerId={viewerId} />
-      </div>
-    </SettingsPage>
+    <Tabs
+      value={tab}
+      onValueChange={(v) => router.push(`${pathname}?tab=${v}`, { scroll: false })}
+      className='flex h-full min-h-0 flex-1 flex-col'>
+      <SettingsPage
+        icon={
+          <Avatar className='size-10 rounded-full'>
+            {member.user.image && (
+              <AvatarImage src={member.user.image} alt={member.user.name ?? ''} />
+            )}
+            <AvatarFallback>{getInitials(member.user.name, member.user.email)}</AvatarFallback>
+          </Avatar>
+        }
+        title={
+          <span className='inline-flex items-center gap-1.5'>
+            {member.user.name || 'Unnamed User'}
+            {isSelf && <span className='text-xs font-normal text-muted-foreground'>(You)</span>}
+          </span>
+        }
+        description={member.user.email}
+        button={
+          <div className='flex items-center gap-1.5'>
+            <Badge variant='user' size='xs'>
+              <RoleIcon role={member.role} />
+              <span>{member.role}</span>
+            </Badge>
+            <SeatTypeBadge seatType={member.seatType} />
+          </div>
+        }
+        breadcrumbs={[...BREADCRUMBS_BASE, { title: displayName }]}
+        backLink='/app/settings/members'
+        subHeaderClassName='p-0'
+        subHeader={
+          <TabsList variant='outline'>
+            <TabsTrigger value='general' variant='outline'>
+              <User />
+              General
+            </TabsTrigger>
+            <TabsTrigger value='permissions' variant='outline'>
+              <ShieldCheck />
+              Permissions
+            </TabsTrigger>
+          </TabsList>
+        }>
+        <TabsContent value='general'>
+          <div className='space-y-8 p-3 sm:p-6'>
+            <MemberTeamsSection member={member} />
+            <MemberAccountsSection userId={member.userId} />
+            <MemberDangerSection member={member} viewerRole={viewerRole} viewerId={viewerId} />
+          </div>
+        </TabsContent>
+        <TabsContent value='permissions'>
+          <div className='space-y-8 p-3 sm:p-6'>
+            {!canEditPermissions && (
+              <UpgradeBanner
+                title='Upgrade to configure permissions'
+                description='Granular permissions let you set what this member can access across the workspace and per record type.'
+              />
+            )}
+            <GranteeLevelsSection
+              granteeKind='user'
+              granteeId={member.userId}
+              canEdit={canEditPermissions}
+            />
+            <GranteeDefAccessSection
+              granteeKind='user'
+              granteeId={member.userId}
+              canEdit={canEditPermissions}
+            />
+          </div>
+        </TabsContent>
+      </SettingsPage>
+    </Tabs>
   )
 }

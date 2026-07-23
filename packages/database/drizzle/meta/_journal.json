@@ -2122,6 +2122,13 @@
       "when": 1784770592013,
       "tag": "0302_invitation_seat_type",
       "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1784847542338,
+      "tag": "0303_resource_access_type_grant_unique_nulls_not_distinct",
+      "breakpoints": true
     }
   ]
 }

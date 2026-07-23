@@ -9,6 +9,7 @@ import {
   assertMailSharingFeature,
   checkAccess,
   checkTypeAccess,
+  getAllTypeAccess,
   getInstanceAccess,
   getTypeAccess,
   grantInstanceAccess,
@@ -356,4 +357,21 @@ export const resourceAccessRouter = createTRPCRouter({
       await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
       return getTypeAccess(toContext(ctx), input.entityDefinitionId)
     }),
+
+  /**
+   * All type-level access rows for the org, across every def — the grantee-centric
+   * Access UI (capability layer v2 grantee-def-access) reads this once and derives
+   * each def's baseline + a given grantee's grant client-side. Admin-only: it
+   * reveals the whole org's restriction map (no single def to branch mail-vs-admin
+   * on, so gate directly on admin/owner).
+   */
+  allTypeAccess: protectedProcedure.query(async ({ ctx }) => {
+    if (!(await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId))) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'You must be an admin or owner to view type-level access',
+      })
+    }
+    return getAllTypeAccess(toContext(ctx))
+  }),
 })

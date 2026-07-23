@@ -13,6 +13,7 @@ export {
 export {
   checkAccess,
   checkTypeAccess,
+  getAllTypeAccess,
   getInstanceAccess,
   getTypeAccess,
   getUserAccessibleInstances,
