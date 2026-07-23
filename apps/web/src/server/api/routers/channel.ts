@@ -151,12 +151,23 @@ export const channelRouter = createTRPCRouter({
 
   /**
    * Get all configured integrations for the organization.
+   *
+   * Defaults to the caller's own view (shared channels + their personal ones).
+   * Admins/owners may pass another member's `userId` to view that member's
+   * personal + shared channels (e.g. the member detail page).
    */
-  list: protectedProcedure.query(async ({ ctx }) => {
-    const organizationId = getUserOrganizationId(ctx.session)
-    // Passing userId hides other members' personal channels from non-admins.
-    return listChannels({ db: ctx.db, organizationId, userId: ctx.session.userId })
-  }),
+  list: protectedProcedure
+    .input(z.object({ userId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      const targetUserId = input?.userId ?? ctx.session.userId
+      // Viewing another member's channels is admin/owner only; self stays open.
+      if (targetUserId !== ctx.session.userId) {
+        await requireAdminAccess(ctx.session.userId, organizationId)
+      }
+      // Passing userId hides *other* members' personal channels from the listing.
+      return listChannels({ db: ctx.db, organizationId, userId: targetUserId })
+    }),
 
   /**
    * Disconnects an integration.
