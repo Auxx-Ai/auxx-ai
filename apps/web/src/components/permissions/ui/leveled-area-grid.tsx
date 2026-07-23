@@ -42,7 +42,7 @@ const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
 
 /**
  * The shared leveled surface: every grantable area rendered as a labelled row
- * with its {@link LevelControl}, grouped by registry group (Tickets, Records,
+ * with its {@link LevelControl}, grouped by registry group (Records,
  * Automation, …). `adminOnly` areas are never shown — they're not grantable below
  * ADMIN. In `override` mode each area inherits from the member baseline (and is
  * raise-only, enforced server-side); in `baseline` mode it inherits from the role

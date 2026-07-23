@@ -7,14 +7,9 @@ import { FeatureKey } from '../types'
  *
  * These are NOT per-field/per-record (that's Layer 3 ResourceAccess). Keys are
  * forever-ish once orgs configure grants against them — start coarse, split
- * later only when a real org needs it. See
- * plans/permissions/capability-layer-and-worker-seat.md §4.
+ * later only when a real org needs it. See plans/permissions/v2/README.md.
  */
 export enum PermissionKey {
-  // mail / tickets
-  ticketsView = 'tickets.view',
-  ticketsReply = 'tickets.reply',
-
   // records / CRM
   recordsView = 'records.view',
   recordsEdit = 'records.edit',
@@ -58,20 +53,6 @@ export interface PermissionMetadata {
 
 /** Single source of truth for all capability keys, labels, groups, and plan links. */
 export const PERMISSION_REGISTRY: PermissionMetadata[] = [
-  // ── Tickets ──
-  {
-    key: PermissionKey.ticketsView,
-    label: 'View Tickets',
-    description: 'See conversations and tickets in accessible inboxes.',
-    group: 'Tickets',
-  },
-  {
-    key: PermissionKey.ticketsReply,
-    label: 'Reply to Tickets',
-    description: 'Send replies and notes on tickets.',
-    group: 'Tickets',
-  },
-
   // ── Records ──
   {
     key: PermissionKey.recordsView,
@@ -229,7 +210,6 @@ export enum Level {
 
 /** Coarse capability area slugs — the level ladder is defined per area. */
 export enum Area {
-  tickets = 'tickets',
   records = 'records',
   recordsLinked = 'recordsLinked',
   workflows = 'workflows',
@@ -271,19 +251,10 @@ export interface AreaMetadata {
 /**
  * Single source of truth for the area→level→keys expansion (§3 table). Toggle
  * areas list a lone `Full` rung; hybrid areas (`dispatchBoard`) simply skip the
- * `Edit` rung. `tickets` has no `Full`/manage key yet (§9.1) so `Full == Edit`.
+ * `Edit` rung. Tickets are governed as an entity def (per-def ResourceAccess on
+ * the `ticket` def, `records` area), not a standalone area.
  */
 export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
-  [Area.tickets]: {
-    area: Area.tickets,
-    label: 'Tickets',
-    description: 'View conversations and reply to tickets.',
-    group: 'Tickets',
-    rungs: [
-      { level: Level.Read, keys: [PermissionKey.ticketsView] },
-      { level: Level.Edit, keys: [PermissionKey.ticketsReply] },
-    ],
-  },
   [Area.records]: {
     area: Area.records,
     label: 'Records',
