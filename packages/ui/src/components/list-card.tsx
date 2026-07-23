@@ -129,6 +129,14 @@ export interface ListCardProps {
 
   // ---- styling ----
   variant?: 'default' | 'placeholder'
+  /**
+   * Card shape. `'card'` (default) is the vertical tile used across the app.
+   * `'row'` is a horizontal, two-line list row (media · title + inline badges /
+   * subtitle · trailing + menu) — for dense management lists (members, groups).
+   * Every prop and `data-slot` is shared; row mode only moves `badges` inline
+   * next to the title and drops the description/footer regions.
+   */
+  layout?: 'card' | 'row'
   className?: string
   /** Targeted slot overrides, e.g. `{ title: 'line-clamp-1' }`. */
   classNames?: Partial<Record<ListCardSlotName, string>>
@@ -230,10 +238,12 @@ export function ListCard({
   ariaLabel,
   link,
   variant = 'default',
+  layout = 'card',
   className,
   classNames,
 }: ListCardProps) {
   const isPlaceholder = variant === 'placeholder'
+  const isRow = layout === 'row'
   const interactive =
     !loading && !disabled && !pending && (selecting || Boolean(href || onClick || link))
   // While selecting, the per-card menu + header badge yield to the checkbox/bulk bar.
@@ -242,7 +252,8 @@ export function ListCard({
   const showCheckbox = !loading && !pending && (selectable || selecting)
 
   const rootClass = cn(
-    'group/list-card relative flex w-full flex-col gap-2 rounded-2xl border p-3 text-left',
+    'group/list-card relative flex w-full rounded-2xl border p-3 text-left',
+    isRow ? 'flex-row items-center gap-3' : 'flex-col gap-2',
     isPlaceholder ? 'border-dashed bg-primary-50' : 'bg-background dark:bg-primary-50',
     !pending &&
       (isPlaceholder
@@ -336,14 +347,38 @@ export function ListCard({
     </DropdownMenu>
   ) : null
 
-  return (
-    <div data-slot='list-card' className={rootClass}>
-      {overlay}
-      {checkbox}
+  // Shared media block (icon/avatar box + optional status dot).
+  const mediaNode = (
+    <div data-slot='list-card-media' className='relative shrink-0'>
+      {loading ? (
+        <Skeleton className='size-8 rounded-xl' />
+      ) : (
+        (media ?? (
+          <div
+            data-slot='list-card-icon'
+            className={cn(
+              'flex size-8 items-center justify-center overflow-hidden rounded-xl border',
+              classNames?.icon
+            )}>
+            {icon}
+          </div>
+        ))
+      )}
+      {!loading && status && <StatusDot status={status} />}
+    </div>
+  )
 
-      {/* Header: media + title column */}
-      <div data-slot='list-card-header' className='flex w-full flex-row items-start gap-2'>
-        <div data-slot='list-card-media' className='relative shrink-0'>
+  // ---- Row layout: horizontal, two-line list row ----
+  if (isRow) {
+    // Gmail-style: the media box turns into the checkbox on hover / while
+    // selecting, in the same footprint — no extra column, no layout shift.
+    const rowMedia = (
+      <div data-slot='list-card-media' className='relative shrink-0'>
+        <div
+          className={cn(
+            showCheckbox && !selecting && 'transition-opacity group-hover/list-card:opacity-0',
+            showCheckbox && selecting && 'opacity-0'
+          )}>
           {loading ? (
             <Skeleton className='size-8 rounded-xl' />
           ) : (
@@ -360,6 +395,112 @@ export function ListCard({
           )}
           {!loading && status && <StatusDot status={status} />}
         </div>
+        {showCheckbox && (
+          <div
+            data-slot='list-card-select'
+            className={cn(
+              'absolute inset-0 z-20 flex items-center justify-center rounded-xl',
+              !selecting && 'opacity-0 transition-opacity group-hover/list-card:opacity-100'
+            )}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelectChange?.(!selected, e)
+            }}>
+            <Checkbox checked={selected} className='pointer-events-none size-4' />
+          </div>
+        )}
+      </div>
+    )
+
+    return (
+      <div data-slot='list-card' className={rootClass}>
+        {overlay}
+        {rowMedia}
+
+        <div data-slot='list-card-heading' className='flex min-w-0 flex-1 flex-col'>
+          <div data-slot='list-card-title-row' className='flex min-w-0 items-center gap-1.5'>
+            {loading ? (
+              <div className='flex h-5 items-center'>
+                <Skeleton className='h-4 w-40' />
+              </div>
+            ) : (
+              <>
+                <p
+                  data-slot='list-card-title'
+                  className={cn(
+                    'truncate text-sm font-medium group-hover/list-card:text-info',
+                    classNames?.title
+                  )}>
+                  {title}
+                </p>
+                {verified && (
+                  <Tooltip content='Verified'>
+                    <BadgeCheck className='relative z-10 size-4 shrink-0 text-blue-500' />
+                  </Tooltip>
+                )}
+                {/* Row mode moves `badges` inline next to the title (role/seat chips). */}
+                {badges && (
+                  <div
+                    data-slot='list-card-badges'
+                    className={cn(
+                      'relative z-10 flex shrink-0 items-center gap-1',
+                      classNames?.badges
+                    )}>
+                    {badges}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          {loading ? (
+            <div className='flex h-4 items-center'>
+              <Skeleton className='h-3 w-24' />
+            </div>
+          ) : (
+            subtitle && (
+              <div
+                data-slot='list-card-subtitle'
+                className={cn('truncate text-xs text-muted-foreground', classNames?.subtitle)}>
+                {subtitle}
+              </div>
+            )
+          )}
+        </div>
+
+        {/* Right cluster: header-end + trailing + menu, vertically centered.
+            Yields to the toggle overlay while selecting. */}
+        {!loading && (headerEnd || trailing || menuNode) && (
+          <div
+            className={cn(
+              'relative z-10 flex shrink-0 items-center gap-1',
+              selecting && 'pointer-events-none'
+            )}>
+            {!selecting && headerEnd}
+            {trailing}
+            {menuNode}
+          </div>
+        )}
+
+        {pending && (
+          <div
+            data-slot='list-card-pending'
+            className='absolute inset-0 z-30 flex items-center justify-center gap-2 rounded-2xl bg-background/50 text-sm font-medium text-foreground/50 backdrop-blur-sm'>
+            <Loader2 className='size-4 animate-spin' />
+            {pendingLabel ?? 'Deleting…'}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div data-slot='list-card' className={rootClass}>
+      {overlay}
+      {checkbox}
+
+      {/* Header: media + title column */}
+      <div data-slot='list-card-header' className='flex w-full flex-row items-start gap-2'>
+        {mediaNode}
 
         <div data-slot='list-card-heading' className='flex min-w-0 flex-1 flex-col'>
           <div
