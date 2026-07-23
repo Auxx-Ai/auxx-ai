@@ -18,12 +18,12 @@ import {
   setAgentToolBindings,
   updateAgent as updateAgentService,
 } from '@auxx/lib/agents'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { getRealtimeService, publishAgentUpdated } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter } from '../trpc'
+import { createTRPCRouter, permissionProcedure } from '../trpc'
 import { unwrap } from '../unwrap'
 
 const logger = createScopedLogger('agent-router')
@@ -38,7 +38,7 @@ const promptSchema = z.record(z.string(), z.unknown())
  * `@auxx/lib/agents` service functions — no raw SQL lives in this router.
  */
 export const agentRouter = createTRPCRouter({
-  list: adminProcedure
+  list: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ includeArchived: z.boolean().optional() }).optional())
     .query(({ ctx, input }) =>
       listAgents(ctx.session.organizationId, {
@@ -51,7 +51,7 @@ export const agentRouter = createTRPCRouter({
    * backward compatibility with existing callers, but accepts either form —
    * the service helper checks both columns against the org agents cache.
    */
-  getById: adminProcedure
+  getById: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const detail = await getAgentDetailByIdOrSlug(ctx.session.organizationId, input.agentId)
@@ -61,7 +61,7 @@ export const agentRouter = createTRPCRouter({
       return detail
     }),
 
-  create: adminProcedure
+  create: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z
         .object({
@@ -136,7 +136,7 @@ export const agentRouter = createTRPCRouter({
    * the user finishes configuration in the live tabs. The AI chat-builder
    * tool calls `completeAgentSetup` directly and keeps those gates.
    */
-  completeSetup: adminProcedure
+  completeSetup: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -151,7 +151,7 @@ export const agentRouter = createTRPCRouter({
    * agents-list "Discard draft" overflow item. Refuses to touch completed
    * agents — use the archive path for those.
    */
-  deleteDraft: adminProcedure
+  deleteDraft: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -169,7 +169,7 @@ export const agentRouter = createTRPCRouter({
    * `Agent` row and its synthetic `User`; conversation history is preserved
    * orphaned. Use `deleteDraft` only for incomplete drafts.
    */
-  delete: adminProcedure
+  delete: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const result = await deleteAgentService(input.agentId, ctx.session.organizationId)
@@ -178,7 +178,7 @@ export const agentRouter = createTRPCRouter({
       }
     }),
 
-  update: adminProcedure
+  update: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         agentId: z.string(),
@@ -235,7 +235,7 @@ export const agentRouter = createTRPCRouter({
       await updateAgentService(agentId, organizationId, updatePayload, { excludeSocketId })
     }),
 
-  checkSlug: adminProcedure
+  checkSlug: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ slug: agentSlugSchema, excludeAgentId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       const taken = await isAgentSlugTaken(ctx.session.organizationId, input.slug, {
@@ -251,7 +251,7 @@ export const agentRouter = createTRPCRouter({
    * the org agents cache. An empty map means "everything runs on author
    * defaults". See plans/chat/v8 phase-5.
    */
-  setToolBindings: adminProcedure
+  setToolBindings: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -291,7 +291,7 @@ export const agentRouter = createTRPCRouter({
   // plans/agents/agent-versions/build-plan.md §6.
 
   /** Snapshot the draft as a new version (or no-op republish). Human-only. */
-  publish: adminProcedure
+  publish: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1), label: z.string().max(120).optional() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -312,7 +312,7 @@ export const agentRouter = createTRPCRouter({
     }),
 
   /** Discard draft edits — restore the active version onto the row. */
-  discardChanges: adminProcedure
+  discardChanges: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -328,7 +328,7 @@ export const agentRouter = createTRPCRouter({
     }),
 
   /** Restore-as-draft: load a past version into the draft + mark dirty. */
-  restoreVersion: adminProcedure
+  restoreVersion: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1), toVersionId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -348,7 +348,7 @@ export const agentRouter = createTRPCRouter({
     }),
 
   /** Rename a published version's label (annotation only). */
-  renameVersion: adminProcedure
+  renameVersion: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -374,7 +374,7 @@ export const agentRouter = createTRPCRouter({
     }),
 
   /** Published version history (newest first) with editor names. */
-  listVersions: adminProcedure
+  listVersions: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const rows = unwrap(

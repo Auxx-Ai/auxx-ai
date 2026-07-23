@@ -27,6 +27,9 @@ export enum PermissionKey {
   workflowsManage = 'workflows.manage',
   agentsManage = 'agents.manage',
 
+  // collaboration
+  commentsManage = 'comments.manage',
+
   // dispatch
   dispatchBoardView = 'dispatch.board.view',
   dispatchBoardManage = 'dispatch.board.manage',
@@ -115,6 +118,14 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     description: 'Create and configure Kopilot agents.',
     group: 'Automation',
     featureKey: FeatureKey.agents,
+  },
+
+  // ── Collaboration ──
+  {
+    key: PermissionKey.commentsManage,
+    label: 'Manage Comments',
+    description: 'Write, edit, and delete comments on records.',
+    group: 'Collaboration',
   },
 
   // ── Dispatch ──
@@ -223,6 +234,7 @@ export enum Area {
   recordsLinked = 'recordsLinked',
   workflows = 'workflows',
   agents = 'agents',
+  comments = 'comments',
   dispatchBoard = 'dispatchBoard',
   dispatchMySchedule = 'dispatchMySchedule',
   dispatchVisitReports = 'dispatchVisitReports',
@@ -284,6 +296,10 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     area: Area.agents,
     rungs: [{ level: Level.Full, keys: [PermissionKey.agentsManage] }],
     featureKey: FeatureKey.agents,
+  },
+  [Area.comments]: {
+    area: Area.comments,
+    rungs: [{ level: Level.Full, keys: [PermissionKey.commentsManage] }],
   },
   [Area.dispatchBoard]: {
     area: Area.dispatchBoard,

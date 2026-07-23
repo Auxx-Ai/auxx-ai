@@ -1,6 +1,7 @@
 // server/api/routers/comment.ts
 
 import { CommentService } from '@auxx/lib/comments'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { isNonEmptyDoc } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types'
@@ -8,7 +9,7 @@ import { type ActorId, toActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('comment-router')
 
@@ -70,69 +71,73 @@ const updateCommentSchema = z.object({
 
 export const commentRouter = createTRPCRouter({
   // Create a new comment
-  create: protectedProcedure.input(createCommentSchema).mutation(async ({ ctx, input }) => {
-    try {
-      const { userId, organizationId } = ctx.session
-      const commentService = new CommentService(organizationId, userId, ctx.db)
-      const { contentJson, recordId, parentId, fileAttachments } = input
+  create: permissionProcedure(PermissionKey.commentsManage)
+    .input(createCommentSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { userId, organizationId } = ctx.session
+        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const { contentJson, recordId, parentId, fileAttachments } = input
 
-      // Create the comment
-      const comment = await commentService.createComment({
-        contentJson: contentJson as Record<string, unknown>,
-        recordId,
-        createdById: userId,
-        parentId,
-        fileAttachments,
-      })
+        // Create the comment
+        const comment = await commentService.createComment({
+          contentJson: contentJson as Record<string, unknown>,
+          recordId,
+          createdById: userId,
+          parentId,
+          fileAttachments,
+        })
 
-      return transformCommentResponse(comment)
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to create comment'
-      logger.error('Error creating comment', { error, input })
+        return transformCommentResponse(comment)
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to create comment'
+        logger.error('Error creating comment', { error, input })
 
-      if (error instanceof TRPCError) {
-        throw error
+        if (error instanceof TRPCError) {
+          throw error
+        }
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: message,
+        })
       }
-
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: message,
-      })
-    }
-  }),
+    }),
 
   // Update a comment
-  update: protectedProcedure.input(updateCommentSchema).mutation(async ({ ctx, input }) => {
-    try {
-      const { userId, organizationId } = ctx.session
-      const commentService = new CommentService(organizationId, userId, ctx.db)
-      const { id, contentJson, fileAttachments } = input
+  update: permissionProcedure(PermissionKey.commentsManage)
+    .input(updateCommentSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { userId, organizationId } = ctx.session
+        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const { id, contentJson, fileAttachments } = input
 
-      // Update the comment
-      const updatedComment = await commentService.updateComment({
-        id,
-        contentJson: contentJson as Record<string, unknown>,
-        fileAttachments,
-      })
+        // Update the comment
+        const updatedComment = await commentService.updateComment({
+          id,
+          contentJson: contentJson as Record<string, unknown>,
+          fileAttachments,
+        })
 
-      return updatedComment
-    } catch (error: unknown) {
-      logger.error('Error updating comment', { error, input })
-      // const message = error instanceof Error ? error.message : 'Failed to update comment'
+        return updatedComment
+      } catch (error: unknown) {
+        logger.error('Error updating comment', { error, input })
+        // const message = error instanceof Error ? error.message : 'Failed to update comment'
 
-      if (error instanceof TRPCError) {
-        throw error
+        if (error instanceof TRPCError) {
+          throw error
+        }
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update comment',
+        })
       }
-
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to update comment',
-      })
-    }
-  }),
+    }),
 
   // Delete a comment
-  delete: protectedProcedure
+  delete: permissionProcedure(PermissionKey.commentsManage)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       try {
