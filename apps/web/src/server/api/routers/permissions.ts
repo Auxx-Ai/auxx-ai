@@ -1,9 +1,9 @@
 // apps/web/src/server/api/routers/permissions.ts
 
-import { getCachedUserCapabilities } from '@auxx/lib/cache'
 import {
   type Area,
   clearGranteeLevels,
+  getCapabilities,
   Level,
   listGranteeGrants,
   ROLE_DEFAULTS,
@@ -32,10 +32,16 @@ const levelsInput = z.record(z.string(), z.coerce.number().int().min(Level.None)
  * the levels, applies the `granularPermissions` plan gate, and busts caches).
  */
 export const permissionsRouter = createTRPCRouter({
-  /** The current member's composed capability keys (for the client provider). */
+  /**
+   * The current member's composed capability snapshot for the client provider —
+   * the coarse verb `keys` PLUS the per-def access map (`defAccess` +
+   * `restrictedEntityDefIds`) and `role`/`seatType`, so the client can run the
+   * same most-specific-wins `canViewEntity`/`canEditEntity` math as the server
+   * (capability layer v2 §11.1).
+   */
   myCapabilities: protectedProcedure.query(async ({ ctx }) => {
-    const caps = await getCachedUserCapabilities(ctx.session.userId, ctx.session.organizationId)
-    return { keys: caps.keys }
+    const caps = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+    return caps.toClientCapabilities()
   }),
 
   /**

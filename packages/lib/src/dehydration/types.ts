@@ -1,6 +1,6 @@
 // packages/lib/src/dehydration/types.ts
 
-import type { PermissionKey } from '../permissions/capabilities/registry'
+import type { ClientCapabilities } from '../permissions/capabilities/entity-access'
 
 /**
  * Window global interface for dehydrated state
@@ -176,8 +176,13 @@ export interface DehydratedOrganization {
   // Feature permissions
   features: Record<string, boolean | number | '+'>
 
-  /** The ACTIVE org's composed Layer-2 capability keys for THIS user (§7.1). */
-  capabilities: PermissionKey[]
+  /**
+   * The ACTIVE org's composed Layer-2 capability snapshot for THIS user (§7.1):
+   * verb `keys` plus the per-def access map (`defAccess` +
+   * `restrictedEntityDefIds`) and `role`/`seatType`, so the client provider can
+   * run the same most-specific-wins `canViewEntity`/`canEditEntity` as the server.
+   */
+  capabilities: ClientCapabilities
 
   /** Features that exceed the current plan's limits (empty if none) */
   overages: Array<{
