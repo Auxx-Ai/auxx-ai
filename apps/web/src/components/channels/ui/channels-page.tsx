@@ -4,7 +4,7 @@
 import { FeatureKey } from '@auxx/lib/types'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Lock, Waypoints } from 'lucide-react'
+import { Ban, Lock, Waypoints } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useOAuthReturn } from '~/components/apps/hooks/use-oauth-return'
@@ -77,16 +77,26 @@ export function ChannelsPage() {
   }
 
   return (
-    <Tabs value={effectiveTab} onValueChange={handleTabChange} className='w-full'>
+    <Tabs
+      value={effectiveTab}
+      onValueChange={handleTabChange}
+      className='flex h-full min-h-0 flex-1 flex-col'>
       <SettingsPage
         title='Channels'
         description='Connect email, chat, social, and phone channels.'
         breadcrumbs={BREADCRUMBS}
-        button={
+        subHeaderClassName='p-0'
+        subHeader={
           isAdminOrOwner ? (
-            <TabsList>
-              <TabsTrigger value='channels'>Channels</TabsTrigger>
-              <TabsTrigger value='suppressions'>Suppressions</TabsTrigger>
+            <TabsList variant='outline'>
+              <TabsTrigger value='channels' variant='outline'>
+                <Waypoints />
+                Channels
+              </TabsTrigger>
+              <TabsTrigger value='suppressions' variant='outline'>
+                <Ban />
+                Suppressions
+              </TabsTrigger>
             </TabsList>
           ) : undefined
         }>
@@ -123,10 +133,8 @@ export function ChannelsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value='suppressions'>
-          <div className='p-3 sm:p-6'>
-            <SuppressionList />
-          </div>
+        <TabsContent value='suppressions' className='flex flex-1 flex-col'>
+          <SuppressionList />
         </TabsContent>
 
         <ChannelGalleryDialog open={galleryOpen} onOpenChange={setGalleryOpen} />

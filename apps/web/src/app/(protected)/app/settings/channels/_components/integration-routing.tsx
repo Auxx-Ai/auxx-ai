@@ -28,6 +28,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { AdminGate } from '~/components/global/admin-gate'
+import { DangerZone } from '~/components/global/danger-zone'
 import { SettingsSection } from '~/components/global/settings-page'
 import { InboxPicker } from '~/components/pickers/inbox-picker'
 import { toRecordId, useRecord, useResource } from '~/components/resources'
@@ -385,35 +386,25 @@ export default function IntegrationRouting({
 
       {!isForwarding && (
         <SettingsSection className='space-y-2' icon={AlertTriangle} title='Danger Zone'>
-          <div className='group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50'>
-            <div className='flex flex-col justify-between gap-4 w-full md:flex-row md:items-center'>
-              <div className='flex items-center gap-3'>
-                <div className='size-8 border border-destructive/10 bg-destructive/2 rounded-lg flex items-center justify-center group-hover:bg-destructive/5 transition-colors overflow-hidden shrink-0'>
-                  <AlertTriangle className='size-4 text-destructive' />
-                </div>
-                <div className='flex flex-col'>
-                  <span className='text-sm text-destructive'>Delete Integration</span>
-                  <span className='text-xs text-destructive/80'>
-                    Permanently delete integration and all associated messages.
-                  </span>
-                </div>
-              </div>
-              <div className='shrink-0'>
-                <AdminGate action='manage shared channels' allow={canManage}>
-                  <Button
-                    variant='destructive'
-                    onClick={handleRemoveIntegration}
-                    disabled={isRemoving}
-                    size='sm'>
-                    Delete Integration
-                  </Button>
-                </AdminGate>
-              </div>
-              <ConfirmDialog />
-            </div>
-          </div>
+          <DangerZone
+            title='Delete Integration'
+            description='Permanently delete integration and all associated messages.'
+            action={
+              <AdminGate action='manage shared channels' allow={canManage}>
+                <Button
+                  variant='destructive'
+                  onClick={handleRemoveIntegration}
+                  disabled={isRemoving}
+                  size='sm'>
+                  Delete Integration
+                </Button>
+              </AdminGate>
+            }
+          />
         </SettingsSection>
       )}
+
+      <ConfirmDialog />
     </div>
   )
 }
