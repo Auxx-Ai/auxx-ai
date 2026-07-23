@@ -116,7 +116,7 @@ export async function listAccessibleGroups(
 
   // Check role from memberRoleMap cache instead of DB query
   const memberRoleMap = await getOrgCache().get(organizationId, 'memberRoleMap')
-  const role = memberRoleMap[userId]
+  const role = memberRoleMap[userId]?.role
   const isAdmin = role && ['OWNER', 'ADMIN'].includes(role)
 
   // Get group definition ID from org cache

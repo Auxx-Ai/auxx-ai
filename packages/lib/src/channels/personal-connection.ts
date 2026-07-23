@@ -170,7 +170,7 @@ async function loadOrphanedPersonalInbox(
   if (!inbox.isPersonal) throw new ForbiddenError('Not a personal inbox')
 
   const roleMap = await getOrgCache().get(organizationId, 'memberRoleMap')
-  if (inbox.ownerUserId && roleMap[inbox.ownerUserId]) {
+  if (inbox.ownerUserId && roleMap[inbox.ownerUserId]?.role) {
     throw new ForbiddenError(
       "This personal inbox's owner is still a member — it can only be claimed or deleted after they leave"
     )

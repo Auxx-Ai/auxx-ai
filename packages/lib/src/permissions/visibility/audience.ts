@@ -44,7 +44,7 @@ export async function getFullLensAudienceForInbox(
   }
 
   for (const m of members) {
-    const role = roleMap[m.userId]
+    const role = roleMap[m.userId]?.role
     if (role === 'OWNER' || role === 'ADMIN') audience.add(m.userId)
   }
   for (const entry of grantIndex.inboxes[inboxId] ?? []) {

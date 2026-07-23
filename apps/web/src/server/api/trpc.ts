@@ -11,7 +11,13 @@ import { database as db } from '@auxx/database'
 import { getOrgCache } from '@auxx/lib/cache'
 import { AuxxError, AuxxErrorCodes } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { FeatureKey } from '@auxx/lib/permissions'
+import {
+  FeatureKey,
+  FeaturePermissionService,
+  getCapabilities,
+  PERMISSION_REGISTRY_MAP,
+  type PermissionKey,
+} from '@auxx/lib/permissions'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter/redis-rate-limiter'
 import { initTRPC, type TRPC_ERROR_CODE_KEY, TRPCError } from '@trpc/server'
 import superjson from 'superjson'
@@ -376,4 +382,40 @@ export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
     })
   }
   return next()
+})
+
+/**
+ * Capability (Layer-2) procedure factory — the per-member permission gate.
+ *
+ * Mirrors `dispatchProcedure`: resolves the member's {@link CapabilitySet} ONCE
+ * (a single cached read, §6.1), runs the plan-AND when the key links a
+ * `featureKey`, asserts the key, and attaches the resolved set as
+ * `ctx.capabilities` so router bodies reuse it with zero re-resolve.
+ *
+ * @example
+ * getWorkflow: permissionProcedure(PermissionKey.workflowsManage).query(...)
+ */
+export const permissionProcedure = (key: PermissionKey) =>
+  protectedProcedure.use(async ({ ctx, next }) => {
+    const meta = PERMISSION_REGISTRY_MAP.get(key)
+    if (meta?.featureKey) {
+      await new FeaturePermissionService().requireAccess(
+        ctx.session.organizationId,
+        meta.featureKey
+      )
+    }
+    const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+    capabilities.assert(key)
+    return next({ ctx: { capabilities } })
+  })
+
+/**
+ * Resolves the member's {@link CapabilitySet} and attaches it as
+ * `ctx.capabilities` WITHOUT asserting a single key — for routers that need the
+ * set to make per-record decisions (e.g. `assertWriteEntity` per entity def in a
+ * bulk write). Still one cached read per request (§6.1).
+ */
+export const capabilityProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  return next({ ctx: { capabilities } })
 })

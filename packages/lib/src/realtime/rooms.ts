@@ -102,7 +102,7 @@ const REGISTRY: RoomDef[] = [
       try {
         const { getCachedUserMailVisibility, getOrgCache } = await import('../cache')
         const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
-        if (!roleMap[ctx.session.userId]) return false
+        if (!roleMap[ctx.session.userId]?.role) return false
         const viewer = await getCachedUserMailVisibility(ctx.session.userId, orgId)
         // `none` (residual null-inbox threads) is admin-only — the read path
         // treats those threads as admin+assignee only (decision #2), so
@@ -161,7 +161,7 @@ const REGISTRY: RoomDef[] = [
         if (!orgId) return false
         const { getCachedUserMailVisibility, getOrgCache } = await import('../cache')
         const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
-        if (!roleMap[ctx.session.userId]) return false
+        if (!roleMap[ctx.session.userId]?.role) return false
         const viewer = await getCachedUserMailVisibility(ctx.session.userId, orgId)
         const lens = await getThreadLens(database, orgId, viewer, threadId)
         return satisfiesLens(lens, 'metadata')

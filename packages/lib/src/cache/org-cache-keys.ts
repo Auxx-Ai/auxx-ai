@@ -20,6 +20,7 @@ import type {
   CustomFieldEntity,
   OrganizationMemberInfo,
   OrganizationRole,
+  SeatType,
 } from '@auxx/database/types'
 import type { CompiledProcedure, TriggerExample } from '../agents/procedures/types'
 import type { ToolCategory } from '../ai/agent-framework/types'
@@ -491,7 +492,8 @@ export interface OrgCacheDataMap {
 
   // Membership & permissions
   members: OrgMemberInfo[]
-  memberRoleMap: Record<string, OrganizationRole>
+  memberRoleMap: Record<string, { role: OrganizationRole; seatType: SeatType }>
+  hasPermissionGrants: boolean // whether the org has ANY PermissionGrant rows (composition fast path)
 
   // Business data
   features: FeatureMapObject
@@ -545,7 +547,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
 
   // Membership & permissions (24h TTL, invalidated on member events)
   members: { prefix: 'org:members', ttlSeconds: ONE_DAY },
-  memberRoleMap: { prefix: 'org:member-roles', ttlSeconds: ONE_DAY },
+  memberRoleMap: { prefix: 'org:member-roles:v2', ttlSeconds: ONE_DAY },
+  hasPermissionGrants: { prefix: 'org:has-permission-grants', ttlSeconds: ONE_DAY },
 
   // Business data (24h TTL, all invalidated via cache events)
   features: { prefix: 'org:features', ttlSeconds: THIRTY_DAYS },

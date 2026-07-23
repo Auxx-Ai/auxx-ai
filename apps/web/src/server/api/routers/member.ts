@@ -1,9 +1,9 @@
 // apps/web/src/server/api/routers/member.ts
 
 import { schema } from '@auxx/database'
-import { MemberType, OrganizationRole } from '@auxx/database/enums'
+import { MemberType, OrganizationRole, SeatType } from '@auxx/database/enums'
 import { getCachedMembers, onCacheEvent } from '@auxx/lib/cache'
-import { DehydrationService } from '@auxx/lib/dehydration'
+import { DehydrationCacheService, DehydrationService } from '@auxx/lib/dehydration'
 import { findMemberByUser, MemberService } from '@auxx/lib/members'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -184,6 +184,10 @@ export const memberRouter = createTRPCRouter({
         orgId: ctx.session.organizationId,
         userId: input.memberId,
       })
+      // The composed capability set rides in dehydrated state — bust it so the
+      // member's caps recompose on their next page load (graph now busts
+      // userCapabilities on role change too).
+      await new DehydrationCacheService().invalidateUser(input.memberId)
 
       await recordAuditFromCtx(ctx, {
         category: 'members',
@@ -191,6 +195,37 @@ export const memberRouter = createTRPCRouter({
         targetType: 'OrganizationMember',
         targetId: input.memberId,
         newState: { role: input.role },
+      })
+
+      return result
+    }),
+
+  /** Change a member's seat type (full ⇄ field seat) */
+  updateSeatType: protectedProcedure
+    .input(
+      z.object({
+        memberId: z.string(),
+        seatType: z.enum(SeatType),
+      })
+    )
+    .use(notDemo('change member seat types'))
+    .mutation(async ({ ctx, input }) => {
+      const memberService = new MemberService(ctx.db)
+      // The service enforces the OWNER/ADMIN + worker⇒USER invariant and emits
+      // `member.seat-type.changed` + dehydration invalidation on success.
+      const result = await memberService.updateMemberSeatType({
+        organizationId: ctx.session.organizationId,
+        updaterUserId: ctx.session.user.id,
+        memberToUpdateId: input.memberId,
+        seatType: input.seatType,
+      })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'members',
+        action: 'member.seat_type_changed',
+        targetType: 'OrganizationMember',
+        targetId: input.memberId,
+        newState: { seatType: input.seatType },
       })
 
       return result

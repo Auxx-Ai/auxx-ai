@@ -63,6 +63,7 @@ import { moneyRouter } from './routers/money'
 import { notificationRouter } from './routers/notification'
 import { organizationRouter } from './routers/organization'
 import { participantRouter } from './routers/participant'
+import { permissionsRouter } from './routers/permissions'
 import { procedureRouter } from './routers/procedure'
 import { productRouter } from './routers/product'
 import { promptTemplateRouter } from './routers/promptTemplate'
@@ -161,6 +162,7 @@ export const appRouter = createTRPCRouter({
   notification: notificationRouter,
   organization: organizationRouter,
   participant: participantRouter,
+  permissions: permissionsRouter,
   procedure: procedureRouter,
   product: productRouter,
   promptTemplate: promptTemplateRouter,

@@ -42,7 +42,7 @@ import {
   syncInvoiceToQuickbooks,
   voidInvoice,
 } from '@auxx/lib/money'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
   describeRecurrence,
@@ -55,27 +55,52 @@ import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
-/** protectedProcedure + the `dispatch` feature gate — money gates on dispatch (README). */
+/**
+ * protectedProcedure + the `dispatch` feature gate — money gates on dispatch (README). Layers
+ * the `dispatch.board.manage` capability (§9): money WRITES are desk work full members do (they
+ * hold the key by default), while field (worker) seats — who hold neither board key — 403.
+ * Attaches the resolved `CapabilitySet` as `ctx.capabilities`. Read surfaces use
+ * {@link moneyViewProcedure} instead.
+ */
 const moneyProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   await new FeaturePermissionService().requireAccess(
     ctx.session.organizationId,
     FeatureKey.dispatch
   )
-  return next()
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchBoardManage)
+  return next({ ctx: { capabilities } })
+})
+
+/** {@link moneyProcedure}'s feature gate + the `dispatch.board.view` capability — money READ
+ * surfaces (billing state, payment lists, schedule). Full members hold the view key; field
+ * seats do not. */
+const moneyViewProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  await new FeaturePermissionService().requireAccess(
+    ctx.session.organizationId,
+    FeatureKey.dispatch
+  )
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchBoardView)
+  return next({ ctx: { capabilities } })
 })
 
 /**
  * adminProcedure + the same `dispatch` feature gate as {@link moneyProcedure} — for the money
  * mutations that are destructive corrections or account-level writes, not desk work: manual
  * `deletePayment` (money MI1 build spec §I.1, decision 8), and the Stripe Connect
- * `refundTransaction`/`syncAccountState`/`disconnectPayments` (money MP1 build spec §L).
+ * `refundTransaction`/`syncAccountState`/`disconnectPayments` (money MP1 build spec §L). Layers
+ * `dispatch.board.manage` + attaches `ctx.capabilities`; admins hold every key so the capability
+ * only tightens, never loosens.
  */
 const moneyAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
   await new FeaturePermissionService().requireAccess(
     ctx.session.organizationId,
     FeatureKey.dispatch
   )
-  return next()
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchBoardManage)
+  return next({ ctx: { capabilities } })
 })
 
 /**
@@ -231,7 +256,7 @@ export const moneyRouter = createTRPCRouter({
 
   // ─── Invoicing (money MI1 build spec §I.2) ──────────────────────────────
 
-  getWorkOrderBillingState: moneyProcedure
+  getWorkOrderBillingState: moneyViewProcedure
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
@@ -242,7 +267,7 @@ export const moneyRouter = createTRPCRouter({
       })
     }),
 
-  getContactBillingOverview: moneyProcedure
+  getContactBillingOverview: moneyViewProcedure
     .input(z.object({ contactRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId: contactInstanceId } = parseRecordId(input.contactRecordId)
@@ -327,7 +352,7 @@ export const moneyRouter = createTRPCRouter({
 
   // ─── Batch advance invoicing (plans/dispatch/37a-batch-advance-invoicing.md) ────
 
-  previewInvoiceBatch: moneyProcedure
+  previewInvoiceBatch: moneyViewProcedure
     .input(
       z.object({
         range: z.object({ from: z.date(), to: z.date() }),
@@ -477,7 +502,7 @@ export const moneyRouter = createTRPCRouter({
       })
     }),
 
-  getInvoiceSchedule: moneyProcedure
+  getInvoiceSchedule: moneyViewProcedure
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
@@ -551,7 +576,7 @@ export const moneyRouter = createTRPCRouter({
 
   // ─── Stripe Connect payment collection (money MP1 build spec §L) ───────
 
-  getPaymentAccount: moneyProcedure.query(async ({ ctx }) => {
+  getPaymentAccount: moneyViewProcedure.query(async ({ ctx }) => {
     const account = await getPaymentAccount(ctx.session.organizationId)
     if (!account) return null
     return {
@@ -577,7 +602,7 @@ export const moneyRouter = createTRPCRouter({
     return disconnectPaymentAccount(ctx.session.organizationId)
   }),
 
-  listPayments: moneyProcedure
+  listPayments: moneyViewProcedure
     .input(z.object({ invoiceRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
@@ -599,7 +624,7 @@ export const moneyRouter = createTRPCRouter({
    * label rows by invoice and invalidate that invoice's `listPayments` query on record/delete/
    * refund. `listPayments` itself is untouched — the invoice drawer keeps its exact query key.
    */
-  listPaymentsForWorkOrder: moneyProcedure
+  listPaymentsForWorkOrder: moneyViewProcedure
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId: workOrderInstanceId } = parseRecordId(input.workOrderRecordId)
@@ -626,7 +651,7 @@ export const moneyRouter = createTRPCRouter({
    * refund copy), `createdAt` asc, mapped through the exact `listPayments`/
    * `listPaymentsForWorkOrder` row shape so the card doesn't need its own type.
    */
-  listPaymentsForQuote: moneyProcedure
+  listPaymentsForQuote: moneyViewProcedure
     .input(z.object({ quoteRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId: quoteInstanceId } = parseRecordId(input.quoteRecordId)

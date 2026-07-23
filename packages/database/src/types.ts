@@ -140,6 +140,8 @@ export type SenderType = (typeof Enums.SenderTypeValues)[number]
 
 export type Sensitivity = (typeof Enums.SensitivityValues)[number]
 
+export type SeatType = (typeof Enums.SeatTypeValues)[number]
+
 export type SettingScope = (typeof Enums.SettingScopeValues)[number]
 
 export type SignatureSharingType = (typeof Enums.SignatureSharingTypeValues)[number]

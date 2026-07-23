@@ -1,5 +1,6 @@
 // packages/lib/src/cache/index.ts
 
+export type { UserCapabilities } from '../permissions/capabilities/compose-user-capabilities'
 // ── Accessor types ──
 export type {
   CustomFieldAccessor,
@@ -62,6 +63,7 @@ export {
   getCachedEntityDefId,
   getCachedFieldMap,
   getCachedGroups,
+  getCachedHasPermissionGrants,
   getCachedInstalledApps,
   getCachedKbCatalog,
   getCachedMembers,
@@ -107,7 +109,7 @@ export {
   getUserCache,
 } from './singletons'
 export { TokenCacheService } from './token-cache-service'
-export { getCachedUserMailVisibility } from './user-cache-helpers'
+export { getCachedUserCapabilities, getCachedUserMailVisibility } from './user-cache-helpers'
 export type {
   CachedFavorite,
   CachedTableView,
