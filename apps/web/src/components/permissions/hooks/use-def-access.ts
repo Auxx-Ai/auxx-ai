@@ -52,9 +52,12 @@ const DEFAULT_GRANTEE_LEVEL: ResourcePermission = ResourcePermission.admin
  * - **Reset**: `resetToDefault()` clears every row, returning the def to the
  *   dormant/unrestricted state.
  *
- * Writes are optimistic; the `resource-access.type.changed` realtime event
- * re-composes affected members' capabilities, and the query invalidates on
- * settle to reconcile. Errors surface via `toastError`.
+ * Writes are optimistic; the query invalidates on settle to reconcile, and the
+ * write also fires `publishCapabilitiesChanged` (phase 4 §10) so OTHER members'
+ * open sessions get nudged to re-fetch. Note the client `CapabilitiesProvider`
+ * currently consumes only `caps.keys` (not `defAccess`), so that live nudge only
+ * takes visible effect once a client surface reads def-access live (§8 nav
+ * catalog, §11.1 per-def write affordances). Errors surface via `toastError`.
  */
 export function useDefAccess(entityDefinitionId: string | undefined) {
   const utils = api.useUtils()

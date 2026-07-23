@@ -458,13 +458,17 @@ export const recordRouter = createTRPCRouter({
   /**
    * Create a new entity instance with optional field values
    */
-  create: protectedProcedure.input(createInputSchema).mutation(async ({ ctx, input }) => {
+  create: capabilityProcedure.input(createInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
 
     try {
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+      })
       return await handler.create(input.entityDefinitionId, input.values ?? {})
     } catch (error: any) {
+      // Let def-level ForbiddenError (403) and other AuxxErrors reach the middleware.
+      if (isAuxxError(error)) throw error
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
         message: `Failed to create record: ${error.message}`,
@@ -484,9 +488,11 @@ export const recordRouter = createTRPCRouter({
    * the uncommitted instances. All-or-nothing is approximated instead: a
    * mid-loop failure deletes the rows already created, then rethrows.
    */
-  createMany: protectedProcedure.input(createManyInputSchema).mutation(async ({ ctx, input }) => {
+  createMany: capabilityProcedure.input(createManyInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
-    const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+    const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+      capabilities: ctx.capabilities,
+    })
     const created: Array<Pick<CreateEntityResult, 'recordId' | 'instance'>> = []
 
     try {
@@ -505,6 +511,8 @@ export const recordRouter = createTRPCRouter({
           // Leave the orphan; the original error below is what the user sees.
         }
       }
+      // A def-level 403 on the very first row leaves `created` empty — surface it.
+      if (isAuxxError(error)) throw error
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
         message: `Failed to create records: ${error.message}`,
@@ -515,13 +523,16 @@ export const recordRouter = createTRPCRouter({
   /**
    * Update entity instance field values
    */
-  update: protectedProcedure.input(updateInputSchema).mutation(async ({ ctx, input }) => {
+  update: capabilityProcedure.input(updateInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
 
     try {
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+      })
       return await handler.update(input.recordId, input.values, input.modes)
     } catch (error: any) {
+      if (isAuxxError(error)) throw error
       if (error.message?.includes('not found')) {
         throw new TRPCError({
           code: 'NOT_FOUND',
@@ -538,15 +549,18 @@ export const recordRouter = createTRPCRouter({
   /**
    * Archive entity instance (soft delete)
    */
-  archive: protectedProcedure
+  archive: capabilityProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         return await handler.archive(input.recordId)
       } catch (error: any) {
+        if (isAuxxError(error)) throw error
         if (error.message?.includes('not found')) {
           throw new TRPCError({
             code: 'NOT_FOUND',
@@ -563,15 +577,18 @@ export const recordRouter = createTRPCRouter({
   /**
    * Restore archived entity instance
    */
-  restore: protectedProcedure
+  restore: capabilityProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         return await handler.restore(input.recordId)
       } catch (error: any) {
+        if (isAuxxError(error)) throw error
         if (error.message?.includes('not found')) {
           throw new TRPCError({
             code: 'NOT_FOUND',
@@ -596,7 +613,9 @@ export const recordRouter = createTRPCRouter({
       ctx.capabilities.assert(PermissionKey.recordsDelete)
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         await handler.delete(input.recordId)
         return { success: true }
       } catch (error: any) {
@@ -621,15 +640,18 @@ export const recordRouter = createTRPCRouter({
   /**
    * Bulk archive entity instances
    */
-  bulkArchive: protectedProcedure
+  bulkArchive: capabilityProcedure
     .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         return await handler.bulkArchive(input.recordIds)
       } catch (error: any) {
+        if (isAuxxError(error)) throw error
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to bulk archive records: ${error.message}`,
@@ -648,7 +670,9 @@ export const recordRouter = createTRPCRouter({
       ctx.capabilities.assert(PermissionKey.recordsDelete)
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         // NOTE on friendly messages here: the invoice pre-delete hook's admin-gate /
         // succeeded-charges guard throws `BadRequestError` with an already-friendly message
         // (e.g. "Remove recorded payments before deleting this invoice") — `bulkDeleteEntities`
@@ -675,6 +699,7 @@ export const recordRouter = createTRPCRouter({
         return result
       } catch (error: any) {
         if (error instanceof TRPCError) throw error
+        if (isAuxxError(error)) throw error
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to bulk delete records: ${error.message}`,
@@ -699,10 +724,13 @@ export const recordRouter = createTRPCRouter({
       ctx.capabilities.assert(PermissionKey.recordsDelete)
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+        })
         return await handler.merge(input.targetRecordId, input.sourceRecordIds)
       } catch (error: any) {
         if (error instanceof TRPCError) throw error
+        if (isAuxxError(error)) throw error
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to merge records: ${error.message}`,

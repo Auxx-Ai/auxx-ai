@@ -52,13 +52,16 @@ describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
     expect(caps.canViewEntity('invoice-def')).toBe(false)
   })
 
-  it('denies everything when records.view is absent, even for a grantee', () => {
+  it('most-specific-wins: a def grant lets a base-None member view that def', () => {
+    // v1.5 §5.1 (revised): an explicit per-def grant REPLACES the base records
+    // verb, so a grantee sees the restricted def even with no base records.view.
     const caps = build({
       hasView: false,
       restricted: ['invoice-def'],
       defAccess: { 'invoice-def': 'view' },
     })
-    expect(caps.canViewEntity('invoice-def')).toBe(false)
+    expect(caps.canViewEntity('invoice-def')).toBe(true)
+    // But an UNRESTRICTED def still falls back to base (None here) → denied.
     expect(caps.canViewEntity('anything')).toBe(false)
   })
 
@@ -113,13 +116,15 @@ describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
     expect(admin.canViewEntity('invoice-def')).toBe(true)
   })
 
-  it('OWNER/ADMIN bypass the noun layer but not the verb', () => {
+  it('OWNER/ADMIN bypass both layers (effectiveRecordLevel → admin)', () => {
     const admin = build({ role: 'ADMIN', restricted: ['invoice-def'], defAccess: {} })
     expect(admin.canViewEntity('invoice-def')).toBe(true)
     const owner = build({ role: 'OWNER', restricted: ['invoice-def'], defAccess: {} })
     expect(owner.canViewEntity('invoice-def')).toBe(true)
+    // Under most-specific-wins OWNER/ADMIN resolve to `admin` regardless of the
+    // base verb — in practice they always hold records.view (role default Full).
     const adminNoVerb = build({ role: 'ADMIN', hasView: false, restricted: ['invoice-def'] })
-    expect(adminNoVerb.canViewEntity('invoice-def')).toBe(false)
+    expect(adminNoVerb.canViewEntity('invoice-def')).toBe(true)
   })
 })
 

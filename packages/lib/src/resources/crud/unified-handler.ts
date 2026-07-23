@@ -178,8 +178,9 @@ export interface UnifiedCrudHandlerOptions {
    */
   bypassFieldGuards?: ReadonlySet<SystemAttribute>
   /**
-   * Request-scoped {@link CapabilitySet} for entity-def read enforcement (v2 §2).
-   * Present ⇒ read methods gate each def through `canViewEntity`. **Absent ⇒ no
+   * Request-scoped {@link CapabilitySet} for entity-def enforcement. Present ⇒
+   * read methods gate each def through `canViewEntity` (v2 §2) AND mutation
+   * methods gate through `assertEditEntity` (v2 phase 4 §2). **Absent ⇒ no
    * enforcement** — so internal/system callers (seeders, workers, record-rules)
    * stay unrestricted with no change. Request paths must thread `ctx.capabilities`
    * (resolved once via `capabilityProcedure`).
@@ -237,6 +238,22 @@ export class UnifiedCrudHandler {
     await this.resolveEntityDefinition(entityDefinitionId)
   }
 
+  /**
+   * Write enforcement for bulk ops (§2): assert `assertEditEntity` once per
+   * DISTINCT def among the recordIds. Pure in-memory (just the recordId parse);
+   * a no-op when `capabilities` is absent (internal/system callers).
+   */
+  private assertEditDistinctDefs(recordIds: RecordId[]): void {
+    if (!this.capabilities) return
+    const seen = new Set<string>()
+    for (const recordId of recordIds) {
+      const { entityDefinitionId } = parseRecordId(recordId)
+      if (seen.has(entityDefinitionId)) continue
+      seen.add(entityDefinitionId)
+      this.capabilities.assertEditEntity(entityDefinitionId)
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // SINGLE RECORD OPERATIONS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -256,6 +273,8 @@ export class UnifiedCrudHandler {
     values: Record<string, unknown>,
     options: CrudOptions = {}
   ): Promise<CreateEntityResult> {
+    // Write enforcement (§2): absent capabilities ⇒ internal caller ⇒ unrestricted.
+    this.capabilities?.assertEditEntity(entityDefinitionId)
     await this.warmCache(entityDefinitionId)
     // The `external_id` ARRAY attribute is retired (contact/company). Its writers
     // (browser extension) still send it under `values` as an array; peel it off
@@ -327,6 +346,7 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ) {
     const { entityDefinitionId } = parseRecordId(recordId)
+    this.capabilities?.assertEditEntity(entityDefinitionId)
     await this.warmCache(entityDefinitionId)
     return updateEntity(this.getMutationContext(), recordId, values, modes, options)
   }
@@ -608,6 +628,8 @@ export class UnifiedCrudHandler {
    */
   async archive(recordId: RecordId, options: CrudOptions = {}) {
     const { entityDefinitionId } = parseRecordId(recordId)
+    // Soft delete is an edit (§0.1).
+    this.capabilities?.assertEditEntity(entityDefinitionId)
     await this.warmCache(entityDefinitionId)
     return archiveEntity(this.getMutationContext(), recordId, options)
   }
@@ -620,6 +642,7 @@ export class UnifiedCrudHandler {
    */
   async restore(recordId: RecordId, options: CrudOptions = {}) {
     const { entityDefinitionId } = parseRecordId(recordId)
+    this.capabilities?.assertEditEntity(entityDefinitionId)
     await this.warmCache(entityDefinitionId)
     return restoreEntity(this.getMutationContext(), recordId, options)
   }
@@ -632,6 +655,9 @@ export class UnifiedCrudHandler {
    */
   async delete(recordId: RecordId, options: CrudOptions = {}): Promise<void> {
     const { entityDefinitionId } = parseRecordId(recordId)
+    // Record delete is a write (§0.1); the router additionally asserts the
+    // coarse `records.delete` verb (belt-and-braces Layer-2 gate).
+    this.capabilities?.assertEditEntity(entityDefinitionId)
     await this.warmCache(entityDefinitionId)
     return deleteEntity(this.getMutationContext(), recordId, options)
   }
@@ -653,6 +679,7 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ): Promise<{ created: EntityInstanceEntity[]; errors: Array<{ index: number; error: string }> }> {
     if (items.length === 0) return { created: [], errors: [] }
+    this.capabilities?.assertEditEntity(entityDefinitionId)
     await this.warmCache(entityDefinitionId)
     return bulkCreateEntities(this.getMutationContext(), entityDefinitionId, items, options)
   }
@@ -668,6 +695,7 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ): Promise<{ updated: number; errors: Array<{ recordId: RecordId; error: string }> }> {
     if (updates.length === 0) return { updated: 0, errors: [] }
+    this.assertEditDistinctDefs(updates.map((u) => u.recordId))
     const { entityDefinitionId } = parseRecordId(updates[0]!.recordId)
     await this.warmCache(entityDefinitionId)
     return bulkUpdateEntities(this.getMutationContext(), updates, options)
@@ -681,6 +709,7 @@ export class UnifiedCrudHandler {
    */
   async bulkArchive(recordIds: RecordId[], options: CrudOptions = {}): Promise<{ count: number }> {
     if (recordIds.length === 0) return { count: 0 }
+    this.assertEditDistinctDefs(recordIds)
     const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
     return bulkArchiveEntities(this.getMutationContext(), recordIds, options)
@@ -697,6 +726,7 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ): Promise<{ count: number; errors: Array<{ recordId: RecordId; message: string }> }> {
     if (recordIds.length === 0) return { count: 0, errors: [] }
+    this.assertEditDistinctDefs(recordIds)
     const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
     return bulkDeleteEntities(this.getMutationContext(), recordIds, options)
@@ -715,6 +745,7 @@ export class UnifiedCrudHandler {
     value: unknown
   ): Promise<{ count: number }> {
     if (recordIds.length === 0) return { count: 0 }
+    this.assertEditDistinctDefs(recordIds)
     return bulkSetFieldValue(this.getMutationContext(), recordIds, fieldId, value)
   }
 
@@ -1050,6 +1081,8 @@ export class UnifiedCrudHandler {
    * @param sourceRecordIds - RecordIds of instances to merge into target
    */
   async merge(targetRecordId: RecordId, sourceRecordIds: RecordId[]) {
+    // Merge writes the survivor and removes the sources — assert edit on every def.
+    this.assertEditDistinctDefs([targetRecordId, ...sourceRecordIds])
     return mergeEntities(this.getMutationContext(), targetRecordId, sourceRecordIds)
   }
 
@@ -1065,6 +1098,7 @@ export class UnifiedCrudHandler {
    * @param values - Field values (fieldId -> value)
    */
   async createWithValues(entityDefinitionId: string, values: Record<string, unknown>) {
+    this.capabilities?.assertEditEntity(entityDefinitionId)
     await this.warmCache(entityDefinitionId)
     return createWithValuesImpl(this.getMutationContext(), entityDefinitionId, values)
   }
@@ -1077,6 +1111,16 @@ export class UnifiedCrudHandler {
    * @param values - Field values to update (fieldId -> value)
    */
   async updateValues(instanceId: string, values: Record<string, unknown>) {
+    // Only the instanceId is known here, so resolve its def to enforce — but
+    // solely when a request-scoped CapabilitySet is present (internal callers
+    // skip the extra lookup entirely).
+    if (this.capabilities) {
+      const instance = await getEntityInstance({
+        id: instanceId,
+        organizationId: this.organizationId,
+      })
+      if (instance.isOk()) this.capabilities.assertEditEntity(instance.value.entityDefinitionId)
+    }
     return updateValuesImpl(this.getMutationContext(), instanceId, values)
   }
 
