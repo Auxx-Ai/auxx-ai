@@ -5,7 +5,7 @@ import { type AreaMetadata, Level } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { cn } from '@auxx/ui/lib/utils'
-import { Undo2 } from 'lucide-react'
+import { AlertTriangle, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 
@@ -25,11 +25,10 @@ interface LevelControlProps {
   /** The level this area falls through to when unset (role default or member baseline). */
   inherited: Level
   /**
-   * Raise-only floor (override mode): levels at or below this are disabled, so an
-   * override can only *raise* above the baseline. Omit for the baseline surface,
-   * where any level (including a deliberate `None`) is selectable.
+   * Override mode: the explicit level lifts nothing above the baseline, so the
+   * server composes it away. Renders an "ignored" warning next to the selector.
    */
-  floor?: Level
+  ignored?: boolean
   /** Emits the new explicit level, or `undefined` to reset the area to inherited. */
   onChange: (level: Level | undefined) => void
   disabled?: boolean
@@ -40,14 +39,16 @@ interface LevelControlProps {
  * per rung the area offers (`None` + each ladder rung — so `records` shows
  * None/Read/Edit/Full while a toggle area shows None/Full). Shows the effective
  * level (`value ?? inherited`); while inherited it renders muted, and a reset
- * button appears once an explicit level is set. In override mode, rungs at or
- * below `floor` are disabled (raise-only).
+ * button appears once an explicit level is set. Every rung stays selectable —
+ * the raise-only rule for overrides is enforced server-side (an override at or
+ * below the baseline is composed away), and surfaced in the UI as an "ignored"
+ * warning rather than a disabled rung.
  */
 export function LevelControl({
   area,
   value,
   inherited,
-  floor,
+  ignored = false,
   onChange,
   disabled = false,
 }: LevelControlProps) {
@@ -60,22 +61,12 @@ export function LevelControl({
 
   return (
     <div className='flex items-center gap-1'>
-      <RadioTab
-        value={String(effective)}
-        onValueChange={(v) => onChange(Number(v) as Level)}
-        size='sm'
-        className={cn(!isExplicit && 'opacity-60')}>
-        {levels.map((level) => (
-          <RadioTabItem
-            key={level}
-            value={String(level)}
-            size='sm'
-            disabled={disabled || (floor !== undefined && level <= floor)}
-            className='min-w-0 px-2.5'>
-            {LEVEL_LABELS[level]}
-          </RadioTabItem>
-        ))}
-      </RadioTab>
+      <Tooltip content='This override is ignored — the member baseline already grants this level of access.'>
+        <AlertTriangle
+          className={cn('size-3.5 text-amber-500', !ignored && 'invisible')}
+          aria-hidden={!ignored}
+        />
+      </Tooltip>
       <Tooltip content='Reset to inherited'>
         <Button
           type='button'
@@ -83,11 +74,28 @@ export function LevelControl({
           variant='ghost'
           aria-label='Reset to inherited'
           disabled={disabled || !isExplicit}
-          className={cn('text-muted-foreground', !isExplicit && 'invisible')}
+          className={cn('size-6 text-muted-foreground', !isExplicit && 'invisible')}
           onClick={() => onChange(undefined)}>
           <Undo2 />
         </Button>
       </Tooltip>
+      <RadioTab
+        value={String(effective)}
+        onValueChange={(v) => onChange(Number(v) as Level)}
+        size='xs'
+        radioGroupClassName='after:rounded-full'
+        className={cn('rounded-full', !isExplicit && 'opacity-60')}>
+        {levels.map((level) => (
+          <RadioTabItem
+            key={level}
+            value={String(level)}
+            size='xs'
+            disabled={disabled}
+            className='h-full w-auto min-w-0 rounded-full px-2.5'>
+            {LEVEL_LABELS[level]}
+          </RadioTabItem>
+        ))}
+      </RadioTab>
     </div>
   )
 }

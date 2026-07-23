@@ -13,7 +13,7 @@ interface LeveledAreaGridProps {
   roleDefaults: Record<Area, Level>
   /**
    * Override mode: the effective member baseline per area. Each area inherits from
-   * (and is raise-only floored at) this instead of the raw role default.
+   * this instead of the raw role default; overrides only take effect above it.
    */
   baseline?: Partial<Record<Area, Level>>
   /**
@@ -45,9 +45,10 @@ const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
  * The shared leveled surface: every grantable area rendered as a labelled row
  * with its {@link LevelControl}, grouped by registry group (Tickets, Records,
  * Automation, …). `adminOnly` areas are never shown — they're not grantable below
- * ADMIN. In `override` mode each area inherits from the member baseline and is
- * raise-only; in `baseline` mode it inherits from the role default and is freely
- * settable (including a deliberate `None`).
+ * ADMIN. In `override` mode each area inherits from the member baseline (and is
+ * raise-only, enforced server-side); in `baseline` mode it inherits from the role
+ * default. Every rung is selectable in both modes — an override that doesn't lift
+ * the baseline is composed away and flagged as "ignored" on the grantee.
  */
 export function LeveledAreaGrid({
   values,
@@ -82,7 +83,11 @@ export function LeveledAreaGrid({
                     area={meta}
                     value={values[area]}
                     inherited={inherited}
-                    floor={mode === 'override' ? inherited : undefined}
+                    ignored={
+                      mode === 'override' &&
+                      values[area] !== undefined &&
+                      (values[area] as Level) <= inherited
+                    }
                     onChange={(level) => onChange(area, level)}
                     disabled={disabled}
                   />
