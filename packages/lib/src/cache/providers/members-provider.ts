@@ -1,7 +1,7 @@
 // packages/lib/src/cache/providers/members-provider.ts
 
 import { schema } from '@auxx/database'
-import type { OrganizationRole } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { eq } from 'drizzle-orm'
 import type { OrgMemberInfo } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
@@ -15,6 +15,7 @@ export const membersProvider: CacheProvider<OrgMemberInfo[]> = {
         userId: schema.OrganizationMember.userId,
         organizationId: schema.OrganizationMember.organizationId,
         role: schema.OrganizationMember.role,
+        seatType: schema.OrganizationMember.seatType,
         status: schema.OrganizationMember.status,
         onChatDuty: schema.OrganizationMember.onChatDuty,
         user: {
@@ -33,13 +34,15 @@ export const membersProvider: CacheProvider<OrgMemberInfo[]> = {
   },
 }
 
-/** Derives userId → role map from members (computed independently for independent invalidation) */
-export const memberRoleMapProvider: CacheProvider<Record<string, OrganizationRole>> = {
+/** Derives userId → { role, seatType } map from members (computed independently for independent invalidation) */
+export const memberRoleMapProvider: CacheProvider<
+  Record<string, { role: OrganizationRole; seatType: SeatType }>
+> = {
   async compute(orgId, db) {
     const members = await membersProvider.compute(orgId, db)
-    const map: Record<string, OrganizationRole> = {}
+    const map: Record<string, { role: OrganizationRole; seatType: SeatType }> = {}
     for (const m of members) {
-      map[m.userId] = m.role
+      map[m.userId] = { role: m.role, seatType: m.seatType }
     }
     return map
   },

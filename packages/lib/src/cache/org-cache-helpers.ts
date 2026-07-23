@@ -190,6 +190,14 @@ export async function isOrgMember(orgId: string, userId: string): Promise<boolea
   return members.some((m) => m.userId === userId)
 }
 
+/**
+ * Whether the org has ANY PermissionGrant rows (cached). Composition reads this
+ * to skip the grant query for orgs that never customized (§6.1).
+ */
+export async function getCachedHasPermissionGrants(orgId: string): Promise<boolean> {
+  return getOrgCache().get(orgId, 'hasPermissionGrants')
+}
+
 // ── Group cache helpers ──
 
 /**

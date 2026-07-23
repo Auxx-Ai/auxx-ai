@@ -70,13 +70,15 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // stop resolving for its members, so both visibility caches recompute.
   'group.deleted': {
     org: ['groups', 'groupMembers', 'mailGrantIndex'],
-    user: ['userMailVisibility'],
+    user: ['userMailVisibility', 'userCapabilities'],
   },
   // Emit sites pass the affected `userIds` (or broadcast for non-user member
-  // edits) so the per-user visibility contexts recompute.
+  // edits) so the per-user visibility contexts recompute. `groupMembers` is the
+  // key behind getCachedUserGroupIds, so group grants change the composed
+  // capability set — recompute userCapabilities too.
   'group.members.changed': {
     org: ['groups', 'groupMembers', 'mailGrantIndex'],
-    user: ['userMailVisibility'],
+    user: ['userMailVisibility', 'userCapabilities'],
   },
 
   'agent.created': ['agents'],
@@ -135,15 +137,21 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   // ── Mixed events (org + user keys) ──
   'member.added': {
-    user: ['userMemberships', 'userMailVisibility'],
+    user: ['userMemberships', 'userMailVisibility', 'userCapabilities'],
     org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.removed': {
-    user: ['userMemberships', 'userMailVisibility'],
+    user: ['userMemberships', 'userMailVisibility', 'userCapabilities'],
     org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.role.changed': {
-    user: ['userMemberships', 'userMailVisibility'],
+    user: ['userMemberships', 'userMailVisibility', 'userCapabilities'],
+    org: ['members', 'memberRoleMap'],
+  },
+  // Seat-type change (full ⇄ worker) — the role map carries seatType, so the
+  // composed capability set (and its ceiling clamp) changes.
+  'member.seat-type.changed': {
+    user: ['userCapabilities'],
     org: ['members', 'memberRoleMap'],
   },
   // Chat-duty toggle (Phase 4c) — only the cached `members` row changes
@@ -155,6 +163,16 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // target a single user; group/role/team grants fan out org-wide
   // (`broadcastUserKeys` at the emit site).
   'resource-access.changed': { user: ['userMailVisibility'], org: ['mailGrantIndex'] },
+  // Type-level (entityInstanceId IS NULL) grant changes feed `defAccess` in the
+  // capability blob. A narrow event so the noisy instance-level
+  // `resource-access.changed` is NOT piggybacked (§9.0).
+  'resource-access.type.changed': { user: ['userCapabilities'] },
+
+  // ── Capability grants (permissions plan §5.3) ──
+  // Emitted by every PermissionGrant create/update/delete. User grants target a
+  // single user; role/group grants fan out org-wide (`broadcastUserKeys` at the
+  // emit site, same pattern as `resource-access.changed`).
+  'permission-grant.changed': { user: ['userCapabilities'], org: ['hasPermissionGrants'] },
 
   // ── Settings events ──
   'org.settings.changed': { org: ['orgSettings'], user: ['userSettings'] },

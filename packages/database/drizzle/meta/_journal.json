@@ -2108,6 +2108,13 @@
       "when": 1784751318461,
       "tag": "0300_recurrence_default_assignee_worker",
       "breakpoints": true
+    },
+    {
+      "idx": 301,
+      "version": "7",
+      "when": 1784767671360,
+      "tag": "0301_seat_type_and_permission_grants",
+      "breakpoints": true
     }
   ]
 }

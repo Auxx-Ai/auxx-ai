@@ -59,6 +59,40 @@ async function emitResourceAccessChanged(
 }
 
 /**
+ * Emit the narrow type-level cache event that busts the `userCapabilities`
+ * `defAccess` map after a TYPE-level ResourceAccess mutation (§9.0). Same
+ * user/broadcast fan-out shape as {@link emitResourceAccessChanged}; kept
+ * separate so the noisy instance-level event isn't piggybacked onto capability
+ * invalidation. Call AFTER the DB write commits, in addition to the
+ * instance-level emit.
+ */
+async function emitResourceAccessTypeChanged(
+  organizationId: string,
+  grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
+): Promise<void> {
+  const userIds = new Set<string>()
+  let broadcast = false
+  for (const g of grantees) {
+    if (g.granteeType === ResourceGranteeType.user) userIds.add(g.granteeId)
+    else broadcast = true
+  }
+
+  if (broadcast) {
+    await onCacheEvent('resource-access.type.changed', {
+      orgId: organizationId,
+      broadcastUserKeys: true,
+    })
+    return
+  }
+
+  await Promise.all(
+    Array.from(userIds).map((userId) =>
+      onCacheEvent('resource-access.type.changed', { orgId: organizationId, userId })
+    )
+  )
+}
+
+/**
  * Grant access to a specific entity instance.
  */
 export async function grantInstanceAccess(
@@ -136,9 +170,9 @@ export async function grantTypeAccess(
       },
     })
 
-  await emitResourceAccessChanged(organizationId, [
-    { granteeType: input.granteeType, granteeId: input.granteeId },
-  ])
+  const grantees = [{ granteeType: input.granteeType, granteeId: input.granteeId }]
+  await emitResourceAccessChanged(organizationId, grantees)
+  await emitResourceAccessTypeChanged(organizationId, grantees)
 }
 
 /**
@@ -196,9 +230,9 @@ export async function revokeTypeAccess(
     .returning()
 
   if (result.length > 0) {
-    await emitResourceAccessChanged(organizationId, [
-      { granteeType: input.granteeType, granteeId: input.granteeId },
-    ])
+    const grantees = [{ granteeType: input.granteeType, granteeId: input.granteeId }]
+    await emitResourceAccessChanged(organizationId, grantees)
+    await emitResourceAccessTypeChanged(organizationId, grantees)
   }
 
   return result.length > 0
@@ -302,10 +336,9 @@ export async function setTypeAccess(
 
   // Affected grantees = removed ∪ added (a removed grantee also loses access).
   const affected = new Set([...removed.map((r) => r.granteeId), ...grants.map((g) => g.granteeId)])
-  await emitResourceAccessChanged(
-    organizationId,
-    Array.from(affected, (granteeId) => ({ granteeType, granteeId }))
-  )
+  const grantees = Array.from(affected, (granteeId) => ({ granteeType, granteeId }))
+  await emitResourceAccessChanged(organizationId, grantees)
+  await emitResourceAccessTypeChanged(organizationId, grantees)
 }
 
 /**

@@ -154,7 +154,7 @@ export async function computeUserMailVisibility(
 
   return composeUserMailVisibility({
     userId,
-    role: roleMap[userId],
+    role: roleMap[userId]?.role,
     inboxes: inboxes.map((i) => ({
       id: i.id,
       defaultLens: i.defaultLens,

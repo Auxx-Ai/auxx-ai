@@ -49,9 +49,11 @@ export enum FeatureKey {
   dashboards = 'dashboards',
   dispatch = 'dispatch',
   sequences = 'sequences',
+  granularPermissions = 'granularPermissions',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
+  workerSeats = 'workerSeats',
   channels = 'channels',
   workflowsLimit = 'workflowsLimit',
   savedViews = 'savedViews',
@@ -208,9 +210,24 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     description: 'Automated outbound email sequences and contact enrollment.',
     group: 'Automation',
   },
+  {
+    key: FeatureKey.granularPermissions,
+    type: 'boolean',
+    label: 'Granular Permissions',
+    description: 'Configure per-member capability grants beyond the built-in role defaults.',
+    group: 'Security',
+  },
 
   // ── Static limits ──
   { key: FeatureKey.teammates, type: 'static', label: 'Teammates', group: 'Team', unit: 'seats' },
+  {
+    key: FeatureKey.workerSeats,
+    type: 'static',
+    label: 'Field Seats',
+    description: 'Bundled field seats — cheaper, capability-capped member seats for field staff.',
+    group: 'Team',
+    unit: 'seats',
+  },
   {
     key: FeatureKey.channels,
     type: 'static',

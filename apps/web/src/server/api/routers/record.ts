@@ -6,6 +6,7 @@ import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { BadRequestError } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
 import { getRecordIdentityViews } from '@auxx/lib/identity'
+import { PermissionKey } from '@auxx/lib/permissions'
 import {
   type CreateEntityResult,
   type LookupCandidate,
@@ -23,7 +24,7 @@ import {
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, isAuxxError, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter, isAuxxError, protectedProcedure } from '../trpc'
 
 /** Extract socket ID from tRPC context headers for realtime self-event exclusion. */
 function getSocketId(ctx: { headers: Headers }): string | undefined {
@@ -575,10 +576,12 @@ export const recordRouter = createTRPCRouter({
   /**
    * Permanently delete entity instance
    */
-  delete: protectedProcedure
+  delete: capabilityProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
+      // Layer-2 write guard (§11.4): deleting a record requires the delete verb.
+      ctx.capabilities.assert(PermissionKey.recordsDelete)
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
@@ -625,10 +628,12 @@ export const recordRouter = createTRPCRouter({
   /**
    * Bulk delete entity instances
    */
-  bulkDelete: protectedProcedure
+  bulkDelete: capabilityProcedure
     .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
+      // Layer-2 write guard (§11.4): bulk delete requires the delete verb.
+      ctx.capabilities.assert(PermissionKey.recordsDelete)
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
@@ -668,7 +673,7 @@ export const recordRouter = createTRPCRouter({
   /**
    * Merge multiple entity instances into a target instance
    */
-  merge: protectedProcedure
+  merge: capabilityProcedure
     .input(
       z.object({
         targetRecordId: recordIdSchema,
@@ -677,6 +682,9 @@ export const recordRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
+      // Layer-2 write guard (§11.4): merge permanently REMOVES the source records, so it gates
+      // on the delete verb (chosen over recordsEdit — the destructive half is the binding one).
+      ctx.capabilities.assert(PermissionKey.recordsDelete)
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))

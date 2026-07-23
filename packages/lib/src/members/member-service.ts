@@ -9,12 +9,14 @@ import { type Database, database, schema } from '@auxx/database'
 import type {
   OrganizationInvitationEntity as OrganizationInvitation,
   OrganizationRole,
+  SeatType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
 import { and, asc, count, eq, gt, ilike, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { BadRequestError, NotFoundError } from '../errors'
 import { publisher } from '../events'
 import { enqueueEmailJob } from '../jobs/email'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
@@ -691,6 +693,10 @@ export class MemberService {
             userId: acceptingUserId,
             organizationId: organizationId,
             role: invitation.role,
+            // New members are full seats by default (§8). Field (worker) seats are
+            // assigned explicitly afterwards via `updateMemberSeatType`; the
+            // OrganizationInvitation row carries no seatType to thread through yet.
+            seatType: 'full',
             status: 'ACTIVE', // Set as Active
             updatedAt: new Date(),
           })
@@ -1134,6 +1140,16 @@ export class MemberService {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Member not found.' })
     }
 
+    // §2.A invariant: a field (worker) seat can never hold ADMIN/OWNER authority
+    // (`seatType='worker'` ⇒ `role='USER'`). The seat type must be switched to
+    // 'full' before the member can be promoted.
+    if (targetMembership.seatType === 'worker' && newRole !== 'USER') {
+      throw new BadRequestError(
+        'This member holds a field seat, which is limited to the Member role. ' +
+          "Change their seat type to 'full' before promoting them to Admin or Owner."
+      )
+    }
+
     // Cannot update own role
     if (updaterUserId === memberToUpdateId) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot change your own role.' })
@@ -1210,6 +1226,83 @@ export class MemberService {
       organizationId,
       memberToUpdateId,
       newRole,
+      updaterUserId,
+    })
+    return { success: true }
+  }
+
+  /**
+   * Changes a member's seat type (full ⇄ worker/field seat, §2.A/§3.1).
+   *
+   * - Only OWNER/ADMIN may change seat types.
+   * - Invariant: demoting to a field seat (`'worker'`) requires the member's
+   *   role already be USER — admins/owners are always full seats (change the
+   *   role first).
+   *
+   * On success the seat type is persisted and, mirroring the `member.added`
+   * emit path, `member.seat-type.changed` is fired and the member's dehydrated
+   * state is invalidated so their capability set + ceiling clamp recompose on
+   * the next request. Lazy imports keep the members module off the cache /
+   * dehydration stacks at load time.
+   */
+  async updateMemberSeatType(params: {
+    organizationId: string
+    updaterUserId: string
+    memberToUpdateId: string
+    seatType: SeatType
+  }): Promise<{ success: true }> {
+    const { organizationId, updaterUserId, memberToUpdateId, seatType } = params
+
+    logger.info('Attempting to update member seat type', {
+      organizationId,
+      memberToUpdateId,
+      seatType,
+      updaterUserId,
+    })
+
+    // 1. Only OWNER/ADMIN may change seat types.
+    await this.checkAdminOrOwnerPermission(updaterUserId, organizationId)
+
+    // 2. Load the target membership.
+    const targetMembership = await findMemberByUser(organizationId, memberToUpdateId, this.db)
+    if (!targetMembership) {
+      throw new NotFoundError('Member not found.')
+    }
+
+    // 3. Invariant: a field seat implies role USER. An ADMIN/OWNER must be
+    //    demoted to USER before they can take a field seat.
+    if (seatType === 'worker' && targetMembership.role !== 'USER') {
+      throw new BadRequestError(
+        'Only members with the Member role can be moved to a field seat. ' +
+          'Change their role to Member first.'
+      )
+    }
+
+    // 4. Persist (no-op when unchanged) and recompose caches.
+    if (targetMembership.seatType !== seatType) {
+      await this.db
+        .update(schema.OrganizationMember)
+        .set({ seatType, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.OrganizationMember.organizationId, organizationId),
+            eq(schema.OrganizationMember.userId, memberToUpdateId)
+          )
+        )
+
+      const { onCacheEvent } = await import('../cache')
+      await onCacheEvent('member.seat-type.changed', {
+        orgId: organizationId,
+        userId: memberToUpdateId,
+      })
+      const { DehydrationCacheService } = await import('../dehydration/cache')
+      await new DehydrationCacheService().invalidateUser(memberToUpdateId)
+    }
+
+    logger.info('Member seat type updated successfully', {
+      organizationId,
+      memberToUpdateId,
+      seatType,
       updaterUserId,
     })
     return { success: true }

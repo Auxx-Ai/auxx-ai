@@ -4,9 +4,9 @@ import { FieldValueService } from '@auxx/lib/field-values'
 import type { FieldReference } from '@auxx/types/field'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { recordIdSchema } from '@auxx/types/resource'
+import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 /** Schema for FieldReference - either ResourceFieldId or FieldPath */
 const fieldReferenceSchema = z.union([
@@ -32,7 +32,7 @@ export const fieldValueRouter = createTRPCRouter({
    * Set a single field value for a resource.
    * Expects recordId in RecordId format (entityDefinitionId:entityInstanceId).
    */
-  set: protectedProcedure
+  set: capabilityProcedure
     .input(
       z.object({
         recordId: z.string(), // RecordId format
@@ -54,6 +54,11 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Layer-2 write guard (§11.4): the required key is per-entity (recordsEdit, or
+      // dispatch.board.manage for work orders) — an in-memory Set lookup, no extra I/O.
+      const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
+      ctx.capabilities.assertWriteEntity(entityDefinitionId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
@@ -92,7 +97,7 @@ export const fieldValueRouter = createTRPCRouter({
    * Set values for multiple resources (bulk operation).
    * Expects recordIds in RecordId format.
    */
-  setBulk: protectedProcedure
+  setBulk: capabilityProcedure
     .input(
       z.object({
         recordIds: z.array(z.string()).min(1), // RecordId format
@@ -118,6 +123,13 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Layer-2 write guard (§11.4): assert per DISTINCT entity def in the batch — zero extra
+      // I/O beyond the recordId parse the service already does, in-memory Set lookups only.
+      const distinctDefIds = new Set(
+        input.recordIds.map((id) => parseRecordId(id as RecordId).entityDefinitionId)
+      )
+      for (const defId of distinctDefIds) ctx.capabilities.assertWriteEntity(defId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
@@ -138,7 +150,7 @@ export const fieldValueRouter = createTRPCRouter({
    * Delete a field value for a resource.
    * Expects recordId in RecordId format.
    */
-  delete: protectedProcedure
+  delete: capabilityProcedure
     .input(
       z.object({
         recordId: z.string(), // RecordId format
@@ -146,6 +158,10 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Layer-2 write guard (§11.4): clearing a field value is a write to that entity.
+      const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
+      ctx.capabilities.assertWriteEntity(entityDefinitionId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,

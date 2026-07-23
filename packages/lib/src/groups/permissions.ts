@@ -30,7 +30,7 @@ export async function getGroupPermission(
 
   // Check org role from cache (no DB query)
   const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
-  const role = memberRoleMap[userId]
+  const role = memberRoleMap[userId]?.role
 
   if (role === 'OWNER' || role === 'ADMIN') {
     return ResourcePermission.admin
@@ -63,7 +63,7 @@ export async function hasGroupPermission(
 
   // Check org role from cache (no DB query)
   const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
-  const role = memberRoleMap[userId]
+  const role = memberRoleMap[userId]?.role
 
   if (role === 'OWNER' || role === 'ADMIN') {
     return true // Admin satisfies any permission

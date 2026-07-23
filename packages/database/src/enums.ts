@@ -1764,6 +1764,20 @@ export const ResourcePermission = {
   admin: 'admin',
 } as const
 
+/**
+ * Member seat type — packaging/billing identity, decoupled from `role` authority.
+ * `worker` (UI: "Field seat") locks the member to a tiny capability ceiling so it
+ * can be priced below a full seat. Invariant: `worker` ⇒ role `USER`.
+ * See plans/permissions/capability-layer-and-worker-seat.md §2.A.
+ */
+export const SeatTypeValues = ['full', 'worker'] as const
+export type SeatType = (typeof SeatTypeValues)[number]
+
+export const SeatType = {
+  full: 'full',
+  worker: 'worker',
+} as const
+
 // ============================================================================
 // ACTOR FIELD ENUMS
 // ============================================================================

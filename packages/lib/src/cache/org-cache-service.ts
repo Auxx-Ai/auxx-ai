@@ -128,7 +128,13 @@ export class OrganizationCacheService {
   ): unknown {
     const ARRAY_KEYS: OrgCacheKeyName[] = ['resources', 'members', 'inboxes', 'overages']
     const NESTED_RECORD_KEYS: OrgCacheKeyName[] = ['customFields']
-    const SCALAR_KEYS: OrgCacheKeyName[] = ['systemUser', 'subscription', 'orgProfile', 'features']
+    const SCALAR_KEYS: OrgCacheKeyName[] = [
+      'systemUser',
+      'subscription',
+      'orgProfile',
+      'features',
+      'hasPermissionGrants',
+    ]
 
     if (ARRAY_KEYS.includes(key)) {
       return new ArrayAccessor(dataFn as () => Promise<any[]>)

@@ -1,6 +1,7 @@
 // packages/lib/src/cache/user-cache-keys.ts
 
 import type { DehydratedUser } from '../dehydration/types'
+import type { UserCapabilities } from '../permissions/capabilities/compose-user-capabilities'
 import type { UserMailVisibility } from '../permissions/visibility/context'
 import type { SettingValue } from '../settings/types'
 
@@ -70,6 +71,7 @@ export interface UserCacheDataMap {
   userTableViews: CachedTableView[]
   userFavorites: CachedFavorite[]
   userMailVisibility: UserMailVisibility
+  userCapabilities: UserCapabilities
 }
 
 export type UserCacheKeyName = keyof UserCacheDataMap
@@ -81,6 +83,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
   'userTableViews',
   'userFavorites',
   'userMailVisibility',
+  'userCapabilities',
 ])
 
 const ONE_DAY = 60 * 60 * 24
@@ -99,4 +102,5 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // v2: inboxLens values normalized to scalar lenses (cached entries built
   // from the pre-v5 `inboxes` shape carried SINGLE_SELECT arrays).
   userMailVisibility: { prefix: 'user:mail-visibility:v2', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v1', ttlSeconds: ONE_DAY },
 }

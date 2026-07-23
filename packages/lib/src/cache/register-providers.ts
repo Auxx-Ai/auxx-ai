@@ -20,6 +20,7 @@ import { entityDefsProvider } from './providers/entity-defs-provider'
 import { featuresProvider } from './providers/features-provider'
 import { groupMembersProvider } from './providers/group-members-provider'
 import { groupsProvider } from './providers/groups-provider'
+import { hasPermissionGrantsProvider } from './providers/has-permission-grants-provider'
 import { inboxesProvider } from './providers/inboxes-provider'
 import { installedAppsProvider } from './providers/installed-apps-provider'
 import { kbCatalogProvider } from './providers/kb-catalog-provider'
@@ -36,6 +37,7 @@ import { recordRulesProvider } from './providers/record-rules-provider'
 import { resourcesProvider } from './providers/resources-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
+import { userCapabilitiesProvider } from './providers/user-capabilities-provider'
 import { userFavoritesProvider } from './providers/user-favorites-provider'
 import { userMailViewsProvider } from './providers/user-mail-views-provider'
 import { userMailVisibilityProvider } from './providers/user-mail-visibility-provider'
@@ -63,6 +65,7 @@ export function registerAllProviders(
   // Org-scoped: membership & permissions
   orgCache.register('members', membersProvider)
   orgCache.register('memberRoleMap', memberRoleMapProvider)
+  orgCache.register('hasPermissionGrants', hasPermissionGrantsProvider)
 
   // Org-scoped: business data
   orgCache.register('features', featuresProvider)
@@ -97,6 +100,7 @@ export function registerAllProviders(
   userCache.register('userTableViews', userTableViewsProvider)
   userCache.register('userFavorites', userFavoritesProvider)
   userCache.register('userMailVisibility', userMailVisibilityProvider)
+  userCache.register('userCapabilities', userCapabilitiesProvider)
 
   // App-scoped (global)
   appCache.register('plans', plansProvider)

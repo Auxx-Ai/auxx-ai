@@ -62,7 +62,7 @@ import {
 import { BadRequestError, ForbiddenError, NotFoundError } from '@auxx/lib/errors'
 import { FieldValueService } from '@auxx/lib/field-values'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import type { TypedFieldValue } from '@auxx/types'
@@ -82,12 +82,50 @@ const dispatchProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 })
 
 /** `dispatchProcedure` + org admin/owner check — worker CRUD (§A.3) and visit scheduling
- * (§B, members are board-read-only per 04-ui §6) are admin surfaces. */
+ * (§B, members are board-read-only per 04-ui §6) are admin surfaces. Layers the
+ * `dispatchBoardManage` capability (Layer 2) on top of the admin gate and attaches the
+ * resolved `CapabilitySet` as `ctx.capabilities` — admins hold every key by default, so
+ * behavior is unchanged (the capability tightens, never loosens). */
 const dispatchAdminProcedure = dispatchProcedure.use(async ({ ctx, next }) => {
   if (!(await isAdminOrOwner(ctx.session.organizationId, ctx.session.user.id))) {
     throw new ForbiddenError('You must be an admin or owner to manage dispatch')
   }
-  return next()
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchBoardManage)
+  return next({ ctx: { capabilities } })
+})
+
+/** `dispatchProcedure` + the `dispatch.board.view` capability (§9). Read surfaces — full
+ * members hold it by default; field (worker) seats do NOT, so board reads 403 for them. */
+const dispatchViewProcedure = dispatchProcedure.use(async ({ ctx, next }) => {
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchBoardView)
+  return next({ ctx: { capabilities } })
+})
+
+/** `dispatchProcedure` + the `dispatch.board.manage` capability, WITHOUT an admin gate —
+ * member-level manage mutations (intake conversions). Full members hold the key; field
+ * seats do not. */
+const dispatchManageProcedure = dispatchProcedure.use(async ({ ctx, next }) => {
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchBoardManage)
+  return next({ ctx: { capabilities } })
+})
+
+/** `dispatchProcedure` + the `dispatch.mySchedule` capability — the field-seat schedule
+ * surface (08-worker-surface.md §6). Both full members and worker seats hold it. */
+const dispatchMyScheduleProcedure = dispatchProcedure.use(async ({ ctx, next }) => {
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchMySchedule)
+  return next({ ctx: { capabilities } })
+})
+
+/** `dispatchProcedure` + the `dispatch.visitReports` capability — the field-seat check-in /
+ * QC checklist / photo write surface (§4.1). In the worker ceiling AND every role default. */
+const dispatchVisitReportProcedure = dispatchProcedure.use(async ({ ctx, next }) => {
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assert(PermissionKey.dispatchVisitReports)
+  return next({ ctx: { capabilities } })
 })
 
 /** Echo-suppression convention (07 §B.4, the `agent.ts:234` precedent). */
@@ -131,7 +169,7 @@ const recurrenceTemplateSchema = z.object({
 
 export const dispatchRouter = createTRPCRouter({
   // PRIMARY intake path (01 §8/§9) — request → job.
-  convertToWorkOrder: dispatchProcedure
+  convertToWorkOrder: dispatchManageProcedure
     .input(z.object({ requestRecordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.requestRecordId)
@@ -142,7 +180,7 @@ export const dispatchRouter = createTRPCRouter({
       })
     }),
   // SECONDARY intake path (01 §8) — ticket → job, kept alongside convertToWorkOrder.
-  createFromTicket: dispatchProcedure
+  createFromTicket: dispatchManageProcedure
     .input(z.object({ ticketRecordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.ticketRecordId)
@@ -154,7 +192,7 @@ export const dispatchRouter = createTRPCRouter({
     }),
 
   // §A — DispatchWorker CRUD (07-m2-build.md §A.3).
-  listWorkers: dispatchProcedure.query(async ({ ctx }) => {
+  listWorkers: dispatchViewProcedure.query(async ({ ctx }) => {
     return listDispatchWorkers(ctx.session.organizationId)
   }),
   upsertWorker: dispatchAdminProcedure
@@ -337,7 +375,7 @@ export const dispatchRouter = createTRPCRouter({
     }),
 
   // §B.6 — the board's single read. Members read it (read-only board interactions).
-  getBoard: dispatchProcedure
+  getBoard: dispatchViewProcedure
     .input(z.object({ from: z.coerce.date(), to: z.coerce.date() }))
     .query(async ({ ctx, input }) => {
       return getBoard(ctx.session.organizationId, { from: input.from, to: input.to })
@@ -347,7 +385,7 @@ export const dispatchRouter = createTRPCRouter({
   // bucketing: day windows are always CLIENT-computed, same convention as `getBoard`); the client
   // groups these by local day and filters by visible worker itself, so there's no worker param.
   // Member read-only, same gating as `getBoard`.
-  getVisitDayMarkers: dispatchProcedure
+  getVisitDayMarkers: dispatchViewProcedure
     .input(
       z.object({
         from: z.date(),
@@ -370,7 +408,7 @@ export const dispatchRouter = createTRPCRouter({
   // returned `workers` array only. Day windows are CLIENT-computed (the getBoard/listMyVisits
   // convention — the server is timezone-naive): `from`/`to` = local day bounds, `dateKey` =
   // its `yyyy-MM-dd` label (availability lookups + the Directions cache key).
-  getRoutePlannerBoard: dispatchProcedure
+  getRoutePlannerBoard: dispatchViewProcedure
     .input(
       z.object({
         from: z.date(),
@@ -385,7 +423,7 @@ export const dispatchRouter = createTRPCRouter({
     }),
   // Resolves depot + that worker's ordered geocoded stops server-side — draws the map's
   // polylines + per-stop ETAs. Read-only (member-gated), Redis content-addressed cache inside.
-  getRouteGeometry: dispatchProcedure
+  getRouteGeometry: dispatchViewProcedure
     .input(
       z.object({
         from: z.date(),
@@ -564,7 +602,7 @@ export const dispatchRouter = createTRPCRouter({
     }),
 
   // §F.3 (M2b job view) — visits for one work order, oldest-scheduled-first.
-  listVisits: dispatchProcedure
+  listVisits: dispatchViewProcedure
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)
@@ -646,7 +684,7 @@ export const dispatchRouter = createTRPCRouter({
   // 08-worker-surface.md §6 — the worker-scoped path. Member-level (not admin-gated): the
   // row-level assignee guard lives in the lib layer (`loadOwnVisit`), so orgId + userId always
   // come from the session, never input — a worker touches only their own visits.
-  myVisits: dispatchProcedure
+  myVisits: dispatchMyScheduleProcedure
     .input(z.object({ from: z.date(), to: z.date() }))
     .query(async ({ ctx, input }) => {
       return listMyVisits({
@@ -656,7 +694,7 @@ export const dispatchRouter = createTRPCRouter({
         to: input.to,
       })
     }),
-  getMyVisit: dispatchProcedure
+  getMyVisit: dispatchMyScheduleProcedure
     .input(z.object({ visitId: z.string() }))
     .query(async ({ ctx, input }) => {
       return getMyVisitDetail({
@@ -665,7 +703,7 @@ export const dispatchRouter = createTRPCRouter({
         visitId: input.visitId,
       })
     }),
-  advanceMyVisit: dispatchProcedure
+  advanceMyVisit: dispatchMyScheduleProcedure
     .input(
       z.object({
         visitId: z.string(),
@@ -682,7 +720,7 @@ export const dispatchRouter = createTRPCRouter({
         clientDayEnd: input.clientDayEnd,
       })
     }),
-  closeMyVisit: dispatchProcedure
+  closeMyVisit: dispatchMyScheduleProcedure
     .input(z.object({ visitId: z.string(), invoice: z.enum(['now', 'later', 'leave_open']) }))
     .mutation(async ({ ctx, input }) => {
       return closeMyVisit({
@@ -779,38 +817,38 @@ export const dispatchRouter = createTRPCRouter({
   // 08-worker-surface.md §5 — the worker-scoped checklist path. Member-level (not admin-gated):
   // the row-level assignee guard lives in the lib layer (`loadOwnVisit`/`loadOwnQcItem`), so
   // orgId + userId always come from the session, never input.
-  listMyVisitQcItems: dispatchProcedure
+  listMyVisitQcItems: dispatchVisitReportProcedure
     .input(z.object({ visitId: z.string() }))
     .query(async ({ ctx, input }) => {
       return listMyVisitQcItems(ctx.session.organizationId, ctx.session.user.id, input.visitId)
     }),
-  setMyQcItemChecked: dispatchProcedure
+  setMyQcItemChecked: dispatchVisitReportProcedure
     .input(z.object({ itemId: z.string(), checked: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       return setMyQcItemChecked(ctx.session.organizationId, ctx.session.user.id, input)
     }),
-  setMyQcItemNote: dispatchProcedure
+  setMyQcItemNote: dispatchVisitReportProcedure
     .input(z.object({ itemId: z.string(), note: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
       return setMyQcItemNote(ctx.session.organizationId, ctx.session.user.id, input)
     }),
-  addMyAdhocQcItem: dispatchProcedure
+  addMyAdhocQcItem: dispatchVisitReportProcedure
     .input(z.object({ visitId: z.string(), title: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       return addMyAdhocQcItem(ctx.session.organizationId, ctx.session.user.id, input)
     }),
-  addMyQcItemPhoto: dispatchProcedure
+  addMyQcItemPhoto: dispatchVisitReportProcedure
     .input(z.object({ itemId: z.string(), assetId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return addMyQcItemPhoto(ctx.session.organizationId, ctx.session.user.id, input)
     }),
-  removeMyQcItemPhoto: dispatchProcedure
+  removeMyQcItemPhoto: dispatchVisitReportProcedure
     .input(z.object({ itemId: z.string(), attachmentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await removeMyQcItemPhoto(ctx.session.organizationId, ctx.session.user.id, input)
       return { success: true }
     }),
-  setMyQcItemPhotoCaption: dispatchProcedure
+  setMyQcItemPhotoCaption: dispatchVisitReportProcedure
     .input(
       z.object({ itemId: z.string(), attachmentId: z.string(), caption: z.string().nullable() })
     )
@@ -820,7 +858,7 @@ export const dispatchRouter = createTRPCRouter({
     }),
 
   // §5.4 — the M2c recurring engine. Admin-gated like the rest of visit machinery.
-  getRecurrence: dispatchProcedure
+  getRecurrence: dispatchViewProcedure
     .input(z.object({ workOrderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.workOrderRecordId)

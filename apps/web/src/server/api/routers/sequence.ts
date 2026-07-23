@@ -160,7 +160,7 @@ async function filterViewableSequences(
   const { organizationId, userId } = ctx.session
 
   const memberRoleMap = await getOrgCache().get(organizationId, 'memberRoleMap')
-  const role = memberRoleMap[userId]
+  const role = memberRoleMap[userId]?.role
   if (role === 'OWNER' || role === 'ADMIN') return sequences
 
   const { getUserAccessibleInstances } = await import('@auxx/lib/resource-access')

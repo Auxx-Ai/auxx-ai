@@ -24,6 +24,7 @@ export async function findMemberByUser(
     userId: member.userId,
     organizationId: member.organizationId,
     role: member.role,
+    seatType: member.seatType,
     status: member.status,
     onChatDuty: member.onChatDuty,
   }
@@ -42,7 +43,7 @@ export async function isAdminOrOwner(
   }
 
   const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
-  const role = memberRoleMap[userId]
+  const role = memberRoleMap[userId]?.role
   return role === 'OWNER' || role === 'ADMIN'
 }
 
@@ -103,6 +104,7 @@ async function findMemberByUserDirect(
       userId: schema.OrganizationMember.userId,
       organizationId: schema.OrganizationMember.organizationId,
       role: schema.OrganizationMember.role,
+      seatType: schema.OrganizationMember.seatType,
       status: schema.OrganizationMember.status,
       onChatDuty: schema.OrganizationMember.onChatDuty,
     })
