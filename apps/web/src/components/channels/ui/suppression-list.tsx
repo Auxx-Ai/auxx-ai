@@ -90,11 +90,11 @@ export function SuppressionList() {
   }
 
   return (
-    <SettingsSection
-      icon={MailX}
-      title='Suppressed addresses'
-      description='Addresses sequences will never email — collected from unsubscribes, hard bounces, and manual adds. Removing an entry resubscribes the address.'>
-      <div className='space-y-3'>
+    <div className='flex flex-1 flex-col gap-4 p-3 sm:p-6'>
+      <SettingsSection
+        icon={MailX}
+        title='Suppressed addresses'
+        description='Addresses sequences will never email — collected from unsubscribes, hard bounces, and manual adds. Removing an entry resubscribes the address.'>
         <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
           <InputGroup className='sm:max-w-xs'>
             <InputGroupAddon>
@@ -135,74 +135,74 @@ export function SuppressionList() {
             {addError && <p className='text-xs text-destructive'>{addError}</p>}
           </div>
         </div>
+      </SettingsSection>
 
-        {listQuery.isLoading ? (
-          <div className='flex flex-col'>
-            {[0, 1, 2].map((i) => (
-              <TreeRowSkeleton key={i} />
-            ))}
-          </div>
-        ) : rows.length === 0 ? (
-          <EmptyState
-            icon={MailX}
-            title={deferredSearch ? 'No matches' : 'No suppressed addresses'}
-            description={
-              deferredSearch
-                ? 'No suppressed addresses match your search.'
-                : 'Unsubscribes and hard bounces will show up here automatically.'
-            }
-          />
-        ) : (
-          <div className={cn('flex flex-col', TREE_SECONDARY_NOTRUNCATE)}>
-            {rows.map((row) => (
-              <TreeRow
-                key={row.id}
-                rowClassName='hover:bg-primary-100'
-                icon={<MailX className='size-4 text-muted-foreground/60' />}
-                title={<span className='font-mono text-sm'>{row.email}</span>}
-                secondary={
-                  <span className='flex items-center gap-1.5'>
-                    <Badge variant='secondary' size='sm'>
-                      {row.reason}
-                    </Badge>
-                    <span className='text-xs text-muted-foreground'>
-                      {formatRelativeTime(row.createdAt, true)}
-                    </span>
+      {listQuery.isLoading ? (
+        <div className='flex flex-col'>
+          {[0, 1, 2].map((i) => (
+            <TreeRowSkeleton key={i} />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={MailX}
+          title={deferredSearch ? 'No matches' : 'No suppressed addresses'}
+          description={
+            deferredSearch
+              ? 'No suppressed addresses match your search.'
+              : 'Unsubscribes and hard bounces will show up here automatically.'
+          }
+        />
+      ) : (
+        <div className={cn('flex flex-col', TREE_SECONDARY_NOTRUNCATE)}>
+          {rows.map((row) => (
+            <TreeRow
+              key={row.id}
+              rowClassName='hover:bg-primary-100'
+              icon={<MailX className='size-4 text-muted-foreground/60' />}
+              title={<span className='font-mono text-sm'>{row.email}</span>}
+              secondary={
+                <span className='flex items-center gap-1.5'>
+                  <Badge variant='secondary' size='sm'>
+                    {row.reason}
+                  </Badge>
+                  <span className='text-xs text-muted-foreground'>
+                    {formatRelativeTime(row.createdAt, true)}
                   </span>
-                }
-                actions={
-                  <>
-                    {row.contactEntityInstanceId && (
-                      <TreeRowButton
-                        tooltipText='View contact'
-                        onClick={() => router.push(`/app/contacts/${row.contactEntityInstanceId}`)}>
-                        <UserRound />
-                      </TreeRowButton>
-                    )}
+                </span>
+              }
+              actions={
+                <>
+                  {row.contactEntityInstanceId && (
                     <TreeRowButton
-                      variant='destructive'
-                      tooltipText='Remove suppression'
-                      onClick={() => void handleRemove(row)}>
-                      <Trash2 />
+                      tooltipText='View contact'
+                      onClick={() => router.push(`/app/contacts/${row.contactEntityInstanceId}`)}>
+                      <UserRound />
                     </TreeRowButton>
-                  </>
-                }
-              />
-            ))}
-            {listQuery.hasNextPage && (
-              <Button
-                variant='ghost'
-                size='xs'
-                className='mt-1 self-center text-muted-foreground'
-                loading={listQuery.isFetchingNextPage}
-                onClick={() => void listQuery.fetchNextPage()}>
-                Load more
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
+                  )}
+                  <TreeRowButton
+                    variant='destructive'
+                    tooltipText='Remove suppression'
+                    onClick={() => void handleRemove(row)}>
+                    <Trash2 />
+                  </TreeRowButton>
+                </>
+              }
+            />
+          ))}
+          {listQuery.hasNextPage && (
+            <Button
+              variant='ghost'
+              size='xs'
+              className='mt-1 self-center text-muted-foreground'
+              loading={listQuery.isFetchingNextPage}
+              onClick={() => void listQuery.fetchNextPage()}>
+              Load more
+            </Button>
+          )}
+        </div>
+      )}
       <ConfirmDialog />
-    </SettingsSection>
+    </div>
   )
 }

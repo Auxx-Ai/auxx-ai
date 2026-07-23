@@ -6,6 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { DangerZone } from '~/components/global/danger-zone'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useGroupMutations } from '../hooks'
@@ -40,21 +41,19 @@ export function GroupDangerSection({ group }: { group: EntityInstanceEntity }) {
       icon={TriangleAlert}
       title='Danger zone'
       description='Irreversible actions for this group'>
-      <div className='flex items-center justify-between gap-4 rounded-2xl border border-destructive/30 p-4'>
-        <div className='min-w-0'>
-          <p className='text-sm font-medium'>Delete this group</p>
-          <p className='text-sm text-muted-foreground'>
-            Permanently delete the group and remove all of its members.
-          </p>
-        </div>
-        <Button
-          variant='destructive'
-          onClick={handleDelete}
-          loading={deleteGroup.isPending}
-          loadingText='Deleting...'>
-          Delete group
-        </Button>
-      </div>
+      <DangerZone
+        title='Delete this group'
+        description='Permanently delete the group and remove all of its members.'
+        action={
+          <Button
+            variant='destructive'
+            onClick={handleDelete}
+            loading={deleteGroup.isPending}
+            loadingText='Deleting...'>
+            Delete group
+          </Button>
+        }
+      />
       <ConfirmDialog />
     </SettingsSection>
   )

@@ -27,6 +27,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { DangerZone } from '~/components/global/danger-zone'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
@@ -328,19 +329,23 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
           </SettingsSection>
         </div>
 
-        <div className='flex flex-wrap items-center justify-between gap-3 border-t p-3 sm:p-6'>
-          <div className='space-y-1'>
-            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-destructive'>
-              <Trash2 className='size-4' /> Danger zone
-            </div>
-            <p className='text-sm text-muted-foreground'>
-              Permanently delete this widget and disconnect it from inboxes.
-            </p>
-          </div>
-          <Button type='button' variant='destructive' size='sm' onClick={onDelete}>
-            <Trash2 className='size-4' />
-            Delete widget
-          </Button>
+        <div className='border-t p-3 sm:p-6'>
+          <SettingsSection
+            icon={Trash2}
+            title='Danger zone'
+            description='Permanently delete this widget and disconnect it from inboxes.'>
+            <DangerZone
+              icon={Trash2}
+              title='Delete widget'
+              description='Permanently delete this widget and disconnect it from inboxes.'
+              action={
+                <Button type='button' variant='destructive' size='sm' onClick={onDelete}>
+                  <Trash2 />
+                  Delete widget
+                </Button>
+              }
+            />
+          </SettingsSection>
         </div>
 
         <div className='flex justify-end gap-2 border-t px-4 py-4'>

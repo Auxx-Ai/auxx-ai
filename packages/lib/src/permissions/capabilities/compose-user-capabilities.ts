@@ -23,8 +23,13 @@ export interface UserCapabilities {
   defAccess: Record<string, ResourcePermission>
 }
 
-/** Hierarchy rank for picking the highest ResourceAccess permission. */
+/**
+ * Hierarchy rank for picking the highest ResourceAccess permission. `none` is
+ * the baseline lockdown marker (grants nobody) and ranks below every positive
+ * level; it is skipped entirely when building `defAccess` (see below).
+ */
 export const PERMISSION_RANK: Record<ResourcePermission, number> = {
+  none: 0,
   view: 1,
   edit: 2,
   admin: 3,
@@ -65,6 +70,11 @@ export function composeUserCapabilities(input: {
   // role so admins carry it too (they simply also hold every capability key).
   const defAccess: Record<string, ResourcePermission> = {}
   for (const row of typeAccessRows) {
+    // `none` is the baseline lockdown marker: it flags the def restricted (via
+    // `restrictedEntityDefIds`) but grants nobody, so it must NOT seed a
+    // `defAccess` entry — otherwise the `role:org_member @ none` row would make
+    // every member a grantee, defeating the lockdown.
+    if (row.permission === 'none') continue
     const existing = defAccess[row.entityDefinitionId]
     if (!existing || PERMISSION_RANK[row.permission] > PERMISSION_RANK[existing]) {
       defAccess[row.entityDefinitionId] = row.permission

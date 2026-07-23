@@ -13,15 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@auxx/ui/components/empty'
 import { InputSearch } from '@auxx/ui/components/input-search'
-import type { ListCardMenuItem } from '@auxx/ui/components/list-card'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { ListCard, type ListCardMenuItem } from '@auxx/ui/components/list-card'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import {
   Select,
@@ -33,6 +27,7 @@ import {
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Copy, Send, Trash2, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
 import { Tooltip } from '~/components/global/tooltip'
 import { SeatTypeSelect } from '~/components/permissions/ui/seat-type-select'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -57,15 +52,12 @@ export function MembersTab() {
   const { userId, role: currentUserRole } = useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const utils = api.useUtils()
 
-  const { data: membersData } = api.member.all.useQuery()
+  const { data: membersData, isLoading } = api.member.all.useQuery()
   const { data: pendingInvitations = [] } = api.member.invitations.useQuery()
   const members = (membersData?.members ?? []) as unknown as Member[]
 
   const [search, setSearch] = useState('')
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
-  const [selectedInvitation, setSelectedInvitation] = useState<PendingInvitation | null>(null)
-  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false)
-  const [isCancelInviteDialogOpen, setIsCancelInviteDialogOpen] = useState(false)
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
   const [newRole, setNewRole] = useState<OrganizationRole | null>(null)
   const [isSeatDialogOpen, setIsSeatDialogOpen] = useState(false)
@@ -81,7 +73,6 @@ export function MembersTab() {
   const removeUser = api.member.remove.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Member removed' })
-      setIsRemoveDialogOpen(false)
       refreshMembers()
     },
     onError: (error) => toastError({ title: 'Error removing member', description: error.message }),
@@ -105,7 +96,6 @@ export function MembersTab() {
   const cancelInvite = api.member.cancelInvitation.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Invitation cancelled' })
-      setIsCancelInviteDialogOpen(false)
       refreshMembers()
     },
     onError: (error) =>
@@ -135,9 +125,26 @@ export function MembersTab() {
     onError: (error) => toastError({ title: 'Error getting link', description: error.message }),
   })
 
-  const handleRemoveMember = async () => {
-    if (!selectedMember) return
-    await removeUser.mutateAsync({ memberId: selectedMember.userId })
+  const handleRemoveMember = async (member: Member) => {
+    const confirmed = await confirm({
+      title: 'Remove member?',
+      description: `Remove ${member.user.name || member.user.email} from this organization? They will lose all access.`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) removeUser.mutate({ memberId: member.userId })
+  }
+
+  const handleCancelInvite = async (invitation: PendingInvitation) => {
+    const confirmed = await confirm({
+      title: 'Cancel invitation?',
+      description: `Cancel the invitation sent to ${invitation.email}? They will no longer be able to join using the previous link.`,
+      confirmText: 'Cancel Invitation',
+      cancelText: 'Keep',
+      destructive: true,
+    })
+    if (confirmed) cancelInvite.mutate({ invitationId: invitation.id })
   }
   const handleUpdateRole = async () => {
     if (!selectedMember || !newRole) return
@@ -224,10 +231,7 @@ export function MembersTab() {
           icon: <Trash2 />,
           destructive: true,
           disabled: cancelInvite.isPending,
-          onClick: () => {
-            setSelectedInvitation(item.data)
-            setIsCancelInviteDialogOpen(true)
-          },
+          onClick: () => handleCancelInvite(item.data),
         },
       ]
     }
@@ -268,10 +272,7 @@ export function MembersTab() {
       items.push({
         label: 'Remove Member',
         destructive: true,
-        onClick: () => {
-          setSelectedMember(member)
-          setIsRemoveDialogOpen(true)
-        },
+        onClick: () => handleRemoveMember(member),
       })
     }
     return items.length > 0 ? items : undefined
@@ -295,22 +296,20 @@ export function MembersTab() {
       </ListToolbar>
 
       <div className='p-3 sm:p-6'>
-        {filtered.length === 0 ? (
-          <div className='flex flex-1 flex-col items-center justify-center py-8'>
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant='icon'>
-                  <Users />
-                </EmptyMedia>
-                <EmptyTitle>No members found</EmptyTitle>
-                <EmptyDescription>
-                  {search
-                    ? 'Try adjusting your search terms'
-                    : 'Invite people to your organization'}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+        {isLoading ? (
+          <div className='space-y-2'>
+            {[...Array(6)].map((_, i) => (
+              <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
+            ))}
           </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title='No members found'
+            description={
+              search ? 'Try adjusting your search terms' : 'Invite people to your organization'
+            }
+          />
         ) : (
           <div className='space-y-2'>
             {filtered.map((item) => (
@@ -325,68 +324,9 @@ export function MembersTab() {
         )}
       </div>
 
-      {/* Remove member confirmation */}
-      <Dialog open={isRemoveDialogOpen} onOpenChange={setIsRemoveDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove member</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to remove{' '}
-              {selectedMember?.user.name || selectedMember?.user.email} from this organization?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant='outline'
-              onClick={() => setIsRemoveDialogOpen(false)}
-              disabled={removeUser.isPending}>
-              Cancel
-            </Button>
-            <Button
-              variant='destructive'
-              onClick={handleRemoveMember}
-              loading={removeUser.isPending}
-              loadingText='Removing...'>
-              Remove
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Cancel invitation confirmation */}
-      <Dialog open={isCancelInviteDialogOpen} onOpenChange={setIsCancelInviteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel Invitation</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel the invitation sent to{' '}
-              <strong>{selectedInvitation?.email}</strong>? They will no longer be able to join
-              using the previous link.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant='outline'
-              onClick={() => setIsCancelInviteDialogOpen(false)}
-              disabled={cancelInvite.isPending}>
-              Cancel
-            </Button>
-            <Button
-              variant='destructive'
-              onClick={() => {
-                if (selectedInvitation) cancelInvite.mutate({ invitationId: selectedInvitation.id })
-              }}
-              loading={cancelInvite.isPending}
-              loadingText='Cancelling...'>
-              Cancel Invitation
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Change role */}
       <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
-        <DialogContent>
+        <DialogContent position='tc'>
           <DialogHeader>
             <DialogTitle>Change member role</DialogTitle>
             <DialogDescription>
@@ -444,16 +384,17 @@ export function MembersTab() {
               size='sm'
               onClick={() => setIsRoleDialogOpen(false)}
               disabled={updateRole.isPending}>
-              Cancel
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
+              data-dialog-submit
               onClick={handleUpdateRole}
               size='sm'
               variant='outline'
               disabled={updateRole.isPending || !newRole || newRole === selectedMember?.role}
               loading={updateRole.isPending}
               loadingText='Updating...'>
-              Update role
+              Update role <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -461,7 +402,7 @@ export function MembersTab() {
 
       {/* Change seat type */}
       <Dialog open={isSeatDialogOpen} onOpenChange={setIsSeatDialogOpen}>
-        <DialogContent>
+        <DialogContent position='tc'>
           <DialogHeader>
             <DialogTitle>Change seat type</DialogTitle>
             <DialogDescription>
@@ -485,16 +426,17 @@ export function MembersTab() {
               size='sm'
               onClick={() => setIsSeatDialogOpen(false)}
               disabled={updateSeatType.isPending}>
-              Cancel
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
+              data-dialog-submit
               onClick={handleUpdateSeatType}
               size='sm'
               variant='outline'
               disabled={updateSeatType.isPending || newSeatType === selectedMember?.seatType}
               loading={updateSeatType.isPending}
               loadingText='Updating...'>
-              Update seat
+              Update seat <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </DialogContent>

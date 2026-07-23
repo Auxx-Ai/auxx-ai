@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import type { ResourceAccessContext } from '@auxx/lib/resource-access'
 import {
   assertCanManageMailSharing,
@@ -12,12 +13,14 @@ import {
   getTypeAccess,
   grantInstanceAccess,
   grantTypeAccess,
+  isMailSharingDef,
   revokeInstanceAccess,
   revokeTypeAccess,
   setInstanceAccess,
   setTypeAccess,
 } from '@auxx/lib/resource-access'
 import type { RecordId } from '@auxx/types/resource'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
@@ -34,6 +37,31 @@ function toContext(ctx: {
     db: ctx.db,
     organizationId: ctx.session.organizationId,
     userId: ctx.session.userId,
+  }
+}
+
+/**
+ * Authorization for TYPE-level (def-wide) ResourceAccess reads/writes. Mail-infra
+ * defs keep their mail-sharing authorization (inbox managers etc.); every other
+ * def — the entity-def Access UI surface (capability layer v2 phase 3) — is
+ * strictly admin/owner-only. Enforced at the endpoint independently of the page's
+ * role guard (defense in depth: a non-admin must not self-grant def access via a
+ * raw call).
+ */
+async function assertCanManageTypeAccess(
+  ctx: { db: any; session: { organizationId: string; userId: string } },
+  entityDefinitionId: string
+): Promise<void> {
+  if (isMailSharingDef(entityDefinitionId)) {
+    await assertCanManageMailTypeAccess(toContext(ctx), entityDefinitionId)
+    return
+  }
+  const allowed = await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId)
+  if (!allowed) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'You must be an admin or owner to manage type-level access',
+    })
   }
 }
 
@@ -86,7 +114,11 @@ export const resourceAccessRouter = createTRPCRouter({
       return { success: true }
     }),
 
-  /** Grant type-level access (all instances of an entity type) */
+  /**
+   * Grant type-level access (all instances of an entity type). `none` is
+   * accepted only for the workspace baseline (`role:org_member`) — a def
+   * lockdown marker that grants nobody (capability layer v2 phase 3).
+   */
   grantType: protectedProcedure
     .input(
       z.object({
@@ -99,6 +131,7 @@ export const resourceAccessRouter = createTRPCRouter({
         ]),
         granteeId: z.string(),
         permission: z.enum([
+          ResourcePermission.none,
           ResourcePermission.view,
           ResourcePermission.edit,
           ResourcePermission.admin,
@@ -106,7 +139,7 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertCanManageMailTypeAccess(toContext(ctx), input.entityDefinitionId)
+      await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
       await grantTypeAccess(toContext(ctx), input)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -177,7 +210,7 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertCanManageMailTypeAccess(toContext(ctx), input.entityDefinitionId)
+      await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
       const revoked = await revokeTypeAccess(toContext(ctx), input)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -258,7 +291,7 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertCanManageMailTypeAccess(toContext(ctx), input.entityDefinitionId)
+      await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
       await setTypeAccess(toContext(ctx), input.entityDefinitionId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -318,6 +351,9 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      // Non-mail def-access grants are admin-only to read (they reveal the org's
+      // access configuration); mail-infra defs keep their existing read surface.
+      await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
       return getTypeAccess(toContext(ctx), input.entityDefinitionId)
     }),
 })

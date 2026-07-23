@@ -6,6 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { DangerZone } from '~/components/global/danger-zone'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -53,21 +54,19 @@ export function MemberDangerSection({ member, viewerRole, viewerId }: MemberDang
       icon={TriangleAlert}
       title='Danger zone'
       description='Irreversible actions for this member'>
-      <div className='flex items-center justify-between gap-4 rounded-2xl border border-destructive/30 p-4'>
-        <div className='min-w-0'>
-          <p className='text-sm font-medium'>Remove from organization</p>
-          <p className='text-sm text-muted-foreground'>
-            Revoke this member's access and free their seat.
-          </p>
-        </div>
-        <Button
-          variant='destructive'
-          onClick={handleRemove}
-          loading={removeUser.isPending}
-          loadingText='Removing...'>
-          Remove member
-        </Button>
-      </div>
+      <DangerZone
+        title='Remove from organization'
+        description="Revoke this member's access and free their seat."
+        action={
+          <Button
+            variant='destructive'
+            onClick={handleRemove}
+            loading={removeUser.isPending}
+            loadingText='Removing...'>
+            Remove member
+          </Button>
+        }
+      />
       <ConfirmDialog />
     </SettingsSection>
   )

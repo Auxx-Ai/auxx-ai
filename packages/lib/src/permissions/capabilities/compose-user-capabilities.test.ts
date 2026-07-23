@@ -154,6 +154,38 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.defAccess).toEqual({ def_a: 'admin', def_b: 'edit' })
   })
 
+  it("skips a baseline 'none' row so it never seeds a defAccess entry (grants nobody)", () => {
+    // Non-grantee: only the org_member lockdown row applies → no defAccess entry,
+    // so canViewEntity denies (the def is still flagged restricted upstream).
+    const nonGrantee = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      typeAccessRows: [{ entityDefinitionId: 'def_locked', permission: 'none' }],
+    })
+    expect(nonGrantee.defAccess).toEqual({})
+
+    // Grantee: the lockdown row plus their own positive grant → only the positive
+    // level surfaces in defAccess (none is skipped, not max-composed to 0).
+    const grantee = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      typeAccessRows: [
+        { entityDefinitionId: 'def_locked', permission: 'none' },
+        { entityDefinitionId: 'def_locked', permission: 'view' },
+      ],
+    })
+    expect(grantee.defAccess).toEqual({ def_locked: 'view' })
+  })
+
+  it("a baseline 'view' row makes the def visible to everyone (grant present)", () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      typeAccessRows: [{ entityDefinitionId: 'def_open', permission: 'view' }],
+    })
+    expect(caps.defAccess).toEqual({ def_open: 'view' })
+  })
+
   it('fails closed for an undefined role (non-member): no keys', () => {
     const caps = composeUserCapabilities({
       role: undefined,

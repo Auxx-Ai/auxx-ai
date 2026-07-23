@@ -100,6 +100,19 @@ describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
     expect(restricted.canViewEntity('inbox')).toBe(true)
   })
 
+  it("baseline 'none' + group grant: grantee sees the def, non-grantee is denied", () => {
+    // A `role:org_member @ none` baseline row flags the def restricted (present
+    // in restrictedDefIds) but composes to NO defAccess entry for a non-grantee,
+    // while a team/member grantee gets their own defAccess entry.
+    const grantee = build({ restricted: ['invoice-def'], defAccess: { 'invoice-def': 'view' } })
+    const nonGrantee = build({ restricted: ['invoice-def'], defAccess: {} })
+    expect(grantee.canViewEntity('invoice-def')).toBe(true)
+    expect(nonGrantee.canViewEntity('invoice-def')).toBe(false)
+    // Admins bypass the lockdown regardless.
+    const admin = build({ role: 'ADMIN', restricted: ['invoice-def'], defAccess: {} })
+    expect(admin.canViewEntity('invoice-def')).toBe(true)
+  })
+
   it('OWNER/ADMIN bypass the noun layer but not the verb', () => {
     const admin = build({ role: 'ADMIN', restricted: ['invoice-def'], defAccess: {} })
     expect(admin.canViewEntity('invoice-def')).toBe(true)
