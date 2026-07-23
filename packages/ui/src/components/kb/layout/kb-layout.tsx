@@ -41,6 +41,13 @@ interface KBLayoutProps<T extends KBSidebarArticle> {
   onArticleClick?: (articleId: string) => void
   /** When true, drops the `min-h-screen` so the layout sizes to its content (used when embedded inside the admin editor preview). */
   embedded?: boolean
+  /**
+   * Whether the theme provider syncs `data-kb-mode` from the `kb-mode-{id}`
+   * cookie before paint. Defaults to `!embedded` — embedded previews pin the
+   * mode via `mode`, so the pre-paint script is both unwanted and inert (React
+   * never executes client-inserted `<script>` tags).
+   */
+  syncModeFromCookie?: boolean
   /** When true, the `<main>` element owns vertical scroll instead of the document. Required in admin previews where document scroll is unavailable. */
   mainScroll?: boolean
   /** Notified when the in-tree mode toggle flips. Used by apps/web preview to keep its override in sync with cookie writes. */
@@ -59,6 +66,7 @@ export function KBLayout<T extends KBSidebarArticle>({
   embedded = false,
   mainScroll = false,
   onModeChange,
+  syncModeFromCookie,
   children,
 }: KBLayoutProps<T>) {
   const headerNav = parseNavigation(kb.headerNavigation)
@@ -72,7 +80,10 @@ export function KBLayout<T extends KBSidebarArticle>({
       : 'default'
 
   return (
-    <KBThemeProvider kb={kb} mode={effectiveMode}>
+    <KBThemeProvider
+      kb={kb}
+      mode={effectiveMode}
+      syncModeFromCookie={syncModeFromCookie ?? !embedded}>
       <div
         data-slot='kb-layout'
         className={cn(

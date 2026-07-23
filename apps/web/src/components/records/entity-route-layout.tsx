@@ -2,7 +2,7 @@
 
 'use client'
 
-import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { getIcon } from '@auxx/ui/components/icons'
 import {
   MainPage,
@@ -49,20 +49,16 @@ export function EntityRouteLayout({
 }: EntityRouteLayoutProps) {
   const { getResourceById } = useResources()
   const { hasAccess } = useFeatureFlags()
-  const { deniedBy, canViewEntity } = useAccess()
+  const { canViewEntity } = useAccess()
   const resource = getResourceById(slug)
   const ResourceIcon = resource ? getIcon(resource.icon)?.icon : undefined
 
   // Layer-2/3 read gate for direct-URL hits (e.g. a member deep-linking
-  // `/app/contacts` they can't see). Tickets ride the `tickets.view` capability
-  // (plan-aware verb). Every other entity list rides the per-def most-specific-
-  // wins gate (`canViewEntity`) so a def-level grant unlocks a def even when the
-  // member's base records level is None — the whole point of the leveled model.
-  if (slug === 'tickets') {
-    if (deniedBy(PermissionKey.ticketsView) === 'permission') {
-      return <NoAccess area={resource?.plural ?? undefined} />
-    }
-  } else if (resource && !canViewEntity(resource.entityDefinitionId)) {
+  // `/app/contacts` they can't see). Every entity list — tickets included —
+  // rides the per-def most-specific-wins gate (`canViewEntity`) so a def-level
+  // grant unlocks a def even when the member's base records level is None — the
+  // whole point of the leveled model. Tickets are just another entity def.
+  if (resource && !canViewEntity(resource.entityDefinitionId)) {
     return <NoAccess area={resource?.plural ?? undefined} />
   }
 

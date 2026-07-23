@@ -25,10 +25,9 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).not.toContain(PermissionKey.billingManage)
     expect(caps.keys).not.toContain(PermissionKey.membersManage)
     expect(caps.keys).not.toContain(PermissionKey.permissionsManage)
-    // A full USER holds full records (view/edit/delete/import) and tickets.
+    // A full USER holds full records (view/edit/delete/import).
     expect(caps.keys).toContain(PermissionKey.recordsDelete)
     expect(caps.keys).toContain(PermissionKey.recordsImport)
-    expect(caps.keys).toContain(PermissionKey.ticketsReply)
   })
 
   it("a worker seat's effective default is exactly WORKER_SEAT_KEYS", () => {
@@ -36,7 +35,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
   })
 
-  it('org policy falls through PER AREA: sets records=Read, leaves tickets at USER default', () => {
+  it('org policy falls through PER AREA: sets records=Read, leaves workflows at USER default', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
@@ -48,10 +47,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).toContain(PermissionKey.recordsView)
     expect(caps.keys).not.toContain(PermissionKey.recordsEdit)
     expect(caps.keys).not.toContain(PermissionKey.recordsDelete)
-    // tickets is UNSET in the policy → falls through to the USER default (Full), NOT None.
-    expect(caps.keys).toContain(PermissionKey.ticketsView)
-    expect(caps.keys).toContain(PermissionKey.ticketsReply)
-    // Other unset areas also keep the USER default.
+    // workflows is UNSET in the policy → falls through to the USER default, NOT None.
     expect(caps.keys).toContain(PermissionKey.workflowsManage)
   })
 
@@ -70,7 +66,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const caps = composeUserCapabilities({
       role: 'ADMIN',
       seatType: 'full',
-      orgPolicyLevels: { [Area.records]: Level.None, [Area.tickets]: Level.None },
+      orgPolicyLevels: { [Area.records]: Level.None, [Area.workflows]: Level.None },
       typeAccessRows: [],
     })
     expect(caps.keys).toContain(PermissionKey.recordsDelete)
@@ -113,7 +109,6 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       groupLevels: [
         {
           [Area.records]: Level.Full,
-          [Area.tickets]: Level.Full,
           [Area.settings]: Level.Full,
           [Area.dispatchBoard]: Level.Full,
         },
