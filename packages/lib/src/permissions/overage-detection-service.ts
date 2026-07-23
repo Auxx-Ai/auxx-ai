@@ -227,7 +227,8 @@ export class OverageDetectionService {
     switch (featureKey) {
       case FeatureKey.teammates: {
         // Only count human members — agents (userType='AGENT') and system users
-        // must not consume paid seats.
+        // must not consume paid seats. Full seats only: field (worker) seats are
+        // counted separately against the workerSeats limit (§8).
         const [result] = await this.db
           .select({ value: count() })
           .from(schema.OrganizationMember)
@@ -236,6 +237,25 @@ export class OverageDetectionService {
             and(
               eq(schema.OrganizationMember.organizationId, organizationId),
               eq(schema.OrganizationMember.status, 'ACTIVE'),
+              eq(schema.OrganizationMember.seatType, 'full'),
+              eq(schema.User.userType, 'USER')
+            )
+          )
+        return result?.value ?? 0
+      }
+
+      case FeatureKey.workerSeats: {
+        // Field (worker) seats only — the cheaper capability-capped member seat (§8).
+        // Mirrors the teammates count: human members, active, scoped to the org.
+        const [result] = await this.db
+          .select({ value: count() })
+          .from(schema.OrganizationMember)
+          .innerJoin(schema.User, eq(schema.User.id, schema.OrganizationMember.userId))
+          .where(
+            and(
+              eq(schema.OrganizationMember.organizationId, organizationId),
+              eq(schema.OrganizationMember.status, 'ACTIVE'),
+              eq(schema.OrganizationMember.seatType, 'worker'),
               eq(schema.User.userType, 'USER')
             )
           )
