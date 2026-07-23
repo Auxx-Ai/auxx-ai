@@ -14,6 +14,7 @@ export {
   getMembers,
   listAccessibleGroups,
   removeMembers,
+  updateGroup,
 } from './group-functions'
 // Permission management functions
 export { getPermissions, grantPermission, revokePermission } from './permission-functions'

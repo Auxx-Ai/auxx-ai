@@ -80,6 +80,31 @@ export const entityGroupRouter = createTRPCRouter({
       return created
     }),
 
+  /** Update a group's name / description / icon / visibility */
+  update: protectedProcedure
+    .input(
+      z.object({
+        groupId: z.string(),
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        icon: z.string().optional(),
+        visibility: z.enum([GroupVisibility.public, GroupVisibility.private]).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const groupCtx = toGroupContext(ctx)
+      const { groupId, ...changes } = input
+      const updated = await groups.updateGroup(groupCtx, groupId, changes)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'group.updated',
+        targetType: 'EntityGroup',
+        targetId: groupId,
+        metadata: { name: input.name, visibility: input.visibility },
+      })
+      return updated
+    }),
+
   /** Delete a group */
   delete: protectedProcedure
     .input(z.object({ groupId: z.string() }))

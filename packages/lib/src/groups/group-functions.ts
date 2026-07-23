@@ -90,6 +90,70 @@ export async function createGroup(
   return groupInstance
 }
 
+/** Fields updatable on an existing group. All optional — only provided keys change. */
+export interface UpdateGroupInput {
+  name?: string
+  description?: string
+  icon?: string
+  visibility?: GroupVisibility
+}
+
+/**
+ * Update a group's display fields + metadata (name, description, icon, visibility).
+ * Writes the EntityInstance columns directly (the generic entity-instance service only
+ * handles archive/restore) and merges `metadata` so unrelated keys are preserved.
+ */
+export async function updateGroup(
+  ctx: GroupContext,
+  groupId: string,
+  input: UpdateGroupInput
+): Promise<EntityInstanceEntity> {
+  const { db, organizationId } = ctx
+
+  await requireGroupPermission(ctx, groupId, ResourcePermission.admin)
+
+  // Load the current row (org-scoped) so metadata is merged rather than clobbered.
+  const [existing] = await db
+    .select()
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.id, groupId),
+        eq(schema.EntityInstance.organizationId, organizationId)
+      )
+    )
+  if (!existing) throw new NotFoundError('Group not found')
+
+  const metadata: GroupMetadata = { ...((existing.metadata as GroupMetadata) ?? {}) }
+  if (input.icon !== undefined) metadata.icon = input.icon
+  if (input.visibility !== undefined) metadata.visibility = input.visibility
+
+  const set: Record<string, unknown> = { metadata, updatedAt: new Date() }
+  if (input.name !== undefined) set.displayName = input.name
+  if (input.description !== undefined) set.secondaryDisplayValue = input.description
+
+  const [updated] = await db
+    .update(schema.EntityInstance)
+    .set(set)
+    .where(
+      and(
+        eq(schema.EntityInstance.id, groupId),
+        eq(schema.EntityInstance.organizationId, organizationId)
+      )
+    )
+    .returning()
+  if (!updated) throw new NotFoundError('Group not found')
+
+  // Refresh the org groups cache. A visibility change alters grant resolution for every
+  // member, so fan out user keys in that case only.
+  await onCacheEvent('group.updated', {
+    orgId: organizationId,
+    broadcastUserKeys: input.visibility !== undefined,
+  })
+
+  return updated
+}
+
 /**
  * Delete a group
  */
