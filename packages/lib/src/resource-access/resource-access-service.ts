@@ -634,6 +634,37 @@ export async function getTypeAccess(
 }
 
 /**
+ * All type-level (`entityInstanceId IS NULL`) access rows for the org, across
+ * every def — the org-wide access configuration in one read. Powers the
+ * grantee-centric Access UI (capability layer v2 grantee-def-access), where each
+ * def's baseline (`role:org_member`) and a given grantee's own grant are derived
+ * client-side from this single fetch. Type rows are sparse (only configured defs
+ * have any), so this stays cheap. Admin-only at the endpoint — it reveals the
+ * whole org's restriction map.
+ */
+export async function getAllTypeAccess(ctx: ResourceAccessContext): Promise<ResourceAccessInfo[]> {
+  const { db, organizationId } = ctx
+
+  const grants = await db.query.ResourceAccess.findMany({
+    where: and(
+      eq(schema.ResourceAccess.organizationId, organizationId),
+      isNull(schema.ResourceAccess.entityInstanceId)
+    ),
+    orderBy: desc(schema.ResourceAccess.createdAt),
+  })
+
+  return grants.map((g: any) => ({
+    id: g.id,
+    entityDefinitionId: g.entityDefinitionId,
+    entityInstanceId: g.entityInstanceId,
+    granteeType: g.granteeType as ResourceGranteeType,
+    granteeId: g.granteeId,
+    permission: g.permission as ResourcePermission,
+    createdAt: g.createdAt,
+  }))
+}
+
+/**
  * Get all entity instances accessible by a user (including via groups).
  * Returns both type-level grants (hasTypeAccess=true) and instance-specific grants.
  */

@@ -1,0 +1,2 @@
+DROP INDEX "ResourceAccess_entity_grantee_key";--> statement-breakpoint
+ALTER TABLE "ResourceAccess" ADD CONSTRAINT "ResourceAccess_entity_grantee_key" UNIQUE NULLS NOT DISTINCT("organizationId","entityDefinitionId","entityInstanceId","granteeType","granteeId");
