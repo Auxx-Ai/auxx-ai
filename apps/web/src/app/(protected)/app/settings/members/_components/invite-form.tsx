@@ -1,5 +1,5 @@
 'use client'
-import { OrganizationRole } from '@auxx/database/enums'
+import { OrganizationRole, SeatType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
@@ -25,11 +25,13 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SeatTypeSelect } from '~/components/permissions/ui/seat-type-select'
 import { api } from '~/trpc/react'
 
 const formSchema = z.object({
   email: z.email({ error: 'Please enter a valid email address.' }),
   role: z.enum(OrganizationRole, { error: 'Please select a valid role.' }),
+  seatType: z.enum(SeatType, { error: 'Please select a valid seat type.' }),
 })
 interface InviteFormProps {
   organizationId: string
@@ -59,8 +61,10 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
   })
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: standardSchemaResolver(formSchema),
-    defaultValues: { email: '', role: OrganizationRole.USER },
+    defaultValues: { email: '', role: OrganizationRole.USER, seatType: SeatType.full },
   })
+  const seatType = form.watch('seatType')
+  const isFieldSeat = seatType === SeatType.worker
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!organizationId) {
       toastError({
@@ -72,7 +76,12 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
     }
     setIsSubmitting(true)
     try {
-      await inviteUser.mutateAsync({ email: values.email, role: values.role, organizationId })
+      await inviteUser.mutateAsync({
+        email: values.email,
+        // Invariant §2.A: a field seat is always a Member.
+        role: values.seatType === SeatType.worker ? OrganizationRole.USER : values.role,
+        seatType: values.seatType,
+      })
       setIsSubmitting(false)
     } catch (error) {
       // Error is handled in the mutation callbacks
@@ -107,24 +116,56 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
 
               <FormField
                 control={form.control}
+                name='seatType'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Seat</FormLabel>
+                    <FormControl>
+                      <SeatTypeSelect
+                        value={field.value}
+                        onChange={(value) => {
+                          field.onChange(value)
+                          // A field seat is always a Member — force role.
+                          if (value === SeatType.worker)
+                            form.setValue('role', OrganizationRole.USER)
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Field seats only see their schedule and assigned jobs, and can be priced below
+                      a full seat.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name='role'
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Role</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={isFieldSeat}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder='Select a role' />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value={OrganizationRole.ADMIN}>Admin</SelectItem>
+                        <SelectItem value={OrganizationRole.ADMIN} disabled={isFieldSeat}>
+                          Admin
+                        </SelectItem>
                         <SelectItem value={OrganizationRole.USER}>User</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Admins can manage the organization and invite others. Users have standard
-                      access.
+                      {isFieldSeat
+                        ? 'Field seats are always members.'
+                        : 'Admins can manage the organization and invite others. Users have standard access.'}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

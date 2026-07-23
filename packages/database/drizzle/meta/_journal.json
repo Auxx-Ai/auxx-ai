@@ -2115,6 +2115,13 @@
       "when": 1784767671360,
       "tag": "0301_seat_type_and_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1784770592013,
+      "tag": "0302_invitation_seat_type",
+      "breakpoints": true
     }
   ]
 }

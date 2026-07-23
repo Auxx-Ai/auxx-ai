@@ -130,10 +130,36 @@ export class MemberService {
     organizationName: string | null
     email: string
     role: OrganizationRole
+    /** Seat packaging for the invited member — 'full' (default) or 'worker'
+     * (UI "Field seat"). Carried on the invitation row and applied on accept. */
+    seatType?: SeatType
   }): Promise<{ success: true; message: string; existingUser: boolean }> {
-    const { organizationId, inviterUserId, inviterName, organizationName, email, role } = params
+    const {
+      organizationId,
+      inviterUserId,
+      inviterName,
+      organizationName,
+      email,
+      role,
+      seatType = 'full',
+    } = params
 
-    logger.info('Attempting to invite member', { organizationId, email, role, inviterUserId })
+    logger.info('Attempting to invite member', {
+      organizationId,
+      email,
+      role,
+      seatType,
+      inviterUserId,
+    })
+
+    // §2.A invariant: a field (worker) seat is always the Member role. Reject a
+    // field-seat invite that carries ADMIN/OWNER rather than silently clamping —
+    // the caller (form) forces role USER when Field seat is chosen.
+    if (seatType === 'worker' && role !== 'USER') {
+      throw new BadRequestError(
+        'Field seats are limited to the Member role. Invite as a Full member to grant Admin or Owner.'
+      )
+    }
 
     // 1. Check inviter permissions
     await this.checkAdminOrOwnerPermission(inviterUserId, organizationId)
@@ -249,6 +275,7 @@ export class MemberService {
         organizationId,
         email,
         role,
+        seatType,
         token,
         expiresAt,
         status: 'PENDING',
@@ -686,17 +713,21 @@ export class MemberService {
     let newSeatCount = 0
     try {
       const result = await this.db.transaction(async (tx) => {
+        // Carry the invitation's seat packaging onto the new member (§8).
+        // §2.A invariant: a field (worker) seat is always the Member role —
+        // clamp defensively so a mismatched invitation can never mint a
+        // field-seat ADMIN/OWNER even if it slipped past the invite guard.
+        const memberSeatType: SeatType = invitation.seatType === 'worker' ? 'worker' : 'full'
+        const memberRole: OrganizationRole = memberSeatType === 'worker' ? 'USER' : invitation.role
+
         // Create new organization member
         const [newMember] = await tx
           .insert(schema.OrganizationMember)
           .values({
             userId: acceptingUserId,
             organizationId: organizationId,
-            role: invitation.role,
-            // New members are full seats by default (§8). Field (worker) seats are
-            // assigned explicitly afterwards via `updateMemberSeatType`; the
-            // OrganizationInvitation row carries no seatType to thread through yet.
-            seatType: 'full',
+            role: memberRole,
+            seatType: memberSeatType,
             status: 'ACTIVE', // Set as Active
             updatedAt: new Date(),
           })
