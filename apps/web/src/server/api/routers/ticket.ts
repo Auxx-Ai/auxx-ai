@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { TicketPriority, TicketStatus, TicketType } from '@auxx/database/enums'
 import { publisher } from '@auxx/lib/events'
+import { PermissionKey } from '@auxx/lib/permissions'
 import {
   addRelation,
   deleteMultipleTickets,
@@ -15,7 +16,18 @@ import {
 } from '@auxx/lib/tickets'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+
+/**
+ * Tickets are governed by the RECORDS area (capability layer v2 phase 4). The
+ * ticket entity has no dedicated write key, so `assertEditEntity('ticket')`
+ * resolves to `records.edit` for an unrestricted ticket def, or the ticket def's
+ * own grant when an admin restricts it via the Access tab (most-specific-wins).
+ * Writes flow through `ticketService`, NOT `UnifiedCrudHandler`, so enforcement
+ * lives here at the router. Destructive ops additionally assert the coarse
+ * `records.delete` verb, mirroring `record.ts`.
+ */
+const TICKET_ENTITY = 'ticket'
 
 /**
  * Simplified input schema for tickets with JSON-based type data
@@ -42,9 +54,10 @@ const ticketInputSchema = z.object({
  */
 export const ticketRouter = createTRPCRouter({
   // Create ticket
-  create: protectedProcedure
+  create: capabilityProcedure
     .input(ticketInputSchema.omit({ id: true }))
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
       return await ticketService.createTicket({
         ...input,
@@ -54,9 +67,10 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Update ticket
-  update: protectedProcedure
+  update: capabilityProcedure
     .input(ticketInputSchema.partial().required({ id: true }))
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
       return await ticketService.updateTicket({
         ...input,
@@ -138,16 +152,18 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Delete ticket
-  deleteTicket: protectedProcedure
+  deleteTicket: capabilityProcedure
     .input(z.object({ ticketId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assert(PermissionKey.recordsDelete)
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
       await ticketService.deleteTicket(input.ticketId, organizationId, userId)
       return { success: true }
     }),
 
   // Update ticket status
-  updateStatus: protectedProcedure
+  updateStatus: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -155,14 +171,16 @@ export const ticketRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
       return await ticketService.updateTicketStatus(input.id, input.status, organizationId, userId)
     }),
 
   // Update ticket assignments
-  updateAssignment: protectedProcedure
+  updateAssignment: capabilityProcedure
     .input(z.object({ ticketId: z.string(), agentIds: z.array(z.string()) }))
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
       return await ticketService.updateTicketAssignments(
         input.ticketId,
@@ -173,7 +191,7 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Update ticket priority
-  updatePriority: protectedProcedure
+  updatePriority: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -181,6 +199,7 @@ export const ticketRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
 
       const ticket = await ticketService.updateTicket({
@@ -251,7 +270,7 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Update multiple tickets' status
-  updateMultipleStatus: protectedProcedure
+  updateMultipleStatus: capabilityProcedure
     .input(
       z.object({
         ticketIds: z.array(z.string()),
@@ -259,6 +278,7 @@ export const ticketRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { ticketIds, status } = input
       const { organizationId, userId } = ctx.session
 
@@ -273,7 +293,7 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Update multiple tickets' priority
-  updateMultiplePriority: protectedProcedure
+  updateMultiplePriority: capabilityProcedure
     .input(
       z.object({
         ticketIds: z.array(z.string()),
@@ -281,6 +301,7 @@ export const ticketRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { ticketIds, priority } = input
       const { organizationId, userId } = ctx.session
 
@@ -295,9 +316,10 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Update multiple tickets' assignments
-  updateMultipleAssignments: protectedProcedure
+  updateMultipleAssignments: capabilityProcedure
     .input(z.object({ ticketIds: z.array(z.string()), agentIds: z.array(z.string()) }))
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { ticketIds, agentIds } = input
       const { organizationId, userId } = ctx.session
 
@@ -312,9 +334,11 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Delete multiple tickets
-  deleteMultipleTickets: protectedProcedure
+  deleteMultipleTickets: capabilityProcedure
     .input(z.object({ ticketIds: z.array(z.string()) }))
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assert(PermissionKey.recordsDelete)
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { ticketIds } = input
       const { organizationId, userId } = ctx.session
 
@@ -325,9 +349,13 @@ export const ticketRouter = createTRPCRouter({
       })
     }),
 
-  mergeTickets: protectedProcedure
+  mergeTickets: capabilityProcedure
     .input(z.object({ primaryTicketId: z.string(), ticketsToMergeIds: z.array(z.string()) }))
     .mutation(async ({ ctx, input }) => {
+      // Merge permanently removes the source tickets — gate on the delete verb
+      // (mirrors record.merge) plus the records-area edit gate.
+      ctx.capabilities.assert(PermissionKey.recordsDelete)
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { primaryTicketId, ticketsToMergeIds } = input
       const { organizationId, userId } = ctx.session
 
@@ -345,7 +373,7 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Add a relation between tickets
-  addRelation: protectedProcedure
+  addRelation: capabilityProcedure
     .input(
       z.object({
         ticketId: z.string(),
@@ -354,6 +382,7 @@ export const ticketRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
       const { ticketId, relatedTicketId, relation } = input
 
@@ -367,9 +396,10 @@ export const ticketRouter = createTRPCRouter({
     }),
 
   // Remove a relation between tickets
-  removeRelation: protectedProcedure
+  removeRelation: capabilityProcedure
     .input(z.object({ relationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditEntity(TICKET_ENTITY)
       const { organizationId, userId } = ctx.session
       const { relationId } = input
 

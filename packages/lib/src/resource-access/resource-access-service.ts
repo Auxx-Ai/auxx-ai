@@ -65,6 +65,11 @@ async function emitResourceAccessChanged(
  * separate so the noisy instance-level event isn't piggybacked onto capability
  * invalidation. Call AFTER the DB write commits, in addition to the
  * instance-level emit.
+ *
+ * Also publishes `publishCapabilitiesChanged` so OTHER members' live client
+ * sessions re-compose def-access on a grant change (phase 4 §10) — the server
+ * cache bust alone leaves clients stale until a natural refetch / TTL. Mirrors
+ * {@link emitGrantChanged} in grant-service.ts.
  */
 async function emitResourceAccessTypeChanged(
   organizationId: string,
@@ -77,18 +82,24 @@ async function emitResourceAccessTypeChanged(
     else broadcast = true
   }
 
+  // Lazy import — the cache invalidation path lazily imports realtime, so this
+  // module must not statically import the realtime barrel back (import cycle).
+  const { getRealtimeService, publishCapabilitiesChanged } = await import('../realtime')
+
   if (broadcast) {
     await onCacheEvent('resource-access.type.changed', {
       orgId: organizationId,
       broadcastUserKeys: true,
     })
+    await publishCapabilitiesChanged(getRealtimeService(), { orgId: organizationId })
     return
   }
 
   await Promise.all(
-    Array.from(userIds).map((userId) =>
-      onCacheEvent('resource-access.type.changed', { orgId: organizationId, userId })
-    )
+    Array.from(userIds).map(async (userId) => {
+      await onCacheEvent('resource-access.type.changed', { orgId: organizationId, userId })
+      await publishCapabilitiesChanged(getRealtimeService(), { userId })
+    })
   )
 }
 

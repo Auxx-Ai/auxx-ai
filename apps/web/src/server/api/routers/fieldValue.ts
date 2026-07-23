@@ -1,12 +1,14 @@
 // apps/web/src/server/api/routers/fieldValue.ts
 
+import { schema } from '@auxx/database'
 import { FieldValueService } from '@auxx/lib/field-values'
 import type { FieldReference } from '@auxx/types/field'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter } from '../trpc'
 
 /** Schema for FieldReference - either ResourceFieldId or FieldPath */
 const fieldReferenceSchema = z.union([
@@ -54,10 +56,10 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Layer-2 write guard (§11.4): the required key is per-entity (recordsEdit, or
-      // dispatch.board.manage for work orders) — an in-memory Set lookup, no extra I/O.
+      // Write enforcement (phase 4 §3.2): def-aware edit gate (Layer 2 × Layer 3,
+      // most-specific-wins) — in-memory, no extra I/O. Throws ForbiddenError (403).
       const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
-      ctx.capabilities.assertWriteEntity(entityDefinitionId)
+      ctx.capabilities.assertEditEntity(entityDefinitionId)
 
       const service = new FieldValueService(
         ctx.session.organizationId,
@@ -123,12 +125,12 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Layer-2 write guard (§11.4): assert per DISTINCT entity def in the batch — zero extra
-      // I/O beyond the recordId parse the service already does, in-memory Set lookups only.
+      // Write enforcement (phase 4 §3.2): assert the def-aware edit gate per DISTINCT
+      // entity def in the batch — in-memory Set lookups only, no extra I/O.
       const distinctDefIds = new Set(
         input.recordIds.map((id) => parseRecordId(id as RecordId).entityDefinitionId)
       )
-      for (const defId of distinctDefIds) ctx.capabilities.assertWriteEntity(defId)
+      for (const defId of distinctDefIds) ctx.capabilities.assertEditEntity(defId)
 
       const service = new FieldValueService(
         ctx.session.organizationId,
@@ -158,9 +160,9 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Layer-2 write guard (§11.4): clearing a field value is a write to that entity.
+      // Write enforcement (phase 4 §3.2): clearing a field value is an edit to that def.
       const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
-      ctx.capabilities.assertWriteEntity(entityDefinitionId)
+      ctx.capabilities.assertEditEntity(entityDefinitionId)
 
       const service = new FieldValueService(
         ctx.session.organizationId,
@@ -211,7 +213,7 @@ export const fieldValueRouter = createTRPCRouter({
    * Add value to multi-value field (MULTI_SELECT, TAGS, etc.)
    * Expects recordId in RecordId format.
    */
-  add: protectedProcedure
+  add: capabilityProcedure
     .input(
       z.object({
         recordId: z.string(), // RecordId format
@@ -224,6 +226,10 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Write enforcement (phase 4 §3.2): appending a multi-value is an edit.
+      const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
+      ctx.capabilities.assertEditEntity(entityDefinitionId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
@@ -242,9 +248,22 @@ export const fieldValueRouter = createTRPCRouter({
   /**
    * Remove value from multi-value field
    */
-  remove: protectedProcedure
+  remove: capabilityProcedure
     .input(z.object({ valueId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // `remove` carries only the value's id, so resolve its def to enforce the
+      // write gate (phase 4 §3.2). A missing row is a no-op removal — skip the gate.
+      const [row] = await ctx.db
+        .select({ entityDefinitionId: schema.FieldValue.entityDefinitionId })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.id, input.valueId),
+            eq(schema.FieldValue.organizationId, ctx.session.organizationId)
+          )
+        )
+      if (row) ctx.capabilities.assertEditEntity(row.entityDefinitionId)
+
       const service = new FieldValueService(
         ctx.session.organizationId,
         ctx.session.user.id,
