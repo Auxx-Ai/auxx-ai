@@ -15,6 +15,7 @@ import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Users } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { ListSelectionProvider, useBulkMode, useListSelection } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -39,13 +40,12 @@ export function GroupsTab({ createOpen, onCreateOpenChange }: GroupsTabProps) {
 }
 
 function GroupsTabInner({ createOpen, onCreateOpenChange }: GroupsTabProps) {
+  const router = useRouter()
   const { data: groups, isLoading } = useGroups()
   const { deleteGroup } = useGroupMutations()
   const [confirm, ConfirmDialog] = useConfirm()
 
   const [search, setSearch] = useState('')
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
 
   const bulkMode = useBulkMode()
   const setBulkMode = useListSelection((s) => s.setBulkMode)
@@ -63,10 +63,7 @@ function GroupsTabInner({ createOpen, onCreateOpenChange }: GroupsTabProps) {
     setItemIds(filteredGroups.map((g) => g.id))
   }, [filteredGroups, setItemIds])
 
-  const handleEdit = (groupId: string) => {
-    setSelectedGroupId(groupId)
-    setIsEditDialogOpen(true)
-  }
+  const openGroup = (groupId: string) => router.push(`/app/settings/groups/${groupId}`)
 
   const handleDelete = async (groupId: string) => {
     const confirmed = await confirm({
@@ -137,8 +134,7 @@ function GroupsTabInner({ createOpen, onCreateOpenChange }: GroupsTabProps) {
               <GroupCard
                 key={group.id}
                 group={group}
-                onSelect={handleEdit}
-                onEdit={handleEdit}
+                onSelect={openGroup}
                 onDelete={handleDelete}
               />
             ))}
@@ -160,23 +156,6 @@ function GroupsTabInner({ createOpen, onCreateOpenChange }: GroupsTabProps) {
             onCancel={() => onCreateOpenChange(false)}
             onSuccess={() => onCreateOpenChange(false)}
           />
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit group */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className='max-h-[90vh] overflow-y-auto' position='tc' size='md'>
-          <DialogHeader>
-            <DialogTitle>Edit Group</DialogTitle>
-          </DialogHeader>
-          {selectedGroupId && (
-            <GroupDetailDialog
-              mode='edit'
-              groupId={selectedGroupId}
-              onCancel={() => setIsEditDialogOpen(false)}
-              onSuccess={() => setIsEditDialogOpen(false)}
-            />
-          )}
         </DialogContent>
       </Dialog>
     </div>

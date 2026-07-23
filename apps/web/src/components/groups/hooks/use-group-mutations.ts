@@ -19,6 +19,13 @@ export function useGroupMutations() {
     },
   })
 
+  /** Update a group's name / description / icon / visibility */
+  const update = api.entityGroup.update.useMutation({
+    onSuccess: () => {
+      utils.entityGroup.list.invalidate()
+    },
+  })
+
   /** Delete a group */
   const deleteGroup = api.entityGroup.delete.useMutation({
     onSuccess: (_, { groupId }) => {
@@ -59,6 +66,7 @@ export function useGroupMutations() {
 
   return {
     create,
+    update,
     deleteGroup,
     addMembers,
     removeMembers,

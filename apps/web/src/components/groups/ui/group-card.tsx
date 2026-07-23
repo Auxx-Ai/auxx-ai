@@ -20,14 +20,13 @@ interface GroupCardProps {
   group: EntityInstanceEntity
   /** Members to display as an avatar stack (optional). */
   members?: GroupMember[]
-  /** Open the group (edit) — fired on row click when not bulk-selecting. */
+  /** Open the group detail page — fired on row click when not bulk-selecting. */
   onSelect?: (groupId: string) => void
-  onEdit?: (groupId: string) => void
   onDelete?: (groupId: string) => void
 }
 
 /** One row in the Groups tab — emoji, name, member count, avatar stack, menu. */
-export function GroupCard({ group, members = [], onSelect, onEdit, onDelete }: GroupCardProps) {
+export function GroupCard({ group, members = [], onSelect, onDelete }: GroupCardProps) {
   const metadata = getGroupMetadata(group)
   const emoji = metadata.icon || '👥'
   const memberCount = metadata.memberCount ?? 0
@@ -62,15 +61,9 @@ export function GroupCard({ group, members = [], onSelect, onEdit, onDelete }: G
       </div>
     ) : undefined
 
-  const menuItems =
-    onEdit || onDelete
-      ? [
-          ...(onEdit ? [{ label: 'Edit Group', onClick: () => onEdit(group.id) }] : []),
-          ...(onDelete
-            ? [{ label: 'Delete Group', destructive: true, onClick: () => onDelete(group.id) }]
-            : []),
-        ]
-      : undefined
+  const menuItems = onDelete
+    ? [{ label: 'Delete Group', destructive: true, onClick: () => onDelete(group.id) }]
+    : undefined
 
   return (
     <ListCard
