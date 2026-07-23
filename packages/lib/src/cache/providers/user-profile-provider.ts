@@ -28,6 +28,7 @@ export const userProfileProvider: CacheProvider<DehydratedUser> = {
         userId: schema.OrganizationMember.userId,
         organizationId: schema.OrganizationMember.organizationId,
         role: schema.OrganizationMember.role,
+        seatType: schema.OrganizationMember.seatType,
         status: schema.OrganizationMember.status,
       })
       .from(schema.OrganizationMember)
@@ -96,6 +97,7 @@ export const userProfileProvider: CacheProvider<DehydratedUser> = {
         userId: m.userId,
         organizationId: m.organizationId,
         role: m.role,
+        seatType: m.seatType,
         status: m.status,
       })),
     }

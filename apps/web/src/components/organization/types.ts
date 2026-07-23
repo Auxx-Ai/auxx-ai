@@ -1,5 +1,5 @@
 // components/organization/types.ts
-import type { OrganizationRole } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 
 /** Organization membership data */
 export type OrganizationMembership = {
@@ -7,6 +7,7 @@ export type OrganizationMembership = {
   name: string | null
   handle: string | null
   role: OrganizationRole
+  seatType: SeatType
 }
 
 /** Pending invitation data */

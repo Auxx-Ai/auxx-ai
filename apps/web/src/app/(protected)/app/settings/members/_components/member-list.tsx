@@ -1,6 +1,6 @@
 'use client'
 import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
-import type { OrganizationRole } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { FeatureKey } from '@auxx/lib/types'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -45,6 +45,10 @@ import { useRouter } from 'next/navigation'
 // src/app/(auth)/app/settings/members/_components/member-list.tsx
 import { useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
+import { Tooltip } from '~/components/global/tooltip'
+import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
+import { SeatTypeSelect } from '~/components/permissions/ui/seat-type-select'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -63,6 +67,7 @@ type Member = {
   userId: string
   organizationId: string
   role: OrganizationRole
+  seatType: SeatType
   user: {
     id: string
     name: string | null
@@ -113,6 +118,9 @@ export function MemberList({
   const [isCancelInviteDialogOpen, setIsCancelInviteDialogOpen] = useState(false)
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
   const [newRole, setNewRole] = useState<OrganizationRole | null>(null)
+  const [isSeatDialogOpen, setIsSeatDialogOpen] = useState(false)
+  const [newSeatType, setNewSeatType] = useState<SeatType>('full')
+  const [confirm, ConfirmDialog] = useConfirm()
   const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null) // Track which link is being copied
   const removeUserMutation = api.member.remove.useMutation({
     onSuccess: () => {
@@ -135,6 +143,16 @@ export function MemberList({
     },
     onError: (error) => {
       toastError({ title: 'Error', description: error.message })
+    },
+  })
+  const updateSeatType = api.member.updateSeatType.useMutation({
+    onSuccess: () => {
+      setIsSeatDialogOpen(false)
+      onMemberUpdate?.()
+      router.refresh()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error updating seat type', description: error.message })
     },
   })
   const cancelInviteMutation = api.member.cancelInvitation.useMutation({
@@ -214,6 +232,24 @@ export function MemberList({
     await updateRoleMutation.mutateAsync({ memberId: selectedMember.userId, role: newRole })
     router.refresh() // Refresh the page to reflect changes
   }
+  const handleUpdateSeatType = async () => {
+    if (!selectedMember || newSeatType === selectedMember.seatType) return
+    // Demoting a full member to a field seat strips them down to the field-seat
+    // surface (schedule + assigned jobs). Confirm before applying (invariant §2.A
+    // keeps promotions to Admin/Owner blocked while they hold a field seat).
+    if (selectedMember.seatType === 'full' && newSeatType === 'worker') {
+      const confirmed = await confirm({
+        title: 'Switch to a field seat?',
+        description:
+          'This limits the member to their schedule and assigned jobs — they lose access to tickets, records and other areas. You can switch them back to a full member later.',
+        confirmText: 'Switch to field seat',
+        cancelText: 'Cancel',
+        destructive: true,
+      })
+      if (!confirmed) return
+    }
+    await updateSeatType.mutateAsync({ memberId: selectedMember.userId, seatType: newSeatType })
+  }
   // Sort members by role importance (OWNER first, then ADMIN, then USER)
   const sortedMembers = [...members].sort((a, b) => {
     const roleOrder = {
@@ -225,6 +261,8 @@ export function MemberList({
   })
   const canManageUsers =
     currentUserRole === OrganizationRoleEnum.OWNER || currentUserRole === OrganizationRoleEnum.ADMIN
+  // Informational only — NOT wired to a plan limit (that's phase 5 billing).
+  const fieldSeatCount = members.filter((m) => m.seatType === 'worker').length
   const displayList: DisplayMember[] = [
     ...members.map((m): DisplayMember => ({ type: 'member', data: m })),
     ...pendingInvitations.map((p): DisplayMember => ({ type: 'pending', data: p })),
@@ -281,7 +319,17 @@ export function MemberList({
   }
   return (
     <div className='p-3 sm:p-6'>
-      <SettingsSection className='space-y-4' icon={Users} title='Members'>
+      <SettingsSection
+        className='space-y-4'
+        icon={Users}
+        title='Members'
+        action={
+          fieldSeatCount > 0 ? (
+            <span className='text-xs text-muted-foreground'>
+              {fieldSeatCount} field {fieldSeatCount === 1 ? 'seat' : 'seats'}
+            </span>
+          ) : undefined
+        }>
         {displayList.map((item) => {
           const isCopyingThisLink =
             getAndCopyLinkMutation.isPending &&
@@ -319,6 +367,7 @@ export function MemberList({
                         {item.type === 'member' ? item.data.role : `Pending ${item.data.role}`}
                       </span>
                     </Badge>
+                    {item.type === 'member' && <SeatTypeBadge seatType={item.data.seatType} />}
                   </div>
                   <div className='text-muted-foreground text-xs'>
                     {item.type === 'member' ? (
@@ -364,6 +413,18 @@ export function MemberList({
                                 setIsRoleDialogOpen(true)
                               }}>
                               Change role
+                            </DropdownMenuItem>
+                          )}
+                          {/* Change seat type — only Members (role USER) can hold a
+                              field seat (invariant §2.A); demote to Member first. */}
+                          {item.data.role === OrganizationRoleEnum.USER && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedMember(item.data)
+                                setNewSeatType(item.data.seatType)
+                                setIsSeatDialogOpen(true)
+                              }}>
+                              Change seat type
                             </DropdownMenuItem>
                           )}
                           {/* Separator if both actions available */}
@@ -535,21 +596,39 @@ export function MemberList({
                   <SelectValue placeholder='Select a role' />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* Only show options the current user has permission to assign */}
+                  {/* Only show options the current user has permission to assign.
+                      Field seats are always Members — Admin/Owner stay disabled
+                      until the seat is switched to Full member (invariant §2.A). */}
                   {currentUserRole === OrganizationRoleEnum.OWNER && (
-                    <SelectItem value={OrganizationRoleEnum.OWNER}>Owner</SelectItem>
+                    <SelectItem
+                      value={OrganizationRoleEnum.OWNER}
+                      disabled={selectedMember?.seatType === 'worker'}>
+                      Owner
+                    </SelectItem>
                   )}
-                  <SelectItem value={OrganizationRoleEnum.ADMIN}>Admin</SelectItem>
+                  <SelectItem
+                    value={OrganizationRoleEnum.ADMIN}
+                    disabled={selectedMember?.seatType === 'worker'}>
+                    Admin
+                  </SelectItem>
                   <SelectItem value={OrganizationRoleEnum.USER}>User</SelectItem>
                 </SelectContent>
               </Select>
-              <p className='text-xs text-muted-foreground'>
-                {newRole === OrganizationRoleEnum.OWNER
-                  ? 'Owners have full control over the organization and can manage all settings and members.'
-                  : newRole === OrganizationRoleEnum.ADMIN
-                    ? 'Admins can manage organization settings and members but cannot delete the organization.'
-                    : 'Users have standard access to the organization.'}
-              </p>
+              {selectedMember?.seatType === 'worker' ? (
+                <Tooltip content='Field seats are always members — change to Full member first.'>
+                  <p className='text-xs text-muted-foreground'>
+                    Field seats are always members — change to Full member first to promote.
+                  </p>
+                </Tooltip>
+              ) : (
+                <p className='text-xs text-muted-foreground'>
+                  {newRole === OrganizationRoleEnum.OWNER
+                    ? 'Owners have full control over the organization and can manage all settings and members.'
+                    : newRole === OrganizationRoleEnum.ADMIN
+                      ? 'Admins can manage organization settings and members but cannot delete the organization.'
+                      : 'Users have standard access to the organization.'}
+                </p>
+              )}
             </div>
           </div>
 
@@ -575,6 +654,49 @@ export function MemberList({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Change seat type dialog */}
+      <Dialog open={isSeatDialogOpen} onOpenChange={setIsSeatDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change seat type</DialogTitle>
+            <DialogDescription>
+              Choose the seat for{' '}
+              <Badge variant='user' size='sm'>
+                {selectedMember?.user.name || selectedMember?.user.email}
+              </Badge>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='grid gap-2'>
+            <SeatTypeSelect value={newSeatType} onChange={setNewSeatType} />
+            <p className='text-xs text-muted-foreground'>
+              Field seats are always members and are limited to their schedule and assigned jobs.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => setIsSeatDialogOpen(false)}
+              disabled={updateSeatType.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateSeatType}
+              size='sm'
+              variant='outline'
+              disabled={updateSeatType.isPending || newSeatType === selectedMember?.seatType}
+              loading={updateSeatType.isPending}
+              loadingText='Updating...'>
+              Update seat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog />
     </div>
   )
 }

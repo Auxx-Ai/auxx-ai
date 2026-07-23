@@ -120,6 +120,8 @@ export interface DehydratedUser {
     userId: string
     organizationId: string
     role: string
+    /** Seat packaging — 'full' | 'worker' (UI "Field seat"). */
+    seatType: string
     status: string
   }>
 }

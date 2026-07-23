@@ -1,0 +1,1 @@
+ALTER TABLE "OrganizationInvitation" ADD COLUMN "seatType" text DEFAULT 'full' NOT NULL;

@@ -78,6 +78,7 @@ export const memberRouter = createTRPCRouter({
           id: m.id,
           userId: m.userId,
           role: m.role,
+          seatType: m.seatType,
           status: m.status,
           organizationId: m.organizationId,
           user: m.user!,
@@ -241,6 +242,7 @@ export const memberRouter = createTRPCRouter({
       z.object({
         email: z.string().email(),
         role: z.enum(OrganizationRole).default('USER'),
+        seatType: z.enum(SeatType).default('full'),
       })
     )
     .use(notDemo('invite team members'))
@@ -260,6 +262,7 @@ export const memberRouter = createTRPCRouter({
           organizationName: org?.name,
           email: input.email,
           role: input.role,
+          seatType: input.seatType,
         })
       } catch (error) {
         if (error instanceof TRPCError) throw error
@@ -279,6 +282,7 @@ export const memberRouter = createTRPCRouter({
           z.object({
             email: z.string().email(),
             role: z.enum(OrganizationRole),
+            seatType: z.enum(SeatType).default('full'),
           })
         ),
       })
@@ -301,6 +305,7 @@ export const memberRouter = createTRPCRouter({
             organizationName: org?.name,
             email: invite.email,
             role: invite.role,
+            seatType: invite.seatType,
           })
           results.push({ email: invite.email, success: true, message: result.message })
         } catch (error) {

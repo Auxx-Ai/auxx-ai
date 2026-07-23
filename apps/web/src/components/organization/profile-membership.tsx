@@ -45,6 +45,7 @@ export function ProfileMemberships() {
           name: org?.name ?? null,
           handle: org?.handle ?? null,
           role: m.role as OrganizationMembership['role'],
+          seatType: (m.seatType ?? 'full') as OrganizationMembership['seatType'],
         }
       }),
     [dehydratedUser.memberships, dehydratedOrganizations]

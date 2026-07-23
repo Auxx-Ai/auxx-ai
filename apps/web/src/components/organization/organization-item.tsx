@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useSession } from '~/auth/auth-client'
 import { clearChannelCaches } from '~/components/channels/providers/channel-provider'
+import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
 import { clearResourceCaches } from '~/components/resources'
 import { useUser } from '~/hooks/use-user'
 import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
@@ -118,6 +119,7 @@ export function OrganizationItem({
               <span className='flex items-center gap-1 text-xs text-muted-foreground'>
                 {organization.role}
               </span>
+              <SeatTypeBadge seatType={organization.seatType} />
             </div>
             {organization.handle && (
               <span className='text-xs text-muted-foreground font-mono'>{organization.handle}</span>
