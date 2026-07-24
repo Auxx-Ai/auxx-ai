@@ -193,6 +193,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         slug: 'datasets',
         icon: <Database />,
         featureKey: 'datasets',
+        permissionKey: 'datasets.view',
       },
       {
         id: 'kb',

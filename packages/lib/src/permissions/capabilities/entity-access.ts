@@ -23,11 +23,18 @@ import { SEAT_CEILINGS } from './seat-policy'
  */
 
 /**
- * Mail/messaging infrastructure def slugs — visibility governed OUTSIDE the
- * records area (the mail visibility system), so record-level view/edit gates
- * pass them through. Keyed by entity slug; the caller resolves the def to its
- * slug before checking. (Moved here from `capability-set.ts` so the client can
- * apply the same carve-out.)
+ * Def slugs whose visibility is governed OUTSIDE the records area, so record-level
+ * view/edit gates pass them through:
+ * - **Mail/messaging infrastructure** (`inbox`…`sequence`) — the mail visibility
+ *   system.
+ * - **Instance-access resources** (`dataset`) — their own L2 area + per-instance
+ *   `ResourceAccess` grants, disjoint from type-level def enforcement (plan 11
+ *   §0.6). Nothing calls `canViewEntity('dataset')`, so this is inert for
+ *   enforcement; it keeps the client mirror `NON_RECORD_ENTITY_SLUGS` in
+ *   `resources/registry/types.ts` consistent (that set hides datasets from the
+ *   entity-def Access grid).
+ *
+ * Keyed by entity slug; the caller resolves the def to its slug before checking.
  */
 export const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
   'inbox',
@@ -36,6 +43,7 @@ export const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
   'message',
   'snippet',
   'sequence',
+  'dataset',
 ])
 
 /**

@@ -2,11 +2,12 @@
 
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Database, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CreateDatasetDialog } from './create-dataset-dialog'
 import { useDatasets } from './datasets-provider'
@@ -21,9 +22,16 @@ export function CreateDatasetButton({
 } = {}) {
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const { isAtLimit, getLimit } = useFeatureFlags()
+  const { can } = useAccess()
   const { stats } = useDatasets()
   const atLimit = isAtLimit(FeatureKey.datasetsLimit, stats?.total ?? 0)
   const datasetLimit = getLimit(FeatureKey.datasetsLimit)
+
+  // Creating a dataset requires the `datasets` Full rung (`datasets.manage`);
+  // Read/Edit members can browse and contribute but not create.
+  if (!can(PermissionKey.datasetsManage)) {
+    return null
+  }
 
   if (atLimit) {
     return (

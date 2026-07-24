@@ -106,11 +106,17 @@ export function isCustomResource(resource: Resource): resource is CustomResource
 }
 
 /**
- * Mail/messaging-infrastructure entity slugs whose visibility is governed OUTSIDE
- * the records area (their `ResourceAccess` rows carry mail-sharing semantics, not
- * def restriction). Client-safe mirror of the server-side `NON_RECORD_DEF_SLUGS`
- * in `permissions/capabilities/capability-set.ts` — kept in sync by hand. The
- * entity-def Access UI (capability layer v2 phase 3) is hidden for these.
+ * Entity slugs whose visibility is governed OUTSIDE the records area, so they are
+ * hidden from the entity-def Access UI (capability layer v2 phase 3):
+ * - **Mail/messaging infra** (`inbox`…`sequence`) — their `ResourceAccess` rows
+ *   carry mail-sharing semantics, not def restriction.
+ * - **Instance-access resources** (`dataset`) — governed by their own L2 area +
+ *   per-instance `ResourceAccess` grants (the Share card), disjoint from
+ *   type-level def enforcement (plan 08 §0.6 / 11 §0.6). A def-access grid row
+ *   for these would be a phantom control that writes rows nothing reads.
+ *
+ * Client-safe mirror of the server-side `NON_RECORD_DEF_SLUGS` in
+ * `permissions/capabilities/entity-access.ts` — kept in sync by hand.
  */
 export const NON_RECORD_ENTITY_SLUGS: ReadonlySet<string> = new Set([
   'inbox',
@@ -119,6 +125,7 @@ export const NON_RECORD_ENTITY_SLUGS: ReadonlySet<string> = new Set([
   'message',
   'snippet',
   'sequence',
+  'dataset',
 ])
 
 /**
