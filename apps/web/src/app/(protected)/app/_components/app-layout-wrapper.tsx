@@ -17,6 +17,7 @@ import { GlobalRecordEditorRoot } from '~/components/records/global-record-edito
 import { SignatureDialogRoot } from '~/components/signatures/ui/signature-dialog-root'
 import { SnippetDialogRoot } from '~/components/snippets/snippet-dialog-root'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
+import { FloatingTaskEditorRoot } from '~/components/tasks/ui/floating-task-editor-root'
 import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
 import { ThreadActionsProvider, ThreadDataProvider } from '~/components/threads'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
@@ -102,6 +103,7 @@ export function AppLayoutWrapper({
               </Dashboard>
               <FloatingComposeRoot />
               <FloatingTaskRoot />
+              <FloatingTaskEditorRoot />
               <GlobalCreateRoot />
               <GlobalRecordEditorRoot />
               <SignatureDialogRoot />

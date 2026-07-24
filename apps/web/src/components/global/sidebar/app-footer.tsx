@@ -47,7 +47,7 @@ import { useDemo } from '~/hooks/use-demo'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
 import { useEnv } from '~/providers/dehydrated-state-provider'
-import { NotificationCenter } from '../notifications/notification-center'
+import { NotificationTrigger } from '../notifications/notification-trigger'
 
 const PlanChangeSummary = dynamic(
   () =>
@@ -84,7 +84,7 @@ function AppFooter({}: Props) {
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        <NotificationCenter />
+        <NotificationTrigger />
 
         <SidebarMenuItem>
           <DropdownMenu open={isHelpOpen} onOpenChange={setIsHelpOpen}>
@@ -200,7 +200,7 @@ function AppFooter({}: Props) {
                       <Heart />
                       <span>Social</span>
                     </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className='w-56' side='bottom'>
+                    <DropdownMenuSubContent className='w-56'>
                       {/* <DropdownMenuItem asChild>
                         <Link
                           href={`${homepageUrl}/terms-of-service`}

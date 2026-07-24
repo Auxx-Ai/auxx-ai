@@ -1,12 +1,9 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
-import { schema } from '@auxx/database'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { BadRequestError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { NotificationService } from '@auxx/lib/notifications'
 import { getCapabilities, isInstanceAccessKey } from '@auxx/lib/permissions'
-import { satisfiesLens } from '@auxx/lib/permissions/visibility'
 import type { ResourceAccessContext } from '@auxx/lib/resource-access'
 import {
   assertCanManageMailSharing,
@@ -28,7 +25,6 @@ import {
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
@@ -46,40 +42,6 @@ function toContext(ctx: {
     organizationId: ctx.session.organizationId,
     userId: ctx.session.userId,
   }
-}
-
-async function notifyThreadShare(input: {
-  db: any
-  threadId: string
-  recipientId: string
-  actorId: string
-  actorName: string
-  organizationId: string
-  includeSubject: boolean
-}): Promise<void> {
-  const [thread] = await input.db
-    .select({ subject: schema.Thread.subject })
-    .from(schema.Thread)
-    .where(
-      and(
-        eq(schema.Thread.id, input.threadId),
-        eq(schema.Thread.organizationId, input.organizationId)
-      )
-    )
-    .limit(1)
-
-  if (!thread) return
-
-  const subjectSuffix = input.includeSubject ? `: ${thread.subject}` : ''
-  await new NotificationService(input.db).sendNotification({
-    type: 'THREAD_SHARED',
-    userId: input.recipientId,
-    entityType: 'Thread',
-    entityId: input.threadId,
-    actorId: input.actorId,
-    organizationId: input.organizationId,
-    message: `${input.actorName} shared a conversation with you${subjectSuffix}`,
-  })
 }
 
 /**
@@ -182,26 +144,6 @@ export const resourceAccessRouter = createTRPCRouter({
         permission: input.permission,
         lens: input.lens,
       })
-      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-      if (
-        entityDefinitionId === 'thread' &&
-        input.granteeType === ResourceGranteeType.user &&
-        input.granteeId !== ctx.session.userId
-      ) {
-        const grantedLens =
-          input.permission === ResourcePermission.view ? (input.lens ?? 'full') : 'full'
-        void notifyThreadShare({
-          db: ctx.db,
-          threadId: entityInstanceId,
-          recipientId: input.granteeId,
-          actorId: ctx.session.userId,
-          actorName: ctx.session.user.name ?? 'A teammate',
-          organizationId: ctx.session.organizationId,
-          includeSubject: satisfiesLens(grantedLens, 'subject'),
-        }).catch(() => {
-          // NotificationService logs failures; sharing itself must still succeed.
-        })
-      }
       await recordAuditFromCtx(ctx, {
         category: 'security',
         action: 'permission.granted',

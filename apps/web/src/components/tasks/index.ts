@@ -17,10 +17,12 @@ export { useTasks } from './hooks/use-tasks'
 
 // Store
 export { useCreateTaskStore } from './stores/create-task-store'
+export { useTaskEditorStore } from './stores/task-editor-store'
 export { useTaskStore } from './stores/task-store'
 // UI Components
 export {
   CreateTaskButton,
+  FloatingTaskEditorRoot,
   FloatingTaskRoot,
   TaskCheckbox,
   TaskDialog,

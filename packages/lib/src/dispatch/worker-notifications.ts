@@ -77,11 +77,14 @@ export async function notifyVisitRescheduled(input: NotifyVisitRescheduledInput)
         type: 'VISIT_RESCHEDULED' as NotificationType,
         userId: recipientUserId,
         actorId: userId,
-        entityId: visit.workOrderId,
-        entityType: 'work_order',
+        targetType: 'ENTITY_INSTANCE',
+        targetIds: {
+          entityDefinitionId: 'work_order',
+          entityInstanceId: visit.workOrderId,
+        },
         message: `Your visit for ${workOrderLabel} was rescheduled`,
         organizationId,
-        data: { visitId: visit.id },
+        metadata: { kind: 'VISIT_RESCHEDULED', visitId: visit.id },
       })
 
       if (await emailPrefEnabled(organizationId, recipientUserId)) {
@@ -140,11 +143,14 @@ export async function notifyVisitCanceled(input: NotifyVisitCanceledInput): Prom
         type: 'VISIT_CANCELED' as NotificationType,
         userId: recipientUserId,
         actorId: userId,
-        entityId: visit.workOrderId,
-        entityType: 'work_order',
+        targetType: 'ENTITY_INSTANCE',
+        targetIds: {
+          entityDefinitionId: 'work_order',
+          entityInstanceId: visit.workOrderId,
+        },
         message: `Your visit for ${workOrderLabel} was canceled`,
         organizationId,
-        data: { visitId: visit.id },
+        metadata: { kind: 'VISIT_CANCELED', visitId: visit.id },
       })
 
       if (await emailPrefEnabled(organizationId, recipientUserId)) {
@@ -240,11 +246,17 @@ export async function notifyVisitReassigned(input: NotifyVisitReassignedInput): 
         type: notificationType,
         userId: targetUserId,
         actorId: userId,
-        entityId: visit.workOrderId,
-        entityType: 'work_order',
+        targetType: 'ENTITY_INSTANCE',
+        targetIds: {
+          entityDefinitionId: 'work_order',
+          entityInstanceId: visit.workOrderId,
+        },
         message,
         organizationId,
-        data: { visitId: visit.id },
+        metadata: {
+          kind: notificationType as 'VISIT_RESCHEDULED' | 'VISIT_CANCELED' | 'VISIT_REASSIGNED',
+          visitId: visit.id,
+        },
       })
 
       if (await emailPrefEnabled(organizationId, targetUserId)) {

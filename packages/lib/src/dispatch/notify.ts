@@ -111,11 +111,14 @@ export async function dispatchVisit(input: DispatchVisitInput): Promise<WorkOrde
       type: 'WORK_ORDER_DISPATCHED' as NotificationType,
       userId: recipientUserId,
       actorId: userId,
-      entityId: updated.workOrderId,
-      entityType: 'work_order',
+      targetType: 'ENTITY_INSTANCE',
+      targetIds: {
+        entityDefinitionId: 'work_order',
+        entityInstanceId: updated.workOrderId,
+      },
       message: `You've been dispatched to ${workOrderLabel}`,
       organizationId,
-      data: { visitId: updated.id },
+      metadata: { kind: 'WORK_ORDER_DISPATCHED', visitId: updated.id },
     })
 
     // Plan 19 §4.9: the dispatch email is gated on `notification.dispatch.email` too (default

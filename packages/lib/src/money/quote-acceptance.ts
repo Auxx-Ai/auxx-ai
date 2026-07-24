@@ -77,10 +77,11 @@ async function notifyQuoteCreator(params: {
       // fall back to.
       type: 'SYSTEM_MESSAGE',
       userId: instance.createdById,
-      entityId: quoteInstanceId,
-      entityType: 'quote',
+      targetType: 'ENTITY_INSTANCE',
+      targetIds: { entityDefinitionId: 'quote', entityInstanceId: quoteInstanceId },
       message,
       organizationId,
+      metadata: { kind: 'SYSTEM_MESSAGE', source: 'quote-acceptance' },
     })
   } catch (error) {
     logger.warn('Failed to notify quote creator', {

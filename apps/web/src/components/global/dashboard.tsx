@@ -22,6 +22,7 @@ import { DemoBanner } from '~/components/demo/demo-banner'
 import { isSidebarFavoriteDrag } from '~/components/favorites/drag-eligibility'
 import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-drag-end'
 import { AppDragOverlay } from '~/components/global/app-drag-overlay'
+import { NotificationPanelRoot } from '~/components/global/notifications/notification-panel-root'
 import AppSidebar from '~/components/global/sidebar'
 import { SidebarDragPeek } from '~/components/global/sidebar/sidebar-drag-peek'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
@@ -147,6 +148,7 @@ export const Dashboard = ({
         </DndStateProvider>
         <AppDragOverlay />
       </DndContext>
+      <NotificationPanelRoot />
     </SidebarProvider>
   )
 }

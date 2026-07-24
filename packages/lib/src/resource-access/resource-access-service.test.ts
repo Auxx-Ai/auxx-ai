@@ -25,6 +25,11 @@ const RECORD = toRecordId('inbox', 'inbox_1')
 /** Minimal chainable fake db covering the write shapes these functions use. */
 function fakeDb(opts: { deleteReturning?: Array<{ granteeId: string }> } = {}) {
   const db: any = {
+    query: {
+      ResourceAccess: {
+        findFirst: async () => undefined,
+      },
+    },
     insert: () => ({
       values: () => ({ onConflictDoUpdate: async () => {} }),
     }),

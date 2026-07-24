@@ -84,11 +84,11 @@ export const autoCompleteTasks = async ({ data: event }: { data: AuxxEvent }) =>
           await notifications.sendNotification({
             type: 'TASK_AUTO_COMPLETED',
             userId,
-            entityId: task.id,
-            entityType: 'task',
+            targetType: 'TASK',
+            targetIds: { taskId: task.id },
             message,
             organizationId: task.organizationId,
-            data: { taskId: task.id },
+            metadata: { kind: 'TASK_AUTO_COMPLETED', taskTitle: task.title },
           })
         } catch (error) {
           logger.warn('Failed to send TASK_AUTO_COMPLETED notification', {

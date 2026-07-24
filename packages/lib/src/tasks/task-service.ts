@@ -2,6 +2,7 @@
 
 import type { TaskEntity } from '@auxx/database'
 import { type Database, schema, type Transaction } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { type ActorId, getActorRawId, getActorType, toActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
@@ -9,6 +10,7 @@ import { TRPCError } from '@trpc/server'
 import { and, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../cache'
 import { parseRecordId, toRecordId } from '../field-values/relationship-field'
+import { NotificationService } from '../notifications'
 import { hasDefinedProps, pickDefined } from '../utils/pick-defined'
 import type {
   CreateTaskInput,
@@ -19,6 +21,8 @@ import type {
   TaskWithRelations,
   UpdateTaskInput,
 } from './types'
+
+const logger = createScopedLogger('task-service')
 
 /**
  * Convert a relative or absolute deadline to a concrete Date
@@ -126,7 +130,7 @@ export class TaskService {
       ?.filter((id) => getActorType(id) === 'user')
       .map((id) => getActorRawId(id))
 
-    return await this.db.transaction(async (tx: Transaction) => {
+    const task = await this.db.transaction(async (tx: Transaction) => {
       // Insert the task
       const [task] = await tx
         .insert(schema.Task)
@@ -184,6 +188,9 @@ export class TaskService {
 
       return task
     })
+
+    await this.notifyNewAssignees(task, assignedUserIds ?? [], userId)
+    return task
   }
 
   /**
@@ -354,7 +361,7 @@ export class TaskService {
       )
     }
 
-    return await this.db.transaction(async (tx: Transaction) => {
+    const result = await this.db.transaction(async (tx: Transaction) => {
       // Update the task (only if there are core updates)
       let updatedTask = existingTask
       if (hasDefinedProps(coreUpdates)) {
@@ -371,17 +378,21 @@ export class TaskService {
       }
 
       // Sync assignments if provided
-      if (assigneeActorIds !== undefined) {
-        await this.syncAssignments(tx, id, organizationId, userId, assigneeActorIds)
-      }
+      const newlyAssignedUserIds =
+        assigneeActorIds !== undefined
+          ? await this.syncAssignments(tx, id, organizationId, userId, assigneeActorIds)
+          : []
 
       // Sync references if provided
       if (referencedEntities !== undefined) {
         await this.syncReferences(tx, id, organizationId, userId, referencedEntities)
       }
 
-      return updatedTask
+      return { task: updatedTask, newlyAssignedUserIds }
     })
+
+    await this.notifyNewAssignees(result.task, result.newlyAssignedUserIds, userId)
+    return result.task
   }
 
   /**
@@ -393,7 +404,7 @@ export class TaskService {
     organizationId: string,
     userId: string,
     assigneeActorIds: ActorId[]
-  ): Promise<void> {
+  ): Promise<string[]> {
     // Extract user IDs from ActorIds (filter out groups for now)
     const assignedUserIds = assigneeActorIds
       .filter((id) => getActorType(id) === 'user')
@@ -437,6 +448,52 @@ export class TaskService {
       .update(schema.Task)
       .set({ assignedUserCount: assignedUserIds.length })
       .where(eq(schema.Task.id, taskId))
+
+    return toAssign
+  }
+
+  /** Best-effort notification fan-out after the assignment transaction commits. */
+  private async notifyNewAssignees(
+    task: TaskEntity,
+    assignedUserIds: string[],
+    actorId: string
+  ): Promise<void> {
+    const recipientIds = [...new Set(assignedUserIds)].filter((userId) => userId !== actorId)
+    if (recipientIds.length === 0) return
+
+    const actor = await this.db.query.User.findFirst({
+      where: (user, { eq }) => eq(user.id, actorId),
+      columns: { name: true },
+    })
+    const actorName = actor?.name ?? 'A teammate'
+    const notifications = new NotificationService(this.db)
+
+    await Promise.all(
+      recipientIds.map(async (userId) => {
+        try {
+          await notifications.sendNotification({
+            type: 'TASK_ASSIGNED',
+            userId,
+            organizationId: task.organizationId,
+            actorId,
+            targetType: 'TASK',
+            targetIds: { taskId: task.id },
+            message: `${actorName} assigned you "${task.title}"`,
+            metadata: {
+              kind: 'TASK_ASSIGNED',
+              taskTitle: task.title,
+              deadline: task.deadline?.toISOString() ?? null,
+            },
+          })
+        } catch (error) {
+          logger.warn('Failed to send task assignment notification', {
+            taskId: task.id,
+            userId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      })
+    )
   }
 
   /**

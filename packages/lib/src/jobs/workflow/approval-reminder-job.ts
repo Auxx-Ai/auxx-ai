@@ -126,11 +126,13 @@ async function sendReminderNotifications(
       await notificationService.sendNotification({
         type: 'WORKFLOW_APPROVAL_REMINDER' as any,
         userId,
-        entityId: approvalRequest.id,
-        entityType: 'approval_request',
+        targetType: 'APPROVAL',
+        targetIds: { approvalRequestId: approvalRequest.id },
         message: `Reminder #${reminderNumber}: Approval still pending for "${approvalRequest.workflow.name}" - ${timeRemainingStr} remaining`,
         organizationId: approvalRequest.organizationId,
-        data: {
+        metadata: {
+          kind: 'WORKFLOW_APPROVAL_REMINDER',
+          workflowName: approvalRequest.workflow.name,
           workflowId: approvalRequest.workflowId,
           workflowRunId: approvalRequest.workflowRunId,
           nodeId: approvalRequest.nodeId,

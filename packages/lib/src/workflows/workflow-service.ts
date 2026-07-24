@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { getCachedResources } from '../cache/org-cache-helpers'
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
@@ -811,8 +811,11 @@ export class WorkflowService {
             .delete(schema.Notification)
             .where(
               and(
-                eq(schema.Notification.entityType, 'approval_request'),
-                inArray(schema.Notification.entityId, approvalRequestIds)
+                eq(schema.Notification.targetType, 'APPROVAL'),
+                inArray(
+                  sql<string>`${schema.Notification.targetIds}->>'approvalRequestId'`,
+                  approvalRequestIds
+                )
               )
             )
         }
