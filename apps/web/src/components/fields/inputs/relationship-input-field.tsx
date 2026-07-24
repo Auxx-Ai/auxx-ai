@@ -3,6 +3,7 @@
 import {
   extractRelationshipRecordIds,
   getInstanceId,
+  getRelationshipRedactedCount,
   parseRecordId,
   type RecordId,
 } from '@auxx/lib/field-values/client'
@@ -18,6 +19,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RecordPickerContent } from '~/components/pickers/record-picker'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { getRelationshipStoreState, toRecordId, useResource } from '~/components/resources'
+import { RecordBadge, RestrictedRelationshipChip } from '~/components/resources/ui'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { usePropertyContext } from '../property-provider'
@@ -34,6 +37,7 @@ import { usePropertyContext } from '../property-provider'
 export function RelationshipInputField() {
   const { value, field, commitValue, onBeforeClose, recordId } = usePropertyContext()
   const nav = useFieldNavigationOptional()
+  const { canViewEntity } = useAccess()
 
   const relationship = field.options?.relationship as RelationshipConfig | undefined
   const isSingleSelect = isSingleRelationship(relationship?.relationshipType)
@@ -226,6 +230,26 @@ export function RelationshipInputField() {
 
   if (!relatedEntityDefinitionId) {
     return <span className='text-muted-foreground p-2'>Invalid relationship config</span>
+  }
+
+  // Read-only when the member can't view the target def (v2 Phase 5 §4): the
+  // record picker's search is gated to empty (nothing to pick) and the current
+  // targets are redacted (nothing to identify or remove), so editing is
+  // meaningless. Render the current value display-only instead of the picker.
+  if (!canViewEntity(relatedEntityDefinitionId)) {
+    const redactedCount = getRelationshipRedactedCount(value)
+    const visibleRecordIds = extractRelationshipRecordIds(value)
+    return (
+      <div className='flex flex-wrap items-center gap-1 p-2'>
+        {visibleRecordIds.map((rid) => (
+          <RecordBadge key={rid} recordId={rid} />
+        ))}
+        {redactedCount > 0 && <RestrictedRelationshipChip count={redactedCount} />}
+        {visibleRecordIds.length === 0 && redactedCount === 0 && (
+          <span className='text-muted-foreground'>-</span>
+        )}
+      </div>
+    )
   }
 
   return (

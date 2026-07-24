@@ -575,10 +575,49 @@ async function fetchFieldValueResults(
 
     const fieldOptions = fieldOptionsMap.get(fieldId)
     const isMulti = isArrayReturnFieldType(fieldType, fieldOptions)
-    const typedValues = fieldRows.map((row) =>
+
+    // Read enforcement (v2 Phase 5 §2) — a relationship pointing at a def the
+    // member can't view still returns its target recordIds, which the UI can't
+    // hydrate (that path is gated) so they render as broken "Unknown" chips and
+    // leak the referenced ids. Strip the non-viewable referenced rows here, at
+    // the authoritative server value read, so the ids never reach the client.
+    // System-table FK relationships (e.g. thread.inbox) never reach this
+    // FieldValue path — they resolve via the system resolvers and are governed
+    // by mail visibility — so only entity-def relationships are affected.
+    let effectiveRows: typeof fieldRows = fieldRows
+    if (fieldType === FieldTypeEnum.RELATIONSHIP && ctx.capabilities) {
+      const caps = ctx.capabilities
+      effectiveRows = fieldRows.filter(
+        (row) => !row.relatedEntityDefinitionId || caps.canViewEntity(row.relatedEntityDefinitionId)
+      )
+    }
+
+    const typedValues = effectiveRows.map((row) =>
       rowToTypedValue(row as unknown as FieldValueRow, fieldType)
     )
-    const value = isMulti ? typedValues : typedValues[0]!
+
+    // Carry the redaction count (v2 Phase 5 §2) as a trailing marker element so
+    // the renderer can show a `🔒 N restricted` chip. The marker has an empty
+    // recordId → `extractRelationshipRecordIds` skips it (never keyed/hydrated);
+    // only the count survives. redactedCount is 0 for every non-relationship
+    // group (effectiveRows === fieldRows) and when nothing was stripped.
+    const redactedCount = fieldRows.length - effectiveRows.length
+    if (redactedCount > 0) {
+      const base = fieldRows[0]! as unknown as FieldValueRow
+      typedValues.push({
+        id: `${base.id}:redacted`,
+        entityId: base.entityId,
+        fieldId: base.fieldId,
+        sortKey: base.sortKey,
+        createdAt: base.createdAt,
+        updatedAt: base.updatedAt,
+        type: 'relationship',
+        recordId: '' as RecordId,
+        redactedCount,
+      })
+    }
+
+    const value = isMulti ? typedValues : (typedValues[0] ?? null)
 
     // AI marker lives on a single row per (entity, field). Multi-value fields
     // don't carry AI markers today — take the first row's marker for safety.

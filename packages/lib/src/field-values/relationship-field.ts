@@ -87,6 +87,33 @@ export function extractRelationshipRecordIds(value: unknown): RecordId[] {
   return []
 }
 
+/**
+ * Read the redaction count from a relationship value (capability layer v2 Phase
+ * 5 §2). Returns the number of referenced records the member can't view — their
+ * ids are stripped server-side and replaced by one trailing marker element
+ * carrying `redactedCount`. Returns 0 when there is no redaction.
+ *
+ * Shape-agnostic: works on the raw `RecordId[]` the table cell receives (after
+ * `formatToRawValue`, the marker survives as `{ redactedCount }`) AND on the
+ * `TypedFieldValue[]` the detail view receives (the marker is a relationship
+ * value with an empty `recordId` and `redactedCount`).
+ *
+ * @example
+ * const count = getRelationshipRedactedCount(value)
+ * if (count > 0) render(<RestrictedRelationshipChip count={count} />)
+ */
+export function getRelationshipRedactedCount(value: unknown): number {
+  if (!value) return 0
+  const items = Array.isArray(value) ? value : [value]
+  for (const item of items) {
+    if (item && typeof item === 'object' && 'redactedCount' in item) {
+      const count = (item as { redactedCount?: unknown }).redactedCount
+      if (typeof count === 'number' && count > 0) return count
+    }
+  }
+  return 0
+}
+
 // Re-export from resource-id for convenience
 export {
   getDefinitionId,

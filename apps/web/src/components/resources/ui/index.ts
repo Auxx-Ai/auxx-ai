@@ -11,4 +11,5 @@ export {
 export { RecordHoverCard } from './record-hover-card'
 export { RecordHoverCardField } from './record-hover-card-field'
 export { RecordIcon } from './record-icon'
+export { RestrictedRelationshipChip } from './restricted-relationship-chip'
 export { TicketBadge } from './ticket-badge'
