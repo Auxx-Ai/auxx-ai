@@ -92,6 +92,7 @@ export type {
   CachedSubscription,
   CachedSystemModelDefault,
   DehydratedOrgProfile,
+  MemberRoleEntry,
   OrgCacheDataMap,
   OrgCacheKeyName,
   OrgMemberInfo,

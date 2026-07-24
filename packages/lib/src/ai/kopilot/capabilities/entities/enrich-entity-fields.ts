@@ -10,7 +10,7 @@ import { getCachedResource } from '../../../../cache/org-cache-helpers'
 import { rowsToTypedValues } from '../../../../field-values/field-value-helpers'
 import { formatToDisplayValue, formatToRawValue } from '../../../../field-values/formatter'
 import type { FieldValueRow } from '../../../../field-values/types'
-import type { CapabilitySet } from '../../../../permissions/capabilities/capability-set'
+import type { CapabilityView } from '../../../../permissions/capabilities/capability-view'
 import { RecordPickerService } from '../../../../resources/picker'
 import { isCustomResourceId } from '../../../../resources/registry/types'
 import { isRecordId } from '../../../../resources/resource-id'
@@ -37,7 +37,7 @@ export async function enrichEntitiesWithFieldValues(params: {
   db: Database
   entities: Array<{ recordId: string; entityDefinitionId: string; entityInstanceId: string }>
   /** Read enforcement (§3): gates per-def groups + relationship-target resolution. */
-  capabilities?: CapabilitySet
+  capabilities?: CapabilityView
 }): Promise<Map<string, Record<string, EnrichedField>>> {
   const { organizationId, userId, db, entities, capabilities } = params
   const result = new Map<string, Record<string, EnrichedField>>()

@@ -2,6 +2,11 @@
 
 export { CapabilitySet, type DefIdToSlug } from './capability-set'
 export {
+  type CapabilityView,
+  intersectCapabilities,
+  MinCapabilitySet,
+} from './capability-view'
+export {
   composeUserCapabilities,
   type UserCapabilities,
 } from './compose-user-capabilities'

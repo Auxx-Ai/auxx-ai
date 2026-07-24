@@ -160,6 +160,15 @@ export async function runBlockCrudOp(args: {
     return { ok: false, error: 'article not found' }
   }
   const knowledgeBaseId = article.homeKnowledgeBaseId
+
+  // Instance-access write gate (permissions v2 §3.3): every KB write tool
+  // (`insert_blocks` / `replace_block` / `delete_blocks` / `move_blocks`, and
+  // `runMarkdownReplace` via `runPatchSequence`) funnels through here, so the
+  // assert lives at this single choke point — before the snapshot, the lock and
+  // the patch. Throws `ForbiddenError`, which the query loop surfaces as a tool
+  // error. Absent capabilities (workflow AI node) ⇒ unrestricted, as before.
+  toolDeps.capabilities?.assertEditInstance('kb', knowledgeBaseId)
+
   const draftJson = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []
   const preHash = computeArticleJsonHash(draftJson)
 

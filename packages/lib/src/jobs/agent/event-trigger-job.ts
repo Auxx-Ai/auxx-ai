@@ -82,6 +82,10 @@ export async function executeAgentEventTrigger(ctx: JobContext<AgentEventTrigger
     agentTriggerId,
     approvalMode: 'auto',
     modelId: agent.modelId ?? undefined,
+    // No `invokerUserId` — deliberately NOT the editor whose change fired this
+    // event. Record rules are side effects; scoping them per-editor would make
+    // trigger behavior nondeterministic. Agent profile alone (capability layer
+    // v2 §0.5).
   })
 
   logger.info('Enqueued autonomous event-trigger run', {

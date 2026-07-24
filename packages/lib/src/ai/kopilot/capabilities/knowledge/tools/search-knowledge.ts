@@ -4,6 +4,7 @@ import { schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { SearchService } from '../../../../../datasets/services/search.service'
+import type { CapabilityView } from '../../../../../permissions/capabilities/capability-view'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { takeSample } from '../../../digests'
@@ -163,7 +164,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
       return { ok: true, args: { ...args, query: query.value } }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const query = args.query as string
       const requestedSource = ((args.source as Source) ?? 'both') as Source
       const knowledgeBaseId = args.knowledgeBaseId as string | undefined
@@ -189,6 +190,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
           knowledgeBaseId,
           requestedDatasetIds,
           publicOnly: isChat,
+          capabilities,
         })
 
         if (datasetIds.length === 0) {
@@ -335,6 +337,37 @@ async function resolveDatasetIds(args: {
   requestedDatasetIds?: string[]
   /** Chat clamp — restrict managed datasets to PUBLIC knowledge bases. */
   publicOnly?: boolean
+  /** Resolved instance-access gate for the turn; absent ⇒ unrestricted. */
+  capabilities?: CapabilityView
+}): Promise<string[]> {
+  const {
+    db,
+    organizationId,
+    source,
+    knowledgeBaseId,
+    requestedDatasetIds,
+    publicOnly,
+    capabilities,
+  } = args
+
+  const ids = await collectDatasetIds({
+    db,
+    organizationId,
+    source,
+    knowledgeBaseId,
+    requestedDatasetIds,
+    publicOnly,
+  })
+  return filterAccessibleDatasetIds(db, organizationId, ids, capabilities)
+}
+
+async function collectDatasetIds(args: {
+  db: import('@auxx/database').Database
+  organizationId: string
+  source: Source
+  knowledgeBaseId?: string
+  requestedDatasetIds?: string[]
+  publicOnly?: boolean
 }): Promise<string[]> {
   const { db, organizationId, source, knowledgeBaseId, requestedDatasetIds, publicOnly } = args
 
@@ -374,6 +407,47 @@ async function resolveDatasetIds(args: {
       .then((rows) => rows.map((r) => r.id)),
   ])
   return [...new Set([...kb, ...rag])]
+}
+
+/**
+ * Instance-access read gate for the searchable set (permissions v2 §3.3, doc-11
+ * "Read = use in search/agents"). Every branch above funnels through here, so a
+ * dataset the principal can't view — or a managed dataset whose backing KB the
+ * principal can't view — never reaches `SearchService`.
+ *
+ * A KB-backed dataset is governed by its **KB** instance grant (that's the
+ * container an admin actually shares); only standalone RAG datasets fall back
+ * to the `dataset` key. Silent filter: an empty result is a normal empty search,
+ * never a 403.
+ *
+ * Zero extra I/O when `capabilities` is absent — the whole function
+ * short-circuits, so the un-threaded workflow AI node issues exactly the same
+ * queries it does today.
+ */
+async function filterAccessibleDatasetIds(
+  db: import('@auxx/database').Database,
+  organizationId: string,
+  datasetIds: string[],
+  capabilities?: CapabilityView
+): Promise<string[]> {
+  if (!capabilities || datasetIds.length === 0) return datasetIds
+
+  const kbRows = await db
+    .select({ id: schema.KnowledgeBase.id, datasetId: schema.KnowledgeBase.datasetId })
+    .from(schema.KnowledgeBase)
+    .where(eq(schema.KnowledgeBase.organizationId, organizationId))
+
+  const kbIdByDatasetId = new Map<string, string>()
+  for (const row of kbRows) {
+    if (row.datasetId) kbIdByDatasetId.set(row.datasetId, row.id)
+  }
+
+  return datasetIds.filter((datasetId) => {
+    const kbId = kbIdByDatasetId.get(datasetId)
+    return kbId
+      ? capabilities.canViewInstance('kb', kbId)
+      : capabilities.canViewInstance('dataset', datasetId)
+  })
 }
 
 async function collectManagedDatasetIds(

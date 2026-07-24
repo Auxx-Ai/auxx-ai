@@ -86,6 +86,8 @@ export async function executeAgentScheduledTrigger(ctx: JobContext<AgentSchedule
     agentTriggerId,
     approvalMode: 'auto',
     modelId: agent.modelId ?? undefined,
+    // No `invokerUserId`: a schedule has no human trigger, so the run uses the
+    // agent's own capability profile alone (capability layer v2 §0.5).
   })
 
   logger.info('Enqueued autonomous scheduled-trigger run', {

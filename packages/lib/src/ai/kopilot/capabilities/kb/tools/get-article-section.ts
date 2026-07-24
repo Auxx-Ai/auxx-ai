@@ -8,6 +8,7 @@ import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { canViewKb } from '../kb-access'
 
 /**
  * Reads a contiguous section of an article between two heading anchors
@@ -48,7 +49,7 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
       return { ok: true, args: { ...args, headingText: h.value } }
     },
     execute: async (args, agentDeps) => {
-      const { db, sessionContext } = getDeps()
+      const { db, sessionContext, capabilities } = getDeps()
       const articleId = findRef(sessionContext, 'article')?.id
       if (!articleId) {
         return {
@@ -65,7 +66,14 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
         ),
         with: { draftRevision: true },
       })
-      if (!article || !article.draftRevision) {
+      // The active-article ref is client-supplied, so re-check instance access
+      // here (permissions v2 §3.3). Silent filter — a KB the caller can't view
+      // reads as "not found", never a 403.
+      if (
+        !article ||
+        !article.draftRevision ||
+        !canViewKb(capabilities, article.homeKnowledgeBaseId)
+      ) {
         return { success: false, output: null, error: 'article not found' }
       }
       const content = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []

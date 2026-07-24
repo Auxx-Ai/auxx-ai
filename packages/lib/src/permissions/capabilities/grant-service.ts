@@ -3,7 +3,7 @@
 import { type Database, database, type PermissionGrantEntity, schema } from '@auxx/database'
 import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
-import { onCacheEvent } from '../../cache'
+import { getOrgCache, onCacheEvent } from '../../cache'
 import { DehydrationCacheService } from '../../dehydration/cache'
 import { ForbiddenError } from '../../errors'
 import { FeaturePermissionService } from '../feature-permission-service'
@@ -48,6 +48,50 @@ function assertGrantableLevels(levels: Partial<Record<Area, Level>>): void {
       )
     }
   }
+}
+
+/**
+ * Drop `Level.None` area entries for grantees whose tier composes **raise-only**,
+ * where a stored `None` can never lower anything and is therefore inert noise
+ * that makes the grid read as a denial it does not produce (§0.2).
+ *
+ * Kept (`None` is load-bearing) for exactly two grantee kinds:
+ *  - **`role:org_member`** — the org policy is the one DOWNWARD lever
+ *    (`base = orgPolicyLevels[a] ?? ROLE_DEFAULTS.USER[a]`, so a stored `None`
+ *    genuinely zeroes the area for every non-admin member).
+ *  - **`user` grantees whose `User.userType` is `'AGENT'`** — agents compose by
+ *    SET (`level = userLevels[a] ?? Full`), so `None` is the only way to express
+ *    "this agent has no access to this area".
+ *
+ * Stripped for human `user` grantees and all `group` grantees: both tiers are
+ * `max(base, grant)`, so `None` is a no-op there.
+ */
+function stripInertNoneLevels(
+  levels: Partial<Record<Area, Level>>,
+  keepNone: boolean
+): Partial<Record<Area, Level>> {
+  if (keepNone) return levels
+  const out: Partial<Record<Area, Level>> = {}
+  for (const area of Object.keys(levels) as Area[]) {
+    const level = levels[area]
+    if (level === undefined || level === Level.None) continue
+    out[area] = level
+  }
+  return out
+}
+
+/**
+ * Whether `Level.None` entries are meaningful for this grantee — see
+ * {@link stripInertNoneLevels}. The AGENT check resolves the grantee's
+ * `User.userType` from the cached `memberRoleMap` (zero extra DB round-trip);
+ * a grantee with no member row is treated as a human (fail closed to the
+ * stricter, raise-only interpretation).
+ */
+async function granteeKeepsNoneLevels(grantee: GranteeRef): Promise<boolean> {
+  if (grantee.granteeType === 'role') return grantee.granteeId === 'org_member'
+  if (grantee.granteeType !== 'user') return false
+  const roleMap = await getOrgCache().get(grantee.organizationId, 'memberRoleMap')
+  return roleMap[grantee.granteeId]?.userType === 'AGENT'
 }
 
 /** Enterprise gate — writing override grants requires the plan feature (§2.H/§8). */
@@ -97,6 +141,10 @@ async function emitGrantChanged(grantee: GranteeRef): Promise<void> {
  * upserts the single grantee row. Only the areas present in `levels` are stored;
  * absent areas fall through to the code default at compose time. Passing `{}`
  * writes an empty override row; prefer {@link clearGranteeLevels} to remove it.
+ *
+ * `Level.None` entries are stripped for grantees whose tier composes raise-only
+ * (human users, groups) and kept for the `role:org_member` policy and AGENT user
+ * grantees — see {@link stripInertNoneLevels}.
  */
 export async function setGranteeLevels(
   input: GranteeRef & {
@@ -108,8 +156,12 @@ export async function setGranteeLevels(
   const { organizationId, granteeType, granteeId, grantedById } = input
   const db = input.db ?? database
 
-  const levels = parseAreaLevels(input.levels)
-  assertGrantableLevels(levels)
+  const parsed = parseAreaLevels(input.levels)
+  assertGrantableLevels(parsed)
+  const levels = stripInertNoneLevels(
+    parsed,
+    await granteeKeepsNoneLevels({ organizationId, granteeType, granteeId })
+  )
   await requireGranularPermissions(db, organizationId)
 
   const [row] = await db

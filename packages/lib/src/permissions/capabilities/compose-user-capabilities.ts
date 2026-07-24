@@ -1,7 +1,7 @@
 // packages/lib/src/permissions/capabilities/compose-user-capabilities.ts
 
 import type { ResourcePermission } from '@auxx/database/enums'
-import type { OrganizationRole, SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType, UserType } from '@auxx/database/types'
 import {
   type Area,
   buildAreaLevels,
@@ -59,11 +59,19 @@ export const PERMISSION_RANK: Record<ResourcePermission, number> = {
  * an area absent from the policy stays at the code default (not None). Areas
  * expand to their key set (union) = the resolved PermissionKey[]. An undefined
  * role (non-member) fails closed to an empty set.
+ *
+ * **AGENT grantees take a different branch** — see {@link composeAgentLevels}.
  */
 export function composeUserCapabilities(input: {
   /** From the cached memberRoleMap; undefined when not a member (→ no access). */
   role: OrganizationRole | undefined
   seatType: SeatType
+  /**
+   * Principal kind from the cached memberRoleMap. `'AGENT'` selects the
+   * set-semantics branch ({@link composeAgentLevels}); everything else composes
+   * with the human raise-only model. Defaults to `'USER'`.
+   */
+  userType?: UserType
   /** Sparse levels on the `role:org_member` policy grant (per-area override, L4). */
   orgPolicyLevels?: Partial<Record<Area, Level>>
   /** Sparse levels on each of the member's group grants (raise-only, L3). */
@@ -77,6 +85,7 @@ export function composeUserCapabilities(input: {
   const {
     role,
     seatType,
+    userType = 'USER',
     orgPolicyLevels,
     groupLevels,
     userLevels,
@@ -113,8 +122,18 @@ export function composeUserCapabilities(input: {
   // Fail closed: a non-member holds no capabilities.
   if (!role) return { keys: [], defAccess, instanceAccess }
 
-  const isAdmin = role === 'OWNER' || role === 'ADMIN'
   const ceiling = SEAT_CEILINGS[seatType]
+
+  // AGENT principals compose by SET, not by raise (§0.2) — separate branch.
+  if (userType === 'AGENT') {
+    return {
+      keys: expandLevelsToKeys(composeAgentLevels(userLevels, ceiling)),
+      defAccess,
+      instanceAccess,
+    }
+  }
+
+  const isAdmin = role === 'OWNER' || role === 'ADMIN'
   const userDefault = ROLE_DEFAULTS.USER
 
   const resolved = buildAreaLevels((area) => {
@@ -135,4 +154,43 @@ export function composeUserCapabilities(input: {
   })
 
   return { keys: expandLevelsToKeys(resolved), defAccess, instanceAccess }
+}
+
+/**
+ * Level resolution for `userType: 'AGENT'` principals (capability layer v2 §0.2/§0.3):
+ *
+ * ```
+ *   base  = Level.Full for every area                 // §0.3 default-Full
+ *   level = userLevels[a] ?? base                     // SET, not max — an explicit None LOWERS
+ *   level = min(level, SEAT_CEILINGS[seatType][a])    // seat clamp still last (no-op at 'full')
+ * ```
+ *
+ * **Why SET and not the human raise-only model:**
+ * - Agents are managed **individually** (one Permissions tab per agent). Raise-only
+ *   composition can only lift a baseline, so it literally cannot express "lock
+ *   THIS agent down" — the whole point of the surface. Set-semantics can.
+ * - The `role:org_member` org policy and group tiers are **skipped**. An org policy
+ *   is a lever aimed at humans (seats, headcount, org-wide posture); silently
+ *   clamping every agent with it would break automations an admin never touched.
+ *   Agents also aren't group members in any product sense (§6 deferred).
+ * - The all-Full base keeps enforcement **dormant** until an admin restricts an
+ *   agent: no grant rows ⇒ every area Full ⇒ every check passes, so orgs that
+ *   never open the tab see zero behavior change.
+ *
+ * The seat clamp survives because it is a billing invariant, not a policy lever —
+ * agent member rows are seat-exempt and fall back to `seatType: 'full'`, whose
+ * ceiling is Full everywhere, so in practice this is a no-op.
+ *
+ * `defAccess` / `instanceAccess` are NOT touched here: per-def and per-instance
+ * `ResourceAccess` grants compose exactly as they do for humans (most-specific-wins
+ * downstream in `CapabilitySet`).
+ */
+function composeAgentLevels(
+  userLevels: Partial<Record<Area, Level>> | undefined,
+  ceiling: Record<Area, Level>
+): Record<Area, Level> {
+  return buildAreaLevels((area) => {
+    const level = userLevels?.[area] ?? Level.Full
+    return Math.min(level, ceiling[area]) as Level
+  })
 }

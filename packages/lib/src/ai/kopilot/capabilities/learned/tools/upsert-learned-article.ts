@@ -171,11 +171,16 @@ export function createUpsertLearnedArticleTool(getDeps: GetToolDeps): AgentToolD
       }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const { organizationId, userId } = agentDeps
       const ctx = { db, organizationId }
 
       const { kb, categoryIds } = await ensureLearnedKb(ctx)
+
+      // Instance-access write gate (permissions v2 §3.3): the learned KB is a
+      // real KnowledgeBase, so writing AI memory needs Edit on that instance.
+      // Throws `ForbiddenError`; absent capabilities ⇒ unrestricted, as before.
+      capabilities?.assertEditInstance('kb', kb.id)
 
       const title = args.title as string
       const description = args.description as string

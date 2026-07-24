@@ -4,6 +4,7 @@ import { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
 import { satisfiesPermission } from '../../resource-access/constants'
+import type { CapabilityView } from './capability-view'
 import {
   type ClientCapabilities,
   canAdministerRecord,
@@ -35,7 +36,7 @@ export type DefIdToSlug = (entityDefId: string) => string
  * lookup — no guard issues its own fetch. This is a plain value object, not a
  * DB model, so it may carry behavior.
  */
-export class CapabilitySet {
+export class CapabilitySet implements CapabilityView {
   /**
    * @param keys       Materialized capability verbs the member holds (already seat-clamped).
    * @param defAccess  Highest type-level ResourceAccess permission per entity definition

@@ -42,12 +42,23 @@ Example: { viewId: "abc123", filters: [{ field: "status", operator: "is", value:
         return { success: false, output: null, error: 'View name must be 50 characters or fewer.' }
       }
 
-      const { db, sessionContext } = getDeps()
+      const { db, sessionContext, capabilities } = getDeps()
       const target = await resolveRecordViewTarget(sessionContext, agentDeps.organizationId)
       if ('error' in target) {
         return { success: false, output: null, error: target.error }
       }
       const { resource, entityDefinitionId, tableId } = target
+
+      // Human parity (permissions v2 §3.3): the tRPC path gates view authoring on
+      // effective Read of the def (`tableView.update` → `assertViewAccess`), so the
+      // agent path must too. Absent capabilities ⇒ unrestricted, as before.
+      if (entityDefinitionId && capabilities && !capabilities.canViewEntity(entityDefinitionId)) {
+        return {
+          success: false,
+          output: null,
+          error: "You don't have permission to view these records.",
+        }
+      }
 
       const spec: ViewSpec = readViewSpec(args)
       const built = buildViewConfigPatch(spec, resource, entityDefinitionId)

@@ -1,5 +1,7 @@
 // packages/lib/src/ai/agent-framework/index.ts
 
+export type { AgentRunPrincipal } from './agent-run-capabilities'
+export { AgentRunAsUnavailableError, resolveAgentRunCapabilities } from './agent-run-capabilities'
 export { BUILDER_MODEL } from './builder-model'
 export type { ContextManagerConfig } from './context-manager'
 export {

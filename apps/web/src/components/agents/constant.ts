@@ -11,5 +11,6 @@ export const AGENT_TABS = [
   'restrictions',
   'knowledge',
   'triggers',
+  'permissions',
 ] as const
 export type AgentTab = (typeof AGENT_TABS)[number]

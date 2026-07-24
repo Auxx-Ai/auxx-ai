@@ -11,6 +11,7 @@ import {
   createCallModel,
   enqueueAgentJob,
   flattenMessagesForModelSwitch,
+  resolveAgentRunCapabilities,
   subscribeToAgentEvents,
   withAgentRunLog,
 } from '@auxx/lib/ai/agent-framework'
@@ -43,7 +44,12 @@ import { createMcpCapabilities } from '@auxx/lib/ai/mcp'
 import { getCachedAgentById } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { FeatureKey, FeaturePermissionService, getCapabilities } from '@auxx/lib/permissions'
+import {
+  type CapabilityView,
+  FeatureKey,
+  FeaturePermissionService,
+  getCapabilities,
+} from '@auxx/lib/permissions'
 import { docToText } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -563,10 +569,30 @@ async function runInProcessPath(params: {
     : Promise.resolve(null)
 
   // Build domain config with capabilities. `userId` is the logged-in member, so
-  // resolve entity-def read enforcement (v2 §3) once per turn and share it across
-  // every tool. Autonomous/visitor/workflow agents build deps without this and
-  // stay unrestricted.
-  const capabilities = await getCapabilities(userId, organizationId)
+  // resolve read/write enforcement (v2 §3) once per turn and share it across
+  // every tool AND the prompt-side catalogs (§3.4).
+  //
+  // Plain Kopilot and the builder are the human alone (§0.11) — no agent
+  // principal is involved. A turn targeting a defined agent additionally
+  // intersects with that agent's profile (or its run-as delegate), so an agent
+  // restriction clamps the turn even though a human is driving it (§0.5).
+  // Dormant while every agent sits at the all-Full default. A broken run-as
+  // delegation throws `AgentRunAsUnavailableError`, which the caller's catch
+  // surfaces as a normal `turn-error`.
+  const humanCapabilities = await getCapabilities(userId, organizationId)
+  let capabilities: CapabilityView = humanCapabilities
+  if (agentId && !isBuilder) {
+    const cachedAgent = await getCachedAgentById(organizationId, agentId)
+    if (cachedAgent) {
+      capabilities =
+        (await resolveAgentRunCapabilities({
+          agent: cachedAgent,
+          organizationId,
+          invokerUserId: userId,
+        })) ?? humanCapabilities
+    }
+  }
+
   const getToolDeps = createToolDepsFactory({
     organizationId,
     userId,
@@ -716,6 +742,8 @@ async function runInProcessPath(params: {
     surface: 'builder',
     audience: 'member',
     triggerContext,
+    // Prompt-side catalog filtering (§3.4) — the same view the tools enforce with.
+    capabilities,
   })
 
   // Create LLM adapter

@@ -60,6 +60,12 @@ interface AccessLevelSelectProps {
    * legible without a separate label.
    */
   inheritedLevel?: ResourcePermission
+  /**
+   * Name for the `Inherit` option. AGENT grantees pass `'Default'` — they
+   * compose by SET over an all-Full base, so there is no baseline to inherit
+   * FROM and "Inherit" would misdescribe the state (capability layer v2 §0.2).
+   */
+  inheritLabelText?: string
   disabled?: boolean
   size?: 'xs' | 'sm' | 'default'
   variant?: 'default' | 'transparent'
@@ -86,6 +92,7 @@ export function AccessLevelSelect({
   includeInherit = false,
   onInherit,
   inheritedLevel,
+  inheritLabelText = INHERIT_LABEL.label,
   disabled = false,
   size = 'sm',
   variant = 'default',
@@ -98,8 +105,8 @@ export function AccessLevelSelect({
     const safeValue = value && levels.includes(value) ? value : INHERIT
     const inheritLabel =
       inheritedLevel !== undefined
-        ? `Inherit · ${ACCESS_LEVEL_LABELS[inheritedLevel].label}`
-        : INHERIT_LABEL.label
+        ? `${inheritLabelText} · ${ACCESS_LEVEL_LABELS[inheritedLevel].label}`
+        : inheritLabelText
     return (
       <Select
         value={safeValue}

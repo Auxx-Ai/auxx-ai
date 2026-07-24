@@ -37,6 +37,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         .select({
           id: schema.Agent.id,
           userId: schema.Agent.userId,
+          runAsUserId: schema.Agent.runAsUserId,
           createdById: schema.Agent.createdById,
           slug: schema.Agent.slug,
           description: schema.Agent.description,
@@ -209,6 +210,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         return {
           id: row.id,
           userId: row.userId,
+          runAsUserId: row.runAsUserId ?? null,
           createdById: row.createdById,
           name,
           slug: row.slug,

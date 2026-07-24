@@ -5,6 +5,7 @@ import { parseArticleIdArg, parseStringArg } from '../../../../agent-framework/t
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { canViewKb } from '../kb-access'
 import { buildActiveArticleSnapshot } from '../snapshot-pipeline'
 
 /**
@@ -95,7 +96,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
       return warnings.length > 0 ? { ok: true, args: out, warnings } : { ok: true, args: out }
     },
     execute: async (args, agentDeps) => {
-      const { db, sessionContext } = getDeps()
+      const { db, sessionContext, capabilities } = getDeps()
       const explicitId = args.articleId as string | undefined
       const slug = args.slug as string | undefined
       const knowledgeBaseId =
@@ -109,7 +110,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
           organizationId: agentDeps.organizationId,
           articleId,
         })
-        if (!snapshot) {
+        if (!snapshot || !canViewKb(capabilities, snapshot.knowledgeBaseId)) {
           return { success: false, output: null, error: `article "${articleId}" not found` }
         }
         return { success: true, output: snapshot }
@@ -132,7 +133,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
             organizationId: agentDeps.organizationId,
             articleId: article.id,
           })
-          if (!snapshot) {
+          if (!snapshot || !canViewKb(capabilities, snapshot.knowledgeBaseId)) {
             return { success: false, output: null, error: `article "${slug}" not found` }
           }
           return { success: true, output: snapshot }

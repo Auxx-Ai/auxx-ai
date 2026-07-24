@@ -2,6 +2,9 @@
 
 import { describe, expect, it } from 'vitest'
 import type { ResolvedAgentConfig } from '../../../../agents'
+import type { KbCatalogEntry } from '../../../../kb/catalog/kb-catalog'
+import type { CapabilityView } from '../../../../permissions/capabilities/capability-view'
+import type { AgentToolDefinition } from '../../../agent-framework/types'
 import {
   fixtureCapabilities,
   fixtureCurrentUser,
@@ -157,5 +160,124 @@ describe('buildKopilotPrompt', () => {
     expect(out.indexOf('## Run mode')).toBeLessThan(out.indexOf('## Trigger instructions'))
     expect(out.indexOf('## Trigger instructions')).toBeLessThan(out.indexOf('## Acting as'))
     expect(out.indexOf('## Acting as')).toBeLessThan(out.indexOf('## Trigger fired'))
+  })
+})
+
+// ── Prompt-side catalog filtering (capability layer v2 §3.4) ──
+
+const kbFixture: KbCatalogEntry[] = [
+  {
+    id: 'kb_public',
+    name: 'Customer Help Center',
+    description: null,
+    kind: 'standard',
+    visibility: 'PUBLIC',
+    articles: [
+      {
+        id: 'a_1',
+        title: 'Refund policy',
+        description: 'How refunds work.',
+        kind: 'page',
+        depth: 0,
+      },
+    ],
+  },
+  {
+    id: 'kb_internal',
+    name: 'Internal Runbooks',
+    description: null,
+    kind: 'standard',
+    visibility: 'INTERNAL',
+    articles: [
+      {
+        id: 'a_2',
+        title: 'Escalation ladder',
+        description: 'Who to page at 3am.',
+        kind: 'page',
+        depth: 0,
+      },
+    ],
+  },
+]
+
+const knowledgeTools: AgentToolDefinition[] = [
+  ...fixtureTools,
+  {
+    name: 'get_article',
+    displayName: 'Get article',
+    description: 'Read a KB article.',
+    parameters: {},
+    execute: async () => ({ ok: true, value: null }) as never,
+  } as AgentToolDefinition,
+]
+
+/** CapabilityView stub — only the two gates the catalog sections consult are real. */
+function restrictedTo(defIds: string[], kbIds: string[]): CapabilityView {
+  const defs = new Set(defIds)
+  const kbs = new Set(kbIds)
+  return {
+    can: () => true,
+    has: () => true,
+    assert: () => {},
+    canWriteEntity: () => true,
+    assertWriteEntity: () => {},
+    canEditEntity: (id: string) => defs.has(id),
+    assertEditEntity: () => {},
+    filterEditableDefIds: (ids: string[]) => ids.filter((id) => defs.has(id)),
+    canViewEntity: (id: string) => defs.has(id),
+    assertViewEntity: () => {},
+    filterViewableDefIds: (ids: string[]) => ids.filter((id) => defs.has(id)),
+    viewAccessFor: () => undefined,
+    canAdministerDef: () => false,
+    assertAdministerDef: () => {},
+    canViewInstance: (_kind: string, id: string) => kbs.has(id),
+    canEditInstance: (_kind: string, id: string) => kbs.has(id),
+    canAdminInstance: () => false,
+    assertViewInstance: () => {},
+    assertEditInstance: () => {},
+    assertAdminInstance: () => {},
+  } as unknown as CapabilityView
+}
+
+describe('buildKopilotPrompt — recordAccess filtering (v2 §3.4)', () => {
+  const knowledgeArgs = { ...baseArgs, tools: knowledgeTools, kbCatalog: kbFixture }
+
+  it('undefined recordAccess renders exactly today’s prompt', () => {
+    const before = buildKopilotPrompt({ ...knowledgeArgs })
+    const after = buildKopilotPrompt({ ...knowledgeArgs, recordAccess: undefined })
+    expect(after).toBe(before)
+    expect(after).toContain('Internal Runbooks')
+    expect(after).toContain('Escalation ladder')
+  })
+
+  it('drops a KB the principal cannot view from the member-audience catalog', () => {
+    const out = buildKopilotPrompt({
+      ...knowledgeArgs,
+      recordAccess: restrictedTo(['def_contacts', 'def_companies'], ['kb_public']),
+    })
+    expect(out).toContain('Customer Help Center')
+    expect(out).toContain('Refund policy')
+    expect(out).not.toContain('Internal Runbooks')
+    expect(out).not.toContain('Escalation ladder')
+    expect(out).not.toContain('Who to page at 3am')
+  })
+
+  it('drops the whole Knowledge Catalog section when no KB survives', () => {
+    const out = buildKopilotPrompt({
+      ...knowledgeArgs,
+      recordAccess: restrictedTo(['def_contacts'], []),
+    })
+    expect(out).not.toContain('## Knowledge Catalog')
+  })
+
+  it('leaves the entity catalog alone — it is filtered upstream at hydration', () => {
+    // `entityCatalog` arrives pre-filtered from `createKopilotAgent`; the prompt
+    // builder must not double-filter (and must not drop entries when it can't).
+    const out = buildKopilotPrompt({
+      ...knowledgeArgs,
+      recordAccess: restrictedTo(['def_contacts'], ['kb_public']),
+    })
+    expect(out).toContain('**Contact**')
+    expect(out).toContain('**Company**')
   })
 })

@@ -4,7 +4,7 @@
 import { ResourceGranteeType, type ResourcePermission } from '@auxx/database/enums'
 import type { Resource } from '@auxx/lib/resources/client'
 import { FeatureKey } from '@auxx/lib/types'
-import { type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
+import { type ActorId, getActorRawId, isAgentActor, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -12,6 +12,7 @@ import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   AlertTriangle,
+  Bot,
   Folder,
   Plus,
   RotateCcw,
@@ -20,11 +21,15 @@ import {
   User,
   type Users,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import { Tooltip } from '~/components/global/tooltip'
 import { ActorPicker } from '~/components/pickers/actor-picker'
-import { useActor } from '~/components/resources/hooks/use-actor'
+import {
+  useActor,
+  useActorLoading,
+  useAvailableActors,
+} from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
 import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -32,16 +37,32 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { type DefAccessGrant, useDefAccess } from '../hooks/use-def-access'
 import { AccessLevelSelect } from './access-level-select'
 
-type GranteeKind = 'group' | 'user'
+/**
+ * The three grantee axes the Access tab renders. `agent` is NOT a storage
+ * grantee type — an agent grant is a `user` row keyed on the agent's backing
+ * `User.id` (agent plan §4.1); the kind only selects the copy, the picker
+ * target, and the ActorId prefix used for display.
+ */
+type GranteeKind = 'group' | 'user' | 'agent'
 
 const GRANTEE_COPY: Record<
   GranteeKind,
-  { title: string; add: string; remove: string; empty: string; icon: typeof Users }
+  {
+    title: string
+    add: string
+    remove: string
+    emptyTitle: string
+    empty: string
+    icon: typeof Users
+    /** Tooltip next to the section title (shown once the list is non-empty). */
+    description?: string
+  }
 > = {
   group: {
     title: 'Teams',
     add: 'Add team',
     remove: 'Remove team',
+    emptyTitle: 'No teams yet',
     empty: 'Grant a team access to these records.',
     icon: Folder,
   },
@@ -49,15 +70,26 @@ const GRANTEE_COPY: Record<
     title: 'Individual members',
     add: 'Add member',
     remove: 'Remove member',
+    emptyTitle: 'No members yet',
     empty: 'Grant an individual member access to these records.',
     icon: User,
+  },
+  agent: {
+    title: 'Agents',
+    add: 'Add agent',
+    remove: 'Remove agent',
+    emptyTitle: 'No agents yet',
+    empty: 'Agents inherit their own base access. Grant or restrict this object per agent.',
+    icon: Bot,
+    description: 'Agents inherit their own base access. Grant or restrict this object per agent.',
   },
 }
 
 /**
  * The entity-def **Access** surface (capability layer v2 phase 3): a workspace
- * baseline ("Default for all members"), raise-only **team** grants, and
- * **individual member** grants — modeled on Attio's object-permissions screen.
+ * baseline ("Default for all members"), raise-only **team** grants,
+ * **individual member** grants, and per-**agent** grants (agent plan §4.1) —
+ * modeled on Attio's object-permissions screen.
  *
  * Composition is baseline-floor + raise-only-grants, so adding a team/member
  * never locks others out; only Workspace access = No Access restricts
@@ -86,7 +118,61 @@ export function DefAccessSection({ resource }: { resource: Resource }) {
     isIgnored,
   } = useDefAccess(resource.entityDefinitionId)
 
-  if (isLoading) {
+  // Agents are org members backed by a synthetic User row, so their def grants
+  // are `user`-type rows keyed on `AgentActor.userId` — indistinguishable from a
+  // human grant in the stored rows. The actor store (hydrated org-wide by
+  // `ResourceProvider` with `target: 'all'`) is the only place both ids live, so
+  // it drives BOTH directions of the id seam:
+  //   - write: picked `agent:<Agent.id>` → the agent's `User.id` (the grantee).
+  //   - read:  a granted `User.id` → `agent:<Agent.id>` (the display ActorId —
+  //     `useActor('user:<agentUserId>')` resolves to NOT-FOUND, since the batch
+  //     resolver keys results by the canonical `agent:` ActorId).
+  const agentActors = useAvailableActors({ target: 'agent' })
+  const actorsLoading = useActorLoading()
+  const { agentUserIdByActorId, agentActorIdByUserId } = useMemo(() => {
+    const byActorId = new Map<ActorId, string>()
+    const byUserId = new Map<string, ActorId>()
+    for (const actor of agentActors) {
+      if (!isAgentActor(actor) || !actor.userId) continue
+      byActorId.set(actor.actorId, actor.userId)
+      byUserId.set(actor.userId, actor.actorId)
+    }
+    return { agentUserIdByActorId: byActorId, agentActorIdByUserId: byUserId }
+  }, [agentActors])
+
+  // Partition the `user` rows: a grantee that maps to a known agent belongs to
+  // the Agents section and must not double-render under Individual members.
+  const { memberGrants, agentGrants } = useMemo(() => {
+    const members: DefAccessGrant[] = []
+    const agents: DefAccessGrant[] = []
+    for (const grant of userGrants) {
+      if (agentActorIdByUserId.has(grant.granteeId)) agents.push(grant)
+      else members.push(grant)
+    }
+    return { memberGrants: members, agentGrants: agents }
+  }, [userGrants, agentActorIdByUserId])
+
+  /** Picked `agent:<Agent.id>` → grant on the agent's backing `User.id`. */
+  const addAgents = useCallback(
+    (nextActorIds: ActorId[]) => {
+      const present = new Set(agentGrants.map((g) => g.granteeId))
+      for (const actorId of nextActorIds) {
+        const agentUserId = agentUserIdByActorId.get(actorId)
+        // No `getActorRawId` here — that yields the `Agent.id`, which would
+        // write a grant row no composition path can ever match.
+        if (!agentUserId || present.has(agentUserId)) continue
+        addGrant(ResourceGranteeType.user, agentUserId)
+      }
+    },
+    [addGrant, agentGrants, agentUserIdByActorId]
+  )
+
+  const resolveAgentActorId = useCallback(
+    (granteeUserId: string) => agentActorIdByUserId.get(granteeUserId),
+    [agentActorIdByUserId]
+  )
+
+  if (isLoading || actorsLoading) {
     return (
       <div className='space-y-2 p-3 sm:p-6'>
         <Skeleton className='h-16 w-full rounded-lg' />
@@ -148,14 +234,29 @@ export function DefAccessSection({ resource }: { resource: Resource }) {
 
       <GranteeAccessBlock
         kind='user'
-        grants={userGrants}
+        grants={memberGrants}
         baselineLevel={baselineLevel}
         canEdit={canEdit}
         isIgnored={isIgnored}
-        onAdd={(actorIds) => addActors(actorIds, userGrants, ResourceGranteeType.user, addGrant)}
+        onAdd={(actorIds) => addActors(actorIds, memberGrants, ResourceGranteeType.user, addGrant)}
         onChange={(granteeId, level) => setGrant(ResourceGranteeType.user, granteeId, level)}
         onRemove={(granteeId) => removeGrant(ResourceGranteeType.user, granteeId)}
       />
+
+      {/* Agents (plan §4.1) — hidden entirely for orgs with no agents. */}
+      {agentActorIdByUserId.size > 0 && (
+        <GranteeAccessBlock
+          kind='agent'
+          grants={agentGrants}
+          baselineLevel={baselineLevel}
+          canEdit={canEdit}
+          isIgnored={isIgnored}
+          resolveActorId={resolveAgentActorId}
+          onAdd={addAgents}
+          onChange={(granteeId, level) => setGrant(ResourceGranteeType.user, granteeId, level)}
+          onRemove={(granteeId) => removeGrant(ResourceGranteeType.user, granteeId)}
+        />
+      )}
     </div>
   )
 }
@@ -178,13 +279,14 @@ function addActors(
   }
 }
 
-/** One grantee-kind block (Teams or Individual members): add button + row list. */
+/** One grantee-kind block (Teams, Individual members or Agents): add button + row list. */
 function GranteeAccessBlock({
   kind,
   grants,
   baselineLevel,
   canEdit,
   isIgnored,
+  resolveActorId,
   onAdd,
   onChange,
   onRemove,
@@ -194,16 +296,29 @@ function GranteeAccessBlock({
   baselineLevel: ResourcePermission
   canEdit: boolean
   isIgnored: (permission: ResourcePermission) => boolean
+  /**
+   * Map a stored `granteeId` to the ActorId used for display. Defaults to
+   * `<kind>:<granteeId>`; the Agents block overrides it because its rows store
+   * the agent's `User.id` while the actor system addresses agents by `Agent.id`.
+   */
+  resolveActorId?: (granteeId: string) => ActorId | undefined
   onAdd: (actorIds: ActorId[]) => void
   onChange: (granteeId: string, level: ResourcePermission) => void
   onRemove: (granteeId: string) => void
 }) {
   const copy = GRANTEE_COPY[kind]
-  const actorIds = useMemo(() => grants.map((g) => toActorId(kind, g.granteeId)), [grants, kind])
+  const actorIds = useMemo(
+    () =>
+      grants
+        .map((g) => resolveActorId?.(g.granteeId) ?? toActorId(kind, g.granteeId))
+        .filter((id): id is ActorId => !!id),
+    [grants, kind, resolveActorId]
+  )
 
   return (
     <Section
       title={copy.title}
+      description={copy.description}
       icon={<copy.icon className='size-4' />}
       className='[&_[data-slot=section]]:p-0! [&_[data-slot=section]]:border-b-0!'
       collapsible={false}
@@ -225,7 +340,7 @@ function GranteeAccessBlock({
         <EmptySection
           orientation='horizontal'
           icon={<copy.icon className='size-5' />}
-          title={`No ${kind === 'group' ? 'teams' : 'members'} yet`}
+          title={copy.emptyTitle}
           description={copy.empty}
         />
       ) : (
@@ -234,6 +349,7 @@ function GranteeAccessBlock({
             <GranteeRow
               key={grant.granteeId}
               kind={kind}
+              actorId={resolveActorId?.(grant.granteeId) ?? toActorId(kind, grant.granteeId)}
               grant={grant}
               ignored={isIgnored(grant.permission)}
               baselineLevel={baselineLevel}
@@ -251,6 +367,7 @@ function GranteeAccessBlock({
 /** A single grantee row: avatar + resolved name + level select + remove. */
 function GranteeRow({
   kind,
+  actorId,
   grant,
   ignored,
   baselineLevel,
@@ -259,6 +376,8 @@ function GranteeRow({
   onRemove,
 }: {
   kind: GranteeKind
+  /** Display ActorId — for agents this is `agent:<Agent.id>`, not the grantee id. */
+  actorId: ActorId
   grant: DefAccessGrant
   ignored: boolean
   baselineLevel: ResourcePermission
@@ -267,7 +386,6 @@ function GranteeRow({
   onRemove: () => void
 }) {
   const { userId } = useUser()
-  const actorId = useMemo(() => toActorId(kind, grant.granteeId), [kind, grant.granteeId])
   const { actor, isLoading, isNotFound } = useActor({ actorId })
   const base = isNotFound
     ? 'Unknown'
@@ -287,6 +405,17 @@ function GranteeRow({
       }
       actions={
         <>
+          {/* The "ignored" flag is as true for agents as for humans: an agent's
+              all-Full base (agent plan §0.3) is an AREA-level default, but any
+              type row makes the def restricted, and `defAccess` then resolves to
+              the HIGHEST row matching the grantee — and the `role:org_member`
+              baseline row matches agents too (they are ACTIVE members;
+              `compute-user-capabilities.ts` applies no `userType` filter to the
+              ResourceAccess grantee union). So a grant at or below the baseline
+              lifts nothing for an agent either. Note a `none` baseline never
+              trips this — `PERMISSION_RANK` puts every positive grant above it,
+              which is exactly the restricted-def case where the grant is the
+              load-bearing one. */}
           {ignored && (
             <Tooltip
               content={`Ignored — this grant is at or below the workspace baseline (${baselineLevel}).`}>

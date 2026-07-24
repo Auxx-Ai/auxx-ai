@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../agents'
 import type { AgentSurface } from '../../agents/client'
 import { PROCEDURE_SLICE_KEY } from '../../agents/procedures/persist'
+import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { CONTEXT_SLICE_KEY, readContextSlice } from '../agent-framework/context'
 import type {
   AgentDomainConfig,
@@ -69,6 +70,17 @@ export interface KopilotDomainConfigOptions {
    * prompt. Chat runs leave this undefined.
    */
   triggerContext?: TriggerContext
+  /**
+   * The turn's resolved read enforcement, used **prompt-side** (capability
+   * layer v2 §3.4): the entity catalog and the member-audience KB catalog the
+   * model is handed are narrowed to what this principal may actually read, so
+   * the system prompt stops leaking the existence (and KB article titles +
+   * descriptions) of data the tools would deny.
+   *
+   * Same object the tool deps get. Omit → no filtering, byte-identical prompt
+   * to today (workflow AI node, tests, any un-threaded caller).
+   */
+  capabilities?: CapabilityView
 }
 
 /**
@@ -93,6 +105,9 @@ export function createKopilotDomainConfig(
     surface,
     audience,
     triggerContext,
+    // Aliased: `capabilities` below is the string[] of capability *descriptions*
+    // rendered into the prompt — a different thing from the access gate.
+    capabilities: recordAccess,
   } = options
 
   // Cheap same-provider sibling for low-stakes internal LLM tasks (procedure
@@ -137,6 +152,7 @@ export function createKopilotDomainConfig(
     surface,
     audience,
     triggerContext,
+    recordAccess,
   })
 
   return {

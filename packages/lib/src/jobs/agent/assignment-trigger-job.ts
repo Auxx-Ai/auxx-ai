@@ -15,14 +15,24 @@ export interface AgentAssignmentTriggerJobData {
   organizationId: string
   /** Canonical RecordId of the assigned ticket/thread (e.g. `ticket:abc`). */
   threadRecordId: string | null
-  /** User that performed the assignment — becomes runAsUser for user-scope tools. */
+  /**
+   * User that performed the assignment. The **intersection bound** on the run's
+   * capabilities (capability layer v2 §0.5) — never a run-as user. Nullable:
+   * a system-driven assignment carries none, and the run then uses the agent
+   * profile alone.
+   */
   assignerUserId: string | null
   firedAt: string
 }
 
 /**
  * Fires when an agent is assigned to a ticket via `ticket:assignee:added`.
- * The agent owns the session; the assigner is recorded in trigger context.
+ *
+ * The agent owns the run in every recorded sense — session row, engine
+ * identity, authorship. The assigner (`assignerUserId`) rides along as
+ * `invokerUserId`, so the run's effective permissions are
+ * `min(agentProfile, assigner)` and the agent can't read through an assignment
+ * what the assigner couldn't read themselves (capability layer v2 §0.5).
  */
 export async function executeAgentAssignmentTrigger(
   ctx: JobContext<AgentAssignmentTriggerJobData>
@@ -86,6 +96,9 @@ export async function executeAgentAssignmentTrigger(
     agentTriggerId,
     approvalMode: 'auto',
     modelId: agent.modelId ?? undefined,
+    // Human-triggered run — clamp capabilities to the assigner's (§0.5). Null
+    // (system assignment) leaves the agent profile alone.
+    invokerUserId: assignerUserId,
   })
 
   logger.info('Enqueued autonomous assignment-trigger run', {

@@ -22,9 +22,15 @@ export interface AgentMentionTriggerJobData {
 }
 
 /**
- * Fires when an agent is referenced in a comment. The mentioner (`mentionerUserId`)
- * becomes the run-as user — user-scope tools resolve via their credentials —
- * while the agent itself still owns the session row (`userId` below).
+ * Fires when an agent is referenced in a comment.
+ *
+ * The agent owns the run in every sense that is recorded: the session row, the
+ * engine identity, and authorship are all `agent.userId`. The mentioner
+ * (`mentionerUserId`) is the **intersection bound** on the run's capabilities —
+ * it rides along as `invokerUserId` so the effective permissions are
+ * `min(agentProfile, mentioner)`, and the agent can never read something through
+ * a mention that the mentioner couldn't read themselves (capability layer v2
+ * §0.5). It is not a run-as user and never changes who the run "is".
  */
 export async function executeAgentMentionTrigger(ctx: JobContext<AgentMentionTriggerJobData>) {
   const job = ctx.job
@@ -100,6 +106,8 @@ export async function executeAgentMentionTrigger(ctx: JobContext<AgentMentionTri
     agentTriggerId,
     approvalMode: 'auto',
     modelId: agent.modelId ?? undefined,
+    // Human-triggered run — clamp capabilities to the mentioner's (§0.5).
+    invokerUserId: mentionerUserId,
   })
 
   logger.info('Enqueued autonomous mention-trigger run', {

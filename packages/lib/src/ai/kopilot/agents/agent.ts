@@ -11,6 +11,7 @@ import {
   getCachedMembersByUserIds,
   getCachedResources,
 } from '../../../cache/org-cache-helpers'
+import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
 import type {
   AgentDefinition,
   AgentDeps,
@@ -59,6 +60,16 @@ export interface CreateKopilotAgentOptions {
    * (master or user agent) leave this undefined.
    */
   triggerContext?: TriggerContext
+  /**
+   * The turn's resolved read enforcement (capability layer v2 §3.4). Filters
+   * the org-wide catalogs hydrated into the system prompt — the prompt-side
+   * twin of the client's `useViewableResources`. Undefined ⇒ no filtering, so
+   * un-threaded callers render exactly today's prompt.
+   *
+   * Named apart from {@link CreateKopilotAgentOptions.capabilities}, which is
+   * the human-readable capability *description* list.
+   */
+  recordAccess?: CapabilityView
 }
 
 /**
@@ -80,6 +91,7 @@ export function createKopilotAgent(
     surface,
     audience,
     triggerContext,
+    recordAccess,
   } = options
 
   const agentTools: AgentToolDefinition[] = tools
@@ -111,8 +123,15 @@ export function createKopilotAgent(
           }),
         ])
 
+      // Def-level read enforcement, prompt-side (capability layer v2 §3.4): the
+      // catalog must not advertise defs the tools would deny — the twin of the
+      // client's `useViewableResources`. No `recordAccess` ⇒ unfiltered, as today.
       const entityCatalog = resources
-        .filter((r) => r.isVisible !== false)
+        .filter(
+          (r) =>
+            r.isVisible !== false &&
+            (!recordAccess || recordAccess.canViewEntity(r.entityDefinitionId ?? r.id))
+        )
         .map((r) => ({
           apiSlug: r.apiSlug,
           label: r.label,
@@ -147,6 +166,7 @@ export function createKopilotAgent(
         triggerContext,
         instructionsReferences,
         procedureStep,
+        recordAccess,
       })
 
       // Full conversation for tool-loop continuity. Each persisted assistant

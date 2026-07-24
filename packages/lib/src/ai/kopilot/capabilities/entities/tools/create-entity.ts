@@ -101,7 +101,7 @@ Example (ids match list_entity_fields output):
       return { ok: true, args: { ...args, entityDefinitionId: entityDefinitionId.value } }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const key = args.entityDefinitionId as string
 
       // The LLM may nest field values under `values` or flatten them at the top level.
@@ -156,7 +156,16 @@ Example (ids match list_entity_fields output):
         }
       }
 
-      const handler = new UnifiedCrudHandler(agentDeps.organizationId, agentDeps.userId, db)
+      // Write enforcement (permissions v2 §3.3): the handler asserts
+      // `canEditEntity` on `create`. Absent capabilities (workflow AI node) ⇒
+      // unrestricted, exactly as before.
+      const handler = new UnifiedCrudHandler(
+        agentDeps.organizationId,
+        agentDeps.userId,
+        db,
+        undefined,
+        { capabilities }
+      )
 
       try {
         const result = await handler.create(entityDefId, actorResolution.values)

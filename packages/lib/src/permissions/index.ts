@@ -1,5 +1,10 @@
 export { CapabilitySet, type DefIdToSlug } from './capabilities/capability-set'
 export {
+  type CapabilityView,
+  intersectCapabilities,
+  MinCapabilitySet,
+} from './capabilities/capability-view'
+export {
   composeUserCapabilities,
   type UserCapabilities,
 } from './capabilities/compose-user-capabilities'

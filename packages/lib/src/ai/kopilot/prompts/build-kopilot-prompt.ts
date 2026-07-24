@@ -5,6 +5,7 @@ import type { ResolvedAgentConfig } from '../../../agents'
 import type { AgentSurface } from '../../../agents/client'
 import type { IntegrationCatalogEntry } from '../../../cache/integration-catalog'
 import type { KbCatalogEntry } from '../../../kb/catalog/kb-catalog'
+import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
 import type { AgentToolDefinition } from '../../agent-framework/types'
 import type { KopilotDomainState } from '../types'
 import { SYSTEM_PROMPT_SECTIONS } from './sections/registry'
@@ -64,6 +65,18 @@ export interface BuildKopilotPromptArgs {
    * active; unset on free-form turns so `agentProcedureStep` renders `null`.
    */
   procedureStep?: ProcedureStepInput
+  /**
+   * The turn's resolved read enforcement (capability layer v2 §3.4). Sections
+   * that render org-wide catalogs consult it so the prompt can't advertise
+   * data the tools would deny — today the member-audience KB catalog
+   * (`canViewInstance('kb', id)`); the entity catalog is filtered upstream at
+   * hydration.
+   *
+   * Named apart from {@link BuildKopilotPromptArgs.capabilities}, which is the
+   * `string[]` of human-readable capability *descriptions*. Undefined ⇒ no
+   * filtering, byte-identical output to today.
+   */
+  recordAccess?: CapabilityView
 }
 
 /**
@@ -157,6 +170,7 @@ function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
     instructionsReferences: args.instructionsReferences,
     triggerContext: args.triggerContext,
     procedureStep: args.procedureStep,
+    recordAccess: args.recordAccess,
   }
 }
 

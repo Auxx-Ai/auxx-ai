@@ -21,6 +21,7 @@ import type {
   OrganizationMemberInfo,
   OrganizationRole,
   SeatType,
+  UserType,
 } from '@auxx/database/types'
 import type { CompiledProcedure, TriggerExample } from '../agents/procedures/types'
 import type { ToolCategory } from '../ai/agent-framework/types'
@@ -47,6 +48,20 @@ export interface OrgMemberInfo extends OrganizationMemberInfo {
     image: string | null
     userType: string
   } | null
+}
+
+/**
+ * One entry of the `memberRoleMap` cache — the hot, per-user membership facts
+ * every permission path needs without touching the DB.
+ *
+ * `userType` carries the principal kind (`USER` | `SYSTEM` | `AGENT`) so
+ * capability composition can branch on agents (SET-semantics over an all-Full
+ * base, capability layer v2 §0.2) with no extra read.
+ */
+export interface MemberRoleEntry {
+  role: OrganizationRole
+  seatType: SeatType
+  userType: UserType
 }
 
 /** Dehydrated subscription shape (client-safe, serializable) */
@@ -176,6 +191,14 @@ export interface CachedAgent {
    * plans/kopilot/agents/dm/option-d-defer-user-plan.md.
    */
   userId: string | null
+  /**
+   * Optional **run-as delegation** — when set, every run of this agent resolves
+   * its capabilities from THIS user instead of the agent's own profile. The
+   * engine identity stays `userId`. See
+   * plans/permissions/v2/14-agent-permissions.md §0.6 and
+   * `resolveAgentRunCapabilities`.
+   */
+  runAsUserId: string | null
   createdById: string
   /** `null` while the builder hasn't named the agent yet. */
   name: string | null
@@ -492,7 +515,7 @@ export interface OrgCacheDataMap {
 
   // Membership & permissions
   members: OrgMemberInfo[]
-  memberRoleMap: Record<string, { role: OrganizationRole; seatType: SeatType }>
+  memberRoleMap: Record<string, MemberRoleEntry>
   hasPermissionGrants: boolean // whether the org has ANY PermissionGrant rows (composition fast path)
   restrictedEntityDefIds: string[] // entity defs with ≥1 type-level ResourceAccess grant (read-path enforcement §0)
   restrictedInstanceIds: string[] // instance ids with ≥1 instance-access ResourceAccess row (§1.3)
@@ -549,7 +572,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
 
   // Membership & permissions (24h TTL, invalidated on member events)
   members: { prefix: 'org:members', ttlSeconds: ONE_DAY },
-  memberRoleMap: { prefix: 'org:member-roles:v2', ttlSeconds: ONE_DAY },
+  // v3: + userType (agent capability composition, capability layer v2 §1).
+  memberRoleMap: { prefix: 'org:member-roles:v3', ttlSeconds: ONE_DAY },
   hasPermissionGrants: { prefix: 'org:has-permission-grants', ttlSeconds: ONE_DAY },
   restrictedEntityDefIds: { prefix: 'org:restricted-entity-def-ids', ttlSeconds: ONE_DAY },
   restrictedInstanceIds: { prefix: 'org:restricted-instance-ids', ttlSeconds: ONE_DAY },
@@ -563,7 +587,10 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
   groupMembers: { prefix: 'org:group-members', ttlSeconds: ONE_DAY },
   // Read per CRUD event by agent-trigger dispatch — same rationale as workflowApps.
-  agents: { prefix: 'org:agents', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  // v2: + runAsUserId (agent run-as delegation, capability layer v2 §3.1 —
+  // `resolveAgentRunCapabilities` reads it off the cached agent, so a stale
+  // blob would silently resolve the agent's own profile). Bump on shape changes.
+  agents: { prefix: 'org:agents:v2', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
   // v5: defaultLens/status normalized to scalars (were SINGLE_SELECT arrays —
   // poisoned strict lens comparisons). v4: + ownerUserId (§11 personal
   // accounts). v3: + isPersonal. v2: + defaultLens (mail-permissions §2.2).

@@ -198,6 +198,13 @@ export const agentRouter = createTRPCRouter({
         appAccounts: z
           .record(z.string().min(1), z.object({ credId: z.string().min(1) }).nullable())
           .optional(),
+        /**
+         * Run-as delegation (capability layer v2 §0.6). A user id makes every
+         * run resolve capabilities from that member instead of the agent's own
+         * profile; `null` clears it; omit to leave unchanged. The service
+         * validates the target is an ACTIVE `userType:'USER'` member.
+         */
+        runAsUserId: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -226,6 +233,7 @@ export const agentRouter = createTRPCRouter({
       if (patch.mentionable !== undefined) updatePayload.mentionable = patch.mentionable
       if (patch.archivedAt !== undefined) updatePayload.archivedAt = patch.archivedAt
       if (patch.appAccounts !== undefined) updatePayload.appAccounts = patch.appAccounts
+      if (patch.runAsUserId !== undefined) updatePayload.runAsUserId = patch.runAsUserId
 
       // Exclude the writer's own socket from the `agent:updated` broadcast so
       // the persona editor's autosave doesn't echo back and remount over the

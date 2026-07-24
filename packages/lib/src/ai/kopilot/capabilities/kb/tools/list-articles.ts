@@ -10,6 +10,7 @@ import { parseArticleIdArrayArg, parseStringArg } from '../../../../agent-framew
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { canViewKb } from '../kb-access'
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
@@ -111,7 +112,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
       return { ok: true, args: out }
     },
     execute: async (args, agentDeps) => {
-      const { db, sessionContext } = getDeps()
+      const { db, sessionContext, capabilities } = getDeps()
       const requestedKb = args.knowledgeBaseId as string | undefined
       const activeKb = findRef(sessionContext, 'kb')?.id
       const scopeKbId: string | undefined = requestedKb ?? activeKb
@@ -132,7 +133,13 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
         getCachedEntityDefId(agentDeps.organizationId, 'article'),
       ])
 
-      let filtered = all
+      // Instance-access read gate (permissions v2 §3.3) — silent filter, so a
+      // restricted KB's articles simply don't appear (and don't count toward
+      // `total`), the same thing a human sees. Runs before the other filters so
+      // no unviewable row can survive any of them.
+      let filtered = capabilities
+        ? all.filter((a) => canViewKb(capabilities, a.knowledgeBaseId))
+        : all
       if (idFilter && idFilter.length > 0) {
         const idSet = new Set(idFilter)
         filtered = filtered.filter((a) => idSet.has(a.id))

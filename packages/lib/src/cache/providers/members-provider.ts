@@ -1,9 +1,9 @@
 // packages/lib/src/cache/providers/members-provider.ts
 
 import { schema } from '@auxx/database'
-import type { OrganizationRole, SeatType } from '@auxx/database/types'
+import type { UserType } from '@auxx/database/types'
 import { eq } from 'drizzle-orm'
-import type { OrgMemberInfo } from '../org-cache-keys'
+import type { MemberRoleEntry, OrgMemberInfo } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
 
 /** Computes all org members with joined user info */
@@ -34,15 +34,25 @@ export const membersProvider: CacheProvider<OrgMemberInfo[]> = {
   },
 }
 
-/** Derives userId → { role, seatType } map from members (computed independently for independent invalidation) */
-export const memberRoleMapProvider: CacheProvider<
-  Record<string, { role: OrganizationRole; seatType: SeatType }>
-> = {
+/**
+ * Derives `userId → { role, seatType, userType }` from members (computed
+ * independently for independent invalidation).
+ *
+ * `userType` rides along so capability composition can branch on AGENT members
+ * without a second read (`composeUserCapabilities` uses SET-semantics over an
+ * all-Full base for agents — see capability layer v2 §0.2). The `User` join is a
+ * LEFT join, so a member row with no user row falls back to `'USER'`.
+ */
+export const memberRoleMapProvider: CacheProvider<Record<string, MemberRoleEntry>> = {
   async compute(orgId, db) {
     const members = await membersProvider.compute(orgId, db)
-    const map: Record<string, { role: OrganizationRole; seatType: SeatType }> = {}
+    const map: Record<string, MemberRoleEntry> = {}
     for (const m of members) {
-      map[m.userId] = { role: m.role, seatType: m.seatType }
+      map[m.userId] = {
+        role: m.role,
+        seatType: m.seatType,
+        userType: (m.user?.userType as UserType | undefined) ?? 'USER',
+      }
     }
     return map
   },

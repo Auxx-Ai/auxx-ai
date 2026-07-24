@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { FieldValueService } from '../../../../../field-values/field-value-service'
-import { getDefinitionId } from '../../../../../resources/resource-id'
+import { getDefinitionId, type RecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArrayArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -108,7 +108,7 @@ Example (ids match list_entity_fields output):
       }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const allRecordIds = args.recordIds as string[]
       const values = args.values as Array<{ fieldId: string; value: unknown }>
 
@@ -132,6 +132,21 @@ Example (ids match list_entity_fields output):
           output: null,
           error:
             'No field values provided. Call list_entity_fields first to discover fields, then pass them in the "values" array.',
+        }
+      }
+
+      // Write enforcement (permissions v2 §3.3). This tool bypasses
+      // `UnifiedCrudHandler` and writes straight through `FieldValueService`,
+      // so it carries its own copy of the handler's `assertEditDistinctDefs`:
+      // one `assertEditEntity` per DISTINCT def among the recordIds, in-memory,
+      // before any DB work. Absent capabilities ⇒ unrestricted, as before.
+      if (capabilities) {
+        const seenDefIds = new Set<string>()
+        for (const recordId of recordIds) {
+          const entityDefinitionId = getDefinitionId(recordId as RecordId)
+          if (seenDefIds.has(entityDefinitionId)) continue
+          seenDefIds.add(entityDefinitionId)
+          capabilities.assertEditEntity(entityDefinitionId)
         }
       }
 

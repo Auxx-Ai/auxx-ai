@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { composeUserCapabilities } from './compose-user-capabilities'
-import { Area, Level, PermissionKey } from './registry'
-import { effectiveDefault, WORKER_SEAT_KEYS } from './seat-policy'
+import { Area, Level, PERMISSION_AREAS, PermissionKey } from './registry'
+import { ALL_KEYS, effectiveDefault, WORKER_SEAT_KEYS } from './seat-policy'
 
 const sorted = (keys: PermissionKey[]) => [...keys].sort()
 
@@ -191,6 +191,32 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).toEqual([])
   })
 
+  it('human composition is byte-for-byte unchanged when userType is passed explicitly', () => {
+    // Every human userType must produce EXACTLY the legacy (no-userType) result.
+    const legacy = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      orgPolicyLevels: { [Area.records]: Level.Read },
+      groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
+      userLevels: { [Area.knowledgeBase]: Level.Full },
+      typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
+      instanceAccessRows: [{ entityInstanceId: 'inst_a', permission: 'none' }],
+    })
+    for (const userType of ['USER', 'SYSTEM'] as const) {
+      const withType = composeUserCapabilities({
+        role: 'USER',
+        seatType: 'full',
+        userType,
+        orgPolicyLevels: { [Area.records]: Level.Read },
+        groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
+        userLevels: { [Area.knowledgeBase]: Level.Full },
+        typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
+        instanceAccessRows: [{ entityInstanceId: 'inst_a', permission: 'none' }],
+      })
+      expect(withType).toEqual(legacy)
+    }
+  })
+
   it('is JSON-serializable (cache round-trip)', () => {
     const caps = composeUserCapabilities({
       role: 'ADMIN',
@@ -198,5 +224,129 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
     })
     expect(JSON.parse(JSON.stringify(caps))).toEqual(caps)
+  })
+})
+
+/** Every PermissionKey the `records` area can confer (any rung). */
+const RECORDS_KEYS = PERMISSION_AREAS[Area.records].rungs.flatMap((r) => r.keys)
+
+describe('composeUserCapabilities — AGENT branch (SET-semantics over all-Full, §0.2/§0.3)', () => {
+  it('(a) an agent with no grants holds every key (all-Full base)', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      typeAccessRows: [],
+    })
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
+    // Explicitly: the human USER default would NOT include these.
+    expect(caps.keys).toContain(PermissionKey.settingsManage)
+    expect(caps.keys).toContain(PermissionKey.recordsDelete)
+  })
+
+  it('(b) an explicit { records: None } user grant LOWERS records, leaving everything else Full', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      userLevels: { [Area.records]: Level.None },
+      typeAccessRows: [],
+    })
+    for (const key of RECORDS_KEYS) expect(caps.keys).not.toContain(key)
+    // Every other key survives.
+    const expected = ALL_KEYS.filter((k) => !RECORDS_KEYS.includes(k))
+    expect(sorted(caps.keys)).toEqual(sorted(expected))
+  })
+
+  it('(b2) an explicit intermediate level SETS (does not raise) — records: Read keeps only the Read rung', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      userLevels: { [Area.records]: Level.Read },
+      typeAccessRows: [],
+    })
+    expect(caps.keys).toContain(PermissionKey.recordsView)
+    expect(caps.keys).not.toContain(PermissionKey.recordsEdit)
+    expect(caps.keys).not.toContain(PermissionKey.recordsDelete)
+  })
+
+  it('(c) an org_member policy clamping records to None does NOT reach an agent', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      orgPolicyLevels: { [Area.records]: Level.None, [Area.workflows]: Level.Read },
+      typeAccessRows: [],
+    })
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
+    expect(caps.keys).toContain(PermissionKey.recordsDelete)
+  })
+
+  it('(d) group levels are ignored for agents (neither raise nor lower)', () => {
+    const lowering = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      groupLevels: [{ [Area.records]: Level.None }, { [Area.knowledgeBase]: Level.Read }],
+      typeAccessRows: [],
+    })
+    expect(sorted(lowering.keys)).toEqual(sorted(ALL_KEYS))
+
+    // A group can't rescue an area the agent's own grant set to None either.
+    const restricted = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      userLevels: { [Area.records]: Level.None },
+      groupLevels: [{ [Area.records]: Level.Full }],
+      typeAccessRows: [],
+    })
+    expect(restricted.keys).not.toContain(PermissionKey.recordsView)
+  })
+
+  it('still fails closed for an agent with no OrganizationMember row', () => {
+    const caps = composeUserCapabilities({
+      role: undefined,
+      seatType: 'full',
+      userType: 'AGENT',
+      typeAccessRows: [],
+    })
+    expect(caps.keys).toEqual([])
+  })
+
+  it('the seat ceiling still clamps last (worker seat wins over the all-Full base)', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'worker',
+      userType: 'AGENT',
+      typeAccessRows: [],
+    })
+    expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
+  })
+
+  it('defAccess / instanceAccess compose exactly as they do for humans', () => {
+    const rows = {
+      typeAccessRows: [
+        { entityDefinitionId: 'def_a', permission: 'view' as const },
+        { entityDefinitionId: 'def_a', permission: 'admin' as const },
+        { entityDefinitionId: 'def_locked', permission: 'none' as const },
+      ],
+      instanceAccessRows: [
+        { entityInstanceId: 'inst_a', permission: 'none' as const },
+        { entityInstanceId: 'inst_b', permission: 'edit' as const },
+      ],
+    }
+    const agent = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      ...rows,
+    })
+    const human = composeUserCapabilities({ role: 'USER', seatType: 'full', ...rows })
+    expect(agent.defAccess).toEqual(human.defAccess)
+    expect(agent.instanceAccess).toEqual(human.instanceAccess)
+    expect(agent.defAccess).toEqual({ def_a: 'admin' })
+    expect(agent.instanceAccess).toEqual({ inst_a: 'none', inst_b: 'edit' })
   })
 })
