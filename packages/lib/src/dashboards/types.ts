@@ -15,7 +15,6 @@ export type {
   DashboardLayoutDoc,
   DashboardSummary,
   DashboardVersionSummary,
-  DashboardVisibility,
   DashboardWithLayout,
   GridPosition,
   LayoutTab,

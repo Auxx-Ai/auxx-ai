@@ -91,6 +91,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'dashboards',
     icon: <LayoutDashboard />,
     featureKey: 'dashboards',
+    permissionKey: 'dashboards.view',
   },
   {
     id: 'today',

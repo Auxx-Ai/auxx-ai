@@ -58,6 +58,10 @@ export enum PermissionKey {
   knowledgeBaseView = 'knowledgeBase.view',
   knowledgeBaseEdit = 'knowledgeBase.edit',
   knowledgeBaseManage = 'knowledgeBase.manage',
+
+  // dashboards (instance-access resource — per-dashboard ResourceAccess grants, doc 13 §2)
+  dashboardsView = 'dashboards.view',
+  dashboardsManage = 'dashboards.manage',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -298,6 +302,22 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Knowledge',
     featureKey: FeatureKey.knowledgeBase,
   },
+
+  // ── Dashboards ──
+  {
+    key: PermissionKey.dashboardsView,
+    label: 'View Dashboards',
+    description: 'See dashboards shared with you.',
+    group: 'Analytics',
+    featureKey: FeatureKey.dashboards,
+  },
+  {
+    key: PermissionKey.dashboardsManage,
+    label: 'Manage Dashboards',
+    description: 'Create, delete, and configure dashboards.',
+    group: 'Analytics',
+    featureKey: FeatureKey.dashboards,
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -359,6 +379,7 @@ export enum Area {
   connectors = 'connectors',
   datasets = 'datasets',
   knowledgeBase = 'knowledgeBase',
+  dashboards = 'dashboards',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -577,6 +598,17 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // Layer-1 boolean access gate (types.ts:31) — NOT the plural
     // FeatureKey.knowledgeBases (types.ts:61), which is the numeric KB-count limit.
     featureKey: FeatureKey.knowledgeBase,
+  },
+  [Area.dashboards]: {
+    area: Area.dashboards,
+    label: 'Dashboards',
+    description: 'See dashboards shared with you, or create and manage dashboards.',
+    group: 'Analytics',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.dashboardsView] },
+      { level: Level.Full, keys: [PermissionKey.dashboardsManage] },
+    ],
+    featureKey: FeatureKey.dashboards,
   },
 }
 

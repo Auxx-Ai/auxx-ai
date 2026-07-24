@@ -4,8 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { generateId } from '@auxx/utils'
 import { and, eq, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { ForbiddenError, NotFoundError, UnprocessableEntityError } from '../errors'
-import { canEditDashboard } from './access'
+import { NotFoundError, UnprocessableEntityError } from '../errors'
 import type { DashboardLayoutDoc } from './client'
 import { hashLayoutDoc } from './config-hash'
 import { dashboardLayoutDocSchema, draftLayoutDocSchema } from './config-schemas'
@@ -18,7 +17,9 @@ import type { PublishResult } from './types'
  * `restoreAgentVersion`). The {@link schema.Dashboard} row IS the draft
  * (`draftLayout`); editing auto-saves there (no version), and **publish**
  * snapshots it into an immutable numbered {@link schema.DashboardVersion}.
- * Functional Drizzle, `neverthrow` results.
+ * Enforcement lives entirely in the router (doc 13 §4) — callers must have
+ * already asserted `assertEditInstance('dashboard', id)`. Functional Drizzle,
+ * `neverthrow` results.
  *
  * Versions are append-only and never edited, with the single documented
  * exception of {@link renameVersion} (annotation metadata, like `agent.renameVersion`).
@@ -34,7 +35,6 @@ import type { PublishResult } from './types'
 export async function saveDraft(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string,
   doc: DashboardLayoutDoc
 ): Promise<Result<{ hasUnpublishedChanges: boolean }, Error>> {
@@ -49,7 +49,6 @@ export async function saveDraft(
     where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
   })
   if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
-  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
 
   // Dirty iff the draft differs from the live version (no active version ⇒ dirty).
   let hasUnpublishedChanges = true
@@ -97,7 +96,6 @@ export async function publishDashboard(
         .for('update')
 
       if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
-      if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
 
       const parsed = dashboardLayoutDocSchema.safeParse(row.draftLayout)
       if (!parsed.success) {
@@ -155,7 +153,7 @@ export async function publishDashboard(
 
   if (outcome.isErr()) return err(outcome.error)
 
-  const dashboardResult = await getDashboard(db, orgId, userId, { id: dashboardId })
+  const dashboardResult = await getDashboard(db, orgId, { id: dashboardId })
   if (dashboardResult.isErr()) return err(dashboardResult.error)
   return ok({ dashboard: dashboardResult.value, unchanged: outcome.value.unchanged })
 }
@@ -167,14 +165,12 @@ export async function publishDashboard(
 export async function discardDashboardDraft(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string
 ): Promise<Result<PublishResult, Error>> {
   const row = await db.query.Dashboard.findFirst({
     where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
   })
   if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
-  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
   if (!row.activeVersionId) return err(new NotFoundError('Dashboard has no active version'))
 
   const active = await db.query.DashboardVersion.findFirst({
@@ -188,7 +184,7 @@ export async function discardDashboardDraft(
     .set({ draftLayout: active.layout, hasUnpublishedChanges: false })
     .where(eq(schema.Dashboard.id, dashboardId))
 
-  const dashboardResult = await getDashboard(db, orgId, userId, { id: dashboardId })
+  const dashboardResult = await getDashboard(db, orgId, { id: dashboardId })
   if (dashboardResult.isErr()) return err(dashboardResult.error)
   return ok({ dashboard: dashboardResult.value, unchanged: false })
 }
@@ -203,7 +199,6 @@ export async function discardDashboardDraft(
 export async function restoreVersion(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string,
   versionNumber: number
 ): Promise<Result<PublishResult, Error>> {
@@ -211,7 +206,6 @@ export async function restoreVersion(
     where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
   })
   if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
-  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
 
   const target = await db.query.DashboardVersion.findFirst({
     where: and(
@@ -236,7 +230,7 @@ export async function restoreVersion(
     .set({ draftLayout: target.layout, hasUnpublishedChanges })
     .where(eq(schema.Dashboard.id, dashboardId))
 
-  const dashboardResult = await getDashboard(db, orgId, userId, { id: dashboardId })
+  const dashboardResult = await getDashboard(db, orgId, { id: dashboardId })
   if (dashboardResult.isErr()) return err(dashboardResult.error)
   return ok({ dashboard: dashboardResult.value, unchanged: false })
 }
@@ -252,7 +246,6 @@ export async function restoreVersion(
 export async function deleteVersion(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string,
   versionNumber: number
 ): Promise<Result<{ versionNumber: number }, Error>> {
@@ -260,7 +253,6 @@ export async function deleteVersion(
     where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
   })
   if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
-  if (!canEditDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
 
   const target = await db.query.DashboardVersion.findFirst({
     where: and(
@@ -287,7 +279,6 @@ export async function deleteVersion(
 export async function renameVersion(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string,
   versionNumber: number,
   label: string | null
@@ -296,7 +287,6 @@ export async function renameVersion(
     where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
   })
   if (!dashboard || dashboard.archivedAt) return err(new NotFoundError('Dashboard not found'))
-  if (!canEditDashboard(dashboard, userId)) return err(new ForbiddenError('Not allowed'))
 
   const updated = await db
     .update(schema.DashboardVersion)

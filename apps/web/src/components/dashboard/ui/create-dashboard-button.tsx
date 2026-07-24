@@ -11,6 +11,7 @@ import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
+import { useAccess } from '~/providers/capabilities-provider'
 import { DashboardFormDialog } from './dashboard-form-dialog'
 
 /**
@@ -26,8 +27,15 @@ export function CreateDashboardButton({
   registerShortcut?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const { can } = useAccess()
 
   useHotkey('N', () => setOpen(true), { enabled: registerShortcut })
+
+  // Creating a dashboard requires the `dashboards` Full rung (`dashboards.manage`);
+  // Read members can browse shared dashboards but not create their own.
+  if (!can('dashboards.manage')) {
+    return null
+  }
 
   return (
     <>

@@ -40,5 +40,13 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
       full: 'Manage the KB & its settings',
     },
   },
-  // dashboard added by its slice
+  dashboard: {
+    noun: 'dashboard',
+    baselineHint: 'Shared with the workspace by default — restrict it to make it private.',
+    levels: {
+      read: 'View',
+      write: 'Edit widgets & layout',
+      full: 'Manage & delete',
+    },
+  },
 }

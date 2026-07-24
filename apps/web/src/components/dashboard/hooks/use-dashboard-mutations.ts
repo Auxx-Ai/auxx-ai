@@ -8,7 +8,7 @@
 // Auto-save + Publish/Discard have their own draft-store-wired hooks
 // (`use-dashboard-autosave`, `use-dashboard-publish`); this hook covers the rest.
 
-import type { DashboardVisibility, DashboardWithLayout } from '@auxx/lib/dashboards/client'
+import type { DashboardWithLayout } from '@auxx/lib/dashboards/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { api } from '~/trpc/react'
@@ -19,14 +19,14 @@ interface CreateDashboardInput {
   name: string
   description?: string | null
   icon?: { iconId: string; color: string }
-  visibility?: DashboardVisibility
+  /** Absent/false ⇒ shared with org (the locked default). */
+  isPrivate?: boolean
 }
 
 interface UpdateDashboardPatch {
   name?: string
   description?: string | null
   icon?: { iconId: string; color: string } | null
-  visibility?: DashboardVisibility
   position?: number
   /** Link/unlink the "primary entity" (null unlinks). Forces org visibility server-side when set. */
   entityDefinitionId?: string | null

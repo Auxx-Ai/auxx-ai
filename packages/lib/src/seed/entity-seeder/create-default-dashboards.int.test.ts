@@ -13,6 +13,7 @@
 // runs internally.
 
 import { type Database, schema } from '@auxx/database'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -126,7 +127,6 @@ describe('create-default-dashboards (plan 03)', () => {
     )
 
     for (const row of rows) {
-      expect(row.visibility).toBe('org')
       expect(row.activeVersionId).not.toBeNull()
 
       const version = await db().query.DashboardVersion.findFirst({
@@ -140,6 +140,20 @@ describe('create-default-dashboards (plan 03)', () => {
       // draftLayout mirrors the published version and starts with no pending changes.
       expect(row.draftLayout).toEqual(version!.layout)
       expect(row.hasUnpublishedChanges).toBe(false)
+
+      // insertPublishedDashboard writes the org-shared workspace baseline for
+      // free (doc 13 §2/§4) — a default dashboard must be visible with no
+      // separate Share-card step.
+      const baseline = await db().query.ResourceAccess.findFirst({
+        where: and(
+          eq(schema.ResourceAccess.organizationId, org.id),
+          eq(schema.ResourceAccess.entityDefinitionId, 'dashboard'),
+          eq(schema.ResourceAccess.entityInstanceId, row.id),
+          eq(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
+          eq(schema.ResourceAccess.granteeId, 'org_member')
+        ),
+      })
+      expect(baseline?.permission).toBe(ResourcePermission.view)
     }
   })
 

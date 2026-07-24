@@ -93,8 +93,6 @@ export const Dashboard = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
-    /** 'private' (owner only) | 'org' (all members view + edit) */
-    visibility: text().notNull().default('org'),
     /** Ordering in the dashboards list / future sidebar pinning */
     position: doublePrecision().notNull().default(0),
 

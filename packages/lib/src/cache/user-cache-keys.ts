@@ -110,7 +110,12 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // `datasets.view`). Bump to abandon every stale blob → recompute on next read.
   // v3: KB instance-access slice (doc 12) added the `knowledgeBase` L2 area/keys;
   // pre-slice blobs lack them entirely (admins 403 on `knowledgeBase.view`).
+  // v4: dashboards instance-access slice (doc 13) added the `dashboards` L2
+  // area/keys; pre-slice blobs lack them entirely (admins 403 on `dashboards.view`).
+  // v5: agent capability composition (doc 14 §1) — `userType: 'AGENT'` principals
+  // now compose with SET-semantics over an all-Full base instead of the human
+  // raise-only model. Pre-slice blobs were composed under the old rule.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v3', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v5', ttlSeconds: ONE_DAY },
 }

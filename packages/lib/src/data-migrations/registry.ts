@@ -17,6 +17,7 @@ import { migration036DocumentsTaxRatesScope } from './migrations/036-documents-t
 import { migration037BackfillMessageMachineMailTier } from './migrations/037-backfill-message-machine-mail-tier'
 import { migration038ReseedPlatformProvidersScopeTrim } from './migrations/038-reseed-platform-providers-scope-trim'
 import { migration039GoogleAppClientPendingApproval } from './migrations/039-google-app-client-pending-approval'
+import { migration040BackfillDashboardInstanceAccess } from './migrations/040-backfill-dashboard-instance-access'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -50,6 +51,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration037BackfillMessageMachineMailTier,
     migration038ReseedPlatformProvidersScopeTrim,
     migration039GoogleAppClientPendingApproval,
+    migration040BackfillDashboardInstanceAccess,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

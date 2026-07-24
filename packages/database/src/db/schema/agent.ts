@@ -192,6 +192,28 @@ export const Agent = pgTable(
         onDelete: 'restrict',
       }),
 
+    /**
+     * Optional **run-as delegation**: when set, every run of this agent resolves
+     * its `CapabilitySet` from THIS user instead of the agent's own permission
+     * profile ("acts exactly as this user"). See
+     * plans/permissions/v2/14-agent-permissions.md §0.6/§4.3.
+     *
+     * It changes the **capability source only** — the engine identity
+     * (`AiAgentSession.userId`, authorship, realtime attribution) stays the
+     * agent's own `userId`, so audit trails remain honest. Invoker intersection
+     * for human-triggered runs (§0.5) still applies on top.
+     *
+     * Must be an ACTIVE human member at run time; if it is not, the run fails
+     * loudly rather than falling back to the agent profile (a silently-widened
+     * agent is worse than a stopped one). `onDelete: 'set null'` so deleting the
+     * user cleanly unsets the delegation and the run-time assert then surfaces
+     * it. `null` (the default) = use the agent's own profile.
+     */
+    runAsUserId: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+
     slug: text().notNull(),
     description: text(),
 
@@ -299,6 +321,7 @@ export const Agent = pgTable(
       table.archivedAt.asc().nullsLast()
     ),
     index('Agent_userId_idx').using('btree', table.userId.asc().nullsLast()),
+    index('Agent_runAsUserId_idx').using('btree', table.runAsUserId.asc().nullsLast()),
   ]
 )
 

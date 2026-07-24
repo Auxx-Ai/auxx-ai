@@ -113,8 +113,12 @@ async function emitResourceAccessTypeChanged(
  * instance traffic (which only fires {@link emitResourceAccessChanged}) never
  * churns these caches. Also publishes `publishCapabilitiesChanged` so other
  * members' live sessions re-compose (phase 4 §10). Call AFTER the write commits.
+ *
+ * Exported (not module-private) — instance-access resources that write their own
+ * `ResourceAccess` rows outside `grantInstanceAccess` (e.g. dashboards' create-time
+ * baseline + owner grant, doc 13 §2) still need to fire this same invalidation.
  */
-async function emitResourceAccessInstanceChanged(
+export async function emitResourceAccessInstanceChanged(
   organizationId: string,
   grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
 ): Promise<void> {
