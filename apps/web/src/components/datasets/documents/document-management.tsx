@@ -1,6 +1,7 @@
 // apps/web/src/components/datasets/documents/document-management.tsx
 'use client'
 import type { DocumentEntity as Document } from '@auxx/database/types'
+import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
 import { CircleDot, CircleSlash, FileText, Plus, Trash2 } from 'lucide-react'
@@ -11,6 +12,7 @@ import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
 import { FileDropZone } from '~/components/files/file-drop-zone'
 import { EmptyState } from '~/components/global/empty-state'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useDocumentProcessing } from '../hooks/use-document-processing'
 import { createDocumentColumns } from './document-columns'
@@ -46,6 +48,11 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
+
+  // Uploading documents is a Write on this dataset (per-instance, mirrors the
+  // `document.batchProcess` router gate) — hide the upload affordances otherwise.
+  const { canEditInstance } = useAccess()
+  const canUpload = canEditInstance(toRecordId('dataset', datasetId))
 
   // Get utils for cache invalidation
   const utils = api.useUtils()
@@ -325,7 +332,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
     <FileDropZone
       onFilesDropped={handleDocumentsDropped}
       currentFolderName={dataset?.name || 'Dataset'}
-      disabled={isDocumentsLoading || isUploading || isUploadActive}>
+      disabled={isDocumentsLoading || isUploading || isUploadActive || !canUpload}>
       {/* Dynamic Table */}
       <DynamicTable<Document>
         tableId='dataset-documents'
@@ -342,7 +349,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
         onRefresh={refetch}
         searchPlaceholder='Search documents...'
         searchKeys={['filename', 'title', 'mimeType']}
-        onAddNew={() => setUploadDialogOpen(true)}
+        onAddNew={canUpload ? () => setUploadDialogOpen(true) : undefined}
         customFilter={
           <DocumentFilterBar
             filterValue={documentFilter}
@@ -358,10 +365,12 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
             description={
               documentFilter !== 'all'
                 ? 'Try adjusting your filters to find documents.'
-                : 'Upload your first documents to get started with this dataset.'
+                : canUpload
+                  ? 'Upload your first documents to get started with this dataset.'
+                  : "This dataset has no documents yet. You don't have permission to add files here."
             }
             button={
-              documentFilter === 'all' ? (
+              documentFilter === 'all' && canUpload ? (
                 <Button onClick={() => setUploadDialogOpen(true)} variant='outline'>
                   <Plus />
                   Upload Documents
