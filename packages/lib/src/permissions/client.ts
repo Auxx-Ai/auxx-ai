@@ -5,6 +5,10 @@
  */
 
 // Type-only re-exports (erased at runtime — no server deps pulled in).
+// ── Permission rank (client-safe: compose-user-capabilities imports only
+//    registry + seat-policy constants). The single source of truth for
+//    "which ResourceAccess permission outranks which".
+export { PERMISSION_RANK } from './capabilities/compose-user-capabilities'
 // ── Shared client-safe entity-access resolver (most-specific-wins core, used by
 //    the client capabilities provider to mirror server enforcement).
 export {
@@ -17,6 +21,7 @@ export {
   canViewInstance,
   canViewRecord,
   effectiveRecordLevel,
+  levelToPermission,
   NON_RECORD_DEF_SLUGS,
   type ResolvedRecordAccess,
   toResolvedRecordAccess,

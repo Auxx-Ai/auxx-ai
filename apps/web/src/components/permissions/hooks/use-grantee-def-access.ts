@@ -2,13 +2,12 @@
 'use client'
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { Area, Level } from '@auxx/lib/permissions/client'
+import { Area, Level, levelToPermission, PERMISSION_RANK } from '@auxx/lib/permissions/client'
 import { isAccessManageable, type Resource } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
-import { LEVEL_TO_PERMISSION, PERMISSION_RANK } from '../access-levels'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
 /** The grantee axis this section edits: an individual member or a team. */
@@ -81,7 +80,9 @@ export function useGranteeDefAccess(granteeKind: GranteeKind, granteeId: string)
     const own = persisted.find((g) => g.granteeId === granteeId)?.levels?.[Area.records]
     const level =
       own ?? effectiveBaseline[Area.records] ?? roleDefaults?.[Area.records] ?? Level.None
-    return LEVEL_TO_PERMISSION[level]
+    // `levelToPermission` maps `Level.None` to `undefined` ("no permission");
+    // for display we want the `none` marker so the picker can name it.
+    return levelToPermission(level) ?? ResourcePermission.none
   }, [granteeKind, granteeId, groupGrants, userGrants, effectiveBaseline, roleDefaults])
 
   const rowsQuery = api.resourceAccess.allTypeAccess.useQuery(undefined, { staleTime: 30_000 })

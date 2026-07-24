@@ -2,10 +2,10 @@
 'use client'
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { PERMISSION_RANK } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { PERMISSION_RANK } from '../access-levels'
 import { MEMBER_BASELINE_GRANTEE_ID } from './use-permission-grants'
 
 /** A resolved team/member grant (grantees never carry `none`). */
