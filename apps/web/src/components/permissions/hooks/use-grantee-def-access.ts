@@ -8,6 +8,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
+import { LEVEL_TO_PERMISSION, PERMISSION_RANK } from '../access-levels'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
 /** The grantee axis this section edits: an individual member or a team. */
@@ -18,28 +19,12 @@ const GRANTEE_TYPE: Record<GranteeKind, ResourceGranteeType> = {
   group: ResourceGranteeType.group,
 }
 
-/** Client-safe rank (`none` < view < edit < admin) for the "no effect" compare. */
-const PERMISSION_RANK: Record<ResourcePermission, number> = {
-  [ResourcePermission.none]: 0,
-  [ResourcePermission.view]: 1,
-  [ResourcePermission.edit]: 2,
-  [ResourcePermission.admin]: 3,
-}
-
 /**
  * The workspace baseline an unconfigured def defaults to (and first-touch
  * persists) — everyone's default access. Must match `use-def-access`'s
  * `DEFAULT_BASELINE_LEVEL` so the two surfaces agree.
  */
 const DEFAULT_BASELINE_LEVEL: ResourcePermission = ResourcePermission.edit
-
-/** Layer-2 records rung → its record-permission equivalent (for the inherited label). */
-const LEVEL_TO_PERMISSION: Record<Level, ResourcePermission> = {
-  [Level.None]: ResourcePermission.none,
-  [Level.Read]: ResourcePermission.view,
-  [Level.Edit]: ResourcePermission.edit,
-  [Level.Full]: ResourcePermission.admin,
-}
 
 /** One def's row in the grantee-centric Access grid. */
 export interface GranteeDefAccessRow {
@@ -101,7 +86,9 @@ export function useGranteeDefAccess(granteeKind: GranteeKind, granteeId: string)
 
   const rowsQuery = api.resourceAccess.allTypeAccess.useQuery(undefined, { staleTime: 30_000 })
 
-  const invalidate = useCallback(() => utils.resourceAccess.allTypeAccess.invalidate(), [utils])
+  // Broad on purpose: the per-def Permissions tab reads the same rows under
+  // `resourceAccess.forType`, so a write here must refresh that key too.
+  const invalidate = useCallback(() => utils.resourceAccess.invalidate(), [utils])
 
   /** Optimistically upsert (or, with `permission` undefined, drop) one type row. */
   const patchLocal = useCallback(

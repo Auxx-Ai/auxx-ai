@@ -5,20 +5,13 @@ import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
+import { PERMISSION_RANK } from '../access-levels'
 import { MEMBER_BASELINE_GRANTEE_ID } from './use-permission-grants'
 
 /** A resolved team/member grant (grantees never carry `none`). */
 export interface DefAccessGrant {
   granteeId: string
   permission: ResourcePermission
-}
-
-/** Client-safe rank for the "ignored" comparison (`none` < view < edit < admin). */
-const PERMISSION_RANK: Record<ResourcePermission, number> = {
-  [ResourcePermission.none]: 0,
-  [ResourcePermission.view]: 1,
-  [ResourcePermission.edit]: 2,
-  [ResourcePermission.admin]: 3,
 }
 
 /**
@@ -70,10 +63,9 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
     staleTime: 30_000,
   })
 
-  const invalidate = useCallback(
-    () => utils.resourceAccess.forType.invalidate(queryInput),
-    [utils, queryInput]
-  )
+  // Broad on purpose: the permissions page reads the same rows in bulk under
+  // `resourceAccess.allTypeAccess`, so a write here must refresh that key too.
+  const invalidate = useCallback(() => utils.resourceAccess.invalidate(), [utils])
 
   /** Optimistically upsert (or, with `permission` undefined, drop) one row. */
   const patchLocal = useCallback(

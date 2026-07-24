@@ -4,14 +4,16 @@
 import type { Area, Level } from '@auxx/lib/permissions/client'
 import { type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Folder, Plus, SlidersHorizontal, Trash2, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
-import { useActor } from '~/components/resources/hooks/use-actor'
+import { useActor, useActors } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
 import { useUser } from '~/hooks/use-user'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
@@ -19,15 +21,28 @@ import { LeveledAreaGrid } from './leveled-area-grid'
 
 type OverrideType = 'group' | 'user'
 
+/** Rows shown before the inline "Show N more" toggle takes over. */
+const VISIBLE_GRANTEES = 5
+
 const COPY: Record<
   OverrideType,
-  { add: string; list: string; remove: string; empty: string; icon: typeof Users }
+  {
+    add: string
+    list: string
+    remove: string
+    empty: string
+    search: string
+    noMatches: string
+    icon: typeof Users
+  }
 > = {
   group: {
     add: 'Add group',
     list: 'Groups',
     remove: 'Remove group',
     empty: 'Grant a group more access than the member baseline.',
+    search: 'Search groups...',
+    noMatches: 'No groups match your search.',
     icon: Folder,
   },
   user: {
@@ -35,6 +50,8 @@ const COPY: Record<
     list: 'Members',
     remove: 'Remove member',
     empty: 'Grant one member more access than the baseline or their groups.',
+    search: 'Search members...',
+    noMatches: 'No members match your search.',
     icon: Users,
   },
 }
@@ -74,12 +91,34 @@ export function GranteeOverridesTab({
   const copy = COPY[granteeType]
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   const rows = useMemo(() => persisted.map((g) => g.granteeId), [persisted])
 
   const actorIds = useMemo(() => rows.map((id) => toActorId(granteeType, id)), [rows, granteeType])
 
-  // Fall back to the first row when the selection is empty or was removed.
+  // Names live on the actor store (bulk-hydrated by `ResourceProvider`), so the
+  // list can filter on them without waiting for each row's own `useActor`.
+  const actors = useActors(actorIds)
+  const query = search.trim().toLowerCase()
+
+  /**
+   * Grantees narrowed by the search query. A grantee whose actor hasn't resolved
+   * yet is KEPT — it can't be judged, and hiding it would silently shrink the
+   * list. Only the list is filtered; the selection below is unaffected.
+   */
+  const filteredRows = useMemo(() => {
+    if (!query) return rows
+    return rows.filter((granteeId) => {
+      const actor = actors.get(toActorId(granteeType, granteeId))
+      if (!actor) return true
+      const name = actor.name || (actor.type === 'user' ? actor.email : '') || ''
+      return name.toLowerCase().includes(query)
+    })
+  }, [rows, actors, granteeType, query])
+
+  // Fall back to the first row when the selection is empty or was removed. Based
+  // on the unfiltered list — searching narrows the list, never the selection.
   const selectedGranteeId = selectedId && rows.includes(selectedId) ? selectedId : (rows[0] ?? null)
 
   const handleAdd = (nextActorIds: ActorId[]) => {
@@ -144,18 +183,37 @@ export function GranteeOverridesTab({
             description={copy.empty}
           />
         ) : (
-          <div className='flex flex-col gap-0.5'>
-            {rows.map((granteeId) => (
-              <GranteeListRow
-                key={granteeId}
-                granteeType={granteeType}
-                granteeId={granteeId}
-                selected={granteeId === selectedGranteeId}
-                disabled={disabled}
-                onSelect={() => setSelectedId(granteeId)}
-                onRemove={() => handleRemove(granteeId)}
+          <div className='flex flex-col gap-2'>
+            <InputSearch
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={copy.search}
+            />
+            {filteredRows.length === 0 ? (
+              <EmptySection
+                orientation='horizontal'
+                icon={<copy.icon />}
+                title='No matches'
+                description={copy.noMatches}
               />
-            ))}
+            ) : (
+              <TreeRowList
+                items={filteredRows}
+                getKey={(granteeId) => granteeId}
+                visibleLimit={VISIBLE_GRANTEES}
+                className='gap-0.5'
+                renderRow={(granteeId) => (
+                  <GranteeListRow
+                    granteeType={granteeType}
+                    granteeId={granteeId}
+                    selected={granteeId === selectedGranteeId}
+                    disabled={disabled}
+                    onSelect={() => setSelectedId(granteeId)}
+                    onRemove={() => handleRemove(granteeId)}
+                  />
+                )}
+              />
+            )}
           </div>
         )}
       </Section>
