@@ -10,6 +10,7 @@ import {
 } from '@auxx/ui/components/sidebar'
 import { usePathname } from 'next/navigation'
 import type * as React from 'react'
+import { useMemo } from 'react'
 import type { SidebarProps } from '~/constants/menu'
 import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -25,6 +26,18 @@ type Props = {
   /** Optional per-item action renderers, keyed by item id */
   itemActions?: Record<string, () => React.ReactNode>
 }
+
+function getUrl(url: string, parentSlug?: string, childSlug?: string) {
+  let fullUrl = `${url}`
+  if (parentSlug) {
+    fullUrl += `/${parentSlug}`
+  }
+  if (childSlug) {
+    fullUrl += `/${childSlug}`
+  }
+  return fullUrl
+}
+
 export function NavMain({ menu, itemActions }: Props) {
   const pathname = usePathname()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
@@ -38,55 +51,39 @@ export function NavMain({ menu, itemActions }: Props) {
     toggleGroup('configurations')
   }
 
-  function getUrl(url: string, parentSlug?: string, childSlug?: string) {
-    let fullUrl = `${url}`
-    if (parentSlug) {
-      fullUrl += `/${parentSlug}`
-    }
-    if (childSlug) {
-      fullUrl += `/${childSlug}`
-    }
-    return fullUrl
-  }
+  // Filter items by feature access + Layer-2 capability (and admin-only gates)
+  // then compute URLs — into NEW objects, never mutating the shared `menu.items`
+  // (the module-level `SIDEBAR_MENU`, also read by the command palette). Mutating
+  // it would permanently prune entries: once an item is filtered out it could
+  // never reappear when a realtime permission change re-grants access. Memoized
+  // on the gate identities, which change exactly when capabilities/features do.
+  const menuItems = useMemo(() => {
+    return menu.items
+      .filter((item) => !item.featureKey || hasAccess(item.featureKey))
+      .filter((item) => !item.permissionKey || can(item.permissionKey))
+      .filter((item) => !item.adminOnly || isAdminOrOwner)
+      .map((item) => {
+        const subItems = item.items
+          ?.filter((sub) => !sub.featureKey || hasAccess(sub.featureKey))
+          .filter((sub) => !sub.permissionKey || can(sub.permissionKey))
+          .filter((sub) => !sub.adminOnly || isAdminOrOwner)
+          .map((sub) => ({
+            ...sub,
+            url: item.skipParentSlug
+              ? getUrl(menu.route, undefined, sub.slug)
+              : getUrl(menu.route, item.slug, sub.slug),
+          }))
 
-  // Filter items by feature access + Layer-2 capability (and admin-only gates
-  // for top-level entries). The capability check collapses a field seat's
-  // sidebar to just their granted surfaces automatically.
-  const filteredItems = menu.items
-    .filter((item) => !item.featureKey || hasAccess(item.featureKey))
-    .filter((item) => !item.permissionKey || can(item.permissionKey))
-    .filter((item) => !item.adminOnly || isAdminOrOwner)
-    .map((item) => ({
-      ...item,
-      items: item.items
-        ?.filter((sub) => !sub.featureKey || hasAccess(sub.featureKey))
-        .filter((sub) => !sub.permissionKey || can(sub.permissionKey))
-        .filter((sub) => !sub.adminOnly || isAdminOrOwner),
-    }))
-    .filter((item) => !item.items || item.items.length > 0)
-
-  // Process menu.items URLs
-  menu.items = filteredItems.map((item) => {
-    if (item.items && item.items.length > 0) {
-      item.items = item.items.map((subItem) => {
-        if (item.skipParentSlug) {
-          // Parent has skipParentSlug flag - skip parent slug for all children
-          subItem.url = getUrl(menu.route, undefined, subItem.slug)
-        } else {
-          subItem.url = getUrl(menu.route, item.slug, subItem.slug)
+        if (subItems && subItems.length > 0) {
+          // Explicit `url` on the entry wins (navigable group homes like
+          // /app/dispatch); else fall back to the first child. preventNavigation
+          // still decides whether clicking the row navigates at all.
+          return { ...item, items: subItems, url: item.url ?? subItems[0].url }
         }
-        return subItem
+        return { ...item, items: subItems, url: getUrl(menu.route, item.slug) }
       })
-
-      // Handle parent URL — an explicit `url` on the menu entry wins (navigable group
-      // homes like /app/dispatch); otherwise fall back to the first child for consistency.
-      // preventNavigation still decides whether clicking the row navigates at all.
-      item.url = item.url ?? item.items[0].url
-    } else {
-      item.url = getUrl(menu.route, item.slug)
-    }
-    return item
-  })
+      .filter((item) => !item.items || item.items.length > 0)
+  }, [menu, can, hasAccess, isAdminOrOwner])
 
   function isActive(item: SidebarProps) {
     if (item.items?.length) {
@@ -114,7 +111,7 @@ export function NavMain({ menu, itemActions }: Props) {
       />
       <SidebarGroupCollapse open={isOpen}>
         <SidebarMenu>
-          {menu.items.map((item) => (
+          {menuItems.map((item) => (
             <div key={item.id}>
               {item.items?.length ? (
                 <CollapsibleSidebarSection
