@@ -14,7 +14,7 @@ import { MessageService } from '../email/message-service'
 import { clearImportCache } from '../email/polling-import-cache'
 import { InboxService } from '../inboxes'
 import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
-import { MemberService } from '../members/member-service'
+import { getMembership } from '../members'
 import type { ChannelProviderType } from '../providers/types'
 import { OrganizationSeeder } from '../seed/organization-seeder'
 import { SystemUserService } from '../users/system-user-service'
@@ -270,7 +270,7 @@ export class OrganizationService {
    */
   private async verifyOwnerOrFail(userId: string, organizationId: string): Promise<void> {
     logger.debug(`Verifying owner status for user ${userId} in org ${organizationId}`)
-    const membership = await MemberService.getMembership(userId, organizationId, this.db)
+    const membership = await getMembership(userId, organizationId, this.db)
 
     if (!membership) {
       logger.warn(`Verification failed: User ${userId} not found in org ${organizationId}`)

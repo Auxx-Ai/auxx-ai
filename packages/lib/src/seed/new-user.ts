@@ -10,7 +10,7 @@ import {
 import type { UserEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gt, ne } from 'drizzle-orm'
-import { MemberService } from '../members/member-service'
+import { acceptInvitationById } from '../members'
 import { SystemUserService } from '../users/system-user-service'
 import { OrganizationSeeder } from './organization-seeder'
 import { UserSeeder } from './user-seeder'
@@ -115,12 +115,14 @@ export async function seedNewUserDatabase(user: {
       // Accept the pending invite.
       const invitationId = pendingInvite.id
       const organizationId = pendingInvite.organizationId
-      const memberService = new MemberService(db)
-      await memberService.acceptInvitationByIdentity({
-        invitationId,
-        acceptingUserId: user.id,
-        acceptingUserEmail: user.email,
-      })
+      await acceptInvitationById(
+        {
+          invitationId,
+          acceptingUserId: user.id,
+          acceptingUserEmail: user.email,
+        },
+        db
+      )
 
       const [updatedUser] = await db
         .update(schema.User)

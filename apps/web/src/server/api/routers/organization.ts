@@ -5,7 +5,13 @@ import { schema } from '@auxx/database'
 import { OrganizationType } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { DehydrationService } from '@auxx/lib/dehydration'
-import { isAdminOrOwner, MemberService } from '@auxx/lib/members'
+import {
+  getMembership,
+  getOrganizationMembers,
+  getPendingInvitations,
+  isAdminOrOwner,
+  isMember,
+} from '@auxx/lib/members'
 import { OrganizationService } from '@auxx/lib/organizations'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -191,10 +197,9 @@ export const organizationRouter = createTRPCRouter({
   byId: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     const userId = ctx.session.user.id
     const orgId = input.id
-    const memberService = new MemberService(ctx.db)
 
     // Verify user is part of this organization first
-    const membership = await MemberService.getMembership(userId, orgId, ctx.db)
+    const membership = await getMembership(userId, orgId, ctx.db)
 
     if (!membership) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'Not a member of this organization' })
@@ -222,8 +227,8 @@ export const organizationRouter = createTRPCRouter({
 
     // Fetch active members and pending invitations using the service
     const [members, pendingInvitations] = await Promise.all([
-      memberService.getOrganizationMembers(orgId),
-      memberService.getPendingInvitations(orgId),
+      getOrganizationMembers(orgId, ctx.db),
+      getPendingInvitations(orgId, ctx.db),
     ])
 
     return {
@@ -331,9 +336,9 @@ export const organizationRouter = createTRPCRouter({
 
       console.log('SWITCH TO:', organizationId, 'FROM:', currentOrganizationId)
       // Verify membership
-      const isMember = await MemberService.isMember(userId, organizationId, ctx.db)
+      const isOrgMember = await isMember(userId, organizationId, ctx.db)
 
-      if (!isMember) {
+      if (!isOrgMember) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Not a member of this organization' })
       }
 
@@ -361,7 +366,7 @@ export const organizationRouter = createTRPCRouter({
       const { organizationId } = input
 
       // Check if user is a member
-      const membership = await MemberService.getMembership(userId, organizationId, ctx.db)
+      const membership = await getMembership(userId, organizationId, ctx.db)
 
       if (!membership) {
         throw new TRPCError({

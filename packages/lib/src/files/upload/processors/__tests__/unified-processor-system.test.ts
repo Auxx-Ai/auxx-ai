@@ -71,10 +71,8 @@ vi.mock('@auxx/database', () => ({
   },
 }))
 
-vi.mock('../../../../members/member-service', () => ({
-  MemberService: {
-    isMember: vi.fn().mockResolvedValue(true),
-  },
+vi.mock('../../../../members', () => ({
+  isMember: vi.fn().mockResolvedValue(true),
 }))
 
 vi.mock('@auxx/logger', () => ({

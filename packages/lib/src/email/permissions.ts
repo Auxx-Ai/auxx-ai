@@ -4,7 +4,7 @@ import { database as db } from '@auxx/database'
 import { OrganizationRole } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { MemberService } from '../members/member-service'
+import { getMembership } from '../members'
 
 const logger = createScopedLogger('permissions')
 interface SessionUser {
@@ -25,7 +25,7 @@ interface SessionUser {
  */
 async function checkIsAdmin(userId: string, organizationId: string): Promise<boolean> {
   try {
-    const membership = await MemberService.getMembership(userId, organizationId, db)
+    const membership = await getMembership(userId, organizationId, db)
     if (!membership) {
       return false
     }

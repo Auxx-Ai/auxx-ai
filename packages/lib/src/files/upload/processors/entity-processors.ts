@@ -3,8 +3,8 @@ import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
 import { and, desc, eq } from 'drizzle-orm'
 import { getOrgCache, isAgentUser, onCacheEvent } from '../../../cache'
+import { isMember } from '../../../members'
 import { isAdminOrOwner } from '../../../members/member-queries'
-import { MemberService } from '../../../members/member-service'
 import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
 import type { ThumbnailSource } from '../../core/thumbnail-types'
 import type { AssetKind } from '../../core/types'
@@ -158,8 +158,8 @@ export class UserProfileProcessor extends BaseAssetProcessor {
   ): Promise<void> {
     // Self-upload: classic profile flow.
     if (entityId === userId) {
-      const isMember = await MemberService.isMember(userId, organizationId)
-      if (!isMember) {
+      const memberOfOrg = await isMember(userId, organizationId)
+      if (!memberOfOrg) {
         throw new Error('User not found in organization')
       }
       return
