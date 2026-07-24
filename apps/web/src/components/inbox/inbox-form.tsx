@@ -21,8 +21,8 @@ import {
   MailPermissionsUpgradeDialog,
   useMailPermissionsGated,
 } from '~/components/mail-permissions/ui/enterprise-gate'
-import { GranteeList } from '~/components/mail-permissions/ui/grantee-list'
 import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
+import { MailGranteeList } from '~/components/mail-permissions/ui/mail-grantee-list'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
@@ -602,7 +602,7 @@ export function InboxForm({
             </button>
           ) : (
             <>
-              <GranteeList
+              <MailGranteeList
                 grants={values.grants}
                 onGrant={updateGrant}
                 onChangeLens={updateGrant}

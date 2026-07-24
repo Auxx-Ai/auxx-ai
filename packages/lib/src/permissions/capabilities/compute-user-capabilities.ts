@@ -3,8 +3,9 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
-import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 import { composeUserCapabilities, type UserCapabilities } from './compose-user-capabilities'
+import { INSTANCE_ACCESS_KEYS } from './instance-access'
 import { type Area, type Level, parseAreaLevels } from './registry'
 
 /**
@@ -35,7 +36,13 @@ export async function computeUserCapabilities(
   const seatType = entry?.seatType ?? 'full'
 
   // Non-member: fail closed without touching the DB.
-  if (!role) return composeUserCapabilities({ role: undefined, seatType, typeAccessRows: [] })
+  if (!role)
+    return composeUserCapabilities({
+      role: undefined,
+      seatType,
+      typeAccessRows: [],
+      instanceAccessRows: [],
+    })
 
   const isAdmin = role === 'OWNER' || role === 'ADMIN'
 
@@ -106,7 +113,29 @@ export async function computeUserCapabilities(
       )
     )
 
-  const [grantRows, typeAccessRows] = await Promise.all([grantRowsPromise, typeAccessPromise])
+  // Second ResourceAccess query: INSTANCE-level rows (entityInstanceId IS NOT
+  // NULL) for the instance-access resources (datasets etc., §1.2), reusing the
+  // same grantee union. Keyed on the globally-unique instance CUID alone.
+  const instanceAccessPromise = db
+    .select({
+      entityInstanceId: schema.ResourceAccess.entityInstanceId,
+      permission: schema.ResourceAccess.permission,
+    })
+    .from(schema.ResourceAccess)
+    .where(
+      and(
+        eq(schema.ResourceAccess.organizationId, organizationId),
+        inArray(schema.ResourceAccess.entityDefinitionId, INSTANCE_ACCESS_KEYS),
+        isNotNull(schema.ResourceAccess.entityInstanceId),
+        or(...accessConditions)
+      )
+    )
+
+  const [grantRows, typeAccessRows, instanceAccessRows] = await Promise.all([
+    grantRowsPromise,
+    typeAccessPromise,
+    instanceAccessPromise,
+  ])
 
   // Split the sparse-jsonb rows into the three composition tiers (§5).
   let orgPolicyLevels: Partial<Record<Area, Level>> | undefined
@@ -127,6 +156,10 @@ export async function computeUserCapabilities(
     userLevels,
     typeAccessRows: typeAccessRows as Array<{
       entityDefinitionId: string
+      permission: ResourcePermission
+    }>,
+    instanceAccessRows: instanceAccessRows as Array<{
+      entityInstanceId: string
       permission: ResourcePermission
     }>,
   })

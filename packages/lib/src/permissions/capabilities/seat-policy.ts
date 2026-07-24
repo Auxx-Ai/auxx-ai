@@ -60,14 +60,31 @@ const USER_ADMIN_NONE_AREAS = new Set<Area>([
 ])
 
 /**
+ * Areas whose USER default is `Read` (not the binary None/Full). The first such
+ * area is `datasets` (§0.2): everyone should *see and use* datasets in search
+ * and agents by default, but *contributing files* (Edit) or *changing settings*
+ * (Full) is a deliberate L2 rung bump or per-dataset instance grant. Without a
+ * Read default, per-dataset share-up grants would be meaningless (base already
+ * Full).
+ */
+const USER_READ_AREAS = new Set<Area>([Area.datasets])
+
+/**
  * What each role gets out of the box, per area (before grants + seat clamp).
  * OWNER/ADMIN short-circuit to Full anyway; USER is Full everywhere except the
- * org-administration areas in {@link USER_ADMIN_NONE_AREAS}, which are `None`.
+ * org-administration areas in {@link USER_ADMIN_NONE_AREAS} (`None`) and the
+ * {@link USER_READ_AREAS} (`Read`).
  */
 export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
   OWNER: ALL_FULL,
   ADMIN: ALL_FULL,
-  USER: buildAreaLevels((area) => (USER_ADMIN_NONE_AREAS.has(area) ? Level.None : Level.Full)),
+  USER: buildAreaLevels((area) =>
+    USER_ADMIN_NONE_AREAS.has(area)
+      ? Level.None
+      : USER_READ_AREAS.has(area)
+        ? Level.Read
+        : Level.Full
+  ),
 }
 
 /**

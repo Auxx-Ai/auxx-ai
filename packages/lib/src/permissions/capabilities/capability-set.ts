@@ -1,17 +1,20 @@
 // packages/lib/src/permissions/capabilities/capability-set.ts
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
+import { satisfiesPermission } from '../../resource-access/constants'
 import {
   type ClientCapabilities,
   canAdministerRecord,
   canEditRecord,
   canViewRecord,
+  levelToPermission,
   NON_RECORD_DEF_SLUGS,
   type ResolvedRecordAccess,
 } from './entity-access'
-import { PERMISSION_REGISTRY_MAP, PermissionKey } from './registry'
+import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
+import { areaLevelFromKeys, Level, PERMISSION_REGISTRY_MAP, PermissionKey } from './registry'
 import { ENTITY_WRITE_KEYS } from './seat-policy'
 
 /**
@@ -49,6 +52,13 @@ export class CapabilitySet {
    *                   `entityDefinitionId` resolver (the keyspace of `defAccess`
    *                   / `restrictedDefIds`). Distinct from {@link defIdToSlug},
    *                   which resolves to the write-key slug.
+   * @param instanceAccess Highest instance-level ResourceAccess permission per
+   *                   `entityInstanceId` (CUID) for the instance-access resources
+   *                   (datasets etc., §1.4). Explicit `'none'` rows are kept.
+   * @param restrictedInstanceIds Org-wide set of instance ids carrying ≥1
+   *                   instance-access row for *anyone*. An instance NOT in this
+   *                   set has no explicit row → falls back to its area's base L2
+   *                   level (for `baselineAtCreate: false` resources).
    */
   constructor(
     private readonly keys: ReadonlySet<PermissionKey>,
@@ -57,7 +67,9 @@ export class CapabilitySet {
     readonly seatType: SeatType,
     private readonly defIdToSlug: DefIdToSlug = (id) => id,
     private readonly restrictedDefIds: ReadonlySet<string> = new Set(),
-    private readonly defIdToDefinitionId: DefIdToSlug = (id) => id
+    private readonly defIdToDefinitionId: DefIdToSlug = (id) => id,
+    private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
+    private readonly restrictedInstanceIds: ReadonlySet<string> = new Set()
   ) {}
 
   /** O(1) Set lookup — whether the member holds `key`. */
@@ -125,6 +137,8 @@ export class CapabilitySet {
       restrictedEntityDefIds: [...this.restrictedDefIds],
       role: this.role,
       seatType: this.seatType,
+      instanceAccess: { ...this.instanceAccess },
+      restrictedInstanceIds: [...this.restrictedInstanceIds],
     }
   }
 
@@ -240,6 +254,61 @@ export class CapabilitySet {
   assertAdministerDef(entityDefId: string): void {
     if (this.canAdministerDef(entityDefId)) return
     throw new ForbiddenError("You don't have permission to administer this definition.")
+  }
+
+  /**
+   * Effective per-instance permission for an instance-access resource
+   * (most-specific-wins), or `undefined` = no access (§1.4). OWNER/ADMIN bypass
+   * to `admin`; the coarse L2 area gate must be open; an explicit instance row
+   * (incl. the workspace baseline / `'none'`) wins; otherwise fall back to the
+   * base L2 area level (for `baselineAtCreate: false` resources). Zero I/O.
+   */
+  private effectiveInstanceLevel(
+    key: InstanceAccessKey,
+    instanceId: string
+  ): ResourcePermission | undefined {
+    if (this.role === 'OWNER' || this.role === 'ADMIN') return ResourcePermission.admin
+    const cfg = INSTANCE_ACCESS_RESOURCES[key]
+    const areaLevel = areaLevelFromKeys(this.keys, cfg.area)
+    if (areaLevel === Level.None) return undefined
+    if (this.restrictedInstanceIds.has(instanceId)) return this.instanceAccess[instanceId]
+    return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
+  }
+
+  /** Whether the member may VIEW the instance (Read). Zero I/O. */
+  canViewInstance(key: InstanceAccessKey, instanceId: string): boolean {
+    const level = this.effectiveInstanceLevel(key, instanceId)
+    return level !== undefined && satisfiesPermission(level, ResourcePermission.view)
+  }
+
+  /** Whether the member may EDIT the instance's contents (Write). Zero I/O. */
+  canEditInstance(key: InstanceAccessKey, instanceId: string): boolean {
+    const level = this.effectiveInstanceLevel(key, instanceId)
+    return level !== undefined && satisfiesPermission(level, ResourcePermission.edit)
+  }
+
+  /** Whether the member may ADMINISTER the instance + its settings (Full). Zero I/O. */
+  canAdminInstance(key: InstanceAccessKey, instanceId: string): boolean {
+    const level = this.effectiveInstanceLevel(key, instanceId)
+    return level !== undefined && satisfiesPermission(level, ResourcePermission.admin)
+  }
+
+  /** {@link canViewInstance} as a throwing guard (403). */
+  assertViewInstance(key: InstanceAccessKey, instanceId: string): void {
+    if (this.canViewInstance(key, instanceId)) return
+    throw new ForbiddenError("You don't have permission to view this.")
+  }
+
+  /** {@link canEditInstance} as a throwing guard (403). */
+  assertEditInstance(key: InstanceAccessKey, instanceId: string): void {
+    if (this.canEditInstance(key, instanceId)) return
+    throw new ForbiddenError("You don't have permission to edit this.")
+  }
+
+  /** {@link canAdminInstance} as a throwing guard (403). */
+  assertAdminInstance(key: InstanceAccessKey, instanceId: string): void {
+    if (this.canAdminInstance(key, instanceId)) return
+    throw new ForbiddenError("You don't have permission to manage this.")
   }
 
   /** The capability key required to write the given RecordId-def part. */

@@ -21,6 +21,14 @@ import { ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
 export interface UserCapabilities {
   keys: PermissionKey[]
   defAccess: Record<string, ResourcePermission>
+  /**
+   * Highest instance-level ResourceAccess permission per `entityInstanceId`
+   * (CUID) for the instance-access resources (datasets etc., §1.2). Keys are
+   * globally-unique instance ids, so no `resourceKey` disambiguation is needed.
+   * Unlike `defAccess`, explicit `'none'` rows are KEPT — they are the per-
+   * instance downward marker (a real grant outranks them via {@link PERMISSION_RANK}).
+   */
+  instanceAccess: Record<string, ResourcePermission>
 }
 
 /**
@@ -63,8 +71,29 @@ export function composeUserCapabilities(input: {
   /** Sparse levels on the member's direct user grant (raise-only, L3). */
   userLevels?: Partial<Record<Area, Level>>
   typeAccessRows: Array<{ entityDefinitionId: string; permission: ResourcePermission }>
+  /** Instance-level rows (entityInstanceId IS NOT NULL) for the instance-access resources. */
+  instanceAccessRows?: Array<{ entityInstanceId: string; permission: ResourcePermission }>
 }): UserCapabilities {
-  const { role, seatType, orgPolicyLevels, groupLevels, userLevels, typeAccessRows } = input
+  const {
+    role,
+    seatType,
+    orgPolicyLevels,
+    groupLevels,
+    userLevels,
+    typeAccessRows,
+    instanceAccessRows = [],
+  } = input
+
+  // instanceAccess: highest permission wins per instance. `'none'` is KEPT here
+  // (unlike defAccess) — it is the per-instance downward marker; a real grant
+  // outranks it via PERMISSION_RANK.
+  const instanceAccess: Record<string, ResourcePermission> = {}
+  for (const row of instanceAccessRows) {
+    const existing = instanceAccess[row.entityInstanceId]
+    if (!existing || PERMISSION_RANK[row.permission] > PERMISSION_RANK[existing]) {
+      instanceAccess[row.entityInstanceId] = row.permission
+    }
+  }
 
   // defAccess: highest permission wins per definition. Computed regardless of
   // role so admins carry it too (they simply also hold every capability key).
@@ -82,7 +111,7 @@ export function composeUserCapabilities(input: {
   }
 
   // Fail closed: a non-member holds no capabilities.
-  if (!role) return { keys: [], defAccess }
+  if (!role) return { keys: [], defAccess, instanceAccess }
 
   const isAdmin = role === 'OWNER' || role === 'ADMIN'
   const ceiling = SEAT_CEILINGS[seatType]
@@ -105,5 +134,5 @@ export function composeUserCapabilities(input: {
     return Math.min(raised, ceiling[area]) as Level
   })
 
-  return { keys: expandLevelsToKeys(resolved), defAccess }
+  return { keys: expandLevelsToKeys(resolved), defAccess, instanceAccess }
 }

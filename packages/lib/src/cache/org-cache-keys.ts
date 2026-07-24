@@ -495,6 +495,7 @@ export interface OrgCacheDataMap {
   memberRoleMap: Record<string, { role: OrganizationRole; seatType: SeatType }>
   hasPermissionGrants: boolean // whether the org has ANY PermissionGrant rows (composition fast path)
   restrictedEntityDefIds: string[] // entity defs with ≥1 type-level ResourceAccess grant (read-path enforcement §0)
+  restrictedInstanceIds: string[] // instance ids with ≥1 instance-access ResourceAccess row (§1.3)
 
   // Business data
   features: FeatureMapObject
@@ -551,6 +552,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   memberRoleMap: { prefix: 'org:member-roles:v2', ttlSeconds: ONE_DAY },
   hasPermissionGrants: { prefix: 'org:has-permission-grants', ttlSeconds: ONE_DAY },
   restrictedEntityDefIds: { prefix: 'org:restricted-entity-def-ids', ttlSeconds: ONE_DAY },
+  restrictedInstanceIds: { prefix: 'org:restricted-instance-ids', ttlSeconds: ONE_DAY },
 
   // Business data (24h TTL, all invalidated via cache events)
   features: { prefix: 'org:features', ttlSeconds: THIRTY_DAYS },

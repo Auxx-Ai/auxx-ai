@@ -207,6 +207,16 @@ export async function getCachedRestrictedEntityDefIds(orgId: string): Promise<st
   return getOrgCache().get(orgId, 'restrictedEntityDefIds')
 }
 
+/**
+ * The org-wide set of instance ids carrying ≥1 instance-access `ResourceAccess`
+ * row (cached, §1.3). The "does this instance have an explicit row?" signal for
+ * the instance-access resolver — an instance NOT in this set falls back to its
+ * area's base L2 level.
+ */
+export async function getCachedRestrictedInstanceIds(orgId: string): Promise<string[]> {
+  return getOrgCache().get(orgId, 'restrictedInstanceIds')
+}
+
 // ── Group cache helpers ──
 
 /**

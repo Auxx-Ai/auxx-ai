@@ -15,6 +15,13 @@ export {
   getGranteeLevels,
   setGranteeLevels,
 } from './grant-service'
+export {
+  INSTANCE_ACCESS_KEYS,
+  INSTANCE_ACCESS_RESOURCES,
+  type InstanceAccessKey,
+  type InstanceAccessResourceConfig,
+  isInstanceAccessKey,
+} from './instance-access'
 export { resolveLinkedRecordIds } from './record-view-scope'
 export {
   AREA_ORDER,

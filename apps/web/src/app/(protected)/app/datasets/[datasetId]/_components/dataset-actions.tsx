@@ -12,8 +12,10 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Archive, Download, MoreHorizontal, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { Archive, Download, MoreHorizontal, RefreshCw, Share2, Trash2, Upload } from 'lucide-react'
+import { useState } from 'react'
 import { useDatasetActions } from '~/components/datasets/hooks/use-dataset-actions'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { useDatasetDetail } from './dataset-detail-provider'
 
@@ -22,6 +24,7 @@ import { useDatasetDetail } from './dataset-detail-provider'
  */
 export function DatasetActions() {
   const { dataset, setCurrentTab, refetch, setUploadDialogOpen } = useDatasetDetail()
+  const [shareOpen, setShareOpen] = useState(false)
 
   const { handleDelete, handleArchive, isDeleting, isArchiving, ConfirmDialog } = useDatasetActions(
     {
@@ -79,6 +82,10 @@ export function DatasetActions() {
     <>
       <div className='flex items-center gap-2'>
         {/* Primary Actions */}
+        <Button onClick={() => setShareOpen(true)} variant='outline' size='sm'>
+          <Share2 />
+          Share
+        </Button>
         <Button onClick={handleUpload} size='sm'>
           <Upload />
           Upload
@@ -115,6 +122,11 @@ export function DatasetActions() {
         </DropdownMenu>
       </div>
 
+      <InstanceShareDialog
+        recordId={toRecordId('dataset', dataset.id)}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
       <ConfirmDialog />
     </>
   )

@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { useMailShare } from '~/components/mail-permissions/hooks/use-mail-share'
 import { AccessLevelsGuide } from '~/components/mail-permissions/ui/access-levels-guide'
 import { EnterpriseGate } from '~/components/mail-permissions/ui/enterprise-gate'
-import { GranteeList } from '~/components/mail-permissions/ui/grantee-list'
+import { MailGranteeList } from '~/components/mail-permissions/ui/mail-grantee-list'
 import { useUser } from '~/hooks/use-user'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -34,7 +34,7 @@ export function ContactSharedWithCard({ entityInstanceId }: DrawerTabProps) {
         participates in.
       </p>
       <EnterpriseGate className='w-full'>
-        <GranteeList
+        <MailGranteeList
           grants={grants}
           onGrant={grant}
           onChangeLens={changeLens}

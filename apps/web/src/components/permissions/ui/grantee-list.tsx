@@ -1,8 +1,6 @@
-// apps/web/src/components/mail-permissions/ui/grantee-list.tsx
+// apps/web/src/components/permissions/ui/grantee-list.tsx
 'use client'
 
-import type { LensChoice } from '@auxx/lib/permissions/visibility/client'
-import { LENS_LABELS } from '@auxx/lib/permissions/visibility/client'
 import type { ActorId } from '@auxx/types/actor'
 import { parseActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
@@ -15,20 +13,34 @@ import { type ReactNode, useMemo } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
-import { LensSelect } from './lens-select'
 
-export interface GranteeListProps {
-  grants: Array<{ actorId: ActorId; choice: LensChoice }>
-  onGrant: (actorId: ActorId, choice: LensChoice) => void
-  onChangeLens: (actorId: ActorId, choice: LensChoice) => void
+/**
+ * Render the level picker for one editable grantee row. The neutral list is
+ * agnostic to what "level" means — mail passes a `LensSelect`, instance-access
+ * passes a Read/Write/Full select (§4, resolved open item #1).
+ */
+export type RenderPicker<TChoice extends string> = (args: {
+  value: TChoice
+  onChange: (choice: TChoice) => void
+  disabled: boolean
+}) => ReactNode
+
+export interface GranteeListProps<TChoice extends string> {
+  grants: Array<{ actorId: ActorId; choice: TChoice }>
+  onGrant: (actorId: ActorId, choice: TChoice) => void
+  onChange: (actorId: ActorId, choice: TChoice) => void
   onRevoke: (actorId: ActorId) => void
-  /** Renders the Manager entry in each row's picker (inbox surface only). */
-  includeManager?: boolean
+  /** The level picker rendered in each editable row's actions slot. */
+  renderPicker: RenderPicker<TChoice>
+  /** The muted label shown in place of the picker for locked rows. */
+  renderLockedLabel: (choice: TChoice) => ReactNode
+  /** Level assigned to a newly picked grantee (mail: `full`; instance: `view`). */
+  defaultChoice: TChoice
   disabled?: boolean
   emptyHint?: string
   /**
    * Rows that render muted with a fixed level and no remove/change controls —
-   * the inbox creator's Manager grant, so the list never lies.
+   * e.g. the inbox creator's Manager grant, so the list never lies.
    */
   lockedActorIds?: ActorId[]
   /**
@@ -40,23 +52,28 @@ export interface GranteeListProps {
 
 /**
  * The reusable "who has access" list: one `TreeRow` per grantee — the actor's
- * avatar in the leading icon slot, their name as the title, and a `LensSelect`
- * plus hover-revealed remove in the actions slot. Capped off by a
+ * avatar in the leading icon slot, their name as the title, and a pluggable
+ * level picker plus a hover-revealed remove in the actions slot. Capped off by a
  * {@link GranteeAddButton} unless `hideAddButton` is set. Controlled and dumb —
- * persistence lives in the hosting surface's hook. New grantees default to Full
- * access.
+ * persistence lives in the hosting surface's hook.
+ *
+ * Lifted out of `mail-permissions/ui` (was mail-`LensSelect`-specific) to a
+ * neutral home with a pluggable picker so both mail and instance-access sharing
+ * share one list component with two pickers.
  */
-export function GranteeList({
+export function GranteeList<TChoice extends string>({
   grants,
   onGrant,
-  onChangeLens,
+  onChange,
   onRevoke,
-  includeManager = false,
+  renderPicker,
+  renderLockedLabel,
+  defaultChoice,
   disabled = false,
   emptyHint = 'Not shared with anyone yet.',
   lockedActorIds = [],
   hideAddButton = false,
-}: GranteeListProps) {
+}: GranteeListProps<TChoice>) {
   const locked = useMemo(() => new Set(lockedActorIds), [lockedActorIds])
 
   return (
@@ -74,37 +91,48 @@ export function GranteeList({
             actorId={actorId}
             choice={choice}
             isLocked={locked.has(actorId)}
-            includeManager={includeManager}
             disabled={disabled}
-            onChangeLens={onChangeLens}
+            renderPicker={renderPicker}
+            renderLockedLabel={renderLockedLabel}
+            onChange={onChange}
             onRevoke={onRevoke}
           />
         ))
       )}
 
-      {!hideAddButton && <GranteeAddButton grants={grants} onGrant={onGrant} disabled={disabled} />}
+      {!hideAddButton && (
+        <GranteeAddButton
+          grants={grants}
+          onGrant={onGrant}
+          defaultChoice={defaultChoice}
+          disabled={disabled}
+        />
+      )}
     </div>
   )
 }
 
 /**
  * The "Add people or groups" trigger — an `ActorPicker` that grants any newly
- * picked actor Full access. Extracted so surfaces can host it apart from the
+ * picked actor `defaultChoice`. Extracted so surfaces can host it apart from the
  * list (e.g. an inbox dialog's `Section` header `actions`). Pass `children` to
  * override the default ghost button.
  */
-export function GranteeAddButton({
+export function GranteeAddButton<TChoice extends string>({
   grants,
   onGrant,
+  defaultChoice,
   disabled = false,
   children,
-}: Pick<GranteeListProps, 'grants' | 'onGrant' | 'disabled'> & { children?: ReactNode }) {
+}: Pick<GranteeListProps<TChoice>, 'grants' | 'onGrant' | 'defaultChoice' | 'disabled'> & {
+  children?: ReactNode
+}) {
   const currentIds = useMemo(() => grants.map((g) => g.actorId), [grants])
 
   const handlePickerChange = (nextIds: ActorId[]) => {
     const existing = new Set(currentIds)
     for (const actorId of nextIds) {
-      if (!existing.has(actorId)) onGrant(actorId, 'full')
+      if (!existing.has(actorId)) onGrant(actorId, defaultChoice)
     }
   }
 
@@ -127,21 +155,23 @@ export function GranteeAddButton({
 }
 
 /** A single grantee row. Resolves the actor once for the avatar + name. */
-function GranteeRow({
+function GranteeRow<TChoice extends string>({
   actorId,
   choice,
   isLocked,
-  includeManager,
   disabled,
-  onChangeLens,
+  renderPicker,
+  renderLockedLabel,
+  onChange,
   onRevoke,
 }: {
   actorId: ActorId
-  choice: LensChoice
+  choice: TChoice
   isLocked: boolean
-  includeManager: boolean
   disabled: boolean
-  onChangeLens: (actorId: ActorId, choice: LensChoice) => void
+  renderPicker: RenderPicker<TChoice>
+  renderLockedLabel: (choice: TChoice) => ReactNode
+  onChange: (actorId: ActorId, choice: TChoice) => void
   onRevoke: (actorId: ActorId) => void
 }) {
   const { actor, isLoading, isNotFound } = useActor({ actorId })
@@ -158,18 +188,14 @@ function GranteeRow({
       rowClassName={cn('bg-primary-50 hover:bg-primary-100', isLocked && 'opacity-70')}
       actions={
         isLocked ? (
-          <span className='pr-2 text-muted-foreground text-xs'>{LENS_LABELS[choice].label}</span>
+          <span className='pr-2 text-muted-foreground text-xs'>{renderLockedLabel(choice)}</span>
         ) : (
           <>
-            <LensSelect
-              value={choice}
-              onChange={(next) => onChangeLens(actorId, next)}
-              includeManager={includeManager}
-              disabled={disabled}
-              size='sm'
-              variant='transparent'
-              className='h-7 w-36'
-            />
+            {renderPicker({
+              value: choice,
+              onChange: (next) => onChange(actorId, next),
+              disabled,
+            })}
             <TreeRowButton
               variant='destructive'
               disabled={disabled}

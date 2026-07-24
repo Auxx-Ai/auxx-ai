@@ -3,7 +3,12 @@
 import { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { satisfiesPermission } from '../../resource-access/constants'
-import { Area, Level, PermissionKey } from './registry'
+import {
+  INSTANCE_ACCESS_RESOURCES,
+  type InstanceAccessKey,
+  isInstanceAccessKey,
+} from './instance-access'
+import { Area, areaLevelFromKeys, Level, PermissionKey } from './registry'
 import { SEAT_CEILINGS } from './seat-policy'
 
 /**
@@ -47,6 +52,16 @@ export interface ResolvedRecordAccess {
   defAccess: Readonly<Record<string, ResourcePermission>>
   /** Defs carrying ≥1 type-level grant for anyone (`entityDefinitionId` keyspace). */
   restrictedEntityDefIds: ReadonlySet<string>
+  /**
+   * Highest instance-level grant per `entityInstanceId` (CUID) for the
+   * instance-access resources (datasets etc., §1.4). Explicit `'none'` rows are
+   * KEPT (the per-instance downward marker). Optional — absent = `{}` (the
+   * server `CapabilitySet.resolved()` view omits it; only the client instance
+   * resolver reads it, always via {@link toResolvedRecordAccess}).
+   */
+  instanceAccess?: Readonly<Record<string, ResourcePermission>>
+  /** Org-wide set of instance ids carrying ≥1 instance-access row. Optional (see above). */
+  restrictedInstanceIds?: ReadonlySet<string>
 }
 
 /**
@@ -58,6 +73,19 @@ export interface ResolvedRecordAccess {
 export function baseRecordsLevel(keys: ReadonlySet<PermissionKey>): ResourcePermission | undefined {
   if (keys.has(PermissionKey.recordsEdit)) return ResourcePermission.edit
   if (keys.has(PermissionKey.recordsView)) return ResourcePermission.view
+  return undefined
+}
+
+/**
+ * Map an L2 area {@link Level} to the {@link ResourcePermission} vocabulary the
+ * instance-access resolver speaks (Read→view · Edit→edit · Full→admin ·
+ * None→undefined). Used as the absent-instance-row fallback for
+ * `baselineAtCreate: false` resources (§1.4).
+ */
+export function levelToPermission(level: Level): ResourcePermission | undefined {
+  if (level >= Level.Full) return ResourcePermission.admin
+  if (level >= Level.Edit) return ResourcePermission.edit
+  if (level >= Level.Read) return ResourcePermission.view
   return undefined
 }
 
@@ -150,6 +178,15 @@ export interface ClientCapabilities {
   restrictedEntityDefIds: string[]
   role: OrganizationRole
   seatType: SeatType
+  /**
+   * Highest instance-level permission per `entityInstanceId` (instance-access
+   * resources — datasets etc., §1.4). Optional: carried in the dehydration seed
+   * so the client instance-access resolver (a later slice) and any server-built
+   * snapshot have it; absent = treat as `{}`.
+   */
+  instanceAccess?: Record<string, ResourcePermission>
+  /** Org-wide set of instance ids carrying ≥1 instance-access row. Optional (see above). */
+  restrictedInstanceIds?: string[]
 }
 
 /** Rebuild the Set-backed {@link ResolvedRecordAccess} from a wire snapshot. */
@@ -160,5 +197,79 @@ export function toResolvedRecordAccess(caps: ClientCapabilities): ResolvedRecord
     keys: new Set(caps.keys),
     defAccess: caps.defAccess,
     restrictedEntityDefIds: new Set(caps.restrictedEntityDefIds),
+    instanceAccess: caps.instanceAccess ?? {},
+    restrictedInstanceIds: new Set(caps.restrictedInstanceIds ?? []),
   }
+}
+
+/**
+ * Parse a `RecordId` (`entityDefinitionId:entityInstanceId`) into its parts.
+ * Local, dependency-free split (first colon) so this pure module stays
+ * client-safe without importing `@auxx/types`.
+ */
+function parseInstanceRecordId(recordId: string): { key: string; instanceId: string } {
+  const i = recordId.indexOf(':')
+  if (i === -1) return { key: recordId, instanceId: '' }
+  return { key: recordId.slice(0, i), instanceId: recordId.slice(i + 1) }
+}
+
+/**
+ * The member's effective per-instance permission for an instance-access resource
+ * (most-specific-wins) — the CLIENT mirror of
+ * {@link import('./capability-set').CapabilitySet}'s private
+ * `effectiveInstanceLevel`, kept byte-for-byte in sync so client affordances and
+ * server enforcement never drift (§1.4):
+ *  - OWNER/ADMIN → `admin` (bypass — never self-lock).
+ *  - L2 area gate closed (`None`) → `undefined`.
+ *  - explicit instance row (incl. workspace baseline / `'none'`) → wins.
+ *  - otherwise fall back to the base L2 area level (`baselineAtCreate: false`).
+ */
+function effectiveInstanceLevel(
+  caps: ResolvedRecordAccess,
+  key: InstanceAccessKey,
+  instanceId: string
+): ResourcePermission | undefined {
+  if (caps.role === 'OWNER' || caps.role === 'ADMIN') return ResourcePermission.admin
+  const cfg = INSTANCE_ACCESS_RESOURCES[key]
+  const areaLevel = areaLevelFromKeys(caps.keys, cfg.area)
+  if (areaLevel === Level.None) return undefined
+  if ((caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET).has(instanceId)) {
+    return caps.instanceAccess?.[instanceId]
+  }
+  return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
+}
+
+const EMPTY_INSTANCE_SET: ReadonlySet<string> = new Set()
+
+/**
+ * Instance-access VIEW gate (Read) — the client mirror of
+ * `CapabilitySet.canViewInstance`. Takes a whole `RecordId`; returns `false` for
+ * any def part that is not a registered instance-access resource. Zero I/O.
+ */
+export function canViewInstance(caps: ResolvedRecordAccess, recordId: string): boolean {
+  const { key, instanceId } = parseInstanceRecordId(recordId)
+  if (!isInstanceAccessKey(key)) return false
+  const level = effectiveInstanceLevel(caps, key, instanceId)
+  return level !== undefined && satisfiesPermission(level, ResourcePermission.view)
+}
+
+/**
+ * Instance-access EDIT gate (Write) — mirror of `CapabilitySet.canEditInstance`.
+ */
+export function canEditInstance(caps: ResolvedRecordAccess, recordId: string): boolean {
+  const { key, instanceId } = parseInstanceRecordId(recordId)
+  if (!isInstanceAccessKey(key)) return false
+  const level = effectiveInstanceLevel(caps, key, instanceId)
+  return level !== undefined && satisfiesPermission(level, ResourcePermission.edit)
+}
+
+/**
+ * Instance-access ADMIN gate (Full) — mirror of `CapabilitySet.canAdminInstance`.
+ * Governs the Share card's editable affordances (who may re-share the instance).
+ */
+export function canAdminInstance(caps: ResolvedRecordAccess, recordId: string): boolean {
+  const { key, instanceId } = parseInstanceRecordId(recordId)
+  if (!isInstanceAccessKey(key)) return false
+  const level = effectiveInstanceLevel(caps, key, instanceId)
+  return level !== undefined && satisfiesPermission(level, ResourcePermission.admin)
 }

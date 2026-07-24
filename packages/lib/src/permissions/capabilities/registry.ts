@@ -48,6 +48,11 @@ export enum PermissionKey {
 
   // connectors
   connectorsManage = 'connectors.manage',
+
+  // datasets (instance-access resource — per-dataset ResourceAccess grants, §2)
+  datasetsView = 'datasets.view',
+  datasetsEdit = 'datasets.edit',
+  datasetsManage = 'datasets.manage',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -242,6 +247,29 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Integrations',
     featureKey: FeatureKey.dataConnectors,
   },
+
+  // ── Datasets ──
+  {
+    key: PermissionKey.datasetsView,
+    label: 'View Datasets',
+    description: 'Browse and use datasets in search and agents.',
+    group: 'Knowledge',
+    featureKey: FeatureKey.datasets,
+  },
+  {
+    key: PermissionKey.datasetsEdit,
+    label: 'Contribute to Datasets',
+    description: 'Add and manage the files inside datasets.',
+    group: 'Knowledge',
+    featureKey: FeatureKey.datasets,
+  },
+  {
+    key: PermissionKey.datasetsManage,
+    label: 'Manage Datasets',
+    description: 'Create, delete, and configure datasets and their settings.',
+    group: 'Knowledge',
+    featureKey: FeatureKey.datasets,
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -301,6 +329,7 @@ export enum Area {
   auditLog = 'auditLog',
   files = 'files',
   connectors = 'connectors',
+  datasets = 'datasets',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -483,6 +512,18 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     rungs: [{ level: Level.Full, keys: [PermissionKey.connectorsManage] }],
     featureKey: FeatureKey.dataConnectors,
   },
+  [Area.datasets]: {
+    area: Area.datasets,
+    label: 'Datasets',
+    description: 'Browse and use datasets, contribute files, or manage them and their settings.',
+    group: 'Knowledge',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.datasetsView] },
+      { level: Level.Edit, keys: [PermissionKey.datasetsEdit] },
+      { level: Level.Full, keys: [PermissionKey.datasetsManage] },
+    ],
+    featureKey: FeatureKey.datasets,
+  },
 }
 
 /** Stable area ordering — drives every iteration over areas. */
@@ -531,4 +572,23 @@ export function expandLevelsToKeys(levels: Partial<Record<Area, Level>>): Permis
     }
   }
   return PERMISSION_KEY_ORDER.filter((key) => held.has(key))
+}
+
+/**
+ * The inverse of {@link expandLevelsToKeys} for a single area: recover the
+ * member's effective {@link Level} for `area` from an already-materialized
+ * (seat-clamped, composed) PermissionKey set. Walks the area's rungs in
+ * ascending order and returns the highest rung whose keys are all held,
+ * stopping at the first gap (rungs are cumulative, so this matches the
+ * expansion semantics). Absent rungs ⇒ {@link Level.None}. Pure, zero I/O —
+ * used by the instance-access resolver to read the coarse L2 area gate + base
+ * fallback level from a {@link import('./capability-set').CapabilitySet}.
+ */
+export function areaLevelFromKeys(keys: ReadonlySet<PermissionKey>, area: Area): Level {
+  let level = Level.None
+  for (const rung of PERMISSION_AREAS[area].rungs) {
+    if (rung.keys.every((key) => keys.has(key))) level = rung.level
+    else break
+  }
+  return level
 }

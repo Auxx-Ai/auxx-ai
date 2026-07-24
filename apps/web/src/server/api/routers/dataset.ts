@@ -8,11 +8,11 @@ import {
 } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { DatasetService } from '@auxx/lib/datasets'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq, sum } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api/dataset')
 
@@ -83,12 +83,16 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Create a new dataset
    */
-  create: protectedProcedure.input(createDatasetSchema).mutation(async ({ ctx, input }) => {
+  create: capabilityProcedure.input(createDatasetSchema).mutation(async ({ ctx, input }) => {
     const organizationId = ctx.session.user.defaultOrganizationId
     const userId = ctx.session.user.id
     if (!organizationId) {
       throw new Error('No organization found')
     }
+
+    // L2 area gate: creating a dataset requires `datasets` Full (no instance
+    // exists yet to key on). Plan-AND with the Layer-1 feature/limit gate below.
+    ctx.capabilities.assert(PermissionKey.datasetsManage)
 
     // Feature gate: check datasets access + limit
     // Exclude managed datasets (e.g. KB-synced private datasets) — they don't count toward plan limits.
@@ -120,7 +124,7 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Get a dataset by ID
    */
-  getById: protectedProcedure
+  getById: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -132,6 +136,7 @@ export const datasetRouter = createTRPCRouter({
       if (!organizationId) {
         return null
       }
+      ctx.capabilities.assertViewInstance('dataset', input.id)
       const datasetService = new DatasetService(ctx.db)
       const dataset = await datasetService.getById(input.id, organizationId)
       if (!dataset) return null
@@ -157,13 +162,14 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Get processing status for a dataset
    */
-  getProcessingStatus: protectedProcedure
+  getProcessingStatus: capabilityProcedure
     .input(z.object({ datasetId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      ctx.capabilities.assertViewInstance('dataset', input.datasetId)
       // Get document processing statistics
       const [{ total }] = await ctx.db
         .select({ total: count() })
@@ -214,13 +220,11 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Delete a dataset
    */
-  delete: protectedProcedure
+  delete: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const organizationId = ctx.session.user.defaultOrganizationId
-      if (!organizationId) {
-        throw new Error('No organization found')
-      }
+      const organizationId = ctx.session.organizationId
+      ctx.capabilities.assertAdminInstance('dataset', input.id)
       const datasetService = new DatasetService(ctx.db)
       await datasetService.delete(input.id, organizationId)
       logger.info('Dataset deleted', { datasetId: input.id, organizationId })
@@ -230,13 +234,14 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Archive a dataset
    */
-  archive: protectedProcedure
+  archive: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      ctx.capabilities.assertAdminInstance('dataset', input.id)
       const datasetService = new DatasetService(ctx.db)
       await datasetService.update(input.id, organizationId, { status: 'INACTIVE' })
       logger.info('Dataset archived', { datasetId: input.id, organizationId })
@@ -245,7 +250,7 @@ export const datasetRouter = createTRPCRouter({
   /**
    * List datasets for the organization
    */
-  list: protectedProcedure.input(listDatasetsSchema).query(async ({ ctx, input }) => {
+  list: capabilityProcedure.input(listDatasetsSchema).query(async ({ ctx, input }) => {
     const organizationId = ctx.session.user.defaultOrganizationId
     if (!organizationId) {
       return { datasets: [], totalCount: 0, hasMore: false }
@@ -264,12 +269,18 @@ export const datasetRouter = createTRPCRouter({
       sortBy: input.sortBy,
       sortOrder: input.sortOrder,
     }
-    return await datasetService.list(organizationId, filters, pagination)
+    const result = await datasetService.list(organizationId, filters, pagination)
+    // Filter the page to datasets the member may view. With base-Read fallback
+    // (§0.1) nearly all rows pass; only explicitly-restricted datasets drop.
+    const datasets = result.datasets.filter((d: { id: string }) =>
+      ctx.capabilities.canViewInstance('dataset', d.id)
+    )
+    return { ...result, datasets }
   }),
   /**
    * Update a dataset
    */
-  update: protectedProcedure
+  update: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -281,6 +292,8 @@ export const datasetRouter = createTRPCRouter({
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      // Full — updating a dataset's metadata / embedding / search settings.
+      ctx.capabilities.assertAdminInstance('dataset', input.id)
       logger.info('Updating dataset', { datasetId: input.id, organizationId })
       const datasetService = new DatasetService(ctx.db)
       const dataset = await datasetService.update(input.id, organizationId, input.data)
@@ -290,24 +303,29 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Get dataset statistics
    */
-  getStats: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const organizationId = ctx.session.user.defaultOrganizationId
-    if (!organizationId) {
-      throw new Error('No organization found')
-    }
-    const datasetService = new DatasetService(ctx.db)
-    return await datasetService.getStats(input.id, organizationId)
-  }),
+  getStats: capabilityProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organizationId = ctx.session.user.defaultOrganizationId
+      if (!organizationId) {
+        throw new Error('No organization found')
+      }
+      ctx.capabilities.assertViewInstance('dataset', input.id)
+      const datasetService = new DatasetService(ctx.db)
+      return await datasetService.getStats(input.id, organizationId)
+    }),
   /**
    * Update dataset metrics (document count, size, etc.)
    */
-  updateMetrics: protectedProcedure
+  updateMetrics: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      // Write — content-metrics churn (document count / size), not settings.
+      ctx.capabilities.assertEditInstance('dataset', input.id)
       const datasetService = new DatasetService(ctx.db)
       await datasetService.updateMetrics(input.id, organizationId)
       return { success: true }
@@ -315,11 +333,14 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Get organization-level dataset statistics
    */
-  getOrganizationStats: protectedProcedure.query(async ({ ctx }) => {
+  getOrganizationStats: capabilityProcedure.query(async ({ ctx }) => {
     const organizationId = ctx.session.user.defaultOrganizationId
     if (!organizationId) {
       throw new Error('No organization found')
     }
+    // Org-wide aggregate — no single instance to key on; gate on the coarse
+    // `datasets` area Read rung.
+    ctx.capabilities.assert(PermissionKey.datasetsView)
     // Get overall counts and stats from the database.
     // Managed datasets (KB-synced private datasets) are hidden from /app/datasets and
     // excluded here so the totals match what the user actually sees and can manage.
@@ -362,24 +383,27 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Get available embedding options for organization
    */
-  getAvailableEmbeddingOptions: protectedProcedure.query(async ({ ctx }) => {
+  getAvailableEmbeddingOptions: capabilityProcedure.query(async ({ ctx }) => {
     const organizationId = ctx.session.user.defaultOrganizationId
     if (!organizationId) {
       throw new Error('No organization found')
     }
+    // Org-wide option list — gate on the coarse `datasets` area Read rung.
+    ctx.capabilities.assert(PermissionKey.datasetsView)
     const datasetService = new DatasetService(ctx.db)
     return await datasetService.getAvailableEmbeddingOptions(organizationId)
   }),
   /**
    * Get recommended search configuration for a dataset
    */
-  getRecommendedSearchConfig: protectedProcedure
+  getRecommendedSearchConfig: capabilityProcedure
     .input(z.object({ datasetId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      ctx.capabilities.assertViewInstance('dataset', input.datasetId)
       // Get dataset info for recommendations
       const [dataset] = await ctx.db
         .select({
@@ -431,7 +455,7 @@ export const datasetRouter = createTRPCRouter({
   /**
    * Test search configuration with sample query
    */
-  testSearchConfig: protectedProcedure
+  testSearchConfig: capabilityProcedure
     .input(
       z.object({
         datasetId: z.string(),
@@ -446,6 +470,8 @@ export const datasetRouter = createTRPCRouter({
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      // Full — testing embedding/search config is a settings-level operation.
+      ctx.capabilities.assertAdminInstance('dataset', input.datasetId)
       logger.info('Testing search configuration', {
         datasetId: input.datasetId,
         testQuery: input.testQuery,
