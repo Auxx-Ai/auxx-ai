@@ -1,6 +1,7 @@
 // apps/web/src/components/drawers/cards/contact-billing-overview-card.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { ArrowRight, ReceiptText } from 'lucide-react'
@@ -9,14 +10,25 @@ import { normalizeContactBilling } from '~/components/money/billing/types'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Allocation-backed customer billing summary shared by the contact drawer and detail sidebar. */
 export function ContactBillingOverviewCard({ recordId }: DrawerTabProps) {
+  const { can } = useAccess()
+  // Money reads are gated on `dispatch.board.view` (mirrors moneyViewProcedure) —
+  // a field seat holds neither board key, so hide the card entirely rather than
+  // firing a query that 403s.
+  const canViewBilling = can(PermissionKey.dispatchBoardView)
   const utils = api.useUtils()
-  const query = api.money.getContactBillingOverview.useQuery({ contactRecordId: recordId })
-  const { values } = useSystemValues(recordId, ['contact_billing_revision'], { autoFetch: true })
+  const query = api.money.getContactBillingOverview.useQuery(
+    { contactRecordId: recordId },
+    { enabled: canViewBilling }
+  )
+  const { values } = useSystemValues(recordId, ['contact_billing_revision'], {
+    autoFetch: canViewBilling,
+  })
   const revision = values.contact_billing_revision
   const previousRevision = useRef(revision)
   useEffect(() => {
@@ -32,6 +44,7 @@ export function ContactBillingOverviewCard({ recordId }: DrawerTabProps) {
   const billing = useMemo(() => normalizeContactBilling(query.data), [query.data])
   const openRecord = useOpenRecord()
 
+  if (!canViewBilling) return null
   if (query.isLoading) return <Skeleton className='h-24 w-full rounded-xl' />
   const empty =
     billing.balanceDue === 0 &&

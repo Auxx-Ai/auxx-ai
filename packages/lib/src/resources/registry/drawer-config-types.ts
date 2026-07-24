@@ -42,6 +42,13 @@ export interface DrawerTabCardDefinition {
   /** Position relative to default tab content */
   position?: 'before' | 'after'
   /**
+   * Optional Layer-2 capability gate (a {@link PermissionKey} value, e.g.
+   * `dispatch.board.view`) — the whole card section (header included) is hidden
+   * when the viewer lacks the key, mirroring the router's procedure gate so no
+   * empty section renders before the query 403s.
+   */
+  permissionKey?: string
+  /**
    * Render the card edge-to-edge by cancelling the wrapping Section's horizontal
    * padding (and bottom gap). Use for full-bleed strips like the metrics grid.
    */

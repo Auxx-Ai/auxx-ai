@@ -25,7 +25,14 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       enableDelete: true,
     },
     tabCards: {
-      overview: [{ value: 'billing', label: 'Billing', position: 'after' }],
+      overview: [
+        {
+          value: 'billing',
+          label: 'Billing',
+          position: 'after',
+          permissionKey: 'dispatch.board.view',
+        },
+      ],
     },
   },
 

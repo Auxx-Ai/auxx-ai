@@ -52,6 +52,7 @@ import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
+import { useAccess } from '~/providers/capabilities-provider'
 import {
   useDehydratedOrganizationId,
   useDehydratedUser,
@@ -730,10 +731,14 @@ function TabCards({
   record?: Record<string, unknown>
   readOnly?: boolean
 }) {
+  const { can } = useAccess()
   const cards = drawerConfig.tabCards?.[tab]
     ?.filter((c) => (c.position ?? 'after') === position)
     // Restricted mode drops communication overview cards (e.g. work_order:communications).
     .filter((c) => !readOnly || !isRestrictedDrawerTab(entityType, c.value))
+    // Layer-2 capability gate — hide the whole section (header included) when the
+    // viewer lacks the key, mirroring the card's router procedure gate.
+    .filter((c) => !c.permissionKey || can(c.permissionKey))
   if (!cards?.length) return null
 
   return (
