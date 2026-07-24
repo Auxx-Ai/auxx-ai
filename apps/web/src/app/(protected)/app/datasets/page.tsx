@@ -2,7 +2,7 @@
 
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { ListPageScroll } from '@auxx/ui/components/list-page-scroll'
 import {
@@ -26,6 +26,7 @@ import {
 } from '~/components/datasets'
 import { EmptyState } from '~/components/global/empty-state'
 import { ListSelectionProvider } from '~/components/list-selection'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /**
@@ -48,7 +49,9 @@ function DatasetsPageContent() {
 
         {/* Filters + Datasets Content */}
         <ListSelectionProvider>
-          <ListPageScroll toolbar={<DatasetsFilterBar />}>
+          <ListPageScroll
+            toolbar={<DatasetsFilterBar />}
+            bodyClassName='flex-1 flex flex-col min-h-0'>
             {isLoading ? (
               <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
                 {[...Array(8)].map((_, i) => (
@@ -75,6 +78,7 @@ function DatasetsPageContent() {
  */
 export default function DatasetsPage() {
   const { hasAccess } = useFeatureFlags()
+  const { can } = useAccess()
 
   if (!hasAccess(FeatureKey.datasets)) {
     return (
@@ -89,6 +93,29 @@ export default function DatasetsPage() {
             icon={Lock}
             title='Datasets Not Available'
             description='Upgrade your plan to use datasets.'
+            button={<div className='h-12' />}
+          />
+        </MainPageContent>
+      </MainPage>
+    )
+  }
+
+  // Layer-2 permission gate: the member holds the plan but not `datasets.view`.
+  // Without this the page mounts DatasetsProvider, whose getOrganizationStats
+  // query 403s server-side.
+  if (!can(PermissionKey.datasetsView)) {
+    return (
+      <MainPage>
+        <MainPageHeader>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
+          </MainPageBreadcrumb>
+        </MainPageHeader>
+        <MainPageContent>
+          <EmptyState
+            icon={Lock}
+            title='No Access to Datasets'
+            description="You don't have permission to view datasets. Ask an admin for access."
             button={<div className='h-12' />}
           />
         </MainPageContent>
