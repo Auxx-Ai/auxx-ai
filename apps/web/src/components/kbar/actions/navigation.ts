@@ -4,6 +4,7 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo } from 'react'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { SHORTCUTS } from '../shortcuts'
 import { useCommandPaletteStore } from '../store'
@@ -18,6 +19,7 @@ import type { PaletteAction } from '../types'
 export function useNavigationActions(): PaletteAction[] {
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
+  const { can } = useAccess()
   const { isAdminOrOwner } = useUser()
 
   const nav = useCallback(
@@ -302,7 +304,7 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/datasets'),
       })
     }
-    if (hasAccess('files')) {
+    if (hasAccess('files') && can('files.view')) {
       actions.push({
         id: 'nav.files',
         label: 'Files',
@@ -314,5 +316,5 @@ export function useNavigationActions(): PaletteAction[] {
       })
     }
     return actions
-  }, [hasAccess, isAdminOrOwner, nav])
+  }, [hasAccess, can, isAdminOrOwner, nav])
 }

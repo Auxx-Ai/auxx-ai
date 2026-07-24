@@ -2,6 +2,7 @@
 
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { toastSuccess } from '@auxx/ui/components/toast'
@@ -24,6 +25,7 @@ import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { CreateFolderDialog } from './create-folder-dialog'
 import { createFileColumns } from './file-columns'
 import { FileDetailDrawer } from './file-detail-drawer'
@@ -141,12 +143,17 @@ export function FilesManagement({
     return hierarchicalItems
   }, [mode, hierarchicalItems, storeItemsById.size])
 
+  // Layer-2 write gate — upload/new-folder/delete/rename/move all require
+  // `files.manage` (Full). Read members get a browse-only view.
+  const { can } = useAccess()
+  const canManageFiles = can(PermissionKey.filesManage)
+
   // Compute default values based on mode
   const isManagementMode = mode === 'management'
   const shouldShowFileDetailDrawer = allowFileDetailDrawer ?? isManagementMode
   const shouldShowHeader = showHeader ?? isManagementMode
-  const shouldShowUploadControls = showUploadControls ?? isManagementMode
-  const shouldShowBulkActions = showBulkActions ?? isManagementMode
+  const shouldShowUploadControls = (showUploadControls ?? isManagementMode) && canManageFiles
+  const shouldShowBulkActions = (showBulkActions ?? isManagementMode) && canManageFiles
 
   // console.log('foldertree', folderTree)
   // console.log('hierarchicalItems', hierarchicalItems)
@@ -348,9 +355,9 @@ export function FilesManagement({
         onNavigate: navigateToFolder,
         // onRetryUpload: retryUpload,
         // onCancelUpload: cancelUpload,
-        onDelete: handleDelete,
+        onDelete: canManageFiles ? handleDelete : undefined,
         onDownload: handleDownload,
-        onRename: handleRename,
+        onRename: canManageFiles ? handleRename : undefined,
         isMoving,
       }),
     [
@@ -361,6 +368,7 @@ export function FilesManagement({
       handleDownload,
       handleRename,
       isMoving,
+      canManageFiles,
     ]
   )
 
@@ -437,7 +445,8 @@ export function FilesManagement({
   // Drag and drop configuration
   const dragDropConfig: DragDropConfig<FileItem> = useMemo(
     () => ({
-      enabled: true,
+      // Drag-to-move is a write; disable entirely for browse-only members.
+      enabled: canManageFiles,
 
       canDrag: (item) => {
         // Don't allow dragging uploading files
@@ -556,7 +565,14 @@ export function FilesManagement({
 
       dragPreview: MailThreadItemDragOverlay,
     }),
-    [selectedItems, moveItems, getItemDescendants, computeAllowedCrumbs, currentFolderId]
+    [
+      selectedItems,
+      moveItems,
+      getItemDescendants,
+      computeAllowedCrumbs,
+      currentFolderId,
+      canManageFiles,
+    ]
   )
 
   return (
@@ -646,7 +662,7 @@ export function FilesManagement({
               onRefresh={refetchFiles}
               searchPlaceholder='Search files and folders...'
               searchKeys={['name', 'path', 'mimeType', 'ext']}
-              onAddNew={() => setUploadDialogOpen(true)}
+              onAddNew={canManageFiles ? () => setUploadDialogOpen(true) : undefined}
               dragDrop={dragDropConfig}
               customFilter={
                 <FileFilterBar
@@ -661,12 +677,18 @@ export function FilesManagement({
                   icon={FolderPlus}
                   className='mt-20'
                   title={'No files yet'}
-                  description={'Upload your first files to get started.'}
+                  description={
+                    canManageFiles
+                      ? 'Upload your first files to get started.'
+                      : 'There are no files to show.'
+                  }
                   button={
-                    <Button onClick={() => setUploadDialogOpen(true)} variant='outline'>
-                      <Upload />
-                      Upload Files
-                    </Button>
+                    canManageFiles ? (
+                      <Button onClick={() => setUploadDialogOpen(true)} variant='outline'>
+                        <Upload />
+                        Upload Files
+                      </Button>
+                    ) : undefined
                   }
                 />
               }

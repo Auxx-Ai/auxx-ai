@@ -2,6 +2,7 @@
 
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
@@ -38,6 +39,7 @@ import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { AttachmentPreview } from '../attachments/attachment-preview'
@@ -69,6 +71,10 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+
+  // Layer-2 write gate — rename/delete require `files.manage` (Full).
+  const { can } = useAccess()
+  const canManageFiles = can(PermissionKey.filesManage)
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [editingName, setEditingName] = useState(file.name || '')
@@ -306,17 +312,19 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
           priority={5}
           perform={copyId}
         />
-        <CommandAction
-          label='Delete'
-          icon='trash'
-          keywords='delete remove'
-          priority={1}
-          disabled={file.isUploading}
-          perform={() => {
-            closePalette()
-            void handleDelete()
-          }}
-        />
+        {canManageFiles && (
+          <CommandAction
+            label='Delete'
+            icon='trash'
+            keywords='delete remove'
+            priority={1}
+            disabled={file.isUploading}
+            perform={() => {
+              closePalette()
+              void handleDelete()
+            }}
+          />
+        )}
       </CommandContext>
       <DockableDrawer
         open={true}
@@ -339,6 +347,7 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
                 onBlur={handleNameBlur}
                 onKeyDown={handleNameKeyDown}
                 placeholder='Enter name'
+                readOnly={!canManageFiles}
                 disabled={isRenaming || renameItem.isPending}
                 className={cn(
                   'mr-2 h-7 min-w-0 w-full appearance-none rounded-md border bg-transparent px-1 outline-none',
@@ -380,15 +389,19 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
                       <Download />
                       Download
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={handleDelete}
-                      disabled={file.isUploading}
-                      variant='destructive'>
-                      <Trash2 />
-                      Delete
-                      <KeyboardShortcut shortcut='Del' />
-                    </DropdownMenuItem>
+                    {canManageFiles && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={handleDelete}
+                          disabled={file.isUploading}
+                          variant='destructive'>
+                          <Trash2 />
+                          Delete
+                          <KeyboardShortcut shortcut='Del' />
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <DockToggleButton />

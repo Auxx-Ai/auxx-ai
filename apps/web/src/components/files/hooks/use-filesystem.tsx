@@ -2,11 +2,13 @@
 
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { keepPreviousData } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
 import { useUploadStore } from '~/components/file-upload/stores'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { type FileItem, type FolderTreeNode, useFileSystemStore } from '../files-store'
 
@@ -68,6 +70,12 @@ export function useFilesystem() {
   const utils = api.useUtils()
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
 
+  // Layer-2 gate: only fetch the filesystem when the member holds at least
+  // `filesView` (Read). The provider mounts at the app root, so without this a
+  // member with `files: None` would 403 on `getFileSystem` on every page load.
+  const { can } = useAccess()
+  const canViewFiles = can(PermissionKey.filesView)
+
   // Use specific selectors to avoid unnecessary re-renders
   const setFileSystemData = useFileSystemStore((state) => state.setFileSystemData)
   const getItemPath = useFileSystemStore((state) => state.getItemPath)
@@ -107,7 +115,7 @@ export function useFilesystem() {
       includeArchived: false,
     },
     {
-      enabled: true,
+      enabled: canViewFiles,
       placeholderData: keepPreviousData,
       getNextPageParam: (lastPage) => lastPage.filesNextCursor,
       refetchOnWindowFocus: false,

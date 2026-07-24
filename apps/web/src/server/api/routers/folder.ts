@@ -1,10 +1,11 @@
 // apps/web/src/server/api/routers/folder.ts
 
 import { createFolderService } from '@auxx/lib/files'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api/folder')
 
@@ -65,7 +66,7 @@ export const folderRouter = createTRPCRouter({
   // Query Procedures
 
   /** Get all folders in organization */
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: permissionProcedure(PermissionKey.filesView).query(async ({ ctx }) => {
     const { organizationId, userId } = ctx.session
 
     const folderService = createFolderService(organizationId, userId)
@@ -89,39 +90,41 @@ export const folderRouter = createTRPCRouter({
   }),
 
   /** Get folder by ID with relations */
-  getById: protectedProcedure.input(folderIdSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  getById: permissionProcedure(PermissionKey.filesView)
+    .input(folderIdSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.getById(input.folderId)
+      try {
+        const folder = await folderService.getById(input.folderId)
 
-      if (!folder) {
+        if (!folder) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Folder not found',
+          })
+        }
+
+        logger.info('Folder retrieved successfully', { folderId: input.folderId })
+        return folder
+      } catch (error) {
+        logger.error('Failed to get folder', { error, input })
+
+        if (error instanceof TRPCError) {
+          throw error
+        }
+
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Folder not found',
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to get folder',
         })
       }
-
-      logger.info('Folder retrieved successfully', { folderId: input.folderId })
-      return folder
-    } catch (error) {
-      logger.error('Failed to get folder', { error, input })
-
-      if (error instanceof TRPCError) {
-        throw error
-      }
-
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to get folder',
-      })
-    }
-  }),
+    }),
 
   /** Get complete folder tree */
-  getTree: protectedProcedure.query(async ({ ctx }) => {
+  getTree: permissionProcedure(PermissionKey.filesView).query(async ({ ctx }) => {
     const { organizationId, userId } = ctx.session
 
     const folderService = createFolderService(organizationId, userId)
@@ -144,417 +147,455 @@ export const folderRouter = createTRPCRouter({
   }),
 
   /** Get immediate subfolders */
-  getSubfolders: protectedProcedure.input(folderIdSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  getSubfolders: permissionProcedure(PermissionKey.filesView)
+    .input(folderIdSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const subfolders = await folderService.getSubfolders(input.folderId)
+      try {
+        const subfolders = await folderService.getSubfolders(input.folderId)
 
-      logger.info('Subfolders retrieved successfully', {
-        folderId: input.folderId,
-        count: subfolders.length,
-      })
+        logger.info('Subfolders retrieved successfully', {
+          folderId: input.folderId,
+          count: subfolders.length,
+        })
 
-      return subfolders
-    } catch (error) {
-      logger.error('Failed to get subfolders', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to get subfolders',
-      })
-    }
-  }),
+        return subfolders
+      } catch (error) {
+        logger.error('Failed to get subfolders', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to get subfolders',
+        })
+      }
+    }),
 
   /** Get folder's ancestor chain */
-  getAncestors: protectedProcedure.input(folderIdSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  getAncestors: permissionProcedure(PermissionKey.filesView)
+    .input(folderIdSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const ancestors = await folderService.getAncestors(input.folderId)
+      try {
+        const ancestors = await folderService.getAncestors(input.folderId)
 
-      logger.info('Folder ancestors retrieved successfully', {
-        folderId: input.folderId,
-        ancestorCount: ancestors.length,
-      })
+        logger.info('Folder ancestors retrieved successfully', {
+          folderId: input.folderId,
+          ancestorCount: ancestors.length,
+        })
 
-      return ancestors
-    } catch (error) {
-      logger.error('Failed to get folder ancestors', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to get ancestors',
-      })
-    }
-  }),
+        return ancestors
+      } catch (error) {
+        logger.error('Failed to get folder ancestors', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to get ancestors',
+        })
+      }
+    }),
 
   /** Get all descendant folders */
-  getDescendants: protectedProcedure.input(folderIdSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  getDescendants: permissionProcedure(PermissionKey.filesView)
+    .input(folderIdSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const descendants = await folderService.getDescendants(input.folderId)
+      try {
+        const descendants = await folderService.getDescendants(input.folderId)
 
-      logger.info('Folder descendants retrieved successfully', {
-        folderId: input.folderId,
-        descendantCount: descendants.length,
-      })
+        logger.info('Folder descendants retrieved successfully', {
+          folderId: input.folderId,
+          descendantCount: descendants.length,
+        })
 
-      return descendants
-    } catch (error) {
-      logger.error('Failed to get folder descendants', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to get descendants',
-      })
-    }
-  }),
+        return descendants
+      } catch (error) {
+        logger.error('Failed to get folder descendants', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to get descendants',
+        })
+      }
+    }),
 
   /** Search folders with relevance */
-  search: protectedProcedure.input(searchFoldersSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  search: permissionProcedure(PermissionKey.filesView)
+    .input(searchFoldersSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const results = await folderService.search(input.query, {
-        parentId: input.parentId,
-        limit: input.limit,
-      })
+      try {
+        const results = await folderService.search(input.query, {
+          parentId: input.parentId,
+          limit: input.limit,
+        })
 
-      logger.info('Folder search completed', {
-        query: input.query,
-        resultCount: results.length,
-      })
+        logger.info('Folder search completed', {
+          query: input.query,
+          resultCount: results.length,
+        })
 
-      return results
-    } catch (error) {
-      logger.error('Folder search failed', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Search failed',
-      })
-    }
-  }),
+        return results
+      } catch (error) {
+        logger.error('Folder search failed', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Search failed',
+        })
+      }
+    }),
 
   /** Get folder statistics */
-  getStats: protectedProcedure.input(folderIdSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  getStats: permissionProcedure(PermissionKey.filesView)
+    .input(folderIdSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const stats = await folderService.getStats(input.folderId)
+      try {
+        const stats = await folderService.getStats(input.folderId)
 
-      logger.info('Folder stats retrieved successfully', {
-        folderId: input.folderId,
-        stats,
-      })
+        logger.info('Folder stats retrieved successfully', {
+          folderId: input.folderId,
+          stats,
+        })
 
-      return stats
-    } catch (error) {
-      logger.error('Failed to get folder stats', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to get stats',
-      })
-    }
-  }),
+        return stats
+      } catch (error) {
+        logger.error('Failed to get folder stats', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to get stats',
+        })
+      }
+    }),
 
   /** Get folder usage analytics */
-  getUsage: protectedProcedure.input(folderIdSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  getUsage: permissionProcedure(PermissionKey.filesView)
+    .input(folderIdSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const usage = await folderService.getUsage(input.folderId)
+      try {
+        const usage = await folderService.getUsage(input.folderId)
 
-      logger.info('Folder usage retrieved successfully', {
-        folderId: input.folderId,
-        usage,
-      })
+        logger.info('Folder usage retrieved successfully', {
+          folderId: input.folderId,
+          usage,
+        })
 
-      return usage
-    } catch (error) {
-      logger.error('Failed to get folder usage', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to get usage',
-      })
-    }
-  }),
+        return usage
+      } catch (error) {
+        logger.error('Failed to get folder usage', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to get usage',
+        })
+      }
+    }),
 
   /** Validate folder name uniqueness */
-  validateName: protectedProcedure.input(validateNameSchema).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  validateName: permissionProcedure(PermissionKey.filesView)
+    .input(validateNameSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const isValid = await folderService.validateName(input.name, input.parentId, input.excludeId)
+      try {
+        const isValid = await folderService.validateName(
+          input.name,
+          input.parentId,
+          input.excludeId
+        )
 
-      logger.info('Folder name validation completed', {
-        name: input.name,
-        isValid,
-      })
+        logger.info('Folder name validation completed', {
+          name: input.name,
+          isValid,
+        })
 
-      return { isValid }
-    } catch (error) {
-      logger.error('Failed to validate folder name', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to validate name',
-      })
-    }
-  }),
+        return { isValid }
+      } catch (error) {
+        logger.error('Failed to validate folder name', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to validate name',
+        })
+      }
+    }),
 
   // Mutation Procedures
 
   /** Create new folder */
-  create: protectedProcedure.input(createFolderSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  create: permissionProcedure(PermissionKey.filesManage)
+    .input(createFolderSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.create({
-        name: input.name,
-        parentId: input.parentId,
-        organizationId,
-        createdById: userId,
-      })
+      try {
+        const folder = await folderService.create({
+          name: input.name,
+          parentId: input.parentId,
+          organizationId,
+          createdById: userId,
+        })
 
-      logger.info('Folder created successfully', {
-        folderId: folder.id,
-        name: input.name,
-        parentId: input.parentId,
-      })
+        logger.info('Folder created successfully', {
+          folderId: folder.id,
+          name: input.name,
+          parentId: input.parentId,
+        })
 
-      return folder
-    } catch (error) {
-      logger.error('Failed to create folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to create folder',
-      })
-    }
-  }),
+        return folder
+      } catch (error) {
+        logger.error('Failed to create folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to create folder',
+        })
+      }
+    }),
 
   /** Update folder properties */
-  update: protectedProcedure.input(updateFolderSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  update: permissionProcedure(PermissionKey.filesManage)
+    .input(updateFolderSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.update(input.folderId, {
-        name: input.name,
-        parentId: input.parentId,
-      })
+      try {
+        const folder = await folderService.update(input.folderId, {
+          name: input.name,
+          parentId: input.parentId,
+        })
 
-      logger.info('Folder updated successfully', {
-        folderId: input.folderId,
-        updates: { name: input.name, parentId: input.parentId },
-      })
+        logger.info('Folder updated successfully', {
+          folderId: input.folderId,
+          updates: { name: input.name, parentId: input.parentId },
+        })
 
-      return folder
-    } catch (error) {
-      logger.error('Failed to update folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to update folder',
-      })
-    }
-  }),
+        return folder
+      } catch (error) {
+        logger.error('Failed to update folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to update folder',
+        })
+      }
+    }),
 
   /** Soft delete folder and contents */
-  delete: protectedProcedure.input(folderIdSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  delete: permissionProcedure(PermissionKey.filesManage)
+    .input(folderIdSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      await folderService.delete(input.folderId)
+      try {
+        await folderService.delete(input.folderId)
 
-      logger.info('Folder deleted successfully', { folderId: input.folderId })
-      return { success: true }
-    } catch (error) {
-      logger.error('Failed to delete folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to delete folder',
-      })
-    }
-  }),
+        logger.info('Folder deleted successfully', { folderId: input.folderId })
+        return { success: true }
+      } catch (error) {
+        logger.error('Failed to delete folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to delete folder',
+        })
+      }
+    }),
 
   /** Restore soft-deleted folder */
-  restore: protectedProcedure.input(folderIdSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  restore: permissionProcedure(PermissionKey.filesManage)
+    .input(folderIdSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.restore(input.folderId)
+      try {
+        const folder = await folderService.restore(input.folderId)
 
-      logger.info('Folder restored successfully', { folderId: input.folderId })
-      return folder
-    } catch (error) {
-      logger.error('Failed to restore folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to restore folder',
-      })
-    }
-  }),
+        logger.info('Folder restored successfully', { folderId: input.folderId })
+        return folder
+      } catch (error) {
+        logger.error('Failed to restore folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to restore folder',
+        })
+      }
+    }),
 
   /** Permanently delete folder */
-  permanentDelete: protectedProcedure.input(folderIdSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  permanentDelete: permissionProcedure(PermissionKey.filesManage)
+    .input(folderIdSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      await folderService.permanentDelete(input.folderId)
+      try {
+        await folderService.permanentDelete(input.folderId)
 
-      logger.info('Folder permanently deleted', { folderId: input.folderId })
-      return { success: true }
-    } catch (error) {
-      logger.error('Failed to permanently delete folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to permanently delete folder',
-      })
-    }
-  }),
+        logger.info('Folder permanently deleted', { folderId: input.folderId })
+        return { success: true }
+      } catch (error) {
+        logger.error('Failed to permanently delete folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to permanently delete folder',
+        })
+      }
+    }),
 
   /** Move folder to new parent */
-  move: protectedProcedure.input(moveFolderSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  move: permissionProcedure(PermissionKey.filesManage)
+    .input(moveFolderSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.move(input.folderId, input.targetParentId)
+      try {
+        const folder = await folderService.move(input.folderId, input.targetParentId)
 
-      logger.info('Folder moved successfully', {
-        folderId: input.folderId,
-        targetParentId: input.targetParentId,
-      })
+        logger.info('Folder moved successfully', {
+          folderId: input.folderId,
+          targetParentId: input.targetParentId,
+        })
 
-      return folder
-    } catch (error) {
-      logger.error('Failed to move folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to move folder',
-      })
-    }
-  }),
+        return folder
+      } catch (error) {
+        logger.error('Failed to move folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to move folder',
+        })
+      }
+    }),
 
   /** Rename folder */
-  rename: protectedProcedure.input(renameFolderSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  rename: permissionProcedure(PermissionKey.filesManage)
+    .input(renameFolderSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.rename(input.folderId, input.newName)
+      try {
+        const folder = await folderService.rename(input.folderId, input.newName)
 
-      logger.info('Folder renamed successfully', {
-        folderId: input.folderId,
-        newName: input.newName,
-      })
+        logger.info('Folder renamed successfully', {
+          folderId: input.folderId,
+          newName: input.newName,
+        })
 
-      return folder
-    } catch (error) {
-      logger.error('Failed to rename folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to rename folder',
-      })
-    }
-  }),
+        return folder
+      } catch (error) {
+        logger.error('Failed to rename folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to rename folder',
+        })
+      }
+    }),
 
   /** Copy folder with all contents */
-  copy: protectedProcedure.input(copyFolderSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  copy: permissionProcedure(PermissionKey.filesManage)
+    .input(copyFolderSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const newFolder = await folderService.copy(
-        input.sourceFolderId,
-        input.targetParentId,
-        input.newName
-      )
+      try {
+        const newFolder = await folderService.copy(
+          input.sourceFolderId,
+          input.targetParentId,
+          input.newName
+        )
 
-      logger.info('Folder copied successfully', {
-        sourceFolderId: input.sourceFolderId,
-        targetParentId: input.targetParentId,
-        newFolderId: newFolder.id,
-      })
+        logger.info('Folder copied successfully', {
+          sourceFolderId: input.sourceFolderId,
+          targetParentId: input.targetParentId,
+          newFolderId: newFolder.id,
+        })
 
-      return newFolder
-    } catch (error) {
-      logger.error('Failed to copy folder', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to copy folder',
-      })
-    }
-  }),
+        return newFolder
+      } catch (error) {
+        logger.error('Failed to copy folder', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to copy folder',
+        })
+      }
+    }),
 
   /** Merge two folders */
-  merge: protectedProcedure.input(mergeFolderSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  merge: permissionProcedure(PermissionKey.filesManage)
+    .input(mergeFolderSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.merge(input.sourceFolderId, input.targetFolderId)
+      try {
+        const folder = await folderService.merge(input.sourceFolderId, input.targetFolderId)
 
-      logger.info('Folders merged successfully', {
-        sourceFolderId: input.sourceFolderId,
-        targetFolderId: input.targetFolderId,
-      })
+        logger.info('Folders merged successfully', {
+          sourceFolderId: input.sourceFolderId,
+          targetFolderId: input.targetFolderId,
+        })
 
-      return folder
-    } catch (error) {
-      logger.error('Failed to merge folders', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to merge folders',
-      })
-    }
-  }),
+        return folder
+      } catch (error) {
+        logger.error('Failed to merge folders', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to merge folders',
+        })
+      }
+    }),
 
   /** Create folder path if not exists */
-  ensurePath: protectedProcedure.input(folderPathSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
+  ensurePath: permissionProcedure(PermissionKey.filesManage)
+    .input(folderPathSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
 
-    const folderService = createFolderService(organizationId, userId)
+      const folderService = createFolderService(organizationId, userId)
 
-    try {
-      const folder = await folderService.ensurePath(input.path)
+      try {
+        const folder = await folderService.ensurePath(input.path)
 
-      logger.info('Folder path ensured successfully', {
-        path: input.path,
-        folderId: folder.id,
-      })
+        logger.info('Folder path ensured successfully', {
+          path: input.path,
+          folderId: folder.id,
+        })
 
-      return folder
-    } catch (error) {
-      logger.error('Failed to ensure folder path', { error, input })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to ensure path',
-      })
-    }
-  }),
+        return folder
+      } catch (error) {
+        logger.error('Failed to ensure folder path', { error, input })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Failed to ensure path',
+        })
+      }
+    }),
 })
