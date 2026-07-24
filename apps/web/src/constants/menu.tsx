@@ -207,7 +207,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         slug: 'connectors',
         icon: <Cable />,
         featureKey: 'dataConnectors',
-        adminOnly: true,
+        permissionKey: 'connectors.manage',
       },
       {
         id: 'files',

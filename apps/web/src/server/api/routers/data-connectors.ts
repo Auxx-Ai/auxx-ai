@@ -1,7 +1,10 @@
 // apps/web/src/server/api/routers/data-connectors.ts
 // tRPC surface for Data Connectors (sync external structured records into the entity
-// system). Reads are protectedProcedure; all management + provisioning + setup is
-// adminProcedure (a connector provisions entity defs and binds credentials, 05 §1).
+// system). Management + provisioning + setup AND the connector reads are gated on the
+// Layer-2 `connectors.manage` capability (grantable to a non-admin data-ops member; a
+// connector provisions entity defs and binds credentials, 05 §1). The lone exception is
+// `list`, kept as `protectedProcedure` — it's a member-facing display primitive that
+// resolves connector names for the record-grid `ConnectorLockBadge`.
 // The backend engine (queue/scheduler/orchestrator/provisioning) lives in
 // @auxx/lib/data-connectors — this router is a thin, validated edge over it.
 
@@ -39,10 +42,11 @@ import {
   updateStream,
 } from '@auxx/lib/data-connectors'
 import { inferJsonSchema } from '@auxx/lib/json-schema/client'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { resourceFieldIdSchema } from '@auxx/types/field'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
 
 // ── Shared zod shapes ─────────────────────────────────────────────────────────
 
@@ -202,8 +206,11 @@ const fieldMappingSchema = z.object({
 })
 
 export const dataConnectorRouter = createTRPCRouter({
-  // ── Reads (protected) ─────────────────────────────────────────────────────
+  // ── Reads (connectors.manage — except `list`) ─────────────────────────────
 
+  // Display-primitive carve-out: `list` stays open to any org member because the
+  // record-grid `ConnectorLockBadge` resolves connector names from it for
+  // connector-owned/contributing fields. Every other read is gated.
   list: protectedProcedure.query(async ({ ctx }) => {
     return listConnectors(ctx.db, ctx.session.organizationId)
   }),
@@ -214,7 +221,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * reads the `installedApps` org-cache (already projected with
    * `catalog.dataConnectors`) — no bundle eval, no extra query.
    */
-  catalog: protectedProcedure.query(async ({ ctx }) => {
+  catalog: permissionProcedure(PermissionKey.connectorsManage).query(async ({ ctx }) => {
     const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
     const apps = installedApps.flatMap((app) =>
       (app.dataConnectors ?? []).map((dc) => ({
@@ -253,7 +260,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * `config._schema` placeholder. Built-ins expose the request builder, so they
    * carry no config schema.
    */
-  connectorSchema: protectedProcedure
+  connectorSchema: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
@@ -286,20 +293,22 @@ export const dataConnectorRouter = createTRPCRouter({
       }
     }),
 
-  getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
-    if (result.isErr()) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
-    }
-    const connector = result.value
-    // Surface the template's declared connection hint (05c §8) so the connect UI
-    // can scope its picker to the provider/app the template expects — instead of
-    // the legacy "always mint an API key" path. `null` ⇒ no hint ⇒ open catalog.
-    const connectionHint = connector.templateId
-      ? (getConnectorTemplateById(connector.templateId)?.connection ?? null)
-      : null
-    return { ...connector, connectionHint }
-  }),
+  getById: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      const connector = result.value
+      // Surface the template's declared connection hint (05c §8) so the connect UI
+      // can scope its picker to the provider/app the template expects — instead of
+      // the legacy "always mint an API key" path. `null` ⇒ no hint ⇒ open catalog.
+      const connectionHint = connector.templateId
+        ? (getConnectorTemplateById(connector.templateId)?.connection ?? null)
+        : null
+      return { ...connector, connectionHint }
+    }),
 
   /**
    * The OWNED record types this connector's app catalog declares (v6 —
@@ -311,7 +320,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * install `onComplete`. Empty for a non-app connector or one whose app declares no
    * owned targets. The owned def's stable identity is its `sourceKey` (== `ownedKey`).
    */
-  ownedTargets: protectedProcedure
+  ownedTargets: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
@@ -346,7 +355,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * backfill view. Per-stream `recordsSeen`/`phase` come straight off the stream
    * states (the source of truth) rather than denormalized onto the run.
    */
-  getStatus: protectedProcedure
+  getStatus: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
@@ -431,13 +440,13 @@ export const dataConnectorRouter = createTRPCRouter({
       }
     }),
 
-  listRuns: protectedProcedure
+  listRuns: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string(), limit: z.number().int().positive().max(200).optional() }))
     .query(async ({ ctx, input }) => {
       return listRuns(ctx.db, ctx.session.organizationId, input.id, input.limit)
     }),
 
-  listStreams: protectedProcedure
+  listStreams: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       // Authz: ensures the connector belongs to this org before listing. Each
@@ -451,7 +460,7 @@ export const dataConnectorRouter = createTRPCRouter({
 
   // ── Management (admin) ────────────────────────────────────────────────────
 
-  create: adminProcedure
+  create: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         name: z.string().min(1),
@@ -533,7 +542,7 @@ export const dataConnectorRouter = createTRPCRouter({
       })
     }),
 
-  update: adminProcedure
+  update: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z
         .object({
@@ -584,13 +593,13 @@ export const dataConnectorRouter = createTRPCRouter({
    * KEEPS them (reassigns ownership) instead of tearing them down. The detail view joins
    * these against the cached resource labels to spell out "shared → kept" in the confirm.
    */
-  sharedOwnedDefs: protectedProcedure
+  sharedOwnedDefs: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       return listSharedOwnedDefIds(ctx.db, ctx.session.organizationId, input.id)
     }),
 
-  delete: adminProcedure
+  delete: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         id: z.string(),
@@ -608,7 +617,7 @@ export const dataConnectorRouter = createTRPCRouter({
       )
     }),
 
-  syncNow: adminProcedure
+  syncNow: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         id: z.string(),
@@ -648,7 +657,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * §3.4). The connector leaves setup configured-but-idle; a later manual Sync now or a
    * scheduled fire advances it `ready → syncing → live`. Idempotent (no-op past pending).
    */
-  finishSetup: adminProcedure
+  finishSetup: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return finishConnectorSetup(ctx.db, ctx.session.organizationId, input.id)
@@ -661,7 +670,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * when that backfill finalizes. The only place a `rebackfill`/`rebind` edit's
    * expensive re-crawl is requested.
    */
-  backfillPendingChange: adminProcedure
+  backfillPendingChange: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
@@ -682,7 +691,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * part of the authored source shape. Capped small. App connectors aren't wired
    * yet (phase 4) — guarded.
    */
-  sampleFetch: adminProcedure
+  sampleFetch: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         id: z.string(),
@@ -733,7 +742,7 @@ export const dataConnectorRouter = createTRPCRouter({
    * entity def's fields (read from the org cache). Returns the editable `FieldMapping`
    * entry shape; the UI drops them in as pre-checked rows the user confirms/edits.
    */
-  suggestMappings: adminProcedure
+  suggestMappings: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         id: z.string(),
@@ -780,7 +789,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return { proposals }
     }),
 
-  addStream: adminProcedure
+  addStream: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         id: z.string(),
@@ -803,7 +812,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return addStream(ctx.db, ctx.session.organizationId, id, rest)
     }),
 
-  setStreamSchema: adminProcedure
+  setStreamSchema: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         streamId: z.string(),
@@ -817,7 +826,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return setStreamSchema(ctx.db, ctx.session.organizationId, streamId, rest)
     }),
 
-  setStreamRequestConfig: adminProcedure
+  setStreamRequestConfig: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         streamId: z.string(),
@@ -831,7 +840,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return setStreamRequestConfig(ctx.db, ctx.session.organizationId, streamId, rest)
     }),
 
-  updateStream: adminProcedure
+  updateStream: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         streamId: z.string(),
@@ -844,7 +853,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return updateStream(ctx.db, ctx.session.organizationId, streamId, rest)
     }),
 
-  removeStream: adminProcedure
+  removeStream: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ streamId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return removeStream(ctx.db, ctx.session.organizationId, input.streamId)
@@ -852,7 +861,7 @@ export const dataConnectorRouter = createTRPCRouter({
 
   // ── Mapping setup (admin) ─────────────────────────────────────────────────
 
-  addMapping: adminProcedure
+  addMapping: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         dataConnectorStreamId: z.string(),
@@ -873,7 +882,7 @@ export const dataConnectorRouter = createTRPCRouter({
 
   // The single mapping write surface: any subset of a mapping's columns
   // (structural + target binding + per-field policy) in one patch.
-  updateMapping: adminProcedure
+  updateMapping: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         mappingId: z.string(),
@@ -892,7 +901,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return updateMapping(ctx.db, ctx.session.organizationId, mappingId, patch)
     }),
 
-  removeMapping: adminProcedure
+  removeMapping: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ mappingId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return removeMapping(ctx.db, ctx.session.organizationId, input.mappingId)
