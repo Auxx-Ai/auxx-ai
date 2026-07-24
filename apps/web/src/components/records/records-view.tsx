@@ -123,8 +123,13 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   // who can view but not edit this def (Read-only grantee / field seat). The
   // server enforces regardless; this just avoids a click-then-403. Keyed by
   // `entityDefinitionId` (the defAccess keyspace), not `resource.id`.
-  const { canEditEntity } = useAccess()
+  const { canEditEntity, canAdministerDef } = useAccess()
   const canEdit = resource ? canEditEntity(resource.entityDefinitionId) : false
+  // Per-def ADMINISTRATION gate (the `Full`/`admin` rung) — managing the def's
+  // FIELDS is def administration, not a record write. Hides the "Create field"
+  // command-palette action for non-def-admins; the server (`customField.create`)
+  // enforces regardless (#1303). Keyed by `entityDefinitionId`, like `canEdit`.
+  const canAdminister = resource ? canAdministerDef(resource.entityDefinitionId) : false
 
   // Imperative handle into DynamicResourceView for refresh + field-value reads
   // (paste/fill needs getValue from the inner syncer).
@@ -863,23 +868,27 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
               perform={() => useCommandPaletteStore.getState().openCreate(entityDefinitionId)}
             />
           )}
-          <CommandAction
-            label='Create field'
-            icon='columns'
-            keywords='create field column custom attribute property'
-            priority={2}
-            perform={() => useCommandPaletteStore.getState().openCreateField(entityDefinitionId)}
-          />
-          <CommandAction
-            label='Import'
-            icon='database'
-            keywords='import upload csv'
-            priority={1}
-            perform={() => {
-              useCommandPaletteStore.getState().close()
-              router.push(`${resolvedBasePath}/import`)
-            }}
-          />
+          {canAdminister && (
+            <CommandAction
+              label='Create field'
+              icon='columns'
+              keywords='create field column custom attribute property'
+              priority={2}
+              perform={() => useCommandPaletteStore.getState().openCreateField(entityDefinitionId)}
+            />
+          )}
+          {canEdit && (
+            <CommandAction
+              label='Import'
+              icon='database'
+              keywords='import upload csv'
+              priority={1}
+              perform={() => {
+                useCommandPaletteStore.getState().close()
+                router.push(`${resolvedBasePath}/import`)
+              }}
+            />
+          )}
           {hasSelection && (
             <>
               <CommandAction
