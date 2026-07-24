@@ -3,15 +3,14 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Lock } from 'lucide-react'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { WebhookEndpointsSection } from '~/components/webhooks/ui/webhook-endpoints-section'
 import { WebhooksSection } from '~/components/webhooks/ui/webhooks-section'
-import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 export default function WebhooksPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const { hasAccess } = useFeatureFlags()
 
   if (!hasAccess(FeatureKey.webhooks)) {
@@ -20,6 +19,7 @@ export default function WebhooksPage() {
         title='Webhooks'
         description='Manage webhooks to integrate with external services.'
         breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Webhooks' }]}>
+        <CapabilityPageGuard permissionKey='integrations.manage' />
         <EmptyState
           icon={Lock}
           title='Webhooks Not Available'
@@ -35,6 +35,7 @@ export default function WebhooksPage() {
       title='Webhooks'
       description='Send Auxx events to external services when something happens.'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Webhooks' }]}>
+      <CapabilityPageGuard permissionKey='integrations.manage' />
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <WebhooksSection />
         <WebhookEndpointsSection />

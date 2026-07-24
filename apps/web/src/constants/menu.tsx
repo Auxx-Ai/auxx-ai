@@ -235,10 +235,15 @@ export const SIDEBAR_MENU: SidebarProps[] = [
   // { id: 'settings', label: 'Settings', slug: 'settings', icon: <Settings /> },
 ]
 
+// Scheme B (plans/permissions/v2/09-settings-admin-areas.md) — flat functional
+// groups replace the old role-based `Admin` bucket. A group renders if you hold
+// any capability inside it (sidebar suppresses empty groups); each item gates on
+// its own Layer-2 `permissionKey`. Groups set NO group-level `access`.
 export const SETTINGS_MENU: SidebarProps[] = [
+  // Account — personal, always visible (no gate).
   {
-    id: 'settings',
-    label: 'Settings',
+    id: 'account',
+    label: 'Account',
     type: 'header',
     items: [
       { id: 'settings-general', label: 'General', slug: 'general', icon: <Settings /> },
@@ -249,28 +254,111 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'organization',
         icon: <Building2 />,
       },
-      { id: 'settings-snippets', label: 'Snippets', slug: 'snippets', icon: <Tag /> },
-      { id: 'settings-signatures', label: 'Signatures', slug: 'signatures', icon: <Feather /> },
-
-      // {
-      //   id: 'settings-integrations',
-      //   label: 'Integrations',
-      //   slug: 'integrations',
-      //   icon: <Waypoints />,
-      // },
-
+    ],
+  },
+  // Workspace — org membership, access, billing, audit.
+  {
+    id: 'workspace',
+    label: 'Workspace',
+    type: 'header',
+    items: [
       {
-        id: 'settings-apiKeys',
-        label: 'API Keys',
-        slug: 'apiKeys',
-        icon: <ComponentIcon />,
-        featureKey: 'apiAccess',
+        id: 'settings-members',
+        label: 'Members and Groups',
+        slug: 'members',
+        icon: <Users />,
+        permissionKey: 'members.manage',
+      },
+      {
+        id: 'settings-permissions',
+        label: 'Permissions',
+        slug: 'permissions',
+        icon: <ShieldCheck />,
+        // `permissions` area stays adminOnly (granting the grant is an escalation).
+        access: 'ADMIN',
+      },
+      {
+        id: 'admin-plans',
+        label: 'Plans & Billing',
+        slug: 'plans',
+        icon: <Map />,
+        // Read is enough to SEE the billing tab.
+        permissionKey: 'billing.view',
+        cloudOnly: true,
+      },
+      {
+        id: 'settings-activity-log',
+        label: 'Account Activity',
+        slug: 'activity-log',
+        icon: <History />,
+        permissionKey: 'auditLog.view',
+      },
+    ],
+  },
+  // Data & CRM — data model + rules.
+  {
+    id: 'data-crm',
+    label: 'Data & CRM',
+    type: 'header',
+    items: [
+      {
+        id: 'admin-fields',
+        label: 'Custom Entities & Fields',
+        slug: 'custom-fields',
+        icon: <Rows3 />,
+        // TODO(perms v2 doc 09): derive from def-admin (canAdministerDef) — page
+        // lists only the defs the member administers; not yet split out.
+        access: 'ADMIN',
+      },
+      {
+        id: 'admin-tags',
+        label: 'Tags',
+        slug: 'tags',
+        icon: <Tag />,
+        // TODO(perms v2 doc 09): gets its own area later; deferred, stays admin.
+        access: 'ADMIN',
+      },
+      {
+        id: 'admin-import-history',
+        label: 'Import & Export',
+        slug: 'import-history',
+        icon: <Import />,
+        // TODO(perms v2 doc 09): gets its own area later; deferred, stays admin.
+        access: 'ADMIN',
+      },
+      {
+        id: 'admin-rules',
+        label: 'Rules',
+        slug: 'rules',
+        icon: <Zap />,
+        permissionKey: 'automationRules.manage',
+      },
+    ],
+  },
+  // AI — models + Kopilot org defaults.
+  {
+    id: 'ai',
+    label: 'AI',
+    type: 'header',
+    items: [
+      {
+        id: 'settings-aiModels',
+        label: 'AI Models',
+        slug: 'aiModels',
+        icon: <Bot />,
+        permissionKey: 'aiConfig.manage',
+      },
+      {
+        id: 'settings-kopilot',
+        label: 'Kopilot',
+        slug: 'kopilot',
+        icon: <Sparkles />,
+        permissionKey: 'aiConfig.manage',
       },
     ],
   },
   // Channels — member-visible: members connect/manage their own personal email
-  // accounts here; shared-channel actions are gated in-page. Item-level `access`
-  // is enforced by the sidebar (webhooks stays admin-only).
+  // accounts here; shared-channel actions are gated in-page. Inboxes stays admin.
   {
     id: 'channels',
     label: 'Channels',
@@ -282,11 +370,23 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'channels',
         icon: <Waypoints />,
       },
+      { id: 'settings-inboxes', label: 'Inboxes', slug: 'inbox', icon: <Inbox />, access: 'ADMIN' },
+      { id: 'settings-signatures', label: 'Signatures', slug: 'signatures', icon: <Feather /> },
+      { id: 'settings-snippets', label: 'Snippets', slug: 'snippets', icon: <Tag /> },
+    ],
+  },
+  // Integrations — apps/MCP/webhooks + connections + API keys.
+  {
+    id: 'integrations',
+    label: 'Integrations',
+    type: 'header',
+    items: [
       {
         id: 'settings-apps',
         label: 'Apps & MCP',
         slug: 'apps',
         icon: <AppWindow />,
+        permissionKey: 'integrations.manage',
       },
       {
         id: 'settings-connections',
@@ -299,121 +399,15 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Webhooks',
         slug: 'webhooks',
         icon: <Webhook />,
-        access: 'ADMIN',
+        permissionKey: 'integrations.manage',
         featureKey: 'webhooks',
       },
-
-      // {
-      //   id: 'settings-chat',
-      //   label: 'Chat',
-      //   slug: 'chat',
-      //   icon: <MessageSquare />,
-      // },
-
-      // {
-      //   id: 'integrations-email',
-      //   label: 'Email Setup',
-      //   slug: 'email',
-      //   icon: <Mails />,
-      // },
-
-      // {
-      //   id: 'integrations-google',
-      //   label: 'Google',
-      //   slug: 'google',
-      //   icon: <GoogleIcon />,
-      // },
-    ],
-  },
-  // Admin
-  {
-    id: 'admin',
-    label: 'Admin',
-    type: 'header',
-    access: 'ADMIN',
-    items: [
       {
-        id: 'settings-members',
-        label: 'Members and Groups',
-        slug: 'members',
-        icon: <Users />,
-        access: 'ADMIN',
-      },
-      {
-        id: 'settings-permissions',
-        label: 'Permissions',
-        slug: 'permissions',
-        icon: <ShieldCheck />,
-        access: 'ADMIN',
-      },
-      { id: 'settings-inboxes', label: 'Inboxes', slug: 'inbox', icon: <Inbox />, access: 'ADMIN' },
-
-      // {
-      //   id: 'admin-appearance',
-      //   label: 'Appearance',
-      //   slug: 'admin-appearance',
-      //   icon: <CircleAlert />,
-      //   access: 'ADMIN',
-      // },
-
-      // {
-      //   id: 'admin-notifications',
-      //   label: 'Notifications',
-      //   slug: 'admin-notifications',
-      //   icon: <MessagesSquare />,
-      //   access: 'ADMIN',
-      // },
-      {
-        id: 'settings-aiModels',
-        label: 'AI Models',
-        slug: 'aiModels',
-        icon: <Bot />,
-        access: 'ADMIN',
-      },
-      {
-        id: 'settings-kopilot',
-        label: 'Kopilot',
-        slug: 'kopilot',
-        icon: <Sparkles />,
-        access: 'ADMIN',
-      },
-
-      {
-        id: 'admin-fields',
-        label: 'Custom Entities & Fields',
-        slug: 'custom-fields',
-        icon: <Rows3 />,
-        access: 'ADMIN',
-      },
-      {
-        id: 'admin-rules',
-        label: 'Rules',
-        slug: 'rules',
-        icon: <Zap />,
-        access: 'ADMIN',
-      },
-      {
-        id: 'settings-activity-log',
-        label: 'Account Activity',
-        slug: 'activity-log',
-        icon: <History />,
-        access: 'ADMIN',
-      },
-      { id: 'admin-tags', label: 'Tags', slug: 'tags', icon: <Tag />, access: 'ADMIN' },
-      {
-        id: 'admin-import-history',
-        label: 'Import & Export',
-        slug: 'import-history',
-        icon: <Import />,
-        access: 'ADMIN',
-      },
-      {
-        id: 'admin-plans',
-        label: 'Plans & Billing',
-        slug: 'plans',
-        icon: <Map />,
-        access: 'ADMIN',
-        cloudOnly: true,
+        id: 'settings-apiKeys',
+        label: 'API Keys',
+        slug: 'apiKeys',
+        icon: <ComponentIcon />,
+        featureKey: 'apiAccess',
       },
     ],
   },

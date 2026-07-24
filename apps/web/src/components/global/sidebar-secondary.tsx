@@ -7,6 +7,7 @@ import type { SidebarProps } from '~/constants/menu'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 type Props = { items: SidebarProps[]; baseUrl: string; title: string; current: string | undefined }
@@ -21,6 +22,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
   })
   const role = isAdminOrOwner ? 'ADMIN' : 'USER'
   const { hasAccess: hasFeatureAccess } = useFeatureFlags()
+  const { can } = useAccess()
 
   return (
     // <div className='flex h-full min-h-screen w-[16rem] overflow-auto border-r bg-sidebar text-sidebar-foreground'>
@@ -58,6 +60,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
                 role,
                 selfHosted,
                 hasFeatureAccess,
+                can,
                 isMobile ? () => setIsDropdownOpen(false) : undefined
               )}
             </React.Fragment>
@@ -75,6 +78,7 @@ function createSidebarGroup(
   role: 'ADMIN' | 'USER',
   selfHosted: boolean,
   hasFeatureAccess: (key: string) => boolean,
+  can: (key: string) => boolean,
   onItemClick?: () => void
 ) {
   const title = group.label
@@ -82,6 +86,10 @@ function createSidebarGroup(
   let items = selfHosted ? group.items?.filter((item) => !item.cloudOnly) : group.items
   items = items?.filter((item) => !item.featureKey || hasFeatureAccess(item.featureKey))
   items = items?.filter((item) => !item.access || item.access === role)
+  // Layer-2 capability filter — ADMIN/OWNER hold every key via ROLE_DEFAULTS, so
+  // no admin bypass is needed here; the resolved capability set already lets them
+  // through. Suppresses a group entirely once all its items are filtered out.
+  items = items?.filter((item) => !item.permissionKey || can(item.permissionKey))
   if (!items || items.length === 0) {
     return null
   }

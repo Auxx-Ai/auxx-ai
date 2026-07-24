@@ -1,14 +1,7 @@
 // packages/lib/src/permissions/capabilities/seat-policy.ts
 
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
-import {
-  Area,
-  buildAreaLevels,
-  expandLevelsToKeys,
-  Level,
-  PERMISSION_AREAS,
-  PermissionKey,
-} from './registry'
+import { Area, buildAreaLevels, expandLevelsToKeys, Level, PermissionKey } from './registry'
 
 /**
  * Role defaults + seat ceilings live IN CODE (not the DB), now expressed as
@@ -47,14 +40,33 @@ export const WORKER_SEAT_KEYS: PermissionKey[] = [
 ]
 
 /**
+ * Org-administration areas whose USER default is `None` (delegated, not
+ * default-on). Two are `adminOnly` (never grantable below ADMIN); the rest are
+ * grantable but still OFF by default — a member gets them only via an explicit
+ * grant. This is the source of truth for the USER baseline, NOT `adminOnly`,
+ * because dropping `adminOnly` (to make an area grantable) must NOT flip its
+ * USER default to Full (that would auto-hand every member billing/members).
+ */
+const USER_ADMIN_NONE_AREAS = new Set<Area>([
+  Area.settings,
+  Area.permissions,
+  Area.billing,
+  Area.members,
+  Area.integrations,
+  Area.aiConfig,
+  Area.automationRules,
+  Area.auditLog,
+])
+
+/**
  * What each role gets out of the box, per area (before grants + seat clamp).
  * OWNER/ADMIN short-circuit to Full anyway; USER is Full everywhere except the
- * `adminOnly` areas (settings/billing/members/permissions), which are `None`.
+ * org-administration areas in {@link USER_ADMIN_NONE_AREAS}, which are `None`.
  */
 export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
   OWNER: ALL_FULL,
   ADMIN: ALL_FULL,
-  USER: buildAreaLevels((area) => (PERMISSION_AREAS[area].adminOnly ? Level.None : Level.Full)),
+  USER: buildAreaLevels((area) => (USER_ADMIN_NONE_AREAS.has(area) ? Level.None : Level.Full)),
 }
 
 /**

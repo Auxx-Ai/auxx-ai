@@ -12,11 +12,10 @@ import { useMemo, useState } from 'react'
 import type { AuditFeedFilters } from '~/components/activity-log/hooks/use-audit-feed'
 import { ActivityLogView } from '~/components/activity-log/ui/activity-log-view'
 import { AuditExportButton } from '~/components/activity-log/ui/audit-export-button'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import SettingsPage from '~/components/global/settings-page'
-import { useUser } from '~/hooks/use-user'
 
 export default function ActivityLogPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const [category, setCategory] = useState<string>('all')
   const [dateRange, setDateRange] = useState<DateRange>(() => ({
     from: startOfDay(addDays(new Date(), -7)),
@@ -38,6 +37,7 @@ export default function ActivityLogPage() {
       description='Security & account events for your organization'
       breadcrumbs={[{ title: 'Settings', href: '/settings' }, { title: 'Account Activity' }]}
       button={<AuditExportButton scope='org' filters={filters} />}>
+      <CapabilityPageGuard permissionKey='auditLog.view' />
       <ActivityLogView
         filters={filters}
         category={category}

@@ -8,11 +8,11 @@ import { Folder, Plus, Users } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import SettingsPage from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
 import { GroupsTab } from '~/components/groups'
 import { MembersTab } from '~/components/members'
-import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import InviteFormPopover from './_components/invite-popover'
@@ -22,7 +22,6 @@ import InviteFormPopover from './_components/invite-popover'
  * tab strip in the sticky sub-header; the tab persists via the `?t=` query param.
  */
 export default function MembersPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const [tab, setTab] = useQueryState('t', { defaultValue: 'members' })
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
 
@@ -59,6 +58,7 @@ export default function MembersPage() {
 
   return (
     <Tabs value={tab} onValueChange={setTab} className='flex h-full min-h-0 flex-1 flex-col'>
+      <CapabilityPageGuard permissionKey='members.manage' />
       <SettingsPage
         icon={<Users />}
         title='Members and Groups'

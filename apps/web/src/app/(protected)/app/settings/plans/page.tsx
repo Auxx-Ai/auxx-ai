@@ -5,7 +5,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Receipt } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import { AdminPageGuard } from '~/components/global/admin-page-guard'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import {
   BillingCycleAlert,
@@ -28,7 +28,7 @@ export default function PlansPage() {
       description='Manage your subscription, plan, and payment details'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Plans' }]}>
       <div className='p-3 sm:p-6 space-y-6 sm:space-y-10'>
-        <AdminPageGuard />
+        <CapabilityPageGuard permissionKey='billing.view' />
         <PlanViewTracker />
         <UpgradeConfetti />
         <DemoBillingCycleGuard>
