@@ -4,14 +4,17 @@
 import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { toastError } from '@auxx/ui/components/toast'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronRight, Edit, Lock, Plus, SearchIcon, Trash } from 'lucide-react'
+import { Edit, Lock, Plus, Tags, Trash2 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
+import { EmptyState } from '~/components/global/empty-state'
+import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
@@ -138,184 +141,65 @@ export function TagTreeView() {
     }
   }
 
-  /** Recursive component to render tag tree */
-  const TagTreeItem = ({ tag, depth = 0 }: { tag: TagNode; depth?: number }) => {
-    const hasChildren = tag.children?.length > 0
-    const isExpanded = expandedTags[tag.id]
-
-    return (
-      <div className='select-none'>
-        <div
-          className={cn(
-            'flex items-center rounded-2xl ps-0.5 pe-1 py-0.5 ring-1 ring-transparent hover:ring-primary-200',
-            'transition-colors duration-200',
-            'hover:bg-primary-100/80'
-          )}>
-          {/* Expand/collapse button */}
-          <Button
-            variant='ghost'
-            size='icon-sm'
-            className={cn(
-              'rounded-full hover:bg-muted/80',
-              hasChildren ? 'text-foreground ' : 'text-transparent'
-            )}
-            onClick={() => hasChildren && toggleExpanded(tag.id)}
-            tabIndex={hasChildren ? 0 : -1}>
-            {hasChildren && (isExpanded ? <ChevronDown /> : <ChevronRight />)}
-          </Button>
-
-          {/* Tag content */}
-          <div
-            className='ml-1 flex flex-1 cursor-pointer items-center'
-            onClick={() => hasChildren && toggleExpanded(tag.id)}>
-            <div
-              className={cn(
-                'size-7 mr-2 flex items-center justify-center rounded-full shrink-0',
-                getOptionColor((tag.tag_color || 'gray') as SelectOptionColor).swatch
-              )}>
-              {tag.tag_emoji && <span className='shrink-0'>{tag.tag_emoji}</span>}
-            </div>
-
-            <span className='font-medium shrink-0'>{tag.title}</span>
-
-            {tag.isSystemTag && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Lock
-                    size={12}
-                    className='ml-1.5 shrink-0 text-muted-foreground'
-                    aria-label='System tag'
-                  />
-                </TooltipTrigger>
-                <TooltipContent>System tag — managed by Auxx, read-only.</TooltipContent>
-              </Tooltip>
-            )}
-
-            {tag.tag_description && (
-              <span className='ml-2 truncate text-sm text-muted-foreground'>
-                {tag.tag_description}
-              </span>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div className='flex space-x-1'>
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon-xs'
-              disabled={tag.isSystemTag}
-              onClick={(e) => {
-                e.stopPropagation()
-                handleEditTag(tag)
-              }}>
-              <Edit size={14} />
-              <span className='sr-only'>Edit</span>
-            </Button>
-
-            <Button
-              type='button'
-              variant='destructive-hover'
-              size='icon-xs'
-              className='border-transparent bg-transparent'
-              disabled={tag.isSystemTag}
-              onClick={(e) => {
-                e.stopPropagation()
-                handleDeleteTag(tag)
-              }}>
-              <Trash size={14} />
-              <span className='sr-only'>Delete</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Children */}
-        {hasChildren && isExpanded && (
-          <div className='ml-4 mt-0 border-l border-l-border pl-2'>
-            {tag.children.map((child) => (
-              <TagTreeItem key={child.id} tag={child} depth={depth + 1} />
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  /** Skeleton for a single tag row */
-  const TagItemSkeleton = ({ hasChildren = false }: { hasChildren?: boolean }) => (
-    <div className='select-none'>
-      <div className='flex items-center rounded-2xl ps-0.5 pe-1 py-0.5'>
-        <Skeleton className='h-7 w-7 rounded-full shrink-0' />
-        <Skeleton className='ml-2 h-3 w-3 rounded-full shrink-0' />
-        <Skeleton className='ml-2 h-4 w-24 shrink-0' />
-        <Skeleton className='ml-2 h-4 w-40' />
-        <div className='ml-auto flex space-x-1'>
-          <Skeleton className='h-6 w-6 rounded' />
-          <Skeleton className='h-6 w-6 rounded' />
-        </div>
-      </div>
-      {hasChildren && (
-        <div className='ml-4 mt-0 border-l border-l-border pl-2'>
-          <TagItemSkeleton />
-          <TagItemSkeleton />
-        </div>
-      )}
-    </div>
-  )
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className='space-y-4'>
-        <div className='flex items-center space-x-2'>
-          <div className='relative flex-1'>
-            <Skeleton className='h-8 w-full' />
-          </div>
-          <Skeleton className='h-8 w-[106px]' />
-        </div>
-        <div className='rounded-[20px] border p-1'>
-          <TagItemSkeleton hasChildren />
-          <TagItemSkeleton />
-          <TagItemSkeleton hasChildren />
-          <TagItemSkeleton />
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className='space-y-4'>
-      {/* Search and action bar */}
-      <div className='flex items-center space-x-2'>
-        <div className='relative flex-1'>
-          <SearchIcon className='absolute left-2.5 top-2 h-4 w-4 text-muted-foreground' />
-          <Input
-            type='search'
-            placeholder='Search tags...'
-            className='pl-8'
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+    <div className='flex flex-1 flex-col'>
+      <ListToolbar sticky={false}>
+        <InputSearch
+          value={searchQuery}
+          placeholder='Search tags...'
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <ListToolbarGroup align='end'>
+          <Button variant='outline' size='sm' onClick={handleCreateTag}>
+            <Plus />
+            <span className='hidden sm:inline'>Add Tag</span>
+          </Button>
+        </ListToolbarGroup>
+      </ListToolbar>
+
+      <div className='p-3 sm:p-6'>
+        {isLoading ? (
+          <TreeRowList
+            className='gap-0.5'
+            items={[]}
+            loading
+            skeletonCount={6}
+            getKey={(_item, i) => String(i)}
+            renderRow={() => null}
           />
-        </div>
-
-        <Button variant='outline' onClick={handleCreateTag}>
-          <Plus />
-          <span className='hidden sm:inline'>Add Tag</span>
-        </Button>
-      </div>
-
-      {/* Tag tree */}
-      <div className='rounded-[20px] border p-1'>
-        {filteredTags?.length ? (
-          filteredTags.map((tag) => <TagTreeItem key={tag.id} tag={tag} />)
-        ) : (
-          <div className='py-8 text-center text-muted-foreground'>
-            {searchQuery ? (
-              <p>No tags match your search. Try a different query or clear the search.</p>
-            ) : (
-              <p>No tags found. Create your first tag to get started.</p>
+        ) : filteredTags?.length ? (
+          <TreeRowList
+            className='gap-0.5'
+            items={filteredTags}
+            getKey={(tag) => tag.id}
+            renderRow={(tag) => (
+              <TagTreeItem
+                tag={tag}
+                expandedTags={expandedTags}
+                onToggle={toggleExpanded}
+                onEdit={handleEditTag}
+                onDelete={handleDeleteTag}
+              />
             )}
-          </div>
+          />
+        ) : (
+          <EmptyState
+            icon={Tags}
+            title={searchQuery ? 'No tags match your search' : 'No tags yet'}
+            description={
+              searchQuery
+                ? 'Try a different query or clear the search.'
+                : 'Create your first tag to get started.'
+            }
+            button={
+              searchQuery ? undefined : (
+                <Button variant='outline' onClick={handleCreateTag}>
+                  <Plus />
+                  Add Tag
+                </Button>
+              )
+            }
+          />
         )}
       </div>
 
@@ -333,5 +217,91 @@ export function TagTreeView() {
       {/* Delete confirmation dialog */}
       <ConfirmDialog />
     </div>
+  )
+}
+
+interface TagTreeItemProps {
+  tag: TagNode
+  depth?: number
+  expandedTags: Record<string, boolean>
+  onToggle: (tagId: string) => void
+  onEdit: (tag: TagNode) => void
+  onDelete: (tag: TagNode) => void
+}
+
+/**
+ * Recursive tag row rendered as a {@link TreeRow}. Kept at module scope (not
+ * nested inside `TagTreeView`) so its component identity is stable across
+ * renders — a nested definition remounts the subtree on every state change,
+ * which kills the TreeRow expand/collapse animation.
+ */
+function TagTreeItem({
+  tag,
+  depth = 0,
+  expandedTags,
+  onToggle,
+  onEdit,
+  onDelete,
+}: TagTreeItemProps) {
+  const hasChildren = tag.children?.length > 0
+  const isExpanded = !!expandedTags[tag.id]
+
+  return (
+    <TreeRow
+      depth={depth}
+      rowClassName='bg-primary-50 hover:bg-primary-100'
+      icon={
+        <span
+          className={cn(
+            'flex size-5 items-center justify-center rounded-full text-xs',
+            getOptionColor((tag.tag_color || 'gray') as SelectOptionColor).swatch
+          )}>
+          {tag.tag_emoji}
+        </span>
+      }
+      title={
+        tag.isSystemTag ? (
+          <span className='inline-flex items-center gap-1.5'>
+            {tag.title}
+            <Tooltip content='System tag — managed by Auxx, read-only.'>
+              <Lock className='size-3 shrink-0 text-muted-foreground' aria-label='System tag' />
+            </Tooltip>
+          </span>
+        ) : (
+          tag.title
+        )
+      }
+      description={tag.tag_description || undefined}
+      expandable={hasChildren}
+      isOpen={isExpanded}
+      onToggleOpen={hasChildren ? () => onToggle(tag.id) : undefined}
+      actions={
+        tag.isSystemTag ? undefined : (
+          <>
+            <TreeRowButton tooltipText='Edit tag' onClick={() => onEdit(tag)}>
+              <Edit />
+            </TreeRowButton>
+            <TreeRowButton
+              variant='destructive'
+              tooltipText='Delete tag'
+              onClick={() => onDelete(tag)}>
+              <Trash2 />
+            </TreeRowButton>
+          </>
+        )
+      }>
+      {hasChildren &&
+        tag.children.map((child) => (
+          <TagTreeItem
+            key={child.id}
+            tag={child}
+            depth={depth + 1}
+            expandedTags={expandedTags}
+            onToggle={onToggle}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        ))}
+    </TreeRow>
   )
 }
