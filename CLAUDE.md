@@ -176,6 +176,13 @@ Use the appropriate error class. All extend `AuxxError`:
 | `UnprocessableEntityError` | 422    | Validation failure |
 | `RateLimitError`           | 429    | Too many requests  |
 
+**Service/lib code throws `AuxxError`, never `TRPCError`.** `@auxx/lib` (and any non-router service code)
+must not import `@trpc/server` just to throw — a `TRPCError` is meaningless when the same function is
+called from a worker, seed script, or another lib module. Throw the matching `AuxxError` subclass instead;
+`apps/web`'s `auxxErrorMiddleware` + `errorFormatter` map it to the correct HTTP status automatically. If a
+router wraps a service call in its own `try/catch`, guard rethrows with `isAuxxError(e)` (exported from
+`~/server/api/trpc`), **not** `e instanceof TRPCError`, or the AuxxError gets flattened into a generic 500.
+
 ### Result Pattern (`@auxx/lib/result`)
 
 Database models return `TypedResult<V, E>` instead of throwing:
