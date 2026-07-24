@@ -39,12 +39,35 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 /**
+ * Client caches live on `globalThis`, not in module scope.
+ *
+ * Next.js/Turbopack gives server components, route handlers, and API routes
+ * separate module scopes within the same Node process. A module-level `Map`
+ * is therefore duplicated per scope, and each fresh copy starts empty — so
+ * every scope opens its own set of connections to the same Redis. `globalThis`
+ * is process-wide and survives HMR, so all scopes share one pool.
+ * (`@auxx/lib/cache` singletons use the same approach for the same reason.)
+ */
+const globalForRedis = globalThis as unknown as {
+  _auxxRedisInstances?: Map<string, RedisClient>
+  _auxxRedisPending?: Map<string, Promise<RedisClient>>
+}
+
+/** Connected, reusable clients keyed by `<provider>-<instanceId>` */
+const instances = (globalForRedis._auxxRedisInstances ??= new Map<string, RedisClient>())
+
+/**
+ * Creations currently in flight, keyed the same way. Entries are removed as
+ * soon as the creation settles — this only coalesces concurrent callers, it
+ * never caches a result.
+ */
+const pending = (globalForRedis._auxxRedisPending ??= new Map<string, Promise<RedisClient>>())
+
+/**
  * Factory pattern for creating Redis clients
  * Provides provider-agnostic client creation with automatic capability detection
  */
 export class RedisClientFactory {
-  private static instances = new Map<string, RedisClient>()
-
   /**
    * Returns true when REDIS_PASSWORD is not set as a non-empty environment variable.
    */
@@ -85,15 +108,41 @@ export class RedisClientFactory {
     // Return existing instance if it's still alive. A previous caller may have
     // closed the connection (e.g. an SSE route calling .quit() on the shared
     // singleton); without this check we'd hand back a dead client forever.
-    const cached = RedisClientFactory.instances.get(cacheKey)
+    const cached = instances.get(cacheKey)
     if (cached) {
       if (cached.isAlive()) {
         return cached
       }
       logger.warn(`Cached Redis client ${cacheKey} is no longer alive; recreating`)
-      RedisClientFactory.instances.delete(cacheKey)
+      instances.delete(cacheKey)
     }
 
+    // Coalesce concurrent creations for the same key. `instances` is only
+    // populated after connect+ping resolve, so callers arriving during that
+    // window would all miss the cache and each build their own client — every
+    // one but the last then orphaned, holding an open socket that nothing ever
+    // closes. Four cache services constructed in one tick reliably hit this.
+    const inFlight = pending.get(cacheKey)
+    if (inFlight) {
+      return inFlight
+    }
+
+    // Must be registered before the first await so no caller can interleave.
+    const creation = RedisClientFactory.connectNewClient(cacheKey, provider).finally(() => {
+      pending.delete(cacheKey)
+    })
+    pending.set(cacheKey, creation)
+    return creation
+  }
+
+  /**
+   * Build, connect, verify, and cache a single client. Always call via
+   * `createClient` — this deliberately has no cache or dedupe of its own.
+   */
+  private static async connectNewClient(
+    cacheKey: string,
+    provider?: RedisProvider
+  ): Promise<RedisClient> {
     const detectedProvider = provider ?? getRedisProvider()
     logger.info(`Creating new Redis client instance: ${cacheKey} (provider: ${detectedProvider})`)
 
@@ -107,8 +156,8 @@ export class RedisClientFactory {
     // Eviction callback — when the underlying socket ends, drop the cached
     // reference so the next caller creates a fresh client.
     const evict = () => {
-      if (RedisClientFactory.instances.get(cacheKey) === client) {
-        RedisClientFactory.instances.delete(cacheKey)
+      if (instances.get(cacheKey) === client) {
+        instances.delete(cacheKey)
       }
     }
 
@@ -144,8 +193,18 @@ export class RedisClientFactory {
     }
 
     // Cache the instance
-    RedisClientFactory.instances.set(cacheKey, client)
+    instances.set(cacheKey, client)
     return client
+  }
+
+  /**
+   * Return the cached client for an instance id if one is connected and alive.
+   * Never creates a connection — callers use this to test for an existing
+   * client without triggering one.
+   */
+  static getLiveClient(instanceId = 'default', provider?: RedisProvider): RedisClient | undefined {
+    const client = instances.get(`${provider ?? 'auto'}-${instanceId}`)
+    return client?.isAlive() ? client : undefined
   }
 
   /**
@@ -221,23 +280,21 @@ export class RedisClientFactory {
    * Close all cached client instances
    */
   static async closeAllClients(): Promise<void> {
-    const promises = Array.from(RedisClientFactory.instances.entries()).map(
-      async ([key, client]) => {
-        try {
-          await client.quit()
-          logger.info(`Closed Redis client: ${key}`)
-        } catch (error) {
-          logger.error(`Error closing Redis client ${key}`, { error: (error as Error).message })
-          // Force disconnect if quit fails
-          if (client.disconnect) {
-            client.disconnect()
-          }
+    const promises = Array.from(instances.entries()).map(async ([key, client]) => {
+      try {
+        await client.quit()
+        logger.info(`Closed Redis client: ${key}`)
+      } catch (error) {
+        logger.error(`Error closing Redis client ${key}`, { error: (error as Error).message })
+        // Force disconnect if quit fails
+        if (client.disconnect) {
+          client.disconnect()
         }
       }
-    )
+    })
 
     await Promise.all(promises)
-    RedisClientFactory.instances.clear()
+    instances.clear()
     logger.info('All Redis client instances closed')
   }
 
@@ -246,7 +303,7 @@ export class RedisClientFactory {
    */
   static async closeClient(instanceId = 'default', provider?: RedisProvider): Promise<void> {
     const cacheKey = `${provider ?? 'auto'}-${instanceId}`
-    const client = RedisClientFactory.instances.get(cacheKey)
+    const client = instances.get(cacheKey)
 
     if (client) {
       try {
@@ -258,7 +315,7 @@ export class RedisClientFactory {
           client.disconnect()
         }
       }
-      RedisClientFactory.instances.delete(cacheKey)
+      instances.delete(cacheKey)
     }
   }
 

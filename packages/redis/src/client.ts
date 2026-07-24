@@ -25,18 +25,22 @@ export const MESSAGE_EXPIRATION = 60 * 60 * 24 * 7
 // Session expiration in Redis (30 days in seconds)
 export const SESSION_EXPIRATION = 60 * 60 * 24 * 30
 
-// Main Redis client singleton
-let redisClient: RedisClient | null = null
-
-// Publishing Redis client singleton (separate from subscriber client)
-let publishingClient: RedisClient | null = null
-
-// Subscription Redis client singleton (separate from publishing client)
-let subscriptionClient: RedisClient | null = null
+/**
+ * The main/publishing/subscription clients are cached by `RedisClientFactory`
+ * under the instance ids below. This module deliberately keeps no client
+ * references of its own: a second cache layer here would shadow the factory's,
+ * go stale independently, and reintroduce the duplicate-connection problem it
+ * exists to prevent.
+ */
+const MAIN_INSTANCE = 'main'
+const PUBLISHING_INSTANCE = 'publishing'
+const SUBSCRIPTION_INSTANCE = 'subscription'
 
 // Connection failure cooldown — prevents retrying a 5s timeout on every call
-// during the same Lambda invocation when Redis is unreachable
-let lastConnectionFailureAt = 0
+// during the same Lambda invocation when Redis is unreachable. On globalThis
+// for the same reason the factory's caches are: module scope is duplicated
+// per Next.js server bundle, so a module-level counter wouldn't be shared.
+const globalForCooldown = globalThis as unknown as { _auxxRedisLastFailureAt?: number }
 const CONNECTION_FAILURE_COOLDOWN_MS = 30_000
 
 /**
@@ -113,8 +117,9 @@ export function getConnectionOptions(): RedisConnectionOptions {
 export async function getRedisClient(required = true): Promise<RedisClient | undefined> {
   // Fast-fail during cooldown period after a connection failure.
   // Prevents burning 5s per call when Redis is unreachable (e.g., Lambda cold start).
-  if (!redisClient && lastConnectionFailureAt > 0) {
-    const elapsed = Date.now() - lastConnectionFailureAt
+  const lastFailureAt = globalForCooldown._auxxRedisLastFailureAt ?? 0
+  if (lastFailureAt > 0 && !RedisClientFactory.getLiveClient(MAIN_INSTANCE)) {
+    const elapsed = Date.now() - lastFailureAt
     if (elapsed < CONNECTION_FAILURE_COOLDOWN_MS) {
       if (required) {
         throw new Error(
@@ -126,22 +131,13 @@ export async function getRedisClient(required = true): Promise<RedisClient | und
   }
 
   try {
-    // Drop a dead reference so we recreate. The factory does the same internally,
-    // but our module-scope variable would otherwise pin the old (closed) client.
-    if (redisClient && !redisClient.isAlive()) {
-      logger.warn('Cached main Redis client is no longer alive; recreating')
-      redisClient = null
-    }
-
-    if (!redisClient) {
-      // Use the new factory to create the client
-      redisClient = await RedisClientFactory.createClient(undefined, 'main')
-      lastConnectionFailureAt = 0 // Reset on successful connection
-    }
-
-    return redisClient
+    // The factory returns its cached client, joins an in-flight creation, or
+    // builds a new one — including dropping a dead client and reconnecting.
+    const client = await RedisClientFactory.createClient(undefined, MAIN_INSTANCE)
+    globalForCooldown._auxxRedisLastFailureAt = 0 // Reset on successful connection
+    return client
   } catch (error) {
-    lastConnectionFailureAt = Date.now()
+    globalForCooldown._auxxRedisLastFailureAt = Date.now()
     logger.error('Failed to initialize Redis client', { error: (error as Error).message })
 
     if (required) {
@@ -159,16 +155,7 @@ export async function getRedisClient(required = true): Promise<RedisClient | und
  */
 export async function getPublishingClient(required = true): Promise<RedisClient | null> {
   try {
-    if (publishingClient && !publishingClient.isAlive()) {
-      logger.warn('Cached publishing Redis client is no longer alive; recreating')
-      publishingClient = null
-    }
-    if (!publishingClient) {
-      // Use the new factory to create the publishing client
-      publishingClient = await RedisClientFactory.createClient(undefined, 'publishing')
-    }
-
-    return publishingClient
+    return await RedisClientFactory.createClient(undefined, PUBLISHING_INSTANCE)
   } catch (error) {
     logger.error('Failed to initialize Redis publishing client', {
       error: (error as Error).message,
@@ -190,16 +177,7 @@ export async function getPublishingClient(required = true): Promise<RedisClient 
  */
 export async function getSubscriptionClient(required = true): Promise<RedisClient | null> {
   try {
-    if (subscriptionClient && !subscriptionClient.isAlive()) {
-      logger.warn('Cached subscription Redis client is no longer alive; recreating')
-      subscriptionClient = null
-    }
-    if (!subscriptionClient) {
-      // Use the new factory to create the subscription client
-      subscriptionClient = await RedisClientFactory.createClient(undefined, 'subscription')
-    }
-
-    return subscriptionClient
+    return await RedisClientFactory.createClient(undefined, SUBSCRIPTION_INSTANCE)
   } catch (error) {
     logger.error('Failed to initialize Redis subscription client', {
       error: (error as Error).message,
@@ -219,54 +197,8 @@ export async function getSubscriptionClient(required = true): Promise<RedisClien
  * Disconnect Redis client (useful for serverless environments)
  */
 export async function disconnectRedis(): Promise<void> {
-  if (redisClient) {
-    try {
-      await redisClient.quit()
-      logger.info('Redis connection properly closed')
-      redisClient = null
-    } catch (err) {
-      logger.error('Error disconnecting from Redis', { error: (err as Error).message })
-      // Force disconnect if quit fails
-      if (redisClient?.disconnect) {
-        redisClient.disconnect()
-        redisClient = null
-      }
-    }
-  }
-
-  if (publishingClient) {
-    try {
-      await publishingClient.quit()
-      logger.info('Redis publishing client connection properly closed')
-      publishingClient = null
-    } catch (err) {
-      logger.error('Error disconnecting from Redis publishing client', {
-        error: (err as Error).message,
-      })
-      if (publishingClient?.disconnect) {
-        publishingClient.disconnect()
-        publishingClient = null
-      }
-    }
-  }
-
-  if (subscriptionClient) {
-    try {
-      await subscriptionClient.quit()
-      logger.info('Redis subscription client connection properly closed')
-      subscriptionClient = null
-    } catch (err) {
-      logger.error('Error disconnecting from Redis subscription client', {
-        error: (err as Error).message,
-      })
-      if (subscriptionClient?.disconnect) {
-        subscriptionClient.disconnect()
-        subscriptionClient = null
-      }
-    }
-  }
-
-  // Also close all factory clients
+  // The main, publishing, and subscription clients are all factory-cached, so
+  // this covers them along with any other instance ids.
   await RedisClientFactory.closeAllClients()
 }
 
@@ -358,15 +290,7 @@ export async function deleteRedisData(key: string, required = false): Promise<nu
  * Close Redis client (useful for testing and cleanup)
  */
 export async function closeRedisConnection(): Promise<void> {
-  if (redisClient) {
-    try {
-      await redisClient.quit()
-    } catch (error) {
-      logger.error('Error closing Redis connection', { error: (error as Error).message })
-    } finally {
-      redisClient = null
-    }
-  }
+  await RedisClientFactory.closeClient(MAIN_INSTANCE)
 }
 
 /**

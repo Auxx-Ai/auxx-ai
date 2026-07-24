@@ -15,6 +15,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@auxx/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
