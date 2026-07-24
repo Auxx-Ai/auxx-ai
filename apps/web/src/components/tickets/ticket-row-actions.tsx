@@ -34,7 +34,7 @@ export function TicketRowActions({ recordId, status, priority, onActionComplete 
   const { save } = useSaveSystemValues(recordId)
   const [mergeOpen, setMergeOpen] = useState(false)
 
-  const { handleDelete, ConfirmDeleteDialog } = useEntityInstanceOperations({
+  const { canEdit, handleDelete, ConfirmDeleteDialog } = useEntityInstanceOperations({
     entityDefinitionId,
     resourceLabel: 'Ticket',
     resourcePlural: 'Tickets',
@@ -49,6 +49,10 @@ export function TicketRowActions({ recordId, status, priority, onActionComplete 
 
   // Hide dropdown for merged tickets
   if (status === 'MERGED') return null
+
+  // Every action here (status/priority change, merge, delete) is a record write
+  // on the `ticket` def — hide the whole menu for a member below Edit on tickets.
+  if (!canEdit) return null
 
   const handleStatusChange = (newStatus: string) => {
     save({ ticket_status: newStatus })

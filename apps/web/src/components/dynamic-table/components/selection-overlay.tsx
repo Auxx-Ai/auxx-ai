@@ -2,6 +2,7 @@
 'use client'
 
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCellSelectionConfig } from '../context/cell-selection-context'
 import { useTableConfig } from '../context/table-config-context'
 import { useSelectionStore } from '../stores/selection-store'
 import type { CellRange } from '../types'
@@ -154,6 +155,7 @@ function PositionedBox({
  */
 export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) {
   const { tableId } = useTableConfig()
+  const cellSelectionConfig = useCellSelectionConfig()
   const range = useSelectionStore((s) => s.tables[tableId]?.range ?? null)
   const fillDrag = useSelectionStore((s) => s.tables[tableId]?.fillDrag ?? null)
   const copyHighlight = useSelectionStore((s) => s.tables[tableId]?.copyHighlight ?? null)
@@ -181,7 +183,7 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
         <PositionedBox rect={rangeRect} className={overlayClassName} dataSlot='selection-overlay'>
           {/* Single-cell case is owned by ExpandableCell so the handle follows
               an expanded cell's actual right edge instead of the cell rect. */}
-          {!isEditing && !fillDrag && !single && <FillHandle />}
+          {!isEditing && !fillDrag && !single && !cellSelectionConfig?.readOnly && <FillHandle />}
         </PositionedBox>
       )}
 

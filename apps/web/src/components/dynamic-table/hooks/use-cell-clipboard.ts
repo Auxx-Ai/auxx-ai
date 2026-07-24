@@ -183,7 +183,7 @@ export function useCellClipboard({
   }, [config, tableId, indexer])
 
   const handleDelete = useCallback(async () => {
-    if (!config?.clearCells) return
+    if (!config?.clearCells || config.readOnly) return
     const range = useSelectionStore.getState().getRange(tableId)
     if (!range) return
 
@@ -235,7 +235,7 @@ export function useCellClipboard({
 
   const handlePaste = useCallback(
     async (e: ClipboardEvent) => {
-      if (!config?.saveCells) return
+      if (!config?.saveCells || config.readOnly) return
       const range = useSelectionStore.getState().getRange(tableId)
       if (!range) return
 

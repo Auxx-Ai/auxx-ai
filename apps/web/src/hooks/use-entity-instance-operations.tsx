@@ -7,6 +7,7 @@ import { useCallback } from 'react'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
 import { useRecordStore } from '~/components/resources/store/record-store'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 
 /**
@@ -47,6 +48,12 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     onClearSelection,
     onRefetch,
   } = options
+
+  // Per-def write gate (Layer 2 × Layer 3, `edit` floor) — archive/delete are
+  // record writes, so grantees below Edit on this def must not see the
+  // affordances. The server enforces regardless; this just avoids click-then-403.
+  const { canEditEntity } = useAccess()
+  const canEdit = entityDefinitionId ? canEditEntity(entityDefinitionId) : false
 
   // Confirm dialogs
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
@@ -243,6 +250,9 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   )
 
   return {
+    /** Per-def `edit`-floor gate — hide archive/delete affordances when false. */
+    canEdit,
+
     // Single instance operations
     handleArchive,
     handleDelete,

@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { MergeDialog } from '~/components/merge'
 import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import type { DetailViewActionsProps } from '../types'
 import { AppRecordActions } from './app-record-actions'
@@ -25,6 +26,11 @@ export function DetailViewActions({
 }: DetailViewActionsProps) {
   const { hasAccess } = useFeatureFlags()
   const sequencesEnabled = hasAccess(FeatureKey.sequences)
+
+  // Per-def write gate (Layer 2 × Layer 3, `edit` floor) — merge/archive/delete/
+  // spam are all record writes, so hide them for a member below Edit on this def.
+  const { canEditEntity } = useAccess()
+  const canEdit = recordId ? canEditEntity(parseRecordId(recordId).entityDefinitionId) : false
   const [confirm, ConfirmDialog] = useConfirm()
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
@@ -95,7 +101,7 @@ export function DetailViewActions({
           </Button>
         )}
 
-        {actions.enableMerge && (
+        {actions.enableMerge && canEdit && (
           <Button variant='outline' size='sm' onClick={() => setMergeDialogOpen(true)}>
             <Merge /> Merge
           </Button>
@@ -113,19 +119,19 @@ export function DetailViewActions({
           </Button>
         )}
 
-        {actions.enableArchive && !isArchived && (
+        {actions.enableArchive && canEdit && !isArchived && (
           <Button variant='outline' size='sm' onClick={handleArchive}>
             <Archive /> Archive
           </Button>
         )}
 
-        {actions.enableSpam && !isSpam && (
+        {actions.enableSpam && canEdit && !isSpam && (
           <Button variant='destructive' size='sm' onClick={handleSpam}>
             <Ban /> Spam
           </Button>
         )}
 
-        {actions.enableDelete && (
+        {actions.enableDelete && canEdit && (
           <Button variant='destructive' size='sm' onClick={handleDelete}>
             <Trash2 /> Delete
           </Button>

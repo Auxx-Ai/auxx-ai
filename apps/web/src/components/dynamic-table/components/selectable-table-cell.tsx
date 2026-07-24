@@ -146,12 +146,21 @@ function SelectableTableCellInner<TData>({
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (!cellSelectionConfig?.enabled || isSystemColumn || !isUpdatable) return
+      if (!cellSelectionConfig?.enabled || cellSelectionConfig.readOnly || isSystemColumn) return
+      if (!isUpdatable) return
       if (!cellRef.current?.contains(e.target as Node)) return
       e.stopPropagation()
       setEditingCell({ rowId, columnId })
     },
-    [cellSelectionConfig?.enabled, isSystemColumn, isUpdatable, rowId, columnId, setEditingCell]
+    [
+      cellSelectionConfig?.enabled,
+      cellSelectionConfig?.readOnly,
+      isSystemColumn,
+      isUpdatable,
+      rowId,
+      columnId,
+      setEditingCell,
+    ]
   )
 
   /** Keyboard navigation handled centrally in useCellNavigation; only handle local edit-shortcuts */
@@ -163,7 +172,7 @@ function SelectableTableCellInner<TData>({
       if (!cellRef.current?.contains(e.target as Node)) return
       switch (e.key) {
         case 'Enter':
-          if (!isUpdatable) return
+          if (!isUpdatable || cellSelectionConfig?.readOnly) return
           e.preventDefault()
           setEditingCell({ rowId, columnId })
           break
@@ -173,7 +182,16 @@ function SelectableTableCellInner<TData>({
           break
       }
     },
-    [isActive, isEditing, isUpdatable, rowId, columnId, setEditingCell, setActiveCell]
+    [
+      isActive,
+      isEditing,
+      isUpdatable,
+      cellSelectionConfig?.readOnly,
+      rowId,
+      columnId,
+      setEditingCell,
+      setActiveCell,
+    ]
   )
 
   const handleCloseEditor = useCallback(() => {

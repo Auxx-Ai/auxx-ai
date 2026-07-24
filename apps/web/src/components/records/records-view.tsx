@@ -117,12 +117,14 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   const entityDefinitionId = resource?.id
   const createHotkey = getCreateHotkey(resource?.apiSlug)
 
-  // Per-def write gate (Layer 2 × Layer 3) — hides the Create affordances for a
-  // member who can view but not edit this def (Read-only grantee / field seat).
-  // The server enforces regardless; this just avoids a click-then-403. Keyed by
+  // Per-def write gate (Layer 2 × Layer 3) — the single `edit`-floor predicate
+  // that governs every record write on this def (create/update/delete/archive/
+  // merge all sit at the same floor, §0.1). Hides those affordances for a member
+  // who can view but not edit this def (Read-only grantee / field seat). The
+  // server enforces regardless; this just avoids a click-then-403. Keyed by
   // `entityDefinitionId` (the defAccess keyspace), not `resource.id`.
   const { canEditEntity } = useAccess()
-  const canCreate = resource ? canEditEntity(resource.entityDefinitionId) : false
+  const canEdit = resource ? canEditEntity(resource.entityDefinitionId) : false
 
   // Imperative handle into DynamicResourceView for refresh + field-value reads
   // (paste/fill needs getValue from the inner syncer).
@@ -278,10 +280,12 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           resourceFieldId={primaryResourceFieldId}
           rowId={row.id}
           onTitleClick={() => handleOpenDrawer(row)}>
-          <DropdownMenuItem onClick={() => handleOpenEditDialog(row)}>
-            <SquarePen />
-            Edit
-          </DropdownMenuItem>
+          {canEdit && (
+            <DropdownMenuItem onClick={() => handleOpenEditDialog(row)}>
+              <SquarePen />
+              Edit
+            </DropdownMenuItem>
+          )}
           {resource && resourceHasDetailPage(resource) && (
             <DropdownMenuItem
               onClick={() => {
@@ -299,19 +303,24 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
               entityInstanceId: row.id,
             }}
           />
-          <DropdownMenuItem onClick={() => handleArchive(row.id)}>
-            <Archive />
-            Archive
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.id)}>
-            <Trash2 />
-            Delete
-          </DropdownMenuItem>
+          {canEdit && (
+            <>
+              <DropdownMenuItem onClick={() => handleArchive(row.id)}>
+                <Archive />
+                Archive
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.id)}>
+                <Trash2 />
+                Delete
+              </DropdownMenuItem>
+            </>
+          )}
         </PrimaryFieldCell>
       )
     },
     [
+      canEdit,
       entityDefinitionId,
       primaryResourceFieldId,
       resource,
@@ -339,15 +348,20 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           setIsWorkflowDialogOpen(true)
         },
       },
-      {
-        label: 'Merge',
-        icon: Combine,
-        variant: 'outline' as const,
-        action: (rows: EntityRow[]) => {
-          setSelectedRowIds(new Set(rows.map((r) => r.id)))
-          setIsMergeDialogOpen(true)
-        },
-      },
+      // Merge is a record write (edit floor) — only for editable defs.
+      ...(canEdit
+        ? [
+            {
+              label: 'Merge',
+              icon: Combine,
+              variant: 'outline' as const,
+              action: (rows: EntityRow[]) => {
+                setSelectedRowIds(new Set(rows.map((r) => r.id)))
+                setIsMergeDialogOpen(true)
+              },
+            },
+          ]
+        : []),
       // Sequences plan §17 — contacts are the only enrollable recipient type.
       ...(isContactResource && sequencesEnabled
         ? [
@@ -362,15 +376,20 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
             },
           ]
         : []),
-      {
-        label: 'Edit',
-        icon: SquarePen,
-        variant: 'outline' as const,
-        action: (rows: EntityRow[]) => {
-          setSelectedRowIds(new Set(rows.map((r) => r.id)))
-          setIsBulkUpdateDialogOpen(true)
-        },
-      },
+      // Bulk edit / archive / delete — record writes, gated on the edit floor.
+      ...(canEdit
+        ? [
+            {
+              label: 'Edit',
+              icon: SquarePen,
+              variant: 'outline' as const,
+              action: (rows: EntityRow[]) => {
+                setSelectedRowIds(new Set(rows.map((r) => r.id)))
+                setIsBulkUpdateDialogOpen(true)
+              },
+            },
+          ]
+        : []),
       {
         label: 'Print…',
         icon: Printer,
@@ -383,20 +402,31 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           setIsPrintWizardOpen(true)
         },
       },
-      {
-        label: 'Archive',
-        icon: Archive,
-        variant: 'outline' as const,
-        action: (rows: EntityRow[]) => handleBulkArchive(rows),
-      },
-      {
-        label: 'Delete',
-        icon: Trash2,
-        variant: 'destructive' as const,
-        action: (rows: EntityRow[]) => handleBulkDelete(rows),
-      },
+      ...(canEdit
+        ? [
+            {
+              label: 'Archive',
+              icon: Archive,
+              variant: 'outline' as const,
+              action: (rows: EntityRow[]) => handleBulkArchive(rows),
+            },
+            {
+              label: 'Delete',
+              icon: Trash2,
+              variant: 'destructive' as const,
+              action: (rows: EntityRow[]) => handleBulkDelete(rows),
+            },
+          ]
+        : []),
     ],
-    [handleBulkArchive, handleBulkDelete, isContactResource, sequencesEnabled, entityDefinitionId]
+    [
+      canEdit,
+      handleBulkArchive,
+      handleBulkDelete,
+      isContactResource,
+      sequencesEnabled,
+      entityDefinitionId,
+    ]
   )
 
   const { saveBulkMultipleFields } = useSaveFieldValue()
@@ -423,6 +453,9 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
 
     return {
       enabled: true,
+      // Read-only degrade for members below Edit on this def — keeps selection +
+      // copy, disables every inline write path (server enforces regardless).
+      readOnly: !canEdit,
       getFieldDefinition: resolveField,
       getCellValue: (rowId: string, columnId: string) => {
         if (columnId.startsWith('_')) return undefined
@@ -687,7 +720,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
         return { skipped }
       },
     }
-  }, [entityDefinitionId, fieldMap, saveBulkMultipleFields, runAiBulkGenerate])
+  }, [entityDefinitionId, fieldMap, saveBulkMultipleFields, runAiBulkGenerate, canEdit])
 
   const renderSearchBar = useCallback(
     () =>
@@ -704,12 +737,12 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           icon={Database}
           title={`No ${resource?.plural?.toLowerCase() ?? 'records'} found`}
           description={
-            canCreate
+            canEdit
               ? `Create your first ${resource?.label?.toLowerCase() ?? 'record'}`
               : `No ${resource?.plural?.toLowerCase() ?? 'records'} to show`
           }
           button={
-            canCreate ? (
+            canEdit ? (
               <Button size='sm' variant='outline' onClick={() => setIsCreateDialogOpen(true)}>
                 <Plus />
                 Create {resource?.label ?? 'Record'}
@@ -725,7 +758,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
         />
       </div>
     ),
-    [resource?.plural, resource?.label, createHotkey, setIsCreateDialogOpen, canCreate]
+    [resource?.plural, resource?.label, createHotkey, setIsCreateDialogOpen, canEdit]
   )
 
   // Memoized element — passing a fresh `<EmptyStateComponent />` inline made the
@@ -782,7 +815,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       dockedPanels={dockedPanels}
       onRowSelectionChange={handleRowSelectionChange}
       onAddNew={
-        canCreate
+        canEdit
           ? (presetValues) => {
               setCreatePresetValues(presetValues)
               setIsCreateDialogOpen(true)
@@ -791,7 +824,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       }
       entityLabel={resource.label}
       onCardClick={handleOpenDrawer}
-      onAddCard={canCreate ? () => setIsCreateDialogOpen(true) : undefined}
+      onAddCard={canEdit ? () => setIsCreateDialogOpen(true) : undefined}
       selectedKanbanCardIds={selectedKanbanCardIds}
       onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}
       importHref={`${resolvedBasePath}/import`}
@@ -821,13 +854,15 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           kind='table'
           label={resource.plural}
           entityDefinitionId={entityDefinitionId}>
-          <CommandAction
-            label={`Create ${resource.label}`}
-            icon={resource.icon ?? 'plus'}
-            keywords='create new add record'
-            priority={10}
-            perform={() => useCommandPaletteStore.getState().openCreate(entityDefinitionId)}
-          />
+          {canEdit && (
+            <CommandAction
+              label={`Create ${resource.label}`}
+              icon={resource.icon ?? 'plus'}
+              keywords='create new add record'
+              priority={10}
+              perform={() => useCommandPaletteStore.getState().openCreate(entityDefinitionId)}
+            />
+          )}
           <CommandAction
             label='Create field'
             icon='columns'
@@ -855,7 +890,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
                 priority={9}
                 perform={() => setIsWorkflowDialogOpen(true)}
               />
-              {selectionCount >= 2 && (
+              {canEdit && selectionCount >= 2 && (
                 <CommandAction
                   label='Merge'
                   subtitle={`${selectionCount} selected`}
@@ -865,30 +900,34 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
                   perform={() => setIsMergeDialogOpen(true)}
                 />
               )}
-              <CommandAction
-                label='Edit'
-                subtitle={`${selectionCount} selected`}
-                icon='edit'
-                keywords='edit bulk update fields'
-                priority={7}
-                perform={() => setIsBulkUpdateDialogOpen(true)}
-              />
-              <CommandAction
-                label='Archive'
-                subtitle={`${selectionCount} selected`}
-                icon='archive'
-                keywords='archive bulk'
-                priority={6}
-                perform={() => handleBulkArchive(selectedRows())}
-              />
-              <CommandAction
-                label='Delete'
-                subtitle={`${selectionCount} selected`}
-                icon='trash'
-                keywords='delete remove bulk'
-                priority={5}
-                perform={() => handleBulkDelete(selectedRows())}
-              />
+              {canEdit && (
+                <>
+                  <CommandAction
+                    label='Edit'
+                    subtitle={`${selectionCount} selected`}
+                    icon='edit'
+                    keywords='edit bulk update fields'
+                    priority={7}
+                    perform={() => setIsBulkUpdateDialogOpen(true)}
+                  />
+                  <CommandAction
+                    label='Archive'
+                    subtitle={`${selectionCount} selected`}
+                    icon='archive'
+                    keywords='archive bulk'
+                    priority={6}
+                    perform={() => handleBulkArchive(selectedRows())}
+                  />
+                  <CommandAction
+                    label='Delete'
+                    subtitle={`${selectionCount} selected`}
+                    icon='trash'
+                    keywords='delete remove bulk'
+                    priority={5}
+                    perform={() => handleBulkDelete(selectedRows())}
+                  />
+                </>
+              )}
             </>
           )}
         </CommandContext>
@@ -896,7 +935,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
 
       <MainPageAction>
         {pageActions}
-        {canCreate && (
+        {canEdit && (
           <Button size='sm' className='h-7 rounded-lg' onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className='size-4' />
             Create {resource.label}
