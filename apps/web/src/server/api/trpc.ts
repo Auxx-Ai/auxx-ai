@@ -231,22 +231,28 @@ export const isAuxxError = (error: unknown): error is AuxxError =>
     AUXX_ERROR_NAMES.has(error.name))
 
 /**
- * Middleware that catches AuxxError instances thrown by service-layer code
- * and re-throws them as proper TRPCErrors with the correct error code.
+ * Middleware that surfaces AuxxError instances thrown by resolver/service code
+ * as proper TRPCErrors with the correct HTTP-derived code + message.
+ *
+ * IMPORTANT — tRPC v11 semantics: middleware `next()` RESOLVES with
+ * `{ ok: false, error }` for a downstream throw; it does NOT reject. So a
+ * `try/catch` around `next()` never fires for a resolver-thrown error (this used
+ * to be a `try/catch` and silently did nothing — every AuxxError got masked as a
+ * generic 500 by `errorFormatter`). tRPC has already wrapped the throw as
+ * `INTERNAL_SERVER_ERROR` with the original preserved on `.cause`; we detect that
+ * and re-throw with the real code + message so the client sees it.
  */
 const auxxErrorMiddleware = t.middleware(async ({ next }) => {
-  try {
-    return await next()
-  } catch (error) {
-    if (isAuxxError(error)) {
-      throw new TRPCError({
-        code: HTTP_TO_TRPC[error.statusCode] ?? 'INTERNAL_SERVER_ERROR',
-        message: error.message,
-        cause: error,
-      })
-    }
-    throw error
+  const result = await next()
+  if (!result.ok && isAuxxError(result.error.cause)) {
+    const cause = result.error.cause
+    throw new TRPCError({
+      code: HTTP_TO_TRPC[cause.statusCode] ?? 'INTERNAL_SERVER_ERROR',
+      message: cause.message,
+      cause,
+    })
   }
+  return result
 })
 
 /**
