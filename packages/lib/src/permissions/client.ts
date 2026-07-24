@@ -9,6 +9,7 @@
 //    the client capabilities provider to mirror server enforcement).
 export {
   type ClientCapabilities,
+  canAdministerRecord,
   canEditRecord,
   canViewRecord,
   effectiveRecordLevel,

@@ -28,6 +28,7 @@ import { CustomFieldRow } from '~/components/custom-fields/ui/field-list'
 import { EmptyState } from '~/components/global/empty-state'
 import { useResourceFields } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 
 /** Props for CustomFieldsList component */
 interface CustomFieldsListProps {
@@ -45,6 +46,11 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
 
   // Confirm dialog for delete
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
+
+  // Managing a def's fields is def administration (the `Full`/`admin` rung).
+  // Non-admins see a read-only list. Server enforces regardless (degrade-only).
+  const { canAdministerDef } = useAccess()
+  const canManage = canAdministerDef(resource.entityDefinitionId)
 
   // Get mutations (create handled in CustomFieldDialog, reorderField for reorder, destroy for delete)
   const { destroy, reorderField, isPending } = useCustomFieldMutations({
@@ -129,15 +135,17 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
           title='No custom fields added'
           description={<div className='max-w-sm'>Create your first custom field.</div>}
           button={
-            <Button
-              size='sm'
-              variant='outline'
-              onClick={handleAddNew}
-              loading={isPending}
-              loadingText='Saving...'>
-              <Plus />
-              Create Field
-            </Button>
+            canManage ? (
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={handleAddNew}
+                loading={isPending}
+                loadingText='Saving...'>
+                <Plus />
+                Create Field
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -155,15 +163,17 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
                 <TableHead>Description</TableHead>
                 <TableHead className='w-[90px]'></TableHead>
                 <TableHead className='text-right w-[30px] relative'>
-                  <Button
-                    onClick={handleAddNew}
-                    disabled={isPending}
-                    variant='outline'
-                    size='sm'
-                    className='absolute right-0 top-1/2 -translate-y-1/2 right-2'>
-                    <Plus />
-                    <span className='text-foreground'>Add</span>
-                  </Button>
+                  {canManage && (
+                    <Button
+                      onClick={handleAddNew}
+                      disabled={isPending}
+                      variant='outline'
+                      size='sm'
+                      className='absolute right-0 top-1/2 -translate-y-1/2 right-2'>
+                      <Plus />
+                      <span className='text-foreground'>Add</span>
+                    </Button>
+                  )}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -178,6 +188,7 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
                     onDelete={handleDelete}
                     onEdit={handleEdit}
                     isPending={isPending}
+                    canManage={canManage}
                   />
                 ))}
               </SortableContext>

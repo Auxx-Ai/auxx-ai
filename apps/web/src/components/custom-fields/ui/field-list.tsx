@@ -26,6 +26,12 @@ interface CustomFieldRowProps {
   onDelete: (id: string, fieldName?: string) => Promise<void>
   onEdit: (field: ResourceField) => void
   isPending: boolean
+  /**
+   * Whether the viewer may administer this def's fields (edit/delete). Managing
+   * fields is def administration (the `Full`/`admin` rung); non-admins see a
+   * read-only row (copy actions only). Server enforces regardless. Default true.
+   */
+  canManage?: boolean
 }
 
 /**
@@ -37,6 +43,7 @@ export function CustomFieldRow({
   onDelete,
   onEdit,
   isPending = false,
+  canManage = true,
 }: CustomFieldRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
@@ -118,7 +125,7 @@ export function CustomFieldRow({
                 <Copy />
                 Copy Name
               </DropdownMenuItem>
-              {field.capabilities.configurable && (
+              {field.capabilities.configurable && canManage && (
                 <>
                   <DropdownMenuItem onClick={() => onEdit(field)} disabled={isPending}>
                     <FilePen />
