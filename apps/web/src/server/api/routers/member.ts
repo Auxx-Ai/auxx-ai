@@ -4,15 +4,26 @@ import { schema } from '@auxx/database'
 import { MemberType, OrganizationRole, SeatType } from '@auxx/database/enums'
 import { getCachedMembers, onCacheEvent } from '@auxx/lib/cache'
 import { DehydrationCacheService, DehydrationService } from '@auxx/lib/dehydration'
-import { findMemberByUser, MemberService } from '@auxx/lib/members'
-import { createScopedLogger } from '@auxx/logger'
+import {
+  acceptInvitation,
+  acceptInvitationById,
+  cancelInvitation,
+  findMemberByUser,
+  getActiveMemberCount,
+  getInvitationLink,
+  getMyPendingInvitations,
+  getPendingInvitations,
+  inviteMember,
+  removeMember,
+  resendInvitation,
+  updateMemberRole,
+  updateMemberSeatType,
+} from '@auxx/lib/members'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
-
-const logger = createScopedLogger('api-member')
 
 /**
  * Member router handles organization member and invitation operations
@@ -104,20 +115,17 @@ export const memberRouter = createTRPCRouter({
 
   /** Get active member count */
   activeCount: protectedProcedure.query(async ({ ctx }) => {
-    const memberService = new MemberService(ctx.db)
-    return memberService.getActiveMemberCount(ctx.session.organizationId)
+    return getActiveMemberCount(ctx.session.organizationId, ctx.db)
   }),
 
   /** Get pending invitations for current organization */
   invitations: protectedProcedure.query(async ({ ctx }) => {
-    const memberService = new MemberService(ctx.db)
-    return memberService.getPendingInvitations(ctx.session.organizationId)
+    return getPendingInvitations(ctx.session.organizationId, ctx.db)
   }),
 
   /** Get current user's pending invitations across all orgs */
   myPendingInvitations: protectedProcedure.query(async ({ ctx }) => {
-    const memberService = new MemberService(ctx.db)
-    return memberService.getMyPendingInvitations(ctx.session.user.email)
+    return getMyPendingInvitations(ctx.session.user.email, ctx.db)
   }),
 
   /** Get current user's membership */
@@ -141,12 +149,14 @@ export const memberRouter = createTRPCRouter({
     .input(z.object({ memberId: z.string() }))
     .use(notDemo('remove team members'))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      const result = await memberService.removeMember({
-        organizationId: ctx.session.organizationId,
-        removerUserId: ctx.session.user.id,
-        memberToRemoveId: input.memberId,
-      })
+      const result = await removeMember(
+        {
+          organizationId: ctx.session.organizationId,
+          removerUserId: ctx.session.user.id,
+          memberToRemoveId: input.memberId,
+        },
+        ctx.db
+      )
 
       await onCacheEvent('member.removed', {
         orgId: ctx.session.organizationId,
@@ -173,13 +183,15 @@ export const memberRouter = createTRPCRouter({
     )
     .use(notDemo('change member roles'))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      const result = await memberService.updateMemberRole({
-        organizationId: ctx.session.organizationId,
-        updaterUserId: ctx.session.user.id,
-        memberToUpdateId: input.memberId,
-        newRole: input.role,
-      })
+      const result = await updateMemberRole(
+        {
+          organizationId: ctx.session.organizationId,
+          updaterUserId: ctx.session.user.id,
+          memberToUpdateId: input.memberId,
+          newRole: input.role,
+        },
+        ctx.db
+      )
 
       await onCacheEvent('member.role.changed', {
         orgId: ctx.session.organizationId,
@@ -211,15 +223,17 @@ export const memberRouter = createTRPCRouter({
     )
     .use(notDemo('change member seat types'))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      // The service enforces the OWNER/ADMIN + worker⇒USER invariant and emits
-      // `member.seat-type.changed` + dehydration invalidation on success.
-      const result = await memberService.updateMemberSeatType({
-        organizationId: ctx.session.organizationId,
-        updaterUserId: ctx.session.user.id,
-        memberToUpdateId: input.memberId,
-        seatType: input.seatType,
-      })
+      // The service enforces the members.manage gate + worker⇒USER invariant and
+      // emits `member.seat-type.changed` + dehydration invalidation on success.
+      const result = await updateMemberSeatType(
+        {
+          organizationId: ctx.session.organizationId,
+          updaterUserId: ctx.session.user.id,
+          memberToUpdateId: input.memberId,
+          seatType: input.seatType,
+        },
+        ctx.db
+      )
 
       await recordAuditFromCtx(ctx, {
         category: 'members',
@@ -247,15 +261,14 @@ export const memberRouter = createTRPCRouter({
     )
     .use(notDemo('invite team members'))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
       const [org] = await ctx.db
         .select({ name: schema.Organization.name })
         .from(schema.Organization)
         .where(eq(schema.Organization.id, ctx.session.organizationId))
         .limit(1)
 
-      try {
-        return await memberService.inviteMember({
+      return inviteMember(
+        {
           organizationId: ctx.session.organizationId,
           inviterUserId: ctx.session.user.id,
           inviterName: ctx.session.user.name,
@@ -263,15 +276,9 @@ export const memberRouter = createTRPCRouter({
           email: input.email,
           role: input.role,
           seatType: input.seatType,
-        })
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-        logger.error('Unexpected error during invite:', { error, email: input.email })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to process invitation.',
-        })
-      }
+        },
+        ctx.db
+      )
     }),
 
   /** Invite multiple users */
@@ -288,7 +295,6 @@ export const memberRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
       const [org] = await ctx.db
         .select({ name: schema.Organization.name })
         .from(schema.Organization)
@@ -298,15 +304,18 @@ export const memberRouter = createTRPCRouter({
       const results = []
       for (const invite of input.invites) {
         try {
-          const result = await memberService.inviteMember({
-            organizationId: ctx.session.organizationId,
-            inviterUserId: ctx.session.user.id,
-            inviterName: ctx.session.user.name,
-            organizationName: org?.name,
-            email: invite.email,
-            role: invite.role,
-            seatType: invite.seatType,
-          })
+          const result = await inviteMember(
+            {
+              organizationId: ctx.session.organizationId,
+              inviterUserId: ctx.session.user.id,
+              inviterName: ctx.session.user.name,
+              organizationName: org?.name,
+              email: invite.email,
+              role: invite.role,
+              seatType: invite.seatType,
+            },
+            ctx.db
+          )
           results.push({ email: invite.email, success: true, message: result.message })
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to send invitation'
@@ -320,162 +329,110 @@ export const memberRouter = createTRPCRouter({
   acceptInvitation: protectedProcedure
     .input(z.object({ token: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      try {
-        const result = await memberService.acceptInvitation({
+      const result = await acceptInvitation(
+        {
           token: input.token,
           acceptingUserId: ctx.session.user.id,
           acceptingUserEmail: ctx.session.user.email,
-        })
+        },
+        ctx.db
+      )
 
-        const dehydrationService = new DehydrationService(ctx.db)
-        await dehydrationService.refreshUser(ctx.session.user.id)
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshUser(ctx.session.user.id)
 
-        await recordAuditFromCtx(ctx, {
-          organizationId: result.organizationId,
-          category: 'members',
-          action: 'invitation.accepted',
-          targetType: 'Organization',
-          targetId: result.organizationId,
-        })
+      await recordAuditFromCtx(ctx, {
+        organizationId: result.organizationId,
+        category: 'members',
+        action: 'invitation.accepted',
+        targetType: 'Organization',
+        targetId: result.organizationId,
+      })
 
-        return result
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-        logger.error('Unexpected error during acceptInvitation:', {
-          error,
-          token: input.token,
-          userId: ctx.session.user.id,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to accept invitation.',
-        })
-      }
+      return result
     }),
 
   /** Accept invitation by ID */
   acceptInvitationById: protectedProcedure
     .input(z.object({ invitationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      try {
-        const result = await memberService.acceptInvitationByIdentity({
+      const result = await acceptInvitationById(
+        {
           invitationId: input.invitationId,
           acceptingUserId: ctx.session.user.id,
           acceptingUserEmail: ctx.session.user.email,
-        })
+        },
+        ctx.db
+      )
 
-        const dehydrationService = new DehydrationService(ctx.db)
-        await dehydrationService.refreshUser(ctx.session.user.id)
+      const dehydrationService = new DehydrationService(ctx.db)
+      await dehydrationService.refreshUser(ctx.session.user.id)
 
-        await recordAuditFromCtx(ctx, {
-          organizationId: result.organizationId,
-          category: 'members',
-          action: 'invitation.accepted',
-          targetType: 'Invitation',
-          targetId: input.invitationId,
-        })
+      await recordAuditFromCtx(ctx, {
+        organizationId: result.organizationId,
+        category: 'members',
+        action: 'invitation.accepted',
+        targetType: 'Invitation',
+        targetId: input.invitationId,
+      })
 
-        return result
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-        logger.error('Unexpected error during acceptInvitationById:', {
-          error,
-          invitationId: input.invitationId,
-          userId: ctx.session.user.id,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to accept invitation.',
-        })
-      }
+      return result
     }),
 
   /** Cancel a pending invitation */
   cancelInvitation: protectedProcedure
     .input(z.object({ invitationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      try {
-        const result = await memberService.cancelInvitation({
+      const result = await cancelInvitation(
+        {
           invitationId: input.invitationId,
           cancellerUserId: ctx.session.user.id,
           organizationId: ctx.session.organizationId,
-        })
-        await recordAuditFromCtx(ctx, {
-          category: 'members',
-          action: 'invitation.canceled',
-          targetType: 'Invitation',
-          targetId: input.invitationId,
-        })
-        return result
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-        logger.error('Unexpected error during cancelInvitation:', {
-          error,
-          invitationId: input.invitationId,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to cancel invitation.',
-        })
-      }
+        },
+        ctx.db
+      )
+      await recordAuditFromCtx(ctx, {
+        category: 'members',
+        action: 'invitation.canceled',
+        targetType: 'Invitation',
+        targetId: input.invitationId,
+      })
+      return result
     }),
 
   /** Resend a pending invitation */
   resendInvitation: protectedProcedure
     .input(z.object({ invitationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      try {
-        const result = await memberService.resendInvitation({
+      const result = await resendInvitation(
+        {
           invitationId: input.invitationId,
           resenderUserId: ctx.session.user.id,
           organizationId: ctx.session.organizationId,
-        })
-        await recordAuditFromCtx(ctx, {
-          category: 'members',
-          action: 'invitation.resent',
-          targetType: 'Invitation',
-          targetId: input.invitationId,
-        })
-        return result
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-        logger.error('Unexpected error during resendInvitation:', {
-          error,
-          invitationId: input.invitationId,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to resend invitation.',
-        })
-      }
+        },
+        ctx.db
+      )
+      await recordAuditFromCtx(ctx, {
+        category: 'members',
+        action: 'invitation.resent',
+        targetType: 'Invitation',
+        targetId: input.invitationId,
+      })
+      return result
     }),
 
   /** Get invitation link for sharing */
   getInvitationLink: protectedProcedure
     .input(z.object({ invitationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const memberService = new MemberService(ctx.db)
-      try {
-        const link = await memberService.getInvitationLink({
+      const link = await getInvitationLink(
+        {
           invitationId: input.invitationId,
           requestingUserId: ctx.session.user.id,
           organizationId: ctx.session.organizationId,
-        })
-        return { link }
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-        logger.error('Unexpected error during getInvitationLink:', {
-          error,
-          invitationId: input.invitationId,
-        })
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to retrieve invitation link.',
-        })
-      }
+        },
+        ctx.db
+      )
+      return { link }
     }),
 })

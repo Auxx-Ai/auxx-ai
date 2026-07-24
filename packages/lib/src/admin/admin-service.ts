@@ -459,17 +459,16 @@ export class AdminService {
   }
 
   /**
-   * Get organization members - delegates to MemberService
+   * Get organization members - delegates to the members module
    * @param organizationId - Organization ID
    * @returns List of organization members with user details
    */
   async getOrganizationMembers(organizationId: string) {
     logger.debug(`Fetching members for organization ${organizationId}`)
 
-    const { MemberService } = await import('../members')
-    const memberService = new MemberService(this.db)
+    const { getOrganizationMembers } = await import('../members')
 
-    const members = await memberService.getOrganizationMembers(organizationId)
+    const members = await getOrganizationMembers(organizationId, this.db)
 
     logger.debug(`Found ${members.length} members for organization ${organizationId}`)
     return members

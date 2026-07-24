@@ -149,9 +149,7 @@ vi.mock('@auxx/database/types', () => ({}))
 
 // Mock @auxx/lib/members
 vi.mock('@auxx/lib/members', () => ({
-  MemberService: {
-    isMember: vi.fn().mockResolvedValue(true),
-  },
+  isMember: vi.fn().mockResolvedValue(true),
 }))
 
 // Mock drizzle-orm operators used in entity processors
