@@ -88,8 +88,6 @@ import { tableViewRouter } from './routers/tableView'
 import { tagRouter } from './routers/tag'
 import { taskRouter } from './routers/task'
 import { threadRouter } from './routers/thread'
-import { ticketRouter } from './routers/ticket'
-import { ticketAgentRouter } from './routers/ticketAgent'
 import { ticketSequenceRouter } from './routers/ticketSequence'
 import { timelineRouter } from './routers/timeline'
 import { usageRouter } from './routers/usage'
@@ -186,8 +184,6 @@ export const appRouter = createTRPCRouter({
   tag: tagRouter,
   task: taskRouter,
   thread: threadRouter,
-  ticket: ticketRouter,
-  ticketAgent: ticketAgentRouter,
   ticketSequence: ticketSequenceRouter,
   timeline: timelineRouter,
   usage: usageRouter,

@@ -137,8 +137,9 @@ export function ThreadProvider({
   // Initialize new unified mutation hook
   const { update, remove } = useThreadMutation()
 
-  // Ticket creation mutation (used by createAndLinkTicket handler)
-  const createTicketMutation = api.ticket.create.useMutation()
+  // Ticket creation mutation (used by createAndLinkTicket handler). Tickets are
+  // entity records, so this goes through the generic record.create path.
+  const createTicketMutation = api.record.create.useMutation()
 
   // Force-create a contact for a participant when none is linked (used in createAndLinkTicket)
   const ensureContactMutation = api.participant.ensureContact.useMutation()
@@ -246,14 +247,18 @@ export function ThreadProvider({
           const title = subject.length >= 3 ? subject : subject.padEnd(3, ' ')
 
           const created = await createTicketMutation.mutateAsync({
-            title,
-            contactId: contactInstanceId,
-            type: 'GENERAL',
-            status: 'OPEN',
-            ...(assignedToId ? { assignedToId } : {}),
+            entityDefinitionId: 'ticket',
+            values: {
+              ticket_title: title,
+              ticket_type: 'GENERAL',
+              ticket_status: 'OPEN',
+              // ticket_priority omitted — the server fills the MEDIUM default.
+              ticket_contact: toRecordId('contact', contactInstanceId),
+              ...(assignedToId ? { assigned_to_id: assignedToId } : {}),
+            },
           })
 
-          const ticketInstanceId = created.id as string
+          const ticketInstanceId = created.instance.id as string
           update(threadId, { ticketId: toRecordId('ticket', ticketInstanceId) })
           toastSuccess({ title: 'Ticket created and linked' })
           return ticketInstanceId

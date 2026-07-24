@@ -6,21 +6,27 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Loader2, Plus, TicketIcon } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
+import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
-import CreateTicketDialog from '~/components/tickets/create-ticket-dialog'
 import TicketRow from '~/components/tickets/ticket-row'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
+/** Contact relationship field on the ticket def — also the filter key below. */
+const TICKET_CONTACT_FIELD = 'ticket:contact'
+
 /**
  * Tickets tab for contact drawer
- * Uses useRecordList with a relationship filter to fetch tickets for this contact
+ * Uses useRecordList with a relationship filter to fetch tickets for this contact.
+ * Creating a ticket opens the generic {@link RecordEditorDialog} (matching the
+ * records view) with the contact relationship pre-filled.
  */
 export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
   const contactId = entityInstanceId
   const entityDefinitionId = useResourceProperty('ticket', 'id')
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -30,7 +36,7 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
         conditions: [
           {
             id: 'contact-match',
-            fieldId: 'ticket:contact' as ResourceFieldId,
+            fieldId: TICKET_CONTACT_FIELD as ResourceFieldId,
             operator: 'is' as const,
             value: contactId,
           },
@@ -55,6 +61,21 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
     }
   }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage])
 
+  // Generic create dialog, pre-linked to this contact. Shared across the empty
+  // and populated states below.
+  const createDialog = (
+    <RecordEditorDialog
+      open={isCreateOpen}
+      onOpenChange={setIsCreateOpen}
+      entityDefinitionId='ticket'
+      presetValues={{ [TICKET_CONTACT_FIELD]: [toRecordId('contact', contactId)] }}
+      onSaved={() => {
+        setIsCreateOpen(false)
+        refresh()
+      }}
+    />
+  )
+
   if (isLoading) {
     return (
       <div className='flex flex-1 items-center justify-center w-full'>
@@ -77,14 +98,13 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
           title='Create a ticket'
           description='Create a ticket for this contact'
           button={
-            <CreateTicketDialog contactId={contactId} onSuccess={refresh}>
-              <Button variant='outline' size='sm'>
-                <Plus />
-                Create Ticket
-              </Button>
-            </CreateTicketDialog>
+            <Button variant='outline' size='sm' onClick={() => setIsCreateOpen(true)}>
+              <Plus />
+              Create Ticket
+            </Button>
           }
         />
+        {createDialog}
       </div>
     )
   }
@@ -97,12 +117,10 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
         collapsible={false}
         icon={<TicketIcon className='size-4 text-muted-foreground/50' />}
         actions={
-          <CreateTicketDialog contactId={contactId} onSuccess={refresh}>
-            <Button variant='ghost' size='sm'>
-              <Plus />
-              Create Ticket
-            </Button>
-          </CreateTicketDialog>
+          <Button variant='ghost' size='sm' onClick={() => setIsCreateOpen(true)}>
+            <Plus />
+            Create Ticket
+          </Button>
         }>
         <div className='space-y-4 sm:p-4'>
           {records.map((record) => (
@@ -124,6 +142,7 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
           <div ref={ref} className='h-1' />
         </div>
       </Section>
+      {createDialog}
     </ScrollArea>
   )
 }

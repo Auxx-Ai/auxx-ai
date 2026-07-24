@@ -7,16 +7,17 @@ import { api, getQueryClient } from '~/trpc/react'
 /**
  * Internal type for cache invalidation (derived from entityDefinitionId via getModelType)
  */
-type InvalidationType = 'thread' | 'contact' | 'ticket' | 'message' | 'entity'
+type InvalidationType = 'thread' | 'contact' | 'message' | 'entity'
 
 /**
  * Derives the invalidation type from entityDefinitionId.
- * System types (thread, message, contact, ticket) are returned as-is.
- * Custom entities return 'entity'.
+ * System types (thread, message, contact) are returned as-is.
+ * Everything else — including tickets, which are entity records — returns
+ * 'entity' and invalidates via the generic `record` router.
  */
 function getInvalidationType(entityDefinitionId: string): InvalidationType {
   const modelType = getModelType(entityDefinitionId)
-  if (['thread', 'message', 'contact', 'ticket'].includes(modelType)) {
+  if (['thread', 'message', 'contact'].includes(modelType)) {
     return modelType as InvalidationType
   }
   return 'entity'
@@ -44,23 +45,6 @@ export function invalidateResource(recordId: RecordId) {
       // Invalidate specific contact
       queryClient.invalidateQueries({
         queryKey: getQueryKey(api.contact.getById, { id: entityInstanceId }, 'query'),
-      })
-      break
-
-    case 'ticket':
-      // Invalidate specific ticket
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.ticket.byId, { id: entityInstanceId }, 'query'),
-      })
-      // Invalidate ticket lists
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.ticket.list),
-        exact: false,
-      })
-      // Invalidate record.search for picker dialogs
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.record.search),
-        exact: false,
       })
       break
 
@@ -126,23 +110,6 @@ export function invalidateBatchResources(recordIds: RecordId[]) {
         queryClient.invalidateQueries({
           queryKey: getQueryKey(api.contact.getById, { id: entityInstanceId }, 'query'),
         })
-      })
-      break
-
-    case 'ticket':
-      entityInstanceIds.forEach((entityInstanceId) => {
-        queryClient.invalidateQueries({
-          queryKey: getQueryKey(api.ticket.byId, { id: entityInstanceId }, 'query'),
-        })
-      })
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.ticket.list),
-        exact: false,
-      })
-      // Invalidate record.search for picker dialogs
-      queryClient.invalidateQueries({
-        queryKey: getQueryKey(api.record.search),
-        exact: false,
       })
       break
 
