@@ -13,6 +13,7 @@ export default defineConfig({
       './packages/workflow-nodes/vitest.config.ts',
       './packages/database/vitest.config.ts',
       './packages/credentials/vitest.config.ts',
+      './packages/redis/vitest.config.ts',
       './packages/utils/vitest.config.ts',
       './packages/test-utils/vitest.config.ts',
       './packages/ui/vitest.config.ts',
