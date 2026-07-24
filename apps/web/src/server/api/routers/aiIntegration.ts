@@ -22,11 +22,17 @@ import {
 } from '@auxx/lib/ai'
 import { ModelType, ProviderType } from '@auxx/lib/ai/providers/types'
 import { onCacheEvent } from '@auxx/lib/cache'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import {
+  createTRPCRouter,
+  notDemo,
+  permissionProcedure,
+  protectedProcedure,
+} from '~/server/api/trpc'
 
 export const aiIntegrationRouter = createTRPCRouter({
   /**
@@ -62,7 +68,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Toggle model enabled state for organization
    */
-  toggleModel: adminProcedure
+  toggleModel: permissionProcedure(PermissionKey.aiConfigManage)
     .input(z.object({ provider: z.string(), model: z.string(), enabled: z.boolean() }))
     .use(notDemo('configure AI models'))
     .mutation(async ({ input, ctx }) => {
@@ -94,7 +100,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Update model parameter configuration
    */
-  updateModelConfig: adminProcedure
+  updateModelConfig: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({ provider: z.string(), model: z.string(), config: z.record(z.string(), z.any()) })
     )
@@ -150,7 +156,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Save provider configuration with dynamic credentials
    */
-  saveProviderConfiguration: adminProcedure
+  saveProviderConfiguration: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({
         provider: z.string(),
@@ -223,7 +229,7 @@ export const aiIntegrationRouter = createTRPCRouter({
    * Remove custom provider credentials (preserves system quota)
    * Clears credentials and switches to SYSTEM mode
    */
-  deleteProviderConfiguration: adminProcedure
+  deleteProviderConfiguration: permissionProcedure(PermissionKey.aiConfigManage)
     .input(z.object({ provider: z.string() }))
     .use(notDemo('delete AI providers'))
     .mutation(async ({ input, ctx }) => {
@@ -257,7 +263,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Test provider credentials (replaces aiModel.retest)
    */
-  testProviderCredentials: adminProcedure
+  testProviderCredentials: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({ provider: z.string(), credentials: z.record(z.string(), z.any()).optional() })
     )
@@ -294,7 +300,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Set provider as default (replaces aiModel.makeDefault)
    */
-  setDefaultProvider: adminProcedure
+  setDefaultProvider: permissionProcedure(PermissionKey.aiConfigManage)
     .input(z.object({ provider: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
@@ -331,7 +337,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Make one of a provider's BYO keys the org-level default (used when a model has no pool).
    */
-  setDefaultProviderKey: adminProcedure
+  setDefaultProviderKey: permissionProcedure(PermissionKey.aiConfigManage)
     .input(z.object({ provider: z.string(), credentialId: z.string() }))
     .use(notDemo('set default AI key'))
     .mutation(async ({ input, ctx }) => {
@@ -407,7 +413,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Save custom model configuration (handles both create and update)
    */
-  saveCustomModel: adminProcedure
+  saveCustomModel: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({
         provider: z.string(),
@@ -500,7 +506,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Delete custom model configuration
    */
-  deleteCustomModel: adminProcedure
+  deleteCustomModel: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({
         provider: z.string(),
@@ -560,7 +566,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Set a system default model for a specific model type
    */
-  setSystemModelDefault: adminProcedure
+  setSystemModelDefault: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({
         modelType: z.enum(ModelType),
@@ -585,7 +591,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Remove a system default model for a specific model type
    */
-  removeSystemModelDefault: adminProcedure
+  removeSystemModelDefault: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({
         modelType: z.enum(ModelType),
@@ -645,7 +651,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   /**
    * Switch provider type preference (system vs custom)
    */
-  switchProviderType: adminProcedure
+  switchProviderType: permissionProcedure(PermissionKey.aiConfigManage)
     .input(
       z.object({
         provider: z.string(),

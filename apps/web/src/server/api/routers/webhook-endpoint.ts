@@ -4,6 +4,7 @@
 // table; `create`/`rotateSecret` return the minted secret in plaintext ONCE, every read masks it.
 // All logic lives in the `@auxx/lib/webhooks/webhook-endpoint` service (Drizzle, thrown AuxxErrors).
 
+import { PermissionKey } from '@auxx/lib/permissions'
 import {
   getWebhookEndpointTemplate,
   listWebhookEndpointTemplates,
@@ -17,7 +18,7 @@ import {
   updateWebhookEndpoint,
 } from '@auxx/lib/webhooks/webhook-endpoint'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 const verificationSchema = z.enum(['none', 'token', 'hmac', 'stripe'])
 const signatureEncodingSchema = z.enum(['hex', 'base64'])
@@ -50,7 +51,7 @@ export const webhookEndpointRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .query(({ ctx, input }) => getWebhookEndpoint(ctx.db, ctx.session.organizationId, input.id)),
 
-  create: adminProcedure
+  create: permissionProcedure(PermissionKey.integrationsManage)
     .input(
       z.object({
         name: z.string().min(1, 'Name is required'),
@@ -72,7 +73,7 @@ export const webhookEndpointRouter = createTRPCRouter({
       })
     ),
 
-  update: adminProcedure
+  update: permissionProcedure(PermissionKey.integrationsManage)
     .input(
       z.object({
         id: z.string().min(1),
@@ -90,14 +91,14 @@ export const webhookEndpointRouter = createTRPCRouter({
       return updateWebhookEndpoint(ctx.db, ctx.session.organizationId, id, patch)
     }),
 
-  rotateSecret: adminProcedure
+  rotateSecret: permissionProcedure(PermissionKey.integrationsManage)
     // `secret` is the replacement `whsec_…` for stripe endpoints; token/hmac mint a fresh one.
     .input(z.object({ id: z.string().min(1), secret: z.string().optional() }))
     .mutation(({ ctx, input }) =>
       rotateWebhookEndpointSecret(ctx.db, ctx.session.organizationId, input.id, input.secret)
     ),
 
-  delete: adminProcedure
+  delete: permissionProcedure(PermissionKey.integrationsManage)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(({ ctx, input }) =>
       deleteWebhookEndpoint(ctx.db, ctx.session.organizationId, input.id)

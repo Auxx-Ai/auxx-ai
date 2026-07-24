@@ -193,7 +193,6 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     label: 'Manage AI Config',
     description: 'Configure AI models and Kopilot organization defaults.',
     group: 'AI',
-    featureKey: FeatureKey.kopilot,
   },
 
   // ── Automation (rules) ──
@@ -416,7 +415,6 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'Configure AI models and Kopilot organization defaults.',
     group: 'AI',
     rungs: [{ level: Level.Full, keys: [PermissionKey.aiConfigManage] }],
-    featureKey: FeatureKey.kopilot,
   },
   [Area.automationRules]: {
     area: Area.automationRules,
