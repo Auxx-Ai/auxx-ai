@@ -8,6 +8,7 @@ import { History, Lock, Pencil, Plus, Trash, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useRecordRules } from '../hooks/use-record-rules'
 import { type EditableRecordRule, RecordRuleDialog } from './record-rule-dialog'
@@ -51,17 +52,23 @@ function describeRule(rule: RuleRow, defLabel: string | undefined): string {
  */
 export function RecordRulesSection() {
   const { list, setEnabled, destroy } = useRecordRules()
+  const { canViewEntity } = useAccess()
   const { data: resources } = api.resource.list.useQuery(undefined, { staleTime: 60_000 })
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<RuleRow | null>(null)
   const [runsFor, setRunsFor] = useState<RuleRow | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
 
+  // `api.resource.list` bypasses the store; only surface labels for defs the
+  // member can view (per-def read gate). A rule on a non-viewable def falls back
+  // to the generic 'Record' subtitle rather than leaking the def name.
   const defLabels = useMemo(() => {
     const map = new Map<string, string>()
-    for (const r of resources ?? []) map.set(r.entityDefinitionId, r.label)
+    for (const r of resources ?? []) {
+      if (canViewEntity(r.entityDefinitionId)) map.set(r.entityDefinitionId, r.label)
+    }
     return map
-  }, [resources])
+  }, [resources, canViewEntity])
 
   const rules = (list.data ?? []) as RuleRow[]
 

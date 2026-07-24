@@ -139,6 +139,7 @@ function ResourceFieldPickerInner({
       includeSystem={includeSystem}
       includeCustom={includeCustom}
       entityDefinedOnly={entityDefinedOnly}
+      viewableOnly
     />
   )
 }

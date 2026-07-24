@@ -22,6 +22,7 @@ export {
   useResourceFields,
   useResourceProperty,
   useResources,
+  useViewableResources,
 } from './hooks'
 // Provider
 export { clearResourceCaches, ResourceProvider } from './providers/resource-provider'

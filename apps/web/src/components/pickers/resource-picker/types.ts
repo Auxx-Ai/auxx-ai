@@ -50,6 +50,15 @@ export interface ResourcePickerContentProps {
    * this when a stored `entityDefinitionId` must FK into `EntityDefinition`.
    */
   entityDefinedOnly?: boolean
+
+  /**
+   * Filter: only defs the current member can view, per the Layer-2 × Layer-3
+   * read gate (default: false). Opt-in so record-view enumerators (record-rule
+   * record-type picker, the field/column/formula pickers) hide restricted defs,
+   * while def-admin builder surfaces (connector/agent/dashboard/workflow) keep
+   * the full catalog. OWNER/ADMIN bypass falls out of the gate.
+   */
+  viewableOnly?: boolean
 }
 
 /**

@@ -217,6 +217,7 @@ export function RecordRuleConfigurePage({
               value={entityDefinitionId ? [entityDefinitionId] : []}
               onChange={() => {}}
               entityDefinedOnly
+              viewableOnly
               emptyLabel='Select record type…'
               triggerProps={{ className: 'w-full ps-0 pe-1' }}
               onSelectSingle={onDefinitionChange}

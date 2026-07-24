@@ -4,7 +4,7 @@
 import { useMemo } from 'react'
 import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
 import { SYSTEM_CREATE_HOTKEYS } from '~/components/global-create/system-hotkeys'
-import { useResources } from '~/components/resources/hooks/use-resources'
+import { useViewableResources } from '~/components/resources/hooks/use-viewable-resources'
 import { useCommandPaletteStore } from '../store'
 import type { PaletteAction } from '../types'
 
@@ -15,7 +15,7 @@ import type { PaletteAction } from '../types'
  * as hints (sourced from {@link SYSTEM_CREATE_HOTKEYS}).
  */
 export function useCreateActions(): PaletteAction[] {
-  const { resources } = useResources()
+  const { resources } = useViewableResources()
 
   return useMemo<PaletteAction[]>(() => {
     return resources

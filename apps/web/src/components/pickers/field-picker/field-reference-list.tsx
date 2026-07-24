@@ -5,7 +5,7 @@
 import { Command, CommandGroup, CommandList, CommandPlaceholder } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useMemo, useState } from 'react'
-import { useResourceFields, useResources } from '~/components/resources'
+import { useResourceFields, useViewableResources } from '~/components/resources'
 import { FieldItem } from './field-item'
 
 export interface FieldReferenceListProps {
@@ -39,7 +39,8 @@ export function FieldReferenceList({
   defaultEntityDefinitionId,
   className,
 }: FieldReferenceListProps) {
-  const { resources, isLoading: resourcesLoading } = useResources()
+  // The entity-def switcher enumerates only viewable defs (per-def read gate).
+  const { resources, isLoading: resourcesLoading } = useViewableResources()
 
   const orderedResources = useMemo(() => {
     const system = resources.filter((r) => !!r.entityType)
