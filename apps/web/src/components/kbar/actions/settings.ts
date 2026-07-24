@@ -3,24 +3,58 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo } from 'react'
-import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
-import { useUser } from '~/hooks/use-user'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { SETTINGS_MENU } from '~/constants/menu'
+import { useSettingsMenu } from '~/hooks/use-settings-menu'
 import { SHORTCUTS } from '../shortcuts'
 import { useCommandPaletteStore } from '../store'
 import type { PaletteAction } from '../types'
 
 /**
- * Settings navigation actions, mirroring `SETTINGS_MENU`. Member-visible items
- * are always present; admin-only items appear for admins/owners; a few ride
- * feature flags. Billing keeps no chord (it lost `s,b` to Inbox settings) but
- * stays reachable via search.
+ * Palette metadata per `SETTINGS_MENU` item id: the stable action id — which keys
+ * both `SHORTCUTS` and the recents store, so it must not change — plus an icon id
+ * from the shared registry.
+ *
+ * Items missing from this map still produce an action (id `settings.<slug>`, no
+ * icon), so a new settings page is reachable from the palette the moment it lands
+ * in the menu.
+ */
+const PALETTE_META: Record<string, { id: string; icon: string }> = {
+  'settings-general': { id: 'settings.general', icon: 'settings' },
+  'settings-account': { id: 'settings.account', icon: 'circle-user' },
+  'settings-organization': { id: 'settings.organization', icon: 'building' },
+  'settings-members': { id: 'settings.members', icon: 'users' },
+  'settings-permissions': { id: 'settings.permissions', icon: 'shield-check' },
+  'admin-plans': { id: 'settings.billing', icon: 'credit-card' },
+  'settings-activity-log': { id: 'settings.activityLog', icon: 'history' },
+  'admin-fields': { id: 'settings.customFields', icon: 'text-cursor-input' },
+  'admin-tags': { id: 'settings.tags', icon: 'tag' },
+  'admin-import-history': { id: 'settings.importHistory', icon: 'download' },
+  'admin-rules': { id: 'settings.rules', icon: 'zap' },
+  'settings-aiModels': { id: 'settings.aiModels', icon: 'sparkles' },
+  'settings-kopilot': { id: 'settings.kopilot', icon: 'sparkles' },
+  'settings-channels': { id: 'settings.channels', icon: 'inbox' },
+  'settings-inboxes': { id: 'settings.inbox', icon: 'inbox' },
+  'settings-signatures': { id: 'settings.signatures', icon: 'pen-tool' },
+  'settings-snippets': { id: 'settings.snippets', icon: 'braces' },
+  'settings-apps': { id: 'settings.apps', icon: 'boxes' },
+  'settings-connections': { id: 'settings.connections', icon: 'cable' },
+  'settings-webhooks': { id: 'settings.webhooks', icon: 'webhook' },
+  'settings-apiKeys': { id: 'settings.apiKeys', icon: 'key' },
+}
+
+/**
+ * Settings navigation actions, **derived** from `SETTINGS_MENU` through
+ * `useSettingsMenu()` — the same filtered menu the settings sidebar renders.
+ *
+ * This used to be a hand-maintained mirror of the menu and had drifted: it gated on
+ * `isAdminOrOwner` where the sidebar gates on Layer-2 `permissionKey` (so a member
+ * holding `members.manage` saw "Members and Groups" in the nav but could not find it
+ * here), and it omitted Permissions, Rules and Connections entirely. Deriving keeps
+ * the two surfaces honest by construction — do not reintroduce a parallel list.
  */
 export function useSettingsActions(): PaletteAction[] {
   const router = useRouter()
-  const { hasAccess } = useFeatureFlags()
-  const { isAdminOrOwner } = useUser()
-  const selfHosted = useIsSelfHosted()
+  const groups = useSettingsMenu(SETTINGS_MENU)
 
   const goToSetting = useCallback(
     (slug: string) => {
@@ -31,171 +65,45 @@ export function useSettingsActions(): PaletteAction[] {
   )
 
   return useMemo<PaletteAction[]>(() => {
-    const actions: PaletteAction[] = [
-      {
-        id: 'settings.general',
-        label: 'General Settings',
-        icon: 'settings',
-        keywords: 'settings general',
-        shortcut: SHORTCUTS['settings.general'],
-        perform: () => goToSetting('general'),
-      },
-      {
-        id: 'settings.account',
-        label: 'My Account',
-        icon: 'circle-user',
-        keywords: 'account profile me',
-        shortcut: SHORTCUTS['settings.account'],
-        perform: () => goToSetting('account'),
-      },
-      {
-        id: 'settings.organization',
-        label: 'Organization Settings',
-        icon: 'building',
-        keywords: 'organization',
-        shortcut: SHORTCUTS['settings.organization'],
-        perform: () => goToSetting('organization'),
-      },
-      {
-        id: 'settings.snippets',
-        label: 'Snippets Settings',
-        icon: 'braces',
-        keywords: 'snippets',
-        shortcut: SHORTCUTS['settings.snippets'],
-        perform: () => goToSetting('snippets'),
-      },
-      {
-        id: 'settings.signatures',
-        label: 'Signatures Settings',
-        icon: 'pen-tool',
-        keywords: 'signatures',
-        shortcut: SHORTCUTS['settings.signatures'],
-        perform: () => goToSetting('signatures'),
-      },
-      {
-        id: 'settings.apps',
-        label: 'Apps & MCP',
-        icon: 'boxes',
-        keywords: 'apps mcp marketplace integrations',
-        shortcut: SHORTCUTS['settings.apps'],
-        perform: () => goToSetting('apps'),
-      },
-    ]
+    const actions: PaletteAction[] = groups.flatMap((group) =>
+      (group.items ?? []).flatMap((item) => {
+        if (!item.slug) return []
+        const meta = PALETTE_META[item.id]
+        const id = meta?.id ?? `settings.${item.slug}`
+        const slug = item.slug
 
-    if (hasAccess('apiAccess')) {
+        return [
+          {
+            id,
+            label: item.label,
+            subtitle: item.description,
+            icon: meta?.icon,
+            keywords: [group.label, ...(item.keywords ?? [])].join(' '),
+            shortcut: SHORTCUTS[id],
+            perform: () => goToSetting(slug),
+          },
+        ]
+      })
+    )
+
+    // `/app/settings/groups` is a live route with an `s,r` chord but is deliberately
+    // absent from the nav (groups are reached via "Members and Groups"). Derived
+    // actions can't see it, so it stays explicit — gated on the same visibility as
+    // the Members item rather than on a separate role check.
+    const canSeeMembers = groups.some((group) =>
+      group.items?.some((item) => item.id === 'settings-members')
+    )
+    if (canSeeMembers) {
       actions.push({
-        id: 'settings.apiKeys',
-        label: 'API Keys Settings',
-        icon: 'key',
-        keywords: 'api keys',
-        shortcut: SHORTCUTS['settings.apiKeys'],
-        perform: () => goToSetting('apiKeys'),
+        id: 'settings.groups',
+        label: 'Groups',
+        icon: 'layers',
+        keywords: 'groups teams',
+        shortcut: SHORTCUTS['settings.groups'],
+        perform: () => goToSetting('groups'),
       })
     }
 
-    if (isAdminOrOwner) {
-      actions.push(
-        {
-          id: 'settings.channels',
-          label: 'Channels',
-          icon: 'inbox',
-          keywords: 'channels',
-          shortcut: SHORTCUTS['settings.channels'],
-          perform: () => goToSetting('channels'),
-        },
-        {
-          id: 'settings.members',
-          label: 'Members',
-          icon: 'users',
-          keywords: 'members users',
-          shortcut: SHORTCUTS['settings.members'],
-          perform: () => goToSetting('members'),
-        },
-        {
-          id: 'settings.groups',
-          label: 'Groups',
-          icon: 'layers',
-          keywords: 'groups teams',
-          shortcut: SHORTCUTS['settings.groups'],
-          perform: () => goToSetting('groups'),
-        },
-        {
-          id: 'settings.inbox',
-          label: 'Inboxes',
-          icon: 'inbox',
-          keywords: 'inbox inboxes messages',
-          shortcut: SHORTCUTS['settings.inbox'],
-          perform: () => goToSetting('inbox'),
-        },
-        {
-          id: 'settings.aiModels',
-          label: 'AI Models',
-          icon: 'sparkles',
-          keywords: 'ai models openai gemini deepseek claude chatgpt',
-          shortcut: SHORTCUTS['settings.aiModels'],
-          perform: () => goToSetting('aiModels'),
-        },
-        {
-          id: 'settings.kopilot',
-          label: 'Kopilot Settings',
-          icon: 'sparkles',
-          keywords: 'kopilot ai assistant',
-          perform: () => goToSetting('kopilot'),
-        },
-        {
-          id: 'settings.customFields',
-          label: 'Custom Entities & Fields',
-          icon: 'text-cursor-input',
-          keywords: 'custom fields entities',
-          shortcut: SHORTCUTS['settings.customFields'],
-          perform: () => goToSetting('custom-fields'),
-        },
-        {
-          id: 'settings.activityLog',
-          label: 'Account Activity',
-          icon: 'history',
-          keywords: 'activity log audit history',
-          perform: () => goToSetting('activity-log'),
-        },
-        {
-          id: 'settings.tags',
-          label: 'Tags',
-          icon: 'tag',
-          keywords: 'tags',
-          shortcut: SHORTCUTS['settings.tags'],
-          perform: () => goToSetting('tags'),
-        },
-        {
-          id: 'settings.importHistory',
-          label: 'Import & Export',
-          icon: 'download',
-          keywords: 'import export history data transfer',
-          perform: () => goToSetting('import-history'),
-        }
-      )
-
-      if (hasAccess('webhooks')) {
-        actions.push({
-          id: 'settings.webhooks',
-          label: 'Webhooks',
-          icon: 'webhook',
-          keywords: 'webhooks',
-          shortcut: SHORTCUTS['settings.webhooks'],
-          perform: () => goToSetting('webhooks'),
-        })
-      }
-      // Billing is cloud-only and lost its `s,b` chord to Inbox settings.
-      if (!selfHosted) {
-        actions.push({
-          id: 'settings.billing',
-          label: 'Plans & Billing',
-          icon: 'credit-card',
-          keywords: 'billing plans subscription payment',
-          perform: () => goToSetting('plans'),
-        })
-      }
-    }
-
     return actions
-  }, [hasAccess, isAdminOrOwner, selfHosted, goToSetting])
+  }, [groups, goToSetting])
 }

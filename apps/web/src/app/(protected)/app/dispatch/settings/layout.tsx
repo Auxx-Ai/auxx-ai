@@ -114,7 +114,9 @@ export default function DispatchSettingsLayout({ children }: { children: React.R
 
   return (
     <MainPageContent>
-      <div className='flex flex-col sm:flex-row h-full flex-1 overflow-hidden'>
+      {/* `md:` must match SidebarSecondary's own breakpoint — at `sm:` the sidebar is
+          still in mobile-disclosure mode with no fixed width and collapses to a sliver. */}
+      <div className='flex flex-col md:flex-row h-full flex-1 overflow-hidden'>
         <SidebarSecondary
           items={DISPATCH_SETTINGS}
           baseUrl={baseUrl}

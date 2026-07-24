@@ -807,11 +807,19 @@ const sidebarMenuButtonVariants = cva(
           'border border-dashed border-primary-300 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ',
         outline:
           'bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]',
+        // Nested secondary panels (SidebarSecondary) sit on `bg-neutral-50` rather than
+        // `bg-sidebar`, so they need a lighter treatment than `default`: muted resting
+        // text, a black/5 wash instead of `sidebar-accent` in light mode, and no
+        // `font-medium` on the active row (the background alone carries it).
+        secondary:
+          'overflow-hidden text-neutral-500 dark:text-sidebar-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-sidebar-accent dark:hover:text-sidebar-accent-foreground active:bg-black/5 active:text-foreground dark:active:bg-sidebar-accent data-[active=true]:bg-black/5 data-[active=true]:font-normal data-[active=true]:text-foreground dark:data-[active=true]:bg-sidebar-accent dark:data-[active=true]:hover:bg-sidebar-accent data-[state=open]:hover:bg-black/5 data-[state=open]:hover:text-foreground',
       },
       size: {
         default: 'h-8 text-sm',
         sm: 'h-7 text-xs',
         lg: 'h-12 text-sm',
+        // `sm` height at `default` type scale — the SidebarSecondary row metric.
+        compact: 'h-7 text-sm',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },
@@ -1005,5 +1013,8 @@ export {
   SidebarProvider,
   SidebarSeparator,
   SidebarTrigger,
+  // Exported so secondary surfaces can apply the row styling to a non-button host
+  // (e.g. a cmdk `CommandItem`) without nesting a second interactive wrapper.
+  sidebarMenuButtonVariants,
   useSidebar,
 }
