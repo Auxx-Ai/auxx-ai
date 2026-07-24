@@ -170,6 +170,7 @@ export * from './suggestion-dismissal'
 export * from './sync-job'
 export * from './system-model-default'
 export * from './table-view'
+export * from './table-view-preference'
 export * from './tag'
 // Task tables
 export * from './task'

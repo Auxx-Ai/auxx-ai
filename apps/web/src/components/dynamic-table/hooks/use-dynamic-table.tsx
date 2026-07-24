@@ -126,7 +126,10 @@ export function useDynamicTable<TData extends Record<string, any>>({
   ])
 
   // Initialize persistence (handles auto-save when enabled, or manual save)
-  const { saveView } = useViewStorePersistence(currentView?.id ?? null, tableId)
+  const { saveView, resetPersonalization, hasPersonalization } = useViewStorePersistence(
+    currentView,
+    tableId
+  )
 
   // ═══════════════════════════════════════════════════════════════════════════
   // READ STATE FROM ZUSTAND STORES (NO LOCAL STATE!)
@@ -423,7 +426,11 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // COMPUTED STATE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const hasUnsavedViewChanges = currentView?.id ? hasUnsavedChanges(currentView.id) : false
+  const hasUnsavedViewChanges = currentView?.isShared
+    ? hasPersonalization
+    : currentView?.id
+      ? hasUnsavedChanges(currentView.id)
+      : false
   const isSavingView = currentView?.id ? isSaving(currentView.id) : false
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -535,9 +542,14 @@ export function useDynamicTable<TData extends Record<string, any>>({
   const resetViewChanges = useCallback(() => {
     if (!currentView?.id) return
 
+    if (currentView.isShared) {
+      void resetPersonalization()
+      return
+    }
+
     // Reset store to saved state using unified store
     useDynamicTableStore.getState().resetViewChanges(currentView.id)
-  }, [currentView])
+  }, [currentView, resetPersonalization])
 
   // Manual save trigger - calls the persistence hook's save function
   const saveCurrentView = useCallback(async () => {

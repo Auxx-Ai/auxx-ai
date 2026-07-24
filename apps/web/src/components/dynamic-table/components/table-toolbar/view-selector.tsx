@@ -219,7 +219,9 @@ export function ViewSelector({
   }
 
   const isDefaultView = activeView?.isDefault || false
-  const canSave = Boolean(activeView && hasUnsavedChanges && !isSaving)
+  const canSave = Boolean(
+    activeView && hasUnsavedChanges && !isSaving && (!activeView.isShared || activeView.canUpdate)
+  )
   const showUnsavedBadge = Boolean(
     activeView && hasUnsavedChanges && !isSaving && !DYNAMIC_TABLE_CONFIG.AUTO_SAVE_ENABLED
   )
@@ -338,16 +340,16 @@ export function ViewSelector({
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align='end'>
-              {activeView && (
+              {activeView && (!activeView.isShared || activeView.canUpdate) && (
                 <DropdownMenuItem disabled={!canSave} onClick={handleSave}>
                   <Save />
-                  Save
+                  {activeView.isShared ? 'Update shared view' : 'Save'}
                 </DropdownMenuItem>
               )}
               {hasUnsavedChanges && onReset && (
                 <DropdownMenuItem onClick={onReset}>
                   <RotateCcw />
-                  Reset Changes
+                  {activeView.isShared ? 'Reset personal changes' : 'Reset Changes'}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -357,31 +359,38 @@ export function ViewSelector({
                 Duplicate
               </DropdownMenuItem>
 
-              <DropdownMenuItem onClick={() => handleViewAction(activeView.id, 'rename')}>
-                <Edit />
-                Rename
-              </DropdownMenuItem>
+              {activeView.canUpdate && (
+                <DropdownMenuItem onClick={() => handleViewAction(activeView.id, 'rename')}>
+                  <Edit />
+                  Rename
+                </DropdownMenuItem>
+              )}
 
-              <DropdownMenuItem
-                onClick={() => handleViewAction(activeView.id, 'setDefault')}
-                disabled={isDefaultView}>
-                <Pin />
-                Make Default
-              </DropdownMenuItem>
+              {activeView.canSetDefault && (
+                <DropdownMenuItem
+                  onClick={() => handleViewAction(activeView.id, 'setDefault')}
+                  disabled={isDefaultView}>
+                  <Pin />
+                  Make Default
+                </DropdownMenuItem>
+              )}
 
               <FavoriteToggleMenuItem
                 targetType='TABLE_VIEW'
                 targetIds={{ tableViewId: activeView.id, tableId }}
               />
 
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem
-                onClick={() => handleViewAction(activeView.id, 'delete')}
-                variant='destructive'>
-                <Trash />
-                Delete
-              </DropdownMenuItem>
+              {activeView.canDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => handleViewAction(activeView.id, 'delete')}
+                    variant='destructive'>
+                    <Trash />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}

@@ -37,6 +37,11 @@ export const EMPTY_VIEWS: TableView[] = []
  * live-default table. See `use-default-table-persistence.ts`.
  */
 export const PERSONAL_TABLE_VIEW_NAME = '__personal_table__'
+
+/** Stable key for one user's unnamed-table or named-view preference. */
+export function tableViewPreferenceKey(tableId: string, tableViewId: string | null): string {
+  return `${tableId}:${tableViewId ?? '__default__'}`
+}
 export const EMPTY_FILTERS: ConditionGroup[] = []
 export const EMPTY_SORTING: SortingState = []
 export const EMPTY_COLUMN_ORDER: ColumnOrderState = []

@@ -235,6 +235,7 @@ export type {
   StorageLocationEntity,
 } from './db/schema/storage-location'
 export type { TableViewEntity } from './db/schema/table-view'
+export type { TableViewPreferenceEntity } from './db/schema/table-view-preference'
 export type { ThreadEntity } from './db/schema/thread'
 export type { TimelineEventEntity } from './db/schema/timeline-event'
 export type { UserEntity } from './db/schema/user'

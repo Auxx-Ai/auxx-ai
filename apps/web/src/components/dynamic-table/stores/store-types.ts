@@ -14,6 +14,7 @@ import type {
   ColumnFormatting,
   KanbanViewConfig,
   TableView,
+  TableViewPreference,
   ViewConfig,
 } from '../types'
 
@@ -90,10 +91,19 @@ export interface ViewSlice {
 export interface UISlice {
   viewConfigs: Record<string, TableUIConfig>
   pendingConfigs: Record<string, Partial<TableUIConfig>>
+  /** Runtime overlays for shared views. Sorting stays transient; layout is persisted separately. */
+  personalConfigs: Record<string, Partial<TableUIConfig>>
+  /** Server-backed presentation preferences keyed by table + optional base view. */
+  viewPreferences: Record<string, TableViewPreference>
   sessionConfigs: Record<string, TableUIConfig>
 
   setViewConfig: (viewId: string, config: TableUIConfig) => void
   updateViewConfig: (viewId: string, changes: Partial<TableUIConfig>) => void
+  setViewPreferences: (preferences: TableViewPreference[]) => void
+  upsertViewPreference: (preference: TableViewPreference) => void
+  clearViewPreference: (tableId: string, tableViewId: string | null) => void
+  updatePersonalConfig: (viewId: string, changes: Partial<TableUIConfig>) => void
+  clearPersonalConfig: (viewId: string) => void
   updateSessionConfig: (tableId: string, changes: Partial<TableUIConfig>) => void
   updateKanbanConfig: (viewId: string, changes: Partial<KanbanViewConfig>) => void
   updateCalendarConfig: (viewId: string, changes: Partial<CalendarViewConfig>) => void
@@ -104,9 +114,12 @@ export interface UISlice {
 /** Filter slice - manages filter conditions */
 export interface FilterSlice {
   viewFilters: Record<string, ConditionGroup[]>
+  personalFilters: Record<string, ConditionGroup[]>
   sessionFilters: Record<string, ConditionGroup[]>
 
   setViewFilters: (viewId: string, filters: ConditionGroup[]) => void
+  setPersonalFilters: (viewId: string, filters: ConditionGroup[]) => void
+  clearPersonalFilters: (viewId: string) => void
   setSessionFilters: (tableId: string, filters: ConditionGroup[]) => void
   clearSessionFilters: (tableId: string) => void
 }

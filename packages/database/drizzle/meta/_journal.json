@@ -2136,6 +2136,13 @@
       "when": 1784863238391,
       "tag": "0304_table_view_entity_definition_id",
       "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1784870896376,
+      "tag": "0305_table_view_preferences",
+      "breakpoints": true
     }
   ]
 }

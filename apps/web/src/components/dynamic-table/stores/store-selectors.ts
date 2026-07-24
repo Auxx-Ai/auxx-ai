@@ -101,10 +101,21 @@ export function useActiveViewConfig(tableId: string): ViewConfig | null {
   const pendingConfig = useDynamicTableStore(
     useShallow((s) => (viewId ? s.pendingConfigs[viewId] : undefined))
   )
+  const personalConfig = useDynamicTableStore(
+    useShallow((s) => {
+      if (!viewId) return undefined
+      const view = s.viewsByTableId[tableId]?.find((candidate) => candidate.id === viewId)
+      return view?.isShared ? s.personalConfigs[viewId] : undefined
+    })
+  )
   const filters = useDynamicTableStore(
     useShallow((s) =>
       viewId
-        ? (s.viewFilters[viewId] ?? EMPTY_FILTERS)
+        ? ((s.viewsByTableId[tableId]?.find((candidate) => candidate.id === viewId)?.isShared
+            ? s.personalFilters[viewId]
+            : undefined) ??
+          s.viewFilters[viewId] ??
+          EMPTY_FILTERS)
         : (s.sessionFilters[tableId] ?? EMPTY_FILTERS)
     )
   )
@@ -112,7 +123,7 @@ export function useActiveViewConfig(tableId: string): ViewConfig | null {
   if (!savedConfig) return null
 
   // Merge and return - this object creation is fine since inputs are stable
-  const merged = pendingConfig ? { ...savedConfig, ...pendingConfig } : savedConfig
+  const merged = { ...savedConfig, ...personalConfig, ...pendingConfig }
   return { ...merged, filters } as ViewConfig
 }
 
@@ -122,7 +133,11 @@ export function useTableFilters(tableId: string): ConditionGroup[] {
   return useDynamicTableStore(
     useShallow((s) =>
       viewId
-        ? (s.viewFilters[viewId] ?? EMPTY_FILTERS)
+        ? ((s.viewsByTableId[tableId]?.find((candidate) => candidate.id === viewId)?.isShared
+            ? s.personalFilters[viewId]
+            : undefined) ??
+          s.viewFilters[viewId] ??
+          EMPTY_FILTERS)
         : (s.sessionFilters[tableId] ?? EMPTY_FILTERS)
     )
   )
@@ -134,7 +149,15 @@ export function useTableSorting(tableId: string): SortingState {
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.sorting ?? EMPTY_SORTING
-      return s.pendingConfigs[viewId]?.sorting ?? s.viewConfigs[viewId]?.sorting ?? EMPTY_SORTING
+      const shared = s.viewsByTableId[tableId]?.find(
+        (candidate) => candidate.id === viewId
+      )?.isShared
+      return (
+        s.pendingConfigs[viewId]?.sorting ??
+        (shared ? s.personalConfigs[viewId]?.sorting : undefined) ??
+        s.viewConfigs[viewId]?.sorting ??
+        EMPTY_SORTING
+      )
     })
   )
 }
@@ -148,8 +171,15 @@ export function useColumnVisibility(tableId: string): VisibilityState | undefine
   return useDynamicTableStore(
     useShallow((s) => {
       if (viewId) {
+        const shared = s.viewsByTableId[tableId]?.find(
+          (candidate) => candidate.id === viewId
+        )?.isShared
         // View mode: return from view config (pending takes precedence)
-        return s.pendingConfigs[viewId]?.columnVisibility ?? s.viewConfigs[viewId]?.columnVisibility
+        return (
+          s.pendingConfigs[viewId]?.columnVisibility ??
+          (shared ? s.personalConfigs[viewId]?.columnVisibility : undefined) ??
+          s.viewConfigs[viewId]?.columnVisibility
+        )
       }
       // Session mode: return from session config (undefined if not initialized)
       return s.sessionConfigs[tableId]?.columnVisibility
@@ -166,8 +196,15 @@ export function useColumnOrder(tableId: string): ColumnOrderState | undefined {
   return useDynamicTableStore(
     useShallow((s) => {
       if (viewId) {
+        const shared = s.viewsByTableId[tableId]?.find(
+          (candidate) => candidate.id === viewId
+        )?.isShared
         // View mode: return from view config (pending takes precedence)
-        return s.pendingConfigs[viewId]?.columnOrder ?? s.viewConfigs[viewId]?.columnOrder
+        return (
+          s.pendingConfigs[viewId]?.columnOrder ??
+          (shared ? s.personalConfigs[viewId]?.columnOrder : undefined) ??
+          s.viewConfigs[viewId]?.columnOrder
+        )
       }
       // Session mode: return from session config (undefined if not initialized)
       return s.sessionConfigs[tableId]?.columnOrder
@@ -181,8 +218,12 @@ export function useColumnSizing(tableId: string): ColumnSizingState {
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.columnSizing ?? EMPTY_COLUMN_SIZING
+      const shared = s.viewsByTableId[tableId]?.find(
+        (candidate) => candidate.id === viewId
+      )?.isShared
       return (
         s.pendingConfigs[viewId]?.columnSizing ??
+        (shared ? s.personalConfigs[viewId]?.columnSizing : undefined) ??
         s.viewConfigs[viewId]?.columnSizing ??
         EMPTY_COLUMN_SIZING
       )
@@ -196,7 +237,14 @@ export function useColumnPinning(tableId: string): ColumnPinningState | undefine
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.columnPinning
-      return s.pendingConfigs[viewId]?.columnPinning ?? s.viewConfigs[viewId]?.columnPinning
+      const shared = s.viewsByTableId[tableId]?.find(
+        (candidate) => candidate.id === viewId
+      )?.isShared
+      return (
+        s.pendingConfigs[viewId]?.columnPinning ??
+        (shared ? s.personalConfigs[viewId]?.columnPinning : undefined) ??
+        s.viewConfigs[viewId]?.columnPinning
+      )
     })
   )
 }
@@ -207,8 +255,12 @@ export function useColumnLabels(tableId: string): Record<string, string> {
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.columnLabels ?? EMPTY_COLUMN_LABELS
+      const shared = s.viewsByTableId[tableId]?.find(
+        (candidate) => candidate.id === viewId
+      )?.isShared
       return (
         s.pendingConfigs[viewId]?.columnLabels ??
+        (shared ? s.personalConfigs[viewId]?.columnLabels : undefined) ??
         s.viewConfigs[viewId]?.columnLabels ??
         EMPTY_COLUMN_LABELS
       )
@@ -222,8 +274,12 @@ export function useColumnFormatting(tableId: string): Record<string, ColumnForma
   return useDynamicTableStore(
     useShallow((s) => {
       if (!viewId) return s.sessionConfigs[tableId]?.columnFormatting ?? EMPTY_COLUMN_FORMATTING
+      const shared = s.viewsByTableId[tableId]?.find(
+        (candidate) => candidate.id === viewId
+      )?.isShared
       return (
         s.pendingConfigs[viewId]?.columnFormatting ??
+        (shared ? s.personalConfigs[viewId]?.columnFormatting : undefined) ??
         s.viewConfigs[viewId]?.columnFormatting ??
         EMPTY_COLUMN_FORMATTING
       )

@@ -23,8 +23,9 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
     const byTable: Record<string, typeof views> = {}
 
     for (const view of views) {
-      if (!byTable[view.tableId]) byTable[view.tableId] = []
-      byTable[view.tableId].push(view)
+      const tableViews = byTable[view.tableId] ?? []
+      tableViews.push(view)
+      byTable[view.tableId] = tableViews
 
       // Initialize other slices
       const config = view.config as ViewConfig
@@ -51,7 +52,23 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
 
   setActiveView: (tableId, viewId) => {
     set((state) => {
-      if (state.activeViewIds[tableId] === viewId) return
+      const previousViewId = state.activeViewIds[tableId]
+      if (previousViewId === viewId) return
+
+      const previousView = state.viewsByTableId[tableId]?.find(
+        (candidate) => candidate.id === previousViewId
+      )
+      if (previousView?.isShared && previousViewId) {
+        const previousConfig = state.personalConfigs[previousViewId]
+        if (previousConfig) {
+          delete previousConfig.sorting
+          if (Object.keys(previousConfig).length === 0) {
+            delete state.personalConfigs[previousViewId]
+          }
+        }
+        delete state.personalFilters[previousViewId]
+      }
+
       state.activeViewIds[tableId] = viewId
     })
   },
@@ -87,9 +104,12 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
   updateViewMeta: (viewId, meta) => {
     set((state) => {
       for (const tableId of Object.keys(state.viewsByTableId)) {
-        state.viewsByTableId[tableId] = state.viewsByTableId[tableId].map((v) =>
-          v.id === viewId ? { ...v, ...meta } : v
-        )
+        const tableViews = state.viewsByTableId[tableId]
+        if (tableViews) {
+          state.viewsByTableId[tableId] = tableViews.map((view) =>
+            view.id === viewId ? { ...view, ...meta } : view
+          )
+        }
       }
     })
   },
@@ -117,7 +137,8 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
       if (viewIndex === -1) return
 
       const view = views[viewIndex]
-      const config = view.config as FieldViewConfig
+      if (!view) return
+      const config = view.config as unknown as FieldViewConfig
 
       const updatedConfig: FieldViewConfig = {
         ...config,
@@ -127,7 +148,7 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
         },
       }
 
-      state.viewsByTableId[tableId][viewIndex] = { ...view, config: updatedConfig }
+      views[viewIndex] = { ...view, config: updatedConfig as unknown as ViewConfig }
     })
   },
 
@@ -140,15 +161,16 @@ export const createViewSlice: SliceCreator<ViewSlice> = (set, get) => ({
       if (viewIndex === -1) return
 
       const view = views[viewIndex]
-      const config = view.config as FieldViewConfig
+      if (!view) return
+      const config = view.config as unknown as FieldViewConfig
       const newOrder = [...config.fieldOrder]
       const [moved] = newOrder.splice(fromIndex, 1)
       if (!moved) return
       newOrder.splice(toIndex, 0, moved)
 
-      state.viewsByTableId[tableId][viewIndex] = {
+      views[viewIndex] = {
         ...view,
-        config: { ...config, fieldOrder: newOrder },
+        config: { ...config, fieldOrder: newOrder } as unknown as ViewConfig,
       }
     })
   },

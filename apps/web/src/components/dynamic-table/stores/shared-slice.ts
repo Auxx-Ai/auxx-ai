@@ -81,8 +81,11 @@ export const createSharedSlice: SliceCreator<SharedSlice> = (set, get) => ({
       state.error = null
       state.viewConfigs = {}
       state.pendingConfigs = {}
+      state.personalConfigs = {}
+      state.viewPreferences = {}
       state.sessionConfigs = {}
       state.viewFilters = {}
+      state.personalFilters = {}
       state.sessionFilters = {}
       state.dirtyViewIds = new Set()
     })
@@ -110,16 +113,28 @@ export const createSharedSlice: SliceCreator<SharedSlice> = (set, get) => ({
     const savedUI = get().viewConfigs[viewId]
     if (!savedUI) return null
 
+    const view = get().viewsByTableId[tableId]?.find((candidate) => candidate.id === viewId)
+    const personalUI = view?.isShared ? get().personalConfigs[viewId] : undefined
     const pendingUI = get().pendingConfigs[viewId]
-    const filters = get().viewFilters[viewId] ?? EMPTY_FILTERS
-    const mergedUI = pendingUI ? { ...savedUI, ...pendingUI } : savedUI
+    const filters =
+      (view?.isShared ? get().personalFilters[viewId] : undefined) ??
+      get().viewFilters[viewId] ??
+      EMPTY_FILTERS
+    const mergedUI = { ...savedUI, ...personalUI, ...pendingUI }
 
     return toViewConfig(mergedUI as TableUIConfig, filters)
   },
 
   getActiveFilters: (tableId) => {
     const viewId = get().activeViewIds[tableId]
-    if (viewId) return get().viewFilters[viewId] ?? EMPTY_FILTERS
+    if (viewId) {
+      const view = get().viewsByTableId[tableId]?.find((candidate) => candidate.id === viewId)
+      return (
+        (view?.isShared ? get().personalFilters[viewId] : undefined) ??
+        get().viewFilters[viewId] ??
+        EMPTY_FILTERS
+      )
+    }
     return get().sessionFilters[tableId] ?? EMPTY_FILTERS
   },
 })

@@ -33,8 +33,10 @@ export async function duplicateView(input: DuplicateViewInput) {
       .insert(schema.TableView)
       .values({
         tableId: original.tableId,
+        entityDefinitionId: original.entityDefinitionId,
         name,
         config: original.config,
+        contextType: original.contextType,
         isShared: false,
         userId,
         organizationId,

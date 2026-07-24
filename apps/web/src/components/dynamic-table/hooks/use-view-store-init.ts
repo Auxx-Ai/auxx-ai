@@ -4,6 +4,7 @@
 import { useEffect } from 'react'
 import { api } from '~/trpc/react'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
+import type { TableView } from '../types'
 
 /**
  * Hook to initialize the dynamic table store with views from the API.
@@ -16,6 +17,7 @@ import { useDynamicTableStore } from '../stores/dynamic-table-store'
  */
 export function useViewStoreInit() {
   const setAllViews = useDynamicTableStore((state) => state.setAllViews)
+  const setViewPreferences = useDynamicTableStore((state) => state.setViewPreferences)
   const setInitialized = useDynamicTableStore((state) => state.setInitialized)
   const setError = useDynamicTableStore((state) => state.setError)
   const initialized = useDynamicTableStore((state) => state.initialized)
@@ -35,10 +37,11 @@ export function useViewStoreInit() {
     if (allViews && !initialized) {
       // Initialize all stores at once via setAllViews
       // This internally calls setViewConfig and setViewFilters for each view
-      setAllViews(allViews)
+      setViewPreferences(allViews.preferences)
+      setAllViews(allViews.views as unknown as TableView[])
       setInitialized(true)
     }
-  }, [allViews, initialized, setAllViews, setInitialized])
+  }, [allViews, initialized, setAllViews, setInitialized, setViewPreferences])
 
   useEffect(() => {
     if (error) {

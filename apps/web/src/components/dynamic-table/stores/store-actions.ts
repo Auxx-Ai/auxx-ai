@@ -11,6 +11,21 @@ import type {
 import { useCallback } from 'react'
 import type { CalendarViewConfig, ColumnFormatting, KanbanViewConfig } from '../types'
 import { useDynamicTableStore } from './dynamic-table-store'
+import type { DynamicTableStore, TableUIConfig } from './store-types'
+
+function isSharedView(state: DynamicTableStore, tableId: string, viewId: string): boolean {
+  return state.viewsByTableId[tableId]?.some((view) => view.id === viewId && view.isShared) ?? false
+}
+
+function updateInteractiveConfig(
+  state: DynamicTableStore,
+  viewId: string,
+  shared: boolean,
+  changes: Partial<TableUIConfig>
+): void {
+  if (shared) state.updatePersonalConfig(viewId, changes)
+  else state.updateViewConfig(viewId, changes)
+}
 
 // ─── Filter Actions ───────────────────────────────────────────────────────────
 
@@ -21,8 +36,12 @@ export function useSetFilters(tableId: string) {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
       if (viewId) {
-        s.setViewFilters(viewId, filters)
-        s.markDirty(viewId)
+        if (isSharedView(s, tableId, viewId)) {
+          s.setPersonalFilters(viewId, filters)
+        } else {
+          s.setViewFilters(viewId, filters)
+          s.markDirty(viewId)
+        }
       } else {
         s.setSessionFilters(tableId, filters)
       }
@@ -39,14 +58,18 @@ export function useSetSorting(tableId: string) {
     (sortingOrUpdater: SortingState | ((old: SortingState) => SortingState)) => {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
       const current = viewId
-        ? (s.pendingConfigs[viewId]?.sorting ?? s.viewConfigs[viewId]?.sorting ?? [])
+        ? (s.pendingConfigs[viewId]?.sorting ??
+          (shared ? s.personalConfigs[viewId]?.sorting : undefined) ??
+          s.viewConfigs[viewId]?.sorting ??
+          [])
         : (s.sessionConfigs[tableId]?.sorting ?? [])
       const sorting =
         typeof sortingOrUpdater === 'function' ? sortingOrUpdater(current) : sortingOrUpdater
 
       if (viewId) {
-        s.updateViewConfig(viewId, { sorting })
+        updateInteractiveConfig(s, viewId, shared, { sorting })
       } else {
         s.updateSessionConfig(tableId, { sorting })
       }
@@ -61,8 +84,10 @@ export function useSetColumnVisibility(tableId: string) {
     (visibilityOrUpdater: VisibilityState | ((old: VisibilityState) => VisibilityState)) => {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
       const current = viewId
         ? (s.pendingConfigs[viewId]?.columnVisibility ??
+          (shared ? s.personalConfigs[viewId]?.columnVisibility : undefined) ??
           s.viewConfigs[viewId]?.columnVisibility ??
           {})
         : (s.sessionConfigs[tableId]?.columnVisibility ?? {})
@@ -72,7 +97,7 @@ export function useSetColumnVisibility(tableId: string) {
           : visibilityOrUpdater
 
       if (viewId) {
-        s.updateViewConfig(viewId, { columnVisibility })
+        updateInteractiveConfig(s, viewId, shared, { columnVisibility })
       } else {
         s.updateSessionConfig(tableId, { columnVisibility })
       }
@@ -88,7 +113,7 @@ export function useSetColumnOrder(tableId: string) {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
       if (viewId) {
-        s.updateViewConfig(viewId, { columnOrder })
+        updateInteractiveConfig(s, viewId, isSharedView(s, tableId, viewId), { columnOrder })
       } else {
         s.updateSessionConfig(tableId, { columnOrder })
       }
@@ -103,14 +128,18 @@ export function useSetColumnSizing(tableId: string) {
     (sizingOrUpdater: ColumnSizingState | ((old: ColumnSizingState) => ColumnSizingState)) => {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
       const current = viewId
-        ? (s.pendingConfigs[viewId]?.columnSizing ?? s.viewConfigs[viewId]?.columnSizing ?? {})
+        ? (s.pendingConfigs[viewId]?.columnSizing ??
+          (shared ? s.personalConfigs[viewId]?.columnSizing : undefined) ??
+          s.viewConfigs[viewId]?.columnSizing ??
+          {})
         : (s.sessionConfigs[tableId]?.columnSizing ?? {})
       const columnSizing =
         typeof sizingOrUpdater === 'function' ? sizingOrUpdater(current) : sizingOrUpdater
 
       if (viewId) {
-        s.updateViewConfig(viewId, { columnSizing })
+        updateInteractiveConfig(s, viewId, shared, { columnSizing })
       } else {
         s.updateSessionConfig(tableId, { columnSizing })
       }
@@ -125,14 +154,18 @@ export function useSetColumnPinning(tableId: string) {
     (pinningOrUpdater: ColumnPinningState | ((old: ColumnPinningState) => ColumnPinningState)) => {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
       const current = viewId
-        ? (s.pendingConfigs[viewId]?.columnPinning ?? s.viewConfigs[viewId]?.columnPinning ?? {})
+        ? (s.pendingConfigs[viewId]?.columnPinning ??
+          (shared ? s.personalConfigs[viewId]?.columnPinning : undefined) ??
+          s.viewConfigs[viewId]?.columnPinning ??
+          {})
         : (s.sessionConfigs[tableId]?.columnPinning ?? {})
       const columnPinning =
         typeof pinningOrUpdater === 'function' ? pinningOrUpdater(current) : pinningOrUpdater
 
       if (viewId) {
-        s.updateViewConfig(viewId, { columnPinning })
+        updateInteractiveConfig(s, viewId, shared, { columnPinning })
       } else {
         s.updateSessionConfig(tableId, { columnPinning })
       }
@@ -148,7 +181,7 @@ export function useSetColumnLabels(tableId: string) {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
       if (viewId) {
-        s.updateViewConfig(viewId, { columnLabels })
+        updateInteractiveConfig(s, viewId, isSharedView(s, tableId, viewId), { columnLabels })
       } else {
         s.updateSessionConfig(tableId, { columnLabels })
       }
@@ -164,7 +197,9 @@ export function useSetColumnFormatting(tableId: string) {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
       if (viewId) {
-        s.updateViewConfig(viewId, { columnFormatting })
+        updateInteractiveConfig(s, viewId, isSharedView(s, tableId, viewId), {
+          columnFormatting,
+        })
       } else {
         s.updateSessionConfig(tableId, { columnFormatting })
       }
@@ -217,8 +252,12 @@ export function useSetColumnLabel(tableId: string) {
     (columnId: string, label: string | null) => {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
       const current = viewId
-        ? (s.pendingConfigs[viewId]?.columnLabels ?? s.viewConfigs[viewId]?.columnLabels ?? {})
+        ? (s.pendingConfigs[viewId]?.columnLabels ??
+          (shared ? s.personalConfigs[viewId]?.columnLabels : undefined) ??
+          s.viewConfigs[viewId]?.columnLabels ??
+          {})
         : (s.sessionConfigs[tableId]?.columnLabels ?? {})
 
       const newLabels = { ...current }
@@ -229,7 +268,7 @@ export function useSetColumnLabel(tableId: string) {
       }
 
       if (viewId) {
-        s.updateViewConfig(viewId, { columnLabels: newLabels })
+        updateInteractiveConfig(s, viewId, shared, { columnLabels: newLabels })
       } else {
         s.updateSessionConfig(tableId, { columnLabels: newLabels })
       }
@@ -244,8 +283,10 @@ export function useSetSingleColumnFormatting(tableId: string) {
     (columnId: string, formatting: ColumnFormatting | null) => {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
       const current = viewId
         ? (s.pendingConfigs[viewId]?.columnFormatting ??
+          (shared ? s.personalConfigs[viewId]?.columnFormatting : undefined) ??
           s.viewConfigs[viewId]?.columnFormatting ??
           {})
         : (s.sessionConfigs[tableId]?.columnFormatting ?? {})
@@ -258,7 +299,7 @@ export function useSetSingleColumnFormatting(tableId: string) {
       }
 
       if (viewId) {
-        s.updateViewConfig(viewId, { columnFormatting: newFormatting })
+        updateInteractiveConfig(s, viewId, shared, { columnFormatting: newFormatting })
       } else {
         s.updateSessionConfig(tableId, { columnFormatting: newFormatting })
       }
@@ -273,27 +314,30 @@ export function useSetPinnedColumn(tableId: string, getAllColumnIds: () => strin
     (columnId: string | null) => {
       const s = useDynamicTableStore.getState()
       const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
 
       // When unpinning, clear all pinning
       if (columnId === null) {
         if (viewId) {
-          s.updateViewConfig(viewId, { columnPinning: undefined })
+          updateInteractiveConfig(s, viewId, shared, {
+            columnPinning: shared ? { left: [], right: [] } : undefined,
+          })
         } else {
-          s.updateSessionConfig(tableId, { columnPinning: undefined })
+          s.updateSessionConfig(tableId, { columnPinning: { left: [], right: [] } })
         }
         return
       }
 
       // When pinning, include all columns up to and including the target column
       const allColumnIds = getAllColumnIds()
-      const targetIndex = allColumnIds.findIndex((id) => id === columnId)
+      const targetIndex = allColumnIds.indexOf(columnId)
       if (targetIndex === -1) return
 
       const leftColumns = allColumnIds.slice(0, targetIndex + 1)
       const newPinning = { left: leftColumns }
 
       if (viewId) {
-        s.updateViewConfig(viewId, { columnPinning: newPinning })
+        updateInteractiveConfig(s, viewId, shared, { columnPinning: newPinning })
       } else {
         s.updateSessionConfig(tableId, { columnPinning: newPinning })
       }

@@ -24,8 +24,9 @@ export function useTableViewRealtime(): void {
       if (event !== 'tableView:changed') return
       const tableId = (payload as { tableId?: string } | null)?.tableId
       void utils.tableView.listAll.fetch().then((all) => {
-        const views = (all ?? []) as TableView[]
+        const views = (all?.views ?? []) as unknown as TableView[]
         const store = useDynamicTableStore.getState()
+        store.setViewPreferences(all?.preferences ?? [])
         if (tableId) {
           store.setTableViews(
             tableId,
