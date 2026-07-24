@@ -39,8 +39,9 @@ export function CreatePage({
         open={page === 'create'}
         entityDefinitionId={entityDefinitionId}
         onSaved={() => {
-          // Mirror useRecordList.refresh() so any mounted records table picks up
-          // the new row (the create mutation doesn't invalidate caches itself).
+          // The create hook already seeded the new row's DATA; this global surface
+          // has no listKey, so a mounted (possibly filtered/sorted) table still
+          // needs a server re-query to place the row correctly. See GlobalCreateRoot.
           useRecordStore.getState().invalidateLists(entityDefinitionId)
           utils.record.listFiltered.invalidate()
         }}

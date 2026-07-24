@@ -2,6 +2,7 @@
 
 import type { SignatureVisibility } from '@auxx/types/signature'
 import { toastError } from '@auxx/ui/components/toast'
+import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
@@ -52,13 +53,15 @@ export function useSignatureMutations() {
     utils.record.listAll.invalidate({ entityDefinitionId: 'signature' })
   }
 
-  const createSignature = api.record.create.useMutation({
-    onSuccess: () => {
+  // Canonical create hook — seeds record + field-value caches and toasts on
+  // error. The signature list reads from `record.listAll`, so onCreated still
+  // invalidates it (seeding can't add listAll membership); the seed keeps
+  // recordId-keyed consumers instant.
+  const { create: createRecord, isPending: isCreating } = useCreateRecord({
+    entityDefinitionId: 'signature',
+    onCreated: () => {
       posthog?.capture('signature_created')
       invalidateSignatures()
-    },
-    onError: (error) => {
-      toastError({ title: 'Error creating signature', description: error.message })
     },
   })
 
@@ -87,8 +90,7 @@ export function useSignatureMutations() {
      * the entity-system setFieldValues lookup is keyed by systemAttribute.
      */
     create: (input: CreateSignatureInput) =>
-      createSignature.mutateAsync({
-        entityDefinitionId: 'signature',
+      createRecord({
         values: {
           signature_name: input.name,
           signature_body: input.body,
@@ -115,14 +117,13 @@ export function useSignatureMutations() {
     delete: (recordId: string) => deleteSignature.mutateAsync({ recordId }),
 
     /** Raw mutations for custom handling */
-    createSignature,
     updateSignature,
     deleteSignature,
 
     /** Loading states */
-    isCreating: createSignature.isPending,
+    isCreating,
     isUpdating: updateSignature.isPending,
     isDeleting: deleteSignature.isPending,
-    isPending: createSignature.isPending || updateSignature.isPending || deleteSignature.isPending,
+    isPending: isCreating || updateSignature.isPending || deleteSignature.isPending,
   }
 }

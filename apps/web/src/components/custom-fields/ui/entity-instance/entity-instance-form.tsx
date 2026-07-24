@@ -40,6 +40,7 @@ import {
 } from '~/components/fields/hooks/use-field-view'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { useResource } from '~/components/resources'
+import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
@@ -463,12 +464,10 @@ export function EntityInstanceForm({
     }
   }, [open, recordId, editableFields, presetValues, setInitial, getValue, focusFirstField])
 
-  // Create instance mutation
-  const createInstance = api.record.create.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Failed to create', description: error.message })
-    },
-  })
+  // Canonical create hook — seeds record + field-value caches from the result so
+  // the creating user sees the new row with no refetch (the create mutation
+  // excludes the originating socket from its realtime event). Toasts on error.
+  const { create: createRecord, isPending: isCreating } = useCreateRecord({ entityDefinitionId })
 
   // Field metadata provider for relationship sync
   const getFieldMetadata = useCallback(
@@ -489,7 +488,7 @@ export function EntityInstanceForm({
   })
 
   // Combined pending state
-  const isPending = createInstance.isPending || isSavingFields
+  const isPending = isCreating || isSavingFields
 
   /**
    * Handle field value change
@@ -622,17 +621,11 @@ export function EntityInstanceForm({
         )
         Object.assign(formValues, createExtension?.values)
 
-        // Create instance with values - hooks run and auto-generate fields like ticket_number
-        const result = await createInstance.mutateAsync({
-          entityDefinitionId,
-          values: formValues,
-        })
-
-        instanceId = result.instance.id
-
-        // The returned values include auto-generated fields (e.g., ticket_number)
-        // These are already saved to the database by the handler
-        // The field value store will be hydrated on next fetch
+        // Create + seed in one step — hooks run server-side and auto-generate
+        // fields like ticket_number (hydrated on the row's next read); the seed
+        // renders the new row immediately without a refetch.
+        const result = await createRecord({ values: formValues })
+        instanceId = result.instanceId
       }
 
       onSaved?.(instanceId)

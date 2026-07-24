@@ -24,6 +24,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Check, Settings } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getNextOptionColor } from '~/components/custom-fields/utils/get-next-option-color'
+import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { TagScopeValue } from '../../types'
@@ -95,7 +96,11 @@ export function TagPickerContent({
 
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
-  const createMutation = api.record.create.useMutation()
+  // Canonical create hook — seeds caches + toasts on error. The tree reads from
+  // `record.listAll`, so `refresh()` still pulls the new tag into the list.
+  const { create: createTag } = useCreateRecord({
+    entityDefinitionId: tagEntityDefinitionId ?? '',
+  })
   const deleteMutation = api.record.delete.useMutation({
     onSuccess: () => {
       utils.record.listAll.invalidate({ entityDefinitionId: 'tag' })
@@ -204,11 +209,8 @@ export function TagPickerContent({
         values.tag_parent = [toRecordId(tagEntityDefinitionId, createParentId)]
       }
 
-      const result = await createMutation.mutateAsync({
-        entityDefinitionId: tagEntityDefinitionId,
-        values,
-      })
-      const newRecordId = toRecordId(tagEntityDefinitionId, result.instance.id)
+      const result = await createTag({ values })
+      const newRecordId = toRecordId(tagEntityDefinitionId, result.instanceId)
       onChange([...selectedTagIds.map(toTagRecordId), newRecordId])
       refresh()
       setSearch('')
@@ -226,7 +228,7 @@ export function TagPickerContent({
     createColor,
     createParentId,
     scope,
-    createMutation,
+    createTag,
     onChange,
     selectedTagIds,
     toTagRecordId,

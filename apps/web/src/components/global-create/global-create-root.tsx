@@ -60,9 +60,12 @@ export function GlobalCreateRoot() {
       }}
       entityDefinitionId={entityDefinitionId}
       onSaved={() => {
-        // Mirror what useRecordList.refresh() does — otherwise any mounted
-        // records table misses the new row (the create mutation itself
-        // doesn't invalidate caches).
+        // The create hook already seeded the new row's DATA (record + field-value
+        // stores), so any recordId-keyed view renders it instantly. But this is a
+        // global surface with no listKey, and a mounted table may be filtered/
+        // sorted for a different def — a blind seed-append can't place the row
+        // correctly there. Re-query the server lists so filter/sort/pagination
+        // stay correct.
         useRecordStore.getState().invalidateLists(entityDefinitionId)
         utils.record.listFiltered.invalidate()
       }}
