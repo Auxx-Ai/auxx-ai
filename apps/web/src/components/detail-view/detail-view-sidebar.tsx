@@ -10,6 +10,7 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { getTabCardComponent } from '~/components/drawers/drawer-tab-registry'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
+import { useAccess } from '~/providers/capabilities-provider'
 import { DetailViewCardHeader } from './components/detail-view-card-header'
 import type { DetailViewSidebarProps } from './types'
 
@@ -31,8 +32,11 @@ export function DetailViewSidebar({
   displayName,
 }: DetailViewSidebarProps) {
   const { entityInstanceId } = parseRecordId(recordId)
+  const { can } = useAccess()
   const entityType = config.entityType
-  const sidebarCards = config.sidebarCards
+  // Layer-2 capability gate — drop cards (header included) the viewer lacks the
+  // key for, mirroring the card's router procedure gate (e.g. billing → dispatch).
+  const sidebarCards = config.sidebarCards?.filter((c) => !c.permissionKey || can(c.permissionKey))
 
   const beforeCards = sidebarCards?.filter((c) => c.position === 'before') ?? []
   const afterCards = sidebarCards?.filter((c) => (c.position ?? 'after') === 'after') ?? []

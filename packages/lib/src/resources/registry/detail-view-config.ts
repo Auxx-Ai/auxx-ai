@@ -51,7 +51,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // this contact participates in. Admin-managed; hidden for other roles
       // unless shares already exist.
       { value: 'shared-with', label: 'Shared with' },
-      { value: 'billing', label: 'Billing' },
+      { value: 'billing', label: 'Billing', permissionKey: 'dispatch.board.view' },
     ],
   },
 
