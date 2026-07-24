@@ -45,6 +45,9 @@ export enum PermissionKey {
   // files
   filesView = 'files.view',
   filesManage = 'files.manage',
+
+  // connectors
+  connectorsManage = 'connectors.manage',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -230,6 +233,15 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Files',
     featureKey: FeatureKey.files,
   },
+
+  // ── Connectors ──
+  {
+    key: PermissionKey.connectorsManage,
+    label: 'Manage Connectors',
+    description: 'Create, configure, sync, and delete data connectors.',
+    group: 'Integrations',
+    featureKey: FeatureKey.dataConnectors,
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -288,6 +300,7 @@ export enum Area {
   automationRules = 'automationRules',
   auditLog = 'auditLog',
   files = 'files',
+  connectors = 'connectors',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -461,6 +474,14 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
       { level: Level.Full, keys: [PermissionKey.filesManage] },
     ],
     featureKey: FeatureKey.files,
+  },
+  [Area.connectors]: {
+    area: Area.connectors,
+    label: 'Connectors',
+    description: 'Create, configure, sync, and delete data connectors.',
+    group: 'Integrations',
+    rungs: [{ level: Level.Full, keys: [PermissionKey.connectorsManage] }],
+    featureKey: FeatureKey.dataConnectors,
   },
 }
 

@@ -56,6 +56,7 @@ const USER_ADMIN_NONE_AREAS = new Set<Area>([
   Area.aiConfig,
   Area.automationRules,
   Area.auditLog,
+  Area.connectors,
 ])
 
 /**
