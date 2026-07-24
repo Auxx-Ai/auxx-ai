@@ -104,5 +104,11 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // v2: inboxLens values normalized to scalar lenses (cached entries built
   // from the pre-v5 `inboxes` shape carried SINGLE_SELECT arrays).
   userMailVisibility: { prefix: 'user:mail-visibility:v2', ttlSeconds: ONE_DAY },
-  userCapabilities: { prefix: 'user:capabilities:v1', ttlSeconds: ONE_DAY },
+  // v2: instance-access slice (#1313) added the `instanceAccess` field + the
+  // `datasets` L2 area/keys. Pre-#1313 blobs lack the datasets area entirely, so
+  // their expanded key set is missing `datasets.*` (even admins 403 on
+  // `datasets.view`). Bump to abandon every stale blob → recompute on next read.
+  // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
+  // shape changes, so a rollout can't leave members on a stale key set.
+  userCapabilities: { prefix: 'user:capabilities:v2', ttlSeconds: ONE_DAY },
 }
