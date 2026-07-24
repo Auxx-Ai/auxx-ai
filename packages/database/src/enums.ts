@@ -837,7 +837,7 @@ export const TrialConversionStatusValues = [
   'MANUAL_CONVERSION',
 ] as const
 
-export const UserTypeValues = ['USER', 'SYSTEM'] as const
+export const UserTypeValues = ['USER', 'SYSTEM', 'AGENT'] as const
 
 export const VectorDbTypeValues = [
   'POSTGRESQL',
@@ -1627,6 +1627,7 @@ export const TrialConversionStatus = {
 export const UserType = {
   USER: 'USER',
   SYSTEM: 'SYSTEM',
+  AGENT: 'AGENT',
 } as const
 
 export const VectorDbType = {

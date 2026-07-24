@@ -3,9 +3,10 @@
 // DB-backed behavior tests (vitest.integration.config.ts → auxx_test database)
 // for the Dashboards v2 entity link (plans/dashboard/v2/01-schema-and-api.md):
 // the partial unique index (`Dashboard_org_entityDef_unique`), the forced
-// `visibility: 'org'` on link, the BadRequestError/ConflictError mapping, the
-// `getDashboard` entity-selector branch, and `duplicateDashboard` dropping the
-// link. Written as integration tests (not db-mocked unit tests) — under the
+// org-shared workspace baseline (`isPrivate: false`) on link (doc 13), the
+// BadRequestError/ConflictError mapping, the `getDashboard` entity-selector
+// branch, and `duplicateDashboard` dropping the link. Written as integration
+// tests (not db-mocked unit tests) — under the
 // plain `vitest.config.ts`, `@auxx/database` is mocked to an empty Proxy
 // (see [[project-drizzle-columns-undefined-in-vitest]]), which makes
 // exercising real Drizzle queries impossible there; this suite is the closest
@@ -79,16 +80,16 @@ describe('dashboard entity link (plan 01)', () => {
     org = await createTestOrganization()
   })
 
-  it('create forces org visibility when entityDefinitionId is set', async () => {
+  it('create forces the workspace baseline open when entityDefinitionId is set', async () => {
     const def = await seedDef(org.id)
     const result = await createDashboard(db(), org.id, org.ownerId, {
       name: 'Tickets',
-      visibility: 'private',
+      isPrivate: true,
       entityDefinitionId: def.id,
     })
     expect(result.isOk()).toBe(true)
     const dashboard = result._unsafeUnwrap()
-    expect(dashboard.visibility).toBe('org')
+    expect(dashboard.isPrivate).toBe(false)
     expect(dashboard.entityDefinitionId).toBe(def.id)
   })
 
@@ -127,7 +128,7 @@ describe('dashboard entity link (plan 01)', () => {
     })
     const firstId = first._unsafeUnwrap().id
 
-    await archiveDashboard(db(), org.id, org.ownerId, firstId)
+    await archiveDashboard(db(), org.id, firstId)
 
     const second = await createDashboard(db(), org.id, org.ownerId, {
       name: 'Tickets 2',
@@ -152,7 +153,7 @@ describe('dashboard entity link (plan 01)', () => {
   describe('getDashboard by entity', () => {
     it('returns null when no dashboard is linked', async () => {
       const def = await seedDef(org.id)
-      const result = await getDashboard(db(), org.id, org.ownerId, { entityDefinitionId: def.id })
+      const result = await getDashboard(db(), org.id, { entityDefinitionId: def.id })
       expect(result.isOk()).toBe(true)
       expect(result._unsafeUnwrap()).toBeNull()
     })
@@ -165,7 +166,7 @@ describe('dashboard entity link (plan 01)', () => {
       })
       const dashboardId = created._unsafeUnwrap().id
 
-      const result = await getDashboard(db(), org.id, org.ownerId, { entityDefinitionId: def.id })
+      const result = await getDashboard(db(), org.id, { entityDefinitionId: def.id })
       expect(result.isOk()).toBe(true)
       expect(result._unsafeUnwrap()?.id).toBe(dashboardId)
     })
@@ -177,26 +178,26 @@ describe('dashboard entity link (plan 01)', () => {
         entityDefinitionId: def.id,
       })
       const dashboardId = created._unsafeUnwrap().id
-      await archiveDashboard(db(), org.id, org.ownerId, dashboardId)
+      await archiveDashboard(db(), org.id, dashboardId)
 
-      const result = await getDashboard(db(), org.id, org.ownerId, { entityDefinitionId: def.id })
+      const result = await getDashboard(db(), org.id, { entityDefinitionId: def.id })
       expect(result.isOk()).toBe(true)
       expect(result._unsafeUnwrap()).toBeNull()
     })
 
     it('an unresolvable entity key is a NotFoundError', async () => {
-      const result = await getDashboard(db(), org.id, org.ownerId, { slug: 'not-a-real-slug' })
+      const result = await getDashboard(db(), org.id, { slug: 'not-a-real-slug' })
       expect(result.isErr()).toBe(true)
       expect(result._unsafeUnwrapErr()).toBeInstanceOf(NotFoundError)
     })
   })
 
   describe('updateDashboard entity link', () => {
-    it('linking forces org visibility and rejects a foreign def', async () => {
+    it('linking forces the workspace baseline open and rejects a foreign def', async () => {
       const def = await seedDef(org.id)
       const created = await createDashboard(db(), org.id, org.ownerId, {
         name: 'Plain',
-        visibility: 'private',
+        isPrivate: true,
       })
       const dashboardId = created._unsafeUnwrap().id
 
@@ -213,11 +214,11 @@ describe('dashboard entity link (plan 01)', () => {
       })
       expect(linked.isOk()).toBe(true)
       const value = linked._unsafeUnwrap()
-      expect(value.visibility).toBe('org')
+      expect(value.isPrivate).toBe(false)
       expect(value.entityDefinitionId).toBe(def.id)
     })
 
-    it('unlinking with null clears the def and leaves visibility untouched', async () => {
+    it('unlinking with null clears the def and leaves the baseline untouched', async () => {
       const def = await seedDef(org.id)
       const created = await createDashboard(db(), org.id, org.ownerId, {
         name: 'Tickets',
@@ -231,8 +232,8 @@ describe('dashboard entity link (plan 01)', () => {
       expect(unlinked.isOk()).toBe(true)
       const value = unlinked._unsafeUnwrap()
       expect(value.entityDefinitionId).toBeNull()
-      // Was forced 'org' on create; unlinking doesn't touch visibility.
-      expect(value.visibility).toBe('org')
+      // Was forced open on create; unlinking doesn't touch the baseline.
+      expect(value.isPrivate).toBe(false)
     })
 
     it('linking to a def another live dashboard already owns conflicts', async () => {

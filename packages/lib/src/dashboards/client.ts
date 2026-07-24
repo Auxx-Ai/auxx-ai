@@ -33,8 +33,6 @@ export type WidgetKind =
   | 'richText'
   | 'iframe'
 
-export type DashboardVisibility = 'private' | 'org'
-
 /** The system-table id union the `systemConditionBuilder` keys on. */
 export type SystemTableId = TableId
 
@@ -378,7 +376,8 @@ export type DashboardSummary = {
   name: string
   description: string | null
   icon: { iconId: string; color: string } | null
-  visibility: DashboardVisibility
+  /** True ⇔ the workspace-baseline `ResourceAccess` row is `'none'` (doc 13 §0.4/§3). */
+  isPrivate: boolean
   position: number
   createdById: string | null
   activeVersionId: string | null
@@ -395,7 +394,8 @@ export type DashboardWithLayout = {
   name: string
   description: string | null
   icon: { iconId: string; color: string } | null
-  visibility: DashboardVisibility
+  /** True ⇔ the workspace-baseline `ResourceAccess` row is `'none'` (doc 13 §0.4/§3). */
+  isPrivate: boolean
   position: number
   createdById: string | null
   activeVersionId: string | null

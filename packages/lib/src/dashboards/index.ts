@@ -3,7 +3,6 @@
 // Server entrypoint for the dashboards feature. Client-safe types/constants/
 // guards live in `./client` (import those from `@auxx/lib/dashboards/client`).
 
-export { canEditDashboard, canViewDashboard } from './access'
 export { hashLayoutDoc } from './config-hash'
 export {
   chartQueryInputSchema,

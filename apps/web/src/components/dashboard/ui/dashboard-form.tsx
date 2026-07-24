@@ -7,7 +7,6 @@
 // wraps this in a `Dialog`; the command palette hosts the create mode as a page.
 // Owns its own mutations + cache invalidation; create routes to the new dashboard.
 
-import type { DashboardVisibility } from '@auxx/lib/dashboards/client'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import {
@@ -42,7 +41,7 @@ export type EditableDashboard = {
   name: string
   description: string | null
   icon: { iconId: string; color: string } | null
-  visibility: DashboardVisibility
+  isPrivate: boolean
   /** Set ⇒ THE dashboard for an entity def — drives the "Primary entity" row + the org-visibility lock. */
   entityDefinitionId: string | null
 }
@@ -51,7 +50,7 @@ const dashboardFormSchema = z.object({
   name: z.string().min(1, 'Name is required').max(120, 'Name must be less than 120 characters'),
   description: z.string().max(1000, 'Description must be less than 1000 characters'),
   icon: z.object({ icon: z.string(), color: z.string() }),
-  visibility: z.enum(['org', 'private']),
+  isPrivate: z.boolean(),
 })
 
 type DashboardFormValues = z.infer<typeof dashboardFormSchema>
@@ -84,8 +83,8 @@ export function DashboardForm({
 
   // "Primary entity" link (plan 02) — an immediate side-effect field (like the
   // widget config panel's data-source picker), decoupled from the name/
-  // description/visibility submit below. Only meaningful in edit mode; create
-  // mode's picker is a nice-to-have that's out of scope (README §create-dialog).
+  // description submit below. Only meaningful in edit mode; create mode's
+  // picker is a nice-to-have that's out of scope (README §create-dialog).
   const [entityDefinitionId, setEntityDefinitionId] = useState<string | null>(
     dashboard?.entityDefinitionId ?? null
   )
@@ -100,7 +99,7 @@ export function DashboardForm({
         icon: dashboard?.icon?.iconId ?? DEFAULT_ICON.icon,
         color: dashboard?.icon?.color ?? DEFAULT_ICON.color,
       },
-      visibility: dashboard?.visibility ?? 'org',
+      isPrivate: dashboard?.isPrivate ?? false,
     },
   })
 
@@ -108,7 +107,6 @@ export function DashboardForm({
     if (!dashboard) return
     if (await updateDashboard(dashboard.id, { entityDefinitionId: id })) {
       setEntityDefinitionId(id)
-      if (id) form.setValue('visibility', 'org')
     }
   }
 
@@ -116,19 +114,20 @@ export function DashboardForm({
   const icon = form.watch('icon')
 
   const onSubmit = async (data: DashboardFormValues) => {
-    const payload = {
+    const basePayload = {
       name: data.name.trim(),
       description: data.description.trim() || null,
       icon: { iconId: data.icon.icon, color: data.icon.color },
-      visibility: data.visibility,
     }
     if (dashboard) {
-      if (await updateDashboard(dashboard.id, payload)) {
+      // `dashboard.update` no longer accepts a visibility field — after
+      // creation, the Share dialog is the only editor of who can see it.
+      if (await updateDashboard(dashboard.id, basePayload)) {
         onClose()
         onSuccess?.(dashboard)
       }
     } else {
-      const created = await createDashboard(payload)
+      const created = await createDashboard({ ...basePayload, isPrivate: data.isPrivate })
       if (created) {
         form.reset()
         onClose()
@@ -202,39 +201,51 @@ export function DashboardForm({
             </FormItem>
           )}
 
-          <FormField
-            control={form.control}
-            name='visibility'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Visibility</FormLabel>
-                <RadioGroup
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  disabled={isLinked}
-                  className='grid gap-2 sm:grid-cols-2'>
-                  <RadioGroupItemCard
-                    value='org'
-                    label='Organization'
-                    icon={<Globe />}
-                    description='Everyone in the org can view and edit'
-                  />
-                  <RadioGroupItemCard
-                    value='private'
-                    label='Private'
-                    icon={<Lock />}
-                    description='Only you can see it'
-                  />
-                </RadioGroup>
-                {isLinked && (
-                  <p className='text-xs text-muted-foreground'>
-                    Locked to Organization while linked to an entity.
-                  </p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {/* Create-only: the write-once form of the workspace-baseline row.
+              After creation `dashboard.update` no longer accepts a visibility
+              field — the Share dialog becomes the only editor of who can see
+              it (plans/permissions/v2/13-instance-access-dashboards.md §5). */}
+          {!isEditing && (
+            <FormField
+              control={form.control}
+              name='isPrivate'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Visibility</FormLabel>
+                  <RadioGroup
+                    value={field.value ? 'private' : 'org'}
+                    onValueChange={(value) => field.onChange(value === 'private')}
+                    disabled={isLinked}
+                    className='grid gap-2 sm:grid-cols-2'>
+                    <RadioGroupItemCard
+                      value='org'
+                      label='Shared with org'
+                      icon={<Globe />}
+                      description='Everyone in the org can view it'
+                    />
+                    <RadioGroupItemCard
+                      value='private'
+                      label='Private'
+                      icon={<Lock />}
+                      description='Only you can see it'
+                    />
+                  </RadioGroup>
+                  {isLinked && (
+                    <p className='text-xs text-muted-foreground'>
+                      Entity dashboards are always shared with the org.
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+
+          {isEditing && (
+            <p className='text-xs text-muted-foreground'>
+              Who can see this dashboard is managed from Share.
+            </p>
+          )}
 
           <DialogFooter>
             <Button type='button' variant='ghost' size='sm' onClick={cancel} disabled={isPending}>

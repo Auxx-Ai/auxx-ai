@@ -17,6 +17,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Lock } from 'lucide-react'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import { EmptyState } from '~/components/global/empty-state'
 import { ListSelectionProvider } from '~/components/list-selection'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -73,8 +74,11 @@ export function DashboardsListView() {
   }
 
   return (
-    <DashboardsProvider>
-      <DashboardsPageContent />
-    </DashboardsProvider>
+    <>
+      <CapabilityPageGuard permissionKey='dashboards.view' />
+      <DashboardsProvider>
+        <DashboardsPageContent />
+      </DashboardsProvider>
+    </>
   )
 }

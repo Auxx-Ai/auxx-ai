@@ -2143,6 +2143,20 @@
       "when": 1784870896376,
       "tag": "0305_table_view_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1784921205531,
+      "tag": "0306_drop_dashboard_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1784921572693,
+      "tag": "0307_agent_run_as_user",
+      "breakpoints": true
     }
   ]
 }

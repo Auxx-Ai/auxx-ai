@@ -13,6 +13,7 @@ export {
 export {
   checkAccess,
   checkTypeAccess,
+  emitResourceAccessInstanceChanged,
   getAllTypeAccess,
   getInstanceAccess,
   getTypeAccess,

@@ -1,35 +1,97 @@
 // packages/lib/src/dashboards/dashboard-mutations.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { generateId } from '@auxx/utils'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedResources } from '../cache'
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../errors'
-import { canEditDashboard } from './access'
-import {
-  createStarterLayoutDoc,
-  type DashboardLayoutDoc,
-  type DashboardVisibility,
-  type DashboardWithLayout,
-} from './client'
+import { BadRequestError, ConflictError, NotFoundError } from '../errors'
+import { emitResourceAccessInstanceChanged } from '../resource-access'
+import { createStarterLayoutDoc, type DashboardLayoutDoc, type DashboardWithLayout } from './client'
 import { hashLayoutDoc } from './config-hash'
-import { getDashboard, loadDashboardRow, parseLayoutDoc } from './dashboard-queries'
+import {
+  getDashboard,
+  getWorkspaceBaselinePermission,
+  loadDashboardRow,
+  parseLayoutDoc,
+} from './dashboard-queries'
 
 /**
  * Write paths for dashboard identity/access + lifecycle. Version content is
  * owned by `version-mutations.ts`; the only version write here is the v1 insert
  * that every create/duplicate performs in the same transaction as the row. Never
- * touches an existing version. Functional Drizzle, `neverthrow` results.
+ * touches an existing version. Enforcement lives entirely in the router
+ * (doc 13 §4) — every gate here (`canEditDashboard` et al.) is gone; callers must
+ * have already asserted the right instance-access level. Functional Drizzle,
+ * `neverthrow` results.
  */
+
+const DASHBOARD_KEY = 'dashboard'
+const WORKSPACE_BASELINE_GRANTEE = 'org_member'
 
 export type CreateDashboardInput = {
   name: string
   description?: string | null
   icon?: { iconId: string; color: string }
-  visibility?: DashboardVisibility
+  /** Private (workspace baseline `'none'`) vs shared with org (`'view'`). Default `false` (shared). */
+  isPrivate?: boolean
   /** Links the new dashboard as THE dashboard for this entity def (see `getDashboard`). */
   entityDefinitionId?: string
+}
+
+/**
+ * Grantees affected by a dashboard's create-time (or duplicate-time) baseline
+ * write — the workspace-baseline role grant, plus the owner's `admin` grant when
+ * there's a human owner. Feeds {@link emitResourceAccessInstanceChanged}.
+ */
+function baselineGrantees(
+  ownerId: string | null
+): Array<{ granteeType: ResourceGranteeType; granteeId: string }> {
+  const grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }> = [
+    { granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE },
+  ]
+  if (ownerId) grantees.push({ granteeType: ResourceGranteeType.user, granteeId: ownerId })
+  return grantees
+}
+
+/**
+ * Insert the two instance-access rows a dashboard is born with (doc 13 §2): the
+ * workspace baseline (`'none'` when private, `'view'` when shared) and, when
+ * there's a human owner, an `admin` grant for them. MUST run in the same
+ * transaction as the `Dashboard` row insert — `dashboard` is
+ * `baselineAtCreate: true`, so a dashboard born without these rows is invisible
+ * to everyone including its creator until they exist (doc 13 §4 caveat).
+ */
+async function insertInstanceAccessBaseline(
+  tx: Transaction,
+  orgId: string,
+  dashboardId: string,
+  opts: { isPrivate: boolean; ownerId: string | null }
+): Promise<void> {
+  const rows: (typeof schema.ResourceAccess.$inferInsert)[] = [
+    {
+      organizationId: orgId,
+      entityDefinitionId: DASHBOARD_KEY,
+      entityInstanceId: dashboardId,
+      granteeType: ResourceGranteeType.role,
+      granteeId: WORKSPACE_BASELINE_GRANTEE,
+      permission: opts.isPrivate ? ResourcePermission.none : ResourcePermission.view,
+      grantedById: opts.ownerId,
+    },
+  ]
+  if (opts.ownerId) {
+    rows.push({
+      organizationId: orgId,
+      entityDefinitionId: DASHBOARD_KEY,
+      entityInstanceId: dashboardId,
+      granteeType: ResourceGranteeType.user,
+      granteeId: opts.ownerId,
+      permission: ResourcePermission.admin,
+      grantedById: opts.ownerId,
+    })
+  }
+  await tx.insert(schema.ResourceAccess).values(rows).onConflictDoNothing()
 }
 
 /** The entity def exists and belongs to this org, or `err(BadRequestError)`. */
@@ -96,8 +158,8 @@ export type InsertPublishedDashboardInput = {
   name: string
   description?: string | null
   icon?: { iconId: string; color: string } | null
-  /** Defaults to `'org'` — every current caller (user-create, seed) wants org visibility. */
-  visibility?: DashboardVisibility
+  /** Defaults to `false` (shared) — every current caller (user-create, seed) wants org visibility. */
+  isPrivate?: boolean
   entityDefinitionId?: string | null
   /** Attributed creator/editor. `null` for a row with no human owner. */
   createdById: string | null
@@ -106,11 +168,15 @@ export type InsertPublishedDashboardInput = {
 
 /**
  * Insert a brand-new dashboard that starts already "published": the row, a v1
- * `DashboardVersion` snapshotting `layout`, `activeVersionId` pointed at it, and
- * `draftLayout` mirroring the same doc (`hasUnpublishedChanges` defaults false) —
- * all in one transaction. The ONE place this v1-publish invariant is written,
+ * `DashboardVersion` snapshotting `layout`, `activeVersionId` pointed at it,
+ * `draftLayout` mirroring the same doc (`hasUnpublishedChanges` defaults false),
+ * and the instance-access baseline rows (doc 13 §2 — {@link insertInstanceAccessBaseline})
+ * — all in one transaction. The ONE place this v1-publish invariant is written,
  * shared by `createDashboard` (starter doc, user-facing) and the default-dashboard
  * seeder (resolved template doc — `entity-seeder/create-default-dashboards.ts`).
+ * Busts `restrictedInstanceIds`/`userCapabilities` AFTER the transaction commits —
+ * without this, `dashboard` being `baselineAtCreate: true` means the creator can't
+ * see the dashboard they just made (doc 13 §4 caveat).
  *
  * Does NOT validate `layout` or check the entity-def unique constraint — callers
  * own both (a starter doc is valid by construction; the seeder validates against
@@ -131,13 +197,17 @@ export async function insertPublishedDashboard(
       name: input.name,
       description: input.description ?? null,
       icon: input.icon ?? undefined,
-      visibility: input.visibility ?? 'org',
       entityDefinitionId: input.entityDefinitionId ?? null,
       createdById: input.createdById,
       position: await nextPosition(tx, orgId),
     })
     await insertInitialVersion(tx, orgId, dashboardId, input.createdById, input.layout)
+    await insertInstanceAccessBaseline(tx, orgId, dashboardId, {
+      isPrivate: input.isPrivate ?? false,
+      ownerId: input.createdById,
+    })
   })
+  await emitResourceAccessInstanceChanged(orgId, baselineGrantees(input.createdById))
   return dashboardId
 }
 
@@ -167,7 +237,7 @@ export async function createDashboard(
       // Entity dashboards are always org-visible (locked decision 5) — a private
       // one would dead-end other members: they'd see the empty state but hit the
       // unique conflict on create.
-      visibility: input.entityDefinitionId ? 'org' : (input.visibility ?? 'org'),
+      isPrivate: input.entityDefinitionId ? false : (input.isPrivate ?? false),
       entityDefinitionId: input.entityDefinitionId ?? null,
       createdById: userId,
       layout: doc,
@@ -179,20 +249,23 @@ export async function createDashboard(
     throw e
   }
 
-  return getDashboard(db, orgId, userId, { id: dashboardId })
+  return getDashboard(db, orgId, { id: dashboardId })
 }
 
 export type UpdateDashboardPatch = {
   name?: string
   description?: string | null
   icon?: { iconId: string; color: string } | null
-  visibility?: DashboardVisibility
   position?: number
   /** Link (a def in this org) / unlink (`null`) this dashboard from an entity def. */
   entityDefinitionId?: string | null
 }
 
-/** Update row metadata only — never touches versions. */
+/**
+ * Update row metadata only — never touches versions. `userId` is used solely as
+ * `grantedById` when linking an entity def forces the workspace baseline open
+ * (below) — it is NOT an access check (the router already gated `assertEditInstance`).
+ */
 export async function updateDashboard(
   db: Database,
   orgId: string,
@@ -202,7 +275,6 @@ export async function updateDashboard(
 ): Promise<Result<DashboardWithLayout, Error>> {
   const rowResult = await loadDashboardRow(db, orgId, dashboardId)
   if (rowResult.isErr()) return err(rowResult.error)
-  if (!canEditDashboard(rowResult.value, userId)) return err(new ForbiddenError('Not allowed'))
 
   if (patch.entityDefinitionId) {
     const check = await assertEntityDefInOrg(orgId, patch.entityDefinitionId)
@@ -213,39 +285,70 @@ export async function updateDashboard(
   if (patch.name !== undefined) set.name = patch.name
   if (patch.description !== undefined) set.description = patch.description
   if (patch.icon !== undefined) set.icon = patch.icon
-  if (patch.visibility !== undefined) set.visibility = patch.visibility
   if (patch.position !== undefined) set.position = patch.position
-  if (patch.entityDefinitionId !== undefined) {
-    set.entityDefinitionId = patch.entityDefinitionId
-    // Linking forces org visibility (locked decision 5); unlinking (`null`) leaves
-    // visibility as-is.
-    if (patch.entityDefinitionId) set.visibility = 'org'
-  }
+  if (patch.entityDefinitionId !== undefined) set.entityDefinitionId = patch.entityDefinitionId
+  // Linking forces the workspace baseline open (locked decision 5) — an
+  // entity-linked dashboard must be org-visible. Unlinking (`null`) leaves the
+  // baseline as-is.
+  const linking = Boolean(patch.entityDefinitionId)
 
-  if (Object.keys(set).length > 0) {
-    try {
-      await db.update(schema.Dashboard).set(set).where(eq(schema.Dashboard.id, dashboardId))
-    } catch (e) {
-      if (isUniqueViolation(e)) {
-        return err(new ConflictError('This entity already has a dashboard'))
+  try {
+    await db.transaction(async (tx) => {
+      if (Object.keys(set).length > 0) {
+        await tx.update(schema.Dashboard).set(set).where(eq(schema.Dashboard.id, dashboardId))
       }
-      throw e
+      if (linking) {
+        await tx
+          .insert(schema.ResourceAccess)
+          .values({
+            organizationId: orgId,
+            entityDefinitionId: DASHBOARD_KEY,
+            entityInstanceId: dashboardId,
+            granteeType: ResourceGranteeType.role,
+            granteeId: WORKSPACE_BASELINE_GRANTEE,
+            permission: ResourcePermission.view,
+            grantedById: userId,
+          })
+          .onConflictDoUpdate({
+            target: [
+              schema.ResourceAccess.organizationId,
+              schema.ResourceAccess.entityDefinitionId,
+              schema.ResourceAccess.entityInstanceId,
+              schema.ResourceAccess.granteeType,
+              schema.ResourceAccess.granteeId,
+            ],
+            set: {
+              permission: ResourcePermission.view,
+              grantedById: userId,
+              updatedAt: new Date(),
+            },
+          })
+      }
+    })
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      return err(new ConflictError('This entity already has a dashboard'))
     }
+    throw e
   }
 
-  return getDashboard(db, orgId, userId, { id: dashboardId })
+  if (linking) {
+    await emitResourceAccessInstanceChanged(orgId, [
+      { granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE },
+    ])
+  }
+
+  return getDashboard(db, orgId, { id: dashboardId })
 }
 
-/** Soft-delete (`archivedAt`). Requires edit access. */
+/** Soft-delete (`archivedAt`). Caller must have already gated admin access. */
 export async function archiveDashboard(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string
 ): Promise<Result<{ id: string }, Error>> {
   const rowResult = await loadDashboardRow(db, orgId, dashboardId)
   if (rowResult.isErr()) return err(rowResult.error)
-  if (!canEditDashboard(rowResult.value, userId)) return err(new ForbiddenError('Not allowed'))
 
   await db
     .update(schema.Dashboard)
@@ -255,10 +358,12 @@ export async function archiveDashboard(
 }
 
 /**
- * Duplicate a dashboard: a new row (`"<name> (Copy)"`, the duplicator as owner,
- * visibility copied) with a single v1 that copies the source's ACTIVE layout doc
- * verbatim. Doc-local ids may repeat across dashboards — they're never
- * reconciled with the server. History is NOT copied.
+ * Duplicate a dashboard: a new row (`"<name> (Copy)"`, the duplicator as owner)
+ * with a single v1 that copies the source's ACTIVE layout doc verbatim, plus
+ * fresh instance-access baseline rows (doc 13 §2) — the source's workspace
+ * baseline `isPrivate` is copied, and the duplicating user gets an `admin` owner
+ * grant. Doc-local ids may repeat across dashboards — they're never reconciled
+ * with the server. History is NOT copied.
  */
 export async function duplicateDashboard(
   db: Database,
@@ -269,7 +374,6 @@ export async function duplicateDashboard(
   const rowResult = await loadDashboardRow(db, orgId, dashboardId)
   if (rowResult.isErr()) return err(rowResult.error)
   const source = rowResult.value
-  if (!canEditDashboard(source, userId)) return err(new ForbiddenError('Not allowed'))
   if (!source.activeVersionId) return err(new NotFoundError('Dashboard has no active version'))
 
   const activeVersion = await db.query.DashboardVersion.findFirst({
@@ -281,6 +385,9 @@ export async function duplicateDashboard(
   if (docResult.isErr()) return err(docResult.error)
   const doc = docResult.value
 
+  const sourceBaseline = await getWorkspaceBaselinePermission(db, orgId, dashboardId)
+  const isPrivate = sourceBaseline === undefined || sourceBaseline === ResourcePermission.none
+
   const newId = generateId()
   await db.transaction(async (tx) => {
     await tx.insert(schema.Dashboard).values({
@@ -289,7 +396,6 @@ export async function duplicateDashboard(
       name: `${source.name} (Copy)`,
       description: source.description,
       icon: source.icon,
-      visibility: source.visibility,
       // Deliberately NOT copying `entityDefinitionId` (locked decision 11) — the
       // partial unique index allows only one live dashboard per org+def, so the
       // copy always starts unlinked.
@@ -297,7 +403,9 @@ export async function duplicateDashboard(
       position: await nextPosition(tx, orgId),
     })
     await insertInitialVersion(tx, orgId, newId, userId, doc)
+    await insertInstanceAccessBaseline(tx, orgId, newId, { isPrivate, ownerId: userId })
   })
+  await emitResourceAccessInstanceChanged(orgId, baselineGrantees(userId))
 
-  return getDashboard(db, orgId, userId, { id: newId })
+  return getDashboard(db, orgId, { id: newId })
 }

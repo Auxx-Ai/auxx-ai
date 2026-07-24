@@ -26,15 +26,16 @@
 // Deferred (plan 08): global filter bar, drill-down, chart refresh.
 
 import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/client'
-import type { RecordId } from '@auxx/types/resource'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { BreadcrumbItem } from '@auxx/ui/components/breadcrumb'
+import { Button } from '@auxx/ui/components/button'
 import {
   MainPageAction,
   MainPageBreadcrumbDropdown,
   MainPageContent,
   MainPageCrumbs,
 } from '@auxx/ui/components/main-page'
-import { Lock } from 'lucide-react'
+import { Lock, Share2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useEffect, useRef, useState } from 'react'
@@ -42,6 +43,7 @@ import { useFavoriteToggle } from '~/components/favorites/hooks/use-favorite-tog
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
@@ -93,6 +95,7 @@ export function DashboardDetailView({
   const [confirm, ConfirmDialog] = useConfirm()
   const [tabParam, setTab] = useQueryState('tab')
   const [selectedWidgetId, setSelectedWidgetId] = useQueryState('widget')
+  const [shareOpen, setShareOpen] = useState(false)
 
   // Record opened from a recordList widget (view mode). Lifted to the page so
   // the drawer renders in the docked panel / overlay, not clipped inside the
@@ -293,6 +296,15 @@ export function DashboardDetailView({
         targetIds={{ dashboardId: dashboard.id }}
         size='icon-xs'
       />
+      <Button variant='outline' size='sm' onClick={() => setShareOpen(true)}>
+        <Share2 />
+        Share
+      </Button>
+      <InstanceShareDialog
+        recordId={toRecordId('dashboard', dashboard.id)}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
       <DashboardPublishCluster
         dashboard={dashboard}
         activeVersionNumber={persistedVersionNumber ?? dashboard.versionNumber}
@@ -395,7 +407,7 @@ export function DashboardDetailView({
             onActiveDashboardDeleted={() => router.push('/app/dashboards')}
           />
         </MainPageBreadcrumbDropdown>
-        {dashboard.visibility === 'private' && (
+        {dashboard.isPrivate && (
           <BreadcrumbItem>
             <Lock className='size-3.5 text-muted-foreground' aria-label='Private dashboard' />
           </BreadcrumbItem>

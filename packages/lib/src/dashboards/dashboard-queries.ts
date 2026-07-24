@@ -1,36 +1,74 @@
 // packages/lib/src/dashboards/dashboard-queries.ts
 
 import { type DashboardEntity, type Database, schema } from '@auxx/database'
-import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { ForbiddenError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { NotFoundError, UnprocessableEntityError } from '../errors'
 import { resolveEntityIdFromCache } from '../resources/crud/unified-handler-queries'
-import { canViewDashboard } from './access'
 import type {
   DashboardLayoutDoc,
   DashboardSummary,
   DashboardVersionSummary,
-  DashboardVisibility,
   DashboardWithLayout,
 } from './client'
 import { dashboardLayoutDocSchema, draftLayoutDocSchema } from './config-schemas'
 
 /**
  * Read paths for dashboards + their versions. Functional Drizzle, `neverthrow`
- * results. Every query is org-scoped, filters `archivedAt IS NULL`, and applies
- * {@link canViewDashboard}. The active version's layout doc is validated
- * (`dashboardLayoutDocSchema`) before it leaves the server — a persisted doc that
- * somehow fails validation surfaces as `UnprocessableEntityError`, never as a
- * malformed client payload.
+ * results. Every query is org-scoped and filters `archivedAt IS NULL`.
+ * Enforcement (who may view/edit which dashboard) lives entirely in the router
+ * (`ctx.capabilities.assert*Instance('dashboard', id)`, doc 13 §4) — this module
+ * is capability-unaware, matching the KB precedent. The active version's layout
+ * doc is validated (`dashboardLayoutDocSchema`) before it leaves the server — a
+ * persisted doc that somehow fails validation surfaces as
+ * `UnprocessableEntityError`, never as a malformed client payload.
  */
 
-function toSummary(row: DashboardEntity, tabCount: number, widgetCount: number): DashboardSummary {
+const DASHBOARD_KEY = 'dashboard'
+const WORKSPACE_BASELINE_GRANTEE = 'org_member'
+
+/**
+ * The workspace-baseline `ResourceAccess` permission for one dashboard —
+ * `undefined` when no baseline row exists yet. `dashboard` is
+ * `baselineAtCreate: true` (doc 13 §0.1), so every dashboard SHOULD carry one
+ * after create/migration; a missing row is still treated as private (§3).
+ */
+export async function getWorkspaceBaselinePermission(
+  db: Database,
+  orgId: string,
+  dashboardId: string
+): Promise<ResourcePermission | undefined> {
+  const row = await db.query.ResourceAccess.findFirst({
+    where: and(
+      eq(schema.ResourceAccess.organizationId, orgId),
+      eq(schema.ResourceAccess.entityDefinitionId, DASHBOARD_KEY),
+      eq(schema.ResourceAccess.entityInstanceId, dashboardId),
+      eq(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
+      eq(schema.ResourceAccess.granteeId, WORKSPACE_BASELINE_GRANTEE)
+    ),
+    columns: { permission: true },
+  })
+  return row?.permission as ResourcePermission | undefined
+}
+
+/** No baseline row, or an explicit `'none'` row, ⇒ private (doc 13 §3). */
+function isPrivateFromBaseline(permission: ResourcePermission | undefined): boolean {
+  return permission === undefined || permission === ResourcePermission.none
+}
+
+function toSummary(
+  row: DashboardEntity,
+  tabCount: number,
+  widgetCount: number,
+  isPrivate: boolean
+): DashboardSummary {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     icon: row.icon ?? null,
-    visibility: row.visibility as DashboardVisibility,
+    isPrivate,
     position: row.position,
     createdById: row.createdById,
     activeVersionId: row.activeVersionId,
@@ -72,14 +110,15 @@ export function parseDraftLayoutDoc(
 }
 
 /**
- * Dashboards visible to `userId` in `orgId` — org-shared plus the user's own
- * private ones. Widget/tab counts come from the active version's doc via
- * `jsonb_array_length`. Ordered by `position`, then `name`.
+ * Every non-archived dashboard in `orgId`, with its workspace-baseline
+ * `isPrivate` flag (a single LEFT JOIN, not N+1). Access filtering is the
+ * ROUTER's job (`ctx.capabilities.canViewInstance('dashboard', id)`, doc 13
+ * §4) — this returns the full org set. Widget/tab counts come from the active
+ * version's doc via `jsonb_array_length`. Ordered by `position`, then `name`.
  */
 export async function listDashboards(
   db: Database,
-  orgId: string,
-  userId: string
+  orgId: string
 ): Promise<Result<DashboardSummary[], Error>> {
   const tabCount = sql<number>`COALESCE(jsonb_array_length(${schema.DashboardVersion.layout} -> 'tabs'), 0)`
   const widgetCount = sql<number>`COALESCE((
@@ -92,22 +131,36 @@ export async function listDashboards(
       dashboard: schema.Dashboard,
       tabCount,
       widgetCount,
+      baselinePermission: schema.ResourceAccess.permission,
     })
     .from(schema.Dashboard)
     .leftJoin(
       schema.DashboardVersion,
       eq(schema.DashboardVersion.id, schema.Dashboard.activeVersionId)
     )
-    .where(
+    .leftJoin(
+      schema.ResourceAccess,
       and(
-        eq(schema.Dashboard.organizationId, orgId),
-        isNull(schema.Dashboard.archivedAt),
-        or(eq(schema.Dashboard.visibility, 'org'), eq(schema.Dashboard.createdById, userId))
+        eq(schema.ResourceAccess.organizationId, orgId),
+        eq(schema.ResourceAccess.entityDefinitionId, DASHBOARD_KEY),
+        eq(schema.ResourceAccess.entityInstanceId, schema.Dashboard.id),
+        eq(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
+        eq(schema.ResourceAccess.granteeId, WORKSPACE_BASELINE_GRANTEE)
       )
     )
+    .where(and(eq(schema.Dashboard.organizationId, orgId), isNull(schema.Dashboard.archivedAt)))
     .orderBy(asc(schema.Dashboard.position), asc(schema.Dashboard.name))
 
-  return ok(rows.map((r) => toSummary(r.dashboard, Number(r.tabCount), Number(r.widgetCount))))
+  return ok(
+    rows.map((r) =>
+      toSummary(
+        r.dashboard,
+        Number(r.tabCount),
+        Number(r.widgetCount),
+        isPrivateFromBaseline(r.baselinePermission as ResourcePermission | undefined)
+      )
+    )
+  )
 }
 
 /** Load an org-scoped, non-archived dashboard row. Shared by queries + mutations. */
@@ -130,10 +183,9 @@ export async function loadDashboardRow(
 /** Dashboard row + its active version's validated layout doc + version number. */
 async function loadDashboardWithLayout(
   db: Database,
-  userId: string,
+  orgId: string,
   row: DashboardEntity
 ): Promise<Result<DashboardWithLayout, Error>> {
-  if (!canViewDashboard(row, userId)) return err(new ForbiddenError('Not allowed'))
   if (!row.activeVersionId) return err(new NotFoundError('Dashboard has no active version'))
 
   const version = await db.query.DashboardVersion.findFirst({
@@ -147,12 +199,14 @@ async function loadDashboardWithLayout(
   const draftResult = parseDraftLayoutDoc(row.draftLayout)
   if (draftResult.isErr()) return err(draftResult.error)
 
+  const baselinePermission = await getWorkspaceBaselinePermission(db, orgId, row.id)
+
   return ok({
     id: row.id,
     name: row.name,
     description: row.description,
     icon: row.icon ?? null,
-    visibility: row.visibility as DashboardVisibility,
+    isPrivate: isPrivateFromBaseline(baselinePermission),
     position: row.position,
     createdById: row.createdById,
     activeVersionId: row.activeVersionId,
@@ -183,25 +237,22 @@ export type DashboardSelector = { id: string } | { entityDefinitionId?: string; 
 export async function getDashboard(
   db: Database,
   orgId: string,
-  userId: string,
   selector: { id: string }
 ): Promise<Result<DashboardWithLayout, Error>>
 export async function getDashboard(
   db: Database,
   orgId: string,
-  userId: string,
   selector: { entityDefinitionId?: string; slug?: string }
 ): Promise<Result<DashboardWithLayout | null, Error>>
 export async function getDashboard(
   db: Database,
   orgId: string,
-  userId: string,
   selector: DashboardSelector
 ): Promise<Result<DashboardWithLayout | null, Error>> {
   if ('id' in selector) {
     const rowResult = await loadDashboardRow(db, orgId, selector.id)
     if (rowResult.isErr()) return err(rowResult.error)
-    return loadDashboardWithLayout(db, userId, rowResult.value)
+    return loadDashboardWithLayout(db, orgId, rowResult.value)
   }
 
   let entityDefinitionId: string
@@ -223,19 +274,17 @@ export async function getDashboard(
   })
   if (!row) return ok(null)
 
-  return loadDashboardWithLayout(db, userId, row)
+  return loadDashboardWithLayout(db, orgId, row)
 }
 
-/** Version history (meta only, newest first). Requires view access. */
+/** Version history (meta only, newest first). Caller must have already gated view access. */
 export async function listVersions(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string
 ): Promise<Result<DashboardVersionSummary[], Error>> {
   const rowResult = await loadDashboardRow(db, orgId, dashboardId)
   if (rowResult.isErr()) return err(rowResult.error)
-  if (!canViewDashboard(rowResult.value, userId)) return err(new ForbiddenError('Not allowed'))
 
   const versions = await db
     .select({
@@ -264,13 +313,11 @@ export async function listVersions(
 export async function getVersion(
   db: Database,
   orgId: string,
-  userId: string,
   dashboardId: string,
   versionNumber: number
 ): Promise<Result<{ meta: DashboardVersionSummary; doc: DashboardLayoutDoc }, Error>> {
   const rowResult = await loadDashboardRow(db, orgId, dashboardId)
   if (rowResult.isErr()) return err(rowResult.error)
-  if (!canViewDashboard(rowResult.value, userId)) return err(new ForbiddenError('Not allowed'))
 
   const version = await db.query.DashboardVersion.findFirst({
     where: and(
