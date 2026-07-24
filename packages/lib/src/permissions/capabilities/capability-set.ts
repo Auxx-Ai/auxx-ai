@@ -5,6 +5,7 @@ import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
 import {
   type ClientCapabilities,
+  canAdministerRecord,
   canEditRecord,
   canViewRecord,
   NON_RECORD_DEF_SLUGS,
@@ -219,6 +220,26 @@ export class CapabilitySet {
    */
   viewAccessFor(entityDefId: string): ResourcePermission | undefined {
     return this.defAccess[this.defIdToDefinitionId(entityDefId)]
+  }
+
+  /**
+   * Whether the member may ADMINISTER the definition itself (§9.1) — manage its
+   * fields, its access (the Access tab), its metadata, and delete/archive the
+   * def. The `Full`/`admin` rung: a scoped delegation of org-admin for one def.
+   *
+   * Unlike {@link canEditEntity}, this does NOT flow from the base records level
+   * — only an explicit `admin` type-grant (or OWNER/ADMIN) confers it. Worker
+   * seats never administer. Scoped to the exact def, so a def-admin grantee can
+   * only administer the def(s) they were granted (self-escalation guard). Zero I/O.
+   */
+  canAdministerDef(entityDefId: string): boolean {
+    return canAdministerRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
+  }
+
+  /** {@link canAdministerDef} as a throwing guard (403). */
+  assertAdministerDef(entityDefId: string): void {
+    if (this.canAdministerDef(entityDefId)) return
+    throw new ForbiddenError("You don't have permission to administer this definition.")
   }
 
   /** The capability key required to write the given RecordId-def part. */

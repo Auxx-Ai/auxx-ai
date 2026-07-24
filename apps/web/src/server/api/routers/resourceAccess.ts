@@ -2,6 +2,7 @@
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { isAdminOrOwner } from '@auxx/lib/members'
+import { getCapabilities } from '@auxx/lib/permissions'
 import type { ResourceAccessContext } from '@auxx/lib/resource-access'
 import {
   assertCanManageMailSharing,
@@ -44,10 +45,15 @@ function toContext(ctx: {
 /**
  * Authorization for TYPE-level (def-wide) ResourceAccess reads/writes. Mail-infra
  * defs keep their mail-sharing authorization (inbox managers etc.); every other
- * def — the entity-def Access UI surface (capability layer v2 phase 3) — is
- * strictly admin/owner-only. Enforced at the endpoint independently of the page's
- * role guard (defense in depth: a non-admin must not self-grant def access via a
- * raw call).
+ * def — the entity-def Access UI surface (capability layer v2 phase 3) — requires
+ * **def administration** on that exact def: OWNER/ADMIN, or a def-`admin` grantee
+ * of this def (§9.1/§9.2 — delegating the Access tab). Enforced at the endpoint
+ * independently of the page's role guard (defense in depth: a non-admin must not
+ * self-grant def access via a raw call).
+ *
+ * `canAdministerDef` is scoped to the exact `entityDefinitionId`, so a def-`admin`
+ * grantee can only manage the Access tab of the def(s) they administer — never
+ * another def, and never an org-level permission (§9.3 self-escalation guard).
  */
 async function assertCanManageTypeAccess(
   ctx: { db: any; session: { organizationId: string; userId: string } },
@@ -57,11 +63,11 @@ async function assertCanManageTypeAccess(
     await assertCanManageMailTypeAccess(toContext(ctx), entityDefinitionId)
     return
   }
-  const allowed = await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId)
-  if (!allowed) {
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  if (!capabilities.canAdministerDef(entityDefinitionId)) {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'You must be an admin or owner to manage type-level access',
+      message: 'You must be able to administer this entity to manage its type-level access',
     })
   }
 }
