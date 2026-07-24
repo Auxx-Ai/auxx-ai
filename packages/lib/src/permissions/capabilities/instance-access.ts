@@ -25,6 +25,8 @@ export interface InstanceAccessResourceConfig {
 export const INSTANCE_ACCESS_RESOURCES = {
   // org-shared; absent instance row → base L2 `datasets` level (§0.1)
   dataset: { baselineAtCreate: false, area: Area.datasets },
+  // org-shared; absent instance row → base L2 `knowledgeBase` level (doc 12 §0.2)
+  kb: { baselineAtCreate: false, area: Area.knowledgeBase },
 } as const satisfies Record<string, InstanceAccessResourceConfig>
 
 /** The set of resource keys backed by instance-level access. */

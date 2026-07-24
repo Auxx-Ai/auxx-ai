@@ -2,7 +2,9 @@
 'use client'
 
 import { mergeDraftOverLive } from '@auxx/lib/kb/client'
+import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
+import { Button } from '@auxx/ui/components/button'
 import {
   MainPageBreadcrumb,
   MainPageBreadcrumbDropdown,
@@ -10,9 +12,10 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
-import { Book, Cog, Layout, Sparkles } from 'lucide-react'
+import { Book, Cog, Layout, Share2, Sparkles } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { LAYOUT_TAB_ENABLED } from '../../constant'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { useKBPreviewHint } from '../preview/preview-hint-context'
@@ -54,6 +57,7 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
     parseAsStringLiteral(PANEL_VALUES).withDefault('general')
   )
   const { lockSession } = useKBPreviewHint()
+  const [shareOpen, setShareOpen] = useState(false)
   const isLearned = knowledgeBase.kind === 'learned'
 
   // Once the user has reached the Articles panel they've found the answer the
@@ -72,6 +76,15 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
       action={
         isLearned ? undefined : (
           <div className='flex items-center gap-2'>
+            <Button variant='outline' size='sm' onClick={() => setShareOpen(true)}>
+              <Share2 />
+              Share
+            </Button>
+            <InstanceShareDialog
+              recordId={toRecordId('kb', knowledgeBaseId)}
+              open={shareOpen}
+              onOpenChange={setShareOpen}
+            />
             <KBPublishCluster kbId={knowledgeBaseId} />
           </div>
         )

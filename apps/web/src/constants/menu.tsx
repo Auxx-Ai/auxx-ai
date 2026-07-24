@@ -201,6 +201,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         slug: 'kb',
         icon: <BookOpen />,
         featureKey: 'knowledgeBase',
+        permissionKey: 'knowledgeBase.view',
       },
       {
         id: 'connectors',

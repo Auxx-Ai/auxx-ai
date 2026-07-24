@@ -7,9 +7,12 @@
 // use-draft-settings-autosave.ts) — name is staged via `updateDraftSettings`
 // and never auto-published from here, matching the rest of the app.
 
+import { toRecordId } from '@auxx/types/resource'
+import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { ListCard, renderBadgeChips } from '@auxx/ui/components/list-card'
-import { Book, Lock, Settings, Trash } from 'lucide-react'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
+import { Book, Lock, Settings, Share2, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
@@ -20,7 +23,9 @@ import {
   useListSelection,
   usePendingLabel,
 } from '~/components/list-selection'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useKnowledgeBaseMutations } from '../../hooks/use-knowledge-base-mutations'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import {
@@ -37,6 +42,9 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const { isRestrictedInstance } = useAccess()
+  const isShared = isRestrictedInstance(kb.id)
 
   const bulkMode = useBulkMode()
   const selected = useIsSelected(kb.id)
@@ -79,6 +87,11 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
   return (
     <>
       <ConfirmDialog />
+      <InstanceShareDialog
+        recordId={toRecordId('kb', kb.id)}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
       <ListCard
         href={`/app/kb/${kb.id}/editor`}
         ariaLabel={kb.name}
@@ -92,9 +105,21 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
         icon={<Book className='size-4' />}
         description={kb.description ?? undefined}
         descriptionLines={2}
-        badges={renderBadgeChips(
-          statusLabel ? [{ icon: <Lock className='size-3' />, label: statusLabel }] : []
-        )}
+        badges={
+          <>
+            {isShared && (
+              <SimpleTooltip content='Shared with specific access'>
+                <Badge variant='pill' size='sm' className='shrink-0'>
+                  <Lock className='size-3' />
+                  Shared
+                </Badge>
+              </SimpleTooltip>
+            )}
+            {renderBadgeChips(
+              statusLabel ? [{ icon: <Lock className='size-3' />, label: statusLabel }] : []
+            )}
+          </>
+        }
         menu={
           <>
             <DropdownMenuItem onClick={() => router.push(`/app/kb/${kb.id}/editor`)}>
@@ -104,6 +129,10 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
             <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
               <Settings />
               Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShareOpen(true)}>
+              <Share2 />
+              Share…
             </DropdownMenuItem>
             <FavoriteToggleMenuItem
               targetType='KNOWLEDGE_BASE'

@@ -53,6 +53,11 @@ export enum PermissionKey {
   datasetsView = 'datasets.view',
   datasetsEdit = 'datasets.edit',
   datasetsManage = 'datasets.manage',
+
+  // knowledge bases (instance-access resource — per-KB ResourceAccess grants, doc 12 §2)
+  knowledgeBaseView = 'knowledgeBase.view',
+  knowledgeBaseEdit = 'knowledgeBase.edit',
+  knowledgeBaseManage = 'knowledgeBase.manage',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -270,6 +275,29 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Knowledge',
     featureKey: FeatureKey.datasets,
   },
+
+  // ── Knowledge Bases ──
+  {
+    key: PermissionKey.knowledgeBaseView,
+    label: 'View Knowledge Bases',
+    description: 'Read the articles inside knowledge bases.',
+    group: 'Knowledge',
+    featureKey: FeatureKey.knowledgeBase,
+  },
+  {
+    key: PermissionKey.knowledgeBaseEdit,
+    label: 'Write Knowledge Base Articles',
+    description: 'Write, publish, and organize the articles inside knowledge bases.',
+    group: 'Knowledge',
+    featureKey: FeatureKey.knowledgeBase,
+  },
+  {
+    key: PermissionKey.knowledgeBaseManage,
+    label: 'Manage Knowledge Bases',
+    description: 'Create, delete, and configure knowledge bases and their settings.',
+    group: 'Knowledge',
+    featureKey: FeatureKey.knowledgeBase,
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -330,6 +358,7 @@ export enum Area {
   files = 'files',
   connectors = 'connectors',
   datasets = 'datasets',
+  knowledgeBase = 'knowledgeBase',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -523,6 +552,21 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
       { level: Level.Full, keys: [PermissionKey.datasetsManage] },
     ],
     featureKey: FeatureKey.datasets,
+  },
+  [Area.knowledgeBase]: {
+    area: Area.knowledgeBase,
+    label: 'Knowledge Base',
+    description:
+      'Read articles, write & publish them, or manage the knowledge base and its settings.',
+    group: 'Knowledge',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.knowledgeBaseView] },
+      { level: Level.Edit, keys: [PermissionKey.knowledgeBaseEdit] },
+      { level: Level.Full, keys: [PermissionKey.knowledgeBaseManage] },
+    ],
+    // Layer-1 boolean access gate (types.ts:31) — NOT the plural
+    // FeatureKey.knowledgeBases (types.ts:61), which is the numeric KB-count limit.
+    featureKey: FeatureKey.knowledgeBase,
   },
 }
 

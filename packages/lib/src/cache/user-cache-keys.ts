@@ -108,7 +108,9 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // `datasets` L2 area/keys. Pre-#1313 blobs lack the datasets area entirely, so
   // their expanded key set is missing `datasets.*` (even admins 403 on
   // `datasets.view`). Bump to abandon every stale blob → recompute on next read.
+  // v3: KB instance-access slice (doc 12) added the `knowledgeBase` L2 area/keys;
+  // pre-slice blobs lack them entirely (admins 403 on `knowledgeBase.view`).
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v2', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v3', ttlSeconds: ONE_DAY },
 }
