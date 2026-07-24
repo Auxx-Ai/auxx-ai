@@ -127,10 +127,10 @@ describe('walkPromptDoc', () => {
 
   it('collects record RecordIds for known prefixes', () => {
     const result = walkPromptDoc(
-      doc(paragraph(reference('article:abc'), reference('entity:def'), reference('ticket:ghi'))),
+      doc(paragraph(reference('article:abc'), reference('kb:def'), reference('dataset:ghi'))),
       TOOL_CATALOG
     )
-    expect([...result.recordIds].sort()).toEqual(['article:abc', 'entity:def', 'ticket:ghi'])
+    expect([...result.recordIds].sort()).toEqual(['article:abc', 'dataset:ghi', 'kb:def'])
   })
 
   it('ignores unknown prefixes and malformed ids', () => {
@@ -146,6 +146,17 @@ describe('walkPromptDoc', () => {
       TOOL_CATALOG
     )
     expect(result.toolsetLocks.size).toBe(0)
+    expect(result.recordIds.size).toBe(0)
+  })
+
+  it('ignores entity-record chips (ticket/meeting/entity) — permissions own those now', () => {
+    // These prefixes used to reconcile into Agent.knowledge alongside kb/article/
+    // dataset; that job moved to the permission layer (doc 14), so a mention here
+    // is just a prompt token — no knowledge row is written.
+    const result = walkPromptDoc(
+      doc(paragraph(reference('ticket:abc'), reference('meeting:def'), reference('entity:ghi'))),
+      TOOL_CATALOG
+    )
     expect(result.recordIds.size).toBe(0)
   })
 

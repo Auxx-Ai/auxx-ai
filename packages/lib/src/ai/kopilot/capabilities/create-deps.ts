@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/create-deps.ts
 
 import { database } from '@auxx/database'
+import type { ResolvedKnowledgeScope } from '../../../agents/resolve-knowledge-scope'
 import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
 import type { SessionContext } from '../types'
 import type { GetToolDeps, ToolDeps } from './types'
@@ -32,6 +33,12 @@ export function createToolDepsFactory(params: {
    * fallback, and do not add new callers that rely on it.
    */
   capabilities?: CapabilityView
+  /**
+   * The running agent's resolved retrieval scope (§1.1), resolved once and
+   * shared by every tool call in the turn. Same `null`-is-unrestricted
+   * semantics as {@link capabilities}. Absent for un-threaded callers.
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }): GetToolDeps {
   return (): ToolDeps => ({
     db: database,
@@ -41,5 +48,6 @@ export function createToolDepsFactory(params: {
     signal: params.signal,
     sessionContext: params.sessionContext ?? {},
     capabilities: params.capabilities,
+    knowledgeScope: params.knowledgeScope,
   })
 }

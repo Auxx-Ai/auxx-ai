@@ -1,8 +1,19 @@
 // packages/lib/src/kb/catalog/__tests__/kb-catalog.test.ts
 
 import { describe, expect, it } from 'vitest'
+import type { ResolvedKnowledgeScope } from '../../../agents/resolve-knowledge-scope'
 import { buildKbCatalog, type KbCatalogSourceRow } from '../kb-catalog'
 import { renderKbCatalog } from '../render-kb-catalog'
+
+function knowledgeScope(over: Partial<ResolvedKnowledgeScope> = {}): ResolvedKnowledgeScope {
+  return {
+    datasetIds: new Set(),
+    fullKbIds: new Set(),
+    articleIds: new Set(),
+    excludedArticleIds: new Set(),
+    ...over,
+  }
+}
 
 const kb = (id: string, over: Partial<Parameters<typeof buildKbCatalog>[0][number]> = {}) => ({
   id,
@@ -167,5 +178,90 @@ describe('renderKbCatalog', () => {
     const withoutTool = renderKbCatalog(catalog, { publicOnly: false, hasGetArticle: false })
     expect(withTool).toContain('get_article')
     expect(withoutTool).not.toContain('`get_article`')
+  })
+})
+
+describe('renderKbCatalog — agent knowledge scope (permissions v2 §1.2/1.3)', () => {
+  // kb1 ("Full KB"): fully in scope — both articles survive regardless of
+  // articleIds. kb2 ("Partial KB"): only individually scoped. kb3 ("Out of
+  // scope KB"): neither full nor contributing a scoped article — dropped.
+  const scopedCatalog = buildKbCatalog(
+    [
+      kb('kb1', { name: 'Full KB' }),
+      kb('kb2', { name: 'Partial KB' }),
+      kb('kb3', { name: 'Out of scope KB' }),
+    ],
+    [
+      row({ placementId: 'p1', title: 'Full article one' }),
+      row({ placementId: 'p2', title: 'Full article two', sortOrder: 'a1' }),
+      row({ placementId: 'p3', knowledgeBaseId: 'kb2', title: 'Scoped article' }),
+      row({
+        placementId: 'p4',
+        knowledgeBaseId: 'kb2',
+        title: 'Unscoped article',
+        sortOrder: 'a1',
+      }),
+      row({ placementId: 'p5', knowledgeBaseId: 'kb3', title: 'Never in scope' }),
+    ]
+  )
+
+  it('null/undefined scope is a no-op', () => {
+    const base = renderKbCatalog(scopedCatalog, { publicOnly: false })
+    expect(renderKbCatalog(scopedCatalog, { publicOnly: false, knowledgeScope: null })).toBe(base)
+    expect(renderKbCatalog(scopedCatalog, { publicOnly: false, knowledgeScope: undefined })).toBe(
+      base
+    )
+    expect(base).toContain('Out of scope KB')
+  })
+
+  it('keeps every article of a fully-included KB', () => {
+    const out = renderKbCatalog(scopedCatalog, {
+      publicOnly: false,
+      knowledgeScope: knowledgeScope({ fullKbIds: new Set(['kb1']) }),
+    })
+    expect(out).toContain('### Full KB')
+    expect(out).toContain('Full article one')
+    expect(out).toContain('Full article two')
+  })
+
+  it('in a partially-included KB, keeps only the individually scoped article and drops the KB if none survive', () => {
+    const out = renderKbCatalog(scopedCatalog, {
+      publicOnly: false,
+      knowledgeScope: knowledgeScope({ articleIds: new Set(['art-p3']) }),
+    })
+    expect(out).toContain('### Partial KB')
+    expect(out).toContain('Scoped article')
+    expect(out).not.toContain('Unscoped article')
+    // kb1 and kb3 contribute nothing to this scope — dropped entirely.
+    expect(out).not.toContain('Full KB')
+    expect(out).not.toContain('Out of scope KB')
+  })
+
+  it('drops an excluded article even inside a fully-included KB', () => {
+    const out = renderKbCatalog(scopedCatalog, {
+      publicOnly: false,
+      knowledgeScope: knowledgeScope({
+        fullKbIds: new Set(['kb1']),
+        excludedArticleIds: new Set(['art-p1']),
+      }),
+    })
+    expect(out).toContain('### Full KB')
+    expect(out).not.toContain('Full article one')
+    expect(out).toContain('Full article two')
+  })
+
+  it('drops a KB with no surviving article', () => {
+    const out = renderKbCatalog(scopedCatalog, {
+      publicOnly: false,
+      knowledgeScope: knowledgeScope({ fullKbIds: new Set(['kb1']) }),
+    })
+    expect(out).not.toContain('Partial KB')
+    expect(out).not.toContain('Out of scope KB')
+  })
+
+  it('returns null when nothing survives the scope', () => {
+    expect(
+      renderKbCatalog(scopedCatalog, { publicOnly: false, knowledgeScope: knowledgeScope() })
+    ).toBeNull()
   })
 })

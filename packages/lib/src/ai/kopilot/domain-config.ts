@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../agents'
 import type { AgentSurface } from '../../agents/client'
 import { PROCEDURE_SLICE_KEY } from '../../agents/procedures/persist'
+import type { ResolvedKnowledgeScope } from '../../agents/resolve-knowledge-scope'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { CONTEXT_SLICE_KEY, readContextSlice } from '../agent-framework/context'
 import type {
@@ -81,6 +82,14 @@ export interface KopilotDomainConfigOptions {
    * to today (workflow AI node, tests, any un-threaded caller).
    */
   capabilities?: CapabilityView
+  /**
+   * The running agent's resolved retrieval scope (plans/permissions/v2/
+   * 15-agent-knowledge-scope.md §1.1), threaded into `createKopilotAgent` so
+   * the Knowledge Catalog section can narrow to what this agent may actually
+   * search. Same object the tool deps get. Absent/null ⇒ unrestricted,
+   * org-wide knowledge — today's behavior.
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }
 
 /**
@@ -108,6 +117,7 @@ export function createKopilotDomainConfig(
     // Aliased: `capabilities` below is the string[] of capability *descriptions*
     // rendered into the prompt — a different thing from the access gate.
     capabilities: recordAccess,
+    knowledgeScope,
   } = options
 
   // Cheap same-provider sibling for low-stakes internal LLM tasks (procedure
@@ -153,6 +163,7 @@ export function createKopilotDomainConfig(
     audience,
     triggerContext,
     recordAccess,
+    knowledgeScope,
   })
 
   return {

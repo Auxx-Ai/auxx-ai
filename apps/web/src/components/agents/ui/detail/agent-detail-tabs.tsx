@@ -261,10 +261,11 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
 
                 <div ref={assignRef('knowledge')}>
                   <Section
-                    title='Knowledge'
+                    title='Knowledge sources'
                     icon={<BookOpen className='size-4' />}
                     className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
                     initialOpen
+                    description='Narrows what this agent searches. Leave empty to search all org knowledge. Access is controlled in Permissions.'
                     collapsible={false}>
                     <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
                   </Section>

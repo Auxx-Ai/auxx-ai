@@ -2,6 +2,7 @@
 
 import type { ResolvedAgentConfig } from '../../../../agents'
 import type { AgentSurface } from '../../../../agents/client'
+import type { ResolvedKnowledgeScope } from '../../../../agents/resolve-knowledge-scope'
 import type { IntegrationCatalogEntry } from '../../../../cache/integration-catalog'
 import type { KbCatalogEntry } from '../../../../kb/catalog/kb-catalog'
 import type { CapabilityView } from '../../../../permissions/capabilities/capability-view'
@@ -111,6 +112,12 @@ export interface PromptCtx {
    * human-readable capability descriptions.
    */
   readonly recordAccess?: CapabilityView
+  /**
+   * The running agent's resolved retrieval scope (capability layer v2 §1.1).
+   * The Knowledge Catalog section narrows to this. Absent/null ⇒
+   * unrestricted, org-wide knowledge — today's output.
+   */
+  readonly knowledgeScope?: ResolvedKnowledgeScope | null
 }
 
 export interface PromptSection {

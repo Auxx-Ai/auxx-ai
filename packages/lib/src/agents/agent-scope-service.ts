@@ -10,7 +10,20 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { eq, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
+import { BadRequestError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
+import { isKnowledgeScopeRecordId } from './knowledge-scope'
+
+// CRUD for `Agent.knowledge` — the agent's **knowledge-source retrieval
+// scope**: which knowledge bases, articles and datasets `search_knowledge`
+// and the prompt's Knowledge Catalog draw from by default.
+//
+// This is NOT an access-control mechanism. Whether an agent (or the human
+// running it) may read a given record is governed entirely by the permission
+// layer (per-def / per-instance grants, doc 14,
+// plans/permissions/v2/15-agent-knowledge-scope.md §0). Every `recordId`
+// written here must target a knowledge source — see `isKnowledgeScopeRecordId`
+// — so the two systems never get re-conflated.
 
 const logger = createScopedLogger('agent-scope-service')
 
@@ -24,7 +37,7 @@ export type AgentScopeMode = 'include_descendants' | 'include_one' | 'exclude'
 
 export interface AgentScopeUpsertInput {
   agentId: string
-  /** `${entityDefinitionId}:${entityInstanceId}` or `${entityDefinitionId}` for definition-level. */
+  /** `kb:<id>`, `article:<id>`, `dataset:<id>`, or a bare `kb`/`dataset` for definition-level. */
   recordId: string
   mode: AgentScopeMode
 }
@@ -42,10 +55,6 @@ function findScopeEntry(
   return { idx, entry: idx >= 0 ? entries[idx] : undefined }
 }
 
-function recordMatchesScopeRow(recordId: string, row: { recordId: string }): boolean {
-  return row.recordId === recordId
-}
-
 async function loadKnowledgeForUpdate(tx: Transaction, agentId: string): Promise<KnowledgeEntry[]> {
   const [row] = await tx
     .select({ knowledge: schema.Agent.knowledge })
@@ -58,15 +67,23 @@ async function loadKnowledgeForUpdate(tx: Transaction, agentId: string): Promise
 }
 
 /**
- * Upsert one knowledge entry. Inserts default to `source='manual'`; existing
- * `manual` rows are mutated in place; `mention` rows are immutable from this
- * call site (the prompt reconciler owns them).
+ * Upsert one knowledge-source scope row. Inserts default to `source='manual'`;
+ * existing `manual` rows are mutated in place; `mention` rows are immutable
+ * from this call site (the prompt reconciler owns them).
+ *
+ * @throws {BadRequestError} when `input.recordId` isn't a knowledge source
+ *   (`kb` / `article` / `dataset`, see {@link isKnowledgeScopeRecordId}).
  */
 export async function upsertAgentScopeRow(
   organizationId: string,
   input: AgentScopeUpsertInput,
   db: Database = defaultDb as Database
 ): Promise<void> {
+  if (!isKnowledgeScopeRecordId(input.recordId)) {
+    throw new BadRequestError(
+      `recordId must target a knowledge source (kb, article, or dataset): "${input.recordId}"`
+    )
+  }
   await db.transaction(async (tx) => {
     const current = await loadKnowledgeForUpdate(tx, input.agentId)
     const { idx, entry } = findScopeEntry(current, input.recordId)
@@ -96,9 +113,11 @@ export async function upsertAgentScopeRow(
 }
 
 /**
- * Remove a knowledge entry. Mention-sourced entries reject with an error —
- * those are managed by the prompt reconciler. Removing a non-existent entry
- * is a no-op.
+ * Remove a knowledge-source scope row. Mention-sourced entries reject with an
+ * error — those are managed by the prompt reconciler. Removing a
+ * non-existent entry is a no-op. No `recordId` validation here on purpose:
+ * removing a stale entity-record row left over from the deleted include
+ * system must keep working.
  */
 export async function removeAgentScopeRow(
   organizationId: string,
@@ -128,12 +147,16 @@ export async function removeAgentScopeRow(
 }
 
 /**
- * Replace the agent's full set of manual knowledge entries in one
+ * Replace the agent's full set of manual knowledge-source scope rows in one
  * transaction. Diff semantics:
  * - entries in `inputs` but not in the agent → insert (`source='manual'`)
  * - entries in both → update mode (and promote to `manual` if not already)
  * - entries on the agent but not in `inputs` → delete UNLESS `source='mention'`
  *   (mention entries are owned by the prompt reconciler and are preserved)
+ *
+ * @throws {BadRequestError} when any `inputs[].recordId` isn't a knowledge
+ *   source (`kb` / `article` / `dataset`). Validated up front, before the
+ *   transaction opens, so a bad row in a large batch never touches the DB.
  */
 export async function batchSetAgentResourceScopes(
   organizationId: string,
@@ -141,6 +164,14 @@ export async function batchSetAgentResourceScopes(
   inputs: Array<{ recordId: string; mode: AgentScopeMode }>,
   db: Database = defaultDb as Database
 ): Promise<{ applied: number }> {
+  for (const { recordId } of inputs) {
+    if (!isKnowledgeScopeRecordId(recordId)) {
+      throw new BadRequestError(
+        `recordId must target a knowledge source (kb, article, or dataset): "${recordId}"`
+      )
+    }
+  }
+
   const desired = new Map(inputs.map((row) => [row.recordId, row.mode]))
 
   await db.transaction(async (tx) => {
@@ -199,5 +230,3 @@ export class ScopeRowImmutableError extends Error {
     this.name = 'ScopeRowImmutableError'
   }
 }
-
-export { recordMatchesScopeRow }

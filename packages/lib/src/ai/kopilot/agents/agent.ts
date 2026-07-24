@@ -5,6 +5,7 @@ import { toActorId } from '@auxx/types/actor'
 import { getOrgToolCatalog, getOrgToolsetCatalog, type ResolvedAgentConfig } from '../../../agents'
 import type { AgentSurface } from '../../../agents/client'
 import { PROCEDURE_STEP_KEY } from '../../../agents/procedures/persist'
+import type { ResolvedKnowledgeScope } from '../../../agents/resolve-knowledge-scope'
 import { getCachedIntegrationCatalog } from '../../../cache/integration-catalog'
 import {
   getCachedKbCatalog,
@@ -70,6 +71,13 @@ export interface CreateKopilotAgentOptions {
    * the human-readable capability *description* list.
    */
   recordAccess?: CapabilityView
+  /**
+   * The running agent's resolved retrieval scope (capability layer v2 §1.1).
+   * Forwarded into `buildKopilotPromptSerialized` so the Knowledge Catalog
+   * section can narrow to what this agent may actually search. Absent/null ⇒
+   * unrestricted, org-wide knowledge — today's behavior.
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }
 
 /**
@@ -92,6 +100,7 @@ export function createKopilotAgent(
     audience,
     triggerContext,
     recordAccess,
+    knowledgeScope,
   } = options
 
   const agentTools: AgentToolDefinition[] = tools
@@ -167,6 +176,7 @@ export function createKopilotAgent(
         instructionsReferences,
         procedureStep,
         recordAccess,
+        knowledgeScope,
       })
 
       // Full conversation for tool-loop continuity. Each persisted assistant

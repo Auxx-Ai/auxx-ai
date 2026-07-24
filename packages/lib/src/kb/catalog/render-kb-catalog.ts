@@ -1,5 +1,9 @@
 // packages/lib/src/kb/catalog/render-kb-catalog.ts
 
+// Direct relative path, not the `agents` barrel — avoids pulling the agents
+// module graph into every consumer of this file (packages/lib import-cycle
+// hygiene).
+import type { ResolvedKnowledgeScope } from '../../agents/resolve-knowledge-scope'
 import type { KbCatalogEntry } from './kb-catalog'
 
 export interface RenderKbCatalogOptions {
@@ -21,6 +25,15 @@ export interface RenderKbCatalogOptions {
    * output) — the workflow AI node and any un-threaded caller.
    */
   canViewKb?: (kbId: string) => boolean
+  /**
+   * Agent retrieval scope (permissions v2 §1.2/1.3) — the same allowlist
+   * `search_knowledge` enforces (`isSegmentInKnowledgeScope` in
+   * search-knowledge.ts). Composes with {@link publicOnly} and
+   * {@link canViewKb}, it does not replace either: a KB/article can pass both
+   * of those and still be dropped or trimmed here. `null`/`undefined` ⇒ no
+   * scope narrowing (today's output) — the org-wide default.
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }
 
 const DEFAULT_MAX_CHARS = 8_000
@@ -35,14 +48,23 @@ export function renderKbCatalog(
   catalog: readonly KbCatalogEntry[],
   options: RenderKbCatalogOptions
 ): string | null {
-  const { publicOnly, maxChars = DEFAULT_MAX_CHARS, hasGetArticle = true, canViewKb } = options
+  const {
+    publicOnly,
+    maxChars = DEFAULT_MAX_CHARS,
+    hasGetArticle = true,
+    canViewKb,
+    knowledgeScope,
+  } = options
 
-  const kbs = catalog.filter(
-    (kb) =>
-      kb.articles.length > 0 &&
-      (!publicOnly || kb.visibility === 'PUBLIC') &&
-      (!canViewKb || canViewKb(kb.id))
-  )
+  const kbs = catalog
+    .map((kb) => narrowKbByScope(kb, knowledgeScope))
+    .filter((kb): kb is KbCatalogEntry => kb !== null)
+    .filter(
+      (kb) =>
+        kb.articles.length > 0 &&
+        (!publicOnly || kb.visibility === 'PUBLIC') &&
+        (!canViewKb || canViewKb(kb.id))
+    )
   if (kbs.length === 0) return null
 
   const readHint = hasGetArticle
@@ -69,6 +91,37 @@ export function renderKbCatalog(
     ),
   ].join('\n')
   return compact
+}
+
+/**
+ * Narrow one catalog KB to the agent retrieval scope (permissions v2
+ * §1.2/1.3). Pure and DB-free — `scope` is already fully resolved by
+ * `resolveAgentKnowledgeScope`, so this is plain set membership, not a
+ * re-derivation of KB/article inclusion.
+ *
+ * - `null`/`undefined` scope ⇒ no-op, returns `kb` unchanged.
+ * - Whole-KB kept as-is if `kb.id` is in `fullKbIds`, OR at least one of its
+ *   own articles is in `articleIds` (a partially-included KB). Otherwise the
+ *   KB is dropped entirely (returns `null`).
+ * - Within a kept, non-full KB, only articles in `articleIds` survive.
+ * - In any kept KB (full or partial), articles in `excludedArticleIds` are
+ *   always dropped — an excluded article never renders even inside an
+ *   otherwise fully-included KB. A full KB whose every article ends up
+ *   excluded is left with an empty `articles` array; the caller's existing
+ *   `articles.length > 0` filter drops it same as any other empty KB.
+ */
+function narrowKbByScope(
+  kb: KbCatalogEntry,
+  scope: ResolvedKnowledgeScope | null | undefined
+): KbCatalogEntry | null {
+  if (!scope) return kb
+  const isFullKb = scope.fullKbIds.has(kb.id)
+  const kept = isFullKb || kb.articles.some((a) => scope.articleIds.has(a.id))
+  if (!kept) return null
+  const articles = kb.articles.filter(
+    (a) => !scope.excludedArticleIds.has(a.id) && (isFullKb || scope.articleIds.has(a.id))
+  )
+  return articles.length === kb.articles.length ? kb : { ...kb, articles }
 }
 
 function renderKb(kb: KbCatalogEntry): string {

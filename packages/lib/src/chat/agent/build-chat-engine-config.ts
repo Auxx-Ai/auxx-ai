@@ -9,6 +9,7 @@ import {
 } from '../../agents/bindings'
 import { ALL_SURFACES } from '../../agents/client'
 import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures/control-tools'
+import { resolveAgentKnowledgeScope } from '../../agents/resolve-knowledge-scope'
 import {
   type AgentEngineConfig,
   createCallModel,
@@ -119,12 +120,23 @@ export async function buildChatEngineConfig(
     ? await resolveAgentRunCapabilities({ agent: cachedAgent, organizationId })
     : undefined
 
+  // Resolve once per turn (§1.1) — shared by the tool deps (read gate) and the
+  // domain config (prompt-side catalog filtering). `[]` knowledge (no scope
+  // rows) resolves to `null` = unrestricted, matching today.
+  const knowledgeScope = await resolveAgentKnowledgeScope({
+    db,
+    organizationId,
+    entries: agentConfig.knowledge,
+    capabilities,
+  })
+
   const getToolDeps = createToolDepsFactory({
     organizationId,
     userId: agentUserId,
     sessionId,
     signal,
     capabilities,
+    knowledgeScope,
   })
 
   const registry = createCapabilityRegistry()
@@ -188,6 +200,9 @@ export async function buildChatEngineConfig(
     audience: 'customer',
     // Prompt-side catalog filtering (§3.4) — same view the tools enforce with.
     capabilities,
+    // The agent's retrieval scope (§1.1) — narrows the Knowledge Catalog to
+    // what this agent may actually search.
+    knowledgeScope,
     // No `triggerContext` — chat is not an AgentTrigger run; it stays
     // `runMode: 'interactive'` (the visitor is in the loop). The surface/audience
     // gates do the customer-facing work the trigger envelope used to.

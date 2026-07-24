@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { z } from 'zod'
+import type { ResolvedKnowledgeScope } from '../../../../../agents/resolve-knowledge-scope'
 import { SearchService } from '../../../../../datasets/services/search.service'
 import type { CapabilityView } from '../../../../../permissions/capabilities/capability-view'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
@@ -59,6 +60,23 @@ type Source = 'kb' | 'rag' | 'both'
  * Unified hybrid search across KB-managed datasets (article embeddings) and
  * user-uploaded RAG datasets. The two share an embedding pipeline, so we just
  * pick the right dataset id set and let SearchService do the work.
+ *
+ * Three narrowings stack on the searchable set, in this order:
+ *  1. Visitor PUBLIC clamp (`publicOnly` / `isChat` below) — **security**. An
+ *     untrusted external caller must never reach an INTERNAL KB or any RAG
+ *     dataset, full stop.
+ *  2. Agent retrieval scope (`knowledgeScope`, permissions v2 §1.2/1.3) —
+ *     **relevance-by-design**, not a security boundary of its own: it's the
+ *     agent author's choice of which of the org's *otherwise-accessible*
+ *     knowledge this agent should draw from. Narrows `resolveDatasetIds`'
+ *     dataset set (1a) and, for KB segments, narrows further at the article
+ *     level via {@link isSegmentInKnowledgeScope} (1b) — a dataset in scope
+ *     can still hold articles the scope excludes.
+ *  3. Capability instance-access (`capabilities`, doc-14) — **security**.
+ *     Read enforcement for the acting principal; a KB/dataset the scope
+ *     allows but the principal can't view is still dropped.
+ * `null`/`undefined` `knowledgeScope` is unrestricted org-wide, exactly
+ * today's pre-scope behaviour, with no added queries.
  */
 export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -164,7 +182,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
       return { ok: true, args: { ...args, query: query.value } }
     },
     execute: async (args, agentDeps) => {
-      const { db, capabilities } = getDeps()
+      const { db, capabilities, knowledgeScope } = getDeps()
       const query = args.query as string
       const requestedSource = ((args.source as Source) ?? 'both') as Source
       const knowledgeBaseId = args.knowledgeBaseId as string | undefined
@@ -191,6 +209,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
           requestedDatasetIds,
           publicOnly: isChat,
           capabilities,
+          knowledgeScope,
         })
 
         if (datasetIds.length === 0) {
@@ -215,16 +234,19 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
           agentDeps.userId
         )
 
-        const filtered =
-          recordIds && recordIds.length > 0
-            ? response.results.filter((r) => {
-                const links = (r.segment.metadata as any)?.links as
-                  | Array<{ recordId: string }>
-                  | undefined
-                if (!links || links.length === 0) return false
-                return links.some((l) => recordIds.includes(l.recordId))
-              })
-            : response.results
+        const filtered = response.results.filter((r) => {
+          const meta = (r.segment.metadata as any) ?? {}
+          if (recordIds && recordIds.length > 0) {
+            const links = meta.links as Array<{ recordId: string }> | undefined
+            if (!links || links.length === 0) return false
+            if (!links.some((l) => recordIds.includes(l.recordId))) return false
+          }
+          // Agent retrieval scope (permissions v2 §1.2/1.3) — relevance/security
+          // narrowing stacked on top of the dataset-level filter above, needed
+          // because a partially-scoped KB's segments still share the KB's
+          // dataset with its out-of-scope siblings.
+          return isSegmentInKnowledgeScope(meta, knowledgeScope)
+        })
 
         // One result per article (KB) / document (RAG): results arrive score-
         // sorted, so the first segment seen for a source is its best passage.
@@ -329,6 +351,36 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
   }
 }
 
+/**
+ * Article-level narrowing gate for a single search result (permissions v2
+ * §1.2/1.3 — agent retrieval scope). Pure and DB-free: `scope` is already
+ * fully resolved by `resolveAgentKnowledgeScope`, so this is a plain set
+ * lookup, not a re-derivation of KB/article inclusion.
+ *
+ * `null`/`undefined` scope ⇒ unrestricted, always keep (today's behaviour).
+ * A RAG segment (`meta.source !== 'kb'`) is always kept here too — RAG has no
+ * article concept, and it's already governed by the dataset-level
+ * `datasetIds` intersection in {@link resolveDatasetIds}.
+ *
+ * Deliberate deferral (plan §4): this filters the over-fetched result set in
+ * memory rather than pushing a `searchMetadata->>'articleId'` predicate into
+ * `SearchService.search` / `searchByVectorMultiDataset`. The existing
+ * `limit * 3` over-fetch (capped 50) already leaves headroom for this
+ * post-filter; pushing the predicate into the vector query is the follow-up
+ * if scoped-article recall proves thin in practice, not part of this slice.
+ */
+export function isSegmentInKnowledgeScope(
+  meta: { source?: string; articleId?: string; kbId?: string },
+  scope: ResolvedKnowledgeScope | null | undefined
+): boolean {
+  if (!scope) return true
+  if (meta.source !== 'kb') return true
+  if (meta.articleId !== undefined && scope.excludedArticleIds.has(meta.articleId)) return false
+  if (meta.kbId !== undefined && scope.fullKbIds.has(meta.kbId)) return true
+  if (meta.articleId !== undefined && scope.articleIds.has(meta.articleId)) return true
+  return false
+}
+
 async function resolveDatasetIds(args: {
   db: import('@auxx/database').Database
   organizationId: string
@@ -339,6 +391,13 @@ async function resolveDatasetIds(args: {
   publicOnly?: boolean
   /** Resolved instance-access gate for the turn; absent ⇒ unrestricted. */
   capabilities?: CapabilityView
+  /**
+   * Agent retrieval scope (permissions v2 §1.2/1.3). Intersected with the
+   * collected dataset ids below — narrows, never adds — before the
+   * capability instance-access filter runs. `null`/`undefined` ⇒ unrestricted
+   * and zero added I/O (a plain array filter, no extra query either way).
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }): Promise<string[]> {
   const {
     db,
@@ -348,6 +407,7 @@ async function resolveDatasetIds(args: {
     requestedDatasetIds,
     publicOnly,
     capabilities,
+    knowledgeScope,
   } = args
 
   const ids = await collectDatasetIds({
@@ -358,7 +418,11 @@ async function resolveDatasetIds(args: {
     requestedDatasetIds,
     publicOnly,
   })
-  return filterAccessibleDatasetIds(db, organizationId, ids, capabilities)
+  // Cheap in-memory intersection, no I/O — runs before the capability filter's
+  // extra KB query so a scope that already narrows to nothing skips it
+  // entirely. Absent scope is a no-op pass-through.
+  const scoped = knowledgeScope ? ids.filter((id) => knowledgeScope.datasetIds.has(id)) : ids
+  return filterAccessibleDatasetIds(db, organizationId, scoped, capabilities)
 }
 
 async function collectDatasetIds(args: {
