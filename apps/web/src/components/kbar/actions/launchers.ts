@@ -4,6 +4,7 @@
 import { useRouter } from 'next/navigation'
 import { useMemo } from 'react'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useCommandPaletteStore } from '../store'
 import type { PaletteAction } from '../types'
@@ -22,6 +23,7 @@ import type { PaletteAction } from '../types'
 export function useLauncherActions(): PaletteAction[] {
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
+  const { can } = useAccess()
   const { isAdminOrOwner } = useUser()
 
   return useMemo<PaletteAction[]>(() => {
@@ -91,7 +93,9 @@ export function useLauncherActions(): PaletteAction[] {
       })
     }
 
-    if (hasAccess('datasets')) {
+    // Creating a dataset is the `datasets` Full rung (`datasets.manage`) — mirrors
+    // CreateDatasetButton; Read/Edit members can browse but not create.
+    if (hasAccess('datasets') && can('datasets.manage')) {
       actions.push({
         id: 'create.dataset',
         label: 'Create Dataset',
@@ -131,5 +135,5 @@ export function useLauncherActions(): PaletteAction[] {
     }
 
     return actions
-  }, [hasAccess, isAdminOrOwner, router])
+  }, [hasAccess, can, isAdminOrOwner, router])
 }

@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
 import { SYSTEM_CREATE_HOTKEYS } from '~/components/global-create/system-hotkeys'
 import { useViewableResources } from '~/components/resources/hooks/use-viewable-resources'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useCommandPaletteStore } from '../store'
 import type { PaletteAction } from '../types'
 
@@ -16,10 +17,13 @@ import type { PaletteAction } from '../types'
  */
 export function useCreateActions(): PaletteAction[] {
   const { resources } = useViewableResources()
+  const { canEditEntity } = useAccess()
 
   return useMemo<PaletteAction[]>(() => {
+    // Creating a record is a write — gate on the per-def Edit rung, not just
+    // viewability (a Read-only member sees the def but can't create in it).
     return resources
-      .filter((r) => r.isVisible)
+      .filter((r) => r.isVisible && canEditEntity(r.entityDefinitionId))
       .map((r) => ({
         id: `create.${r.id}`,
         label: `Create ${r.label}`,
@@ -30,7 +34,7 @@ export function useCreateActions(): PaletteAction[] {
         // Inside the palette, render the create form as a step (Phase 3).
         perform: () => useCommandPaletteStore.getState().openCreate(r.id),
       }))
-  }, [resources])
+  }, [resources, canEditEntity])
 }
 
 /**

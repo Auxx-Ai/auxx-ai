@@ -3,7 +3,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo } from 'react'
-import { useUser } from '~/hooks/use-user'
+import { useViewableResources } from '~/components/resources/hooks/use-viewable-resources'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { SHORTCUTS } from '../shortcuts'
@@ -20,7 +20,13 @@ export function useNavigationActions(): PaletteAction[] {
   const router = useRouter()
   const { hasAccess } = useFeatureFlags()
   const { can } = useAccess()
-  const { isAdminOrOwner } = useUser()
+  // Per-def read gate for the core-record destinations, mirroring the sidebar
+  // (which lists only viewable defs, #1296). Keyed by `apiSlug`.
+  const { resources: viewableResources, isLoading: resourcesLoading } = useViewableResources()
+  const viewableSlugs = useMemo(
+    () => new Set(viewableResources.map((r) => r.apiSlug)),
+    [viewableResources]
+  )
 
   const nav = useCallback(
     (path: string) => {
@@ -66,7 +72,7 @@ export function useNavigationActions(): PaletteAction[] {
       })
     }
 
-    if (hasAccess('agents') && isAdminOrOwner) {
+    if (hasAccess('agents') && can('agents.manage')) {
       actions.push({
         id: 'nav.agents',
         label: 'Agents',
@@ -191,8 +197,13 @@ export function useNavigationActions(): PaletteAction[] {
     )
 
     // ── Records ──────────────────────────────────────────────────────────
-    actions.push(
-      {
+    // Per-def view gate: show a core-record destination only when its def is
+    // viewable (or while the catalog is still loading, so core nav never flickers
+    // out). Keyed by `apiSlug`; mirrors the sidebar's viewable-defs filter.
+    const recordVisible = (apiSlug: string) => resourcesLoading || viewableSlugs.has(apiSlug)
+
+    if (recordVisible('contacts')) {
+      actions.push({
         id: 'nav.contacts',
         label: 'Contacts',
         subtitle: 'View your contacts',
@@ -200,8 +211,10 @@ export function useNavigationActions(): PaletteAction[] {
         keywords: 'contacts people',
         shortcut: SHORTCUTS['nav.contacts'],
         perform: () => nav('/contacts'),
-      },
-      {
+      })
+    }
+    if (recordVisible('companies')) {
+      actions.push({
         id: 'nav.companies',
         label: 'Companies',
         subtitle: 'View your companies',
@@ -209,8 +222,10 @@ export function useNavigationActions(): PaletteAction[] {
         keywords: 'companies organizations accounts',
         shortcut: SHORTCUTS['nav.companies'],
         perform: () => nav('/companies'),
-      },
-      {
+      })
+    }
+    if (recordVisible('parts')) {
+      actions.push({
         id: 'nav.parts',
         label: 'Parts',
         subtitle: 'View your parts inventory',
@@ -218,50 +233,55 @@ export function useNavigationActions(): PaletteAction[] {
         keywords: 'parts inventory manufacturing',
         shortcut: SHORTCUTS['nav.parts'],
         perform: () => nav('/parts'),
-      },
-      {
-        id: 'nav.tickets',
-        label: 'Tickets',
-        subtitle: 'View your tickets',
-        icon: 'ticket',
-        keywords: 'tickets support',
-        shortcut: SHORTCUTS['nav.tickets'],
-        perform: () => nav('/tickets/list'),
-      },
-      {
-        id: 'nav.tickets.filter',
-        label: 'Tickets · Filter',
-        icon: 'filter',
-        keywords: 'tickets filter',
-        perform: () => nav('/tickets/list?filter=true'),
-      },
-      {
-        id: 'nav.tickets.dashboard',
-        label: 'Tickets · Dashboard',
-        icon: 'layout-dashboard',
-        keywords: 'tickets dashboard',
-        perform: () => nav('/tickets/dashboard'),
-      },
-      {
-        id: 'nav.tickets.settings',
-        label: 'Tickets · Settings',
-        icon: 'settings',
-        keywords: 'tickets settings',
-        perform: () => nav('/tickets/settings'),
-      },
-      {
-        id: 'nav.tasks',
-        label: 'Tasks',
-        subtitle: 'View your tasks',
-        icon: 'list-checks',
-        keywords: 'tasks to-do',
-        shortcut: SHORTCUTS['nav.tasks'],
-        perform: () => nav('/tasks'),
-      }
-    )
+      })
+    }
+    if (recordVisible('tickets')) {
+      actions.push(
+        {
+          id: 'nav.tickets',
+          label: 'Tickets',
+          subtitle: 'View your tickets',
+          icon: 'ticket',
+          keywords: 'tickets support',
+          shortcut: SHORTCUTS['nav.tickets'],
+          perform: () => nav('/tickets/list'),
+        },
+        {
+          id: 'nav.tickets.filter',
+          label: 'Tickets · Filter',
+          icon: 'filter',
+          keywords: 'tickets filter',
+          perform: () => nav('/tickets/list?filter=true'),
+        },
+        {
+          id: 'nav.tickets.dashboard',
+          label: 'Tickets · Dashboard',
+          icon: 'layout-dashboard',
+          keywords: 'tickets dashboard',
+          perform: () => nav('/tickets/dashboard'),
+        },
+        {
+          id: 'nav.tickets.settings',
+          label: 'Tickets · Settings',
+          icon: 'settings',
+          keywords: 'tickets settings',
+          perform: () => nav('/tickets/settings'),
+        }
+      )
+    }
+    // Tasks is a core destination with no per-area/def gate (matches the sidebar).
+    actions.push({
+      id: 'nav.tasks',
+      label: 'Tasks',
+      subtitle: 'View your tasks',
+      icon: 'list-checks',
+      keywords: 'tasks to-do',
+      shortcut: SHORTCUTS['nav.tasks'],
+      perform: () => nav('/tasks'),
+    })
 
     // ── Feature-gated destinations ───────────────────────────────────────
-    if (hasAccess('dispatch')) {
+    if (hasAccess('dispatch') && can('dispatch.mySchedule')) {
       actions.push({
         id: 'nav.schedule',
         label: 'Schedule',
@@ -271,7 +291,7 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/schedule'),
       })
     }
-    if (hasAccess('workflows')) {
+    if (hasAccess('workflows') && can('workflows.manage')) {
       actions.push({
         id: 'nav.workflows',
         label: 'Workflows',
@@ -282,7 +302,7 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/workflows'),
       })
     }
-    if (hasAccess('knowledgeBase')) {
+    if (hasAccess('knowledgeBase') && can('knowledgeBase.view')) {
       actions.push({
         id: 'nav.kb',
         label: 'Knowledge Bases',
@@ -293,7 +313,7 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/kb'),
       })
     }
-    if (hasAccess('datasets')) {
+    if (hasAccess('datasets') && can('datasets.view')) {
       actions.push({
         id: 'nav.datasets',
         label: 'Datasets',
@@ -316,5 +336,5 @@ export function useNavigationActions(): PaletteAction[] {
       })
     }
     return actions
-  }, [hasAccess, can, isAdminOrOwner, nav])
+  }, [hasAccess, can, nav, viewableSlugs, resourcesLoading])
 }
