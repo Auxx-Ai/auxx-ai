@@ -17,7 +17,7 @@ import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import { keepPreviousData } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
-import { useResources } from '~/components/resources/hooks/use-resources'
+import { useViewableResources } from '~/components/resources/hooks/use-viewable-resources'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
@@ -49,7 +49,9 @@ export function SearchPage() {
   // so they DO preview. Set in capture phase to beat cmdk's active change.
   const hoverActiveRef = useRef(false)
 
-  const { resources } = useResources()
+  // Enumerate the search scope over viewable defs only; `getResourceById` still
+  // reads the full map so a result's group heading/badge always resolves.
+  const { resources } = useViewableResources()
   const getResourceById = useResourceStore((s) => s.getResourceById)
   const setSearchActive = useCommandPaletteStore((s) => s.setSearchActive)
   const close = useCommandPaletteStore((s) => s.close)

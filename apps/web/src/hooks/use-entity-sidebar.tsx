@@ -2,7 +2,7 @@
 
 import { generateId } from '@auxx/utils'
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { useResources } from '~/components/resources/hooks'
+import { useViewableResources } from '~/components/resources/hooks'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 
@@ -75,7 +75,9 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
     updateOrganizationSetting,
     isLoading: settingsLoading,
   } = useSettings({ scope })
-  const { customResources, isLoading: resourcesLoading } = useResources()
+  // Records sidebar enumerates only defs the member can view (per-def read gate,
+  // on top of the org-wide `isVisible` filter below).
+  const { customResources, isLoading: resourcesLoading } = useViewableResources()
   const { isAdminOrOwner } = useUser()
 
   // ── Typed reads ────────────────────────────────────────────────────────────

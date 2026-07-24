@@ -15,6 +15,7 @@ import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEffect, useMemo, useState } from 'react'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useRecordRules } from '../hooks/use-record-rules'
 import { emptyActionDoc } from './action-token-input'
@@ -88,6 +89,7 @@ interface RecordRuleDialogProps {
  */
 export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps) {
   const { create, update } = useRecordRules()
+  const { canViewEntity } = useAccess()
   const { data: resources } = api.resource.list.useQuery(undefined, { staleTime: 60_000 })
   const { data: workflowData } = api.workflow.list.useQuery({}, { staleTime: 60_000 })
 
@@ -117,9 +119,12 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
 
   const isLifecycle = LIFECYCLE_TRANSITIONS.includes(on)
 
+  // `api.resource.list` bypasses the store; scope the record-type choices to the
+  // defs the member can view (per-def read gate) — mirrors the picker filter.
   const definitionOptions = useMemo(
-    () => (resources ?? []).filter((r) => r.entityDefinitionId),
-    [resources]
+    () =>
+      (resources ?? []).filter((r) => r.entityDefinitionId && canViewEntity(r.entityDefinitionId)),
+    [resources, canViewEntity]
   )
   const selectedResource = definitionOptions.find(
     (r) => r.entityDefinitionId === entityDefinitionId

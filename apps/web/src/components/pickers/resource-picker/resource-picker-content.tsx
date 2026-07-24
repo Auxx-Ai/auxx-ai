@@ -14,6 +14,7 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useResources } from '~/components/resources/hooks/use-resources'
+import { useAccess } from '~/providers/capabilities-provider'
 import { ResourceItem } from './resource-item'
 import type { ResourcePickerContentProps } from './types'
 
@@ -58,8 +59,10 @@ export function ResourceCommandBody({
   includeSystem = true,
   includeCustom = true,
   entityDefinedOnly = false,
+  viewableOnly = false,
 }: Omit<ResourcePickerContentProps, 'className'>) {
   const [search, setSearch] = useState('')
+  const { canViewEntity } = useAccess()
 
   // Notify parent about capture state on mount/unmount
   useEffect(() => {
@@ -90,9 +93,20 @@ export function ResourceCommandBody({
       if (entityDefinedOnly && isSystemResource(r)) return false
       if (r.entityType && !includeSystem) return false
       if (!r.entityType && !includeCustom) return false
+      // Per-def read gate (opt-in) — hide defs the member can't view. Phase 8
+      // (§6.5): OR a nonempty per-record instance-grant set once that lands.
+      if (viewableOnly && !canViewEntity(r.entityDefinitionId)) return false
       return true
     })
-  }, [resources, excludeIds, includeSystem, includeCustom, entityDefinedOnly])
+  }, [
+    resources,
+    excludeIds,
+    includeSystem,
+    includeCustom,
+    entityDefinedOnly,
+    viewableOnly,
+    canViewEntity,
+  ])
 
   // Initially selected items, filtered by search
   const filteredSelectedItems = useMemo(() => {
