@@ -1,6 +1,11 @@
 // apps/web/src/components/dynamic-table/types.ts
 
 import type { FieldType } from '@auxx/database/types'
+import type {
+  ColumnFormatting,
+  TableViewPreferenceConfig,
+  ViewConfig,
+} from '@auxx/lib/conditions/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { FieldPath } from '@auxx/types/field'
@@ -205,13 +210,29 @@ export interface TableView {
   id: string
   name: string
   tableId: string
+  entityDefinitionId?: string | null
   /** Context type: 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit' */
   contextType?: string
   isDefault?: boolean
   isShared?: boolean
+  userId?: string
+  /** Server-derived ownership/admin allowance for updating this saved view. */
+  canUpdate?: boolean
+  /** Server-derived ownership allowance for deleting this saved view. */
+  canDelete?: boolean
+  /** Server-derived def-admin allowance for making this view the org default. */
+  canSetDefault?: boolean
   config: ViewConfig
-  createdAt?: Date
-  updatedAt?: Date
+  createdAt?: Date | string
+  updatedAt?: Date | string
+}
+
+/** Per-user presentation preferences layered over a table or shared view. */
+export interface TableViewPreference {
+  id: string
+  tableId: string
+  tableViewId: string | null
+  config: TableViewPreferenceConfig
 }
 
 // ============================================================================

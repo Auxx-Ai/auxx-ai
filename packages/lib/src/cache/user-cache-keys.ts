@@ -35,6 +35,7 @@ export interface CachedMailView {
 export interface CachedTableView {
   id: string
   tableId: string
+  entityDefinitionId: string | null
   name: string
   config: Record<string, unknown>
   contextType: string
@@ -97,7 +98,8 @@ export const USER_CACHE_KEY_CONFIG: Record<
   userSettings: { prefix: 'user:settings', ttlSeconds: ONE_DAY },
   userMemberships: { prefix: 'user:memberships', ttlSeconds: ONE_DAY },
   userMailViews: { prefix: 'user:mail-views', ttlSeconds: ONE_DAY },
-  userTableViews: { prefix: 'user:table-views', ttlSeconds: ONE_DAY },
+  // v2 includes entityDefinitionId for effective-Read filtering in tableView.listAll.
+  userTableViews: { prefix: 'user:table-views:v2', ttlSeconds: ONE_DAY },
   userFavorites: { prefix: 'user:favorites', ttlSeconds: ONE_DAY },
   // v2: inboxLens values normalized to scalar lenses (cached entries built
   // from the pre-v5 `inboxes` shape carried SINGLE_SELECT arrays).

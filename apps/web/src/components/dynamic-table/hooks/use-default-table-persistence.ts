@@ -1,18 +1,15 @@
 // apps/web/src/components/dynamic-table/hooks/use-default-table-persistence.ts
 'use client'
 
+import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
-import {
-  useActiveViewId,
-  usePersonalTableView,
-  useViewStoreInitialized,
-} from '../stores/store-selectors'
-import type { ExtendedColumnDef, TableView, ViewConfig } from '../types'
-import { PERSONAL_TABLE_VIEW_NAME } from '../utils/constants'
+import { useActiveViewId, useViewStoreInitialized } from '../stores/store-selectors'
+import type { ExtendedColumnDef, ViewConfig } from '../types'
+import { tableViewPreferenceKey } from '../utils/constants'
 
 const DEBOUNCE_MS = 400
 
@@ -42,9 +39,8 @@ function serialize(
 
 /**
  * Persists per-user personalization of the DEFAULT (unnamed, `activeViewId ===
- * null`) table into a dedicated `TableView` override row (sentinel name,
- * `isShared:false`), keyed by `tableId` (`entity-${entityDefinitionId}`), so it's
- * found on reload — the fix for the old `entity-<id>` vs `<id>` key mismatch.
+ * null`) table into `TableViewPreference`, keyed by the exact `tableId` the
+ * table reads (`entity-${entityDefinitionId}`).
  *
  * - Column visibility default is the LIVE registry (`showInTable` / `showInPanel`)
  *   via each column's `defaultVisible`. Only columns the user toggled AWAY from
@@ -63,10 +59,12 @@ export function useDefaultTablePersistence({
 }: UseDefaultTablePersistenceOptions) {
   const initialized = useViewStoreInitialized()
   const activeViewId = useActiveViewId(tableId)
-  const personalView = usePersonalTableView(tableId)
+  const preference = useDynamicTableStore(
+    (s) => s.viewPreferences[tableViewPreferenceKey(tableId, null)] ?? null
+  )
 
   const updateSessionConfig = useDynamicTableStore((s) => s.updateSessionConfig)
-  const addView = useDynamicTableStore((s) => s.addView)
+  const upsertViewPreference = useDynamicTableStore((s) => s.upsertViewPreference)
 
   const sessionConfig = useDynamicTableStore(useShallow((s) => s.sessionConfigs[tableId]))
 
@@ -86,19 +84,13 @@ export function useDefaultTablePersistence({
 
   const hydratedRef = useRef<string | null>(null)
   const lastPersistedRef = useRef<string | null>(null)
-  const rowIdRef = useRef<string | null>(null)
-  const creatingRef = useRef(false)
 
-  const createMutation = api.tableView.create.useMutation({
-    onSuccess: (view) => {
-      rowIdRef.current = view.id
-      addView(view as TableView)
-    },
-    onSettled: () => {
-      creatingRef.current = false
+  const upsertPreference = api.tableView.upsertPreference.useMutation({
+    onSuccess: upsertViewPreference,
+    onError: (error) => {
+      toastError({ title: 'Failed to save table preferences', description: error.message })
     },
   })
-  const updateMutation = api.tableView.update.useMutation()
 
   // ── Hydrate the session config from the personal override row (once) ──────────
   useEffect(() => {
@@ -106,9 +98,8 @@ export function useDefaultTablePersistence({
     if (hydratedRef.current === tableId) return
     hydratedRef.current = tableId
 
-    if (!personalView) return
-    rowIdRef.current = personalView.id
-    const cfg = personalView.config as ViewConfig
+    if (!preference) return
+    const cfg = preference.config
     const sparseVis = cfg.columnVisibility ?? {}
     const sizing = cfg.columnSizing ?? {}
     const order = cfg.columnOrder ?? []
@@ -126,7 +117,7 @@ export function useDefaultTablePersistence({
 
     // Record what we just hydrated so the first persist run is a no-op.
     lastPersistedRef.current = serialize(sparseVis, sizing, order, pinning)
-  }, [isDefaultTable, tableId, personalView, registryVisibility, updateSessionConfig])
+  }, [isDefaultTable, tableId, preference, registryVisibility, updateSessionConfig])
 
   // Reset hydration bookkeeping when switching tables.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tableId intentionally drives the cleanup — refs are reset when the table id changes.
@@ -134,13 +125,11 @@ export function useDefaultTablePersistence({
     return () => {
       hydratedRef.current = null
       lastPersistedRef.current = null
-      rowIdRef.current = null
     }
   }, [tableId])
 
   const persist = useCallback(() => {
     if (!isDefaultTable) return
-    if (creatingRef.current) return
 
     const cfg = useDynamicTableStore.getState().sessionConfigs[tableId]
     if (!cfg) return
@@ -165,40 +154,26 @@ export function useDefaultTablePersistence({
     const serialized = serialize(sparse, sizing, order, pinning)
     if (serialized === lastPersistedRef.current) return
 
-    const rowId = rowIdRef.current ?? personalView?.id ?? null
     const meaningful =
-      Object.keys(sparse).length > 0 || Object.keys(sizing).length > 0 || order.length > 0
+      Object.keys(sparse).length > 0 ||
+      Object.keys(sizing).length > 0 ||
+      order.length > 0 ||
+      Boolean(pinning && ((pinning.left?.length ?? 0) > 0 || (pinning.right?.length ?? 0) > 0))
 
-    // Don't create a row until there's genuine personalization; but always update
-    // an existing row (e.g. when the user resets everything back to defaults).
-    if (!rowId && !meaningful) return
+    // Don't create a row until there's genuine personalization.
+    if (!preference && !meaningful) return
 
     lastPersistedRef.current = serialized
 
-    const config: ViewConfig = {
-      filters: [],
-      sorting: [],
+    const config = {
       columnVisibility: sparse,
       columnOrder: order,
       columnSizing: sizing,
       columnPinning: pinning,
-      viewType: 'table',
     }
 
-    if (rowId) {
-      updateMutation.mutate({ id: rowId, config })
-    } else {
-      creatingRef.current = true
-      createMutation.mutate({
-        tableId,
-        name: PERSONAL_TABLE_VIEW_NAME,
-        contextType: 'table',
-        isShared: false,
-        isDefault: false,
-        config,
-      })
-    }
-  }, [isDefaultTable, tableId, registryVisibility, personalView, createMutation, updateMutation])
+    upsertPreference.mutate({ tableId, tableViewId: null, config })
+  }, [isDefaultTable, tableId, registryVisibility, preference, upsertPreference])
 
   const debouncedPersist = useDebouncedCallback(persist, DEBOUNCE_MS)
 

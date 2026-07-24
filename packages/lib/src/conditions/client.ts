@@ -52,6 +52,7 @@ export type {
   KanbanViewConfig,
   NumberColumnFormatting,
   PhoneColumnFormatting,
+  TableViewPreferenceConfig,
   ViewConfig,
   ViewType,
 } from './view-config'
@@ -65,5 +66,6 @@ export {
   kanbanConfigSchema,
   numberFormattingSchema,
   phoneFormattingSchema,
+  tableViewPreferenceConfigSchema,
   viewConfigSchema,
 } from './view-config'

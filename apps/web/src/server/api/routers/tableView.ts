@@ -5,6 +5,8 @@ import { getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import {
   type FieldViewConfig,
   fieldViewConfigSchema,
+  type TableViewPreferenceConfig,
+  tableViewPreferenceConfigSchema,
   type ViewConfig,
   viewConfigSchema,
   viewContextTypeSchema,
@@ -23,10 +25,66 @@ import {
   updateView,
 } from '@auxx/services/table-view'
 import { TRPCError } from '@trpc/server'
-import { and, count, eq } from 'drizzle-orm'
+import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 import { isStructural, resolveDefId } from './table-view-helpers'
+
+/** Client metadata derived from server-authoritative ownership and capabilities. */
+function withViewPermissions<
+  T extends {
+    entityDefinitionId: string | null
+    contextType: string
+    isDefault: boolean
+    isShared: boolean
+    userId: string
+  },
+>(view: T, capabilities: CapabilitySet, userId: string) {
+  const isOrgAdmin = capabilities.role === 'OWNER' || capabilities.role === 'ADMIN'
+  const isOwner = view.userId === userId
+  const canSetDefault = view.entityDefinitionId
+    ? capabilities.canAdministerDef(view.entityDefinitionId)
+    : isOrgAdmin
+  const structural = isStructural({
+    contextType: view.contextType,
+    isDefault: view.isDefault,
+  })
+
+  return {
+    ...view,
+    canUpdate: structural ? canSetDefault : isOwner || isOrgAdmin,
+    canDelete: isOwner,
+    canSetDefault,
+  }
+}
+
+/** Effective Read is sufficient for ordinary table-view use and authoring. */
+function assertViewAccess(capabilities: CapabilitySet, entityDefinitionId: string | null): void {
+  if (entityDefinitionId) capabilities.assertViewEntity(entityDefinitionId)
+}
+
+/** Resolve and validate the entity target for a user-owned preference write. */
+async function resolvePreferenceTarget(input: {
+  tableId: string
+  tableViewId: string | null
+  userId: string
+  organizationId: string
+}): Promise<string | null> {
+  if (!input.tableViewId) {
+    return resolveDefId(input.tableId, input.organizationId)
+  }
+
+  const rowResult = await getView({
+    id: input.tableViewId,
+    userId: input.userId,
+    organizationId: input.organizationId,
+  })
+  if (rowResult.isErr()) mapErrorToTRPC(rowResult.error)
+  if (rowResult.value.tableId !== input.tableId) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'View does not belong to this table.' })
+  }
+  return rowResult.value.entityDefinitionId
+}
 
 /**
  * Map service error codes to TRPCError
@@ -76,20 +134,76 @@ export const tableViewRouter = createTRPCRouter({
    * Includes all context types: table, kanban, panel, dialog_create, dialog_edit.
    * Served from user cache (Redis + local).
    */
-  listAll: protectedProcedure.query(async ({ ctx }) => {
+  listAll: capabilityProcedure.query(async ({ ctx }) => {
     const userCache = getUserCache()
-    const views = await userCache.get(
+    const cachedViews = await userCache.get(
       ctx.session.userId,
       'userTableViews',
       ctx.session.organizationId
     )
-    return views as ((typeof views)[number] & { config: ViewConfig | FieldViewConfig })[]
+    const views = cachedViews
+      .filter(
+        (view) =>
+          !view.entityDefinitionId || ctx.capabilities.canViewEntity(view.entityDefinitionId)
+      )
+      .map((view) =>
+        withViewPermissions(
+          view as typeof view & { config: ViewConfig | FieldViewConfig },
+          ctx.capabilities,
+          ctx.session.userId
+        )
+      )
+
+    const preferenceRows = await ctx.db
+      .select()
+      .from(schema.TableViewPreference)
+      .where(
+        and(
+          eq(schema.TableViewPreference.userId, ctx.session.userId),
+          eq(schema.TableViewPreference.organizationId, ctx.session.organizationId)
+        )
+      )
+
+    const accessibleViewIds = new Set(views.map((view) => view.id))
+    const defaultPreferenceAccess = new Map<string, boolean>()
+    const preferences: Array<{
+      id: string
+      tableId: string
+      tableViewId: string | null
+      config: TableViewPreferenceConfig
+    }> = []
+
+    for (const preference of preferenceRows) {
+      if (preference.tableViewId) {
+        if (!accessibleViewIds.has(preference.tableViewId)) continue
+      } else {
+        let allowed = defaultPreferenceAccess.get(preference.tableId)
+        if (allowed === undefined) {
+          const entityDefinitionId = await resolveDefId(
+            preference.tableId,
+            ctx.session.organizationId
+          )
+          allowed = !entityDefinitionId || ctx.capabilities.canViewEntity(entityDefinitionId)
+          defaultPreferenceAccess.set(preference.tableId, allowed)
+        }
+        if (!allowed) continue
+      }
+
+      preferences.push({
+        id: preference.id,
+        tableId: preference.tableId,
+        tableViewId: preference.tableViewId,
+        config: preference.config as TableViewPreferenceConfig,
+      })
+    }
+
+    return { views, preferences }
   }),
 
   /**
    * Get a single view by ID
    */
-  get: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+  get: capabilityProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     const result = await getView({
       id: input.id,
       userId: ctx.session.userId,
@@ -97,7 +211,12 @@ export const tableViewRouter = createTRPCRouter({
     })
 
     if (result.isErr()) mapErrorToTRPC(result.error)
-    return { ...result.value, config: result.value.config as ViewConfig }
+    assertViewAccess(ctx.capabilities, result.value.entityDefinitionId)
+    return withViewPermissions(
+      { ...result.value, config: result.value.config as ViewConfig },
+      ctx.capabilities,
+      ctx.session.userId
+    )
   }),
 
   /**
@@ -131,6 +250,16 @@ export const tableViewRouter = createTRPCRouter({
       // writes (panel/dialog config or setting the org default) require def
       // administration; ordinary table/kanban authoring stays open (doc 07 §2).
       const entityDefinitionId = await resolveDefId(input.tableId, organizationId)
+      assertViewAccess(ctx.capabilities, entityDefinitionId)
+      if (input.newField) {
+        if (!entityDefinitionId || input.newField.entityDefinitionId !== entityDefinitionId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Kanban field does not belong to this table.',
+          })
+        }
+        ctx.capabilities.assertAdministerDef(entityDefinitionId)
+      }
       if (isStructural(input)) {
         await assertStructuralAccess(ctx.capabilities, entityDefinitionId, organizationId, userId)
       }
@@ -140,7 +269,7 @@ export const tableViewRouter = createTRPCRouter({
         const featureService = new FeaturePermissionService(ctx.db)
         const viewLimit = await featureService.getLimit(organizationId, FeatureKey.savedViews)
         if (typeof viewLimit === 'number' && viewLimit >= 0) {
-          const [{ value: current }] = await ctx.db
+          const [countRow] = await ctx.db
             .select({ value: count() })
             .from(schema.TableView)
             .where(
@@ -149,7 +278,7 @@ export const tableViewRouter = createTRPCRouter({
                 eq(schema.TableView.isShared, true)
               )
             )
-          if (current >= viewLimit) {
+          if ((countRow?.value ?? 0) >= viewLimit) {
             throw new TRPCError({
               code: 'FORBIDDEN',
               message: `You have reached your saved view limit (${viewLimit}). Upgrade your plan to create more views.`,
@@ -197,7 +326,11 @@ export const tableViewRouter = createTRPCRouter({
         broadcastUserKeys: input.isShared,
       })
 
-      return { ...result.value, config: result.value.config as ViewConfig }
+      return withViewPermissions(
+        { ...result.value, config: result.value.config as ViewConfig },
+        ctx.capabilities,
+        userId
+      )
     }),
 
   /**
@@ -232,6 +365,7 @@ export const tableViewRouter = createTRPCRouter({
       })
       if (rowResult.isErr()) mapErrorToTRPC(rowResult.error)
       const row = rowResult.value
+      assertViewAccess(ctx.capabilities, row.entityDefinitionId)
 
       const wantsDefault = (input as { isDefault?: unknown }).isDefault === true
       const structural =
@@ -267,15 +401,27 @@ export const tableViewRouter = createTRPCRouter({
         broadcastUserKeys: result.value.isShared,
       })
 
-      return { ...result.value, config: result.value.config as ViewConfig | FieldViewConfig }
+      return withViewPermissions(
+        { ...result.value, config: result.value.config as ViewConfig | FieldViewConfig },
+        ctx.capabilities,
+        userId
+      )
     }),
 
   /**
    * Duplicate an existing view
    */
-  duplicate: protectedProcedure
+  duplicate: capabilityProcedure
     .input(z.object({ id: z.string(), name: z.string().min(1).max(50) }))
     .mutation(async ({ ctx, input }) => {
+      const rowResult = await getView({
+        id: input.id,
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+      })
+      if (rowResult.isErr()) mapErrorToTRPC(rowResult.error)
+      assertViewAccess(ctx.capabilities, rowResult.value.entityDefinitionId)
+
       const result = await duplicateView({
         id: input.id,
         name: input.name,
@@ -290,15 +436,27 @@ export const tableViewRouter = createTRPCRouter({
         userId: ctx.session.userId,
       })
 
-      return { ...result.value, config: result.value.config as ViewConfig }
+      return withViewPermissions(
+        { ...result.value, config: result.value.config as ViewConfig },
+        ctx.capabilities,
+        ctx.session.userId
+      )
     }),
 
   /**
    * Delete a view
    */
-  delete: protectedProcedure
+  delete: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const rowResult = await getView({
+        id: input.id,
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+      })
+      if (rowResult.isErr()) mapErrorToTRPC(rowResult.error)
+      assertViewAccess(ctx.capabilities, rowResult.value.entityDefinitionId)
+
       const result = await deleteView({
         id: input.id,
         userId: ctx.session.userId,
@@ -314,6 +472,89 @@ export const tableViewRouter = createTRPCRouter({
       })
 
       return result.value
+    }),
+
+  /** Persist presentation-only state for the current user. */
+  upsertPreference: capabilityProcedure
+    .input(
+      z.object({
+        tableId: z.string(),
+        tableViewId: z.string().nullable(),
+        config: tableViewPreferenceConfigSchema,
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId, organizationId } = ctx.session
+      const entityDefinitionId = await resolvePreferenceTarget({
+        tableId: input.tableId,
+        tableViewId: input.tableViewId,
+        userId,
+        organizationId,
+      })
+      assertViewAccess(ctx.capabilities, entityDefinitionId)
+
+      const [preference] = await ctx.db
+        .insert(schema.TableViewPreference)
+        .values({
+          tableId: input.tableId,
+          tableViewId: input.tableViewId,
+          config: input.config,
+          userId,
+          organizationId,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.TableViewPreference.organizationId,
+            schema.TableViewPreference.userId,
+            schema.TableViewPreference.tableId,
+            schema.TableViewPreference.tableViewId,
+          ],
+          set: { config: input.config, updatedAt: new Date() },
+        })
+        .returning()
+
+      if (!preference) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to save table preference.',
+        })
+      }
+
+      return {
+        id: preference.id,
+        tableId: preference.tableId,
+        tableViewId: preference.tableViewId,
+        config: preference.config as TableViewPreferenceConfig,
+      }
+    }),
+
+  /** Reset the current user's presentation preference for one table/view. */
+  deletePreference: capabilityProcedure
+    .input(z.object({ tableId: z.string(), tableViewId: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const entityDefinitionId = await resolvePreferenceTarget({
+        tableId: input.tableId,
+        tableViewId: input.tableViewId,
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+      })
+      assertViewAccess(ctx.capabilities, entityDefinitionId)
+
+      await ctx.db
+        .delete(schema.TableViewPreference)
+        .where(
+          and(
+            eq(schema.TableViewPreference.organizationId, ctx.session.organizationId),
+            eq(schema.TableViewPreference.userId, ctx.session.userId),
+            eq(schema.TableViewPreference.tableId, input.tableId),
+            input.tableViewId
+              ? eq(schema.TableViewPreference.tableViewId, input.tableViewId)
+              : isNull(schema.TableViewPreference.tableViewId)
+          )
+        )
+
+      return { success: true }
     }),
 
   /**
@@ -354,6 +595,10 @@ export const tableViewRouter = createTRPCRouter({
         broadcastUserKeys: true,
       })
 
-      return { ...result.value, config: result.value.config as ViewConfig }
+      return withViewPermissions(
+        { ...result.value, config: result.value.config as ViewConfig },
+        ctx.capabilities,
+        userId
+      )
     }),
 })

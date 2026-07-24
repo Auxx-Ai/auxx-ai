@@ -32,6 +32,7 @@ import type {
 } from '@tanstack/react-table'
 import { Calendar, LayoutGrid, Table2 } from 'lucide-react'
 import { useState } from 'react'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useViewMutations } from '../../hooks/use-view-mutations'
 import type { TableView, ViewConfig } from '../../types'
 
@@ -96,7 +97,9 @@ export function CreateViewDialog({
   const [selectedDateFieldId, setSelectedDateFieldId] = useState<string>('')
 
   const { createView } = useViewMutations(tableId)
+  const { canAdministerDef } = useAccess()
   const hasDateFields = (dateFields ?? []).length > 0
+  const canCreateField = entityDefinitionId ? canAdministerDef(entityDefinitionId) : false
 
   /** Handle view creation */
   const handleCreateView = async () => {
@@ -132,13 +135,14 @@ export function CreateViewDialog({
       ...(viewType === 'calendar' && {
         calendar: {
           dateFieldId: selectedDateFieldId,
+          cardFields: [],
         },
       }),
     }
 
     // If creating new field, pass newField config with entityDefinitionId
     const newField =
-      viewType === 'kanban' && !selectedFieldId && newFieldName.trim()
+      viewType === 'kanban' && !selectedFieldId && newFieldName.trim() && entityDefinitionId
         ? {
             name: newFieldName.trim(),
             entityDefinitionId,
@@ -297,13 +301,17 @@ export function CreateViewDialog({
                     setSelectedFieldId(value)
                     setNewFieldName('') // Clear any pending new field name
                   }}
-                  addAction={{
-                    label: 'New Status Field',
-                    onAdd: () => {
-                      setIsCreatingField(true)
-                      setSelectedFieldId('') // Clear selected field when creating new
-                    },
-                  }}
+                  addAction={
+                    canCreateField
+                      ? {
+                          label: 'New Status Field',
+                          onAdd: () => {
+                            setIsCreatingField(true)
+                            setSelectedFieldId('') // Clear selected field when creating new
+                          },
+                        }
+                      : undefined
+                  }
                 />
               )}
               {/* Show the new field name that will be created */}

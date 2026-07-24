@@ -118,6 +118,20 @@ export const viewConfigSchema = z.object({
   calendar: calendarConfigSchema.optional(),
 })
 
+/**
+ * Per-user presentation fields that may overlay a shared or unnamed table.
+ * Query semantics and view structure are deliberately excluded.
+ */
+export const tableViewPreferenceConfigSchema = viewConfigSchema.pick({
+  columnVisibility: true,
+  columnOrder: true,
+  columnSizing: true,
+  columnPinning: true,
+  columnLabels: true,
+  columnFormatting: true,
+  rowHeight: true,
+})
+
 // ============================================================================
 // INFERRED TYPES (derived from schemas - always in sync)
 // ============================================================================
@@ -132,6 +146,7 @@ export type KanbanColumnSettings = z.infer<typeof kanbanColumnSettingsSchema>
 export type KanbanViewConfig = z.infer<typeof kanbanConfigSchema>
 export type CalendarViewConfig = z.infer<typeof calendarConfigSchema>
 export type ViewConfig = z.infer<typeof viewConfigSchema>
+export type TableViewPreferenceConfig = z.infer<typeof tableViewPreferenceConfigSchema>
 export type ViewType = ViewConfig['viewType']
 
 // Re-export field view config types

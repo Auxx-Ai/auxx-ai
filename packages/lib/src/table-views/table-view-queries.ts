@@ -41,6 +41,7 @@ export async function computeUserTableViews(
   return rows.map((v) => ({
     id: v.id,
     tableId: v.tableId,
+    entityDefinitionId: v.entityDefinitionId,
     name: v.name,
     config: v.config as Record<string, unknown>,
     contextType: v.contextType,

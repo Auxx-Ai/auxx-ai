@@ -20,6 +20,7 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
   const removeViewFromStore = useDynamicTableStore((state) => state.removeView)
   const updateViewMeta = useDynamicTableStore((state) => state.updateViewMeta)
   const setTableViews = useDynamicTableStore((state) => state.setTableViews)
+  const setViewPreferences = useDynamicTableStore((state) => state.setViewPreferences)
 
   /** Create a new view */
   const createView = api.tableView.create.useMutation({
@@ -84,8 +85,11 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
       // Refetch all views to get updated isDefault flags and update store
       const allViews = await utils.tableView.listAll.fetch()
       if (allViews) {
-        const tableViews = (allViews as TableView[]).filter((v) => v.tableId === tableId)
+        const tableViews = (allViews.views as unknown as TableView[]).filter(
+          (v) => v.tableId === tableId
+        )
         setTableViews(tableId, tableViews)
+        setViewPreferences(allViews.preferences)
       }
     },
     onError: (error) => {
