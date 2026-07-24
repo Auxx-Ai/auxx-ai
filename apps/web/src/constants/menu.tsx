@@ -70,6 +70,17 @@ export type SidebarProps = {
    * only the defs the member administers.
    */
   requiresDefAdmin?: boolean
+  /**
+   * One-line supporting copy shown under the label in `SidebarSecondary`'s search
+   * results. Add it only where the label alone is ambiguous (General vs My Account vs
+   * Organization, Channels vs Inboxes, Connections vs Apps & MCP) — not to every item.
+   */
+  description?: string
+  /**
+   * Extra terms that should match this item in search but don't appear in its label,
+   * e.g. `['stripe', 'subscription']` for Plans & Billing. Matched case-insensitively.
+   */
+  keywords?: string[]
 } & FieldProps
 
 import type * as React from 'react'
@@ -263,13 +274,29 @@ export const SETTINGS_MENU: SidebarProps[] = [
     label: 'Account',
     type: 'header',
     items: [
-      { id: 'settings-general', label: 'General', slug: 'general', icon: <Settings /> },
-      { id: 'settings-account', label: 'My Account', slug: 'account', icon: <UserCog /> },
+      {
+        id: 'settings-general',
+        label: 'General',
+        slug: 'general',
+        icon: <Settings />,
+        description: 'Appearance, language and notification preferences',
+        keywords: ['theme', 'dark mode', 'language', 'timezone', 'preferences'],
+      },
+      {
+        id: 'settings-account',
+        label: 'My Account',
+        slug: 'account',
+        icon: <UserCog />,
+        description: 'Your profile, password and two-factor authentication',
+        keywords: ['profile', 'password', '2fa', 'mfa', 'passkey', 'security', 'email address'],
+      },
       {
         id: 'settings-organization',
         label: 'Organization',
         slug: 'organization',
         icon: <Building2 />,
+        description: 'Workspace name, logo and defaults',
+        keywords: ['workspace', 'company', 'logo', 'branding', 'domain'],
       },
     ],
   },
@@ -285,6 +312,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'members',
         icon: <Users />,
         permissionKey: 'members.manage',
+        keywords: ['users', 'teams', 'invite', 'seats', 'people'],
       },
       {
         id: 'settings-permissions',
@@ -293,6 +321,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         icon: <ShieldCheck />,
         // `permissions` area stays adminOnly (granting the grant is an escalation).
         access: 'ADMIN',
+        keywords: ['roles', 'access', 'sharing', 'sso', 'saml', 'policy'],
       },
       {
         id: 'admin-plans',
@@ -302,6 +331,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         // Read is enough to SEE the billing tab.
         permissionKey: 'billing.view',
         cloudOnly: true,
+        keywords: ['stripe', 'subscription', 'invoice', 'payment', 'upgrade', 'credits'],
       },
       {
         id: 'settings-activity-log',
@@ -309,6 +339,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'activity-log',
         icon: <History />,
         permissionKey: 'auditLog.view',
+        keywords: ['audit', 'log', 'history', 'events', 'security'],
       },
     ],
   },
@@ -326,6 +357,8 @@ export const SETTINGS_MENU: SidebarProps[] = [
         // Derived from def-admin (perms v2 doc 09): visible to any member who
         // administers ≥1 def; the page lists only their administered defs.
         requiresDefAdmin: true,
+        description: 'Define record types and the fields on them',
+        keywords: ['schema', 'objects', 'properties', 'attributes', 'records', 'columns'],
       },
       {
         id: 'admin-tags',
@@ -334,6 +367,8 @@ export const SETTINGS_MENU: SidebarProps[] = [
         icon: <Tag />,
         // TODO(perms v2 doc 09): gets its own area later; deferred, stays admin.
         access: 'ADMIN',
+        description: 'Shared labels applied across records and threads',
+        keywords: ['labels', 'categories'],
       },
       {
         id: 'admin-import-history',
@@ -342,6 +377,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         icon: <Import />,
         // TODO(perms v2 doc 09): gets its own area later; deferred, stays admin.
         access: 'ADMIN',
+        keywords: ['csv', 'upload', 'migration', 'backup', 'download', 'data transfer'],
       },
       {
         id: 'admin-rules',
@@ -349,6 +385,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'rules',
         icon: <Zap />,
         permissionKey: 'automationRules.manage',
+        keywords: ['automation', 'triggers', 'record rules', 'if this then that'],
       },
     ],
   },
@@ -364,6 +401,8 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'aiModels',
         icon: <Bot />,
         permissionKey: 'aiConfig.manage',
+        description: 'Providers, API keys and the default model',
+        keywords: ['openai', 'anthropic', 'claude', 'gemini', 'chatgpt', 'deepseek', 'llm', 'byo'],
       },
       {
         id: 'settings-kopilot',
@@ -371,6 +410,8 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'kopilot',
         icon: <Sparkles />,
         permissionKey: 'aiConfig.manage',
+        description: 'Org defaults for the AI assistant',
+        keywords: ['assistant', 'copilot', 'chat', 'ai'],
       },
     ],
   },
@@ -386,10 +427,32 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Channels',
         slug: 'channels',
         icon: <Waypoints />,
+        description: 'Connect the accounts messages arrive on',
+        keywords: ['gmail', 'outlook', 'imap', 'smtp', 'email account', 'sms', 'whatsapp'],
       },
-      { id: 'settings-inboxes', label: 'Inboxes', slug: 'inbox', icon: <Inbox />, access: 'ADMIN' },
-      { id: 'settings-signatures', label: 'Signatures', slug: 'signatures', icon: <Feather /> },
-      { id: 'settings-snippets', label: 'Snippets', slug: 'snippets', icon: <Tag /> },
+      {
+        id: 'settings-inboxes',
+        label: 'Inboxes',
+        slug: 'inbox',
+        icon: <Inbox />,
+        access: 'ADMIN',
+        description: 'Shared queues that route those messages to your team',
+        keywords: ['shared inbox', 'routing', 'assignment', 'queue'],
+      },
+      {
+        id: 'settings-signatures',
+        label: 'Signatures',
+        slug: 'signatures',
+        icon: <Feather />,
+        keywords: ['sign off', 'footer', 'email signature'],
+      },
+      {
+        id: 'settings-snippets',
+        label: 'Snippets',
+        slug: 'snippets',
+        icon: <Tag />,
+        keywords: ['canned response', 'macro', 'template', 'saved reply'],
+      },
     ],
   },
   // Integrations — apps/MCP/webhooks + connections + API keys.
@@ -404,12 +467,16 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'apps',
         icon: <AppWindow />,
         permissionKey: 'integrations.manage',
+        description: 'Install apps and MCP servers that add capabilities',
+        keywords: ['marketplace', 'integrations', 'mcp', 'shopify', 'quickbooks', 'plugins'],
       },
       {
         id: 'settings-connections',
         label: 'Connections',
         slug: 'connections',
         icon: <Cable />,
+        description: 'Accounts those apps authenticate against',
+        keywords: ['oauth', 'credentials', 'authorize', 'linked accounts', 'reconnect'],
       },
       {
         id: 'settings-webhooks',
@@ -418,6 +485,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         icon: <Webhook />,
         permissionKey: 'integrations.manage',
         featureKey: 'webhooks',
+        keywords: ['callbacks', 'events', 'http', 'subscriptions'],
       },
       {
         id: 'settings-apiKeys',
@@ -425,6 +493,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'apiKeys',
         icon: <ComponentIcon />,
         featureKey: 'apiAccess',
+        keywords: ['token', 'secret', 'sdk', 'rest', 'developer'],
       },
     ],
   },
