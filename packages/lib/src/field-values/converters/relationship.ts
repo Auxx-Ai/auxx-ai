@@ -86,9 +86,20 @@ export const relationshipConverter: FieldValueConverter = {
   /**
    * Convert to raw value (returns the RecordId).
    */
-  toRawValue(value: TypedFieldValue | TypedFieldValueInput | unknown): RelationshipRawValue | null {
+  toRawValue(
+    value: TypedFieldValue | TypedFieldValueInput | unknown
+  ): RelationshipRawValue | { redactedCount: number } | null {
     if (value === null || value === undefined) {
       return null
+    }
+
+    // Redaction marker (v2 Phase 5 §2) — preserve the count through the table
+    // path (formatToRawValue maps each element through here). It survives as
+    // `{ redactedCount }` for the cell renderer. Must precede the recordId
+    // branch below because a marker's recordId is empty.
+    if (typeof value === 'object' && value !== null && 'redactedCount' in value) {
+      const count = (value as { redactedCount?: number }).redactedCount
+      if (typeof count === 'number' && count > 0) return { redactedCount: count }
     }
 
     // Internal format { type: 'relationship', recordId }

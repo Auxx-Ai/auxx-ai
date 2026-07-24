@@ -131,6 +131,7 @@ export {
   extractRelationshipRecordIds,
   getDefinitionId,
   getInstanceId,
+  getRelationshipRedactedCount,
   isMultiRelationship,
   isRecordId,
   isRelationshipFieldValue,

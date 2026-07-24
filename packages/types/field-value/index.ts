@@ -157,6 +157,15 @@ export interface RelationshipFieldValue extends BaseFieldValue {
   recordId: RecordId
   /** Denormalized for display */
   displayName?: string
+  /**
+   * Redaction marker (capability layer v2 Phase 5 §2). When set, this is NOT a
+   * real referenced record but a synthetic trailing element standing in for
+   * `redactedCount` referenced records the member can't view — their ids are
+   * stripped server-side and never reach the client. `recordId` is empty on a
+   * marker, so `extractRelationshipRecordIds` skips it; the renderers detect the
+   * marker and render a `🔒 N restricted` chip. Absent on real records.
+   */
+  redactedCount?: number
 }
 
 /** Actor value for ACTOR fields - references a user, group, or agent */

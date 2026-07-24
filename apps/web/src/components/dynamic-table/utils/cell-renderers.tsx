@@ -8,8 +8,10 @@ import {
   formatToDisplayValue,
   formatToRawValue,
   getInstanceId,
+  getRelationshipRedactedCount,
   type NumberFieldOptions,
   type PhoneFieldOptions,
+  type RecordId,
 } from '@auxx/lib/field-values/client'
 import { type ActorId, isActorId, toActorId } from '@auxx/types/actor'
 import { Badge } from '@auxx/ui/components/badge'
@@ -19,7 +21,7 @@ import { CheckSquare } from 'lucide-react'
 import { useMemo } from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import { VisualIcon } from '~/components/icons/ui/visual-icon'
-import { ActorBadge, RecordBadge } from '~/components/resources/ui'
+import { ActorBadge, RecordBadge, RestrictedRelationshipChip } from '~/components/resources/ui'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { api } from '~/trpc/react'
@@ -54,20 +56,31 @@ function RelationshipCellContent({
 }) {
   // Extract RecordIds from value using centralized utility
   const recordIds = useMemo(() => extractRelationshipRecordIds(value), [value])
+  // Redaction count (v2 Phase 5 §2) — referenced records the member can't view.
+  const redactedCount = useMemo(() => getRelationshipRedactedCount(value), [value])
 
-  // Map recordIds to simple items for ItemsCellView
-  const items = recordIds.map((recordId) => ({
-    id: getInstanceId(recordId),
-    recordId, // Pass the full RecordId to renderItem
-  }))
+  // Map recordIds to simple items for ItemsCellView, then append the redaction
+  // marker so a `🔒 N restricted` chip renders in the same flow.
+  const items: Array<{ id: string; recordId: RecordId | null; redactedCount?: number }> =
+    recordIds.map((recordId) => ({
+      id: getInstanceId(recordId),
+      recordId, // Pass the full RecordId to renderItem
+    }))
+  if (redactedCount > 0) {
+    items.push({ id: '__redacted__', recordId: null, redactedCount })
+  }
 
   return (
     <ItemsCellView
       items={items}
       isLoading={false} // RecordBadge handles individual loading states
-      renderItem={(item) => (
-        <RecordBadge recordId={item.recordId} link hoverCard={!disableNestedHoverCard} />
-      )}
+      renderItem={(item) =>
+        item.redactedCount ? (
+          <RestrictedRelationshipChip count={item.redactedCount} />
+        ) : (
+          <RecordBadge recordId={item.recordId} link hoverCard={!disableNestedHoverCard} />
+        )
+      }
       maxDisplay={3}
     />
   )
