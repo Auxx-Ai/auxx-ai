@@ -8,6 +8,7 @@
 // ── Shared client-safe entity-access resolver (most-specific-wins core, used by
 //    the client capabilities provider to mirror server enforcement).
 export {
+  administersAnyDef,
   type ClientCapabilities,
   canAdministerRecord,
   canEditRecord,

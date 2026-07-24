@@ -21,6 +21,7 @@ import SettingsPage from '~/components/global/settings-page'
 import { useResources } from '~/components/resources/hooks'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 const BASE_URL = `/app/settings/custom-fields`
@@ -29,7 +30,11 @@ const BASE_URL = `/app/settings/custom-fields`
 const HIDDEN_ENTITY_TYPES = ['signature', 'inbox', 'entity_group', 'tag']
 
 export default function CustomFieldsPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  // Reachable by any def-admin (not just OWNER/ADMIN) — the list is filtered to
+  // the defs the member administers (perms v2 doc 09). Creating a *new* def is
+  // org-level, so the Create actions stay admin-only below.
+  const { isAdminOrOwner } = useUser({ requireOrganization: true })
+  const { canAdministerDef } = useAccess()
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
@@ -41,14 +46,7 @@ export default function CustomFieldsPage() {
   const userCreatedEntityCount = customResources?.filter((r) => !r.entityType).length ?? 0
   const atEntityLimit = isAtLimit(FeatureKey.entities, userCreatedEntityCount)
   const entityLimit = getLimit(FeatureKey.entities)
-  console.log(
-    'CustomFieldsPage: resources',
-    userCreatedEntityCount,
-    'limit',
-    entityLimit,
-    'atLimit',
-    atEntityLimit
-  )
+
   /** Navigate to entity fields page */
   function handleRowClick(slug: string) {
     router.push(`${BASE_URL}/${slug}`)
@@ -84,26 +82,28 @@ export default function CustomFieldsPage() {
             <TableHead>Type</TableHead>
             <TableHead className='hidden sm:table-cell'>Fields</TableHead>
             <TableHead className='w-[100px]'>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size='sm' variant='outline'>
-                    <Plus />
-                    Create
-                    <ChevronDown />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align='end'>
-                  <DropdownMenuItem onClick={handleCreateFromBlank}>
-                    <Plus /> Create Entity
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={handleCreateFromTemplate}
-                    className='data-highlighted:bg-[#ffaa40]/10'>
-                    <LayoutTemplate className='text-[#ffaa40]' />{' '}
-                    <AnimatedGradientText>Create from template</AnimatedGradientText>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {isAdminOrOwner && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size='sm' variant='outline'>
+                      <Plus />
+                      Create
+                      <ChevronDown />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end'>
+                    <DropdownMenuItem onClick={handleCreateFromBlank}>
+                      <Plus /> Create Entity
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={handleCreateFromTemplate}
+                      className='data-highlighted:bg-[#ffaa40]/10'>
+                      <LayoutTemplate className='text-[#ffaa40]' />{' '}
+                      <AnimatedGradientText>Create from template</AnimatedGradientText>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -112,6 +112,9 @@ export default function CustomFieldsPage() {
           {!isLoading &&
             resources
               .filter((r) => !r.entityType || !HIDDEN_ENTITY_TYPES.includes(r.entityType))
+              // Def-admin scoping: a member sees only the defs they administer.
+              // Admins administer every def, so their list is unchanged.
+              .filter((r) => canAdministerDef(r.entityDefinitionId))
               .map((resource) => (
                 <EntityRow
                   key={resource.id}

@@ -63,6 +63,13 @@ export type SidebarProps = {
   permissionKey?: string
   /** When true, only admins/owners see this item */
   adminOnly?: boolean
+  /**
+   * When true, this item is visible to any member who administers ≥1 def
+   * (OWNER/ADMIN or a def-`admin` grantee) — Custom Fields is *derived* from
+   * def-admin, not its own Layer-2 area (perms v2 doc 09). The page itself lists
+   * only the defs the member administers.
+   */
+  requiresDefAdmin?: boolean
 } & FieldProps
 
 import type * as React from 'react'
@@ -313,9 +320,9 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Custom Entities & Fields',
         slug: 'custom-fields',
         icon: <Rows3 />,
-        // TODO(perms v2 doc 09): derive from def-admin (canAdministerDef) — page
-        // lists only the defs the member administers; not yet split out.
-        access: 'ADMIN',
+        // Derived from def-admin (perms v2 doc 09): visible to any member who
+        // administers ≥1 def; the page lists only their administered defs.
+        requiresDefAdmin: true,
       },
       {
         id: 'admin-tags',
