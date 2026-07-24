@@ -191,7 +191,12 @@ describe('autoCompleteTasks — completion + notification', () => {
     await autoCompleteTasks(replyEvent() as never)
 
     expect(h.sendNotification).toHaveBeenCalledTimes(1)
-    expect(h.sendNotification).toHaveBeenCalledWith(expect.objectContaining({ entityId: 't1' }))
+    expect(h.sendNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetType: 'TASK',
+        targetIds: { taskId: 't1' },
+      })
+    )
   })
 
   it('no-ops when nothing matches the candidate query', async () => {

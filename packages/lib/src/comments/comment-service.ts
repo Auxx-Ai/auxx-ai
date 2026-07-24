@@ -97,6 +97,34 @@ export class CommentService {
     this.attachmentService = new AttachmentService(organizationId, userId, db)
   }
 
+  /** Resolve stable fallback copy for a comment notification. */
+  private async getNotificationCopy(recordId: RecordId): Promise<{
+    actorName: string
+    recordName: string
+  }> {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+    const [actor, recordName] = await Promise.all([
+      this.db.query.User.findFirst({
+        where: eq(schema.User.id, this.userId),
+        columns: { name: true },
+      }),
+      entityDefinitionId === 'thread'
+        ? this.db.query.Thread.findFirst({
+            where: eq(schema.Thread.id, entityInstanceId),
+            columns: { subject: true },
+          }).then((thread) => thread?.subject)
+        : this.db.query.EntityInstance.findFirst({
+            where: eq(schema.EntityInstance.id, entityInstanceId),
+            columns: { displayName: true },
+          }).then((record) => record?.displayName),
+    ])
+
+    return {
+      actorName: actor?.name ?? 'A teammate',
+      recordName: recordName || 'this record',
+    }
+  }
+
   /**
    * Verify the host record (Thread or EntityInstance) belongs to this user's org.
    * `protectedProcedure` already binds the user to one org per session, so this is the
@@ -228,6 +256,9 @@ export class CommentService {
         throw new Error('Failed to create comment')
       }
 
+      const previewText = docToText(contentJson).slice(0, 150)
+      const { actorName, recordName } = await this.getNotificationCopy(data.recordId)
+
       // Trigger reply notification outside the transaction
       if (data.parentId) {
         const parentComment = await this.db.query.Comment.findFirst({
@@ -238,10 +269,12 @@ export class CommentService {
           await this.notificationService.sendNotification({
             type: 'COMMENT_REPLY',
             userId: parentComment.createdById,
-            entityId: result.id,
-            entityType: 'Comment',
-            message: 'Someone replied to your comment',
+            organizationId: this.organizationId,
+            targetType: 'COMMENT',
+            targetIds: { commentId: result.id, recordId: data.recordId },
+            message: `${actorName} replied to your comment on ${recordName}`,
             actorId: this.userId,
+            metadata: { kind: 'COMMENT_REPLY', recordName, snippet: previewText },
           })
         }
       }
@@ -253,15 +286,15 @@ export class CommentService {
           await this.notificationService.sendNotification({
             type: 'COMMENT_MENTION',
             userId: instId,
-            entityId: result.id,
-            entityType: 'Comment',
-            message: 'You were mentioned in a comment',
+            organizationId: this.organizationId,
+            targetType: 'COMMENT',
+            targetIds: { commentId: result.id, recordId: data.recordId },
+            message: `${actorName} mentioned you on ${recordName}`,
             actorId: this.userId,
+            metadata: { kind: 'COMMENT_MENTION', recordName, snippet: previewText },
           })
         }
       }
-
-      const previewText = docToText(contentJson).slice(0, 150)
 
       // Publish timeline event for whichever entity the comment is attached
       // to (thread / ticket / contact / custom entity).
@@ -397,6 +430,14 @@ export class CommentService {
         return { comment }
       })
 
+      const comment = result.comment
+      if (!comment) {
+        throw new Error('Failed to update comment')
+      }
+      const recordId = toRecordId(comment.entityDefinitionId, comment.entityId)
+      const previewText = docToText(contentJson ?? comment.contentJson).slice(0, 150)
+      const { actorName, recordName } = await this.getNotificationCopy(recordId)
+
       // Notify newly mentioned users
       if (newUserMentions.length > 0) {
         await Promise.all(
@@ -405,23 +446,19 @@ export class CommentService {
               return this.notificationService.sendNotification({
                 type: 'COMMENT_MENTION',
                 userId,
-                entityId: id,
-                entityType: 'Comment',
-                message: 'You were mentioned in a comment',
+                organizationId: this.organizationId,
+                targetType: 'COMMENT',
+                targetIds: { commentId: id, recordId },
+                message: `${actorName} mentioned you on ${recordName}`,
                 actorId: this.userId,
+                metadata: { kind: 'COMMENT_MENTION', recordName, snippet: previewText },
               })
             }
           })
         )
       }
 
-      // Get the comment so we can re-derive its host recordId for the event.
-      const comment = await this.db.query.Comment.findFirst({
-        where: eq(schema.Comment.id, id),
-      })
-
       if (comment) {
-        const previewText = docToText(contentJson ?? comment.contentJson).slice(0, 150)
         await publisher.publishLater({
           type: 'comment:updated',
           data: {
@@ -724,13 +761,18 @@ export class CommentService {
         .returning()
       // Trigger notification for the comment creator
       if (comment.createdById !== userId) {
+        const recordId = toRecordId(comment.entityDefinitionId, comment.entityId)
+        const { actorName, recordName } = await this.getNotificationCopy(recordId)
+        const reactionLabel = type === 'like' ? 'a like' : (emoji ?? 'an emoji')
         await this.notificationService.sendNotification({
           type: 'COMMENT_REACTION',
           userId: comment.createdById,
-          entityId: commentId,
-          entityType: 'Comment',
-          message: `Someone reacted to your comment with ${type === 'like' ? 'a like' : 'an emoji'}`,
+          organizationId: this.organizationId,
+          targetType: 'COMMENT',
+          targetIds: { commentId, recordId },
+          message: `${actorName} reacted to your comment on ${recordName} with ${reactionLabel}`,
           actorId: userId,
+          metadata: { kind: 'COMMENT_REACTION', recordName, reaction: reactionLabel },
         })
       }
       return reaction

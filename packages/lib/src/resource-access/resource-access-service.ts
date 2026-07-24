@@ -1,11 +1,13 @@
 // packages/lib/src/resource-access/resource-access-service.ts
 
 import { schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { MemberType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import { getCachedUserGroupIds, onCacheEvent } from '../cache'
+import { NotificationService } from '../notifications'
 import { isInstanceAccessKey } from '../permissions/capabilities/instance-access'
 import { satisfiesPermission } from './constants'
 import type {
@@ -21,6 +23,150 @@ import type {
   RevokeInstanceAccessInput,
   RevokeTypeAccessInput,
 } from './types'
+
+const logger = createScopedLogger('resource-access-service')
+const SHARE_NOTIFICATION_RECIPIENT_CAP = 50
+
+async function resolveShareRecipients(
+  ctx: ResourceAccessContext,
+  input: GrantInstanceAccessInput
+): Promise<string[]> {
+  if (input.granteeType === ResourceGranteeType.role) return []
+  if (input.granteeType === ResourceGranteeType.user) return [input.granteeId]
+
+  const members = await ctx.db.query.EntityGroupMember.findMany({
+    where: and(
+      eq(schema.EntityGroupMember.groupInstanceId, input.granteeId),
+      eq(schema.EntityGroupMember.memberType, MemberType.user)
+    ),
+    columns: { memberRefId: true },
+    limit: SHARE_NOTIFICATION_RECIPIENT_CAP + 1,
+  })
+  if (members.length > SHARE_NOTIFICATION_RECIPIENT_CAP) {
+    logger.warn('Share notification fan-out capped', {
+      organizationId: ctx.organizationId,
+      granteeType: input.granteeType,
+      granteeId: input.granteeId,
+      cap: SHARE_NOTIFICATION_RECIPIENT_CAP,
+    })
+  }
+  return members
+    .slice(0, SHARE_NOTIFICATION_RECIPIENT_CAP)
+    .map((member: { memberRefId: string }) => member.memberRefId)
+}
+
+async function notifyNewInstanceShare(
+  ctx: ResourceAccessContext,
+  input: GrantInstanceAccessInput,
+  entityDefinitionId: string,
+  entityInstanceId: string
+): Promise<void> {
+  if (input.permission === ResourcePermission.none) return
+  if (entityDefinitionId !== 'thread' && !isInstanceAccessKey(entityDefinitionId)) return
+
+  const recipientIds = (await resolveShareRecipients(ctx, input)).filter(
+    (recipientId) => recipientId !== ctx.userId
+  )
+  if (recipientIds.length === 0) return
+
+  const actor = await ctx.db.query.User.findFirst({
+    where: eq(schema.User.id, ctx.userId),
+    columns: { name: true },
+  })
+  const actorName = actor?.name ?? 'A teammate'
+  const service = new NotificationService(ctx.db)
+
+  if (entityDefinitionId === 'thread') {
+    const thread = await ctx.db.query.Thread.findFirst({
+      where: and(
+        eq(schema.Thread.id, entityInstanceId),
+        eq(schema.Thread.organizationId, ctx.organizationId)
+      ),
+      columns: { subject: true },
+    })
+    if (!thread) return
+    const lens = input.permission === ResourcePermission.view ? (input.lens ?? 'full') : 'full'
+    const visibleSubject = lens === 'metadata' ? null : thread.subject
+    await Promise.all(
+      recipientIds.map((userId) =>
+        service.sendNotification({
+          type: 'MESSAGE_SHARED',
+          userId,
+          organizationId: ctx.organizationId,
+          actorId: ctx.userId,
+          targetType: 'THREAD',
+          targetIds: { threadId: entityInstanceId },
+          message: `${actorName} shared a conversation with you${
+            visibleSubject ? `: ${visibleSubject}` : ''
+          }`,
+          metadata: { kind: 'MESSAGE_SHARED', subject: visibleSubject, lens },
+        })
+      )
+    )
+    return
+  }
+
+  const resourceConfig = {
+    dataset: { table: schema.Dataset, noun: 'dataset', targetType: 'DATASET' as const },
+    kb: {
+      table: schema.KnowledgeBase,
+      noun: 'knowledge base',
+      targetType: 'KNOWLEDGE_BASE' as const,
+    },
+    dashboard: {
+      table: schema.Dashboard,
+      noun: 'dashboard',
+      targetType: 'DASHBOARD' as const,
+    },
+  }[entityDefinitionId]
+  if (!resourceConfig) return
+
+  const [resource] = await ctx.db
+    .select({ name: resourceConfig.table.name })
+    .from(resourceConfig.table)
+    .where(
+      and(
+        eq(resourceConfig.table.id, entityInstanceId),
+        eq(resourceConfig.table.organizationId, ctx.organizationId)
+      )
+    )
+    .limit(1)
+  if (!resource) return
+
+  const level =
+    input.permission === ResourcePermission.admin
+      ? 'full'
+      : input.permission === ResourcePermission.edit
+        ? 'write'
+        : 'read'
+  const targetIds =
+    entityDefinitionId === 'dataset'
+      ? { datasetId: entityInstanceId }
+      : entityDefinitionId === 'kb'
+        ? { knowledgeBaseId: entityInstanceId }
+        : { dashboardId: entityInstanceId }
+
+  await Promise.all(
+    recipientIds.map((userId) =>
+      service.sendNotification({
+        type: 'RESOURCE_SHARED',
+        userId,
+        organizationId: ctx.organizationId,
+        actorId: ctx.userId,
+        targetType: resourceConfig.targetType,
+        targetIds: targetIds as never,
+        message: `${actorName} shared the ${resourceConfig.noun} ${resource.name} with you`,
+        metadata: {
+          kind: 'RESOURCE_SHARED',
+          resourceName: resource.name,
+          noun: resourceConfig.noun,
+          resourceKey: entityDefinitionId,
+          level,
+        },
+      })
+    )
+  )
+}
 
 /**
  * Emit the cache event that busts visibility caches after a ResourceAccess
@@ -159,6 +305,16 @@ export async function grantInstanceAccess(
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
+  const existing = await db.query.ResourceAccess.findFirst({
+    where: and(
+      eq(schema.ResourceAccess.organizationId, organizationId),
+      eq(schema.ResourceAccess.entityDefinitionId, entityDefinitionId),
+      eq(schema.ResourceAccess.entityInstanceId, entityInstanceId),
+      eq(schema.ResourceAccess.granteeType, input.granteeType),
+      eq(schema.ResourceAccess.granteeId, input.granteeId)
+    ),
+    columns: { id: true },
+  })
 
   await db
     .insert(schema.ResourceAccess)
@@ -192,6 +348,16 @@ export async function grantInstanceAccess(
   await emitResourceAccessChanged(organizationId, grantees)
   if (isInstanceAccessKey(entityDefinitionId)) {
     await emitResourceAccessInstanceChanged(organizationId, grantees)
+  }
+
+  if (!existing) {
+    void notifyNewInstanceShare(ctx, input, entityDefinitionId, entityInstanceId).catch((error) => {
+      logger.warn('Failed to send instance share notification', {
+        organizationId,
+        recordId: input.recordId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
   }
 }
 
@@ -263,6 +429,38 @@ export async function revokeInstanceAccess(
     await emitResourceAccessChanged(organizationId, grantees)
     if (isInstanceAccessKey(entityDefinitionId)) {
       await emitResourceAccessInstanceChanged(organizationId, grantees)
+    }
+
+    if (entityDefinitionId === 'thread' || isInstanceAccessKey(entityDefinitionId)) {
+      const recipients = await resolveShareRecipients(ctx, {
+        ...input,
+        permission: ResourcePermission.view,
+      })
+      const targetType =
+        entityDefinitionId === 'thread'
+          ? 'THREAD'
+          : entityDefinitionId === 'dataset'
+            ? 'DATASET'
+            : entityDefinitionId === 'kb'
+              ? 'KNOWLEDGE_BASE'
+              : 'DASHBOARD'
+      const targetIds =
+        entityDefinitionId === 'thread'
+          ? { threadId: entityInstanceId }
+          : entityDefinitionId === 'dataset'
+            ? { datasetId: entityInstanceId }
+            : entityDefinitionId === 'kb'
+              ? { knowledgeBaseId: entityInstanceId }
+              : { dashboardId: entityInstanceId }
+      await new NotificationService(db).deleteNotificationsByTarget(
+        targetType,
+        targetIds as never,
+        organizationId,
+        {
+          userIds: recipients,
+          types: [entityDefinitionId === 'thread' ? 'MESSAGE_SHARED' : 'RESOURCE_SHARED'],
+        }
+      )
     }
   }
 

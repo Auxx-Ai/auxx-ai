@@ -754,6 +754,12 @@
       "import": "./dist/notifications/index.mjs",
       "default": "./src/notifications/index.ts"
     },
+    "./notifications/client": {
+      "types": "./src/notifications/client.ts",
+      "source": "./src/notifications/client.ts",
+      "import": "./dist/notifications/client.mjs",
+      "default": "./src/notifications/client.ts"
+    },
     "./organizations": {
       "types": "./src/organizations/index.ts",
       "source": "./src/organizations/index.ts",

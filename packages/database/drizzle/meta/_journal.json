@@ -2164,6 +2164,13 @@
       "when": 1784925921885,
       "tag": "0308_add_thread_shared_notification",
       "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1784928163364,
+      "tag": "0309_notifications_v2_target_model",
+      "breakpoints": true
     }
   ]
 }

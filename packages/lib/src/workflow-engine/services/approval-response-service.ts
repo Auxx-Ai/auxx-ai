@@ -128,9 +128,9 @@ export class ApprovalResponseService {
     if (result.success) {
       try {
         const notificationService = new NotificationService(this.db)
-        await notificationService.deleteNotificationsByEntity(
-          'approval_request',
-          approvalRequestId,
+        await notificationService.deleteNotificationsByTarget(
+          'APPROVAL',
+          { approvalRequestId },
           organizationId
         )
       } catch (error) {
@@ -225,9 +225,9 @@ export class ApprovalResponseService {
     // Clean up notifications
     try {
       const notificationService = new NotificationService(this.db)
-      await notificationService.deleteNotificationsByEntity(
-        'approval_request',
-        approvalRequestId,
+      await notificationService.deleteNotificationsByTarget(
+        'APPROVAL',
+        { approvalRequestId },
         approvalRequest.organizationId
       )
     } catch (error) {

@@ -164,11 +164,15 @@ export async function executeRuleAction(
         await notifications.sendNotification({
           type: 'SYSTEM_MESSAGE',
           userId,
-          entityId: ctx.entityInstanceId,
-          entityType: ctx.entityDefinitionId,
+          targetType: 'ENTITY_INSTANCE',
+          targetIds: {
+            entityDefinitionId: ctx.entityDefinitionId,
+            entityInstanceId: ctx.entityInstanceId,
+          },
           message,
           organizationId: ctx.organizationId,
-          data: {
+          metadata: {
+            kind: 'SYSTEM_MESSAGE',
             source: 'record-rule',
             ruleId: rule.id,
             ruleName: rule.name,

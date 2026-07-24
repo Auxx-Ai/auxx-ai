@@ -87,11 +87,11 @@ async function sendOverageNotifications(
         .sendNotification({
           type: 'SYSTEM_MESSAGE',
           userId: admin.userId,
-          entityId: organizationId,
-          entityType: 'organization',
+          targetType: 'SETTINGS',
+          targetIds: { path: '/app/settings/billing' },
           organizationId,
           message,
-          data: { overages, type: 'PLAN_OVERAGE' },
+          metadata: { kind: 'SYSTEM_MESSAGE', overages, type: 'PLAN_OVERAGE' },
         })
         .catch((error) => {
           logger.warn('Failed to send overage notification to admin', {

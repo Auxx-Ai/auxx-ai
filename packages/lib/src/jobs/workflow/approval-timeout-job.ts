@@ -90,7 +90,7 @@ async function sendTimeoutNotifications(approvalRequest: ApprovalRequest): Promi
     const { NotificationService } = await import('../../notifications/notification-service')
     const notificationService = new NotificationService(db)
     // Get all assignee user IDs
-    const userIds = new Set(approvalRequest.assigneeUsers)
+    const userIds = new Set<string>((approvalRequest.assigneeUsers ?? []) as string[])
     // Add users from groups
     if (approvalRequest.assigneeGroups && approvalRequest.assigneeGroups.length > 0) {
       // Note: This complex many-to-many relationship query would require joins
@@ -110,11 +110,13 @@ async function sendTimeoutNotifications(approvalRequest: ApprovalRequest): Promi
         await notificationService.sendNotification({
           type: 'WORKFLOW_APPROVAL_COMPLETED' as any,
           userId,
-          entityId: approvalRequest.id,
-          entityType: 'approval_request',
+          targetType: 'APPROVAL',
+          targetIds: { approvalRequestId: approvalRequest.id },
           message: `Approval request for workflow "${approvalRequest.workflowName}" has expired`,
           organizationId: approvalRequest.organizationId,
-          data: {
+          metadata: {
+            kind: 'WORKFLOW_APPROVAL_COMPLETED',
+            workflowName: approvalRequest.workflowName,
             workflowId: approvalRequest.workflowId,
             workflowRunId: approvalRequest.workflowRunId,
             nodeId: approvalRequest.nodeId,

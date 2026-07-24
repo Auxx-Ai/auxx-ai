@@ -123,13 +123,14 @@ export async function notifyAdminsOfSendBreakerTrip(opts: {
         service.sendNotification({
           type: 'SYSTEM_MESSAGE',
           userId: admin.userId,
-          entityId: organizationId,
-          entityType: 'Organization',
+          targetType: 'SETTINGS',
+          targetIds: { path: '/app/settings/general' },
           organizationId,
           message:
             `Automated email sending paused: more than ${limit} automated emails were sent ` +
             'in 15 minutes, which usually means a workflow or sequence is misbehaving. ' +
             'Automated sends are blocked until the rate drops.',
+          metadata: { kind: 'SYSTEM_MESSAGE', type: 'AUTOMATED_SEND_BREAKER' },
         })
       )
     )

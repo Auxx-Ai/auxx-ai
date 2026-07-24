@@ -24,15 +24,18 @@ export const Notification = pgTable(
       .primaryKey()
       .notNull(),
     type: notificationType().notNull(),
+    /** Plain-text fallback for search and non-client delivery channels. */
     message: text().notNull(),
+    /** Client destination kind; see `@auxx/lib/notifications/client`. */
+    targetType: text().notNull(),
+    /** Destination identifiers whose shape is determined by `targetType`. */
+    targetIds: jsonb().notNull(),
     isRead: boolean().default(false).notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     readAt: timestamp({ precision: 3 }),
     userId: text()
       .notNull()
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    entityId: text().notNull(),
-    entityType: text().notNull(),
     actorId: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
@@ -45,16 +48,14 @@ export const Notification = pgTable(
     metadata: jsonb(),
   },
   (table) => [
-    index('Notification_entityType_entityId_idx').using(
-      'btree',
-      table.entityType.asc().nullsLast(),
-      table.entityId.asc().nullsLast()
-    ),
+    index('Notification_targetType_idx').using('btree', table.targetType.asc().nullsLast()),
     index('Notification_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
-    index('Notification_userId_createdAt_idx').using(
+    index('Notification_userId_org_createdAt_idx').using(
       'btree',
       table.userId.asc().nullsLast(),
-      table.createdAt.asc().nullsLast()
+      table.organizationId.asc().nullsLast(),
+      table.createdAt.desc().nullsFirst(),
+      table.id.desc().nullsFirst()
     ),
     index('Notification_userId_isRead_idx').using(
       'btree',

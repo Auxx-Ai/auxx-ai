@@ -90,12 +90,13 @@ export async function scanAndFireTaskDeadlines(
         await notificationService.sendNotification({
           type: 'TASK_DEADLINE',
           userId,
-          entityId: task.id,
-          entityType: 'task',
+          targetType: 'TASK',
+          targetIds: { taskId: task.id },
           message,
           organizationId: task.organizationId,
-          data: {
-            taskId: task.id,
+          metadata: {
+            kind: 'TASK_DEADLINE',
+            taskTitle: task.title,
             deadline: task.deadline?.toISOString() ?? null,
           },
         })

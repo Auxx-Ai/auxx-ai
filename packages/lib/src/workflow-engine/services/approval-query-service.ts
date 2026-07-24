@@ -408,9 +408,9 @@ export class ApprovalQueryService {
         const notificationService = new NotificationService(this.db)
         let totalNotificationsDeleted = 0
         for (const approval of approvalsToCleanup) {
-          const deletedCount = await notificationService.deleteNotificationsByEntity(
-            'approval_request',
-            approval.id,
+          const deletedCount = await notificationService.deleteNotificationsByTarget(
+            'APPROVAL',
+            { approvalRequestId: approval.id },
             approval.organizationId
           )
           totalNotificationsDeleted += deletedCount

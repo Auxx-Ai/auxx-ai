@@ -1,6 +1,7 @@
 // apps/web/src/components/tasks/ui/index.ts
 
 export { CreateTaskButton } from './create-task-button'
+export { FloatingTaskEditorRoot } from './floating-task-editor-root'
 export { FloatingTaskRoot } from './floating-task-root'
 export { TaskCheckbox } from './task-checkbox'
 export { TaskDialog } from './task-dialog'

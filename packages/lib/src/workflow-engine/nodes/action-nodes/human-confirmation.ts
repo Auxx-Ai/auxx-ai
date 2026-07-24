@@ -380,12 +380,14 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
           const result = await notificationService.sendNotification({
             type: 'WORKFLOW_APPROVAL_REQUIRED' as any,
             userId,
-            entityId: approvalRequest.id,
-            entityType: 'approval_request',
+            targetType: 'APPROVAL',
+            targetIds: { approvalRequestId: approvalRequest.id },
             message: `Approval required for workflow "${approvalRequest.workflowName}"`,
             actorId: approvalRequest.createdById,
             organizationId: approvalRequest.organizationId,
-            data: {
+            metadata: {
+              kind: 'WORKFLOW_APPROVAL_REQUIRED',
+              workflowName: approvalRequest.workflowName,
               workflowId: approvalRequest.workflowId,
               workflowRunId: approvalRequest.workflowRunId,
               nodeId: approvalRequest.nodeId,
