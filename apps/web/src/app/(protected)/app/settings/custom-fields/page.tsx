@@ -4,16 +4,27 @@
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
+import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
-import { ChevronDown, LayoutTemplate, Plus } from 'lucide-react'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
+import { EmptySection } from '@auxx/ui/components/section'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@auxx/ui/components/table'
+import { ChevronDown, LayoutTemplate, Plus, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import { EntityRow } from '~/components/custom-fields/ui/entity-row'
 import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-template-dialog'
@@ -41,11 +52,25 @@ export default function CustomFieldsPage() {
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const { isAtLimit, getLimit } = useFeatureFlags()
 
+  // Search + system-entity visibility (local, non-persisted list filters)
+  const [search, setSearch] = useState('')
+  const [hideSystem, setHideSystem] = useState(false)
+
   // Get all resources (system + custom) from unified registry
   const { resources, customResources, isLoading } = useResources()
   const userCreatedEntityCount = customResources?.filter((r) => !r.entityType).length ?? 0
   const atEntityLimit = isAtLimit(FeatureKey.entities, userCreatedEntityCount)
   const entityLimit = getLimit(FeatureKey.entities)
+
+  // Def-admin scoping, hidden system types, then search + "hide system" filters
+  const visibleResources = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return resources
+      .filter((r) => !r.entityType || !HIDDEN_ENTITY_TYPES.includes(r.entityType))
+      .filter((r) => canAdministerDef(r.entityDefinitionId))
+      .filter((r) => !(hideSystem && r.entityType))
+      .filter((r) => !query || r.label.toLowerCase().includes(query))
+  }, [resources, canAdministerDef, hideSystem, search])
 
   /** Navigate to entity fields page */
   function handleRowClick(slug: string) {
@@ -74,7 +99,24 @@ export default function CustomFieldsPage() {
     <SettingsPage
       title='Custom Entities & Fields'
       description='Manage all the custom entities and fields in your organization.'
-      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Custom Fields' }]}>
+      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Custom Fields' }]}
+      subHeader={
+        <ListToolbar sticky={false}>
+          <InputSearch
+            value={search}
+            placeholder='Search entities...'
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <ListToolbarGroup align='end'>
+            <ButtonSwitch
+              label='Hide system entities'
+              checked={hideSystem}
+              onCheckedChange={setHideSystem}
+            />
+          </ListToolbarGroup>
+        </ListToolbar>
+      }
+      subHeaderClassName='p-0'>
       <Table>
         <TableHeader>
           <TableRow>
@@ -108,23 +150,30 @@ export default function CustomFieldsPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {/* All resources (system + custom) from unified registry, excluding hidden system types */}
-          {!isLoading &&
-            resources
-              .filter((r) => !r.entityType || !HIDDEN_ENTITY_TYPES.includes(r.entityType))
-              // Def-admin scoping: a member sees only the defs they administer.
-              // Admins administer every def, so their list is unchanged.
-              .filter((r) => canAdministerDef(r.entityDefinitionId))
-              .map((resource) => (
-                <EntityRow
-                  key={resource.id}
-                  label={resource.label}
-                  type={resource.entityType ? 'System' : 'Custom'}
-                  iconId={resource.icon}
-                  color={resource.color}
-                  onClick={() => handleRowClick(resource.apiSlug)}
+          {!isLoading && visibleResources.length === 0 ? (
+            <TableRow className='hover:bg-transparent'>
+              <TableCell colSpan={4} className='p-0'>
+                <EmptySection
+                  icon={<Search />}
+                  title='No entities found'
+                  description='Try a different search or turn off "Hide system entities".'
+                  className='mx-3 mt-3'
                 />
-              ))}
+              </TableCell>
+            </TableRow>
+          ) : (
+            !isLoading &&
+            visibleResources.map((resource) => (
+              <EntityRow
+                key={resource.id}
+                label={resource.label}
+                type={resource.entityType ? 'System' : 'Custom'}
+                iconId={resource.icon}
+                color={resource.color}
+                onClick={() => handleRowClick(resource.apiSlug)}
+              />
+            ))
+          )}
         </TableBody>
       </Table>
 
