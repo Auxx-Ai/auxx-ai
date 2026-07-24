@@ -2,12 +2,15 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Lock, ShieldCheck } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
 import {
@@ -54,6 +57,23 @@ export function GranteeDefAccessSection({
 }) {
   const { isLoading, rows, setLevel } = useGranteeDefAccess(granteeKind, granteeId)
 
+  const [search, setSearch] = useState('')
+  const [overridesOnly, setOverridesOnly] = useState(false)
+
+  const query = search.trim().toLowerCase()
+
+  /** Rows narrowed by the search query and the "overrides only" toggle. */
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (overridesOnly && row.grantLevel === undefined) return false
+        if (!query) return true
+        const { plural, label } = row.resource
+        return plural.toLowerCase().includes(query) || label.toLowerCase().includes(query)
+      }),
+    [rows, query, overridesOnly]
+  )
+
   return (
     <SettingsSection
       icon={ShieldCheck}
@@ -67,20 +87,46 @@ export function GranteeDefAccessSection({
         </div>
       ) : rows.length === 0 ? (
         <EmptySection
+          orientation='horizontal'
           icon={<ShieldCheck />}
           title='No record types'
           description='There are no record types to configure access for yet.'
         />
       ) : (
-        <div className='border p-1 rounded-xl flex flex-col gap-1'>
-          {rows.map((row) => (
-            <DefAccessRow
-              key={row.resource.entityDefinitionId}
-              row={row}
-              canEdit={canEdit}
-              onChange={(level) => setLevel(row.resource.entityDefinitionId, level)}
+        <div className='flex flex-col gap-3'>
+          <div className='flex items-center gap-2'>
+            <InputSearch
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder='Search record types...'
             />
-          ))}
+            <ButtonSwitch
+              label='Overrides only'
+              checked={overridesOnly}
+              onCheckedChange={setOverridesOnly}
+              disabled={!canEdit}
+            />
+          </div>
+
+          {filteredRows.length === 0 ? (
+            <EmptySection
+              orientation='horizontal'
+              icon={<ShieldCheck />}
+              title='No matches'
+              description='No record types match your search.'
+            />
+          ) : (
+            <div className='border p-1 rounded-xl flex flex-col gap-1'>
+              {filteredRows.map((row) => (
+                <DefAccessRow
+                  key={row.resource.entityDefinitionId}
+                  row={row}
+                  canEdit={canEdit}
+                  onChange={(level) => setLevel(row.resource.entityDefinitionId, level)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </SettingsSection>

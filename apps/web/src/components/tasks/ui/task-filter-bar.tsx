@@ -5,10 +5,10 @@
 import type { TaskSortConfig } from '@auxx/lib/tasks/client'
 import { TASK_FILTER_FIELDS } from '@auxx/lib/tasks/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button, buttonVariants } from '@auxx/ui/components/button'
+import { Button } from '@auxx/ui/components/button'
+import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Switch } from '@auxx/ui/components/switch'
 import { Filter, X, Zap } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
@@ -211,34 +211,18 @@ export function TaskFilterBar({
 
       {/* Show Snoozed / Show Completed Toggles */}
       <ListToolbarGroup align='end'>
-        <label
-          className={buttonVariants({
-            variant: 'ghost',
-            size: 'sm',
-            className: `gap-2 ${disabled ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`,
-          })}>
-          <span className='text-muted-foreground text-xs'>Show snoozed</span>
-          <Switch
-            size='sm'
-            checked={includeSnoozed}
-            onCheckedChange={onIncludeSnoozedChange}
-            disabled={disabled}
-          />
-        </label>
-        <label
-          className={buttonVariants({
-            variant: 'ghost',
-            size: 'sm',
-            className: `gap-2 ${disabled ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`,
-          })}>
-          <span className='text-muted-foreground text-xs'>Show completed</span>
-          <Switch
-            size='sm'
-            checked={includeCompleted}
-            onCheckedChange={onIncludeCompletedChange}
-            disabled={disabled}
-          />
-        </label>
+        <ButtonSwitch
+          label='Show snoozed'
+          checked={includeSnoozed}
+          onCheckedChange={onIncludeSnoozedChange}
+          disabled={disabled}
+        />
+        <ButtonSwitch
+          label='Show completed'
+          checked={includeCompleted}
+          onCheckedChange={onIncludeCompletedChange}
+          disabled={disabled}
+        />
       </ListToolbarGroup>
     </ListToolbar>
   )
