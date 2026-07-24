@@ -110,11 +110,32 @@ export const SEAT_CEILINGS: Record<SeatType, Record<Area, Level>> = {
 
 /**
  * Entity slug → the capability key required to WRITE that entity. Slugs absent
- * from this map default (in code) to {@link PermissionKey.recordsEdit}. Dispatch
- * work orders route to the dispatch board-manage key.
+ * from this map default (in code) to {@link PermissionKey.recordsEdit}. These
+ * dispatch record faces route writes to the dispatch board-manage key. Keep this
+ * map aligned with {@link ENTITY_BASE_AREAS}: coarse verb call sites use this
+ * map, while def-aware read/write checks use the derived record base.
  */
 export const ENTITY_WRITE_KEYS: Record<string, PermissionKey> = {
   work_order: PermissionKey.dispatchBoardManage,
+  service_request: PermissionKey.dispatchBoardManage,
+  quote: PermissionKey.dispatchBoardManage,
+  invoice: PermissionKey.dispatchBoardManage,
+}
+
+/**
+ * Entity slug → the Layer-2 area that supplies the definition's record base
+ * instead of {@link Area.records}. These definitions are the record face of a
+ * feature whose authority lives in its own area, so opening the Records area
+ * alone must not expose them. The server resolves this slug-keyed map to
+ * definition IDs before sending capabilities to the client.
+ *
+ * Read-side twin of {@link ENTITY_WRITE_KEYS}; keep both maps aligned.
+ */
+export const ENTITY_BASE_AREAS: Record<string, Area> = {
+  work_order: Area.dispatchBoard,
+  service_request: Area.dispatchBoard,
+  quote: Area.dispatchBoard,
+  invoice: Area.dispatchBoard,
 }
 
 /**

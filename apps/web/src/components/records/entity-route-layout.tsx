@@ -13,10 +13,9 @@ import {
 import { MainPageTabs, type MainPageTabsItem } from '@auxx/ui/components/main-page-tabs'
 import { ChartColumn } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { NoAccess } from '~/components/permissions/ui/no-access'
 import { useResources } from '~/components/resources'
-import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { RecordRouteGuard } from './record-route-guard'
 
 interface EntityRouteLayoutProps {
   /** Resource slug (entityDefinitionId or apiSlug), resolved via `useResources()`. */
@@ -49,18 +48,8 @@ export function EntityRouteLayout({
 }: EntityRouteLayoutProps) {
   const { getResourceById } = useResources()
   const { hasAccess } = useFeatureFlags()
-  const { canViewEntity } = useAccess()
   const resource = getResourceById(slug)
   const ResourceIcon = resource ? getIcon(resource.icon)?.icon : undefined
-
-  // Layer-2/3 read gate for direct-URL hits (e.g. a member deep-linking
-  // `/app/contacts` they can't see). Every entity list — tickets included —
-  // rides the per-def most-specific-wins gate (`canViewEntity`) so a def-level
-  // grant unlocks a def even when the member's base records level is None — the
-  // whole point of the leveled model. Tickets are just another entity def.
-  if (resource && !canViewEntity(resource.entityDefinitionId)) {
-    return <NoAccess area={resource?.plural ?? undefined} />
-  }
 
   const items: MainPageTabsItem[] = [
     {
@@ -80,14 +69,16 @@ export function EntityRouteLayout({
   ]
 
   return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title={resource?.plural ?? '...'} href={basePath} />
-        </MainPageBreadcrumb>
-        <MainPageTabs items={items} />
-      </MainPageHeader>
-      {children}
-    </MainPage>
+    <RecordRouteGuard slug={slug}>
+      <MainPage>
+        <MainPageHeader>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title={resource?.plural ?? '...'} href={basePath} />
+          </MainPageBreadcrumb>
+          <MainPageTabs items={items} />
+        </MainPageHeader>
+        {children}
+      </MainPage>
+    </RecordRouteGuard>
   )
 }

@@ -11,6 +11,9 @@ import {
 import type { Resource } from '../../resources/registry/types'
 import { CapabilitySet, type DefIdToSlug } from './capability-set'
 import { PERMISSION_RANK } from './compose-user-capabilities'
+import { levelToRecordBasePermission } from './entity-access'
+import { areaLevelFromKeys } from './registry'
+import { ENTITY_BASE_AREAS } from './seat-policy'
 
 /**
  * Build the in-memory RecordId-def → entity-slug resolver from the cached
@@ -78,6 +81,7 @@ export async function getCapabilities(
   const entry = roleMap[userId]
   const role = entry?.role ?? 'USER'
   const seatType = entry?.seatType ?? 'full'
+  const keys = new Set(caps.keys)
 
   // ResourceAccess rows are keyed inconsistently in practice — system entity
   // types by slug ('inbox'), custom defs by EntityDefinition CUID. Lookups in
@@ -94,10 +98,23 @@ export async function getCapabilities(
     }
   }
 
+  // Resolve the handful of feature-backed record defs from entity slug to the
+  // canonical definition-id keyspace once. `null` is intentional: it
+  // distinguishes an explicitly closed derived base from an absent override,
+  // which falls back to the Records area on both server and client.
+  const defBaseOverrides: Record<string, ResourcePermission | null> = {}
+  for (const resource of resources) {
+    const slug = resource.entityType ?? resource.apiSlug
+    const area = ENTITY_BASE_AREAS[slug]
+    if (!area) continue
+    defBaseOverrides[resource.entityDefinitionId] =
+      levelToRecordBasePermission(areaLevelFromKeys(keys, area)) ?? null
+  }
+
   // instanceAccess keys on the globally-unique instance CUID (Dataset.id etc.),
   // so — unlike defAccess — no keyspace normalization is needed (§1.2).
   return new CapabilitySet(
-    new Set(caps.keys),
+    keys,
     defAccess,
     role,
     seatType,
@@ -105,6 +122,7 @@ export async function getCapabilities(
     new Set(restrictedDefIds.map(toDefinitionId)),
     toDefinitionId,
     caps.instanceAccess ?? {},
-    new Set(restrictedInstanceIds)
+    new Set(restrictedInstanceIds),
+    defBaseOverrides
   )
 }

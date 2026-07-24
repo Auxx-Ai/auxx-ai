@@ -60,6 +60,9 @@ export class CapabilitySet implements CapabilityView {
    *                   instance-access row for *anyone*. An instance NOT in this
    *                   set has no explicit row → falls back to its area's base L2
    *                   level (for `baselineAtCreate: false` resources).
+   * @param defBaseOverrides Per-def record base for defs whose base comes from
+   *                   another Layer-2 area. Canonical `entityDefinitionId`
+   *                   keys; `null` means that area is closed.
    */
   constructor(
     private readonly keys: ReadonlySet<PermissionKey>,
@@ -70,7 +73,8 @@ export class CapabilitySet implements CapabilityView {
     private readonly restrictedDefIds: ReadonlySet<string> = new Set(),
     private readonly defIdToDefinitionId: DefIdToSlug = (id) => id,
     private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
-    private readonly restrictedInstanceIds: ReadonlySet<string> = new Set()
+    private readonly restrictedInstanceIds: ReadonlySet<string> = new Set(),
+    private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {}
   ) {}
 
   /** O(1) Set lookup — whether the member holds `key`. */
@@ -124,6 +128,7 @@ export class CapabilitySet implements CapabilityView {
       keys: this.keys,
       defAccess: this.defAccess,
       restrictedEntityDefIds: this.restrictedDefIds,
+      defBaseOverrides: this.defBaseOverrides,
     }
   }
 
@@ -136,6 +141,7 @@ export class CapabilitySet implements CapabilityView {
       keys: [...this.keys],
       defAccess: { ...this.defAccess },
       restrictedEntityDefIds: [...this.restrictedDefIds],
+      defBaseOverrides: { ...this.defBaseOverrides },
       role: this.role,
       seatType: this.seatType,
       instanceAccess: { ...this.instanceAccess },
@@ -146,20 +152,14 @@ export class CapabilitySet implements CapabilityView {
   /**
    * Whether the member may create/update/delete/merge records of the given def —
    * the `edit` floor (§0.1). Two carve-outs bypass most-specific-wins and keep
-   * the existing verb gate ({@link canWriteEntity}), because their write
-   * authority lives OUTSIDE the records area:
-   *  - **mail-infra defs** (signatures/snippets/etc. — governed by mail keys),
-   *  - **defs with a dedicated write key** ({@link ENTITY_WRITE_KEYS}, e.g.
-   *    `work_order` → `dispatch.board.manage`). Gating these on the records level
-   *    would wrongly block a dispatch manager (who holds `board.manage` but may be
-   *    Read-only on records) or wrongly admit a records-editor lacking the
-   *    dispatch key (open item #4 — dispatch authority kept as-is).
+   * the existing verb gate ({@link canWriteEntity}) for mail-infrastructure defs
+   * (signatures/snippets/etc. — governed by mail keys). Feature-backed record
+   * defs use `defBaseOverrides`, so server and client apply the same derived base
+   * and the same per-def override semantics.
    * Zero I/O.
    */
   canEditEntity(entityDefId: string): boolean {
-    if (this.isMailInfraDef(entityDefId) || this.hasDedicatedWriteKey(entityDefId)) {
-      return this.canWriteEntity(entityDefId)
-    }
+    if (this.isMailInfraDef(entityDefId)) return this.canWriteEntity(entityDefId)
     return canEditRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
   }
 
@@ -318,15 +318,5 @@ export class CapabilitySet implements CapabilityView {
   private writeKeyFor(entityDefId: string): PermissionKey {
     const slug = this.defIdToSlug(entityDefId)
     return ENTITY_WRITE_KEYS[slug] ?? PermissionKey.recordsEdit
-  }
-
-  /**
-   * Whether the def has a dedicated write key ({@link ENTITY_WRITE_KEYS}) rather
-   * than the default {@link PermissionKey.recordsEdit} — i.e. its write authority
-   * belongs to another area (e.g. dispatch), so it bypasses the records-level
-   * edit gate in {@link canEditEntity}.
-   */
-  private hasDedicatedWriteKey(entityDefId: string): boolean {
-    return this.writeKeyFor(entityDefId) !== PermissionKey.recordsEdit
   }
 }

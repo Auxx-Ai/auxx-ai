@@ -9,6 +9,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { usePathname } from 'next/navigation'
+import { RecordRouteGuard } from '~/components/records'
 import { useResource } from '~/components/resources'
 
 type Props = { children: React.ReactNode; modal: React.ReactNode }
@@ -27,24 +28,24 @@ export default function QuotesLayout({ children, modal }: Props) {
   const { resource } = useResource('quotes')
   const isDetailOrSpecialPage = pathname !== BASE_PATH
 
-  if (isDetailOrSpecialPage) {
-    return (
-      <>
-        {children}
-        {modal}
-      </>
-    )
-  }
-
   return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title={resource?.plural ?? 'Quotes'} href={BASE_PATH} />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
-      {children}
-      {modal}
-    </MainPage>
+    <RecordRouteGuard slug='quotes'>
+      {isDetailOrSpecialPage ? (
+        <>
+          {children}
+          {modal}
+        </>
+      ) : (
+        <MainPage>
+          <MainPageHeader>
+            <MainPageBreadcrumb>
+              <MainPageBreadcrumbItem title={resource?.plural ?? 'Quotes'} href={BASE_PATH} />
+            </MainPageBreadcrumb>
+          </MainPageHeader>
+          {children}
+          {modal}
+        </MainPage>
+      )}
+    </RecordRouteGuard>
   )
 }

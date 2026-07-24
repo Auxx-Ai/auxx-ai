@@ -106,7 +106,13 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     mainTabs: [
       // fullBleed: the line-items table spans edge-to-edge (cancels the Section's
       // px-3), matching the quote drawer/sidebar cards' `fullBleed` treatment.
-      { value: 'line-items', label: 'Line items', icon: 'receipt-text', fullBleed: false },
+      {
+        value: 'line-items',
+        label: 'Line items',
+        icon: 'receipt-text',
+        fullBleed: false,
+        permissionKey: 'dispatch.board.view',
+      },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
@@ -134,12 +140,32 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // Schedule carries the recurrence row, primary visit card, the upcoming
       // visit previews AND past visits behind an "N in history" disclosure
       // (drawer parity) — no standalone upcoming-visits or history section.
-      { value: 'schedule', label: 'Schedule', icon: 'calendar' },
-      { value: 'line-items', label: 'Line items', icon: 'receipt-text' },
-      { value: 'billing', label: 'Billing', icon: 'credit-card' },
+      {
+        value: 'schedule',
+        label: 'Schedule',
+        icon: 'calendar',
+        permissionKey: 'dispatch.board.view',
+      },
+      {
+        value: 'line-items',
+        label: 'Line items',
+        icon: 'receipt-text',
+        permissionKey: 'dispatch.board.view',
+      },
+      {
+        value: 'billing',
+        label: 'Billing',
+        icon: 'credit-card',
+        permissionKey: 'dispatch.board.view',
+      },
       // Client-notifications plan §4.8/Phase 4 — outbound-message timeline (sequences +
       // manual quote/invoice sends).
-      { value: 'communications', label: 'Communications', icon: 'mail' },
+      {
+        value: 'communications',
+        label: 'Communications',
+        icon: 'mail',
+        permissionKey: 'dispatch.board.view',
+      },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

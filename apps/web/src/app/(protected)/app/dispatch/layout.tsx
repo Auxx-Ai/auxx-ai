@@ -10,7 +10,10 @@ import {
 } from '@auxx/ui/components/main-page'
 import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
 import { CalendarDays, Settings } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 import { DispatchSetupWizardGate } from '~/components/dispatch/ui/setup-wizard/setup-wizard-gate'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
+import { useAccess } from '~/providers/capabilities-provider'
 
 /**
  * Module header for `/app/dispatch/*` — Board · Settings tabs via
@@ -18,6 +21,8 @@ import { DispatchSetupWizardGate } from '~/components/dispatch/ui/setup-wizard/s
  * `router.push` on select).
  */
 function DispatchLayoutHeader() {
+  const { can } = useAccess()
+
   return (
     <MainPageHeader className='justify-start'>
       <MainPageBreadcrumb>
@@ -38,6 +43,7 @@ function DispatchLayoutHeader() {
             icon: <Settings />,
             href: '/app/dispatch/settings',
             tooltip: 'Settings',
+            hidden: !can('dispatch.board.manage'),
           },
         ]}
       />
@@ -54,11 +60,17 @@ function DispatchLayoutHeader() {
  * route tree; it renders nothing until its own gating conditions are met.
  */
 export default function DispatchLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const isSettings = pathname.startsWith('/app/dispatch/settings')
+  const permissionKey = isSettings ? 'dispatch.board.manage' : 'dispatch.board.view'
+
   return (
-    <MainPage>
-      <DispatchLayoutHeader />
-      {children}
-      <DispatchSetupWizardGate />
-    </MainPage>
+    <CapabilityPageGuard permissionKey={permissionKey} area='Dispatch'>
+      <MainPage>
+        <DispatchLayoutHeader />
+        {children}
+        <DispatchSetupWizardGate />
+      </MainPage>
+    </CapabilityPageGuard>
   )
 }

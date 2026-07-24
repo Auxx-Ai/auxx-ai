@@ -9,10 +9,14 @@
 import { Button } from '@auxx/ui/components/button'
 import { ReceiptText } from 'lucide-react'
 import { useState } from 'react'
+import { useAccess } from '~/providers/capabilities-provider'
 import { BillingActionDialog } from './billing-action-dialog'
 
 export function BatchInvoiceAction() {
   const [open, setOpen] = useState(false)
+  const { can } = useAccess()
+
+  if (!can('dispatch.board.manage')) return null
 
   return (
     <>

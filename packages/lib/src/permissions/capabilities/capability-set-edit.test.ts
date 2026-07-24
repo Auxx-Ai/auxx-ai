@@ -22,6 +22,7 @@ const build = (opts: {
   restricted?: string[]
   role?: 'OWNER' | 'ADMIN' | 'USER'
   seatType?: SeatType
+  defBaseOverrides?: Record<string, ResourcePermission | null>
 }) =>
   new CapabilitySet(
     new Set(opts.keys ?? [PermissionKey.recordsView, PermissionKey.recordsEdit]),
@@ -31,7 +32,10 @@ const build = (opts: {
     // Resolve mail-infra slugs so isMailInfraDef matches; everything else identity.
     (id) => id,
     new Set(opts.restricted ?? []),
-    defIdToDefinitionId
+    defIdToDefinitionId,
+    {},
+    new Set(),
+    opts.defBaseOverrides ?? {}
   )
 
 const READ_ONLY = [PermissionKey.recordsView]
@@ -117,19 +121,28 @@ describe('CapabilitySet.canEditEntity (most-specific-wins, edit floor)', () => {
     expect(noVerb.canEditEntity('signature')).toBe(false)
   })
 
-  it('dedicated-write-key def (work_order) bypasses to its dispatch key', () => {
-    // work_order → dispatch.board.manage (ENTITY_WRITE_KEYS), NOT the records area.
-    // A dispatch manager holding board.manage but only Read on records can edit it…
-    const dispatcher = new CapabilitySet(
-      new Set([PermissionKey.recordsView, PermissionKey.dispatchBoardManage]),
-      {},
-      'USER',
-      'full'
-    )
+  it('feature-backed defs use their derived base for def-aware editing', () => {
+    const dispatcher = build({
+      keys: [PermissionKey.dispatchBoardView, PermissionKey.dispatchBoardManage],
+      defBaseOverrides: { work_order: 'edit' },
+    })
     expect(dispatcher.canEditEntity('work_order')).toBe(true)
-    // …while a records-editor WITHOUT board.manage cannot (records level is irrelevant).
-    const recordsEditor = new CapabilitySet(new Set(READ_WRITE), {}, 'USER', 'full')
+
+    const recordsEditor = build({
+      keys: READ_WRITE,
+      defBaseOverrides: { work_order: null },
+    })
     expect(recordsEditor.canEditEntity('work_order')).toBe(false)
+  })
+
+  it('keeps coarse dispatch write keys aligned across all dispatch record faces', () => {
+    const dispatcher = build({ keys: [PermissionKey.dispatchBoardManage] })
+    const recordsEditor = build({ keys: READ_WRITE })
+
+    for (const slug of ['work_order', 'service_request', 'quote', 'invoice']) {
+      expect(dispatcher.canWriteEntity(slug)).toBe(true)
+      expect(recordsEditor.canWriteEntity(slug)).toBe(false)
+    }
   })
 })
 

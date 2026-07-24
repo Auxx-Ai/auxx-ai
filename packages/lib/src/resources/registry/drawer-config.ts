@@ -110,10 +110,25 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     // from the Details panel (showInPanel:false) so they only surface here.
     tabCards: {
       overview: [
-        { value: 'schedule', label: 'Schedule', icon: 'calendar-clock' },
-        { value: 'billing', label: 'Billing', icon: 'credit-card' },
+        {
+          value: 'schedule',
+          label: 'Schedule',
+          icon: 'calendar-clock',
+          permissionKey: 'dispatch.board.view',
+        },
+        {
+          value: 'billing',
+          label: 'Billing',
+          icon: 'credit-card',
+          permissionKey: 'dispatch.board.view',
+        },
         // Client-notifications plan §4.8/Phase 4 — compact recent-communications card.
-        { value: 'communications', label: 'Communications', icon: 'mail' },
+        {
+          value: 'communications',
+          label: 'Communications',
+          icon: 'mail',
+          permissionKey: 'dispatch.board.view',
+        },
       ],
     },
   },
@@ -132,13 +147,18 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
     tabCards: {
       overview: [
-        { value: 'lines', label: 'Line items', fullBleed: true },
+        {
+          value: 'lines',
+          label: 'Line items',
+          fullBleed: true,
+          permissionKey: 'dispatch.board.view',
+        },
         { value: 'customer', label: 'Customer' },
         { value: 'origin', label: 'Origin' },
         { value: 'jobs', label: 'Jobs' },
         // Deposit visibility (deposit-accounting plan 16 §D.5) — the card itself renders
         // null when the quote has no deposit charge, so this stays in the list unconditionally.
-        { value: 'deposit', label: 'Deposit' },
+        { value: 'deposit', label: 'Deposit', permissionKey: 'dispatch.board.view' },
       ],
     },
   },
@@ -156,9 +176,24 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
     tabCards: {
       overview: [
-        { value: 'lines', label: 'Line items', fullBleed: false, icon: 'file-text' },
-        { value: 'billing-context', label: 'Billing context', icon: 'calendar-clock' },
-        { value: 'payments', label: 'Payments', icon: 'credit-card' },
+        {
+          value: 'lines',
+          label: 'Line items',
+          fullBleed: false,
+          icon: 'file-text',
+          permissionKey: 'dispatch.board.view',
+        },
+        {
+          value: 'billing-context',
+          label: 'Billing context',
+          icon: 'calendar-clock',
+        },
+        {
+          value: 'payments',
+          label: 'Payments',
+          icon: 'credit-card',
+          permissionKey: 'dispatch.board.view',
+        },
       ],
     },
   },

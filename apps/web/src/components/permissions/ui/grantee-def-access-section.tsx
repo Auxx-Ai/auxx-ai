@@ -160,7 +160,7 @@ function DefAccessRow({
   principal: GranteePrincipal
   onChange: (level: Parameters<ReturnType<typeof useGranteeDefAccess>['setLevel']>[1]) => void
 }) {
-  const { resource, isLockedDown, grantLevel, inheritedLevel, isNoEffect } = row
+  const { resource, isLockedDown, grantLevel, inheritedLevel, inheritLabelText, isNoEffect } = row
   const isOverridden = grantLevel !== undefined
   return (
     <TreeRow
@@ -195,7 +195,7 @@ function DefAccessRow({
             value={grantLevel}
             includeInherit
             inheritedLevel={inheritedLevel}
-            inheritLabelText={principal === 'agent' ? 'Default' : undefined}
+            inheritLabelText={inheritLabelText ?? (principal === 'agent' ? 'Default' : undefined)}
             onInherit={() => onChange('inherit')}
             onChange={(level) => onChange(level)}
             disabled={!canEdit}

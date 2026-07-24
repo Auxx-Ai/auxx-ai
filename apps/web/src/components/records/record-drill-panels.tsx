@@ -45,6 +45,8 @@ export interface RecordDrillContext {
 export interface RecordDrillPanel {
   /** Panel key. Activated when the `panel` query param equals this value. */
   value: string
+  /** Capability required to mount this query-owning drill panel. */
+  permissionKey?: string
   /** `NavStackBar` content while this panel (or its item level) is on top. */
   bar?: React.ReactNode | ((ctx: RecordDrillContext) => React.ReactNode)
   /** List-level (or single) panel body. */
@@ -95,6 +97,7 @@ const RECORD_DRILL_PANELS: Record<string, RecordDrillPanel[]> = {
   work_order: [
     {
       value: 'visits',
+      permissionKey: 'dispatch.board.view',
       bar: (ctx: RecordDrillContext) => <DrillBackBar title={ctx.itemId ? 'Visit' : 'Visits'} />,
       render: (ctx) => <VisitsListPanel {...ctx} />,
       renderItem: (ctx) => <VisitDetailPanel {...ctx} />,
@@ -104,6 +107,7 @@ const RECORD_DRILL_PANELS: Record<string, RecordDrillPanel[]> = {
       // and drill straight in): `render` reads the drilled invoice off ctx.itemId,
       // so `open('invoices', recordId)` always lands a two-level stack.
       value: 'invoices',
+      permissionKey: 'dispatch.board.view',
       bar: (ctx: RecordDrillContext) => <InvoiceDrillBar itemId={ctx.itemId} />,
       render: (ctx) => <InvoiceDetailPanel {...ctx} />,
     },

@@ -56,10 +56,9 @@ interface CapabilitiesContextType {
    */
   canViewEntity: (entityDefinitionId: string) => boolean
   /**
-   * Per-def WRITE gate — mirrors the server `canEditEntity` for records-area
-   * defs. NOTE: dedicated-write-key defs (`work_order` → dispatch) and mail-infra
-   * defs are NOT special-cased here; the server remains the source of truth for
-   * those, so an affordance may show optimistically and get a 403 on submit.
+   * Per-def WRITE gate — mirrors the server `canEditEntity`, including
+   * server-computed base overrides for feature-backed definitions such as work
+   * orders. Mail-infrastructure defs remain governed by their own feature UI.
    */
   canEditEntity: (entityDefinitionId: string) => boolean
   /**

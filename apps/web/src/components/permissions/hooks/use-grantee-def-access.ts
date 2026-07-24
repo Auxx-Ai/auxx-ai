@@ -2,7 +2,14 @@
 'use client'
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { Area, Level, levelToPermission, PERMISSION_RANK } from '@auxx/lib/permissions/client'
+import {
+  Area,
+  ENTITY_BASE_AREAS,
+  Level,
+  levelToRecordBasePermission,
+  PERMISSION_AREAS,
+  PERMISSION_RANK,
+} from '@auxx/lib/permissions/client'
 import { isAccessManageable, type Resource } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
@@ -14,7 +21,7 @@ import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permissio
 export type GranteeKind = 'user' | 'group'
 
 /**
- * How the grantee's Layer-2 Records level composes — which decides what an
+ * How the grantee's Layer-2 area levels compose — which decides what an
  * unconfigured def falls through to:
  * - `member` (default) — human/team: own override → org policy → role default.
  * - `agent` — an AGENT grantee (`userType:'AGENT'`), which composes by SET over
@@ -28,17 +35,10 @@ const GRANTEE_TYPE: Record<GranteeKind, ResourceGranteeType> = {
   group: ResourceGranteeType.group,
 }
 
-/**
- * The workspace baseline an unconfigured def defaults to (and first-touch
- * persists) — everyone's default access. Must match `use-def-access`'s
- * `DEFAULT_BASELINE_LEVEL` so the two surfaces agree.
- */
-const DEFAULT_BASELINE_LEVEL: ResourcePermission = ResourcePermission.edit
-
 /** One def's row in the grantee-centric Access grid. */
 export interface GranteeDefAccessRow {
   resource: Resource
-  /** The def's `role:org_member` baseline, or the default when unconfigured. */
+  /** The def's `role:org_member` baseline, or its base-area default when unconfigured. */
   baselineLevel: ResourcePermission
   /** Baseline = No Access → non-grantees are locked out ("Restricted"). */
   isLockedDown: boolean
@@ -47,9 +47,11 @@ export interface GranteeDefAccessRow {
   /**
    * What the grantee gets WITHOUT an explicit grant here — the resolved "Inherit"
    * value: the def's workspace baseline if configured, else the grantee's general
-   * Records level. Displayed in the picker's Inherit option.
+   * mapped Layer-2 base area. Displayed in the picker's Inherit option.
    */
   inheritedLevel: ResourcePermission
+  /** Source-aware label when an unconfigured def inherits another L2 area. */
+  inheritLabelText?: string
   /** Explicit grant that lifts nothing above the baseline → does nothing. */
   isNoEffect: boolean
 }
@@ -80,8 +82,8 @@ export function useGranteeDefAccess(
   const { resources, isLoading: resourcesLoading } = useResources()
   const granteeType = GRANTEE_TYPE[granteeKind]
 
-  // The grantee's Layer-2 Records level — what unconfigured (non-restricted) defs
-  // inherit. Own override → effective member baseline → role default.
+  // The grantee's Layer-2 levels — what unconfigured (non-restricted) defs
+  // inherit from their mapped base area. Own override → member baseline → role default.
   const {
     isLoading: grantsLoading,
     roleDefaults,
@@ -89,18 +91,29 @@ export function useGranteeDefAccess(
     groupGrants,
     userGrants,
   } = usePermissionGrants()
-  const recordsPermission = useMemo<ResourcePermission>(() => {
+  const ownAreaLevels = useMemo(() => {
     const persisted = granteeKind === 'group' ? groupGrants : userGrants
-    const own = persisted.find((g) => g.granteeId === granteeId)?.levels?.[Area.records]
-    // An agent has no baseline to fall back on — absent means Full (§0.2/§0.3).
-    const level =
-      principal === 'agent'
-        ? (own ?? Level.Full)
-        : (own ?? effectiveBaseline[Area.records] ?? roleDefaults?.[Area.records] ?? Level.None)
-    // `levelToPermission` maps `Level.None` to `undefined` ("no permission");
-    // for display we want the `none` marker so the picker can name it.
-    return levelToPermission(level) ?? ResourcePermission.none
-  }, [granteeKind, granteeId, principal, groupGrants, userGrants, effectiveBaseline, roleDefaults])
+    return persisted.find((g) => g.granteeId === granteeId)?.levels ?? {}
+  }, [granteeKind, granteeId, groupGrants, userGrants])
+
+  const targetBasePermission = useCallback(
+    (area: Area): ResourcePermission => {
+      const level =
+        principal === 'agent'
+          ? (ownAreaLevels[area] ?? Level.Full)
+          : (ownAreaLevels[area] ?? effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None)
+      return levelToRecordBasePermission(level) ?? ResourcePermission.none
+    },
+    [principal, ownAreaLevels, effectiveBaseline, roleDefaults]
+  )
+
+  const workspaceBasePermission = useCallback(
+    (area: Area): ResourcePermission => {
+      const level = effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None
+      return levelToRecordBasePermission(level) ?? ResourcePermission.none
+    },
+    [effectiveBaseline, roleDefaults]
+  )
 
   const rowsQuery = api.resourceAccess.allTypeAccess.useQuery(undefined, { staleTime: 30_000 })
 
@@ -189,24 +202,38 @@ export function useGranteeDefAccess(
       .filter(isAccessManageable)
       .map((resource) => {
         const configuredBaseline = baselineByDef.get(resource.entityDefinitionId)
-        const baselineLevel = configuredBaseline ?? DEFAULT_BASELINE_LEVEL
+        const baseArea = ENTITY_BASE_AREAS[resource.entityType ?? ''] ?? Area.records
+        const baselineLevel = configuredBaseline ?? workspaceBasePermission(baseArea)
         const grantLevel = grantByDef.get(resource.entityDefinitionId)
         // Configured def → inherit its workspace baseline; unconfigured → the
         // grantee's general Records level.
-        const inheritedLevel = configuredBaseline ?? recordsPermission
+        const inheritedLevel = configuredBaseline ?? targetBasePermission(baseArea)
         return {
           resource,
           baselineLevel,
           isLockedDown: baselineLevel === ResourcePermission.none,
           grantLevel,
           inheritedLevel,
+          inheritLabelText:
+            configuredBaseline !== undefined || baseArea === Area.records
+              ? undefined
+              : `${principal === 'agent' ? 'Default' : 'Inherit'} · ${
+                  PERMISSION_AREAS[baseArea].label
+                }`,
           isNoEffect:
             grantLevel !== undefined &&
             PERMISSION_RANK[grantLevel] <= PERMISSION_RANK[baselineLevel],
         }
       })
       .sort((a, b) => a.resource.plural.localeCompare(b.resource.plural))
-  }, [resources, baselineByDef, grantByDef, recordsPermission])
+  }, [
+    resources,
+    baselineByDef,
+    grantByDef,
+    principal,
+    targetBasePermission,
+    workspaceBasePermission,
+  ])
 
   /**
    * Set this grantee's level for a def. `'inherit'` revokes the explicit row;
@@ -221,23 +248,35 @@ export function useGranteeDefAccess(
       }
       // First-touch: keep everyone at the default while this grantee is raised.
       if (!baselineByDef.has(entityDefinitionId)) {
+        const resource = resources.find((item) => item.entityDefinitionId === entityDefinitionId)
+        const baseArea = ENTITY_BASE_AREAS[resource?.entityType ?? ''] ?? Area.records
+        const defaultBaseline = workspaceBasePermission(baseArea)
         patchLocal(
           entityDefinitionId,
           ResourceGranteeType.role,
           MEMBER_BASELINE_GRANTEE_ID,
-          DEFAULT_BASELINE_LEVEL
+          defaultBaseline
         )
         grantType.mutate({
           entityDefinitionId,
           granteeType: ResourceGranteeType.role,
           granteeId: MEMBER_BASELINE_GRANTEE_ID,
-          permission: DEFAULT_BASELINE_LEVEL,
+          permission: defaultBaseline,
         })
       }
       patchLocal(entityDefinitionId, granteeType, granteeId, level)
       grantType.mutate({ entityDefinitionId, granteeType, granteeId, permission: level })
     },
-    [baselineByDef, granteeType, granteeId, grantType, revokeType, patchLocal]
+    [
+      baselineByDef,
+      resources,
+      workspaceBasePermission,
+      granteeType,
+      granteeId,
+      grantType,
+      revokeType,
+      patchLocal,
+    ]
   )
 
   return {

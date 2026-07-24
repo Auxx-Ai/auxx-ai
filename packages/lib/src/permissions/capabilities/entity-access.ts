@@ -67,6 +67,12 @@ export interface ResolvedRecordAccess {
   /** Defs carrying ≥1 type-level grant for anyone (`entityDefinitionId` keyspace). */
   restrictedEntityDefIds: ReadonlySet<string>
   /**
+   * Per-def record base for definitions whose base comes from another Layer-2
+   * area, keyed by canonical `entityDefinitionId`. `null` means that area's
+   * level is None; an absent key falls back to the Records area.
+   */
+  defBaseOverrides?: Readonly<Record<string, ResourcePermission | null>>
+  /**
    * Highest instance-level grant per `entityInstanceId` (CUID) for the
    * instance-access resources (datasets etc., §1.4). Explicit `'none'` rows are
    * KEPT (the per-instance downward marker). Optional — absent = `{}` (the
@@ -85,8 +91,17 @@ export interface ResolvedRecordAccess {
  * {@link canViewRecord} carve-out.
  */
 export function baseRecordsLevel(keys: ReadonlySet<PermissionKey>): ResourcePermission | undefined {
-  if (keys.has(PermissionKey.recordsEdit)) return ResourcePermission.edit
-  if (keys.has(PermissionKey.recordsView)) return ResourcePermission.view
+  return levelToRecordBasePermission(areaLevelFromKeys(keys, Area.records))
+}
+
+/**
+ * Map a Layer-2 area rung to the record-base vocabulary. `Full` deliberately
+ * maps to `edit`, not `admin`: managing a feature's records does not confer
+ * administration of their entity definition.
+ */
+export function levelToRecordBasePermission(level: Level): ResourcePermission | undefined {
+  if (level >= Level.Edit) return ResourcePermission.edit
+  if (level >= Level.Read) return ResourcePermission.view
   return undefined
 }
 
@@ -116,9 +131,13 @@ export function effectiveRecordLevel(
   entityDefinitionId: string
 ): ResourcePermission | undefined {
   if (caps.role === 'OWNER' || caps.role === 'ADMIN') return ResourcePermission.admin
+  const hasBaseOverride = Object.hasOwn(caps.defBaseOverrides ?? {}, entityDefinitionId)
+  const unrestrictedBase = hasBaseOverride
+    ? (caps.defBaseOverrides?.[entityDefinitionId] ?? undefined)
+    : baseRecordsLevel(caps.keys)
   const chosen = caps.restrictedEntityDefIds.has(entityDefinitionId)
     ? caps.defAccess[entityDefinitionId]
-    : baseRecordsLevel(caps.keys)
+    : unrestrictedBase
   if (chosen === undefined) return undefined
   if (SEAT_CEILINGS[caps.seatType][Area.records] === Level.None) return undefined
   return chosen
@@ -149,8 +168,8 @@ export function canViewRecord(caps: ResolvedRecordAccess, entityDefinitionId: st
 }
 
 /**
- * Records-area EDIT gate — `effectiveRecordLevel` satisfies the `edit` floor.
- * (Mail-infra and dedicated-write-key defs bypass this in the caller.)
+ * Record EDIT gate — `effectiveRecordLevel` satisfies the `edit` floor.
+ * Mail-infrastructure defs bypass this in the server caller.
  */
 export function canEditRecord(caps: ResolvedRecordAccess, entityDefinitionId: string): boolean {
   const level = effectiveRecordLevel(caps, entityDefinitionId)
@@ -199,6 +218,11 @@ export interface ClientCapabilities {
   keys: PermissionKey[]
   defAccess: Record<string, ResourcePermission>
   restrictedEntityDefIds: string[]
+  /**
+   * Per-def record base for definitions backed by another Layer-2 area.
+   * `null` means no access; absent definitions use the Records base.
+   */
+  defBaseOverrides?: Record<string, ResourcePermission | null>
   role: OrganizationRole
   seatType: SeatType
   /**
@@ -220,6 +244,7 @@ export function toResolvedRecordAccess(caps: ClientCapabilities): ResolvedRecord
     keys: new Set(caps.keys),
     defAccess: caps.defAccess,
     restrictedEntityDefIds: new Set(caps.restrictedEntityDefIds),
+    defBaseOverrides: caps.defBaseOverrides ?? {},
     instanceAccess: caps.instanceAccess ?? {},
     restrictedInstanceIds: new Set(caps.restrictedInstanceIds ?? []),
   }

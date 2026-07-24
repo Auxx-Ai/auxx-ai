@@ -85,6 +85,7 @@ export function DefBaselineRows({
               includeInherit
               includeNone
               inheritedLevel={row.inheritedLevel}
+              inheritLabelText={row.inheritLabelText}
               onInherit={() => onChange(row.resource.entityDefinitionId, 'inherit')}
               onChange={(level) => onChange(row.resource.entityDefinitionId, level)}
               disabled={disabled}

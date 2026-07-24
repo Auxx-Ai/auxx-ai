@@ -9,6 +9,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { usePathname } from 'next/navigation'
+import { RecordRouteGuard } from '~/components/records'
 import { useResource } from '~/components/resources'
 
 const BASE_PATH = '/app/service-requests'
@@ -25,18 +26,23 @@ export default function ServiceRequestsLayout({ children }: { children: React.Re
   const { resource } = useResource('service-requests')
   const isDetailOrSpecialPage = pathname !== BASE_PATH
 
-  if (isDetailOrSpecialPage) {
-    return <>{children}</>
-  }
-
   return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title={resource?.plural ?? 'Service Requests'} href={BASE_PATH} />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
-      {children}
-    </MainPage>
+    <RecordRouteGuard slug='service-requests'>
+      {isDetailOrSpecialPage ? (
+        children
+      ) : (
+        <MainPage>
+          <MainPageHeader>
+            <MainPageBreadcrumb>
+              <MainPageBreadcrumbItem
+                title={resource?.plural ?? 'Service Requests'}
+                href={BASE_PATH}
+              />
+            </MainPageBreadcrumb>
+          </MainPageHeader>
+          {children}
+        </MainPage>
+      )}
+    </RecordRouteGuard>
   )
 }

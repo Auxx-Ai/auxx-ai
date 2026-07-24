@@ -9,6 +9,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { usePathname } from 'next/navigation'
+import { RecordRouteGuard } from '~/components/records'
 import { useResource } from '~/components/resources'
 
 const BASE_PATH = '/app/work-orders'
@@ -25,18 +26,20 @@ export default function WorkOrdersLayout({ children }: { children: React.ReactNo
   const { resource } = useResource('work-orders')
   const isDetailOrSpecialPage = pathname !== BASE_PATH
 
-  if (isDetailOrSpecialPage) {
-    return <>{children}</>
-  }
-
   return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title={resource?.plural ?? 'Work Orders'} href={BASE_PATH} />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
-      {children}
-    </MainPage>
+    <RecordRouteGuard slug='work-orders'>
+      {isDetailOrSpecialPage ? (
+        children
+      ) : (
+        <MainPage>
+          <MainPageHeader>
+            <MainPageBreadcrumb>
+              <MainPageBreadcrumbItem title={resource?.plural ?? 'Work Orders'} href={BASE_PATH} />
+            </MainPageBreadcrumb>
+          </MainPageHeader>
+          {children}
+        </MainPage>
+      )}
+    </RecordRouteGuard>
   )
 }
