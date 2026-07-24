@@ -32,6 +32,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { Tooltip } from '~/components/global/tooltip'
 import { useFields } from '~/components/resources/hooks/use-field'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import {
@@ -324,7 +325,7 @@ function ColumnOptionsDropdown<TData = any>({
 /**
  * ColumnManagerContent - Router for navigation stacks
  */
-function ColumnManagerContent<TData = any>({ onCreateField }: { onCreateField: () => void }) {
+function ColumnManagerContent<TData = any>({ onCreateField }: { onCreateField?: () => void }) {
   const { current } = useCommandNavigation<ColumnNavigationItem>()
 
   // Check if we're in "add column" mode or drilling into a relationship
@@ -353,6 +354,12 @@ export function ColumnManager<TData = any>() {
   const setColumnVisibility = useSetColumnVisibility(tableId)
   const setColumnOrder = useSetColumnOrder(tableId)
 
+  // Creating a field mutates the def (customField.create) — a def-administration
+  // op, gated on the Full/admin rung (server: #1303). Adding EXISTING fields as
+  // columns is ordinary view authoring and stays open to any member.
+  const { canAdministerDef } = useAccess()
+  const canCreateField = entityDefinitionId ? canAdministerDef(entityDefinitionId) : false
+
   // Handler to open field dialog and close popover
   const handleCreateFieldClick = useCallback(() => {
     setIsOpen(false) // Close popover
@@ -380,14 +387,16 @@ export function ColumnManager<TData = any>() {
           <CommandNavigation<ColumnNavigationItem>>
             <Command shouldFilter={false}>
               <CommandBreadcrumb rootLabel='Columns' />
-              <ColumnManagerContent<TData> onCreateField={handleCreateFieldClick} />
+              <ColumnManagerContent<TData>
+                onCreateField={canCreateField ? handleCreateFieldClick : undefined}
+              />
             </Command>
           </CommandNavigation>
         </PopoverContent>
       </Popover>
 
       {/* Custom Field Dialog */}
-      {isFieldDialogOpen && entityDefinitionId && (
+      {isFieldDialogOpen && entityDefinitionId && canCreateField && (
         <CustomFieldDialog
           open={isFieldDialogOpen}
           onOpenChange={setIsFieldDialogOpen}

@@ -44,7 +44,12 @@ export type ColumnNavigationItem = AddColumnNavigationItem | FieldPickerNavigati
  * what ColumnManager wants (go back to the root "visible columns" list).
  */
 interface AddColumnStackProps {
-  onCreateField: () => void
+  /**
+   * Opens the "Create field" flow. Def-administration (Full/admin) — omitted by
+   * callers for members below that rung, which hides the create-field affordance
+   * (adding EXISTING fields as columns stays open to any view author).
+   */
+  onCreateField?: () => void
   onFieldAdded?: () => void
 }
 
@@ -169,7 +174,7 @@ export function AddColumnStack({ onCreateField, onFieldAdded }: AddColumnStackPr
 export function LegacyAddColumnStack<TData = any>({
   onCreateField,
 }: {
-  onCreateField: () => void
+  onCreateField?: () => void
 }) {
   const { tableId, entityDefinitionId } = useTableConfig()
   const { table } = useTableInstance<TData>()
@@ -265,8 +270,9 @@ export function LegacyAddColumnStack<TData = any>({
           </CommandGroup>
         )}
 
-        {/* Create Field Button - only show if entity definition exists */}
-        {entityDefinitionId && (
+        {/* Create Field Button — def-admin only (onCreateField is omitted for
+            members below the Full/admin rung; see AddColumnStackProps). */}
+        {entityDefinitionId && onCreateField && (
           <>
             {filteredColumns.length > 0 && <CommandSeparator />}
             <CommandGroup>

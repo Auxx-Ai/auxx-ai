@@ -10,6 +10,7 @@ import { Plus } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { Tooltip } from '~/components/global/tooltip'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useTableConfig } from '../context/table-config-context'
 import { useSetColumnOrder, useSetColumnVisibility } from '../stores/store-actions'
 import { useColumnOrder, useColumnVisibility } from '../stores/store-selectors'
@@ -31,6 +32,11 @@ export function AddColumnButton() {
   const columnOrder = useColumnOrder(tableId)
   const setColumnVisibility = useSetColumnVisibility(tableId)
   const setColumnOrder = useSetColumnOrder(tableId)
+
+  // Creating a field is def-administration (Full/admin, server-gated in #1303);
+  // adding existing fields as columns stays open. Hide "Create field" below that.
+  const { canAdministerDef } = useAccess()
+  const canCreateField = entityDefinitionId ? canAdministerDef(entityDefinitionId) : false
 
   const handleCreateFieldClick = useCallback(() => {
     setIsOpen(false)
@@ -59,7 +65,7 @@ export function AddColumnButton() {
             <Command shouldFilter={false}>
               <CommandBreadcrumb rootLabel='Add column' />
               <AddColumnStack
-                onCreateField={handleCreateFieldClick}
+                onCreateField={canCreateField ? handleCreateFieldClick : undefined}
                 onFieldAdded={handleFieldAdded}
               />
             </Command>
@@ -67,7 +73,7 @@ export function AddColumnButton() {
         </PopoverContent>
       </Popover>
 
-      {isFieldDialogOpen && entityDefinitionId && (
+      {isFieldDialogOpen && entityDefinitionId && canCreateField && (
         <CustomFieldDialog
           open={isFieldDialogOpen}
           onOpenChange={setIsFieldDialogOpen}
