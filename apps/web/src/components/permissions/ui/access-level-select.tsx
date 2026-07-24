@@ -42,12 +42,14 @@ interface AccessLevelSelectProps {
   /** `undefined` renders as `Inherit` (only meaningful with `includeInherit`). */
   value: ResourcePermission | undefined
   onChange: (value: ResourcePermission) => void
-  /** Include the `No Access` option — only the workspace baseline offers it. */
+  /** Include the `No Access` option — only baseline-editing rows offer it. */
   includeNone?: boolean
   /**
-   * Include the `Inherit` option (grantee axis) — no explicit grant row; the
-   * grantee follows the def baseline. Selecting it calls {@link onInherit}.
-   * Mutually exclusive with `includeNone`.
+   * Include the `Inherit` option — no stored row; the value falls through to
+   * {@link inheritedLevel}. Selecting it calls {@link onInherit}. Combines with
+   * `includeNone` for the per-def workspace baselines on the permissions page,
+   * where Inherit (fall through to the Records level) and No Access (restrict
+   * the def) are both meaningful.
    */
   includeInherit?: boolean
   /** Called when `Inherit` is chosen (revoke the grantee's explicit row). */
@@ -72,6 +74,9 @@ interface AccessLevelSelectProps {
  *   button is the revoke).
  * - **grantee-axis row** (`includeInherit`, grantee-def-access) — Inherit / Read
  *   / Edit / Full, where Inherit = no explicit grant (calls `onInherit`).
+ * - **def baseline row on the permissions grid** (`includeInherit` +
+ *   `includeNone`) — Inherit / No Access / Read / Edit / Full, where Inherit =
+ *   no stored baseline (the def falls through to the Records area level).
  * Controlled and dumb — persistence lives in the hook.
  */
 export function AccessLevelSelect({
@@ -89,8 +94,8 @@ export function AccessLevelSelect({
   const levels = includeNone ? ALL_LEVELS : POSITIVE_LEVELS
 
   if (includeInherit) {
-    // Inherit = absence of a grant row (value undefined); positive levels below.
-    const safeValue = value && POSITIVE_LEVELS.includes(value) ? value : INHERIT
+    // Inherit = absence of a stored row (value undefined); the offered levels below.
+    const safeValue = value && levels.includes(value) ? value : INHERIT
     const inheritLabel =
       inheritedLevel !== undefined
         ? `Inherit · ${ACCESS_LEVEL_LABELS[inheritedLevel].label}`
@@ -114,7 +119,7 @@ export function AccessLevelSelect({
               <span className='text-muted-foreground text-xs'>{INHERIT_LABEL.helper}</span>
             </div>
           </SelectItem>
-          {POSITIVE_LEVELS.map((level) => (
+          {levels.map((level) => (
             <SelectItem key={level} value={level} textValue={ACCESS_LEVEL_LABELS[level].label}>
               <div className='flex flex-col items-start'>
                 <span>{ACCESS_LEVEL_LABELS[level].label}</span>

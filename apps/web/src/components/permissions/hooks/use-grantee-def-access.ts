@@ -2,7 +2,7 @@
 'use client'
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { Area, Level } from '@auxx/lib/permissions/client'
+import { Area, Level, levelToPermission, PERMISSION_RANK } from '@auxx/lib/permissions/client'
 import { isAccessManageable, type Resource } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
@@ -18,28 +18,12 @@ const GRANTEE_TYPE: Record<GranteeKind, ResourceGranteeType> = {
   group: ResourceGranteeType.group,
 }
 
-/** Client-safe rank (`none` < view < edit < admin) for the "no effect" compare. */
-const PERMISSION_RANK: Record<ResourcePermission, number> = {
-  [ResourcePermission.none]: 0,
-  [ResourcePermission.view]: 1,
-  [ResourcePermission.edit]: 2,
-  [ResourcePermission.admin]: 3,
-}
-
 /**
  * The workspace baseline an unconfigured def defaults to (and first-touch
  * persists) — everyone's default access. Must match `use-def-access`'s
  * `DEFAULT_BASELINE_LEVEL` so the two surfaces agree.
  */
 const DEFAULT_BASELINE_LEVEL: ResourcePermission = ResourcePermission.edit
-
-/** Layer-2 records rung → its record-permission equivalent (for the inherited label). */
-const LEVEL_TO_PERMISSION: Record<Level, ResourcePermission> = {
-  [Level.None]: ResourcePermission.none,
-  [Level.Read]: ResourcePermission.view,
-  [Level.Edit]: ResourcePermission.edit,
-  [Level.Full]: ResourcePermission.admin,
-}
 
 /** One def's row in the grantee-centric Access grid. */
 export interface GranteeDefAccessRow {
@@ -96,12 +80,16 @@ export function useGranteeDefAccess(granteeKind: GranteeKind, granteeId: string)
     const own = persisted.find((g) => g.granteeId === granteeId)?.levels?.[Area.records]
     const level =
       own ?? effectiveBaseline[Area.records] ?? roleDefaults?.[Area.records] ?? Level.None
-    return LEVEL_TO_PERMISSION[level]
+    // `levelToPermission` maps `Level.None` to `undefined` ("no permission");
+    // for display we want the `none` marker so the picker can name it.
+    return levelToPermission(level) ?? ResourcePermission.none
   }, [granteeKind, granteeId, groupGrants, userGrants, effectiveBaseline, roleDefaults])
 
   const rowsQuery = api.resourceAccess.allTypeAccess.useQuery(undefined, { staleTime: 30_000 })
 
-  const invalidate = useCallback(() => utils.resourceAccess.allTypeAccess.invalidate(), [utils])
+  // Broad on purpose: the per-def Permissions tab reads the same rows under
+  // `resourceAccess.forType`, so a write here must refresh that key too.
+  const invalidate = useCallback(() => utils.resourceAccess.invalidate(), [utils])
 
   /** Optimistically upsert (or, with `permission` undefined, drop) one type row. */
   const patchLocal = useCallback(

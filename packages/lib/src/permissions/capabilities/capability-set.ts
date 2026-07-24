@@ -189,7 +189,9 @@ export class CapabilitySet {
    * - **Field seats** ({@link PermissionKey.recordsViewLinked}) grant view of
    *   their LINKED rows (narrowed by the row-scoped read path, not per def); this
    *   verb is not a base rung, so it's applied here. A restricted def still needs
-   *   a grant even for a field seat.
+   *   a grant even for a field seat. Scoped to `seatType === 'worker'` — a full
+   *   seat holds the same key by role default, where it would defeat a base
+   *   records level of `None`.
    *
    * OWNER/ADMIN bypass the noun layer (`effectiveRecordLevel` → `admin`):
    * restricting a def scopes members, never the admins who administer it.

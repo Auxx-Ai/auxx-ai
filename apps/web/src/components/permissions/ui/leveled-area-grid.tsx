@@ -4,9 +4,38 @@
 import { AREA_ORDER, type Area, type Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
+import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
-import { useMemo, useState } from 'react'
+import { SlidersHorizontal } from 'lucide-react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { LevelControl } from './level-control'
+
+/** The grid's live filter, handed to {@link LeveledAreaGridProps.renderChildren}. */
+export interface AreaChildFilter {
+  /** Lower-cased search query, or `''` when the area's own label already matched. */
+  query: string
+  /** The "Overrides only" toggle — for children, "has a stored value of its own". */
+  overridesOnly: boolean
+}
+
+/** What an area's nested rows contribute to the grid. */
+export interface AreaChildren {
+  /**
+   * How many children survive the filter. A non-zero count keeps a parent whose
+   * own label misses the search query — and auto-expands it.
+   */
+  matchCount: number
+  /** The rendered child rows (already narrowed by the filter). */
+  rows: ReactNode
+}
+
+/** One area row that survived the filter, with its resolved children. */
+interface AreaRow {
+  area: Area
+  children: AreaChildren | undefined
+  /** Only the children matched the search → open the row so they're visible. */
+  autoOpen: boolean
+}
 
 interface LeveledAreaGridProps {
   /** Explicitly-stored levels for this grantee (sparse — absent areas inherit). */
@@ -25,15 +54,27 @@ interface LeveledAreaGridProps {
   mode: 'baseline' | 'override'
   onChange: (area: Area, level: Level | undefined) => void
   disabled?: boolean
+  /**
+   * Render nested child rows under an area (only `records` supplies them today —
+   * its per-def workspace baselines). Return `undefined` for areas without
+   * children. The grid hands over its live {@link AreaChildFilter} so children
+   * narrow with the parent, and uses the returned `matchCount` to keep and
+   * auto-expand a parent whose own label doesn't match the search.
+   */
+  renderChildren?: (area: Area, filter: AreaChildFilter) => AreaChildren | undefined
 }
 
-/** Grantable (non-`adminOnly`) areas, grouped by registry `group` in area order. */
+/**
+ * Grantable areas, grouped by registry `group` in area order. Excludes
+ * `adminOnly` (never grantable below ADMIN) and `workerOnly` (enforced only on a
+ * worker seat, so a level control here would do nothing).
+ */
 const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
   const order: string[] = []
   const byGroup = new Map<string, Area[]>()
   for (const area of AREA_ORDER) {
     const meta = PERMISSION_AREAS[area]
-    if (meta.adminOnly) continue
+    if (meta.adminOnly || meta.workerOnly) continue
     if (!byGroup.has(meta.group)) {
       byGroup.set(meta.group, [])
       order.push(meta.group)
@@ -51,6 +92,11 @@ const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
  * raise-only, enforced server-side); in `baseline` mode it inherits from the role
  * default. Every rung is selectable in both modes — an override that doesn't lift
  * the baseline is composed away and flagged as "ignored" on the grantee.
+ *
+ * An area may also nest child rows via `renderChildren` (the member baseline
+ * supplies per-def workspace baselines under Records). Children are collapsed by
+ * default and participate in the search: a def name keeps its parent row visible
+ * and expands it.
  */
 export function LeveledAreaGrid({
   values,
@@ -59,29 +105,42 @@ export function LeveledAreaGrid({
   mode,
   onChange,
   disabled = false,
+  renderChildren,
 }: LeveledAreaGridProps) {
   const [search, setSearch] = useState('')
   const [overridesOnly, setOverridesOnly] = useState(false)
+  /** Explicit expand state per area; absent = follow `autoOpen`. */
+  const [openAreas, setOpenAreas] = useState<Partial<Record<Area, boolean>>>({})
 
   const query = search.trim().toLowerCase()
 
-  /** Groups with their areas narrowed by the search query and the "overrides only" toggle. */
-  const filteredGroups = useMemo(
-    () =>
-      AREA_GROUPS.map(({ group, areas }) => ({
-        group,
-        areas: areas.filter((area) => {
-          if (overridesOnly && values[area] === undefined) return false
-          if (!query) return true
-          const meta = PERMISSION_AREAS[area]
-          return (
-            meta.label.toLowerCase().includes(query) ||
-            meta.description.toLowerCase().includes(query)
-          )
-        }),
-      })).filter(({ areas }) => areas.length > 0),
-    [query, overridesOnly, values]
-  )
+  /**
+   * Groups with their areas narrowed by the search query and the "overrides only"
+   * toggle, each carrying its resolved children. An area survives when it matches
+   * itself OR one of its children does; the latter also auto-expands it.
+   */
+  const filteredGroups = useMemo(() => {
+    const groups: Array<{ group: string; rows: AreaRow[] }> = []
+    for (const { group, areas } of AREA_GROUPS) {
+      const rows: AreaRow[] = []
+      for (const area of areas) {
+        const meta = PERMISSION_AREAS[area]
+        const selfMatch =
+          !query ||
+          meta.label.toLowerCase().includes(query) ||
+          meta.description.toLowerCase().includes(query)
+        // A parent that matched by its own label shows all of its children;
+        // otherwise the query narrows them and a survivor rescues the parent.
+        const children = renderChildren?.(area, { query: selfMatch ? '' : query, overridesOnly })
+        const childMatch = (children?.matchCount ?? 0) > 0
+        if (overridesOnly && values[area] === undefined && !childMatch) continue
+        if (!selfMatch && !childMatch) continue
+        rows.push({ area, children, autoOpen: !selfMatch && childMatch })
+      }
+      if (rows.length > 0) groups.push({ group, rows })
+    }
+    return groups
+  }, [query, overridesOnly, values, renderChildren])
 
   return (
     <div className='flex flex-col gap-3'>
@@ -100,25 +159,38 @@ export function LeveledAreaGrid({
       </div>
 
       {filteredGroups.length === 0 ? (
-        <p className='px-1 py-6 text-center text-xs text-muted-foreground'>No areas match.</p>
+        <EmptySection
+          orientation='horizontal'
+          icon={<SlidersHorizontal />}
+          title='No matches'
+          description='No access areas match your search.'
+        />
       ) : (
         <div className='flex flex-col gap-4'>
-          {filteredGroups.map(({ group, areas }) => (
+          {filteredGroups.map(({ group, rows }) => (
             <div key={group} className='flex flex-col gap-0.5'>
               <span className='px-1 text-xs font-semibold uppercase text-primary-600'>{group}</span>
-              {areas.map((area) => {
+              {rows.map(({ area, children, autoOpen }) => {
                 const meta = PERMISSION_AREAS[area]
                 const value = values[area]
                 const inherited =
                   mode === 'override'
                     ? (baseline?.[area] ?? roleDefaults[area])
                     : roleDefaults[area]
+                const isOpen = openAreas[area] ?? autoOpen
                 return (
                   <TreeRow
                     rowClassName='bg-primary-50 hover:bg-primary-100'
                     key={area}
                     title={meta.label}
                     description={meta.description}
+                    expandable={children !== undefined}
+                    isOpen={children !== undefined ? isOpen : undefined}
+                    onToggleOpen={
+                      children !== undefined
+                        ? () => setOpenAreas((prev) => ({ ...prev, [area]: !isOpen }))
+                        : undefined
+                    }
                     trailing={
                       <LevelControl
                         area={meta}
@@ -128,8 +200,9 @@ export function LeveledAreaGrid({
                         onChange={(level) => onChange(area, level)}
                         disabled={disabled}
                       />
-                    }
-                  />
+                    }>
+                    {children?.rows}
+                  </TreeRow>
                 )
               })}
             </div>

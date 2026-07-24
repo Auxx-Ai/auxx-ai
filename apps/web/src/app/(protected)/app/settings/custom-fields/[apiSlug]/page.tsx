@@ -6,6 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { useParams } from 'next/navigation'
+import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { CustomFieldsList } from '~/components/custom-fields/ui/custom-fields-list'
 import { EntityAppearanceEditor } from '~/components/custom-fields/ui/entity-appearance-editor'
@@ -22,8 +23,9 @@ function CustomFieldsDetailPage() {
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
-  // Fields vs Permissions tab (Appearance stays visible above both).
-  const [tab, setTab] = useState<'fields' | 'permissions'>('fields')
+  // Fields vs Permissions tab (Appearance stays visible above both). Held in the
+  // URL so the permissions page can deep-link straight to `?tab=permissions`.
+  const [tab, setTab] = useQueryState('tab', { defaultValue: 'fields' })
 
   // Get resource from unified registry (handles both system and custom)
   const { resource, isLoading } = useResource(apiSlug)
@@ -117,8 +119,8 @@ function CustomFieldsDetailPage() {
             <div className='px-3 pt-3 sm:px-6 pb-6'>
               <div className='w-56'>
                 <RadioTab
-                  value={tab}
-                  onValueChange={(v) => setTab(v as 'fields' | 'permissions')}
+                  value={tab === 'permissions' ? 'permissions' : 'fields'}
+                  onValueChange={(v) => setTab(v)}
                   size='sm'
                   radioGroupClassName='w-full'>
                   <RadioTabItem value='fields'>Fields</RadioTabItem>
@@ -126,10 +128,10 @@ function CustomFieldsDetailPage() {
                 </RadioTab>
               </div>
             </div>
-            {tab === 'fields' ? (
-              <CustomFieldsList resource={resource} />
-            ) : (
+            {tab === 'permissions' ? (
               <DefAccessSection resource={resource} />
+            ) : (
+              <CustomFieldsList resource={resource} />
             )}
           </>
         ) : (

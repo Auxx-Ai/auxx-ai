@@ -381,6 +381,13 @@ export interface AreaMetadata {
   rungs: AreaRung[]
   /** Never grantable below ADMIN — forced to `None` in the USER baseline. */
   adminOnly?: boolean
+  /**
+   * Only meaningful on a `worker` seat — hidden from the settings grid. The area
+   * still expands to its keys for every seat (role defaults are seat-agnostic),
+   * but its enforcement is seat-scoped, so exposing a level control for full
+   * seats would be a lever that does nothing.
+   */
+  workerOnly?: boolean
   /** Layer-1 plan link — the area's keys AND the org's plan feature. */
   featureKey?: FeatureKey
 }
@@ -409,6 +416,9 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'Read-only access to records linked to the member’s own visits.',
     group: 'Records',
     rungs: [{ level: Level.Full, keys: [PermissionKey.recordsViewLinked] }],
+    // Worker-seat surface only: `canViewRecord`'s carve-out is gated on
+    // `seatType === 'worker'`, so the control is inert for full seats.
+    workerOnly: true,
   },
   [Area.workflows]: {
     area: Area.workflows,

@@ -126,11 +126,20 @@ export function effectiveRecordLevel(
  * Records-area VIEW gate (no mail-infra carve-out — the caller pre-checks that).
  * `effectiveRecordLevel` satisfies `view`, OR the field-seat `recordsViewLinked`
  * carve-out (narrowed rows; a restricted def still needs a grant).
+ *
+ * The carve-out is **worker-seat only**. `recordsLinked` is not in
+ * `USER_ADMIN_NONE_AREAS`, so `ROLE_DEFAULTS.USER` hands it out at `Full` and a
+ * full seat holds `recordsViewLinked` too — without the seat check, that branch
+ * would grant view of every unrestricted def to a member whose base records
+ * level is `None`, silently defeating the Layer-2 lever (restricted defs stayed
+ * correct; they require a grant either way). The row narrowing that is supposed
+ * to make the verb safe (`resolveLinkedRecordIds`) is still unwired, so the
+ * carve-out is only sound where the seat ceiling already confines it.
  */
 export function canViewRecord(caps: ResolvedRecordAccess, entityDefinitionId: string): boolean {
   const level = effectiveRecordLevel(caps, entityDefinitionId)
   if (level !== undefined && satisfiesPermission(level, ResourcePermission.view)) return true
-  if (caps.keys.has(PermissionKey.recordsViewLinked)) {
+  if (caps.seatType === 'worker' && caps.keys.has(PermissionKey.recordsViewLinked)) {
     if (!caps.restrictedEntityDefIds.has(entityDefinitionId)) return true
     return caps.defAccess[entityDefinitionId] !== undefined
   }

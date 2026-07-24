@@ -22,12 +22,13 @@ const build = (opts: {
   defAccess?: Record<string, ResourcePermission>
   restricted?: string[]
   role?: 'OWNER' | 'ADMIN' | 'USER'
+  seatType?: 'full' | 'worker'
 }) =>
   new CapabilitySet(
     new Set(opts.keys ?? (opts.hasView === false ? [] : [PermissionKey.recordsView])),
     opts.defAccess ?? {},
     opts.role ?? 'USER',
-    'full',
+    opts.seatType ?? 'full',
     (id) => id,
     new Set(opts.restricted ?? []),
     defIdToDefinitionId
@@ -82,14 +83,23 @@ describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
   })
 
   it('recordsViewLinked satisfies the verb layer (field seats; rows narrowed elsewhere)', () => {
-    const fieldSeat = build({ keys: [PermissionKey.recordsViewLinked] })
+    const fieldSeat = build({ keys: [PermissionKey.recordsViewLinked], seatType: 'worker' })
     expect(fieldSeat.canViewEntity('invoice-def')).toBe(true)
     // Restricted defs still require a grant for a field seat.
     const restricted = build({
       keys: [PermissionKey.recordsViewLinked],
       restricted: ['invoice-def'],
+      seatType: 'worker',
     })
     expect(restricted.canViewEntity('invoice-def')).toBe(false)
+  })
+
+  it('recordsViewLinked does NOT carve out for a full seat (base None stays None)', () => {
+    // ROLE_DEFAULTS.USER hands `recordsLinked` out at Full, so an ordinary member
+    // holds this key alongside their base records level. Before the seat gate it
+    // granted view of every unrestricted def to a base-None member.
+    const fullSeat = build({ keys: [PermissionKey.recordsViewLinked], seatType: 'full' })
+    expect(fullSeat.canViewEntity('invoice-def')).toBe(false)
   })
 
   it('mail-infrastructure defs bypass both layers (visibility governed by mail system)', () => {
