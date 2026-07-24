@@ -23,20 +23,22 @@ import { buildCreateOAuthAppUrl } from '@auxx/lib/ai/mcp/templates/client'
 import { getOrgCache } from '@auxx/lib/cache'
 import { RateLimitError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('mcp-router')
 
-/** adminProcedure + the `mcp` feature gate — guards every MCP mutation. */
-const mcpAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
-  await new FeaturePermissionService().requireAccess(ctx.session.organizationId, FeatureKey.mcp)
-  return next()
-})
+/** integrations capability + the `mcp` feature gate — guards every MCP mutation. */
+const mcpAdminProcedure = permissionProcedure(PermissionKey.integrationsManage).use(
+  async ({ ctx, next }) => {
+    await new FeaturePermissionService().requireAccess(ctx.session.organizationId, FeatureKey.mcp)
+    return next()
+  }
+)
 
 /**
  * Fetch the connection-definition data the detail page + edit dialog need: connection-variable

@@ -15,7 +15,7 @@ import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { mintClientCredentialToken } from '@auxx/lib/connections'
 import { resolveConnectorConfigOptions } from '@auxx/lib/data-connectors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { resolveQuickActionOptions } from '@auxx/lib/quick-actions'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -36,7 +36,12 @@ import {
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import {
+  createTRPCRouter,
+  notDemo,
+  permissionProcedure,
+  protectedProcedure,
+} from '~/server/api/trpc'
 
 const logger = createScopedLogger('trpc-apps')
 
@@ -231,7 +236,7 @@ export const appsRouter = createTRPCRouter({
   /**
    * Install an app (requires ADMIN or OWNER role)
    */
-  install: adminProcedure
+  install: permissionProcedure(PermissionKey.integrationsManage)
     .input(
       z
         .object({
@@ -301,7 +306,7 @@ export const appsRouter = createTRPCRouter({
   /**
    * Uninstall an app (requires ADMIN or OWNER role)
    */
-  uninstall: adminProcedure
+  uninstall: permissionProcedure(PermissionKey.integrationsManage)
     .input(
       z
         .object({
@@ -612,7 +617,7 @@ export const appsRouter = createTRPCRouter({
    * Make an org-scoped connection the primary one record actions use when an app has more than
    * one connection — by method or by account (§4a). Org decision → admin only.
    */
-  setDefaultConnection: adminProcedure
+  setDefaultConnection: permissionProcedure(PermissionKey.integrationsManage)
     .input(z.object({ connectionId: z.string() }))
     .use(notDemo('change the primary connection'))
     .mutation(async ({ ctx, input }) => {
@@ -826,7 +831,7 @@ export const appsRouter = createTRPCRouter({
    * Save app settings (from form submission)
    * Validates on server-side before persisting
    */
-  saveSettings: adminProcedure
+  saveSettings: permissionProcedure(PermissionKey.integrationsManage)
     .input(
       z.object({
         appSlug: z.string(),

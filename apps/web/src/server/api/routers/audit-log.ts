@@ -9,10 +9,11 @@ import {
   listAllAuditEvents,
   listAuditEvents,
 } from '@auxx/lib/audit-log'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { adminProcedure, createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure, superAdminProcedure } from '~/server/api/trpc'
 
 const categoryEnum = z.enum(AUDIT_CATEGORIES as unknown as [string, ...string[]])
 const visibilityEnum = z.enum(AUDIT_VISIBILITIES as unknown as [string, ...string[]])
@@ -30,22 +31,24 @@ const listInput = z.object({
 
 export const auditLogRouter = createTRPCRouter({
   /** Org-scoped, customer-visible activity feed (admin/owner only). */
-  list: adminProcedure.input(listInput).query(async ({ ctx, input }) => {
-    const result = await listAuditEvents({
-      organizationId: ctx.session.organizationId,
-      category: input.category as never,
-      actorId: input.actorId,
-      action: input.action,
-      from: input.from,
-      to: input.to,
-      limit: input.limit,
-      cursor: input.cursor,
-    })
-    if (result.isErr()) {
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
-    }
-    return result.value
-  }),
+  list: permissionProcedure(PermissionKey.auditLogView)
+    .input(listInput)
+    .query(async ({ ctx, input }) => {
+      const result = await listAuditEvents({
+        organizationId: ctx.session.organizationId,
+        category: input.category as never,
+        actorId: input.actorId,
+        action: input.action,
+        from: input.from,
+        to: input.to,
+        limit: input.limit,
+        cursor: input.cursor,
+      })
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
+      }
+      return result.value
+    }),
 
   /** Cross-org view incl. internal + platform-level rows (super-admin only). */
   listAll: superAdminProcedure
@@ -74,7 +77,7 @@ export const auditLogRouter = createTRPCRouter({
     }),
 
   /** Export the current org's audit rows (admin/owner) — CSV or NDJSON. */
-  export: adminProcedure
+  export: permissionProcedure(PermissionKey.auditLogView)
     .input(
       z.object({
         format: z.enum(['csv', 'ndjson']).optional(),

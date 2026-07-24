@@ -6,6 +6,7 @@
 import type { Database } from '@auxx/database'
 import { getCachedCustomFields, onCacheEvent } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
+import { PermissionKey } from '@auxx/lib/permissions'
 import {
   createRecordRule,
   deleteRecordRule,
@@ -23,7 +24,7 @@ import {
 import { SIGNAL_KIND_LIST } from '@auxx/lib/signals'
 import { assertWorkflowAppNotSystemOwned } from '@auxx/lib/workflows'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
 
 /** Managed rules (inventory-source setup, …) are edit/delete-locked; only `enabled` toggles. */
 async function assertNotManaged(
@@ -156,30 +157,32 @@ export const recordRulesRouter = createTRPCRouter({
       listRecordRuleRuns(ctx.db, ctx.session.organizationId, input.ruleId, input.limit)
     ),
 
-  create: adminProcedure.input(ruleInputSchema).mutation(async ({ ctx, input }) => {
-    const organizationId = ctx.session.organizationId
-    await assertActionsWorkflowsAccessible(ctx.db, organizationId, input.actions)
-    const fieldId = await normalizeFieldRef(organizationId, input)
-    const rule = await createRecordRule(
-      ctx.db,
-      organizationId,
-      {
-        entityDefinitionId: input.entityDefinitionId,
-        fieldId,
-        name: input.name,
-        on: input.on,
-        signalKind: input.signalKind ?? null,
-        condition: input.condition,
-        actions: input.actions as RecordRuleAction[],
-        enabled: input.enabled,
-      },
-      ctx.session.userId
-    )
-    await onCacheEvent('record-rule.changed', { orgId: organizationId })
-    return rule
-  }),
+  create: permissionProcedure(PermissionKey.automationRulesManage)
+    .input(ruleInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = ctx.session.organizationId
+      await assertActionsWorkflowsAccessible(ctx.db, organizationId, input.actions)
+      const fieldId = await normalizeFieldRef(organizationId, input)
+      const rule = await createRecordRule(
+        ctx.db,
+        organizationId,
+        {
+          entityDefinitionId: input.entityDefinitionId,
+          fieldId,
+          name: input.name,
+          on: input.on,
+          signalKind: input.signalKind ?? null,
+          condition: input.condition,
+          actions: input.actions as RecordRuleAction[],
+          enabled: input.enabled,
+        },
+        ctx.session.userId
+      )
+      await onCacheEvent('record-rule.changed', { orgId: organizationId })
+      return rule
+    }),
 
-  update: adminProcedure
+  update: permissionProcedure(PermissionKey.automationRulesManage)
     .input(ruleInputSchema.partial().extend({ ruleId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
@@ -206,7 +209,7 @@ export const recordRulesRouter = createTRPCRouter({
     }),
 
   /** Quick enable/disable without touching the rest of the rule. */
-  setEnabled: adminProcedure
+  setEnabled: permissionProcedure(PermissionKey.automationRulesManage)
     .input(z.object({ ruleId: z.string().min(1), enabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
@@ -217,7 +220,7 @@ export const recordRulesRouter = createTRPCRouter({
       return rule
     }),
 
-  delete: adminProcedure
+  delete: permissionProcedure(PermissionKey.automationRulesManage)
     .input(z.object({ ruleId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
