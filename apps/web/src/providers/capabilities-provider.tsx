@@ -2,6 +2,7 @@
 'use client'
 
 import {
+  administersAnyDef,
   type ClientCapabilities,
   canAdministerRecord,
   canEditRecord,
@@ -67,6 +68,13 @@ interface CapabilitiesContextType {
    * degrade-only to avoid click-then-403.
    */
   canAdministerDef: (entityDefinitionId: string) => boolean
+  /**
+   * Whether the member administers ANY def — the "is there a def-admin surface
+   * for me at all" gate (e.g. showing the Custom Fields settings nav entry). True
+   * for OWNER/ADMIN or a member holding ≥1 `admin` type-grant. Server enforces
+   * the per-def actions; this only decides discoverability of the entry point.
+   */
+  administersAnyDef: boolean
   /** The current member's composed capability keys. */
   capabilities: PermissionKey[]
   isLoading: boolean
@@ -159,6 +167,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       canEditEntity: (entityDefinitionId: string) => canEditRecord(resolved, entityDefinitionId),
       canAdministerDef: (entityDefinitionId: string) =>
         canAdministerRecord(resolved, entityDefinitionId),
+      administersAnyDef: administersAnyDef(resolved),
       capabilities: snapshot.keys,
       isLoading: false,
     }

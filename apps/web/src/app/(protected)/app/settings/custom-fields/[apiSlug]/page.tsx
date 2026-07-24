@@ -14,6 +14,7 @@ import SettingsPage from '~/components/global/settings-page'
 import { DefAccessSection } from '~/components/permissions/ui/def-access-section'
 import { useResource } from '~/components/resources/hooks'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 
 function CustomFieldsDetailPage() {
   const params = useParams()
@@ -26,10 +27,12 @@ function CustomFieldsDetailPage() {
 
   // Get resource from unified registry (handles both system and custom)
   const { resource, isLoading } = useResource(apiSlug)
-  useUser({
-    requireOrganization: true,
-    requireRoles: ['ADMIN', 'OWNER'],
-  })
+  // Managing a def's fields is def administration (the `Full`/`admin` rung) —
+  // OWNER/ADMIN or a def-`admin` grantee (perms v2 doc 09). Gated per-def below
+  // rather than via a blanket role guard; the server enforces regardless. The
+  // **Permissions** (record access) tab is a further, OWNER/ADMIN-only step.
+  const { isAdminOrOwner } = useUser({ requireOrganization: true })
+  const { canAdministerDef } = useAccess()
 
   // Show loading state
   if (isLoading) {
@@ -67,6 +70,25 @@ function CustomFieldsDetailPage() {
     )
   }
 
+  // Per-def administration gate — a member without def-`admin` on THIS def cannot
+  // manage its fields/permissions (server enforces regardless).
+  if (!canAdministerDef(resource.entityDefinitionId)) {
+    return (
+      <SettingsPage
+        title='Access denied'
+        description="You don't have permission to manage this entity's fields."
+        breadcrumbs={[
+          { title: 'Settings', href: '/app/settings' },
+          { title: 'Custom Fields', href: '/app/settings/custom-fields' },
+          { title: resource.label },
+        ]}>
+        <div className='text-center py-12 text-muted-foreground'>
+          <p>You need administration access to “{resource.label}” to manage its fields.</p>
+        </div>
+      </SettingsPage>
+    )
+  }
+
   return (
     <>
       <SettingsPage
@@ -87,8 +109,10 @@ function CustomFieldsDetailPage() {
         {/* Appearance editor - show for all, disable for system */}
         <EntityAppearanceEditor resource={resource} disabled={!!resource.entityType} />
 
-        {/* Fields vs Permissions — Permissions only for in-scope CRM defs */}
-        {isAccessManageable(resource) ? (
+        {/* Fields vs Permissions — Permissions tab only for in-scope CRM defs
+            AND OWNER/ADMIN (record access stays admin-only; def-admins get Fields
+            only). Server enforces the access mutations regardless. */}
+        {isAccessManageable(resource) && isAdminOrOwner ? (
           <>
             <div className='px-3 pt-3 sm:px-6 pb-6'>
               <div className='w-56'>

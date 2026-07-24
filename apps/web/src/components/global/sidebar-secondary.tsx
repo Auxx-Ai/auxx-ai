@@ -22,7 +22,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
   })
   const role = isAdminOrOwner ? 'ADMIN' : 'USER'
   const { hasAccess: hasFeatureAccess } = useFeatureFlags()
-  const { can } = useAccess()
+  const { can, administersAnyDef } = useAccess()
 
   return (
     // <div className='flex h-full min-h-screen w-[16rem] overflow-auto border-r bg-sidebar text-sidebar-foreground'>
@@ -61,6 +61,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
                 selfHosted,
                 hasFeatureAccess,
                 can,
+                administersAnyDef,
                 isMobile ? () => setIsDropdownOpen(false) : undefined
               )}
             </React.Fragment>
@@ -79,6 +80,7 @@ function createSidebarGroup(
   selfHosted: boolean,
   hasFeatureAccess: (key: string) => boolean,
   can: (key: string) => boolean,
+  administersAnyDef: boolean,
   onItemClick?: () => void
 ) {
   const title = group.label
@@ -86,6 +88,10 @@ function createSidebarGroup(
   let items = selfHosted ? group.items?.filter((item) => !item.cloudOnly) : group.items
   items = items?.filter((item) => !item.featureKey || hasFeatureAccess(item.featureKey))
   items = items?.filter((item) => !item.access || item.access === role)
+  // Def-admin-derived items (Custom Fields, perms v2 doc 09): visible to any
+  // member administering ≥1 def, not just the org role. `administersAnyDef` is
+  // already true for OWNER/ADMIN.
+  items = items?.filter((item) => !item.requiresDefAdmin || administersAnyDef)
   // Layer-2 capability filter — ADMIN/OWNER hold every key via ROLE_DEFAULTS, so
   // no admin bypass is needed here; the resolved capability set already lets them
   // through. Suppresses a group entirely once all its items are filtered out.

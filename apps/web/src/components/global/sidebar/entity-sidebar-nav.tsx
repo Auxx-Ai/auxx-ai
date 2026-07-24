@@ -299,10 +299,12 @@ export function EntitySidebarNav() {
             <Pencil /> Edit Entity
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem
-          onClick={() => router.push(`/app/settings/custom-fields/${entity.apiSlug}`)}>
-          <Settings /> Manage Fields
-        </DropdownMenuItem>
+        {canAdminister && (
+          <DropdownMenuItem
+            onClick={() => router.push(`/app/settings/custom-fields/${entity.apiSlug}`)}>
+            <Settings /> Manage Fields
+          </DropdownMenuItem>
+        )}
         {canRemove && <DropdownMenuSeparator />}
         {canRemove && (
           <DropdownMenuItem onClick={() => handleArchiveEntity(resource)} variant='destructive'>

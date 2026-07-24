@@ -128,6 +128,18 @@ export function canAdministerRecord(
 }
 
 /**
+ * Whether the member administers AT LEAST ONE def — the "is there any def-admin
+ * surface for me at all" gate (e.g. showing the Custom Fields settings nav entry
+ * / listing only administered defs). OWNER/ADMIN administer every def; everyone
+ * else needs ≥1 explicit `admin` type-grant. Worker seats never administer.
+ */
+export function administersAnyDef(caps: ResolvedRecordAccess): boolean {
+  if (caps.role === 'OWNER' || caps.role === 'ADMIN') return true
+  if (SEAT_CEILINGS[caps.seatType][Area.records] === Level.None) return false
+  return Object.values(caps.defAccess).some((p) => p === ResourcePermission.admin)
+}
+
+/**
  * Serializable snapshot of a member's record-access inputs — the wire shape sent
  * to the client (dehydrated seed + `permissions.myCapabilities`). Arrays instead
  * of Sets so it is JSON-safe; the client rebuilds a {@link ResolvedRecordAccess}.
