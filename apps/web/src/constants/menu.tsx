@@ -202,7 +202,14 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         featureKey: 'dataConnectors',
         adminOnly: true,
       },
-      { id: 'files', label: 'Files', slug: 'files', icon: <Folder />, featureKey: 'files' },
+      {
+        id: 'files',
+        label: 'Files',
+        slug: 'files',
+        icon: <Folder />,
+        featureKey: 'files',
+        permissionKey: 'files.view',
+      },
     ],
   },
   {

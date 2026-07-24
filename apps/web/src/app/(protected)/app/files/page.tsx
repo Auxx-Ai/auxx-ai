@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/files/page.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -17,6 +17,7 @@ import { FileDetailDrawer } from '~/components/files/file-detail-drawer'
 import { type FileItem, useFileSystemStore } from '~/components/files/files-store'
 import { EmptyState } from '~/components/global/empty-state'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 function FilesPageContent() {
@@ -118,6 +119,7 @@ function FilesPageContent() {
 
 export default function FilesPage() {
   const { hasAccess } = useFeatureFlags()
+  const { can } = useAccess()
 
   if (!hasAccess(FeatureKey.files)) {
     return (
@@ -132,6 +134,27 @@ export default function FilesPage() {
             icon={Lock}
             title='Files Not Available'
             description='Upgrade your plan to access file management.'
+            button={<div className='h-12' />}
+          />
+        </MainPageContent>
+      </MainPage>
+    )
+  }
+
+  // Layer-2 permission gate: the member holds the plan but not `files.view`.
+  if (!can(PermissionKey.filesView)) {
+    return (
+      <MainPage>
+        <MainPageHeader>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title='Files' href='/app/files' />
+          </MainPageBreadcrumb>
+        </MainPageHeader>
+        <MainPageContent>
+          <EmptyState
+            icon={Lock}
+            title='No Access to Files'
+            description="You don't have permission to view files. Ask an admin for access."
             button={<div className='h-12' />}
           />
         </MainPageContent>

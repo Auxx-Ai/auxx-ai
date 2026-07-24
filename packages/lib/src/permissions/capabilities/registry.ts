@@ -41,6 +41,10 @@ export enum PermissionKey {
   aiConfigManage = 'aiConfig.manage',
   automationRulesManage = 'automationRules.manage',
   auditLogView = 'auditLog.view',
+
+  // files
+  filesView = 'files.view',
+  filesManage = 'files.manage',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -210,6 +214,22 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     description: 'View the organization audit log.',
     group: 'Organization',
   },
+
+  // ── Files ──
+  {
+    key: PermissionKey.filesView,
+    label: 'View Files',
+    description: 'List, search, preview, and download files.',
+    group: 'Files',
+    featureKey: FeatureKey.files,
+  },
+  {
+    key: PermissionKey.filesManage,
+    label: 'Manage Files',
+    description: 'Delete, restore, archive, move, rename, copy, and version files and folders.',
+    group: 'Files',
+    featureKey: FeatureKey.files,
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -267,6 +287,7 @@ export enum Area {
   aiConfig = 'aiConfig',
   automationRules = 'automationRules',
   auditLog = 'auditLog',
+  files = 'files',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -429,6 +450,17 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'View the organization audit log.',
     group: 'Organization',
     rungs: [{ level: Level.Read, keys: [PermissionKey.auditLogView] }],
+  },
+  [Area.files]: {
+    area: Area.files,
+    label: 'Files',
+    description: 'Browse and download files, or manage them (delete, move, rename, version).',
+    group: 'Files',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.filesView] },
+      { level: Level.Full, keys: [PermissionKey.filesManage] },
+    ],
+    featureKey: FeatureKey.files,
   },
 }
 
