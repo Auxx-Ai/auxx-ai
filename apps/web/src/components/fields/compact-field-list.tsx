@@ -2,10 +2,11 @@
 'use client'
 
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { useCallback, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { useResourceFields } from '~/components/resources'
 import { CompactFieldRow } from './compact-field-row'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
+import { useFieldPopoverCoordination } from './hooks/use-field-popover-coordination'
 
 interface CompactFieldListProps {
   /** RecordId in format "entityDefinitionId:entityInstanceId" */
@@ -49,36 +50,8 @@ export function CompactFieldList({
     return enrichedFields.filter((field) => !blocked.has(field.key))
   }, [enrichedFields, excludeFields])
 
-  // ─── One-open-at-a-time popover coordination ──────────────────
-  // Lifted from `entity-fields.tsx`; same pattern, no FieldNavigationProvider.
-  const closeHandlersRef = useRef<Record<string, () => void>>({})
-  const openProviderIdRef = useRef<string | null>(null)
-
-  const registerClose = useCallback((providerId: string, closeFn: () => void) => {
-    closeHandlersRef.current[providerId] = closeFn
-  }, [])
-
-  const unregisterClose = useCallback((providerId: string) => {
-    delete closeHandlersRef.current[providerId]
-    if (openProviderIdRef.current === providerId) {
-      openProviderIdRef.current = null
-    }
-  }, [])
-
-  const onOpenChange = useCallback((providerId: string, nextOpen: boolean) => {
-    if (nextOpen) {
-      if (openProviderIdRef.current === providerId) return
-      const activeId = openProviderIdRef.current
-      if (activeId && activeId !== providerId) {
-        closeHandlersRef.current[activeId]?.()
-      }
-      openProviderIdRef.current = providerId
-      return
-    }
-    if (openProviderIdRef.current === providerId) {
-      openProviderIdRef.current = null
-    }
-  }, [])
+  // Same one-open-at-a-time behaviour as `EntityFields`, without a FieldNavigationProvider.
+  const { onOpenChange, registerClose, unregisterClose } = useFieldPopoverCoordination()
 
   const loading = isLoading || optionsLoading
 

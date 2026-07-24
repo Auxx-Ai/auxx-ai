@@ -91,6 +91,7 @@ import {
   NumberFormattingEditor,
   PhoneFormattingEditor,
   parseDisplayOptions,
+  TextFormattingEditor,
   TimeFormattingEditor,
   UrlFormattingEditor,
 } from './formatting-editors'
@@ -708,6 +709,7 @@ export function CustomFieldForm({
   /** Check if field type supports display options */
   const supportsDisplayOptions = (type: FieldTypeType): boolean => {
     return [
+      FieldType.TEXT,
       FieldType.NUMBER,
       FieldType.CURRENCY,
       FieldType.DATE,
@@ -722,6 +724,13 @@ export function CustomFieldForm({
   /** Render the actual display options editor content */
   const renderDisplayOptionsContent = () => {
     switch (selectedType) {
+      case FieldType.TEXT:
+        return (
+          <TextFormattingEditor
+            options={displayOptions}
+            onChange={(opts) => setDisplayOptions((prev) => ({ ...prev, ...opts }))}
+          />
+        )
       case FieldType.NUMBER:
         return <NumberFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
       case FieldType.CURRENCY:
@@ -768,7 +777,11 @@ export function CustomFieldForm({
           <CollapsibleChevron open={showDisplayOptions} />
         </Button>
         <AnimatedCollapsibleContent open={showDisplayOptions}>
-          <div className='mt-3 rounded-lg border p-3'>{renderDisplayOptionsContent()}</div>
+          {/* TEXT's content is a `ToggleCard`, which brings its own border —
+              wrapping it again would double up. */}
+          <div className={cn('mt-3', selectedType !== FieldType.TEXT && 'rounded-lg border p-3')}>
+            {renderDisplayOptionsContent()}
+          </div>
         </AnimatedCollapsibleContent>
       </div>
     )

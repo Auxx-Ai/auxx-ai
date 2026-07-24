@@ -3,11 +3,28 @@
 import { getFieldTypeMaxWidth, getFieldTypeMinWidth } from '@auxx/lib/custom-fields/types'
 import { Popover, PopoverContent } from '@auxx/ui/components/popover'
 import { Popover as PopoverPrimitive } from 'radix-ui'
-import { type ReactNode, useCallback } from 'react'
+import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { useFieldNavigationOptional } from './field-navigation-context'
 import { getInputComponentForFieldType } from './inputs/get-input-component'
 import { usePropertyContext } from './property-provider'
 import { useFieldPopoverHandlers } from './use-field-popover-handlers'
+
+/**
+ * Height of a standard single-line value row. Used until the trigger has been
+ * measured — see `sideOffset` below for why the popover needs the height at all.
+ */
+const DEFAULT_ROW_HEIGHT = 28
+
+/**
+ * Extra lift for wrapped (multiline) values so the *text* lines up, not just the
+ * boxes: the editor insets its text by 4px (`py-1`) against the display's 2px
+ * (`py-[2px]`), plus ~1px from the popover wrapper — a visible 3px drop on click.
+ *
+ * Single-line values don't need it. Their display is vertically centered in the
+ * 28px row (`items-center`) rather than top-aligned, which already lands the text
+ * where the editor puts it; adding the lift there makes the row look raised.
+ */
+const WRAPPED_TEXT_ALIGN_OFFSET = 3
 
 /**
  * field-input.tsx
@@ -33,6 +50,25 @@ export function FieldInput({ children }: FieldInputProps) {
 
   // Get input component from shared function
   const InputComponent = getInputComponentForFieldType(field.fieldType)
+
+  // The popover opens `side='bottom'`, so a negative `sideOffset` equal to the
+  // trigger's own height lifts it back up to sit exactly ON the row — the editor
+  // replaces the value in place rather than dropping below it. This was a fixed
+  // -28 (one single-line row); wrapped multiline values are taller, so measure
+  // instead or the popover lands near the bottom of the field.
+  // Radix exposes `--radix-popover-trigger-width` but no height equivalent.
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const [triggerHeight, setTriggerHeight] = useState(DEFAULT_ROW_HEIGHT)
+
+  // Same gate `DisplayText` uses to turn on wrapping.
+  const wrapsValue = field?.options?.multiline === true
+
+  // Layout effect so the measurement lands before paint — no first-frame jump.
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const height = triggerRef.current?.offsetHeight
+    if (height) setTriggerHeight(height)
+  }, [isOpen])
 
   /**
    * Handle clicking outside - extends base handler with deprecated requestClose
@@ -72,7 +108,7 @@ export function FieldInput({ children }: FieldInputProps) {
   return (
     <Popover open={isOpen}>
       <PopoverPrimitive.Trigger className='w-full focus:outline-none' asChild>
-        <div tabIndex={-1} aria-hidden='true'>
+        <div ref={triggerRef} tabIndex={-1} aria-hidden='true'>
           {children}
         </div>
       </PopoverPrimitive.Trigger>
@@ -86,7 +122,7 @@ export function FieldInput({ children }: FieldInputProps) {
           minWidth: getFieldTypeMinWidth(field.fieldType),
           maxWidth: getFieldTypeMaxWidth(field.fieldType),
         }}
-        sideOffset={-28}
+        sideOffset={-(triggerHeight + (wrapsValue ? WRAPPED_TEXT_ALIGN_OFFSET : 0))}
         alignOffset={-5}
         onPointerDownOutside={handleOutsideEvent}
         // Close (and save) when focus leaves for a layer outside this popover's

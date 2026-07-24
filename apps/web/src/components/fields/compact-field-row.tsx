@@ -18,9 +18,8 @@ interface CompactFieldRowProps {
 }
 
 /**
- * Compact analogue of the "normal mode" branch of `SortablePropertyRow`,
- * stripped of `useSortable` and the field-navigation context. Same
- * `PropertyProvider` + `PropertyRow` editing surface as the web sidebar.
+ * Compact analogue of `FieldValueRow`, stripped of the field-navigation context.
+ * Same `PropertyProvider` + `PropertyRow` editing surface as the web sidebar.
  */
 export const CompactFieldRow = memo(function CompactFieldRow({
   providerId,

@@ -28,14 +28,14 @@ interface FieldNavigationContextValue {
   /** Open the popover for the focused row */
   openFocusedRow: () => void
 
-  /** Register a row in the navigation order */
-  registerRow: (rowId: string, index: number) => void
+  /**
+   * Register a row in the navigation order, along with the function that opens
+   * its editor. Rows re-register whenever their index or open function changes.
+   */
+  registerRow: (rowId: string, index: number, open: () => void) => void
 
   /** Unregister a row */
   unregisterRow: (rowId: string) => void
-
-  /** Register the handler that can open any row's popover */
-  registerOpenHandler: (handler: (rowId: string) => void) => void
 
   /** Whether a popover is currently capturing keyboard events (e.g., Tags picker) */
   isPopoverCapturing: boolean
@@ -76,38 +76,28 @@ export function FieldNavigationProvider({ children }: FieldNavigationProviderPro
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null)
   const [isPopoverCapturing, setPopoverCapturing] = useState(false)
 
-  // Map of row ID -> index for navigation order
-  const rowOrderRef = useRef<Map<string, number>>(new Map())
-
-  // Handler to open any row's popover
-  const openHandlerRef = useRef<((rowId: string) => void) | null>(null)
+  // Row ID -> navigation index + the function that opens that row's editor
+  const rowsRef = useRef<Map<string, { index: number; open: () => void }>>(new Map())
 
   /**
-   * Register a row in the navigation order
+   * Register a row in the navigation order together with its open function
    */
-  const registerRow = useCallback((rowId: string, index: number) => {
-    rowOrderRef.current.set(rowId, index)
+  const registerRow = useCallback((rowId: string, index: number, open: () => void) => {
+    rowsRef.current.set(rowId, { index, open })
   }, [])
 
   /**
    * Unregister a row from navigation
    */
   const unregisterRow = useCallback((rowId: string) => {
-    rowOrderRef.current.delete(rowId)
-  }, [])
-
-  /**
-   * Register the handler that can open any row's popover
-   */
-  const registerOpenHandler = useCallback((handler: (rowId: string) => void) => {
-    openHandlerRef.current = handler
+    rowsRef.current.delete(rowId)
   }, [])
 
   /**
    * Get sorted row IDs by their index
    */
   const getSortedRowIds = useCallback(() => {
-    return [...rowOrderRef.current.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id)
+    return [...rowsRef.current.entries()].sort((a, b) => a[1].index - b[1].index).map(([id]) => id)
   }, [])
 
   /**
@@ -139,9 +129,8 @@ export function FieldNavigationProvider({ children }: FieldNavigationProviderPro
    * Open the popover for the currently focused row
    */
   const openFocusedRow = useCallback(() => {
-    if (focusedRowId && openHandlerRef.current) {
-      openHandlerRef.current(focusedRowId)
-    }
+    if (!focusedRowId) return
+    rowsRef.current.get(focusedRowId)?.open()
   }, [focusedRowId])
 
   const value = useMemo(
@@ -152,19 +141,10 @@ export function FieldNavigationProvider({ children }: FieldNavigationProviderPro
       openFocusedRow,
       registerRow,
       unregisterRow,
-      registerOpenHandler,
       isPopoverCapturing,
       setPopoverCapturing,
     }),
-    [
-      focusedRowId,
-      moveFocus,
-      openFocusedRow,
-      registerRow,
-      unregisterRow,
-      registerOpenHandler,
-      isPopoverCapturing,
-    ]
+    [focusedRowId, moveFocus, openFocusedRow, registerRow, unregisterRow, isPopoverCapturing]
   )
 
   return <FieldNavigationContext.Provider value={value}>{children}</FieldNavigationContext.Provider>

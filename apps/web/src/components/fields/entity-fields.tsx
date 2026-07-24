@@ -11,7 +11,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useResourceFields } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -19,8 +19,10 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { EntityFieldsContent } from './entity-fields-content'
 import { FieldNavigationProvider } from './field-navigation-context'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
+import { useFieldPopoverCoordination } from './hooks/use-field-popover-coordination'
 import { useFieldView } from './hooks/use-field-view'
 import { useToggleFieldVisibility } from './hooks/use-toggle-field-visibility'
+import type { PanelField } from './rows/types'
 
 /**
  * Props for EntityFields component.
@@ -74,9 +76,12 @@ function EntityFields({
   const { canAdministerDef } = useAccess()
   const canManageFields = canEdit && canAdministerDef(entityDefinitionId)
 
-  // State management
-  const closeHandlersRef = useRef<Record<string, () => void>>({})
-  const openProviderIdRef = useRef<string | null>(null)
+  // One-open-editor-at-a-time coordination across rows
+  const {
+    onOpenChange: handleProviderOpenChange,
+    registerClose: registerProviderClose,
+    unregisterClose: unregisterProviderClose,
+  } = useFieldPopoverCoordination()
 
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false)
@@ -169,36 +174,6 @@ function EntityFields({
   // Note: Field value mutations are handled internally by PropertyProvider via storeConfig
 
   // ─────────────────────────────────────────────────────────────────
-  // PROVIDER COORDINATION (for popover management)
-  // ─────────────────────────────────────────────────────────────────
-
-  const registerProviderClose = useCallback((providerId: string, closeFn: () => void) => {
-    closeHandlersRef.current[providerId] = closeFn
-  }, [])
-
-  const unregisterProviderClose = useCallback((providerId: string) => {
-    delete closeHandlersRef.current[providerId]
-    if (openProviderIdRef.current === providerId) {
-      openProviderIdRef.current = null
-    }
-  }, [])
-
-  const handleProviderOpenChange = useCallback((providerId: string, nextOpen: boolean) => {
-    if (nextOpen) {
-      if (openProviderIdRef.current === providerId) return
-      const activeId = openProviderIdRef.current
-      if (activeId && activeId !== providerId) {
-        closeHandlersRef.current[activeId]?.()
-      }
-      openProviderIdRef.current = providerId
-      return
-    }
-    if (openProviderIdRef.current === providerId) {
-      openProviderIdRef.current = null
-    }
-  }, [])
-
-  // ─────────────────────────────────────────────────────────────────
   // DRAG & DROP
   // ─────────────────────────────────────────────────────────────────
 
@@ -219,7 +194,7 @@ function EntityFields({
     setDialogOpen(true)
   }
 
-  const handleEditField = (_fieldId: string, field: any) => {
+  const handleEditField = (_fieldId: string, field: PanelField) => {
     // Build resourceFieldId from field - fields from Resource have resourceFieldId property
     const rfId = field.resourceFieldId ?? toResourceFieldId(entityDefinitionId, field.id)
     setEditingResourceFieldId(rfId)

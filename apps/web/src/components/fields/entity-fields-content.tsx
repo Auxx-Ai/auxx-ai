@@ -11,11 +11,13 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Pencil, X } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { AddFieldRow } from './add-field-row'
 import { useFieldNavigation } from './field-navigation-context'
-import { SortablePropertyRow } from './sortable-property-row'
+import { FieldEditRow } from './rows/field-edit-row'
+import { FieldValueRow } from './rows/field-value-row'
+import type { PanelField } from './rows/types'
 
 /**
  * Props for EntityFieldsContent component (unified version)
@@ -36,7 +38,7 @@ export interface EntityFieldsContentProps {
   /** Check if field is sortable */
   isSortable: (field: ResourceField) => boolean
   handleDeleteField: (fieldId: string, fieldName: string) => Promise<void>
-  handleEditField: (fieldId: string, field: any) => void
+  handleEditField: (fieldId: string, field: PanelField) => void
   handleAddField: () => void
   handleProviderOpenChange: (providerId: string, nextOpen: boolean) => void
   registerProviderClose: (providerId: string, closeFn: () => void) => void
@@ -93,33 +95,7 @@ export function EntityFieldsContent({
   const { entityDefinitionId } = parseRecordId(recordId)
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const { focusedRowId, moveFocus, openFocusedRow, isPopoverCapturing, registerOpenHandler } =
-    useFieldNavigation()
-
-  // Track open functions for each row
-  const openHandlersRef = useRef<Map<string, () => void>>(new Map())
-
-  /**
-   * Register a callback to open a specific row by ID
-   */
-  const registerRowOpen = useCallback((providerId: string, openFn: () => void) => {
-    openHandlersRef.current.set(providerId, openFn)
-  }, [])
-
-  /**
-   * Unregister when row unmounts
-   */
-  const unregisterRowOpen = useCallback((providerId: string) => {
-    openHandlersRef.current.delete(providerId)
-  }, [])
-
-  // Register the open handler with navigation context
-  useEffect(() => {
-    registerOpenHandler((rowId: string) => {
-      const openFn = openHandlersRef.current.get(rowId)
-      openFn?.()
-    })
-  }, [registerOpenHandler])
+  const { focusedRowId, moveFocus, openFocusedRow, isPopoverCapturing } = useFieldNavigation()
 
   /**
    * Handle keyboard navigation at container level
@@ -148,9 +124,31 @@ export function EntityFieldsContent({
     [isPopoverCapturing, moveFocus, focusedRowId, openFocusedRow]
   )
 
-  // Filter sortable field IDs for DnD context (only custom fields)
-  // Use field.id if available for custom fields, otherwise field.key
-  const sortableIds = fields.filter((f) => !f.isSystem).map((f) => f.id || f.key)
+  /**
+   * Normalize a registry field into the shape rows consume, and derive the ids
+   * each row needs. System fields have no DB id, so they fall back to their key.
+   */
+  const rows = fields.map((field, index) => {
+    const isSystemField = field.isSystem === true
+    const id = field.id || field.key
+    return {
+      id,
+      index,
+      isSystemField,
+      // System keys and custom-field ids share one namespace, so system rows are
+      // prefixed to guarantee uniqueness.
+      providerId: isSystemField ? `system-${field.key}` : id,
+      resourceFieldId: field.resourceFieldId ?? `${entityDefinitionId}:${id}`,
+      isVisible: isFieldVisible?.(field.resourceFieldId ?? field.id ?? field.key) ?? true,
+      isSortable: isSortable(field),
+      field: {
+        ...field,
+        id,
+        name: field.label,
+        readOnly: field.capabilities.updatable === false || readOnly,
+      } as PanelField,
+    }
+  })
 
   return (
     <>
@@ -201,57 +199,48 @@ export function EntityFieldsContent({
             </div>
           )}
 
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-            modifiers={[restrictToVerticalAxis]}>
-            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-              {/* Render all fields in unified loop */}
-              {fields.map((field, idx) => {
-                const fieldKey = field.key
-                const isSystemField = field.isSystem === true
-                // Use field.id for custom fields (guaranteed unique DB ID), system-{key} for system fields
-                const uniqueId = isSystemField ? `system-${fieldKey}` : field.id || fieldKey
-                const providerId = uniqueId
-                // const fieldEntry = fieldValues[fieldKey]
-                const isReadOnly = field.capabilities.updatable === false
-
-                return (
-                  <SortablePropertyRow
-                    key={uniqueId}
-                    id={field.id || fieldKey}
-                    providerId={providerId}
-                    field={{
-                      ...field,
-                      // Ensure field has required properties for PropertyRow
-                      id: field.id || fieldKey,
-                      name: field.label,
-                      readOnly: isReadOnly || readOnly,
-                    }}
-                    loading={isLoading}
-                    isEditMode={isEditMode}
-                    isSortable={isSortable(field)}
-                    index={idx}
-                    onDelete={isSystemField ? undefined : handleDeleteField}
-                    onEdit={isSystemField ? undefined : handleEditField}
-                    onOpenChange={handleProviderOpenChange}
-                    registerClose={registerProviderClose}
-                    unregisterClose={unregisterProviderClose}
-                    registerOpen={registerRowOpen}
-                    unregisterOpen={unregisterRowOpen}
-                    recordId={recordId}
-                    readOnly={readOnly}
-                    showTitle={showTitle}
-                    onToggleVisibility={isEditMode ? onToggleVisibility : undefined}
-                    isVisible={
-                      isFieldVisible?.(field.resourceFieldId ?? field.id ?? field.key) ?? true
-                    }
+          {/* Reordering is edit-mode only, so the DnD context only exists there */}
+          {isEditMode ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+              modifiers={[restrictToVerticalAxis]}>
+              <SortableContext
+                items={rows.filter((row) => !row.isSystemField).map((row) => row.id)}
+                strategy={verticalListSortingStrategy}>
+                {rows.map((row) => (
+                  <FieldEditRow
+                    key={row.providerId}
+                    id={row.id}
+                    field={row.field}
+                    isSortable={row.isSortable}
+                    resourceFieldId={row.resourceFieldId}
+                    isVisible={row.isVisible}
+                    onEdit={row.isSystemField ? undefined : handleEditField}
+                    onDelete={row.isSystemField ? undefined : handleDeleteField}
+                    onToggleVisibility={onToggleVisibility}
                   />
-                )
-              })}
-            </SortableContext>
-          </DndContext>
+                ))}
+              </SortableContext>
+            </DndContext>
+          ) : (
+            rows.map((row) => (
+              <FieldValueRow
+                key={row.providerId}
+                providerId={row.providerId}
+                field={row.field}
+                index={row.index}
+                loading={isLoading}
+                recordId={recordId}
+                readOnly={readOnly}
+                showTitle={showTitle}
+                onOpenChange={handleProviderOpenChange}
+                registerClose={registerProviderClose}
+                unregisterClose={unregisterProviderClose}
+              />
+            ))
+          )}
 
           {/* Add Field row - only show in edit mode and when editable */}
           {isEditMode && canEdit && <AddFieldRow onClick={handleAddField} />}

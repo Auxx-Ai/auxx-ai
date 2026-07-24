@@ -272,6 +272,9 @@ export const displayOptionsSchema = z.object({
   phoneFormat: z.enum(['raw', 'national', 'international']).optional(),
   // URL display options — render the value as a clickable link (default) or as an image thumbnail
   urlDisplay: z.enum(['link', 'image']).optional(),
+  // TEXT display options — wrap the value over multiple lines (capped, with an
+  // internal scroll) and edit it in an autosize textarea instead of one line
+  multiline: z.boolean().optional(),
   // CURRENCY display options (decimals + useGrouping shared with NUMBER)
   currencyCode: z.string().length(3).optional(),
   currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']).optional(),
@@ -298,6 +301,7 @@ export type DisplayOptions = z.infer<typeof displayOptionsSchema>
  * That's it!
  */
 export const FIELD_TYPE_DISPLAY_OPTIONS: Partial<Record<string, (keyof DisplayOptions)[]>> = {
+  [FieldTypeEnum.TEXT]: ['multiline'],
   [FieldTypeEnum.NUMBER]: ['decimals', 'useGrouping', 'displayAs', 'prefix', 'suffix'],
   [FieldTypeEnum.CURRENCY]: ['currencyCode', 'decimals', 'useGrouping', 'currencyDisplay'],
   [FieldTypeEnum.DATE]: ['format'],

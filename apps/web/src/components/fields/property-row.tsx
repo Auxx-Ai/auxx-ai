@@ -26,12 +26,8 @@ import { usePropertyContext } from './property-provider'
  * Renders the interactive row for a single property, including label, icon, and value.
  */
 function PropertyRow({
-  // editable = true,
-  onEdit,
   onFocus,
 }: {
-  // editable?: boolean
-  onEdit?: (newValue: string) => void
   /** Called when this row receives focus (for keyboard navigation) */
   onFocus?: () => void
 }) {
@@ -73,7 +69,6 @@ function PropertyRow({
     // Set this row as focused for keyboard navigation
     onFocus?.()
 
-    // console.log('3. onClick: isOpen:', isOpen, 'isOutsideClick:', isOutsideClick.current)
     if (!isOpen && isOutsideClick.current) open()
 
     isOutsideClick.current = false
@@ -83,12 +78,11 @@ function PropertyRow({
   const handlePointerDown = useCallback(() => {
     if (isLoading) return
     isOutsideClick.current = true
-    // console.log('1. row click: isOpen:', isOpen, 'isOutsideClick:', isOutsideClick.current)
   }, [isLoading])
 
   const valueSection = (
     <div className='min-w-0 relative flex text-sm flex-1'>
-      <div className='items-center flex-1 flex gap-[4px] w-full overflow-y-auto no-scrollbar'>
+      <div className='items-center flex-1 flex gap-[4px] w-full min-w-0'>
         {isLoading ? (
           <LoadingFieldSkeleton />
         ) : isGenerating ? (
@@ -108,7 +102,6 @@ function PropertyRow({
 
   return (
     <div
-      // ref={anchorRef}
       className='group/property-row flex w-full h-fit row group min-h-[30px]'
       onClick={handleClick}
       onPointerDown={handlePointerDown}
@@ -185,9 +178,6 @@ function EmptyField() {
 function GeneratingField() {
   return (
     <div className='relative rounded-lg px-1 overflow-hidden h-auto min-h-[28px] flex items-center w-full'>
-      {/* <div className='pointer-events-none absolute inset-0 scale-100 opacity-75 blur-lg transition-all duration-300 dark:opacity-50'>
-        <div className='bg-linear-to-r/increasing animate-hue-rotate absolute inset-x-6 inset-y-3 from-pink-400 to-purple-400' />
-      </div> */}
       <AiGeneratingIndicator className='relative z-10 whitespace-nowrap py-[2px]' />
     </div>
   )
