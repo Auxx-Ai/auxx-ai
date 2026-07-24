@@ -24,6 +24,12 @@ export interface CreateViewInput {
   contextType?: ViewContextType
   /** Whether this is the default view for this context. Defaults to false. */
   isDefault?: boolean
+  /**
+   * Canonical `EntityDefinition.id` this view belongs to, or null for non-entity
+   * surfaces. Resolved from `tableId` by the router. Persisted for the def-admin
+   * gate; the typed replacement for parsing the def out of `tableId`.
+   */
+  entityDefinitionId?: string | null
 }
 
 /**
@@ -39,6 +45,7 @@ export async function createView(input: CreateViewInput) {
     organizationId,
     contextType = 'table',
     isDefault = false,
+    entityDefinitionId = null,
   } = input
 
   // Check for duplicate name within same context type
@@ -79,6 +86,7 @@ export async function createView(input: CreateViewInput) {
         userId,
         organizationId,
         contextType,
+        entityDefinitionId,
         updatedAt: new Date(),
       })
       .returning(),
