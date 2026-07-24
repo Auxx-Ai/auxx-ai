@@ -2,7 +2,13 @@
 'use client'
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { Area, Level, levelToPermission } from '@auxx/lib/permissions/client'
+import {
+  Area,
+  ENTITY_BASE_AREAS,
+  Level,
+  levelToRecordBasePermission,
+  PERMISSION_AREAS,
+} from '@auxx/lib/permissions/client'
 import { isAccessManageable, type Resource } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
@@ -15,15 +21,16 @@ export interface DefBaselineRow {
   resource: Resource
   /**
    * The def's persisted `role:org_member` permission, or `undefined` when no row
-   * exists — the def falls through to the Records area level (= "Inherit").
+   * exists — the def falls through to its mapped Layer-2 base (= "Inherit").
    */
   baselineLevel: ResourcePermission | undefined
   /**
-   * What an unconfigured def resolves to: the member baseline's Records rung
-   * mapped to a record permission. Rendered inline on the Inherit option, so the
-   * child always names the level the parent row directly above it is set to.
+   * What an unconfigured def resolves to: its base area's member-baseline rung
+   * mapped to a record permission. Rendered inline on the Inherit option.
    */
   inheritedLevel: ResourcePermission
+  /** Source-aware label for defs whose base comes from another Layer-2 area. */
+  inheritLabelText?: string
   /** Baseline explicitly `none` → the def is restricted (hidden unless granted). */
   isLockedDown: boolean
 }
@@ -52,15 +59,18 @@ export function useDefBaselines() {
   const { isLoading: grantsLoading, roleDefaults, baseline } = usePermissionGrants()
 
   /**
-   * The parent Records rung as a record permission — the member baseline's own
-   * level if stored, else the USER role default. This must follow the parent
-   * row, not a constant: it is rendered directly beneath it.
+   * Every area that supplies a record base, mapped to the record permission
+   * vocabulary. The normal case is Records; feature-backed defs use their own
+   * area (currently Dispatch board).
    */
-  const recordsPermission = useMemo<ResourcePermission>(() => {
-    const level = baseline[Area.records] ?? roleDefaults?.[Area.records] ?? Level.None
-    // `levelToPermission` maps `Level.None` to `undefined` ("no permission");
-    // for display we want the `none` marker so the picker can name it.
-    return levelToPermission(level) ?? ResourcePermission.none
+  const inheritedPermissionByArea = useMemo(() => {
+    const permissions = new Map<Area, ResourcePermission>()
+    const baseAreas = new Set<Area>([Area.records, ...Object.values(ENTITY_BASE_AREAS)])
+    for (const area of baseAreas) {
+      const level = baseline[area] ?? roleDefaults?.[area] ?? Level.None
+      permissions.set(area, levelToRecordBasePermission(level) ?? ResourcePermission.none)
+    }
+    return permissions
   }, [baseline, roleDefaults])
 
   const rowsQuery = api.resourceAccess.allTypeAccess.useQuery(undefined, { staleTime: 30_000 })
@@ -135,15 +145,20 @@ export function useDefBaselines() {
         .filter(isAccessManageable)
         .map((resource) => {
           const baselineLevel = baselineByDef.get(resource.entityDefinitionId)
+          const baseArea = ENTITY_BASE_AREAS[resource.entityType ?? ''] ?? Area.records
           return {
             resource,
             baselineLevel,
-            inheritedLevel: recordsPermission,
+            inheritedLevel: inheritedPermissionByArea.get(baseArea) ?? ResourcePermission.none,
+            inheritLabelText:
+              baseArea === Area.records
+                ? undefined
+                : `Inherit · ${PERMISSION_AREAS[baseArea].label}`,
             isLockedDown: baselineLevel === ResourcePermission.none,
           }
         })
         .sort((a, b) => a.resource.plural.localeCompare(b.resource.plural)),
-    [resources, baselineByDef, recordsPermission]
+    [resources, baselineByDef, inheritedPermissionByArea]
   )
 
   /**

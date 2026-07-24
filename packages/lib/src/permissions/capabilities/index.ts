@@ -46,6 +46,7 @@ export {
 export { requirePermission } from './require'
 export {
   ALL_KEYS,
+  ENTITY_BASE_AREAS,
   ENTITY_WRITE_KEYS,
   effectiveDefault,
   ROLE_DEFAULTS,

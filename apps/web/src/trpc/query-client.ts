@@ -1,3 +1,5 @@
+// apps/web/src/trpc/query-client.ts
+
 import { defaultShouldDehydrateQuery, MutationCache, QueryClient } from '@tanstack/react-query'
 import posthog from 'posthog-js'
 import SuperJSON from 'superjson'
@@ -33,6 +35,14 @@ export const createQueryClient = () =>
         // With SSR, we usually want to set some default staleTime
         // above 0 to avoid refetching immediately on the client
         staleTime: 30 * 1000,
+        retry: (failureCount, error) => {
+          const data = (error as any)?.data
+          const status =
+            data?.httpStatus ??
+            (data?.code === 'FORBIDDEN' ? 403 : data?.code === 'UNAUTHORIZED' ? 401 : undefined)
+          if (status === 401 || status === 403) return false
+          return failureCount < 3
+        },
       },
       dehydrate: {
         serializeData: SuperJSON.serialize,

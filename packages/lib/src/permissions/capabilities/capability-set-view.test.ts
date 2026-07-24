@@ -3,6 +3,7 @@
 import type { ResourcePermission } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
 import { CapabilitySet } from './capability-set'
+import { canViewRecord, toResolvedRecordAccess } from './entity-access'
 import { PermissionKey } from './registry'
 
 /**
@@ -23,6 +24,7 @@ const build = (opts: {
   restricted?: string[]
   role?: 'OWNER' | 'ADMIN' | 'USER'
   seatType?: 'full' | 'worker'
+  defBaseOverrides?: Record<string, ResourcePermission | null>
 }) =>
   new CapabilitySet(
     new Set(opts.keys ?? (opts.hasView === false ? [] : [PermissionKey.recordsView])),
@@ -31,10 +33,63 @@ const build = (opts: {
     opts.seatType ?? 'full',
     (id) => id,
     new Set(opts.restricted ?? []),
-    defIdToDefinitionId
+    defIdToDefinitionId,
+    {},
+    new Set(),
+    opts.defBaseOverrides ?? {}
   )
 
 describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
+  it('uses a feature-area-derived base for dispatch record definitions', () => {
+    const recordsEditorWithoutDispatch = build({
+      keys: [PermissionKey.recordsView, PermissionKey.recordsEdit],
+      defBaseOverrides: { 'work-order-def': null },
+    })
+    expect(recordsEditorWithoutDispatch.canViewEntity('work-order-def')).toBe(false)
+
+    const dispatchReaderWithoutRecords = build({
+      keys: [PermissionKey.dispatchBoardView],
+      defBaseOverrides: { 'work-order-def': 'view' },
+    })
+    expect(dispatchReaderWithoutRecords.canViewEntity('work-order-def')).toBe(true)
+    expect(dispatchReaderWithoutRecords.canEditEntity('work-order-def')).toBe(false)
+
+    const dispatchManagerWithoutRecords = build({
+      keys: [PermissionKey.dispatchBoardView, PermissionKey.dispatchBoardManage],
+      defBaseOverrides: { 'work-order-def': 'edit' },
+    })
+    expect(dispatchManagerWithoutRecords.canViewEntity('work-order-def')).toBe(true)
+    expect(dispatchManagerWithoutRecords.canEditEntity('work-order-def')).toBe(true)
+  })
+
+  it('lets an explicit def grant replace a closed feature-area base', () => {
+    const caps = build({
+      keys: [PermissionKey.recordsView, PermissionKey.recordsEdit],
+      restricted: ['work-order-def'],
+      defAccess: { 'work-order-def': 'view' },
+      defBaseOverrides: { 'work-order-def': null },
+    })
+    expect(caps.canViewEntity('work-order-def')).toBe(true)
+    expect(caps.canEditEntity('work-order-def')).toBe(false)
+  })
+
+  it('keeps the worker linked-record carve-out with a closed dispatch base', () => {
+    const caps = build({
+      keys: [PermissionKey.dispatchMySchedule, PermissionKey.recordsViewLinked],
+      seatType: 'worker',
+      defBaseOverrides: { 'work-order-def': null },
+    })
+    expect(caps.canViewEntity('work-order-def')).toBe(true)
+    expect(caps.canEditEntity('work-order-def')).toBe(false)
+  })
+
+  it('serializes derived bases for the client resolver', () => {
+    const caps = build({ defBaseOverrides: { 'work-order-def': null } })
+    const snapshot = caps.toClientCapabilities()
+    expect(snapshot.defBaseOverrides).toEqual({ 'work-order-def': null })
+    expect(canViewRecord(toResolvedRecordAccess(snapshot), 'work-order-def')).toBe(false)
+  })
+
   it('a def with NO type-level grant is visible to everyone with records.view', () => {
     const caps = build({ restricted: ['other-def'] })
     expect(caps.canViewEntity('invoice-def')).toBe(true)

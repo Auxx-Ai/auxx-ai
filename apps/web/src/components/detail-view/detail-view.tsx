@@ -13,10 +13,12 @@ import {
 } from '@auxx/ui/components/main-page'
 import { PanelRight } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { NoAccess } from '~/components/permissions/ui/no-access'
 import { getRecordDrillPanels } from '~/components/records/record-drill-panels'
-import { toRecordId, useRecord, useResourceProperty } from '~/components/resources'
+import { toRecordId, useRecord, useResource, useResourceProperty } from '~/components/resources'
 import { useIsMobile } from '~/hooks/use-mobile'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { DetailViewActions } from './components/detail-view-actions'
 import { DetailViewMainTabs } from './detail-view-main-tabs'
@@ -31,6 +33,9 @@ import type { DetailViewProps } from './types'
  * Works for all entity types (system and custom) using registry-based configuration
  */
 export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: DetailViewProps) {
+  const { resource, isLoading: resourceLoading } = useResource(apiSlug)
+  const { can, canViewEntity } = useAccess()
+
   // Get resource properties including id (entityDefinitionId) and entityType
   const resourceProps = useResourceProperty(apiSlug, [
     'id', // entityDefinitionId
@@ -48,9 +53,13 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
 
   // Build recordId with the actual entityDefinitionId
   const recordId = toRecordId(entityDefinitionId, instanceId)
+  const canViewDefinition = resource ? canViewEntity(resource.entityDefinitionId) : !resourceLoading
 
   // Get record data
-  const { record, isLoading, isNotFound, hasLoadedOnce } = useRecord({ recordId, enabled: true })
+  const { record, isLoading, isNotFound, hasLoadedOnce } = useRecord({
+    recordId,
+    enabled: !resourceLoading && canViewDefinition,
+  })
 
   // Get config from registry based on entityType
   const config = getDetailViewConfig(entityType)
@@ -87,10 +96,45 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
 
   const backUrl = backUrlOverride ?? defaultBackUrl
 
+  // Filter once at the detail-view boundary so the tab strip, rendered
+  // sections, active-tab fallback, and lazy query owners all consume the same
+  // list. This also handles a hidden default or a denied `?tab=` deep link.
+  const visibleMainTabs = useMemo(
+    () => config.mainTabs.filter((tab) => !tab.permissionKey || can(tab.permissionKey)),
+    [config.mainTabs, can]
+  )
+  const requestedMainTab = mainTab ?? config.defaultTab ?? 'overview'
+  const activeMainTab = visibleMainTabs.some((tab) => tab.value === requestedMainTab)
+    ? requestedMainTab
+    : (visibleMainTabs[0]?.value ?? requestedMainTab)
+  const visibleConfig = useMemo(
+    () => ({ ...config, mainTabs: visibleMainTabs, defaultTab: activeMainTab }),
+    [config, visibleMainTabs, activeMainTab]
+  )
+  const visibleDrillPanels = useMemo(
+    () =>
+      getRecordDrillPanels(entityType).filter(
+        (panel) => !panel.permissionKey || can(panel.permissionKey)
+      ),
+    [entityType, can]
+  )
+
+  useEffect(() => {
+    if (mainTab !== activeMainTab) void setMainTab(activeMainTab)
+  }, [activeMainTab, mainTab, setMainTab])
+
   // Loading state — on first load the recordId is built with the apiSlug
   // fallback until `resource.list` hydrates, so "no record yet" (no fetch
   // attempt completed for the current id) must show the skeleton, not the
   // not-found screen.
+  if (resourceLoading) {
+    return <DetailViewSkeleton label={label} backUrl={backUrl} />
+  }
+
+  if (!canViewDefinition) {
+    return <NoAccess area={plural ?? label} backHref={backUrl} />
+  }
+
   if (isLoading || (!record && !hasLoadedOnce)) {
     return <DetailViewSkeleton label={label} backUrl={backUrl} />
   }
@@ -158,18 +202,18 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
           <DetailViewSections
             recordId={recordId}
             entityType={entityType}
-            config={config}
-            activeTab={mainTab ?? config.defaultTab ?? 'overview'}
+            config={visibleConfig}
+            activeTab={activeMainTab}
             onTabChange={setMainTab}
             record={record}
-            drillPanels={getRecordDrillPanels(entityType)}
+            drillPanels={visibleDrillPanels}
           />
         ) : (
           <DetailViewMainTabs
             recordId={recordId}
             entityType={entityType}
-            config={config}
-            activeTab={mainTab ?? config.defaultTab ?? 'overview'}
+            config={visibleConfig}
+            activeTab={activeMainTab}
             onTabChange={setMainTab}
             record={record}
           />

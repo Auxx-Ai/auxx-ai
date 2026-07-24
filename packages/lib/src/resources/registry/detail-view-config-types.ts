@@ -13,6 +13,8 @@ export interface MainTabDefinition {
   label: string
   /** Icon name (e.g., 'ticket', 'clock') */
   icon: string
+  /** Capability required to render the tab and mount its query-owning content. */
+  permissionKey?: string
   /**
    * Cancel the wrapping `<Section>`'s horizontal inset so the content (e.g. a
    * line-items table) spans edge-to-edge — the `sections` layout twin of the

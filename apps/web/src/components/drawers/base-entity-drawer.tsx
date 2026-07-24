@@ -178,6 +178,7 @@ function DrawerRecordFrame({
 }: DrawerRecordFrameProps) {
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const { hasAccess } = useFeatureFlags()
+  const { can } = useAccess()
   const organizationId = useDehydratedOrganizationId()
   const user = useDehydratedUser()
 
@@ -207,8 +208,13 @@ function DrawerRecordFrame({
   // (contacts, invoices, …), which keeps the render tree below byte-identical
   // to before this feature existed.
   const drillPanels = React.useMemo(
-    () => (entityType ? getRecordDrillPanels(entityType) : []),
-    [entityType]
+    () =>
+      entityType
+        ? getRecordDrillPanels(entityType).filter(
+            (panel) => !panel.permissionKey || can(panel.permissionKey)
+          )
+        : [],
+    [entityType, can]
   )
 
   // Shared two-level record drill (dispatch v4/02) — same `panel`/`item` nuqs

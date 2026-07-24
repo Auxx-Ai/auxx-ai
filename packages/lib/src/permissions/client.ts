@@ -22,6 +22,7 @@ export {
   canViewRecord,
   effectiveRecordLevel,
   levelToPermission,
+  levelToRecordBasePermission,
   NON_RECORD_DEF_SLUGS,
   type ResolvedRecordAccess,
   toResolvedRecordAccess,
@@ -52,6 +53,7 @@ export {
   PermissionKey,
   parseAreaLevels,
 } from './capabilities/registry'
+export { ENTITY_BASE_AREAS } from './capabilities/seat-policy'
 export type { Overage } from './overage-detection-service'
 export type {
   FeatureDefinition,

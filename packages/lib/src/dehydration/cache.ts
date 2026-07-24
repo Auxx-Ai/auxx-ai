@@ -9,7 +9,9 @@ import type { DehydratedState } from './types'
  */
 export class DehydrationCacheService extends BaseCacheService {
   constructor() {
-    super('dehydrated', 300) // 5 minute TTL
+    // v2 includes feature-area-derived per-def record bases in capabilities.
+    // Namespace the cache so pre-v2 snapshots cannot fail open for their TTL.
+    super('dehydrated:v2', 300) // 5 minute TTL
   }
 
   /**
