@@ -1,7 +1,7 @@
 // apps/web/src/components/kb/ui/landing/create-knowledge-base-button.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { useHotkey } from '@tanstack/react-hotkeys'
@@ -11,6 +11,7 @@ import { useCallback, useState } from 'react'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useKnowledgeBaseMutations } from '../../hooks/use-knowledge-base-mutations'
@@ -38,6 +39,7 @@ export function CreateKnowledgeBaseButton({
   const router = useRouter()
   const [isCreateKBOpen, setIsCreateKBOpen] = useState(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
+  const { can } = useAccess()
   const { createKnowledgeBase, isCreating } = useKnowledgeBaseMutations()
 
   const { isAtLimit, getLimit } = useFeatureFlags()
@@ -70,6 +72,9 @@ export function CreateKnowledgeBaseButton({
     },
     [createKnowledgeBase, router]
   )
+
+  // Members without the knowledge-base Full rung can't create — hide the trigger.
+  if (!can(PermissionKey.knowledgeBaseManage)) return null
 
   return (
     <>

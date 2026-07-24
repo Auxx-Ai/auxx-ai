@@ -1,16 +1,63 @@
 // ~/server/api/routers/kb.ts
 
+import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
+import { NotFoundError } from '@auxx/lib/errors'
 import { articleToMarkdown, ensureLearnedKb, KBService, linkArticlesIntoKb } from '@auxx/lib/kb'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter, notDemo } from '~/server/api/trpc'
 import { fireKBRevalidate } from '~/server/lib/kb-revalidate'
+
+/**
+ * Resolve an article to its home KnowledgeBase — articles inherit their KB's
+ * access level (doc 12 §0.5), so every article gate keys on the parent KB when
+ * no explicit `knowledgeBaseId` is supplied. Org-scoped; 404s a missing/foreign
+ * article. `Article.homeKnowledgeBaseId` is `notNull`.
+ */
+async function knowledgeBaseIdForArticle(
+  db: Database,
+  articleId: string,
+  organizationId: string
+): Promise<string> {
+  const [row] = await db
+    .select({ knowledgeBaseId: schema.Article.homeKnowledgeBaseId })
+    .from(schema.Article)
+    .where(and(eq(schema.Article.id, articleId), eq(schema.Article.organizationId, organizationId)))
+    .limit(1)
+  if (!row) throw new NotFoundError('Article not found')
+  return row.knowledgeBaseId
+}
+
+/**
+ * Resolve an article revision (version) → its article → home KnowledgeBase
+ * (doc 12 §3.1). Version/rename ops carry only a `versionId`, so they gate on
+ * the owning article's KB. Org-scoped; 404s a missing/foreign revision.
+ */
+async function knowledgeBaseIdForArticleVersion(
+  db: Database,
+  versionId: string,
+  organizationId: string
+): Promise<string> {
+  const [row] = await db
+    .select({ knowledgeBaseId: schema.Article.homeKnowledgeBaseId })
+    .from(schema.ArticleRevision)
+    .innerJoin(schema.Article, eq(schema.ArticleRevision.articleId, schema.Article.id))
+    .where(
+      and(
+        eq(schema.ArticleRevision.id, versionId),
+        eq(schema.ArticleRevision.organizationId, organizationId)
+      )
+    )
+    .limit(1)
+  if (!row) throw new NotFoundError('Article version not found')
+  return row.knowledgeBaseId
+}
 
 // Live-only fields. Draftable presentation fields go through
 // `kb.updateDraftSettings`.
@@ -125,23 +172,33 @@ async function revalidateForArticle(
 }
 
 export const knowledgeBaseRouter = createTRPCRouter({
-  byId: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+  byId: capabilityProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+    // Read — viewing a KB and its articles.
+    ctx.capabilities.assertViewInstance('kb', input.id)
     return await getKBService(ctx).getKnowledgeBaseById(input.id)
   }),
 
-  list: protectedProcedure.query(async ({ ctx }) => {
-    return await getKBService(ctx).listKnowledgeBases()
+  list: capabilityProcedure.query(async ({ ctx }) => {
+    // No coarse assert — filter the result to KBs the member may view (base-Edit
+    // fallback per §0.2 passes every KB with no explicit row). A None member
+    // simply gets an empty list, so the server-warmed page.tsx call never 403s.
+    const kbs = await getKBService(ctx).listKnowledgeBases()
+    return kbs.filter((kb: { id: string }) => ctx.capabilities.canViewInstance('kb', kb.id))
   }),
 
   /**
    * Idempotently provision the org's AI Memory KB (kind 'learned') and return
    * its id — the entry point for the "AI Memory" card on the KB landing page.
    */
-  ensureLearnedMemory: protectedProcedure.mutation(async ({ ctx }) => {
+  ensureLearnedMemory: capabilityProcedure.mutation(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
     if (!organizationId) {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User organization context not found' })
     }
+    // Full — provisioning the org's AI Memory KB is a settings-adjacent action
+    // (doc 12 §3.1). No instance exists yet to key on, so gate on the coarse
+    // `knowledgeBase` Full rung (mirrors `create`).
+    ctx.capabilities.assert(PermissionKey.knowledgeBaseManage)
     await new FeaturePermissionService(ctx.db).requireAccess(
       organizationId,
       FeatureKey.learnedMemory
@@ -150,11 +207,14 @@ export const knowledgeBaseRouter = createTRPCRouter({
     return { id: kb.id }
   }),
 
-  create: protectedProcedure.input(kbCreateSchema).mutation(async ({ ctx, input }) => {
+  create: capabilityProcedure.input(kbCreateSchema).mutation(async ({ ctx, input }) => {
     const organizationId = getUserOrganizationId(ctx.session)
     if (!organizationId) {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User organization context not found' })
     }
+    // L2 area gate: creating a KB requires `knowledgeBase` Full (no instance
+    // exists yet to key on). Plan-AND with the Layer-1 feature/limit gate below.
+    ctx.capabilities.assert(PermissionKey.knowledgeBaseManage)
     await new FeaturePermissionService(ctx.db).requireAccessAndLimit(
       organizationId,
       FeatureKey.knowledgeBase,
@@ -172,9 +232,11 @@ export const knowledgeBaseRouter = createTRPCRouter({
     return result
   }),
 
-  update: protectedProcedure
+  update: capabilityProcedure
     .input(z.object({ id: z.string(), data: kbLiveFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
+      // Full — updating a KB's live settings (slug/domain/visibility).
+      ctx.capabilities.assertAdminInstance('kb', input.id)
       const result = await getKBService(ctx).updateKnowledgeBase(input.id, input.data)
       void fireKBRevalidate(input.id)
       // Name/visibility feed the agent-prompt KB catalog.
@@ -182,51 +244,63 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return result
     }),
 
-  updateDraftSettings: protectedProcedure
+  updateDraftSettings: capabilityProcedure
     .input(z.object({ id: z.string(), patch: kbDraftSettingsSchema }))
     .mutation(async ({ ctx, input }) => {
+      // Full — staging KB presentation settings.
+      ctx.capabilities.assertAdminInstance('kb', input.id)
       // No revalidate — draft is admin-only.
       return await getKBService(ctx).updateDraftSettings(input.id, input.patch)
     }),
 
-  publishPendingSettings: protectedProcedure
+  publishPendingSettings: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .use(notDemo('publish knowledge base settings'))
     .mutation(async ({ ctx, input }) => {
+      // Full — publishing staged KB settings.
+      ctx.capabilities.assertAdminInstance('kb', input.id)
       const result = await getKBService(ctx).publishPendingSettings(input.id)
       void fireKBRevalidate(input.id)
       return result
     }),
 
-  discardSettingsDraft: protectedProcedure
+  discardSettingsDraft: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Full — discarding staged KB settings.
+      ctx.capabilities.assertAdminInstance('kb', input.id)
       // No revalidate — discard never affects the public site.
       return await getKBService(ctx).discardSettingsDraft(input.id)
     }),
 
-  delete: protectedProcedure
+  delete: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Full — deleting a KB and all its articles.
+      ctx.capabilities.assertAdminInstance('kb', input.id)
       const result = await getKBService(ctx).deleteKnowledgeBase(input.id)
       const organizationId = getUserOrganizationId(ctx.session)
       await onCacheEvent('kb.deleted', { orgId: organizationId })
       return result
     }),
 
-  publishSite: protectedProcedure
+  publishSite: capabilityProcedure
     .input(z.object({ id: z.string(), status: z.enum(['PUBLISHED', 'UNLISTED']) }))
     .use(notDemo('publish knowledge base'))
     .mutation(async ({ ctx, input }) => {
+      // Full — turning the whole public KB site on (governance, §0.6).
+      ctx.capabilities.assertAdminInstance('kb', input.id)
       const result = await getKBService(ctx).publishKnowledgeBase(input.id, input.status)
       void fireKBRevalidate(input.id)
       return result
     }),
 
-  unpublishSite: protectedProcedure
+  unpublishSite: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .use(notDemo('unpublish knowledge base'))
     .mutation(async ({ ctx, input }) => {
+      // Full — turning the whole public KB site off (governance, §0.6).
+      ctx.capabilities.assertAdminInstance('kb', input.id)
       const result = await getKBService(ctx).unpublishKnowledgeBase(input.id)
       void fireKBRevalidate(input.id)
       return result
@@ -234,7 +308,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
 
   // ─── Articles ────────────────────────────────────────────────────
 
-  getArticles: protectedProcedure
+  getArticles: capabilityProcedure
     .input(
       z.object({
         knowledgeBaseId: z.string(),
@@ -242,6 +316,8 @@ export const knowledgeBaseRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      // Read — articles inherit their KB's access level.
+      ctx.capabilities.assertViewInstance('kb', input.knowledgeBaseId)
       return await getKBService(ctx).getArticles(input.knowledgeBaseId, {
         includeUnpublished: input.includeUnpublished,
       })
@@ -249,7 +325,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
 
   // Link individually-chosen `page` articles from any KB into this KB, placed under
   // `targetParentArticleId` (e.g. the active tab) or the KB root. Idempotent.
-  linkArticles: protectedProcedure
+  linkArticles: capabilityProcedure
     .input(
       z.object({
         knowledgeBaseId: z.string().min(1),
@@ -265,12 +341,14 @@ export const knowledgeBaseRouter = createTRPCRouter({
           message: 'User organization context not found',
         })
       }
+      // Write — linking articles mutates the target KB's membership.
+      ctx.capabilities.assertEditInstance('kb', input.knowledgeBaseId)
       return linkArticlesIntoKb(ctx.db, organizationId, input.knowledgeBaseId, input.articleIds, {
         targetParentArticleId: input.targetParentArticleId,
       })
     }),
 
-  getArticleById: protectedProcedure
+  getArticleById: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -279,6 +357,11 @@ export const knowledgeBaseRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      // Read — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ??
+        (await knowledgeBaseIdForArticle(ctx.db, input.id, getUserOrganizationId(ctx.session)))
+      ctx.capabilities.assertViewInstance('kb', kbId)
       return await getKBService(ctx).getArticleById(
         input.id,
         input.knowledgeBaseId,
@@ -286,16 +369,20 @@ export const knowledgeBaseRouter = createTRPCRouter({
       )
     }),
 
-  getArticleBySlug: protectedProcedure
+  getArticleBySlug: capabilityProcedure
     .input(z.object({ slug: z.string(), knowledgeBaseId: z.string() }))
     .query(async ({ ctx, input }) => {
+      // Read — articles inherit their KB's access level.
+      ctx.capabilities.assertViewInstance('kb', input.knowledgeBaseId)
       return await getKBService(ctx).getArticleBySlug(input.slug, input.knowledgeBaseId)
     }),
 
-  createArticle: protectedProcedure
+  createArticle: capabilityProcedure
     .input(z.object({ knowledgeBaseId: z.string() }).and(articleCreateSchema))
     .mutation(async ({ ctx, input }) => {
       const { knowledgeBaseId, adjacentTo, position, ...articleData } = input
+      // Write — creating an article in the target KB (article doesn't exist yet).
+      ctx.capabilities.assertEditInstance('kb', knowledgeBaseId)
       const result = await getKBService(ctx).createArticle(
         knowledgeBaseId,
         articleData as Parameters<ReturnType<typeof getKBService>['createArticle']>[1],
@@ -311,7 +398,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
    * Marks the article as having unpublished changes. Public site is NOT
    * revalidated — drafts aren't public.
    */
-  updateArticleDraft: protectedProcedure
+  updateArticleDraft: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -325,6 +412,10 @@ export const knowledgeBaseRouter = createTRPCRouter({
       // the article sink writes managed drafts through the lib fn directly, so
       // this must NOT live inside KBService. Detach (managed=false) re-opens edits.
       const organizationId = getUserOrganizationId(ctx.session)
+      // Write — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ?? (await knowledgeBaseIdForArticle(ctx.db, input.id, organizationId))
+      ctx.capabilities.assertEditInstance('kb', kbId)
       const target = await ctx.db.query.Article.findFirst({
         where: and(
           eq(schema.Article.id, input.id),
@@ -350,7 +441,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
   /**
    * Edit structural fields (slug/parentId/order). Live; revalidates.
    */
-  updateArticleStructure: protectedProcedure
+  updateArticleStructure: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -359,6 +450,11 @@ export const knowledgeBaseRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Write — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ??
+        (await knowledgeBaseIdForArticle(ctx.db, input.id, getUserOrganizationId(ctx.session)))
+      ctx.capabilities.assertEditInstance('kb', kbId)
       const result = await getKBService(ctx).updateArticleStructure(
         input.id,
         input.data,
@@ -368,7 +464,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return result
     }),
 
-  publishArticle: protectedProcedure
+  publishArticle: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -379,6 +475,10 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .use(notDemo('publish knowledge base articles'))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
+      // Write — publishing an individual article (contributor action, §0.6).
+      const kbId =
+        input.knowledgeBaseId ?? (await knowledgeBaseIdForArticle(ctx.db, input.id, organizationId))
+      ctx.capabilities.assertEditInstance('kb', kbId)
       const featureService = new FeaturePermissionService(ctx.db)
       const articleLimit = await featureService.getLimit(
         organizationId,
@@ -416,42 +516,68 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return result
     }),
 
-  unpublishArticle: protectedProcedure
+  unpublishArticle: capabilityProcedure
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .use(notDemo('unpublish knowledge base articles'))
     .mutation(async ({ ctx, input }) => {
-      const result = await getKBService(ctx).unpublishArticle(input.id, input.knowledgeBaseId)
       const organizationId = getUserOrganizationId(ctx.session)
+      // Write — unpublishing an individual article (contributor action, §0.6).
+      const kbId =
+        input.knowledgeBaseId ?? (await knowledgeBaseIdForArticle(ctx.db, input.id, organizationId))
+      ctx.capabilities.assertEditInstance('kb', kbId)
+      const result = await getKBService(ctx).unpublishArticle(input.id, input.knowledgeBaseId)
       await onCacheEvent('article.unpublished', { orgId: organizationId })
       await revalidateForArticle(ctx, input.knowledgeBaseId, input.id)
       return result
     }),
 
-  archiveArticle: protectedProcedure
+  archiveArticle: capabilityProcedure
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .use(notDemo('archive knowledge base articles'))
     .mutation(async ({ ctx, input }) => {
+      // Write — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ??
+        (await knowledgeBaseIdForArticle(ctx.db, input.id, getUserOrganizationId(ctx.session)))
+      ctx.capabilities.assertEditInstance('kb', kbId)
       const result = await getKBService(ctx).archiveArticle(input.id)
       await revalidateForArticle(ctx, input.knowledgeBaseId, input.id)
       return result
     }),
 
-  unarchiveArticle: protectedProcedure
+  unarchiveArticle: capabilityProcedure
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
+      // Write — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ??
+        (await knowledgeBaseIdForArticle(ctx.db, input.id, getUserOrganizationId(ctx.session)))
+      ctx.capabilities.assertEditInstance('kb', kbId)
       return await getKBService(ctx).unarchiveArticle(input.id)
     }),
 
-  discardArticleDraft: protectedProcedure
+  discardArticleDraft: capabilityProcedure
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
+      // Write — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ??
+        (await knowledgeBaseIdForArticle(ctx.db, input.id, getUserOrganizationId(ctx.session)))
+      ctx.capabilities.assertEditInstance('kb', kbId)
       return await getKBService(ctx).discardArticleDraft(input.id)
     }),
 
-  restoreArticleVersion: protectedProcedure
+  restoreArticleVersion: capabilityProcedure
     .input(z.object({ versionId: z.string() }))
     .use(notDemo('restore knowledge base article version'))
     .mutation(async ({ ctx, input }) => {
+      // Write — resolve version → article → home KB (§3.1).
+      const kbId = await knowledgeBaseIdForArticleVersion(
+        ctx.db,
+        input.versionId,
+        getUserOrganizationId(ctx.session)
+      )
+      ctx.capabilities.assertEditInstance('kb', kbId)
       return await getKBService(ctx).restoreArticleVersion(input.versionId, ctx.session.user.id)
     }),
 
@@ -461,10 +587,13 @@ export const knowledgeBaseRouter = createTRPCRouter({
    * pin scopes the revert to a specific turn — if a newer turn has
    * superseded it, this returns "turn_mismatch" and no-ops.
    */
-  revertKopilotTurn: protectedProcedure
+  revertKopilotTurn: capabilityProcedure
     .input(z.object({ articleId: z.string(), turnId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
+      // Write — reviewing (undoing) a Kopilot turn's edits (§0.8).
+      const kbId = await knowledgeBaseIdForArticle(ctx.db, input.articleId, organizationId)
+      ctx.capabilities.assertEditInstance('kb', kbId)
       const { revertKopilotKbTurn } = await import(
         '@auxx/lib/ai/kopilot/capabilities/kb/tools/write-helpers'
       )
@@ -485,12 +614,15 @@ export const knowledgeBaseRouter = createTRPCRouter({
    * the post-turn banner — both the live signal and recovery-on-mount after a
    * refresh (the snapshot survives reload, the agent event does not).
    */
-  getKopilotTurnReview: protectedProcedure
+  getKopilotTurnReview: capabilityProcedure
     .input(z.object({ articleId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
-      // Snapshots are keyed by articleId alone in Redis — gate on org ownership
-      // so a guessed id can't read another org's draft content.
+      // Read — reviewing a Kopilot turn's pre-edit snapshot (§0.8). Snapshots are
+      // keyed by articleId alone in Redis, so resolve → home KB and gate Read (a
+      // guessed id can't read another org's / another KB's draft content).
+      const kbId = await knowledgeBaseIdForArticle(ctx.db, input.articleId, organizationId)
+      ctx.capabilities.assertViewInstance('kb', kbId)
       const article = await ctx.db.query.Article.findFirst({
         where: and(
           eq(schema.Article.id, input.articleId),
@@ -515,10 +647,13 @@ export const knowledgeBaseRouter = createTRPCRouter({
    * released by `finalizeKopilotKbTurn`. Turn-pinned: a stale Keep button won't
    * clobber a newer turn's snapshot.
    */
-  keepKopilotTurn: protectedProcedure
+  keepKopilotTurn: capabilityProcedure
     .input(z.object({ articleId: z.string(), turnId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
+      // Write — committing (keeping) a Kopilot turn's edits (§0.8).
+      const kbId = await knowledgeBaseIdForArticle(ctx.db, input.articleId, organizationId)
+      ctx.capabilities.assertEditInstance('kb', kbId)
       const article = await ctx.db.query.Article.findFirst({
         where: and(
           eq(schema.Article.id, input.articleId),
@@ -539,7 +674,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return { ok: true as const }
     }),
 
-  moveArticle: protectedProcedure
+  moveArticle: capabilityProcedure
     .input(
       z.object({
         knowledgeBaseId: z.string(),
@@ -552,12 +687,21 @@ export const knowledgeBaseRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { knowledgeBaseId, ...rest } = input
+      // Write on the KB being reorganized; if the article's home KB differs
+      // (a linked article), require Write on both (§3.3 "both KBs").
+      ctx.capabilities.assertEditInstance('kb', knowledgeBaseId)
+      const homeKbId = await knowledgeBaseIdForArticle(
+        ctx.db,
+        input.id,
+        getUserOrganizationId(ctx.session)
+      )
+      if (homeKbId !== knowledgeBaseId) ctx.capabilities.assertEditInstance('kb', homeKbId)
       const result = await getKBService(ctx).moveArticle(knowledgeBaseId, rest)
       void fireKBRevalidate(knowledgeBaseId)
       return result
     }),
 
-  updateArticlesBatch: protectedProcedure
+  updateArticlesBatch: capabilityProcedure
     .input(
       z.object({
         knowledgeBaseId: z.string(),
@@ -570,29 +714,42 @@ export const knowledgeBaseRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Write — batch article edits within the target KB.
+      ctx.capabilities.assertEditInstance('kb', input.knowledgeBaseId)
       return await getKBService(ctx).updateArticlesBatch(
         input.knowledgeBaseId,
         input.articles as Parameters<ReturnType<typeof getKBService>['updateArticlesBatch']>[1]
       )
     }),
 
-  deleteArticle: protectedProcedure
+  deleteArticle: capabilityProcedure
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const result = await getKBService(ctx).deleteArticle(input.id, input.knowledgeBaseId)
       const organizationId = getUserOrganizationId(ctx.session)
+      // Write — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ?? (await knowledgeBaseIdForArticle(ctx.db, input.id, organizationId))
+      ctx.capabilities.assertEditInstance('kb', kbId)
+      const result = await getKBService(ctx).deleteArticle(input.id, input.knowledgeBaseId)
       await onCacheEvent('article.deleted', { orgId: organizationId })
       if (input.knowledgeBaseId) void fireKBRevalidate(input.knowledgeBaseId)
       return result
     }),
 
-  getArticleVersions: protectedProcedure
+  getArticleVersions: capabilityProcedure
     .input(z.object({ articleId: z.string() }))
     .query(async ({ ctx, input }) => {
+      // Read — resolve → home KB (§3.1).
+      const kbId = await knowledgeBaseIdForArticle(
+        ctx.db,
+        input.articleId,
+        getUserOrganizationId(ctx.session)
+      )
+      ctx.capabilities.assertViewInstance('kb', kbId)
       return await getKBService(ctx).getArticleVersions(input.articleId)
     }),
 
-  getArticleDiff: protectedProcedure
+  getArticleDiff: capabilityProcedure
     .input(
       z.object({
         articleId: z.string(),
@@ -602,12 +759,24 @@ export const knowledgeBaseRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      // Read — resolve → home KB (§3.1).
+      const kbId = await knowledgeBaseIdForArticle(
+        ctx.db,
+        input.articleId,
+        getUserOrganizationId(ctx.session)
+      )
+      ctx.capabilities.assertViewInstance('kb', kbId)
       return await getKBService(ctx).getArticleDiff(input.articleId, input.base, input.compare)
     }),
 
-  exportArticleMarkdown: protectedProcedure
+  exportArticleMarkdown: capabilityProcedure
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
+      // Read — gate on the placement KB if supplied, else the article's home KB.
+      const kbId =
+        input.knowledgeBaseId ??
+        (await knowledgeBaseIdForArticle(ctx.db, input.id, getUserOrganizationId(ctx.session)))
+      ctx.capabilities.assertViewInstance('kb', kbId)
       const article = await getKBService(ctx).getArticleById(input.id, input.knowledgeBaseId)
       if (article.articleKind === 'link') {
         throw new TRPCError({
@@ -626,9 +795,16 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return { filename, markdown: header + markdown }
     }),
 
-  renameArticleVersion: protectedProcedure
+  renameArticleVersion: capabilityProcedure
     .input(z.object({ versionId: z.string(), label: z.string().nullish() }))
     .mutation(async ({ ctx, input }) => {
+      // Write — resolve version → article → home KB (§3.1).
+      const kbId = await knowledgeBaseIdForArticleVersion(
+        ctx.db,
+        input.versionId,
+        getUserOrganizationId(ctx.session)
+      )
+      ctx.capabilities.assertEditInstance('kb', kbId)
       await getKBService(ctx).renameArticleVersion(input.versionId, input.label ?? null)
       return { success: true }
     }),

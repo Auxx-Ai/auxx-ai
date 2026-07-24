@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/dialogs/kb-empty-state.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   MainPage,
@@ -12,12 +13,15 @@ import {
 import { Book, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useKnowledgeBaseMutations } from '../../hooks/use-knowledge-base-mutations'
 import { KnowledgeBaseDialog, type KnowledgeBaseFormValues } from './kb-knowledge-base-dialog'
 
 export function KBEmptyState() {
   const router = useRouter()
   const [showDialog, setShowDialog] = useState(false)
+  const { can } = useAccess()
+  const canCreate = can(PermissionKey.knowledgeBaseManage)
   const { createKnowledgeBase, isCreating } = useKnowledgeBaseMutations()
 
   const handleCreate = async (values: KnowledgeBaseFormValues) => {
@@ -45,13 +49,16 @@ export function KBEmptyState() {
           </div>
           <h2 className='text-xl font-semibold'>No knowledge bases yet</h2>
           <p className='mt-2 max-w-md text-sm text-muted-foreground'>
-            Create your first knowledge base to start publishing articles, FAQs, and how-to guides
-            for your customers.
+            {canCreate
+              ? 'Create your first knowledge base to start publishing articles, FAQs, and how-to guides for your customers.'
+              : 'No knowledge bases have been created yet. Ask an admin to add one.'}
           </p>
-          <Button className='mt-6' onClick={() => setShowDialog(true)} loading={isCreating}>
-            <Plus />
-            Create Knowledge Base
-          </Button>
+          {canCreate && (
+            <Button className='mt-6' onClick={() => setShowDialog(true)} loading={isCreating}>
+              <Plus />
+              Create Knowledge Base
+            </Button>
+          )}
         </div>
       </MainPageContent>
 

@@ -1,11 +1,13 @@
 // apps/web/src/components/kb/ui/knowledge-bases/knowledge-bases-list.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { Library, Search } from 'lucide-react'
 import { useEffect } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { useListSelection } from '~/components/list-selection'
+import { useAccess } from '~/providers/capabilities-provider'
 import { CreateKnowledgeBaseButton } from '../landing/create-knowledge-base-button'
 import { KnowledgeBaseCard } from './knowledge-base-card'
 import { useKnowledgeBasesList } from './knowledge-bases-provider'
@@ -13,6 +15,8 @@ import { useKnowledgeBasesList } from './knowledge-bases-provider'
 export function KnowledgeBasesList() {
   const { knowledgeBases, isLoading, searchQuery } = useKnowledgeBasesList()
   const setItemIds = useListSelection((s) => s.setItemIds)
+  const { can } = useAccess()
+  const canCreate = can(PermissionKey.knowledgeBaseManage)
 
   useEffect(() => {
     setItemIds(knowledgeBases.map((kb) => kb.id))
@@ -40,8 +44,12 @@ export function KnowledgeBasesList() {
       <EmptyState
         icon={Library}
         title='No knowledge bases yet'
-        description='Create your first knowledge base to start publishing articles.'
-        button={<CreateKnowledgeBaseButton />}
+        description={
+          canCreate
+            ? 'Create your first knowledge base to start publishing articles.'
+            : 'No knowledge bases have been created yet. Ask an admin to add one.'
+        }
+        button={canCreate ? <CreateKnowledgeBaseButton /> : <div className='h-12' />}
       />
     )
   }

@@ -31,5 +31,14 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
       full: 'Change settings',
     },
   },
-  // kb / dashboard added by their slices
+  kb: {
+    noun: 'knowledge base',
+    baselineHint: 'Everyone in the workspace can read and write its articles by default.',
+    levels: {
+      read: 'Read articles',
+      write: 'Write & publish articles',
+      full: 'Manage the KB & its settings',
+    },
+  },
+  // dashboard added by its slice
 }

@@ -70,10 +70,19 @@ const USER_ADMIN_NONE_AREAS = new Set<Area>([
 const USER_READ_AREAS = new Set<Area>([Area.datasets])
 
 /**
+ * Areas whose USER default is `Write`/`Edit` (not None/Read/Full). KB is
+ * collaborative content: everyone reads + authors articles by default; changing
+ * KB *settings* (Full) is a deliberate grant (doc 12 §0.3). Without an Edit
+ * default, per-KB share-up to Full would be the only per-KB lever and article
+ * authoring would need an org-wide bump.
+ */
+const USER_EDIT_AREAS = new Set<Area>([Area.knowledgeBase])
+
+/**
  * What each role gets out of the box, per area (before grants + seat clamp).
  * OWNER/ADMIN short-circuit to Full anyway; USER is Full everywhere except the
- * org-administration areas in {@link USER_ADMIN_NONE_AREAS} (`None`) and the
- * {@link USER_READ_AREAS} (`Read`).
+ * org-administration areas in {@link USER_ADMIN_NONE_AREAS} (`None`), the
+ * {@link USER_READ_AREAS} (`Read`), and the {@link USER_EDIT_AREAS} (`Edit`).
  */
 export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
   OWNER: ALL_FULL,
@@ -83,7 +92,9 @@ export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
       ? Level.None
       : USER_READ_AREAS.has(area)
         ? Level.Read
-        : Level.Full
+        : USER_EDIT_AREAS.has(area)
+          ? Level.Edit
+          : Level.Full
   ),
 }
 

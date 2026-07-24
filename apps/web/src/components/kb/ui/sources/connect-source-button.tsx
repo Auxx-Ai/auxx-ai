@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/sources/connect-source-button.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -16,6 +17,7 @@ import { ClipboardPaste, FileText, Globe, Plus, ShoppingBag } from 'lucide-react
 import { useState } from 'react'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
+import { useAccess } from '~/providers/capabilities-provider'
 import { CrawlWebsiteWizard } from '../editor/crawl-website-wizard'
 import { CreateKnowledgeSourceDialog } from '../editor/create-knowledge-source-dialog'
 
@@ -40,9 +42,13 @@ export function ConnectSourceButton({
 } = {}) {
   const [crawlOpen, setCrawlOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
+  const { can } = useAccess()
 
   // Page-local shortcut: N opens the website crawler (the headline source).
   useHotkey('N', () => setCrawlOpen(true), { enabled: registerShortcut })
+
+  // Connecting a source contributes content — the knowledge-base Write rung.
+  if (!can(PermissionKey.knowledgeBaseEdit)) return null
 
   return (
     <>

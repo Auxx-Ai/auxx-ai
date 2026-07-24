@@ -110,10 +110,11 @@ export function isCustomResource(resource: Resource): resource is CustomResource
  * hidden from the entity-def Access UI (capability layer v2 phase 3):
  * - **Mail/messaging infra** (`inbox`…`sequence`) — their `ResourceAccess` rows
  *   carry mail-sharing semantics, not def restriction.
- * - **Instance-access resources** (`dataset`) — governed by their own L2 area +
- *   per-instance `ResourceAccess` grants (the Share card), disjoint from
- *   type-level def enforcement (plan 08 §0.6 / 11 §0.6). A def-access grid row
- *   for these would be a phantom control that writes rows nothing reads.
+ * - **Instance-access resources** (`dataset`, `kb`) — governed by their own L2
+ *   area + per-instance `ResourceAccess` grants (the Share card), disjoint from
+ *   type-level def enforcement (plan 08 §0.6 / 11 §0.6 / 12 §0.11). `article`
+ *   inherits its KB's grants (no per-article grants). A def-access grid row for
+ *   any of these would be a phantom control that writes rows nothing reads.
  *
  * Client-safe mirror of the server-side `NON_RECORD_DEF_SLUGS` in
  * `permissions/capabilities/entity-access.ts` — kept in sync by hand.
@@ -126,6 +127,8 @@ export const NON_RECORD_ENTITY_SLUGS: ReadonlySet<string> = new Set([
   'snippet',
   'sequence',
   'dataset',
+  'kb',
+  'article',
 ])
 
 /**
