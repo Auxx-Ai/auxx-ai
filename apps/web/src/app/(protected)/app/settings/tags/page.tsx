@@ -12,9 +12,7 @@ async function TagsPage() {
       description='Shared tags help you and your team stay organize conversations, tickets, and more'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Tags' }]}>
       <AdminPageGuard />
-      <div className='p-3 sm:p-8'>
-        <TagTreeView />
-      </div>
+      <TagTreeView />
     </SettingsPage>
   )
 }
