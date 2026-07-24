@@ -171,6 +171,15 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
     user: ['userCapabilities'],
     org: ['restrictedEntityDefIds'],
   },
+  // Instance-level grant changes on an instance-access resource (datasets etc.)
+  // feed `instanceAccess` in the capability blob (per-user) AND the org-wide
+  // `restrictedInstanceIds` set (§1.5). Emitted ONLY when the target's def id ∈
+  // INSTANCE_ACCESS_RESOURCES, so generic mail-share instance traffic (which
+  // fires the noisy `resource-access.changed`) never churns these caches.
+  'resource-access.instance.changed': {
+    user: ['userCapabilities'],
+    org: ['restrictedInstanceIds'],
+  },
 
   // ── Capability grants (permissions plan §5.3) ──
   // Emitted by every PermissionGrant create/update/delete. User grants target a

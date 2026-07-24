@@ -18,7 +18,7 @@ import { api } from '~/trpc/react'
 import { Tooltip } from '../../global/tooltip'
 import { AccessLevelsGuide } from './access-levels-guide'
 import { EnterpriseGate, useMailPermissionsGated } from './enterprise-gate'
-import { GranteeList } from './grantee-list'
+import { MailGranteeList } from './mail-grantee-list'
 
 /** A tiny stacked avatar for the share button's grantee cluster. */
 function MiniActorAvatar({ actorId }: { actorId: ActorId }) {
@@ -111,7 +111,7 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
             <span className='font-medium text-sm'>Share conversation</span>
           </div>
           <div className='px-2 py-2'>
-            <GranteeList
+            <MailGranteeList
               grants={grants}
               onGrant={grant}
               onChangeLens={changeLens}

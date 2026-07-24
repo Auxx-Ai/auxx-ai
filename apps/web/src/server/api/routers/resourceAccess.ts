@@ -1,7 +1,9 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { BadRequestError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
+import { getCapabilities, isInstanceAccessKey } from '@auxx/lib/permissions'
 import type { ResourceAccessContext } from '@auxx/lib/resource-access'
 import {
   assertCanManageMailSharing,
@@ -21,6 +23,7 @@ import {
   setTypeAccess,
 } from '@auxx/lib/resource-access'
 import type { RecordId } from '@auxx/types/resource'
+import { parseRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
@@ -68,6 +71,26 @@ async function assertCanManageTypeAccess(
   }
 }
 
+/**
+ * Authorize a per-INSTANCE sharing mutation (§1.6). If the target's def id is an
+ * instance-access resource (datasets etc.), managing its sharing requires
+ * `canAdminInstance(key, instanceId)` **or** OWNER/ADMIN — scoped to the exact
+ * `entityInstanceId` (no cross-instance escalation) — and returns `true` so the
+ * caller SKIPS the mail-sharing authorizer + feature gate. Returns `false` for
+ * generic mail targets (`contact:<id>`, `inbox:<id>`, …), which fall through to
+ * {@link assertCanManageMailSharing}.
+ */
+async function authorizeInstanceTarget(
+  ctx: { db: any; session: { organizationId: string; userId: string } },
+  recordId: string
+): Promise<boolean> {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
+  if (!isInstanceAccessKey(entityDefinitionId)) return false
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  capabilities.assertAdminInstance(entityDefinitionId, entityInstanceId)
+  return true
+}
+
 export const resourceAccessRouter = createTRPCRouter({
   /** Grant access to a specific entity instance */
   grantInstance: protectedProcedure
@@ -81,7 +104,13 @@ export const resourceAccessRouter = createTRPCRouter({
           ResourceGranteeType.role,
         ]),
         granteeId: z.string(),
+        // `none` is accepted only as the workspace-baseline (`role:org_member`)
+        // downward marker for instance-access resources (datasets etc. — §1.4):
+        // it restricts the instance without granting anyone. Mail-share targets
+        // never send it (their picker is view/manager). The compose + resolver
+        // already keep `'none'` instance rows as an explicit floor.
         permission: z.enum([
+          ResourcePermission.none,
           ResourcePermission.view,
           ResourcePermission.edit,
           ResourcePermission.admin,
@@ -92,8 +121,22 @@ export const resourceAccessRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const context = toContext(ctx)
       const recordId = input.recordId as RecordId
-      await assertCanManageMailSharing(context, recordId)
-      await assertMailSharingFeature(context, recordId, [input])
+      // `none` is the instance-access baseline lockdown marker (§1.4). The enum
+      // permits it, but it must never land on a mail-share target — reject it for
+      // any non-instance-access recordId (defense in depth; mail pickers never
+      // send it). Keeps the shared enum honest without a per-consumer schema.
+      if (
+        input.permission === ResourcePermission.none &&
+        !isInstanceAccessKey(parseRecordId(recordId).entityDefinitionId)
+      ) {
+        throw new BadRequestError(
+          'The "none" permission is only valid for instance-access resources'
+        )
+      }
+      if (!(await authorizeInstanceTarget(ctx, recordId))) {
+        await assertCanManageMailSharing(context, recordId)
+        await assertMailSharingFeature(context, recordId, [input])
+      }
       await grantInstanceAccess(context, {
         recordId,
         granteeType: input.granteeType,
@@ -175,10 +218,12 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const context = toContext(ctx)
-      await assertCanManageMailSharing(context, input.recordId as RecordId, {
-        selfRevokeGranteeId: input.granteeId,
-        selfRevokeGranteeType: input.granteeType,
-      })
+      if (!(await authorizeInstanceTarget(ctx, input.recordId))) {
+        await assertCanManageMailSharing(context, input.recordId as RecordId, {
+          selfRevokeGranteeId: input.granteeId,
+          selfRevokeGranteeType: input.granteeType,
+        })
+      }
       const revoked = await revokeInstanceAccess(context, {
         recordId: input.recordId as RecordId,
         granteeType: input.granteeType,
@@ -256,8 +301,10 @@ export const resourceAccessRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const context = toContext(ctx)
       const recordId = input.recordId as RecordId
-      await assertCanManageMailSharing(context, recordId)
-      await assertMailSharingFeature(context, recordId, input.grants)
+      if (!(await authorizeInstanceTarget(ctx, recordId))) {
+        await assertCanManageMailSharing(context, recordId)
+        await assertMailSharingFeature(context, recordId, input.grants)
+      }
       await setInstanceAccess(context, recordId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',

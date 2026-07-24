@@ -7,7 +7,10 @@ import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Section } from '@auxx/ui/components/section'
 import { Plus, Users } from 'lucide-react'
-import { GranteeAddButton, GranteeList } from '~/components/mail-permissions/ui/grantee-list'
+import {
+  MailGranteeAddButton,
+  MailGranteeList,
+} from '~/components/mail-permissions/ui/mail-grantee-list'
 
 /** A grantee row as the form edits it (mirrors {@link InboxForm}'s FormGrant). */
 interface FormGrant {
@@ -65,16 +68,16 @@ export function InboxMembersPage({
         icon={<Users className='size-4' />}
         collapsible={false}
         actions={
-          <GranteeAddButton grants={grants} onGrant={onGrant} disabled={disabled}>
+          <MailGranteeAddButton grants={grants} onGrant={onGrant} disabled={disabled}>
             <Button variant='ghost' size='xs' disabled={disabled}>
               <Plus />
               Add
             </Button>
-          </GranteeAddButton>
+          </MailGranteeAddButton>
         }>
         {note && <p className='px-1 pb-2 text-muted-foreground text-xs'>{note}</p>}
 
-        <GranteeList
+        <MailGranteeList
           grants={grants}
           onGrant={onGrant}
           onChangeLens={onChangeLens}

@@ -4,6 +4,7 @@ import type { ResourcePermission } from '@auxx/database/enums'
 import {
   getCachedResources,
   getCachedRestrictedEntityDefIds,
+  getCachedRestrictedInstanceIds,
   getCachedUserCapabilities,
   getOrgCache,
 } from '../../cache'
@@ -66,11 +67,12 @@ export async function getCapabilities(
   orgId: string,
   _db?: unknown
 ): Promise<CapabilitySet> {
-  const [caps, roleMap, resources, restrictedDefIds] = await Promise.all([
+  const [caps, roleMap, resources, restrictedDefIds, restrictedInstanceIds] = await Promise.all([
     getCachedUserCapabilities(userId, orgId),
     getOrgCache().get(orgId, 'memberRoleMap'),
     getCachedResources(orgId),
     getCachedRestrictedEntityDefIds(orgId),
+    getCachedRestrictedInstanceIds(orgId),
   ])
 
   const entry = roleMap[userId]
@@ -92,6 +94,8 @@ export async function getCapabilities(
     }
   }
 
+  // instanceAccess keys on the globally-unique instance CUID (Dataset.id etc.),
+  // so — unlike defAccess — no keyspace normalization is needed (§1.2).
   return new CapabilitySet(
     new Set(caps.keys),
     defAccess,
@@ -99,6 +103,8 @@ export async function getCapabilities(
     seatType,
     buildDefIdToSlug(resources),
     new Set(restrictedDefIds.map(toDefinitionId)),
-    toDefinitionId
+    toDefinitionId,
+    caps.instanceAccess ?? {},
+    new Set(restrictedInstanceIds)
   )
 }

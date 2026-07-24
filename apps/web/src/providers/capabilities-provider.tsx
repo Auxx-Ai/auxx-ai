@@ -4,8 +4,11 @@
 import {
   administersAnyDef,
   type ClientCapabilities,
+  canAdminInstance,
   canAdministerRecord,
+  canEditInstance,
   canEditRecord,
+  canViewInstance,
   canViewRecord,
   PERMISSION_REGISTRY_MAP,
   type PermissionKey,
@@ -13,6 +16,7 @@ import {
 } from '@auxx/lib/permissions/client'
 import type { SubscribeHandlers } from '@auxx/lib/realtime/client'
 import { rooms } from '@auxx/lib/realtime/client'
+import type { RecordId } from '@auxx/types/resource'
 import type React from 'react'
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useRealtimeRoom } from '~/realtime/hooks'
@@ -75,6 +79,26 @@ interface CapabilitiesContextType {
    * the per-def actions; this only decides discoverability of the entry point.
    */
   administersAnyDef: boolean
+  /**
+   * Per-instance READ gate for instance-access resources (datasets etc.) —
+   * mirrors the server `CapabilitySet.canViewInstance`. Pass a whole `RecordId`
+   * (`toRecordId('dataset', id)`); returns `false` for any non-instance-access
+   * def part. Degrade-only; the server remains the source of truth.
+   */
+  canViewInstance: (recordId: RecordId) => boolean
+  /** Per-instance WRITE gate — mirrors the server `canEditInstance`. */
+  canEditInstance: (recordId: RecordId) => boolean
+  /**
+   * Per-instance ADMIN gate (`Full`) — mirrors the server `canAdminInstance`.
+   * Governs who may re-share an instance (the Share card's editable affordances).
+   */
+  canAdminInstance: (recordId: RecordId) => boolean
+  /**
+   * Whether an instance carries ≥1 explicit instance-access row (the org-wide
+   * `restrictedInstanceIds` signal, §1.3) — drives the "Shared"/🔒 badge. Pass
+   * the bare `entityInstanceId` (CUID), NOT a `RecordId`.
+   */
+  isRestrictedInstance: (instanceId: string) => boolean
   /** The current member's composed capability keys. */
   capabilities: PermissionKey[]
   isLoading: boolean
@@ -143,6 +167,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   const value = useMemo<CapabilitiesContextType>(() => {
     const capKeys = new Set<string>(snapshot.keys)
     const resolved = toResolvedRecordAccess(snapshot)
+    const restrictedInstances = new Set<string>(snapshot.restrictedInstanceIds ?? [])
 
     const can = (key: PermissionKey | string): boolean => {
       const meta = PERMISSION_REGISTRY_MAP.get(key as PermissionKey)
@@ -168,6 +193,10 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       canAdministerDef: (entityDefinitionId: string) =>
         canAdministerRecord(resolved, entityDefinitionId),
       administersAnyDef: administersAnyDef(resolved),
+      canViewInstance: (recordId: RecordId) => canViewInstance(resolved, recordId),
+      canEditInstance: (recordId: RecordId) => canEditInstance(resolved, recordId),
+      canAdminInstance: (recordId: RecordId) => canAdminInstance(resolved, recordId),
+      isRestrictedInstance: (instanceId: string) => restrictedInstances.has(instanceId),
       capabilities: snapshot.keys,
       isLoading: false,
     }
@@ -187,4 +216,14 @@ export function useAccess(): CapabilitiesContextType {
     throw new Error('useAccess must be used within a CapabilitiesProvider')
   }
   return context
+}
+
+/**
+ * Whether the current member may administer (re-share) an instance-access
+ * resource — OWNER/ADMIN or an explicit `Full` instance grant. Thin wrapper over
+ * {@link useAccess} for the Share card's affordance gate (§4). Server enforces;
+ * this only decides editability of the sharing UI.
+ */
+export function useCanAdminInstance(recordId: RecordId): boolean {
+  return useAccess().canAdminInstance(recordId)
 }

@@ -6,6 +6,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import { getCachedUserGroupIds, onCacheEvent } from '../cache'
+import { isInstanceAccessKey } from '../permissions/capabilities/instance-access'
 import { satisfiesPermission } from './constants'
 import type {
   AccessCheckResult,
@@ -104,6 +105,48 @@ async function emitResourceAccessTypeChanged(
 }
 
 /**
+ * Emit the narrow instance-level cache event that busts the `userCapabilities`
+ * `instanceAccess` map + the org-wide `restrictedInstanceIds` set after an
+ * INSTANCE-level ResourceAccess mutation whose target is an instance-access
+ * resource (datasets etc., §1.5). Same user/broadcast fan-out shape as
+ * {@link emitResourceAccessTypeChanged}; kept separate so generic mail-share
+ * instance traffic (which only fires {@link emitResourceAccessChanged}) never
+ * churns these caches. Also publishes `publishCapabilitiesChanged` so other
+ * members' live sessions re-compose (phase 4 §10). Call AFTER the write commits.
+ */
+async function emitResourceAccessInstanceChanged(
+  organizationId: string,
+  grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
+): Promise<void> {
+  const userIds = new Set<string>()
+  let broadcast = false
+  for (const g of grantees) {
+    if (g.granteeType === ResourceGranteeType.user) userIds.add(g.granteeId)
+    else broadcast = true
+  }
+
+  // Lazy import — the cache invalidation path lazily imports realtime, so this
+  // module must not statically import the realtime barrel back (import cycle).
+  const { getRealtimeService, publishCapabilitiesChanged } = await import('../realtime')
+
+  if (broadcast) {
+    await onCacheEvent('resource-access.instance.changed', {
+      orgId: organizationId,
+      broadcastUserKeys: true,
+    })
+    await publishCapabilitiesChanged(getRealtimeService(), { orgId: organizationId })
+    return
+  }
+
+  await Promise.all(
+    Array.from(userIds).map(async (userId) => {
+      await onCacheEvent('resource-access.instance.changed', { orgId: organizationId, userId })
+      await publishCapabilitiesChanged(getRealtimeService(), { userId })
+    })
+  )
+}
+
+/**
  * Grant access to a specific entity instance.
  */
 export async function grantInstanceAccess(
@@ -141,9 +184,11 @@ export async function grantInstanceAccess(
       },
     })
 
-  await emitResourceAccessChanged(organizationId, [
-    { granteeType: input.granteeType, granteeId: input.granteeId },
-  ])
+  const grantees = [{ granteeType: input.granteeType, granteeId: input.granteeId }]
+  await emitResourceAccessChanged(organizationId, grantees)
+  if (isInstanceAccessKey(entityDefinitionId)) {
+    await emitResourceAccessInstanceChanged(organizationId, grantees)
+  }
 }
 
 /**
@@ -210,9 +255,11 @@ export async function revokeInstanceAccess(
     .returning()
 
   if (result.length > 0) {
-    await emitResourceAccessChanged(organizationId, [
-      { granteeType: input.granteeType, granteeId: input.granteeId },
-    ])
+    const grantees = [{ granteeType: input.granteeType, granteeId: input.granteeId }]
+    await emitResourceAccessChanged(organizationId, grantees)
+    if (isInstanceAccessKey(entityDefinitionId)) {
+      await emitResourceAccessInstanceChanged(organizationId, grantees)
+    }
   }
 
   return result.length > 0
@@ -296,10 +343,11 @@ export async function setInstanceAccess(
 
   // Affected grantees = removed ∪ added (a removed grantee also loses access).
   const affected = new Set([...removed.map((r) => r.granteeId), ...grants.map((g) => g.granteeId)])
-  await emitResourceAccessChanged(
-    organizationId,
-    Array.from(affected, (granteeId) => ({ granteeType, granteeId }))
-  )
+  const grantees = Array.from(affected, (granteeId) => ({ granteeType, granteeId }))
+  await emitResourceAccessChanged(organizationId, grantees)
+  if (isInstanceAccessKey(entityDefinitionId)) {
+    await emitResourceAccessInstanceChanged(organizationId, grantees)
+  }
 }
 
 /**

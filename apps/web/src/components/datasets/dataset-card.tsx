@@ -3,14 +3,16 @@
 'use client'
 
 import type { DatasetWithRelations } from '@auxx/lib/datasets'
+import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ListCard, type ListCardStatusTone } from '@auxx/ui/components/list-card'
-import { Tooltip } from '@auxx/ui/components/tooltip'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { formatBytes } from '@auxx/utils'
-import { Archive, Database, Search, Settings, Trash } from 'lucide-react'
+import { Archive, Database, Lock, Search, Settings, Share2, Trash } from 'lucide-react'
+import { useState } from 'react'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import {
   useBulkMode,
@@ -19,6 +21,8 @@ import {
   useListSelection,
   usePendingLabel,
 } from '~/components/list-selection'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDatasetActions } from './hooks/use-dataset-actions'
 
 interface DatasetCardProps {
@@ -47,6 +51,9 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
   const pending = useIsPending(dataset.id)
   const pendingLabel = usePendingLabel()
   const toggle = useListSelection((s) => s.toggle)
+  const { isRestrictedInstance } = useAccess()
+  const [shareOpen, setShareOpen] = useState(false)
+  const isShared = isRestrictedInstance(dataset.id)
 
   const status = STATUS_DOT[dataset.status] ?? STATUS_DOT.ARCHIVED
   const creatorName = dataset.createdBy.name ?? dataset.createdBy.email ?? '?'
@@ -60,6 +67,11 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
   return (
     <>
       <ConfirmDialog />
+      <InstanceShareDialog
+        recordId={toRecordId('dataset', dataset.id)}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
       <ListCard
         onClick={onClick}
         ariaLabel={dataset.name}
@@ -75,18 +87,28 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
         subtitle={<LastUpdated timestamp={dataset.updatedAt} prefix='' includeSeconds={true} />}
         descriptionLines={0}
         badges={
-          <Badge variant='pill' size='sm' className='shrink-0'>
-            {dataset.documentCount} docs
-            <span className='mx-1 text-muted-foreground/60'>|</span>
-            {formatBytes(Number(dataset.totalSize))}
-          </Badge>
+          <>
+            {isShared && (
+              <SimpleTooltip content='Shared with specific access'>
+                <Badge variant='pill' size='sm' className='shrink-0'>
+                  <Lock className='size-3' />
+                  Shared
+                </Badge>
+              </SimpleTooltip>
+            )}
+            <Badge variant='pill' size='sm' className='shrink-0'>
+              {dataset.documentCount} docs
+              <span className='mx-1 text-muted-foreground/60'>|</span>
+              {formatBytes(Number(dataset.totalSize))}
+            </Badge>
+          </>
         }
         trailing={
-          <Tooltip content={`Created by ${creatorName}`}>
+          <SimpleTooltip content={`Created by ${creatorName}`}>
             <Avatar className='size-5'>
               <AvatarFallback className='text-[10px] font-medium'>{creatorInitial}</AvatarFallback>
             </Avatar>
-          </Tooltip>
+          </SimpleTooltip>
         }
         menu={
           <>
@@ -97,6 +119,10 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
             <DropdownMenuItem onClick={wrap(handleSettings)}>
               <Settings />
               Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={wrap(() => setShareOpen(true))}>
+              <Share2 />
+              Share…
             </DropdownMenuItem>
             <FavoriteToggleMenuItem targetType='DATASET' targetIds={{ datasetId: dataset.id }} />
             <DropdownMenuSeparator />

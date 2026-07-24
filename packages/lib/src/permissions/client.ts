@@ -10,8 +10,11 @@
 export {
   administersAnyDef,
   type ClientCapabilities,
+  canAdminInstance,
   canAdministerRecord,
+  canEditInstance,
   canEditRecord,
+  canViewInstance,
   canViewRecord,
   effectiveRecordLevel,
   NON_RECORD_DEF_SLUGS,
@@ -19,6 +22,15 @@ export {
   toResolvedRecordAccess,
 } from './capabilities/entity-access'
 export type { GranteeGrant, GrantGranteeType } from './capabilities/grant-service'
+// ── Instance-access registry (client-safe: instance-access.ts only imports
+//    `Area` from registry.ts, already client-exported above).
+export {
+  INSTANCE_ACCESS_KEYS,
+  INSTANCE_ACCESS_RESOURCES,
+  type InstanceAccessKey,
+  type InstanceAccessResourceConfig,
+  isInstanceAccessKey,
+} from './capabilities/instance-access'
 // ── Capability registry (Layer 2) — client-safe: registry.ts only imports
 //    `FeatureKey` from `./types`, which is already client-exported above.
 export type { AreaMetadata, PermissionMetadata } from './capabilities/registry'

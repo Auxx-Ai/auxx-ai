@@ -1,14 +1,55 @@
 // apps/web/src/server/api/routers/document.ts
 
+import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { ChunkingStrategyValues, DocumentStatus } from '@auxx/database/enums'
 import { DocumentService } from '@auxx/lib/datasets'
+import { NotFoundError } from '@auxx/lib/errors'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count, desc, eq, ilike, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api/document')
+
+/**
+ * Resolve a document to its parent `datasetId` — documents inherit their
+ * dataset's access level (doc 11 §3), so every document gate keys on the
+ * parent. Org-scoped; 404s a missing/foreign document.
+ */
+async function datasetIdForDocument(
+  db: Database,
+  documentId: string,
+  organizationId: string
+): Promise<string> {
+  const [row] = await db
+    .select({ datasetId: schema.Document.datasetId })
+    .from(schema.Document)
+    .where(
+      and(eq(schema.Document.id, documentId), eq(schema.Document.organizationId, organizationId))
+    )
+    .limit(1)
+  if (!row) throw new NotFoundError('Document not found')
+  return row.datasetId
+}
+
+/** Resolve a batch of documents to their distinct parent `datasetId`s (§3). */
+async function datasetIdsForDocuments(
+  db: Database,
+  documentIds: string[],
+  organizationId: string
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ datasetId: schema.Document.datasetId })
+    .from(schema.Document)
+    .where(
+      and(
+        inArray(schema.Document.id, documentIds),
+        eq(schema.Document.organizationId, organizationId)
+      )
+    )
+  return rows.map((r) => r.datasetId)
+}
 
 /** Preprocessing options schema for chunk settings */
 const chunkPreprocessingSchema = z.object({
@@ -37,11 +78,12 @@ export const documentRouter = createTRPCRouter({
   /**
    * List documents in a dataset
    */
-  list: protectedProcedure.input(listDocumentsSchema).query(async ({ ctx, input }) => {
+  list: capabilityProcedure.input(listDocumentsSchema).query(async ({ ctx, input }) => {
     const organizationId = ctx.session.user.defaultOrganizationId
     if (!organizationId) {
       return { documents: [], totalCount: 0, hasMore: false }
     }
+    ctx.capabilities.assertViewInstance('dataset', input.datasetId)
 
     const page = input.page
     const limit = input.limit
@@ -98,13 +140,15 @@ export const documentRouter = createTRPCRouter({
   /**
    * Get a document by ID
    */
-  getById: protectedProcedure
+  getById: capabilityProcedure
     .input(z.object({ documentId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         return null
       }
+      const datasetId = await datasetIdForDocument(ctx.db, input.documentId, organizationId)
+      ctx.capabilities.assertViewInstance('dataset', datasetId)
       const documentService = new DocumentService(ctx.db)
       return await documentService.getById(input.documentId, organizationId)
     }),
@@ -112,13 +156,15 @@ export const documentRouter = createTRPCRouter({
   /**
    * Delete a document
    */
-  delete: protectedProcedure
+  delete: capabilityProcedure
     .input(z.object({ documentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      const datasetId = await datasetIdForDocument(ctx.db, input.documentId, organizationId)
+      ctx.capabilities.assertEditInstance('dataset', datasetId)
       const documentService = new DocumentService(ctx.db)
       await documentService.delete(input.documentId, organizationId)
       logger.info('Document deleted', {
@@ -131,13 +177,15 @@ export const documentRouter = createTRPCRouter({
   /**
    * Reprocess a document
    */
-  reprocess: protectedProcedure
+  reprocess: capabilityProcedure
     .input(z.object({ documentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      const datasetId = await datasetIdForDocument(ctx.db, input.documentId, organizationId)
+      ctx.capabilities.assertEditInstance('dataset', datasetId)
       const documentService = new DocumentService(ctx.db)
       await documentService.reprocess(input.documentId, organizationId, {
         updateChunking: true,
@@ -152,20 +200,22 @@ export const documentRouter = createTRPCRouter({
   /**
    * Get document download URL
    */
-  getDownloadUrl: protectedProcedure
+  getDownloadUrl: capabilityProcedure
     .input(z.object({ documentId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         return null
       }
+      const datasetId = await datasetIdForDocument(ctx.db, input.documentId, organizationId)
+      ctx.capabilities.assertViewInstance('dataset', datasetId)
       const documentService = new DocumentService(ctx.db)
       return await documentService.getDownloadUrl(input.documentId, organizationId)
     }),
   /**
    * Update a document (title, status, enabled, chunkSettings)
    */
-  update: protectedProcedure
+  update: capabilityProcedure
     .input(
       z.object({
         documentId: z.string(),
@@ -181,6 +231,8 @@ export const documentRouter = createTRPCRouter({
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      const datasetId = await datasetIdForDocument(ctx.db, input.documentId, organizationId)
+      ctx.capabilities.assertEditInstance('dataset', datasetId)
       const documentService = new DocumentService(ctx.db)
       const { documentId, ...data } = input
       await documentService.update(documentId, organizationId, data)
@@ -195,7 +247,7 @@ export const documentRouter = createTRPCRouter({
    * Create documents from existing files
    * Single endpoint, duplicate checking handled internally
    */
-  createFromExistingFiles: protectedProcedure
+  createFromExistingFiles: capabilityProcedure
     .input(
       z.object({
         fileSelections: z.array(
@@ -215,6 +267,8 @@ export const documentRouter = createTRPCRouter({
       if (!organizationId) {
         throw new Error('No organization found')
       }
+      // Write — adding files to the target dataset.
+      ctx.capabilities.assertEditInstance('dataset', input.datasetId)
       const documentService = new DocumentService(ctx.db)
       const results = await documentService.createFromExistingFiles(
         {
@@ -236,7 +290,7 @@ export const documentRouter = createTRPCRouter({
   /**
    * Batch process documents (enable, disable, archive, delete, reprocess)
    */
-  batchProcess: protectedProcedure
+  batchProcess: capabilityProcedure
     .input(
       z.object({
         documentIds: z.array(z.string()).min(1),
@@ -247,6 +301,11 @@ export const documentRouter = createTRPCRouter({
       const organizationId = ctx.session.user.defaultOrganizationId
       if (!organizationId) {
         throw new Error('No organization found')
+      }
+      // Write — resolve each document to its dataset and require Edit on all.
+      const datasetIds = await datasetIdsForDocuments(ctx.db, input.documentIds, organizationId)
+      for (const datasetId of datasetIds) {
+        ctx.capabilities.assertEditInstance('dataset', datasetId)
       }
       const documentService = new DocumentService(ctx.db)
       const results = await documentService.batchProcess(organizationId, {

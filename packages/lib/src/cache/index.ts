@@ -75,6 +75,7 @@ export {
   getCachedResourceFields,
   getCachedResources,
   getCachedRestrictedEntityDefIds,
+  getCachedRestrictedInstanceIds,
   getCachedUserGroupIds,
   getEntityDefIdResolver,
   isAgentUser,
