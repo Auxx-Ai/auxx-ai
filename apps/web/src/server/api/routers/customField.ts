@@ -9,11 +9,11 @@ import {
   relationshipOptionsSchema,
   richReferencePromptSchema,
 } from '@auxx/types/custom-field'
-import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
+import { fieldIdSchema, parseResourceFieldId, resourceFieldIdSchema } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '../audit-context'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const customFieldRouter = createTRPCRouter({
   /**
@@ -54,7 +54,7 @@ export const customFieldRouter = createTRPCRouter({
    * Create a new custom field.
    * For RELATIONSHIP type, pass relationship options to auto-create inverse field.
    */
-  create: protectedProcedure
+  create: capabilityProcedure
     .input(
       z.object({
         name: z.string(),
@@ -76,6 +76,9 @@ export const customFieldRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Def administration (§9.1): managing a def's fields requires `Full`/`admin`
+      // on that def (OWNER/ADMIN or an explicit `admin` type-grant).
+      ctx.capabilities.assertAdministerDef(input.entityDefinitionId)
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
       const created = await service.createField(input)
@@ -96,7 +99,7 @@ export const customFieldRouter = createTRPCRouter({
   /**
    * Update a custom field
    */
-  update: protectedProcedure
+  update: capabilityProcedure
     .input(
       z.object({
         resourceFieldId: resourceFieldIdSchema,
@@ -120,6 +123,11 @@ export const customFieldRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Def administration (§9.1): the def is encoded in the resourceFieldId
+      // (`{def}:{field}`); require `Full`/`admin` on it.
+      ctx.capabilities.assertAdministerDef(
+        parseResourceFieldId(input.resourceFieldId).entityDefinitionId
+      )
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
       const updated = await service.updateField(input)
@@ -135,9 +143,13 @@ export const customFieldRouter = createTRPCRouter({
   /**
    * Delete a custom field
    */
-  delete: protectedProcedure
+  delete: capabilityProcedure
     .input(z.object({ resourceFieldId: resourceFieldIdSchema }))
     .mutation(async ({ ctx, input }) => {
+      // Def administration (§9.1): require `Full`/`admin` on the field's def.
+      ctx.capabilities.assertAdministerDef(
+        parseResourceFieldId(input.resourceFieldId).entityDefinitionId
+      )
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
       const deleted = await service.deleteField(input.resourceFieldId)

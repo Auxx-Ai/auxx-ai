@@ -18,7 +18,7 @@ import { checkSlugExists } from '@auxx/services/entity-definitions'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '../audit-context'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const entityDefinitionRouter = createTRPCRouter({
   /**
@@ -128,8 +128,12 @@ export const entityDefinitionRouter = createTRPCRouter({
   /**
    * Update an entity definition
    * Only allows updating: icon, singular, plural, archivedAt
+   *
+   * Def administration (§9.1): requires `Full`/`admin` on this def — OWNER/ADMIN
+   * or an explicit `admin` type-grant. Was `protectedProcedure` (any member could
+   * rename/re-icon any def); this closes that hole.
    */
-  update: protectedProcedure
+  update: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -137,6 +141,7 @@ export const entityDefinitionRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertAdministerDef(input.id)
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       const updated = await service.update(input.id, input.data)
       await recordAuditFromCtx(ctx, {
@@ -149,51 +154,62 @@ export const entityDefinitionRouter = createTRPCRouter({
     }),
 
   /**
-   * Archive an entity definition (soft delete). Admin/owner only — removing an
-   * entity type (even reversibly) is an org-wide destructive action.
+   * Archive an entity definition (soft delete). Def administration (§9.1):
+   * OWNER/ADMIN or a def-`admin` grantee of this def (full delegation).
    */
-  archive: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-    const archived = await service.archive(input.id)
-    await recordAuditFromCtx(ctx, {
-      category: 'settings',
-      action: 'entityDef.archived',
-      targetType: 'EntityDefinition',
-      targetId: input.id,
-    })
-    return archived
-  }),
+  archive: capabilityProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertAdministerDef(input.id)
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+      const archived = await service.archive(input.id)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.archived',
+        targetType: 'EntityDefinition',
+        targetId: input.id,
+      })
+      return archived
+    }),
 
   /**
-   * Restore an archived entity definition. Admin/owner only (pairs with archive).
+   * Restore an archived entity definition (pairs with archive). Def
+   * administration (§9.1): OWNER/ADMIN or a def-`admin` grantee of this def.
    */
-  restore: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-    const restored = await service.restore(input.id)
-    await recordAuditFromCtx(ctx, {
-      category: 'settings',
-      action: 'entityDef.restored',
-      targetType: 'EntityDefinition',
-      targetId: input.id,
-    })
-    return restored
-  }),
+  restore: capabilityProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertAdministerDef(input.id)
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+      const restored = await service.restore(input.id)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.restored',
+        targetType: 'EntityDefinition',
+        targetId: input.id,
+      })
+      return restored
+    }),
 
   /**
    * Permanently delete an entity definition (with relationship + connector
-   * teardown). Admin/owner only — this is irreversible and org-wide.
+   * teardown) — irreversible and org-wide. Def administration (§9.1): OWNER/ADMIN
+   * or a def-`admin` grantee of this def (full delegation, user decision 2026-07-23).
    */
-  delete: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-    const deleted = await service.delete(input.id)
-    await recordAuditFromCtx(ctx, {
-      category: 'settings',
-      action: 'entityDef.deleted',
-      targetType: 'EntityDefinition',
-      targetId: input.id,
-    })
-    return deleted
-  }),
+  delete: capabilityProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertAdministerDef(input.id)
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+      const deleted = await service.delete(input.id)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.deleted',
+        targetType: 'EntityDefinition',
+        targetId: input.id,
+      })
+      return deleted
+    }),
 
   /**
    * List all available entity templates (lightweight, no field details)

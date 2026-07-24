@@ -107,6 +107,27 @@ export function canEditRecord(caps: ResolvedRecordAccess, entityDefinitionId: st
 }
 
 /**
+ * Def-ADMINISTRATION gate (§9.1) — whether the member may administer the
+ * DEFINITION itself: manage its fields, its access (the Access tab), its
+ * metadata (name/icon/description), and delete/archive the def. This is the
+ * `admin`/`Full` rung — a scoped delegation of org-admin for one def.
+ *
+ * Unlike {@link canViewRecord}/{@link canEditRecord}, def administration does
+ * NOT flow from the base records level: a base `Full` member edits *records*,
+ * never *definitions*. Only an explicit type-level grant of exactly `admin`
+ * (or OWNER/ADMIN) confers it — so it reads the RAW `defAccess` grant, not
+ * `effectiveRecordLevel`. Worker seats (records ceiling None) never administer.
+ */
+export function canAdministerRecord(
+  caps: ResolvedRecordAccess,
+  entityDefinitionId: string
+): boolean {
+  if (caps.role === 'OWNER' || caps.role === 'ADMIN') return true
+  if (SEAT_CEILINGS[caps.seatType][Area.records] === Level.None) return false
+  return caps.defAccess[entityDefinitionId] === ResourcePermission.admin
+}
+
+/**
  * Serializable snapshot of a member's record-access inputs — the wire shape sent
  * to the client (dehydrated seed + `permissions.myCapabilities`). Arrays instead
  * of Sets so it is JSON-safe; the client rebuilds a {@link ResolvedRecordAccess}.
