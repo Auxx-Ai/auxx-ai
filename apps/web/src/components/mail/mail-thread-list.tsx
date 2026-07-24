@@ -85,19 +85,11 @@ export const ThreadList = memo(function ThreadList({
   const { contextType, contextId, statusSlug, searchQuery } = useMailFilter()
 
   // Use ID-based hook with unified condition-based filter
-  const {
-    recordIds,
-    threadIds,
-    total,
-    isLoading,
-    isFetchingNextPage,
-    fetchNextPage,
-    hasNextPage,
-    refresh,
-  } = useThreadList({
-    filter: filter.filter,
-    sort: filter.sort,
-  })
+  const { recordIds, threadIds, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage } =
+    useThreadList({
+      filter: filter.filter,
+      sort: filter.sort,
+    })
   // Selection hooks - use new thread selection system (for threads only)
   const { handleThreadClick } = useThreadSelection({ threadIds })
 
@@ -276,6 +268,7 @@ export const ThreadList = memo(function ThreadList({
   // `isEmpty` must exclude the loading state — otherwise the "Nothing here"
   // empty state would flash before the skeletons render.
   const isEmpty = !isLoading && recordIds.length === 0 && !isFetchingNextPage
+  const isSharedWithMe = contextType === 'shared_with_me'
 
   return (
     <div className={cn('relative flex h-full w-full flex-col', isEmpty && 'flex-1')}>
@@ -337,8 +330,14 @@ export const ThreadList = memo(function ThreadList({
                   <EmptyMedia variant='icon'>
                     <Mail />
                   </EmptyMedia>
-                  <EmptyTitle>Nothing here</EmptyTitle>
-                  <EmptyDescription>No threads found in this view.</EmptyDescription>
+                  <EmptyTitle>
+                    {isSharedWithMe ? 'Nothing has been shared with you yet' : 'Nothing here'}
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    {isSharedWithMe
+                      ? 'When a teammate shares a conversation, it shows up here.'
+                      : 'No threads found in this view.'}
+                  </EmptyDescription>
                 </EmptyHeader>
               </Empty>
             </div>

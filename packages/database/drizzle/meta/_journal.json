@@ -2157,6 +2157,13 @@
       "when": 1784921572693,
       "tag": "0307_agent_run_as_user",
       "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1784925921885,
+      "tag": "0308_add_thread_shared_notification",
+      "breakpoints": true
     }
   ]
 }

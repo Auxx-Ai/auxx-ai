@@ -157,6 +157,8 @@ function buildConditionQuery(
         return buildTicketQuery(op, value)
       case 'hasAttachments':
         return buildHasAttachmentsQuery(op, value)
+      case 'sharedWithMe':
+        return buildSharedWithMeQuery(op, value, scopes.sharedThreadIds)
       case 'freeText':
         return buildFreeTextQuery(op, value, scopes)
       case 'hasDraft':
@@ -767,7 +769,8 @@ function buildAfterQuery(operator: Operator, value: any): SQL<unknown> | null {
  */
 function buildHasAttachmentsQuery(operator: Operator, value: any): SQL<unknown> | null {
   const { Message } = schema
-  const hasAttachments = value === true || value === 'true'
+  const isTrue = value === true || value === 'true'
+  const hasAttachments = operator === 'is not' ? !isTrue : isTrue
 
   const subquery = db
     .select({ id: sql`1` })
@@ -775,6 +778,23 @@ function buildHasAttachmentsQuery(operator: Operator, value: any): SQL<unknown> 
     .where(and(eq(Message.threadId, Thread.id), eq(Message.hasAttachments, true)))
 
   return hasAttachments ? exists(subquery) : not(exists(subquery))
+}
+
+/**
+ * Build a condition for threads explicitly shared with the viewer.
+ * The grant ids are precomputed from the cached visibility context.
+ */
+function buildSharedWithMeQuery(
+  operator: Operator,
+  value: unknown,
+  ids: string[]
+): SQL<unknown> | null {
+  const isTrue = value === true || value === 'true'
+  const wantShared = operator === 'is not' ? !isTrue : isTrue
+  if (ids.length === 0) return wantShared ? sql`false` : null
+
+  const isShared = inArray(Thread.id, ids)
+  return wantShared ? isShared : not(isShared)
 }
 
 /**

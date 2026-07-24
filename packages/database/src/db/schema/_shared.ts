@@ -326,6 +326,7 @@ export const notificationType = pgEnum('NotificationType', [
   'TICKET_UPDATED',
   'TICKET_MENTIONED',
   'THREAD_ACTIVITY',
+  'THREAD_SHARED',
   'SYSTEM_MESSAGE',
   'WORKFLOW_APPROVAL_REQUIRED',
   'WORKFLOW_APPROVAL_REMINDER',

@@ -110,10 +110,20 @@ export function buildFilterChips(
       }
     } else {
       const displayValue = condition.displayLabel || condition.value
+      const isBoolean = field?.fieldType === 'CHECKBOX'
+      const isTrue = condition.value === true || condition.value === 'true'
+      const describesTrue = condition.operator === 'is not' ? !isTrue : isTrue
+      const booleanLabel = field?.label || condition.fieldId
       chips.push({
         key: condition.id,
         type: condition.fieldId,
-        label: `${label}: ${displayValue}`,
+        label: isBoolean
+          ? describesTrue
+            ? booleanLabel
+            : condition.fieldId === 'hasAttachments'
+              ? 'No attachments'
+              : `Not ${booleanLabel.charAt(0).toLowerCase()}${booleanLabel.slice(1)}`
+          : `${label}: ${displayValue}`,
         id: condition.id,
         value: condition.value,
       })
