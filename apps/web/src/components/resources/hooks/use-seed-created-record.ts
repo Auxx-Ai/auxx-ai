@@ -24,11 +24,13 @@ export interface CreatedRecordInstance {
   updatedAt: string | Date
 }
 
-/** One field's value to seed into the field-value store, keyed by systemAttribute. */
+/** One field's value to seed into the field-value store, keyed by systemAttribute.
+ *  `fieldType` is optional — system fields (`fieldType` undefined in the resource
+ *  store) seed the raw value, matching `use-save-field-value.ts`'s guard. */
 export interface SeedFieldValue {
   fieldId: string
   value: unknown
-  fieldType: FieldType
+  fieldType?: FieldType
 }
 
 /**
@@ -45,7 +47,9 @@ export function useSeedCreatedRecord() {
     (params: {
       entityDefinitionId: string
       recordId: RecordId
-      listKey: string
+      /** record-store list to append the new id into. Omit for catalog/standalone
+       *  surfaces whose lists live outside record-store (seeds row data only). */
+      listKey?: string
       instance: CreatedRecordInstance
       values: SeedFieldValue[]
     }) => {
@@ -71,14 +75,16 @@ export function useSeedCreatedRecord() {
 
       const recordStore = useRecordStore.getState()
       recordStore.setRecords(entityDefinitionId, [meta])
-      recordStore.appendCreatedRecord(listKey, instance.id)
+      // Catalog/standalone surfaces omit `listKey`; their lists live in the
+      // `record.listAll` tRPC cache, pushed separately by the caller.
+      if (listKey) recordStore.appendCreatedRecord(listKey, instance.id)
 
       const systemAttributeMap = useResourceStore.getState().systemAttributeMap
       const entries = values.map(({ fieldId, value, fieldType }) => {
         const resourceFieldId = (systemAttributeMap[fieldId] ?? fieldId) as FieldReference
         return {
           key: buildFieldValueKey(recordId, resourceFieldId),
-          value: formatToTypedInput(value, fieldType),
+          value: fieldType ? formatToTypedInput(value, fieldType) : value,
         }
       })
       useFieldValueStore.getState().setValues(entries)

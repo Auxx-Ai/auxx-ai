@@ -44,13 +44,13 @@ import {
   serializeCatalogGroupEntries,
 } from '~/components/money/catalog-group-types'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useSeedCreatedRecord } from '~/components/resources/hooks/use-seed-created-record'
 import { BaseType } from '~/components/workflow/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { type CatalogGroup, useCatalogGroups } from '../../hooks/use-catalog-groups'
 import { type CatalogItem, useCatalogItems } from '../../hooks/use-catalog-items'
-import { useSeedCatalogRecord } from '../../hooks/use-seed-catalog-record'
 import type { CatalogDraftHandle } from './catalog-draft-types'
 import { formatMoney } from './format-money'
 import type { TaxRate } from './tax-rate-types'
@@ -316,7 +316,7 @@ function GroupDraftEditorForm({
   )
 
   const { saveMultipleAsync } = useSaveFieldValue({})
-  const { seedCatalogRecord } = useSeedCatalogRecord()
+  const { seedCreatedRecord } = useSeedCreatedRecord()
   const createRecord = api.record.create.useMutation()
 
   const valuesRef = useRef<GroupDraftValues>(freshGroupDraftValues())
@@ -355,7 +355,7 @@ function GroupDraftEditorForm({
         // below must route to the real record, not the buffered-create path.
         recordIdRef.current = result.recordId
 
-        seedCatalogRecord({
+        seedCreatedRecord({
           entityDefinitionId,
           recordId: result.recordId,
           instance: result.instance,
@@ -408,7 +408,7 @@ function GroupDraftEditorForm({
     [
       entityDefinitionId,
       createRecord,
-      seedCatalogRecord,
+      seedCreatedRecord,
       appendRecord,
       saveMultipleAsync,
       onDraftCommitted,

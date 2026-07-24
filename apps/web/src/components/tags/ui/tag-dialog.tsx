@@ -40,8 +40,8 @@ import { Loader2, Tag } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { api } from '~/trpc/react'
 import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
 import type { TagNode } from '../types'
 import { FormColorTagPicker } from './color-tag-picker'
@@ -135,17 +135,18 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
     }
   }, [open, recordId, editingInstanceId, tagMap, form])
 
-  // Create mutation
-  const createRecord = api.record.create.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Failed to create tag', description: error.message })
-    },
+  // Canonical create hook — seeds record + field-value caches and toasts on
+  // error. The tag tree reads from `record.listAll`, so `refresh()` below still
+  // pulls the new tag into the hierarchy view (seeding can't add listAll
+  // membership); the seed keeps recordId-keyed tag consumers instant.
+  const { create: createTag, isPending: isCreating } = useCreateRecord({
+    entityDefinitionId: entityDefinitionId ?? '',
   })
 
   // Save field values hook for edit mode
   const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue()
 
-  const isPending = createRecord.isPending || isSavingFields
+  const isPending = isCreating || isSavingFields
 
   /** Reset form for creating another tag */
   const resetForm = useCallback(() => {
@@ -226,12 +227,8 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           formValues.tag_parent = [toRecordId(entityDefinitionId, values.parentId)]
         }
 
-        const result = await createRecord.mutateAsync({
-          entityDefinitionId,
-          values: formValues,
-        })
-
-        instanceId = result.instance.id
+        const result = await createTag({ values: formValues })
+        instanceId = result.instanceId
         refresh()
       } else {
         toastError({ title: 'Error', description: 'Tag entity not found' })
