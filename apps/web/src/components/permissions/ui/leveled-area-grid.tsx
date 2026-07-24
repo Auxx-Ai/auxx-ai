@@ -2,7 +2,10 @@
 'use client'
 
 import { AREA_ORDER, type Area, type Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import { ButtonSwitch } from '@auxx/ui/components/button-switch'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import { TreeRow } from '@auxx/ui/components/tree-row'
+import { useMemo, useState } from 'react'
 import { LevelControl } from './level-control'
 
 interface LeveledAreaGridProps {
@@ -57,37 +60,82 @@ export function LeveledAreaGrid({
   onChange,
   disabled = false,
 }: LeveledAreaGridProps) {
+  const [search, setSearch] = useState('')
+  const [overridesOnly, setOverridesOnly] = useState(false)
+
+  const query = search.trim().toLowerCase()
+
+  /** Groups with their areas narrowed by the search query and the "overrides only" toggle. */
+  const filteredGroups = useMemo(
+    () =>
+      AREA_GROUPS.map(({ group, areas }) => ({
+        group,
+        areas: areas.filter((area) => {
+          if (overridesOnly && values[area] === undefined) return false
+          if (!query) return true
+          const meta = PERMISSION_AREAS[area]
+          return (
+            meta.label.toLowerCase().includes(query) ||
+            meta.description.toLowerCase().includes(query)
+          )
+        }),
+      })).filter(({ areas }) => areas.length > 0),
+    [query, overridesOnly, values]
+  )
+
   return (
-    <div className='flex flex-col gap-4'>
-      {AREA_GROUPS.map(({ group, areas }) => (
-        <div key={group} className='flex flex-col gap-0.5'>
-          <span className='px-1 text-xs font-semibold uppercase text-primary-600'>{group}</span>
-          {areas.map((area) => {
-            const meta = PERMISSION_AREAS[area]
-            const value = values[area]
-            const inherited =
-              mode === 'override' ? (baseline?.[area] ?? roleDefaults[area]) : roleDefaults[area]
-            return (
-              <TreeRow
-                rowClassName='bg-primary-50 hover:bg-primary-100'
-                key={area}
-                title={meta.label}
-                description={meta.description}
-                trailing={
-                  <LevelControl
-                    area={meta}
-                    value={value}
-                    inherited={inherited}
-                    ignored={mode === 'override' && value !== undefined && value <= inherited}
-                    onChange={(level) => onChange(area, level)}
-                    disabled={disabled}
+    <div className='flex flex-col gap-3'>
+      <div className='flex items-center gap-2'>
+        <InputSearch
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder='Search areas...'
+        />
+        <ButtonSwitch
+          label='Overrides only'
+          checked={overridesOnly}
+          onCheckedChange={setOverridesOnly}
+          disabled={disabled}
+        />
+      </div>
+
+      {filteredGroups.length === 0 ? (
+        <p className='px-1 py-6 text-center text-xs text-muted-foreground'>No areas match.</p>
+      ) : (
+        <div className='flex flex-col gap-4'>
+          {filteredGroups.map(({ group, areas }) => (
+            <div key={group} className='flex flex-col gap-0.5'>
+              <span className='px-1 text-xs font-semibold uppercase text-primary-600'>{group}</span>
+              {areas.map((area) => {
+                const meta = PERMISSION_AREAS[area]
+                const value = values[area]
+                const inherited =
+                  mode === 'override'
+                    ? (baseline?.[area] ?? roleDefaults[area])
+                    : roleDefaults[area]
+                return (
+                  <TreeRow
+                    rowClassName='bg-primary-50 hover:bg-primary-100'
+                    key={area}
+                    title={meta.label}
+                    description={meta.description}
+                    trailing={
+                      <LevelControl
+                        area={meta}
+                        value={value}
+                        inherited={inherited}
+                        ignored={mode === 'override' && value !== undefined && value <= inherited}
+                        onChange={(level) => onChange(area, level)}
+                        disabled={disabled}
+                      />
+                    }
                   />
-                }
-              />
-            )
-          })}
+                )
+              })}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
