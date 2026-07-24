@@ -33,9 +33,14 @@ export enum PermissionKey {
 
   // org administration
   settingsManage = 'settings.manage',
+  billingView = 'billing.view',
   billingManage = 'billing.manage',
   membersManage = 'members.manage',
   permissionsManage = 'permissions.manage',
+  integrationsManage = 'integrations.manage',
+  aiConfigManage = 'aiConfig.manage',
+  automationRulesManage = 'automationRules.manage',
+  auditLogView = 'auditLog.view',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -148,18 +153,22 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     adminOnly: true,
   },
   {
+    key: PermissionKey.billingView,
+    label: 'View Billing',
+    description: 'View the plan, usage, and invoices.',
+    group: 'Organization',
+  },
+  {
     key: PermissionKey.billingManage,
     label: 'Manage Billing',
     description: 'View and change the plan, seats, and billing.',
     group: 'Organization',
-    adminOnly: true,
   },
   {
     key: PermissionKey.membersManage,
     label: 'Manage Members',
     description: 'Invite, remove, and change roles/seats of members.',
     group: 'Organization',
-    adminOnly: true,
   },
   {
     key: PermissionKey.permissionsManage,
@@ -168,6 +177,39 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Organization',
     featureKey: FeatureKey.granularPermissions,
     adminOnly: true,
+  },
+
+  // ── Integrations ──
+  {
+    key: PermissionKey.integrationsManage,
+    label: 'Manage Integrations',
+    description: 'Install and configure apps, MCP servers, and webhooks.',
+    group: 'Integrations',
+  },
+
+  // ── AI ──
+  {
+    key: PermissionKey.aiConfigManage,
+    label: 'Manage AI Config',
+    description: 'Configure AI models and Kopilot organization defaults.',
+    group: 'AI',
+    featureKey: FeatureKey.kopilot,
+  },
+
+  // ── Automation (rules) ──
+  {
+    key: PermissionKey.automationRulesManage,
+    label: 'Manage Rules',
+    description: 'Create, edit, and delete record automation rules.',
+    group: 'Automation',
+  },
+
+  // ── Organization (audit) ──
+  {
+    key: PermissionKey.auditLogView,
+    label: 'View Account Activity',
+    description: 'View the organization audit log.',
+    group: 'Organization',
   },
 ]
 
@@ -222,6 +264,10 @@ export enum Area {
   billing = 'billing',
   members = 'members',
   permissions = 'permissions',
+  integrations = 'integrations',
+  aiConfig = 'aiConfig',
+  automationRules = 'automationRules',
+  auditLog = 'auditLog',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -334,10 +380,12 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.billing]: {
     area: Area.billing,
     label: 'Billing',
-    description: 'View and change the plan, seats, and billing.',
+    description: 'View the plan and invoices, or change the plan, seats, and payment method.',
     group: 'Organization',
-    rungs: [{ level: Level.Full, keys: [PermissionKey.billingManage] }],
-    adminOnly: true,
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.billingView] },
+      { level: Level.Full, keys: [PermissionKey.billingManage] },
+    ],
   },
   [Area.members]: {
     area: Area.members,
@@ -345,7 +393,6 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'Invite, remove, and change roles and seats of members.',
     group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.membersManage] }],
-    adminOnly: true,
   },
   [Area.permissions]: {
     area: Area.permissions,
@@ -355,6 +402,35 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     rungs: [{ level: Level.Full, keys: [PermissionKey.permissionsManage] }],
     adminOnly: true,
     featureKey: FeatureKey.granularPermissions,
+  },
+  [Area.integrations]: {
+    area: Area.integrations,
+    label: 'Integrations',
+    description: 'Install and configure apps, MCP servers, and webhooks.',
+    group: 'Integrations',
+    rungs: [{ level: Level.Full, keys: [PermissionKey.integrationsManage] }],
+  },
+  [Area.aiConfig]: {
+    area: Area.aiConfig,
+    label: 'AI configuration',
+    description: 'Configure AI models and Kopilot organization defaults.',
+    group: 'AI',
+    rungs: [{ level: Level.Full, keys: [PermissionKey.aiConfigManage] }],
+    featureKey: FeatureKey.kopilot,
+  },
+  [Area.automationRules]: {
+    area: Area.automationRules,
+    label: 'Rules',
+    description: 'Create, edit, and delete record automation rules.',
+    group: 'Automation',
+    rungs: [{ level: Level.Full, keys: [PermissionKey.automationRulesManage] }],
+  },
+  [Area.auditLog]: {
+    area: Area.auditLog,
+    label: 'Account activity',
+    description: 'View the organization audit log.',
+    group: 'Organization',
+    rungs: [{ level: Level.Read, keys: [PermissionKey.auditLogView] }],
   },
 }
 
