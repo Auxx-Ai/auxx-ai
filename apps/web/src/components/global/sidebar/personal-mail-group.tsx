@@ -19,7 +19,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { FileEdit, Inbox as InboxIcon, Send, UserCheck, UserRound } from 'lucide-react'
+import { FileEdit, Inbox as InboxIcon, Send, Share2, UserCheck, UserRound } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
@@ -231,10 +231,10 @@ export function PersonalMailItems({
       {visibleItems
         .sort((a, b) => a.order - b.order)
         .map((item) => {
-          // With personal-channel inboxes, Inbox becomes an expandable group:
-          // "Assigned to me" + one row per owned personal inbox. The header
-          // opens the combined stream.
-          if (item.id === 'inbox' && personalInboxes.length > 0) {
+          // Inbox is always expandable: assigned/shared entry points are
+          // always present, followed by any owned personal inboxes. The
+          // header opens the combined personal stream.
+          if (item.id === 'inbox') {
             return (
               <CollapsibleSidebarSection
                 key={item.id}
@@ -255,6 +255,17 @@ export function PersonalMailItems({
                     count={inboxCount}
                     isSubmenu
                     isActive={!!pathname?.startsWith('/app/mail/assigned')}
+                    onToggleEditMode={onToggleEditMode}
+                  />
+                </SidebarMenuSubItem>
+                <SidebarMenuSubItem>
+                  <SidebarNavItem
+                    id='shared-with-me'
+                    name='Shared with me'
+                    href='/app/mail/shared/open'
+                    icon={<Share2 className='text-muted-foreground' />}
+                    isSubmenu
+                    isActive={!!pathname?.startsWith('/app/mail/shared')}
                     onToggleEditMode={onToggleEditMode}
                   />
                 </SidebarMenuSubItem>

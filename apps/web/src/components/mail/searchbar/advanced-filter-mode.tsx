@@ -45,6 +45,7 @@ const DEFAULT_OPERATORS: Record<string, Operator> = {
   status: 'is',
   date: 'on_date',
   hasAttachments: 'is',
+  sharedWithMe: 'is',
 }
 
 function getConditionValue(conditions: SearchCondition[], fieldId: string): any {
@@ -75,7 +76,7 @@ function setConditionValue(
     id: existingIndex !== -1 ? conditions[existingIndex]!.id : generateId(),
     fieldId,
     operator,
-    value: isEmpty ? undefined : value,
+    value: isEmpty(value) ? undefined : value,
   }
 
   if (existingIndex !== -1) {

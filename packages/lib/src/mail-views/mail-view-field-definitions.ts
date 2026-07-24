@@ -205,6 +205,13 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     fieldType: FieldType.CHECKBOX,
     description: 'Filter by attachment presence',
   },
+  {
+    id: 'sharedWithMe',
+    label: 'Shared with me',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    description: 'Threads explicitly shared with you',
+  },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // FREE TEXT FIELD

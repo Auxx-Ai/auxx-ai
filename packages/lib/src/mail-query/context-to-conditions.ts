@@ -107,6 +107,15 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       })
       break
 
+    case 'shared_with_me':
+      conditions.push({
+        id: 'ctx-shared-with-me',
+        fieldId: 'sharedWithMe',
+        operator: 'is',
+        value: true,
+      })
+      break
+
     // all_inboxes, all, view - no additional context conditions needed
   }
 

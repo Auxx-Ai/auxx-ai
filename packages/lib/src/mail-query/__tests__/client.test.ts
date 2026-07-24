@@ -1,7 +1,55 @@
 // packages/lib/src/mail-query/__tests__/client.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { filterThreads, mapStatusSlugToClientFilter, threadMatchesFilter } from '../client'
+import {
+  buildConditionGroups,
+  filterThreads,
+  mapStatusSlugToClientFilter,
+  threadMatchesFilter,
+} from '../client'
+
+describe('shared-with-me context', () => {
+  it('adds the sharedWithMe predicate alongside the status predicate', () => {
+    const groups = buildConditionGroups({
+      contextType: 'shared_with_me',
+      statusSlug: 'open',
+    })
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.conditions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'ctx-shared-with-me',
+          fieldId: 'sharedWithMe',
+          operator: 'is',
+          value: true,
+        }),
+        expect.objectContaining({
+          id: 'ctx-status',
+          fieldId: 'status',
+          operator: 'is',
+          value: 'OPEN',
+        }),
+      ])
+    )
+  })
+
+  it('lets an explicit sharedWithMe search condition replace the context preset', () => {
+    const groups = buildConditionGroups({ contextType: 'shared_with_me', statusSlug: 'open' }, [
+      { id: 'search-shared', fieldId: 'sharedWithMe', operator: 'is', value: false },
+    ])
+
+    expect(groups[0]?.conditions.some((condition) => condition.id === 'ctx-shared-with-me')).toBe(
+      false
+    )
+    expect(groups[1]?.conditions).toContainEqual({
+      id: 'search-shared',
+      fieldId: 'sharedWithMe',
+      operator: 'is',
+      value: false,
+    })
+  })
+})
 
 describe('mapStatusSlugToClientFilter', () => {
   it('maps open to OPEN status', () => {

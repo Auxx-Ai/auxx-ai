@@ -42,10 +42,13 @@ const NOTIFICATION_ICON_MAP: Record<NotificationType, { iconId: string; color: s
   TICKET_UPDATED: { iconId: 'ticket', color: 'teal' },
   TICKET_MENTIONED: { iconId: 'user', color: 'purple' },
   THREAD_ACTIVITY: { iconId: 'message-circle', color: 'teal' },
+  THREAD_SHARED: { iconId: 'share-2', color: 'blue' },
   SYSTEM_MESSAGE: { iconId: 'info', color: 'gray' },
   WORKFLOW_APPROVAL_REQUIRED: { iconId: 'check-circle', color: 'orange' },
   WORKFLOW_APPROVAL_REMINDER: { iconId: 'bell-ring', color: 'orange' },
   WORKFLOW_APPROVAL_COMPLETED: { iconId: 'check-circle', color: 'green' },
+  TASK_DEADLINE: { iconId: 'clock', color: 'orange' },
+  TASK_AUTO_COMPLETED: { iconId: 'check-circle', color: 'green' },
   WORK_ORDER_DISPATCHED: { iconId: 'truck', color: 'blue' },
   VISIT_RESCHEDULED: { iconId: 'calendar-clock', color: 'orange' },
   VISIT_CANCELED: { iconId: 'ban', color: 'red' },
@@ -70,7 +73,7 @@ const getNotificationLink = (entityType: string, entityId: string) => {
     case 'Ticket':
       return `/app/tickets/${entityId}`
     case 'Thread':
-      return `/app/threads/${entityId}`
+      return `/app/mail/shared/open?tid=${encodeURIComponent(entityId)}`
     case 'work_order':
       return `/app/work-orders/${entityId}`
     case 'approval_request':
@@ -243,10 +246,6 @@ export const NotificationCenter = () => {
   // Handle deleting a notification
   const handleDelete = (id: string) => {
     deleteNotification.mutate({ notificationIds: [id] })
-  }
-  // Handle mode change
-  const handleModeChange = (newMode: string) => {
-    setMode(newMode)
   }
   // Handle opening human confirmation dialog
   const openHumanConfirmationDialog = (approvalId: string) => {

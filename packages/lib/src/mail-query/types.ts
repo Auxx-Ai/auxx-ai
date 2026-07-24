@@ -7,6 +7,7 @@
 export enum InternalFilterContextType {
   PERSONAL_ASSIGNED = 'personal_assigned', // User's view: /mail/assigned/* - Explicitly assigned to user
   PERSONAL_INBOX = 'personal_inbox', // User's view: /mail/inbox/* - Assigned to user (effectively same as PERSONAL_ASSIGNED)
+  SHARED_WITH_ME = 'shared_with_me', // Context: /mail/shared/* - Threads explicitly shared with the user
   TAG = 'tag', // Context: /mail/tags/[tagId]/*
   VIEW = 'view', // Context: /mail/views/[viewId]/* - Uses ConditionGroup[] definition
   ALL_INBOXES = 'all_inboxes', // Context: /mail/inboxes/all/* - Org-wide view (respects user access if needed later)

@@ -22,6 +22,15 @@ function idsAtOrAbove(map: Record<string, Lens>, need: Lens): string[] {
 }
 
 /**
+ * Thread ids explicitly granted to this viewer at metadata or above.
+ * System and automation viewers do not hold user-specific grants.
+ */
+export function sharedThreadIds(viewer: MailViewer): string[] {
+  if (isSystemViewer(viewer) || isAutomationViewer(viewer)) return []
+  return idsAtOrAbove(viewer.threadGrants, 'metadata')
+}
+
+/**
  * The grant-derived OR-branches of a visibility scope at tier `need`:
  * assignment (always `full`), per-thread grants, primary-entity grants, and
  * contact grants derived via ThreadParticipant. Empty sets are omitted.
@@ -126,11 +135,14 @@ export function buildSearchScope(
 export interface MailSearchScopes {
   subject: SQL<unknown> | undefined
   body: SQL<unknown> | undefined
+  /** Thread ids explicitly granted to the viewer. */
+  sharedThreadIds: string[]
 }
 
 export function buildSearchScopes(viewer: MailViewer): MailSearchScopes {
   return {
     subject: buildSearchScope(viewer, 'subject'),
     body: buildSearchScope(viewer, 'full'),
+    sharedThreadIds: sharedThreadIds(viewer),
   }
 }

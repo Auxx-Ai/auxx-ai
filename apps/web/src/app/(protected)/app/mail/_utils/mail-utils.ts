@@ -67,6 +67,9 @@ export function parseMailboxContext(pathname: string): MailboxContext {
     case 'sent':
       contextType = 'sent'
       break
+    case 'shared':
+      contextType = 'shared_with_me'
+      break
     case 'tag':
       contextType = 'tag'
       contextId = pathSegments[4] // Tag ID from path
