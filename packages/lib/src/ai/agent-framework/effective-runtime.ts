@@ -7,6 +7,7 @@
 // divergent second copy (plans/evals/phase-1-agent-simulation.md §1.4,
 // conventions.md §5).
 
+import { database } from '@auxx/database'
 import { filterToolsByToolsets, type ResolvedAgentConfig, resolveAgentConfig } from '../../agents'
 import {
   buildApplyBindings,
@@ -15,6 +16,10 @@ import {
 } from '../../agents/bindings'
 import type { AgentSurface } from '../../agents/client'
 import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures'
+import {
+  type ResolvedKnowledgeScope,
+  resolveAgentKnowledgeScope,
+} from '../../agents/resolve-knowledge-scope'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import {
   type CapabilityRegistry,
@@ -174,14 +179,21 @@ export async function buildAgentCapabilityRegistry(args: {
   signal?: AbortSignal
   /** Read/write enforcement for this run (§3.1). Omit → unrestricted, as today. */
   capabilities?: CapabilityView
+  /**
+   * The running agent's resolved retrieval scope (§1.1). Optional — the eval
+   * mock validator calls this builder without one, and callers with no scope
+   * to thread keep today's unrestricted behavior.
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }): Promise<CapabilityRegistry> {
-  const { organizationId, userId, sessionId, agentId, signal, capabilities } = args
+  const { organizationId, userId, sessionId, agentId, signal, capabilities, knowledgeScope } = args
   const getToolDeps = createToolDepsFactory({
     organizationId,
     userId,
     sessionId,
     signal,
     capabilities,
+    knowledgeScope,
   })
 
   const registry = createCapabilityRegistry()
@@ -231,6 +243,18 @@ export async function buildEffectiveAgentRuntime(
     source,
   })
 
+  const agentConfig = await resolveAgentConfig(organizationId, agentId, undefined, { source })
+
+  // Resolve once per turn (§1.1) — shared by both the tool deps (read gate)
+  // and the domain config (prompt-side catalog filtering). `null` entries
+  // (master Kopilot) resolve to `null` = unrestricted, matching today.
+  const knowledgeScope = await resolveAgentKnowledgeScope({
+    db: database,
+    organizationId,
+    entries: agentConfig.knowledge,
+    capabilities: args.capabilities,
+  })
+
   const registry = await buildAgentCapabilityRegistry({
     organizationId,
     userId,
@@ -238,9 +262,9 @@ export async function buildEffectiveAgentRuntime(
     agentId,
     signal,
     capabilities: args.capabilities,
+    knowledgeScope,
   })
 
-  const agentConfig = await resolveAgentConfig(organizationId, agentId, undefined, { source })
   const resolvedPage = args.page ?? '__none__'
   const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
   // Mount procedure-control tools when this agent has procedures — inert without
@@ -288,6 +312,9 @@ export async function buildEffectiveAgentRuntime(
     // Prompt-side catalog filtering (§3.4) — the entity/KB catalogs the model is
     // handed are narrowed to what this run may actually read.
     capabilities: args.capabilities,
+    // The agent's retrieval scope (§1.1) — narrows the Knowledge Catalog the
+    // prompt renders to what this agent may actually search.
+    knowledgeScope,
     // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need headroom past
     // the framework's small-loop default.
     maxIterations: 30,

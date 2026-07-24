@@ -24,9 +24,10 @@ interface FlatRecordListProps {
 }
 
 /**
- * Renders the records an admin has *explicitly added* (scope row or pin) for
- * one resource type — never the full corpus. An "+ Add" row at the bottom
- * opens `RecordPicker` to attach more.
+ * Renders the datasets an admin has *explicitly added* (scope row or pin) —
+ * never the full corpus. The only resource type that reaches this component
+ * is `dataset` (`kb` has its own `KbBranch` with article-level picking). An
+ * "+ Add" row at the bottom opens `RecordPicker` to attach more.
  */
 export function FlatRecordList({
   resource,
@@ -59,9 +60,9 @@ export function FlatRecordList({
 }
 
 /**
- * Knowledge-entry record ids scoped to one resource type. Definition-level
- * entries (no `:instanceId` suffix) are excluded — those are owned by the
- * depth-0 container row.
+ * Knowledge-entry record ids scoped to the `dataset` resource type.
+ * Definition-level entries (no `:instanceId` suffix) are excluded — those
+ * are owned by the depth-0 container row.
  */
 function useAddedRecordIds(entityDefinitionId: string, agent: AgentDetail): string[] {
   return useMemo(() => {

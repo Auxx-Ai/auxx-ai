@@ -14,6 +14,11 @@ import { ALL_MODES, type PromptSection } from './types'
  * (capability layer v2 §3.4). Without it the catalog handed a member the full
  * ToC — titles plus body-derived descriptions — of every INTERNAL KB, including
  * ones they hold no instance grant on.
+ *
+ * `ctx.knowledgeScope` (permissions v2 §1.2/1.3) narrows further: the agent's
+ * own retrieval scope, same allowlist `search_knowledge` enforces. Without
+ * this the catalog could advertise a KB or article the tool can't actually
+ * return.
  */
 export const kbCatalog: PromptSection = {
   id: 'kb-catalog',
@@ -29,6 +34,7 @@ export const kbCatalog: PromptSection = {
       publicOnly: ctx.audience === 'customer',
       hasGetArticle,
       canViewKb: recordAccess ? (kbId) => recordAccess.canViewInstance('kb', kbId) : undefined,
+      knowledgeScope: ctx.knowledgeScope,
     })
   },
 }

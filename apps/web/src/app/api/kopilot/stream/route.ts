@@ -1,7 +1,12 @@
 // apps/web/src/app/api/kopilot/stream/route.ts
 
 import { database as db } from '@auxx/database'
-import { buildDmTriggerContext, filterToolsByToolsets, resolveAgentConfig } from '@auxx/lib/agents'
+import {
+  buildDmTriggerContext,
+  filterToolsByToolsets,
+  resolveAgentConfig,
+  resolveAgentKnowledgeScope,
+} from '@auxx/lib/agents'
 import { type UsageTrackingRequest, UsageTrackingService } from '@auxx/lib/ai'
 import {
   AgentEngine,
@@ -593,6 +598,39 @@ async function runInProcessPath(params: {
     }
   }
 
+  // Builder sessions run as master Kopilot with the agents-builder persona
+  // addition — the target agent is the subject of editing (passed via the
+  // `agent` active reference), not the persona to adopt. Passing its real
+  // agentConfig would render two competing "You are X." personas.
+  // Draft test-runs (build-plan §4.2): the agent Chat tab may request the
+  // unpublished draft view, but only for admins (agent-edit permission) and never
+  // for master/builder sessions. Per-request — nothing here is persisted.
+  //
+  // Hoisted above the tool-deps factory (was resolved further down, right
+  // before the domain config) so this single `resolveAgentConfig` call can
+  // also feed the knowledge-scope resolution below — one source of truth for
+  // both the tool deps' read gate and the prompt-side catalog filter.
+  let agentConfigSource: 'active' | 'draft' = 'active'
+  if (params.useDraft && !isBuilder && agentId) {
+    const isAdmin = await isAdminOrOwner(organizationId, userId, db)
+    if (isAdmin) agentConfigSource = 'draft'
+  }
+  const agentConfig = await resolveAgentConfig(organizationId, isBuilder ? null : agentId, db, {
+    source: agentConfigSource,
+  })
+
+  // Resolve once per turn (§1.1) — shared by the tool deps (read gate) below
+  // and the domain config (prompt-side catalog filtering) further down.
+  // Builder sessions resolve `agentConfig` off the master sentinel (`[]`
+  // knowledge), so this naturally comes back `null` (unrestricted) for the
+  // builder Kopilot even though a real `agentId` is in scope for the session.
+  const knowledgeScope = await resolveAgentKnowledgeScope({
+    db,
+    organizationId,
+    entries: agentConfig.knowledge,
+    capabilities,
+  })
+
   const getToolDeps = createToolDepsFactory({
     organizationId,
     userId,
@@ -600,6 +638,7 @@ async function runInProcessPath(params: {
     signal: request.signal,
     sessionContext: { ...(context ?? {}), page },
     capabilities,
+    knowledgeScope,
   })
 
   const registry = createCapabilityRegistry()
@@ -705,21 +744,6 @@ async function runInProcessPath(params: {
     }
   }
 
-  // Builder sessions run as master Kopilot with the agents-builder persona
-  // addition — the target agent is the subject of editing (passed via the
-  // `agent` active reference), not the persona to adopt. Passing its real
-  // agentConfig would render two competing "You are X." personas.
-  // Draft test-runs (build-plan §4.2): the agent Chat tab may request the
-  // unpublished draft view, but only for admins (agent-edit permission) and never
-  // for master/builder sessions. Per-request — nothing here is persisted.
-  let agentConfigSource: 'active' | 'draft' = 'active'
-  if (params.useDraft && !isBuilder && agentId) {
-    const isAdmin = await isAdminOrOwner(organizationId, userId, db)
-    if (isAdmin) agentConfigSource = 'draft'
-  }
-  const agentConfig = await resolveAgentConfig(organizationId, isBuilder ? null : agentId, db, {
-    source: agentConfigSource,
-  })
   const resolvedPage = page ?? '__none__'
   // Pre-filter tools by the agent's enabled toolsets before handing them to
   // the domain config. Master sessions pass through untouched. Future filter
@@ -744,6 +768,11 @@ async function runInProcessPath(params: {
     triggerContext,
     // Prompt-side catalog filtering (§3.4) — the same view the tools enforce with.
     capabilities,
+    // The agent's retrieval scope (§1.1) — narrows the Knowledge Catalog to
+    // what this agent may actually search. `null` for builder sessions (which
+    // resolve `agentConfig` off the master sentinel, not the edited agent) and
+    // for master Kopilot, matching today's unrestricted behavior.
+    knowledgeScope,
   })
 
   // Create LLM adapter

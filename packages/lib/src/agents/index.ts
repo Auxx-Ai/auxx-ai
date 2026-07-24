@@ -10,7 +10,6 @@ export {
   type AgentScopeRemoveInput,
   type AgentScopeUpsertInput,
   batchSetAgentResourceScopes,
-  recordMatchesScopeRow,
   removeAgentScopeRow,
   ScopeRowImmutableError,
   upsertAgentScopeRow,
@@ -77,6 +76,16 @@ export { BUILTIN_APP, BUILTIN_TOOLSETS, getBuiltinToolset } from './builtin-app'
 export { BUILTIN_DEFAULT_TOOLSETS, resolveDefaultToolsets } from './default-toolsets'
 export { filterToolsByToolsets } from './filter-tools'
 export {
+  type AgentKnowledgeScope,
+  filterKnowledgeScopeEntries,
+  isKnowledgeScopeRecordId,
+  KNOWLEDGE_SCOPE_PREFIXES,
+  type KnowledgeScopePrefix,
+  parseAgentKnowledgeScope,
+  parseKnowledgeScopeRecordId,
+  scopeHasIncludes,
+} from './knowledge-scope'
+export {
   type KnowledgeEntry,
   type KnowledgeMode,
   type KnowledgeSource,
@@ -92,6 +101,10 @@ export {
   walkPromptDocs,
 } from './prompt-mention-reconciler'
 export { type ResolvedAgentConfig, resolveAgentConfig } from './resolve-agent-config'
+export {
+  type ResolvedKnowledgeScope,
+  resolveAgentKnowledgeScope,
+} from './resolve-knowledge-scope'
 export {
   type SetAgentToolBindingsInput,
   setAgentToolBindings,

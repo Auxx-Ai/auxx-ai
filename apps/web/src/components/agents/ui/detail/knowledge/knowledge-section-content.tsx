@@ -10,18 +10,13 @@ import { ResourceTypeBranch } from './resource-type-branch'
 import { useScopeMutations } from './use-scope-mutations'
 
 /**
- * Depth-0 ordering for system resources. `article` is omitted intentionally —
- * articles render under their owning KB (see `KbBranch`).
+ * Depth-0 ordering for the resource types that remain valid retrieval scope
+ * targets. `article` is omitted intentionally — articles render under their
+ * owning KB (see `KbBranch`). Entity records (contacts, tickets, etc.) are
+ * no longer scope targets here — access to them is governed by the
+ * Permissions tab.
  */
-const SYSTEM_ORDER: ReadonlyArray<string> = [
-  'kb',
-  'contact',
-  'company',
-  'ticket',
-  'dataset',
-  'meeting',
-  'part',
-]
+const SYSTEM_ORDER: ReadonlyArray<string> = ['kb', 'dataset']
 
 interface KnowledgeSectionContentProps {
   agent: AgentDetail
@@ -29,9 +24,11 @@ interface KnowledgeSectionContentProps {
 }
 
 /**
- * Knowledge tab body: a unified scope tree with one branch per resource
- * type, each expanding to its records. Pinned state shows inline via the
- * star icon on every row — no separate pinned block.
+ * Knowledge tab body: a retrieval-scope tree over knowledge bases and
+ * datasets. Narrowing scope here limits what the agent searches — it does
+ * not grant or restrict access; that's the Permissions tab's job. Pinned
+ * state shows inline via the star icon on every row — no separate pinned
+ * block.
  */
 export function KnowledgeSectionContent({ agent, onAutosaveChange }: KnowledgeSectionContentProps) {
   const handleSavingChange = useCallback(
@@ -41,17 +38,13 @@ export function KnowledgeSectionContent({ agent, onAutosaveChange }: KnowledgeSe
     [onAutosaveChange]
   )
 
-  const { resources, customResources, isLoading } = useResources()
+  const { resources, isLoading } = useResources()
   const mutations = useScopeMutations(agent.id, agent.slug, handleSavingChange)
 
   const orderedTypes = useMemo<Resource[]>(() => {
     const byId = new Map(resources.map((r) => [r.id, r]))
-    const system = SYSTEM_ORDER.map((id) => byId.get(id)).filter((r): r is Resource => !!r)
-    const visibleCustom = customResources
-      .filter((r) => r.isVisible !== false)
-      .sort((a, b) => a.plural.localeCompare(b.plural))
-    return [...system, ...visibleCustom]
-  }, [resources, customResources])
+    return SYSTEM_ORDER.map((id) => byId.get(id)).filter((r): r is Resource => !!r)
+  }, [resources])
 
   if (isLoading && orderedTypes.length === 0) {
     return <p className='text-sm text-muted-foreground py-2'>Loading resources…</p>
@@ -60,7 +53,7 @@ export function KnowledgeSectionContent({ agent, onAutosaveChange }: KnowledgeSe
   if (orderedTypes.length === 0) {
     return (
       <p className='text-sm text-muted-foreground py-2'>
-        No resources available yet. Set up a knowledge base or entity to scope this agent.
+        No knowledge bases or datasets available yet. Set one up to scope this agent's retrieval.
       </p>
     )
   }

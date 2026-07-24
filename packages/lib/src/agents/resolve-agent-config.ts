@@ -1,6 +1,6 @@
 // packages/lib/src/agents/resolve-agent-config.ts
 
-import type { AgentKind, Database } from '@auxx/database'
+import type { AgentKind, Database, KnowledgeEntry } from '@auxx/database'
 import { database as defaultDb, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { loadMasterKopilotSettings } from '../ai/kopilot/load-master-settings'
@@ -58,6 +58,15 @@ export interface ResolvedAgentConfig {
   toolRestrictions: ToolBindingMap
   /** Per-agent / per-master override. null = inherit org/system default. */
   modelId: string | null
+  /**
+   * The agent's retrieval scope (plans/permissions/v2/15-agent-knowledge-scope.md
+   * §1.1): raw `Agent.knowledge` rows, resolved via `resolveAgentKnowledgeScope`
+   * into the concrete datasets/articles `search_knowledge` and the prompt's
+   * Knowledge Catalog may look at. `[]` = unrestricted, org-wide knowledge —
+   * today's behavior, and the default for master Kopilot (which has no
+   * knowledge scope of its own).
+   */
+  knowledge: KnowledgeEntry[]
 }
 
 /**
@@ -96,6 +105,7 @@ export async function resolveAgentConfig(
       appAccounts: master.appAccounts,
       toolRestrictions: {},
       modelId: master.modelId,
+      knowledge: [],
     }
   }
 
@@ -110,6 +120,7 @@ export async function resolveAgentConfig(
   let behavior = {
     prompt: agent.prompt as Record<string, unknown>,
     toolsets: agent.toolsets,
+    knowledge: agent.knowledge,
     appAccounts: agent.appAccounts ?? {},
     toolRestrictions: (agent.toolRestrictions ?? {}) as ToolBindingMap,
     modelId: agent.modelId,
@@ -119,6 +130,7 @@ export async function resolveAgentConfig(
       .select({
         prompt: schema.Agent.prompt,
         toolsets: schema.Agent.toolsets,
+        knowledge: schema.Agent.knowledge,
         appAccounts: schema.Agent.appAccounts,
         toolRestrictions: schema.Agent.toolRestrictions,
         modelId: schema.Agent.modelId,
@@ -130,6 +142,7 @@ export async function resolveAgentConfig(
       behavior = {
         prompt: (row.prompt ?? {}) as Record<string, unknown>,
         toolsets: row.toolsets ?? [],
+        knowledge: row.knowledge ?? [],
         appAccounts: row.appAccounts ?? {},
         toolRestrictions: (row.toolRestrictions ?? {}) as ToolBindingMap,
         modelId: row.modelId ?? null,
@@ -165,6 +178,7 @@ export async function resolveAgentConfig(
     // it to a `VarRef`.
     toolRestrictions: behavior.toolRestrictions,
     modelId: behavior.modelId,
+    knowledge: behavior.knowledge,
   }
 }
 

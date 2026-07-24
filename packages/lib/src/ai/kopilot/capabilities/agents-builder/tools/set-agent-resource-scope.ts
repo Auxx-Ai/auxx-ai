@@ -4,7 +4,7 @@ import {
   type AgentScopeMode,
   batchSetAgentResourceScopes,
 } from '../../../../../agents/agent-scope-service'
-import { findCachedResource } from '../../../../../cache/org-cache-helpers'
+import { isKnowledgeScopeRecordId } from '../../../../../agents/knowledge-scope'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
@@ -15,9 +15,13 @@ const RECORD_ID_MIN = 1
 const RECORD_ID_MAX = 180
 
 /**
- * Replace the agent's resource-scope rows. Pass the full desired set; rows in
- * the DB that aren't in `scopes` are deleted (unless they're mention-sourced,
- * which the prompt reconciler owns).
+ * Narrow (or widen) which knowledge bases, articles and datasets the agent
+ * searches by default — its **retrieval scope**, not an access-control list.
+ * Pass the full desired set; rows in the DB that aren't in `scopes` are
+ * deleted (unless they're mention-sourced, which the prompt reconciler owns).
+ *
+ * Permissions (who/what the agent may read) are configured separately — this
+ * tool only shapes what `search_knowledge` and the Knowledge Catalog look at.
  */
 export function createSetAgentResourceScopeTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -25,18 +29,25 @@ export function createSetAgentResourceScopeTool(getDeps: GetToolDeps): AgentTool
     displayName: 'Set agent resource scope',
     // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
     surfaces: ['builder'],
-    description: `Update the agent's resource-scope rows (which records / entity types it can read).
+    description: `Narrow which knowledge sources the agent searches by default (its retrieval scope) —
+for example "focus this agent on the Returns KB" or "exclude the internal-only dataset".
+
+This is NOT an access-control mechanism — permissions (who/what the agent may
+read) are configured separately. An empty scope means the agent searches all
+org knowledge; scoping only narrows the default search set.
 
 Pass the FULL desired set of scopes. Rows in the DB that aren't in this list
 are removed (mention-pinned rows are preserved).
 
 Each row:
-- recordId: \`<defId>:<instanceId>\` for one record, or just \`<defId>\` for
-  a definition-level scope (covers every record of that type).
+- recordId targets a knowledge source: \`kb:<id>\` (one knowledge base),
+  \`article:<id>\` (one article), \`dataset:<id>\` (one RAG dataset), or the
+  bare definition-level \`kb\` / \`dataset\` (covers every KB / dataset in the
+  org). Bare \`article\` is not valid — articles are always instance-level.
 - mode: include_descendants | include_one | exclude
 
-Search for record names first with \`search_entities\` / \`search_knowledge\`
-before guessing recordIds.`,
+Search for source names first with \`search_knowledge\` before guessing
+recordIds.`,
     parameters: {
       type: 'object',
       properties: {
@@ -50,7 +61,8 @@ before guessing recordIds.`,
                 type: 'string',
                 minLength: RECORD_ID_MIN,
                 maxLength: RECORD_ID_MAX,
-                description: '`<defId>:<instanceId>` or `<defId>` for definition-level',
+                description:
+                  'Knowledge source id: `kb:<id>`, `article:<id>`, `dataset:<id>`, or bare `kb`/`dataset` for definition-level',
               },
               mode: { type: 'string', enum: VALID_MODES },
             },
@@ -97,14 +109,11 @@ before guessing recordIds.`,
             error: `mode must be one of: ${VALID_MODES.join(', ')}`,
           }
         }
-        const colon = row.recordId.indexOf(':')
-        const entityDefinitionId = colon === -1 ? row.recordId : row.recordId.slice(0, colon)
-        const def = await findCachedResource(agentDeps.organizationId, entityDefinitionId)
-        if (!def) {
+        if (!isKnowledgeScopeRecordId(row.recordId)) {
           return {
             success: false,
             output: null,
-            error: `Unknown entityDefinitionId "${entityDefinitionId}" in recordId "${row.recordId}".`,
+            error: `recordId "${row.recordId}" must target a knowledge source: \`kb:<id>\`, \`article:<id>\`, \`dataset:<id>\`, or bare \`kb\`/\`dataset\`.`,
           }
         }
       }

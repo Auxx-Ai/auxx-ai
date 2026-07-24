@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/types.ts
 
 import type { Database } from '@auxx/database'
+import type { ResolvedKnowledgeScope } from '../../../agents/resolve-knowledge-scope'
 import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
 import type { AgentDeps, AgentToolDefinition } from '../../agent-framework/types'
 import type { SessionContext } from '../types'
@@ -21,6 +22,14 @@ export interface ToolDeps extends AgentDeps {
    * Entity tools that read records gate each def through `canViewEntity`.
    */
   capabilities?: CapabilityView
+  /**
+   * The agent's resolved retrieval scope (plans/permissions/v2/15-agent-knowledge-scope.md
+   * §1.1), resolved once per turn. Present ONLY when the running agent has a
+   * non-empty `Agent.knowledge` scope; absent/null ⇒ unrestricted, org-wide
+   * knowledge — today's behavior. Read by knowledge-retrieval tools to narrow
+   * which datasets/articles they search.
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }
 
 /** Factory function that provides ToolDeps at execution time */

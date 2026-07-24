@@ -23,14 +23,15 @@ interface ResourceTypeBranchProps {
 /**
  * Resource types whose `include_descendants` mode is meaningful — picking one
  * via the "+ Add" picker should default to "Whole" rather than "Container
- * only" because granting access to descendants is the common case.
+ * only" because scoping in descendants is the common case. Only `kb` reaches
+ * this component with descendants (articles); `dataset` has none.
  */
 const HAS_DESCENDANTS = new Set<string>(['kb'])
 
 /**
- * Depth-0 row for one resource type (e.g. "Contacts", "Knowledge bases").
- * The row owns a definition-level scope + pin (recordId = resource.id with
- * no instance suffix). Expanding reveals only the records the admin has
+ * Depth-0 row for one knowledge-source type (`kb` or `dataset`). The row
+ * owns a definition-level scope + pin (recordId = resource.id with no
+ * instance suffix). Expanding reveals only the records the admin has
  * explicitly added (via picker), never the full corpus.
  */
 export function ResourceTypeBranch({ resource, agent, mutations }: ResourceTypeBranchProps) {
@@ -71,6 +72,8 @@ export function ResourceTypeBranch({ resource, agent, mutations }: ResourceTypeB
       {resource.id === 'kb' ? (
         <KbBranch agent={agent} mutations={mutations} depth={1} />
       ) : (
+        // Only 'dataset' reaches this branch — the only other resource in
+        // SYSTEM_ORDER (see knowledge-section-content.tsx).
         <FlatRecordList
           resource={resource}
           agent={agent}

@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../../agents'
 import type { AgentSurface } from '../../../agents/client'
+import type { ResolvedKnowledgeScope } from '../../../agents/resolve-knowledge-scope'
 import type { IntegrationCatalogEntry } from '../../../cache/integration-catalog'
 import type { KbCatalogEntry } from '../../../kb/catalog/kb-catalog'
 import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
@@ -77,6 +78,13 @@ export interface BuildKopilotPromptArgs {
    * filtering, byte-identical output to today.
    */
   recordAccess?: CapabilityView
+  /**
+   * The running agent's resolved retrieval scope (capability layer v2 §1.1).
+   * Sections rendering the Knowledge Catalog narrow it to what this agent may
+   * actually search. Absent/null ⇒ unrestricted, org-wide knowledge —
+   * byte-identical output to today.
+   */
+  knowledgeScope?: ResolvedKnowledgeScope | null
 }
 
 /**
@@ -171,6 +179,7 @@ function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
     triggerContext: args.triggerContext,
     procedureStep: args.procedureStep,
     recordAccess: args.recordAccess,
+    knowledgeScope: args.knowledgeScope,
   }
 }
 

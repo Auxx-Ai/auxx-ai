@@ -55,20 +55,27 @@ interface WalkedPrompt {
    * atomic rule). `toolset:<slug>` chips always resolve to `'*'`.
    */
   toolsetLocks: Map<string, WalkedToolsetLock>
-  /** RecordIds referenced by record chips (`article:<id>`, `entity:<id>`, …). */
+  /** RecordIds referenced by knowledge-source chips (`article:<id>`, `kb:<id>`, `dataset:<id>`). */
   recordIds: Set<string>
 }
 
 /**
- * Tiptap inline `reference` node prefixes that point at records (not at
- * tools/people/etc.). Anything matching one of these prefixes gets reconciled
- * into `Agent.knowledge`. Tool chips use the `tool:` prefix and reconcile into
- * `Agent.toolsets` instead.
+ * Tiptap inline `reference` node prefixes that point at knowledge sources
+ * (not at tools/people/entity records/etc.). Anything matching one of these
+ * prefixes gets reconciled into `Agent.knowledge` — mentioning a KB, article,
+ * or dataset in the persona prompt joins it to the agent's retrieval scope,
+ * which is the whole point of the feature. Tool chips use the `tool:` prefix
+ * and reconcile into `Agent.toolsets` instead.
+ *
+ * Mentioning a `ticket:`/`meeting:`/`entity:` record is just a prompt token —
+ * `resolve-instruction-references.ts` renders the bare id inline — and no
+ * longer writes a knowledge row; whether the agent may read that record is
+ * the permission layer's job (doc 14), not this reconciler's.
  *
  * Kept conservative on purpose — unknown prefixes are ignored so that adding a
  * new reference kind never inadvertently writes a knowledge row.
  */
-const RECORD_PREFIXES = new Set<string>(['article', 'kb', 'ticket', 'dataset', 'meeting', 'entity'])
+const RECORD_PREFIXES = new Set<string>(['article', 'kb', 'dataset'])
 
 function addLock(
   locks: Map<string, WalkedToolsetLock>,
@@ -92,9 +99,12 @@ function addLock(
 /**
  * Walk a Tiptap prompt doc, returning the resolved toolset locks (via
  * `tool:<name>` / `toolset:<slug>` chips resolved against `toolCatalog`) and
- * the set of record RecordIds (via `article:<id>` / `entity:<id>` / … chips).
+ * the set of knowledge-source RecordIds (via `article:<id>` / `kb:<id>` /
+ * `dataset:<id>` chips).
  *
- * Unknown chips are silently dropped. Pure function — does not mutate input.
+ * Unknown chips are silently dropped — including `ticket:`/`meeting:`/
+ * `entity:` record chips, which are prompt-only tokens with no knowledge-scope
+ * effect. Pure function — does not mutate input.
  */
 export function walkPromptDoc(
   prompt: Record<string, unknown>,
