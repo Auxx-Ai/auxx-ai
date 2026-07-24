@@ -4,6 +4,10 @@
 import type { Resource } from '@auxx/lib/resources/client'
 import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
+import { ButtonSwitch } from '@auxx/ui/components/button-switch'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
+import { EmptySection } from '@auxx/ui/components/section'
 import { TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import {
   closestCenter,
@@ -20,7 +24,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Plus, Rows3 } from 'lucide-react'
+import { Plus, Rows3, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
@@ -43,6 +47,10 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingResourceFieldId, setEditingResourceFieldId] = useState<ResourceFieldId | null>(null)
+
+  // Search + system-field visibility (local, non-persisted list filters)
+  const [search, setSearch] = useState('')
+  const [hideSystem, setHideSystem] = useState(false)
 
   // Confirm dialog for delete
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
@@ -68,6 +76,20 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
         .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')),
     [fields]
   )
+
+  const hasFields = sortedFields.length > 0
+
+  // Apply search (name/label + description) and the "hide system fields" toggle
+  const visibleFields = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return sortedFields.filter((field) => {
+      if (hideSystem && field.isSystem) return false
+      if (!query) return true
+      const name = (field.name ?? field.label ?? '').toLowerCase()
+      const description = (field.description ?? '').toLowerCase()
+      return name.includes(query) || description.includes(query)
+    })
+  }, [sortedFields, search, hideSystem])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
@@ -129,7 +151,24 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
         />
       )}
 
-      {sortedFields.length === 0 ? (
+      {hasFields && (
+        <ListToolbar>
+          <InputSearch
+            value={search}
+            placeholder='Search fields...'
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <ListToolbarGroup align='end'>
+            <ButtonSwitch
+              label='Hide system fields'
+              checked={hideSystem}
+              onCheckedChange={setHideSystem}
+            />
+          </ListToolbarGroup>
+        </ListToolbar>
+      )}
+
+      {!hasFields ? (
         <EmptyState
           icon={Rows3}
           title='No custom fields added'
@@ -148,13 +187,20 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
             ) : undefined
           }
         />
+      ) : visibleFields.length === 0 ? (
+        <EmptySection
+          icon={<Search />}
+          title='No fields found'
+          description='Try a different search or turn off "Hide system fields".'
+          className='mx-3 mt-3'
+        />
       ) : (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           modifiers={[restrictToVerticalAxis]}>
-          <table className='text-sm w-full caption-bottom border-t'>
+          <table className='text-sm w-full caption-bottom'>
             <TableHeader>
               <TableRow>
                 <TableHead className='w-[40px]'></TableHead>
@@ -179,9 +225,9 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
             </TableHeader>
             <TableBody>
               <SortableContext
-                items={sortedFields.map((field) => field.id)}
+                items={visibleFields.map((field) => field.id)}
                 strategy={verticalListSortingStrategy}>
-                {sortedFields.map((field) => (
+                {visibleFields.map((field) => (
                   <CustomFieldRow
                     key={field.id}
                     field={field}
