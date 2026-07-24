@@ -1,7 +1,7 @@
 // apps/web/src/components/agents/ui/list/create-agent-button.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -16,6 +16,7 @@ import { Bot, LayoutTemplate, MessageCircle, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import { useAgentStore } from '../../store/agent-store'
@@ -41,6 +42,7 @@ export function CreateAgentButton() {
   )
   const atLimit = isAtLimit(FeatureKey.agentsLimit, agentCount)
   const agentLimit = getLimit(FeatureKey.agentsLimit)
+  const { can } = useAccess()
 
   const isBusy = isCreating || isRedirecting
 
@@ -64,6 +66,9 @@ export function CreateAgentButton() {
     setTemplateKind(kind)
     setTemplateDialogOpen(true)
   }, [])
+
+  // Members without the agents Full rung can't create — hide the trigger.
+  if (!can(PermissionKey.agentsManage)) return null
 
   // No allowance on the current plan — gate creation behind an upgrade prompt.
   if (atLimit) {

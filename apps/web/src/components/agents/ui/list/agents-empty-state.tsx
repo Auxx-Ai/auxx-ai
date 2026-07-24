@@ -1,9 +1,11 @@
 // apps/web/src/components/agents/ui/list/agents-empty-state.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Bot } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useAgentSearch } from '../../hooks/use-agent-search'
 import { CreateAgentButton } from './create-agent-button'
 
@@ -14,13 +16,19 @@ interface AgentsEmptyStateProps {
 
 export function AgentsEmptyState({ isFirstRun }: AgentsEmptyStateProps) {
   const { setSearch } = useAgentSearch()
+  const { can } = useAccess()
+  const canCreate = can(PermissionKey.agentsManage)
   if (isFirstRun) {
     return (
       <EmptyState
         icon={Bot}
         title='No agents yet'
-        description='Create an agent to delegate work to AI.'
-        button={<CreateAgentButton />}
+        description={
+          canCreate
+            ? 'Create an agent to delegate work to AI.'
+            : 'No agents have been set up yet. Ask an admin to create one.'
+        }
+        button={canCreate ? <CreateAgentButton /> : undefined}
       />
     )
   }

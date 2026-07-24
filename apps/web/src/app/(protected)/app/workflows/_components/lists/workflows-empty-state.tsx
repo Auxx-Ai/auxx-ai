@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/workflows/_components/lists/workflows-empty-state.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { FileText, Plus, Search, Workflow } from 'lucide-react'
 import { useState } from 'react'
@@ -8,6 +9,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
 import { useOrganization } from '~/hooks/use-organization'
+import { useAccess } from '~/providers/capabilities-provider'
 
 interface WorkflowsEmptyStateProps {
   searchQuery?: string
@@ -21,6 +23,8 @@ export function WorkflowsEmptyState({
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const organization = useOrganization()
+  const { can } = useAccess()
+  const canCreate = can(PermissionKey.workflowsManage)
   const hasFilters = searchQuery || selectedTriggerType
 
   if (hasFilters) {
@@ -52,24 +56,28 @@ export function WorkflowsEmptyState({
         title='Workflows'
         description={
           <div className='max-w-[250px]'>
-            No workflows yet! Create your first workflow to get started.
+            {canCreate
+              ? 'No workflows yet! Create your first workflow to get started.'
+              : 'No workflows yet. Ask an admin to set one up.'}
           </div>
         }
         button={
-          <div className='flex items-center gap-2'>
-            <Button
-              type='button'
-              size='sm'
-              variant='outline'
-              onClick={() => setShowCreateDialog(true)}>
-              <Plus />
-              Create Workflow
-            </Button>
-            <Button type='button' size='sm' onClick={() => setShowTemplateDialog(true)}>
-              <FileText />
-              Browse Templates
-            </Button>
-          </div>
+          canCreate ? (
+            <div className='flex items-center gap-2'>
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                onClick={() => setShowCreateDialog(true)}>
+                <Plus />
+                Create Workflow
+              </Button>
+              <Button type='button' size='sm' onClick={() => setShowTemplateDialog(true)}>
+                <FileText />
+                Browse Templates
+              </Button>
+            </div>
+          ) : undefined
         }
       />
       <WorkflowFormDialog
