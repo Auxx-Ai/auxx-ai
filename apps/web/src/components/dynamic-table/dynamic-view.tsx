@@ -120,6 +120,7 @@ function DynamicViewInner<TData extends object>({
     table,
     tableId,
     enabled: cellSelectionConfig?.enabled ?? false,
+    readOnly: cellSelectionConfig?.readOnly,
     scrollContainerRef,
   })
 

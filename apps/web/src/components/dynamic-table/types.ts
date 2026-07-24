@@ -98,6 +98,15 @@ export interface CopyCellPayload {
 export interface CellSelectionConfig {
   /** Enable cell selection mode */
   enabled: boolean
+  /**
+   * Read-only degrade — selection + copy stay on, but every WRITE path is
+   * disabled: inline/popover edit triggers, paste, range clear, and fill/AI.
+   * Set per-def from the member's `canEditEntity` gate (Layer 2 × Layer 3), so a
+   * Read-only grantee can still browse/copy a restricted def's records without
+   * click-then-403. Checked only at write *entry points* (all event-driven), so
+   * it adds no per-cell render cost. The server enforces regardless.
+   */
+  readOnly?: boolean
   /** Get field definition for a column (for FieldInput) */
   getFieldDefinition?: (columnId: string) => ResourceField | null
   /** Get cell value for editing */

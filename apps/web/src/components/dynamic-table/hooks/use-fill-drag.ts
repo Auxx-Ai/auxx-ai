@@ -145,7 +145,7 @@ export function useFillDrag({
   const commitFill = useCallback(
     async (preview: CellRange, source: CellRange) => {
       const cfg = configRef.current
-      if (!cfg?.saveCells) return
+      if (!cfg?.saveCells || cfg.readOnly) return
 
       const idx = indexerRef.current
       const previewB = rangeBounds(preview)

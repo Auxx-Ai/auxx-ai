@@ -16,6 +16,7 @@ import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecords, useResource } from '~/components/resources'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { MergePreviewPanel } from './merge-preview-panel'
 import { MergeSourcePanel } from './merge-source-panel'
@@ -56,6 +57,12 @@ export function MergeDialog({
   // Get resource definition for label and fields
   const { resource } = useResource(entityDefinitionId ?? '')
 
+  // Per-def write gate (Layer 2 × Layer 3) — merge is a record write (`edit`
+  // floor). Central guard covering every merge trigger (records view, ticket
+  // row actions, detail view). The server enforces regardless.
+  const { canEditEntity } = useAccess()
+  const canEdit = entityDefinitionId ? canEditEntity(entityDefinitionId) : false
+
   // State: target and sources (sources = everything except target)
   const [targetRecordId, setTargetRecordId] = useState<RecordId>(
     () => initialTargetId ?? baseRecordIds[0]
@@ -63,7 +70,6 @@ export function MergeDialog({
   const [sourceRecordIds, setSourceRecordIds] = useState<RecordId[]>(() =>
     baseRecordIds.filter((id) => id !== (initialTargetId ?? baseRecordIds[0]))
   )
-  console.log('MergeDialog sourceRecordIds:', sourceRecordIds, targetRecordId)
   // Fetch all records for display
   const allRecordIds = useMemo(
     () => [targetRecordId, ...sourceRecordIds].filter(Boolean),
@@ -132,7 +138,7 @@ export function MergeDialog({
 
   /** Execute merge */
   const handleMerge = () => {
-    if (sourceRecordIds.length === 0 || !targetRecordId) return
+    if (sourceRecordIds.length === 0 || !targetRecordId || !canEdit) return
 
     mergeMutation.mutate({
       targetRecordId,
@@ -141,7 +147,7 @@ export function MergeDialog({
   }
 
   const resourceLabel = resource?.label ?? 'Record'
-  const canMerge = sourceRecordIds.length > 0 && targetRecordId
+  const canMerge = sourceRecordIds.length > 0 && targetRecordId && canEdit
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -12,6 +12,8 @@ interface UseCellNavigationOptions<TData> {
   table: Table<TData>
   tableId: string
   enabled: boolean
+  /** Read-only degrade — arrow/tab/copy navigation stays on, Enter-to-edit off. */
+  readOnly?: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
@@ -26,6 +28,7 @@ export function useCellNavigation<TData>({
   table,
   tableId,
   enabled,
+  readOnly,
   scrollContainerRef,
 }: UseCellNavigationOptions<TData>) {
   /** Track last known position for resuming navigation after Escape clears */
@@ -178,7 +181,7 @@ export function useCellNavigation<TData>({
           }
           break
         case 'Enter':
-          if (!currentRange) return
+          if (!currentRange || readOnly) return
           e.preventDefault()
           store.setEditingCell(tableId, focusAddr)
           return
@@ -219,7 +222,7 @@ export function useCellNavigation<TData>({
       }
       scrollCellIntoView(newRow.id, newCol.id, direction)
     },
-    [table, tableId, editingCell, enabled, scrollCellIntoView]
+    [table, tableId, editingCell, enabled, readOnly, scrollCellIntoView]
   )
 
   useEffect(() => {
