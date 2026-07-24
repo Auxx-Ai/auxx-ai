@@ -34,12 +34,16 @@ export async function computeUserCapabilities(
   const entry = roleMap[userId]
   const role = entry?.role
   const seatType = entry?.seatType ?? 'full'
+  // Principal kind rides the same cached entry — no extra read. `'AGENT'` selects
+  // the set-semantics branch in `composeUserCapabilities` (v2 §0.2).
+  const userType = entry?.userType ?? 'USER'
 
   // Non-member: fail closed without touching the DB.
   if (!role)
     return composeUserCapabilities({
       role: undefined,
       seatType,
+      userType,
       typeAccessRows: [],
       instanceAccessRows: [],
     })
@@ -151,6 +155,7 @@ export async function computeUserCapabilities(
   return composeUserCapabilities({
     role,
     seatType,
+    userType,
     orgPolicyLevels,
     groupLevels,
     userLevels,

@@ -13,6 +13,16 @@ import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permissio
 /** The grantee axis this section edits: an individual member or a team. */
 export type GranteeKind = 'user' | 'group'
 
+/**
+ * How the grantee's Layer-2 Records level composes — which decides what an
+ * unconfigured def falls through to:
+ * - `member` (default) — human/team: own override → org policy → role default.
+ * - `agent` — an AGENT grantee (`userType:'AGENT'`), which composes by SET over
+ *   an all-Full base (capability layer v2 §0.2/§0.3): no org policy, no group
+ *   tier, so an unset Records area is **Full**, not the member baseline.
+ */
+export type GranteePrincipal = 'member' | 'agent'
+
 const GRANTEE_TYPE: Record<GranteeKind, ResourceGranteeType> = {
   user: ResourceGranteeType.user,
   group: ResourceGranteeType.group,
@@ -61,7 +71,11 @@ export interface GranteeDefAccessRow {
  * doesn't silently become restricted and lock every other member out. Selecting
  * Inherit (revoke) never touches the baseline. Errors surface via `toastError`.
  */
-export function useGranteeDefAccess(granteeKind: GranteeKind, granteeId: string) {
+export function useGranteeDefAccess(
+  granteeKind: GranteeKind,
+  granteeId: string,
+  principal: GranteePrincipal = 'member'
+) {
   const utils = api.useUtils()
   const { resources, isLoading: resourcesLoading } = useResources()
   const granteeType = GRANTEE_TYPE[granteeKind]
@@ -78,12 +92,15 @@ export function useGranteeDefAccess(granteeKind: GranteeKind, granteeId: string)
   const recordsPermission = useMemo<ResourcePermission>(() => {
     const persisted = granteeKind === 'group' ? groupGrants : userGrants
     const own = persisted.find((g) => g.granteeId === granteeId)?.levels?.[Area.records]
+    // An agent has no baseline to fall back on — absent means Full (§0.2/§0.3).
     const level =
-      own ?? effectiveBaseline[Area.records] ?? roleDefaults?.[Area.records] ?? Level.None
+      principal === 'agent'
+        ? (own ?? Level.Full)
+        : (own ?? effectiveBaseline[Area.records] ?? roleDefaults?.[Area.records] ?? Level.None)
     // `levelToPermission` maps `Level.None` to `undefined` ("no permission");
     // for display we want the `none` marker so the picker can name it.
     return levelToPermission(level) ?? ResourcePermission.none
-  }, [granteeKind, granteeId, groupGrants, userGrants, effectiveBaseline, roleDefaults])
+  }, [granteeKind, granteeId, principal, groupGrants, userGrants, effectiveBaseline, roleDefaults])
 
   const rowsQuery = api.resourceAccess.allTypeAccess.useQuery(undefined, { staleTime: 30_000 })
 

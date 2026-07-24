@@ -4,6 +4,7 @@ import type { ResolvedAgentConfig } from '../../../../agents'
 import type { AgentSurface } from '../../../../agents/client'
 import type { IntegrationCatalogEntry } from '../../../../cache/integration-catalog'
 import type { KbCatalogEntry } from '../../../../kb/catalog/kb-catalog'
+import type { CapabilityView } from '../../../../permissions/capabilities/capability-view'
 import type { AgentToolDefinition } from '../../../agent-framework/types'
 import type { KopilotDomainState } from '../../types'
 import type { CurrentUserInfo, EntityCatalogEntry } from '../shared-types'
@@ -101,6 +102,15 @@ export interface PromptCtx {
   readonly triggerContext: TriggerContext | undefined
   // Procedure stepper (Phase 3) — set by Phase 4 only while a frame is active.
   readonly procedureStep?: ProcedureStepInput
+  /**
+   * The turn's resolved read enforcement (capability layer v2 §3.4). Sections
+   * rendering org-wide catalogs filter by it so the prompt can't advertise data
+   * the tools would deny. Undefined ⇒ no filtering (today's output).
+   *
+   * Distinct from {@link PromptCtx.capabilities} — that is the `string[]` of
+   * human-readable capability descriptions.
+   */
+  readonly recordAccess?: CapabilityView
 }
 
 export interface PromptSection {

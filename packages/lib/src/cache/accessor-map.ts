@@ -1,6 +1,6 @@
 // packages/lib/src/cache/accessor-map.ts
 
-import type { CustomFieldEntity, OrganizationRole, SeatType } from '@auxx/database/types'
+import type { CustomFieldEntity } from '@auxx/database/types'
 import type { Inbox } from '../inboxes/types'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
@@ -13,7 +13,12 @@ import type {
   RecordAccessor,
   ScalarAccessor,
 } from './accessors'
-import type { CachedSubscription, DehydratedOrgProfile, OrgMemberInfo } from './org-cache-keys'
+import type {
+  CachedSubscription,
+  DehydratedOrgProfile,
+  MemberRoleEntry,
+  OrgMemberInfo,
+} from './org-cache-keys'
 import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 
 /**
@@ -30,7 +35,7 @@ export interface OrgCacheAccessorMap {
   // Record-shaped
   entityDefs: RecordAccessor<string>
   entityDefSlugs: RecordAccessor<string>
-  memberRoleMap: RecordAccessor<{ role: OrganizationRole; seatType: SeatType }>
+  memberRoleMap: RecordAccessor<MemberRoleEntry>
   channelProviders: RecordAccessor<string>
   features: ScalarAccessor<FeatureMapObject>
 

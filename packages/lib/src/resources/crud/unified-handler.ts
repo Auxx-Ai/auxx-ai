@@ -20,7 +20,7 @@ import { FieldValueService } from '../../field-values'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
 import { upsertRecordIdentity } from '../../identity'
-import type { CapabilitySet } from '../../permissions/capabilities/capability-set'
+import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
@@ -178,14 +178,14 @@ export interface UnifiedCrudHandlerOptions {
    */
   bypassFieldGuards?: ReadonlySet<SystemAttribute>
   /**
-   * Request-scoped {@link CapabilitySet} for entity-def enforcement. Present ⇒
+   * Request-scoped {@link CapabilityView} for entity-def enforcement. Present ⇒
    * read methods gate each def through `canViewEntity` (v2 §2) AND mutation
    * methods gate through `assertEditEntity` (v2 phase 4 §2). **Absent ⇒ no
    * enforcement** — so internal/system callers (seeders, workers, record-rules)
    * stay unrestricted with no change. Request paths must thread `ctx.capabilities`
    * (resolved once via `capabilityProcedure`).
    */
-  capabilities?: CapabilitySet
+  capabilities?: CapabilityView
 }
 
 export class UnifiedCrudHandler {
@@ -193,7 +193,7 @@ export class UnifiedCrudHandler {
   private db: Database
   private bypassFieldGuards: ReadonlySet<SystemAttribute>
   /** Request-scoped read enforcement; undefined for internal/system callers. */
-  private capabilities?: CapabilitySet
+  private capabilities?: CapabilityView
 
   constructor(
     private organizationId: string,
@@ -1112,7 +1112,7 @@ export class UnifiedCrudHandler {
    */
   async updateValues(instanceId: string, values: Record<string, unknown>) {
     // Only the instanceId is known here, so resolve its def to enforce — but
-    // solely when a request-scoped CapabilitySet is present (internal callers
+    // solely when a request-scoped CapabilityView is present (internal callers
     // skip the extra lookup entirely).
     if (this.capabilities) {
       const instance = await getEntityInstance({

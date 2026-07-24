@@ -15,6 +15,7 @@ import {
 } from '../../agents/bindings'
 import type { AgentSurface } from '../../agents/client'
 import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures'
+import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import {
   type CapabilityRegistry,
   createAppCapabilities,
@@ -87,6 +88,14 @@ export interface BuildEffectiveAgentRuntimeArgs {
    * are preserved by the wrapper, so binding clamps and schema digests are invariant.
    */
   wrapTools?: (tools: AgentToolDefinition[]) => AgentToolDefinition[]
+  /**
+   * The capability view this run executes under, resolved once by
+   * `resolveAgentRunCapabilities` (capability layer v2 §3.1). Threaded into
+   * BOTH the tool deps (read/write gates) and the domain config (prompt-side
+   * catalog filtering, §3.4). Omit to keep today's unrestricted behavior —
+   * master-Kopilot job runs (no agent) and pre-setup drafts have no principal.
+   */
+  capabilities?: CapabilityView
 }
 
 /**
@@ -163,9 +172,17 @@ export async function buildAgentCapabilityRegistry(args: {
   sessionId: string
   agentId: string | null
   signal?: AbortSignal
+  /** Read/write enforcement for this run (§3.1). Omit → unrestricted, as today. */
+  capabilities?: CapabilityView
 }): Promise<CapabilityRegistry> {
-  const { organizationId, userId, sessionId, agentId, signal } = args
-  const getToolDeps = createToolDepsFactory({ organizationId, userId, sessionId, signal })
+  const { organizationId, userId, sessionId, agentId, signal, capabilities } = args
+  const getToolDeps = createToolDepsFactory({
+    organizationId,
+    userId,
+    sessionId,
+    signal,
+    capabilities,
+  })
 
   const registry = createCapabilityRegistry()
   registry.register(createEntityCapabilities(getToolDeps))
@@ -220,6 +237,7 @@ export async function buildEffectiveAgentRuntime(
     sessionId,
     agentId,
     signal,
+    capabilities: args.capabilities,
   })
 
   const agentConfig = await resolveAgentConfig(organizationId, agentId, undefined, { source })
@@ -267,6 +285,9 @@ export async function buildEffectiveAgentRuntime(
     surface,
     audience,
     triggerContext: args.triggerContext,
+    // Prompt-side catalog filtering (§3.4) — the entity/KB catalogs the model is
+    // handed are narrowed to what this run may actually read.
+    capabilities: args.capabilities,
     // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need headroom past
     // the framework's small-loop default.
     maxIterations: 30,

@@ -43,6 +43,15 @@ export interface AgentJobPayload {
    * context from `session.agentTriggerId` regardless.
    */
   triggerKind?: 'dm'
+  /**
+   * The human who triggered this run; the run's capabilities are intersected
+   * with theirs (capability layer v2 §0.5), so a mention can never read data
+   * through an agent that the mentioner couldn't read themselves. Unset for
+   * schedule/event/app/webhook runs — those use the agent profile alone.
+   *
+   * Never the run's identity: the engine still runs as `userId` (the agent).
+   */
+  invokerUserId?: string | null
 }
 
 /**

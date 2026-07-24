@@ -13,7 +13,13 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
-import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
+import {
+  getAllCachedAgents,
+  getCachedAgentById,
+  getCachedAgents,
+  getCachedMembers,
+  onCacheEvent,
+} from '../cache'
 import { BadRequestError, ForbiddenError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import { publishAgentTx } from './agent-version-service'
@@ -235,6 +241,15 @@ export interface UpdateAgentInput {
    * plans/kopilot/apps/agent-credentials.md §5.5.
    */
   appAccounts?: Record<string, AppAccountBinding | null>
+  /**
+   * **Run-as delegation** (capability layer v2 §0.6). When non-null, every run
+   * of this agent resolves its capabilities from that user instead of the
+   * agent's own permission profile; `null` clears the delegation. The engine
+   * identity (session `userId`, authorship, realtime attribution) is unchanged
+   * either way. Must be an ACTIVE `userType: 'USER'` member of the org —
+   * rejected with `BadRequestError` otherwise. Omit to leave untouched.
+   */
+  runAsUserId?: string | null
 }
 
 /**
@@ -273,6 +288,13 @@ export async function updateAgent(
   // cred owned by createdById). Done before the tx so we fail fast.
   if (input.appAccounts !== undefined) {
     await validateAppAccountBindings(agentId, organizationId, input.appAccounts, db)
+  }
+
+  // Run-as delegation must point at an ACTIVE human member — a delegation to a
+  // non-member / deactivated / non-human principal would fail every run at
+  // `resolveAgentRunCapabilities` (§0.6), so reject it at the write instead.
+  if (input.runAsUserId != null) {
+    await assertRunAsCandidate(organizationId, input.runAsUserId)
   }
 
   await db.transaction(async (tx) => {
@@ -662,6 +684,12 @@ export interface AgentSummary {
   id: string
   /** `null` while the agent is a draft (pre-`completeAgentSetup`). */
   userId: string | null
+  /**
+   * Optional run-as delegation — every run resolves its capabilities from this
+   * user instead of the agent's own profile. `null` = own profile (the default).
+   * See plans/permissions/v2/14-agent-permissions.md §0.6.
+   */
+  runAsUserId: string | null
   createdById: string
   /** `null` until the builder writes a real one via `update_agent_identity`. */
   name: string | null
@@ -696,6 +724,7 @@ export async function listAgents(
 function toAgentSummary(a: {
   id: string
   userId: string | null
+  runAsUserId: string | null
   createdById: string
   name: string | null
   slug: string
@@ -712,6 +741,7 @@ function toAgentSummary(a: {
   return {
     id: a.id,
     userId: a.userId,
+    runAsUserId: a.runAsUserId,
     createdById: a.createdById,
     name: a.name && a.name.length > 0 ? a.name : null,
     slug: a.slug,
@@ -837,6 +867,27 @@ export async function isAgentSlugTaken(
  */
 export async function agentExistsInOrg(organizationId: string, agentId: string): Promise<boolean> {
   return (await getCachedAgentById(organizationId, agentId)) !== null
+}
+
+/**
+ * Verify a proposed `runAsUserId` is an ACTIVE, human (`userType: 'USER'`)
+ * member of the org — the same predicate `resolveAgentRunCapabilities` asserts
+ * at run time (capability layer v2 §0.6). Reads the `members` org cache.
+ *
+ * @throws {BadRequestError} when the user is not a member, not ACTIVE, or is an
+ * agent/system principal.
+ */
+async function assertRunAsCandidate(organizationId: string, runAsUserId: string): Promise<void> {
+  const member = (await getCachedMembers(organizationId)).find((m) => m.userId === runAsUserId)
+  if (!member) {
+    throw new BadRequestError('The run-as user must be a member of this organization.')
+  }
+  if (member.status !== 'ACTIVE') {
+    throw new BadRequestError('The run-as user must be an active member of this organization.')
+  }
+  if (member.user?.userType !== 'USER') {
+    throw new BadRequestError('An agent can only run as a human member, not another agent.')
+  }
 }
 
 /**

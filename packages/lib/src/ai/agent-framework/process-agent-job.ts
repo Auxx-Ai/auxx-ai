@@ -17,6 +17,7 @@ import { buildInstructionReferenceResolver } from '../kopilot/prompts/resolve-in
 import type { TriggerContext, TriggerKind } from '../kopilot/prompts/trigger-context'
 import type { UsageTrackingRequest } from '../orchestrator/types'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
+import { resolveAgentRunCapabilities } from './agent-run-capabilities'
 import { KopilotContextStore, readContextSlice } from './context'
 import { type AgentRuntimeDomain, buildEffectiveAgentRuntime } from './effective-runtime'
 import { AgentEngine } from './engine'
@@ -94,6 +95,19 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   const procedures = agent?.procedures ?? []
   const hasProcedures = procedures.length > 0
 
+  // Capability layer v2 §3.1: the run's read/write enforcement — the agent's own
+  // profile (or its run-as delegate), intersected with the invoking human on
+  // mention/assignment/DM runs. Master Kopilot job runs (`agentId === null`) have
+  // no agent principal, so they stay `undefined` (unrestricted, as today).
+  // A broken run-as delegation throws here and fails the run loudly (§0.6).
+  const capabilities = agent
+    ? await resolveAgentRunCapabilities({
+        agent,
+        organizationId,
+        invokerUserId: data.invokerUserId,
+      })
+    : undefined
+
   // 1b. Resolve trigger context for autonomous runs. The trigger row is
   // re-fetched (not passed via the job payload) so operator edits to
   // `instructions` between enqueue and execution are picked up.
@@ -123,6 +137,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     hasProcedures,
     page,
     triggerContext,
+    capabilities,
   })
   const { domainConfig, agentConfig } = runtime
 

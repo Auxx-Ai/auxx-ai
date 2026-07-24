@@ -19,6 +19,7 @@ import {
   Clock,
   FileText,
   ListChecks,
+  Lock,
   Plug,
   Plus,
   ShieldCheck,
@@ -41,6 +42,7 @@ import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentGuideDialog } from './agent-guide-dialog'
 import { AgentHero } from './agent-hero'
+import { AgentPermissionsSection } from './agent-permissions-section'
 import { BindingsSection } from './bindings/bindings-section'
 import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
 import { PersonaEditor } from './prompt/persona-editor'
@@ -54,6 +56,7 @@ const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }
   knowledge: BookOpen,
   procedures: ListChecks,
   triggers: Zap,
+  permissions: Lock,
 }
 
 const SECTION_LABELS: Record<AgentTab, string> = {
@@ -63,6 +66,7 @@ const SECTION_LABELS: Record<AgentTab, string> = {
   knowledge: 'Knowledge',
   procedures: 'Procedures',
   triggers: 'Triggers',
+  permissions: 'Permissions',
 }
 
 // The tab strip lives in <NavStackBar>, OUTSIDE/above the ScrollArea viewport, so the
@@ -307,6 +311,10 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                     </Section>
                   </div>
                 ) : null}
+
+                <div ref={assignRef('permissions')}>
+                  <AgentPermissionsSection agent={agent} />
+                </div>
 
                 {/* Spacer so the last section can scroll up to the activation line. */}
                 <div className='h-[40vh]' />

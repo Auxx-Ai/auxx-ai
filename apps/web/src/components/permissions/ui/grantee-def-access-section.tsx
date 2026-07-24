@@ -16,6 +16,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import {
   type GranteeDefAccessRow,
   type GranteeKind,
+  type GranteePrincipal,
   useGranteeDefAccess,
 } from '../hooks/use-grantee-def-access'
 import { AccessLevelSelect } from './access-level-select'
@@ -30,6 +31,13 @@ const COPY: Record<GranteeKind, { description: string }> = {
       'Access to individual record types. Each row shows what this team gets by default; pick a level to override it for that type.',
   },
 }
+
+/**
+ * Agent copy. An agent's default per type is Full unless its Records area was
+ * lowered above, or the type itself is restricted workspace-wide.
+ */
+const AGENT_DESCRIPTION =
+  'Access to individual record types. Each row shows what this agent gets by default — pick a level to override it for that type.'
 
 /**
  * The grantee-centric entity-def **Access** section (capability layer v2
@@ -50,12 +58,18 @@ export function GranteeDefAccessSection({
   granteeKind,
   granteeId,
   canEdit,
+  principal = 'member',
 }: {
   granteeKind: GranteeKind
   granteeId: string
   canEdit: boolean
+  /**
+   * `agent` switches the "Inherit" fall-through to the agent SET-semantics
+   * default (Full) and the copy with it — see {@link GranteePrincipal}.
+   */
+  principal?: GranteePrincipal
 }) {
-  const { isLoading, rows, setLevel } = useGranteeDefAccess(granteeKind, granteeId)
+  const { isLoading, rows, setLevel } = useGranteeDefAccess(granteeKind, granteeId, principal)
 
   const [search, setSearch] = useState('')
   const [overridesOnly, setOverridesOnly] = useState(false)
@@ -78,7 +92,7 @@ export function GranteeDefAccessSection({
     <SettingsSection
       icon={ShieldCheck}
       title='Record access'
-      description={COPY[granteeKind].description}>
+      description={principal === 'agent' ? AGENT_DESCRIPTION : COPY[granteeKind].description}>
       {isLoading ? (
         <div className='border p-1 rounded-xl space-y-1'>
           <Skeleton className='h-9 w-full rounded-lg' />
@@ -122,6 +136,7 @@ export function GranteeDefAccessSection({
                   key={row.resource.entityDefinitionId}
                   row={row}
                   canEdit={canEdit}
+                  principal={principal}
                   onChange={(level) => setLevel(row.resource.entityDefinitionId, level)}
                 />
               ))}
@@ -137,10 +152,12 @@ export function GranteeDefAccessSection({
 function DefAccessRow({
   row,
   canEdit,
+  principal,
   onChange,
 }: {
   row: GranteeDefAccessRow
   canEdit: boolean
+  principal: GranteePrincipal
   onChange: (level: Parameters<ReturnType<typeof useGranteeDefAccess>['setLevel']>[1]) => void
 }) {
   const { resource, isLockedDown, grantLevel, inheritedLevel, isNoEffect } = row
@@ -178,6 +195,7 @@ function DefAccessRow({
             value={grantLevel}
             includeInherit
             inheritedLevel={inheritedLevel}
+            inheritLabelText={principal === 'agent' ? 'Default' : undefined}
             onInherit={() => onChange('inherit')}
             onChange={(level) => onChange(level)}
             disabled={!canEdit}

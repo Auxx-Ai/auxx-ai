@@ -1,7 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/create-deps.ts
 
 import { database } from '@auxx/database'
-import type { CapabilitySet } from '../../../permissions/capabilities/capability-set'
+import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
 import type { SessionContext } from '../types'
 import type { GetToolDeps, ToolDeps } from './types'
 
@@ -17,11 +17,21 @@ export function createToolDepsFactory(params: {
   /** UI session context from the current request body. Read by tools that need active-record ids. */
   sessionContext?: SessionContext
   /**
-   * Pre-resolved read enforcement (v2 §3). Pass ONLY for interactive turns where
-   * the acting user is a real org member; omit for autonomous/visitor/workflow
-   * turns (they stay unrestricted). Resolved once and shared by every tool call.
+   * Pre-resolved read/write enforcement (v2 §3), resolved once and shared by
+   * every tool call in the turn.
+   *
+   * As of capability layer v2 §3.2 every agent path threads this: interactive
+   * Kopilot (`intersectCapabilities(agentCaps, humanCaps)`), worker agent jobs
+   * and visitor chat (both via `resolveAgentRunCapabilities`).
+   *
+   * The `!capabilities → unrestricted` fallback inside the tools now survives
+   * **solely for the workflow AI node** (`workflow-engine/nodes/action-nodes/
+   * ai-v2.ts`), which is explicitly out of scope until workflows become
+   * permission principals of their own (§0.8) — plus master-Kopilot job runs and
+   * pre-setup drafts, which have no principal to resolve. Do not remove the
+   * fallback, and do not add new callers that rely on it.
    */
-  capabilities?: CapabilitySet
+  capabilities?: CapabilityView
 }): GetToolDeps {
   return (): ToolDeps => ({
     db: database,

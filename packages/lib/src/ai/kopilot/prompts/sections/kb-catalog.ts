@@ -9,6 +9,11 @@ import { ALL_MODES, type PromptSection } from './types'
  * (`get_article`) instead of leaning on chunk-level embedding search.
  * Customer-facing runs only see PUBLIC KBs — mirrors the `search_knowledge`
  * dataset clamp. See plans/kb/knowledge-retrieval-plan.md.
+ *
+ * Member-audience runs are additionally gated per KB by `ctx.recordAccess`
+ * (capability layer v2 §3.4). Without it the catalog handed a member the full
+ * ToC — titles plus body-derived descriptions — of every INTERNAL KB, including
+ * ones they hold no instance grant on.
  */
 export const kbCatalog: PromptSection = {
   id: 'kb-catalog',
@@ -19,9 +24,11 @@ export const kbCatalog: PromptSection = {
     const hasGetArticle = ctx.toolNames.has('get_article')
     // Without a way to read or search knowledge, the catalog is dead weight.
     if (!hasGetArticle && !ctx.toolNames.has('search_knowledge')) return null
+    const recordAccess = ctx.recordAccess
     return renderKbCatalog(ctx.kbCatalog, {
       publicOnly: ctx.audience === 'customer',
       hasGetArticle,
+      canViewKb: recordAccess ? (kbId) => recordAccess.canViewInstance('kb', kbId) : undefined,
     })
   },
 }

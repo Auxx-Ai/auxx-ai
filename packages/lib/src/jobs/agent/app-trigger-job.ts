@@ -112,6 +112,9 @@ export async function executeAgentAppTrigger(ctx: JobContext<AgentAppTriggerJobD
     agentTriggerId,
     approvalMode: 'auto',
     modelId: agent.modelId ?? undefined,
+    // No `invokerUserId`: an app/webhook payload has no human in the loop, so
+    // the run uses the agent's own capability profile alone (capability layer
+    // v2 §0.5). This is also the executor for webhook-endpoint dispatch.
   })
 
   logger.info('Enqueued autonomous app-trigger run', {

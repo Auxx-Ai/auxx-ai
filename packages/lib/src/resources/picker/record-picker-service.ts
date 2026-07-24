@@ -6,7 +6,7 @@ import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
 import { getCachedEntityDefId, getCachedResource, getOrgCache } from '../../cache'
 import { getRecordIdentitiesForRecords } from '../../identity'
-import type { CapabilitySet } from '../../permissions/capabilities/capability-set'
+import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import {
   type CustomResource,
   isCustomResource,
@@ -60,13 +60,13 @@ export class RecordPickerService {
   private userId?: string
   private cache: RecordPickerCacheService
   /** Request-scoped read enforcement (§2.2); undefined for internal callers. */
-  private capabilities?: CapabilitySet
+  private capabilities?: CapabilityView
 
   constructor(
     organizationId: string,
     userId: string | undefined,
     db: Database,
-    capabilities?: CapabilitySet
+    capabilities?: CapabilityView
   ) {
     this.db = db
     this.organizationId = organizationId

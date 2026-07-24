@@ -95,6 +95,10 @@ export async function dispatchAppTriggerToAgents(ctx: JobContext<AgentAppTrigger
     const filter = (match.config as { filter?: Record<string, unknown> } | null)?.filter
     if (!matchesFilter(filter, triggerData)) continue
 
+    // Fan-out only — `executeAgentAppTrigger` (app-trigger-job.ts) owns the
+    // `enqueueAgentJob` call and deliberately passes no `invokerUserId`: an app
+    // payload has no human in the loop, so the run uses the agent's own
+    // capability profile alone (capability layer v2 §0.5).
     await queue.add('executeAgentAppTrigger', {
       agentTriggerId: match.triggerId,
       agentId: match.agentId,

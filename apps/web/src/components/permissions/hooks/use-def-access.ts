@@ -135,6 +135,10 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
         .map((r) => ({ granteeId: r.granteeId, permission: r.permission })),
     [rows]
   )
+  // NOTE: `user` rows carry BOTH humans and agents — an agent grant is a `user`
+  // row keyed on the agent's backing `User.id` (agent plan §4.1), so consumers
+  // that render an Agents section must partition this list against the org's
+  // agent user ids (see `def-access-section.tsx`).
   const userGrants = useMemo<DefAccessGrant[]>(
     () =>
       rows

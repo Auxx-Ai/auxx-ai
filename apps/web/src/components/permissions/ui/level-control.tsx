@@ -32,6 +32,16 @@ interface LevelControlProps {
   /** Emits the new explicit level, or `undefined` to reset the area to inherited. */
   onChange: (level: Level | undefined) => void
   disabled?: boolean
+  /**
+   * Muted text rendered beside the control while nothing explicit is stored —
+   * how a caller names the fall-through. Agent grantees pass `'Default'` so an
+   * unset area reads "Default · Full" (set-semantics: absent ⇒ Full) instead of
+   * silently looking identical to an explicit Full. Omitted for the member
+   * surfaces, where the reset button alone marks the explicit state.
+   */
+  unsetHint?: string
+  /** Tooltip on the reset button. Defaults to the inherit wording. */
+  resetTooltip?: string
 }
 
 /**
@@ -42,7 +52,9 @@ interface LevelControlProps {
  * button appears once an explicit level is set. Every rung stays selectable —
  * the raise-only rule for overrides is enforced server-side (an override at or
  * below the baseline is composed away), and surfaced in the UI as an "ignored"
- * warning rather than a disabled rung.
+ * warning rather than a disabled rung. For AGENT grantees (set-semantics, no
+ * inheritance) the caller passes `unsetHint` so the unset state is legible as a
+ * default rather than an inherited value.
  */
 export function LevelControl({
   area,
@@ -51,6 +63,8 @@ export function LevelControl({
   ignored = false,
   onChange,
   disabled = false,
+  unsetHint,
+  resetTooltip = 'Reset to inherited',
 }: LevelControlProps) {
   const levels = useMemo<Level[]>(
     () => [Level.None, ...area.rungs.map((r) => r.level)],
@@ -67,12 +81,22 @@ export function LevelControl({
           aria-hidden={!ignored}
         />
       </Tooltip>
-      <Tooltip content='Reset to inherited'>
+      {unsetHint !== undefined && (
+        <span
+          className={cn(
+            'text-xs text-muted-foreground whitespace-nowrap',
+            isExplicit && 'invisible'
+          )}
+          aria-hidden={isExplicit}>
+          {unsetHint}
+        </span>
+      )}
+      <Tooltip content={resetTooltip}>
         <Button
           type='button'
           size='icon-sm'
           variant='ghost'
-          aria-label='Reset to inherited'
+          aria-label={resetTooltip}
           disabled={disabled || !isExplicit}
           className={cn('size-6 text-muted-foreground', !isExplicit && 'invisible')}
           onClick={() => onChange(undefined)}>

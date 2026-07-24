@@ -9,7 +9,12 @@ import {
 } from '../../agents/bindings'
 import { ALL_SURFACES } from '../../agents/client'
 import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures/control-tools'
-import { type AgentEngineConfig, createCallModel, type Subject } from '../../ai/agent-framework'
+import {
+  type AgentEngineConfig,
+  createCallModel,
+  resolveAgentRunCapabilities,
+  type Subject,
+} from '../../ai/agent-framework'
 import {
   createAppCapabilities,
   createCapabilityRegistry,
@@ -20,7 +25,7 @@ import {
   createToolDepsFactory,
 } from '../../ai/kopilot'
 import { ModelType } from '../../ai/providers/types'
-import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
+import { getCachedAgentById, getCachedDefaultModel } from '../../cache/org-cache-helpers'
 import { createHandoffTool } from './tools/handoff'
 
 /** Split a `provider:model` string; null when unset / malformed. */
@@ -105,11 +110,21 @@ export async function buildChatEngineConfig(
     }
   }
 
+  // Capability layer v2 §3.1/§3.2: a visitor turn runs on the agent's own
+  // profile (or its run-as delegate) with NO invoker intersection — the visitor
+  // is not an org member and has no capabilities to intersect with. A broken
+  // run-as delegation throws and fails the turn loudly rather than widening it.
+  const cachedAgent = await getCachedAgentById(organizationId, agentId)
+  const capabilities = cachedAgent
+    ? await resolveAgentRunCapabilities({ agent: cachedAgent, organizationId })
+    : undefined
+
   const getToolDeps = createToolDepsFactory({
     organizationId,
     userId: agentUserId,
     sessionId,
     signal,
+    capabilities,
   })
 
   const registry = createCapabilityRegistry()
@@ -171,6 +186,8 @@ export async function buildChatEngineConfig(
     // chat ALWAYS serves a customer, so we never consult `agent.kind` here.
     surface: 'chat',
     audience: 'customer',
+    // Prompt-side catalog filtering (§3.4) — same view the tools enforce with.
+    capabilities,
     // No `triggerContext` — chat is not an AgentTrigger run; it stays
     // `runMode: 'interactive'` (the visitor is in the loop). The surface/audience
     // gates do the customer-facing work the trigger envelope used to.

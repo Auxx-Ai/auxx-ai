@@ -26,6 +26,12 @@ interface UpdateAgentInput {
   archivedAt?: Date | null
   /** Persona Tiptap doc (`{ type: 'doc', content: [...] }`). */
   prompt?: Record<string, unknown>
+  /**
+   * Run-as delegation (capability layer v2 §0.6) — a member's user id makes
+   * every run resolve that member's capabilities; `null` clears it. Server
+   * rejects anything but an ACTIVE `userType:'USER'` member.
+   */
+  runAsUserId?: string | null
 }
 
 interface UseAgentMutationsResult {
@@ -115,7 +121,8 @@ export function useAgentMutations(): UseAgentMutationsResult {
         patch.description === undefined &&
         patch.modelId === undefined &&
         patch.mentionable === undefined &&
-        patch.archivedAt === undefined
+        patch.archivedAt === undefined &&
+        patch.runAsUserId === undefined
 
       if (isPromptOnly) {
         // Mirror the server-side reconciler client-side, optimistically. The
@@ -192,6 +199,8 @@ export function useAgentMutations(): UseAgentMutationsResult {
       if (patch.modelId !== undefined) detailPatch.modelId = patch.modelId
       if (patch.mentionable !== undefined) detailPatch.mentionable = patch.mentionable
       if (patch.archivedAt !== undefined) detailPatch.archivedAt = patch.archivedAt
+      // Run-as isn't surfaced in the list/store, only on the detail view.
+      if (patch.runAsUserId !== undefined) detailPatch.runAsUserId = patch.runAsUserId
       // Behavior-field edits (prompt/modelId) flip the dirty pill when a
       // published baseline exists; identity edits (name/slug/description) don't.
       const behaviorChanged = patch.prompt !== undefined || patch.modelId !== undefined

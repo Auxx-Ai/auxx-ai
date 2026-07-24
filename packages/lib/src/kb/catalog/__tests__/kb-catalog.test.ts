@@ -142,6 +142,26 @@ describe('renderKbCatalog', () => {
     expect(out).not.toContain('[p42]')
   })
 
+  it('drops KBs the principal cannot view (capability layer v2 §3.4)', () => {
+    const out = renderKbCatalog(catalog, {
+      publicOnly: false,
+      canViewKb: (id) => id === 'kb1',
+    })
+    expect(out).toContain('### Help Center')
+    expect(out).not.toContain('Internal Playbook')
+    expect(out).not.toContain('Escalations')
+  })
+
+  it('returns null when no KB survives the view gate', () => {
+    expect(renderKbCatalog(catalog, { publicOnly: false, canViewKb: () => false })).toBeNull()
+  })
+
+  it('omitting canViewKb is a no-op', () => {
+    expect(renderKbCatalog(catalog, { publicOnly: false, canViewKb: undefined })).toBe(
+      renderKbCatalog(catalog, { publicOnly: false })
+    )
+  })
+
   it('adapts the read hint when get_article is unavailable', () => {
     const withTool = renderKbCatalog(catalog, { publicOnly: false, hasGetArticle: true })
     const withoutTool = renderKbCatalog(catalog, { publicOnly: false, hasGetArticle: false })
