@@ -2129,6 +2129,13 @@
       "when": 1784847542338,
       "tag": "0303_resource_access_type_grant_unique_nulls_not_distinct",
       "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1784863238391,
+      "tag": "0304_table_view_entity_definition_id",
+      "breakpoints": true
     }
   ]
 }

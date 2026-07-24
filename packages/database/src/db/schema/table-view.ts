@@ -14,6 +14,7 @@ import {
   uniqueIndex,
 } from './_shared'
 
+import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -26,6 +27,18 @@ export const TableView = pgTable(
       .primaryKey()
       .notNull(),
     tableId: text().notNull(),
+    /**
+     * The EntityDefinition this view belongs to, when `tableId` resolves to a
+     * real entity surface (`entity-<defId>` for table/kanban, bare `<defId>` for
+     * panel/dialog). NULL for non-entity surfaces (workflow-runs, recordings, …).
+     * Populated server-side on create; the typed replacement for parsing the def
+     * out of the free-form `tableId`. Backs the def-admin gate on structural
+     * writes (org default view + panel/dialog field configs).
+     */
+    entityDefinitionId: text().references((): AnyPgColumn => EntityDefinition.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
     name: text().notNull(),
     config: jsonb().notNull(),
     /** Context type: 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit' */

@@ -55,7 +55,7 @@ import { useEntityDefinitionMutations, useResources } from '~/components/resourc
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { type ProcessedEntity, useEntitySidebar } from '~/hooks/use-entity-sidebar'
-import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { EditableSidebarItem } from './editable-sidebar-item'
 import { EntityFolder, entityDndId, folderDndId } from './entity-folder'
@@ -96,7 +96,7 @@ export function EntitySidebarNav() {
   const [draftFolderTitle, setDraftFolderTitle] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
   const { archiveEntity, deleteEntity } = useEntityDefinitionMutations()
-  const { isAdminOrOwner } = useUser()
+  const { canAdministerDef } = useAccess()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const isOpen = getGroupOpen('records')
   const { isAtLimit, getLimit } = useFeatureFlags()
@@ -281,7 +281,10 @@ export function EntitySidebarNav() {
     if (!resource) return null
 
     const isSystemEntity = !!resource.entityType
-    const canRemove = !isSystemEntity && isAdminOrOwner
+    // Editing/archiving/deleting a def is def administration (the `Full`/`admin`
+    // rung) — OWNER/ADMIN or a def-`admin` grantee. Server enforces regardless.
+    const canAdminister = canAdministerDef(resource.entityDefinitionId)
+    const canRemove = !isSystemEntity && canAdminister
 
     return (
       <>
@@ -291,7 +294,7 @@ export function EntitySidebarNav() {
           }>
           <Plus /> Create {entity.label}
         </DropdownMenuItem>
-        {!isSystemEntity && (
+        {!isSystemEntity && canAdminister && (
           <DropdownMenuItem onClick={() => handleEditEntity(resource)}>
             <Pencil /> Edit Entity
           </DropdownMenuItem>

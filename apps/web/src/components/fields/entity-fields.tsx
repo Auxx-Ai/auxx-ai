@@ -15,6 +15,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useResourceFields } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { EntityFieldsContent } from './entity-fields-content'
 import { FieldNavigationProvider } from './field-navigation-context'
 import { useDynamicFieldOptions } from './hooks/use-dynamic-field-options'
@@ -66,6 +67,12 @@ function EntityFields({
 }: EntityFieldsProps) {
   // Parse recordId to get entityDefinitionId
   const { entityDefinitionId } = parseRecordId(recordId)
+
+  // The panel edit mode manages FIELD DEFINITIONS (add/edit/delete/reorder custom
+  // fields), which is def administration (the `Full`/`admin` rung) — NOT record
+  // editing. Gate the edit-mode affordances on it; the server enforces regardless.
+  const { canAdministerDef } = useAccess()
+  const canManageFields = canEdit && canAdministerDef(entityDefinitionId)
 
   // State management
   const closeHandlersRef = useRef<Record<string, () => void>>({})
@@ -267,7 +274,7 @@ function EntityFields({
         unregisterProviderClose={unregisterProviderClose}
         ConfirmDeleteDialog={ConfirmDeleteDialog}
         recordId={recordId}
-        canEdit={canEdit}
+        canEdit={canManageFields}
         readOnly={readOnly}
         showTitle={showTitle}
         onMutationSuccess={onMutationSuccess}

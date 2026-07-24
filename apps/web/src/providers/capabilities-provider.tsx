@@ -3,6 +3,7 @@
 
 import {
   type ClientCapabilities,
+  canAdministerRecord,
   canEditRecord,
   canViewRecord,
   PERMISSION_REGISTRY_MAP,
@@ -56,6 +57,16 @@ interface CapabilitiesContextType {
    * those, so an affordance may show optimistically and get a 403 on submit.
    */
   canEditEntity: (entityDefinitionId: string) => boolean
+  /**
+   * Per-def ADMINISTRATION gate — mirrors the server `canAdministerDef` (the
+   * `Full`/`admin` rung). Governs def-administration affordances: managing a
+   * def's fields, its Access tab, its structural table-view configs (org default
+   * view + panel/dialog field layouts). Unlike `canEditEntity` this does NOT flow
+   * from the base records level — only an explicit `admin` grant (or OWNER/ADMIN)
+   * confers it. Pass the canonical `entityDefinitionId`. Server enforces; this is
+   * degrade-only to avoid click-then-403.
+   */
+  canAdministerDef: (entityDefinitionId: string) => boolean
   /** The current member's composed capability keys. */
   capabilities: PermissionKey[]
   isLoading: boolean
@@ -146,6 +157,8 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       deniedBy,
       canViewEntity: (entityDefinitionId: string) => canViewRecord(resolved, entityDefinitionId),
       canEditEntity: (entityDefinitionId: string) => canEditRecord(resolved, entityDefinitionId),
+      canAdministerDef: (entityDefinitionId: string) =>
+        canAdministerRecord(resolved, entityDefinitionId),
       capabilities: snapshot.keys,
       isLoading: false,
     }

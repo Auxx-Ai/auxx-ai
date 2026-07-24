@@ -10,7 +10,9 @@ import {
   viewContextTypeSchema,
 } from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
+import type { CapabilitySet } from '@auxx/lib/permissions'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import {
   createView,
@@ -23,7 +25,8 @@ import {
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { isStructural, resolveDefId } from './table-view-helpers'
 
 /**
  * Map service error codes to TRPCError
@@ -39,6 +42,28 @@ function mapErrorToTRPC(error: { code: string; message: string }): never {
     code: codeMap[error.code] ?? 'INTERNAL_SERVER_ERROR',
     message: error.message,
   })
+}
+
+/**
+ * Gate a STRUCTURAL table-view write (perms v2 doc 07): setting the org default
+ * view or editing a panel/dialog field config. Requires def administration
+ * (`Full`/`admin`) when the view resolves to a def; for non-entity surfaces
+ * (`entityDefinitionId` null — no def to delegate) it falls closed to org-admin.
+ */
+async function assertStructuralAccess(
+  capabilities: CapabilitySet,
+  entityDefinitionId: string | null,
+  organizationId: string,
+  userId: string
+): Promise<void> {
+  if (entityDefinitionId) {
+    capabilities.assertAdministerDef(entityDefinitionId)
+    return
+  }
+  const isAdmin = await isAdminOrOwner(organizationId, userId)
+  if (!isAdmin) {
+    throw new ForbiddenError('You do not have permission to configure this view.')
+  }
 }
 
 /**
@@ -79,7 +104,7 @@ export const tableViewRouter = createTRPCRouter({
    * Create a new view
    * Optionally creates a new SINGLE_SELECT field for kanban grouping
    */
-  create: protectedProcedure
+  create: capabilityProcedure
     .input(
       z.object({
         tableId: z.string(),
@@ -100,6 +125,15 @@ export const tableViewRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
+
+      // Resolve the def this view belongs to (null for non-entity surfaces) and
+      // persist it as the typed link that backs the def-admin gate. Structural
+      // writes (panel/dialog config or setting the org default) require def
+      // administration; ordinary table/kanban authoring stays open (doc 07 §2).
+      const entityDefinitionId = await resolveDefId(input.tableId, organizationId)
+      if (isStructural(input)) {
+        await assertStructuralAccess(ctx.capabilities, entityDefinitionId, organizationId, userId)
+      }
 
       // Check saved view limit (only for shared/team views)
       if (input.isShared) {
@@ -150,6 +184,7 @@ export const tableViewRouter = createTRPCRouter({
         isShared: input.isShared,
         isDefault: input.isDefault,
         contextType: input.contextType,
+        entityDefinitionId,
         userId,
         organizationId,
       })
@@ -170,7 +205,7 @@ export const tableViewRouter = createTRPCRouter({
    * Note: .passthrough() allows extra fields (resourceFieldId, visible) used by client-side
    * onMutate callbacks for optimistic update context - these are ignored server-side.
    */
-  update: protectedProcedure
+  update: capabilityProcedure
     .input(
       z
         .object({
@@ -182,16 +217,46 @@ export const tableViewRouter = createTRPCRouter({
         .passthrough()
     )
     .mutation(async ({ ctx, input }) => {
-      const isAdmin = await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId)
+      const { userId, organizationId } = ctx.session
+      const isAdmin = await isAdminOrOwner(organizationId, userId)
 
+      // Load the target row (org-wide) to key the structural gate off its stored
+      // contextType / entityDefinitionId. A write is structural if the row is a
+      // panel/dialog config OR it's a default view OR the input flips isDefault on
+      // (the back-door — gated the same as setDefault, doc 07 §2).
+      const rowResult = await getView({
+        id: input.id,
+        userId,
+        organizationId,
+        options: { orgWide: true },
+      })
+      if (rowResult.isErr()) mapErrorToTRPC(rowResult.error)
+      const row = rowResult.value
+
+      const wantsDefault = (input as { isDefault?: unknown }).isDefault === true
+      const structural =
+        isStructural({ contextType: row.contextType, isDefault: row.isDefault }) || wantsDefault
+
+      if (structural) {
+        await assertStructuralAccess(
+          ctx.capabilities,
+          row.entityDefinitionId,
+          organizationId,
+          userId
+        )
+      }
+
+      // Structural writes are org-wide (a def-admin edits shared panel/dialog
+      // configs they may not own); non-structural writes keep today's ownership
+      // scope (own views, or any org view for org-admins).
       const result = await updateView({
         id: input.id,
-        userId: ctx.session.userId,
-        organizationId: ctx.session.organizationId,
+        userId,
+        organizationId,
         name: input.name,
         config: input.config,
         isShared: input.isShared,
-        isAdmin,
+        isAdmin: structural ? true : isAdmin,
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
@@ -252,15 +317,34 @@ export const tableViewRouter = createTRPCRouter({
     }),
 
   /**
-   * Set a view as default for the organization (admin only)
+   * Set a view as the org default (perms v2 doc 07): def administration
+   * (`Full`/`admin`) for the view's def, or org-admin for non-entity surfaces.
    */
-  setDefault: adminProcedure
+  setDefault: capabilityProcedure
     .input(z.object({ tableId: z.string(), viewId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const { userId, organizationId } = ctx.session
+
+      // Load the target view to gate on its stored def link (fail closed to
+      // org-admin when it belongs to no def).
+      const rowResult = await getView({
+        id: input.viewId,
+        userId,
+        organizationId,
+        options: { orgWide: true },
+      })
+      if (rowResult.isErr()) mapErrorToTRPC(rowResult.error)
+      await assertStructuralAccess(
+        ctx.capabilities,
+        rowResult.value.entityDefinitionId,
+        organizationId,
+        userId
+      )
+
       const result = await setDefaultView({
         tableId: input.tableId,
         viewId: input.viewId,
-        organizationId: ctx.session.organizationId,
+        organizationId,
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)

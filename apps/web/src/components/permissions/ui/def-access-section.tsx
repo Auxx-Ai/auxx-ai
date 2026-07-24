@@ -27,6 +27,7 @@ import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { type DefAccessGrant, useDefAccess } from '../hooks/use-def-access'
 import { AccessLevelSelect } from './access-level-select'
@@ -66,7 +67,11 @@ const GRANTEE_COPY: Record<
  */
 export function DefAccessSection({ resource }: { resource: Resource }) {
   const { hasAccess } = useFeatureFlags()
-  const canEdit = hasAccess(FeatureKey.granularPermissions)
+  const { canAdministerDef } = useAccess()
+  // Editing the Access tab is def administration (the `Full`/`admin` rung), AND
+  // the plan must include granular permissions. Server enforces both regardless.
+  const canEdit =
+    hasAccess(FeatureKey.granularPermissions) && canAdministerDef(resource.entityDefinitionId)
   const {
     isLoading,
     baselineLevel,
