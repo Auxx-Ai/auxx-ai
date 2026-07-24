@@ -1,5 +1,6 @@
 // apps/web/src/app/api/files/upload/sessions/route.ts
 
+import { AuxxError } from '@auxx/lib/errors'
 import {
   createStorageManager,
   ensureProcessorsInitialized,
@@ -49,6 +50,30 @@ export async function POST(request: NextRequest) {
       return UploadErrorHandler.validationError('Invalid session request format', {
         validationErrors: validationError,
       })
+    }
+
+    // Layer-2 gate (doc 10 §0): file-library uploads require `files.manage` (Full).
+    // Record attachments, dataset docs, visit-QC photos, avatars, etc. reach this
+    // same transport but are gated by their own host surface — leave them on the
+    // plan/quota gate only. Returned explicitly so the AuxxError carries its own 403
+    // instead of being message-string-classified by the outer handler.
+    if (sessionRequest.entityType === ENTITY_TYPES.FILE) {
+      try {
+        const { requirePermission, PermissionKey } = await import('@auxx/lib/permissions')
+        await requirePermission(
+          session.user.id,
+          session.user.defaultOrganizationId,
+          PermissionKey.filesManage
+        )
+      } catch (permissionError) {
+        if (permissionError instanceof AuxxError) {
+          return NextResponse.json(
+            { error: 'FORBIDDEN', message: permissionError.message },
+            { status: permissionError.statusCode }
+          )
+        }
+        throw permissionError
+      }
     }
 
     // Storage limit check: verify org has capacity for this upload
