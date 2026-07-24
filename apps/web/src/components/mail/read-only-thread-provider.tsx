@@ -21,7 +21,7 @@ const NOOP_ACTIONS = {} as EmailActions
  *
  * It supplies {@link ThreadContext} with just `threadId` + a no-op
  * `emailActions`, skipping the full provider's per-mount weight: `useReplyBox`,
- * `api.ticket.create`, `api.participant.ensureContact`, and the entire
+ * `api.record.create`, `api.participant.ensureContact`, and the entire
  * mutations/handlers graph. That machinery is never used in a passive preview,
  * and the right pane remounts on every row swap — so this avoids real per-click
  * cost. `ThreadMessages`'s display children consume only `threadId` +

@@ -1054,12 +1054,6 @@
       "import": "./dist/threads/types.mjs",
       "default": "./src/threads/types.ts"
     },
-    "./tickets": {
-      "types": "./src/tickets/index.ts",
-      "source": "./src/tickets/index.ts",
-      "import": "./dist/tickets/index.mjs",
-      "default": "./src/tickets/index.ts"
-    },
     "./timeline": {
       "types": "./src/timeline/index.ts",
       "source": "./src/timeline/index.ts",
