@@ -223,8 +223,9 @@ export const memberRouter = createTRPCRouter({
     )
     .use(notDemo('change member seat types'))
     .mutation(async ({ ctx, input }) => {
-      // The service enforces the members.manage gate + worker⇒USER invariant and
-      // emits `member.seat-type.changed` + dehydration invalidation on success.
+      // The service enforces the members.manage gate, the worker⇒USER invariant
+      // and the destination seat class's plan limit, then emits
+      // `member.seat-type.changed` + dehydration invalidation on success.
       const result = await updateMemberSeatType(
         {
           organizationId: ctx.session.organizationId,

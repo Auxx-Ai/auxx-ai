@@ -11,13 +11,17 @@
 // See plans/evals/phase-1-agent-simulation.md §1.4 and conventions.md §4/§5.
 
 import type { EvalRunMode } from '@auxx/types/evals'
+import { resolveVersionPolicy } from '../agents/agent-permission-policy'
 import type { CompiledProcedure } from '../agents/procedures'
+import { resolveAgentRunCapabilities } from '../ai/agent-framework/agent-run-capabilities'
 import {
   buildEffectiveAgentRuntime,
   type EffectiveAgentRuntime,
 } from '../ai/agent-framework/effective-runtime'
 import type { AgentToolDefinition } from '../ai/agent-framework/types'
 import type { TriggerContext } from '../ai/kopilot/prompts/trigger-context'
+import { getCachedAgentById } from '../cache'
+import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { canonicalize, stableHash, stripSecrets } from './snapshots'
 
 export interface ProviderModel {
@@ -227,6 +231,34 @@ export async function buildEffectiveAgentRuntimeFromSnapshot(args: {
   triggerContext?: TriggerContext
 }): Promise<ReconstructedRuntime> {
   const { snapshot } = args
+
+  // Authorization is reconstructed from the SAME view as the config (doc 19 §15).
+  // A **pinned** run resolves the policy of its recorded `versionId` — not the
+  // agent's current active version — so re-running an old eval exercises the
+  // authority that version was published with, exactly like re-running its
+  // behavior. A **draft** run (marked by a recorded `agentConfigHash`) resolves the
+  // live draft profile. An agent that has since been deleted resolves to
+  // `undefined` and the reconstruction stays unauthorized-but-inert, as before.
+  const cachedAgent = await getCachedAgentById(args.organizationId, snapshot.agent.id)
+  let capabilities: CapabilityView | undefined
+  if (cachedAgent) {
+    if (snapshot.agentConfigHash) {
+      capabilities = await resolveAgentRunCapabilities({
+        agent: cachedAgent,
+        organizationId: args.organizationId,
+        source: 'draft',
+      })
+    } else {
+      const pinnedPolicy = snapshot.agent.versionId
+        ? await resolveVersionPolicy(args.organizationId, snapshot.agent.versionId)
+        : null
+      capabilities = await resolveAgentRunCapabilities({
+        agent: { ...cachedAgent, permissionPolicy: pinnedPolicy ?? cachedAgent.permissionPolicy },
+        organizationId: args.organizationId,
+      })
+    }
+  }
+
   const runtime = await buildEffectiveAgentRuntime({
     organizationId: args.organizationId,
     userId: args.userId,
@@ -234,6 +266,7 @@ export async function buildEffectiveAgentRuntimeFromSnapshot(args: {
     agentId: snapshot.agent.id,
     domain: 'kopilot',
     signal: args.signal,
+    capabilities,
     modelId: `${snapshot.agent.model.provider}:${snapshot.agent.model.model}`,
     hasProcedures: snapshot.procedures.length > 0,
     // An agent-draft run (marked by a recorded `agentConfigHash`) reconstructs

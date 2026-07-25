@@ -26,7 +26,14 @@ import {
   searchSettings,
 } from './sidebar-secondary-search'
 
-type Props = { items: SidebarProps[]; baseUrl: string; title: string; current: string | undefined }
+type Props = {
+  items: SidebarProps[]
+  baseUrl: string
+  title: string
+  current: string | undefined
+  /** Focus the search field once, on mount — for sections entered from a top-level nav click. */
+  autoFocusSearch?: boolean
+}
 
 /** Below this many reachable pages the search field is more chrome than help. */
 const SEARCH_MIN_ITEMS = 8
@@ -39,7 +46,7 @@ const SEARCH_MIN_ITEMS = 8
  * The nav rows are deliberately NOT cmdk items: keeping them plain links preserves
  * cmd-click/middle-click and keeps `role='listbox'` off the always-visible nav.
  */
-function SidebarSecondary({ items, baseUrl, title, current }: Props) {
+function SidebarSecondary({ items, baseUrl, title, current, autoFocusSearch }: Props) {
   const router = useRouter()
   const groups = useSettingsMenu(items)
   const [query, setQuery] = useState('')
@@ -70,6 +77,16 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
   useEffect(() => {
     if (isOpen) inputRef.current?.focus()
   }, [isOpen])
+
+  // Entry focus: fires once per mount, so navigating between pages inside the section
+  // never yanks focus back. Desktop only — on mobile the column is still collapsed.
+  const didAutoFocus = useRef(false)
+  useEffect(() => {
+    if (!autoFocusSearch || !searchable || didAutoFocus.current) return
+    if (!window.matchMedia('(min-width: 768px)').matches) return
+    didAutoFocus.current = true
+    inputRef.current?.focus({ preventScroll: true })
+  }, [autoFocusSearch, searchable])
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {

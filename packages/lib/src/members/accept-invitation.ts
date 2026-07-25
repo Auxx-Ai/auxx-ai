@@ -9,11 +9,11 @@ import type {
   SeatType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, count, eq, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
-import { FeatureKey } from '../permissions/types'
 import { findMemberByUser } from './member-queries'
+import { countSeatsUsed, seatLimitFeature } from './seat-limits'
 
 const logger = createScopedLogger('member-service')
 
@@ -42,26 +42,17 @@ async function processInvitationAcceptance(
   // against teammates). Each class counts only its own active members.
   const seatClass: SeatType = invitation.seatType === 'worker' ? 'worker' : 'full'
   const isWorkerSeat = seatClass === 'worker'
-  const memberLimit = await featureService.getLimit(
-    organizationId,
-    isWorkerSeat ? FeatureKey.workerSeats : FeatureKey.teammates
-  )
+  const memberLimit = await featureService.getLimit(organizationId, seatLimitFeature(seatClass))
   let activeMemberCount = 0 // Initialize count
 
   if (typeof memberLimit === 'number' && memberLimit >= 0) {
-    // Check numeric limits (including 0) — scoped to the joining seat class
-    const [countRow] = await db
-      .select({ value: count() })
-      .from(schema.OrganizationMember)
-      .where(
-        and(
-          eq(schema.OrganizationMember.organizationId, organizationId),
-          eq(schema.OrganizationMember.status, 'ACTIVE'),
-          eq(schema.OrganizationMember.seatType, seatClass)
-        )
-      )
-
-    activeMemberCount = countRow?.value ?? 0
+    // Check numeric limits (including 0) — scoped to the joining seat class.
+    // Pending invitations are excluded: the invitation being accepted is itself
+    // PENDING and would count against its own seat.
+    activeMemberCount = await countSeatsUsed(
+      { organizationId, seatType: seatClass, includePendingInvitations: false },
+      db
+    )
 
     if (activeMemberCount >= memberLimit) {
       logger.warn('Invitation acceptance blocked by helper: Seat limit reached.', {

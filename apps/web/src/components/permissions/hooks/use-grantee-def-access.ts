@@ -1,7 +1,11 @@
 // apps/web/src/components/permissions/hooks/use-grantee-def-access.ts
 'use client'
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import {
+  ResourceGranteeType,
+  ResourcePermission,
+  type SharingGranteeType,
+} from '@auxx/database/enums'
 import {
   Area,
   ENTITY_BASE_AREAS,
@@ -30,7 +34,9 @@ export type GranteeKind = 'user' | 'group'
  */
 export type GranteePrincipal = 'member' | 'agent'
 
-const GRANTEE_TYPE: Record<GranteeKind, ResourceGranteeType> = {
+// Typed against `SharingGranteeType`, not `ResourceGranteeType`: the wider union
+// carries `'profile'`, whose ResourceAccess writes are gated until plan 19 step 9.
+const GRANTEE_TYPE: Record<GranteeKind, SharingGranteeType> = {
   user: ResourceGranteeType.user,
   group: ResourceGranteeType.group,
 }

@@ -6,7 +6,22 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 
-/** The fixed grantee id for the org-wide USER baseline (`role:org_member`). */
+/**
+ * The fixed grantee id for the org-wide USER baseline (`role:org_member`).
+ *
+ * TODO(plan-19-step-7): the composer no longer reads the `role:org_member`
+ * `PermissionGrant` tier — the bound **Member profile** is the baseline (doc 19
+ * §0.8), and data migration 041 moved every org's levels onto
+ * `granteeType:'profile'`. Until this surface becomes the Member-profile editor
+ * (doc 19 §7 "Member baseline tab"), `apps/web/src/server/api/routers/
+ * permissions-member-baseline.ts` redirects this address onto the org's `member`
+ * profile in BOTH directions, so the client keeps using it unchanged. Group and
+ * user override rows on this page are unaffected — those tiers are unchanged.
+ *
+ * This id is also the `ResourceAccess` def/instance baseline marker
+ * (`use-def-baselines`, `use-def-access`, `use-instance-share`), which is a
+ * SEPARATE, still-live mechanism — nothing redirects those rows.
+ */
 export const MEMBER_BASELINE_GRANTEE_ID = 'org_member'
 
 /**
@@ -95,9 +110,21 @@ export function usePermissionGrants() {
     [roleDefaults, baseline]
   )
 
-  /** Upsert a grantee's sparse level map (`{}` stores an empty override row). */
+  /**
+   * Upsert a grantee's sparse level map (`{}` stores an empty override row).
+   *
+   * Typed as `GrantGranteeType` minus `'profile'`: this page addresses the base
+   * tier as `role:org_member` and the router redirects it onto the org's `member`
+   * profile (`permissions-member-baseline.ts`), so `permissions.grant`'s input enum
+   * deliberately still excludes `'profile'` — TODO(plan-19-step-7) widens it when
+   * the Profiles editor lands and this indirection goes away.
+   */
   const save = useCallback(
-    (granteeType: GrantGranteeType, granteeId: string, levels: Partial<Record<Area, Level>>) => {
+    (
+      granteeType: Exclude<GrantGranteeType, 'profile'>,
+      granteeId: string,
+      levels: Partial<Record<Area, Level>>
+    ) => {
       // Sparse by contract — the router's `z.record` input type isn't partial.
       grant.mutate({ granteeType, granteeId, levels: levels as Record<Area, Level> })
     },
@@ -105,7 +132,8 @@ export function usePermissionGrants() {
   )
 
   const remove = useCallback(
-    (granteeType: GrantGranteeType, granteeId: string) => revoke.mutate({ granteeType, granteeId }),
+    (granteeType: Exclude<GrantGranteeType, 'profile'>, granteeId: string) =>
+      revoke.mutate({ granteeType, granteeId }),
     [revoke]
   )
 

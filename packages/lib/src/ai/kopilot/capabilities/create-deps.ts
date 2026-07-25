@@ -21,18 +21,25 @@ export function createToolDepsFactory(params: {
    * Pre-resolved read/write enforcement (v2 §3), resolved once and shared by
    * every tool call in the turn.
    *
-   * As of capability layer v2 §3.2 every agent path threads this: interactive
-   * Kopilot (`intersectCapabilities(agentCaps, humanCaps)`), worker agent jobs
-   * and visitor chat (both via `resolveAgentRunCapabilities`).
+   * **REQUIRED KEY, nullable value — deliberately.** The property was optional
+   * (`capabilities?:`) until plan 19 step 3. Because the tools treat a missing
+   * value as *unrestricted*, an omitted property was a silent, invisible
+   * authorization bypass — and three approval runners had in fact omitted it,
+   * making the whole published-policy gate inert on those paths without a single
+   * compile error to show for it. Requiring the key (while still allowing
+   * `undefined`) turns every bypass into something a reader and a reviewer can
+   * see at the call site, and turns a NEW omission into a type error.
    *
-   * The `!capabilities → unrestricted` fallback inside the tools now survives
-   * **solely for the workflow AI node** (`workflow-engine/nodes/action-nodes/
-   * ai-v2.ts`), which is explicitly out of scope until workflows become
-   * permission principals of their own (§0.8) — plus master-Kopilot job runs and
-   * pre-setup drafts, which have no principal to resolve. Do not remove the
-   * fallback, and do not add new callers that rely on it.
+   * Every agent path threads a real view: interactive Kopilot (human ∩ published
+   * agent policy), worker agent jobs, visitor chat, and eval runs (all via
+   * `resolveAgentRunCapabilities`).
+   *
+   * Pass `undefined` ONLY where there is genuinely no principal to resolve, and
+   * say why in a comment at the call site: the workflow AI node (workflows are not
+   * permission principals yet — doc 14 §0.8), master-Kopilot job runs, and
+   * pre-setup drafts.
    */
-  capabilities?: CapabilityView
+  capabilities: CapabilityView | undefined
   /**
    * The running agent's resolved retrieval scope (§1.1), resolved once and
    * shared by every tool call in the turn. Same `null`-is-unrestricted

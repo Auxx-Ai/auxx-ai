@@ -2171,6 +2171,20 @@
       "when": 1784928163364,
       "tag": "0309_notifications_v2_target_model",
       "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1784948292157,
+      "tag": "0310_permission_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1784950542117,
+      "tag": "0311_agent_version_permission_policy",
+      "breakpoints": true
     }
   ]
 }

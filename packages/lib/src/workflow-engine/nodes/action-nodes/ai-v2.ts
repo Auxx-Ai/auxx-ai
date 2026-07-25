@@ -455,6 +455,15 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       organizationId,
       userId,
       sessionId,
+      // DELIBERATELY unrestricted, and the one remaining legitimate `undefined`
+      // on a production path: a workflow has no synthetic User and is not a
+      // permission principal, so there is nothing to resolve (doc 14 §0.8 —
+      // "Workflows are out of scope — documented follow-up"). This is stated
+      // explicitly rather than achieved by omitting the property, which is why
+      // `capabilities` is a required key. Fix by threading the owning user's
+      // capabilities (run-as-owner) or giving workflows the same synthetic-member
+      // treatment agents have; do NOT quietly widen anything else to match.
+      capabilities: undefined,
     })
     const builtinCaps = [
       createEntityCapabilities(getToolDeps),

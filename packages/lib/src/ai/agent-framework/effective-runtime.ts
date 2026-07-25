@@ -95,12 +95,16 @@ export interface BuildEffectiveAgentRuntimeArgs {
   wrapTools?: (tools: AgentToolDefinition[]) => AgentToolDefinition[]
   /**
    * The capability view this run executes under, resolved once by
-   * `resolveAgentRunCapabilities` (capability layer v2 §3.1). Threaded into
-   * BOTH the tool deps (read/write gates) and the domain config (prompt-side
-   * catalog filtering, §3.4). Omit to keep today's unrestricted behavior —
-   * master-Kopilot job runs (no agent) and pre-setup drafts have no principal.
+   * `resolveAgentRunCapabilities` (capability layer v2 §3.1, doc 19 §2.3).
+   * Threaded into BOTH the tool deps (read/write gates) and the domain config
+   * (prompt-side catalog filtering, §3.4).
+   *
+   * **REQUIRED KEY, nullable value** — `undefined` still means unrestricted, so
+   * the key is mandatory to keep that an explicit statement rather than an
+   * omission (see `createToolDepsFactory`). Only master-Kopilot job runs (no
+   * agent) and pre-setup drafts legitimately have no principal to resolve.
    */
-  capabilities?: CapabilityView
+  capabilities: CapabilityView | undefined
 }
 
 /**
@@ -177,8 +181,11 @@ export async function buildAgentCapabilityRegistry(args: {
   sessionId: string
   agentId: string | null
   signal?: AbortSignal
-  /** Read/write enforcement for this run (§3.1). Omit → unrestricted, as today. */
-  capabilities?: CapabilityView
+  /**
+   * Read/write enforcement for this run (§3.1). Required key, nullable value —
+   * `undefined` = unrestricted, and must be a deliberate choice at the call site.
+   */
+  capabilities: CapabilityView | undefined
   /**
    * The running agent's resolved retrieval scope (§1.1). Optional — the eval
    * mock validator calls this builder without one, and callers with no scope

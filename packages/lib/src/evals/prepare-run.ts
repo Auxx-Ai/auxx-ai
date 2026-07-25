@@ -18,6 +18,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { hashAgentConfig } from '../agents/agent-config-snapshot'
 import { compileProcedure, getProcedureVersionById, readCompiled } from '../agents/procedures'
 import { getAttachedProcedureDraft } from '../agents/procedures/authoring/queries'
+import { resolveAgentRunCapabilities } from '../ai/agent-framework/agent-run-capabilities'
 import { buildEffectiveAgentRuntime } from '../ai/agent-framework/effective-runtime'
 import { getCachedAgentById } from '../cache'
 import {
@@ -77,6 +78,22 @@ export async function prepareRunSnapshots(
   // a pinned run the active version. See build-plan §5.
   const agentConfigSource: 'active' | 'draft' = mode === 'draft' ? 'draft' : 'active'
 
+  const cachedAgent = await getCachedAgentById(organizationId, agentId)
+  const agentKind: 'internal' | 'chat' = cachedAgent?.kind === 'chat' ? 'chat' : 'internal'
+
+  // Authorization follows the SAME view as the config (doc 19 §15): a **pinned**
+  // eval enforces the pinned version's `permissionPolicy` snapshot, a **draft**
+  // eval the live draft profile. Without this an eval would exercise the agent's
+  // behavior under nobody's permissions, so a suite could pass on data the real
+  // run is denied. No `invokerUserId`: an eval is not a delegated human action.
+  const capabilities = cachedAgent
+    ? await resolveAgentRunCapabilities({
+        agent: cachedAgent,
+        organizationId,
+        source: agentConfigSource,
+      })
+    : undefined
+
   // Resolve the effective runtime via the shared builder (no divergent copy).
   const runtime = await buildEffectiveAgentRuntime({
     organizationId,
@@ -86,10 +103,8 @@ export async function prepareRunSnapshots(
     domain: 'kopilot',
     hasProcedures: procedures.length > 0,
     agentConfigSource,
+    capabilities,
   })
-
-  const cachedAgent = await getCachedAgentById(organizationId, agentId)
-  const agentKind: 'internal' | 'chat' = cachedAgent?.kind === 'chat' ? 'chat' : 'internal'
 
   // Pin the agent version (pinned mode) or stamp the draft config hash (draft mode)
   // so the run stays attributable to the exact config it exercised.

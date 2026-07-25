@@ -14,6 +14,13 @@ vi.mock('../../agents/procedures/authoring/queries', () => ({
 vi.mock('../../ai/agent-framework/effective-runtime', () => ({
   buildEffectiveAgentRuntime: vi.fn(),
 }))
+// Authorization resolution is its own unit (`agent-run-capabilities.test.ts`);
+// here only the WIRING matters — which `source` an eval run asks for, and that
+// the resulting view reaches the runtime builder. Mocked also because the real
+// module pulls the org-cache helper chain in at import time.
+vi.mock('../../ai/agent-framework/agent-run-capabilities', () => ({
+  resolveAgentRunCapabilities: vi.fn(),
+}))
 vi.mock('../../cache', () => ({
   getCachedAgentById: vi.fn(),
 }))
@@ -35,6 +42,7 @@ vi.mock('@auxx/database', () => ({
 
 import { compileProcedure, getProcedureVersionById, readCompiled } from '../../agents/procedures'
 import { getAttachedProcedureDraft } from '../../agents/procedures/authoring/queries'
+import { resolveAgentRunCapabilities } from '../../ai/agent-framework/agent-run-capabilities'
 import { buildEffectiveAgentRuntime } from '../../ai/agent-framework/effective-runtime'
 import { getCachedAgentById } from '../../cache'
 import { prepareRunSnapshots } from '../prepare-run'
@@ -45,11 +53,15 @@ const mockedReadCompiled = readCompiled as unknown as ReturnType<typeof vi.fn>
 const mockedDraft = getAttachedProcedureDraft as unknown as ReturnType<typeof vi.fn>
 const mockedRuntime = buildEffectiveAgentRuntime as unknown as ReturnType<typeof vi.fn>
 const mockedAgent = getCachedAgentById as unknown as ReturnType<typeof vi.fn>
+const mockedCaps = resolveAgentRunCapabilities as unknown as ReturnType<typeof vi.fn>
 
 // biome-ignore lint/suspicious/noExplicitAny: minimal CompiledProcedure stand-ins
 const PINNED_COMPILED = { steps: {}, entryStepId: null, tag: 'pinned' } as any
 // biome-ignore lint/suspicious/noExplicitAny: minimal CompiledProcedure stand-ins
 const DRAFT_COMPILED = { steps: {}, entryStepId: null, tag: 'draft' } as any
+
+/** Identity stand-in for the resolved `CapabilityView` — only referential equality matters. */
+const PINNED_CAPS = { tag: 'caps' } as never
 
 const TARGET: AgentEvalTarget = {
   kind: 'agent_simulation',
@@ -96,9 +108,11 @@ beforeEach(() => {
     mockedDraft,
     mockedRuntime,
     mockedAgent,
+    mockedCaps,
   ]) {
     m.mockReset()
   }
+  mockedCaps.mockResolvedValue(PINNED_CAPS)
   agentRowRef.rows = []
   mockedRuntime.mockResolvedValue({
     tools: [],
@@ -172,6 +186,56 @@ describe('prepareRunSnapshots — run mode', () => {
     if (error.code !== 'DRAFT_COMPILE_FAILED') throw new Error('unreachable')
     expect(error.message).toContain('cycle detected')
     expect(error.errors).toEqual([{ code: 'CYCLE', message: 'cycle detected', stepId: 's1' }])
+  })
+
+  it('resolves the PINNED version’s policy and hands it to the runtime builder (§9.1)', async () => {
+    await prepare()
+
+    // `source: 'active'` is the whole point: a pinned eval must execute under the
+    // pinned version's `permissionPolicy` snapshot, not the mutable draft binding,
+    // or the suite proves nothing about what the live agent may do.
+    expect(mockedCaps).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: 'org', source: 'active' })
+    )
+    // No `invokerUserId` — an eval is not a delegated human action, so the human
+    // who clicked Run must not widen (or narrow) the agent's own authority.
+    expect(mockedCaps.mock.calls[0]?.[0]).not.toHaveProperty('invokerUserId')
+    expect(mockedRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ agentConfigSource: 'active', capabilities: PINNED_CAPS })
+    )
+  })
+
+  it('resolves the DRAFT profile’s policy for a draft run — authority follows config', async () => {
+    mockedDraft.mockResolvedValue(ok({ draftDoc: { type: 'doc', content: [] } }))
+    mockedCompile.mockReturnValue({ compiled: DRAFT_COMPILED, contentHash: 'dhash', errors: [] })
+    agentRowRef.rows = [
+      {
+        prompt: {},
+        toolsets: [],
+        knowledge: [],
+        appAccounts: {},
+        toolRestrictions: {},
+        modelId: null,
+      },
+    ]
+
+    await prepare('draft')
+
+    expect(mockedCaps).toHaveBeenCalledWith(expect.objectContaining({ source: 'draft' }))
+    expect(mockedRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ agentConfigSource: 'draft', capabilities: PINNED_CAPS })
+    )
+  })
+
+  it('does not invent capabilities when the agent is not in the cache', async () => {
+    mockedAgent.mockResolvedValue(null)
+
+    await prepare()
+
+    // No agent row → nothing to resolve. `undefined` is the pre-setup-draft
+    // contract of `resolveAgentRunCapabilities`, not a silent all-access view.
+    expect(mockedCaps).not.toHaveBeenCalled()
+    expect(mockedRuntime).toHaveBeenCalledWith(expect.objectContaining({ capabilities: undefined }))
   })
 
   it('falls back to the pinned version when no draft is available', async () => {

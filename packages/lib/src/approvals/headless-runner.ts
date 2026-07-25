@@ -110,6 +110,14 @@ export async function runHeadlessSuggestion(
     sessionId: headlessTraceId,
     signal: undefined,
     turnId: headlessTraceId,
+    // KNOWN GAP, surfaced by making `capabilities` a required key (doc 19 step 3).
+    // This headless run reads entities and KB articles with NO capability gate, so
+    // a published agent policy is inert here. `input.ownerUserId` is in hand, so
+    // the fix is a one-line `getCapabilities(input.ownerUserId, input.organizationId)`
+    // — but it is a behavior change on a path this slice does not own (it would
+    // start denying reads that currently succeed), so it is queued separately
+    // rather than smuggled in here.
+    capabilities: undefined,
   })
 
   const registry = createCapabilityRegistry()

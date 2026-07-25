@@ -14,6 +14,7 @@ import type {
   ConnectionVariable,
   KnowledgeEntry,
   McpServerIcon,
+  PublishedAgentPermissionPolicy,
   ToolsetEntry,
 } from '@auxx/database'
 import type {
@@ -31,6 +32,7 @@ import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
 import type { Overage } from '../permissions/overage-detection-service'
+import type { CachedPermissionProfile } from '../permissions/profiles/types'
 import type { FeatureMapObject } from '../permissions/types'
 import type { CachedRecordRule } from '../record-rules/types'
 import type { Resource } from '../resources/registry/types'
@@ -41,6 +43,13 @@ import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 
 /** Member info cached with joined user data */
 export interface OrgMemberInfo extends OrganizationMemberInfo {
+  /**
+   * The member's ONE permission-profile binding, or `null` to resolve the system
+   * template in code (§1.3). Carried here (rather than widened onto
+   * `OrganizationMemberInfo`) so `memberRoleMapProvider` can derive it without a
+   * second query.
+   */
+  permissionProfileId: string | null
   user: {
     id: string
     name: string | null
@@ -57,11 +66,18 @@ export interface OrgMemberInfo extends OrganizationMemberInfo {
  * `userType` carries the principal kind (`USER` | `SYSTEM` | `AGENT`) so
  * capability composition can branch on agents (SET-semantics over an all-Full
  * base, capability layer v2 §0.2) with no extra read.
+ *
+ * `permissionProfileId` rides along for the same reason: the human composer needs
+ * the member's ONE profile binding on every request, and a null value must
+ * resolve through `systemProfileFor(role, seatType)` — both facts are already in
+ * this entry, so composition costs no extra query (doc 19 §8.1).
  */
 export interface MemberRoleEntry {
   role: OrganizationRole
   seatType: SeatType
   userType: UserType
+  /** `null` = resolve the system template for `(role, seatType)` in code (§1.3). */
+  permissionProfileId: string | null
 }
 
 /** Dehydrated subscription shape (client-safe, serializable) */
@@ -199,6 +215,13 @@ export interface CachedAgent {
    * `resolveAgentRunCapabilities`.
    */
   runAsUserId: string | null
+  /**
+   * The DRAFT permission-profile binding (plan 19 §0.16). Governs draft Chat and
+   * draft eval runs only — production reads {@link permissionPolicy}, the active
+   * version's immutable snapshot. `null` resolves by `kind`
+   * (`internal → agent`, `chat → chat_agent`).
+   */
+  permissionProfileId: string | null
   createdById: string
   /** `null` while the builder hasn't named the agent yet. */
   name: string | null
@@ -229,6 +252,19 @@ export interface CachedAgent {
 
   /** Per-agent model override in `provider:model` format; null = inherit. */
   modelId: string | null
+  /**
+   * The ACTIVE version's resolved authorization snapshot (plan 19 §2.3) — what
+   * production, queued, and pinned-eval runs enforce, via
+   * `resolveAgentRunCapabilities` → `AgentPolicyCapabilities`. `null` only for a
+   * pre-setup draft with no active version.
+   *
+   * Joined from the SAME `AgentVersion` row as {@link activeVersionId}, so the
+   * pair can never disagree — the version id IS the policy's identity key
+   * (§8.1: *"versioned agent capability caches must key by `AgentVersion.id` or a
+   * policy hash so an old blob cannot survive publish or restore"*). Publish,
+   * restore, and discard all fire `agent.updated`, which busts this blob.
+   */
+  permissionPolicy: PublishedAgentPermissionPolicy | null
   /** The published version production runs; `null` while the agent is a pre-setup draft. */
   activeVersionId: string | null
   /** Number of {@link activeVersionId}; `null` when never published. */
@@ -516,6 +552,7 @@ export interface OrgCacheDataMap {
   // Membership & permissions
   members: OrgMemberInfo[]
   memberRoleMap: Record<string, MemberRoleEntry>
+  profiles: CachedPermissionProfile[] // all PermissionProfile rows (system + custom) — resolves profileId → base/ceiling at compose time
   hasPermissionGrants: boolean // whether the org has ANY PermissionGrant rows (composition fast path)
   restrictedEntityDefIds: string[] // entity defs with ≥1 type-level ResourceAccess grant (read-path enforcement §0)
   restrictedInstanceIds: string[] // instance ids with ≥1 instance-access ResourceAccess row (§1.3)
@@ -573,7 +610,16 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // Membership & permissions (24h TTL, invalidated on member events)
   members: { prefix: 'org:members', ttlSeconds: ONE_DAY },
   // v3: + userType (agent capability composition, capability layer v2 §1).
-  memberRoleMap: { prefix: 'org:member-roles:v3', ttlSeconds: ONE_DAY },
+  // v4: + permissionProfileId (the human base-profile binding — doc 19 §8.1; a v3
+  // blob has no `permissionProfileId` key, so every member would read as
+  // null-bound and silently ignore an explicit profile assignment).
+  memberRoleMap: { prefix: 'org:member-roles:v4', ttlSeconds: ONE_DAY },
+  // Permission profiles (doc 19) — read on every capability composition, mutated
+  // only by admin profile edits. Invalidated via `permission-profile.changed`.
+  // v2: + updatedAt (snapshotted as `sourceProfileUpdatedAt` on a published agent
+  // policy — doc 19 §2.3). A v1 blob has no key, which reads as `null` rather
+  // than misbehaving, but the bump keeps the audit field honest after rollout.
+  profiles: { prefix: 'org:permission-profiles:v2', ttlSeconds: ONE_DAY },
   hasPermissionGrants: { prefix: 'org:has-permission-grants', ttlSeconds: ONE_DAY },
   restrictedEntityDefIds: { prefix: 'org:restricted-entity-def-ids', ttlSeconds: ONE_DAY },
   restrictedInstanceIds: { prefix: 'org:restricted-instance-ids', ttlSeconds: ONE_DAY },
@@ -590,7 +636,11 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // v2: + runAsUserId (agent run-as delegation, capability layer v2 §3.1 —
   // `resolveAgentRunCapabilities` reads it off the cached agent, so a stale
   // blob would silently resolve the agent's own profile). Bump on shape changes.
-  agents: { prefix: 'org:agents:v2', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  // v3: + permissionPolicy (the active version's authorization snapshot) and
+  // permissionProfileId (the draft binding) — doc 19 §2.3/§8.1. A v2 blob has
+  // neither key, so every agent would resolve a `null` policy and fail closed
+  // mid-rollout; the bump is what makes that impossible.
+  agents: { prefix: 'org:agents:v3', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
   // v5: defaultLens/status normalized to scalars (were SINGLE_SELECT arrays —
   // poisoned strict lens comparisons). v4: + ownerUserId (§11 personal
   // accounts). v3: + isPersonal. v2: + defaultLens (mail-permissions §2.2).

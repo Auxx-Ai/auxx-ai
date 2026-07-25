@@ -96,6 +96,11 @@ export async function runLearnedExtraction(
     sessionId: headlessTraceId,
     signal: undefined,
     turnId: headlessTraceId,
+    // KNOWN GAP, surfaced by making `capabilities` a required key (doc 19 step 3).
+    // Same shape as `headless-runner.ts`: the knowledge/KB read tools registered
+    // below run ungated, so a published agent policy is inert here.
+    // `input.ownerUserId` is available; queued separately for the same reason.
+    capabilities: undefined,
   })
 
   // Deliberately tight toolset: knowledge search + KB read tools for

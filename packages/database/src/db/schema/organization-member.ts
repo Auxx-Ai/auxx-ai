@@ -16,6 +16,7 @@ import {
 } from './_shared'
 
 import { Organization } from './organization'
+import { PermissionProfile } from './permission-profile'
 import { User } from './user'
 
 /** Drizzle table for organizationMember */
@@ -40,6 +41,21 @@ export const OrganizationMember = pgTable(
      * (worker = UI "Field seat"). Invariant: 'worker' ⇒ role 'USER'. Service-enforced.
      * See plans/permissions/capability-layer-and-worker-seat.md §2.A / §3.1. */
     seatType: text().$type<SeatType>().default('full').notNull(),
+    /**
+     * The ONE live permission profile supplying this member's capability base
+     * AND that same profile's intrinsic ceiling. `null` (the default, and what
+     * every migrated member carries) resolves IN CODE to the matching system
+     * profile via `systemProfileFor(role, seatType)` — nothing is ever stamped,
+     * so a system-profile edit propagates immediately.
+     *
+     * `onDelete: 'set null'` so deleting a custom profile drops its holders back
+     * onto their system template (§0.24). There is deliberately no
+     * `ceilingProfileId`. See plans/permissions/v2/19-permission-profiles.md §1.1/§1.3.
+     */
+    permissionProfileId: text().references((): AnyPgColumn => PermissionProfile.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     /** Chat duty (Phase 4c): when true, this member is opted in to receive
      * routed customer chats. Persistent, manually toggled, decoupled from
      * presence. See plans/chat/v3/phase-4c-chat-duty.md. */
@@ -56,6 +72,13 @@ export const OrganizationMember = pgTable(
       table.organizationId.asc().nullsLast()
     ),
     index('OrganizationMember_userId_idx').using('btree', table.userId.asc().nullsLast()),
+    // Backs the profile-edit invalidation fan-out and the holder sweep on
+    // profile delete (§8.3/§0.24) — Postgres does not auto-index FK columns.
+    index('OrganizationMember_organizationId_permissionProfileId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.permissionProfileId.asc().nullsLast()
+    ),
     uniqueIndex('OrganizationMember_userId_organizationId_key').using(
       'btree',
       table.userId.asc().nullsLast(),

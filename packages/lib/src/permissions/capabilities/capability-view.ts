@@ -3,7 +3,7 @@
 import type { ResourcePermission } from '@auxx/database/enums'
 import { PERMISSION_RANK } from './compose-user-capabilities'
 import type { InstanceAccessKey } from './instance-access'
-import type { PermissionKey } from './registry'
+import type { Area, Level, PermissionKey } from './registry'
 
 /**
  * The public **gate surface** of a resolved capability set (capability layer
@@ -27,6 +27,17 @@ export interface CapabilityView {
   has(key: PermissionKey): boolean
   /** Throwing form of {@link CapabilityView.can} (403). */
   assert(key: PermissionKey): void
+
+  /**
+   * The principal's effective {@link Level} for one coarse capability {@link Area}.
+   *
+   * The inverse of the area→keys expansion, so it is derived from the SAME
+   * composed key set every `can()` gate reads — never a second computation. Added
+   * for the publish-time author clamp (plan 19 §2.4a), which must bound an agent
+   * policy by *the publisher's own authority* using the composer that governs the
+   * publisher, not a reimplementation of it.
+   */
+  areaLevel(area: Area): Level
 
   /** Coarse Layer-2 write verb for a def (mail-infra + dedicated write keys). */
   canWriteEntity(entityDefId: string): boolean
@@ -115,6 +126,11 @@ export class MinCapabilitySet implements CapabilityView {
   assert(key: PermissionKey): void {
     this.a.assert(key)
     this.b.assert(key)
+  }
+
+  /** The LOWER of the two area rungs — `min`, matching every other member. */
+  areaLevel(area: Area): Level {
+    return Math.min(this.a.areaLevel(area), this.b.areaLevel(area)) as Level
   }
 
   canWriteEntity(entityDefId: string): boolean {

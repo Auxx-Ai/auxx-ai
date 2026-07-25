@@ -12,8 +12,8 @@ import { mdToBlocks } from '../../../../../kb/markdown'
 import { getRealtimeService, publishAgentUpdated } from '../../../../../realtime'
 import type { ScheduledTriggerConfig } from '../../../../../workflows/cron-pattern'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { resolveAgentAuthoring } from './agent-authoring-guard'
 
 const MAX_TRIGGERS = 10
 const INSTRUCTIONS_MAX = 2000
@@ -128,15 +128,9 @@ has two, send all three in the call.`,
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { sessionContext } = getDeps()
-      const agentRef = findRef(sessionContext, 'agent')
-      if (!agentRef?.id) {
-        return {
-          success: false,
-          output: null,
-          error: 'No agent in session context — this tool only runs on the builder page.',
-        }
-      }
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      if (!auth.ok) return { success: false, output: null, error: auth.error }
+      const { agentId } = auth
 
       const rawTriggers = (args.triggers ?? []) as ParsedTrigger[]
       if (!Array.isArray(rawTriggers)) {
@@ -162,7 +156,7 @@ has two, send all three in the call.`,
       }
 
       const service = new AgentTriggerService()
-      const existing = await service.listForAgent(agentRef.id, agentDeps.organizationId)
+      const existing = await service.listForAgent(agentId, agentDeps.organizationId)
 
       // Replace-all: tear down existing, recreate. Simpler than diffing; the
       // service's scheduler upserts handle BullMQ churn.
@@ -173,7 +167,7 @@ has two, send all three in the call.`,
       const created: string[] = []
       for (const { input, instructions } of resolved) {
         const row = await service.createTrigger({
-          agentId: agentRef.id,
+          agentId,
           organizationId: agentDeps.organizationId,
           createdById: agentDeps.userId,
           enabled: true,
@@ -185,13 +179,13 @@ has two, send all three in the call.`,
 
       await onCacheEvent('agent.updated', { orgId: agentDeps.organizationId })
       await publishAgentUpdated(getRealtimeService(), agentDeps.organizationId, {
-        agentId: agentRef.id,
+        agentId,
       })
 
       return {
         success: true,
         output: {
-          agentId: agentRef.id,
+          agentId,
           triggerIds: created,
           removed: existing.length,
         },

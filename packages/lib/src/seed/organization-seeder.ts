@@ -12,6 +12,7 @@ import { SystemModelService } from '../ai/providers/system-model-service'
 import { DEFAULT_QUOTA_LIMITS, ModelType, ProviderQuotaType } from '../ai/providers/types'
 import { InboxService } from '../inboxes'
 import { KBService } from '../kb'
+import { ensureSystemProfiles } from '../permissions/profiles'
 import { seedSuggestedRecordRules } from '../record-rules'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { seedClientNotificationSequences } from '../sequences'
@@ -187,6 +188,13 @@ export class OrganizationSeeder {
     try {
       // Settings v2: no eager row creation — catalog defaults merge at read time
       // and rows are created lazily on first write (see settings/settings-service.ts).
+      // System permission profiles — every principal's null binding resolves to one
+      // of these rows in code (§1.3). Idempotent, and deliberately duplicated: the
+      // two in-transaction callers (`createOrganization`, `seedNewUserDatabase`) and
+      // the seed CLI's `ensureOrganization` each seed first, but
+      // `seedNewOrganization` must stand alone so a future caller cannot create an
+      // org without profiles. See plans/permissions/v2/19-permission-profiles.md §5.2.
+      await ensureSystemProfiles(organizationId, this.db)
       // Seed system entities first as other components may reference them
       await this.seedEntities(organizationId)
       // Seed all other components in parallel for better performance
@@ -666,6 +674,11 @@ export class OrganizationSeeder {
     try {
       // Settings v2: no backfill needed — new catalog keys merge in as defaults
       // at read time for every org automatically.
+      // The TOP-UP path for orgs created before doc 19 shipped: they have no
+      // `PermissionProfile` rows at all, so every member would ride the
+      // `ROLE_DEFAULTS` runtime fallback forever. Idempotent — new orgs already got
+      // theirs inside the org-creation transaction.
+      await ensureSystemProfiles(organizationId, this.db)
       // Check if organization has the required inboxes, create if missing
       await this.ensureDefaultInboxes(organizationId)
       // Check if organization has system entities, create if missing

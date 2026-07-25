@@ -41,6 +41,7 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
             baseUrl={baseUrl}
             current={page}
             title='Settings'
+            autoFocusSearch={page === 'general' || page === undefined}
           />
           <div className='relative flex h-full flex-1 grow overflow-hidden bg-background outline-none'>
             {children}

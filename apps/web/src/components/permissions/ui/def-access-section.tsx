@@ -1,7 +1,11 @@
 // apps/web/src/components/permissions/ui/def-access-section.tsx
 'use client'
 
-import { ResourceGranteeType, type ResourcePermission } from '@auxx/database/enums'
+import {
+  ResourceGranteeType,
+  type ResourcePermission,
+  type SharingGranteeType,
+} from '@auxx/database/enums'
 import type { Resource } from '@auxx/lib/resources/client'
 import { FeatureKey } from '@auxx/lib/types'
 import { type ActorId, getActorRawId, isAgentActor, toActorId } from '@auxx/types/actor'
@@ -265,9 +269,9 @@ export function DefAccessSection({ resource }: { resource: Resource }) {
 function addActors(
   nextActorIds: ActorId[],
   existing: DefAccessGrant[],
-  granteeType: ResourceGranteeType,
+  granteeType: SharingGranteeType,
   addGrant: (
-    granteeType: ResourceGranteeType,
+    granteeType: SharingGranteeType,
     granteeId: string,
     permission?: ResourcePermission
   ) => void

@@ -2,6 +2,7 @@
 
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
+import type { CachedPermissionProfile } from '../permissions/profiles/types'
 import type { CachedRecordRule } from '../record-rules/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
@@ -215,6 +216,33 @@ export async function getCachedRestrictedEntityDefIds(orgId: string): Promise<st
  */
 export async function getCachedRestrictedInstanceIds(orgId: string): Promise<string[]> {
   return getOrgCache().get(orgId, 'restrictedInstanceIds')
+}
+
+// ── Permission profile cache helpers ──
+
+/**
+ * Every permission profile for an organization (system + custom), cached. This is
+ * what keeps `computeUserCapabilities` at its existing three DB round-trips —
+ * `profileId → base/ceiling` and the `systemProfileFor` null-binding fallback both
+ * resolve from here (doc 19 §8.1).
+ */
+export async function getCachedPermissionProfiles(
+  orgId: string
+): Promise<CachedPermissionProfile[]> {
+  return getOrgCache().get(orgId, 'profiles')
+}
+
+/**
+ * Find one cached permission profile by its reserved system slug (`'member'`,
+ * `'field_tech'`, …). Returns `null` when the org has not been seeded — callers
+ * must fall back to `ROLE_DEFAULTS` rather than failing (§5.2).
+ */
+export async function getCachedPermissionProfileBySlug(
+  orgId: string,
+  slug: string
+): Promise<CachedPermissionProfile | null> {
+  const profiles = await getOrgCache().get(orgId, 'profiles')
+  return profiles.find((p) => p.slug === slug) ?? null
 }
 
 // ── Group cache helpers ──

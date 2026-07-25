@@ -16,12 +16,20 @@ export interface ToolDeps extends AgentDeps {
    */
   sessionContext: SessionContext
   /**
-   * Request-scoped entity-def read enforcement (v2 §3), resolved once per turn.
-   * Present ONLY when the acting user is a real org member (interactive Kopilot);
-   * **absent for autonomous/visitor/workflow turns**, which stay unrestricted.
-   * Entity tools that read records gate each def through `canViewEntity`.
+   * Request-scoped read/write enforcement (v2 §3), resolved once per turn.
+   *
+   * A `CapabilityView` here is either a human's `CapabilitySet`, an agent's
+   * published-policy view (`AgentPolicyCapabilities`), or their intersection.
+   * Tools gate each def through `canViewEntity`/`canEditEntity` and each shared
+   * resource through `canViewInstance`/`canEditInstance`.
+   *
+   * **REQUIRED KEY, nullable value.** `undefined` still means *unrestricted*
+   * inside the tools, so the key is mandatory to keep that choice explicit at
+   * every construction site rather than achievable by forgetting a line — see
+   * `createToolDepsFactory` for the full rationale. Only the workflow AI node,
+   * master-Kopilot job runs, and pre-setup drafts legitimately pass `undefined`.
    */
-  capabilities?: CapabilityView
+  capabilities: CapabilityView | undefined
   /**
    * The agent's resolved retrieval scope (plans/permissions/v2/15-agent-knowledge-scope.md
    * §1.1), resolved once per turn. Present ONLY when the running agent has a

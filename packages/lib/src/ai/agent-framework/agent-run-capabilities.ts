@@ -1,5 +1,11 @@
 // packages/lib/src/ai/agent-framework/agent-run-capabilities.ts
 
+import type { AgentKind, PublishedAgentPermissionPolicy } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import {
+  buildAgentPolicyCapabilities,
+  resolveDraftPolicyForAgent,
+} from '../../agents/agent-permission-policy'
 import { getCachedMembers } from '../../cache/org-cache-helpers'
 import { UnprocessableEntityError } from '../../errors'
 import {
@@ -7,6 +13,9 @@ import {
   intersectCapabilities,
 } from '../../permissions/capabilities/capability-view'
 import { getCapabilities } from '../../permissions/capabilities/get-capabilities'
+import { emptyAgentPolicy } from '../../permissions/profiles/agent-policy'
+
+const logger = createScopedLogger('agent-run-capabilities')
 
 /**
  * The agent fields {@link resolveAgentRunCapabilities} needs — structurally
@@ -21,6 +30,16 @@ export interface AgentRunPrincipal {
   id?: string
   /** Only used to make the run-as failure message actionable. */
   name?: string | null
+  /**
+   * The ACTIVE version's authorization snapshot — the agent's own authority for
+   * every production, queued, and pinned-eval run (plan 19 §2.3). Supplied by the
+   * `agents` org cache, joined from the same row as `activeVersionId`.
+   */
+  permissionPolicy?: PublishedAgentPermissionPolicy | null
+  /** The DRAFT profile binding — read ONLY on the `source: 'draft'` path. */
+  permissionProfileId?: string | null
+  /** Kind, for resolving a null draft binding (`internal → agent`, `chat → chat_agent`). */
+  kind?: AgentKind
 }
 
 /**
@@ -35,38 +54,59 @@ export interface AgentRunPrincipal {
 export class AgentRunAsUnavailableError extends UnprocessableEntityError {}
 
 /**
- * Resolve the {@link CapabilityView} an agent run executes under
- * (capability layer v2 §3.1).
+ * Resolve the {@link CapabilityView} an agent run executes under — the runtime
+ * intersection of plan 19 §2.3:
  *
  * ```
- * sourceUserId = agent.runAsUserId ?? agent.userId
- * caps         = getCapabilities(sourceUserId, organizationId)
- * caps         = invokerUserId ? min(caps, getCapabilities(invokerUserId)) : caps
+ * effective = publishedPolicy(target)                  // the version snapshot
+ * effective = min(effective, runAsUser(target))         // when configured
+ * effective = min(effective, invoker(target))           // human-triggered runs
  * ```
  *
- * - **Run-as** (`agent.runAsUserId`) replaces the capability *source only* —
- *   the engine identity (session `userId`, authorship, realtime attribution)
- *   stays `agent.userId` in every case, so audit trails remain honest (§0.1).
- *   The delegate must be an ACTIVE `userType: 'USER'` member; otherwise this
- *   throws {@link AgentRunAsUnavailableError} (§0.6 — never a silent fallback).
+ * - **The published policy is the agent's own authority, and it is the ceiling.**
+ *   It comes from `AgentVersion.permissionPolicy` (production / queued / pinned
+ *   evals) or, on the `source: 'draft'` path only, from the live draft profile
+ *   binding. It is author-clamped at publish (§2.4a), which matters because on an
+ *   autonomous run there is no invoker to intersect with — the publish-time clamp
+ *   is then the ONLY bound.
+ * - **Run-as is delegation, never replacement.** This is the behavior change from
+ *   doc 14 §0.6, which resolved the delegate's capabilities *instead of* the
+ *   agent's. Now the delegate's view is intersected with the published policy, so
+ *   an OWNER run-as cannot widen an agent published as `None` — it can only narrow
+ *   what the agent was already authorized to do. The engine identity still stays
+ *   `agent.userId` in every case, so audit trails remain honest (§0.1). The
+ *   delegate must be an ACTIVE `userType: 'USER'` member; otherwise this throws
+ *   {@link AgentRunAsUnavailableError} (§0.6 — never a silent fallback).
  * - **Invoker intersection** applies to human-triggered runs (mention,
  *   assignment, interactive DM): a mention can never read data through an agent
  *   that the mentioner couldn't read themselves (§0.5). Schedule / event / app /
- *   webhook / visitor runs pass no `invokerUserId` and use the agent profile
- *   alone. Passing the source user as the invoker short-circuits to the same
- *   view (no wrapper) via `intersectCapabilities`.
+ *   webhook / visitor runs pass no `invokerUserId` and use the published policy
+ *   alone.
+ *
+ * Because every layer composes through `intersectCapabilities`
+ * (`MinCapabilitySet`, whose every gate is `a && b`), no source can widen
+ * another — which is the property doc 14 §8.5's shipped model could not offer.
  *
  * Returns `undefined` when the agent has no backing User yet (pre-setup draft):
- * there is no principal to resolve, so callers keep today's unrestricted
- * behavior rather than inventing one.
+ * there is no published version and no principal to resolve, so callers keep
+ * today's unrestricted behavior rather than inventing one.
  */
 export async function resolveAgentRunCapabilities(params: {
   agent: AgentRunPrincipal
   organizationId: string
   /** The human who triggered this run, when there is one. */
   invokerUserId?: string | null
+  /**
+   * Which authorization view to resolve. `'active'` (default) enforces the
+   * published snapshot on `agent.permissionPolicy` — production must never read
+   * the mutable draft binding (§0.3). `'draft'` resolves the live
+   * `Agent.permissionProfileId` and is for the builder Chat tab and draft eval
+   * runs ONLY; it must be paired with the caller's own `agentConfigSource: 'draft'`
+   * decision so behavior and authorization come from the same view.
+   */
+  source?: 'active' | 'draft'
 }): Promise<CapabilityView | undefined> {
-  const { agent, organizationId, invokerUserId } = params
+  const { agent, organizationId, invokerUserId, source = 'active' } = params
 
   // Pre-setup draft: no synthetic User exists, so there is no principal to
   // resolve. Not an error — the caller simply stays unrestricted, as today.
@@ -76,12 +116,42 @@ export async function resolveAgentRunCapabilities(params: {
     await assertActiveHumanMember(agent, agent.runAsUserId, organizationId)
   }
 
-  const sourceUserId = agent.runAsUserId ?? agent.userId
-  const caps = await getCapabilities(sourceUserId, organizationId)
+  let policy =
+    source === 'draft'
+      ? await resolveDraftPolicyForAgent(organizationId, {
+          id: agent.id ?? 'unknown',
+          kind: agent.kind ?? 'internal',
+          permissionProfileId: agent.permissionProfileId ?? null,
+        })
+      : (agent.permissionPolicy ?? null)
 
-  if (!invokerUserId || invokerUserId === sourceUserId) return caps
+  // A set-up agent with no resolvable policy is FAIL CLOSED, not unrestricted.
+  // `permissionPolicy` is `NOT NULL` on every version and `completeAgentSetup`
+  // publishes v1 in the same transaction that mints the synthetic User, so this
+  // is unreachable in practice — it exists so that a caller who forgets to
+  // project the field gets an inert agent (and a loud log) instead of an
+  // omnipotent one. Returning `undefined` here would mean "unrestricted" at every
+  // construction site, which is precisely the failure mode to avoid.
+  if (!policy) {
+    logger.warn('Agent has a backing user but no resolvable permission policy — failing closed', {
+      organizationId,
+      agentId: agent.id,
+      source,
+    })
+    policy = emptyAgentPolicy()
+  }
 
-  return intersectCapabilities(caps, await getCapabilities(invokerUserId, organizationId))
+  let caps: CapabilityView = await buildAgentPolicyCapabilities(organizationId, policy)
+
+  if (agent.runAsUserId) {
+    caps = intersectCapabilities(caps, await getCapabilities(agent.runAsUserId, organizationId))
+  }
+
+  if (invokerUserId && invokerUserId !== agent.runAsUserId) {
+    caps = intersectCapabilities(caps, await getCapabilities(invokerUserId, organizationId))
+  }
+
+  return caps
 }
 
 /**

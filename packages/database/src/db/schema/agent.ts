@@ -13,6 +13,7 @@ import {
   uniqueIndex,
 } from './_shared'
 import { Organization } from './organization'
+import { PermissionProfile } from './permission-profile'
 import { User } from './user'
 
 /**
@@ -214,6 +215,26 @@ export const Agent = pgTable(
       onDelete: 'set null',
     }),
 
+    /**
+     * The **draft** permission-profile selection (§0.16). Draft agents have no
+     * `User` and no `OrganizationMember`, so this row is the only authoring
+     * target from creation onward; the synthetic member (once materialized)
+     * carries membership/role/seat only and never a profile binding.
+     *
+     * Production does NOT read this column: publish resolves it into an
+     * immutable snapshot on `AgentVersion`, so editing/reassigning a draft
+     * profile changes draft Chat and draft evals only. `null` resolves by kind
+     * (`internal → agent`, `chat → chat_agent`). `onDelete: 'set null'` so
+     * deleting a profile drops bound drafts back onto that kind default while
+     * already-published snapshots stay byte-identical (§0.24).
+     *
+     * See plans/permissions/v2/19-permission-profiles.md §1.1/§1.3.
+     */
+    permissionProfileId: text().references((): AnyPgColumn => PermissionProfile.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+
     slug: text().notNull(),
     description: text(),
 
@@ -322,6 +343,13 @@ export const Agent = pgTable(
     ),
     index('Agent_userId_idx').using('btree', table.userId.asc().nullsLast()),
     index('Agent_runAsUserId_idx').using('btree', table.runAsUserId.asc().nullsLast()),
+    // Backs the profile-edit draft-dirty fan-out and the profile-delete holder
+    // sweep (§8.3/§0.24) — Postgres does not auto-index FK columns.
+    index('Agent_organizationId_permissionProfileId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.permissionProfileId.asc().nullsLast()
+    ),
   ]
 )
 

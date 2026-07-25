@@ -38,6 +38,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           id: schema.Agent.id,
           userId: schema.Agent.userId,
           runAsUserId: schema.Agent.runAsUserId,
+          permissionProfileId: schema.Agent.permissionProfileId,
           createdById: schema.Agent.createdById,
           slug: schema.Agent.slug,
           description: schema.Agent.description,
@@ -67,6 +68,9 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           versionAppAccounts: schema.AgentVersion.appAccounts,
           versionToolRestrictions: schema.AgentVersion.toolRestrictions,
           versionModelId: schema.AgentVersion.modelId,
+          // The version's authorization snapshot — joined from the same row as
+          // `activeVersionId`, so the id and the policy are always one atom.
+          versionPermissionPolicy: schema.AgentVersion.permissionPolicy,
         })
         .from(schema.Agent)
         .leftJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
@@ -211,6 +215,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           id: row.id,
           userId: row.userId,
           runAsUserId: row.runAsUserId ?? null,
+          permissionProfileId: row.permissionProfileId ?? null,
           createdById: row.createdById,
           name,
           slug: row.slug,
@@ -231,6 +236,11 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
             ? row.versionToolRestrictions
             : row.toolRestrictions) ?? {}) as CachedAgent['toolRestrictions'],
           modelId: (hasActiveVersion ? row.versionModelId : row.modelId) ?? null,
+          // Authorization has NO draft fallback: the Agent row carries a profile
+          // *binding*, not a resolved policy, so a pre-setup draft projects `null`
+          // and the runtime resolves its draft profile explicitly instead of
+          // silently inheriting anything.
+          permissionPolicy: hasActiveVersion ? (row.versionPermissionPolicy ?? null) : null,
           activeVersionId,
           activeVersionNumber: row.activeVersionNumber ?? null,
           mentionable: row.mentionable,

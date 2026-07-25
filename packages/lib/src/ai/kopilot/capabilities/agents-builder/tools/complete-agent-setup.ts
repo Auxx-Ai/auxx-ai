@@ -2,8 +2,8 @@
 
 import { completeAgentSetup } from '../../../../../agents/agent-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { resolveAgentAuthoring } from './agent-authoring-guard'
 
 /**
  * Flip the agent's `setupCompletedAt` from null → now. Idempotent. The rail
@@ -33,18 +33,16 @@ finalization signal. No arguments — operates on the agent in session context.`
       additionalProperties: false,
     },
     execute: async (_args, agentDeps) => {
-      const { sessionContext } = getDeps()
-      const agentRef = findRef(sessionContext, 'agent')
-      if (!agentRef?.id) {
-        return {
-          success: false,
-          output: null,
-          error: 'No agent in session context — this tool only runs on the builder page.',
-        }
-      }
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      if (!auth.ok) return { success: false, output: null, error: auth.error }
+      const { agentId } = auth
 
       try {
-        await completeAgentSetup(agentRef.id, agentDeps.organizationId)
+        // The acting human bounds v1's published permission policy (§2.4a) — a
+        // builder-driven setup must not mint more authority than its author holds.
+        await completeAgentSetup(agentId, agentDeps.organizationId, undefined, {
+          completedByUserId: agentDeps.userId,
+        })
       } catch (err) {
         // Surface server-side preconditions (empty prompt / missing toolset
         // / missing name) as a tool error so the model can fix the gap
@@ -59,7 +57,7 @@ finalization signal. No arguments — operates on the agent in session context.`
       return {
         success: true,
         output: {
-          agentId: agentRef.id,
+          agentId,
         },
       }
     },

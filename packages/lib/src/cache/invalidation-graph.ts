@@ -183,9 +183,19 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   // ── Capability grants (permissions plan §5.3) ──
   // Emitted by every PermissionGrant create/update/delete. User grants target a
-  // single user; role/group grants fan out org-wide (`broadcastUserKeys` at the
-  // emit site, same pattern as `resource-access.changed`).
+  // single user; group grants fan out org-wide (`broadcastUserKeys` at the emit
+  // site, same pattern as `resource-access.changed`). A `profile` grantee uses the
+  // doc-19 §8.3 audience instead (bound holders + the (role, seatType) sweep for
+  // system profiles), because its levels are the composition BASE.
   'permission-grant.changed': { user: ['userCapabilities'], org: ['hasPermissionGrants'] },
+
+  // ── Permission profiles (doc 19 §8.3) ──
+  // Emitted by every PermissionProfile create/update/delete. Busts the org's
+  // `profiles` projection (the composer resolves profileId → base/ceiling from it)
+  // and recomputes the affected members' capability blobs. The emit site resolves
+  // the audience — crucially including NULL-BOUND holders for a system profile,
+  // who are the majority and are invisible to an index sweep.
+  'permission-profile.changed': { user: ['userCapabilities'], org: ['profiles'] },
 
   // ── Settings events ──
   'org.settings.changed': { org: ['orgSettings'], user: ['userSettings'] },

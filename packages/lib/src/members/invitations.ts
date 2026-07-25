@@ -5,12 +5,10 @@ import { type Database, database, schema } from '@auxx/database'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
-import { and, asc, count, eq, gt, ilike } from 'drizzle-orm'
+import { and, asc, eq, gt, ilike } from 'drizzle-orm'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../errors'
 import { publisher } from '../events'
 import { enqueueEmailJob } from '../jobs/email'
-import { FeaturePermissionService } from '../permissions/feature-permission-service'
-import { FeatureKey } from '../permissions/types'
 import { rankOf, requireMemberManage } from './guards'
 import {
   generateAcceptLink,
@@ -18,6 +16,7 @@ import {
   INVITATION_EXPIRATION_HOURS,
 } from './invitation-links'
 import { findMemberByUser } from './member-queries'
+import { assertSeatAvailable } from './seat-limits'
 
 const logger = createScopedLogger('member-service')
 
@@ -123,54 +122,7 @@ export async function inviteMember(
   // aware). A field (worker) seat is checked against the workerSeats limit, a full
   // seat against teammates; each class counts only its own active members + pending
   // invitations so the two don't cross-consume each other's bundled limits.
-  const featureService = new FeaturePermissionService(db)
-  const isWorkerSeat = seatType === 'worker'
-  const seatLimit = await featureService.getLimit(
-    organizationId,
-    isWorkerSeat ? FeatureKey.workerSeats : FeatureKey.teammates
-  )
-
-  if (typeof seatLimit === 'number' && seatLimit >= 0) {
-    // Count active members + pending invitations OF THIS SEAT CLASS
-    const [memberCount] = await db
-      .select({ value: count() })
-      .from(schema.OrganizationMember)
-      .where(
-        and(
-          eq(schema.OrganizationMember.organizationId, organizationId),
-          eq(schema.OrganizationMember.status, 'ACTIVE'),
-          eq(schema.OrganizationMember.seatType, seatType)
-        )
-      )
-
-    const [pendingCount] = await db
-      .select({ value: count() })
-      .from(schema.OrganizationInvitation)
-      .where(
-        and(
-          eq(schema.OrganizationInvitation.organizationId, organizationId),
-          eq(schema.OrganizationInvitation.status, 'PENDING'),
-          eq(schema.OrganizationInvitation.seatType, seatType),
-          gt(schema.OrganizationInvitation.expiresAt, new Date())
-        )
-      )
-
-    const totalUsed = (memberCount?.value ?? 0) + (pendingCount?.value ?? 0)
-    if (totalUsed >= seatLimit) {
-      logger.warn('Invitation blocked: seat limit reached', {
-        organizationId,
-        seatType,
-        limit: seatLimit,
-        activeMembers: memberCount?.value,
-        pendingInvites: pendingCount?.value,
-      })
-      throw new ForbiddenError(
-        isWorkerSeat
-          ? `You have reached your field seat limit (${seatLimit}). Upgrade your plan to add more field seats.`
-          : `You have reached your team member limit (${seatLimit}). Upgrade your plan to add more teammates.`
-      )
-    }
-  }
+  await assertSeatAvailable({ organizationId, seatType }, db)
 
   // --- If not already a member and no pending invite, proceed to create invitation ---
   logger.info('Proceeding to create invitation.', {

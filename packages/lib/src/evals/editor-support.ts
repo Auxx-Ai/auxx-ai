@@ -93,6 +93,10 @@ export async function validateAgentToolMock(input: {
     userId: input.userId,
     sessionId: `eval-editor-${input.agentId}`,
     agentId: input.agentId,
+    // Mock-output schema validation only — the UNFILTERED tool universe is the
+    // point here (a mock authored for a tool the agent doesn't have yet must still
+    // validate against its real schema). No execution, nothing to authorize.
+    capabilities: undefined,
   })
   const tool = registry.getTools('__none__').find((t) => t.name === input.toolName)
   if (!tool) {

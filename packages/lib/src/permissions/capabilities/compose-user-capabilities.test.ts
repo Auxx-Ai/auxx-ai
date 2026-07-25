@@ -35,12 +35,12 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
   })
 
-  it('org policy falls through PER AREA: sets records=Read, leaves workflows at USER default', () => {
+  it('the profile base falls through PER AREA: sets records=Read, leaves workflows at USER default', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
       // Sparse policy: ONLY records is overridden — every other area is unset.
-      orgPolicyLevels: { [Area.records]: Level.Read },
+      profileLevels: { [Area.records]: Level.Read },
       typeAccessRows: [],
     })
     // records is lowered to Read (the set area).
@@ -51,34 +51,37 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).toContain(PermissionKey.workflowsManage)
   })
 
-  it('org policy lowers a set area (records → Read)', () => {
+  it('the profile base lowers a set area (records → Read)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      orgPolicyLevels: { [Area.records]: Level.Read },
+      profileLevels: { [Area.records]: Level.Read },
       typeAccessRows: [],
     })
     expect(caps.keys).toContain(PermissionKey.recordsView)
     expect(caps.keys).not.toContain(PermissionKey.recordsDelete)
   })
 
-  it('org policy does NOT lower OWNER/ADMIN (short-circuit to Full)', () => {
+  it('OWNER short-circuits to Full and is never lowered by its profile (§0.10)', () => {
     const caps = composeUserCapabilities({
-      role: 'ADMIN',
+      role: 'OWNER',
       seatType: 'full',
-      orgPolicyLevels: { [Area.records]: Level.None, [Area.workflows]: Level.None },
+      profileLevels: { [Area.records]: Level.None, [Area.workflows]: Level.None },
+      profileBaseLevel: Level.None,
+      profileCeiling: { areas: { [Area.records]: Level.None, [Area.settings]: Level.Read } },
       typeAccessRows: [],
     })
     expect(caps.keys).toContain(PermissionKey.recordsDelete)
     expect(caps.keys).toContain(PermissionKey.settingsManage)
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
   })
 
-  it('a group grant raises above the org-policy baseline but cannot lower it', () => {
+  it('a group grant raises above the profile baseline but cannot lower it', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      // Policy baseline: records at Read.
-      orgPolicyLevels: { [Area.records]: Level.Read },
+      // Profile baseline: records at Read.
+      profileLevels: { [Area.records]: Level.Read },
       // Group raises records to Full; a None on workflows can't lower the default.
       groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
       typeAccessRows: [],
@@ -94,7 +97,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      orgPolicyLevels: { [Area.records]: Level.None },
+      profileLevels: { [Area.records]: Level.None },
       groupLevels: [{ [Area.records]: Level.Read }, { [Area.records]: Level.Full }],
       typeAccessRows: [],
     })
@@ -121,12 +124,12 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).not.toContain(PermissionKey.settingsManage)
   })
 
-  it('a direct user grant raises the org-policy-lowered baseline (records → Full)', () => {
+  it('a direct user grant raises the profile-lowered baseline (records → Full)', () => {
     const base = composeUserCapabilities({ role: 'USER', seatType: 'full', typeAccessRows: [] })
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      orgPolicyLevels: { [Area.records]: Level.Read },
+      profileLevels: { [Area.records]: Level.Read },
       userLevels: { [Area.records]: Level.Full },
       typeAccessRows: [],
     })
@@ -150,7 +153,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
   })
 
   it("skips a baseline 'none' row so it never seeds a defAccess entry (grants nobody)", () => {
-    // Non-grantee: only the org_member lockdown row applies → no defAccess entry,
+    // Non-grantee: only the baseline lockdown row applies → no defAccess entry,
     // so canViewEntity denies (the def is still flagged restricted upstream).
     const nonGrantee = composeUserCapabilities({
       role: 'USER',
@@ -196,7 +199,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const legacy = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      orgPolicyLevels: { [Area.records]: Level.Read },
+      profileLevels: { [Area.records]: Level.Read },
       groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
       userLevels: { [Area.knowledgeBase]: Level.Full },
       typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
@@ -207,7 +210,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
         role: 'USER',
         seatType: 'full',
         userType,
-        orgPolicyLevels: { [Area.records]: Level.Read },
+        profileLevels: { [Area.records]: Level.Read },
         groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
         userLevels: { [Area.knowledgeBase]: Level.Full },
         typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
@@ -227,105 +230,262 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
   })
 })
 
-/** Every PermissionKey the `records` area can confer (any rung). */
-const RECORDS_KEYS = PERMISSION_AREAS[Area.records].rungs.flatMap((r) => r.keys)
-
-describe('composeUserCapabilities — AGENT branch (SET-semantics over all-Full, §0.2/§0.3)', () => {
-  it('(a) an agent with no grants holds every key (all-Full base)', () => {
-    const caps = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      userType: 'AGENT',
-      typeAccessRows: [],
-    })
-    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
-    // Explicitly: the human USER default would NOT include these.
-    expect(caps.keys).toContain(PermissionKey.settingsManage)
-    expect(caps.keys).toContain(PermissionKey.recordsDelete)
+describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () => {
+  it('null binding: USER / worker seat / ADMIN compose byte-identically to the pre-profile model', () => {
+    // A null `permissionProfileId` resolves to a SPARSE system profile
+    // (`baseLevel: null`, no grant row), so `base` falls through to
+    // ROLE_DEFAULTS[role] — exactly what the deleted `role:org_member` tier did
+    // when the org had never customized. This is the migration's no-op proof.
+    const cases = [
+      { role: 'USER' as const, seatType: 'full' as const },
+      { role: 'USER' as const, seatType: 'worker' as const },
+      { role: 'ADMIN' as const, seatType: 'full' as const },
+    ]
+    for (const { role, seatType } of cases) {
+      const nullBound = composeUserCapabilities({
+        role,
+        seatType,
+        // What `resolveBaseProfile` yields for a sparse system row.
+        profileLevels: undefined,
+        profileBaseLevel: null,
+        profileCeiling: null,
+        typeAccessRows: [],
+      })
+      expect(sorted(nullBound.keys)).toEqual(sorted(effectiveDefault(role, seatType)))
+    }
   })
 
-  it('(b) an explicit { records: None } user grant LOWERS records, leaving everything else Full', () => {
-    const caps = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      userType: 'AGENT',
-      userLevels: { [Area.records]: Level.None },
-      typeAccessRows: [],
-    })
-    for (const key of RECORDS_KEYS) expect(caps.keys).not.toContain(key)
-    // Every other key survives.
-    const expected = ALL_KEYS.filter((k) => !RECORDS_KEYS.includes(k))
-    expect(sorted(caps.keys)).toEqual(sorted(expected))
-  })
-
-  it('(b2) an explicit intermediate level SETS (does not raise) — records: Read keeps only the Read rung', () => {
-    const caps = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      userType: 'AGENT',
-      userLevels: { [Area.records]: Level.Read },
-      typeAccessRows: [],
-    })
-    expect(caps.keys).toContain(PermissionKey.recordsView)
-    expect(caps.keys).not.toContain(PermissionKey.recordsEdit)
-    expect(caps.keys).not.toContain(PermissionKey.recordsDelete)
-  })
-
-  it('(c) an org_member policy clamping records to None does NOT reach an agent', () => {
-    const caps = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      userType: 'AGENT',
-      orgPolicyLevels: { [Area.records]: Level.None, [Area.workflows]: Level.Read },
-      typeAccessRows: [],
-    })
-    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
-    expect(caps.keys).toContain(PermissionKey.recordsDelete)
-  })
-
-  it('(d) group levels are ignored for agents (neither raise nor lower)', () => {
-    const lowering = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      userType: 'AGENT',
-      groupLevels: [{ [Area.records]: Level.None }, { [Area.knowledgeBase]: Level.Read }],
-      typeAccessRows: [],
-    })
-    expect(sorted(lowering.keys)).toEqual(sorted(ALL_KEYS))
-
-    // A group can't rescue an area the agent's own grant set to None either.
-    const restricted = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      userType: 'AGENT',
-      userLevels: { [Area.records]: Level.None },
-      groupLevels: [{ [Area.records]: Level.Full }],
-      typeAccessRows: [],
-    })
-    expect(restricted.keys).not.toContain(PermissionKey.recordsView)
-  })
-
-  it('still fails closed for an agent with no OrganizationMember row', () => {
-    const caps = composeUserCapabilities({
-      role: undefined,
-      seatType: 'full',
-      userType: 'AGENT',
-      typeAccessRows: [],
-    })
-    expect(caps.keys).toEqual([])
-  })
-
-  it('the seat ceiling still clamps last (worker seat wins over the all-Full base)', () => {
+  it('null binding on a worker seat is still exactly WORKER_SEAT_KEYS (seat ceiling clamps last)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'worker',
-      userType: 'AGENT',
+      profileBaseLevel: null,
+      profileCeiling: null,
+      // Even an all-Full profile base cannot escape the billing invariant.
+      profileLevels: { [Area.records]: Level.Full, [Area.settings]: Level.Full },
       typeAccessRows: [],
     })
     expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
   })
 
-  it('defAccess / instanceAccess compose exactly as they do for humans', () => {
+  it('baseLevel fills in every area the profile does not set (owner/admin template shape)', () => {
+    // `baseLevel: Full` + no grant row = how the seeded owner/admin profiles say
+    // "everything" without writing an all-Full grant row (which would trip
+    // `assertGrantableLevels` on the adminOnly areas).
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileBaseLevel: Level.Full,
+      typeAccessRows: [],
+    })
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
+    expect(caps.keys).toContain(PermissionKey.settingsManage)
+
+    // …and an explicit level still beats baseLevel for the areas it sets.
+    const mixed = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileBaseLevel: Level.Full,
+      profileLevels: { [Area.records]: Level.Read },
+      typeAccessRows: [],
+    })
+    expect(mixed.keys).toContain(PermissionKey.recordsView)
+    expect(mixed.keys).not.toContain(PermissionKey.recordsEdit)
+    expect(mixed.keys).toContain(PermissionKey.settingsManage)
+  })
+
+  it("baseLevel: None floors every unset area (0 must not be treated as 'unset')", () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileBaseLevel: Level.None,
+      profileLevels: { [Area.records]: Level.Read },
+      typeAccessRows: [],
+    })
+    expect(caps.keys).toEqual([PermissionKey.recordsView])
+  })
+
+  it('an explicit Level.None on the profile grant row genuinely denies the area', () => {
+    // `None` is LOAD-BEARING on a profile grantee — it is the composition BASE, so
+    // `grant-service.granteeKeepsNoneLevels` must never strip it. Stripping would
+    // make this area fall through to the role default: a silent fail-OPEN.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: { [Area.records]: Level.None },
+      typeAccessRows: [],
+    })
+    for (const key of RECORDS_KEYS) expect(caps.keys).not.toContain(key)
+    // Unset areas are untouched.
+    expect(caps.keys).toContain(PermissionKey.workflowsManage)
+  })
+
+  it('the profile ceiling holds the line against a group raise (§2.2 Dana)', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: {
+        [Area.records]: Level.Edit,
+        [Area.billing]: Level.None,
+        [Area.files]: Level.Read,
+      },
+      profileCeiling: { areas: { [Area.files]: Level.Read } },
+      // The group would win `files` under plain Camp-1 max-wins.
+      groupLevels: [{ [Area.knowledgeBase]: Level.Full, [Area.files]: Level.Full }],
+      userLevels: { [Area.auditLog]: Level.Read },
+      typeAccessRows: [],
+    })
+    // records: profile Edit, nothing raises it.
+    expect(caps.keys).toContain(PermissionKey.recordsEdit)
+    expect(caps.keys).not.toContain(PermissionKey.recordsDelete)
+    // files: the ceiling clamps the group's Full back to Read.
+    expect(caps.keys).toContain(PermissionKey.filesView)
+    expect(caps.keys).not.toContain(PermissionKey.filesManage)
+    // knowledgeBase: uncapped, so the group's Full wins.
+    expect(caps.keys).toContain(PermissionKey.knowledgeBaseManage)
+    // auditLog: the personal override raises from the USER default of None.
+    expect(caps.keys).toContain(PermissionKey.auditLogView)
+    // billing: an admin-only area the profile explicitly zeroed.
+    expect(caps.keys).not.toContain(PermissionKey.billingView)
+  })
+
+  it('the ceiling also clamps a personal (user) override, not just groups', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: { [Area.records]: Level.Read },
+      profileCeiling: { areas: { [Area.records]: Level.Read } },
+      userLevels: { [Area.records]: Level.Full },
+      typeAccessRows: [],
+    })
+    expect(caps.keys).toContain(PermissionKey.recordsView)
+    expect(caps.keys).not.toContain(PermissionKey.recordsEdit)
+  })
+
+  it('OWNER is never clamped by a profile ceiling — the recovery guarantee (§0.10)', () => {
+    const caps = composeUserCapabilities({
+      role: 'OWNER',
+      seatType: 'full',
+      profileLevels: { [Area.permissions]: Level.None, [Area.records]: Level.None },
+      profileBaseLevel: Level.None,
+      profileCeiling: {
+        areas: { [Area.permissions]: Level.None, [Area.records]: Level.Read },
+        defs: { mode: 'only', slugs: [] },
+      },
+      typeAccessRows: [],
+    })
+    // A mis-shaped profile can never lock the last owner out of fixing it.
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
+    expect(caps.keys).toContain(PermissionKey.permissionsManage)
+  })
+
+  it('OWNER is still clamped by the seat ceiling (the billing invariant is never profile-driven)', () => {
+    const caps = composeUserCapabilities({
+      role: 'OWNER',
+      seatType: 'worker',
+      typeAccessRows: [],
+    })
+    expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
+  })
+
+  it('a NEWLY ADDED area stays admin-accessible without any profile backfill (§0.7)', () => {
+    // The seeded system profiles are SPARSE, so an area nobody has ever authored
+    // is absent from `profileLevels`. It must fall through to ROLE_DEFAULTS[role]
+    // — all-Full for ADMIN — rather than reading as None.
+    const brandNewArea = Area.connectors
+    const admin = composeUserCapabilities({
+      role: 'ADMIN',
+      seatType: 'full',
+      // Sparse: the admin profile only ever set ONE unrelated area.
+      profileLevels: { [Area.records]: Level.Full },
+      profileBaseLevel: null,
+      typeAccessRows: [],
+    })
+    for (const rung of PERMISSION_AREAS[brandNewArea].rungs) {
+      for (const key of rung.keys) expect(admin.keys).toContain(key)
+    }
+    // Every other area too — nothing silently dropped to None.
+    expect(sorted(admin.keys)).toEqual(sorted(ALL_KEYS))
+  })
+
+  it('a foreign/unresolvable binding degrades to the role default, never to no-access', () => {
+    // What `resolveBaseProfile` yields when the bound id is not in the org's
+    // projection or the org has no seeded rows at all (the §5.2 runtime fallback):
+    // no levels, no baseLevel, no ceiling. Must NOT fail closed.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: undefined,
+      profileBaseLevel: null,
+      profileCeiling: null,
+      typeAccessRows: [],
+    })
+    expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault('USER', 'full')))
+  })
+
+  it('a ceiling with no `areas` map (defs-only) clamps nothing — def enforcement is step 4', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileCeiling: { defs: { mode: 'only', slugs: ['contact'] } },
+      typeAccessRows: [],
+    })
+    expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault('USER', 'full')))
+  })
+})
+
+/** Every PermissionKey the `records` area can confer (any rung). */
+const RECORDS_KEYS = PERMISSION_AREAS[Area.records].rungs.flatMap((r) => r.keys)
+
+describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.16/§2.3)', () => {
+  /**
+   * These tests replace doc 14 §0.2's SET-semantics-over-all-Full suite. That
+   * branch is gone: an agent's authority is now the immutable
+   * `AgentVersion.permissionPolicy` snapshot, enforced by
+   * `AgentPolicyCapabilities`, and NOTHING composed here is consulted for it.
+   *
+   * The point of asserting emptiness (rather than deleting the block) is that
+   * this is the load-bearing half of §0.16 — "the synthetic `OrganizationMember`
+   * carries membership/role/seat only, it is not a second authority". Every
+   * assertion below is a leak that would silently defeat republishing a
+   * definition as `None`.
+   */
+
+  it('holds no capability keys at all, whatever the grant rows say', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      userLevels: { [Area.records]: Level.Full, [Area.settings]: Level.Full },
+      profileLevels: { [Area.records]: Level.Full },
+      groupLevels: [{ [Area.records]: Level.Full }, { [Area.billing]: Level.Full }],
+      typeAccessRows: [],
+    })
+    expect(caps.keys).toEqual([])
+    for (const key of RECORDS_KEYS) expect(caps.keys).not.toContain(key)
+    expect(caps.keys).not.toContain(PermissionKey.settingsManage)
+  })
+
+  it('drops defAccess, so a leftover ResourceAccess row cannot resurrect a def', () => {
+    // This is the exact leak that would break "publish Deals=Full, republish
+    // Deals=None": an explicit per-def grant REPLACES the base records verb in
+    // `canViewRecord`, so a surviving `admin` row on the agent's synthetic user
+    // would keep granting Deals no matter what the published policy said.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      userType: 'AGENT',
+      typeAccessRows: [
+        { entityDefinitionId: 'def_deals', permission: 'admin' as const },
+        { entityDefinitionId: 'def_a', permission: 'view' as const },
+      ],
+      instanceAccessRows: [{ entityInstanceId: 'kb_1', permission: 'edit' as const }],
+    })
+    expect(caps.defAccess).toEqual({})
+    expect(caps.instanceAccess).toEqual({})
+  })
+
+  it('does NOT change how a human composes the same rows', () => {
     const rows = {
       typeAccessRows: [
         { entityDefinitionId: 'def_a', permission: 'view' as const },
@@ -337,16 +497,19 @@ describe('composeUserCapabilities — AGENT branch (SET-semantics over all-Full,
         { entityInstanceId: 'inst_b', permission: 'edit' as const },
       ],
     }
-    const agent = composeUserCapabilities({
-      role: 'USER',
+    const human = composeUserCapabilities({ role: 'USER', seatType: 'full', ...rows })
+    expect(human.defAccess).toEqual({ def_a: 'admin' })
+    expect(human.instanceAccess).toEqual({ inst_a: 'none', inst_b: 'edit' })
+    expect(human.keys.length).toBeGreaterThan(0)
+  })
+
+  it('still fails closed for an agent with no OrganizationMember row', () => {
+    const caps = composeUserCapabilities({
+      role: undefined,
       seatType: 'full',
       userType: 'AGENT',
-      ...rows,
+      typeAccessRows: [],
     })
-    const human = composeUserCapabilities({ role: 'USER', seatType: 'full', ...rows })
-    expect(agent.defAccess).toEqual(human.defAccess)
-    expect(agent.instanceAccess).toEqual(human.instanceAccess)
-    expect(agent.defAccess).toEqual({ def_a: 'admin' })
-    expect(agent.instanceAccess).toEqual({ inst_a: 'none', inst_b: 'edit' })
+    expect(caps.keys).toEqual([])
   })
 })
