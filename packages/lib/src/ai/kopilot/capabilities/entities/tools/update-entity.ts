@@ -24,6 +24,12 @@ import { formatActorResolutionError, resolveActorValues } from './resolve-actor-
 export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_entity',
+    permission: {
+      target: 'definition',
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'UnifiedCrudHandler → assertEditEntity.',
+    },
     displayName: 'Update record',
     toolsetSlug: 'auxx:entities:write',
     outputSchema: UpdateEntityOutput,

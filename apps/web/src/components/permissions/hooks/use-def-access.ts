@@ -5,10 +5,12 @@ import {
   ResourceGranteeType,
   ResourcePermission,
   type SharingGranteeType,
+  SharingGranteeTypeValues,
 } from '@auxx/database/enums'
 import { PERMISSION_RANK } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
+import { granteeKindLabel, type UnmanageableGrant } from '~/components/permissions/utils/grantee'
 import { api } from '~/trpc/react'
 import { MEMBER_BASELINE_GRANTEE_ID } from './use-permission-grants'
 
@@ -151,6 +153,26 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
     [rows]
   )
 
+  /**
+   * Rows this tab renders in none of its three blocks — a `profile` grant today
+   * (plan 19 §8.2). They are the difference between "no one else has access" and
+   * "someone else has access you can't see", and via 19a finding 1 a single one
+   * of them keeps the def restricted org-wide, so they are disclosed rather than
+   * dropped.
+   */
+  const unmanageableGrants = useMemo<UnmanageableGrant[]>(
+    () =>
+      rows
+        .filter(
+          (r) =>
+            r.granteeType !== ResourceGranteeType.role &&
+            r.granteeType !== ResourceGranteeType.group &&
+            r.granteeType !== ResourceGranteeType.user
+        )
+        .map((r) => ({ granteeType: r.granteeType, granteeId: r.granteeId })),
+    [rows]
+  )
+
   /** Persist the workspace baseline (persists `none` too — the lockdown marker). */
   const setBaseline = useCallback(
     (permission: ResourcePermission) => {
@@ -223,18 +245,44 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
     [revokeType, patchLocal, queryInput.entityDefinitionId]
   )
 
-  /** Clear every type row for the def → back to the dormant/unrestricted state. */
+  /**
+   * Clear every type row for the def → back to the dormant/unrestricted state.
+   *
+   * `setType` replaces ONE grantee type per call, so the types to clear are
+   * derived from the rows that actually exist rather than from a fixed
+   * `[role, group, user]` list. That list was the bug: a `profile` row survived
+   * the reset, and because `restricted-entity-def-ids-provider.ts` builds the
+   * restricted set **grantee-agnostically** (19a finding 1), the def stayed
+   * restricted — invisible to every non-admin — while this button reported it
+   * reset. Any surviving kind now reports itself instead of vanishing.
+   */
   const resetToDefault = useCallback(() => {
-    utils.resourceAccess.forType.setData(queryInput, () => [])
-    // Clear each grantee type independently (setType replaces one type at a time).
-    for (const granteeType of [
-      ResourceGranteeType.role,
-      ResourceGranteeType.group,
-      ResourceGranteeType.user,
-    ]) {
+    const presentTypes = [...new Set(rows.map((r) => r.granteeType))]
+    const clearable = presentTypes.filter((t): t is SharingGranteeType =>
+      SharingGranteeTypeValues.includes(t as SharingGranteeType)
+    )
+    const unclearable = presentTypes.filter(
+      (t) => !SharingGranteeTypeValues.includes(t as SharingGranteeType)
+    )
+
+    utils.resourceAccess.forType.setData(queryInput, (prev) =>
+      (prev ?? []).filter((r) => unclearable.includes(r.granteeType))
+    )
+    for (const granteeType of clearable) {
       setType.mutate({ entityDefinitionId: queryInput.entityDefinitionId, granteeType, grants: [] })
     }
-  }, [setType, utils, queryInput])
+
+    if (unclearable.length > 0) {
+      toastError({
+        title: 'Access not fully reset',
+        description: `This record type still has ${unclearable
+          .map(granteeKindLabel)
+          .join(
+            ' and '
+          )} access rows, which can’t be cleared from here. It stays restricted until they are removed.`,
+      })
+    }
+  }, [rows, setType, utils, queryInput])
 
   /** A grant is "ignored" when it lifts nothing above the effective baseline. */
   const isIgnored = useCallback(
@@ -249,6 +297,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
     isConfigured,
     teamGrants,
     userGrants,
+    unmanageableGrants,
     isSaving: grantType.isPending || revokeType.isPending || setType.isPending,
     setBaseline,
     addGrant,

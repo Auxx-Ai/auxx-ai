@@ -26,6 +26,13 @@ const outputSchema = z.object({
 export function createRunEvalSuiteTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'run_eval_suite',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Run simulation suite',
     surfaces: ['builder'],
     requiresApproval: true,

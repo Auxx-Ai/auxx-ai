@@ -38,10 +38,9 @@ export type ProfileAppliesTo = 'member' | 'agent' | 'any'
  * Human-profile definition ceiling (§0.13). `only` = the allowed set is exactly
  * `slugs`, so a definition added later is EXCLUDED (fails closed); `except` =
  * everything but `slugs`, so a later definition is INCLUDED (fails open).
- * apiSlugs, not CUIDs — resolved server-side.
- *
- * Stored and plumbed as of step 2; **enforcement is step 4** and deliberately
- * dormant until then.
+ * apiSlugs, not CUIDs — resolved to `entityDefinitionId`s in `getCapabilities`
+ * and enforced by `effectiveRecordLevel` (plus the worker `recordsViewLinked`
+ * carve-out and `administersAnyDef`), never client-side only.
  */
 export interface ProfileDefCeiling {
   mode: 'only' | 'except'
@@ -56,7 +55,10 @@ export interface ProfileDefCeiling {
 export interface ProfileCeiling {
   /** Per-area max rung. An absent area is uncapped (`Level.Full`). */
   areas?: Partial<Record<Area, Level>>
-  /** Per-definition cap. Stored but NOT enforced until step 4. */
+  /**
+   * Per-definition cap. Applied per-def at the record resolvers rather than
+   * here, since it needs the org's apiSlug → `entityDefinitionId` map.
+   */
   defs?: ProfileDefCeiling | null
 }
 

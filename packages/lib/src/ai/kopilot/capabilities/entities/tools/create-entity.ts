@@ -19,6 +19,12 @@ import { formatActorResolutionError, resolveActorValues } from './resolve-actor-
 export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_entity',
+    permission: {
+      target: 'definition',
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'UnifiedCrudHandler → assertEditEntity.',
+    },
     displayName: 'Create record',
     toolsetSlug: 'auxx:entities:write',
     outputSchema: CreateEntityOutput,

@@ -16,6 +16,10 @@ const LABEL_MAX = 80
 export function createSuggestRepliesTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'suggest_replies',
+    permission: {
+      target: 'none',
+      note: 'UI directive: renders reply chips above the composer from strings the model supplied. Reads and writes nothing.',
+    },
     displayName: 'Suggest replies',
     // Every legitimate use means "I'm done, waiting for the admin" — the chips
     // are for the client, not the model, so the call terminates the turn.

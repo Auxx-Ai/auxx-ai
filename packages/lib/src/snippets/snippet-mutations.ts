@@ -203,16 +203,58 @@ export async function deleteSnippet(
   )
 }
 
+/**
+ * The grantee kinds a snippet may be shared with — the SINGLE source of truth
+ * for the router's input schema, the share partition below, and the read side.
+ *
+ * `profile` is included per doc 19 §0.28 (a snippet share is a `ResourceAccess`
+ * **instance** grant, so the profile is selectable as an additive grantee).
+ * `role` and `team` are deliberately absent: `role:org_member` is the
+ * workspace-baseline marker and a snippet expresses "everyone" through
+ * `SnippetSharingType.ORGANIZATION` instead, so a role row here would be a
+ * second, conflicting way to say the same thing.
+ *
+ * Because {@link setSnippetSharing} replaces grants **per grantee type**, a kind
+ * that is missing from this list is not merely unsupported — its existing rows
+ * are never cleared and its incoming rows are never written. Anything added to
+ * `ResourceGranteeType` must therefore be listed here or explicitly rejected;
+ * `assertSupportedShareGrantees` makes that failure loud.
+ */
+export const SNIPPET_SHARE_GRANTEE_TYPES = [
+  ResourceGranteeType.group,
+  ResourceGranteeType.user,
+  ResourceGranteeType.profile,
+] as const
+
+/** A grantee kind a snippet may be shared with. See {@link SNIPPET_SHARE_GRANTEE_TYPES}. */
+export type SnippetShareGranteeType = (typeof SNIPPET_SHARE_GRANTEE_TYPES)[number]
+
 export interface SnippetShareInput {
-  granteeType: 'group' | 'user'
+  granteeType: SnippetShareGranteeType
   granteeId: string
   permission: 'VIEW' | 'EDIT'
 }
 
 /**
+ * Reject a share whose grantee kind this function cannot store. Without it the
+ * per-type replace below drops the row silently — no error, no log, and the UI
+ * reports success (19a site 28).
+ */
+function assertSupportedShareGrantees(shares: SnippetShareInput[]): void {
+  const supported: readonly string[] = SNIPPET_SHARE_GRANTEE_TYPES
+  const unsupported = shares.find((s) => !supported.includes(s.granteeType))
+  if (unsupported) {
+    throw new BadRequestError(
+      `Snippets cannot be shared with a "${unsupported.granteeType}" grantee. Supported: ${SNIPPET_SHARE_GRANTEE_TYPES.join(', ')}.`
+    )
+  }
+}
+
+/**
  * Replace a snippet's sharing settings (creator only). For GROUPS sharing the
- * provided grants replace existing group + user grants; any other sharing type
- * clears all ResourceAccess for the snippet. Wrapped in a transaction.
+ * provided grants replace the existing rows of every supported grantee kind
+ * ({@link SNIPPET_SHARE_GRANTEE_TYPES}); any other sharing type clears all
+ * ResourceAccess for the snippet. Wrapped in a transaction.
  */
 export async function setSnippetSharing(
   db: Database,
@@ -224,6 +266,8 @@ export async function setSnippetSharing(
 ) {
   return guard(
     async () => {
+      assertSupportedShareGrantees(shares ?? [])
+
       const snippet = await db.query.Snippet.findFirst({
         where: and(
           eq(schema.Snippet.id, snippetId),
@@ -248,30 +292,22 @@ export async function setSnippetSharing(
           .where(eq(schema.Snippet.id, snippetId))
 
         if (sharingType === SnippetSharingType.GROUPS) {
-          const groupShares = (shares ?? []).filter((s) => s.granteeType === 'group')
-          const userShares = (shares ?? []).filter((s) => s.granteeType === 'user')
-
-          await setInstanceAccess(
-            { db: tx, organizationId, userId },
-            toRecordId(BuiltInEntityType.snippet, snippetId),
-            ResourceGranteeType.group,
-            groupShares.map((s) => ({
-              granteeId: s.granteeId,
-              permission:
-                s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
-            }))
-          )
-
-          await setInstanceAccess(
-            { db: tx, organizationId, userId },
-            toRecordId(BuiltInEntityType.snippet, snippetId),
-            ResourceGranteeType.user,
-            userShares.map((s) => ({
-              granteeId: s.granteeId,
-              permission:
-                s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
-            }))
-          )
+          // One pass per supported kind, driven by the list — including kinds with
+          // zero incoming shares, whose call is what CLEARS previously stored rows.
+          for (const granteeType of SNIPPET_SHARE_GRANTEE_TYPES) {
+            await setInstanceAccess(
+              { db: tx, organizationId, userId },
+              toRecordId(BuiltInEntityType.snippet, snippetId),
+              granteeType,
+              (shares ?? [])
+                .filter((s) => s.granteeType === granteeType)
+                .map((s) => ({
+                  granteeId: s.granteeId,
+                  permission:
+                    s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
+                }))
+            )
+          }
         } else {
           await tx
             .delete(schema.ResourceAccess)

@@ -14,6 +14,13 @@ import { resolveProcedureAuthoring } from './procedure-authoring-guard'
 export function createReadProcedureTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'read_procedure',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Read procedure',
     surfaces: ['builder'],
     description: `Read a procedure attached to this agent back as the step DSL (with stable ids), so you can change only what the user asks and re-emit via \`set_procedure_body\` using the returned \`draftContentHash\`. Code blocks and rules-mode conditions appear as read-only \`opaque\` steps — keep them exactly.`,

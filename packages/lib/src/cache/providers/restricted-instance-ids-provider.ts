@@ -18,6 +18,12 @@ import type { CacheProvider } from '../org-cache-provider'
  * mail-share instance rows (`contact:<id>` etc.) are excluded by the `IN (...)`
  * filter, so they never enter the capability path.
  *
+ * **Grantee-agnostic by design — do NOT add a grantee filter.** Same asymmetry
+ * as the type-level provider (19a finding 1): one row of a grantee kind a
+ * resolver cannot read hides the instance from every non-admin, not just from
+ * that grantee. Adding a grantee kind to the storage vocabulary therefore means
+ * adding it to every reader in the same change.
+ *
  * Invalidated by the `resource-access.instance.changed` cache event.
  */
 export const restrictedInstanceIdsProvider: CacheProvider<string[]> = {

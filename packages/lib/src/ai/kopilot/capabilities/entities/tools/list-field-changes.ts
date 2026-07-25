@@ -91,6 +91,12 @@ function snapshotItemToDisplay(snap: TimelineFieldChangeSnapshot): string {
 export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_field_changes',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'EntityInstance lookup then canViewEntity; silent-empty on denial (19b G3).',
+    },
     displayName: 'List field changes',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',
@@ -168,12 +174,29 @@ export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefin
       return { ok: true, args: { ...args, entityInstanceId: entityInstanceId.value } }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const entityInstanceId = args.entityInstanceId as string
       const fieldFilter = (args.fieldSystemAttribute as string | undefined) || undefined
       const sinceDays = (args.sinceDays as number | undefined) ?? 90
       const limit = Math.min((args.limit as number) ?? 20, MAX_LIMIT)
       const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
+
+      // Read enforcement (§3): the timeline rows are keyed by bare instance id,
+      // so resolve the owning def first (same shape as `get_entity_history`).
+      // An unviewable — or non-existent — record reads as "no changes", which
+      // is what an empty history already looks like.
+      if (capabilities) {
+        const instance = await db.query.EntityInstance.findFirst({
+          where: and(
+            eq(schema.EntityInstance.id, entityInstanceId),
+            eq(schema.EntityInstance.organizationId, agentDeps.organizationId)
+          ),
+          columns: { entityDefinitionId: true },
+        })
+        if (!instance || !capabilities.canViewEntity(instance.entityDefinitionId)) {
+          return { success: true, output: { changes: [] } }
+        }
+      }
 
       const events = await db
         .select({

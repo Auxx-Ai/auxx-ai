@@ -7,6 +7,7 @@ import type { AgentSurface } from '../../agents/client'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
 import type { ContextManager } from './context/context-manager'
 import type { EvalFieldResolver, Subject, ToolContext, WorkflowToolContext } from './tool-context'
+import type { AgentToolPermission } from './tool-permission'
 
 // ===== CONTENT PARTS =====
 
@@ -373,6 +374,25 @@ export interface AgentToolDefinition {
    * gate. See plans/chat/v6/chat-tool-availability.md.
    */
   externalSafe?: boolean
+  /**
+   * The tool's authorization contract: what its `execute` must check, and
+   * whether it actually does today. See {@link AgentToolPermission}.
+   *
+   * Unlike `surfaces` / `category` / `externalSafe` — which are explicitly NOT
+   * security boundaries — this field *describes* the boundary. It is still not a
+   * runtime gate: nothing reads it to allow or deny a call, and the server-side
+   * assertion inside `execute` stays authoritative (plan 19 §2.4). It exists so
+   * the tool surface can be audited by machine instead of by hand-sweep, and so
+   * a tool that skips authorization has to say so in the PR that adds it.
+   *
+   * **Every tool registered through `ai/kopilot/capabilities/registry.ts` must
+   * declare one.** Optional on the type only because non-registry
+   * `AgentToolDefinition`s (procedure control signals, eval mock wrappers, test
+   * fixtures) construct the shape too; the registry-enumeration test in
+   * `ai/kopilot/capabilities/__tests__/tool-permission-declarations.test.ts` is
+   * what makes it mandatory where it matters.
+   */
+  permission?: AgentToolPermission
   /**
    * Classifies the tool for UI visibility policy (see
    * `agents/tool-visibility.ts`). NOT a security boundary.

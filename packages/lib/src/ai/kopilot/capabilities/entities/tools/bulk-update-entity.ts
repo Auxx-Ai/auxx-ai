@@ -26,6 +26,12 @@ import { formatActorResolutionError, resolveActorValuesFlat } from './resolve-ac
 export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'bulk_update_entity',
+    permission: {
+      target: 'definition',
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'Own per-def assertEditEntity before any DB work (bypasses UnifiedCrudHandler by design).',
+    },
     displayName: 'Bulk update records',
     toolsetSlug: 'auxx:entities:write',
     outputSchema: BulkUpdateEntityOutput,

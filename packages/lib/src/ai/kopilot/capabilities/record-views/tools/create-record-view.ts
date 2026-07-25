@@ -16,6 +16,12 @@ import { RECORD_VIEW_CREATE_PARAMS, readViewSpec } from './params'
 export function createCreateRecordViewTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_table_view',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the page’s def. Read is what is asserted: the write lands on TableView, not on the definition.',
+    },
     displayName: 'Save table view',
     category: 'capability',
     description: `Save a named view (filters + sort + columns) on the records table the user is currently viewing, and switch to it. The view persists and appears as a tab. The entity/table is taken from the page — you do not choose it. Filters use the same grammar as query_records; call list_entity_fields first for field ids and option values.

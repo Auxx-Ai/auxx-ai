@@ -9,6 +9,13 @@ import { buildOpToolResult, EXPECTED_HASH_PARAM, runBlockCrudOp } from './write-
 export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'move_blocks',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'runBlockCrudOp → assertEditInstance("kb", …).',
+    },
     displayName: 'Move article blocks',
     toolsetSlug: 'auxx:kb:write',
     exampleOutput: {

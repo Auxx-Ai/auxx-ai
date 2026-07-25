@@ -34,6 +34,13 @@ const outputSchema = z.object({
 export function createGetSuiteDiffTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_suite_diff',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Compare suite runs',
     surfaces: ['builder'],
     idempotent: true,

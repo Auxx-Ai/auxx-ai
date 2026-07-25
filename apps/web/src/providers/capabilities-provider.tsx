@@ -34,6 +34,9 @@ const EMPTY_CAPS: ClientCapabilities = {
   restrictedEntityDefIds: [],
   role: 'USER',
   seatType: 'full',
+  // No profile is bound in the no-org case, so there is no definition ceiling to
+  // apply — every gate already denies via the empty key set.
+  ceilingDefs: null,
 }
 
 /** Shape of the capabilities context value. */

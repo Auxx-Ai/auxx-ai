@@ -26,6 +26,13 @@ const RECORD_ID_MAX = 180
 export function createSetAgentResourceScopeTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_agent_resource_scope',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Set agent resource scope',
     // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
     surfaces: ['builder'],

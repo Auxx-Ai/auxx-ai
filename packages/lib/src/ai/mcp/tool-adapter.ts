@@ -84,6 +84,18 @@ function buildOne(server: CachedMcpServer, tool: CachedTool): AgentToolDefinitio
 
   return {
     name,
+    // An MCP tool's effects live on an external server, so nothing here maps to
+    // an area / definition / instance level (plan 19 §11.8). Its authorization is
+    // the two-flag trust model on the server snapshot: autonomous runs drop
+    // untrusted non-read-only tools (above), `requiresApproval` is
+    // `!readOnlyHint && !trusted`, and output is fenced as untrusted external
+    // data. Marked `bridge` (never `none`) so the audit can tell
+    // "unclassifiable" from "verified to need nothing".
+    permission: {
+      target: 'bridge',
+      governedBy: 'mcp',
+      note: 'External MCP server: org-set `trusted` + server-declared `readOnlyHint` drive the autonomous drop and the approval gate. No platform-level target exists.',
+    },
     displayName: tool.title ?? tool.name,
     description: `${tool.description ?? tool.name}\n(via ${server.name} MCP server)`,
     parameters: tool.inputSchema,

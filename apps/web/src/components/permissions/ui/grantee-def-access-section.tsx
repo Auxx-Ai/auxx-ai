@@ -39,6 +39,19 @@ const COPY: Record<GranteeKind, { description: string }> = {
 const AGENT_DESCRIPTION =
   'Access to individual record types. Each row shows what this agent gets by default — pick a level to override it for that type.'
 
+/** Neutral copy for a grantee kind this section does not model (e.g. `profile`). */
+const FALLBACK_DESCRIPTION =
+  'Access to individual record types. Each row shows what this grantee gets by default; pick a level to override it for that type.'
+
+/**
+ * Total copy lookup — `COPY[granteeKind].description` on an unlisted kind throws
+ * during render, and this section is the record-access half of a member/team
+ * detail page.
+ */
+function descriptionFor(granteeKind: string): string {
+  return COPY[granteeKind as GranteeKind]?.description ?? FALLBACK_DESCRIPTION
+}
+
 /**
  * The grantee-centric entity-def **Access** section (capability layer v2
  * grantee-def-access) — the transpose of the per-def Permissions tab. Lists every
@@ -92,7 +105,7 @@ export function GranteeDefAccessSection({
     <SettingsSection
       icon={ShieldCheck}
       title='Record access'
-      description={principal === 'agent' ? AGENT_DESCRIPTION : COPY[granteeKind].description}>
+      description={principal === 'agent' ? AGENT_DESCRIPTION : descriptionFor(granteeKind)}>
       {isLoading ? (
         <div className='border p-1 rounded-xl space-y-1'>
           <Skeleton className='h-9 w-full rounded-lg' />

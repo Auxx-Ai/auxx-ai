@@ -81,6 +81,13 @@ type Source = 'kb' | 'rag' | 'both'
 export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_knowledge',
+    permission: {
+      target: 'instance',
+      keys: ['kb', 'dataset'],
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'filterAccessibleDatasetIds → canViewInstance per kb/dataset, intersected with the agent’s knowledgeScope and clamped to PUBLIC articles on a visitor turn.',
+    },
     displayName: 'Search knowledge',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,

@@ -17,6 +17,12 @@ import { resolveRecordViewTarget } from '../target'
 export function createSetDefaultRecordViewTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_default_table_view',
+    permission: {
+      target: 'definition',
+      level: 'full',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP. Gates on isAdminOrOwner — a ROLE check, not a CapabilityView assertion — and never calls canViewEntity on the def whose org-wide default it flips. It fails closed for agents only by accident of the synthetic member row carrying role:"USER".',
+    },
     displayName: 'Set default table view',
     category: 'capability',
     requiresApproval: true,

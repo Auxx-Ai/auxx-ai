@@ -8,6 +8,13 @@ import { buildOpToolResult, EXPECTED_HASH_PARAM, runBlockCrudOp } from './write-
 export function createDeleteBlocksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'delete_blocks',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'runBlockCrudOp → assertEditInstance("kb", …).',
+    },
     displayName: 'Delete article blocks',
     toolsetSlug: 'auxx:kb:write',
     exampleOutput: {

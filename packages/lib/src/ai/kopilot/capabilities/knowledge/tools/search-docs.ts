@@ -48,6 +48,10 @@ const MAX_RESULTS = 10
 export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_docs',
+    permission: {
+      target: 'none',
+      note: 'Reads the public help-center site over HTTP. Touches no workspace data and takes no org-scoped identity.',
+    },
     displayName: 'Search docs',
     toolsetSlug: 'auxx:docs',
     idempotent: true,

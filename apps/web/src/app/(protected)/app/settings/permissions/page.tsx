@@ -18,6 +18,19 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
  * read-only under an upgrade banner). Three leveled surfaces: the member
  * baseline, group overrides, and per-member overrides, each writing sparse grant
  * rows through the grant service.
+ *
+ * The two `GranteeOverridesTab` mounts are `group` and `user` — the only two
+ * *override* tiers. `PermissionGrant` also carries `granteeType:'profile'` rows
+ * (doc 19 §0.1), but a profile is the composition BASE, not a raise above it, so
+ * it is not a third override tab: the Member profile is presented here as the
+ * "Member baseline" tab via `permissions-member-baseline.ts`, and the remaining
+ * profiles get their own editor.
+ *
+ * TODO(plan-19-step-7): add the **Profiles** tab (doc 19 §7) and retitle
+ * "Member baseline" to the Member-profile editor, deleting the bridge.
+ * Until then, non-`member` profile rows are read-only and surfaced nowhere on
+ * this page — `usePermissionGrants().profileGrants` is the bucket that holds
+ * them, and it is explicitly unrendered rather than silently dropped.
  */
 export default function PermissionsPage() {
   useUser({ requireRoles: ['ADMIN', 'OWNER'] })

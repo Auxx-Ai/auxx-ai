@@ -20,10 +20,12 @@ export {
   canEditRecord,
   canViewInstance,
   canViewRecord,
+  ceilingAllowsDef,
   effectiveRecordLevel,
   levelToPermission,
   levelToRecordBasePermission,
   NON_RECORD_DEF_SLUGS,
+  type ResolvedDefCeiling,
   type ResolvedRecordAccess,
   toResolvedRecordAccess,
 } from './capabilities/entity-access'

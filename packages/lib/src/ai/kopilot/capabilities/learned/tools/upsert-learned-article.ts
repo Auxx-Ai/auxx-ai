@@ -46,6 +46,13 @@ export function withRecordChip(markdown: string, recordId?: string): string {
 export function createUpsertLearnedArticleTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'upsert_learned_article',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'assertEditInstance("kb", …) on the learned KB, plus an approval card.',
+    },
     displayName: 'Save learned article',
     // Always-on (no toolsetSlug): availability is controlled by where the
     // capability is registered (learnedMemory-flagged interactive registry +

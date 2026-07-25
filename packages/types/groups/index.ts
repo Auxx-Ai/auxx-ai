@@ -4,8 +4,8 @@ import type { Database } from '@auxx/database'
 import type {
   GroupVisibility,
   MemberType,
+  ResourceGranteeType,
   ResourcePermission,
-  SharingGranteeType,
 } from '@auxx/database/enums'
 import type { EntityInstanceEntity } from '@auxx/database/types'
 
@@ -79,8 +79,12 @@ export interface GroupMember {
 /** Permission grant input */
 export interface GrantPermissionInput {
   groupId: string
-  /** Sharing vocabulary only — `'profile'` grants are gated until plan 19 step 9. */
-  granteeType: SharingGranteeType
+  /**
+   * Full grantee vocabulary. A group ACL is a `ResourceAccess` INSTANCE grant on
+   * the `entity_group` def, so doc 19 §0.28's "profile selectable as an additive
+   * grantee" applies here too (plan 19 step 9).
+   */
+  granteeType: ResourceGranteeType
   granteeId: string
   permission: ResourcePermission
 }
@@ -88,8 +92,8 @@ export interface GrantPermissionInput {
 /** Permission info returned from queries */
 export interface GroupPermissionInfo {
   id: string
-  /** Sharing vocabulary only — `'profile'` grants are gated until plan 19 step 9. */
-  granteeType: SharingGranteeType
+  /** Full grantee vocabulary — reads mirror whatever `ResourceAccess` stores. */
+  granteeType: ResourceGranteeType
   granteeId: string
   permission: ResourcePermission
   createdAt: Date

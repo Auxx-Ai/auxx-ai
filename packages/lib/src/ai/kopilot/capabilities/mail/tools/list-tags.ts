@@ -27,6 +27,13 @@ const MAX_LIMIT = 200
 export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tags',
+    permission: {
+      target: 'unmodeled',
+      domain: 'mail',
+      level: 'read',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP (19b G2/G7). Org-wide tag list with no visibility lens — the only mail read that never resolves a viewer.',
+    },
     displayName: 'List tags',
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,

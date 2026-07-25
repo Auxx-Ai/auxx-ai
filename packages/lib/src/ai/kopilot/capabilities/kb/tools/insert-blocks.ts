@@ -14,6 +14,13 @@ import {
 export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'insert_blocks',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'runBlockCrudOp → assertEditInstance("kb", …) — the single choke point for all four block-CRUD writes.',
+    },
     displayName: 'Insert article blocks',
     toolsetSlug: 'auxx:kb:write',
     exampleOutput: {

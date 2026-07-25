@@ -181,8 +181,12 @@ describe('the ResourceAccess baseline path is untouched', () => {
   })
 
   it('the resourceAccess router still accepts the role grantee', () => {
+    // Doc 19 step 9 collapsed the router's six copies of the grantee enum into
+    // one shared schema, so the marker now lives there — the router must still
+    // parse with it, and must still not route through the PermissionGrant bridge.
+    expect(read('server/api/grantee-schema.ts')).toContain('ResourceGranteeType.role')
     const src = read('server/api/routers/resourceAccess.ts')
-    expect(src).toContain('ResourceGranteeType.role')
+    expect(src).toContain('granteeTypeSchema')
     expect(src).not.toContain('permissions-member-baseline')
   })
 

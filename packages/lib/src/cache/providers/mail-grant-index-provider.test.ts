@@ -69,6 +69,52 @@ describe('composeMailGrantIndex', () => {
     expect(index.threads.t_1).toEqual([{ userId: 'u_1', lens: 'full' }])
   })
 
+  it('expands profile grants to the profile’s holders (19a #11)', () => {
+    const index = composeMailGrantIndex({
+      rows: [row({ granteeType: 'profile', granteeId: 'prof_member', lens: 'subject' })],
+      memberUserIds: ['u_1', 'u_2', 'u_3'],
+      groupIdsByUser: {},
+      // u_1 bound explicitly, u_2 null-bound and resolved to the same system
+      // profile, u_3 on a different profile.
+      profileIdByUser: { u_1: 'prof_member', u_2: 'prof_member', u_3: 'prof_field' },
+    })
+    expect(index.threads.t_1).toEqual([
+      { userId: 'u_1', lens: 'subject' },
+      { userId: 'u_2', lens: 'subject' },
+    ])
+  })
+
+  it('does not reinterpret a profile grantee id as a group id (19a finding 4)', () => {
+    // The pre-step-9 ternary fell through to `usersByGroup.get(granteeId)`. If a
+    // group and a profile ever shared an id, the grant would have expanded to
+    // the WRONG audience instead of merely being dropped.
+    const index = composeMailGrantIndex({
+      rows: [row({ granteeType: 'profile', granteeId: 'collision' })],
+      memberUserIds: ['u_1', 'u_2'],
+      groupIdsByUser: { u_2: ['collision'] },
+      profileIdByUser: { u_1: 'collision' },
+    })
+    expect(index.threads.t_1).toEqual([{ userId: 'u_1', lens: 'full' }])
+  })
+
+  it('drops an unknown grantee kind instead of treating it as a group', () => {
+    const index = composeMailGrantIndex({
+      rows: [row({ granteeType: 'future_kind', granteeId: 'g_1' })],
+      memberUserIds: ['u_1'],
+      groupIdsByUser: { u_1: ['g_1'] },
+    })
+    expect(index.threads).toEqual({})
+  })
+
+  it('ignores a role grantee that is not the org_member baseline', () => {
+    const index = composeMailGrantIndex({
+      rows: [row({ granteeType: 'role', granteeId: 'org_admin' })],
+      memberUserIds: ['u_1', 'u_2'],
+      groupIdsByUser: {},
+    })
+    expect(index.threads).toEqual({})
+  })
+
   it('buckets inbox grants into the inboxes index (§10.1 delta audience)', () => {
     const index = composeMailGrantIndex({
       rows: [

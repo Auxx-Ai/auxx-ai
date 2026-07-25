@@ -2,6 +2,19 @@
 
 // Constants
 export { PERMISSION_HIERARCHY, satisfiesPermission } from './constants'
+// Grantee resolution (doc 19 §8.2 — the ONE grantee union)
+export {
+  type GranteeMatcher,
+  grantedViaFor,
+  granteeMatchers,
+  ORG_MEMBER_GRANTEE_ID,
+  type ResourceAccessGrantees,
+  resolveProfileHolders,
+  resolveProfileIdByUser,
+  resolveResourceAccessGrantees,
+  resolveUserProfileId,
+  resourceAccessGranteeConditions,
+} from './grantee-resolution'
 // Mail sharing guards (mail-permissions §7)
 export {
   assertCanManageMailSharing,
@@ -31,6 +44,7 @@ export type {
   AccessCheckResult,
   CheckAccessInput,
   CheckTypeAccessInput,
+  GrantedVia,
   GrantInstanceAccessInput,
   GrantLens,
   GrantTypeAccessInput,

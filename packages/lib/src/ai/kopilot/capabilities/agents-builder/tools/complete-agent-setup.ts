@@ -14,6 +14,13 @@ import { resolveAgentAuthoring } from './agent-authoring-guard'
 export function createCompleteAgentSetupTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'complete_agent_setup',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Complete agent setup',
     // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
     surfaces: ['builder'],

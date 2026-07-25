@@ -4,9 +4,16 @@
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { LensChoice } from '@auxx/lib/permissions/visibility/client'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
-import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
+import type { ActorId } from '@auxx/types/actor'
 import { toastError } from '@auxx/ui/components/toast'
 import { useMemo } from 'react'
+import {
+  actorIdToGrantee,
+  GRANTEE_UNSUPPORTED_MESSAGE,
+  granteeToActorId,
+  isActorGrantee,
+  type UnmanageableGrant,
+} from '~/components/permissions/utils/grantee'
 import { api } from '~/trpc/react'
 
 export interface MailShareGrant {
@@ -93,54 +100,76 @@ export function useMailShare({
   /** Grants as actor-keyed lens choices (admin permission renders as Manager). */
   const grants = useMemo<MailShareGrant[]>(
     () =>
-      rows
-        .filter(
-          (r) =>
-            r.granteeType === ResourceGranteeType.user ||
-            r.granteeType === ResourceGranteeType.group
-        )
-        .map((r) => ({
-          actorId: toActorId(
-            r.granteeType === ResourceGranteeType.group ? 'group' : 'user',
-            r.granteeId
-          ),
-          choice:
-            r.permission === ResourcePermission.admin || r.permission === ResourcePermission.edit
-              ? r.permission === ResourcePermission.admin
-                ? ('manager' as const)
-                : ('full' as const)
-              : ((r.lens ?? 'full') as LensChoice),
-        })),
+      rows.flatMap((r) => {
+        const actorId = granteeToActorId(r.granteeType, r.granteeId)
+        if (!actorId) return []
+        return [
+          {
+            actorId,
+            choice:
+              r.permission === ResourcePermission.admin || r.permission === ResourcePermission.edit
+                ? r.permission === ResourcePermission.admin
+                  ? ('manager' as const)
+                  : ('full' as const)
+                : ((r.lens ?? 'full') as LensChoice),
+          },
+        ]
+      }),
     [rows]
   )
 
-  const toGrantee = (actorId: ActorId) => {
-    const { type, id } = parseActorId(actorId)
-    return {
-      granteeType: type === 'group' ? ResourceGranteeType.group : ResourceGranteeType.user,
-      granteeId: id,
-    }
-  }
+  /**
+   * Rows this surface can neither render as an actor nor revoke — a `profile`
+   * grantee today (plan 19 §8.2). Disclosed rather than dropped, so an admin is
+   * never shown an empty share list while a live grant exists server-side.
+   * The `role:org_member` floor is excluded: mail expresses it as the inbox's
+   * `inbox_default_lens`, not as a row in this list.
+   */
+  const unmanageableGrants = useMemo<UnmanageableGrant[]>(
+    () =>
+      rows
+        .filter((r) => !isActorGrantee(r.granteeType) && r.granteeType !== ResourceGranteeType.role)
+        .map((r) => ({ granteeType: r.granteeType, granteeId: r.granteeId })),
+    [rows]
+  )
 
-  /** Grant or change an actor's level (upsert semantics server-side). */
+  /**
+   * Grant or change an actor's level (upsert semantics server-side).
+   *
+   * An ActorId with no grantee representation is REFUSED, not coerced: the old
+   * `type === 'group' ? group : user` fall-through turned an `agent:`/`worker:`
+   * pick into a `user` row keyed on an `Agent.id`/`DispatchWorker.id`, which
+   * points at the wrong table and grants nobody anything.
+   */
   const grant = (actorId: ActorId, choice: LensChoice) => {
-    const { granteeType, granteeId } = toGrantee(actorId)
+    const grantee = actorIdToGrantee(actorId)
+    if (!grantee) {
+      toastError({
+        title: 'Cannot share with this actor',
+        description: GRANTEE_UNSUPPORTED_MESSAGE,
+      })
+      return
+    }
     grantInstance.mutate({
       recordId,
-      granteeType,
-      granteeId,
+      ...grantee,
       permission: choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
       lens: choice === 'manager' ? undefined : choice,
     })
   }
 
   const revoke = (actorId: ActorId) => {
-    const { granteeType, granteeId } = toGrantee(actorId)
-    revokeInstance.mutate({ recordId, granteeType, granteeId })
+    const grantee = actorIdToGrantee(actorId)
+    if (!grantee) {
+      toastError({ title: 'Cannot remove this access', description: GRANTEE_UNSUPPORTED_MESSAGE })
+      return
+    }
+    revokeInstance.mutate({ recordId, ...grantee })
   }
 
   return {
     grants,
+    unmanageableGrants,
     isLoading,
     grant,
     changeLens: grant,

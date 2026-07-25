@@ -3,7 +3,7 @@
 'use client'
 
 import type { ActorId, ActorType } from '@auxx/types/actor'
-import { isWorkerActor, parseActorId } from '@auxx/types/actor'
+import { isWorkerActor } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
@@ -11,6 +11,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { Bot, Cog, User, Users, X } from 'lucide-react'
 
 import { useActor } from '~/components/resources/hooks/use-actor'
+import { actorAvatarType } from '~/components/resources/utils/actor-id'
 
 /**
  * The avatar-only half of an {@link ActorBadge}: the image with a type-aware
@@ -136,8 +137,12 @@ export function ActorBadge({
 }: ActorBadgeProps) {
   const { actor, isLoading, isNotFound } = useActor({ actorId, enabled: !!actorId })
 
-  // Prefer the resolved actor type (which may be 'system'); fall back to ID prefix during load.
-  const type = actor?.type ?? (actorId ? parseActorId(actorId).type : 'user')
+  // Prefer the resolved actor type (which may be 'system'); fall back to the id
+  // prefix during load, and to the neutral person glyph for a prefix the actor
+  // system does not model (`profile:` — plan 19 §8.2 — or the filter-builder's
+  // `placeholder:currentUser` sentinel). `parseActorId` THREW for both, taking
+  // the whole render tree down instead of degrading this one badge.
+  const type = actorAvatarType(actorId, actor?.type)
 
   // Determine display name: name → email (for users) → 'Unknown'
   const displayName = isNotFound

@@ -5,6 +5,7 @@ import { LENS_LABELS } from '@auxx/lib/permissions/visibility/client'
 import { toActorId } from '@auxx/types/actor'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { granteeToActorId, unmanageableGrantsNote } from '~/components/permissions/utils/grantee'
 import { ActorStack } from '~/components/resources/ui/actor-stack'
 import type { InboxItem } from '~/components/threads/hooks/use-inbox'
 import { api } from '~/trpc/react'
@@ -81,8 +82,15 @@ export function InboxInfoCard({ inbox, loading }: { inbox?: InboxItem; loading?:
 
   if (loading || !inbox) return <InboxInfoCardSkeleton />
 
-  const actorIds = (rows ?? []).map((r) =>
-    toActorId(r.granteeType === 'group' ? 'group' : 'user', r.granteeId)
+  // `granteeToActorId` returns null for every kind with no actor — the old
+  // `r.granteeType === 'group' ? 'group' : 'user'` ternary rendered a `role`
+  // baseline or a `profile` grant as a bogus `user:<id>` avatar that resolves to
+  // "Unknown", and counted it as a person.
+  const actorIds = (rows ?? []).flatMap((r) => granteeToActorId(r.granteeType, r.granteeId) ?? [])
+  const hiddenNote = unmanageableGrantsNote(
+    (rows ?? [])
+      .filter((r) => !granteeToActorId(r.granteeType, r.granteeId) && r.granteeType !== 'role')
+      .map((r) => ({ granteeType: r.granteeType, granteeId: r.granteeId }))
   )
   // Personal inbox: ensure the owner shows even if there's no explicit grant row.
   const ownerActorId =
@@ -121,6 +129,7 @@ export function InboxInfoCard({ inbox, loading }: { inbox?: InboxItem; loading?:
               </span>
             </div>
           )}
+          {hiddenNote && <p className='text-muted-foreground text-xs'>{hiddenNote}</p>}
         </div>
       </div>
 

@@ -3,10 +3,17 @@
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
-import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
+import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useMemo } from 'react'
+import {
+  actorIdToGrantee,
+  GRANTEE_UNSUPPORTED_MESSAGE,
+  granteeToActorId,
+  isActorGrantee,
+  type UnmanageableGrant,
+} from '~/components/permissions/utils/grantee'
 import { api } from '~/trpc/react'
 
 /** Instance grant level — the raw Read/Write/Full ResourceAccess permission. */
@@ -122,19 +129,32 @@ export function useInstanceShare({
   /** Actor-keyed user/group grants (excludes the workspace baseline row). */
   const grants = useMemo<InstanceShareGrant[]>(
     () =>
+      rows.flatMap((r) => {
+        const actorId = granteeToActorId(r.granteeType, r.granteeId)
+        if (!actorId) return []
+        return [{ actorId, choice: r.permission as InstanceLevel }]
+      }),
+    [rows]
+  )
+
+  /**
+   * Rows this card can neither render as an actor nor revoke — a `profile`
+   * grantee today (plan 19 §8.2), any future kind tomorrow. Surfaced rather than
+   * dropped: silently filtering them told the admin "not shared with anyone"
+   * while a live grant existed server-side, so they could not see OR revoke it.
+   */
+  const unmanageableGrants = useMemo<UnmanageableGrant[]>(
+    () =>
       rows
         .filter(
           (r) =>
-            r.granteeType === ResourceGranteeType.user ||
-            r.granteeType === ResourceGranteeType.group
+            !isActorGrantee(r.granteeType) &&
+            !(
+              r.granteeType === WORKSPACE_GRANTEE.granteeType &&
+              r.granteeId === WORKSPACE_GRANTEE.granteeId
+            )
         )
-        .map((r) => ({
-          actorId: toActorId(
-            r.granteeType === ResourceGranteeType.group ? 'group' : 'user',
-            r.granteeId
-          ),
-          choice: r.permission as InstanceLevel,
-        })),
+        .map((r) => ({ granteeType: r.granteeType, granteeId: r.granteeId })),
     [rows]
   )
 
@@ -155,20 +175,25 @@ export function useInstanceShare({
       : (baselineRow.permission as InstanceLevel)
     : undefined
 
-  const toGrantee = (actorId: ActorId) => {
-    const { type, id } = parseActorId(actorId)
-    return {
-      granteeType: type === 'group' ? ResourceGranteeType.group : ResourceGranteeType.user,
-      granteeId: id,
-    }
-  }
-
   /**
    * Grant or change a user/group's level (upsert). On the FIRST explicit row for
    * a still-unshared instance, also materialize the workspace baseline at Read so
    * the rest of the org keeps its base-level access instead of silently losing it.
+   *
+   * An ActorId with no grantee representation is REFUSED, not coerced: the old
+   * `type === 'group' ? group : user` fall-through turned an `agent:`/`worker:`
+   * pick into a `user` row keyed on an `Agent.id`/`DispatchWorker.id` — a row
+   * pointing at the wrong table that no resolver matches and no admin can see.
    */
   const grant = (actorId: ActorId, choice: InstanceLevel) => {
+    const grantee = actorIdToGrantee(actorId)
+    if (!grantee) {
+      toastError({
+        title: 'Cannot share with this actor',
+        description: GRANTEE_UNSUPPORTED_MESSAGE,
+      })
+      return
+    }
     if (rows.length === 0 && !baselineRow) {
       grantInstance.mutate({
         recordId,
@@ -177,13 +202,16 @@ export function useInstanceShare({
         permission: ResourcePermission.view,
       })
     }
-    const { granteeType, granteeId } = toGrantee(actorId)
-    grantInstance.mutate({ recordId, granteeType, granteeId, permission: choice })
+    grantInstance.mutate({ recordId, ...grantee, permission: choice })
   }
 
   const revoke = (actorId: ActorId) => {
-    const { granteeType, granteeId } = toGrantee(actorId)
-    revokeInstance.mutate({ recordId, granteeType, granteeId })
+    const grantee = actorIdToGrantee(actorId)
+    if (!grantee) {
+      toastError({ title: 'Cannot remove this access', description: GRANTEE_UNSUPPORTED_MESSAGE })
+      return
+    }
+    revokeInstance.mutate({ recordId, ...grantee })
   }
 
   /** Set the workspace baseline. `'restricted'` writes the `'none'` marker. */
@@ -198,6 +226,7 @@ export function useInstanceShare({
 
   return {
     grants,
+    unmanageableGrants,
     baseline,
     isLoading,
     grant,

@@ -26,6 +26,13 @@ const ListTasksOutput = z.object({
 export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tasks',
+    permission: {
+      target: 'unmodeled',
+      domain: 'tasks',
+      level: 'read',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP (19b G7). Defaults to ALL org tasks (the in-code comment says so) with no check. Tasks are neither an entity definition nor an Area, so there is nothing to assert against today.',
+    },
     displayName: 'List tasks',
     toolsetSlug: 'auxx:tasks:read',
     idempotent: true,

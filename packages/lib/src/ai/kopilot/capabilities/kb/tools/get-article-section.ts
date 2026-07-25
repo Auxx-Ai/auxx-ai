@@ -20,6 +20,13 @@ import { canViewKb } from '../kb-access'
 export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_article_section',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewKb → canViewInstance on the article’s home KB.',
+    },
     displayName: 'Get article section',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,

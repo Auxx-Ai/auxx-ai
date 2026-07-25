@@ -5,6 +5,7 @@ import { LENS_LABELS, type LensChoice } from '@auxx/lib/permissions/visibility/c
 import type { ActorId } from '@auxx/types/actor'
 import type { ReactNode } from 'react'
 import { GranteeAddButton, GranteeList } from '~/components/permissions/ui/grantee-list'
+import type { UnmanageableGrant } from '~/components/permissions/utils/grantee'
 import { LensSelect } from './lens-select'
 
 /**
@@ -24,6 +25,7 @@ export function MailGranteeList({
   emptyHint,
   lockedActorIds,
   hideAddButton,
+  unmanageableGrants,
 }: {
   grants: Array<{ actorId: ActorId; choice: LensChoice }>
   onGrant: (actorId: ActorId, choice: LensChoice) => void
@@ -34,6 +36,8 @@ export function MailGranteeList({
   emptyHint?: string
   lockedActorIds?: ActorId[]
   hideAddButton?: boolean
+  /** Grants on a kind this list can't address (e.g. `profile`) — disclosed, not dropped. */
+  unmanageableGrants?: UnmanageableGrant[]
 }) {
   return (
     <GranteeList<LensChoice>
@@ -58,6 +62,7 @@ export function MailGranteeList({
       emptyHint={emptyHint}
       lockedActorIds={lockedActorIds}
       hideAddButton={hideAddButton}
+      unmanageableGrants={unmanageableGrants}
     />
   )
 }

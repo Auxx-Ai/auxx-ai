@@ -169,14 +169,17 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
   const { entityDefinitionId: key } = parseRecordId(recordId)
   const isSupported = key in INSTANCE_SHARE_COPY
   const canAdmin = useCanAdminInstance(recordId)
-  const { grants, baseline, grant, changeLevel, revoke, setBaseline } = useInstanceShare({
-    recordId,
-    enabled: isSupported,
-  })
+  const { grants, unmanageableGrants, baseline, grant, changeLevel, revoke, setBaseline } =
+    useInstanceShare({
+      recordId,
+      enabled: isSupported,
+    })
 
   if (!isSupported) return null
   const copy = INSTANCE_SHARE_COPY[key as keyof typeof INSTANCE_SHARE_COPY]
-  if (!canAdmin && grants.length === 0) return null
+  // A grant this card can't render still means the resource IS shared — hiding
+  // the card would leave an admin with no signal at all.
+  if (!canAdmin && grants.length === 0 && unmanageableGrants.length === 0) return null
 
   const restricted = baseline === 'restricted'
 
@@ -216,6 +219,7 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
           <InstanceLevelSelect value={value} onChange={onChange} copy={copy} disabled={disabled} />
         )}
         disabled={!canAdmin}
+        unmanageableGrants={unmanageableGrants}
         emptyHint={`Not shared with anyone specific. Adjust the workspace default above to restrict this ${copy.noun}.`}
       />
     </div>

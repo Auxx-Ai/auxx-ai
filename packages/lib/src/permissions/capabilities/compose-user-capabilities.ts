@@ -2,7 +2,7 @@
 
 import type { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType, UserType } from '@auxx/database/types'
-import type { ProfileCeiling } from '../profiles/types'
+import type { ProfileCeiling, ProfileDefCeiling } from '../profiles/types'
 import {
   type Area,
   buildAreaLevels,
@@ -30,6 +30,18 @@ export interface UserCapabilities {
    * instance downward marker (a real grant outranks them via {@link PERMISSION_RANK}).
    */
   instanceAccess: Record<string, ResourcePermission>
+  /**
+   * The bound profile's definition ceiling (§0.13), carried **raw and
+   * slug-keyed** on purpose: apiSlugs survive def create/archive/restore, so a
+   * definition lifecycle event never has to invalidate this USER-scoped blob.
+   * `getCapabilities` resolves the slugs to `entityDefinitionId`s against the
+   * (org-scoped, def-lifecycle-invalidated) `resources` projection on every read.
+   *
+   * `null` = uncapped. Always `null` for OWNER (§0.10 recovery guarantee), for
+   * AGENT principals (their authority is the published version policy), and for
+   * non-members.
+   */
+  ceilingDefs: ProfileDefCeiling | null
 }
 
 /**
@@ -118,8 +130,10 @@ export function composeUserCapabilities(input: {
   profileBaseLevel?: Level | null
   /**
    * The bound profile's own intrinsic cap (§0.14) — applied after group/personal
-   * raising, before the seat ceiling. `ceiling.defs` is carried but NOT enforced
-   * here; definition-ceiling enforcement is doc 19 step 4.
+   * raising, before the seat ceiling. `ceiling.areas` is applied here;
+   * `ceiling.defs` is emitted verbatim as {@link UserCapabilities.ceilingDefs}
+   * and enforced per-def in `effectiveRecordLevel` (it needs the org's
+   * slug→`entityDefinitionId` map, which this pure function has no access to).
    */
   profileCeiling?: ProfileCeiling | null
   /** Sparse levels on each of the member's group grants (raise-only). */
@@ -170,13 +184,13 @@ export function composeUserCapabilities(input: {
   }
 
   // Fail closed: a non-member holds no capabilities.
-  if (!role) return { keys: [], defAccess, instanceAccess }
+  if (!role) return { keys: [], defAccess, instanceAccess, ceilingDefs: null }
 
   // AGENT principals hold NO composed capability (doc 19 §0.16/§2.3). Their
   // authority lives exclusively in `AgentVersion.permissionPolicy`, resolved by
   // `AgentPolicyCapabilities` — see the note above this function.
   if (userType === 'AGENT') {
-    return { keys: [], defAccess: {}, instanceAccess: {} }
+    return { keys: [], defAccess: {}, instanceAccess: {}, ceilingDefs: null }
   }
 
   const ceiling = SEAT_CEILINGS[seatType]
@@ -190,6 +204,9 @@ export function composeUserCapabilities(input: {
       keys: expandLevelsToKeys(buildAreaLevels((area) => ceiling[area])),
       defAccess,
       instanceAccess,
+      // No definition ceiling either — the recovery guarantee covers `defs`
+      // exactly as it covers `areas` (§0.10 / §3).
+      ceilingDefs: null,
     }
   }
 
@@ -218,7 +235,15 @@ export function composeUserCapabilities(input: {
     return Math.min(capped, ceiling[area]) as Level
   })
 
-  return { keys: expandLevelsToKeys(resolved), defAccess, instanceAccess }
+  // The definition half of the same profile ceiling rides out raw (slug-keyed);
+  // `getCapabilities` resolves it into the `entityDefinitionId` keyspace and
+  // `effectiveRecordLevel` enforces it before the seat clamp (§0.14).
+  return {
+    keys: expandLevelsToKeys(resolved),
+    defAccess,
+    instanceAccess,
+    ceilingDefs: profileCeiling?.defs ?? null,
+  }
 }
 
 /**

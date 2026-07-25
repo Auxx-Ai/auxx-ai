@@ -20,6 +20,13 @@ const MARKDOWN_MAX_BYTES = 20_000
 export function createSetAgentPromptTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_agent_prompt',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Set agent prompt',
     // Builder-only meta-tool — configures another agent. Never offered on a
     // chat/internal/email agent. See plans/chat/v6/chat-tool-availability.md.

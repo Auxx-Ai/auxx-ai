@@ -23,9 +23,12 @@ export function ContactSharedWithCard({ entityInstanceId }: DrawerTabProps) {
 
   // ResourceAccess keys contact grants by the fixed 'contact' slug.
   const shareRecordId = toRecordId('contact', entityInstanceId)
-  const { grants, grant, changeLens, revoke } = useMailShare({ recordId: shareRecordId })
+  const { grants, unmanageableGrants, grant, changeLens, revoke } = useMailShare({
+    recordId: shareRecordId,
+  })
 
-  if (!isAdminOrOwner && grants.length === 0) return null
+  // A grant on a kind this list can't address still means the contact IS shared.
+  if (!isAdminOrOwner && grants.length === 0 && unmanageableGrants.length === 0) return null
 
   return (
     <div className='space-y-2'>
@@ -40,6 +43,7 @@ export function ContactSharedWithCard({ entityInstanceId }: DrawerTabProps) {
           onChangeLens={changeLens}
           onRevoke={revoke}
           disabled={!isAdminOrOwner}
+          unmanageableGrants={unmanageableGrants}
           emptyHint='Not shared. Only inbox members see these conversations.'
         />
       </EnterpriseGate>

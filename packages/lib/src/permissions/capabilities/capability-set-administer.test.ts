@@ -4,6 +4,7 @@ import type { ResourcePermission } from '@auxx/database/enums'
 import type { SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
 import { CapabilitySet } from './capability-set'
+import { administersAnyDef, toResolvedRecordAccess } from './entity-access'
 import { PermissionKey } from './registry'
 
 /**
@@ -11,6 +12,12 @@ import { PermissionKey } from './registry'
  * `Full`/`admin` rung — managing a def's fields, its access, its metadata, and
  * deleting the def. Unlike record writes, it does NOT flow from the base records
  * level: only an explicit `admin` type-grant (or OWNER/ADMIN) confers it.
+ *
+ * As of doc 19 step 4 the resolver reads `effectiveRecordLevel` rather than the
+ * raw `defAccess` map, so the profile definition ceiling and the worker seat
+ * ceiling apply here too. The base rungs top out at `edit`, so routing through
+ * the effective level does NOT let a base-`Full` member administer a def — every
+ * assertion below is unchanged by the repoint.
  */
 
 const defIdToDefinitionId = (id: string) =>
@@ -22,6 +29,7 @@ const build = (opts: {
   restricted?: string[]
   role?: 'OWNER' | 'ADMIN' | 'USER'
   seatType?: SeatType
+  ceilingDefs?: { mode: 'only' | 'except'; defIds: string[] } | null
 }) =>
   new CapabilitySet(
     new Set(opts.keys ?? [PermissionKey.recordsView, PermissionKey.recordsEdit]),
@@ -30,7 +38,13 @@ const build = (opts: {
     opts.seatType ?? 'full',
     (id) => id,
     new Set(opts.restricted ?? []),
-    defIdToDefinitionId
+    defIdToDefinitionId,
+    {},
+    new Set(),
+    {},
+    opts.ceilingDefs
+      ? { mode: opts.ceilingDefs.mode, defIds: new Set(opts.ceilingDefs.defIds) }
+      : null
   )
 
 const READ_WRITE = [PermissionKey.recordsView, PermissionKey.recordsEdit]
@@ -86,6 +100,32 @@ describe('CapabilitySet.canAdministerDef (Full/admin rung, §9.1)', () => {
     expect(worker.canAdministerDef('invoice-def')).toBe(false)
   })
 
+  it('an `admin` grant on a def the profile ceiling excludes does not administer it', () => {
+    const only = build({
+      restricted: ['invoice-def'],
+      defAccess: { 'invoice-def': 'admin' },
+      ceilingDefs: { mode: 'only', defIds: ['contact-def'] },
+    })
+    expect(only.canAdministerDef('invoice-def')).toBe(false)
+    expect(() => only.assertAdministerDef('invoice-def')).toThrow()
+
+    const except = build({
+      restricted: ['invoice-def'],
+      defAccess: { 'invoice-def': 'admin' },
+      ceilingDefs: { mode: 'except', defIds: ['invoice-def'] },
+    })
+    expect(except.canAdministerDef('invoice-def')).toBe(false)
+  })
+
+  it('a def the ceiling still admits keeps its `admin` grant', () => {
+    const caps = build({
+      restricted: ['invoice-def'],
+      defAccess: { 'invoice-def': 'admin' },
+      ceilingDefs: { mode: 'only', defIds: ['invoice-def'] },
+    })
+    expect(caps.canAdministerDef('invoice-def')).toBe(true)
+  })
+
   it('scoped to the exact def — an `admin` grant on one def does not administer another', () => {
     const caps = build({
       restricted: ['invoice-def', 'salary-def'],
@@ -94,6 +134,66 @@ describe('CapabilitySet.canAdministerDef (Full/admin rung, §9.1)', () => {
     expect(caps.canAdministerDef('invoice-def')).toBe(true)
     expect(caps.canAdministerDef('salary-def')).toBe(false)
     expect(caps.canAdministerDef('contact-def')).toBe(false)
+  })
+})
+
+describe('administersAnyDef (org-wide "is there any def-admin surface for me")', () => {
+  const resolved = (opts: Parameters<typeof build>[0]) =>
+    toResolvedRecordAccess(build(opts).toClientCapabilities())
+
+  it('true for a def-`admin` grantee the ceiling still admits', () => {
+    expect(
+      administersAnyDef(
+        resolved({
+          restricted: ['invoice-def'],
+          defAccess: { 'invoice-def': 'admin' },
+          ceilingDefs: { mode: 'only', defIds: ['invoice-def'] },
+        })
+      )
+    ).toBe(true)
+  })
+
+  it('false when every `admin` grant is outside the ceiling — the org-wide hole (§3)', () => {
+    expect(
+      administersAnyDef(
+        resolved({
+          restricted: ['invoice-def'],
+          defAccess: { 'invoice-def': 'admin' },
+          ceilingDefs: { mode: 'only', defIds: ['contact-def'] },
+        })
+      )
+    ).toBe(false)
+    expect(
+      administersAnyDef(
+        resolved({
+          restricted: ['invoice-def'],
+          defAccess: { 'invoice-def': 'admin' },
+          ceilingDefs: { mode: 'except', defIds: ['invoice-def'] },
+        })
+      )
+    ).toBe(false)
+  })
+
+  it('true when at least ONE admitted def carries an `admin` grant', () => {
+    expect(
+      administersAnyDef(
+        resolved({
+          restricted: ['invoice-def', 'contact-def'],
+          defAccess: { 'invoice-def': 'admin', 'contact-def': 'admin' },
+          ceilingDefs: { mode: 'except', defIds: ['invoice-def'] },
+        })
+      )
+    ).toBe(true)
+  })
+
+  it('OWNER/ADMIN are never clamped by it', () => {
+    for (const role of ['OWNER', 'ADMIN'] as const) {
+      expect(
+        administersAnyDef(
+          resolved({ role, defAccess: {}, ceilingDefs: { mode: 'only', defIds: [] } })
+        )
+      ).toBe(true)
+    }
   })
 })
 

@@ -37,6 +37,10 @@ const MAX_LABEL_LEN = 200
 export function createPlanCreateTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'plan_create',
+    permission: {
+      target: 'none',
+      note: 'Agent-loop plumbing: writes the turn’s plan into in-memory domain state. No DB, no org data.',
+    },
     displayName: 'Create plan',
     category: 'control',
     outputSchema: PlanCreateOutput,

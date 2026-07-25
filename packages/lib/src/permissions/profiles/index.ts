@@ -31,19 +31,35 @@ export {
   clampAgentPolicyToPublisher,
 } from './agent-policy-clamp'
 export {
+  computeEffectiveStatesUncached,
+  computeEffectiveStateUncached,
+  type EffectiveState,
+  type QueryRunner,
+} from './effective-state'
+export {
+  type ActorAuthority,
+  assertNoEscalation,
+  assertProfileMapNoEscalation,
+  HOLDER_GUARD_CAP,
+  type ProfileAuthoredState,
+} from './escalation-guard'
+export {
   emitPermissionProfileChanged,
   fanOutCapabilityChange,
   type ProfileAudience,
   resolveProfileAudience,
+  resolveProfileHolderIds,
 } from './profile-invalidation'
 export {
   type CreatePermissionProfileInput,
   createPermissionProfile,
-  type UpdatePermissionProfileInput,
-  updatePermissionProfile,
 } from './profile-mutations'
 export { parseProfileCeiling, projectPermissionProfile } from './profile-projection'
 export { type ResolvedBaseProfile, resolveBaseProfile } from './profile-resolution'
+export {
+  type SavePermissionProfileInput,
+  savePermissionProfile,
+} from './profile-save'
 export {
   ensureSystemProfiles,
   SYSTEM_PROFILE_SEEDS,

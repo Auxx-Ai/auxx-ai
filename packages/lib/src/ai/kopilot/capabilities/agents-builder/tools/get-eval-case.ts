@@ -27,6 +27,13 @@ const outputSchema = z.object({
 export function createGetEvalCaseTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_eval_case',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Read simulation case',
     surfaces: ['builder'],
     idempotent: true,

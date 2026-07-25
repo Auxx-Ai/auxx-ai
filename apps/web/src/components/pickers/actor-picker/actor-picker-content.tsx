@@ -48,7 +48,20 @@ export interface ActorPickerContentProps {
   /** Called when selection changes */
   onChange: (selected: ActorId[]) => void
 
-  /** Actor target: 'user', 'group', 'agent', 'worker', 'both', or 'all' (default: 'both') */
+  /**
+   * Actor target: 'user', 'group', 'agent', 'worker', 'both', or 'all'
+   * (default: 'both').
+   *
+   * There is deliberately **no `'profile'` target.** Permission profiles are a
+   * `ResourceAccess`/`PermissionGrant` grantee kind, not actors: the actor
+   * service cannot resolve a `profile:` id to a name or avatar, and
+   * profile-grantee `ResourceAccess` writes are still refused server-side
+   * (`assertProfileGranteeSupported`, plan 19 step 9). Adding the option before
+   * both land would ship a picker entry whose every selection renders "Unknown"
+   * and then 400s on save. Every "add grantee" surface funnels through here, so
+   * profile grantees are explicitly **unsupported in all pickers** for now; doc
+   * 19 §7's Profiles editor is where profile-scoped access is authored.
+   */
   target?: 'user' | 'group' | 'agent' | 'worker' | 'both' | 'all'
 
   /**
@@ -211,15 +224,28 @@ export function ActorPickerContent({
     })
   }, [search, searchResults, storeActors, wasInitiallySelected, excludeIds])
 
-  // Group available items by type
+  /**
+   * Group available items by type. The buckets are **exhaustive**: anything the
+   * four named sections don't claim lands in `others` instead of disappearing.
+   * The previous four filters silently dropped every unbucketed kind — today the
+   * org's `system` actor, tomorrow anything the actor union gains — which made
+   * `target='all'` quietly not mean "all".
+   */
   const groupedAvailable = useMemo(() => {
-    const users = availableItems.filter((a) => a.type === 'user')
-    const agents = availableItems.filter(
-      (a) => a.type === 'agent' && (!agentFilter || agentFilter(a.actorId))
-    )
-    const groups = availableItems.filter((a) => a.type === 'group')
-    const workers = availableItems.filter((a) => a.type === 'worker')
-    return { users, agents, groups, workers }
+    const users: Actor[] = []
+    const agents: Actor[] = []
+    const groups: Actor[] = []
+    const workers: Actor[] = []
+    const others: Actor[] = []
+    for (const actor of availableItems) {
+      if (actor.type === 'user') users.push(actor)
+      else if (actor.type === 'agent') {
+        if (!agentFilter || agentFilter(actor.actorId)) agents.push(actor)
+      } else if (actor.type === 'group') groups.push(actor)
+      else if (actor.type === 'worker') workers.push(actor)
+      else others.push(actor)
+    }
+    return { users, agents, groups, workers, others }
   }, [availableItems, agentFilter])
 
   /**
@@ -267,8 +293,10 @@ export function ActorPickerContent({
     groupedAvailable.groups.length > 0
   const hasWorkersSection =
     (target === 'worker' || target === 'all') && groupedAvailable.workers.length > 0
+  // Only `all` promises everything, so only `all` renders the catch-all bucket.
+  const hasOthersSection = target === 'all' && groupedAvailable.others.length > 0
   const hasResultsSection =
-    hasUsersSection || hasAgentsSection || hasGroupsSection || hasWorkersSection
+    hasUsersSection || hasAgentsSection || hasGroupsSection || hasWorkersSection || hasOthersSection
   const showGroupHeadings = target === 'both' || target === 'all'
 
   return (
@@ -367,6 +395,22 @@ export function ActorPickerContent({
         {hasWorkersSection && (
           <CommandGroup heading={showGroupHeadings ? 'Workers' : undefined} aria-label='Workers'>
             {groupedAvailable.workers.map((actor) => (
+              <ActorItem
+                key={actor.actorId}
+                actor={actor}
+                isSelected={isSelected(actor.actorId)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
+        )}
+
+        {/* Catch-all for kinds the four sections above don't claim (e.g. the
+            org's system actor), so `target='all'` never silently omits one. */}
+        {hasOthersSection && (
+          <CommandGroup heading={showGroupHeadings ? 'Other' : undefined} aria-label='Other'>
+            {groupedAvailable.others.map((actor) => (
               <ActorItem
                 key={actor.actorId}
                 actor={actor}

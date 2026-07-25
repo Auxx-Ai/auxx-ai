@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { getCachedMembersByUserIds } from '../../../../../cache/org-cache-helpers'
 import { CommentService } from '../../../../../comments'
-import type { RecordId } from '../../../../../resources/resource-id'
+import { getDefinitionId, type RecordId } from '../../../../../resources/resource-id'
 import { docToText } from '../../../../../tiptap'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -58,6 +58,12 @@ function truncate(text: string | null | undefined, max: number): string {
 export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_notes',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the def parsed out of the recordId; silent-empty on denial (19b G3).',
+    },
     displayName: 'List notes',
     toolsetSlug: 'auxx:comments:read',
     category: 'system',
@@ -125,10 +131,17 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
       }
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const recordId = args.recordId as RecordId
       const limit = Math.min((args.limit as number) ?? 20, MAX_LIMIT)
       const includeReplies = (args.includeReplies as boolean | undefined) ?? true
+
+      // Read enforcement (§3): notes are record content, so a def the principal
+      // can't view reads as a record with no notes — never as a denial that
+      // confirms the record exists.
+      if (capabilities && !capabilities.canViewEntity(getDefinitionId(recordId))) {
+        return { success: true, output: { notes: [], hasMore: false } }
+      }
 
       const service = new CommentService(agentDeps.organizationId, agentDeps.userId, db)
 

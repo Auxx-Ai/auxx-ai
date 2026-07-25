@@ -23,6 +23,13 @@ const UpdateThreadOutput = z.object({
 export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_thread',
+    permission: {
+      target: 'unmodeled',
+      domain: 'mail',
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'ThreadMutationService is constructed with the viewer; its write gate requires a full lens on the thread.',
+    },
     displayName: 'Update thread',
     toolsetSlug: 'auxx:mail:threads',
     outputSchema: UpdateThreadOutput,

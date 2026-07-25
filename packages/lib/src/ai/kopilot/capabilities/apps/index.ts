@@ -236,6 +236,19 @@ export async function createAppCapabilities(deps: {
 
       const buildAgentTool = (execute: AgentToolDefinition['execute']): AgentToolDefinition => ({
         name: registeredName,
+        // The platform cannot classify an app tool's effects: they run inside a
+        // third-party bundle. Gates are install + toolset enablement, the
+        // `requiresConnection` presence check above, the `Agent.appAccounts`
+        // binding, and `resolveOwnedField` on write-back — none of which map to
+        // an area / definition / instance level. Marked `bridge` (never `none`)
+        // so the audit can tell "unclassifiable" from "needs nothing". The known
+        // record-read channel is 19b G5: `includeEntitiesScope: true` below mints
+        // a token for apps/api's entity routes with no CapabilitySet on the path.
+        permission: {
+          target: 'bridge',
+          governedBy: 'app',
+          note: 'App bundle: install + toolset enablement + connection binding are the gate; requiresApproval is hard-coded false. Record reads via the entities scope are unbounded by capabilities (19b G5).',
+        },
         displayName: tool.name || registeredName,
         description: tool.description,
         parameters: tool.inputsJsonSchema,

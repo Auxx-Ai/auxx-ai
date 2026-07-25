@@ -24,6 +24,10 @@ const AssignVariableOutput = z.object({
 export function assignVariableTool(_deps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'assign_variable',
+    permission: {
+      target: 'none',
+      note: 'Workflow plumbing: writes a variable into the active run’s execution context. Reach is bounded by the workflow the node already runs inside.',
+    },
     displayName: 'Assign variable',
     description:
       'Set a workflow variable so downstream nodes can read it. ' +

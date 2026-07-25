@@ -104,6 +104,27 @@ export function usePermissionGrants() {
     [grants]
   )
 
+  /**
+   * Permission-profile grant rows — the area-level base for every member bound to
+   * that profile (doc 19 §0.1/§0.8). Every org has six after data migration 049.
+   *
+   * These are NOT overrides and must never be folded into {@link groupGrants} /
+   * {@link userGrants}: they compose as the base tier, not as a raise above it.
+   * Before this bucket existed the three filters simply dropped them, so the
+   * settings page silently showed nothing for the majority of an org's stored
+   * grant rows. The org's own `member` profile is NOT here — the router presents
+   * it as `role:org_member` in {@link baseline} (`permissions-member-baseline.ts`).
+   *
+   * TODO(plan-19-step-7): the Profiles editor is the surface that renders and
+   * edits these. Read-only here on purpose — `permissions.grant`'s input enum
+   * still excludes `'profile'` (see {@link save}), so exposing an editor for them
+   * from this hook would ship a control that fails at the router.
+   */
+  const profileGrants = useMemo<GranteeGrant[]>(
+    () => grants.filter((g) => g.granteeType === 'profile'),
+    [grants]
+  )
+
   /** The effective member baseline per area — role default merged with org policy. */
   const effectiveBaseline = useMemo<Partial<Record<Area, Level>>>(
     () => ({ ...(roleDefaults ?? {}), ...baseline }),
@@ -143,6 +164,7 @@ export function usePermissionGrants() {
     baseline,
     groupGrants,
     userGrants,
+    profileGrants,
     effectiveBaseline,
     isSaving: grant.isPending || revoke.isPending,
     save,

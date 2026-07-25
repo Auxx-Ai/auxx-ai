@@ -53,6 +53,13 @@ function parseUpsertMocks(raw: unknown): UpsertMockArg[] | string {
 export function createUpdateEvalCaseMockTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_eval_case_mock',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Update simulation case mocks',
     surfaces: ['builder'],
     requiresApproval: true,

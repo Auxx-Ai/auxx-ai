@@ -2,7 +2,6 @@
 'use client'
 
 import type { ActorId } from '@auxx/types/actor'
-import { parseActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -13,6 +12,9 @@ import { type ReactNode, useMemo } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
+import { actorAvatarType } from '~/components/resources/utils/actor-id'
+import type { UnmanageableGrant } from '../utils/grantee'
+import { unmanageableGrantsNote } from '../utils/grantee'
 
 /**
  * Render the level picker for one editable grantee row. The neutral list is
@@ -48,6 +50,13 @@ export interface GranteeListProps<TChoice extends string> {
    * their own {@link GranteeAddButton} (e.g. the inbox dialog's Section header).
    */
   hideAddButton?: boolean
+  /**
+   * Stored grants this list cannot render as an actor row — a `profile` grantee
+   * today (plan 19 §8.2). Disclosed as a muted line beneath the rows so the list
+   * never claims "not shared with anyone" while a live grant exists server-side.
+   * Not editable here: revoking one needs a surface that can address its kind.
+   */
+  unmanageableGrants?: UnmanageableGrant[]
 }
 
 /**
@@ -73,12 +82,17 @@ export function GranteeList<TChoice extends string>({
   emptyHint = 'Not shared with anyone yet.',
   lockedActorIds = [],
   hideAddButton = false,
+  unmanageableGrants,
 }: GranteeListProps<TChoice>) {
   const locked = useMemo(() => new Set(lockedActorIds), [lockedActorIds])
+  const hiddenNote = useMemo(
+    () => unmanageableGrantsNote(unmanageableGrants ?? []),
+    [unmanageableGrants]
+  )
 
   return (
     <div className='space-y-0.5'>
-      {grants.length === 0 ? (
+      {grants.length === 0 && !hiddenNote ? (
         <EmptySection
           icon={<Users className='size-5' />}
           title='No one added yet'
@@ -99,6 +113,8 @@ export function GranteeList<TChoice extends string>({
           />
         ))
       )}
+
+      {hiddenNote && <p className='px-2 pt-1 text-muted-foreground text-xs'>{hiddenNote}</p>}
 
       {!hideAddButton && (
         <GranteeAddButton
@@ -175,7 +191,10 @@ function GranteeRow<TChoice extends string>({
   onRevoke: (actorId: ActorId) => void
 }) {
   const { actor, isLoading, isNotFound } = useActor({ actorId })
-  const type = actor?.type ?? parseActorId(actorId).type
+  // Never `parseActorId` here: it throws for any prefix outside its whitelist,
+  // and this row renders BEFORE hydration resolves — so one grant on a kind the
+  // actor system doesn't model white-screened the entire share sheet.
+  const type = actorAvatarType(actorId, actor?.type)
   const showLoading = isLoading && !actor
   const name = isNotFound
     ? 'Unknown'

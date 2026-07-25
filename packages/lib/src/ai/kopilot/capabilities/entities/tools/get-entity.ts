@@ -28,6 +28,12 @@ const GetEntityOutput = z.object({
 export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_entity',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the recordId’s def before the read.',
+    },
     displayName: 'Get record',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',

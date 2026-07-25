@@ -3,7 +3,7 @@
 import { type Database, database, type PermissionProfileEntity, schema } from '@auxx/database'
 import type { SeatType } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
+import { BadRequestError, ForbiddenError } from '../../errors'
 import { FeaturePermissionService } from '../feature-permission-service'
 import { FeatureKey } from '../types'
 import { emitPermissionProfileChanged } from './profile-invalidation'
@@ -25,9 +25,39 @@ async function requireGranularPermissions(db: Database, organizationId: string):
   )
 }
 
+/**
+ * The OWNER/ADMIN-only rule for agent-side profiles (§0.25 / doc 14 §0.9).
+ * `permissions` becoming grantable must never hand agent policy to a non-admin,
+ * so every agent-profile write resolves the actor's role first.
+ */
+async function assertAgentProfileActor(
+  db: Database,
+  organizationId: string,
+  actorUserId: string
+): Promise<void> {
+  const [member] = await db
+    .select({ role: schema.OrganizationMember.role })
+    .from(schema.OrganizationMember)
+    .where(
+      and(
+        eq(schema.OrganizationMember.organizationId, organizationId),
+        eq(schema.OrganizationMember.userId, actorUserId)
+      )
+    )
+    .limit(1)
+
+  if (member?.role !== 'OWNER' && member?.role !== 'ADMIN') {
+    throw new ForbiddenError(
+      'Only owners and admins can create an agent permission profile (doc 14 §0.9).'
+    )
+  }
+}
+
 /** Fields a caller may author on create. */
 export interface CreatePermissionProfileInput {
   organizationId: string
+  /** Who is creating it — gates the agent-profile branch (§0.25). */
+  actorUserId: string
   slug: string
   name: string
   description?: string | null
@@ -47,15 +77,24 @@ export interface CreatePermissionProfileInput {
  *
  * `isSystem` is never authorable and the six reserved system slugs are refused —
  * a custom profile can never shadow the template a null binding resolves to.
+ *
+ * **The §6.1 escalation guard deliberately does not run here.** A brand-new
+ * profile has no holders, so its resulting-effective-state comparison is vacuous
+ * by construction; the authority check bites where the access actually reaches a
+ * principal — `savePermissionProfile` (holders) and profile assignment (§6.1.3's
+ * `{M}` row, step 8).
  */
 export async function createPermissionProfile(
   input: CreatePermissionProfileInput
 ): Promise<PermissionProfileEntity> {
-  const { organizationId, slug, name } = input
+  const { organizationId, actorUserId, slug, name } = input
   const db = input.db ?? database
 
   if (SYSTEM_SLUG_SET.has(slug)) {
     throw new BadRequestError(`'${slug}' is a reserved system profile slug.`)
+  }
+  if (input.appliesTo === 'agent' || input.agentPolicy) {
+    await assertAgentProfileActor(db, organizationId, actorUserId)
   }
   await requireGranularPermissions(db, organizationId)
 
@@ -90,96 +129,16 @@ export async function createPermissionProfile(
 }
 
 /**
- * The mutable half of a profile. `seat`, `appliesTo`, `slug` and `isSystem` are
- * deliberately absent — they are IMMUTABLE after creation (§0.18). Editing `seat`
- * under existing holders would leave them on a profile whose declared class no
- * longer matches their billed `seatType`, bypassing the core invariant; changing
- * seat class is "clone the profile and reassign", which re-runs the per-holder cap
- * check.
- */
-export interface UpdatePermissionProfileInput {
-  organizationId: string
-  profileId: string
-  name?: string
-  description?: string | null
-  icon?: { iconId: string; color: string } | null
-  baseLevel?: number | null
-  ceiling?: ProfileCeiling | null
-  agentPolicy?: AgentPermissionPolicy | null
-  db?: Database
-}
-
-/**
- * Update a permission profile's mutable fields, then fan out the §8.3
- * invalidation (which reaches NULL-BOUND holders for a system profile).
+ * The mutable half of a profile is authored exclusively by
+ * `savePermissionProfile` (`profile-save.ts`).
  *
- * Immutability is enforced structurally — {@link UpdatePermissionProfileInput}
- * cannot express a `seat`/`appliesTo`/`slug`/`isSystem` change — plus these
- * runtime guards for callers coming in over the wire:
- *  - the profile must belong to `organizationId` (cross-org writes are refused
- *    even though the FK alone cannot guarantee co-tenancy — §1.1);
- *  - the `owner` system profile is not editable and is **never ceilinged**
- *    (§0.10): its unconditional bypass is the recovery guarantee, so a ceiling
- *    there would be a lie the UI must not be able to author.
+ * There is deliberately **no** standalone `updatePermissionProfile`: §6.1.4
+ * requires ONE transactional save carrying metadata, levels, the ceiling and (at
+ * step 9) the def/instance rows together, because a save spanning several
+ * requests cannot enforce one atomic "resulting effective state" check. A
+ * metadata-only side door would be exactly that multi-request variant.
+ *
+ * `seat`, `appliesTo`, `slug` and `isSystem` stay immutable after creation
+ * (§0.18) — changing seat class is "clone the profile and reassign", which
+ * re-runs the per-holder cap check.
  */
-export async function updatePermissionProfile(
-  input: UpdatePermissionProfileInput
-): Promise<PermissionProfileEntity> {
-  const { organizationId, profileId } = input
-  const db = input.db ?? database
-
-  const [existing] = await db
-    .select({
-      id: schema.PermissionProfile.id,
-      slug: schema.PermissionProfile.slug,
-      isSystem: schema.PermissionProfile.isSystem,
-    })
-    .from(schema.PermissionProfile)
-    .where(
-      and(
-        eq(schema.PermissionProfile.id, profileId),
-        eq(schema.PermissionProfile.organizationId, organizationId)
-      )
-    )
-    .limit(1)
-
-  if (!existing) throw new NotFoundError('Permission profile not found in this organization.')
-  if (existing.slug === 'owner') {
-    throw new ForbiddenError(
-      'The Owner profile is not editable and can never carry a ceiling — it is the recovery guarantee.'
-    )
-  }
-
-  await requireGranularPermissions(db, organizationId)
-
-  const patch: Partial<PermissionProfileEntity> = {}
-  if (input.name !== undefined) patch.name = input.name
-  if (input.description !== undefined) patch.description = input.description
-  if (input.icon !== undefined) patch.icon = input.icon
-  if (input.baseLevel !== undefined) patch.baseLevel = input.baseLevel
-  if (input.ceiling !== undefined) patch.ceiling = input.ceiling as Record<string, unknown> | null
-  if (input.agentPolicy !== undefined) patch.agentPolicy = input.agentPolicy
-
-  if (Object.keys(patch).length === 0) {
-    throw new BadRequestError('No updatable permission-profile fields were provided.')
-  }
-
-  const [row] = await db
-    .update(schema.PermissionProfile)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(
-      and(
-        eq(schema.PermissionProfile.id, profileId),
-        eq(schema.PermissionProfile.organizationId, organizationId)
-      )
-    )
-    .returning()
-
-  await emitPermissionProfileChanged({
-    organizationId,
-    profileId,
-    slug: existing.slug,
-    isSystem: existing.isSystem,
-  })
-  return row as PermissionProfileEntity
-}

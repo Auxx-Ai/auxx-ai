@@ -12,6 +12,7 @@ import {
   canViewRecord,
   levelToPermission,
   NON_RECORD_DEF_SLUGS,
+  type ResolvedDefCeiling,
   type ResolvedRecordAccess,
 } from './entity-access'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
@@ -69,6 +70,10 @@ export class CapabilitySet implements CapabilityView {
    * @param defBaseOverrides Per-def record base for defs whose base comes from
    *                   another Layer-2 area. Canonical `entityDefinitionId`
    *                   keys; `null` means that area is closed.
+   * @param ceilingDefs The bound permission profile's per-definition cap
+   *                   (doc 19 §0.13), already resolved from apiSlugs to
+   *                   canonical `entityDefinitionId`s in {@link getCapabilities}.
+   *                   `null` = uncapped (always so for OWNER, §0.10).
    */
   constructor(
     private readonly keys: ReadonlySet<PermissionKey>,
@@ -80,7 +85,8 @@ export class CapabilitySet implements CapabilityView {
     private readonly defIdToDefinitionId: DefIdToSlug = (id) => id,
     private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
     private readonly restrictedInstanceIds: ReadonlySet<string> = new Set(),
-    private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {}
+    private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {},
+    private readonly ceilingDefs: ResolvedDefCeiling | null = null
   ) {}
 
   /** O(1) Set lookup — whether the member holds `key`. */
@@ -144,6 +150,7 @@ export class CapabilitySet implements CapabilityView {
       defAccess: this.defAccess,
       restrictedEntityDefIds: this.restrictedDefIds,
       defBaseOverrides: this.defBaseOverrides,
+      ceilingDefs: this.ceilingDefs,
     }
   }
 
@@ -161,6 +168,9 @@ export class CapabilitySet implements CapabilityView {
       seatType: this.seatType,
       instanceAccess: { ...this.instanceAccess },
       restrictedInstanceIds: [...this.restrictedInstanceIds],
+      ceilingDefs: this.ceilingDefs
+        ? { mode: this.ceilingDefs.mode, defIds: [...this.ceilingDefs.defIds] }
+        : null,
     }
   }
 

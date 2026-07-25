@@ -36,6 +36,12 @@ const GetTranscriptOutput = z.object({
 export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_transcript',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'Transcript → CallRecording → EntityInstance join then canViewEntity; not-found on denial (19b G3).',
+    },
     displayName: 'Get transcript',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',
@@ -78,21 +84,45 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const transcriptId = args.transcriptId as string
       const granularity =
         (args.granularity as 'full_text' | 'utterances' | undefined) ?? 'full_text'
       const maxTokens = (args.maxTokens as number | undefined) ?? DEFAULT_MAX_TOKENS
       const charBudget = maxTokens * CHARS_PER_TOKEN
 
-      const transcript = await db.query.Transcript.findFirst({
-        where: and(
-          eq(schema.Transcript.id, transcriptId),
-          eq(schema.Transcript.organizationId, agentDeps.organizationId)
-        ),
-      })
+      // A transcript is reachable only through its meeting record, so the join
+      // carries the owning def up for the read gate below (both FKs are
+      // NOT NULL + cascade, so the chain always resolves for a live row).
+      const [transcript] = await db
+        .select({
+          fullText: schema.Transcript.fullText,
+          wordCount: schema.Transcript.wordCount,
+          entityDefinitionId: schema.EntityInstance.entityDefinitionId,
+        })
+        .from(schema.Transcript)
+        .innerJoin(
+          schema.CallRecording,
+          eq(schema.CallRecording.id, schema.Transcript.callRecordingId)
+        )
+        .innerJoin(
+          schema.EntityInstance,
+          eq(schema.EntityInstance.id, schema.CallRecording.meetingId)
+        )
+        .where(
+          and(
+            eq(schema.Transcript.id, transcriptId),
+            eq(schema.Transcript.organizationId, agentDeps.organizationId)
+          )
+        )
+        .limit(1)
 
-      if (!transcript) {
+      // Read enforcement (§3): an unviewable meeting def reads exactly like a
+      // transcript that does not exist — the message must not distinguish them.
+      if (
+        !transcript ||
+        (capabilities && !capabilities.canViewEntity(transcript.entityDefinitionId))
+      ) {
         return { success: false, output: null, error: `Transcript ${transcriptId} not found.` }
       }
 

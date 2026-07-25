@@ -21,7 +21,17 @@ import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
-/** The grantee axis this section edits: an individual member or a team. */
+/**
+ * The grantee axis this section edits: an individual member or a team.
+ *
+ * A `'profile'` kind is deliberately absent. It is not a missing tab — the
+ * grantee-centric def grid writes `ResourceAccess` rows through
+ * `resourceAccess.grantType`/`revokeType`, and profile-grantee `ResourceAccess`
+ * writes are refused at the service layer (`assertProfileGranteeSupported`) until
+ * every resolver reads them. Adding it here would ship a picker whose every
+ * selection 400s. Per-def profile access is therefore explicitly **unsupported**
+ * on this surface; it belongs to the profile-side def grid in doc 19 §7.
+ */
 export type GranteeKind = 'user' | 'group'
 
 /**
@@ -34,8 +44,12 @@ export type GranteeKind = 'user' | 'group'
  */
 export type GranteePrincipal = 'member' | 'agent'
 
-// Typed against `SharingGranteeType`, not `ResourceGranteeType`: the wider union
-// carries `'profile'`, whose ResourceAccess writes are gated until plan 19 step 9.
+/**
+ * Typed against `SharingGranteeType`, not `ResourceGranteeType`: the wider union
+ * carries `'profile'`, whose ResourceAccess writes are still refused server-side.
+ * Total over {@link GranteeKind} by construction — there is no fall-through
+ * branch that could turn an unmodelled kind into a `user` write.
+ */
 const GRANTEE_TYPE: Record<GranteeKind, SharingGranteeType> = {
   user: ResourceGranteeType.user,
   group: ResourceGranteeType.group,

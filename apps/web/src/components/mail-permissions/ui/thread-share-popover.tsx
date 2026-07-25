@@ -56,7 +56,7 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
   const gated = useMailPermissionsGated()
 
   const recordId = toRecordId('thread', threadId)
-  const { grants, grant, changeLens, revoke } = useMailShare({ recordId })
+  const { grants, unmanageableGrants, grant, changeLens, revoke } = useMailShare({ recordId })
 
   // Inbox Managers may share without being org admins (delegation).
   const { data: inboxAccess } = api.resourceAccess.check.useQuery(
@@ -117,6 +117,7 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
               onChangeLens={changeLens}
               onRevoke={revoke}
               disabled={!canShare || gated}
+              unmanageableGrants={unmanageableGrants}
               emptyHint='Not shared with anyone yet.'
             />
           </div>

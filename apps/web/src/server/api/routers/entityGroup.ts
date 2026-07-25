@@ -1,15 +1,11 @@
 // apps/web/src/server/api/routers/entityGroup.ts
 
-import {
-  GroupVisibility,
-  MemberType,
-  ResourceGranteeType,
-  ResourcePermission,
-} from '@auxx/database/enums'
+import { GroupVisibility, MemberType, ResourcePermission } from '@auxx/database/enums'
 import * as groups from '@auxx/lib/groups'
 import type { GroupContext } from '@auxx/types/groups'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '../audit-context'
+import { assertProfileGranteesAuthorable, granteeTypeSchema } from '../grantee-schema'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
@@ -223,12 +219,7 @@ export const entityGroupRouter = createTRPCRouter({
     .input(
       z.object({
         groupId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         granteeId: z.string(),
         permission: z.enum([
           ResourcePermission.view,
@@ -239,6 +230,9 @@ export const entityGroupRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const groupCtx = toGroupContext(ctx)
+      await assertProfileGranteesAuthorable(ctx.session.organizationId, input.granteeType, [
+        input.granteeId,
+      ])
       const result = await groups.grantPermission(groupCtx, input)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -259,12 +253,7 @@ export const entityGroupRouter = createTRPCRouter({
     .input(
       z.object({
         groupId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         granteeId: z.string(),
       })
     )
