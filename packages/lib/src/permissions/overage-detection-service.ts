@@ -225,41 +225,28 @@ export class OverageDetectionService {
    */
   private async getResourceCount(organizationId: string, featureKey: string): Promise<number> {
     switch (featureKey) {
-      case FeatureKey.teammates: {
-        // Only count human members — agents (userType='AGENT') and system users
-        // must not consume paid seats. Full seats only: field (worker) seats are
-        // counted separately against the workerSeats limit (§8).
-        const [result] = await this.db
-          .select({ value: count() })
-          .from(schema.OrganizationMember)
-          .innerJoin(schema.User, eq(schema.User.id, schema.OrganizationMember.userId))
-          .where(
-            and(
-              eq(schema.OrganizationMember.organizationId, organizationId),
-              eq(schema.OrganizationMember.status, 'ACTIVE'),
-              eq(schema.OrganizationMember.seatType, 'full'),
-              eq(schema.User.userType, 'USER')
-            )
-          )
-        return result?.value ?? 0
-      }
-
+      // Both seat classes delegate to the one shared seat counter that the
+      // invite and seat-change gates use — two independent counters for one
+      // billing invariant is how they drifted apart before. Members only
+      // (a pending invitation is not yet occupying a seat), ACTIVE, human, and
+      // scoped to the class: field (worker) seats are counted separately from
+      // full seats (§8).
+      //
+      // Lazy import: `members/seat-limits` → `permissions/feature-permission-service`
+      // → the `cache` barrel → `register-providers` → `overages-provider` → this
+      // file, so a static import would close an ESM cycle (and break `vi.mock`
+      // in tests). Same reason the members module lazy-imports `../cache`.
+      case FeatureKey.teammates:
       case FeatureKey.workerSeats: {
-        // Field (worker) seats only — the cheaper capability-capped member seat (§8).
-        // Mirrors the teammates count: human members, active, scoped to the org.
-        const [result] = await this.db
-          .select({ value: count() })
-          .from(schema.OrganizationMember)
-          .innerJoin(schema.User, eq(schema.User.id, schema.OrganizationMember.userId))
-          .where(
-            and(
-              eq(schema.OrganizationMember.organizationId, organizationId),
-              eq(schema.OrganizationMember.status, 'ACTIVE'),
-              eq(schema.OrganizationMember.seatType, 'worker'),
-              eq(schema.User.userType, 'USER')
-            )
-          )
-        return result?.value ?? 0
+        const { countSeatsUsed } = await import('../members/seat-limits')
+        return countSeatsUsed(
+          {
+            organizationId,
+            seatType: featureKey === FeatureKey.workerSeats ? 'worker' : 'full',
+            includePendingInvitations: false,
+          },
+          this.db
+        )
       }
 
       case FeatureKey.channels:

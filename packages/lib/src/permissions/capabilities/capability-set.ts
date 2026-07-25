@@ -15,7 +15,13 @@ import {
   type ResolvedRecordAccess,
 } from './entity-access'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
-import { areaLevelFromKeys, Level, PERMISSION_REGISTRY_MAP, PermissionKey } from './registry'
+import {
+  type Area,
+  areaLevelFromKeys,
+  Level,
+  PERMISSION_REGISTRY_MAP,
+  PermissionKey,
+} from './registry'
 import { ENTITY_WRITE_KEYS } from './seat-policy'
 
 /**
@@ -85,6 +91,15 @@ export class CapabilitySet implements CapabilityView {
   /** Alias for {@link can} — reads better at some call sites. */
   has(key: PermissionKey): boolean {
     return this.keys.has(key)
+  }
+
+  /**
+   * The member's effective {@link Level} for one {@link Area}, recovered from the
+   * already-composed (seat-clamped) key set via {@link areaLevelFromKeys}. Zero
+   * I/O, and by construction identical to what every `can()` gate sees.
+   */
+  areaLevel(area: Area): Level {
+    return areaLevelFromKeys(this.keys, area)
   }
 
   /**

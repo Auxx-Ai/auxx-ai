@@ -2,6 +2,7 @@
 // Service-based seeding helpers for entities requiring business logic coordination
 
 import { database, schema } from '@auxx/database'
+import { ensureSystemProfiles } from '@auxx/lib/permissions'
 import { OrganizationSeeder } from '@auxx/lib/seed'
 import { createId } from '@paralleldrive/cuid2'
 import { eq } from 'drizzle-orm'
@@ -176,6 +177,12 @@ export class ServiceIntegrator {
     if (!organizationId) {
       throw new Error(`Failed to upsert organization with handle ${handle}`)
     }
+
+    // Seed the system permission profiles here (not only via the downstream
+    // OrganizationSeeder) so a dev/demo org exercises the real null-binding
+    // resolution path instead of permanently riding the ROLE_DEFAULTS runtime
+    // fallback. Idempotent. See plans/permissions/v2/19-permission-profiles.md §5.2.
+    await ensureSystemProfiles(organizationId, database)
 
     return organizationId
   }

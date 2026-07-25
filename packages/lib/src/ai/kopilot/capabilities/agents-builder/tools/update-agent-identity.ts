@@ -7,8 +7,8 @@ import { resolveBuilderAvatar } from '../../../../../agents/builder-avatars'
 import { onCacheEvent } from '../../../../../cache'
 import { getRealtimeService, publishAgentUpdated } from '../../../../../realtime'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { resolveAgentAuthoring } from './agent-authoring-guard'
 
 const NAME_MAX = 100
 const DESCRIPTION_MAX = 280
@@ -58,15 +58,9 @@ active references — you do NOT pass an agentId.
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { sessionContext } = getDeps()
-      const agentRef = findRef(sessionContext, 'agent')
-      if (!agentRef?.id) {
-        return {
-          success: false,
-          output: null,
-          error: 'No agent in session context — this tool only runs on the builder page.',
-        }
-      }
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      if (!auth.ok) return { success: false, output: null, error: auth.error }
+      const { agentId } = auth
 
       const name = args.name as string | undefined
       const description = args.description as string | null | undefined
@@ -118,13 +112,13 @@ active references — you do NOT pass an agentId.
       if (description !== undefined) patch.description = description
 
       if (Object.keys(patch).length > 0) {
-        await updateAgent(agentRef.id, agentDeps.organizationId, patch)
+        await updateAgent(agentId, agentDeps.organizationId, patch)
       }
 
       if (avatarAssetId !== undefined) {
         await writeAgentAvatar({
           getDeps,
-          agentId: agentRef.id,
+          agentId,
           organizationId: agentDeps.organizationId,
           avatarAssetId,
         })
@@ -138,7 +132,7 @@ active references — you do NOT pass an agentId.
       return {
         success: true,
         output: {
-          agentId: agentRef.id,
+          agentId,
           applied,
         },
       }

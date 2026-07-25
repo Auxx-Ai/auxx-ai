@@ -6,8 +6,8 @@ import {
 } from '../../../../../agents/agent-scope-service'
 import { isKnowledgeScopeRecordId } from '../../../../../agents/knowledge-scope'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { resolveAgentAuthoring } from './agent-authoring-guard'
 
 const MAX_SCOPES = 200
 const VALID_MODES: AgentScopeMode[] = ['include_descendants', 'include_one', 'exclude']
@@ -75,15 +75,9 @@ recordIds.`,
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { sessionContext } = getDeps()
-      const agentRef = findRef(sessionContext, 'agent')
-      if (!agentRef?.id) {
-        return {
-          success: false,
-          output: null,
-          error: 'No agent in session context — this tool only runs on the builder page.',
-        }
-      }
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      if (!auth.ok) return { success: false, output: null, error: auth.error }
+      const { agentId } = auth
 
       const scopes = (args.scopes ?? []) as Array<{ recordId: string; mode: AgentScopeMode }>
       if (!Array.isArray(scopes)) {
@@ -120,14 +114,14 @@ recordIds.`,
 
       const { applied } = await batchSetAgentResourceScopes(
         agentDeps.organizationId,
-        agentRef.id,
+        agentId,
         scopes
       )
 
       return {
         success: true,
         output: {
-          agentId: agentRef.id,
+          agentId,
           scopesApplied: applied,
         },
       }

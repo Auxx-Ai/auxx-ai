@@ -457,6 +457,15 @@ async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentT
     sessionId: ctx.sessionId ?? ctx.traceId ?? 'approval',
     signal: ctx.signal,
     turnId: ctx.turnId ?? ctx.traceId,
+    // KNOWN GAP, surfaced by making `capabilities` a required key (doc 19 step 3).
+    // This is the approval-APPLY replay path: it re-executes an already-approved
+    // tool call with no read/write gate, so a published agent policy is INERT
+    // here. Not a regression (it has never been gated) and not fixed in this
+    // slice — `ctx.userId` is available, so the fix is
+    // `getCapabilities(ctx.userId, ctx.organizationId)`, but the correct bound is
+    // arguably the APPROVER's authority rather than the requester's, and that is
+    // a decision for the approvals plan. Queued separately.
+    capabilities: undefined,
   })
   const registry = createCapabilityRegistry()
   registry.register(createEntityCapabilities(getDeps))

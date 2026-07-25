@@ -139,11 +139,17 @@ export const agentRouter = createTRPCRouter({
   completeSetup: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ agentId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+      const { organizationId, userId } = ctx.session
       if (!(await agentExistsInOrg(organizationId, input.agentId))) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
-      await completeAgentSetup(input.agentId, organizationId, undefined, { force: true })
+      // `completedByUserId` bounds the auto-published v1 policy by this user's own
+      // authority (doc 19 §2.4a) — `agentsManage` is grantable to non-admins, so a
+      // member completing setup must not mint an agent stronger than themselves.
+      await completeAgentSetup(input.agentId, organizationId, undefined, {
+        force: true,
+        completedByUserId: userId,
+      })
     }),
 
   /**
@@ -306,17 +312,27 @@ export const agentRouter = createTRPCRouter({
       if (!(await agentExistsInOrg(organizationId, input.agentId))) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
-      const version = unwrap(
+      const { version, reductions } = unwrap(
         await publishAgent({
           organizationId,
           agentId: input.agentId,
           editorId: userId,
           label: input.label ?? null,
+          // The AUTHOR CLAMP (doc 19 §2.4a): the published policy is
+          // `min(profilePolicy, this user's own effective capabilities)`.
+          publishedByUserId: userId,
         }),
         'publish agent'
       )
       await publishAgentUpdated(getRealtimeService(), organizationId, { agentId: input.agentId })
-      return { versionId: version.id, versionNumber: version.versionNumber }
+      // `reductions` is returned, never swallowed: publish must be able to say
+      // "Deals reduced from Full to Read — you hold Read" rather than silently
+      // downgrading what the admin configured (§2.4a). Rendering it is step 8's.
+      return {
+        versionId: version.id,
+        versionNumber: version.versionNumber,
+        clampReductions: reductions,
+      }
     }),
 
   /** Discard draft edits — restore the active version onto the row. */

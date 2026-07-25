@@ -70,6 +70,9 @@ export async function validateEvalCase(
       agentId: target.agentId,
       domain: 'kopilot',
       hasProcedures: compiledSet.length > 0,
+      // Static VALIDATION of an eval case: resolves tool names to check the case
+      // references tools that exist. No execution, nothing to authorize.
+      capabilities: undefined,
     })
     const toolNames = new Set(runtime.tools.map((t) => t.name))
     // Control tools (procedure/plan signals) pass through unwrapped in sims, so a

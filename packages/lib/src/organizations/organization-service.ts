@@ -15,6 +15,7 @@ import { clearImportCache } from '../email/polling-import-cache'
 import { InboxService } from '../inboxes'
 import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
 import { getMembership } from '../members'
+import { ensureSystemProfiles } from '../permissions/profiles'
 import type { ChannelProviderType } from '../providers/types'
 import { OrganizationSeeder } from '../seed/organization-seeder'
 import { SystemUserService } from '../users/system-user-service'
@@ -740,6 +741,15 @@ export class OrganizationService {
         status: 'ACTIVE',
         updatedAt: new Date(),
       })
+
+      // Seed the six system permission profiles INSIDE the transaction: every
+      // principal starts with a null binding, which resolves to one of these rows
+      // in code (§1.3), so an org must never be able to commit without them. The
+      // downstream `OrganizationSeeder` call runs outside this txn inside a
+      // catch-and-log, which is exactly the unreliable choke point §5.2 warns
+      // about. Idempotent, and depends on nothing but the Organization row (in
+      // particular NOT the system user, which is created after this txn).
+      await ensureSystemProfiles(org!.id, tx)
 
       return org
     })

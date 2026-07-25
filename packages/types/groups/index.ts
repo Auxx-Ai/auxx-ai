@@ -4,8 +4,8 @@ import type { Database } from '@auxx/database'
 import type {
   GroupVisibility,
   MemberType,
-  ResourceGranteeType,
   ResourcePermission,
+  SharingGranteeType,
 } from '@auxx/database/enums'
 import type { EntityInstanceEntity } from '@auxx/database/types'
 
@@ -79,7 +79,8 @@ export interface GroupMember {
 /** Permission grant input */
 export interface GrantPermissionInput {
   groupId: string
-  granteeType: ResourceGranteeType
+  /** Sharing vocabulary only — `'profile'` grants are gated until plan 19 step 9. */
+  granteeType: SharingGranteeType
   granteeId: string
   permission: ResourcePermission
 }
@@ -87,7 +88,8 @@ export interface GrantPermissionInput {
 /** Permission info returned from queries */
 export interface GroupPermissionInfo {
   id: string
-  granteeType: ResourceGranteeType
+  /** Sharing vocabulary only — `'profile'` grants are gated until plan 19 step 9. */
+  granteeType: SharingGranteeType
   granteeId: string
   permission: ResourcePermission
   createdAt: Date

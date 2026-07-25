@@ -115,7 +115,14 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // v5: agent capability composition (doc 14 §1) — `userType: 'AGENT'` principals
   // now compose with SET-semantics over an all-Full base instead of the human
   // raise-only model. Pre-slice blobs were composed under the old rule.
+  // v6: permission profiles (doc 19 step 2). The human composer's BASE tier
+  // changed source — the `role:org_member` org-policy tier was deleted and the
+  // bound profile (levels + `baseLevel` + its intrinsic `ceiling`) supplies the
+  // base instead. A v5 blob was composed under the old rule, and this key is
+  // USER-scoped so an org flush does not reach it: without the bump, members
+  // would ride a stale key set for the full ONE_DAY TTL — and a stale blob 403s
+  // admins on anything the old composition didn't include.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v5', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v6', ttlSeconds: ONE_DAY },
 }

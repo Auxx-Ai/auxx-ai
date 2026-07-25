@@ -30,6 +30,7 @@ import { memberRoleMapProvider, membersProvider } from './providers/members-prov
 import { orgProfileProvider } from './providers/org-profile-provider'
 import { orgSettingsProvider } from './providers/org-settings-provider'
 import { overagesProvider } from './providers/overages-provider'
+import { permissionProfilesProvider } from './providers/permission-profiles-provider'
 import { planMapProvider } from './providers/plan-map-provider'
 import { plansProvider } from './providers/plans-provider'
 import { publishedAppsProvider } from './providers/published-apps-provider'
@@ -67,6 +68,7 @@ export function registerAllProviders(
   // Org-scoped: membership & permissions
   orgCache.register('members', membersProvider)
   orgCache.register('memberRoleMap', memberRoleMapProvider)
+  orgCache.register('profiles', permissionProfilesProvider)
   orgCache.register('hasPermissionGrants', hasPermissionGrantsProvider)
   orgCache.register('restrictedEntityDefIds', restrictedEntityDefIdsProvider)
   orgCache.register('restrictedInstanceIds', restrictedInstanceIdsProvider)

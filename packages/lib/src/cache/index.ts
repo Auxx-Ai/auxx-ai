@@ -70,6 +70,8 @@ export {
   getCachedMembersByUserIds,
   getCachedOrgHasActiveChat,
   getCachedOrgProfile,
+  getCachedPermissionProfileBySlug,
+  getCachedPermissionProfiles,
   getCachedRecordRules,
   getCachedResource,
   getCachedResourceFields,

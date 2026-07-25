@@ -7,6 +7,7 @@ import { and, count, eq } from 'drizzle-orm'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { canManageTarget, rankOf, requireMemberManage } from './guards'
 import { findMemberByUser } from './member-queries'
+import { assertSeatAvailable } from './seat-limits'
 
 const logger = createScopedLogger('member-service')
 
@@ -234,6 +235,9 @@ export async function updateMemberRole(
  * - Invariant: demoting to a field seat (`'worker'`) requires the member's
  *   role already be USER — admins/owners are always full seats (change the
  *   role first).
+ * - Plan limit: an actual class change is hard-blocked when the destination
+ *   seat class has no bundled seat left (§4.3), using the same
+ *   `assertSeatAvailable` gate as the invite path.
  *
  * On success the seat type is persisted and, mirroring the `member.added`
  * emit path, `member.seat-type.changed` is fired and the member's dehydrated
@@ -279,6 +283,13 @@ export async function updateMemberSeatType(
 
   // 4. Persist (no-op when unchanged) and recompose caches.
   if (targetMembership.seatType !== seatType) {
+    // Plan-limit gate (§4.3) — a seat change consumes a seat of the destination
+    // class, so it must pass the same hard block as an invite. The count is
+    // scoped to the destination class only; the member still holds a seat of the
+    // old class, so they are never double-counted against the limit they are
+    // moving into. Skipped entirely on the no-op branch above.
+    await assertSeatAvailable({ organizationId, seatType }, db)
+
     await db
       .update(schema.OrganizationMember)
       .set({ seatType, updatedAt: new Date() })

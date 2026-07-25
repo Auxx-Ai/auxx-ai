@@ -53,5 +53,32 @@ export { FeaturePermissionService } from './feature-permission-service'
 export type { Overage } from './overage-detection-service'
 export { OverageDetectionService } from './overage-detection-service'
 export { handlePlanDowngrade } from './overage-handler'
+export type {
+  AgentAccessLevel,
+  AgentPermissionPolicy,
+  CachedPermissionProfile,
+  CreatePermissionProfileInput,
+  ProfileAppliesTo,
+  ProfileAudience,
+  ProfileCeiling,
+  ProfileDefCeiling,
+  ResolvedBaseProfile,
+  SystemProfileSlug,
+  UpdatePermissionProfileInput,
+} from './profiles'
+export {
+  createPermissionProfile,
+  emitPermissionProfileChanged,
+  ensureSystemProfiles,
+  parseProfileCeiling,
+  projectPermissionProfile,
+  resolveBaseProfile,
+  resolveProfileAudience,
+  SYSTEM_PROFILE_SEEDS,
+  SYSTEM_PROFILE_SLUGS,
+  systemProfileFor,
+  systemProfileForAgentKind,
+  updatePermissionProfile,
+} from './profiles'
 export type { FeatureDefinition, FeatureLimit, FeatureMapObject } from './types'
 export { FeatureKey } from './types'

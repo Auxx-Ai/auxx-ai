@@ -14,6 +14,7 @@ import {
   uniqueIndex,
 } from './_shared'
 import { Organization } from './organization'
+import { PermissionProfile } from './permission-profile'
 import { User } from './user'
 
 /** Drizzle table for organizationInvitation */
@@ -33,6 +34,22 @@ export const OrganizationInvitation = pgTable(
      * `OrganizationMember.seatType`; applied on accept. Invariant: 'worker' ⇒
      * role 'USER'. See plans/permissions/capability-layer-and-worker-seat.md §2.A. */
     seatType: text().$type<SeatType>().default('full').notNull(),
+    /**
+     * Permission profile chosen in the invite UI, carried through to the member
+     * row on accept. Without this column the choice is lost: the invitation
+     * otherwise carries only `role` + `seatType` and `acceptInvitationById`
+     * rebuilds the member from exactly those two.
+     *
+     * `null` = no explicit choice; acceptance leaves the member's binding null,
+     * which resolves to the system template for `(role, seatType)`. If the bound
+     * profile is deleted before acceptance the FK nulls it and acceptance falls
+     * back the same way (and must flag the invitation rather than substitute
+     * silently — §1.1). See plans/permissions/v2/19-permission-profiles.md §1.1.
+     */
+    permissionProfileId: text().references((): AnyPgColumn => PermissionProfile.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     token: text().notNull(),
     expiresAt: timestamp({ precision: 3 }).notNull(),
     status: invitationStatus().default('PENDING').notNull(),
@@ -55,6 +72,13 @@ export const OrganizationInvitation = pgTable(
       table.organizationId.asc().nullsLast()
     ),
     index('OrganizationInvitation_status_idx').using('btree', table.status.asc().nullsLast()),
+    // Backs the profile-delete holder sweep (§0.24) — Postgres does not
+    // auto-index FK columns.
+    index('OrganizationInvitation_organizationId_permissionProfileId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.permissionProfileId.asc().nullsLast()
+    ),
     uniqueIndex('OrganizationInvitation_token_key').using('btree', table.token.asc().nullsLast()),
   ]
 )

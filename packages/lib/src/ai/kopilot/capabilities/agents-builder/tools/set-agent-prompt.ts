@@ -3,8 +3,8 @@
 import { updateAgent } from '../../../../../agents/agent-service'
 import { mdToBlocks } from '../../../../../kb/markdown'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { resolveAgentAuthoring } from './agent-authoring-guard'
 import { validateSchemaReferences } from './schema-references'
 
 const MARKDOWN_MAX_BYTES = 20_000
@@ -66,15 +66,9 @@ The previous prompt is replaced wholesale.`,
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { sessionContext } = getDeps()
-      const agentRef = findRef(sessionContext, 'agent')
-      if (!agentRef?.id) {
-        return {
-          success: false,
-          output: null,
-          error: 'No agent in session context — this tool only runs on the builder page.',
-        }
-      }
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      if (!auth.ok) return { success: false, output: null, error: auth.error }
+      const { agentId } = auth
 
       const markdown = typeof args.markdown === 'string' ? args.markdown : ''
       if (!markdown.trim()) {
@@ -128,7 +122,7 @@ The previous prompt is replaced wholesale.`,
         }
       }
 
-      await updateAgent(agentRef.id, agentDeps.organizationId, { prompt: doc })
+      await updateAgent(agentId, agentDeps.organizationId, { prompt: doc })
 
       const referenceCount = countReferences(doc)
       const byteLength = JSON.stringify(doc).length
@@ -136,7 +130,7 @@ The previous prompt is replaced wholesale.`,
       return {
         success: true,
         output: {
-          agentId: agentRef.id,
+          agentId,
           byteLength,
           referenceCount,
           warnings: validation.warnings,

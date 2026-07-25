@@ -7,6 +7,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import { getCachedUserGroupIds, onCacheEvent } from '../cache'
+import { BadRequestError } from '../errors'
 import { NotificationService } from '../notifications'
 import { isInstanceAccessKey } from '../permissions/capabilities/instance-access'
 import { satisfiesPermission } from './constants'
@@ -26,6 +27,39 @@ import type {
 
 const logger = createScopedLogger('resource-access-service')
 const SHARE_NOTIFICATION_RECIPIENT_CAP = 50
+
+/**
+ * Refuse `granteeType: 'profile'` on ResourceAccess **writes** until plan 19
+ * step 9 lands.
+ *
+ * The vocabulary exists (`ResourceGranteeTypeValues`, doc 19 §1.2) and
+ * `computeUserCapabilities` already reads profile rows into
+ * `defAccess`/`instanceAccess`. But `restrictedEntityDefIds` /
+ * `restrictedInstanceIds` are computed **grantee-agnostically**, and
+ * `effectiveRecordLevel` replaces base with the member's own grant as soon as a
+ * def is "restricted". So a single profile-grantee type row would flip a def to
+ * restricted org-wide while three of the four read paths still cannot resolve a
+ * grant through it — the def goes dark for every non-admin. One admin click, an
+ * org-wide lockout.
+ *
+ * TODO(plan-19-step-9): remove this guard only after ALL of these learn the
+ * `profile` grantee kind:
+ *  - `checkAccess` grantee conditions (this file)
+ *  - `checkTypeAccess` grantee conditions (this file)
+ *  - `getUserAccessibleInstances` grantee conditions (this file)
+ *  - `cache/providers/mail-grant-index-provider.ts` (currently reinterprets an
+ *    unknown `granteeId` as a GROUP id)
+ * plus the §8.2 surface inventory (`resourceAccess.ts` z.enums,
+ * `@auxx/types/actor`, `use-instance-share.ts`, `snippet-permissions.ts`,
+ * `compute-user-mail-visibility.ts`).
+ */
+function assertProfileGranteeSupported(granteeType: ResourceGranteeType): void {
+  if (granteeType === ResourceGranteeType.profile) {
+    throw new BadRequestError(
+      'Profile-scoped resource grants are not enabled yet — see plans/permissions/v2/19-permission-profiles.md step 9.'
+    )
+  }
+}
 
 async function resolveShareRecipients(
   ctx: ResourceAccessContext,
@@ -303,6 +337,7 @@ export async function grantInstanceAccess(
   ctx: ResourceAccessContext,
   input: GrantInstanceAccessInput
 ): Promise<void> {
+  assertProfileGranteeSupported(input.granteeType)
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
   const existing = await db.query.ResourceAccess.findFirst({
@@ -368,6 +403,7 @@ export async function grantTypeAccess(
   ctx: ResourceAccessContext,
   input: GrantTypeAccessInput
 ): Promise<void> {
+  assertProfileGranteeSupported(input.granteeType)
   const { db, organizationId, userId } = ctx
 
   await db
@@ -507,6 +543,7 @@ export async function setInstanceAccess(
   granteeType: ResourceGranteeType,
   grants: Array<{ granteeId: string; permission: ResourcePermission; lens?: GrantLens | null }>
 ): Promise<void> {
+  assertProfileGranteeSupported(granteeType)
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
@@ -561,6 +598,7 @@ export async function setTypeAccess(
   granteeType: ResourceGranteeType,
   grants: Array<{ granteeId: string; permission: ResourcePermission }>
 ): Promise<void> {
+  assertProfileGranteeSupported(granteeType)
   const { db, organizationId, userId } = ctx
 
   const removed = await db.transaction(async (tx: typeof db) => {

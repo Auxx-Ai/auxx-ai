@@ -17,3 +17,4 @@ export {
   isMember,
   listMembersWithUser,
 } from './member-queries'
+export { assertSeatAvailable, countSeatsUsed, seatLimitFeature } from './seat-limits'

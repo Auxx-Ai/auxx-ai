@@ -15,6 +15,14 @@ import { type AreaChildFilter, type AreaChildren, LeveledAreaGrid } from './leve
  * Records → Read) means members can't edit or delete there. Areas left at their
  * role default aren't stored, so re-tuning a default later still reaches them.
  *
+ * TODO(plan-19-step-7): the area levels below are stored on the org's **`member`
+ * permission profile**, which doc 19 §0.8 defines as the baseline. The
+ * `role:org_member` address this component sends is redirected in both directions
+ * by `apps/web/src/server/api/routers/permissions-member-baseline.ts`; step 7
+ * replaces this tab with the Member-profile editor and deletes that shim. The
+ * nested per-def rows are unaffected — those are `ResourceAccess` workspace
+ * baselines, a separate and still-live `role:org_member` mechanism.
+ *
  * The **Records** area expands into one row per CRM record type carrying that
  * def's workspace baseline (Layer 3) — the value the def's own Permissions tab
  * writes as "Default for all members". A def with no stored baseline falls

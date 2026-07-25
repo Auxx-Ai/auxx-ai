@@ -158,6 +158,14 @@ export class OrganizationSeeder {
 
   /**
    * Resets organization data by deleting in correct FK order.
+   *
+   * **`PermissionProfile` and `PermissionGrant` are deliberately EXCLUDED.** Adding
+   * them here would be a silent footgun: `OrganizationMember.permissionProfileId`
+   * (and `Agent`/`OrganizationInvitation`) is `onDelete: 'set null'`, so deleting
+   * profiles would null every binding and drop the whole org to the `ROLE_DEFAULTS`
+   * runtime fallback — with no FK error and no log to point at. Permissions are org
+   * *configuration*, not seeded sample data. See
+   * plans/permissions/v2/19-permission-profiles.md §1.1/§5.2.
    */
   private static async resetOrganizationData(organizationId: string): Promise<void> {
     console.log(`🗑️  Resetting data for organization: ${organizationId}`)

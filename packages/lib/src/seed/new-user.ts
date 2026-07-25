@@ -11,6 +11,7 @@ import type { UserEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gt, ne } from 'drizzle-orm'
 import { acceptInvitationById } from '../members'
+import { ensureSystemProfiles } from '../permissions/profiles'
 import { SystemUserService } from '../users/system-user-service'
 import { OrganizationSeeder } from './organization-seeder'
 import { UserSeeder } from './user-seeder'
@@ -73,6 +74,10 @@ export async function seedNewUserDatabase(user: {
           role: OrganizationRoleEnum.OWNER,
           updatedAt: new Date(),
         })
+        // Same in-transaction choke point as `createOrganization`: an org must
+        // never commit without the system profiles a null binding resolves to
+        // (doc 19 §1.3/§5.2). Idempotent.
+        await ensureSystemProfiles(org!.id, tx)
         return org
       })
 

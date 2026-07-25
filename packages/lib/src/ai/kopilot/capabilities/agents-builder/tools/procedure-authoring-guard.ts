@@ -1,31 +1,29 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/tools/procedure-authoring-guard.ts
 
-import { getCachedAgentById } from '../../../../../cache'
-import { isAdminOrOwner } from '../../../../../members'
 import { FeaturePermissionService } from '../../../../../permissions'
 import { FeatureKey } from '../../../../../permissions/client'
 import type { AgentDeps } from '../../../../agent-framework/types'
-import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { type AgentAuthoringResolution, resolveAgentAuthoring } from './agent-authoring-guard'
 
 /**
- * Shared authorization for the procedure-authoring tools (Phase 7 §4.0). The
- * tools run BELOW the tRPC router, so they must re-assert the builder page's
- * contract themselves: the `agentProcedures` beta feature must be on the plan,
- * and the session user must be able to administer agents. One guard, four tools.
+ * Authorization for the procedure- and eval-authoring tools (Phase 7 §4.0).
+ *
+ * The OWNER/ADMIN + org-scope core lives in `resolveAgentAuthoring` — shared
+ * with the identity/prompt/toolset/trigger/scope setters so a new builder tool
+ * cannot pick up a weaker check. This wrapper adds the one thing that is
+ * specific to procedures and evals: the `agentProcedures` beta feature must be
+ * on the org's plan.
+ *
+ * Plan gating runs AFTER authorization on purpose — a non-admin must be told
+ * they are not allowed, not that the workspace lacks a feature.
  */
 export async function resolveProcedureAuthoring(
   getDeps: GetToolDeps,
   agentDeps: AgentDeps
-): Promise<{ ok: true; agentId: string } | { ok: false; error: string }> {
-  const { sessionContext } = getDeps()
-  const agentRef = findRef(sessionContext, 'agent')
-  if (!agentRef?.id) {
-    return {
-      ok: false,
-      error: 'No agent in session context — this tool only runs on the builder page.',
-    }
-  }
+): Promise<AgentAuthoringResolution> {
+  const resolved = await resolveAgentAuthoring(getDeps, agentDeps)
+  if (!resolved.ok) return resolved
 
   try {
     await new FeaturePermissionService().requireAccess(
@@ -36,19 +34,5 @@ export async function resolveProcedureAuthoring(
     return { ok: false, error: 'Agent procedures are not available on this workspace’s plan.' }
   }
 
-  const admin = await isAdminOrOwner(agentDeps.organizationId, agentDeps.userId)
-  if (!admin) {
-    return { ok: false, error: 'Only an admin or owner can author procedures.' }
-  }
-
-  // The agent id comes from client-supplied session refs — verify it belongs to
-  // THIS org before any tool acts on it. The read/edit paths are also guarded by
-  // the org-scoped AgentProcedure filter, but `create_procedure` attaches a new
-  // link, so without this check it could attach to another org's agent.
-  const agent = await getCachedAgentById(agentDeps.organizationId, agentRef.id)
-  if (!agent) {
-    return { ok: false, error: 'Agent not found in this workspace.' }
-  }
-
-  return { ok: true, agentId: agentRef.id }
+  return resolved
 }

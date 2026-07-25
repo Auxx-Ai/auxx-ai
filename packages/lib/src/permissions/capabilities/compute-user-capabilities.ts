@@ -3,16 +3,25 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
+import { resolveBaseProfile } from '../profiles/profile-resolution'
 import { composeUserCapabilities, type UserCapabilities } from './compose-user-capabilities'
 import { INSTANCE_ACCESS_KEYS } from './instance-access'
 import { type Area, type Level, parseAreaLevels } from './registry'
 
+const logger = createScopedLogger('user-capabilities')
+
 /**
  * Compute a member's Layer-2 capabilities for one org: cached memberRoleMap
- * (widened to carry seatType) + cached group memberships + at most ONE
- * PermissionGrant query (skipped entirely for admins and for orgs with zero
- * grants) + ONE type-level ResourceAccess query for `defAccess`.
+ * (role + seatType + userType + the profile binding) + cached group memberships
+ * + the cached `profiles` projection + at most ONE PermissionGrant query
+ * (skipped entirely for admins and for orgs with zero grants) + ONE type-level
+ * and ONE instance-level ResourceAccess query.
+ *
+ * **DB round-trips are unchanged by permission profiles (doc 19 §8.1):** the
+ * profile row → base/ceiling resolution comes from the `profiles` org-cache key,
+ * and the binding itself rides the existing `memberRoleMap` entry.
  *
  * Called only by the `userCapabilities` user-cache provider — read it via
  * `getCachedUserCapabilities(userId, orgId)`, not directly.
@@ -25,10 +34,11 @@ export async function computeUserCapabilities(
   // Lazy import to avoid a hard module cycle (cache providers import this file).
   const { getOrgCache, getCachedUserGroupIds } = await import('../../cache')
 
-  const [roleMap, groupIds, hasGrants] = await Promise.all([
+  const [roleMap, groupIds, hasGrants, profiles] = await Promise.all([
     getOrgCache().get(organizationId, 'memberRoleMap'),
     getCachedUserGroupIds(organizationId, userId),
     getOrgCache().get(organizationId, 'hasPermissionGrants'),
+    getOrgCache().get(organizationId, 'profiles'),
   ])
 
   const entry = roleMap[userId]
@@ -50,17 +60,35 @@ export async function computeUserCapabilities(
 
   const isAdmin = role === 'OWNER' || role === 'ADMIN'
 
-  // Grantee set shared by both queries: direct user, org role policy, groups.
+  // The ONE bound human base profile (§1.3): explicit binding, else the system
+  // template for (role, seatType), else the ROLE_DEFAULTS runtime fallback.
+  // Resolved from cache — no query.
+  const baseProfile = resolveBaseProfile({
+    organizationId,
+    userId,
+    role,
+    seatType,
+    permissionProfileId: entry?.permissionProfileId ?? null,
+    profiles,
+  })
+
+  // Grantee set shared by both queries: direct user, the bound profile, groups.
+  // The old `role:org_member` PermissionGrant tier is GONE (doc 19 §0.8) — the
+  // Member profile IS the baseline; migration 041 copied its levels across.
   const grantConditions = [
     and(
       eq(schema.PermissionGrant.granteeType, 'user'),
       eq(schema.PermissionGrant.granteeId, userId)
     ),
-    and(
-      eq(schema.PermissionGrant.granteeType, 'role'),
-      eq(schema.PermissionGrant.granteeId, 'org_member')
-    ),
   ]
+  if (baseProfile.profileId) {
+    grantConditions.push(
+      and(
+        eq(schema.PermissionGrant.granteeType, 'profile'),
+        eq(schema.PermissionGrant.granteeId, baseProfile.profileId)
+      )
+    )
+  }
   if (groupIds.length > 0) {
     grantConditions.push(
       and(
@@ -70,6 +98,17 @@ export async function computeUserCapabilities(
     )
   }
 
+  // ResourceAccess grantee union. `role:org_member` STAYS here — on this table it
+  // is the def/instance baseline marker (lockdown + workspace baseline), a
+  // different mechanism from the deleted PermissionGrant policy tier.
+  //
+  // `profile` is included because `restrictedEntityDefIds` /
+  // `restrictedInstanceIds` are built GRANTEE-AGNOSTICALLY: one profile-grantee
+  // type row flips the def to "restricted" org-wide, and `effectiveRecordLevel`
+  // then replaces base with the member's own grant. Without reading profile rows
+  // here, the def would go dark for every non-admin. (Writes of profile-grantee
+  // ResourceAccess rows are refused until doc 19 step 9 updates the other three
+  // resolvers — see `assertProfileGranteeSupported`.)
   const accessConditions = [
     and(eq(schema.ResourceAccess.granteeType, 'user'), eq(schema.ResourceAccess.granteeId, userId)),
     and(
@@ -77,6 +116,14 @@ export async function computeUserCapabilities(
       eq(schema.ResourceAccess.granteeId, 'org_member')
     ),
   ]
+  if (baseProfile.profileId) {
+    accessConditions.push(
+      and(
+        eq(schema.ResourceAccess.granteeType, 'profile'),
+        eq(schema.ResourceAccess.granteeId, baseProfile.profileId)
+      )
+    )
+  }
   if (groupIds.length > 0) {
     accessConditions.push(
       and(
@@ -87,7 +134,7 @@ export async function computeUserCapabilities(
   }
 
   // PermissionGrant query only for non-admins in orgs that actually customized.
-  // One sparse-jsonb row per grantee (org policy / group / user).
+  // One sparse-jsonb row per grantee (profile / group / user).
   const grantRowsPromise =
     isAdmin || !hasGrants
       ? Promise.resolve([] as Array<{ granteeType: string; granteeId: string; levels: unknown }>)
@@ -141,22 +188,33 @@ export async function computeUserCapabilities(
     instanceAccessPromise,
   ])
 
-  // Split the sparse-jsonb rows into the three composition tiers (§5).
-  let orgPolicyLevels: Partial<Record<Area, Level>> | undefined
+  // Split the sparse-jsonb rows into the composition tiers (§2.1).
+  let profileLevels: Partial<Record<Area, Level>> | undefined
   const groupLevels: Array<Partial<Record<Area, Level>>> = []
   let userLevels: Partial<Record<Area, Level>> | undefined
   for (const row of grantRows) {
     const levels = parseAreaLevels(row.levels)
-    if (row.granteeType === 'role' && row.granteeId === 'org_member') orgPolicyLevels = levels
+    if (row.granteeType === 'profile') profileLevels = levels
     else if (row.granteeType === 'group') groupLevels.push(levels)
     else if (row.granteeType === 'user') userLevels = levels
+    // No silent drops: a widened WHERE clause without a matching tier here is a
+    // fetched-and-discarded row, which reads as "the grant does nothing".
+    else
+      logger.warn('Unhandled PermissionGrant granteeType in composition — row ignored', {
+        organizationId,
+        userId,
+        granteeType: row.granteeType,
+        granteeId: row.granteeId,
+      })
   }
 
   return composeUserCapabilities({
     role,
     seatType,
     userType,
-    orgPolicyLevels,
+    profileLevels,
+    profileBaseLevel: baseProfile.baseLevel,
+    profileCeiling: baseProfile.ceiling,
     groupLevels,
     userLevels,
     typeAccessRows: typeAccessRows as Array<{

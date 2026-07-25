@@ -138,6 +138,12 @@ export async function resolveAgentMockToolContext(input: {
     agentId: input.agentId,
     domain: 'kopilot',
     hasProcedures,
+    // Mock-EDITOR context: this enumerates the agent's tool universe so a mock can
+    // be authored against a real `outputSchema`. It never executes a tool, so there
+    // is no operation to authorize — and filtering the list by the agent's policy
+    // would hide tools whose mocks still need to validate. Explicit `undefined`
+    // rather than an omission (see `createToolDepsFactory`).
+    capabilities: undefined,
   })
   const visibleTools = runtime.tools.filter((t) => isToolVisibleOn(t, 'mockEditor'))
   return {

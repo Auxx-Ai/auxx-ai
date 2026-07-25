@@ -1752,8 +1752,18 @@ export const BuiltInEntityType = {
   document: 'document',
 } as const
 
-/** Grantee types for resource access */
-export const ResourceGranteeTypeValues = ['group', 'user', 'team', 'role'] as const
+/**
+ * Grantee types for resource access. The column is plain `text()`, not a pgEnum,
+ * so extending this union needs NO DB migration.
+ *
+ * `'profile'` (`granteeId` = `PermissionProfile.id`) is part of the vocabulary so
+ * per-def / per-instance grants can target a permission profile — but note
+ * `ResourceAccess` **writes** for this kind are refused until plan 19 step 9
+ * updates every resolver (`assertProfileGranteeSupported` in
+ * `resource-access-service.ts`). Only `PermissionGrant` (area levels) reads
+ * profile grantees today. See plans/permissions/v2/19-permission-profiles.md §8.2.
+ */
+export const ResourceGranteeTypeValues = ['group', 'user', 'team', 'role', 'profile'] as const
 export type ResourceGranteeType = (typeof ResourceGranteeTypeValues)[number]
 
 export const ResourceGranteeType = {
@@ -1761,7 +1771,22 @@ export const ResourceGranteeType = {
   user: 'user',
   team: 'team',
   role: 'role',
+  profile: 'profile',
 } as const
+
+/**
+ * The grantee kinds every ResourceAccess **sharing** surface supports today —
+ * `ResourceGranteeType` minus `'profile'`.
+ *
+ * `'profile'` is in the storage vocabulary but its writes are refused
+ * (`assertProfileGranteeSupported`) until plan 19 step 9 teaches all four resolvers
+ * and the sharing UIs to read it. Client hooks and pickers should type against THIS
+ * union so a profile value can never reach a router whose input enum would reject
+ * it — and so the compiler flags every surface that still needs updating when the
+ * two unions are merged.
+ */
+export const SharingGranteeTypeValues = ['group', 'user', 'team', 'role'] as const
+export type SharingGranteeType = (typeof SharingGranteeTypeValues)[number]
 
 /**
  * Permission levels for resource access - hierarchical.

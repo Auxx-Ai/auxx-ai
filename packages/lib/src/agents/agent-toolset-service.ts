@@ -10,8 +10,9 @@ import {
   type Transaction,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
+import { NotFoundError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import type { AgentToolsetConfig } from './agent-toolset-types'
 
@@ -141,8 +142,15 @@ interface AgentToolsetRow {
   appAccounts: Record<string, AppAccountBinding>
 }
 
+/**
+ * Load + lock the agent row for a toolset write. The `organizationId` predicate
+ * is the tenant check for every caller below: a foreign-org `agentId` matches no
+ * row and throws a plain not-found (never revealing the id exists elsewhere),
+ * aborting the transaction before any UPDATE runs.
+ */
 async function loadAgentForToolsetUpdate(
   tx: Transaction,
+  organizationId: string,
   agentId: string
 ): Promise<AgentToolsetRow> {
   const [row] = await tx
@@ -152,10 +160,10 @@ async function loadAgentForToolsetUpdate(
       appAccounts: schema.Agent.appAccounts,
     })
     .from(schema.Agent)
-    .where(eq(schema.Agent.id, agentId))
+    .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
     .for('update')
     .limit(1)
-  if (!row) throw new Error(`Agent not found: ${agentId}`)
+  if (!row) throw new NotFoundError(`Agent not found: ${agentId}`)
   return {
     kind: row.kind,
     toolsets: row.toolsets ?? [],
@@ -229,7 +237,7 @@ export async function updateAgentToolset(
   db: Database = defaultDb as Database
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const row = await loadAgentForToolsetUpdate(tx, agentId)
+    const row = await loadAgentForToolsetUpdate(tx, organizationId, agentId)
     const next = await ensureImplicitSnapshots(
       organizationId,
       applyToolsetPatch(row.toolsets, patch),
@@ -250,7 +258,7 @@ export async function updateAgentToolset(
         hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
         updatedAt: new Date(),
       })
-      .where(eq(schema.Agent.id, agentId))
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
   })
 
   try {
@@ -287,7 +295,7 @@ export async function batchUpdateAgentToolsets(
   db: Database = defaultDb as Database
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const row = await loadAgentForToolsetUpdate(tx, agentId)
+    const row = await loadAgentForToolsetUpdate(tx, organizationId, agentId)
     let next = row.toolsets
     for (const patch of patches) {
       next = applyToolsetPatch(next, patch)
@@ -308,7 +316,7 @@ export async function batchUpdateAgentToolsets(
         hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
         updatedAt: new Date(),
       })
-      .where(eq(schema.Agent.id, agentId))
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
   })
 
   try {

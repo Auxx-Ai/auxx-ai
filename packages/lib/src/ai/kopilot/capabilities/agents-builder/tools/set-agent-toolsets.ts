@@ -6,10 +6,9 @@ import {
   getOrgToolsetCatalogForSurface,
   type ToolsetCatalogEntry,
 } from '../../../../../agents/toolset-catalog'
-import { getCachedAgentById } from '../../../../../cache'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
+import { resolveAgentAuthoring } from './agent-authoring-guard'
 
 const MAX_TOOLSETS = 50
 
@@ -62,15 +61,9 @@ to change; omitted slugs are left alone.`,
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { sessionContext } = getDeps()
-      const agentRef = findRef(sessionContext, 'agent')
-      if (!agentRef?.id) {
-        return {
-          success: false,
-          output: null,
-          error: 'No agent in session context — this tool only runs on the builder page.',
-        }
-      }
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      if (!auth.ok) return { success: false, output: null, error: auth.error }
+      const { agentId, agent } = auth
 
       const toolsets = (args.toolsets ?? []) as Array<{
         slug: string
@@ -86,10 +79,10 @@ to change; omitted slugs are left alone.`,
       // toolsets their builder persona advertised and the only ones that survive
       // `buildChatEngineConfig`'s runtime surface filter. A slug narrowed off
       // chat therefore errors here instead of being silently dropped at runtime.
-      // See plans/chat/v6/chat-tool-availability.md.
-      const agent = await getCachedAgentById(agentDeps.organizationId, agentRef.id)
+      // See plans/chat/v6/chat-tool-availability.md. The agent row comes from
+      // the authorization guard — same org-scoped cache read, one lookup.
       const catalog =
-        agent?.kind === 'chat'
+        agent.kind === 'chat'
           ? await getOrgToolsetCatalogForSurface(agentDeps.organizationId, 'chat')
           : await getOrgToolsetCatalog(agentDeps.organizationId)
       const catalogBySlug = new Map<string, ToolsetCatalogEntry>(
@@ -121,7 +114,7 @@ to change; omitted slugs are left alone.`,
 
       await batchUpdateAgentToolsets(
         agentDeps.organizationId,
-        agentRef.id,
+        agentId,
         toolsets.map((row) => ({
           slug: row.slug,
           enabled: row.enabled,
@@ -141,7 +134,7 @@ to change; omitted slugs are left alone.`,
       return {
         success: true,
         output: {
-          agentId: agentRef.id,
+          agentId,
           enabledCount,
           totalToolsAvailable,
         },

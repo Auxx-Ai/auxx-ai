@@ -1,5 +1,6 @@
 // packages/lib/src/agents/agent-version-service.ts
 
+import type { AgentPolicyClampEntry } from '@auxx/database'
 import { type AgentVersionEntity, database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { fromDatabase } from '@auxx/services/shared/utils'
@@ -7,6 +8,7 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { onCacheEvent } from '../cache'
 import { hashAgentConfig, snapshotAgentConfig } from './agent-config-snapshot'
+import { resolvePublishPolicy } from './agent-permission-policy'
 import { reconcileAgentProcedureMentions } from './procedures/mention-reconcile'
 
 /**
@@ -39,21 +41,49 @@ interface PublishAgentTxInput {
   agentId: string
   editorId?: string | null
   label?: string | null
+  /**
+   * The human whose own authority bounds this publish (plan 19 §2.4a). REQUIRED,
+   * not optional: `null` means "system publish, apply no clamp", and forcing every
+   * caller to state that explicitly is what keeps an omitted publisher from
+   * becoming a silent escalation path.
+   */
+  publishedByUserId: string | null
+}
+
+/** A publish outcome plus what the author clamp reduced, for the caller to surface. */
+export interface PublishAgentResult {
+  version: AgentVersionEntity
+  /**
+   * Reductions the §2.4a author clamp applied. Non-empty means the published
+   * agent has LESS authority than its profile asked for, because the publisher
+   * does not hold it — the UI must say so ("Deals reduced from Full to Read")
+   * rather than downgrade silently. `[]` on a no-op republish and whenever the
+   * publisher held everything (the OWNER/ADMIN case).
+   */
+  reductions: AgentPolicyClampEntry[]
 }
 
 /**
- * Snapshot the Agent row's current behavior config into a new numbered
- * `AgentVersion` and repoint `activeVersionId`, on a caller-provided transaction
- * so it composes with `completeAgentSetup`. Rejects pre-setup agents. No-op
- * republish: if the active version's `configHash` already equals the row
- * snapshot's hash, just clear the dirty flag and return the active version.
- * Throws on failure so the outer transaction rolls back.
+ * Snapshot the Agent row's current behavior config **and its resolved permission
+ * policy** into a new numbered `AgentVersion` and repoint `activeVersionId`, on a
+ * caller-provided transaction so it composes with `completeAgentSetup`. Rejects
+ * pre-setup agents. Throws on failure so the outer transaction rolls back.
+ *
+ * The policy is resolved from the draft `Agent.permissionProfileId` and then
+ * clamped by `publishedByUserId`'s own effective capabilities (§2.4a) BEFORE the
+ * no-op check, because the clamped policy is part of `configHash`: if the profile
+ * changed, or the publisher's authority did, this is genuinely a new version.
+ *
+ * No-op republish: if the active version's `configHash` already equals the freshly
+ * computed one, just clear the dirty flag and return the active version — the
+ * existing snapshot's `publishedByUserId` is deliberately left alone, since
+ * nothing about the authority changed.
  */
 export async function publishAgentTx(
   tx: Transaction,
   input: PublishAgentTxInput
-): Promise<AgentVersionEntity> {
-  const { organizationId, agentId, editorId, label } = input
+): Promise<PublishAgentResult> {
+  const { organizationId, agentId, editorId, label, publishedByUserId } = input
   const now = new Date()
 
   const agent = await tx.query.Agent.findFirst({
@@ -62,8 +92,18 @@ export async function publishAgentTx(
   if (!agent) throw new Error('AGENT_NOT_FOUND')
   if (!agent.setupCompletedAt) throw new Error('AGENT_NOT_SETUP')
 
+  const { policy: permissionPolicy, reductions } = await resolvePublishPolicy({
+    organizationId,
+    agent: {
+      id: agent.id,
+      kind: agent.kind,
+      permissionProfileId: agent.permissionProfileId,
+    },
+    publishedByUserId,
+  })
+
   const snapshot = snapshotAgentConfig(agent)
-  const configHash = hashAgentConfig(agent)
+  const configHash = hashAgentConfig({ ...agent, permissionPolicy })
 
   // No-op republish: the row already matches the live version — drop the dirty
   // flag (if set) and return the active version unchanged.
@@ -78,7 +118,7 @@ export async function publishAgentTx(
           .set({ hasUnpublishedChanges: false, updatedAt: now })
           .where(eq(schema.Agent.id, agentId))
       }
-      return active
+      return { version: active, reductions: [] }
     }
   }
 
@@ -100,6 +140,7 @@ export async function publishAgentTx(
       appAccounts: snapshot.appAccounts,
       toolRestrictions: snapshot.toolRestrictions,
       modelId: snapshot.modelId,
+      permissionPolicy,
       configHash,
       editorId: editorId ?? null,
     })
@@ -111,7 +152,7 @@ export async function publishAgentTx(
     .set({ activeVersionId: published.id, hasUnpublishedChanges: false, updatedAt: now })
     .where(eq(schema.Agent.id, agentId))
 
-  return published
+  return { version: published, reductions }
 }
 
 /**
@@ -124,6 +165,8 @@ export async function publishAgent(input: {
   agentId: string
   editorId?: string | null
   label?: string | null
+  /** See {@link PublishAgentTxInput.publishedByUserId} — `null` = system publish. */
+  publishedByUserId: string | null
 }) {
   const result = await fromDatabase(
     database.transaction((tx) => publishAgentTx(tx, input)),
@@ -135,13 +178,31 @@ export async function publishAgent(input: {
 }
 
 /**
- * Restore-as-draft (article semantic): copy a published version's six behavior
- * fields back onto the Agent row and mark dirty by hash-compare against the
- * **active** version (restoring config equal to active ≙ discard, not dirty).
+ * Restore-as-draft (article semantic): copy a published version's behavior fields
+ * back onto the Agent row and mark dirty by hash-compare against the **active**
+ * version (restoring config equal to active ≙ discard, not dirty).
  * `activeVersionId` is NOT touched — nothing goes live until publish. Post-tx
  * re-runs the procedure-mention reconciler: attached procedure docs may have
  * changed since this version, so the derived rows must re-derive against today's
  * procedures.
+ *
+ * **Permissions restore too** (plan 19 §14), and the mechanism is worth stating
+ * because the two sides of the version boundary hold different things: an
+ * `AgentVersion` holds a resolved *policy*, while the draft `Agent` row holds a
+ * profile *binding* (§0.3 — "bind, do not stamp"). Restore therefore repoints
+ * `Agent.permissionProfileId` at the profile the target version was cut from
+ * (`permissionPolicy.sourceProfileId`), so publishing the restored draft
+ * reproduces that version's policy. Three deliberate consequences:
+ *
+ * - The target version's own snapshot is untouched and remains exactly executable
+ *   if it is ever made active again — a historical version always keeps the rules
+ *   it was published with.
+ * - `sourceProfileId` is audit text, not an FK (§8.4). A version cut from a
+ *   since-deleted profile, or from no profile at all, leaves the binding alone and
+ *   logs; the next publish then resolves by kind (§0.24), which preserves published
+ *   behavior instead of silently changing it.
+ * - Because `configHash` covers the policy, restoring a version whose authority
+ *   differs from the active one correctly marks the draft dirty.
  */
 export async function restoreAgentVersion(input: {
   organizationId: string
@@ -155,7 +216,7 @@ export async function restoreAgentVersion(input: {
     database.transaction(async (tx) => {
       const agent = await tx.query.Agent.findFirst({
         where: and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)),
-        columns: { activeVersionId: true },
+        columns: { activeVersionId: true, permissionProfileId: true },
       })
       if (!agent) throw new Error('AGENT_NOT_FOUND')
 
@@ -177,6 +238,29 @@ export async function restoreAgentVersion(input: {
         dirty = !active || active.configHash !== target.configHash
       }
 
+      // Restore the version's profile binding when that profile still exists in
+      // THIS org (the cross-org / dangling check of §1.1). Verified inside the txn
+      // rather than off the cache, because the binding is a write.
+      const restoredProfileId = target.permissionPolicy?.sourceProfileId ?? null
+      let permissionProfileId = agent.permissionProfileId
+      if (restoredProfileId) {
+        const profile = await tx.query.PermissionProfile.findFirst({
+          where: and(
+            eq(schema.PermissionProfile.id, restoredProfileId),
+            eq(schema.PermissionProfile.organizationId, organizationId)
+          ),
+          columns: { id: true },
+        })
+        if (profile) {
+          permissionProfileId = profile.id
+        } else {
+          logger.warn(
+            'Restored version references a permission profile that no longer exists — leaving the draft binding unchanged',
+            { organizationId, agentId, toVersionId, sourceProfileId: restoredProfileId }
+          )
+        }
+      }
+
       await tx
         .update(schema.Agent)
         .set({
@@ -186,6 +270,7 @@ export async function restoreAgentVersion(input: {
           appAccounts: target.appAccounts,
           toolRestrictions: target.toolRestrictions,
           modelId: target.modelId,
+          permissionProfileId,
           hasUnpublishedChanges: dirty,
           updatedAt: now,
         })

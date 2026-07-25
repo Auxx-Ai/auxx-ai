@@ -6,7 +6,7 @@ import { ForbiddenError } from '../../errors'
 import type { CapabilityView } from './capability-view'
 import { intersectCapabilities, MinCapabilitySet } from './capability-view'
 import type { InstanceAccessKey } from './instance-access'
-import type { PermissionKey } from './registry'
+import { type Area, Level, type PermissionKey } from './registry'
 
 /**
  * `MinCapabilitySet` is the intersection used for human-triggered agent runs
@@ -23,6 +23,7 @@ type Stub = {
   admin?: string[]
   access?: Record<string, ResourcePermission>
   instances?: string[]
+  areaLevels?: Partial<Record<Area, Level>>
   label?: string
 }
 
@@ -38,6 +39,7 @@ function stub(opts: Stub): CapabilityView {
     assert: (key) => {
       if (!self.can(key)) deny()
     },
+    areaLevel: (area) => opts.areaLevels?.[area] ?? Level.None,
     canWriteEntity: (id) => has(opts.write, id),
     assertWriteEntity: (id) => {
       if (!self.canWriteEntity(id)) deny()

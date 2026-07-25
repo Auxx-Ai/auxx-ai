@@ -573,17 +573,36 @@ async function runInProcessPath(params: {
       })
     : Promise.resolve(null)
 
+  // Builder sessions run as master Kopilot with the agents-builder persona
+  // addition — the target agent is the subject of editing (passed via the
+  // `agent` active reference), not the persona to adopt. Passing its real
+  // agentConfig would render two competing "You are X." personas.
+  // Draft test-runs (build-plan §4.2): the agent Chat tab may request the
+  // unpublished draft view, but only for admins (agent-edit permission) and never
+  // for master/builder sessions. Per-request — nothing here is persisted.
+  //
+  // Resolved BEFORE capabilities (doc 19 §15) so behavior and authorization come
+  // from the SAME view: a draft test-run must be authorized by the draft profile,
+  // and a production turn by the published version's snapshot. Reading config from
+  // one view and permissions from the other would make the Chat tab lie about what
+  // the agent will be allowed to do once published.
+  let agentConfigSource: 'active' | 'draft' = 'active'
+  if (params.useDraft && !isBuilder && agentId) {
+    const isAdmin = await isAdminOrOwner(organizationId, userId, db)
+    if (isAdmin) agentConfigSource = 'draft'
+  }
+
   // Build domain config with capabilities. `userId` is the logged-in member, so
   // resolve read/write enforcement (v2 §3) once per turn and share it across
   // every tool AND the prompt-side catalogs (§3.4).
   //
   // Plain Kopilot and the builder are the human alone (§0.11) — no agent
-  // principal is involved. A turn targeting a defined agent additionally
-  // intersects with that agent's profile (or its run-as delegate), so an agent
-  // restriction clamps the turn even though a human is driving it (§0.5).
-  // Dormant while every agent sits at the all-Full default. A broken run-as
-  // delegation throws `AgentRunAsUnavailableError`, which the caller's catch
-  // surfaces as a normal `turn-error`.
+  // principal is involved. A turn targeting a defined agent intersects the
+  // human with the agent's **published permission policy** (doc 19 §2.3), so an
+  // agent restriction clamps the turn even though a human is driving it, and the
+  // human's own authority clamps it in the other direction (§0.5). A broken
+  // run-as delegation throws `AgentRunAsUnavailableError`, which the caller's
+  // catch surfaces as a normal `turn-error`.
   const humanCapabilities = await getCapabilities(userId, organizationId)
   let capabilities: CapabilityView = humanCapabilities
   if (agentId && !isBuilder) {
@@ -594,27 +613,11 @@ async function runInProcessPath(params: {
           agent: cachedAgent,
           organizationId,
           invokerUserId: userId,
+          source: agentConfigSource,
         })) ?? humanCapabilities
     }
   }
 
-  // Builder sessions run as master Kopilot with the agents-builder persona
-  // addition — the target agent is the subject of editing (passed via the
-  // `agent` active reference), not the persona to adopt. Passing its real
-  // agentConfig would render two competing "You are X." personas.
-  // Draft test-runs (build-plan §4.2): the agent Chat tab may request the
-  // unpublished draft view, but only for admins (agent-edit permission) and never
-  // for master/builder sessions. Per-request — nothing here is persisted.
-  //
-  // Hoisted above the tool-deps factory (was resolved further down, right
-  // before the domain config) so this single `resolveAgentConfig` call can
-  // also feed the knowledge-scope resolution below — one source of truth for
-  // both the tool deps' read gate and the prompt-side catalog filter.
-  let agentConfigSource: 'active' | 'draft' = 'active'
-  if (params.useDraft && !isBuilder && agentId) {
-    const isAdmin = await isAdminOrOwner(organizationId, userId, db)
-    if (isAdmin) agentConfigSource = 'draft'
-  }
   const agentConfig = await resolveAgentConfig(organizationId, isBuilder ? null : agentId, db, {
     source: agentConfigSource,
   })
@@ -652,7 +655,14 @@ async function runInProcessPath(params: {
   registry.register(createKbCapabilities(getToolDeps))
   registry.register(createRecordViewCapabilities(getToolDeps))
   registry.register(createSuggestRepliesGlobalCapability(getToolDeps))
-  if (page === 'agents.builder') {
+  // Defence in depth: `page` arrives on the request body, so on its own it must
+  // never unlock a privileged tool set. Agent authoring is OWNER/ADMIN-only
+  // (plan 19 §6, doc 14 §0.9) and every builder tool re-asserts that itself via
+  // `resolveAgentAuthoring` — this keeps the meta-tools from even being built or
+  // advertised to a plain member who POSTs `page: 'agents.builder'`. The page
+  // that hosts this chat (`/app/agents/[slug]`) is already `isAdminOrOwner`-gated
+  // client-side, so no legitimate session loses tools here.
+  if (page === 'agents.builder' && (await isAdminOrOwner(organizationId, userId, db))) {
     registry.register(await createAgentsBuilderCapabilities(getToolDeps, organizationId))
   }
   // Explicit "remember this" door into the AI memory (learned KB). The tool is

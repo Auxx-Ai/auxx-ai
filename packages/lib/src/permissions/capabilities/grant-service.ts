@@ -13,8 +13,8 @@ import { type Area, Level, PERMISSION_AREAS, parseAreaLevels } from './registry'
 /**
  * PermissionGrant write service (Layer-2 capability overrides, §7).
  *
- * Leveled model: ONE row per grantee (org role policy, group, or user) holding a
- * sparse per-area level map `{ areaSlug: Level }` as jsonb. Writes upsert on the
+ * Leveled model: ONE row per grantee (permission profile, group, or user) holding
+ * a sparse per-area level map `{ areaSlug: Level }` as jsonb. Writes upsert on the
  * unique `(organizationId, granteeType, granteeId)` key and emit the
  * `permission-grant.changed` cache event (+ dehydration invalidation) after commit.
  *
@@ -23,8 +23,14 @@ import { type Area, Level, PERMISSION_AREAS, parseAreaLevels } from './registry'
  * re-derive that. It only validates that `adminOnly` areas are never raised.
  */
 
-/** Grantee vocabulary shared with `ResourceAccess` (§3.2). */
-export type GrantGranteeType = 'role' | 'group' | 'user'
+/**
+ * Grantee vocabulary shared with `ResourceAccess` (§3.2).
+ *
+ * `'profile'` (`granteeId` = `PermissionProfile.id`) holds a human profile's
+ * per-area BASE — the tier that replaced the deleted `role:org_member` policy
+ * (doc 19 §0.8). `'role'` remains only for legacy rows; no composer reads it.
+ */
+export type GrantGranteeType = 'role' | 'group' | 'user' | 'profile'
 
 /** Identifies one grantee (org-scoped). */
 export interface GranteeRef {
@@ -36,8 +42,12 @@ export interface GranteeRef {
 /**
  * Reject any grant that raises an `adminOnly` area (settings/billing/members/
  * permissions) above `None`. OWNER/ADMIN already hold these by role; granting
- * one to a user, group, or the `org_member` policy would elevate a non-admin
- * past the seat/role model. Mirrors v1's `assertGrantableKey`.
+ * one to a user, group, or a permission profile would elevate a non-admin past
+ * the seat/role model. Mirrors v1's `assertGrantableKey`.
+ *
+ * The seeded `owner`/`admin` system profiles express "everything" via
+ * `PermissionProfile.baseLevel`, NOT an all-Full grant row, so system seeding
+ * never trips this.
  */
 function assertGrantableLevels(levels: Partial<Record<Area, Level>>): void {
   for (const area of Object.keys(levels) as Area[]) {
@@ -55,10 +65,17 @@ function assertGrantableLevels(levels: Partial<Record<Area, Level>>): void {
  * where a stored `None` can never lower anything and is therefore inert noise
  * that makes the grid read as a denial it does not produce (§0.2).
  *
- * Kept (`None` is load-bearing) for exactly two grantee kinds:
- *  - **`role:org_member`** — the org policy is the one DOWNWARD lever
- *    (`base = orgPolicyLevels[a] ?? ROLE_DEFAULTS.USER[a]`, so a stored `None`
- *    genuinely zeroes the area for every non-admin member).
+ * Kept (`None` is load-bearing) for exactly these grantee kinds:
+ *  - **`profile`** — a human profile supplies the composition BASE
+ *    (`base = profileLevels[a] ?? baseLevel ?? ROLE_DEFAULTS[role][a]`, doc 19
+ *    §2.1), so a stored `None` genuinely zeroes the area for every holder. This is
+ *    the one downward lever, inherited from the deleted `role:org_member` tier.
+ *    **Stripping it here would be a fail-open bug:** the area would be written as
+ *    "unset", fall through to the role default, and the editor would be showing a
+ *    denial the profile does not produce.
+ *  - **`role:org_member`** — the legacy org-policy row. No composer reads it
+ *    anymore (migration 041 copied it onto the `member` profile), but the
+ *    semantics are preserved so a pre-migration row round-trips unchanged.
  *  - **`user` grantees whose `User.userType` is `'AGENT'`** — agents compose by
  *    SET (`level = userLevels[a] ?? Full`), so `None` is the only way to express
  *    "this agent has no access to this area".
@@ -88,6 +105,7 @@ function stripInertNoneLevels(
  * stricter, raise-only interpretation).
  */
 async function granteeKeepsNoneLevels(grantee: GranteeRef): Promise<boolean> {
+  if (grantee.granteeType === 'profile') return true
   if (grantee.granteeType === 'role') return grantee.granteeId === 'org_member'
   if (grantee.granteeType !== 'user') return false
   const roleMap = await getOrgCache().get(grantee.organizationId, 'memberRoleMap')
@@ -106,12 +124,30 @@ async function requireGranularPermissions(db: Database, organizationId: string):
  * Emit `permission-grant.changed` + bust dehydration after a grant mutation.
  * User grants target a single user's keys; role/group grants fan out org-wide
  * (`broadcastUserKeys`). Mirrors `emitResourceAccessChanged`. Call AFTER commit.
+ *
+ * A **`profile`** grantee takes the doc-19 §8.3 audience instead of the org-wide
+ * `else`: its holders are the explicitly-bound members PLUS — for a system
+ * profile — every null-bound member whose `(role, seatType)` resolves to that
+ * slug. Falling into the blind broadcast would still work but would churn every
+ * blob in the org; missing the null-bound half would silently reach nobody.
  */
 async function emitGrantChanged(grantee: GranteeRef): Promise<void> {
   const dehydration = new DehydrationCacheService()
   // Lazy import — the cache invalidation path lazily imports realtime, so this
   // module must not statically import the realtime barrel back (import cycle).
   const { getRealtimeService, publishCapabilitiesChanged } = await import('../../realtime')
+
+  if (grantee.granteeType === 'profile') {
+    const { fanOutCapabilityChange, resolveProfileAudience } = await import(
+      '../profiles/profile-invalidation'
+    )
+    const audience = await resolveProfileAudience({
+      organizationId: grantee.organizationId,
+      profileId: grantee.granteeId,
+    })
+    await fanOutCapabilityChange('permission-grant.changed', grantee.organizationId, audience)
+    return
+  }
 
   if (grantee.granteeType === 'user') {
     await onCacheEvent('permission-grant.changed', {
@@ -143,8 +179,9 @@ async function emitGrantChanged(grantee: GranteeRef): Promise<void> {
  * writes an empty override row; prefer {@link clearGranteeLevels} to remove it.
  *
  * `Level.None` entries are stripped for grantees whose tier composes raise-only
- * (human users, groups) and kept for the `role:org_member` policy and AGENT user
- * grantees — see {@link stripInertNoneLevels}.
+ * (human users, groups) and kept for `profile` grantees (the composition base),
+ * the legacy `role:org_member` policy, and AGENT user grantees — see
+ * {@link stripInertNoneLevels}.
  */
 export async function setGranteeLevels(
   input: GranteeRef & {
@@ -252,9 +289,10 @@ export interface GranteeGrant {
 }
 
 /**
- * List every stored grant row for an organization (role policy + group + user),
- * each coerced through {@link parseAreaLevels}. Powers the permissions settings
- * page — one query hydrates the member baseline and all group/user overrides.
+ * List every stored grant row for an organization (profile + group + user, plus
+ * any legacy role row), each coerced through {@link parseAreaLevels}. Powers the
+ * permissions settings page — one query hydrates every profile base and all
+ * group/user overrides.
  */
 export async function listGranteeGrants(
   organizationId: string,

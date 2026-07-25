@@ -8,7 +8,7 @@ import {
   type Transaction,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import { BadRequestError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
@@ -55,11 +55,21 @@ function findScopeEntry(
   return { idx, entry: idx >= 0 ? entries[idx] : undefined }
 }
 
-async function loadKnowledgeForUpdate(tx: Transaction, agentId: string): Promise<KnowledgeEntry[]> {
+/**
+ * Load + lock `Agent.knowledge` for a scope write. The `organizationId`
+ * predicate is the tenant check for every caller below: a foreign-org `agentId`
+ * matches no row and throws a plain not-found (never revealing the id exists in
+ * another org), aborting the transaction before any UPDATE runs.
+ */
+async function loadKnowledgeForUpdate(
+  tx: Transaction,
+  organizationId: string,
+  agentId: string
+): Promise<KnowledgeEntry[]> {
   const [row] = await tx
     .select({ knowledge: schema.Agent.knowledge })
     .from(schema.Agent)
-    .where(eq(schema.Agent.id, agentId))
+    .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
     .for('update')
     .limit(1)
   if (!row) throw new ScopeRowImmutableError('Agent not found')
@@ -85,7 +95,7 @@ export async function upsertAgentScopeRow(
     )
   }
   await db.transaction(async (tx) => {
-    const current = await loadKnowledgeForUpdate(tx, input.agentId)
+    const current = await loadKnowledgeForUpdate(tx, organizationId, input.agentId)
     const { idx, entry } = findScopeEntry(current, input.recordId)
     if (entry?.source === 'mention') {
       throw new ScopeRowImmutableError(
@@ -107,7 +117,9 @@ export async function upsertAgentScopeRow(
         hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
         updatedAt: new Date(),
       })
-      .where(eq(schema.Agent.id, input.agentId))
+      .where(
+        and(eq(schema.Agent.id, input.agentId), eq(schema.Agent.organizationId, organizationId))
+      )
   })
   await fireAgentUpdated(organizationId, input.agentId)
 }
@@ -125,7 +137,7 @@ export async function removeAgentScopeRow(
   db: Database = defaultDb as Database
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const current = await loadKnowledgeForUpdate(tx, input.agentId)
+    const current = await loadKnowledgeForUpdate(tx, organizationId, input.agentId)
     const { idx, entry } = findScopeEntry(current, input.recordId)
     if (!entry) return
     if (entry.source === 'mention') {
@@ -141,7 +153,9 @@ export async function removeAgentScopeRow(
         hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
         updatedAt: new Date(),
       })
-      .where(eq(schema.Agent.id, input.agentId))
+      .where(
+        and(eq(schema.Agent.id, input.agentId), eq(schema.Agent.organizationId, organizationId))
+      )
   })
   await fireAgentUpdated(organizationId, input.agentId)
 }
@@ -175,7 +189,7 @@ export async function batchSetAgentResourceScopes(
   const desired = new Map(inputs.map((row) => [row.recordId, row.mode]))
 
   await db.transaction(async (tx) => {
-    const current = await loadKnowledgeForUpdate(tx, agentId)
+    const current = await loadKnowledgeForUpdate(tx, organizationId, agentId)
     const next: KnowledgeEntry[] = []
     const handled = new Set<string>()
     for (const entry of current) {
@@ -204,7 +218,7 @@ export async function batchSetAgentResourceScopes(
         hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
         updatedAt: new Date(),
       })
-      .where(eq(schema.Agent.id, agentId))
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
   })
 
   await fireAgentUpdated(organizationId, agentId)

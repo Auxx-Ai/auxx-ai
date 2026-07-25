@@ -1,7 +1,11 @@
 // apps/web/src/components/permissions/hooks/use-def-access.ts
 'use client'
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import {
+  ResourceGranteeType,
+  ResourcePermission,
+  type SharingGranteeType,
+} from '@auxx/database/enums'
 import { PERMISSION_RANK } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
@@ -69,7 +73,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
 
   /** Optimistically upsert (or, with `permission` undefined, drop) one row. */
   const patchLocal = useCallback(
-    (granteeType: ResourceGranteeType, granteeId: string, permission?: ResourcePermission) => {
+    (granteeType: SharingGranteeType, granteeId: string, permission?: ResourcePermission) => {
       utils.resourceAccess.forType.setData(queryInput, (prev) => {
         const rows = (prev ?? []).filter(
           (r) => !(r.granteeType === granteeType && r.granteeId === granteeId)
@@ -168,7 +172,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
    */
   const addGrant = useCallback(
     (
-      granteeType: ResourceGranteeType,
+      granteeType: SharingGranteeType,
       granteeId: string,
       permission: ResourcePermission = DEFAULT_GRANTEE_LEVEL
     ) => {
@@ -194,7 +198,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
 
   /** Change an existing grantee's level. */
   const setGrant = useCallback(
-    (granteeType: ResourceGranteeType, granteeId: string, permission: ResourcePermission) => {
+    (granteeType: SharingGranteeType, granteeId: string, permission: ResourcePermission) => {
       patchLocal(granteeType, granteeId, permission)
       grantType.mutate({
         entityDefinitionId: queryInput.entityDefinitionId,
@@ -208,7 +212,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
 
   /** Remove a team/member grant (the baseline row stays — everyone still views). */
   const removeGrant = useCallback(
-    (granteeType: ResourceGranteeType, granteeId: string) => {
+    (granteeType: SharingGranteeType, granteeId: string) => {
       patchLocal(granteeType, granteeId)
       revokeType.mutate({
         entityDefinitionId: queryInput.entityDefinitionId,

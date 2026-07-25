@@ -18,9 +18,11 @@ import {
   getCachedAgentById,
   getCachedAgents,
   getCachedMembers,
+  getCachedPermissionProfileBySlug,
   onCacheEvent,
 } from '../cache'
-import { BadRequestError, ForbiddenError } from '../errors'
+import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
+import { systemProfileForAgentKind } from '../permissions/profiles'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import { publishAgentTx } from './agent-version-service'
 import type { ToolBindingMap } from './bindings'
@@ -131,6 +133,18 @@ export async function createAgent(
 
   const config: AgentConfig | null = name ? { name } : null
 
+  // Bind the kind's default permission profile up front (plan 19 §0.16/§18): a
+  // `kind: 'chat'` agent starts on the fail-closed `chat_agent` profile, an
+  // internal one on the permissive `agent` profile. This stores the profile's
+  // ID — a live *binding*, not a copy of its content — so later edits to the
+  // system profile still reach this draft ("bind, do not stamp", §0.2). A null
+  // binding resolves to the same place by kind, so an unseeded org degrades
+  // gracefully rather than failing to create an agent.
+  const kindProfile = await getCachedPermissionProfileBySlug(
+    organizationId,
+    systemProfileForAgentKind(kind)
+  )
+
   const { agentId } = await db.transaction(async (tx) => {
     // 1. Insert the Agent row with `userId: null`. The synthetic User is
     //    deferred to `completeAgentSetup`. When the caller omits `slug`,
@@ -148,6 +162,7 @@ export async function createAgent(
         description,
         prompt,
         kind,
+        permissionProfileId: kindProfile?.id ?? null,
         toolsets: toolsetEntries,
         knowledge: [],
         modelId,
@@ -310,10 +325,14 @@ export async function updateAgent(
         config: schema.Agent.config,
       })
       .from(schema.Agent)
-      .where(eq(schema.Agent.id, agentId))
+      // Org predicate is load-bearing, not decorative: it is the tenant check
+      // for this whole function. A foreign-org `agentId` selects no row, so the
+      // guard below aborts the transaction before any write — and the message
+      // is a plain not-found that never reveals the id exists elsewhere.
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
       .for('update')
       .limit(1)
-    if (!current) throw new Error(`Agent not found: ${agentId}`)
+    if (!current) throw new NotFoundError(`Agent not found: ${agentId}`)
 
     if (input.appAccounts !== undefined) {
       const next: Record<string, AppAccountBinding> = { ...(current.appAccounts ?? {}) }
@@ -360,7 +379,10 @@ export async function updateAgent(
       throw new BadRequestError('Cannot archive an agent that has not completed setup.')
     }
 
-    await tx.update(schema.Agent).set(patch).where(eq(schema.Agent.id, agentId))
+    await tx
+      .update(schema.Agent)
+      .set(patch)
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
 
     if (!current.userId) return
 
@@ -428,12 +450,27 @@ export async function updateAgent(
  * those gates — its whole purpose is to leave the wizard and finish setup in
  * the live tabs, so a missing persona/toolset/name is expected. A blank name
  * falls back to "Untitled agent" for the synthetic User row.
+ *
+ * The auto-published v1 carries the agent's **resolved permission policy**
+ * (plan 19 §17), clamped by `options.completedByUserId` — the human who finished
+ * setup. Nothing is copied onto the synthetic `OrganizationMember`: it carries
+ * membership/role/seat only and is deliberately not a second authority (§0.16).
+ *
+ * @param options.completedByUserId - The human completing setup, whose own
+ *   authority bounds the published v1 policy (§2.4a). REQUIRED, and `options`
+ *   is required with it: this auto-publish is reached from two user-initiated
+ *   paths (the `agent.completeSetup` tRPC procedure and the `complete_agent_setup`
+ *   Kopilot tool), both gated on `agentsManage` — a key grantable to a non-admin.
+ *   `null` means "system completion, apply no clamp", so a caller that could
+ *   silently omit it would be an unclamped path to an all-`Full` principal, i.e.
+ *   exactly the escalation §2.4a exists to close. Forcing the choice to be
+ *   spelled out makes the omission a compile error instead.
  */
 export async function completeAgentSetup(
   agentId: string,
   organizationId: string,
   db: Database = defaultDb as Database,
-  options: { force?: boolean } = {}
+  options: { force?: boolean; completedByUserId: string | null }
 ): Promise<void> {
   const detail = await getAgentDetail(organizationId, agentId, db)
   if (!detail) throw new BadRequestError(`Agent not found: ${agentId}`)
@@ -479,7 +516,13 @@ export async function completeAgentSetup(
         .update(schema.Agent)
         .set({ setupCompletedAt: now, updatedAt: now })
         .where(eq(schema.Agent.id, agentId))
-      await publishAgentTx(tx, { organizationId, agentId, label: 'Initial version' })
+      await publishAgentTx(tx, {
+        organizationId,
+        agentId,
+        label: 'Initial version',
+        editorId: options.completedByUserId,
+        publishedByUserId: options.completedByUserId,
+      })
       return true
     }
 
@@ -518,7 +561,13 @@ export async function completeAgentSetup(
 
     // Auto-publish v1 inside the same transaction so production always runs a
     // frozen version (see plans/agents/agent-versions/build-plan.md §2.2).
-    await publishAgentTx(tx, { organizationId, agentId, label: 'Initial version' })
+    await publishAgentTx(tx, {
+      organizationId,
+      agentId,
+      label: 'Initial version',
+      editorId: options.completedByUserId,
+      publishedByUserId: options.completedByUserId,
+    })
 
     return true
   })

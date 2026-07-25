@@ -1,7 +1,9 @@
 // packages/lib/src/ai/agent-framework/__tests__/agent-run-capabilities.test.ts
 
+import type { PublishedAgentPermissionPolicy } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
+import { Level } from '../../../permissions/capabilities/registry'
 
 interface FakeMember {
   userId: string
@@ -25,6 +27,17 @@ vi.mock('../../../permissions/capabilities/get-capabilities', () => ({
   getCapabilities: (userId: string, orgId: string) => getCapabilitiesSpy(userId, orgId),
 }))
 
+// The org `resources` cache only feeds the def→apiSlug resolvers; an empty list
+// makes every def form pass through unchanged, which keeps these tests about the
+// INTERSECTION CHAIN rather than about slug resolution (covered separately in
+// `agent-policy-capabilities.test.ts`).
+vi.mock('../../../cache', () => ({
+  getCachedResources: async () => [],
+  getCachedPermissionProfiles: async () => draftProfiles,
+}))
+
+let draftProfiles: Array<Record<string, unknown>> = []
+
 import { AgentRunAsUnavailableError, resolveAgentRunCapabilities } from '../agent-run-capabilities'
 
 /** Minimal CapabilityView stub — only the gates these tests exercise are real. */
@@ -34,6 +47,7 @@ function fakeCaps(viewable: string[]): CapabilityView {
     can: (k) => set.has(k),
     has: (k) => set.has(k),
     assert: () => {},
+    areaLevel: () => Level.Full,
     canWriteEntity: (id) => set.has(id),
     assertWriteEntity: () => {},
     canEditEntity: (id) => set.has(id),
@@ -44,14 +58,28 @@ function fakeCaps(viewable: string[]): CapabilityView {
     filterViewableDefIds: (ids) => ids.filter((id) => set.has(id)),
     viewAccessFor: () => undefined,
     canAdministerDef: () => false,
-    assertAdministerDef: () => {},
     canViewInstance: (_k, id) => set.has(id),
     canEditInstance: (_k, id) => set.has(id),
     canAdminInstance: () => false,
+    assertAdministerDef: () => {},
     assertViewInstance: () => {},
     assertEditInstance: () => {},
     assertAdminInstance: () => {},
   } as CapabilityView
+}
+
+/** A published snapshot whose `definitions` map names exactly these defs. */
+function policy(defs: Record<string, 'none' | 'read' | 'read_write' | 'full'>) {
+  return {
+    sourceProfileId: 'p-agent',
+    sourceProfileUpdatedAt: null,
+    publishedByUserId: 'u-admin',
+    clamp: [],
+    areas: { default: 'full', overrides: {} },
+    definitions: { default: 'none', overrides: defs },
+    resourceDefault: 'none',
+    resources: {},
+  } satisfies PublishedAgentPermissionPolicy
 }
 
 const ORG = 'org-1'
@@ -59,10 +87,11 @@ const ORG = 'org-1'
 beforeEach(() => {
   members.length = 0
   capsByUser.clear()
+  draftProfiles = []
   getCapabilitiesSpy.mockClear()
 })
 
-describe('resolveAgentRunCapabilities', () => {
+describe('resolveAgentRunCapabilities — the published policy is the agent authority', () => {
   it('returns undefined when the agent has no backing user (pre-setup draft)', async () => {
     const caps = await resolveAgentRunCapabilities({
       agent: { userId: null, runAsUserId: null },
@@ -72,137 +101,250 @@ describe('resolveAgentRunCapabilities', () => {
     expect(getCapabilitiesSpy).not.toHaveBeenCalled()
   })
 
-  it('resolves the agent profile when no run-as is set', async () => {
-    const agentCaps = fakeCaps(['def-a'])
-    capsByUser.set('agent-user', agentCaps)
-
+  it('enforces the version snapshot and NEVER resolves the agent user’s own capabilities', async () => {
     const caps = await resolveAgentRunCapabilities({
-      agent: { userId: 'agent-user', runAsUserId: null },
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: null,
+        permissionPolicy: policy({ 'def-a': 'read' }),
+      },
       organizationId: ORG,
     })
 
-    expect(caps).toBe(agentCaps)
-    expect(getCapabilitiesSpy).toHaveBeenCalledWith('agent-user', ORG)
+    expect(caps?.canViewEntity('def-a')).toBe(true)
+    expect(caps?.canEditEntity('def-a')).toBe(false)
+    expect(caps?.canViewEntity('def-b')).toBe(false)
+    // The whole point of doc 19 §0.16: the synthetic member is not an authority,
+    // so its composed blob is never even read.
+    expect(getCapabilitiesSpy).not.toHaveBeenCalled()
   })
 
-  it('resolves the delegate when run-as points at an ACTIVE human member', async () => {
-    members.push({ userId: 'human-1', status: 'ACTIVE', role: 'USER', user: { userType: 'USER' } })
-    const delegateCaps = fakeCaps(['def-a', 'def-b'])
-    capsByUser.set('human-1', delegateCaps)
-    capsByUser.set('agent-user', fakeCaps([]))
+  it('fails CLOSED for a set-up agent with no resolvable policy', async () => {
+    const caps = await resolveAgentRunCapabilities({
+      agent: { userId: 'agent-user', runAsUserId: null, permissionPolicy: null },
+      organizationId: ORG,
+    })
+    // Not `undefined` — that would read as "unrestricted" at every construction site.
+    expect(caps).toBeDefined()
+    expect(caps?.canViewEntity('def-a')).toBe(false)
+    expect(caps?.canEditEntity('def-a')).toBe(false)
+  })
+})
+
+describe('run-as is delegation, never replacement (§0.15)', () => {
+  beforeEach(() => {
+    members.push({ userId: 'human-1', status: 'ACTIVE', role: 'OWNER', user: { userType: 'USER' } })
+  })
+
+  it('an OWNER run-as cannot widen a definition the agent published as none', async () => {
+    // The delegate can see everything.
+    capsByUser.set('human-1', fakeCaps(['def-a', 'def-b']))
 
     const caps = await resolveAgentRunCapabilities({
-      agent: { userId: 'agent-user', runAsUserId: 'human-1' },
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: 'human-1',
+        permissionPolicy: policy({ 'def-a': 'none', 'def-b': 'read' }),
+      },
       organizationId: ORG,
     })
 
-    expect(caps).toBe(delegateCaps)
-    // The agent's own profile is never resolved when run-as is set.
-    expect(getCapabilitiesSpy).toHaveBeenCalledTimes(1)
+    // This is the doc-14 §0.6 behavior change: run-as used to REPLACE the source,
+    // so an owner delegate would have granted `def-a`. It now intersects.
+    expect(caps?.canViewEntity('def-a')).toBe(false)
+    expect(caps?.canViewEntity('def-b')).toBe(true)
     expect(getCapabilitiesSpy).toHaveBeenCalledWith('human-1', ORG)
   })
 
-  it('throws when the run-as user is not a member at all', async () => {
-    capsByUser.set('agent-user', fakeCaps(['def-a']))
+  it('run-as still NARROWS — the delegate is a real bound too', async () => {
+    capsByUser.set('human-1', fakeCaps(['def-a']))
 
+    const caps = await resolveAgentRunCapabilities({
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: 'human-1',
+        permissionPolicy: policy({ 'def-a': 'read', 'def-b': 'read' }),
+      },
+      organizationId: ORG,
+    })
+
+    expect(caps?.canViewEntity('def-a')).toBe(true)
+    // Published `read`, but the delegate cannot see it.
+    expect(caps?.canViewEntity('def-b')).toBe(false)
+  })
+
+  it('throws when the run-as user is not a member at all', async () => {
     await expect(
       resolveAgentRunCapabilities({
-        agent: { userId: 'agent-user', runAsUserId: 'ghost', id: 'ag_1', name: 'Triage Bot' },
+        agent: {
+          userId: 'agent-user',
+          runAsUserId: 'ghost',
+          id: 'ag_1',
+          name: 'Triage Bot',
+          permissionPolicy: policy({}),
+        },
         organizationId: ORG,
       })
     ).rejects.toBeInstanceOf(AgentRunAsUnavailableError)
   })
 
-  it('throws when the run-as member is inactive — never falls back to the agent profile', async () => {
+  it('throws when the run-as member is inactive — never falls back to a wider view', async () => {
+    members.length = 0
     members.push({
       userId: 'human-1',
       status: 'DEACTIVATED',
       role: 'USER',
       user: { userType: 'USER' },
     })
-    capsByUser.set('agent-user', fakeCaps(['def-a']))
-    capsByUser.set('human-1', fakeCaps([]))
 
     const promise = resolveAgentRunCapabilities({
-      agent: { userId: 'agent-user', runAsUserId: 'human-1', name: 'Triage Bot' },
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: 'human-1',
+        name: 'Triage Bot',
+        permissionPolicy: policy({ 'def-a': 'read' }),
+      },
       organizationId: ORG,
     })
 
     await expect(promise).rejects.toBeInstanceOf(AgentRunAsUnavailableError)
     await expect(promise).rejects.toThrow(/Triage Bot/)
-    expect(getCapabilitiesSpy).not.toHaveBeenCalled()
   })
 
   it('throws when the run-as user is not human (agent/system principal)', async () => {
+    members.length = 0
     members.push({ userId: 'bot-2', status: 'ACTIVE', role: 'USER', user: { userType: 'AGENT' } })
-    capsByUser.set('agent-user', fakeCaps(['def-a']))
-    capsByUser.set('bot-2', fakeCaps(['def-a', 'def-b']))
 
     await expect(
       resolveAgentRunCapabilities({
-        agent: { userId: 'agent-user', runAsUserId: 'bot-2' },
+        agent: { userId: 'agent-user', runAsUserId: 'bot-2', permissionPolicy: policy({}) },
         organizationId: ORG,
       })
     ).rejects.toBeInstanceOf(AgentRunAsUnavailableError)
   })
+})
 
-  it('intersects with the invoker when a human triggered the run', async () => {
-    capsByUser.set('agent-user', fakeCaps(['def-a', 'def-b']))
+describe('invoker intersection (§0.5)', () => {
+  it('intersects the published policy with the invoking human', async () => {
     capsByUser.set('human-1', fakeCaps(['def-b', 'def-c']))
 
     const caps = await resolveAgentRunCapabilities({
-      agent: { userId: 'agent-user', runAsUserId: null },
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: null,
+        permissionPolicy: policy({ 'def-a': 'read', 'def-b': 'read' }),
+      },
       organizationId: ORG,
       invokerUserId: 'human-1',
     })
 
+    // `def-a`: published but the invoker can't see it. `def-c`: invoker can see
+    // it but it was never published. Only the overlap survives.
     expect(caps?.canViewEntity('def-a')).toBe(false)
     expect(caps?.canViewEntity('def-b')).toBe(true)
     expect(caps?.canViewEntity('def-c')).toBe(false)
     expect(caps?.filterViewableDefIds(['def-a', 'def-b', 'def-c'])).toEqual(['def-b'])
   })
 
-  it('intersects the DELEGATE (not the agent) with the invoker when run-as is set', async () => {
+  it('applies BOTH bounds when run-as and an invoker are present', async () => {
     members.push({ userId: 'human-1', status: 'ACTIVE', role: 'USER', user: { userType: 'USER' } })
-    capsByUser.set('agent-user', fakeCaps(['def-a', 'def-b', 'def-c']))
-    capsByUser.set('human-1', fakeCaps(['def-a']))
-    capsByUser.set('human-2', fakeCaps(['def-a', 'def-b']))
+    capsByUser.set('human-1', fakeCaps(['def-a', 'def-b']))
+    capsByUser.set('human-2', fakeCaps(['def-a']))
 
     const caps = await resolveAgentRunCapabilities({
-      agent: { userId: 'agent-user', runAsUserId: 'human-1' },
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: 'human-1',
+        permissionPolicy: policy({ 'def-a': 'read', 'def-b': 'read', 'def-c': 'read' }),
+      },
       organizationId: ORG,
       invokerUserId: 'human-2',
     })
 
     expect(caps?.canViewEntity('def-a')).toBe(true)
+    // Published + delegate hold it, but the invoker does not.
     expect(caps?.canViewEntity('def-b')).toBe(false)
+    // Published only.
+    expect(caps?.canViewEntity('def-c')).toBe(false)
   })
 
-  it('short-circuits (no wrapper) when the invoker IS the capability source', async () => {
-    const agentCaps = fakeCaps(['def-a'])
-    capsByUser.set('agent-user', agentCaps)
+  it('does not double-resolve when the invoker IS the run-as delegate', async () => {
+    members.push({ userId: 'human-1', status: 'ACTIVE', role: 'USER', user: { userType: 'USER' } })
+    capsByUser.set('human-1', fakeCaps(['def-a']))
 
-    const caps = await resolveAgentRunCapabilities({
-      agent: { userId: 'agent-user', runAsUserId: null },
+    await resolveAgentRunCapabilities({
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: 'human-1',
+        permissionPolicy: policy({ 'def-a': 'read' }),
+      },
       organizationId: ORG,
-      invokerUserId: 'agent-user',
+      invokerUserId: 'human-1',
     })
 
-    expect(caps).toBe(agentCaps)
     expect(getCapabilitiesSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('ignores a null invoker (autonomous run) — agent profile alone', async () => {
-    const agentCaps = fakeCaps(['def-a'])
-    capsByUser.set('agent-user', agentCaps)
-
+  it('an autonomous run uses the published policy alone', async () => {
     const caps = await resolveAgentRunCapabilities({
-      agent: { userId: 'agent-user', runAsUserId: null },
+      agent: {
+        userId: 'agent-user',
+        runAsUserId: null,
+        permissionPolicy: policy({ 'def-a': 'read' }),
+      },
       organizationId: ORG,
       invokerUserId: null,
     })
 
-    expect(caps).toBe(agentCaps)
-    expect(getCapabilitiesSpy).toHaveBeenCalledTimes(1)
+    expect(caps?.canViewEntity('def-a')).toBe(true)
+    expect(getCapabilitiesSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe("source: 'draft' resolves the live binding, 'active' the snapshot (§15)", () => {
+  const agent = {
+    userId: 'agent-user',
+    runAsUserId: null,
+    id: 'ag-1',
+    kind: 'internal' as const,
+    permissionProfileId: 'p-draft',
+    // The ACTIVE snapshot says read on def-a.
+    permissionPolicy: policy({ 'def-a': 'read' }),
+  }
+
+  beforeEach(() => {
+    // …while the DRAFT profile says read_write on def-a and nothing else.
+    draftProfiles = [
+      {
+        id: 'p-draft',
+        slug: 'custom',
+        name: 'Custom',
+        description: null,
+        icon: null,
+        seat: 'full',
+        appliesTo: 'agent',
+        baseLevel: null,
+        ceiling: null,
+        isSystem: false,
+        updatedAt: null,
+        agentPolicy: {
+          areas: { default: 'full', overrides: {} },
+          definitions: { default: 'none', overrides: { 'def-a': 'read_write' } },
+          resourceDefault: 'none',
+          resources: {},
+        },
+      },
+    ]
+  })
+
+  it("defaults to 'active' — production never reads the mutable draft binding", async () => {
+    const caps = await resolveAgentRunCapabilities({ agent, organizationId: ORG })
+    expect(caps?.canViewEntity('def-a')).toBe(true)
+    expect(caps?.canEditEntity('def-a')).toBe(false)
+  })
+
+  it("source: 'draft' enforces the draft profile instead", async () => {
+    const caps = await resolveAgentRunCapabilities({ agent, organizationId: ORG, source: 'draft' })
+    expect(caps?.canEditEntity('def-a')).toBe(true)
   })
 })
