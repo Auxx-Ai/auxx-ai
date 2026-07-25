@@ -12,7 +12,7 @@
     "check": "tsc --noEmit",
     "build:opennext": "open-next build",
     "check:opennext": "pnpm run build:opennext",
-    "dev": "next dev --turbopack",
+    "dev": "NODE_OPTIONS='--max-old-space-size=12288' next dev --turbopack",
     "clean": "rm -rf .next .open-next .turbo node_modules *.tsbuildinfo",
     "preview": "next build --turbopack && next start",
     "start": "PORT=3000 node .next/standalone/apps/web/server.js",

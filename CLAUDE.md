@@ -391,7 +391,10 @@ peak observed for web).
 ### Rules
 
 - **Do NOT run a whole-repo `tsc`.** Scope it per-package as shown above.
-- **Do NOT stop or restart the dev server.**
+- **Never `kill` a single `turbo dev` task.** Turbo treats a dying persistent
+  task as fatal and tears down the whole run (`ELIFECYCLE` cascading across
+  every package). To run one app, restart with
+  `pnpm exec turbo dev --filter=@auxx/web`.
 
 ---
 

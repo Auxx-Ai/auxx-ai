@@ -36,6 +36,7 @@ const nextConfig = {
     '@auxx/workflow-nodes',
   ],
   experimental: {
+    // Keep Turbopack's incremental dev state across server restarts.
     turbopackFileSystemCacheForDev: true,
     // Persists Turbopack's incremental state in .next/cache across production
     // builds. Only pays off where .next/cache survives between builds (local
@@ -43,7 +44,6 @@ const nextConfig = {
     // plans/docker/web-image-build-speed.md). Hosted CI runners start empty,
     // so there it just writes an unused cache.
     turbopackFileSystemCacheForBuild: true,
-    webpackMemoryOptimizations: true,
   },
   poweredByHeader: false,
   reactStrictMode: true,
