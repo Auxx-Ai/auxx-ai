@@ -72,12 +72,19 @@ export interface CheckTypeAccessInput {
 // RESULTS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * How a `ResourceAccess` grant reached the user — one per grantee kind, plus
+ * `'role'` for the `role:org_member` workspace baseline. `'profile'` was added
+ * in doc 19 step 9; before that a profile grant mis-attributed as `'direct'`.
+ */
+export type GrantedVia = 'direct' | 'group' | 'team' | 'role' | 'profile'
+
 /** Result of access check */
 export interface AccessCheckResult {
   hasAccess: boolean
   permission: ResourcePermission | null
   /** How access was granted */
-  grantedVia: 'direct' | 'group' | 'team' | 'role' | null
+  grantedVia: GrantedVia | null
   /** Whether access is type-level (all instances) or instance-specific */
   accessLevel: 'type' | 'instance' | null
 }

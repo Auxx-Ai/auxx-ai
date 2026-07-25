@@ -40,16 +40,28 @@ export interface GranteeRef {
 }
 
 /**
- * Reject any grant that raises an `adminOnly` area (settings/billing/members/
- * permissions) above `None`. OWNER/ADMIN already hold these by role; granting
- * one to a user, group, or a permission profile would elevate a non-admin past
- * the seat/role model. Mirrors v1's `assertGrantableKey`.
+ * Reject any grant that raises an `adminOnly` area above `None`. OWNER/ADMIN
+ * already hold these by role; granting one to a user, group, or a permission
+ * profile would elevate a non-admin past the seat/role model. Mirrors v1's
+ * `assertGrantableKey`.
+ *
+ * **Today that set is `settings` alone.** `permissions` left it in doc 19 §0.25
+ * (it must be grantable to be a delegable area) and `billing`/`members` were
+ * never `adminOnly` — they are default-`None`-but-grantable via
+ * `USER_ADMIN_NONE_AREAS`. §6.1.5's parenthetical listing all four as blocked
+ * here does not match the registry; the §6.1 escalation guard, not this check,
+ * is what keeps `billing`/`members`/`permissions` from being handed out by
+ * someone who does not hold them.
  *
  * The seeded `owner`/`admin` system profiles express "everything" via
  * `PermissionProfile.baseLevel`, NOT an all-Full grant row, so system seeding
  * never trips this.
+ *
+ * Exported for the doc-19 §6.1.5 transactional profile save, which writes the
+ * profile's grant row itself (inside the escalation-guard transaction) and must
+ * still run this defense-in-depth check.
  */
-function assertGrantableLevels(levels: Partial<Record<Area, Level>>): void {
+export function assertGrantableLevels(levels: Partial<Record<Area, Level>>): void {
   for (const area of Object.keys(levels) as Area[]) {
     if (PERMISSION_AREAS[area].adminOnly && (levels[area] ?? Level.None) > Level.None) {
       throw new ForbiddenError(

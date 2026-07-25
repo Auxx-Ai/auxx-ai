@@ -1,10 +1,15 @@
 // apps/web/src/components/inbox/inbox-form.tsx
 'use client'
 
-import { FieldType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import {
+  FieldType,
+  ResourceGranteeType,
+  ResourcePermission,
+  type SharingGranteeType,
+} from '@auxx/database/enums'
 import type { Lens, LensChoice } from '@auxx/lib/permissions/visibility/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
-import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
+import { type ActorId, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
@@ -23,6 +28,14 @@ import {
 } from '~/components/mail-permissions/ui/enterprise-gate'
 import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
 import { MailGranteeList } from '~/components/mail-permissions/ui/mail-grantee-list'
+import {
+  actorIdToGrantee,
+  GRANTEE_UNSUPPORTED_MESSAGE,
+  granteeToActorId,
+  isActorGrantee,
+  type ShareGrantee,
+  type UnmanageableGrant,
+} from '~/components/permissions/utils/grantee'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
@@ -87,15 +100,35 @@ export interface InboxFormProps {
   header?: (ctx: { title: string; page: 'main' | 'members'; onBack: () => void }) => ReactNode
 }
 
-/** Map a stored ResourceAccess row to the form's grant shape. */
+/**
+ * The grantee types this form OWNS. The save path is replace-per-type
+ * (`setInstance` swaps one `granteeType` at a time), so a kind absent from this
+ * list is left untouched on save rather than wiped — which is exactly why the
+ * list must stay in lockstep with what the grantee list can render and edit.
+ * Kinds outside it (`role` — the org-wide floor, expressed as
+ * `inbox_default_lens`; `profile` — plan 19 §8.2) are disclosed to the admin via
+ * {@link unmanageableGrantsNote} instead of being silently dropped.
+ */
+const MANAGED_GRANTEE_TYPES: readonly SharingGranteeType[] = [
+  ResourceGranteeType.user,
+  ResourceGranteeType.group,
+]
+
+/**
+ * Map a stored ResourceAccess row to the form's grant shape, or `null` when the
+ * grantee kind has no ActorId representation. Never coerces an unknown kind to
+ * `user` — that produced a row keyed on the wrong table's id.
+ */
 function rowToGrant(row: {
   granteeType: string
   granteeId: string
   permission: string
   lens: string | null
-}): FormGrant {
+}): FormGrant | null {
+  const actorId = granteeToActorId(row.granteeType, row.granteeId)
+  if (!actorId) return null
   return {
-    actorId: toActorId(row.granteeType === 'group' ? 'group' : 'user', row.granteeId),
+    actorId,
     choice:
       row.permission === ResourcePermission.admin
         ? 'manager'
@@ -202,6 +235,20 @@ export function InboxForm({
     })
   }
 
+  /**
+   * Rows the grantee list can't render or edit — a `profile` grant today (plan
+   * 19 §8.2). `setInstance` replaces one `granteeType` at a time, so these rows
+   * SURVIVE this form's save; disclosing them keeps the "N people & groups"
+   * summary from reading as the complete picture.
+   */
+  const unmanageableGrants = useMemo<UnmanageableGrant[]>(
+    () =>
+      (accessRows ?? [])
+        .filter((r) => !isActorGrantee(r.granteeType) && r.granteeType !== ResourceGranteeType.role)
+        .map((r) => ({ granteeType: r.granteeType, granteeId: r.granteeId })),
+    [accessRows]
+  )
+
   // Combined snapshot for dirty checking (grants serialized for stability).
   const formSnapshot = useMemo(
     () => ({
@@ -247,7 +294,7 @@ export function InboxForm({
         const storedLens = (fieldValues.inbox_default_lens as Lens | undefined) ?? 'full'
         const accessType = storedLens === 'none' ? 'restricted' : 'anyone'
         const floorLens = (storedLens === 'none' ? 'full' : storedLens) as Exclude<Lens, 'none'>
-        const grants = accessRows.map(rowToGrant)
+        const grants = accessRows.flatMap((row) => rowToGrant(row) ?? [])
 
         initialLensRef.current = storedLens
         initialGrantsRef.current = grantsKey(grants)
@@ -350,15 +397,24 @@ export function InboxForm({
     )
   }
 
-  /** The setInstance payload for one grantee type. */
-  const grantsPayload = (allGrants: FormGrant[], type: 'user' | 'group') =>
-    allGrants
-      .filter((g) => parseActorId(g.actorId).type === type)
-      .map((g) => ({
-        granteeId: parseActorId(g.actorId).id,
-        permission: g.choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
-        lens: g.choice === 'manager' ? undefined : g.choice,
-      }))
+  /**
+   * The `setInstance` payload for one grantee type. Resolves each form grant to
+   * its storage grantee first, so a row whose ActorId has no grantee
+   * representation is dropped from EVERY bucket instead of landing in the `user`
+   * one with an id that points at another table.
+   */
+  const grantsPayload = (allGrants: FormGrant[], type: SharingGranteeType) =>
+    allGrants.flatMap((g) => {
+      const grantee = actorIdToGrantee(g.actorId)
+      if (!grantee || grantee.granteeType !== type) return []
+      return [
+        {
+          granteeId: grantee.granteeId,
+          permission: g.choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
+          lens: g.choice === 'manager' ? undefined : g.choice,
+        },
+      ]
+    })
 
   // Handle delete with confirmation
   const handleDelete = async () => {
@@ -402,16 +458,14 @@ export function InboxForm({
 
       if (canManageAccess && grantsKey(values.grants) !== initialGrantsRef.current) {
         try {
-          await setInstance.mutateAsync({
-            recordId,
-            granteeType: ResourceGranteeType.user,
-            grants: grantsPayload(values.grants, 'user'),
-          })
-          await setInstance.mutateAsync({
-            recordId,
-            granteeType: ResourceGranteeType.group,
-            grants: grantsPayload(values.grants, 'group'),
-          })
+          // One replace-all pass per MANAGED type. Unlisted kinds keep their rows.
+          for (const granteeType of MANAGED_GRANTEE_TYPES) {
+            await setInstance.mutateAsync({
+              recordId,
+              granteeType,
+              grants: grantsPayload(values.grants, granteeType),
+            })
+          }
         } catch {
           return // toast shown by the mutation; keep the form open
         }
@@ -435,11 +489,17 @@ export function InboxForm({
         // Additive grants — the server already added the creator's Manager row.
         const createdRecordId = toRecordId('inbox', created.id)
         for (const grant of values.grants) {
-          const { type, id } = parseActorId(grant.actorId)
+          const grantee: ShareGrantee | null = actorIdToGrantee(grant.actorId)
+          if (!grantee) {
+            toastError({
+              title: 'Some access was not saved',
+              description: GRANTEE_UNSUPPORTED_MESSAGE,
+            })
+            continue
+          }
           await grantInstance.mutateAsync({
             recordId: createdRecordId,
-            granteeType: type === 'group' ? ResourceGranteeType.group : ResourceGranteeType.user,
-            granteeId: id,
+            ...grantee,
             permission:
               grant.choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
             lens: grant.choice === 'manager' ? undefined : grant.choice,
@@ -610,6 +670,7 @@ export function InboxForm({
                 includeManager
                 disabled={isPending}
                 lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
+                unmanageableGrants={unmanageableGrants}
                 emptyHint={membersEmptyHint}
               />
               <button
@@ -671,6 +732,7 @@ export function InboxForm({
       includeManager
       disabled={isPending}
       lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
+      unmanageableGrants={unmanageableGrants}
       emptyHint={membersEmptyHint}
       note={
         isPersonalInbox

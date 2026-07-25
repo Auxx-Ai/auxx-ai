@@ -32,6 +32,12 @@ const ListTranscriptsForEntityOutput = z.object({
 export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_transcripts_for_entity',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'EntityInstance lookup then canViewEntity; silent-empty on denial (19b G3).',
+    },
     displayName: 'List transcripts',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',
@@ -87,11 +93,28 @@ export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentT
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const entityInstanceId = args.entityInstanceId as string
       const sinceDays = (args.sinceDays as number | undefined) ?? 180
       const limit = Math.min((args.limit as number) ?? 10, MAX_LIMIT)
       const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
+
+      // Read enforcement (§3): the joins below are org-scoped only, so resolve
+      // the owning def first (same shape as `get_entity_history`). An
+      // unviewable — or non-existent — record reads as "no transcripts", the
+      // same answer a record with no meetings already gives.
+      if (capabilities) {
+        const instance = await db.query.EntityInstance.findFirst({
+          where: and(
+            eq(schema.EntityInstance.id, entityInstanceId),
+            eq(schema.EntityInstance.organizationId, agentDeps.organizationId)
+          ),
+          columns: { entityDefinitionId: true },
+        })
+        if (!instance || !capabilities.canViewEntity(instance.entityDefinitionId)) {
+          return { success: true, output: { transcripts: [] } }
+        }
+      }
 
       // Path 1: the entity IS a meeting → CallRecording.meetingId match.
       // Path 2: the entity is a contact/company → meetings via MeetingParticipant.

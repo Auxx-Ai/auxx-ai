@@ -33,9 +33,15 @@ const ListEntityFieldsOutput = z.object({
   ),
 })
 
-export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefinition {
+export function createListEntityFieldsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entity_fields',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the resolved def; denial is the ordinary not-found error and the suggested-slug list is filtered (19b G4).',
+    },
     displayName: 'List entity fields',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',
@@ -106,13 +112,27 @@ Response shape:
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
+      const { capabilities } = getDeps()
       const key = args.entityDefinitionId as string
       const query = (args.query as string | undefined)?.toLowerCase()
 
       const resource = await findCachedResource(agentDeps.organizationId, key)
-      if (!resource) {
+
+      // Read enforcement (§3): the schema IS the disclosure, so a def the
+      // principal can't view must read exactly like a def that doesn't exist —
+      // same error, and a suggestion list filtered to viewable defs so the two
+      // cases are indistinguishable.
+      const denied =
+        !!resource &&
+        !!capabilities &&
+        !capabilities.canViewEntity(resource.entityDefinitionId ?? resource.id)
+
+      if (!resource || denied) {
         const allResources = await getCachedResources(agentDeps.organizationId)
-        const validSlugs = allResources.map((r) => r.apiSlug).join(', ')
+        const validSlugs = allResources
+          .filter((r) => !capabilities || capabilities.canViewEntity(r.entityDefinitionId ?? r.id))
+          .map((r) => r.apiSlug)
+          .join(', ')
         return {
           success: false,
           output: null,

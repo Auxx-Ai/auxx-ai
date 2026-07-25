@@ -52,6 +52,12 @@ const QueryRecordsOutput = z.object({
 export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'query_records',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity before the query; an unviewable def reads as empty.',
+    },
     displayName: 'Filter records',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',

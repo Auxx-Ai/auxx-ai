@@ -78,6 +78,14 @@ export const actorConverter: FieldValueConverter = {
       // Check if it's an ActorId format (e.g., "user:abc123")
       if (isActorId(trimmed)) {
         const { type, id } = parseActorId(trimmed as ActorId)
+        // An ACTOR field addresses an assignable IDENTITY. `profile:` is an
+        // ActorId kind (it is a grantee — doc 19 §0.28) but not an identity: it
+        // has no `User` row for `actorId` and no storage branch of its own, so
+        // writing one here would read back as a group (see the ACTOR field-value
+        // storage routing note). Explicitly unconvertible, not silently coerced —
+        // before this it fell through to the branch below and stored the whole
+        // `profile:<id>` string as if it were a User id.
+        if (type === 'profile') return null
         return { type: 'actor', actorType: type, id }
       }
 

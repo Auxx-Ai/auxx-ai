@@ -23,6 +23,13 @@ const ListMembersOutput = z.object({
 export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_members',
+    permission: {
+      target: 'unmodeled',
+      domain: 'directory',
+      level: 'read',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP (19b G7). Returns every member’s name, email and role org-wide with no check. AMBIGUOUS requirement: Area.members is a Full-only ladder about *managing* members, so there is no read rung to bind this to — the level below is the intent, not an existing rung.',
+    },
     displayName: 'List members',
     toolsetSlug: 'auxx:actors',
     idempotent: true,

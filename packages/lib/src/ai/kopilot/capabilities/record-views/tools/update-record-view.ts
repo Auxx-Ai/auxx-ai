@@ -19,6 +19,12 @@ import { RECORD_VIEW_UPDATE_PARAMS, readViewSpec } from './params'
 export function createUpdateRecordViewTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_table_view',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the page’s def, matching the human router.',
+    },
     displayName: 'Update table view',
     category: 'capability',
     description: `Edit an existing saved view on the records table the user is currently viewing — change its filters, sort, columns, and/or name. Only what you pass changes; everything else (column widths, formatting, other settings) is kept. Get the viewId from list_table_views first. Filters use the same grammar as query_records.

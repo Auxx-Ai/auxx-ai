@@ -112,6 +112,13 @@ function buildThreadConditions(args: Record<string, unknown>): ConditionGroup[] 
 export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'find_threads',
+    permission: {
+      target: 'unmodeled',
+      domain: 'mail',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'ThreadQueryService is constructed with getCachedUserMailVisibility — invisible threads never enter the result.',
+    },
     displayName: 'Find threads',
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,

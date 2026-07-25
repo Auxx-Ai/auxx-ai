@@ -26,6 +26,13 @@ const CreateTaskOutput = z.object({
 export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_task',
+    permission: {
+      target: 'unmodeled',
+      domain: 'tasks',
+      level: 'read_write',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP. Creates and assigns a task for any actor with no check — deliberate, matching the ungated human task routers, and there is no target to assert against.',
+    },
     displayName: 'Create task',
     toolsetSlug: 'auxx:tasks:write',
     description:

@@ -88,17 +88,23 @@ function extractToolDecls(file: string): ToolDecl[] {
   // `name:` keys inside JSON Schema property descriptors (e.g. parseStringArg
   // args or zod schemas).
   const factoryRe = /return\s*\{\s*name:\s*['"]([a-z][a-z0-9_]*)['"]\s*,/g
+  const matches: Array<{ index: number; name: string }> = []
   let m: RegExpExecArray | null
   // biome-ignore lint/suspicious/noAssignInExpressions: classic regex loop
   while ((m = factoryRe.exec(src)) !== null) {
-    const name = m[1]
-    if (!name) continue
-    // Scan the next ~400 chars (within the same factory) for `toolsetSlug:`.
-    const window = src.slice(m.index, m.index + 600)
+    if (m[1]) matches.push({ index: m.index, name: m[1] })
+  }
+  for (const [i, match] of matches.entries()) {
+    // Scan from this factory's `return {` up to the NEXT factory in the file
+    // (or EOF). A fixed char budget was the old bound, but declaration blocks
+    // above `toolsetSlug` / `surfaces` — most recently `permission` (plan 19b
+    // G9) — pushed them past it, which silently reclassified a builder tool.
+    const end = matches[i + 1]?.index ?? src.length
+    const window = src.slice(match.index, end)
     const slugMatch = window.match(/\btoolsetSlug:\s*['"]([^'"]+)['"]/)
     out.push({
       file,
-      name,
+      name: match.name,
       toolsetSlug: slugMatch ? (slugMatch[1] ?? null) : null,
       builderSurface: /surfaces:\s*\[\s*['"]builder['"]\s*\]/.test(window),
     })

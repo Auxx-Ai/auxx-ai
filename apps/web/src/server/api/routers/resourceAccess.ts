@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourcePermission } from '@auxx/database/enums'
 import { BadRequestError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { getCapabilities, isInstanceAccessKey } from '@auxx/lib/permissions'
@@ -27,6 +27,7 @@ import { parseRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
+import { assertProfileGranteesAuthorable, granteeTypeSchema } from '~/server/api/grantee-schema'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /** Visibility lens on mail grants (mail-permissions §2.1). Optional everywhere. */
@@ -97,12 +98,7 @@ export const resourceAccessRouter = createTRPCRouter({
     .input(
       z.object({
         recordId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         granteeId: z.string(),
         // `none` is accepted only as the workspace-baseline (`role:org_member`)
         // downward marker for instance-access resources (datasets etc. — §1.4):
@@ -133,6 +129,9 @@ export const resourceAccessRouter = createTRPCRouter({
           'The "none" permission is only valid for instance-access resources'
         )
       }
+      await assertProfileGranteesAuthorable(ctx.session.organizationId, input.granteeType, [
+        input.granteeId,
+      ])
       if (!(await authorizeInstanceTarget(ctx, recordId))) {
         await assertCanManageMailSharing(context, recordId)
         await assertMailSharingFeature(context, recordId, [input])
@@ -169,12 +168,7 @@ export const resourceAccessRouter = createTRPCRouter({
     .input(
       z.object({
         entityDefinitionId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         granteeId: z.string(),
         permission: z.enum([
           ResourcePermission.none,
@@ -186,6 +180,9 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
+      await assertProfileGranteesAuthorable(ctx.session.organizationId, input.granteeType, [
+        input.granteeId,
+      ])
       await grantTypeAccess(toContext(ctx), input)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -207,12 +204,7 @@ export const resourceAccessRouter = createTRPCRouter({
     .input(
       z.object({
         recordId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         granteeId: z.string(),
       })
     )
@@ -248,12 +240,7 @@ export const resourceAccessRouter = createTRPCRouter({
     .input(
       z.object({
         entityDefinitionId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         granteeId: z.string(),
       })
     )
@@ -279,12 +266,7 @@ export const resourceAccessRouter = createTRPCRouter({
     .input(
       z.object({
         recordId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         grants: z.array(
           z.object({
             granteeId: z.string(),
@@ -301,6 +283,11 @@ export const resourceAccessRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const context = toContext(ctx)
       const recordId = input.recordId as RecordId
+      await assertProfileGranteesAuthorable(
+        ctx.session.organizationId,
+        input.granteeType,
+        input.grants.map((g) => g.granteeId)
+      )
       if (!(await authorizeInstanceTarget(ctx, recordId))) {
         await assertCanManageMailSharing(context, recordId)
         await assertMailSharingFeature(context, recordId, input.grants)
@@ -322,12 +309,7 @@ export const resourceAccessRouter = createTRPCRouter({
     .input(
       z.object({
         entityDefinitionId: z.string(),
-        granteeType: z.enum([
-          ResourceGranteeType.group,
-          ResourceGranteeType.user,
-          ResourceGranteeType.team,
-          ResourceGranteeType.role,
-        ]),
+        granteeType: granteeTypeSchema,
         grants: z.array(
           z.object({
             granteeId: z.string(),
@@ -342,6 +324,11 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
+      await assertProfileGranteesAuthorable(
+        ctx.session.organizationId,
+        input.granteeType,
+        input.grants.map((g) => g.granteeId)
+      )
       await setTypeAccess(toContext(ctx), input.entityDefinitionId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',

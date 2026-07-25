@@ -24,6 +24,12 @@ const ListEntitiesOutput = z.object({
 export function createListEntitiesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entities',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'Output filtered by canViewEntity — an unviewable def is absent from the catalog.',
+    },
     displayName: 'List entity types',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',

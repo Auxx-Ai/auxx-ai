@@ -58,6 +58,13 @@ const StartAmendmentSchema = z.object({
 export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'start_new_conversation',
+    permission: {
+      target: 'unmodeled',
+      domain: 'mail',
+      level: 'read_write',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP (19b G2). Sends outbound email through MessageSenderService with no visibility lens and no capability check. Approval-gated in chat, but approval mode is "auto" on autonomous runs.',
+    },
     displayName: 'Start new conversation',
     toolsetSlug: 'auxx:mail:compose',
     requiresApproval: true,

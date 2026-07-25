@@ -18,8 +18,8 @@ import type {
  * valid mode plus a string array. Returns `null` for anything unusable, which
  * composition reads as "uncapped".
  *
- * `defs` is parsed and carried but NOT enforced — definition-ceiling enforcement
- * is plan 19 step 4.
+ * `defs` stays slug-keyed here; `getCapabilities` resolves it into the
+ * `entityDefinitionId` keyspace on read, where the record resolvers enforce it.
  */
 export function parseProfileCeiling(raw: unknown): ProfileCeiling | null {
   if (!raw || typeof raw !== 'object') return null

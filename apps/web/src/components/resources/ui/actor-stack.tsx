@@ -2,9 +2,9 @@
 'use client'
 
 import type { ActorId } from '@auxx/types/actor'
-import { parseActorId } from '@auxx/types/actor'
 import { cn } from '@auxx/ui/lib/utils'
 import { useActor } from '~/components/resources/hooks/use-actor'
+import { actorAvatarType } from '~/components/resources/utils/actor-id'
 import { ActorAvatar } from './actor-badge'
 
 export interface ActorStackProps {
@@ -19,7 +19,10 @@ export interface ActorStackProps {
 /** One resolved avatar (resolves type/avatarUrl from the actor store). */
 function StackAvatar({ actorId, size }: { actorId: ActorId; size: string }) {
   const { actor } = useActor({ actorId })
-  const type = actor?.type ?? parseActorId(actorId).type
+  // Same crash shape as `grantee-list`/`actor-badge`: this stack renders grantee
+  // ActorIds straight from `resourceAccess.forInstance`, so one row on a kind the
+  // actor system doesn't model threw out of `parseActorId` mid-render.
+  const type = actorAvatarType(actorId, actor?.type)
   return (
     <ActorAvatar
       type={type}

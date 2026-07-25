@@ -44,6 +44,13 @@ export type CreateDashboardInput = {
  * Grantees affected by a dashboard's create-time (or duplicate-time) baseline
  * write — the workspace-baseline role grant, plus the owner's `admin` grant when
  * there's a human owner. Feeds {@link emitResourceAccessInstanceChanged}.
+ *
+ * The fixed two-element list is correct and stays fixed even though the grantee
+ * vocabulary now includes `profile` (19a #54): these grants are only ever
+ * written against a **freshly minted** dashboard id inside the create/duplicate
+ * transaction, so no row of any other grantee kind can pre-exist. There is no
+ * "reset to baseline" path here — a dashboard's later sharing goes through
+ * `grantInstanceAccess`/`setInstanceAccess`, which resolve grantees generically.
  */
 function baselineGrantees(
   ownerId: string | null

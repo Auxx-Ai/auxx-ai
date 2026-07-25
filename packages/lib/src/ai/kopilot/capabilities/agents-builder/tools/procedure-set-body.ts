@@ -32,6 +32,13 @@ const STALE_HINT =
 export function createSetProcedureBodyTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_procedure_body',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Set procedure body',
     surfaces: ['builder'],
     description: `Replace a procedure's draft body with the full step DSL. To EDIT, call \`read_procedure\` first, change only the steps the user asked about (keep all others and their ids exactly — including every read-only \`opaque\` step), and re-emit the whole \`body\` with the returned \`draftContentHash\` as \`expectedDraftContentHash\`. If the tool reports a stale draft, read again and reapply. The compiler returns structured errors — fix and retry. You write a draft; the user publishes in the editor.`,

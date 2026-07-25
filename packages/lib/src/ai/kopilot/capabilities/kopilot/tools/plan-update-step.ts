@@ -41,6 +41,10 @@ const VALID_STATUSES: PlanStepStatus[] = ['pending', 'running', 'completed', 'fa
 export function createPlanUpdateStepTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'plan_update_step',
+    permission: {
+      target: 'none',
+      note: 'Agent-loop plumbing: mutates the turn’s in-memory plan state. No DB, no org data.',
+    },
     displayName: 'Update plan step',
     category: 'control',
     outputSchema: PlanUpdateStepOutput,

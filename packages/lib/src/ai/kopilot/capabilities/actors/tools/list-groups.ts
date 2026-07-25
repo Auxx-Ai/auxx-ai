@@ -23,6 +23,13 @@ const ListGroupsOutput = z.object({
 export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_groups',
+    permission: {
+      target: 'unmodeled',
+      domain: 'directory',
+      level: 'read',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP (19b G7). Returns every group org-wide INCLUDING visibility:"private" ones, with member counts. Same missing-read-rung ambiguity as list_members.',
+    },
     displayName: 'List groups',
     toolsetSlug: 'auxx:actors',
     idempotent: true,

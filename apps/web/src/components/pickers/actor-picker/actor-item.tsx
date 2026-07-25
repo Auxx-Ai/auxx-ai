@@ -26,6 +26,22 @@ export interface ActorItemProps {
  * Single item in the actor picker list.
  * Shows avatar, name, and badge (member count for groups) or email tooltip icon (for users).
  */
+/**
+ * Fallback glyph per actor type. Only `group` — and a *team* worker, which is a
+ * collection of people — gets the group glyph; everything else, including a kind
+ * this map doesn't list, falls back to the neutral person glyph.
+ *
+ * The `type === user|agent|system ? 'user' : 'group'` ternary this replaces made
+ * "group" the default for everything unlisted, so an individual dispatch worker
+ * (a single person) rendered with a group icon, as would any kind added later.
+ */
+const GLYPH_BY_ACTOR_TYPE: Record<string, 'user' | 'group'> = {
+  user: 'user',
+  agent: 'user',
+  system: 'user',
+  group: 'group',
+}
+
 export function ActorItem({ actor, isSelected, onToggle, multi = true }: ActorItemProps) {
   const { userId } = useUser()
   const isYou = actor.type === 'user' && !!userId && actor.actorId === toActorId('user', userId)
@@ -33,7 +49,9 @@ export function ActorItem({ actor, isSelected, onToggle, multi = true }: ActorIt
     onToggle(actor.actorId)
   }
   const iconId =
-    actor.type === 'user' || actor.type === 'agent' || actor.type === 'system' ? 'user' : 'group'
+    actor.type === 'worker' && actor.workerType === 'team'
+      ? 'group'
+      : (GLYPH_BY_ACTOR_TYPE[actor.type] ?? 'user')
 
   return (
     <CommandItem

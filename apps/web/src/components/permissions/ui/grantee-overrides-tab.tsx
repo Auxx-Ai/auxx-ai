@@ -19,23 +19,32 @@ import { useUser } from '~/hooks/use-user'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
 import { LeveledAreaGrid } from './leveled-area-grid'
 
+/**
+ * The grantee kinds this tab edits.
+ *
+ * `PermissionGrant` also carries `'profile'` rows (plan 19 §0.1) — every org has
+ * six after data migration 049 — but they are NOT overrides: a profile IS the
+ * composition base, and its editor is step 7's Profiles page, not this raise-only
+ * surface. `usePermissionGrants` exposes them separately as `profileGrants`; this
+ * tab deliberately renders none of them. See {@link copyFor} for why the copy
+ * lookup is still total.
+ */
 type OverrideType = 'group' | 'user'
 
 /** Rows shown before the inline "Show N more" toggle takes over. */
 const VISIBLE_GRANTEES = 5
 
-const COPY: Record<
-  OverrideType,
-  {
-    add: string
-    list: string
-    remove: string
-    empty: string
-    search: string
-    noMatches: string
-    icon: typeof Users
-  }
-> = {
+interface OverrideCopy {
+  add: string
+  list: string
+  remove: string
+  empty: string
+  search: string
+  noMatches: string
+  icon: typeof Users
+}
+
+const COPY: Record<OverrideType, OverrideCopy> = {
   group: {
     add: 'Add group',
     list: 'Groups',
@@ -54,6 +63,27 @@ const COPY: Record<
     noMatches: 'No members match your search.',
     icon: Users,
   },
+}
+
+/** Neutral copy for a grantee kind this tab does not model. */
+const FALLBACK_COPY: OverrideCopy = {
+  add: 'Add grantee',
+  list: 'Grantees',
+  remove: 'Remove grantee',
+  empty: 'Grant more access than the member baseline.',
+  search: 'Search grantees...',
+  noMatches: 'No grantees match your search.',
+  icon: Users,
+}
+
+/**
+ * Total copy lookup. `COPY[granteeType]` was an unguarded index: widening the
+ * grantee vocabulary (plan 19's `'profile'`) turned every read of `.add`/`.icon`
+ * on the result into a `TypeError` at render, taking the whole tab down rather
+ * than showing a generic label.
+ */
+function copyFor(granteeType: string): OverrideCopy {
+  return COPY[granteeType as OverrideType] ?? FALLBACK_COPY
 }
 
 /** Resolve a grantee's display name from the actor cache (falls back to email / Unknown). */
@@ -88,7 +118,7 @@ export function GranteeOverridesTab({
   const { isLoading, roleDefaults, effectiveBaseline, groupGrants, userGrants, save, remove } =
     usePermissionGrants()
   const persisted = granteeType === 'group' ? groupGrants : userGrants
-  const copy = COPY[granteeType]
+  const copy = copyFor(granteeType)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -278,7 +308,7 @@ function GranteeListRow({
       actions={
         <TreeRowButton
           variant='destructive'
-          tooltipText={COPY[granteeType].remove}
+          tooltipText={copyFor(granteeType).remove}
           disabled={disabled}
           onClick={onRemove}>
           <Trash2 />

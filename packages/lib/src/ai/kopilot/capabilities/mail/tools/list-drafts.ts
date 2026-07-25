@@ -63,6 +63,13 @@ function buildDraftConditions(args: Record<string, unknown>): ConditionGroup[] {
 export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_drafts',
+    permission: {
+      target: 'unmodeled',
+      domain: 'mail',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'Thread ids resolved through the viewer-scoped ThreadQueryService before drafts are loaded.',
+    },
     displayName: 'List drafts',
     toolsetSlug: 'auxx:mail:drafts',
     idempotent: true,

@@ -3,11 +3,11 @@
 'use client'
 
 import type { Actor, ActorId, ActorType } from '@auxx/types/actor'
-import { parseActorId } from '@auxx/types/actor'
 import type { GroupMember } from '@auxx/types/groups'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { tryParseActorId } from '../utils/actor-id'
 
 /** Batch configuration */
 const BATCH_DELAY = 50
@@ -235,14 +235,14 @@ export const useActorStore = create<ActorStoreState>()(
       removeActor: (actorId) =>
         set((state) => {
           state.actors.delete(actorId)
-          // If it's a group, also clear its members
-          try {
-            const { type, id } = parseActorId(actorId)
-            if (type === 'group') {
-              state.groupMembers.delete(id)
-            }
-          } catch {
-            // Invalid ActorId, skip
+          // If it's a group, also clear its members. Parsed with the non-throwing
+          // helper: `parseActorId` throws for any prefix outside its whitelist, so
+          // this used a bare `catch {}` — which silently swallowed genuinely
+          // malformed ids alongside merely-unmodelled ones. Now neither throws and
+          // a non-group id simply has no member cache to clear.
+          const parsed = tryParseActorId(actorId)
+          if (parsed?.type === 'group') {
+            state.groupMembers.delete(parsed.id)
           }
         }),
 

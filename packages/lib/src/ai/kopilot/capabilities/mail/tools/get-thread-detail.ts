@@ -58,6 +58,13 @@ function truncate(text: string | null | undefined, maxLen: number): string {
 export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_thread_detail',
+    permission: {
+      target: 'unmodeled',
+      domain: 'mail',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'Thread + message services both viewer-scoped; an invisible thread reads as not-found.',
+    },
     displayName: 'Read thread',
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,

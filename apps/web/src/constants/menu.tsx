@@ -319,7 +319,9 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Permissions',
         slug: 'permissions',
         icon: <ShieldCheck />,
-        // `permissions` area stays adminOnly (granting the grant is an escalation).
+        // The `permissions` area is grantable since doc 19 §0.25, but every
+        // router behind this page is still a binary `adminProcedure` (the area
+        // is `roleGated`), so the nav entry stays ADMIN-only until §5.3 piece 3.
         access: 'ADMIN',
         keywords: ['roles', 'access', 'sharing', 'sso', 'saml', 'policy'],
       },

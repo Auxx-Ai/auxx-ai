@@ -1,6 +1,6 @@
 // server/api/routers/snippets.ts
 
-import { SnippetSharingType } from '@auxx/database/enums'
+import { ResourceGranteeType, SnippetSharingType } from '@auxx/database/enums'
 import {
   createSnippet,
   createSnippetFolder,
@@ -10,11 +10,13 @@ import {
   incrementSnippetUsage,
   listSnippetFoldersWithCounts,
   listSnippetsForUser,
+  SNIPPET_SHARE_GRANTEE_TYPES,
   setSnippetSharing,
   updateSnippet,
   updateSnippetFolder,
 } from '@auxx/lib/snippets'
 import { z } from 'zod'
+import { assertProfileGranteesAuthorable } from '../grantee-schema'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
@@ -107,11 +109,14 @@ export const snippetsRouter = createTRPCRouter({
       z.object({
         snippetId: z.string(),
         sharingType: z.enum(SnippetSharingType),
-        // For CUSTOM sharing type - supports both groups and users
+        // For GROUPS sharing — the kinds the lib helper can actually store, which
+        // is the same list its per-type replace loop iterates (doc 19 §8.2 / 19a
+        // site 18). Derived from `SNIPPET_SHARE_GRANTEE_TYPES` so the schema can
+        // never drift from the writer again.
         shares: z
           .array(
             z.object({
-              granteeType: z.enum(['group', 'user']),
+              granteeType: z.enum(SNIPPET_SHARE_GRANTEE_TYPES),
               granteeId: z.string(),
               permission: z.enum(['VIEW', 'EDIT']).default('VIEW'),
             })
@@ -121,6 +126,13 @@ export const snippetsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+      await assertProfileGranteesAuthorable(
+        organizationId,
+        ResourceGranteeType.profile,
+        (input.shares ?? [])
+          .filter((s) => s.granteeType === ResourceGranteeType.profile)
+          .map((s) => s.granteeId)
+      )
       const result = await setSnippetSharing(
         ctx.db,
         organizationId,

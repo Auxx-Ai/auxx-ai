@@ -2,7 +2,7 @@
 
 import { type DashboardEntity, type Database, schema } from '@auxx/database'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
 import { resolveEntityIdFromCache } from '../resources/crud/unified-handler-queries'
@@ -52,9 +52,74 @@ export async function getWorkspaceBaselinePermission(
   return row?.permission as ResourcePermission | undefined
 }
 
-/** No baseline row, or an explicit `'none'` row, ⇒ private (doc 13 §3). */
-function isPrivateFromBaseline(permission: ResourcePermission | undefined): boolean {
-  return permission === undefined || permission === ResourcePermission.none
+/** One non-baseline grant row on a dashboard instance. */
+export type DashboardShareRow = {
+  entityInstanceId: string
+  granteeType: string
+  granteeId: string
+}
+
+/**
+ * Every NON-baseline instance grant on dashboards in this org — grants to a
+ * specific user, group, team or **permission profile**. One query, not N+1;
+ * scoped to a single dashboard when `dashboardId` is given.
+ *
+ * `role` rows are excluded because that is the workspace baseline itself, which
+ * {@link getWorkspaceBaselinePermission} already reads, and `permission: 'none'`
+ * rows grant nobody (see `PERMISSION_HIERARCHY`).
+ */
+async function loadDashboardShares(
+  db: Database,
+  orgId: string,
+  dashboardId?: string
+): Promise<DashboardShareRow[]> {
+  const rows = await db
+    .select({
+      entityInstanceId: schema.ResourceAccess.entityInstanceId,
+      granteeType: schema.ResourceAccess.granteeType,
+      granteeId: schema.ResourceAccess.granteeId,
+    })
+    .from(schema.ResourceAccess)
+    .where(
+      and(
+        eq(schema.ResourceAccess.organizationId, orgId),
+        eq(schema.ResourceAccess.entityDefinitionId, DASHBOARD_KEY),
+        dashboardId
+          ? eq(schema.ResourceAccess.entityInstanceId, dashboardId)
+          : isNotNull(schema.ResourceAccess.entityInstanceId),
+        ne(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
+        ne(schema.ResourceAccess.permission, ResourcePermission.none)
+      )
+    )
+  return rows
+    .filter((r) => r.entityInstanceId !== null)
+    .map((r) => ({
+      entityInstanceId: r.entityInstanceId as string,
+      granteeType: r.granteeType as string,
+      granteeId: r.granteeId,
+    }))
+}
+
+/**
+ * Private ⇒ the workspace baseline is absent or `'none'` **and** nobody other
+ * than the owner holds a grant (doc 13 §3).
+ *
+ * The second half is new in doc 19 step 9. `isPrivate` used to be derived from
+ * the `role:org_member` baseline alone, so a dashboard shared with a group — or,
+ * once profile grantees became writable, with a permission profile — was
+ * labelled "Private" in every list while other members could open it (19a #14).
+ * The owner's own create-time `admin` row is excluded: a dashboard only its
+ * creator can reach is still private.
+ */
+export function isPrivateFromBaseline(
+  permission: ResourcePermission | undefined,
+  shares: DashboardShareRow[] = [],
+  ownerId: string | null = null
+): boolean {
+  if (permission !== undefined && permission !== ResourcePermission.none) return false
+  return !shares.some(
+    (s) => !(s.granteeType === ResourceGranteeType.user && s.granteeId === ownerId)
+  )
 }
 
 function toSummary(
@@ -126,6 +191,8 @@ export async function listDashboards(
     FROM jsonb_array_elements(${schema.DashboardVersion.layout} -> 'tabs') AS t
   ), 0)`
 
+  const sharesPromise = loadDashboardShares(db, orgId)
+
   const rows = await db
     .select({
       dashboard: schema.Dashboard,
@@ -151,13 +218,24 @@ export async function listDashboards(
     .where(and(eq(schema.Dashboard.organizationId, orgId), isNull(schema.Dashboard.archivedAt)))
     .orderBy(asc(schema.Dashboard.position), asc(schema.Dashboard.name))
 
+  const sharesByDashboard = new Map<string, DashboardShareRow[]>()
+  for (const share of await sharesPromise) {
+    const bucket = sharesByDashboard.get(share.entityInstanceId) ?? []
+    bucket.push(share)
+    sharesByDashboard.set(share.entityInstanceId, bucket)
+  }
+
   return ok(
     rows.map((r) =>
       toSummary(
         r.dashboard,
         Number(r.tabCount),
         Number(r.widgetCount),
-        isPrivateFromBaseline(r.baselinePermission as ResourcePermission | undefined)
+        isPrivateFromBaseline(
+          r.baselinePermission as ResourcePermission | undefined,
+          sharesByDashboard.get(r.dashboard.id) ?? [],
+          r.dashboard.createdById
+        )
       )
     )
   )
@@ -199,14 +277,17 @@ async function loadDashboardWithLayout(
   const draftResult = parseDraftLayoutDoc(row.draftLayout)
   if (draftResult.isErr()) return err(draftResult.error)
 
-  const baselinePermission = await getWorkspaceBaselinePermission(db, orgId, row.id)
+  const [baselinePermission, shares] = await Promise.all([
+    getWorkspaceBaselinePermission(db, orgId, row.id),
+    loadDashboardShares(db, orgId, row.id),
+  ])
 
   return ok({
     id: row.id,
     name: row.name,
     description: row.description,
     icon: row.icon ?? null,
-    isPrivate: isPrivateFromBaseline(baselinePermission),
+    isPrivate: isPrivateFromBaseline(baselinePermission, shares, row.createdById),
     position: row.position,
     createdById: row.createdById,
     activeVersionId: row.activeVersionId,

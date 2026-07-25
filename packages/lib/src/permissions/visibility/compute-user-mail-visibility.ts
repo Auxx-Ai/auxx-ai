@@ -3,7 +3,11 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { OrganizationRole } from '@auxx/database/types'
-import { and, eq, inArray, isNotNull, or } from 'drizzle-orm'
+import { and, eq, isNotNull, or } from 'drizzle-orm'
+import {
+  resolveResourceAccessGrantees,
+  resourceAccessGranteeConditions,
+} from '../../resource-access/grantee-resolution'
 import type { UserMailVisibility } from './context'
 import { type Lens, maxLens } from './lens'
 
@@ -110,29 +114,22 @@ export async function computeUserMailVisibility(
   db: Database
 ): Promise<UserMailVisibility> {
   // Lazy import to avoid a hard module cycle (cache providers import this file).
-  const { getOrgCache, getCachedUserGroupIds } = await import('../../cache')
+  const { getOrgCache } = await import('../../cache')
 
-  const [roleMap, inboxes, groupIds] = await Promise.all([
+  const [roleMap, inboxes, grantees] = await Promise.all([
     getOrgCache().get(organizationId, 'memberRoleMap'),
     getOrgCache().get(organizationId, 'inboxes'),
-    getCachedUserGroupIds(organizationId, userId),
+    resolveResourceAccessGrantees(organizationId, userId),
   ])
 
-  const granteeConditions = [
-    and(eq(schema.ResourceAccess.granteeType, 'user'), eq(schema.ResourceAccess.granteeId, userId)),
-    and(
-      eq(schema.ResourceAccess.granteeType, 'role'),
-      eq(schema.ResourceAccess.granteeId, 'org_member')
-    ),
-  ]
-  if (groupIds.length > 0) {
-    granteeConditions.push(
-      and(
-        inArray(schema.ResourceAccess.granteeType, ['group', 'team']),
-        inArray(schema.ResourceAccess.granteeId, groupIds)
-      )
-    )
-  }
+  // Shared grantee union (doc 19 §8.2) — direct user, `role:org_member`, the
+  // bound permission profile, and groups. `treatTeamAsGroup` preserves this
+  // evaluator's historical matching of legacy `team` rows against group ids.
+  //
+  // Mail visibility is evaluated through BOTH this forward resolver and the
+  // reverse `mailGrantIndex`; the two must enumerate the same grantee kinds or
+  // a share is visible in one direction only (19a finding 4).
+  const granteeConditions = resourceAccessGranteeConditions(grantees, { treatTeamAsGroup: true })
 
   const rows = await db
     .select({

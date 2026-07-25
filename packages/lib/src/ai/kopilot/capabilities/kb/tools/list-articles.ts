@@ -20,6 +20,13 @@ const PREVIEW_CHARS = 4_000
 export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_articles',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'Rows filtered by canViewKb. Same doc-18 caveat as get_article: no visitor clamp and includeUnpublished defaults true.',
+    },
     displayName: 'List articles',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,

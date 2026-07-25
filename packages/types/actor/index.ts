@@ -11,7 +11,11 @@
 export type ActorId = string & { readonly __brand: 'ActorId' }
 
 /**
- * Type discriminator for ActorId prefix.
+ * Every prefix the ActorId vocabulary understands — the SINGLE source of truth for
+ * both {@link ActorIdType} and the runtime guards below. Previously the list was
+ * written out three times (the type alias plus a literal array inside
+ * `parseActorId` and `isActorId`), which is exactly how a new kind ends up
+ * type-legal but rejected at runtime.
  *
  * - `user:` — real users + system users (system users are stored in the User table).
  * - `group:` — actor groups.
@@ -21,39 +25,64 @@ export type ActorId = string & { readonly __brand: 'ActorId' }
  * - `worker:` — dispatch workers. The id half is the `DispatchWorker.id`. An individual
  *   worker resolves to its user's identity (+ board color); a team resolves to its name +
  *   member avatar stack (plans/dispatch/45-teams.md §1.H).
+ * - `profile:` — permission profiles used as an additive grantee. The id half is the
+ *   `PermissionProfile.id` (plans/permissions/v2/19-permission-profiles.md §0.28).
+ *   Note this is NOT the whole grantee vocabulary: `ResourceGranteeType` also has
+ *   `team` and `role`, which are markers (`role:org_member` is the workspace
+ *   baseline), not addressable identities, and deliberately stay out of ActorId.
  */
-export type ActorIdType = 'user' | 'group' | 'agent' | 'worker'
+export const ACTOR_ID_TYPES = ['user', 'group', 'agent', 'worker', 'profile'] as const
+
+/** Type discriminator for ActorId prefix. See {@link ACTOR_ID_TYPES}. */
+export type ActorIdType = (typeof ACTOR_ID_TYPES)[number]
 
 /**
  * Type discriminator for resolved Actor objects.
- * Widened with `'system'`, `'agent'`, and `'worker'` so callers can distinguish automated/system
- * actors, Kopilot agents, dispatch workers, and real users. The ActorId format stays `user:<id>`
- * for system users — only the resolved `.type` field differs.
+ * Widened with `'system'`, `'agent'`, `'worker'`, and `'profile'` so callers can distinguish
+ * automated/system actors, Kopilot agents, dispatch workers, permission profiles, and real
+ * users. The ActorId format stays `user:<id>` for system users — only the resolved `.type`
+ * field differs.
  */
-export type ActorType = 'user' | 'group' | 'system' | 'agent' | 'worker'
+export type ActorType = 'user' | 'group' | 'system' | 'agent' | 'worker' | 'profile'
+
+/** Type guard for the ActorId prefix vocabulary. */
+export function isActorIdType(value: unknown): value is ActorIdType {
+  return typeof value === 'string' && (ACTOR_ID_TYPES as readonly string[]).includes(value)
+}
 
 /**
- * Parse ActorId into its components.
+ * Parse an ActorId into its components without throwing — returns `null` for
+ * anything malformed or of an unknown kind.
+ *
+ * **Use this in render paths.** `parseActorId` throws, and a grantee row carrying
+ * a kind this build does not know (a forward-compatibility problem every time the
+ * grantee vocabulary grows) would take the whole tree down rather than degrade to
+ * a generic row.
+ */
+export function safeParseActorId(value: unknown): { type: ActorIdType; id: string } | null {
+  if (typeof value !== 'string' || value.length === 0) return null
+
+  const colonIndex = value.indexOf(':')
+  if (colonIndex === -1) return null
+
+  const type = value.slice(0, colonIndex)
+  const id = value.slice(colonIndex + 1)
+  if (!id || !isActorIdType(type)) return null
+
+  return { type, id }
+}
+
+/**
+ * Parse ActorId into its components. Strict: a malformed or unknown-kind id is a
+ * programming error here. Render paths must use {@link safeParseActorId} instead.
  * @throws Error if ActorId is malformed
  */
 export function parseActorId(actorId: ActorId): { type: ActorIdType; id: string } {
-  if (!actorId) {
+  const parsed = safeParseActorId(actorId)
+  if (!parsed) {
     throw new Error(`Invalid ActorId: ${actorId}`)
   }
-
-  const colonIndex = actorId.indexOf(':')
-  if (colonIndex === -1) {
-    throw new Error(`Invalid ActorId (missing colon): ${actorId}`)
-  }
-
-  const type = actorId.slice(0, colonIndex) as ActorIdType
-  const id = actorId.slice(colonIndex + 1)
-
-  if (!type || !id || !['user', 'group', 'agent', 'worker'].includes(type)) {
-    throw new Error(`Invalid ActorId: ${actorId}`)
-  }
-
-  return { type, id }
+  return parsed
 }
 
 /**
@@ -65,11 +94,16 @@ export function toActorId(type: ActorIdType, id: string): ActorId {
 
 /**
  * Type guard to check if a string is a valid ActorId format.
+ *
+ * Stricter than {@link safeParseActorId} on purpose: it requires EXACTLY two
+ * colon-separated parts, because it is what `normalizeActorIdArg` uses to reject
+ * malformed agent tool-call arguments. The parsers split on the FIRST colon, so
+ * `user:a:b` parses (id `a:b`) but is not a valid ActorId to construct.
  */
 export function isActorId(value: unknown): value is ActorId {
   if (typeof value !== 'string') return false
   const parts = value.split(':')
-  return parts.length === 2 && ['user', 'group', 'agent', 'worker'].includes(parts[0]!)
+  return parts.length === 2 && !!parts[1] && isActorIdType(parts[0])
 }
 
 /**
@@ -171,8 +205,34 @@ export interface WorkerActor extends BaseActor {
   members: { id: string; name: string; image: string | null }[]
 }
 
+/**
+ * Profile actor — a `PermissionProfile` surfaced as an additive grantee
+ * (plans/permissions/v2/19-permission-profiles.md §0.28). The ActorId uses the
+ * `profile:<profileId>` prefix.
+ *
+ * Every field here is already on the org-cached profile projection
+ * (`CachedPermissionProfile`), so resolving one costs no extra query. There is
+ * deliberately no holder count: that is a `OrganizationMember` aggregate, not
+ * cached, and no grantee surface needs it to render.
+ */
+export interface ProfileActor extends BaseActor {
+  type: 'profile'
+  /** The PermissionProfile row id. Mirrors the id half of `actorId` (`profile:<profileId>`). */
+  profileId: string
+  /** Stable per-org slug — `'member'`, `'admin'`, … for system rows. */
+  slug: string
+  /** Profile description, for the grantee row's secondary line. */
+  description: string | null
+  /** The seat class this profile is authored for (§0.17). */
+  seat: 'full' | 'worker'
+  /** Which principal kind may bind it. `'agent'` profiles are NOT valid sharing grantees. */
+  appliesTo: 'member' | 'agent' | 'any'
+  /** Seeded template row — not deletable, slug/seat/appliesTo locked. */
+  isSystem: boolean
+}
+
 /** Union type for any actor */
-export type Actor = UserActor | GroupActor | SystemActor | AgentActor | WorkerActor
+export type Actor = UserActor | GroupActor | SystemActor | AgentActor | WorkerActor | ProfileActor
 
 // ============================================================================
 // Actor Context (for services)
@@ -223,4 +283,11 @@ export function isAgentActor(actor: Actor): actor is AgentActor {
  */
 export function isWorkerActor(actor: Actor): actor is WorkerActor {
   return actor.type === 'worker'
+}
+
+/**
+ * Check if an actor is a permission-profile actor.
+ */
+export function isProfileActor(actor: Actor): actor is ProfileActor {
+  return actor.type === 'profile'
 }

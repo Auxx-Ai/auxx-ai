@@ -122,7 +122,14 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // USER-scoped so an org flush does not reach it: without the bump, members
   // would ride a stale key set for the full ONE_DAY TTL — and a stale blob 403s
   // admins on anything the old composition didn't include.
+  // v7: permission-profile DEFINITION ceilings (doc 19 step 4). `UserCapabilities`
+  // gained `ceilingDefs` — the bound profile's `{ mode, slugs }` cap, carried raw
+  // and slug-keyed so def lifecycle events never have to touch this key. A v6 blob
+  // lacks the field entirely, which `effectiveRecordLevel` reads as "uncapped": a
+  // member whose profile says `only: [contact]` would keep full record access for
+  // the rest of the ONE_DAY TTL. Fail-open on a stale blob is exactly what a
+  // ceiling must never do, so the old blobs are abandoned rather than migrated.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v6', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v7', ttlSeconds: ONE_DAY },
 }

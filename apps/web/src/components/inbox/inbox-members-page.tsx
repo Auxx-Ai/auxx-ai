@@ -11,6 +11,7 @@ import {
   MailGranteeAddButton,
   MailGranteeList,
 } from '~/components/mail-permissions/ui/mail-grantee-list'
+import type { UnmanageableGrant } from '~/components/permissions/utils/grantee'
 
 /** A grantee row as the form edits it (mirrors {@link InboxForm}'s FormGrant). */
 interface FormGrant {
@@ -33,6 +34,8 @@ interface InboxMembersPageProps {
    * the inbox owner's locked Manager grant, so the list never lies.
    */
   lockedActorIds?: ActorId[]
+  /** Grants on a kind the list can't address (e.g. `profile`) — disclosed, not dropped. */
+  unmanageableGrants?: UnmanageableGrant[]
   /** Personal-account note rendered above the list. */
   note?: string
   /** Opens the access-levels guide. */
@@ -57,6 +60,7 @@ export function InboxMembersPage({
   disabled = false,
   emptyHint = 'Not shared with anyone yet.',
   lockedActorIds = [],
+  unmanageableGrants,
   note,
   onOpenGuide,
   onBack,
@@ -86,6 +90,7 @@ export function InboxMembersPage({
           disabled={disabled}
           emptyHint={emptyHint}
           lockedActorIds={lockedActorIds}
+          unmanageableGrants={unmanageableGrants}
           hideAddButton
         />
 

@@ -48,6 +48,12 @@ export async function assertCanManageMailSharing(
   if (!isMailSharingDef(entityDefinitionId)) return
 
   const { organizationId, userId } = ctx
+  // DELIBERATELY `'user'` ONLY — do not widen to the other grantee kinds when
+  // teaching the codebase a new one (doc 19 step 9 / 19a #13). Self-revoke means
+  // "remove the grant that names ME"; a group/profile/role row is shared policy,
+  // and letting one holder delete it would silently revoke everyone else. This
+  // fails closed on purpose: a member who wants out of a profile-scoped share
+  // needs an admin, not a leave button.
   if (
     opts?.selfRevokeGranteeType === 'user' &&
     opts.selfRevokeGranteeId &&

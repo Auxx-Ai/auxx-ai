@@ -60,6 +60,13 @@ const ReplyAmendmentSchema = z.object({
 export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'reply_to_thread',
+    permission: {
+      target: 'unmodeled',
+      domain: 'mail',
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'getThreadLens rejects on a "none" lens before drafting or sending.',
+    },
     displayName: 'Reply to thread',
     toolsetSlug: 'auxx:mail:compose',
     requiresApproval: true,

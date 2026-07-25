@@ -17,6 +17,13 @@ import { canViewKb } from '../kb-access'
 export function createResolveBlockByHeadingTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'resolve_block_by_heading',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewKb → canViewInstance on the article’s home KB.',
+    },
     displayName: 'Find article section',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,

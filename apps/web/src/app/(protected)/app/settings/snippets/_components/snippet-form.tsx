@@ -21,7 +21,7 @@ import { useForm } from 'react-hook-form'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 import { SnippetEditor } from './snippet-editor'
-import { SnippetSharing } from './snippet-sharing'
+import { type SnippetShareInput, SnippetSharing } from './snippet-sharing'
 
 interface FormValues {
   title: string
@@ -32,11 +32,13 @@ interface FormValues {
   sharingType: SnippetSharingType
 }
 
-type ShareInput = {
-  granteeType: 'group' | 'user'
-  granteeId: string
-  permission: 'VIEW' | 'EDIT'
-}
+/**
+ * Snippet share payload. Aliased to the dialog's own type so the grantee
+ * vocabulary is declared in exactly ONE place — a second literal union here is
+ * how the two drift and a kind the dialog can emit becomes unrepresentable (or,
+ * worse, silently coerced) on the way to the router.
+ */
+type ShareInput = SnippetShareInput
 
 interface SnippetFormProps {
   snippetId?: string

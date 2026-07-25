@@ -8,6 +8,13 @@ import { buildOpToolResult, EXPECTED_HASH_PARAM, runMarkdownReplace } from './wr
 export function createReplaceBlockTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'replace_block',
+    permission: {
+      target: 'instance',
+      keys: ['kb'],
+      level: 'read_write',
+      enforcement: 'enforced',
+      note: 'runBlockCrudOp → assertEditInstance("kb", …).',
+    },
     displayName: 'Replace article block',
     toolsetSlug: 'auxx:kb:write',
     exampleOutput: {

@@ -20,6 +20,19 @@ const COPY: Record<GranteeKind, { description: string }> = {
   },
 }
 
+/** Neutral copy for a grantee kind this section does not model (e.g. `profile`). */
+const FALLBACK_DESCRIPTION =
+  'What this grantee can do across the workspace. Overrides only raise access above the member baseline.'
+
+/**
+ * Total copy lookup — `COPY[granteeKind].description` on an unlisted kind is a
+ * `TypeError` at render, and this section is the whole Permissions tab of a
+ * member/team detail page.
+ */
+function descriptionFor(granteeKind: string): string {
+  return COPY[granteeKind as GranteeKind]?.description ?? FALLBACK_DESCRIPTION
+}
+
 /**
  * Agent copy. Agents compose by SET over an all-Full base — no baseline, no
  * inheritance — so the surface is a restriction editor, not an elevation one.
@@ -78,7 +91,7 @@ export function GranteeLevelsSection({
     <SettingsSection
       icon={SlidersHorizontal}
       title='Access levels'
-      description={mode === 'agent' ? AGENT_DESCRIPTION : COPY[granteeKind].description}>
+      description={mode === 'agent' ? AGENT_DESCRIPTION : descriptionFor(granteeKind)}>
       {isLoading || !roleDefaults ? (
         <div className='space-y-2'>
           <Skeleton className='h-16 w-full rounded-lg' />

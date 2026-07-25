@@ -22,6 +22,12 @@ const CreateNoteOutput = z.object({
 export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_note',
+    permission: {
+      target: 'definition',
+      level: 'read_write',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP (19b G3). Deliberate: the human comment routers are ungated too (doc 14 §8.3), so gating only the agent path would diverge from the product. A def published None still accepts notes. Do not "fix" without the matching human-router decision.',
+    },
     displayName: 'Add note',
     toolsetSlug: 'auxx:comments:write',
     outputSchema: CreateNoteOutput,
@@ -75,6 +81,12 @@ export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition 
       }
     },
     execute: async (args, agentDeps) => {
+      // KNOWN GAP (plan 19b, G3): deliberately ungated. The *human* comment
+      // routers are ungated too (doc 14 §8.3), so gating only the agent path
+      // would diverge from the surface it mirrors. The four record-adjacent
+      // READS (`list_notes`, `list_field_changes`, `get_transcript`,
+      // `list_transcripts_for_entity`) do NOT share this reasoning and are
+      // gated on `canViewEntity`. Close this together with the human routers.
       const { db } = getDeps()
       const recordId = args.recordId as string
       const content = args.content as string

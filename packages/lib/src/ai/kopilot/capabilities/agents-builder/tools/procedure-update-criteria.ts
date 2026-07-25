@@ -19,6 +19,13 @@ import { validateTriggerExamples } from './trigger-examples'
 export function createUpdateProcedureCriteriaTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_procedure_criteria',
+    permission: {
+      target: 'area',
+      area: 'agents',
+      level: 'full',
+      enforcement: 'enforced',
+      note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
+    },
     displayName: 'Update procedure criteria',
     surfaces: ['builder'],
     description: `Update a procedure's name and/or selection criteria (\`whenToUse\`, \`triggerExamples\`). These drive when the procedure is selected at runtime and go live when the user publishes. To change the step flow, use \`set_procedure_body\` instead.`,

@@ -10,6 +10,12 @@ const logger = createScopedLogger('permission-profiles')
 /**
  * Above this many affected members, targeted per-user invalidation stops being
  * cheaper than the org-wide broadcast the cache/realtime layers already support.
+ *
+ * **Distinct from the §6.1.3 guard cap of 500 holders**, which is a *security*
+ * budget (above it the escalation guard stops composing per-holder states and
+ * falls back to the strict profile-map check). This one is a *cache* budget:
+ * crossing it only changes how invalidation is delivered, never what is allowed.
+ * They are deliberately different numbers for different reasons — do not merge.
  */
 const BROADCAST_THRESHOLD = 50
 
@@ -47,6 +53,31 @@ export async function resolveProfileAudience(input: {
   slug?: string
   isSystem?: boolean
 }): Promise<ProfileAudience> {
+  const userIds = await resolveProfileHolderIds(input)
+  // `null` = the profile could not be classified; never guess narrow.
+  if (userIds === null) return { userIds: [], broadcast: true }
+  if (userIds.length > BROADCAST_THRESHOLD) return { userIds: [], broadcast: true }
+  return { userIds, broadcast: false }
+}
+
+/**
+ * The raw §6.1.3 affected-holder sweep — every user id a change to this profile
+ * reaches, **uncollapsed**. `null` means the profile could not be classified
+ * (deleted, or a stale projection), which the invalidation path turns into an
+ * org-wide broadcast and the escalation guard must treat as "unknown holders".
+ *
+ * Split out of {@link resolveProfileAudience} so the §6.1 escalation guard and
+ * the §8.3 invalidation share ONE sweep — including the null-bound majority,
+ * which no index can return. The audience wrapper collapses a large result to a
+ * broadcast; the guard needs the ids themselves, so it calls this directly.
+ */
+export async function resolveProfileHolderIds(input: {
+  organizationId: string
+  profileId: string
+  /** Skips the cache lookup when the caller already has the row. */
+  slug?: string
+  isSystem?: boolean
+}): Promise<string[] | null> {
   const { organizationId, profileId } = input
 
   let slug = input.slug
@@ -55,12 +86,11 @@ export async function resolveProfileAudience(input: {
     const profiles = await getOrgCache().get(organizationId, 'profiles')
     const row = profiles.find((p) => p.id === profileId)
     if (!row) {
-      // Unclassifiable (deleted, or a stale projection) — never guess narrow.
-      logger.warn('Permission profile not found for invalidation — broadcasting org-wide', {
+      logger.warn('Permission profile not found for holder sweep', {
         organizationId,
         profileId,
       })
-      return { userIds: [], broadcast: true }
+      return null
     }
     slug = row.slug
     isSystem = row.isSystem
@@ -79,9 +109,7 @@ export async function resolveProfileAudience(input: {
       if (systemProfileFor(entry.role, entry.seatType) === slug) userIds.push(userId)
     }
   }
-
-  if (userIds.length > BROADCAST_THRESHOLD) return { userIds: [], broadcast: true }
-  return { userIds, broadcast: false }
+  return userIds
 }
 
 /**

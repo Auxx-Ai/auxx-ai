@@ -161,6 +161,12 @@ function snapshotItemToDisplay(snap: TimelineFieldChangeSnapshot): string | null
 export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_entity_history',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the parent instance’s def, plus a per-def filter over linked entities.',
+    },
     displayName: 'Get record history',
     toolsetSlug: 'auxx:entities:search',
     category: 'system',

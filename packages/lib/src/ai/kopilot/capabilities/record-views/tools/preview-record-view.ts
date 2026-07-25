@@ -16,6 +16,12 @@ import { RECORD_VIEW_PARAMS, readViewSpec } from './params'
 export function createPreviewRecordViewTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'preview_table_view',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the page’s def, short-circuiting before countRecordMatches so the count never leaks (19b G6).',
+    },
     displayName: 'Preview table view',
     category: 'capability',
     description: `Live-preview a filtered/sorted/column view on the records table the user is currently viewing. Applies instantly to the on-screen table WITHOUT saving. Use this to show the user a result before they commit; follow with create_table_view to save it.
@@ -29,12 +35,23 @@ Examples:
       'Inspect `warnings[]` — each means a filter/sort/column was dropped. Preview is unsaved; the user can clear it from the search bar. To persist, call create_table_view with the same args plus a name.',
     parameters: RECORD_VIEW_PARAMS,
     execute: async (args, agentDeps) => {
-      const { db, sessionContext } = getDeps()
+      const { db, sessionContext, capabilities } = getDeps()
       const target = await resolveRecordViewTarget(sessionContext, agentDeps.organizationId)
       if ('error' in target) {
         return { success: false, output: null, error: target.error }
       }
       const { resource, entityDefinitionId, tableId } = target
+
+      // Read enforcement (§3): `countRecordMatches` below is a record-count
+      // oracle on the def, so this gates identically to the create/update
+      // siblings. Absent capabilities ⇒ unrestricted, as before.
+      if (entityDefinitionId && capabilities && !capabilities.canViewEntity(entityDefinitionId)) {
+        return {
+          success: false,
+          output: null,
+          error: "You don't have permission to view these records.",
+        }
+      }
 
       const spec: ViewSpec = readViewSpec(args)
       const built = buildViewConfig(spec, resource, entityDefinitionId)

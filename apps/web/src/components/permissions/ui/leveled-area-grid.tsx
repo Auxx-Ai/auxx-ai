@@ -68,10 +68,17 @@ interface LeveledAreaGridProps {
   renderChildren?: (area: Area, filter: AreaChildFilter) => AreaChildren | undefined
 }
 
+/** The §5.3 wording for an area whose routers are still a binary admin gate. */
+const ROLE_GATED_NOTE = 'Still role-gated — admins reach this regardless.'
+
 /**
  * Grantable areas, grouped by registry `group` in area order. Excludes
  * `adminOnly` (never grantable below ADMIN) and `workerOnly` (enforced only on a
  * worker seat, so a level control here would do nothing).
+ *
+ * `roleGated` areas ARE included — they are grantable in the model (doc 19
+ * §0.25) — but render locked, because their routers are still binary
+ * `adminProcedure` checks (§5.3).
  */
 const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
   const order: string[] = []
@@ -194,7 +201,9 @@ export function LeveledAreaGrid({
                     rowClassName='bg-primary-50 hover:bg-primary-100'
                     key={area}
                     title={meta.label}
-                    description={meta.description}
+                    description={
+                      meta.roleGated ? `${meta.description} ${ROLE_GATED_NOTE}` : meta.description
+                    }
                     expandable={children !== undefined}
                     isOpen={children !== undefined ? isOpen : undefined}
                     onToggleOpen={
@@ -213,7 +222,7 @@ export function LeveledAreaGrid({
                           mode === 'agent' ? 'Clear — back to full access' : 'Reset to inherited'
                         }
                         onChange={(level) => onChange(area, level)}
-                        disabled={disabled}
+                        disabled={disabled || meta.roleGated === true}
                       />
                     }>
                     {children?.rows}

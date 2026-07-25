@@ -5,16 +5,22 @@ import { MemberType, ResourceGranteeType, ResourcePermission } from '@auxx/datab
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
-import { getCachedUserGroupIds, onCacheEvent } from '../cache'
-import { BadRequestError } from '../errors'
+import { and, desc, eq, isNull, or } from 'drizzle-orm'
+import { onCacheEvent } from '../cache'
 import { NotificationService } from '../notifications'
 import { isInstanceAccessKey } from '../permissions/capabilities/instance-access'
 import { satisfiesPermission } from './constants'
+import {
+  grantedViaFor,
+  resolveProfileHolders,
+  resolveResourceAccessGrantees,
+  resourceAccessGranteeConditions,
+} from './grantee-resolution'
 import type {
   AccessCheckResult,
   CheckAccessInput,
   CheckTypeAccessInput,
+  GrantedVia,
   GrantInstanceAccessInput,
   GrantLens,
   GrantTypeAccessInput,
@@ -28,45 +34,53 @@ import type {
 const logger = createScopedLogger('resource-access-service')
 const SHARE_NOTIFICATION_RECIPIENT_CAP = 50
 
-/**
- * Refuse `granteeType: 'profile'` on ResourceAccess **writes** until plan 19
- * step 9 lands.
+/*
+ * NOTE — the profile-grantee WRITE GUARD is gone (doc 19 §9 step 9).
  *
- * The vocabulary exists (`ResourceGranteeTypeValues`, doc 19 §1.2) and
- * `computeUserCapabilities` already reads profile rows into
- * `defAccess`/`instanceAccess`. But `restrictedEntityDefIds` /
- * `restrictedInstanceIds` are computed **grantee-agnostically**, and
- * `effectiveRecordLevel` replaces base with the member's own grant as soon as a
- * def is "restricted". So a single profile-grantee type row would flip a def to
- * restricted org-wide while three of the four read paths still cannot resolve a
- * grant through it — the def goes dark for every non-admin. One admin click, an
- * org-wide lockout.
+ * `granteeType: 'profile'` on ResourceAccess writes was refused here until doc
+ * 19 step 9 (`assertProfileGranteeSupported`, PR #1332). The guard existed
+ * because `restrictedEntityDefIds` / `restrictedInstanceIds` are built
+ * **grantee-agnostically** while the readers were grantee-limited, so one
+ * profile row would have flipped a def to restricted org-wide with nobody able
+ * to resolve a grant through it — an org-wide lockout, not a per-grantee no-op.
  *
- * TODO(plan-19-step-9): remove this guard only after ALL of these learn the
- * `profile` grantee kind:
- *  - `checkAccess` grantee conditions (this file)
- *  - `checkTypeAccess` grantee conditions (this file)
- *  - `getUserAccessibleInstances` grantee conditions (this file)
- *  - `cache/providers/mail-grant-index-provider.ts` (currently reinterprets an
- *    unknown `granteeId` as a GROUP id)
- * plus the §8.2 surface inventory (`resourceAccess.ts` z.enums,
- * `@auxx/types/actor`, `use-instance-share.ts`, `snippet-permissions.ts`,
- * `compute-user-mail-visibility.ts`).
+ * It is gone because every server resolver now goes through
+ * `grantee-resolution.ts`: `checkAccess`, `checkTypeAccess`,
+ * `getUserAccessibleInstances`, `computeUserCapabilities`,
+ * `computeUserMailVisibility` (forward) and `mailGrantIndexProvider` (reverse),
+ * plus `snippet-permissions.ts`'s in-memory equivalent. Do not reintroduce a
+ * per-kind write guard here — the invariant to protect is "every reader
+ * enumerates every kind", which the shared builder enforces structurally.
  */
-function assertProfileGranteeSupported(granteeType: ResourceGranteeType): void {
-  if (granteeType === ResourceGranteeType.profile) {
-    throw new BadRequestError(
-      'Profile-scoped resource grants are not enabled yet — see plans/permissions/v2/19-permission-profiles.md step 9.'
-    )
-  }
-}
 
+/**
+ * Who gets the "X shared … with you" notification for one grant row.
+ *
+ * `role:org_member` is deliberately silent (an org-wide baseline change is not a
+ * personal share). A `profile` grantee expands to that profile's holders —
+ * before doc 19 step 9 the `granteeId` fell through to the group branch and was
+ * looked up as a group instance id, which always matched nothing, so a
+ * profile-scoped share notified **nobody** with no error and no log (19a #26).
+ */
 async function resolveShareRecipients(
   ctx: ResourceAccessContext,
   input: GrantInstanceAccessInput
 ): Promise<string[]> {
   if (input.granteeType === ResourceGranteeType.role) return []
   if (input.granteeType === ResourceGranteeType.user) return [input.granteeId]
+
+  if (input.granteeType === ResourceGranteeType.profile) {
+    const holders = await resolveProfileHolders(ctx.organizationId, input.granteeId)
+    if (holders.length > SHARE_NOTIFICATION_RECIPIENT_CAP) {
+      logger.warn('Share notification fan-out capped', {
+        organizationId: ctx.organizationId,
+        granteeType: input.granteeType,
+        granteeId: input.granteeId,
+        cap: SHARE_NOTIFICATION_RECIPIENT_CAP,
+      })
+    }
+    return holders.slice(0, SHARE_NOTIFICATION_RECIPIENT_CAP)
+  }
 
   const members = await ctx.db.query.EntityGroupMember.findMany({
     where: and(
@@ -203,10 +217,54 @@ async function notifyNewInstanceShare(
 }
 
 /**
+ * Which users a set of mutated grantees invalidates, or an org-wide broadcast.
+ *
+ * User grants target that one user. **Profile** grants route through
+ * `resolveProfileAudience` — the SAME sweep `grant-service.ts`'s
+ * `emitGrantChanged` uses, deliberately not a second implementation — which
+ * resolves explicit holders plus the null-bound majority, and self-collapses to
+ * a broadcast when the profile is unclassifiable or the holder set is large.
+ * Everything else (role/group/team) still fans out org-wide: correct but
+ * expensive, which is why profiles are worth narrowing.
+ *
+ * Fails SAFE in both directions — the worst outcome is an over-broad bust.
+ */
+async function resolveInvalidationTargets(
+  organizationId: string,
+  grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
+): Promise<{ userIds: string[]; broadcast: boolean }> {
+  const userIds = new Set<string>()
+  let broadcast = false
+
+  for (const g of grantees) {
+    if (g.granteeType === ResourceGranteeType.user) {
+      userIds.add(g.granteeId)
+      continue
+    }
+    if (g.granteeType === ResourceGranteeType.profile) {
+      // Lazy import — the profiles module pulls the cache + dehydration barrels,
+      // and the cache invalidation path imports back into this file's neighbours.
+      const { resolveProfileAudience } = await import(
+        '../permissions/profiles/profile-invalidation'
+      )
+      const audience = await resolveProfileAudience({ organizationId, profileId: g.granteeId })
+      if (audience.broadcast) broadcast = true
+      else for (const userId of audience.userIds) userIds.add(userId)
+      continue
+    }
+    broadcast = true
+  }
+
+  // A single org-wide fan-out already covers every member — no need to also
+  // enumerate the targeted grants when broadcasting.
+  if (broadcast) return { userIds: [], broadcast: true }
+  return { userIds: Array.from(userIds), broadcast: false }
+}
+
+/**
  * Emit the cache event that busts visibility caches after a ResourceAccess
- * mutation. User grants invalidate just that user's keys; group/role/team
- * grants use the org-wide fan-out (the affected user set can't be enumerated
- * cheaply here). Call AFTER the DB write commits.
+ * mutation. See {@link resolveInvalidationTargets} for the fan-out rules.
+ * Call AFTER the DB write commits.
  *
  * Phase 0 of the mail-permissions plan wires the emission; Phase 1 attaches
  * the keys (`userMailVisibility`, `mailGrantIndex`) to the invalidation graph.
@@ -215,15 +273,8 @@ async function emitResourceAccessChanged(
   organizationId: string,
   grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
 ): Promise<void> {
-  const userIds = new Set<string>()
-  let broadcast = false
-  for (const g of grantees) {
-    if (g.granteeType === ResourceGranteeType.user) userIds.add(g.granteeId)
-    else broadcast = true
-  }
+  const { userIds, broadcast } = await resolveInvalidationTargets(organizationId, grantees)
 
-  // A single org-wide fan-out already covers every member — no need to also
-  // enumerate the user grants when broadcasting.
   if (broadcast) {
     await onCacheEvent('resource-access.changed', {
       orgId: organizationId,
@@ -233,7 +284,7 @@ async function emitResourceAccessChanged(
   }
 
   await Promise.all(
-    Array.from(userIds).map((userId) =>
+    userIds.map((userId) =>
       onCacheEvent('resource-access.changed', { orgId: organizationId, userId })
     )
   )
@@ -256,12 +307,7 @@ async function emitResourceAccessTypeChanged(
   organizationId: string,
   grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
 ): Promise<void> {
-  const userIds = new Set<string>()
-  let broadcast = false
-  for (const g of grantees) {
-    if (g.granteeType === ResourceGranteeType.user) userIds.add(g.granteeId)
-    else broadcast = true
-  }
+  const { userIds, broadcast } = await resolveInvalidationTargets(organizationId, grantees)
 
   // Lazy import — the cache invalidation path lazily imports realtime, so this
   // module must not statically import the realtime barrel back (import cycle).
@@ -277,7 +323,7 @@ async function emitResourceAccessTypeChanged(
   }
 
   await Promise.all(
-    Array.from(userIds).map(async (userId) => {
+    userIds.map(async (userId) => {
       await onCacheEvent('resource-access.type.changed', { orgId: organizationId, userId })
       await publishCapabilitiesChanged(getRealtimeService(), { userId })
     })
@@ -302,12 +348,7 @@ export async function emitResourceAccessInstanceChanged(
   organizationId: string,
   grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
 ): Promise<void> {
-  const userIds = new Set<string>()
-  let broadcast = false
-  for (const g of grantees) {
-    if (g.granteeType === ResourceGranteeType.user) userIds.add(g.granteeId)
-    else broadcast = true
-  }
+  const { userIds, broadcast } = await resolveInvalidationTargets(organizationId, grantees)
 
   // Lazy import — the cache invalidation path lazily imports realtime, so this
   // module must not statically import the realtime barrel back (import cycle).
@@ -323,7 +364,7 @@ export async function emitResourceAccessInstanceChanged(
   }
 
   await Promise.all(
-    Array.from(userIds).map(async (userId) => {
+    userIds.map(async (userId) => {
       await onCacheEvent('resource-access.instance.changed', { orgId: organizationId, userId })
       await publishCapabilitiesChanged(getRealtimeService(), { userId })
     })
@@ -337,7 +378,6 @@ export async function grantInstanceAccess(
   ctx: ResourceAccessContext,
   input: GrantInstanceAccessInput
 ): Promise<void> {
-  assertProfileGranteeSupported(input.granteeType)
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
   const existing = await db.query.ResourceAccess.findFirst({
@@ -403,7 +443,6 @@ export async function grantTypeAccess(
   ctx: ResourceAccessContext,
   input: GrantTypeAccessInput
 ): Promise<void> {
-  assertProfileGranteeSupported(input.granteeType)
   const { db, organizationId, userId } = ctx
 
   await db
@@ -543,7 +582,6 @@ export async function setInstanceAccess(
   granteeType: ResourceGranteeType,
   grants: Array<{ granteeId: string; permission: ResourcePermission; lens?: GrantLens | null }>
 ): Promise<void> {
-  assertProfileGranteeSupported(granteeType)
   const { db, organizationId, userId } = ctx
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
@@ -598,7 +636,6 @@ export async function setTypeAccess(
   granteeType: ResourceGranteeType,
   grants: Array<{ granteeId: string; permission: ResourcePermission }>
 ): Promise<void> {
-  assertProfileGranteeSupported(granteeType)
   const { db, organizationId, userId } = ctx
 
   const removed = await db.transaction(async (tx: typeof db) => {
@@ -670,32 +707,13 @@ export async function checkAccess(
     }
   }
 
-  // 2. Get user's groups (for group-based access)
-  const groupIds = await getCachedUserGroupIds(organizationId, targetUserId)
-
-  // 3. Build grantee conditions
-  const granteeConditions = [
-    // Direct user grant
-    and(
-      eq(schema.ResourceAccess.granteeType, ResourceGranteeType.user),
-      eq(schema.ResourceAccess.granteeId, targetUserId)
-    ),
-    // Role grant (org_member)
-    and(
-      eq(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
-      eq(schema.ResourceAccess.granteeId, 'org_member')
-    ),
-  ]
-
-  // Group grants (if user belongs to any groups)
-  if (groupIds.length > 0) {
-    granteeConditions.push(
-      and(
-        eq(schema.ResourceAccess.granteeType, ResourceGranteeType.group),
-        inArray(schema.ResourceAccess.granteeId, groupIds)
-      )
-    )
-  }
+  // 2+3. Grantee conditions: direct user, `role:org_member` baseline, the bound
+  // permission profile, and groups. One shared builder — see
+  // `grantee-resolution.ts` for why a kind missing here is an org-wide lockout
+  // rather than a per-grantee no-op.
+  const granteeConditions = resourceAccessGranteeConditions(
+    await resolveResourceAccessGrantees(organizationId, targetUserId)
+  )
 
   // 4. Find matching access grants (both instance-level and type-level)
   const grants = await db.query.ResourceAccess.findMany({
@@ -717,7 +735,7 @@ export async function checkAccess(
 
   // 5. Find highest permission level (instance-specific grants take precedence)
   let highestPermission: ResourcePermission = grants[0]!.permission as ResourcePermission
-  let grantedVia: 'direct' | 'group' | 'team' | 'role' = 'direct'
+  let grantedVia: GrantedVia = 'direct'
   let accessLevel: 'type' | 'instance' = grants[0]!.entityInstanceId ? 'instance' : 'type'
 
   for (const grant of grants) {
@@ -734,16 +752,10 @@ export async function checkAccess(
       }
     }
 
-    // Track how access was granted
-    if (grant.granteeType === ResourceGranteeType.user) {
-      grantedVia = 'direct'
-    } else if (grant.granteeType === ResourceGranteeType.group) {
-      grantedVia = 'group'
-    } else if (grant.granteeType === ResourceGranteeType.team) {
-      grantedVia = 'team'
-    } else if (grant.granteeType === ResourceGranteeType.role) {
-      grantedVia = 'role'
-    }
+    // Track how access was granted. Total over the grantee vocabulary — an
+    // unmapped kind used to attribute as `'direct'`, which reads as "you were
+    // named personally" for a grant nobody named you in (19a #27).
+    grantedVia = grantedViaFor(grant.granteeType)
   }
 
   return {
@@ -783,29 +795,11 @@ export async function checkTypeAccess(
     }
   }
 
-  // Get user's groups
-  const groupIds = await getCachedUserGroupIds(organizationId, targetUserId)
-
-  // Build grantee conditions
-  const granteeConditions = [
-    and(
-      eq(schema.ResourceAccess.granteeType, ResourceGranteeType.user),
-      eq(schema.ResourceAccess.granteeId, targetUserId)
-    ),
-    and(
-      eq(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
-      eq(schema.ResourceAccess.granteeId, 'org_member')
-    ),
-  ]
-
-  if (groupIds.length > 0) {
-    granteeConditions.push(
-      and(
-        eq(schema.ResourceAccess.granteeType, ResourceGranteeType.group),
-        inArray(schema.ResourceAccess.granteeId, groupIds)
-      )
-    )
-  }
+  // Grantee conditions — same shared builder as `checkAccess`. This was an
+  // independently-maintained second copy that had already drifted (19a #8).
+  const granteeConditions = resourceAccessGranteeConditions(
+    await resolveResourceAccessGrantees(organizationId, targetUserId)
+  )
 
   // Find type-level grants only (entityInstanceId is null)
   const grants = await db.query.ResourceAccess.findMany({
@@ -823,16 +817,13 @@ export async function checkTypeAccess(
 
   // Find highest permission
   let highestPermission: ResourcePermission = grants[0]!.permission as ResourcePermission
-  let grantedVia: 'direct' | 'group' | 'team' | 'role' = 'direct'
+  let grantedVia: GrantedVia = 'direct'
 
   for (const grant of grants) {
     const perm = grant.permission as ResourcePermission
     if (satisfiesPermission(perm, highestPermission)) {
       highestPermission = perm
-      if (grant.granteeType === ResourceGranteeType.user) grantedVia = 'direct'
-      else if (grant.granteeType === ResourceGranteeType.group) grantedVia = 'group'
-      else if (grant.granteeType === ResourceGranteeType.team) grantedVia = 'team'
-      else if (grant.granteeType === ResourceGranteeType.role) grantedVia = 'role'
+      grantedVia = grantedViaFor(grant.granteeType)
     }
   }
 
@@ -967,29 +958,12 @@ export async function getUserAccessibleInstances(
 }> {
   const { db, organizationId } = ctx
 
-  // Get user's groups
-  const groupIds = await getCachedUserGroupIds(organizationId, userId)
-
-  // Build grantee conditions
-  const granteeConditions = [
-    and(
-      eq(schema.ResourceAccess.granteeType, ResourceGranteeType.user),
-      eq(schema.ResourceAccess.granteeId, userId)
-    ),
-    and(
-      eq(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
-      eq(schema.ResourceAccess.granteeId, 'org_member')
-    ),
-  ]
-
-  if (groupIds.length > 0) {
-    granteeConditions.push(
-      and(
-        eq(schema.ResourceAccess.granteeType, ResourceGranteeType.group),
-        inArray(schema.ResourceAccess.granteeId, groupIds)
-      )
-    )
-  }
+  // Grantee conditions — third copy of the same block (19a #9). This one drives
+  // LIST/INDEX reads (snippets, sequences, groups), so a grantee kind missing
+  // here silently empties whole listings rather than failing one lookup.
+  const granteeConditions = resourceAccessGranteeConditions(
+    await resolveResourceAccessGrantees(organizationId, userId)
+  )
 
   const grants = await db.query.ResourceAccess.findMany({
     where: and(

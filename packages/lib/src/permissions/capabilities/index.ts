@@ -45,6 +45,12 @@ export {
 } from './registry'
 export { requirePermission } from './require'
 export {
+  buildDefIdToDefinitionId,
+  buildDefIdToSlug,
+  type ResolvedCapabilityInputs,
+  resolveCapabilityInputs,
+} from './resolve-capability-inputs'
+export {
   ALL_KEYS,
   ENTITY_BASE_AREAS,
   ENTITY_WRITE_KEYS,

@@ -39,6 +39,7 @@ import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { type DefAccessGrant, useDefAccess } from '../hooks/use-def-access'
+import { unmanageableGrantsNote } from '../utils/grantee'
 import { AccessLevelSelect } from './access-level-select'
 
 /**
@@ -46,6 +47,11 @@ import { AccessLevelSelect } from './access-level-select'
  * grantee type — an agent grant is a `user` row keyed on the agent's backing
  * `User.id` (agent plan §4.1); the kind only selects the copy, the picker
  * target, and the ActorId prefix used for display.
+ *
+ * A `profile` grantee is the opposite: a REAL storage kind with no actor and no
+ * `user` row behind it, so it cannot be added as a fourth block by copying the
+ * `agent` pattern — there is nothing to translate it into. Its rows are
+ * disclosed via `unmanageableGrants` and edited from step 7's Profiles page.
  */
 type GranteeKind = 'group' | 'user' | 'agent'
 
@@ -114,6 +120,7 @@ export function DefAccessSection({ resource }: { resource: Resource }) {
     isConfigured,
     teamGrants,
     userGrants,
+    unmanageableGrants,
     setBaseline,
     addGrant,
     setGrant,
@@ -121,6 +128,15 @@ export function DefAccessSection({ resource }: { resource: Resource }) {
     resetToDefault,
     isIgnored,
   } = useDefAccess(resource.entityDefinitionId)
+
+  // Rows none of the three blocks below can render (a `profile` grant today).
+  // Via 19a finding 1 a single one keeps the def restricted org-wide, so a
+  // silent drop here would leave an admin staring at a restricted def with no
+  // visible cause.
+  const hiddenGrantsNote = useMemo(
+    () => unmanageableGrantsNote(unmanageableGrants),
+    [unmanageableGrants]
+  )
 
   // Agents are org members backed by a synthetic User row, so their def grants
   // are `user`-type rows keyed on `AgentActor.userId` — indistinguishable from a
@@ -224,6 +240,12 @@ export function DefAccessSection({ resource }: { resource: Resource }) {
           />
         </div>
       </Section>
+
+      {hiddenGrantsNote && (
+        <p className='rounded-xl border border-dashed px-3 py-2 text-muted-foreground text-xs'>
+          {hiddenGrantsNote}
+        </p>
+      )}
 
       <GranteeAccessBlock
         kind='group'

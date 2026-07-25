@@ -2,7 +2,7 @@
 'use client'
 import { SnippetSharingType as SnippetSharingTypeEnum } from '@auxx/database/enums'
 import type { SnippetSharingType } from '@auxx/database/types'
-import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
+import { type ActorId, toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -27,12 +27,37 @@ import {
 import { Plus, Trash, UserIcon, Users2Icon, UsersIcon } from 'lucide-react'
 import React from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
+import { tryParseActorId } from '~/components/resources/utils/actor-id'
 import { api } from '~/trpc/react'
 
+/**
+ * The grantee kinds snippet sharing supports — the exact vocabulary of
+ * `snippet.ts`'s router enum and `snippet-permissions.ts`'s resolver.
+ *
+ * `'profile'` is deliberately NOT here: snippet permissions are resolved by a
+ * user/group-only reader (19a #12) and the router rejects anything else, so
+ * offering it would ship a control that fails end-to-end. Snippet sharing is
+ * therefore explicitly **unsupported** for permission-profile grantees.
+ */
+export type SnippetGranteeType = 'group' | 'user'
+
+/** One staged/persisted snippet share, in the shape the router accepts. */
+export interface SnippetShareInput {
+  granteeType: SnippetGranteeType
+  granteeId: string
+  permission: 'VIEW' | 'EDIT'
+}
+
 interface ShareItem {
-  /** userId for members, groupId for groups */
+  /** The `granteeId` as stored — `User.id` for `user`, group instance id for `group`. */
   id: string
-  type: 'group' | 'member'
+  /**
+   * The storage grantee type, NOT a display proxy. Carrying it verbatim keeps
+   * {@link handleSave} a pass-through: the old `type === 'group' ? 'group' :
+   * 'user'` ternary had no failure branch, so any future third kind would have
+   * been written as a `user` row keyed on a non-user id.
+   */
+  type: SnippetGranteeType
   name: string
   permission: 'VIEW' | 'EDIT'
   icon?: string
@@ -42,21 +67,10 @@ interface SnippetSharingProps {
   snippetId?: string
   initialSharingType: SnippetSharingType
   /** Staged shares for a new snippet (used only when snippetId is absent) */
-  initialShares?: Array<{
-    granteeType: 'group' | 'user'
-    granteeId: string
-    permission: 'VIEW' | 'EDIT'
-  }>
+  initialShares?: SnippetShareInput[]
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (
-    sharingType: SnippetSharingType,
-    shares?: Array<{
-      granteeType: 'group' | 'user'
-      granteeId: string
-      permission: 'VIEW' | 'EDIT'
-    }>
-  ) => void
+  onSave: (sharingType: SnippetSharingType, shares?: SnippetShareInput[]) => void
 }
 
 export function SnippetSharing({
@@ -77,11 +91,14 @@ export function SnippetSharing({
     { enabled: !!snippetId }
   )
 
-  // Hydrate shares from a common source shape (server shares or staged shares)
+  // Hydrate shares from a common source shape (server shares or staged shares).
+  // A row whose `granteeType` is outside the snippet vocabulary is skipped
+  // rather than treated as a member — it has no name to show and its id half
+  // does not address a User row.
   const hydrateShares = React.useCallback(
     (
       shares: Array<{
-        granteeType: 'group' | 'user'
+        granteeType: string
         granteeId: string
         permission: string
       }>
@@ -100,7 +117,7 @@ export function SnippetSharing({
               permission,
             })
           }
-        } else {
+        } else if (share.granteeType === 'user') {
           // Legacy fallback: older rows may have stored member.id instead of userId
           const member = membersData?.members?.find(
             (m) => m.userId === share.granteeId || m.id === share.granteeId
@@ -108,7 +125,7 @@ export function SnippetSharing({
           if (member) {
             items.push({
               id: member.userId,
-              type: 'member',
+              type: 'user',
               name: member.user.name || member.user.email || 'Unknown',
               permission,
               icon: member.user.image || undefined,
@@ -149,20 +166,19 @@ export function SnippetSharing({
     }
   }, [open])
 
-  // Build ActorId[] for the picker from the current selection
+  // Build ActorId[] for the picker from the current selection. `item.type` is
+  // already the storage grantee type, which maps 1:1 onto the ActorId prefix.
   const pickerValue = React.useMemo<ActorId[]>(
-    () =>
-      selectedItems.map((item) => toActorId(item.type === 'member' ? 'user' : 'group', item.id)),
+    () => selectedItems.map((item) => toActorId(item.type, item.id)),
     [selectedItems]
   )
 
-  // Translate ActorPicker selection back into ShareItem[], preserving permissions for existing items
+  // Translate ActorPicker selection back into ShareItem[], preserving permissions
+  // for existing items. `tryParseActorId` never throws: `parseActorId` rejects any
+  // prefix outside its whitelist, which would have crashed this handler outright.
   const handlePickerChange = (nextIds: ActorId[]) => {
     const byActorId = new Map<string, ShareItem>(
-      selectedItems.map((item) => [
-        toActorId(item.type === 'member' ? 'user' : 'group', item.id),
-        item,
-      ])
+      selectedItems.map((item) => [toActorId(item.type, item.id), item])
     )
     const next: ShareItem[] = []
     for (const actorId of nextIds) {
@@ -171,9 +187,10 @@ export function SnippetSharing({
         next.push(existing)
         continue
       }
-      const { type, id } = parseActorId(actorId)
-      if (type === 'group') {
-        const group = groupsData?.find((g) => g.id === id)
+      const parsed = tryParseActorId(actorId)
+      if (!parsed) continue
+      if (parsed.type === 'group') {
+        const group = groupsData?.find((g) => g.id === parsed.id)
         if (!group) continue
         next.push({
           id: group.id,
@@ -181,17 +198,18 @@ export function SnippetSharing({
           name: group.displayName || 'Group',
           permission: 'VIEW',
         })
-      } else {
-        const member = membersData?.members?.find((m) => m.userId === id)
+      } else if (parsed.type === 'user') {
+        const member = membersData?.members?.find((m) => m.userId === parsed.id)
         if (!member) continue
         next.push({
           id: member.userId,
-          type: 'member',
+          type: 'user',
           name: member.user.name || member.user.email || 'Unknown',
           permission: 'VIEW',
           icon: member.user.image || undefined,
         })
       }
+      // Any other actor kind (agent, worker, …) has no snippet grantee — skipped.
     }
     setSelectedItems(next)
   }
@@ -205,10 +223,12 @@ export function SnippetSharing({
   }
 
   const handleSave = () => {
-    let shares
+    let shares: SnippetShareInput[] | undefined
     if (sharingType === SnippetSharingTypeEnum.GROUPS) {
+      // Pass-through — `item.type` IS the grantee type, so there is no ternary
+      // that could write a `user` row keyed on a non-user id.
       shares = selectedItems.map((item) => ({
-        granteeType: item.type === 'group' ? ('group' as const) : ('user' as const),
+        granteeType: item.type,
         granteeId: item.id,
         permission: item.permission,
       }))

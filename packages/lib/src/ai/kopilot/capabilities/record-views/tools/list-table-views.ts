@@ -65,6 +65,12 @@ function summarizeView(
 export function createListTableViewsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_table_views',
+    permission: {
+      target: 'definition',
+      level: 'read',
+      enforcement: 'unenforced',
+      note: 'KNOWN GAP (19b G7). Resolves the page’s table but never calls canViewEntity — it lists the caller’s own cached views, so an otherwise-None agent still learns the def’s saved-view names and filters. Its create/update/preview siblings all gate; this one does not.',
+    },
     displayName: 'List table views',
     category: 'capability',
     idempotent: true,

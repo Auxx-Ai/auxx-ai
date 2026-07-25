@@ -31,6 +31,13 @@ export type {
 export { findOrCreateThreadSession } from './sessions/find-or-create-thread-session'
 export { executeToolCall } from './tool-bridge'
 export type { Subject, ToolContext, WorkflowToolContext } from './tool-context'
+export type {
+  AgentToolEnforcement,
+  AgentToolPermission,
+  AreaSlug,
+  UnmodeledPermissionDomain,
+} from './tool-permission'
+export { isUnenforcedToolPermission } from './tool-permission'
 
 export type {
   AgentDefinition,

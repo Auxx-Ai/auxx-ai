@@ -23,6 +23,15 @@ import type { CacheProvider } from '../org-cache-provider'
  * must never mark a def as restricted. The def-restriction write path (Phase 3
  * Access UI) must therefore always write the EntityDefinition CUID.
  *
+ * **The grantee-agnostic `selectDistinct` is load-bearing — do NOT add a grantee
+ * filter here.** It is also the reason every *reader* must understand every
+ * grantee kind (doc 19 §8.2 / 19a finding 1): because ANY row marks the def
+ * restricted while `defAccess` only carries the kinds a reader can resolve, a
+ * grantee kind that some resolver cannot read does not fail closed for that
+ * grantee — it makes the def go dark **for every non-admin in the org**. That
+ * asymmetry, not the write itself, is why profile-grantee `ResourceAccess`
+ * writes were refused until all four resolvers learned the kind.
+ *
  * Invalidated by the `resource-access.type.changed` cache event (fired on every
  * type-level grant/revoke).
  */

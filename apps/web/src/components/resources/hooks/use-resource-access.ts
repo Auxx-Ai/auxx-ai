@@ -4,8 +4,9 @@
 
 import { ResourceGranteeType } from '@auxx/database/enums'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
-import { type ActorId, toActorId } from '@auxx/types/actor'
+import type { ActorId } from '@auxx/types/actor'
 import { useMemo } from 'react'
+import { granteeToActorId, type UnmanageableGrant } from '~/components/permissions/utils/grantee'
 import { api } from '~/trpc/react'
 
 interface UseResourceAccessOptions {
@@ -24,6 +25,13 @@ interface UseResourceAccessResult {
   groupIds: string[]
   /** User grantee IDs only */
   userIds: string[]
+  /**
+   * Grants with no ActorId representation — `role` baselines, and `profile`
+   * grants (plan 19 §8.2). Callers that show a count or an "is this shared?"
+   * affordance must consult this alongside {@link granteeActorIds}, or a live
+   * grant reads as "not shared with anyone".
+   */
+  unmanageableGrants: UnmanageableGrant[]
   /** Loading state */
   isLoading: boolean
   /** Invalidate and refetch */
@@ -44,22 +52,32 @@ export function useResourceAccess({
     { enabled: enabled && !!recordId }
   )
 
-  const { granteeActorIds, groupIds, userIds } = useMemo(() => {
+  const { granteeActorIds, groupIds, userIds, unmanageableGrants } = useMemo(() => {
     const actorIds: ActorId[] = []
     const groups: string[] = []
     const users: string[] = []
+    const unmanageable: UnmanageableGrant[] = []
 
+    // Exhaustive by construction: `granteeToActorId` returns `null` for every
+    // kind with no actor, and that branch is now an explicit `else` rather than
+    // the absent one an `if group … else if user …` chain left behind.
     for (const grant of grants) {
-      if (grant.granteeType === ResourceGranteeType.group) {
-        actorIds.push(toActorId('group', grant.granteeId))
-        groups.push(grant.granteeId)
-      } else if (grant.granteeType === ResourceGranteeType.user) {
-        actorIds.push(toActorId('user', grant.granteeId))
-        users.push(grant.granteeId)
+      const actorId = granteeToActorId(grant.granteeType, grant.granteeId)
+      if (!actorId) {
+        unmanageable.push({ granteeType: grant.granteeType, granteeId: grant.granteeId })
+        continue
       }
+      actorIds.push(actorId)
+      if (grant.granteeType === ResourceGranteeType.group) groups.push(grant.granteeId)
+      else users.push(grant.granteeId)
     }
 
-    return { granteeActorIds: actorIds, groupIds: groups, userIds: users }
+    return {
+      granteeActorIds: actorIds,
+      groupIds: groups,
+      userIds: users,
+      unmanageableGrants: unmanageable,
+    }
   }, [grants])
 
   const refetch = () => utils.resourceAccess.forInstance.invalidate({ recordId })
@@ -69,6 +87,7 @@ export function useResourceAccess({
     granteeActorIds,
     groupIds,
     userIds,
+    unmanageableGrants,
     isLoading,
     refetch,
   }

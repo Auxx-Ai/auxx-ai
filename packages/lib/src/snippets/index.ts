@@ -12,6 +12,8 @@ export {
   createSnippet,
   deleteSnippet,
   incrementSnippetUsage,
+  SNIPPET_SHARE_GRANTEE_TYPES,
+  type SnippetShareGranteeType,
   type SnippetShareInput,
   setSnippetSharing,
   type UpdateSnippetInput,

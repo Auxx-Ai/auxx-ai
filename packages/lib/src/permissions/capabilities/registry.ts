@@ -194,10 +194,10 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
   {
     key: PermissionKey.permissionsManage,
     label: 'Manage Permissions',
-    description: 'Configure capability grants for roles, groups, and members.',
+    description: 'Configure permission profiles and capability grants for groups and members.',
     group: 'Organization',
     featureKey: FeatureKey.granularPermissions,
-    adminOnly: true,
+    // NOT adminOnly since doc 19 §0.25 — see `PERMISSION_AREAS[Area.permissions]`.
   },
 
   // ── Integrations ──
@@ -409,6 +409,19 @@ export interface AreaMetadata {
    * seats would be a lever that does nothing.
    */
   workerOnly?: boolean
+  /**
+   * The area is grantable in the model, but the routers behind it are still
+   * fronted by a binary `adminProcedure` / `isAdminOrOwner` gate — so turning it
+   * off in a profile changes nothing and an unlocked control would be lying
+   * (doc 19 §5.3). Rows render locked with *"Still role-gated — admins reach
+   * this regardless."* Drop the flag per area as its routers migrate to
+   * `permissionProcedure`.
+   *
+   * This applies to any profile bound to an ADMIN member, not only the `admin`
+   * system profile — a custom profile on an admin has the identical problem.
+   * Step 10 populates it; no area sets it yet.
+   */
+  roleGated?: boolean
   /** Layer-1 plan link — the area's keys AND the org's plan feature. */
   featureKey?: FeatureKey
 }
@@ -519,10 +532,20 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.permissions]: {
     area: Area.permissions,
     label: 'Permissions',
-    description: 'Configure capability grants for roles, groups, and members.',
+    description: 'Configure permission profiles and capability grants for groups and members.',
     group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.permissionsManage] }],
-    adminOnly: true,
+    // Doc 19 §0.25 reverses doc 09's deferral: this area is GRANTABLE. It governs
+    // creating/editing permission profiles and assigning them to HUMANS. The USER
+    // default stays `None` (it is in `USER_ADMIN_NONE_AREAS`, the real source of
+    // truth for the baseline — dropping `adminOnly` must never flip a default on).
+    // Agent-side profile editing and assignment stay OWNER/ADMIN-only and are
+    // enforced separately in `profile-save.ts` / `profile-mutations.ts`, not by
+    // this area (doc 14 §0.9). `permissionsRouter` is fronted by the
+    // `permissionsManage` capability rather than `adminProcedure`, so the grant
+    // actually reaches a non-admin holder, so this area is deliberately NOT
+    // `roleGated`. Every OTHER router in the org group is still binary-role-gated;
+    // step 10 audits those and sets `roleGated` on the areas that need it.
     featureKey: FeatureKey.granularPermissions,
   },
   [Area.integrations]: {
