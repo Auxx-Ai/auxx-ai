@@ -8,8 +8,9 @@ import { useState } from 'react'
 import { PublishClusterShell } from '~/components/versioning/ui/publish-cluster-shell'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { useAgentMutations } from '../../hooks/use-agent-mutations'
+import { type PublishAgentResult, useAgentMutations } from '../../hooks/use-agent-mutations'
 import { AgentVersionsDialog } from './agent-versions-dialog'
+import { PublishClampDialog } from './permissions/publish-clamp-dialog'
 
 interface AgentPublishClusterProps {
   agentId: string
@@ -34,6 +35,10 @@ export function AgentPublishCluster({
   onSaved,
 }: AgentPublishClusterProps) {
   const [isVersionsOpen, setIsVersionsOpen] = useState(false)
+  // The §2.4a author clamp, held until the user dismisses it. Publishing an
+  // agent above your own authority is impossible, and staying silent about the
+  // downgrade is what turns that into "my agent can't do what I told it to".
+  const [clamped, setClamped] = useState<PublishAgentResult | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
   const router = useRouter()
   const detail = api.agent.getById.useQuery({ agentId })
@@ -52,6 +57,11 @@ export function AgentPublishCluster({
   const hasUnsaved = !!detail.data?.hasUnpublishedChanges
   const isArchived = detail.data?.archivedAt != null
   const displayName = detail.data?.name ?? 'Untitled agent'
+
+  const handlePublish = async () => {
+    const result = await publishAgent(agentId)
+    if (result && result.clampReductions.length > 0) setClamped(result)
+  }
 
   const handleDiscard = async () => {
     const ok = await confirm({
@@ -105,7 +115,7 @@ export function AgentPublishCluster({
       <PublishClusterShell
         status={{ isPublished, hasUnsaved, isArchived }}
         pillTooltip={PILL_TOOLTIP}
-        publish={{ onClick: () => void publishAgent(agentId), isPending: isPublishing }}
+        publish={{ onClick: () => void handlePublish(), isPending: isPublishing }}
         discard={{ onClick: handleDiscard, isPending: isDiscarding }}>
         <DropdownMenuItem onClick={() => setIsVersionsOpen(true)}>
           <History /> Version history
@@ -131,6 +141,12 @@ export function AgentPublishCluster({
         open={isVersionsOpen}
         onOpenChange={setIsVersionsOpen}
         agentId={agentId}
+      />
+      <PublishClampDialog
+        open={clamped !== null}
+        onOpenChange={(open) => !open && setClamped(null)}
+        reductions={clamped?.clampReductions ?? []}
+        versionNumber={clamped?.versionNumber ?? null}
       />
       <ConfirmDialog />
     </>

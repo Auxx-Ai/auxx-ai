@@ -146,20 +146,26 @@ const KNOWN_UNENFORCED: readonly string[] = [
   // 19b G3 — record-adjacent write, deliberately ungated to match the human
   // comment routers (doc 14 §8.3). The four G3 *reads* were fixed; this is the pair's survivor.
   'create_note',
-  // 19b G7 — coarse org-wide reads. Metadata-scale, no record bodies, but they
-  // turn an otherwise-`None` chat agent into a workspace directory.
+  // 19b G7 — the residue of the coarse org-wide reads. `list_table_views` and
+  // `list_tags` are GONE from this list: both found a real rung (the page's def /
+  // the `tag` def) and now assert `canViewEntity`. These two did not, and the
+  // reason is a MODEL gap, not an oversight:
+  //   - `list_members` / `list_groups` — `Area.members` is a Full-only ladder about
+  //     *managing* members (`rungs: [{ level: Full, keys: [membersManage] }]`).
+  //     There is no read rung, so a name→actorId lookup has nothing to assert
+  //     against; forcing `membersManage` would demand Full manage authority for a
+  //     directory read. Both were NARROWED instead (see their `permission.note`) —
+  //     notably `list_groups` no longer leaks `visibility: 'private'` groups.
+  //   - `list_tasks` — tasks are neither an `Area` nor an entity definition.
+  // The fix for all three is a `directory` / `tasks` area decision, not a tool edit.
   'list_members',
   'list_groups',
   'list_tasks',
-  'list_table_views',
-  'list_tags',
-  // Ungated task write; no Area or definition exists to assert against.
+  // Ungated task write; no Area or definition exists to assert against, and the
+  // human `task.create` router is ungated too.
   'create_task',
   // 19b G2 — mail sits outside the four-level model entirely.
   'start_new_conversation',
-  // Role check (`isAdminOrOwner`) rather than a CapabilityView assertion, and no
-  // `canViewEntity` on the def whose org-wide default it flips.
-  'set_default_table_view',
 ]
 
 /**

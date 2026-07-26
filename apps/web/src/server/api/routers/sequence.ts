@@ -3,7 +3,7 @@
 // Thin, validated edge over @auxx/lib/sequences: every procedure resolves org via
 // ctx.session, unwraps the domain layer's neverthrow Results into TRPCErrors, and
 // enforces per-sequence ResourceAccess (plan §10 — reads need 'view', step/settings
-// mutations 'edit', delete 'admin'; org OWNER/ADMIN short-circuit inside
+// mutations 'edit', delete 'admin'; only the org OWNER short-circuits, inside
 // checkSequenceAccess/hasPermission; `create` is open to all members).
 
 import { type Database, schema } from '@auxx/database'
@@ -148,10 +148,19 @@ async function getStepSequenceId(ctx: SequenceSessionCtx, stepId: string): Promi
 }
 
 /**
- * Filter an org's sequences down to what `userId` may view. Org OWNER/ADMIN see
- * everything (cached role map, no ResourceAccess query — the
- * `listAccessibleGroups` precedent); members see sequences they hold any
- * instance/type grant on (view is the hierarchy floor, so any grant qualifies).
+ * Filter an org's sequences down to what `userId` may view. The org OWNER sees
+ * everything (cached role map, no ResourceAccess query — the §0.10 recovery
+ * bypass); everyone else sees sequences they hold any instance/type grant on
+ * (view is the hierarchy floor, so any grant qualifies).
+ *
+ * ADMIN was narrowed out here in doc 19 step 10 to match the per-sequence gate:
+ * `checkSequenceAccess` → `hasPermission` → `checkAccess` is already OWNER-only
+ * (§5.3 piece 2), so an admin who kept the list bypass would see rows that every
+ * `get`/`update`/`delete` then refused. The profile-side remedy is one row —
+ * `resourceAccess.grantType({ entityDefinitionId: 'sequence', granteeType:
+ * 'profile', granteeId: <admin profile>, permission: 'admin' })` — which
+ * `getUserAccessibleInstances` reads as `hasTypeAccess` here and `checkAccess`
+ * honours on the enforcement path.
  */
 async function filterViewableSequences(
   ctx: SequenceSessionCtx,
@@ -160,8 +169,7 @@ async function filterViewableSequences(
   const { organizationId, userId } = ctx.session
 
   const memberRoleMap = await getOrgCache().get(organizationId, 'memberRoleMap')
-  const role = memberRoleMap[userId]?.role
-  if (role === 'OWNER' || role === 'ADMIN') return sequences
+  if (memberRoleMap[userId]?.role === 'OWNER') return sequences
 
   const { getUserAccessibleInstances } = await import('@auxx/lib/resource-access')
   const { parseRecordId } = await import('@auxx/types/resource')

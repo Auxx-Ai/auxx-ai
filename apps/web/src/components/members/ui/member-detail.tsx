@@ -19,14 +19,16 @@ import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
 import { GranteeDefAccessSection } from '~/components/permissions/ui/grantee-def-access-section'
 import { GranteeLevelsSection } from '~/components/permissions/ui/grantee-levels-section'
-import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
+import { useMemberProfiles } from '../hooks'
 import type { Member } from '../types'
 import { getInitials, RoleIcon } from '../utils'
+import { MemberAccessSection } from './member-access-section'
 import { MemberAccountsSection } from './member-accounts-section'
 import { MemberDangerSection } from './member-danger-section'
+import { MemberProfileBadge } from './member-profile-badge'
 import { MemberTeamsSection } from './member-teams-section'
 
 const BREADCRUMBS_BASE = [
@@ -48,6 +50,7 @@ export function MemberDetail({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const tab = searchParams.get('tab') === 'permissions' ? 'permissions' : 'general'
   const { data, isLoading } = api.member.all.useQuery()
+  const { resolveMemberProfile } = useMemberProfiles()
   const members = (data?.members ?? []) as unknown as Member[]
   const member = members.find((m) => m.userId === userId)
 
@@ -117,7 +120,7 @@ export function MemberDetail({ userId }: { userId: string }) {
               <RoleIcon role={member.role} />
               <span>{member.role}</span>
             </Badge>
-            <SeatTypeBadge seatType={member.seatType} />
+            <MemberProfileBadge profile={resolveMemberProfile(member)} seatType={member.seatType} />
           </div>
         }
         breadcrumbs={[...BREADCRUMBS_BASE, { title: displayName }]}
@@ -150,6 +153,7 @@ export function MemberDetail({ userId }: { userId: string }) {
                 description='Granular permissions let you set what this member can access across the workspace and per record type.'
               />
             )}
+            <MemberAccessSection member={member} viewerRole={viewerRole} viewerId={viewerId} />
             <GranteeLevelsSection
               granteeKind='user'
               granteeId={member.userId}

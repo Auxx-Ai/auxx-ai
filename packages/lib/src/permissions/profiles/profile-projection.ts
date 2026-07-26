@@ -8,38 +8,29 @@ import type {
   CachedPermissionProfile,
   ProfileAppliesTo,
   ProfileCeiling,
-  ProfileDefCeiling,
 } from './types'
 
 /**
  * Defensively coerce a stored `PermissionProfile.ceiling` jsonb into the trusted
  * {@link ProfileCeiling} shape: `areas` goes through `parseAreaLevels` (unknown
- * area slugs dropped, rungs clamped) and `defs` is kept only when it carries a
- * valid mode plus a string array. Returns `null` for anything unusable, which
- * composition reads as "uncapped".
+ * area slugs dropped, rungs clamped). Returns `null` for anything unusable —
+ * including an object carrying no recognized key — which composition reads as
+ * "uncapped".
  *
- * `defs` stays slug-keyed here; `getCapabilities` resolves it into the
- * `entityDefinitionId` keyspace on read, where the record resolvers enforce it.
+ * **This is why plan 20 §2.a.5 needs no data migration.** The column keeps rows
+ * written before `ceiling.defs` was deleted (plan 20 §2.a.2). Every unrecognized
+ * key — `defs` above all — is simply not read: a `{ defs: … }`-only row parses to
+ * `null` (uncapped) and a `{ areas, defs }` row keeps its areas half, in both
+ * cases without throwing. Keep this whitelist-shaped, never a strict parser that
+ * rejects extra keys, or the legacy rows become a startup failure.
  */
 export function parseProfileCeiling(raw: unknown): ProfileCeiling | null {
   if (!raw || typeof raw !== 'object') return null
-  const source = raw as { areas?: unknown; defs?: unknown }
+  const source = raw as { areas?: unknown }
 
   const areas = source.areas ? parseAreaLevels(source.areas) : undefined
-
-  let defs: ProfileDefCeiling | null = null
-  if (source.defs && typeof source.defs === 'object') {
-    const candidate = source.defs as { mode?: unknown; slugs?: unknown }
-    const mode = candidate.mode === 'only' || candidate.mode === 'except' ? candidate.mode : null
-    const slugs = Array.isArray(candidate.slugs)
-      ? candidate.slugs.filter((s): s is string => typeof s === 'string')
-      : null
-    if (mode && slugs) defs = { mode, slugs }
-  }
-
-  const hasAreas = !!areas && Object.keys(areas).length > 0
-  if (!hasAreas && !defs) return null
-  return { ...(hasAreas ? { areas } : {}), ...(defs ? { defs } : {}) }
+  if (!areas || Object.keys(areas).length === 0) return null
+  return { areas }
 }
 
 /** Clamp a stored `baseLevel` integer into the `Level` ladder, or `null`. */

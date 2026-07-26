@@ -6,7 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { Plus, Wrench } from 'lucide-react'
+import { Lock, Plus, Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
@@ -27,6 +27,8 @@ import { useToolsetMutations } from './use-toolset-mutations'
 interface ToolsSectionProps {
   agent: AgentDetail
   onAutosaveChange?: (state: AutosaveState) => void
+  /** Jump to another builder tab — used by the Tools ⇄ Permissions cross-link. */
+  onNavigate?: (tab: string) => void
 }
 
 /**
@@ -35,7 +37,7 @@ interface ToolsSectionProps {
  * the toolsets currently installed on the agent as a pruned App → SubGroup →
  * Toolset tree. See `plans/kopilot/agents/tools/tool-select-dialog.md`.
  */
-export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
+export function ToolsSection({ agent, onAutosaveChange, onNavigate }: ToolsSectionProps) {
   const { catalog, isLoading: catalogIsLoading } = useToolCatalog({
     surface: agent.kind === 'chat' ? 'chat' : undefined,
   })
@@ -281,6 +283,26 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
             />
           </div>
         )}
+        {/* Two separate keys (plan 19 §2.4): this list decides which tools the
+            model may CALL; the Permissions tab decides what those calls may DO.
+            Both are published on the version, and both are required. */}
+        <div className='px-3 pt-3 text-xs text-muted-foreground'>
+          Enabling a tool here does not grant access. Every call is still checked against the
+          agent&apos;s permission policy, so a tool can never exceed it — and permission without a
+          tool does nothing: a record type set to <strong>Full</strong> authorizes schema
+          administration, but no native schema-mutation tool exists yet, so nothing in this list can
+          use that rung today.
+          {onNavigate && (
+            <Button
+              variant='ghost'
+              size='xs'
+              className='ms-1 -my-1'
+              onClick={() => onNavigate('permissions')}>
+              <Lock />
+              Permissions
+            </Button>
+          )}
+        </div>
       </Section>
       <ToolSelectDialog
         installedToolsets={agent.toolsets}

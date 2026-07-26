@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/list-tags.ts
 
 import { z } from 'zod'
+import { getCachedEntityDefId } from '../../../../../cache'
 import { TagService } from '../../../../../tags'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { takeSample } from '../../../digests'
@@ -28,11 +29,10 @@ export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tags',
     permission: {
-      target: 'unmodeled',
-      domain: 'mail',
+      target: 'definition',
       level: 'read',
-      enforcement: 'unenforced',
-      note: 'KNOWN GAP (19b G2/G7). Org-wide tag list with no visibility lens — the only mail read that never resolves a viewer.',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the `tag` definition, silent-empty on denial. Re-targeted from `unmodeled/mail` (19b G2/G7): tags are ordinary EntityInstances of the `tag` system def, which is NOT in NON_RECORD_DEF_SLUGS — so unlike threads/inboxes they DO resolve through the definition ladder, and a real rung existed all along. `update_thread` already resolves the same def id.',
     },
     displayName: 'List tags',
     toolsetSlug: 'auxx:mail:threads',
@@ -100,9 +100,21 @@ export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const { db } = getDeps()
+      const { db, capabilities } = getDeps()
       const query = args.query as string | undefined
       const limit = Math.min((args.limit as number) ?? DEFAULT_LIMIT, MAX_LIMIT)
+
+      // Definition Read on `tag` (permissions v2 §3). Tags are EntityInstances of
+      // the `tag` system def and that def is not mail-infra (it is absent from
+      // NON_RECORD_DEF_SLUGS), so it resolves through the ordinary definition
+      // ladder — the same gate `list_notes` uses for its owning def. Silent-empty
+      // rather than an error, per the list-tool denial convention: a denied caller
+      // must not be able to tell "denied" from "no tags". Absent capabilities ⇒
+      // unrestricted, as before.
+      const tagDefinitionId = await getCachedEntityDefId(agentDeps.organizationId, 'tag')
+      if (tagDefinitionId && capabilities && !capabilities.canViewEntity(tagDefinitionId)) {
+        return { success: true, output: { tags: [], count: 0 } }
+      }
 
       const service = new TagService(agentDeps.organizationId, agentDeps.userId, db)
 

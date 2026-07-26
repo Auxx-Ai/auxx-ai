@@ -93,11 +93,25 @@ describe('CapabilitySet.canEditEntity (most-specific-wins, edit floor)', () => {
     expect(caps.canViewEntity('invoice-def')).toBe(false)
   })
 
-  it('OWNER/ADMIN → editable regardless of grant', () => {
-    const admin = build({ role: 'ADMIN', keys: [], restricted: ['invoice-def'], defAccess: {} })
-    expect(admin.canEditEntity('invoice-def')).toBe(true)
+  it('OWNER → editable regardless of grant', () => {
     const owner = build({ role: 'OWNER', keys: [], restricted: ['invoice-def'], defAccess: {} })
     expect(owner.canEditEntity('invoice-def')).toBe(true)
+  })
+
+  it('ADMIN on a restricted def needs their own grant (doc 19 §5.3 piece 2)', () => {
+    // The ADMIN half of the old `effectiveRecordLevel` bypass is gone (step 10),
+    // so an admin who is not a grantee of a restricted def cannot edit it.
+    const admin = build({ role: 'ADMIN', keys: [], restricted: ['invoice-def'], defAccess: {} })
+    expect(admin.canEditEntity('invoice-def')).toBe(false)
+    const granted = build({
+      role: 'ADMIN',
+      keys: [],
+      restricted: ['invoice-def'],
+      defAccess: { 'invoice-def': 'edit' },
+    })
+    expect(granted.canEditEntity('invoice-def')).toBe(true)
+    // Unrestricted defs still flow from the (all-Full) `admin` profile's base.
+    expect(build({ role: 'ADMIN', keys: READ_WRITE }).canEditEntity('contact-def')).toBe(true)
   })
 
   it('worker seat (records ceiling None) → not editable even at def grant admin', () => {

@@ -44,6 +44,18 @@ export {
   type ProfileAuthoredState,
 } from './escalation-guard'
 export {
+  type DeletePermissionProfileInput,
+  deletePermissionProfile,
+  type PermissionProfileDeletionPreview,
+  type PermissionProfileDeletionSummary,
+  type ProfileDeletionAgentDraft,
+  type ProfileDeletionAreaDelta,
+  type ProfileDeletionFallback,
+  type ProfileDeletionPublishedVersion,
+  type ProfileDeletionResourceDelta,
+  previewPermissionProfileDeletion,
+} from './profile-delete'
+export {
   emitPermissionProfileChanged,
   fanOutCapabilityChange,
   type ProfileAudience,
@@ -55,6 +67,19 @@ export {
   createPermissionProfile,
 } from './profile-mutations'
 export { parseProfileCeiling, projectPermissionProfile } from './profile-projection'
+export {
+  findPermissionProfile,
+  getPermissionProfile,
+  getProfileActorsByIds,
+  type ListPermissionProfilesOptions,
+  listPermissionProfiles,
+  listProfileActors,
+  type PermissionProfileDetail,
+  type PermissionProfileSummary,
+  toProfileActor,
+  toProfileDetail,
+  toProfileSummary,
+} from './profile-queries'
 export { type ResolvedBaseProfile, resolveBaseProfile } from './profile-resolution'
 export {
   type SavePermissionProfileInput,
@@ -74,7 +99,6 @@ export type {
   CachedPermissionProfile,
   ProfileAppliesTo,
   ProfileCeiling,
-  ProfileDefCeiling,
   PublishedAgentPermissionPolicy,
   SystemProfileSlug,
 } from './types'

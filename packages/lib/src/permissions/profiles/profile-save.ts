@@ -4,11 +4,9 @@ import { type Database, database, type PermissionProfileEntity, schema } from '@
 import type { OrganizationRole } from '@auxx/database/types'
 import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
-import { getCachedResources } from '../../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { assertGrantableLevels } from '../capabilities/grant-service'
 import { type Area, type Level, parseAreaLevels } from '../capabilities/registry'
-import { buildDefIdToDefinitionId } from '../capabilities/resolve-capability-inputs'
 import { FeaturePermissionService } from '../feature-permission-service'
 import { FeatureKey } from '../types'
 import { computeEffectiveStatesUncached, type QueryRunner } from './effective-state'
@@ -25,14 +23,18 @@ import {
   resolveProfileHolderIds,
 } from './profile-invalidation'
 import { parseProfileCeiling } from './profile-projection'
-import type { AgentPermissionPolicy, ProfileCeiling } from './types'
+import type { AgentPermissionPolicy } from './types'
 
 /**
  * The ONE transactional profile save (§6.1.4). The editor submits metadata,
- * area levels, the ceiling and (once step 9 lands) the per-def / per-instance
- * rows as a **single** mutation — the multi-request variant is deliberately not
- * offered, because a save spanning three requests cannot enforce one atomic
- * "resulting effective state" check.
+ * area levels and (once step 9 lands) the per-def / per-instance rows as a
+ * **single** mutation — the multi-request variant is deliberately not offered,
+ * because a save spanning three requests cannot enforce one atomic "resulting
+ * effective state" check.
+ *
+ * There is deliberately no `ceiling` field: the profile ceiling lost its
+ * authoring surface in plan 20 §2.a.1 and is now unauthored code (see
+ * `ProfileCeiling` in `types.ts`).
  */
 export interface SavePermissionProfileInput {
   organizationId: string
@@ -44,8 +46,6 @@ export interface SavePermissionProfileInput {
   icon?: { iconId: string; color: string } | null
   /** The profile's blanket rung for areas `levels` does not set. */
   baseLevel?: Level | null
-  /** The profile's own intrinsic cap (§0.14). */
-  ceiling?: ProfileCeiling | null
   /** Agent-profile exact policy. OWNER/ADMIN only (§0.25 / doc 14 §0.9). */
   agentPolicy?: AgentPermissionPolicy | null
   /**
@@ -119,9 +119,7 @@ export async function savePermissionProfile(
     const actorRole = await loadActorRole(tx, organizationId, actorUserId)
 
     if (profile.slug === 'owner') {
-      throw new ForbiddenError(
-        'The Owner profile is not editable and can never carry a ceiling — it is the recovery guarantee.'
-      )
+      throw new ForbiddenError('The Owner profile is not editable — it is the recovery guarantee.')
     }
     // §0.25: making the `permissions` area grantable must NOT hand agent policy
     // to a non-admin. Agent-side profile editing stays OWNER/ADMIN-only.
@@ -186,28 +184,27 @@ export async function savePermissionProfile(
       // >500 holders (or an unclassifiable profile): composing every holder's
       // state stops being affordable, so fall back to the strict profile-map
       // check (§6.1.3), which is deliberately more conservative (§11.6).
-      const resources = await getCachedResources(organizationId)
       const afterLevels =
         input.levels === undefined
           ? beforeLevels
           : input.levels === null
             ? {}
             : parseAreaLevels(input.levels)
+      // The ceiling is unauthored, so it is identical on both sides — carried
+      // only because `ProfileAuthoredState` is what composition reads.
+      const ceiling = parseProfileCeiling(profile.ceiling)
       assertProfileMapNoEscalation({
         actor,
         before: {
           levels: beforeLevels,
           baseLevel: (profile.baseLevel as Level | null) ?? null,
-          ceiling: parseProfileCeiling(profile.ceiling),
+          ceiling,
         },
         after: {
           levels: afterLevels,
           baseLevel: (input.baseLevel ?? profile.baseLevel ?? null) as Level | null,
-          ceiling:
-            input.ceiling !== undefined ? input.ceiling : parseProfileCeiling(profile.ceiling),
+          ceiling,
         },
-        defIds: resources.map((r) => r.entityDefinitionId),
-        toDefinitionId: buildDefIdToDefinitionId(resources),
       })
     }
 
@@ -330,7 +327,6 @@ async function applyWrites(
   if (input.description !== undefined) patch.description = input.description
   if (input.icon !== undefined) patch.icon = input.icon
   if (input.baseLevel !== undefined) patch.baseLevel = input.baseLevel
-  if (input.ceiling !== undefined) patch.ceiling = input.ceiling
   if (input.agentPolicy !== undefined) patch.agentPolicy = input.agentPolicy
 
   if (Object.keys(patch).length > 0) {

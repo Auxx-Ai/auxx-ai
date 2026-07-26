@@ -4,8 +4,11 @@
 import { type FlatToolCatalogEntry, reconcilePromptMentions } from '@auxx/lib/agents/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { type AgentDetail, getAgentStoreState } from '../store/agent-store'
+
+/** What `agent.publish` reports back — the new version plus its author clamp. */
+export type PublishAgentResult = RouterOutputs['agent']['publish']
 
 interface CreateAgentInput {
   /** Omit for chat-driven creation; backing User.name stays null. */
@@ -45,8 +48,14 @@ interface UseAgentMutationsResult {
    * draft" item). NOT the version-draft action — that's {@link discardChanges}.
    */
   deleteSetupDraft: (id: string) => Promise<boolean>
-  /** Publish the agent's draft as a new version. */
-  publishAgent: (id: string, label?: string) => Promise<boolean>
+  /**
+   * Publish the agent's draft as a new version. Resolves with the new version's
+   * number plus every reduction the §2.4a author clamp applied
+   * (`min(profilePolicy, publisher's own capabilities)`) — `undefined` on
+   * failure. The clamp is returned, never swallowed: the publish UI has to be
+   * able to say "Deals reduced from Full to Read — you hold Read".
+   */
+  publishAgent: (id: string, label?: string) => Promise<PublishAgentResult | undefined>
   /** Restore a past version into the draft (marks dirty; does not go live). */
   restoreVersion: (id: string, toVersionId: string) => Promise<boolean>
   /** Rename a published version's label. */
@@ -305,15 +314,15 @@ export function useAgentMutations(): UseAgentMutationsResult {
   const publishAgent = useCallback<UseAgentMutationsResult['publishAgent']>(
     async (id, label) => {
       try {
-        await publishMutation.mutateAsync({ agentId: id, label })
+        const result = await publishMutation.mutateAsync({ agentId: id, label })
         await invalidateAgent()
-        return true
+        return result
       } catch (error) {
         toastError({
           title: 'Failed to publish agent',
           description: error instanceof Error ? error.message : 'Unknown error occurred',
         })
-        return false
+        return undefined
       }
     },
     [publishMutation, invalidateAgent]

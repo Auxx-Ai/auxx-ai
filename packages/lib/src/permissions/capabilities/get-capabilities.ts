@@ -54,7 +54,6 @@ export async function getCapabilities(
     resolved.toDefinitionId,
     caps.instanceAccess ?? {},
     new Set(restrictedInstanceIds),
-    resolved.defBaseOverrides,
-    resolved.ceilingDefs
+    resolved.defBaseOverrides
   )
 }

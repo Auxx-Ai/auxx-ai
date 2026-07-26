@@ -42,6 +42,8 @@ import {
   Square,
   Tags,
   User,
+  UserCog,
+  Users,
   Variable,
   Workflow,
   Wrench,
@@ -50,7 +52,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-type AgentGuidePage = 'overview' | 'capabilities' | 'procedures' | 'triggers' | 'simulations'
+export type AgentGuidePage =
+  | 'overview'
+  | 'capabilities'
+  | 'procedures'
+  | 'triggers'
+  | 'simulations'
+  | 'permissions'
 
 const PAGE_LABELS: Record<AgentGuidePage, string> = {
   overview: 'Overview',
@@ -58,6 +66,7 @@ const PAGE_LABELS: Record<AgentGuidePage, string> = {
   procedures: 'Procedures',
   triggers: 'Triggers',
   simulations: 'Simulations',
+  permissions: 'Permissions',
 }
 
 /**
@@ -65,19 +74,22 @@ const PAGE_LABELS: Record<AgentGuidePage, string> = {
  * sections, with the SAME glyphs the page uses. "Overview" frames the build flow
  * and the draft: publish model; "Capabilities" covers tools, bindings, and
  * knowledge; "Procedures" details selection and the special steps; "Triggers"
- * covers autonomous invocation; "Simulations" covers testing the agent. An
+ * covers autonomous invocation; "Simulations" covers testing the agent;
+ * "Permissions" covers the policy model the Permissions tab shows as values. An
  * active-crumb header switches between the pages and the body crossfades +
  * height-springs.
  *
  * `canProcedures` (procedures is plan-gated) drops the Procedures page entirely;
  * `isChat` (chat agents fire from their widget, not from triggers) reshapes the
  * Triggers copy so the guide never explains controls the reader can't see.
+ * `initialPage` lets a section header deep-link its own page.
  */
 export function AgentGuideDialog({
   open,
   onOpenChange,
   canProcedures = false,
   isChat = false,
+  initialPage = 'overview',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -85,13 +97,14 @@ export function AgentGuideDialog({
   canProcedures?: boolean
   /** Chat agents have no triggers: swap the Triggers copy for the widget note. */
   isChat?: boolean
+  /** Page to open on — a section's `[?]` passes its own. */
+  initialPage?: AgentGuidePage
 }) {
-  // Re-seed to the overview each time the dialog opens, regardless of where it
-  // was last closed.
-  const [page, setPage] = useState<AgentGuidePage>('overview')
+  // Re-seed each time the dialog opens, regardless of where it was last closed.
+  const [page, setPage] = useState<AgentGuidePage>(initialPage)
   useEffect(() => {
-    if (open) setPage('overview')
-  }, [open])
+    if (open) setPage(initialPage)
+  }, [open, initialPage])
 
   // The ordered set of visible pages drives both the crumb header and the
   // per-page "Continue to…" forward link.
@@ -101,6 +114,7 @@ export function AgentGuideDialog({
     ...(canProcedures ? (['procedures'] as const) : []),
     'triggers',
     'simulations',
+    'permissions',
   ]
   const nextOf = (p: AgentGuidePage) => order[order.indexOf(p) + 1]
 
@@ -150,6 +164,10 @@ export function AgentGuideDialog({
 
       <GuidePage value='simulations' size='3xl' footer={footerFor('simulations')}>
         <SimulationsGuideBody canProcedures={canProcedures} />
+      </GuidePage>
+
+      <GuidePage value='permissions' size='3xl' footer={footerFor('permissions')}>
+        <PermissionsGuideBody />
       </GuidePage>
     </GuideDialog>
   )
@@ -547,6 +565,91 @@ function SimulationsGuideBody({ canProcedures }: { canProcedures: boolean }) {
           term='Suggested simulations'>
           For a procedure, the system reads your draft and proposes ready-to-run cases. Add the ones
           you want.
+        </GuideConcept>
+      </GuideSection>
+    </>
+  )
+}
+
+// ── Page 6: permissions ───────────────────────────────────────────────────────
+
+/**
+ * The policy model behind the Permissions tab: the four rungs (and why `None` is a
+ * deny), how profiles and run-as compose, and what publishing snapshots. The tab
+ * itself shows only values — the concepts live here.
+ */
+function PermissionsGuideBody() {
+  return (
+    <>
+      <GuideColumns>
+        {/* 1: the rungs themselves */}
+        <GuideColumn title='The four rungs'>
+          <GuideConcepts>
+            <GuideConcept glyph={<Ban className='size-3.5 text-muted-foreground' />} term='None'>
+              A deny, not an unset value. Nothing raises it back — an agent never inherits access
+              from a team, its author, or whoever invokes it. Composition only narrows.
+            </GuideConcept>
+            <GuideConcept
+              glyph={<ShieldCheck className='size-3.5 text-muted-foreground' />}
+              term='Read, Read + Write, Full'>
+              Read lists and searches; Read + Write also creates, updates, and deletes. Full adds
+              administration — including schema administration, which changes nothing today because
+              no native schema-mutation tool exists yet.
+            </GuideConcept>
+          </GuideConcepts>
+        </GuideColumn>
+
+        {/* 2: where the policy comes from */}
+        <GuideColumn title='Where it comes from'>
+          <GuideConcepts>
+            <GuideConcept
+              glyph={<Users className='size-3.5 text-muted-foreground' />}
+              term='Profiles are shared'>
+              One profile supplies the agent's whole policy — a rung per area, record type, and
+              resource. Editing that profile in Settings → Permissions re-shapes every draft bound
+              to it and marks them unpublished; already-published versions are untouched.
+            </GuideConcept>
+            <GuideConcept
+              glyph={<UserCog className='size-3.5 text-muted-foreground' />}
+              term='Run as'
+              example='A Read-only member as run-as makes a Full agent read-only.'>
+              Point the agent at a member and every run resolves the narrower of the two. Delegation
+              only narrows, never widens. Runs fail if that member is deactivated or removed.
+            </GuideConcept>
+          </GuideConcepts>
+        </GuideColumn>
+
+        {/* 3: draft vs published */}
+        <GuideColumn title='Going live'>
+          <GuideConcepts>
+            <GuideConcept
+              glyph={<Pencil className='size-3.5 text-muted-foreground' />}
+              term='Draft'>
+              Everything on the Permissions tab describes the draft: the builder Chat tab and draft
+              eval runs.
+            </GuideConcept>
+            <GuideConcept
+              glyph={<History className='size-3.5 text-muted-foreground' />}
+              term='Published policy'>
+              Publishing snapshots the policy onto the version production runs, clamped to the
+              publisher's own access. Restoring an older version restores that version's policy.
+            </GuideConcept>
+          </GuideConcepts>
+        </GuideColumn>
+      </GuideColumns>
+
+      {/* Permissions and tools are two separate keys — the most common surprise. */}
+      <GuideSection title='Permissions and tools are two separate keys' cols={2}>
+        <GuideConcept
+          glyph={<Wrench className='size-3.5 text-muted-foreground' />}
+          term='Both, or nothing'>
+          A call succeeds only when the tool is enabled on the Tools tab AND the policy authorizes
+          its target.
+        </GuideConcept>
+        <GuideConcept
+          glyph={<Ban className='size-3.5 text-muted-foreground' />}
+          term='Either alone'>
+          Permission without a tool does nothing. A tool without permission is denied server-side.
         </GuideConcept>
       </GuideSection>
     </>

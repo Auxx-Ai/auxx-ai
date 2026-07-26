@@ -35,31 +35,28 @@ export type SystemProfileSlug = (typeof SYSTEM_PROFILE_SLUGS)[number]
 export type ProfileAppliesTo = 'member' | 'agent' | 'any'
 
 /**
- * Human-profile definition ceiling (§0.13). `only` = the allowed set is exactly
- * `slugs`, so a definition added later is EXCLUDED (fails closed); `except` =
- * everything but `slugs`, so a later definition is INCLUDED (fails open).
- * apiSlugs, not CUIDs — resolved to `entityDefinitionId`s in `getCapabilities`
- * and enforced by `effectiveRecordLevel` (plus the worker `recordsViewLinked`
- * carve-out and `administersAnyDef`), never client-side only.
- */
-export interface ProfileDefCeiling {
-  mode: 'only' | 'except'
-  slugs: string[]
-}
-
-/**
  * A human profile's intrinsic cap — applied AFTER group/personal raising and
- * BEFORE the seat ceiling (§2.1). Belongs to the same profile that supplies the
- * base; there is no separate ceiling binding (§0.14).
+ * BEFORE the seat ceiling (§2.1).
+ *
+ * **Unauthored, deliberately.** Plan 20 §2.a.1/§2.a.3 removed the authoring
+ * surface: no UI writes this, no seed writes this (`system-profiles.ts` ships
+ * `ceiling: null` for all six), and no mutation accepts it — `saveProfile` and
+ * `savePermissionProfile` have no `ceiling` input. It survives ONLY as the clamp
+ * seam a future per-definition deny tier (doc 19 §11.4) will hang off, which is
+ * one `Math.min` in `composeUserCapabilities` and no cached-blob field.
+ *
+ * **It has an expiry.** Per plan 20 §2.a.4 / §7.1: if no deny/lock successor
+ * lands within two releases of that plan, delete this type, the `ceiling` jsonb
+ * column, `parseProfileCeiling`, and `profileCeiling` from the composer rather
+ * than letting a zero-writer mechanism rot.
+ *
+ * The definition half (`ceiling.defs`, a slug allow/deny list) was deleted
+ * end-to-end by plan 20 §2.a.2. A legacy stored `defs` key is silently dropped
+ * by `parseProfileCeiling`, which is why no data migration was needed.
  */
 export interface ProfileCeiling {
   /** Per-area max rung. An absent area is uncapped (`Level.Full`). */
   areas?: Partial<Record<Area, Level>>
-  /**
-   * Per-definition cap. Applied per-def at the record resolvers rather than
-   * here, since it needs the org's apiSlug → `entityDefinitionId` map.
-   */
-  defs?: ProfileDefCeiling | null
 }
 
 /**

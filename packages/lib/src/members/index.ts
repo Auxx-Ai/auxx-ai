@@ -1,4 +1,17 @@
-export { acceptInvitation, acceptInvitationById } from './accept-invitation'
+export {
+  type AcceptInvitationResult,
+  acceptInvitation,
+  acceptInvitationById,
+} from './accept-invitation'
+export {
+  INVITATION_PROFILE_BOUND_ACTION,
+  INVITATION_PROFILE_MISSING_ACTION,
+  type InvitableProfile,
+  type InvitationProfileFallback,
+  type InvitationProfileFallbackReason,
+  loadInvitableProfile,
+  resolveInvitationProfile,
+} from './invitation-profile'
 export {
   cancelInvitation,
   getInvitationLink,

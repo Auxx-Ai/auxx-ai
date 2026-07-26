@@ -3,12 +3,13 @@
 
 import { FeatureKey } from '@auxx/lib/types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Folder, ShieldCheck, User, Users } from 'lucide-react'
+import { Folder, IdCard, ShieldCheck, User, Users } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
 import { GranteeOverridesTab } from '~/components/permissions/ui/grantee-overrides-tab'
 import { MemberBaselineTab } from '~/components/permissions/ui/member-baseline-tab'
+import { ProfilesTab } from '~/components/permissions/ui/profile-tab'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
@@ -26,11 +27,16 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
  * "Member baseline" tab via `permissions-member-baseline.ts`, and the remaining
  * profiles get their own editor.
  *
- * TODO(plan-19-step-7): add the **Profiles** tab (doc 19 §7) and retitle
- * "Member baseline" to the Member-profile editor, deleting the bridge.
- * Until then, non-`member` profile rows are read-only and surfaced nowhere on
- * this page — `usePermissionGrants().profileGrants` is the bucket that holds
- * them, and it is explicitly unrendered rather than silently dropped.
+ * The **Profiles** tab (doc 19 §7) is the editor for those `profile` rows: the
+ * list of every profile in the org plus the human editor (identity, per-area
+ * base, intrinsic ceiling) saved as ONE transactional mutation. `profileGrants`
+ * in `usePermissionGrants` is where its area levels are read from.
+ *
+ * TODO(plan-19-step-7): retitle "Member baseline" to the Member-profile editor
+ * and delete `permissions-member-baseline.ts` — until then the org's `member`
+ * profile is addressed as `role:org_member` by that tab AND surfaced (correctly)
+ * as a profile on the Profiles tab, which reads its levels through the same
+ * bridge.
  */
 export default function PermissionsPage() {
   useUser({ requireRoles: ['ADMIN', 'OWNER'] })
@@ -49,6 +55,10 @@ export default function PermissionsPage() {
         subHeaderClassName='p-0'
         subHeader={
           <TabsList variant='outline'>
+            <TabsTrigger value='profiles' variant='outline'>
+              <IdCard />
+              Profiles
+            </TabsTrigger>
             <TabsTrigger value='baseline' variant='outline'>
               <Users />
               Member baseline
@@ -71,6 +81,9 @@ export default function PermissionsPage() {
             />
           </div>
         )}
+        <TabsContent value='profiles' className='flex flex-1 flex-col'>
+          <ProfilesTab disabled={!canEdit} />
+        </TabsContent>
         <TabsContent value='baseline' className='flex flex-1 flex-col'>
           <MemberBaselineTab disabled={!canEdit} />
         </TabsContent>

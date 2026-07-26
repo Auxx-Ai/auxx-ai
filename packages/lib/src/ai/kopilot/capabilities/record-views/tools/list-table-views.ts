@@ -68,8 +68,8 @@ export function createListTableViewsTool(getDeps: GetToolDeps): AgentToolDefinit
     permission: {
       target: 'definition',
       level: 'read',
-      enforcement: 'unenforced',
-      note: 'KNOWN GAP (19b G7). Resolves the page’s table but never calls canViewEntity — it lists the caller’s own cached views, so an otherwise-None agent still learns the def’s saved-view names and filters. Its create/update/preview siblings all gate; this one does not.',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the page’s def, matching its create/update/preview siblings (19b G7). Views are named, filtered projections OF the def, so listing them needs the same Read rung as reading it.',
     },
     displayName: 'List table views',
     category: 'capability',
@@ -79,12 +79,24 @@ export function createListTableViewsTool(getDeps: GetToolDeps): AgentToolDefinit
       'Each entry has `id` (use as viewId), `name`, `isDefault`, `isShared`, `filterCount`, and an optional `sort`. An empty list means the user has no saved views on this table yet.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     execute: async (_args, agentDeps) => {
-      const { sessionContext } = getDeps()
+      const { sessionContext, capabilities } = getDeps()
       const target = await resolveRecordViewTarget(sessionContext, agentDeps.organizationId)
       if ('error' in target) {
         return { success: false, output: null, error: target.error }
       }
       const { resource, entityDefinitionId, tableId } = target
+
+      // Human parity (permissions v2 §3.3), identical to the create/update/preview
+      // siblings: a saved view is a named projection OF the def — its name, filter
+      // count and sort field describe the def's data and schema. An agent published
+      // `None` on the def must not learn them. Absent capabilities ⇒ unrestricted, as before.
+      if (entityDefinitionId && capabilities && !capabilities.canViewEntity(entityDefinitionId)) {
+        return {
+          success: false,
+          output: null,
+          error: "You don't have permission to view these records.",
+        }
+      }
 
       const all = (await getUserCache().get(
         agentDeps.userId,

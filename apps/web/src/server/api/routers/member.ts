@@ -258,6 +258,9 @@ export const memberRouter = createTRPCRouter({
         email: z.string().email(),
         role: z.enum(OrganizationRole).default('USER'),
         seatType: z.enum(SeatType).default('full'),
+        /** Permission profile chosen in the invite UI. Its `seat` supersedes
+         * `seatType` and drives the cap check (§1.1, §7). */
+        permissionProfileId: z.string().nullish(),
       })
     )
     .use(notDemo('invite team members'))
@@ -277,6 +280,7 @@ export const memberRouter = createTRPCRouter({
           email: input.email,
           role: input.role,
           seatType: input.seatType,
+          permissionProfileId: input.permissionProfileId,
         },
         ctx.db
       )

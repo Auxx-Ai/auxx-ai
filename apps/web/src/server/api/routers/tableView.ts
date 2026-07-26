@@ -30,7 +30,26 @@ import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 import { isStructural, resolveDefId } from './table-view-helpers'
 
-/** Client metadata derived from server-authoritative ownership and capabilities. */
+/**
+ * Client metadata derived from server-authoritative ownership and capabilities.
+ *
+ * `isOrgAdmin` deliberately still includes ADMIN after doc 19 step 10, unlike the
+ * bypasses narrowed in `capability-set` / `entity-access` / `resource-access-service`.
+ * Two reasons, both blocking:
+ *  - **It is a mirror, not a gate.** Both server gates it reflects are still binary
+ *    role checks: {@link assertStructuralAccess}'s def-less fallback and `update`'s
+ *    `isAdminOrOwner` → `updateView({ ownerOnly: !isAdmin, orgWide: isAdmin })`
+ *    scope. Narrowing only the client flag would hide affordances the server still
+ *    grants. Narrowing the gates too *is* §5.3 **piece 3** (the `adminProcedure` /
+ *    `isAdminOrOwner` migration, §11.5's own plan) — not this step.
+ *  - **No profile-side remedy exists for the branch that matters.** `isOrgAdmin` is
+ *    only load-bearing when `entityDefinitionId` is `null` (non-entity surfaces);
+ *    when a def resolves, `canSetDefault` already delegates to
+ *    `capabilities.canAdministerDef`, which step 10 deliberately left alone. With no
+ *    def there is no `ResourceAccess` anchor for a `granteeType:'profile'` grant and
+ *    no `PermissionKey` for table views, so narrowing here removes authority with
+ *    nothing able to give it back — the same test that spared `canAdministerRecord`.
+ */
 function withViewPermissions<
   T extends {
     entityDefinitionId: string | null

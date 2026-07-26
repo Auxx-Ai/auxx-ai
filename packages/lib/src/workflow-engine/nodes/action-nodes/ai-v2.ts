@@ -396,10 +396,13 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
     // Lazy imports — keeps module load light for unit tests that never exercise
     // the agent-framework path and avoids dragging `@auxx/services` (lambda
     // execution, app connections) into modules that only need the no-tools path.
-    const [{ filterToolsByToolsets }, kopilot] = await Promise.all([
-      import('../../../agents'),
-      import('../../../ai/kopilot'),
-    ])
+    const [{ filterToolsByToolsets }, kopilot, { getCapabilities }, { getCachedMembers }] =
+      await Promise.all([
+        import('../../../agents'),
+        import('../../../ai/kopilot'),
+        import('../../../permissions/capabilities/get-capabilities'),
+        import('../../../cache/org-cache-helpers'),
+      ])
     const {
       createActorCapabilities,
       createAppCapabilities,
@@ -451,19 +454,36 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
     // are registered through their dedicated factories; `createAppCapabilities`
     // is for third-party installed apps only (the synthetic auxx installation
     // row has `currentDeployment: null` and is skipped by that path).
+    // Doc 19 §2.4a's author clamp, applied to workflows: an AI node runs on the
+    // authority of the human who authored the workflow, never more. There is no
+    // agent here (`buildResolvedAgentShim` mints `agentId: null`) and therefore no
+    // `AgentVersion.permissionPolicy` to resolve — so `resolveAgentRunCapabilities`
+    // has nothing to resolve and the principal is the plain human `CapabilityView`.
+    //
+    // `sys.userId` is the workflow's `createdById` on every production trigger
+    // (message / resource / scheduled), falling back to the org system user when
+    // the author row is gone. A system / non-member id composes to an EMPTY
+    // capability set (`composeUserCapabilities` fails closed on an undefined role),
+    // which is the correct outcome — reads deny rather than run unrestricted — so
+    // the only thing to add here is a loud diagnostic, not a fallback.
+    const capabilities = await getCapabilities(userId, organizationId)
+    const principalMember = (await getCachedMembers(organizationId)).find(
+      (m) => m.userId === userId
+    )
+    if (!principalMember || principalMember.status !== 'ACTIVE') {
+      contextManager.log(
+        'WARN',
+        node.name,
+        'AI node tool principal is not an active member — every capability-gated tool will deny',
+        { userId }
+      )
+    }
+
     const getToolDeps = createToolDepsFactory({
       organizationId,
       userId,
       sessionId,
-      // DELIBERATELY unrestricted, and the one remaining legitimate `undefined`
-      // on a production path: a workflow has no synthetic User and is not a
-      // permission principal, so there is nothing to resolve (doc 14 §0.8 —
-      // "Workflows are out of scope — documented follow-up"). This is stated
-      // explicitly rather than achieved by omitting the property, which is why
-      // `capabilities` is a required key. Fix by threading the owning user's
-      // capabilities (run-as-owner) or giving workflows the same synthetic-member
-      // treatment agents have; do NOT quietly widen anything else to match.
-      capabilities: undefined,
+      capabilities,
     })
     const builtinCaps = [
       createEntityCapabilities(getToolDeps),

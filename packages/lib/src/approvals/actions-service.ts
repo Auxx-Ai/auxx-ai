@@ -28,6 +28,7 @@ import {
   enqueueScheduledMessageJob,
   updateScheduledMessageStatus,
 } from '../mail-schedule'
+import { getCapabilities } from '../permissions/capabilities/get-capabilities'
 import { Result, type TypedResult } from '../result'
 import { assertNoUnresolvedTempIds, substituteTempIds, topoSortActions } from './temp-id'
 import type { ActionOutcome, ProposedAction, StoredBundle } from './types'
@@ -450,6 +451,19 @@ export function buildApprovalToolContext(args: {
 }
 
 async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentToolDefinition>> {
+  // Doc 19 §2.3 on the approval-APPLY replay path. `ctx.userId` here is the
+  // APPROVER: `approveBundle` receives it from the `protectedProcedure` session
+  // and writes the same id to `AiSuggestion.decidedById` in the same call, so the
+  // identity that authorized the bundle and the identity that bounds its
+  // execution are provably the same row. 19b's "the approver is the right bound"
+  // holds — an approved bundle executes on the authority of whoever pressed
+  // Approve, not the (often system-owned) requester the bundle was computed for.
+  //
+  // There is no agent principal to intersect with: capture-time runs mint a
+  // throwaway in-process agent, so no `AgentVersion.permissionPolicy` was ever
+  // recorded on the bundle. A non-member id composes to an empty capability set
+  // (fail closed), which is why no extra guard is needed here.
+  const capabilities = await getCapabilities(ctx.userId, ctx.organizationId)
   const getDeps: GetToolDeps = () => ({
     db: ctx.db,
     organizationId: ctx.organizationId,
@@ -457,15 +471,7 @@ async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentT
     sessionId: ctx.sessionId ?? ctx.traceId ?? 'approval',
     signal: ctx.signal,
     turnId: ctx.turnId ?? ctx.traceId,
-    // KNOWN GAP, surfaced by making `capabilities` a required key (doc 19 step 3).
-    // This is the approval-APPLY replay path: it re-executes an already-approved
-    // tool call with no read/write gate, so a published agent policy is INERT
-    // here. Not a regression (it has never been gated) and not fixed in this
-    // slice — `ctx.userId` is available, so the fix is
-    // `getCapabilities(ctx.userId, ctx.organizationId)`, but the correct bound is
-    // arguably the APPROVER's authority rather than the requester's, and that is
-    // a decision for the approvals plan. Queued separately.
-    capabilities: undefined,
+    capabilities,
   })
   const registry = createCapabilityRegistry()
   registry.register(createEntityCapabilities(getDeps))
@@ -547,6 +553,12 @@ interface SoftActionContext {
  * extract the minimum send payload, and enqueue a delayed BullMQ job. Returns
  * the promoted ScheduledMessage id as the action's "real id" so chained
  * actions (none today, but future) can reference it.
+ *
+ * KNOWN GAP (doc 19 step 5, distinct from G0): this branch does NOT go through a
+ * tool, so `ToolDeps.capabilities` never reaches it — the approver's view now
+ * bounds every *captured* action's replay, but a `ranDuringCapture` Draft is
+ * promoted to a send with no capability check. There is no `mail` area to gate
+ * on (19b G2), which is why it is recorded here rather than half-gated.
  */
 async function applySoftAction(args: SoftActionContext): Promise<{
   outcome: ActionOutcome

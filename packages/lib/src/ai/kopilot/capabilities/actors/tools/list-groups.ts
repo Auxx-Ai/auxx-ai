@@ -28,7 +28,7 @@ export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition 
       domain: 'directory',
       level: 'read',
       enforcement: 'unenforced',
-      note: 'KNOWN GAP (19b G7). Returns every group org-wide INCLUDING visibility:"private" ones, with member counts. Same missing-read-rung ambiguity as list_members.',
+      note: 'KNOWN GAP (19b G7) — NARROWED, not gated. The private-group leak is fixed: both the list and the search path now go through ActorService\'s accessible-groups filter (ResourceAccess on the group instance), where before only the no-query path did and any `query` fell through to the raw org group cache, returning every visibility:"private" group. What remains ungated is the directory read itself: Area.members is a Full-only ladder about *managing* members, so there is no read rung to bind a lookup to — the level above is the intent, not an existing rung. A `directory` area (or an instance-access key for groups) is the missing model.',
     },
     displayName: 'List groups',
     toolsetSlug: 'auxx:actors',
@@ -95,11 +95,31 @@ export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition 
         userId: agentDeps.userId,
       })
 
-      const actors = query
-        ? await actorService.searchActors({ query, target: 'group', limit })
-        : await actorService.listActors({ target: 'group' })
+      // ALWAYS list, never search. `searchActors({ target: 'group' })` reads the raw
+      // org group cache and applies NO accessibility filter, so passing a `query`
+      // returned every group in the org — `visibility: 'private'` ones included,
+      // with their member counts. `listActors` routes through
+      // `listAccessibleGroups` (ResourceAccess on the group instance, the same
+      // filter the human group picker uses), so the name match is applied here,
+      // over the already-filtered set, instead of in the service. A private group
+      // now surfaces only when the caller holds an explicit grant to it.
+      const actors = await actorService.listActors({ target: 'group' })
 
-      const groups = actors
+      const term = query?.trim().toLowerCase()
+      const matched = term
+        ? actors
+            .filter((actor) => actor.name.toLowerCase().includes(term))
+            // Same relevance order `searchActors` applied: prefix matches, then alphabetical.
+            .sort((a, b) => {
+              const aExact = a.name.toLowerCase().startsWith(term)
+              const bExact = b.name.toLowerCase().startsWith(term)
+              if (aExact !== bExact) return aExact ? -1 : 1
+              return a.name.localeCompare(b.name)
+            })
+        : actors
+
+      const groups = matched
+        .slice(0, limit)
         .map((actor) => {
           if (actor.type !== 'group') return null
           return {
