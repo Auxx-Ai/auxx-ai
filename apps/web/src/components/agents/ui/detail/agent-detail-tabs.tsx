@@ -252,7 +252,11 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                 ) : null}
 
                 <div ref={assignRef('tools')}>
-                  <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />
+                  <ToolsSection
+                    agent={agent}
+                    onAutosaveChange={onAutosaveChange}
+                    onNavigate={handleTabChange}
+                  />
                 </div>
 
                 <div ref={assignRef('restrictions')}>
@@ -314,7 +318,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                 ) : null}
 
                 <div ref={assignRef('permissions')}>
-                  <AgentPermissionsSection agent={agent} />
+                  <AgentPermissionsSection agent={agent} onNavigate={handleTabChange} />
                 </div>
 
                 {/* Spacer so the last section can scroll up to the activation line. */}

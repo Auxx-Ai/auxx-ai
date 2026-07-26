@@ -25,7 +25,7 @@ import { getCachedKbCatalog } from '../cache/org-cache-helpers'
 import { renderKbCatalog } from '../kb/catalog/render-kb-catalog'
 import { Result, type TypedResult } from '../result'
 import { stripHtml } from '../tiptap'
-import type { HeadlessRunDeps } from './headless-runner'
+import { type HeadlessRunDeps, resolveCaptureRunPrincipal } from './headless-runner'
 import type { HeadlessRunResult } from './types'
 import { mergeActions, parseFinalText } from './utils'
 
@@ -83,6 +83,32 @@ export async function runLearnedExtraction(
     return Result.error(new Error(`Thread ${input.threadId} not found`))
   }
 
+  // Resolve the principal BEFORE the transcript read and the LLM call — an
+  // extraction with no resolvable human is a no-op, not an unrestricted run
+  // (doc 19 §2.3). Shares `resolveCaptureRunPrincipal` with the headless runner
+  // so both capture paths bind identically.
+  const principal = await resolveCaptureRunPrincipal({
+    organizationId: input.organizationId,
+    ownerUserId: input.ownerUserId,
+  })
+  if (!principal.ok) {
+    logger.warn('Learned extraction skipped — no resolvable permission principal', {
+      headlessTraceId,
+      organizationId: input.organizationId,
+      threadId: input.threadId,
+      reason: principal.reason,
+    })
+    return Result.ok({
+      actions: [],
+      noopReason: `no_permission_principal: ${principal.reason}`,
+      modelId: input.modelId,
+      headlessTraceId,
+      computedForActivityAt,
+      computedForLatestMessageId: thread.latestMessageId ?? undefined,
+      entityDefinitionId: input.anchor.entityDefinitionId,
+    })
+  }
+
   const prompt = await buildExtractionPrompt({
     db: deps.db,
     organizationId: input.organizationId,
@@ -96,11 +122,9 @@ export async function runLearnedExtraction(
     sessionId: headlessTraceId,
     signal: undefined,
     turnId: headlessTraceId,
-    // KNOWN GAP, surfaced by making `capabilities` a required key (doc 19 step 3).
-    // Same shape as `headless-runner.ts`: the knowledge/KB read tools registered
-    // below run ungated, so a published agent policy is inert here.
-    // `input.ownerUserId` is available; queued separately for the same reason.
-    capabilities: undefined,
+    // Doc 19 §2.3 — the knowledge / KB read tools and the learned write door are
+    // all bounded by the bundle owner's own view.
+    capabilities: principal.capabilities,
   })
 
   // Deliberately tight toolset: knowledge search + KB read tools for

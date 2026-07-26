@@ -34,6 +34,27 @@ import type {
 const logger = createScopedLogger('resource-access-service')
 const SHARE_NOTIFICATION_RECIPIENT_CAP = 50
 
+/**
+ * Whether the target user is the org OWNER — the one role short-circuit left on
+ * the `checkAccess` / `checkTypeAccess` paths (doc 19 §0.10 recovery guarantee).
+ *
+ * ADMIN used to short-circuit here too, as an **independent** copy of the bypass
+ * that `capability-set.ts` / `entity-access.ts` carried. Removing only those left
+ * this path still handing admins `admin` on every instance, so sharing stayed
+ * bypassed (doc 19 §5.3 piece 2, third change). One helper now, so the two
+ * copies cannot drift apart again.
+ */
+async function isOwner(ctx: ResourceAccessContext, targetUserId: string): Promise<boolean> {
+  const member = await ctx.db.query.OrganizationMember.findFirst({
+    where: and(
+      eq(schema.OrganizationMember.userId, targetUserId),
+      eq(schema.OrganizationMember.organizationId, ctx.organizationId)
+    ),
+    columns: { role: true },
+  })
+  return member?.role === 'OWNER'
+}
+
 /*
  * NOTE — the profile-grantee WRITE GUARD is gone (doc 19 §9 step 9).
  *
@@ -689,16 +710,13 @@ export async function checkAccess(
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
   const targetUserId = input.userId
 
-  // 1. Check if user is org admin (has access to everything)
-  const member = await db.query.OrganizationMember.findFirst({
-    where: and(
-      eq(schema.OrganizationMember.userId, targetUserId),
-      eq(schema.OrganizationMember.organizationId, organizationId)
-    ),
-    columns: { role: true },
-  })
-
-  if (member && ['OWNER', 'ADMIN'].includes(member.role)) {
+  // 1. OWNER short-circuits to `admin` — the §0.10 recovery guarantee, and the
+  //    ONLY role bypass on this path (doc 19 §5.3 piece 2, step 10). ADMIN used
+  //    to be here too, as an independent copy of the bypass narrowed in
+  //    `capability-set` / `entity-access`; leaving it would have left instance
+  //    sharing bypassed for admins through a completely separate code path.
+  //    An admin now resolves through their own grantee union like anyone else.
+  if (await isOwner(ctx, targetUserId)) {
     return {
       hasAccess: true,
       permission: ResourcePermission.admin,
@@ -777,16 +795,8 @@ export async function checkTypeAccess(
   const { entityDefinitionId } = input
   const targetUserId = input.userId
 
-  // Check for org admin
-  const member = await db.query.OrganizationMember.findFirst({
-    where: and(
-      eq(schema.OrganizationMember.userId, targetUserId),
-      eq(schema.OrganizationMember.organizationId, organizationId)
-    ),
-    columns: { role: true },
-  })
-
-  if (member && ['OWNER', 'ADMIN'].includes(member.role)) {
+  // OWNER-only short-circuit — see `checkAccess` for why ADMIN was removed.
+  if (await isOwner(ctx, targetUserId)) {
     return {
       hasAccess: true,
       permission: ResourcePermission.admin,

@@ -15,6 +15,11 @@ import {
   generateSignupLink,
   INVITATION_EXPIRATION_HOURS,
 } from './invitation-links'
+import {
+  type InvitableProfile,
+  loadInvitableProfile,
+  recordInvitationProfileBound,
+} from './invitation-profile'
 import { findMemberByUser } from './member-queries'
 import { assertSeatAvailable } from './seat-limits'
 
@@ -33,8 +38,15 @@ export async function inviteMember(
     email: string
     role: OrganizationRole
     /** Seat packaging for the invited member — 'full' (default) or 'worker'
-     * (UI "Field seat"). Carried on the invitation row and applied on accept. */
+     * (UI "Field seat"). Carried on the invitation row and applied on accept.
+     * Ignored when `permissionProfileId` is given: the profile DECLARES its seat
+     * class (§0.17) and that declaration is what the cap check must use. */
     seatType?: SeatType
+    /** Permission profile chosen in the invite UI. Persisted on the invitation
+     * and carried onto the member at acceptance (§1.1) — without it the choice
+     * is silently lost, since acceptance otherwise rebuilds the member from
+     * `role` + `seatType` alone. Its `seat` drives the seat cap check. */
+    permissionProfileId?: string | null
   },
   db: Database = database
 ): Promise<{ success: true; message: string; existingUser: boolean }> {
@@ -45,25 +57,17 @@ export async function inviteMember(
     organizationName,
     email,
     role,
-    seatType = 'full',
+    permissionProfileId,
   } = params
 
   logger.info('Attempting to invite member', {
     organizationId,
     email,
     role,
-    seatType,
+    seatType: params.seatType,
+    permissionProfileId,
     inviterUserId,
   })
-
-  // §2.A invariant: a field (worker) seat is always the Member role. Reject a
-  // field-seat invite that carries ADMIN/OWNER rather than silently clamping —
-  // the caller (form) forces role USER when Field seat is chosen.
-  if (seatType === 'worker' && role !== 'USER') {
-    throw new BadRequestError(
-      'Field seats are limited to the Member role. Invite as a Full member to grant Admin or Owner.'
-    )
-  }
 
   // 1. Check inviter permissions — base members.manage gate + role-relative
   //    escalation guards (§5). A grantee may not mint authority above their own.
@@ -75,6 +79,27 @@ export async function inviteMember(
   }
   if (rankOf(role) > rankOf(inviterRole)) {
     throw new ForbiddenError("You don't have permission to invite a member with this role.")
+  }
+
+  // 1b. Resolve the chosen profile — AFTER the permission checks, so an
+  //     unauthorized caller can never probe which profile ids exist. The profile
+  //     is verified to belong to THIS org (a plain FK does not guarantee it) and
+  //     to be offerable to a member at all (§1.1), then its declared `seat`
+  //     replaces any caller-supplied seat class: the invite UI shows one profile
+  //     select, and the cap check below must run on what the profile declares.
+  let profile: InvitableProfile | null = null
+  if (permissionProfileId) {
+    profile = await loadInvitableProfile({ organizationId, permissionProfileId }, db)
+  }
+  const seatType: SeatType = profile ? profile.seat : (params.seatType ?? 'full')
+
+  // §2.A invariant: a field (worker) seat is always the Member role. Reject a
+  // field-seat invite that carries ADMIN/OWNER rather than silently clamping —
+  // the caller (form) forces role USER when a field-seat profile is chosen.
+  if (seatType === 'worker' && role !== 'USER') {
+    throw new BadRequestError(
+      'Field seats are limited to the Member role. Invite as a Full member to grant Admin or Owner.'
+    )
   }
 
   // 2. Check if an active user with this email exists (exclude system users)
@@ -137,19 +162,41 @@ export async function inviteMember(
   expiresAt.setHours(expiresAt.getHours() + INVITATION_EXPIRATION_HOURS)
 
   try {
-    await db.insert(schema.OrganizationInvitation).values({
-      organizationId,
+    const [created] = await db
+      .insert(schema.OrganizationInvitation)
+      .values({
+        organizationId,
+        email,
+        role,
+        seatType,
+        permissionProfileId: profile?.id ?? null,
+        token,
+        expiresAt,
+        status: 'PENDING',
+        invitedById: inviterUserId,
+        updatedAt: new Date(),
+        // Note: acceptedById remains null until accepted
+      })
+      .returning({ id: schema.OrganizationInvitation.id })
+    logger.info('Organization invitation record created in DB', {
       email,
-      role,
-      seatType,
-      token,
-      expiresAt,
-      status: 'PENDING',
-      invitedById: inviterUserId,
-      updatedAt: new Date(),
-      // Note: acceptedById remains null until accepted
+      organizationId,
+      permissionProfileId: profile?.id ?? null,
     })
-    logger.info('Organization invitation record created in DB', { email, organizationId })
+
+    // Durable evidence that a binding existed. The FK is `set null`, so deleting
+    // the profile before acceptance erases the id from the row — this is what
+    // lets acceptance flag the deleted-profile case instead of reading it as
+    // "no profile was chosen" (§1.1).
+    if (profile && created?.id) {
+      await recordInvitationProfileBound({
+        organizationId,
+        invitationId: created.id,
+        invitedById: inviterUserId,
+        email,
+        profile,
+      })
+    }
   } catch (dbError: any) {
     logger.error('Failed to create invitation record in DB', {
       email,

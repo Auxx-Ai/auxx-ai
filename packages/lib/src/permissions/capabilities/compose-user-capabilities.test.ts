@@ -320,7 +320,11 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
     expect(caps.keys).toContain(PermissionKey.workflowsManage)
   })
 
-  it('the profile ceiling holds the line against a group raise (§2.2 Dana)', () => {
+  // The remaining `profileCeiling` cases pin the AREA clamp only. It has no
+  // authoring surface after plan 20 §2.a.3 — nothing writes `ceiling`, so these
+  // exercise a seam kept for doc 19 §11.4's deny tier, not shipped behaviour.
+  // The definition half is gone; these must never be extended to cover it.
+  it('the area ceiling holds the line against a group raise (unauthored seam)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
@@ -349,7 +353,7 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
     expect(caps.keys).not.toContain(PermissionKey.billingView)
   })
 
-  it('the ceiling also clamps a personal (user) override, not just groups', () => {
+  it('the area ceiling also clamps a personal (user) override, not just groups', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
@@ -362,16 +366,13 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
     expect(caps.keys).not.toContain(PermissionKey.recordsEdit)
   })
 
-  it('OWNER is never clamped by a profile ceiling — the recovery guarantee (§0.10)', () => {
+  it('OWNER is never clamped by a profile area ceiling — the recovery guarantee (§0.10)', () => {
     const caps = composeUserCapabilities({
       role: 'OWNER',
       seatType: 'full',
       profileLevels: { [Area.permissions]: Level.None, [Area.records]: Level.None },
       profileBaseLevel: Level.None,
-      profileCeiling: {
-        areas: { [Area.permissions]: Level.None, [Area.records]: Level.Read },
-        defs: { mode: 'only', slugs: [] },
-      },
+      profileCeiling: { areas: { [Area.permissions]: Level.None, [Area.records]: Level.Read } },
       typeAccessRows: [],
     })
     // A mis-shaped profile can never lock the last owner out of fixing it.
@@ -423,75 +424,60 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
     expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault('USER', 'full')))
   })
 
-  it('a defs-only ceiling clamps no AREA key but IS emitted for def enforcement (step 4)', () => {
-    const caps = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      profileCeiling: { defs: { mode: 'only', slugs: ['contact'] } },
-      typeAccessRows: [],
-    })
-    // `defs` is a per-definition cap, not an area cap — the key set is untouched.
-    expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault('USER', 'full')))
-    // But it now rides OUT of the composer, raw and slug-keyed, for
-    // `getCapabilities` to resolve and `effectiveRecordLevel` to enforce.
-    expect(caps.ceilingDefs).toEqual({ mode: 'only', slugs: ['contact'] })
+  it('a `null` ceiling composes to the EXACT pre-plan-20 blob (the whole safety claim)', () => {
+    // Plan 20 §6 null-binding parity. Every real member has `ceiling: null` (all
+    // six seeded profiles ship it, and nothing ever wrote one), so deleting the
+    // definition ceiling cannot change anybody's access — this pins the FULL
+    // composed `UserCapabilities`, byte-for-byte, not a spot check.
+    //
+    // These literals are the pre-change output with `ceilingDefs: null` dropped:
+    // the only field the removal touched. Anything else moving fails here.
+    const cases = [
+      { role: 'OWNER' as const, seatType: 'full' as const },
+      { role: 'ADMIN' as const, seatType: 'full' as const },
+      { role: 'USER' as const, seatType: 'full' as const },
+      { role: 'USER' as const, seatType: 'worker' as const },
+    ]
+    for (const { role, seatType } of cases) {
+      const caps = composeUserCapabilities({
+        role,
+        seatType,
+        // Exactly what `resolveBaseProfile` yields for every shipped profile.
+        profileLevels: undefined,
+        profileBaseLevel: null,
+        profileCeiling: null,
+        typeAccessRows: [
+          { entityDefinitionId: 'def_a', permission: 'view' },
+          { entityDefinitionId: 'def_a', permission: 'admin' },
+          { entityDefinitionId: 'def_locked', permission: 'none' },
+        ],
+        instanceAccessRows: [
+          { entityInstanceId: 'inst_a', permission: 'none' },
+          { entityInstanceId: 'inst_b', permission: 'edit' },
+        ],
+      })
+      expect(Object.keys(caps).sort()).toEqual(['defAccess', 'instanceAccess', 'keys'])
+      expect(caps).toEqual({
+        keys: caps.keys,
+        defAccess: { def_a: 'admin' },
+        instanceAccess: { inst_a: 'none', inst_b: 'edit' },
+      })
+      expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault(role, seatType)))
+    }
   })
 
-  it('carries an `except` ceiling verbatim (mode decides allow-list vs deny-list)', () => {
-    const caps = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      profileCeiling: { defs: { mode: 'except', slugs: ['salary', 'invoice'] } },
-      typeAccessRows: [],
-    })
-    expect(caps.ceilingDefs).toEqual({ mode: 'except', slugs: ['salary', 'invoice'] })
-  })
-
-  it('emits `ceilingDefs: null` when the profile has no defs cap', () => {
-    const noCeiling = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      typeAccessRows: [],
-    })
-    expect(noCeiling.ceilingDefs).toBeNull()
-    const areasOnly = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      profileCeiling: { areas: { [Area.records]: Level.Read } },
-      typeAccessRows: [],
-    })
-    expect(areasOnly.ceilingDefs).toBeNull()
-  })
-
-  it('OWNER is never handed a definition ceiling (§0.10 recovery guarantee)', () => {
-    const owner = composeUserCapabilities({
-      role: 'OWNER',
-      seatType: 'full',
-      profileCeiling: { defs: { mode: 'only', slugs: ['contact'] } },
-      typeAccessRows: [],
-    })
-    expect(owner.ceilingDefs).toBeNull()
-  })
-
-  it('AGENT principals and non-members get no definition ceiling either', () => {
-    // An agent's authority is the published version policy; nothing composed here
-    // is consulted for it, so a human profile ceiling must not leak onto it.
-    const agent = composeUserCapabilities({
-      role: 'USER',
-      seatType: 'full',
-      userType: 'AGENT',
-      profileCeiling: { defs: { mode: 'only', slugs: ['contact'] } },
-      typeAccessRows: [],
-    })
-    expect(agent.ceilingDefs).toBeNull()
-
-    const nonMember = composeUserCapabilities({
-      role: undefined,
-      seatType: 'full',
-      profileCeiling: { defs: { mode: 'only', slugs: ['contact'] } },
-      typeAccessRows: [],
-    })
-    expect(nonMember.ceilingDefs).toBeNull()
+  it('an absent `profileCeiling` and an explicit `null` are indistinguishable', () => {
+    const shape = {
+      role: 'USER' as const,
+      seatType: 'full' as const,
+      profileLevels: { [Area.records]: Level.Read },
+      groupLevels: [{ [Area.records]: Level.Full, [Area.files]: Level.Full }],
+      userLevels: { [Area.auditLog]: Level.Read },
+      typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' as const }],
+    }
+    expect(composeUserCapabilities({ ...shape, profileCeiling: null })).toEqual(
+      composeUserCapabilities(shape)
+    )
   })
 })
 

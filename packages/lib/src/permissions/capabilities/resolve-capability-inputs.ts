@@ -4,7 +4,7 @@ import type { ResourcePermission } from '@auxx/database/enums'
 import type { Resource } from '../../resources/registry/types'
 import type { DefIdToSlug } from './capability-set'
 import { PERMISSION_RANK, type UserCapabilities } from './compose-user-capabilities'
-import { levelToRecordBasePermission, type ResolvedDefCeiling } from './entity-access'
+import { levelToRecordBasePermission } from './entity-access'
 import { areaLevelFromKeys, type PermissionKey } from './registry'
 import { ENTITY_BASE_AREAS } from './seat-policy'
 
@@ -59,8 +59,6 @@ export interface ResolvedCapabilityInputs {
   defAccess: Record<string, ResourcePermission>
   /** Per-def record base for definitions backed by another Layer-2 area. */
   defBaseOverrides: Record<string, ResourcePermission | null>
-  /** The profile definition ceiling, slug→`entityDefinitionId` resolved. */
-  ceilingDefs: ResolvedDefCeiling | null
   toDefinitionId: DefIdToSlug
   toSlug: DefIdToSlug
 }
@@ -110,32 +108,10 @@ export function resolveCapabilityInputs(
       levelToRecordBasePermission(areaLevelFromKeys(keys, area)) ?? null
   }
 
-  // The bound profile's definition ceiling arrives slug-keyed (doc 19 §0.13) and
-  // is resolved here, NOT in the composer — the same seam and the same cached
-  // `resources` array `defBaseOverrides` uses just above. Keeping the cached
-  // `userCapabilities` blob slug-keyed is what lets a def be created, archived,
-  // restored, or deleted without invalidating that USER-scoped key: the map it is
-  // resolved through is the org-scoped `resources` projection, which every
-  // `entity-def.*` event already busts.
-  //
-  // A slug that resolves to no live definition is simply absent from the set — so
-  // `only` (an allow-list) shrinks and stays fail-closed, `except` (a deny-list)
-  // shrinks and stays fail-open, exactly as §0.13 specifies. Never throws.
-  const knownDefIds = new Set(resources.map((r) => r.entityDefinitionId))
-  const ceilingDefs: ResolvedDefCeiling | null = caps.ceilingDefs
-    ? {
-        mode: caps.ceilingDefs.mode,
-        defIds: new Set(
-          caps.ceilingDefs.slugs.map(toDefinitionId).filter((id) => knownDefIds.has(id))
-        ),
-      }
-    : null
-
   return {
     keys,
     defAccess,
     defBaseOverrides,
-    ceilingDefs,
     toDefinitionId,
     toSlug: buildDefIdToSlug(resources),
   }

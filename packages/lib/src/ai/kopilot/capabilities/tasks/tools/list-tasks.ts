@@ -31,7 +31,7 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
       domain: 'tasks',
       level: 'read',
       enforcement: 'unenforced',
-      note: 'KNOWN GAP (19b G7). Defaults to ALL org tasks (the in-code comment says so) with no check. Tasks are neither an entity definition nor an Area, so there is nothing to assert against today.',
+      note: 'KNOWN GAP (19b G7). Defaults to ALL org tasks with no check. Tasks are neither an entity definition (no `Task` resource in the registry — the rows live in their own table, not EntityInstance) nor an Area, so there is literally nothing to assert against. Deliberately left org-wide rather than scoped to the caller: `task.list` is `protectedProcedure` and equally org-wide, and `agentDeps.userId` is the agent’s own engine identity on autonomous runs, so a caller-scope default would return an empty list for every agent while silently breaking "show me all open tasks" for interactive Kopilot. It IS bounded (limit 10, max 25), so this is disclosure, not a dump. Needs a `tasks` area to close.',
     },
     displayName: 'List tasks',
     toolsetSlug: 'auxx:tasks:read',

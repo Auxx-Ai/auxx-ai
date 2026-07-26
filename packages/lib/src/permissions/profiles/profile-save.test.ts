@@ -292,11 +292,15 @@ function fakeRunner(store: Store) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Fixture {
-  /** The custom profile `u_holder` is bound to. */
+  /**
+   * A stored `ceiling` on the profile `u_holder` is bound to. Nothing can author
+   * one any more (plan 20 §2.a.1), so this only ever simulates a row written
+   * before the authoring surface was deleted — including a legacy `defs` key.
+   */
   supportCeiling?: unknown
   /** Sparse levels stored on the support profile's grant row. */
   supportLevels?: Record<string, number>
-  /** A ceiling on the ACTOR's own profile (used to narrow the actor). */
+  /** A stored ceiling on the ACTOR's own profile (used to narrow the actor). */
   actorCeiling?: unknown
   /**
    * Add `u_null`, a member with a **null** binding — the §6.1.3 majority case.
@@ -449,11 +453,12 @@ beforeEach(() => {
 
 describe('computeEffectiveStatesUncached — the §6.1.4 cache bypass', () => {
   it('composes from the TRANSACTION, not the org cache', async () => {
-    // The store says the profile excludes every definition; the cached `profiles`
-    // projection (which `computeUserCapabilities` would have used) says it is
-    // uncapped. Reading the cache here would report HR access the holder does not
-    // have — and, inside a save, would make `after` identical to `before`.
-    const store = makeStore({ supportCeiling: { defs: { mode: 'only', slugs: [] } } })
+    // The store says the profile's grant row caps Records at Read; the cached
+    // `profiles`/grant projection (which `computeUserCapabilities` would have used)
+    // is frozen at the uncapped pre-write values. Reading the cache here would
+    // report Records access the holder does not have — and, inside a save, would
+    // make `after` identical to `before`.
+    const store = makeStore({ supportCeiling: { areas: { [Area.records]: Level.None } } })
     staleCache.profiles = structuredClone(store.PermissionProfile).map((row) => ({
       ...row,
       ceiling: null,
@@ -465,17 +470,17 @@ describe('computeEffectiveStatesUncached — the §6.1.4 cache bypass', () => {
       tx: fakeRunner(store) as never,
     })
 
-    expect(states.get('u_holder')?.defs).toEqual({})
+    expect(states.get('u_holder')?.areas[Area.records]).toBe(Level.None)
   })
 
   it('sees a write made earlier in the same transaction', async () => {
-    const store = makeStore({ supportCeiling: { defs: { mode: 'only', slugs: [] } } })
+    const store = makeStore({ supportCeiling: { areas: { [Area.records]: Level.None } } })
     const before = await computeEffectiveStatesUncached({
       organizationId: ORG,
       userIds: ['u_holder'],
       tx: fakeRunner(store) as never,
     })
-    expect(before.get('u_holder')?.defs).toEqual({})
+    expect(before.get('u_holder')?.areas[Area.records]).toBe(Level.None)
 
     const profile = store.PermissionProfile.find((row) => row.id === 'p_support')
     if (profile) profile.ceiling = null
@@ -485,9 +490,31 @@ describe('computeEffectiveStatesUncached — the §6.1.4 cache bypass', () => {
       userIds: ['u_holder'],
       tx: fakeRunner(store) as never,
     })
-    // The pre-existing group grant on HR is now visible — nothing about the
-    // grant changed, only the ceiling above it.
-    expect(after.get('u_holder')?.defs[HR_DEF]).toBe('admin')
+    // The clamp is gone, so the USER role default surfaces. Nothing about the
+    // holder's grants changed — only the row read from the transaction.
+    expect(after.get('u_holder')?.areas[Area.records]).toBe(Level.Full)
+  })
+
+  it('drops a LEGACY stored `defs` ceiling instead of throwing (plan 20 §2.a.5)', async () => {
+    // A row written before `ceiling.defs` was deleted. `parseProfileCeiling` reads
+    // only the keys it knows, so the def half is silently gone (the holder's
+    // pre-existing group grant on HR composes as UNCAPPED) while the areas half
+    // still clamps. This is the whole "no data migration needed" argument.
+    const store = makeStore({
+      supportCeiling: {
+        defs: { mode: 'only', slugs: [] },
+        areas: { [Area.files]: Level.Read },
+      },
+    })
+
+    const states = await computeEffectiveStatesUncached({
+      organizationId: ORG,
+      userIds: ['u_holder'],
+      tx: fakeRunner(store) as never,
+    })
+
+    expect(states.get('u_holder')?.defs[HR_DEF]).toBe('admin')
+    expect(states.get('u_holder')?.areas[Area.files]).toBe(Level.Read)
   })
 
   it('composes the actor and the holders in ONE batch', async () => {
@@ -505,24 +532,6 @@ describe('computeEffectiveStatesUncached — the §6.1.4 cache bypass', () => {
 })
 
 describe('savePermissionProfile — §6.1 escalation guard end to end', () => {
-  it('DENIES raising a ceiling that surfaces a pre-existing group grant', async () => {
-    const store = makeStore({ supportCeiling: { defs: { mode: 'only', slugs: [] } } })
-    await expect(
-      savePermissionProfile({
-        organizationId: ORG,
-        actorUserId: 'u_actor',
-        profileId: 'p_support',
-        ceiling: null,
-        db: fakeRunner(store) as never,
-      })
-    ).rejects.toBeInstanceOf(ForbiddenError)
-
-    // …and the transaction rolled back.
-    expect(store.PermissionProfile.find((row) => row.id === 'p_support')?.ceiling).toEqual({
-      defs: { mode: 'only', slugs: [] },
-    })
-  })
-
   it('DENIES raising an area above the actor’s own level', async () => {
     const store = makeStore({
       supportLevels: { [Area.records]: Level.Read },
@@ -594,17 +603,23 @@ describe('savePermissionProfile — §6.1 escalation guard end to end', () => {
   })
 
   it('lets an OWNER make a change no other actor could (§0.10 recovery)', async () => {
-    const store = makeStore({ supportCeiling: { defs: { mode: 'only', slugs: [] } } })
+    // The same raise the narrowed USER actor was refused two cases above. OWNER
+    // short-circuits the guard as an early return, which is what keeps a
+    // mis-shaped profile fixable from inside the product.
+    const store = makeStore({
+      supportLevels: { [Area.records]: Level.Read },
+      actorCeiling: { areas: { [Area.records]: Level.Read } },
+    })
     const actor = store.OrganizationMember.find((row) => row.userId === 'u_actor')
     if (actor) actor.role = 'OWNER'
     await savePermissionProfile({
       organizationId: ORG,
       actorUserId: 'u_actor',
       profileId: 'p_support',
-      ceiling: null,
+      levels: { [Area.records]: Level.Full },
       db: fakeRunner(store) as never,
     })
-    expect(store.PermissionProfile.find((row) => row.id === 'p_support')?.ceiling).toBeNull()
+    expect(store.PermissionGrant[0]?.levels).toEqual({ [Area.records]: Level.Full })
   })
 })
 
@@ -617,6 +632,9 @@ describe('savePermissionProfile — §6.1 escalation guard end to end', () => {
  * This test performs the deletion's writes inline, in the order §8.4 requires,
  * and shows the existing guard API measuring the result. A step-7 implementer
  * writes exactly this, inside `db.transaction`.
+ *
+ * The widening here comes from the deleted profile's stored **area clamp** — the
+ * one half of the ceiling plan 20 kept.
  */
 describe('the guard evaluates a DELETION (§6.1.3) — no delete mutation required', () => {
   /** The step-7 delete, minus the mutation wrapper. Returns before/after states. */
@@ -647,13 +665,17 @@ describe('the guard evaluates a DELETION (§6.1.3) — no delete mutation requir
   }
 
   it('DENIES a deletion whose system-template fallback widens past the actor', async () => {
-    const store = makeStore({ supportCeiling: { defs: { mode: 'only', slugs: [] } } })
+    // Both profiles clamp Records to None. Deleting the support profile drops its
+    // clamp, so the holder rises to the USER role default — above the actor, whose
+    // own clamp stays put.
+    const store = makeStore({
+      supportCeiling: { areas: { [Area.records]: Level.None } },
+      actorCeiling: { areas: { [Area.records]: Level.None } },
+    })
     const { before, after } = await simulateDelete(store, ['u_holder'])
 
-    // The ceiling that hid HR went with the profile; the group grant underneath
-    // it is now visible. Nothing about that grant changed.
-    expect(before.get('u_holder')?.defs[HR_DEF]).toBeUndefined()
-    expect(after.get('u_holder')?.defs[HR_DEF]).toBe('admin')
+    expect(before.get('u_holder')?.areas[Area.records]).toBe(Level.None)
+    expect(after.get('u_holder')?.areas[Area.records]).toBe(Level.Full)
 
     const actorState = before.get('u_actor')
     if (!actorState) throw new Error('actor state missing')
@@ -666,21 +688,13 @@ describe('the guard evaluates a DELETION (§6.1.3) — no delete mutation requir
     ).toThrow(ForbiddenError)
   })
 
-  it('PERMITS the same deletion for an actor who holds that def access', async () => {
-    const store = makeStore({ supportCeiling: { defs: { mode: 'only', slugs: [] } } })
-    store.ResourceAccess.push({
-      organizationId: ORG,
-      granteeType: 'user',
-      granteeId: 'u_actor',
-      entityDefinitionId: HR_DEF,
-      entityInstanceId: null,
-      permission: 'admin',
-    })
+  it('PERMITS the same deletion for an actor who holds that area level', async () => {
+    const store = makeStore({ supportCeiling: { areas: { [Area.records]: Level.None } } })
     const { before, after } = await simulateDelete(store, ['u_holder'])
 
     const actorState = before.get('u_actor')
     if (!actorState) throw new Error('actor state missing')
-    expect(actorState.defs[HR_DEF]).toBe('admin')
+    expect(actorState.areas[Area.records]).toBe(Level.Full)
     expect(() =>
       assertNoEscalation({
         actor: { userId: 'u_actor', role: 'USER', state: actorState },

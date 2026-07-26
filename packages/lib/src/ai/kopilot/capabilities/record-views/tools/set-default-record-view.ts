@@ -19,9 +19,9 @@ export function createSetDefaultRecordViewTool(getDeps: GetToolDeps): AgentToolD
     name: 'set_default_table_view',
     permission: {
       target: 'definition',
-      level: 'full',
-      enforcement: 'unenforced',
-      note: 'KNOWN GAP. Gates on isAdminOrOwner — a ROLE check, not a CapabilityView assertion — and never calls canViewEntity on the def whose org-wide default it flips. It fails closed for agents only by accident of the synthetic member row carrying role:"USER".',
+      level: 'read',
+      enforcement: 'enforced',
+      note: 'canViewEntity on the def whose org-wide default it flips, in ADDITION to the pre-existing isAdminOrOwner role check (kept — it mirrors the admin-only `tableView.setDefault` tRPC procedure, and it is what bounds the org-wide blast radius). Deliberately NOT declared `full`: `canAdministerDef` has zero agent-tool callers (19b G8), so claiming a Full rung here would assert a check nothing performs. The role gate is the authority half; `Read` is the capability half.',
     },
     displayName: 'Set default table view',
     category: 'capability',
@@ -52,7 +52,7 @@ Example: { viewId: "abc123" }`,
         }
       }
 
-      const { db, sessionContext } = getDeps()
+      const { db, sessionContext, capabilities } = getDeps()
 
       const admin = await isAdminOrOwner(agentDeps.organizationId, agentDeps.userId, db)
       if (!admin) {
@@ -67,7 +67,21 @@ Example: { viewId: "abc123" }`,
       if ('error' in target) {
         return { success: false, output: null, error: target.error }
       }
-      const { resource, tableId } = target
+      const { resource, entityDefinitionId, tableId } = target
+
+      // Human parity (permissions v2 §3.3), same block and same insertion point as
+      // the create/update/preview/list siblings. The role check above is an
+      // AUTHORITY check ("may you change what everyone sees?"); this is the
+      // CAPABILITY check ("may you read this def at all?"). Both are required:
+      // without this, a principal restricted off the def could still flip its
+      // org-wide default. Absent capabilities ⇒ unrestricted, as before.
+      if (entityDefinitionId && capabilities && !capabilities.canViewEntity(entityDefinitionId)) {
+        return {
+          success: false,
+          output: null,
+          error: "You don't have permission to view these records.",
+        }
+      }
 
       const result = await setDefaultTableView({
         db,

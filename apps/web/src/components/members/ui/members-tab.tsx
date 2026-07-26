@@ -15,6 +15,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { ListBulkToggle } from '@auxx/ui/components/list-bulk-toggle'
 import { ListCard, type ListCardMenuItem } from '@auxx/ui/components/list-card'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import {
@@ -26,15 +27,18 @@ import {
 } from '@auxx/ui/components/select'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Copy, Send, Trash2, Users } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { Tooltip } from '~/components/global/tooltip'
-import { SeatTypeSelect } from '~/components/permissions/ui/seat-type-select'
+import { ListSelectionProvider, useBulkMode, useListSelection } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
+import { seatLabel, useMemberProfiles } from '../hooks'
 import type { DisplayMember, Member, PendingInvitation } from '../types'
 import { MemberCard } from './member-card'
+import { MemberSeatSelect } from './member-seat-select'
+import { MembersBulkBar } from './members-bulk-bar'
 
 const ROLE_ORDER: Record<string, number> = {
   [Role.OWNER]: 0,
@@ -49,6 +53,14 @@ const ROLE_ORDER: Record<string, number> = {
  * cancel-invite dialogs. Ported from the former `settings/members/_components`.
  */
 export function MembersTab() {
+  return (
+    <ListSelectionProvider>
+      <MembersTabInner />
+    </ListSelectionProvider>
+  )
+}
+
+function MembersTabInner() {
   const { userId, role: currentUserRole } = useUser({ requireRoles: ['ADMIN', 'OWNER'] })
   const utils = api.useUtils()
 
@@ -63,6 +75,11 @@ export function MembersTab() {
   const [isSeatDialogOpen, setIsSeatDialogOpen] = useState(false)
   const [newSeatType, setNewSeatType] = useState<SeatType>('full')
   const [confirm, ConfirmDialog] = useConfirm()
+
+  const bulkMode = useBulkMode()
+  const setBulkMode = useListSelection((s) => s.setBulkMode)
+  const setItemIds = useListSelection((s) => s.setItemIds)
+  const { resolveMemberProfile } = useMemberProfiles()
 
   const refreshMembers = () => {
     utils.member.all.invalidate()
@@ -172,6 +189,14 @@ export function MembersTab() {
   const canManageUsers = currentUserRole === Role.OWNER || currentUserRole === Role.ADMIN
   const fieldSeatCount = members.filter((m) => m.seatType === 'worker').length
 
+  // A seat change leaves the bound profile on the wrong side of §0.21, so the
+  // dialog says so up front rather than letting it be discovered later.
+  const selectedMemberProfile = selectedMember ? resolveMemberProfile(selectedMember) : undefined
+  const seatChangeUnbindsProfile =
+    !!selectedMemberProfile &&
+    newSeatType !== selectedMember?.seatType &&
+    selectedMemberProfile.seat !== newSeatType
+
   const displayList: DisplayMember[] = useMemo(() => {
     const list: DisplayMember[] = [
       ...members.map((data): DisplayMember => ({ type: 'member', data })),
@@ -208,6 +233,36 @@ export function MembersTab() {
     })
   }, [displayList, search])
 
+  /**
+   * §6's `canManageTarget` rank check, mirrored client-side (degrade-only — the
+   * server re-runs it). No actions on self; an Admin cannot manage another Admin
+   * or an Owner.
+   */
+  const canManageMember = useCallback(
+    (member: Member): boolean => {
+      if (!canManageUsers) return false
+      if (member.userId === userId) return false
+      if (member.role === Role.OWNER && currentUserRole !== Role.OWNER) return false
+      if (currentUserRole === Role.ADMIN && member.role === Role.ADMIN) return false
+      return true
+    },
+    [canManageUsers, userId, currentUserRole]
+  )
+
+  /** Only manageable member rows join the selection, so "select all" is honest. */
+  const selectableMembers = useMemo(
+    () =>
+      filtered
+        .filter((item): item is { type: 'member'; data: Member } => item.type === 'member')
+        .map((item) => item.data)
+        .filter(canManageMember),
+    [filtered, canManageMember]
+  )
+
+  useEffect(() => {
+    setItemIds(selectableMembers.map((m) => m.userId))
+  }, [selectableMembers, setItemIds])
+
   /** Build the role-gated dropdown for one row; undefined → no menu. */
   const buildMenuItems = (item: DisplayMember): ListCardMenuItem[] | undefined => {
     if (!canManageUsers) return undefined
@@ -237,10 +292,7 @@ export function MembersTab() {
     }
 
     const member = item.data
-    // No actions on self; Admins can't manage other Admins/Owners.
-    if (member.userId === userId) return undefined
-    if (member.role === Role.OWNER && currentUserRole !== Role.OWNER) return undefined
-    if (currentUserRole === Role.ADMIN && member.role === Role.ADMIN) return undefined
+    if (!canManageMember(member)) return undefined
 
     const canChangeRoleOrRemove =
       currentUserRole === Role.OWNER ||
@@ -257,10 +309,12 @@ export function MembersTab() {
         },
       })
     }
-    // Only Members (role USER) can hold a field seat (invariant §2.A).
+    // Only Members (role USER) can hold a field seat (invariant §2.A). This is
+    // the ONLY surface that moves a member between seat classes — a billing
+    // event, cap-checked server-side (§0.21/§4.3).
     if (member.role === Role.USER) {
       items.push({
-        label: 'Change seat type',
+        label: 'Change seat',
         onClick: () => {
           setSelectedMember(member)
           setNewSeatType(member.seatType)
@@ -292,6 +346,9 @@ export function MembersTab() {
               {fieldSeatCount} field {fieldSeatCount === 1 ? 'seat' : 'seats'}
             </span>
           )}
+          {selectableMembers.length > 0 && (
+            <ListBulkToggle active={bulkMode} onActiveChange={setBulkMode} />
+          )}
         </ListToolbarGroup>
       </ListToolbar>
 
@@ -318,6 +375,8 @@ export function MembersTab() {
                 item={item}
                 isSelf={item.type === 'member' && item.data.userId === userId}
                 menuItems={buildMenuItems(item)}
+                selectable={item.type === 'member' && canManageMember(item.data)}
+                profile={item.type === 'member' ? resolveMemberProfile(item.data) : undefined}
               />
             ))}
           </div>
@@ -400,11 +459,11 @@ export function MembersTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Change seat type */}
+      {/* Change seat — the one billing-affecting action, cap-checked server-side */}
       <Dialog open={isSeatDialogOpen} onOpenChange={setIsSeatDialogOpen}>
         <DialogContent position='tc'>
           <DialogHeader>
-            <DialogTitle>Change seat type</DialogTitle>
+            <DialogTitle>Change seat</DialogTitle>
             <DialogDescription>
               Choose the seat for{' '}
               <Badge variant='user' size='sm'>
@@ -414,10 +473,20 @@ export function MembersTab() {
           </DialogHeader>
 
           <div className='grid gap-2'>
-            <SeatTypeSelect value={newSeatType} onChange={setNewSeatType} />
+            <MemberSeatSelect value={newSeatType} onChange={setNewSeatType} />
             <p className='text-xs text-muted-foreground'>
               Field seats are always members and are limited to their schedule and assigned jobs.
+              This changes what the organization is billed for and is checked against your plan's
+              seat limit.
             </p>
+            {seatChangeUnbindsProfile && (
+              <p className='text-xs text-amber-600'>
+                {selectedMember?.user.name || 'This member'} is on the {selectedMemberProfile?.name}{' '}
+                profile, which is a {seatLabel(selectedMemberProfile?.seat ?? 'full')} profile.
+                After the seat change you will need to pick a {seatLabel(newSeatType)} profile for
+                them — a profile can never carry a member across seat classes.
+              </p>
+            )}
           </div>
 
           <DialogFooter>
@@ -442,6 +511,7 @@ export function MembersTab() {
         </DialogContent>
       </Dialog>
 
+      <MembersBulkBar members={members} />
       <ConfirmDialog />
     </div>
   )

@@ -306,15 +306,17 @@ function composeState(
     : null
   const profileId = baseProfile?.profileId ?? null
 
-  // Mirror `computeUserCapabilities`' admin short-circuit EXACTLY: it skips the
-  // PermissionGrant query for OWNER/ADMIN, so an admin holder's composed state
-  // ignores grant rows. Reading them here would make the guard measure a state
-  // enforcement never produces.
-  const isAdmin = role === 'OWNER' || role === 'ADMIN'
+  // Mirror `computeUserCapabilities`' short-circuit EXACTLY: it skips the
+  // PermissionGrant query for OWNER only (doc 19 §5.3 piece 2 — ADMIN now loads
+  // grant rows so the `admin` profile is not inert), so an owner's composed
+  // state ignores grant rows. Reading them here would make the guard measure a
+  // state enforcement never produces — and, for ADMIN, *not* reading them would
+  // hide exactly the escalation the guard exists to catch.
+  const isOwner = role === 'OWNER'
   let profileLevels: Partial<Record<Area, Level>> | undefined
   const groupLevels: Array<Partial<Record<Area, Level>>> = []
   let userLevels: Partial<Record<Area, Level>> | undefined
-  if (!isAdmin) {
+  if (!isOwner) {
     for (const row of inputs.grants) {
       if (!matchesGrantee(row, userId, profileId, groupIds)) continue
       const levels = parseAreaLevels(row.levels)
@@ -356,7 +358,6 @@ function composeState(
     // The instance query is deliberately grantee-agnostic, so its id set IS the
     // org-wide `restrictedInstanceIds` projection, recomputed from the txn.
     restrictedInstanceIds: new Set(inputs.instanceKeyById.keys()),
-    ceilingDefs: resolved.ceilingDefs,
   }
 
   const areas = {} as Record<Area, Level>

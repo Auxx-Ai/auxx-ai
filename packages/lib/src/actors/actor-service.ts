@@ -6,11 +6,12 @@ import type {
   ActorId,
   AgentActor,
   GroupActor,
+  ProfileActor,
   SystemActor,
   UserActor,
   WorkerActor,
 } from '@auxx/types/actor'
-import { parseActorId, toActorId } from '@auxx/types/actor'
+import { safeParseActorId, toActorId } from '@auxx/types/actor'
 import {
   type CachedAgent,
   type CachedGroup,
@@ -23,6 +24,7 @@ import {
   type OrgMemberInfo,
 } from '../cache'
 import { type DispatchWorkerWithUser, listDispatchWorkers } from '../dispatch/workers'
+import { getProfileActorsByIds, listProfileActors } from '../permissions/profiles/profile-queries'
 import { SystemUserService } from '../users/system-user-service'
 
 // ============================================================================
@@ -37,10 +39,15 @@ export interface ListActorsOptions {
    * - 'group': groups only
    * - 'agent': agents only
    * - 'worker': dispatch workers only (individuals + teams)
+   * - 'profile': permission profiles only (additive grantee, doc 19 §0.28)
    * - 'both': humans + groups (default; agents excluded unless includeAgents is true)
    * - 'all': humans + groups + agents + workers
+   *
+   * `'all'` deliberately does NOT include profiles: a profile is a policy
+   * grantee, not a person, and every shipped `'all'` picker (assignees,
+   * mentions, dispatch) would start offering one. Ask for it explicitly.
    */
-  target?: 'user' | 'group' | 'agent' | 'worker' | 'both' | 'all'
+  target?: 'user' | 'group' | 'agent' | 'worker' | 'profile' | 'both' | 'all'
   /** Filter users by role */
   roles?: ('OWNER' | 'ADMIN' | 'USER')[]
   /** Filter to specific group IDs */
@@ -110,6 +117,11 @@ export class ActorService {
       results.push(...workers)
     }
 
+    if (target === 'profile') {
+      const profiles = await this.listProfiles()
+      results.push(...profiles)
+    }
+
     return results
   }
 
@@ -121,28 +133,34 @@ export class ActorService {
     const result = new Map<ActorId, Actor>()
     if (actorIds.length === 0) return result
 
-    // Partition by type
+    // Partition by type. `safeParseActorId` degrades instead of throwing, so an
+    // id carrying a kind this build does not know is skipped rather than taking
+    // the whole batch down (the previous bare `catch {}` swallowed real parse
+    // failures silently and could not tell them apart).
     const userIds: string[] = []
     const groupIds: string[] = []
     const agentIds: string[] = []
     const workerIds: string[] = []
+    const profileIds: string[] = []
 
     for (const actorId of actorIds) {
-      try {
-        const { type, id } = parseActorId(actorId)
-        if (type === 'user') userIds.push(id)
-        else if (type === 'group') groupIds.push(id)
-        else if (type === 'agent') agentIds.push(id)
-        else if (type === 'worker') workerIds.push(id)
-      } catch {}
+      const parsed = safeParseActorId(actorId)
+      if (!parsed) continue
+      const { type, id } = parsed
+      if (type === 'user') userIds.push(id)
+      else if (type === 'group') groupIds.push(id)
+      else if (type === 'agent') agentIds.push(id)
+      else if (type === 'worker') workerIds.push(id)
+      else if (type === 'profile') profileIds.push(id)
     }
 
     // Batch fetch
-    const [users, groups, agents, workers] = await Promise.all([
+    const [users, groups, agents, workers, profiles] = await Promise.all([
       userIds.length > 0 ? this.fetchUsers(userIds) : [],
       groupIds.length > 0 ? this.fetchGroups(groupIds) : [],
       agentIds.length > 0 ? getCachedAgentsByIds(this.organizationId, agentIds) : [],
       workerIds.length > 0 ? this.fetchWorkers(workerIds) : [],
+      profileIds.length > 0 ? this.fetchProfiles(profileIds) : [],
     ])
 
     for (const user of users) {
@@ -158,6 +176,9 @@ export class ActorService {
     }
     for (const worker of workers) {
       result.set(worker.actorId, worker)
+    }
+    for (const profile of profiles) {
+      result.set(profile.actorId, profile)
     }
 
     // Compatibility shim: many legacy code paths (Thread.assigneeIds,
@@ -193,10 +214,14 @@ export class ActorService {
   }
 
   /**
-   * Get a single actor by ActorId.
+   * Get a single actor by ActorId. Returns `null` for a malformed id or a kind
+   * this build does not know — render paths must degrade to a generic row, not
+   * throw (`safeParseActorId`, doc 19a finding 5).
    */
   async getById(actorId: ActorId): Promise<Actor | null> {
-    const { type, id } = parseActorId(actorId)
+    const parsed = safeParseActorId(actorId)
+    if (!parsed) return null
+    const { type, id } = parsed
 
     if (type === 'agent') {
       const agents = await getCachedAgentsByIds(this.organizationId, [id])
@@ -207,6 +232,11 @@ export class ActorService {
     if (type === 'worker') {
       const workers = await this.fetchWorkers([id])
       return workers[0] ?? null
+    }
+
+    if (type === 'profile') {
+      const profiles = await this.fetchProfiles([id])
+      return profiles[0] ?? null
     }
 
     if (type === 'user') {
@@ -223,8 +253,14 @@ export class ActorService {
       return null
     }
 
-    const groups = await this.fetchGroups([id])
-    return groups[0] ?? null
+    if (type === 'group') {
+      const groups = await this.fetchGroups([id])
+      return groups[0] ?? null
+    }
+
+    // Explicit, not a fallthrough: a new ActorId kind must get its own branch
+    // rather than silently being looked up as a group (19a finding 4).
+    return null
   }
 
   /**
@@ -254,6 +290,11 @@ export class ActorService {
     if (target === 'worker' || target === 'all') {
       const workers = await this.searchWorkers(searchPattern, limit)
       results.push(...workers)
+    }
+
+    if (target === 'profile') {
+      const profiles = await this.searchProfiles(searchPattern, limit)
+      results.push(...profiles)
     }
 
     // Sort by relevance (exact match first, then alphabetical)
@@ -469,6 +510,40 @@ export class ActorService {
       memberCount: group.metadata.memberCount ?? 0,
       visibility: (group.metadata.visibility as 'public' | 'private') ?? 'private',
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Private: Permission Profile Operations
+  // ─────────────────────────────────────────────────────────────────
+  //
+  // A permission profile is an additive grantee (doc 19 §0.28), resolved from
+  // the already-cached `profiles` org-cache key — so every lookup below costs
+  // zero queries. Agent profiles are excluded: they are not valid sharing
+  // grantees (`grantee-schema.ts` rejects them on write), and offering one in a
+  // picker would author a row that grants nothing.
+
+  private async listProfiles(): Promise<ProfileActor[]> {
+    return listProfileActors(this.organizationId, { appliesTo: 'member' })
+  }
+
+  /**
+   * Resolve profile ids for hydration. Unlike the list/search paths this does
+   * NOT filter by `appliesTo`: an existing row referencing an agent profile
+   * must still render with its real name rather than vanish.
+   */
+  private async fetchProfiles(profileIds: string[]): Promise<ProfileActor[]> {
+    return getProfileActorsByIds(this.organizationId, profileIds)
+  }
+
+  private async searchProfiles(pattern: string, limit?: number): Promise<ProfileActor[]> {
+    const profiles = await this.listProfiles()
+    const searchTerm = pattern.replace(/%/g, '').toLowerCase()
+    return profiles
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(searchTerm) || p.slug.toLowerCase().includes(searchTerm)
+      )
+      .slice(0, limit ?? 50)
   }
 
   // ─────────────────────────────────────────────────────────────────

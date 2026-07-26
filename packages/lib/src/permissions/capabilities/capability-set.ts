@@ -12,7 +12,6 @@ import {
   canViewRecord,
   levelToPermission,
   NON_RECORD_DEF_SLUGS,
-  type ResolvedDefCeiling,
   type ResolvedRecordAccess,
 } from './entity-access'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
@@ -70,10 +69,6 @@ export class CapabilitySet implements CapabilityView {
    * @param defBaseOverrides Per-def record base for defs whose base comes from
    *                   another Layer-2 area. Canonical `entityDefinitionId`
    *                   keys; `null` means that area is closed.
-   * @param ceilingDefs The bound permission profile's per-definition cap
-   *                   (doc 19 §0.13), already resolved from apiSlugs to
-   *                   canonical `entityDefinitionId`s in {@link getCapabilities}.
-   *                   `null` = uncapped (always so for OWNER, §0.10).
    */
   constructor(
     private readonly keys: ReadonlySet<PermissionKey>,
@@ -85,8 +80,7 @@ export class CapabilitySet implements CapabilityView {
     private readonly defIdToDefinitionId: DefIdToSlug = (id) => id,
     private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
     private readonly restrictedInstanceIds: ReadonlySet<string> = new Set(),
-    private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {},
-    private readonly ceilingDefs: ResolvedDefCeiling | null = null
+    private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {}
   ) {}
 
   /** O(1) Set lookup — whether the member holds `key`. */
@@ -150,7 +144,6 @@ export class CapabilitySet implements CapabilityView {
       defAccess: this.defAccess,
       restrictedEntityDefIds: this.restrictedDefIds,
       defBaseOverrides: this.defBaseOverrides,
-      ceilingDefs: this.ceilingDefs,
     }
   }
 
@@ -168,9 +161,6 @@ export class CapabilitySet implements CapabilityView {
       seatType: this.seatType,
       instanceAccess: { ...this.instanceAccess },
       restrictedInstanceIds: [...this.restrictedInstanceIds],
-      ceilingDefs: this.ceilingDefs
-        ? { mode: this.ceilingDefs.mode, defIds: [...this.ceilingDefs.defIds] }
-        : null,
     }
   }
 
@@ -219,8 +209,9 @@ export class CapabilitySet implements CapabilityView {
    *   seat holds the same key by role default, where it would defeat a base
    *   records level of `None`.
    *
-   * OWNER/ADMIN bypass the noun layer (`effectiveRecordLevel` → `admin`):
-   * restricting a def scopes members, never the admins who administer it.
+   * OWNER bypasses the noun layer (`effectiveRecordLevel` → `admin`) — the §0.10
+   * recovery guarantee. ADMIN does not (doc 19 step 10): restricting a def now
+   * scopes admins too, and the `admin` profile is where that is authored.
    *
    * The argument may be any RecordId-def form (slug, apiSlug, id); it is
    * normalized to the canonical `entityDefinitionId` keyspace first. Zero I/O.
@@ -273,6 +264,9 @@ export class CapabilitySet implements CapabilityView {
    * — only an explicit `admin` type-grant (or OWNER/ADMIN) confers it. Worker
    * seats never administer. Scoped to the exact def, so a def-admin grantee can
    * only administer the def(s) they were granted (self-escalation guard). Zero I/O.
+   *
+   * ADMIN is the one bypass doc 19 step 10 deliberately left in place — see
+   * {@link import('./entity-access').canAdministerRecord} for why.
    */
   canAdministerDef(entityDefId: string): boolean {
     return canAdministerRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
@@ -286,16 +280,21 @@ export class CapabilitySet implements CapabilityView {
 
   /**
    * Effective per-instance permission for an instance-access resource
-   * (most-specific-wins), or `undefined` = no access (§1.4). OWNER/ADMIN bypass
-   * to `admin`; the coarse L2 area gate must be open; an explicit instance row
-   * (incl. the workspace baseline / `'none'`) wins; otherwise fall back to the
-   * base L2 area level (for `baselineAtCreate: false` resources). Zero I/O.
+   * (most-specific-wins), or `undefined` = no access (§1.4). OWNER bypasses to
+   * `admin` (§0.10); the coarse L2 area gate must be open; an explicit instance
+   * row (incl. the workspace baseline / `'none'`) wins; otherwise fall back to
+   * the base L2 area level (for `baselineAtCreate: false` resources). Zero I/O.
+   *
+   * **ADMIN no longer bypasses** (doc 19 §5.3 piece 2, step 10) — kept
+   * byte-for-byte in sync with the client mirror
+   * {@link import('./entity-access').effectiveInstanceLevel}, which carries the
+   * full rationale.
    */
   private effectiveInstanceLevel(
     key: InstanceAccessKey,
     instanceId: string
   ): ResourcePermission | undefined {
-    if (this.role === 'OWNER' || this.role === 'ADMIN') return ResourcePermission.admin
+    if (this.role === 'OWNER') return ResourcePermission.admin
     const cfg = INSTANCE_ACCESS_RESOURCES[key]
     const areaLevel = areaLevelFromKeys(this.keys, cfg.area)
     if (areaLevel === Level.None) return undefined

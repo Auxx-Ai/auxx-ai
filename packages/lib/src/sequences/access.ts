@@ -39,8 +39,19 @@ export async function grantSequenceCreatorAccess(
 
 /**
  * Check whether `userId` has at least `required` permission on a sequence.
- * Org OWNER/ADMIN short-circuit to `admin` inside `hasPermission`/`checkAccess`
- * already — this is just a thin, sequence-scoped wrapper for the tRPC router.
+ * A thin, sequence-scoped wrapper for the tRPC router — all of the logic is in
+ * `hasPermission`/`checkAccess`.
+ *
+ * Only the org **OWNER** short-circuits to `admin` in there (doc 19 §0.10
+ * recovery guarantee). ADMIN used to as well; step 10 removed it, so an admin
+ * now needs a real grant like anyone else — the creator grant
+ * {@link grantSequenceCreatorAccess} writes, a group/user share, or a
+ * `granteeType:'profile'` grant naming the org's `admin` profile.
+ *
+ * **Note for the seeded client-notification templates:** they are created with
+ * `createdById = <system user>`, so the creator grant lands on the system user
+ * and no human holds anything on them. Until an org authors a profile grant on
+ * the `'sequence'` type, only the OWNER can open them.
  */
 export async function checkSequenceAccess(
   ctx: SequenceAccessContext,

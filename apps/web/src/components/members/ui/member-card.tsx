@@ -6,9 +6,17 @@ import { ListCard, type ListCardMenuItem } from '@auxx/ui/components/list-card'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils/date'
 import { Mail } from 'lucide-react'
-import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
+import {
+  useBulkMode,
+  useIsPending,
+  useIsSelected,
+  useListSelection,
+  usePendingLabel,
+} from '~/components/list-selection'
+import type { MemberProfile } from '../hooks'
 import type { DisplayMember } from '../types'
 import { getInitials, RoleIcon } from '../utils'
+import { MemberProfileBadge } from './member-profile-badge'
 
 interface MemberCardProps {
   item: DisplayMember
@@ -16,11 +24,29 @@ interface MemberCardProps {
   isSelf: boolean
   /** Role-gated dropdown actions, computed by the parent. Omit for no menu. */
   menuItems?: ListCardMenuItem[]
+  /** Whether this row may take part in bulk selection (manageable members only). */
+  selectable?: boolean
+  /** The member's effective profile, resolved once by the list (§4.2 badge). */
+  profile?: MemberProfile
 }
 
 /** One row in the Members tab — an active member or a pending invitation. */
-export function MemberCard({ item, isSelf, menuItems }: MemberCardProps) {
+export function MemberCard({
+  item,
+  isSelf,
+  menuItems,
+  selectable = false,
+  profile,
+}: MemberCardProps) {
   const isPending = item.type === 'pending'
+  const selectionId = item.type === 'member' ? item.data.userId : item.data.id
+
+  const bulkMode = useBulkMode()
+  const selected = useIsSelected(selectionId)
+  const pending = useIsPending(selectionId)
+  const pendingLabel = usePendingLabel()
+  const toggle = useListSelection((s) => s.toggle)
+
   const initials =
     item.type === 'member'
       ? getInitials(item.data.user.name, item.data.user.email)
@@ -36,6 +62,8 @@ export function MemberCard({ item, isSelf, menuItems }: MemberCardProps) {
       item.data.email
     )
 
+  // §4.2 — the profile name is the badge; the seat badge it replaced survives
+  // only as the field-seat marker inside `MemberProfileBadge`.
   const badges =
     item.type === 'member' ? (
       <>
@@ -43,7 +71,7 @@ export function MemberCard({ item, isSelf, menuItems }: MemberCardProps) {
           <RoleIcon role={item.data.role} />
           <span>{item.data.role}</span>
         </Badge>
-        <SeatTypeBadge seatType={item.data.seatType} />
+        <MemberProfileBadge profile={profile} seatType={item.data.seatType} />
       </>
     ) : (
       <Badge variant='user' size='xs'>
@@ -77,6 +105,14 @@ export function MemberCard({ item, isSelf, menuItems }: MemberCardProps) {
       badges={badges}
       subtitle={subtitle}
       menuItems={menuItems}
+      selectable={selectable}
+      selecting={selectable && bulkMode}
+      selected={selected}
+      onSelectChange={
+        selectable ? (_, e) => toggle(selectionId, { shiftKey: e.shiftKey }) : undefined
+      }
+      pending={pending}
+      pendingLabel={pendingLabel}
     />
   )
 }

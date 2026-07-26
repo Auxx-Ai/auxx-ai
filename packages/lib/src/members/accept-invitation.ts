@@ -12,10 +12,22 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq, sql } from 'drizzle-orm'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
+import { type InvitationProfileFallback, resolveInvitationProfile } from './invitation-profile'
 import { findMemberByUser } from './member-queries'
 import { countSeatsUsed, seatLimitFeature } from './seat-limits'
 
 const logger = createScopedLogger('member-service')
+
+/**
+ * Outcome of accepting an invitation. `profileFallback` is non-null only when the
+ * invitation's permission profile could not be applied and the member joined on
+ * the system template instead — callers surface it; it is never silent (§1.1).
+ */
+export interface AcceptInvitationResult {
+  success: true
+  organizationId: string
+  profileFallback: InvitationProfileFallback | null
+}
 
 /**
  * Core logic for accepting an invitation after initial validation.
@@ -28,7 +40,7 @@ async function processInvitationAcceptance(
   invitation: OrganizationInvitation, // Pass the validated invitation object
   acceptingUserId: string,
   db: Database
-): Promise<{ success: true; organizationId: string }> {
+): Promise<AcceptInvitationResult> {
   const organizationId = invitation.organizationId
   logger.info('Starting core invitation acceptance process', {
     organizationId,
@@ -90,17 +102,28 @@ async function processInvitationAcceptance(
     )
   }
 
+  // Carry the invitation's seat packaging onto the new member (§8).
+  // §2.A invariant: a field (worker) seat is always the Member role — clamp
+  // defensively so a mismatched invitation can never mint a field-seat
+  // ADMIN/OWNER even if it slipped past the invite guard.
+  const memberSeatType: SeatType = seatClass
+  const memberRole: OrganizationRole = memberSeatType === 'worker' ? 'USER' : invitation.role
+
+  // 1b. Carry the invitation's permission profile onto the member (§1.1). The
+  //     seat cap above was already checked against this profile's seat class at
+  //     invite time and `seat` is immutable (§0.18), so the two cannot disagree.
+  //     A binding that can no longer be applied — profile deleted before
+  //     acceptance, foreign org, agent-only — falls back to the system template
+  //     for the invited role AND is flagged; it is never substituted silently.
+  const resolvedProfile = await resolveInvitationProfile(
+    { invitation, role: memberRole, seatType: memberSeatType },
+    db
+  )
+
   // 2. DB Transaction: Add user, update seats, update invitation
   let newSeatCount = 0
   try {
     const result = await db.transaction(async (tx) => {
-      // Carry the invitation's seat packaging onto the new member (§8).
-      // §2.A invariant: a field (worker) seat is always the Member role —
-      // clamp defensively so a mismatched invitation can never mint a
-      // field-seat ADMIN/OWNER even if it slipped past the invite guard.
-      const memberSeatType: SeatType = invitation.seatType === 'worker' ? 'worker' : 'full'
-      const memberRole: OrganizationRole = memberSeatType === 'worker' ? 'USER' : invitation.role
-
       // Create new organization member
       const [newMember] = await tx
         .insert(schema.OrganizationMember)
@@ -109,6 +132,7 @@ async function processInvitationAcceptance(
           organizationId: organizationId,
           role: memberRole,
           seatType: memberSeatType,
+          permissionProfileId: resolvedProfile.permissionProfileId,
           status: 'ACTIVE', // Set as Active
           updatedAt: new Date(),
         })
@@ -257,7 +281,11 @@ async function processInvitationAcceptance(
   }
 
   // 6. Return Success
-  return { success: true, organizationId: organizationId }
+  return {
+    success: true,
+    organizationId: organizationId,
+    profileFallback: resolvedProfile.fallback,
+  }
 }
 
 /**
@@ -271,7 +299,7 @@ export async function acceptInvitation(
     acceptingUserEmail: string | null
   },
   db: Database = database
-): Promise<{ success: true; organizationId: string }> {
+): Promise<AcceptInvitationResult> {
   const { token, acceptingUserId, acceptingUserEmail } = params
   logger.info('Attempting to accept invitation via token', { token, acceptingUserId })
 
@@ -312,7 +340,8 @@ export async function acceptInvitation(
         acceptedAt: new Date(),
       })
       .where(eq(schema.OrganizationInvitation.id, invitation.id))
-    return { success: true, organizationId: invitation.organizationId }
+    // Already a member — no member row is created, so no profile is applied.
+    return { success: true, organizationId: invitation.organizationId, profileFallback: null }
   }
 
   // 3. Delegate to core processing logic
@@ -335,7 +364,7 @@ export async function acceptInvitationById(
     acceptingUserEmail: string | null
   },
   db: Database = database
-): Promise<{ success: true; organizationId: string }> {
+): Promise<AcceptInvitationResult> {
   const { invitationId, acceptingUserId, acceptingUserEmail } = params
   logger.info('Attempting to accept invitation via identity (ID)', {
     invitationId,

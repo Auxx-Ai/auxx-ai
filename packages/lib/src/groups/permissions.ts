@@ -19,8 +19,29 @@ async function getGroupEntityDefId(ctx: GroupContext): Promise<string> {
 }
 
 /**
- * Get user's permission level on a group
- * Checks org role first (owners/admins get admin), then ResourceAccess
+ * Whether `userId` is the org OWNER — the one role that still short-circuits the
+ * group gates below (doc 19 §0.10 recovery guarantee). Cache-only, no DB query.
+ */
+async function isOrgOwner(ctx: GroupContext): Promise<boolean> {
+  const { memberRoleMap } = await getOrgCache().getOrRecompute(ctx.organizationId, [
+    'memberRoleMap',
+  ])
+  return memberRoleMap[ctx.userId]?.role === 'OWNER'
+}
+
+/**
+ * Get user's permission level on a group. OWNER short-circuits to `admin`;
+ * everyone else — **including ADMIN** — resolves through `ResourceAccess`.
+ *
+ * ADMIN used to short-circuit here too. That bypass was *independent* of the one
+ * in `checkAccess`, and it ran BEFORE it, so narrowing `checkAccess` to OWNER
+ * (doc 19 §5.3 piece 2) was a complete no-op for groups until this went with it
+ * (step 10). An admin now reaches a group through their own grantee union: their
+ * creator grant, the `role:org_member` baseline on public groups, a group grant,
+ * or a `granteeType:'profile'` grant naming the org's `admin` profile — which is
+ * how "admins administer every group" is re-authored when an org wants it
+ * (`entityGroup.grantPermission`, or a def-wide `resourceAccess.grantType` on the
+ * `entity_group` definition; both accept a profile grantee since step 9).
  */
 export async function getGroupPermission(
   ctx: GroupContext,
@@ -28,11 +49,7 @@ export async function getGroupPermission(
 ): Promise<ResourcePermission | null> {
   const { db, userId, organizationId } = ctx
 
-  // Check org role from cache (no DB query)
-  const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
-  const role = memberRoleMap[userId]?.role
-
-  if (role === 'OWNER' || role === 'ADMIN') {
+  if (await isOrgOwner(ctx)) {
     return ResourcePermission.admin
   }
 
@@ -52,7 +69,8 @@ export async function getGroupPermission(
 }
 
 /**
- * Check if user has at least the required permission level
+ * Check if user has at least the required permission level. OWNER-only
+ * short-circuit — see {@link getGroupPermission} for why ADMIN was removed.
  */
 export async function hasGroupPermission(
   ctx: GroupContext,
@@ -61,12 +79,8 @@ export async function hasGroupPermission(
 ): Promise<boolean> {
   const { db, organizationId, userId } = ctx
 
-  // Check org role from cache (no DB query)
-  const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
-  const role = memberRoleMap[userId]?.role
-
-  if (role === 'OWNER' || role === 'ADMIN') {
-    return true // Admin satisfies any permission
+  if (await isOrgOwner(ctx)) {
+    return true // Owner satisfies any permission
   }
 
   // Get entity_group entityDefinitionId (cached)

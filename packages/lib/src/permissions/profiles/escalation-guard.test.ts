@@ -103,9 +103,10 @@ describe('assertNoEscalation — §6.1.2 delta gating', () => {
   })
 
   it('DENIES surfacing a PRE-EXISTING grant the actor never authored (§6.1 mode 1)', () => {
-    // Raising the definition ceiling exposes a group grant the holder already
-    // had. The actor wrote no grant here — only the ceiling moved — but the
-    // holder's resulting state rises above the actor's own def access.
+    // The edit lifts the holder far enough for a group grant they ALREADY had to
+    // become their effective level on HR. The actor authored no grant here, yet
+    // the holder's resulting state rises above the actor's own def access — which
+    // is precisely what comparing profile maps to the actor would miss.
     expect(() =>
       run({
         actor: actorAt({ base: Level.Full, defs: { [HR_DEF]: 'view' } }),
@@ -115,7 +116,7 @@ describe('assertNoEscalation — §6.1.2 delta gating', () => {
     ).toThrow(ForbiddenError)
   })
 
-  it('PERMITS the same ceiling raise when the actor holds that def access outright', () => {
+  it('PERMITS the same raise when the actor holds that def access outright', () => {
     expect(() =>
       run({
         actor: actorAt({ base: Level.Full, defs: { [HR_DEF]: 'admin' } }),
@@ -172,16 +173,32 @@ describe('assertNoEscalation — §6.1.2 delta gating', () => {
   })
 })
 
+/**
+ * The strict fallback after plan 20 deleted the authored ceiling: what it compares
+ * is the profile's BASE half only (`levels` + `baseLevel`). `ceiling` is still on
+ * the state shape but is unauthored, so it is identical on both sides and can
+ * never be the source of a raise — the cases below are the whole surviving check.
+ */
 describe('assertProfileMapNoEscalation — the >500-holder strict fallback (§6.1.3)', () => {
-  const NO_DEFS: string[] = []
-
   it('DENIES an area the profile newly sets above the actor’s own level', () => {
     expect(() =>
       assertProfileMapNoEscalation({
         actor: actorAt({ areas: { [Area.records]: Level.Read } }),
         before: { levels: {}, baseLevel: null, ceiling: null },
         after: { levels: { [Area.records]: Level.Full }, baseLevel: null, ceiling: null },
-        defIds: NO_DEFS,
+      })
+    ).toThrow(ForbiddenError)
+  })
+
+  it('DENIES a baseLevel raise above the actor’s own level', () => {
+    // The blanket rung is a base raise on EVERY unset area at once, so it has to
+    // bite exactly like an explicit level does — with the ceiling branches gone,
+    // this and the case above are what stop a >500-holder profile escalating.
+    expect(() =>
+      assertProfileMapNoEscalation({
+        actor: actorAt({ base: Level.Read }),
+        before: { levels: {}, baseLevel: Level.Read, ceiling: null },
+        after: { levels: {}, baseLevel: Level.Full, ceiling: null },
       })
     ).toThrow(ForbiddenError)
   })
@@ -192,73 +209,31 @@ describe('assertProfileMapNoEscalation — the >500-holder strict fallback (§6.
         actor: actorAt({ areas: { [Area.records]: Level.None } }),
         before: { levels: { [Area.records]: Level.Full }, baseLevel: null, ceiling: null },
         after: { levels: { [Area.records]: Level.Read }, baseLevel: null, ceiling: null },
-        defIds: NO_DEFS,
       })
     ).not.toThrow()
   })
 
-  it('DENIES loosening an area ceiling beyond the actor’s own level', () => {
-    // Conservative by design: a group grant could carry any holder up to the new
-    // cap, and this mode cannot look at holders to find out.
+  it('PERMITS a raise that stays at or below the actor’s own level', () => {
     expect(() =>
       assertProfileMapNoEscalation({
-        actor: actorAt({ areas: { [Area.files]: Level.Read } }),
-        before: { levels: {}, baseLevel: null, ceiling: { areas: { [Area.files]: Level.Read } } },
-        after: { levels: {}, baseLevel: null, ceiling: { areas: { [Area.files]: Level.Full } } },
-        defIds: NO_DEFS,
+        actor: actorAt({ areas: { [Area.records]: Level.Edit } }),
+        before: { levels: { [Area.records]: Level.Read }, baseLevel: null, ceiling: null },
+        after: { levels: { [Area.records]: Level.Edit }, baseLevel: null, ceiling: null },
       })
-    ).toThrow(ForbiddenError)
+    ).not.toThrow()
   })
 
-  it('PERMITS tightening an area ceiling', () => {
+  it('ignores the unauthored ceiling entirely — an identical clamp is not a raise', () => {
+    // Plan 20 §2.a.3: `ceiling.areas` survives as a clamp with no writer, so both
+    // sides always carry the same value and it must never trip the guard.
+    const ceiling = { areas: { [Area.files]: Level.Read } }
     expect(() =>
       assertProfileMapNoEscalation({
         actor: actorAt({ areas: { [Area.files]: Level.None } }),
-        before: { levels: {}, baseLevel: null, ceiling: null },
-        after: { levels: {}, baseLevel: null, ceiling: { areas: { [Area.files]: Level.Read } } },
-        defIds: NO_DEFS,
+        before: { levels: {}, baseLevel: null, ceiling },
+        after: { levels: {}, baseLevel: null, ceiling },
       })
     ).not.toThrow()
-  })
-
-  it('DENIES widening the definition ceiling onto a def the actor does not administer', () => {
-    expect(() =>
-      assertProfileMapNoEscalation({
-        actor: actorAt({ base: Level.Full, defs: { [HR_DEF]: 'edit' } }),
-        before: { levels: {}, baseLevel: null, ceiling: { defs: { mode: 'only', slugs: [] } } },
-        after: { levels: {}, baseLevel: null, ceiling: null },
-        defIds: [HR_DEF],
-        toDefinitionId: (key) => key,
-      })
-    ).toThrow(ForbiddenError)
-  })
-
-  it('PERMITS widening the definition ceiling when the actor administers the def', () => {
-    expect(() =>
-      assertProfileMapNoEscalation({
-        actor: actorAt({ base: Level.Full, defs: { [HR_DEF]: 'admin' } }),
-        before: { levels: {}, baseLevel: null, ceiling: { defs: { mode: 'only', slugs: [] } } },
-        after: { levels: {}, baseLevel: null, ceiling: null },
-        defIds: [HR_DEF],
-        toDefinitionId: (key) => key,
-      })
-    ).not.toThrow()
-  })
-
-  it('resolves the ceiling’s apiSlugs into the def keyspace before comparing', () => {
-    // `hr` is the apiSlug; `defs`/`defIds` speak entityDefinitionIds. Without the
-    // resolver the "only: [hr]" ceiling would look like it admits nothing and the
-    // widening would go unnoticed.
-    const toDefinitionId = (key: string) => (key === 'hr' ? HR_DEF : key)
-    expect(() =>
-      assertProfileMapNoEscalation({
-        actor: actorAt({ base: Level.Full, defs: { [HR_DEF]: 'view' } }),
-        before: { levels: {}, baseLevel: null, ceiling: { defs: { mode: 'only', slugs: [] } } },
-        after: { levels: {}, baseLevel: null, ceiling: { defs: { mode: 'only', slugs: ['hr'] } } },
-        defIds: [HR_DEF],
-        toDefinitionId,
-      })
-    ).toThrow(ForbiddenError)
   })
 
   it('OWNER short-circuits here too', () => {
@@ -267,7 +242,6 @@ describe('assertProfileMapNoEscalation — the >500-holder strict fallback (§6.
         actor: actorAt({ role: 'OWNER', base: Level.None }),
         before: { levels: {}, baseLevel: null, ceiling: null },
         after: { levels: { [Area.records]: Level.Full }, baseLevel: Level.Full, ceiling: null },
-        defIds: [HR_DEF],
       })
     ).not.toThrow()
   })

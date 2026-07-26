@@ -92,11 +92,13 @@ export interface CapabilityView {
  *
  * Two properties worth stating explicitly:
  *
- * - **Admin bypass composes for free.** `CapabilitySet` short-circuits OWNER/ADMIN
- *   to `true`/`admin` internally, so an ADMIN invoker contributes `true` on every
- *   gate — which by `&&` cannot override a restricted agent's `false`. The
- *   converse holds too: an all-Full agent profile cannot lift a restricted human.
- *   Neither side needs to know the other's role.
+ * - **The privileged-invoker case composes for free.** `CapabilitySet`
+ *   short-circuits OWNER to `true`/`admin` internally (and an ADMIN on the seeded
+ *   all-`Full` profile answers `true` on every gate the same way, now by
+ *   composition rather than by bypass — doc 19 step 10), so a privileged invoker
+ *   contributes `true`, which by `&&` cannot override a restricted agent's
+ *   `false`. The converse holds too: an all-Full agent profile cannot lift a
+ *   restricted human. Neither side needs to know the other's role.
  * - **`assert*` calls BOTH sides**, in `a`-then-`b` order, so the first failing
  *   side throws its own `ForbiddenError` with its own message. There is no merged
  *   error type, and no side is silently skipped once the other passes.

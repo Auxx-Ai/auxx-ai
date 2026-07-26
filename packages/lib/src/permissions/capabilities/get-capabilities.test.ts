@@ -4,27 +4,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UserCapabilities } from './compose-user-capabilities'
 
 /**
- * The `get-capabilities` seam (doc 19 step 4): the bound profile's definition
- * ceiling is cached RAW and slug-keyed inside `userCapabilities`, then resolved
- * to the canonical `entityDefinitionId` keyspace here — against the org-scoped
- * `resources` projection, which every `entity-def.*` event already invalidates.
- * That is what lets a def be created/archived/restored without touching the
- * user-scoped blob.
+ * The `get-capabilities` seam: the cached `userCapabilities` blob is normalized
+ * against the org-scoped `resources` projection here, NOT in the pure composer.
+ *
+ * Plan 20 removed the profile DEFINITION ceiling, which is what this file used to
+ * cover (the slug→`entityDefinitionId` resolution existed only for it). What is
+ * left — and what these cases pin — is the keyspace normalization that survives:
+ * `ResourceAccess` rows are keyed inconsistently in practice (system defs by slug,
+ * custom defs by CUID), so both `defAccess` and the org-wide restricted set must
+ * be resolved through the SAME resolver `canViewEntity` normalizes its argument
+ * with, or a slug-keyed grant silently never matches.
  */
 
 const resources = [
   { id: 'res_contact', apiSlug: 'contact', entityDefinitionId: 'def_contact', entityType: null },
   { id: 'res_deal', apiSlug: 'deal', entityDefinitionId: 'def_deal', entityType: null },
-  // Added to the org AFTER the profile ceiling was authored.
-  { id: 'res_new', apiSlug: 'brand_new', entityDefinitionId: 'def_brand_new', entityType: null },
 ]
 
 let userCapabilities: UserCapabilities
+let restrictedDefIds: string[]
 
 vi.mock('../../cache', () => ({
   getCachedUserCapabilities: vi.fn(async () => userCapabilities),
   getCachedResources: vi.fn(async () => resources),
-  getCachedRestrictedEntityDefIds: vi.fn(async () => [] as string[]),
+  getCachedRestrictedEntityDefIds: vi.fn(async () => restrictedDefIds),
   getCachedRestrictedInstanceIds: vi.fn(async () => [] as string[]),
   getOrgCache: () => ({
     get: vi.fn(async () => ({ user_1: { role: 'USER', seatType: 'full' } })),
@@ -34,55 +37,43 @@ vi.mock('../../cache', () => ({
 const { getCapabilities } = await import('./get-capabilities')
 const { PermissionKey } = await import('./registry')
 
-const baseCaps = (ceilingDefs: UserCapabilities['ceilingDefs']): UserCapabilities => ({
-  keys: [PermissionKey.recordsView, PermissionKey.recordsEdit],
-  defAccess: {},
-  instanceAccess: {},
-  ceilingDefs,
-})
+const baseCaps = (defAccess: Record<string, 'view' | 'edit' | 'admin' | 'none'> = {}) =>
+  ({
+    keys: [PermissionKey.recordsView, PermissionKey.recordsEdit],
+    defAccess,
+    instanceAccess: {},
+  }) as UserCapabilities
 
-describe('getCapabilities — profile definition-ceiling resolution', () => {
+describe('getCapabilities — keyspace normalization', () => {
   beforeEach(() => {
-    userCapabilities = baseCaps(null)
+    userCapabilities = baseCaps()
+    restrictedDefIds = []
   })
 
-  it('resolves stored apiSlugs to entityDefinitionIds and enforces `only`', async () => {
-    userCapabilities = baseCaps({ mode: 'only', slugs: ['contact'] })
+  it('resolves an apiSlug-keyed grant against an apiSlug-keyed restricted set', async () => {
+    // Both sides arrive as `contact`; both must land on `def_contact` or the
+    // grant never matches the restriction it is supposed to satisfy.
+    userCapabilities = baseCaps({ contact: 'edit' })
+    restrictedDefIds = ['contact', 'deal']
     const caps = await getCapabilities('user_1', 'org_1')
     expect(caps.canViewEntity('def_contact')).toBe(true)
+    expect(caps.canEditEntity('contact')).toBe(true)
+    // `deal` is restricted with no grant for this member → denied in every form.
     expect(caps.canViewEntity('def_deal')).toBe(false)
-    // A definition created after the ceiling was authored is NOT in the
-    // allow-list, so it is excluded — `only` fails closed (§0.13).
-    expect(caps.canViewEntity('def_brand_new')).toBe(false)
-    expect(caps.toClientCapabilities().ceilingDefs).toEqual({
-      mode: 'only',
-      defIds: ['def_contact'],
-    })
+    expect(caps.canViewEntity('deal')).toBe(false)
   })
 
-  it('`except` denies exactly the listed defs and admits later ones (fails open)', async () => {
-    userCapabilities = baseCaps({ mode: 'except', slugs: ['deal'] })
+  it('an unrestricted def falls through to the base records level', async () => {
     const caps = await getCapabilities('user_1', 'org_1')
-    expect(caps.canViewEntity('def_deal')).toBe(false)
-    expect(caps.canViewEntity('def_contact')).toBe(true)
-    expect(caps.canViewEntity('def_brand_new')).toBe(true)
-  })
-
-  it('drops a slug that resolves to no live definition instead of throwing', async () => {
-    // A deleted/renamed def leaves a dangling entry. It simply vanishes from the
-    // set, which shrinks an `only` allow-list (stays closed) and an `except`
-    // deny-list (stays open) — never a hard failure (§3 slug lifecycle).
-    userCapabilities = baseCaps({ mode: 'only', slugs: ['contact', 'gone_forever'] })
-    const caps = await getCapabilities('user_1', 'org_1')
-    expect(caps.toClientCapabilities().ceilingDefs).toEqual({
-      mode: 'only',
-      defIds: ['def_contact'],
-    })
-  })
-
-  it('a null ceiling in the cached blob resolves to no clamp at all', async () => {
-    const caps = await getCapabilities('user_1', 'org_1')
-    expect(caps.toClientCapabilities().ceilingDefs).toBeNull()
     expect(caps.canViewEntity('def_deal')).toBe(true)
+    expect(caps.canEditEntity('def_deal')).toBe(true)
+  })
+
+  it('the client snapshot carries the normalized keyspace, not the raw blob keys', async () => {
+    userCapabilities = baseCaps({ contact: 'admin' })
+    restrictedDefIds = ['contact']
+    const snapshot = (await getCapabilities('user_1', 'org_1')).toClientCapabilities()
+    expect(snapshot.defAccess).toEqual({ def_contact: 'admin' })
+    expect(snapshot.restrictedEntityDefIds).toEqual(['def_contact'])
   })
 })

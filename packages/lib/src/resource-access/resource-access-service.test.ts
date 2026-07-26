@@ -22,13 +22,25 @@ vi.mock('../permissions/profiles/profile-invalidation', () => ({
 }))
 
 const resolveProfileHolders = vi.fn(async () => ['u_holder_a', 'u_holder_b'])
+// `resolveResourceAccessGrantees` reads the org cache (memberRoleMap + profiles);
+// the check-path tests below only care about the ROLE short-circuit, so the
+// grantee union is stubbed to "no groups, no profile".
+const resolveResourceAccessGrantees = vi.fn(async (_org: string, userId: string) => ({
+  userId,
+  groupIds: [] as string[],
+  profileId: null as string | null,
+}))
 vi.mock('./grantee-resolution', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./grantee-resolution')>()),
   resolveProfileHolders: (...a: unknown[]) => resolveProfileHolders(...(a as [])),
+  resolveResourceAccessGrantees: (...a: unknown[]) =>
+    resolveResourceAccessGrantees(...(a as [string, string])),
 }))
 
 import { onCacheEvent } from '../cache'
 import {
+  checkAccess,
+  checkTypeAccess,
   grantInstanceAccess,
   grantTypeAccess,
   revokeInstanceAccess,
@@ -194,5 +206,70 @@ describe('resource-access cache-event emission', () => {
     )
     const targeted = emit.mock.calls.map((c) => c[1].userId).sort()
     expect(targeted).toEqual(['u_added', 'u_removed'])
+  })
+})
+
+/**
+ * The FOURTH ADMIN bypass (doc 19 §5.3 piece 2) — an independent
+ * `['OWNER','ADMIN']` short-circuit on a code path completely separate from
+ * `capability-set` / `entity-access`. Narrowing only those left this one handing
+ * admins `admin` on every instance, so sharing stayed bypassed.
+ */
+function checkDb(role: string | undefined, grants: Array<Record<string, unknown>> = []) {
+  return {
+    query: {
+      OrganizationMember: { findFirst: async () => (role ? { role } : undefined) },
+      ResourceAccess: { findMany: async () => grants },
+    },
+  } as any
+}
+
+describe('checkAccess / checkTypeAccess role short-circuit (doc 19 §5.3 piece 2)', () => {
+  const ctx = (role: string | undefined, grants?: Array<Record<string, unknown>>) => ({
+    db: checkDb(role, grants),
+    organizationId: ORG,
+    userId: 'u_target',
+  })
+
+  it('OWNER keeps the unconditional bypass (the §0.10 recovery guarantee)', async () => {
+    for (const check of [
+      () => checkAccess(ctx('OWNER'), { recordId: RECORD, userId: 'u_target' }),
+      () => checkTypeAccess(ctx('OWNER'), { entityDefinitionId: 'inbox', userId: 'u_target' }),
+    ]) {
+      await expect(check()).resolves.toEqual({
+        hasAccess: true,
+        permission: ResourcePermission.admin,
+        grantedVia: 'role',
+        accessLevel: 'type',
+      })
+    }
+  })
+
+  it('ADMIN no longer bypasses — an ungranted instance is denied', async () => {
+    await expect(
+      checkAccess(ctx('ADMIN'), { recordId: RECORD, userId: 'u_target' })
+    ).resolves.toEqual({ hasAccess: false, permission: null, grantedVia: null, accessLevel: null })
+    await expect(
+      checkTypeAccess(ctx('ADMIN'), { entityDefinitionId: 'inbox', userId: 'u_target' })
+    ).resolves.toEqual({ hasAccess: false, permission: null, grantedVia: null, accessLevel: null })
+  })
+
+  it('ADMIN resolves through their own grantee union like anyone else', async () => {
+    const granted = [
+      { permission: ResourcePermission.edit, entityInstanceId: 'inbox_1', granteeType: 'user' },
+    ]
+    await expect(
+      checkAccess(ctx('ADMIN', granted), { recordId: RECORD, userId: 'u_target' })
+    ).resolves.toMatchObject({
+      hasAccess: true,
+      permission: ResourcePermission.edit,
+      accessLevel: 'instance',
+    })
+  })
+
+  it('a plain USER is unaffected by the narrowing', async () => {
+    await expect(
+      checkAccess(ctx('USER'), { recordId: RECORD, userId: 'u_target' })
+    ).resolves.toEqual({ hasAccess: false, permission: null, grantedVia: null, accessLevel: null })
   })
 })

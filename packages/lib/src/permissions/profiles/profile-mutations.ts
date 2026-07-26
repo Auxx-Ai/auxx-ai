@@ -3,14 +3,30 @@
 import { type Database, database, type PermissionProfileEntity, schema } from '@auxx/database'
 import type { SeatType } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
-import { BadRequestError, ForbiddenError } from '../../errors'
+import { BadRequestError, ConflictError, ForbiddenError } from '../../errors'
 import { FeaturePermissionService } from '../feature-permission-service'
 import { FeatureKey } from '../types'
 import { emitPermissionProfileChanged } from './profile-invalidation'
-import type { AgentPermissionPolicy, ProfileAppliesTo, ProfileCeiling } from './types'
+import type { AgentPermissionPolicy, ProfileAppliesTo } from './types'
 import { SYSTEM_PROFILE_SLUGS } from './types'
 
 const SYSTEM_SLUG_SET = new Set<string>(SYSTEM_PROFILE_SLUGS)
+
+/** Postgres unique-violation on `(organizationId, slug)`, however it is wrapped. */
+function isUniqueSlugViolation(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 4; depth++) {
+    const candidate = e as { code?: unknown; constraint?: unknown; cause?: unknown }
+    if (
+      candidate.code === '23505' &&
+      (candidate.constraint === undefined ||
+        candidate.constraint === 'PermissionProfile_organizationId_slug_key')
+    ) {
+      return true
+    }
+    e = candidate.cause
+  }
+  return false
+}
 
 /**
  * Enterprise gate — authoring profiles requires the plan feature (§0.26). System
@@ -67,7 +83,6 @@ export interface CreatePermissionProfileInput {
   /** IMMUTABLE after creation (§0.18). */
   appliesTo?: ProfileAppliesTo
   baseLevel?: number | null
-  ceiling?: ProfileCeiling | null
   agentPolicy?: AgentPermissionPolicy | null
   db?: Database
 }
@@ -98,7 +113,21 @@ export async function createPermissionProfile(
   }
   await requireGranularPermissions(db, organizationId)
 
-  const [row] = await db
+  const [existing] = await db
+    .select({ id: schema.PermissionProfile.id })
+    .from(schema.PermissionProfile)
+    .where(
+      and(
+        eq(schema.PermissionProfile.organizationId, organizationId),
+        eq(schema.PermissionProfile.slug, slug)
+      )
+    )
+    .limit(1)
+  if (existing) {
+    throw new ConflictError(`A permission profile with the slug '${slug}' already exists.`)
+  }
+
+  const rows = await db
     .insert(schema.PermissionProfile)
     .values({
       // `id` omitted — the column's `$defaultFn(createId)` mints it.
@@ -110,13 +139,23 @@ export async function createPermissionProfile(
       seat: input.seat ?? 'full',
       appliesTo: input.appliesTo ?? 'member',
       baseLevel: input.baseLevel ?? null,
-      // The column is generic jsonb (schema is tier 1 and cannot see lib's
-      // `Area`/`Level`); lib narrows on read via `parseProfileCeiling`.
-      ceiling: (input.ceiling ?? null) as Record<string, unknown> | null,
+      // Always `null`: the ceiling has no authoring surface (plan 20 §2.a.1), so
+      // nothing — not this mutation, not the seeds, not `savePermissionProfile` —
+      // writes it. It survives only as the clamp seam in `composeUserCapabilities`.
+      ceiling: null,
       agentPolicy: input.agentPolicy ?? null,
       isSystem: false,
     })
     .returning()
+    .catch((error: unknown) => {
+      // The check above races a concurrent create, so the unique index is the
+      // real arbiter. Without this the caller gets a raw 23505 as a 500.
+      if (isUniqueSlugViolation(error)) {
+        throw new ConflictError(`A permission profile with the slug '${slug}' already exists.`)
+      }
+      throw error
+    })
+  const [row] = rows
 
   const profile = row as PermissionProfileEntity
   await emitPermissionProfileChanged({
@@ -133,10 +172,10 @@ export async function createPermissionProfile(
  * `savePermissionProfile` (`profile-save.ts`).
  *
  * There is deliberately **no** standalone `updatePermissionProfile`: §6.1.4
- * requires ONE transactional save carrying metadata, levels, the ceiling and (at
- * step 9) the def/instance rows together, because a save spanning several
- * requests cannot enforce one atomic "resulting effective state" check. A
- * metadata-only side door would be exactly that multi-request variant.
+ * requires ONE transactional save carrying metadata, levels and (at step 9) the
+ * def/instance rows together, because a save spanning several requests cannot
+ * enforce one atomic "resulting effective state" check. A metadata-only side door
+ * would be exactly that multi-request variant.
  *
  * `seat`, `appliesTo`, `slug` and `isSystem` stay immutable after creation
  * (§0.18) — changing seat class is "clone the profile and reassign", which

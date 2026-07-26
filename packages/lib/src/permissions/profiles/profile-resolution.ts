@@ -9,13 +9,14 @@ const logger = createScopedLogger('permission-profiles')
 
 /**
  * The two halves of a resolved human base profile that composition consumes:
- * the fallback rung for unset areas and the profile's own intrinsic ceiling.
+ * the fallback rung for unset areas and the profile's per-area clamp.
  * `profileId` is `null` when nothing resolved (runtime fallback — §5.2).
  */
 export interface ResolvedBaseProfile {
   profileId: string | null
   slug: string
   baseLevel: CachedPermissionProfile['baseLevel']
+  /** Unauthored (plan 20 §2.a.3) — `null` for every profile in practice. */
   ceiling: ProfileCeiling | null
 }
 

@@ -53,12 +53,14 @@ function uniformAgentPolicy(level: AgentAccessLevel): AgentPermissionPolicy {
  *
  * `field_tech`'s cap is `SEAT_CEILINGS`, not a `ceiling` on this row (§0.20) —
  * the seat ceiling is a billing invariant and must never become profile-driven.
+ * No seed carries a `ceiling` at all, and none ever will: it has no authoring
+ * surface (plan 20 §2.a.1) and `ensureSystemProfiles` writes `null`.
  */
 export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
   {
     slug: 'owner',
     name: 'Owner',
-    description: 'Full, unrestricted access. Never limited by a profile ceiling.',
+    description: 'Full, unrestricted access. Never limited by any permission profile.',
     icon: { iconId: 'crown', color: 'amber' },
     seat: 'full',
     appliesTo: 'member',

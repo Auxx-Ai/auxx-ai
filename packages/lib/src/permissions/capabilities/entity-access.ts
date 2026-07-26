@@ -53,22 +53,6 @@ export const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * The bound profile's definition ceiling (doc 19 §0.13) resolved into the
- * canonical `entityDefinitionId` keyspace.
- *  - `only` — the allowed set is EXACTLY `defIds`. A definition created later is
- *    excluded, so it **fails closed**.
- *  - `except` — everything but `defIds`. A definition created later is included,
- *    so it **fails open**.
- *
- * Slugs that resolve to no live definition are simply absent from `defIds`;
- * a dangling entry never throws (§3 slug lifecycle).
- */
-export interface ResolvedDefCeiling {
-  mode: 'only' | 'except'
-  defIds: ReadonlySet<string>
-}
-
-/**
  * A resolved, normalized view of one member's record-access inputs — the shared
  * argument for every function here. The server builds it from its
  * `CapabilitySet` fields; the client from the dehydrated/refetched snapshot.
@@ -98,27 +82,6 @@ export interface ResolvedRecordAccess {
   instanceAccess?: Readonly<Record<string, ResourcePermission>>
   /** Org-wide set of instance ids carrying ≥1 instance-access row. Optional (see above). */
   restrictedInstanceIds?: ReadonlySet<string>
-  /**
-   * The bound profile's per-definition cap (§0.13/§0.14), already resolved to
-   * `entityDefinitionId`s. Absent/`null` = uncapped. Never present for OWNER
-   * (§0.10) — the composer emits `null` for them.
-   */
-  ceilingDefs?: ResolvedDefCeiling | null
-}
-
-/**
- * Whether the member's profile definition ceiling admits this definition
- * (§0.13). The ONE predicate every record resolver funnels through — a clamp
- * applied at only some of the seams is defeated by the others (§3).
- *
- * No ceiling ⇒ `true`. `only` ⇒ the def must be listed; `except` ⇒ it must not be.
- */
-export function ceilingAllowsDef(caps: ResolvedRecordAccess, entityDefinitionId: string): boolean {
-  const ceiling = caps.ceilingDefs
-  if (!ceiling) return true
-  return ceiling.mode === 'only'
-    ? ceiling.defIds.has(entityDefinitionId)
-    : !ceiling.defIds.has(entityDefinitionId)
 }
 
 /**
@@ -158,17 +121,25 @@ export function levelToPermission(level: Level): ResourcePermission | undefined 
 /**
  * Layer 2 × Layer 3, most-specific-wins. The member's effective record
  * permission for a def, or `undefined` (= No Access).
- *  - OWNER/ADMIN → `admin` (bypass — never self-lock).
+ *  - OWNER → `admin` (the §0.10 recovery bypass — never self-lock).
  *  - restricted def → the member's own grant REPLACES base.
  *  - unrestricted def → base records level fills in.
- *  - profile definition ceiling excludes the def → `undefined`.
  *  - worker seat (records ceiling None) → `undefined`.
+ *
+ * **ADMIN no longer bypasses** (doc 19 §3 / §5.3 piece 2, step 10): an admin's
+ * record level now flows from the `admin` profile like anyone else's, so an
+ * area/definition restriction authored on that profile actually bites. The
+ * seeded `admin` profile is all-`Full`, which resolves to the `edit` base rung
+ * ({@link levelToRecordBasePermission} caps base at `edit` by design), so on an
+ * org with no restricted defs an admin's view/edit gates are unchanged.
+ * Definition *administration* is deliberately NOT taken away here — see
+ * {@link canAdministerRecord}.
  */
 export function effectiveRecordLevel(
   caps: ResolvedRecordAccess,
   entityDefinitionId: string
 ): ResourcePermission | undefined {
-  if (caps.role === 'OWNER' || caps.role === 'ADMIN') return ResourcePermission.admin
+  if (caps.role === 'OWNER') return ResourcePermission.admin
   const hasBaseOverride = Object.hasOwn(caps.defBaseOverrides ?? {}, entityDefinitionId)
   const unrestrictedBase = hasBaseOverride
     ? (caps.defBaseOverrides?.[entityDefinitionId] ?? undefined)
@@ -177,9 +148,6 @@ export function effectiveRecordLevel(
     ? caps.defAccess[entityDefinitionId]
     : unrestrictedBase
   if (chosen === undefined) return undefined
-  // The bound profile's own definition cap — POLICY, so it lands before the
-  // billing invariant below (§0.14) and after the OWNER recovery bypass (§0.10).
-  if (!ceilingAllowsDef(caps, entityDefinitionId)) return undefined
   if (SEAT_CEILINGS[caps.seatType][Area.records] === Level.None) return undefined
   return chosen
 }
@@ -202,9 +170,10 @@ export function canViewRecord(caps: ResolvedRecordAccess, entityDefinitionId: st
   const level = effectiveRecordLevel(caps, entityDefinitionId)
   if (level !== undefined && satisfiesPermission(level, ResourcePermission.view)) return true
   if (caps.seatType === 'worker' && caps.keys.has(PermissionKey.recordsViewLinked)) {
-    // The carve-out skips `effectiveRecordLevel`, so the profile definition
-    // ceiling has to be re-applied here or a field seat walks around it (§3).
-    if (!ceilingAllowsDef(caps, entityDefinitionId)) return false
+    // The carve-out skips `effectiveRecordLevel`, so it is sound ONLY because the
+    // `seatType === 'worker'` guard above keeps it confined to the seat ceiling
+    // that already governs this verb (§3 — a clamp applied at some seams only is
+    // defeated by the others).
     if (!caps.restrictedEntityDefIds.has(entityDefinitionId)) return true
     return caps.defAccess[entityDefinitionId] !== undefined
   }
@@ -234,9 +203,25 @@ export function canEditRecord(caps: ResolvedRecordAccess, entityDefinitionId: st
  * type-grant on a restricted def, or OWNER/ADMIN, reaches this rung.
  *
  * It goes through {@link effectiveRecordLevel} rather than reading `defAccess`
- * raw so that every clamp on that path — the profile definition ceiling and the
- * worker seat ceiling — applies here too (§3: a clamp added at one seam only is
- * defeated by the others).
+ * raw so that every clamp on that path — today the worker seat ceiling, plus
+ * whatever lands there next — applies here too (§3: a clamp added at one seam
+ * only is defeated by the others). That repoint is doc 19 step 4's own
+ * correctness fix and is independent of the deleted definition ceiling; do not
+ * revert it back to raw `defAccess`.
+ *
+ * **ADMIN deliberately KEEPS its bypass here** (doc 19 step 10). Step 10 narrowed
+ * ADMIN out of `effectiveRecordLevel`, `effectiveInstanceLevel` and
+ * `resource-access-service`, but not out of this gate, because the profile model
+ * has **no rung that expresses definition administration**: base records levels
+ * top out at `edit` ({@link levelToRecordBasePermission}), so an ADMIN on the
+ * all-`Full` seeded profile would resolve to `edit` and lose *every* def —
+ * custom fields, entity-definition edits, table-view management — with nothing on
+ * the profile able to give it back short of an explicit per-def `admin`
+ * `ResourceAccess` row for each definition in the org. That is capability loss
+ * with no lever, not shapeability. Making it shapeable needs a decision doc 19
+ * does not make (most likely: derive it from `Area.settings` at `Full`, which is
+ * `adminOnly` and therefore already `Full` for ADMIN and `None` for USER —
+ * parity-preserving). Tracked as a §11 open item; do not narrow this in isolation.
  */
 export function canAdministerRecord(
   caps: ResolvedRecordAccess,
@@ -251,15 +236,17 @@ export function canAdministerRecord(
  * Whether the member administers AT LEAST ONE def — the "is there any def-admin
  * surface for me at all" gate (e.g. showing the Custom Fields settings nav entry
  * / listing only administered defs). OWNER/ADMIN administer every def; everyone
- * else needs ≥1 explicit `admin` type-grant on a def their profile definition
- * ceiling still admits. Worker seats never administer.
+ * else needs ≥1 explicit `admin` type-grant. Worker seats never administer.
+ *
+ * The ADMIN half of this early return is kept in lockstep with
+ * {@link canAdministerRecord} — narrowing one without the other would leave the
+ * settings nav hidden from admins who can still use every procedure behind it.
+ * See that function for why neither is narrowed yet.
  */
 export function administersAnyDef(caps: ResolvedRecordAccess): boolean {
   if (caps.role === 'OWNER' || caps.role === 'ADMIN') return true
   if (SEAT_CEILINGS[caps.seatType][Area.records] === Level.None) return false
-  return Object.entries(caps.defAccess).some(
-    ([defId, p]) => p === ResourcePermission.admin && ceilingAllowsDef(caps, defId)
-  )
+  return Object.values(caps.defAccess).some((p) => p === ResourcePermission.admin)
 }
 
 /**
@@ -287,13 +274,6 @@ export interface ClientCapabilities {
   instanceAccess?: Record<string, ResourcePermission>
   /** Org-wide set of instance ids carrying ≥1 instance-access row. Optional (see above). */
   restrictedInstanceIds?: string[]
-  /**
-   * The profile definition ceiling, server-resolved to `entityDefinitionId`s
-   * (§0.13). `mode` is carried alongside the ids because it decides whether the
-   * set is an allow-list or a deny-list. `null`/absent = uncapped, or the UI
-   * would offer what the server denies (§3).
-   */
-  ceilingDefs?: { mode: 'only' | 'except'; defIds: string[] } | null
 }
 
 /** Rebuild the Set-backed {@link ResolvedRecordAccess} from a wire snapshot. */
@@ -307,9 +287,6 @@ export function toResolvedRecordAccess(caps: ClientCapabilities): ResolvedRecord
     defBaseOverrides: caps.defBaseOverrides ?? {},
     instanceAccess: caps.instanceAccess ?? {},
     restrictedInstanceIds: new Set(caps.restrictedInstanceIds ?? []),
-    ceilingDefs: caps.ceilingDefs
-      ? { mode: caps.ceilingDefs.mode, defIds: new Set(caps.ceilingDefs.defIds) }
-      : null,
   }
 }
 
@@ -330,10 +307,16 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  * {@link import('./capability-set').CapabilitySet}'s private
  * `effectiveInstanceLevel`, kept byte-for-byte in sync so client affordances and
  * server enforcement never drift (§1.4):
- *  - OWNER/ADMIN → `admin` (bypass — never self-lock).
+ *  - OWNER → `admin` (the §0.10 recovery bypass — never self-lock).
  *  - L2 area gate closed (`None`) → `undefined`.
  *  - explicit instance row (incl. workspace baseline / `'none'`) → wins.
  *  - otherwise fall back to the base L2 area level (`baselineAtCreate: false`).
+ *
+ * **ADMIN no longer bypasses** (doc 19 §5.3 piece 2, step 10). On the seeded
+ * all-`Full` `admin` profile the fallback branch returns `admin` anyway for the
+ * org-shared resources (`dataset`, `kb`), so an unshared instance is unchanged;
+ * an instance that IS explicitly shared now resolves through the admin's own
+ * grants, which is the whole point of removing the bypass.
  *
  * Exported so the doc-19 §6.1 escalation guard measures a holder's per-instance
  * authority through the SAME predicate the read path enforces (§6.1.4) — the
@@ -344,7 +327,7 @@ export function effectiveInstanceLevel(
   key: InstanceAccessKey,
   instanceId: string
 ): ResourcePermission | undefined {
-  if (caps.role === 'OWNER' || caps.role === 'ADMIN') return ResourcePermission.admin
+  if (caps.role === 'OWNER') return ResourcePermission.admin
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
   const areaLevel = areaLevelFromKeys(caps.keys, cfg.area)
   if (areaLevel === Level.None) return undefined

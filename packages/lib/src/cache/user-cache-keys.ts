@@ -129,7 +129,14 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // member whose profile says `only: [contact]` would keep full record access for
   // the rest of the ONE_DAY TTL. Fail-open on a stale blob is exactly what a
   // ceiling must never do, so the old blobs are abandoned rather than migrated.
+  // v8: the DEFINITION ceiling is deleted end-to-end (plan 20 §2.a.2/§2.a.8).
+  // `UserCapabilities`/`ClientCapabilities` lose `ceilingDefs`, so every v7 blob is
+  // the wrong shape — and the failure direction is the dangerous one: a v7 blob
+  // read by the v8 composer has no ceiling, which every remaining seam reads as
+  // "uncapped". Fail-OPEN on a stale blob is why this bump ships in the SAME change
+  // as the field removal rather than being treated as cosmetic. Abandoned, not
+  // migrated — same reasoning as v6→v7 above.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v7', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v8', ttlSeconds: ONE_DAY },
 }

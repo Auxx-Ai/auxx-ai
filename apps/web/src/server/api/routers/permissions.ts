@@ -1,15 +1,15 @@
 // apps/web/src/server/api/routers/permissions.ts
 
-import { getCachedPermissionProfiles } from '@auxx/lib/cache'
 import {
   type Area,
   clearGranteeLevels,
   createPermissionProfile,
   getCapabilities,
+  getPermissionProfile,
   Level,
   listGranteeGrants,
+  listPermissionProfiles,
   PermissionKey,
-  type ProfileCeiling,
   ROLE_DEFAULTS,
   savePermissionProfile,
   setGranteeLevels,
@@ -38,14 +38,6 @@ const granteeType = z.enum(['role', 'group', 'user'])
  * avoids brittle enum-shape mismatches (e.g. a client sending `"3"` vs `3`).
  */
 const levelsInput = z.record(z.string(), z.coerce.number().int().min(Level.None).max(Level.Full))
-
-/** A profile's own intrinsic cap (§0.13/§0.14) — areas plus the def allow/deny list. */
-const ceilingInput = z
-  .object({
-    areas: levelsInput.optional(),
-    defs: z.object({ mode: z.enum(['only', 'except']), slugs: z.array(z.string()) }).nullish(),
-  })
-  .nullable()
 
 /** Profile identity chrome (§7): an icon id + colour token, or nothing. */
 const iconInput = z.object({ iconId: z.string(), color: z.string() }).nullable()
@@ -206,14 +198,39 @@ export const permissionsRouter = createTRPCRouter({
    * `profiles` projection — the same rows `computeUserCapabilities` composes from,
    * so the editor can never show a profile the composer does not read.
    *
+   * Returns a bare, deterministically ordered array of picker rows
+   * (`{ id, slug, name, description, icon, seat, appliesTo, isSystem, baseLevel }`):
+   * seeded profiles in their §5.1 ladder order first, then custom ones by name.
+   * `ceiling` / `agentPolicy` are deliberately NOT here — a list renders identity,
+   * not policy; use {@link permissionsRouter.getProfile} for those.
+   *
    * A READ, therefore **not** plan-gated (§0.26): a Free org must still be able to
    * see the system profiles supplying its `ROLE_DEFAULTS`, it simply cannot edit
    * them.
    */
-  listProfiles: permissionsProcedure.query(async ({ ctx }) => {
-    const profiles = await getCachedPermissionProfiles(ctx.session.organizationId)
-    return { profiles }
-  }),
+  listProfiles: permissionsProcedure.query(async ({ ctx }) =>
+    listPermissionProfiles(ctx.session.organizationId)
+  ),
+
+  /**
+   * One profile with its policy payload — the summary fields plus `agentPolicy`
+   * (agent exact policy, §2.3) and `updatedAt`. `ceiling` rides along as the
+   * narrowed, unauthored per-area clamp (plan 20 §2.a.3) and is `null` for every
+   * profile; no editor control reads it.
+   *
+   * Scoped to the session org by construction: it reads that org's `profiles`
+   * cache entry, so an id from another org is indistinguishable from a missing
+   * one and both raise `NotFoundError` (404) rather than leaking existence.
+   *
+   * Reading an agent profile is capability-gated like the rest of this router;
+   * *writing* one stays OWNER/ADMIN-only inside `savePermissionProfile`
+   * (doc 14 §0.9).
+   */
+  getProfile: permissionsProcedure
+    .input(z.object({ profileId: z.string() }))
+    .query(async ({ ctx, input }) =>
+      getPermissionProfile(ctx.session.organizationId, input.profileId)
+    ),
 
   /**
    * Create a custom profile. `seat` / `appliesTo` are accepted here and nowhere
@@ -261,10 +278,14 @@ export const permissionsRouter = createTRPCRouter({
     }),
 
   /**
-   * The ONE transactional profile save (§6.1.4) — metadata, area levels and the
-   * ceiling in a single mutation, because a save spanning several requests cannot
-   * enforce one atomic "resulting effective state" check. There is deliberately no
+   * The ONE transactional profile save (§6.1.4) — metadata and area levels in a
+   * single mutation, because a save spanning several requests cannot enforce one
+   * atomic "resulting effective state" check. There is deliberately no
    * metadata-only side door.
+   *
+   * There is no `ceiling` field: the profile ceiling lost its authoring surface in
+   * plan 20 §2.a.1. It survives as an unauthored clamp inside
+   * `composeUserCapabilities`, so nothing on the wire can set it.
    *
    * `savePermissionProfile` owns the gates: the `granularPermissions` plan gate
    * (writes only), cross-org ownership, `owner`-profile immutability, the
@@ -280,7 +301,6 @@ export const permissionsRouter = createTRPCRouter({
         icon: iconInput.optional(),
         levels: levelsInput.nullish(),
         baseLevel: z.number().int().min(Level.None).max(Level.Full).nullish(),
-        ceiling: ceilingInput.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -296,7 +316,6 @@ export const permissionsRouter = createTRPCRouter({
         // is the real gate (drops unknown areas, clamps each value).
         levels: input.levels as Partial<Record<Area, Level>> | null | undefined,
         baseLevel: input.baseLevel as Level | null | undefined,
-        ceiling: input.ceiling as ProfileCeiling | null | undefined,
       })
 
       await recordAuditFromCtx(ctx, {
@@ -309,7 +328,6 @@ export const permissionsRouter = createTRPCRouter({
           name: profile.name,
           levels: input.levels ?? undefined,
           baseLevel: input.baseLevel ?? undefined,
-          ceiling: input.ceiling ?? undefined,
         },
       })
 

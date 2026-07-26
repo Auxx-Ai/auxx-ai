@@ -419,7 +419,26 @@ export interface AreaMetadata {
    *
    * This applies to any profile bound to an ADMIN member, not only the `admin`
    * system profile — a custom profile on an admin has the identical problem.
-   * Step 10 populates it; no area sets it yet.
+   *
+   * **The rule the step-10 audit applied** (each flagged area carries a comment
+   * naming a concrete blocking router, so the flag stays verifiable):
+   * an area is `roleGated` when at least one **load-bearing** router for its keys
+   * is decided by a binary role check — `adminProcedure` / a bare
+   * `isAdminOrOwner` — **without** asserting one of the area's own
+   * {@link PermissionKey}s. Three things deliberately do NOT earn the flag:
+   * - a role check *layered on top of* an assert of the area's own key (the
+   *   level still bites downward for an admin, so the note would be false);
+   * - ownership carve-outs (`author || admin`, `own credential || admin`) and
+   *   visibility/masking uses of `isAdminOrOwner`, which are not area gates;
+   * - the `OWNER`/`ADMIN` short-circuits inside this package
+   *   (`capability-set.ts` `effectiveInstanceLevel`, `entity-access.ts`) and
+   *   `resource-access-service.ts` — those are §5.3 **piece 2**, narrowed to
+   *   OWNER by step 10's other half, not piece 3's router migration.
+   *
+   * `adminOnly` is a DIFFERENT flag: it means "never grantable *below* ADMIN"
+   * (the USER baseline is forced to `None`). `roleGated` means "an ADMIN reaches
+   * it regardless of the level". `settings` carries both, for independent
+   * reasons; neither implies the other.
    */
   roleGated?: boolean
   /** Layer-1 plan link — the area's keys AND the org's plan feature. */
@@ -443,6 +462,13 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
       { level: Level.Edit, keys: [PermissionKey.recordsEdit] },
       { level: Level.Full, keys: [PermissionKey.recordsDelete, PermissionKey.recordsImport] },
     ],
+    // Audited (step 10) and deliberately NOT `roleGated`: view/edit run through
+    // `resources/crud/unified-handler.ts` + `entity-access.ts`, and `record.ts`
+    // asserts `recordsDelete` — all capability-driven. `entityDefinition.create`
+    // and `tableView.ts`'s def-less fallback are `adminProcedure`/`isAdminOrOwner`,
+    // but they are def-SCHEMA surfaces with no key in this area, not record CRUD.
+    // Separate known gap, NOT a role gate: `recordsImport` has no enforcement —
+    // `data-import.ts` is 27× `protectedProcedure`.
   },
   [Area.recordsLinked]: {
     area: Area.recordsLinked,
@@ -460,6 +486,13 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'Create, edit, and run automation workflows.',
     group: 'Automation',
     rungs: [{ level: Level.Full, keys: [PermissionKey.workflowsManage] }],
+    // Blocking gate: `workflow.ts` is 25× `protectedProcedure` and NEVER reads
+    // `workflowsManage` — the key has zero server-side enforcement anywhere
+    // (only client-side `can()` in `menu.tsx` / `workflows-empty-state.tsx`).
+    // Strictly WORSE than role-gated: every member, not just admins, reaches it
+    // regardless. Locked here so the editor does not ship a dead lever; the
+    // §11.5 plan must treat this one as a hole to close, not a migration.
+    roleGated: true,
     featureKey: FeatureKey.workflows,
   },
   [Area.agents]: {
@@ -468,6 +501,14 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'Create and configure Kopilot agents.',
     group: 'Automation',
     rungs: [{ level: Level.Full, keys: [PermissionKey.agentsManage] }],
+    // Blocking gates: `agent.ts` itself is fully migrated (15×
+    // `permissionProcedure(agentsManage)`), but every sibling authoring router
+    // is still `adminProcedure` with no capability assert —
+    // `agent-toolset.ts`, `agent-trigger.ts`, `agent-scope.ts`,
+    // `agent-procedure.ts`, `procedure.ts`, and `eval.ts`'s
+    // `evalAdminProcedure`. Toolsets/triggers/scope ARE the agent's
+    // configuration, so the area's lever is only half real.
+    roleGated: true,
     featureKey: FeatureKey.agents,
   },
   [Area.comments]: {
@@ -486,6 +527,17 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
       { level: Level.Read, keys: [PermissionKey.dispatchBoardView] },
       { level: Level.Full, keys: [PermissionKey.dispatchBoardManage] },
     ],
+    // Blocking gate: `availability.ts` (`saveWeeklyHours`, `addException`,
+    // `updateException`, `deleteException`) is bare `adminProcedure` with NO
+    // capability assert — an admin at `None` still rewrites the org's dispatch
+    // hours. Same for the `invoice-delete-guard.ts` / `work-order-delete-guard.ts`
+    // pre-delete hooks on the board's own record faces. The rest of the area
+    // (`dispatch.ts`'s `dispatchAdminProcedure`, `money.ts`'s
+    // `moneyAdminProcedure`) LAYERS `isAdminOrOwner` on top of a
+    // `dispatchBoardManage` assert, which alone would not earn the flag.
+    // This is the closest call in the audit: migrate `availability.ts` and the
+    // two delete guards and the area becomes honestly unlockable.
+    roleGated: true,
     featureKey: FeatureKey.dispatch,
   },
   [Area.dispatchMySchedule]: {
@@ -511,6 +563,15 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.settingsManage] }],
     adminOnly: true,
+    // Blocking gates: `setting.ts` (`updateOrganizationSetting`,
+    // `batchUpdateOrganizationSettings`) and `organization.ts:update` are bare
+    // `isAdminOrOwner` on a `protectedProcedure`. `settingsManage` has ZERO
+    // enforcement sites in the whole repo, so the level control decides nothing.
+    // Independent of `adminOnly` above: that one stops a USER being granted UP,
+    // this one records that an ADMIN cannot be clamped DOWN. Both are true here;
+    // neither implies the other. (`adminOnly` already hides the row from the
+    // settings grid, so the flag is documentation + the §11.5 worklist today.)
+    roleGated: true,
   },
   [Area.billing]: {
     area: Area.billing,
@@ -521,6 +582,13 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
       { level: Level.Read, keys: [PermissionKey.billingView] },
       { level: Level.Full, keys: [PermissionKey.billingManage] },
     ],
+    // Audited (step 10) and deliberately NOT `roleGated`: `billing.ts` has no
+    // role check at all — writes go through `permissionProcedure(billingManage)`,
+    // so the `Full` rung bites for admins too. Separate known gap: `billingView`
+    // has no enforcement (reads sit on `cloudOnlyProcedure`, a plain
+    // `protectedProcedure`), so the `Read` rung is cosmetic server-side. That is
+    // an unenforced key, not a role gate — locking the area would take away a
+    // control that half works.
   },
   [Area.members]: {
     area: Area.members,
@@ -554,6 +622,14 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'Install and configure apps, MCP servers, and webhooks.',
     group: 'Integrations',
     rungs: [{ level: Level.Full, keys: [PermissionKey.integrationsManage] }],
+    // Blocking gates: the app CONNECTION lifecycle in `apps.ts` never touches
+    // `integrationsManage` — `saveSecretConnection` gates org-scoped connections
+    // on a bare `isAdminOrOwner`, and `deleteConnection`/`renameConnection` go
+    // through `requireConnectionManageAccess` (`own credential || admin`) on a
+    // `protectedProcedure`. `apiKey.ts:create` gates chat signing keys the same
+    // way. Install/uninstall/settings, MCP, and webhooks ARE migrated, so this
+    // is partial coverage — but connecting an app is load-bearing for the area.
+    roleGated: true,
   },
   [Area.aiConfig]: {
     area: Area.aiConfig,

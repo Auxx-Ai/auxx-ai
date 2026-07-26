@@ -30,7 +30,6 @@ const build = (opts: {
   role?: 'OWNER' | 'ADMIN' | 'USER'
   seatType?: 'full' | 'worker'
   defBaseOverrides?: Record<string, ResourcePermission | null>
-  ceilingDefs?: { mode: 'only' | 'except'; defIds: string[] } | null
 }) =>
   new CapabilitySet(
     new Set(opts.keys ?? (opts.hasView === false ? [] : [PermissionKey.recordsView])),
@@ -42,10 +41,7 @@ const build = (opts: {
     defIdToDefinitionId,
     {},
     new Set(),
-    opts.defBaseOverrides ?? {},
-    opts.ceilingDefs
-      ? { mode: opts.ceilingDefs.mode, defIds: new Set(opts.ceilingDefs.defIds) }
-      : null
+    opts.defBaseOverrides ?? {}
   )
 
 describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
@@ -185,115 +181,67 @@ describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
     const nonGrantee = build({ restricted: ['invoice-def'], defAccess: {} })
     expect(grantee.canViewEntity('invoice-def')).toBe(true)
     expect(nonGrantee.canViewEntity('invoice-def')).toBe(false)
-    // Admins bypass the lockdown regardless.
-    const admin = build({ role: 'ADMIN', restricted: ['invoice-def'], defAccess: {} })
-    expect(admin.canViewEntity('invoice-def')).toBe(true)
-  })
-
-  it('OWNER/ADMIN bypass both layers (effectiveRecordLevel → admin)', () => {
-    const admin = build({ role: 'ADMIN', restricted: ['invoice-def'], defAccess: {} })
-    expect(admin.canViewEntity('invoice-def')).toBe(true)
+    // OWNER bypasses the lockdown regardless (§0.10). ADMIN does NOT any more —
+    // see the OWNER-only test below.
     const owner = build({ role: 'OWNER', restricted: ['invoice-def'], defAccess: {} })
     expect(owner.canViewEntity('invoice-def')).toBe(true)
-    // Under most-specific-wins OWNER/ADMIN resolve to `admin` regardless of the
-    // base verb — in practice they always hold records.view (role default Full).
-    const adminNoVerb = build({ role: 'ADMIN', hasView: false, restricted: ['invoice-def'] })
-    expect(adminNoVerb.canViewEntity('invoice-def')).toBe(true)
+  })
+
+  it('OWNER bypasses both layers (effectiveRecordLevel → admin)', () => {
+    const owner = build({ role: 'OWNER', restricted: ['invoice-def'], defAccess: {} })
+    expect(owner.canViewEntity('invoice-def')).toBe(true)
+    // Under most-specific-wins OWNER resolves to `admin` regardless of the base
+    // verb — in practice they always hold records.view (role default Full).
+    const ownerNoVerb = build({ role: 'OWNER', hasView: false, restricted: ['invoice-def'] })
+    expect(ownerNoVerb.canViewEntity('invoice-def')).toBe(true)
+  })
+
+  it('ADMIN no longer bypasses a restricted def (doc 19 §5.3 piece 2, step 10)', () => {
+    // ADMIN used to short-circuit `effectiveRecordLevel` to `admin`, which made
+    // the `admin` permission profile inert for definition restriction. It now
+    // resolves like any other principal: a restricted def replaces base with the
+    // admin's OWN grant, and they hold none here.
+    const admin = build({ role: 'ADMIN', restricted: ['invoice-def'], defAccess: {} })
+    expect(admin.canViewEntity('invoice-def')).toBe(false)
+    // …with a grant of their own (e.g. a `granteeType:'profile'` row on the
+    // `admin` profile) they see it again.
+    const granted = build({
+      role: 'ADMIN',
+      restricted: ['invoice-def'],
+      defAccess: { 'invoice-def': 'view' },
+    })
+    expect(granted.canViewEntity('invoice-def')).toBe(true)
+    // An UNRESTRICTED def is unchanged — base records level fills in, and the
+    // seeded all-Full `admin` profile always supplies it.
+    const unrestricted = build({ role: 'ADMIN' })
+    expect(unrestricted.canViewEntity('contact-def')).toBe(true)
   })
 })
 
-describe('profile definition ceiling (doc 19 §0.13 / step 4)', () => {
-  it('`only` admits exactly the listed defs — an unlisted one is denied (fails closed)', () => {
+describe('server→client parity (toClientCapabilities → toResolvedRecordAccess)', () => {
+  it('the rehydrated client view resolves every def exactly as the server did', () => {
+    // The UI must never offer what the server denies (§3). The wire snapshot is
+    // the only thing the client gets, so a field dropped from it silently widens
+    // client affordances — which is why the two resolvers share this core.
     const caps = build({
       keys: [PermissionKey.recordsView, PermissionKey.recordsEdit],
-      ceilingDefs: { mode: 'only', defIds: ['contact-def'] },
-    })
-    expect(caps.canViewEntity('contact-def')).toBe(true)
-    expect(caps.canEditEntity('contact-def')).toBe(true)
-    expect(caps.canViewEntity('invoice-def')).toBe(false)
-    expect(caps.canEditEntity('invoice-def')).toBe(false)
-  })
-
-  it('`only` excludes a def created LATER — the allow-list is closed by construction', () => {
-    // `defIds` is resolved from the profile's stored apiSlugs at read time, so a
-    // definition nobody has listed is simply not in the set.
-    const caps = build({ ceilingDefs: { mode: 'only', defIds: ['contact-def'] } })
-    expect(caps.canViewEntity('brand-new-def')).toBe(false)
-  })
-
-  it('`except` denies exactly the listed defs and admits new ones (fails open)', () => {
-    const caps = build({
-      keys: [PermissionKey.recordsView, PermissionKey.recordsEdit],
-      ceilingDefs: { mode: 'except', defIds: ['salary-def'] },
-    })
-    expect(caps.canViewEntity('salary-def')).toBe(false)
-    expect(caps.canEditEntity('salary-def')).toBe(false)
-    expect(caps.canViewEntity('contact-def')).toBe(true)
-    expect(caps.canViewEntity('brand-new-def')).toBe(true)
-  })
-
-  it('outranks an explicit def grant — the ceiling is a cap, not another grant tier', () => {
-    const caps = build({
-      restricted: ['invoice-def'],
+      restricted: ['invoice-def', 'salary-def'],
       defAccess: { 'invoice-def': 'admin' },
-      ceilingDefs: { mode: 'only', defIds: ['contact-def'] },
+      defBaseOverrides: { 'work-order-def': null },
     })
-    expect(caps.canViewEntity('invoice-def')).toBe(false)
-    expect(caps.canAdministerDef('invoice-def')).toBe(false)
+    const client = toResolvedRecordAccess(caps.toClientCapabilities())
+    for (const defId of ['contact-def', 'invoice-def', 'salary-def', 'work-order-def']) {
+      expect(canViewRecord(client, defId)).toBe(caps.canViewEntity(defId))
+      expect(canEditRecord(client, defId)).toBe(caps.canEditEntity(defId))
+    }
+    // An `admin` grant on a restricted def survives the round trip.
+    expect(administersAnyDef(client)).toBe(true)
   })
 
-  it('normalizes its argument before the ceiling check (slug/apiSlug forms)', () => {
-    const caps = build({ ceilingDefs: { mode: 'except', defIds: ['invoice-def'] } })
-    expect(caps.canViewEntity('invoice')).toBe(false)
-    expect(caps.canViewEntity('invoices')).toBe(false)
-  })
-
-  it('OWNER is never clamped by it (§0.10 recovery guarantee)', () => {
-    // The composer emits `null` for OWNER, but the resolver short-circuits before
-    // the ceiling too — belt and braces, since a mis-shaped profile must always
-    // stay fixable from inside the product.
-    const owner = build({ role: 'OWNER', ceilingDefs: { mode: 'only', defIds: ['contact-def'] } })
-    expect(owner.canViewEntity('invoice-def')).toBe(true)
-    expect(owner.canAdministerDef('invoice-def')).toBe(true)
-  })
-
-  it('the worker `recordsViewLinked` carve-out respects it (a field seat cannot walk around it)', () => {
-    // The carve-out returns true for ANY unrestricted def without consulting
-    // `effectiveRecordLevel`, so the clamp has to be re-applied inside it.
-    const fieldSeat = build({
-      keys: [PermissionKey.recordsViewLinked],
-      seatType: 'worker',
-      ceilingDefs: { mode: 'only', defIds: ['work-order-def'] },
-    })
-    expect(fieldSeat.canViewEntity('work-order-def')).toBe(true)
-    expect(fieldSeat.canViewEntity('invoice-def')).toBe(false)
-  })
-
-  it('a `null` ceiling leaves every def resolution exactly as it was', () => {
-    const caps = build({ ceilingDefs: null })
-    expect(caps.canViewEntity('invoice-def')).toBe(true)
-    expect(caps.canViewEntity('anything-else')).toBe(true)
-  })
-
-  it('survives the server→client round trip (toClientCapabilities → toResolvedRecordAccess)', () => {
-    const caps = build({
-      keys: [PermissionKey.recordsView, PermissionKey.recordsEdit],
-      ceilingDefs: { mode: 'only', defIds: ['contact-def'] },
-    })
-    const snapshot = caps.toClientCapabilities()
-    expect(snapshot.ceilingDefs).toEqual({ mode: 'only', defIds: ['contact-def'] })
-    const client = toResolvedRecordAccess(snapshot)
-    expect(canViewRecord(client, 'contact-def')).toBe(true)
-    // The UI must not offer what the server denies.
-    expect(canViewRecord(client, 'invoice-def')).toBe(false)
-    expect(canEditRecord(client, 'invoice-def')).toBe(false)
+  it('an ungranted member rehydrates with no def administration', () => {
+    const client = toResolvedRecordAccess(build({}).toClientCapabilities())
     expect(administersAnyDef(client)).toBe(false)
-  })
-
-  it('serializes `null` when uncapped, and rehydrates to an uncapped client view', () => {
-    const snapshot = build({}).toClientCapabilities()
-    expect(snapshot.ceilingDefs).toBeNull()
-    expect(canViewRecord(toResolvedRecordAccess(snapshot), 'invoice-def')).toBe(true)
+    expect(canViewRecord(client, 'invoice-def')).toBe(true)
   })
 })
 

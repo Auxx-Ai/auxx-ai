@@ -69,11 +69,12 @@ function deny(message: string): never {
  *    before`, so an admin whose own access was narrowed can still clean up a
  *    profile — matching `clearGranteeLevels` not being plan-gated (removal only
  *    tightens).
- *  - **Pre-existing grants the actor never authored are still caught.** Raising a
- *    ceiling that surfaces a holder's existing group grant makes `after > before`
- *    true for that holder, so the actor must hold that level themselves even
- *    though the group grant is not part of the edit. This is the unsoundness
- *    (§6.1's mode 1) that comparing profile maps to the actor would miss.
+ *  - **Pre-existing grants the actor never authored are still caught.** An edit
+ *    that lifts a holder's base far enough for an existing group grant to become
+ *    their effective level makes `after > before` true for that holder, so the
+ *    actor must hold that level themselves even though the group grant is not
+ *    part of the edit. This is the unsoundness (§6.1's mode 1) that comparing
+ *    profile maps to the actor would miss.
  *
  * **OWNER short-circuits to pass as an early return** — not as a special case
  * threaded through the algorithm. That is what keeps §0.10's recovery guarantee:
@@ -142,6 +143,11 @@ export interface ProfileAuthoredState {
   levels: Partial<Record<Area, Level>>
   /** The profile's blanket fallback rung for unset areas. */
   baseLevel: Level | null
+  /**
+   * The profile's unauthored area clamp (plan 20 §2.a.3). Carried so the shape
+   * matches what composition reads; nothing writes it, so it is `null` in
+   * practice and never a source of a raise here.
+   */
   ceiling: ProfileCeiling | null
 }
 
@@ -152,14 +158,9 @@ export interface ProfileAuthoredState {
  *
  * Still delta-gated on the profile map (so a decrease is permitted and an
  * untouched area is never re-litigated), but deliberately more conservative than
- * the exact check in three ways, because no holder state is available:
- *
- *  - an area moving from *unset* to an explicit rung is treated as a raise from
- *    `None`, even where the role default already supplied that rung;
- *  - **loosening a ceiling is treated as granting its new cap outright**, since
- *    a group grant could carry any holder up to it;
- *  - a definition the ceiling newly admits requires the actor to *administer*
- *    that definition, the maximum a holder could reach through it.
+ * the exact check, because no holder state is available: an area moving from
+ * *unset* to an explicit rung is treated as a raise from `None`, even where the
+ * role default already supplied that rung.
  *
  * §11.6 records this as a known, accepted source of false refusals in very large
  * orgs.
@@ -168,17 +169,8 @@ export function assertProfileMapNoEscalation(input: {
   actor: ActorAuthority
   before: ProfileAuthoredState
   after: ProfileAuthoredState
-  /** Every live definition id in the org — the domain the def ceiling ranges over. */
-  defIds: string[]
-  /**
-   * apiSlug → canonical `entityDefinitionId` (the `resolveCapabilityInputs`
-   * resolver). Ceilings store apiSlugs while `defIds` and the actor's own def
-   * levels are id-keyed, so both sides are normalized through this.
-   */
-  toDefinitionId?: (key: string) => string
 }): void {
-  const { actor, before, after, defIds } = input
-  const toDefinitionId = input.toDefinitionId ?? ((key: string) => key)
+  const { actor, before, after } = input
   if (actor.role === 'OWNER') return
 
   for (const area of AREA_ORDER) {
@@ -192,41 +184,5 @@ export function assertProfileMapNoEscalation(input: {
           `above your own ${LEVEL_NAMES[actor.state.areas[area]]}.`
       )
     }
-
-    // An absent ceiling entry is uncapped, so `Full` is the honest "before".
-    const capNext = after.ceiling?.areas?.[area] ?? Level.Full
-    const capPrev = before.ceiling?.areas?.[area] ?? Level.Full
-    if (capNext > capPrev && capNext > actor.state.areas[area]) {
-      deny(
-        `This profile raises the '${PERMISSION_AREAS[area].label}' ceiling to ` +
-          `${LEVEL_NAMES[capNext]}, above your own ${LEVEL_NAMES[actor.state.areas[area]]}.`
-      )
-    }
   }
-
-  for (const defId of defIds) {
-    const admittedNow = ceilingAdmits(after.ceiling, defId, toDefinitionId)
-    const admittedBefore = ceilingAdmits(before.ceiling, defId, toDefinitionId)
-    if (!admittedNow || admittedBefore) continue
-    if (actor.state.defs[defId] !== 'admin') {
-      deny('This profile widens its entity-definition ceiling beyond what you administer yourself.')
-    }
-  }
-}
-
-/**
- * Whether a stored (slug-keyed) definition ceiling admits `defId`, with the
- * ceiling's slugs normalized into the same `entityDefinitionId` keyspace. A slug
- * matching no live definition resolves to itself and simply never matches, so
- * `only` stays fail-closed and `except` stays fail-open (§0.13).
- */
-function ceilingAdmits(
-  ceiling: ProfileCeiling | null,
-  defId: string,
-  toDefinitionId: (key: string) => string
-): boolean {
-  const defs = ceiling?.defs
-  if (!defs) return true
-  const listed = defs.slugs.some((slug) => toDefinitionId(slug) === defId)
-  return defs.mode === 'only' ? listed : !listed
 }

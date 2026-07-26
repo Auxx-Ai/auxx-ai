@@ -16,8 +16,9 @@ const logger = createScopedLogger('user-capabilities')
  * Compute a member's Layer-2 capabilities for one org: cached memberRoleMap
  * (role + seatType + userType + the profile binding) + cached group memberships
  * + the cached `profiles` projection + at most ONE PermissionGrant query
- * (skipped entirely for admins and for orgs with zero grants) + ONE type-level
- * and ONE instance-level ResourceAccess query.
+ * (skipped only for OWNER — who short-circuits before the rows are read — and
+ * for orgs with zero grants) + ONE type-level and ONE instance-level
+ * ResourceAccess query.
  *
  * **DB round-trips are unchanged by permission profiles (doc 19 §8.1):** the
  * profile row → base/ceiling resolution comes from the `profiles` org-cache key,
@@ -44,6 +45,7 @@ export async function computeUserCapabilities(
   const entry = roleMap[userId]
   const role = entry?.role
   const seatType = entry?.seatType ?? 'full'
+  const isOwner = role === 'OWNER'
   // Principal kind rides the same cached entry — no extra read. `'AGENT'` selects
   // the set-semantics branch in `composeUserCapabilities` (v2 §0.2).
   const userType = entry?.userType ?? 'USER'
@@ -57,8 +59,6 @@ export async function computeUserCapabilities(
       typeAccessRows: [],
       instanceAccessRows: [],
     })
-
-  const isAdmin = role === 'OWNER' || role === 'ADMIN'
 
   // The ONE bound human base profile (§1.3): explicit binding, else the system
   // template for (role, seatType), else the ROLE_DEFAULTS runtime fallback.
@@ -133,10 +133,22 @@ export async function computeUserCapabilities(
     )
   }
 
-  // PermissionGrant query only for non-admins in orgs that actually customized.
-  // One sparse-jsonb row per grantee (profile / group / user).
+  // PermissionGrant query for every principal EXCEPT OWNER, in orgs that
+  // actually customized. One sparse-jsonb row per grantee (profile / group / user).
+  //
+  // **ADMIN loads grant rows** (doc 19 §5.3 piece 2, step 10). It used to be
+  // skipped alongside OWNER, which made the `admin` system profile inert: its
+  // `PermissionGrant` row was never read, so shaping it changed nothing. The cost
+  // is one indexed query admins previously skipped; the gain is that ADMIN
+  // capability now flows from `ROLE_DEFAULTS.ADMIN` + the editable `admin`
+  // profile instead of a hardcoded bypass.
+  //
+  // OWNER keeps the skip because it is not a bypass being papered over: the
+  // §0.10 recovery guarantee makes `composeUserCapabilities` short-circuit OWNER
+  // to ALL_FULL *before* it looks at `profileLevels`/`groupLevels`/`userLevels`,
+  // so the rows would be fetched and then provably discarded.
   const grantRowsPromise =
-    isAdmin || !hasGrants
+    isOwner || !hasGrants
       ? Promise.resolve([] as Array<{ granteeType: string; granteeId: string; levels: unknown }>)
       : db
           .select({

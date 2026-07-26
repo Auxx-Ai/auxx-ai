@@ -9,6 +9,16 @@ export interface Member {
   organizationId: string
   role: OrganizationRole
   seatType: SeatType
+  /**
+   * The bound permission profile (doc 19 §1.1). `null`/absent resolves to the
+   * system template for (role, seat) exactly as the server does (§1.3).
+   *
+   * TODO(plan-19-step-8): optional because `member.all` does not project it yet —
+   * the cached member row already carries it (`members-provider.ts`), the router
+   * mapping simply drops it. Until that one field is added, an explicitly bound
+   * CUSTOM profile reads on these surfaces as the system template.
+   */
+  permissionProfileId?: string | null
   user: {
     id: string
     name: string | null
