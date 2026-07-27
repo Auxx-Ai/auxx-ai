@@ -1,7 +1,7 @@
 // packages/lib/src/permissions/profiles/profile-projection.ts
 
 import type { PermissionProfileEntity } from '@auxx/database'
-import type { SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { Level, parseAreaLevels } from '../capabilities/registry'
 import type {
   AgentPermissionPolicy,
@@ -52,6 +52,7 @@ export function projectPermissionProfile(row: {
   icon: PermissionProfileEntity['icon']
   seat: SeatType
   appliesTo: string
+  role: OrganizationRole
   baseLevel: number | null
   ceiling: unknown
   agentPolicy: unknown
@@ -66,6 +67,7 @@ export function projectPermissionProfile(row: {
     icon: row.icon ?? null,
     seat: row.seat,
     appliesTo: row.appliesTo as ProfileAppliesTo,
+    role: row.role,
     baseLevel: parseBaseLevel(row.baseLevel),
     ceiling: parseProfileCeiling(row.ceiling),
     agentPolicy: (row.agentPolicy as AgentPermissionPolicy | null) ?? null,

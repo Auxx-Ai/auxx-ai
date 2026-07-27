@@ -7,7 +7,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ArrowRight } from 'lucide-react'
 import { useMemo } from 'react'
 import type { ProfileDelta } from '../hooks'
-import { RUNG_LABELS } from '../hooks'
+import { RUNG_LABELS, roleLabel } from '../hooks'
 
 interface ProfileChangeDeltaProps {
   delta: ProfileDelta
@@ -54,12 +54,32 @@ export function ProfileChangeDelta({
         the member's effective access after the change, including their team and personal grants.
       </p>
 
+      {delta.rankChange && (
+        <div className='flex flex-col gap-1 rounded-lg border border-amber-400/40 bg-amber-400/5 px-2 py-1.5'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <span className='text-sm font-medium'>Rank</span>
+            <span className='inline-flex items-center gap-1.5'>
+              <Badge variant='outline' size='xs' className='text-muted-foreground'>
+                {roleLabel(delta.rankChange.from)}
+              </Badge>
+              <ArrowRight className='size-3 text-muted-foreground' />
+              <Badge
+                variant={delta.rankChange.direction === 'demotion' ? 'amber' : 'green'}
+                size='xs'>
+                {roleLabel(delta.rankChange.to)}
+              </Badge>
+            </span>
+          </div>
+          <p className='text-xs text-muted-foreground'>{delta.rankChange.message}</p>
+        </div>
+      )}
+
       {delta.isEmpty ? (
         <p className='text-sm text-muted-foreground'>
           No change to effective access. The two profiles resolve to the same levels for this
           member.
         </p>
-      ) : (
+      ) : delta.areas.length > 0 ? (
         <div className='flex flex-col gap-3'>
           {grouped.map(([group, rows]) => (
             <div key={group} className='flex flex-col gap-1'>
@@ -83,7 +103,7 @@ export function ProfileChangeDelta({
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {seatType === 'worker' && (
         <p className='text-xs text-muted-foreground'>

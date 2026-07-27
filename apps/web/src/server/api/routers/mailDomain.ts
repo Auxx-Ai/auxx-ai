@@ -2,10 +2,16 @@
 
 import { schema } from '@auxx/database'
 import { DomainService } from '@auxx/lib/mail-domains'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import {
+  createTRPCRouter,
+  notDemo,
+  permissionProcedure,
+  protectedProcedure,
+} from '~/server/api/trpc'
 
 const logger = createScopedLogger('mailgun-router')
 
@@ -72,7 +78,7 @@ export const mailDomainsRouter = createTRPCRouter({
     }),
 
   /** Register a new provider subdomain */
-  registerProviderDomain: adminProcedure
+  registerProviderDomain: permissionProcedure(PermissionKey.channelsManage)
     .input(
       z.object({ subdomain: z.string().min(3), routingPrefix: z.string().min(1).default('ticket') })
     )
@@ -95,7 +101,7 @@ export const mailDomainsRouter = createTRPCRouter({
     }),
 
   /** Update domain settings */
-  updateDomain: adminProcedure
+  updateDomain: permissionProcedure(PermissionKey.channelsManage)
     .input(
       z.object({
         id: z.string(),
@@ -141,7 +147,7 @@ export const mailDomainsRouter = createTRPCRouter({
     }),
 
   // Delete domain
-  deleteDomain: adminProcedure
+  deleteDomain: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ id: z.string() }))
     .use(notDemo('delete mail domains'))
     .mutation(async ({ ctx, input }) => {

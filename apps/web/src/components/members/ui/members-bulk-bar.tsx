@@ -1,6 +1,7 @@
 // apps/web/src/components/members/ui/members-bulk-bar.tsx
 'use client'
 
+import type { OrganizationRole } from '@auxx/database/types'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import { toastError } from '@auxx/ui/components/toast'
 import { ShieldCheck } from 'lucide-react'
@@ -18,6 +19,8 @@ import { ApplyProfileDialog } from './apply-profile-dialog'
 interface MembersBulkBarProps {
   /** Every member row currently rendered, keyed by `userId` in the selection store. */
   members: Member[]
+  /** The signed-in member's role — caps which profiles' ranks are offered (§2.a.9). */
+  viewerRole: OrganizationRole | null | undefined
 }
 
 /**
@@ -28,7 +31,7 @@ interface MembersBulkBarProps {
  * (§0.21). The dialog owns the confirmation step because it shows the effective
  * delta, which is a better gate than a generic "are you sure".
  */
-export function MembersBulkBar({ members }: MembersBulkBarProps) {
+export function MembersBulkBar({ members, viewerRole }: MembersBulkBarProps) {
   const ids = useSelectionIds()
   const count = useSelectionCount()
   const bulkMode = useBulkMode()
@@ -102,6 +105,7 @@ export function MembersBulkBar({ members }: MembersBulkBarProps) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         members={selected}
+        viewerRole={viewerRole}
         onApply={handleApply}
         isApplying={isApplying}
       />

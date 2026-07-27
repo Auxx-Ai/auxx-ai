@@ -7,6 +7,7 @@ import {
   boolean,
   integer,
   jsonb,
+  organizationRole,
   pgTable,
   text,
   timestamp,
@@ -126,6 +127,17 @@ export const PermissionProfile = pgTable(
 
     /** Which principal kind may bind this profile. IMMUTABLE. */
     appliesTo: text().$type<'member' | 'agent' | 'any'>().default('member').notNull(),
+
+    /**
+     * The governance rank this profile confers. DECLARED and IMMUTABLE like
+     * `seat`/`appliesTo`, and hidden from authoring (plan 21 §2.0.1): the system
+     * seeds carry `owner → OWNER` / `admin → ADMIN`; every custom profile is
+     * `USER`. Written onto `OrganizationMember.role` at invite/assign exactly as
+     * `seat` already is — the member column stays for rank guards, this column is
+     * what it derives from (plan 21 §2.a). Agent profiles ignore it, as they
+     * ignore `baseLevel`.
+     */
+    role: organizationRole().default('USER').notNull(),
 
     /**
      * Human fallback level (a `Level` rung, `0..3`) for every area this profile's

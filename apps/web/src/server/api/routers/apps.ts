@@ -14,8 +14,12 @@ import {
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { mintClientCredentialToken } from '@auxx/lib/connections'
 import { resolveConnectorConfigOptions } from '@auxx/lib/data-connectors'
-import { isAdminOrOwner } from '@auxx/lib/members'
-import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
+import {
+  FeatureKey,
+  FeaturePermissionService,
+  PermissionKey,
+  requirePermission,
+} from '@auxx/lib/permissions'
 import { resolveQuickActionOptions } from '@auxx/lib/quick-actions'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -62,13 +66,12 @@ async function requireConnectionManageAccess(
   if (!credential) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection not found' })
   }
+  // Ownership carve-out (plan 21 §5.2): a user-scoped credential is managed by
+  // its owner regardless of capability. Org-scoped credentials gate on the
+  // integrations area's own key (plan 21 §4.1 / §2.d — the role half of the old
+  // `own || admin` check was the gate; this is its capability form).
   if (credential.userId === session.userId) return
-  if (!(await isAdminOrOwner(session.organizationId, session.userId))) {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'Only admins can manage organization connections',
-    })
-  }
+  await requirePermission(session.userId, session.organizationId, PermissionKey.integrationsManage)
 }
 
 /**
@@ -498,12 +501,10 @@ export const appsRouter = createTRPCRouter({
         : input.connectionType === 'organization'
       const userIdField = isOrgScoped ? null : userId
 
-      // Org-scoped connections are an admin decision; user-scoped ones belong to the caller.
-      if (isOrgScoped && !(await isAdminOrOwner(organizationId, userId))) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Only admins can manage organization connections',
-        })
+      // Org-scoped connections gate on the integrations key; user-scoped ones
+      // belong to the caller (plan 21 §4.1).
+      if (isOrgScoped) {
+        await requirePermission(userId, organizationId, PermissionKey.integrationsManage)
       }
       if (!isOrgScoped && connectionId) {
         await requireConnectionManageAccess(ctx.db, { userId, organizationId }, connectionId)

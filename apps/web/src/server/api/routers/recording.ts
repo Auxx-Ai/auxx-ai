@@ -3,6 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import type { AIPostProcessJobData, TranscribeRecordingJobData } from '@auxx/lib/jobs'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { PermissionKey } from '@auxx/lib/permissions'
 import type { BotStatus } from '@auxx/lib/recording'
 import {
   BOT_STATUSES,
@@ -30,7 +31,7 @@ import { generateId } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 export const recordingRouter = createTRPCRouter({
   /**
@@ -160,15 +161,23 @@ export const recordingRouter = createTRPCRouter({
     }),
 
   /**
-   * Delete a recording and its associated media files (admin only).
+   * Delete a recording and its associated media files. Gated on `channelsManage`
+   * (plan 21 §6/§4.3 — recordings are communication-capture media, they join
+   * channels).
    */
-  delete: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const result = await deleteRecording(input.id, ctx.session.organizationId, ctx.session.user.id)
+  delete: permissionProcedure(PermissionKey.channelsManage)
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await deleteRecording(
+        input.id,
+        ctx.session.organizationId,
+        ctx.session.user.id
+      )
 
-    if (result.isErr()) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
-    }
-  }),
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+    }),
 
   /**
    * Get transcript with speakers for a recording.

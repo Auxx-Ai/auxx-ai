@@ -1,7 +1,7 @@
 import { generateSecureToken, hashApiKey } from '@auxx/credentials/api-key'
 import { encryptSecrets } from '@auxx/credentials/crypto'
 import { schema } from '@auxx/database'
-import { isAdminOrOwner } from '@auxx/lib/members'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
@@ -126,12 +126,9 @@ export const apiKeyRouter = createTRPCRouter({
           })
         }
 
-        if (!(await isAdminOrOwner(orgId, userId))) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'You must be an admin or owner to manage chat signing keys',
-          })
-        }
+        // Chat signing keys are integration credentials — capability gate, not
+        // role (plan 21 §4.1).
+        await requirePermission(userId, orgId, PermissionKey.integrationsManage)
 
         const [integration] = await ctx.db
           .select({ id: schema.Integration.id })
@@ -234,11 +231,9 @@ export const apiKeyRouter = createTRPCRouter({
         .where(and(eq(schema.ApiKey.id, input.id), eq(schema.ApiKey.organizationId, orgId)))
         .limit(1)
 
-      if (existing?.type === 'chat' && !(await isAdminOrOwner(orgId, userId))) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You must be an admin or owner to revoke chat signing keys',
-        })
+      if (existing?.type === 'chat') {
+        // Capability gate, not role (plan 21 §4.1).
+        await requirePermission(userId, orgId, PermissionKey.integrationsManage)
       }
 
       await ctx.db

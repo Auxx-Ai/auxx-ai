@@ -51,6 +51,7 @@ type ProfileRow = {
   name: string
   seat: 'full' | 'worker'
   appliesTo: 'member' | 'agent' | 'any'
+  role: 'OWNER' | 'ADMIN' | 'USER'
   organizationId: string
 }
 
@@ -60,6 +61,7 @@ const memberProfile: ProfileRow = {
   name: 'Member',
   seat: 'full',
   appliesTo: 'member',
+  role: 'USER',
   organizationId: ORG,
 }
 
@@ -315,12 +317,26 @@ describe('inviteMember with a permission profile', () => {
     })
   })
 
-  it('rejects a field-seat profile paired with an ADMIN role', async () => {
+  it('derives the rank from the profile — a caller-supplied ADMIN role is ignored (plan 21 §2.a.3)', async () => {
+    const sink: { inserted?: Record<string, unknown> } = {}
+    await inviteMember(
+      { ...base, role: 'ADMIN', permissionProfileId: fieldTechProfile.id },
+      fakeDb({ profile: fieldTechProfile }, sink)
+    )
+
+    // The field-tech profile declares USER, so the invite succeeds AS USER —
+    // the worker ⇒ USER refusal is unreachable when a profile is bound, because
+    // no profile can declare `seat: 'worker'` with a non-USER rank.
+    expect(sink.inserted).toMatchObject({
+      role: 'USER',
+      seatType: 'worker',
+      permissionProfileId: 'prof_field',
+    })
+  })
+
+  it('still rejects a profileless worker-seat invite carrying ADMIN — the server invariant survives', async () => {
     await expect(
-      inviteMember(
-        { ...base, role: 'ADMIN', permissionProfileId: fieldTechProfile.id },
-        fakeDb({ profile: fieldTechProfile })
-      )
+      inviteMember({ ...base, role: 'ADMIN', seatType: 'worker' }, fakeDb({}))
     ).rejects.toThrow(/Field seats are limited to the Member role/i)
     expect(seatCheckedWith).toBeNull()
   })

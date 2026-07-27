@@ -16,8 +16,9 @@ import {
   unlinkInventorySource,
   updateInventoryLinkMode,
 } from '@auxx/lib/data-connectors'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
 
 const modeSchema = z.enum(['auto', 'confirm'])
 
@@ -51,7 +52,7 @@ export const inventoryBridgeRouter = createTRPCRouter({
    * deduction rule for `(sourceDefId, quantityFieldId)`. Returns `{ provisioned:false,
    * reason:'no-part-def' }` when the org has no `part` def to link to.
    */
-  provisionSource: adminProcedure
+  provisionSource: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ sourceDefId: z.string().min(1), quantityFieldId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const result = await provisionInventoryBridge(ctx.db, ctx.session.organizationId, {
@@ -63,7 +64,7 @@ export const inventoryBridgeRouter = createTRPCRouter({
     }),
 
   /** Remove an inventory source (admin): deletes its managed deduction rule. */
-  removeSource: adminProcedure
+  removeSource: permissionProcedure(PermissionKey.connectorsManage)
     .input(z.object({ sourceDefId: z.string().min(1) }))
     .mutation(({ ctx, input }) =>
       removeInventoryDeductionRule(ctx.db, ctx.session.organizationId, {

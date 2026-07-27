@@ -2185,6 +2185,13 @@
       "when": 1784950542117,
       "tag": "0311_agent_version_permission_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1785176248297,
+      "tag": "0312_permission_profile_role",
+      "breakpoints": true
     }
   ]
 }

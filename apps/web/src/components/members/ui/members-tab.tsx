@@ -2,7 +2,7 @@
 'use client'
 
 import { OrganizationRole as Role } from '@auxx/database/enums'
-import type { OrganizationRole, SeatType } from '@auxx/database/types'
+import type { SeatType } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -18,18 +18,10 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { ListBulkToggle } from '@auxx/ui/components/list-bulk-toggle'
 import { ListCard, type ListCardMenuItem } from '@auxx/ui/components/list-card'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Copy, Send, Trash2, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { Tooltip } from '~/components/global/tooltip'
 import { ListSelectionProvider, useBulkMode, useListSelection } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
@@ -49,8 +41,8 @@ const ROLE_ORDER: Record<string, number> = {
 
 /**
  * Members tab body — active members merged with pending invitations, searchable,
- * with role-gated per-row actions. Hosts the change-role / change-seat / remove /
- * cancel-invite dialogs. Ported from the former `settings/members/_components`.
+ * with rank-gated per-row actions. Hosts the change-seat / remove / cancel-invite
+ * dialogs (rank changes ride the permission profile — plan 21 §2.0). Ported from the former `settings/members/_components`.
  */
 export function MembersTab() {
   return (
@@ -70,8 +62,6 @@ function MembersTabInner() {
 
   const [search, setSearch] = useState('')
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
-  const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
-  const [newRole, setNewRole] = useState<OrganizationRole | null>(null)
   const [isSeatDialogOpen, setIsSeatDialogOpen] = useState(false)
   const [newSeatType, setNewSeatType] = useState<SeatType>('full')
   const [confirm, ConfirmDialog] = useConfirm()
@@ -93,14 +83,6 @@ function MembersTabInner() {
       refreshMembers()
     },
     onError: (error) => toastError({ title: 'Error removing member', description: error.message }),
-  })
-  const updateRole = api.member.updateRole.useMutation({
-    onSuccess: () => {
-      toastSuccess({ title: 'Role updated', description: `Member role updated to ${newRole}.` })
-      setIsRoleDialogOpen(false)
-      refreshMembers()
-    },
-    onError: (error) => toastError({ title: 'Error', description: error.message }),
   })
   const updateSeatType = api.member.updateSeatType.useMutation({
     onSuccess: () => {
@@ -162,10 +144,6 @@ function MembersTabInner() {
       destructive: true,
     })
     if (confirmed) cancelInvite.mutate({ invitationId: invitation.id })
-  }
-  const handleUpdateRole = async () => {
-    if (!selectedMember || !newRole) return
-    await updateRole.mutateAsync({ memberId: selectedMember.userId, role: newRole })
   }
   const handleUpdateSeatType = async () => {
     if (!selectedMember || newSeatType === selectedMember.seatType) return
@@ -298,17 +276,11 @@ function MembersTabInner() {
       currentUserRole === Role.OWNER ||
       (currentUserRole === Role.ADMIN && member.role === Role.USER)
 
+    // Rank changes ride the permission profile (plan 21 §2.0): assigning the
+    // Admin profile promotes, assigning any custom profile demotes. There is
+    // deliberately no role control here — `canChangeRoleOrRemove` survives only
+    // as the rank check on removal.
     const items: ListCardMenuItem[] = []
-    if (canChangeRoleOrRemove) {
-      items.push({
-        label: 'Change role',
-        onClick: () => {
-          setSelectedMember(member)
-          setNewRole(member.role)
-          setIsRoleDialogOpen(true)
-        },
-      })
-    }
     // Only Members (role USER) can hold a field seat (invariant §2.A). This is
     // the ONLY surface that moves a member between seat classes — a billing
     // event, cap-checked server-side (§0.21/§4.3).
@@ -383,82 +355,6 @@ function MembersTabInner() {
         )}
       </div>
 
-      {/* Change role */}
-      <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
-        <DialogContent position='tc'>
-          <DialogHeader>
-            <DialogTitle>Change member role</DialogTitle>
-            <DialogDescription>
-              Update the role for{' '}
-              <Badge variant='user' size='sm'>
-                {selectedMember?.user.name || selectedMember?.user.email}
-              </Badge>
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className='grid gap-4'>
-            <div className='space-y-2'>
-              <label htmlFor='role' className='text-sm font-medium'>
-                Role
-              </label>
-              <Select
-                value={newRole || undefined}
-                onValueChange={(value: OrganizationRole) => setNewRole(value)}>
-                <SelectTrigger id='role'>
-                  <SelectValue placeholder='Select a role' />
-                </SelectTrigger>
-                <SelectContent>
-                  {currentUserRole === Role.OWNER && (
-                    <SelectItem value={Role.OWNER} disabled={selectedMember?.seatType === 'worker'}>
-                      Owner
-                    </SelectItem>
-                  )}
-                  <SelectItem value={Role.ADMIN} disabled={selectedMember?.seatType === 'worker'}>
-                    Admin
-                  </SelectItem>
-                  <SelectItem value={Role.USER}>User</SelectItem>
-                </SelectContent>
-              </Select>
-              {selectedMember?.seatType === 'worker' ? (
-                <Tooltip content='Field seats are always members. Change to Full member first.'>
-                  <p className='text-xs text-muted-foreground'>
-                    Field seats are always members. Change to Full member first to promote.
-                  </p>
-                </Tooltip>
-              ) : (
-                <p className='text-xs text-muted-foreground'>
-                  {newRole === Role.OWNER
-                    ? 'Owners have full control over the organization and can manage all settings and members.'
-                    : newRole === Role.ADMIN
-                      ? 'Admins can manage organization settings and members but cannot delete the organization.'
-                      : 'Users have standard access to the organization.'}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant='ghost'
-              size='sm'
-              onClick={() => setIsRoleDialogOpen(false)}
-              disabled={updateRole.isPending}>
-              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-            </Button>
-            <Button
-              data-dialog-submit
-              onClick={handleUpdateRole}
-              size='sm'
-              variant='outline'
-              disabled={updateRole.isPending || !newRole || newRole === selectedMember?.role}
-              loading={updateRole.isPending}
-              loadingText='Updating...'>
-              Update role <KbdSubmit variant='outline' size='sm' />
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Change seat — the one billing-affecting action, cap-checked server-side */}
       <Dialog open={isSeatDialogOpen} onOpenChange={setIsSeatDialogOpen}>
         <DialogContent position='tc'>
@@ -511,7 +407,7 @@ function MembersTabInner() {
         </DialogContent>
       </Dialog>
 
-      <MembersBulkBar members={members} />
+      <MembersBulkBar members={members} viewerRole={currentUserRole} />
       <ConfirmDialog />
     </div>
   )

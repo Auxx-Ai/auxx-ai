@@ -173,6 +173,7 @@ export class CommentService {
       throw new TRPCError({ code: 'FORBIDDEN', message })
     }
     if (comment.createdById === this.userId) return
+    // Author || admin ownership carve-out, not a gate (plan 21 §5.2).
     if (await isAdminOrOwner(this.organizationId, this.userId, this.db)) return
     throw new TRPCError({ code: 'FORBIDDEN', message })
   }

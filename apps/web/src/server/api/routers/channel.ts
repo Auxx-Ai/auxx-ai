@@ -31,9 +31,14 @@ import {
   updateChatWidget,
 } from '@auxx/lib/chat-widget/config'
 import { resolveOwnClientRequirement } from '@auxx/lib/connections'
-import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
+import { getUserOrganizationId } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import {
+  FeatureKey,
+  FeaturePermissionService,
+  PermissionKey,
+  requirePermission,
+} from '@auxx/lib/permissions'
 import type { ImapCredentialData } from '@auxx/lib/providers'
 import { ImapClientProvider, ImapSmtpSendService, LdapAuthService } from '@auxx/lib/providers'
 import { fanOutAuxxChatAudienceToShopify } from '@auxx/lib/shopify'
@@ -43,7 +48,7 @@ import { TRPCError } from '@trpc/server'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
+import { createTRPCRouter, notDemo, permissionProcedure, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('channel-router')
 
@@ -118,7 +123,7 @@ export const channelRouter = createTRPCRouter({
           })
         }
       } else {
-        await requireAdminAccess(userId, organizationId)
+        await requirePermission(userId, organizationId, PermissionKey.channelsManage)
       }
       await checkChannelLimit(ctx.db, organizationId)
       const def = await ctx.db.query.ConnectionDefinition.findFirst({
@@ -163,7 +168,7 @@ export const channelRouter = createTRPCRouter({
       const targetUserId = input?.userId ?? ctx.session.userId
       // Viewing another member's channels is admin/owner only; self stays open.
       if (targetUserId !== ctx.session.userId) {
-        await requireAdminAccess(ctx.session.userId, organizationId)
+        await requirePermission(ctx.session.userId, organizationId, PermissionKey.channelsManage)
       }
       // Passing userId hides *other* members' personal channels from the listing.
       return listChannels({ db: ctx.db, organizationId, userId: targetUserId })
@@ -258,7 +263,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
 
       return syncAllMessages({ db: ctx.db, organizationId, userId }, input.days)
     }),
@@ -289,7 +294,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
 
       await checkChannelLimit(ctx.db, organizationId)
       await assertSharedConnectInbox(ctx.db, organizationId, input.inboxId)
@@ -412,7 +417,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
 
       const { integrationId, ...updateData } = input
 
@@ -513,7 +518,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
 
       await checkChannelLimit(ctx.db, organizationId)
       await assertSharedConnectInbox(ctx.db, organizationId, input.inboxId)
@@ -645,7 +650,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
 
       const result = await updateAllowedSenders(
         { db: ctx.db, organizationId, userId },
@@ -659,7 +664,7 @@ export const channelRouter = createTRPCRouter({
   /**
    * Add an email or domain to the excluded senders list.
    */
-  addExcludedSender: adminProcedure
+  addExcludedSender: permissionProcedure(PermissionKey.channelsManage)
     .input(
       z.object({
         integrationId: z.string(),
@@ -681,7 +686,7 @@ export const channelRouter = createTRPCRouter({
   /**
    * Remove an email or domain from the excluded senders list.
    */
-  removeExcludedSender: adminProcedure
+  removeExcludedSender: permissionProcedure(PermissionKey.channelsManage)
     .input(
       z.object({
         integrationId: z.string(),
@@ -795,7 +800,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
       await checkChannelLimit(ctx.db, organizationId)
       // Validate the chosen inbox up-front (fail before minting a credential / testing servers).
       await assertSharedConnectInbox(ctx.db, organizationId, input.inboxId)
@@ -1002,7 +1007,7 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
 
       const results = { imap: false, smtp: false, ldap: true }
 

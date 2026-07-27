@@ -47,6 +47,25 @@ export async function isAdminOrOwner(
   return role === 'OWNER' || role === 'ADMIN'
 }
 
+/**
+ * Check if a user is an OWNER of the organization (uses org cache). The rank
+ * check behind `ownerProcedure` — genuinely rank-shaped actions only (org
+ * deletion, ownership transfer; plan 21 §2.b.4), never a capability substitute.
+ */
+export async function isOwner(
+  organizationId: string,
+  userId: string,
+  db?: Database
+): Promise<boolean> {
+  if (db && db !== defaultDb) {
+    const member = await findMemberByUserDirect(organizationId, userId, db)
+    return member?.role === 'OWNER'
+  }
+
+  const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
+  return memberRoleMap[userId]?.role === 'OWNER'
+}
+
 /** List members with basic user info, optionally filtered by name/email */
 export async function listMembersWithUser(
   organizationId: string,

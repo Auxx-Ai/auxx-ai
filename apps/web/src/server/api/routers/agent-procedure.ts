@@ -10,21 +10,23 @@ import {
   reconcileAgentProcedureMentions,
   updateAgentProcedure,
 } from '@auxx/lib/agents/procedures'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 import { unwrap } from '../unwrap'
 
-/** adminProcedure + a beta gate: requires the `agentProcedures` feature on the org's plan. */
-const agentProceduresAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
-  await new FeaturePermissionService().requireAccess(
-    ctx.session.organizationId,
-    FeatureKey.agentProcedures
-  )
-  return next()
-})
+/** permissionProcedure(agentsManage) + a beta gate: requires the `agentProcedures` feature on the org's plan. */
+const agentProceduresManageProcedure = permissionProcedure(PermissionKey.agentsManage).use(
+  async ({ ctx, next }) => {
+    await new FeaturePermissionService().requireAccess(
+      ctx.session.organizationId,
+      FeatureKey.agentProcedures
+    )
+    return next()
+  }
+)
 
 async function ensureAgentInOrg(organizationId: string, agentId: string): Promise<void> {
   if (!(await agentExistsInOrg(organizationId, agentId))) {
@@ -70,7 +72,7 @@ export const agentProcedureRouter = createTRPCRouter({
     }),
 
   // "Add procedure": create a new standalone procedure and attach it to the agent.
-  createAndAttach: agentProceduresAdminProcedure
+  createAndAttach: agentProceduresManageProcedure
     .input(z.object({ agentId: z.string().min(1), name: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -94,7 +96,7 @@ export const agentProcedureRouter = createTRPCRouter({
     }),
 
   // Attach an EXISTING procedure to the agent.
-  attach: agentProceduresAdminProcedure
+  attach: agentProceduresManageProcedure
     .input(z.object({ agentId: z.string().min(1), procedureId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -113,7 +115,7 @@ export const agentProcedureRouter = createTRPCRouter({
       return { linkId: link.id }
     }),
 
-  update: agentProceduresAdminProcedure
+  update: agentProceduresManageProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -140,7 +142,7 @@ export const agentProcedureRouter = createTRPCRouter({
       return { ok: true as const }
     }),
 
-  detach: agentProceduresAdminProcedure
+  detach: agentProceduresManageProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session

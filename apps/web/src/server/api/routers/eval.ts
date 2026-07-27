@@ -26,7 +26,7 @@ import {
 } from '@auxx/lib/evals'
 import { startAgentSuiteRun } from '@auxx/lib/evals/start-suite-run'
 import { enqueueEvalRun } from '@auxx/lib/evals/worker'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
   agentEvalAssertionsSchema,
@@ -35,17 +35,19 @@ import {
 } from '@auxx/types/evals/schema'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 import { unwrap } from '../unwrap'
 
-/** adminProcedure + the `agentProcedures` feature gate (evals exercise procedures). */
-const evalAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
-  await new FeaturePermissionService().requireAccess(
-    ctx.session.organizationId,
-    FeatureKey.agentProcedures
-  )
-  return next()
-})
+/** permissionProcedure(agentsManage) + the `agentProcedures` feature gate (evals exercise procedures). */
+const evalManageProcedure = permissionProcedure(PermissionKey.agentsManage).use(
+  async ({ ctx, next }) => {
+    await new FeaturePermissionService().requireAccess(
+      ctx.session.organizationId,
+      FeatureKey.agentProcedures
+    )
+    return next()
+  }
+)
 
 /** Parse a persisted case row's JSONB into typed, validated fields. */
 function parseCase(row: EvalCaseEntity) {
@@ -125,7 +127,7 @@ export const evalRouter = createTRPCRouter({
       return parseCase(found)
     }),
 
-  create: evalAdminProcedure
+  create: evalManageProcedure
     .input(
       z.object({
         name: z.string().min(1),
@@ -155,7 +157,7 @@ export const evalRouter = createTRPCRouter({
       return { id: created.id }
     }),
 
-  update: evalAdminProcedure
+  update: evalManageProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -180,7 +182,7 @@ export const evalRouter = createTRPCRouter({
       return { id: updated.id }
     }),
 
-  delete: evalAdminProcedure
+  delete: evalManageProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       unwrap(
@@ -359,7 +361,7 @@ export const evalRouter = createTRPCRouter({
     }),
 
   // ── Execute ───────────────────────────────────────────────────────────────
-  run: evalAdminProcedure
+  run: evalManageProcedure
     // `useDraft`: run the current draft (the Simulations editor surface always
     // passes true); headless/CI default to the pinned version (regression gate).
     .input(z.object({ id: z.string().min(1), useDraft: z.boolean().optional() }))
@@ -422,7 +424,7 @@ export const evalRouter = createTRPCRouter({
       return { runId: run.id }
     }),
 
-  runAll: evalAdminProcedure
+  runAll: evalManageProcedure
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -462,7 +464,7 @@ export const evalRouter = createTRPCRouter({
       return { suiteRunId: result.value.suiteRun.id, runIds: result.value.runIds }
     }),
 
-  cancelRun: evalAdminProcedure
+  cancelRun: evalManageProcedure
     .input(z.object({ runId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const cancelled = unwrap(
@@ -473,7 +475,7 @@ export const evalRouter = createTRPCRouter({
       return { status: cancelled.status }
     }),
 
-  deleteRun: evalAdminProcedure
+  deleteRun: evalManageProcedure
     .input(z.object({ runId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       unwrap(
@@ -486,9 +488,9 @@ export const evalRouter = createTRPCRouter({
   // ── Suggestions ───────────────────────────────────────────────────────────
   // Mutation, not query: it spends tokens and is non-idempotent. The client holds
   // the result keyed by the returned `draftHash` rather than auto-refetching.
-  // `evalAdminProcedure` gates the spend; org/agent scoping is enforced inside the
+  // `evalManageProcedure` gates the spend; org/agent scoping is enforced inside the
   // service by `getAttachedProcedureDraft`.
-  suggest: evalAdminProcedure
+  suggest: evalManageProcedure
     .input(
       z.object({
         agentId: z.string().min(1),

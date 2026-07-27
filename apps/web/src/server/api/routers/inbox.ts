@@ -3,13 +3,14 @@
 import { getCachedUserMailVisibility, getOrgCache } from '@auxx/lib/cache'
 import { claimPersonalInbox, deletePersonalInbox } from '@auxx/lib/channels'
 import { InboxService } from '@auxx/lib/inboxes'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { inboxLensFor, type Lens } from '@auxx/lib/permissions/visibility'
 import { ThreadMutationService } from '@auxx/lib/threads'
 import { type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
 
 /**
  * Inbox-manage gate: org admin or an inbox `admin` grant (Manager delegation).
@@ -133,7 +134,7 @@ export const inboxRouter = createTRPCRouter({
    * personal marker + owner, converting it into a normal restricted org
    * inbox. Rejected while the owner is still a member.
    */
-  claimPersonal: adminProcedure
+  claimPersonal: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ inboxId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -156,7 +157,7 @@ export const inboxRouter = createTRPCRouter({
    * threads/messages and the inbox itself. Rejected while the owner is
    * still a member.
    */
-  deletePersonal: adminProcedure
+  deletePersonal: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ inboxId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session

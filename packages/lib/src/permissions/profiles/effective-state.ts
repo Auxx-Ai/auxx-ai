@@ -138,6 +138,7 @@ async function readUncachedInputs(
         icon: schema.PermissionProfile.icon,
         seat: schema.PermissionProfile.seat,
         appliesTo: schema.PermissionProfile.appliesTo,
+        role: schema.PermissionProfile.role,
         baseLevel: schema.PermissionProfile.baseLevel,
         ceiling: schema.PermissionProfile.ceiling,
         agentPolicy: schema.PermissionProfile.agentPolicy,

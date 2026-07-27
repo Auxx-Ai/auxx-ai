@@ -21,24 +21,26 @@ import {
   updateProcedure,
 } from '@auxx/lib/agents/procedures'
 import { onCacheEvent } from '@auxx/lib/cache'
-import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 import { unwrap } from '../unwrap'
 
 const logger = createScopedLogger('procedure-router')
 
-/** adminProcedure + a beta gate: requires the `agentProcedures` feature on the org's plan. */
-const agentProceduresAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
-  await new FeaturePermissionService().requireAccess(
-    ctx.session.organizationId,
-    FeatureKey.agentProcedures
-  )
-  return next()
-})
+/** permissionProcedure(agentsManage) + a beta gate: requires the `agentProcedures` feature on the org's plan. */
+const agentProceduresManageProcedure = permissionProcedure(PermissionKey.agentsManage).use(
+  async ({ ctx, next }) => {
+    await new FeaturePermissionService().requireAccess(
+      ctx.session.organizationId,
+      FeatureKey.agentProcedures
+    )
+    return next()
+  }
+)
 
 const triggerExampleSchema = z.object({
   text: z.string(),
@@ -100,7 +102,7 @@ export const procedureRouter = createTRPCRouter({
       }
     }),
 
-  create: agentProceduresAdminProcedure
+  create: agentProceduresManageProcedure
     .input(z.object({ name: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -113,7 +115,7 @@ export const procedureRouter = createTRPCRouter({
 
   // DRAFT autosave target — patches the draft `doc` and/or trigger defaults.
   // Never touches the published `compiled`/`version` (STACK #10).
-  update: agentProceduresAdminProcedure
+  update: agentProceduresManageProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -175,7 +177,7 @@ export const procedureRouter = createTRPCRouter({
       }
     }),
 
-  delete: agentProceduresAdminProcedure
+  delete: agentProceduresManageProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -205,7 +207,7 @@ export const procedureRouter = createTRPCRouter({
    * minus `draftDoc`) so the client settles its optimistic store on truth; the
    * caller invalidates `getById` to reload the rewritten draft doc.
    */
-  discardDraft: agentProceduresAdminProcedure
+  discardDraft: agentProceduresManageProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -251,7 +253,7 @@ export const procedureRouter = createTRPCRouter({
    * version (`procedure.updated → ['agents']`; only publish/revert bust — drafts
    * never affect live runs).
    */
-  publish: agentProceduresAdminProcedure
+  publish: agentProceduresManageProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -310,7 +312,7 @@ export const procedureRouter = createTRPCRouter({
 
   // Restore-as-draft: load an older version into the draft + mark dirty. Does
   // NOT repoint the active version — live behavior is unchanged until publish.
-  restoreVersion: agentProceduresAdminProcedure
+  restoreVersion: agentProceduresManageProcedure
     .input(z.object({ id: z.string().min(1), toVersionId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -330,7 +332,7 @@ export const procedureRouter = createTRPCRouter({
     }),
 
   // Rename a published version's label (annotation only).
-  renameVersion: agentProceduresAdminProcedure
+  renameVersion: agentProceduresManageProcedure
     .input(
       z.object({
         id: z.string().min(1),

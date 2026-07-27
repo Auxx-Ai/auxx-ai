@@ -7,12 +7,13 @@ import {
   LabelService,
   ReauthenticationRequiredError,
 } from '@auxx/lib/email'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('labels-router')
 
@@ -308,7 +309,7 @@ export const labelRouter = createTRPCRouter({
     }),
 
   // Get labels for an integration (reads DB directly, bypasses LabelProviderFactory)
-  getIntegrationLabels: adminProcedure
+  getIntegrationLabels: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ integrationId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -325,8 +326,8 @@ export const labelRouter = createTRPCRouter({
       return { labels }
     }),
 
-  // Toggle Label.enabled (admin-only — changes sync scope)
-  toggleLabelEnabled: adminProcedure
+  // Toggle Label.enabled (channelsManage — changes sync scope)
+  toggleLabelEnabled: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ labelId: z.string(), enabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -340,8 +341,8 @@ export const labelRouter = createTRPCRouter({
       return updated
     }),
 
-  // Discover folders from provider and upsert into Label table (admin-only)
-  discoverFolders: adminProcedure
+  // Discover folders from provider and upsert into Label table (channelsManage)
+  discoverFolders: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ integrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)

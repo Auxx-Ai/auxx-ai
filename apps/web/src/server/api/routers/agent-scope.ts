@@ -7,10 +7,11 @@ import {
   ScopeRowImmutableError,
   upsertAgentScopeRow,
 } from '@auxx/lib/agents'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter } from '../trpc'
+import { createTRPCRouter, permissionProcedure } from '../trpc'
 
 const logger = createScopedLogger('agent-scope-router')
 
@@ -47,7 +48,7 @@ function mapServiceError(err: unknown): TRPCError {
  * here; admin edits write `manual`.
  */
 export const agentScopeRouter = createTRPCRouter({
-  upsertRow: adminProcedure
+  upsertRow: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         agentId: z.string(),
@@ -71,7 +72,7 @@ export const agentScopeRouter = createTRPCRouter({
       })
     }),
 
-  removeRow: adminProcedure
+  removeRow: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         agentId: z.string(),

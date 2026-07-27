@@ -1,8 +1,9 @@
 // apps/web/src/server/api/routers/calendar.ts
 
 import { schema } from '@auxx/database'
-import { requireAdminAccess } from '@auxx/lib/email'
+import { requireChannelManageAccess } from '@auxx/lib/channels'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import {
   getCalendarEventById,
   getMyMeeting,
@@ -112,7 +113,10 @@ export const calendarRouter = createTRPCRouter({
     .input(z.object({ integrationId: z.string() }))
     .use(notDemo('enable calendar sync'))
     .mutation(async ({ ctx, input }) => {
-      await requireAdminAccess(ctx.session.user.id, ctx.session.organizationId)
+      await requireChannelManageAccess(
+        { db: ctx.db, organizationId: ctx.session.organizationId, userId: ctx.session.user.id },
+        input.integrationId
+      )
 
       const integration = await assertGoogleIntegration(
         ctx,
@@ -147,7 +151,10 @@ export const calendarRouter = createTRPCRouter({
     .input(z.object({ integrationId: z.string() }))
     .use(notDemo('disable calendar sync'))
     .mutation(async ({ ctx, input }) => {
-      await requireAdminAccess(ctx.session.user.id, ctx.session.organizationId)
+      await requireChannelManageAccess(
+        { db: ctx.db, organizationId: ctx.session.organizationId, userId: ctx.session.user.id },
+        input.integrationId
+      )
 
       const integration = await assertGoogleIntegration(
         ctx,
@@ -203,7 +210,10 @@ export const calendarRouter = createTRPCRouter({
     .input(z.object({ integrationId: z.string() }))
     .use(notDemo('trigger calendar sync'))
     .mutation(async ({ ctx, input }) => {
-      await requireAdminAccess(ctx.session.user.id, ctx.session.organizationId)
+      await requireChannelManageAccess(
+        { db: ctx.db, organizationId: ctx.session.organizationId, userId: ctx.session.user.id },
+        input.integrationId
+      )
 
       const integration = await assertGoogleIntegration(
         ctx,
@@ -276,7 +286,11 @@ export const calendarRouter = createTRPCRouter({
     .input(z.object({ calendarEventId: z.string(), entityInstanceId: z.string() }))
     .use(notDemo('link calendar event to meeting'))
     .mutation(async ({ ctx, input }) => {
-      await requireAdminAccess(ctx.session.user.id, ctx.session.organizationId)
+      await requirePermission(
+        ctx.session.user.id,
+        ctx.session.organizationId,
+        PermissionKey.channelsManage
+      )
 
       const result = await linkCalendarEventToMeeting(
         input.calendarEventId,
@@ -294,7 +308,11 @@ export const calendarRouter = createTRPCRouter({
     .input(z.object({ participantId: z.string(), contactEntityInstanceId: z.string() }))
     .use(notDemo('link calendar participant to contact'))
     .mutation(async ({ ctx, input }) => {
-      await requireAdminAccess(ctx.session.user.id, ctx.session.organizationId)
+      await requirePermission(
+        ctx.session.user.id,
+        ctx.session.organizationId,
+        PermissionKey.channelsManage
+      )
 
       await ctx.db
         .update(schema.MeetingParticipant)

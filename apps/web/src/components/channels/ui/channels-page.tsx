@@ -1,6 +1,7 @@
 // apps/web/src/components/channels/ui/channels-page.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { FeatureKey } from '@auxx/lib/types'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
@@ -9,10 +10,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useOAuthReturn } from '~/components/apps/hooks/use-oauth-return'
 import { useChannels, useChannelsLoading } from '~/components/channels/hooks/use-channels'
-import { useAdminGate } from '~/components/global/admin-gate'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { useInboxes } from '~/components/threads/hooks'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { ChannelCard } from './channel-card'
 import { ChannelGalleryDialog } from './channel-gallery-dialog'
@@ -35,15 +36,16 @@ export function ChannelsPage() {
   const { hasAccess, isLoading: isFeatureLoading } = useFeatureFlags()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { isAdminOrOwner } = useAdminGate()
+  const { can } = useAccess()
 
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [activeTab, setActiveTab] = useState(() =>
     searchParams.get('tab') === 'suppressions' ? 'suppressions' : 'channels'
   )
-  // The Suppressions tab is admin-only (list/remove are adminProcedures) — clamp a
-  // deep link so non-admins never mount a query that would 403.
-  const effectiveTab = isAdminOrOwner ? activeTab : 'channels'
+  // `suppressionRouter`'s list/add/remove assert `channelsManage`, so the tab
+  // clamp mirrors the same capability (plan 21 §10.4) — a deep link from someone
+  // without the key never mounts a query that would 403.
+  const effectiveTab = can(PermissionKey.channelsManage) ? activeTab : 'channels'
 
   const handleTabChange = (value: string) => {
     setActiveTab(value)
@@ -87,7 +89,7 @@ export function ChannelsPage() {
         breadcrumbs={BREADCRUMBS}
         subHeaderClassName='p-0'
         subHeader={
-          isAdminOrOwner ? (
+          can(PermissionKey.channelsManage) ? (
             <TabsList variant='outline'>
               <TabsTrigger value='channels' variant='outline'>
                 <Waypoints />

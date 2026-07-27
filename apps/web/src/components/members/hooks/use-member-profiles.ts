@@ -49,10 +49,25 @@ export interface AreaDelta {
   after: Level
 }
 
+/**
+ * A reassignment crossing rank (plan 21 §3.6/§2.0.2) — the profile's declared
+ * `role` differs before vs after. With role hidden and custom profiles always
+ * `USER` (§2.0.1), this is the only pre-commit signal that moving a member off
+ * an Admin-rank profile demotes them.
+ */
+export interface RankChange {
+  from: OrganizationRole
+  to: OrganizationRole
+  direction: 'promotion' | 'demotion'
+  /** Ready-to-render sentence, e.g. "Will no longer be an Administrator". */
+  message: string
+}
+
 /** The complete effective delta of swapping one profile for another (§7). */
 export interface ProfileDelta {
   areas: AreaDelta[]
-  /** True when nothing measurable changes. */
+  rankChange: RankChange | null
+  /** True when nothing measurable changes — no area rung moves AND no rank crossing. */
   isEmpty: boolean
 }
 
@@ -67,6 +82,51 @@ export const RUNG_LABELS: Record<Level, string> = {
 /** Seat-class wording — the DB value stays `'worker'`, the label is "Field seat". */
 export function seatLabel(seat: SeatType): string {
   return seat === 'worker' ? 'Field seat' : 'Full seat'
+}
+
+/** Rank ordering for `OrganizationRole`, low to high — OWNER outranks everything. */
+const ROLE_RANK: Record<OrganizationRole, number> = { USER: 0, ADMIN: 1, OWNER: 2 }
+
+/** Rank wording for a person, not the DB enum — `USER` reads as "Member". */
+const ROLE_LABEL: Record<OrganizationRole, string> = {
+  OWNER: 'Owner',
+  ADMIN: 'Admin',
+  USER: 'Member',
+}
+
+/** Human label for a profile's declared rank (plan 21 §2.a.8/§3.4). */
+export function roleLabel(role: OrganizationRole): string {
+  return ROLE_LABEL[role]
+}
+
+/**
+ * The one rank crossing reachable through assignment — `optionsFor` never offers
+ * the Owner profile (§2.a.9), so USER↔ADMIN is the only edge a real delta can
+ * show. Worded for that edge; falls back to a generic sentence for completeness.
+ */
+function rankChangeMessage(
+  from: OrganizationRole,
+  to: OrganizationRole,
+  direction: 'promotion' | 'demotion'
+): string {
+  if (to === 'ADMIN' || from === 'ADMIN') {
+    return direction === 'promotion'
+      ? 'Becomes an Administrator — can manage the organization and members.'
+      : 'Will no longer be an Administrator'
+  }
+  return direction === 'promotion'
+    ? `Becomes ${roleLabel(to)}.`
+    : `Will no longer be ${roleLabel(from)}.`
+}
+
+function buildRankChange(
+  from: OrganizationRole | undefined,
+  to: OrganizationRole | undefined
+): RankChange | null {
+  if (!from || !to || from === to) return null
+  const direction: 'promotion' | 'demotion' =
+    ROLE_RANK[to] > ROLE_RANK[from] ? 'promotion' : 'demotion'
+  return { from, to, direction, message: rankChangeMessage(from, to, direction) }
 }
 
 /**
@@ -247,7 +307,8 @@ export function useMemberProfiles() {
         if (b === a) continue
         areas.push({ area, label: meta.label, group: meta.group, before: b, after: a })
       }
-      return { areas, isEmpty: areas.length === 0 }
+      const rankChange = buildRankChange(input.from?.role, input.to?.role)
+      return { areas, rankChange, isEmpty: areas.length === 0 && !rankChange }
     },
     [effectiveLevels]
   )
@@ -257,32 +318,46 @@ export function useMemberProfiles() {
    * seat-mismatch verdict. A mismatched profile is **kept and disabled with a
    * reason** rather than hidden (§0.21/§0.22) — hiding it would read as "this
    * profile does not exist", which is exactly the confusion the rule prevents.
+   *
+   * Two rank filters run before the seat check (plan 21 §2.a.9/§3.4), both by
+   * rank rather than slug so a future non-system admin-rank profile is covered
+   * for free:
+   * - The Owner profile is never offered — assigning it is an ownership
+   *   transfer with its own confirmed action, regardless of who is looking.
+   * - No option outranks the viewer — in practice this only hides the Admin
+   *   profile from a viewer who is neither Admin nor Owner.
    */
   const optionsFor = useCallback(
-    (member: { role: OrganizationRole; seatType: SeatType }): ProfileOption[] =>
-      profiles.map((profile) => {
-        if (profile.seat !== member.seatType) {
-          return {
-            profile,
-            disabled: true,
-            reason:
-              profile.seat === 'worker'
-                ? 'Field-seat profile. This member holds a full seat. Change the seat first.'
-                : 'Full-seat profile. This member holds a field seat. Change the seat first.',
+    (
+      member: { role: OrganizationRole; seatType: SeatType },
+      viewerRole: OrganizationRole | null | undefined
+    ): ProfileOption[] =>
+      profiles
+        .filter((profile) => profile.role !== 'OWNER')
+        .filter((profile) => !viewerRole || ROLE_RANK[profile.role] <= ROLE_RANK[viewerRole])
+        .map((profile) => {
+          if (profile.seat !== member.seatType) {
+            return {
+              profile,
+              disabled: true,
+              reason:
+                profile.seat === 'worker'
+                  ? 'Field-seat profile. This member holds a full seat. Change the seat first.'
+                  : 'Full-seat profile. This member holds a field seat. Change the seat first.',
+            }
           }
-        }
-        // `seatType='worker' ⇒ role='USER'`: a field-seat profile never binds to
-        // an Admin/Owner. Unreachable while the seats match, kept as the explicit
-        // statement of the invariant.
-        if (profile.seat === 'worker' && member.role !== 'USER') {
-          return {
-            profile,
-            disabled: true,
-            reason: 'Field-seat profiles are only available to members with the Member role.',
+          // `seatType='worker' ⇒ role='USER'`: a field-seat profile never binds to
+          // an Admin/Owner. Unreachable while the seats match, kept as the explicit
+          // statement of the invariant.
+          if (profile.seat === 'worker' && member.role !== 'USER') {
+            return {
+              profile,
+              disabled: true,
+              reason: 'Field-seat profiles are only available to members with the Member role.',
+            }
           }
-        }
-        return { profile, disabled: false }
-      }),
+          return { profile, disabled: false }
+        }),
     [profiles]
   )
 

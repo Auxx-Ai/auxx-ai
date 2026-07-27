@@ -1,6 +1,6 @@
 // packages/lib/src/permissions/profiles/profile-queries.ts
 
-import type { SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import type { ProfileActor } from '@auxx/types/actor'
 import { toActorId } from '@auxx/types/actor'
 import { getCachedPermissionProfiles } from '../../cache'
@@ -39,6 +39,12 @@ export interface PermissionProfileSummary {
   seat: SeatType
   /** Which principal kind may bind it (§0.18, immutable). */
   appliesTo: ProfileAppliesTo
+  /**
+   * The rank the profile confers on assignment (plan 21 §2.a) — non-`USER` only
+   * on the system owner/admin rows (21 §2.0.1). Drives the picker rank filters
+   * and the rank badge; never authorable.
+   */
+  role: OrganizationRole
   /** Seeded template row: not deletable, `slug`/`seat`/`appliesTo` locked. */
   isSystem: boolean
   /** Fallback rung for areas the profile does not set; `null` = fall through to `ROLE_DEFAULTS` (§0.7). */
@@ -87,6 +93,7 @@ export function toProfileSummary(profile: CachedPermissionProfile): PermissionPr
     icon: profile.icon,
     seat: profile.seat,
     appliesTo: profile.appliesTo,
+    role: profile.role,
     isSystem: profile.isSystem,
     baseLevel: profile.baseLevel,
   }

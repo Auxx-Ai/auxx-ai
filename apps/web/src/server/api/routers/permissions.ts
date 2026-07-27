@@ -74,11 +74,11 @@ const agentPolicyInput: z.ZodType<AgentPermissionPolicy> = z.object({
 /**
  * The Layer-2 gate for this router: the `permissions` area itself.
  *
- * Doc 19 §0.25 makes `permissions` grantable (it was `adminOnly`), which is only
- * true if the routers behind it stop being binary `adminProcedure` checks —
- * otherwise the area renders as a lever that does nothing. OWNER/ADMIN still pass
+ * Doc 19 §0.25 makes `permissions` grantable (it was `adminOnly`), which was only
+ * true once the routers behind it stopped being binary role checks — otherwise
+ * the area would render as a lever that does nothing. OWNER/ADMIN still pass
  * unconditionally: they hold every key through `ROLE_DEFAULTS`, so this is strictly
- * wider than the `adminProcedure` it replaces, never narrower.
+ * wider than the since-deleted `adminProcedure` it replaced, never narrower.
  *
  * Deliberately capability-ONLY, with no `FeatureKey.granularPermissions` check:
  * §0.26 plan-gates profile **writes** and never composition or reads. The write

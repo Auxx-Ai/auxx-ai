@@ -4,12 +4,13 @@ import { database, schema } from '@auxx/database'
 import { type AgentTriggerInput, AgentTriggerService, agentExistsInOrg } from '@auxx/lib/agents'
 import { enqueueAgentJob } from '@auxx/lib/ai/agent-framework'
 import { getCachedAgentById, onCacheEvent } from '@auxx/lib/cache'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('agent-trigger-router')
 
@@ -120,7 +121,7 @@ export const agentTriggerRouter = createTRPCRouter({
       return rows.map(rowToDto)
     }),
 
-  create: adminProcedure
+  create: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -156,7 +157,7 @@ export const agentTriggerRouter = createTRPCRouter({
       return rowToDto(row)
     }),
 
-  update: adminProcedure
+  update: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         id: z.string().min(1),
@@ -176,7 +177,7 @@ export const agentTriggerRouter = createTRPCRouter({
       return rowToDto(row)
     }),
 
-  delete: adminProcedure
+  delete: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -186,7 +187,7 @@ export const agentTriggerRouter = createTRPCRouter({
       return { ok: true as const }
     }),
 
-  runNow: adminProcedure
+  runNow: permissionProcedure(PermissionKey.agentsManage)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session

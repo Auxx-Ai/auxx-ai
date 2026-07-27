@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { composeUserCapabilities } from './compose-user-capabilities'
-import { Area, Level, PERMISSION_AREAS, PermissionKey } from './registry'
+import { AREA_ORDER, Area, Level, PERMISSION_AREAS, PermissionKey } from './registry'
 import { ALL_KEYS, effectiveDefault, WORKER_SEAT_KEYS } from './seat-policy'
 
 const sorted = (keys: PermissionKey[]) => [...keys].sort()
@@ -28,6 +28,15 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     // A full USER holds full records (view/edit/delete/import).
     expect(caps.keys).toContain(PermissionKey.recordsDelete)
     expect(caps.keys).toContain(PermissionKey.recordsImport)
+  })
+
+  it('pins the adminOnly area set EXACTLY — never grantable below ADMIN', () => {
+    // Migrated from the deleted per-area binary-role-gate anti-rot test (that flag
+    // was retired 2026-07-27, plan 21 §8 step 11, once the last role gate was
+    // deleted). `adminOnly` is a separate, still-live question — "may a USER be
+    // granted this?" — and stays pinned so an area can't silently gain or lose it.
+    const adminOnlyAreas = AREA_ORDER.filter((area) => PERMISSION_AREAS[area].adminOnly === true)
+    expect(adminOnlyAreas.sort()).toEqual([Area.settings])
   })
 
   it("a worker seat's effective default is exactly WORKER_SEAT_KEYS", () => {
@@ -253,6 +262,30 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       })
       expect(sorted(nullBound.keys)).toEqual(sorted(effectiveDefault(role, seatType)))
     }
+  })
+
+  it('plan 21 §1.1 is closed: a custom profile composes one set, whoever holds it', () => {
+    // "Support Lead": records Full, knowledgeBase Edit, nothing else. Under
+    // plan 21 the holder's role IS the profile's declared rank — 'USER' for
+    // every custom profile (§2.0.1), written at invite/assign — so the ADMIN
+    // fall-through that silently handed "Tom" billing/settings/permissions can
+    // never meet a custom profile again: `role` arrives here already derived.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: { [Area.records]: Level.Full, [Area.knowledgeBase]: Level.Edit },
+      profileBaseLevel: null,
+      profileCeiling: null,
+      typeAccessRows: [],
+    })
+    expect(caps.keys).toContain(PermissionKey.recordsEdit)
+    expect(caps.keys).toContain(PermissionKey.knowledgeBaseEdit)
+    // The §1.1 worked example's "Tom" rows — all None for every holder now:
+    expect(caps.keys).not.toContain(PermissionKey.billingView)
+    expect(caps.keys).not.toContain(PermissionKey.permissionsManage)
+    expect(caps.keys).not.toContain(PermissionKey.settingsManage)
+    expect(caps.keys).not.toContain(PermissionKey.membersManage)
+    expect(caps.keys).not.toContain(PermissionKey.auditLogView)
   })
 
   it('null binding on a worker seat is still exactly WORKER_SEAT_KEYS (seat ceiling clamps last)', () => {

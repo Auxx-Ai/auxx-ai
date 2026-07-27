@@ -1,18 +1,20 @@
 // src/server/api/routers/chat.ts
 //
-// Admin-only chat surface for the org dashboard. Phase 6 of the v4 plan adds
-// `signTestJwt` so the preview page can dogfood the published signer and
-// drive end-to-end identity verification without leaving the app.
+// Chat surface for the org dashboard, gated on `channelsManage` (plan 21 §6
+// Tier C). Phase 6 of the v4 plan adds `signTestJwt` so the preview page can
+// dogfood the published signer and drive end-to-end identity verification
+// without leaving the app.
 
 import { signUserJwt } from '@auxx/chat/server'
 import { decryptSecrets } from '@auxx/credentials/crypto'
 import { schema } from '@auxx/database'
-import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
+import { getUserOrganizationId } from '@auxx/lib/email'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('chat-router')
 
@@ -29,7 +31,7 @@ export const chatRouter = createTRPCRouter({
   /**
    * Sign an HS256 JWT against one of the channel's active signing keys.
    *
-   * Admin-only. Used by the widget preview page so testers can exercise the
+   * Gated on `channelsManage`. Used by the widget preview page so testers can exercise the
    * phase-3 verify path + phase-4 attribute resolution + phase-5 enforcement
    * without standing up a fake customer server. Dogfoods the published
    * `@auxx/chat/server` signer.
@@ -38,7 +40,7 @@ export const chatRouter = createTRPCRouter({
    * `ApiKey` row with `type='chat'` — the UI keys off this to render a
    * "create a signing key" CTA pointing at the channel settings.
    */
-  signTestJwt: adminProcedure
+  signTestJwt: permissionProcedure(PermissionKey.channelsManage)
     .input(
       z.object({
         channelId: z.string().min(1),
@@ -47,9 +49,7 @@ export const chatRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
 
       // Channel ownership check — bypassing this would let one org's admin
       // mint a JWT against another org's channel.

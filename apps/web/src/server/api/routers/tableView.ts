@@ -40,8 +40,8 @@ import { isStructural, resolveDefId } from './table-view-helpers'
  *    role checks: {@link assertStructuralAccess}'s def-less fallback and `update`'s
  *    `isAdminOrOwner` → `updateView({ ownerOnly: !isAdmin, orgWide: isAdmin })`
  *    scope. Narrowing only the client flag would hide affordances the server still
- *    grants. Narrowing the gates too *is* §5.3 **piece 3** (the `adminProcedure` /
- *    `isAdminOrOwner` migration, §11.5's own plan) — not this step.
+ *    grants. Narrowing the gates too *is* §5.3 **piece 3** (the since-deleted
+ *    `adminProcedure` / `isAdminOrOwner` migration, §11.5's own plan) — not this step.
  *  - **No profile-side remedy exists for the branch that matters.** `isOrgAdmin` is
  *    only load-bearing when `entityDefinitionId` is `null` (non-entity surfaces);
  *    when a def resolves, `canSetDefault` already delegates to
@@ -137,6 +137,7 @@ async function assertStructuralAccess(
     capabilities.assertAdministerDef(entityDefinitionId)
     return
   }
+  // Scope selection, not a gate — see note at top (plan 21 §5.2).
   const isAdmin = await isAdminOrOwner(organizationId, userId)
   if (!isAdmin) {
     throw new ForbiddenError('You do not have permission to configure this view.')
@@ -370,6 +371,7 @@ export const tableViewRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
+      // Scope selection, not a gate — see note at top (plan 21 §5.2).
       const isAdmin = await isAdminOrOwner(organizationId, userId)
 
       // Load the target row (org-wide) to key the structural gate off its stored

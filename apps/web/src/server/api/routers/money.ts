@@ -53,7 +53,7 @@ import { getOrganizationSetting } from '@auxx/lib/settings'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
  * protectedProcedure + the `dispatch` feature gate — money gates on dispatch (README). Layers
@@ -86,14 +86,13 @@ const moneyViewProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 })
 
 /**
- * adminProcedure + the same `dispatch` feature gate as {@link moneyProcedure} — for the money
- * mutations that are destructive corrections or account-level writes, not desk work: manual
- * `deletePayment` (money MI1 build spec §I.1, decision 8), and the Stripe Connect
+ * protectedProcedure + the same `dispatch` feature gate as {@link moneyProcedure} — for the
+ * money mutations that are destructive corrections or account-level writes, not desk work:
+ * manual `deletePayment` (money MI1 build spec §I.1, decision 8), and the Stripe Connect
  * `refundTransaction`/`syncAccountState`/`disconnectPayments` (money MP1 build spec §L). Layers
- * `dispatch.board.manage` + attaches `ctx.capabilities`; admins hold every key so the capability
- * only tightens, never loosens.
+ * the `dispatch.board.manage` capability + attaches `ctx.capabilities`.
  */
-const moneyAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
+const moneyAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   await new FeaturePermissionService().requireAccess(
     ctx.session.organizationId,
     FeatureKey.dispatch

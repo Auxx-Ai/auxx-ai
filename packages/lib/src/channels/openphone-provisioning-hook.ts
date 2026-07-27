@@ -18,11 +18,15 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import type { PostConnectHook, PostConnectHookContext } from '../connections/post-connect-hooks'
-import { requireAdminAccess } from '../email'
 import { ForbiddenError } from '../errors'
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
-import { FeatureKey, FeaturePermissionService } from '../permissions'
+import {
+  FeatureKey,
+  FeaturePermissionService,
+  PermissionKey,
+  requirePermission,
+} from '../permissions'
 import { assertSharedConnectInbox } from './connect-inbox'
 import { countBillableChannels } from './list'
 
@@ -95,8 +99,8 @@ async function findExistingChannel(
 export const openphoneProvisioningHook: PostConnectHook = {
   providerKeys: ['openphone'],
   async run(ctx: PostConnectHookContext): Promise<void> {
-    // Channels require admin (the generic secret-save allows any member).
-    await requireAdminAccess(ctx.userId, ctx.organizationId)
+    // Channels require the channels.manage capability (the generic secret-save allows any member).
+    await requirePermission(ctx.userId, ctx.organizationId, PermissionKey.channelsManage)
 
     const identity = await readIdentity(ctx.credentialId, ctx.organizationId)
     const existingId = await findExistingChannel(ctx.organizationId, identity.phoneNumberId)

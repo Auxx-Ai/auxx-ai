@@ -4,6 +4,11 @@ export {
   acceptInvitationById,
 } from './accept-invitation'
 export {
+  type AssignMemberProfileParams,
+  type AssignMemberProfileResult,
+  assignMemberProfile,
+} from './assign-profile'
+export {
   INVITATION_PROFILE_BOUND_ACTION,
   INVITATION_PROFILE_MISSING_ACTION,
   type InvitableProfile,
@@ -28,6 +33,7 @@ export {
   getOrganizationMembers,
   isAdminOrOwner,
   isMember,
+  isOwner,
   listMembersWithUser,
 } from './member-queries'
 export { assertSeatAvailable, countSeatsUsed, seatLimitFeature } from './seat-limits'
