@@ -6,10 +6,11 @@ import {
   getOrgToolCatalog,
   updateAgentToolset,
 } from '@auxx/lib/agents'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter } from '../trpc'
+import { createTRPCRouter, permissionProcedure } from '../trpc'
 
 const logger = createScopedLogger('agent-toolset-router')
 
@@ -43,11 +44,11 @@ export const agentToolsetRouter = createTRPCRouter({
    * `useAppsContext().appInstallations` via `useToolCatalog`. See
    * `plans/kopilot/agents/tools/project-builtin-auxx-into-installations.md`.
    */
-  listTools: adminProcedure.query(async ({ ctx }) => {
+  listTools: permissionProcedure(PermissionKey.agentsManage).query(async ({ ctx }) => {
     return getOrgToolCatalog(ctx.session.organizationId)
   }),
 
-  update: adminProcedure
+  update: permissionProcedure(PermissionKey.agentsManage)
     .input(toolsetPatchSchema.extend({ agentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -74,7 +75,7 @@ export const agentToolsetRouter = createTRPCRouter({
       })
     }),
 
-  batchUpdate: adminProcedure
+  batchUpdate: permissionProcedure(PermissionKey.agentsManage)
     .input(
       z.object({
         agentId: z.string(),

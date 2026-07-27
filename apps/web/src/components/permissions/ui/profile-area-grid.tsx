@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/profile-area-grid.tsx
 'use client'
 
-import type { SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { type Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -13,7 +13,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import { LevelControl } from './level-control'
 import {
   PROFILE_AREA_GROUPS,
-  ROLE_GATED_REASON,
+  UNSET_HINT_BY_ROLE,
   WORKER_LOCK_REASON,
   WORKER_SEAT_AREAS,
 } from './profile-copy'
@@ -24,19 +24,30 @@ interface ProfileAreaGridProps {
    * falls through to `baseLevel` and then `ROLE_DEFAULTS`.
    */
   values: Partial<Record<Area, Level>>
-  /** The USER role's per-area defaults — the last fall-through of the base map. */
+  /**
+   * The USER role's code defaults — the final fall-through when neither an
+   * explicit level nor a `baseLevel` is set. Always the USER map, whatever this
+   * profile's own `role` is: an ADMIN/OWNER profile carries an explicit
+   * `baseLevel` of Full (plan 21 §2.a.7), so it never actually reaches this rung
+   * — see `profileRole` below for what the empty-state LABEL should say instead.
+   */
   roleDefaults: Record<Area, Level>
   /** The profile's blanket rung for unset areas, or `null`. */
   baseLevel?: Level | null
   /** Drives the §0.19 field-seat lock — a worker profile cannot author non-worker areas. */
   seat: SeatType
+  /**
+   * The profile's own declared rank (plan 21 §2.a.8) — names the real
+   * fall-through source in the "Not set" hint instead of hardcoding USER's.
+   * Defaults to `USER`, which is every custom profile (§2.0.1).
+   */
+  profileRole?: OrganizationRole
   onChange: (area: Area, level: Level | undefined) => void
   disabled?: boolean
 }
 
 /** Why one row is not editable, or `null` when it is. */
 function lockReasonFor(area: Area, seat: SeatType): string | null {
-  if (PERMISSION_AREAS[area].roleGated) return ROLE_GATED_REASON
   if (seat === 'worker' && !WORKER_SEAT_AREAS.has(area)) return WORKER_LOCK_REASON
   return null
 }
@@ -54,8 +65,7 @@ function lockReasonFor(area: Area, seat: SeatType): string | null {
  *    be filtered out of the ladder or displayed as "inherit" (doc 16 §10's
  *    `POSITIVE_LEVELS` bug, one screen over).
  * 3. **Locked** — a field seat can never reach a non-worker area (§0.19: the
- *    editor refuses to author a contradiction with `SEAT_CEILINGS`), and a
- *    `roleGated` area's routers are still a binary admin gate (§5.3). Locked rows
+ *    editor refuses to author a contradiction with `SEAT_CEILINGS`). Locked rows
  *    render disabled at the level that actually applies, with the reason on hover.
  */
 export function ProfileAreaGrid({
@@ -63,6 +73,7 @@ export function ProfileAreaGrid({
   roleDefaults,
   baseLevel = null,
   seat,
+  profileRole = 'USER',
   onChange,
   disabled = false,
 }: ProfileAreaGridProps) {
@@ -121,6 +132,7 @@ export function ProfileAreaGrid({
                   roleDefault={roleDefaults[area]}
                   baseLevel={baseLevel}
                   seat={seat}
+                  profileRole={profileRole}
                   disabled={disabled}
                   onChange={(level) => onChange(area, level)}
                 />
@@ -140,6 +152,7 @@ function ProfileAreaRow({
   roleDefault,
   baseLevel,
   seat,
+  profileRole,
   disabled,
   onChange,
 }: {
@@ -148,6 +161,7 @@ function ProfileAreaRow({
   roleDefault: Level
   baseLevel: Level | null
   seat: SeatType
+  profileRole: OrganizationRole
   disabled: boolean
   onChange: (level: Level | undefined) => void
 }) {
@@ -165,7 +179,7 @@ function ProfileAreaRow({
     ? 'Seat ceiling'
     : baseLevel !== null
       ? 'Not set · profile default'
-      : 'Not set · member default'
+      : UNSET_HINT_BY_ROLE[profileRole]
 
   return (
     <TreeRow

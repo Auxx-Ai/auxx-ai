@@ -7,6 +7,7 @@ import { DehydrationCacheService, DehydrationService } from '@auxx/lib/dehydrati
 import {
   acceptInvitation,
   acceptInvitationById,
+  assignMemberProfile,
   cancelInvitation,
   findMemberByUser,
   getActiveMemberCount,
@@ -242,6 +243,47 @@ export const memberRouter = createTRPCRouter({
         targetType: 'OrganizationMember',
         targetId: input.memberId,
         newState: { seatType: input.seatType },
+      })
+
+      return result
+    }),
+
+  /**
+   * Bind a permission profile to a member (plan 21 §3.2).
+   *
+   * The service owns every guard: the `members.manage` + `permissions.manage`
+   * base gates, the org-scope / appliesTo / Owner-profile checks, the cross-seat
+   * refusal, the rank guards against the profile's DECLARED role, last-owner
+   * protection and the §6.1 escalation guard — then writes `permissionProfileId`
+   * AND `role` in one update and emits the cache / dehydration / realtime tail.
+   */
+  assignProfile: protectedProcedure
+    .input(
+      z.object({
+        /** The member's `userId`, matching every other `member.*` mutation. */
+        memberId: z.string(),
+        /** The profile to bind, or `null` to fall back to the system template. */
+        profileId: z.string().nullable(),
+      })
+    )
+    .use(notDemo('change member permission profiles'))
+    .mutation(async ({ ctx, input }) => {
+      const result = await assignMemberProfile(
+        {
+          organizationId: ctx.session.organizationId,
+          actorUserId: ctx.session.user.id,
+          memberUserId: input.memberId,
+          permissionProfileId: input.profileId,
+        },
+        ctx.db
+      )
+
+      await recordAuditFromCtx(ctx, {
+        category: 'members',
+        action: 'member.profile_assigned',
+        targetType: 'OrganizationMember',
+        targetId: input.memberId,
+        newState: { permissionProfileId: result.permissionProfileId, role: result.role },
       })
 
       return result

@@ -73,6 +73,7 @@ export const connectionsRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
+      // Scope/visibility selection: determining what credentials to return (plan 21 §5.2).
       const isAdmin = await isAdminOrOwner(organizationId, ctx.session.user.id)
       const result = await listCredentials({
         organizationId,

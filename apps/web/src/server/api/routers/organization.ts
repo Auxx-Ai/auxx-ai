@@ -9,16 +9,22 @@ import {
   getMembership,
   getOrganizationMembers,
   getPendingInvitations,
-  isAdminOrOwner,
   isMember,
 } from '@auxx/lib/members'
 import { OrganizationService } from '@auxx/lib/organizations'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { createTRPCRouter, notDemo, protectedProcedure, publicProcedure } from '~/server/api/trpc'
+import {
+  createTRPCRouter,
+  notDemo,
+  ownerProcedure,
+  protectedProcedure,
+  publicProcedure,
+} from '~/server/api/trpc'
 import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
 
 const logger = createScopedLogger('api-organization')
@@ -101,12 +107,9 @@ export const organizationRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const { name, handle, type, website, domains, completedOnboarding } = input
 
-      if (!(await isAdminOrOwner(organizationId, userId))) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You must be an admin or owner to update the organization',
-        })
-      }
+      // Capability gate, not role (plan 21 §4.1/§4.2): the settings area's own
+      // key is what a profile turns off.
+      await requirePermission(userId, organizationId, PermissionKey.settingsManage)
 
       // Validate handle is not reserved
       if (handle !== undefined && RESERVED_ORGANIZATION_HANDLES.includes(handle as any)) {
@@ -454,8 +457,10 @@ export const organizationRouter = createTRPCRouter({
       return { success: true }
     }),
 
-  /** Delete organization */
-  delete: protectedProcedure
+  /** Delete organization — rank-shaped, Owner only (plan 21 §2.b.4). The
+   * service re-verifies ownership (`verifyOwnerOrFail`); this gate makes the
+   * rank requirement explicit at the router. */
+  delete: ownerProcedure
     .input(
       z.object({
         organizationId: z.string(),

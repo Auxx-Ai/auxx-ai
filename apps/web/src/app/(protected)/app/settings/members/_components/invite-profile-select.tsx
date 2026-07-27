@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/settings/members/_components/invite-profile-select.tsx
 'use client'
 
-import type { SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import {
   Select,
   SelectContent,
@@ -19,6 +19,12 @@ export interface InvitableProfileOption {
   description: string | null
   /** Declared seat class — drives the cap check and the accepted member's seat. */
   seat: SeatType
+  /**
+   * The rank this profile confers on assignment (plan 21 §2.a). Non-`USER` only
+   * on the system Admin profile (§2.0.1) — role is hidden, so this is read, never
+   * authored, and drives the rank line on non-USER options.
+   */
+  role: OrganizationRole
 }
 
 /**
@@ -28,6 +34,29 @@ export interface InvitableProfileOption {
  */
 export function seatClassLabel(seat: SeatType): string {
   return seat === 'worker' ? 'Field seat' : 'Full seat'
+}
+
+/** Rank wording for a person, not the DB enum — `USER` reads as "Member". */
+const ROLE_LABEL: Record<OrganizationRole, string> = {
+  OWNER: 'Owner',
+  ADMIN: 'Admin',
+  USER: 'Member',
+}
+
+/** Human label for a profile's declared rank. */
+export function roleLabel(role: OrganizationRole): string {
+  return ROLE_LABEL[role]
+}
+
+/**
+ * The rank line shown on a non-USER profile option (§2.0.1's one assignable
+ * rank, the system Admin profile) — what assigning it actually confers, since
+ * role has no control of its own anymore.
+ */
+const ROLE_RANK_COPY: Record<OrganizationRole, string> = {
+  OWNER: 'Full control of the organization, and the only role that can promote another Owner.',
+  ADMIN: 'Admins can manage the organization and invite others.',
+  USER: '',
 }
 
 /**
@@ -54,6 +83,7 @@ export function useInvitableProfiles() {
       name: profile.name,
       description: profile.description,
       seat: profile.seat,
+      role: profile.role,
     }))
 
   return { profiles, isLoading, isError }
@@ -76,10 +106,10 @@ interface InviteProfileSelectProps {
 }
 
 /**
- * Profile picker for the invite flow — replaces the seat toggle (§4.2). The
- * chosen profile declares the seat class, so there is nothing left for a
- * separate seat control to decide; the role select stays, since role is the
- * governance rank, not a capability shape.
+ * Profile picker for the invite flow — replaces both the seat toggle (§4.2) and
+ * the role select (plan 21 §2.a.6). The chosen profile declares the seat class
+ * AND the rank it confers on assignment, so there is nothing left for either a
+ * separate seat or role control to decide.
  */
 export function InviteProfileSelect({
   value,
@@ -101,11 +131,18 @@ export function InviteProfileSelect({
       <SelectContent>
         {profiles.map((profile) => (
           // `description` renders OUTSIDE Radix's ItemText, so it stays in the
-          // dropdown instead of being copied into the trigger.
+          // dropdown instead of being copied into the trigger. On a non-USER
+          // option (the system Admin profile, §2.0.1) it carries the rank line
+          // instead of the profile's own description — the rank is the more
+          // consequential fact for an inviter to see.
           <SelectItem
             key={profile.id}
             value={profile.id}
-            description={profile.description ?? undefined}>
+            description={
+              profile.role !== 'USER'
+                ? ROLE_RANK_COPY[profile.role]
+                : (profile.description ?? undefined)
+            }>
             <span className='flex items-center gap-2'>
               <span className='font-medium'>{profile.name}</span>
               <span className='text-muted-foreground text-xs'>{seatClassLabel(profile.seat)}</span>

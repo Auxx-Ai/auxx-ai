@@ -27,22 +27,24 @@ import {
   updateValueResolution,
 } from '@auxx/lib/import'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure } from '../trpc'
 
 /**
  * Data import tRPC router.
  * Handles CSV import workflow: upload -> map -> resolve -> plan -> execute.
+ * Every procedure requires the `records.import` capability — it is one
+ * coherent import flow, not a set of independently-gated actions.
  */
 export const dataImportRouter = createTRPCRouter({
   /**
    * Create a new import job.
    * Called at the start of an import to initialize the job and mapping.
    */
-  createJob: protectedProcedure
+  createJob: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         entityDefinitionId: z.string(),
@@ -84,7 +86,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get import job details.
    */
-  getJob: protectedProcedure
+  getJob: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -101,7 +103,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Upload a chunk of CSV rows.
    */
-  uploadChunk: protectedProcedure
+  uploadChunk: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         jobId: z.string(),
@@ -140,7 +142,7 @@ export const dataImportRouter = createTRPCRouter({
    * Finalize the upload and transition to ingesting/waiting state.
    * Also runs initial auto-mapping (fallback only) to pre-populate column mappings.
    */
-  finalizeUpload: protectedProcedure
+  finalizeUpload: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -185,7 +187,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get importable fields for a target table.
    */
-  getImportableFields: protectedProcedure
+  getImportableFields: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         entityDefinitionId: z.string(),
@@ -209,7 +211,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get mappable properties (column headers) for a job with saved mapping data.
    */
-  getMappableProperties: protectedProcedure
+  getMappableProperties: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -227,7 +229,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Save a column mapping.
    */
-  saveColumnMapping: protectedProcedure
+  saveColumnMapping: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         jobId: z.string(),
@@ -280,7 +282,7 @@ export const dataImportRouter = createTRPCRouter({
    * Auto-map columns to fields based on header names.
    * Uses AI-powered mapping when available, with string-matching fallback.
    */
-  autoMapColumns: protectedProcedure
+  autoMapColumns: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         jobId: z.string(),
@@ -321,7 +323,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get mapped columns with resolution stats.
    */
-  getMappedColumns: protectedProcedure
+  getMappedColumns: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -341,7 +343,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get unique values for a column with resolution status.
    */
-  getUniqueValues: protectedProcedure
+  getUniqueValues: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string(), columnIndex: z.number() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -365,7 +367,7 @@ export const dataImportRouter = createTRPCRouter({
    * Trigger value resolution for all mapped columns.
    * Queues a background job to process resolution.
    */
-  resolveColumnValues: protectedProcedure
+  resolveColumnValues: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -389,7 +391,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Update a single value resolution (user override).
    */
-  updateValueResolution: protectedProcedure
+  updateValueResolution: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         jobId: z.string(),
@@ -438,7 +440,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get resolution progress.
    */
-  getResolutionProgress: protectedProcedure
+  getResolutionProgress: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -456,7 +458,7 @@ export const dataImportRouter = createTRPCRouter({
    * Generate import plan.
    * Queues a background job to analyze rows and create plan records.
    */
-  generatePlan: protectedProcedure
+  generatePlan: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -483,7 +485,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get import plan with estimates.
    */
-  getPlan: protectedProcedure
+  getPlan: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -500,7 +502,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get plan errors.
    */
-  getPlanErrors: protectedProcedure
+  getPlanErrors: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ planId: z.string(), limit: z.number().optional().default(10) }))
     .query(async ({ ctx, input }) => {
       return getPlanErrors(ctx.db, input.planId, input.limit)
@@ -510,7 +512,7 @@ export const dataImportRouter = createTRPCRouter({
    * Get plan preview rows for displaying in the preview table.
    * Returns paginated rows with resolved field values and strategy.
    */
-  getPlanPreview: protectedProcedure
+  getPlanPreview: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         jobId: z.string(),
@@ -539,7 +541,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Confirm and execute the import.
    */
-  confirmImport: protectedProcedure
+  confirmImport: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -582,7 +584,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Save mapping as a reusable template.
    */
-  saveMappingTemplate: protectedProcedure
+  saveMappingTemplate: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string(), title: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -607,7 +609,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * List all import jobs for the organization.
    */
-  listJobs: protectedProcedure
+  listJobs: permissionProcedure(PermissionKey.recordsImport)
     .input(
       z.object({
         search: z.string().optional(),
@@ -625,7 +627,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Delete an import job.
    */
-  deleteJob: protectedProcedure
+  deleteJob: permissionProcedure(PermissionKey.recordsImport)
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session

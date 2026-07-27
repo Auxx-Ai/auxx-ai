@@ -13,12 +13,17 @@ import {
   resolveOrgTemplatesByIds,
 } from '@auxx/lib/entity-templates'
 import { ForbiddenError } from '@auxx/lib/errors'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { checkSlugExists } from '@auxx/services/entity-definitions'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '../audit-context'
-import { adminProcedure, capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import {
+  capabilityProcedure,
+  createTRPCRouter,
+  permissionProcedure,
+  protectedProcedure,
+} from '../trpc'
 
 export const entityDefinitionRouter = createTRPCRouter({
   /**
@@ -91,40 +96,46 @@ export const entityDefinitionRouter = createTRPCRouter({
   /**
    * Create a new entity definition
    */
-  // Creating a NEW def is org-level (not per-def def administration), so it stays
-  // OWNER/ADMIN-only. Was `protectedProcedure` — any member could create a def
-  // (perms v2 doc 09). Editing/deleting existing defs is gated on def-`admin`.
-  create: adminProcedure.input(createEntityDefinitionSchema).mutation(async ({ ctx, input }) => {
-    // Feature gate: check custom entity limit (only counts custom entities, not system ones)
-    await new FeaturePermissionService(ctx.db).requireLimit(
-      ctx.session.organizationId,
-      FeatureKey.entities,
-      async () => {
-        const [{ value }] = await ctx.db
-          .select({ value: count() })
-          .from(schema.EntityDefinition)
-          .where(
-            and(
-              eq(schema.EntityDefinition.organizationId, ctx.session.organizationId),
-              isNull(schema.EntityDefinition.entityType),
-              isNull(schema.EntityDefinition.archivedAt)
+  // Creating a NEW def is an org-level structural change (not per-def def
+  // administration), so it is gated on `settingsManage` rather than the
+  // `channels` area (plan 21 §4.3/§6 — decided individually). Admins hold
+  // `settingsManage` via `ROLE_DEFAULTS.ADMIN`, members stay `None` by default
+  // (`USER_ADMIN_NONE_AREAS`), so behavior is preserved. Was `protectedProcedure`
+  // — any member could create a def (perms v2 doc 09). Editing/deleting existing
+  // defs is gated on def-`admin`.
+  create: permissionProcedure(PermissionKey.settingsManage)
+    .input(createEntityDefinitionSchema)
+    .mutation(async ({ ctx, input }) => {
+      // Feature gate: check custom entity limit (only counts custom entities, not system ones)
+      await new FeaturePermissionService(ctx.db).requireLimit(
+        ctx.session.organizationId,
+        FeatureKey.entities,
+        async () => {
+          const [{ value }] = await ctx.db
+            .select({ value: count() })
+            .from(schema.EntityDefinition)
+            .where(
+              and(
+                eq(schema.EntityDefinition.organizationId, ctx.session.organizationId),
+                isNull(schema.EntityDefinition.entityType),
+                isNull(schema.EntityDefinition.archivedAt)
+              )
             )
-          )
-        return value
-      }
-    )
+          return value
+        }
+      )
 
-    const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-    const created = await service.create(input)
-    await recordAuditFromCtx(ctx, {
-      category: 'settings',
-      action: 'entityDef.created',
-      targetType: 'EntityDefinition',
-      targetId: created.id,
-      metadata: { apiSlug: input.apiSlug, singular: input.singular },
-    })
-    return created
-  }),
+      const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
+      const created = await service.create(input)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.created',
+        targetType: 'EntityDefinition',
+        targetId: created.id,
+        metadata: { apiSlug: input.apiSlug, singular: input.singular },
+      })
+      return created
+    }),
 
   /**
    * Update an entity definition

@@ -319,10 +319,12 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Permissions',
         slug: 'permissions',
         icon: <ShieldCheck />,
-        // The `permissions` area is grantable since doc 19 §0.25, but every
-        // router behind this page is still a binary `adminProcedure` (the area
-        // is `roleGated`), so the nav entry stays ADMIN-only until §5.3 piece 3.
-        access: 'ADMIN',
+        // The `permissions` area is grantable since doc 19 §0.25; `permissionsRouter`
+        // asserts `permissionsManage` rather than a binary role check, so this nav
+        // entry gates on the capability itself (plan 21 §8 step 11) — a USER granted
+        // `permissions.manage` via a custom profile now reaches it too. The USER
+        // default level stays `None`, so an ungranted member sees no change.
+        permissionKey: 'permissions.manage',
         keywords: ['roles', 'access', 'sharing', 'sso', 'saml', 'policy'],
       },
       {

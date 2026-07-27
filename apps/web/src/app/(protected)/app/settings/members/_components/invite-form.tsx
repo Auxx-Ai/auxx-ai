@@ -1,6 +1,5 @@
 // apps/web/src/app/(protected)/app/settings/members/_components/invite-form.tsx
 'use client'
-import { OrganizationRole } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
@@ -13,13 +12,6 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useRouter } from 'next/navigation'
@@ -30,13 +22,13 @@ import { api } from '~/trpc/react'
 import {
   defaultInviteProfile,
   InviteProfileSelect,
+  roleLabel,
   seatClassLabel,
   useInvitableProfiles,
 } from './invite-profile-select'
 
 const formSchema = z.object({
   email: z.email({ error: 'Please enter a valid email address.' }),
-  role: z.enum(OrganizationRole, { error: 'Please select a valid role.' }),
   /** Optional: with no profiles readable the invitation binds nothing and the
    * member resolves to the system template for their role (§1.3). */
   permissionProfileId: z.string().optional(),
@@ -62,12 +54,10 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
   })
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: standardSchemaResolver(formSchema),
-    defaultValues: { email: '', role: OrganizationRole.USER, permissionProfileId: undefined },
+    defaultValues: { email: '', permissionProfileId: undefined },
   })
   const permissionProfileId = form.watch('permissionProfileId')
   const selectedProfile = profiles.find((profile) => profile.id === permissionProfileId)
-  // A field-seat profile is always a Member (§2.A) — the role select is locked.
-  const isFieldSeat = selectedProfile?.seat === 'worker'
 
   // Start on the Member baseline once the profile list arrives.
   useEffect(() => {
@@ -85,10 +75,10 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
     try {
       await inviteUser.mutateAsync({
         email: values.email,
-        // Invariant §2.A: a field seat is always a Member.
-        role: isFieldSeat ? OrganizationRole.USER : values.role,
-        // The profile declares the seat class, so no seatType is sent — the
-        // server derives it from the profile and caps against that class.
+        // No `role`: the profile declares both the seat class and the rank it
+        // confers (plan 21 §2.a.3), so the server derives both from it and caps
+        // against them. The input default (`USER`) only matters for the
+        // no-profile fallback (§1.3).
         permissionProfileId: values.permissionProfileId ?? null,
       })
       setIsSubmitting(false)
@@ -134,56 +124,19 @@ export default function InviteForm({ organizationId, onInviteSuccess }: InviteFo
                         <InviteProfileSelect
                           value={field.value}
                           profiles={profiles}
-                          onChange={(profile) => {
-                            field.onChange(profile.id)
-                            // A field-seat profile is always a Member — force role.
-                            if (profile.seat === 'worker')
-                              form.setValue('role', OrganizationRole.USER)
-                          }}
+                          onChange={(profile) => field.onChange(profile.id)}
                         />
                       </FormControl>
                       <FormDescription>
                         {selectedProfile
-                          ? `${seatClassLabel(selectedProfile.seat)} — this profile's seat class is what the invitation consumes.`
-                          : 'The profile sets what this member can do; its seat class is what the invitation consumes.'}
+                          ? `${seatClassLabel(selectedProfile.seat)} · ${roleLabel(selectedProfile.role)} — what this invitation consumes and grants.`
+                          : 'Sets what this member can do. Its seat class and rank are what the invitation consumes and grants.'}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               ) : null}
-
-              <FormField
-                control={form.control}
-                name='role'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Role</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      disabled={isFieldSeat}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder='Select a role' />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value={OrganizationRole.ADMIN} disabled={isFieldSeat}>
-                          Admin
-                        </SelectItem>
-                        <SelectItem value={OrganizationRole.USER}>User</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      {isFieldSeat
-                        ? 'Field seats are always members.'
-                        : 'Admins can manage the organization and invite others. Users have standard access.'}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
               <div className='flex justify-between'>
                 <Button

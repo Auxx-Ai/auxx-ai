@@ -59,9 +59,8 @@ import {
   upsertDispatchWorker,
   VISIT_STATUS_VALUES,
 } from '@auxx/lib/dispatch'
-import { BadRequestError, ForbiddenError, NotFoundError } from '@auxx/lib/errors'
+import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
 import { FieldValueService } from '@auxx/lib/field-values'
-import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
@@ -81,15 +80,10 @@ const dispatchProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next()
 })
 
-/** `dispatchProcedure` + org admin/owner check — worker CRUD (§A.3) and visit scheduling
- * (§B, members are board-read-only per 04-ui §6) are admin surfaces. Layers the
- * `dispatchBoardManage` capability (Layer 2) on top of the admin gate and attaches the
- * resolved `CapabilitySet` as `ctx.capabilities` — admins hold every key by default, so
- * behavior is unchanged (the capability tightens, never loosens). */
+/** `dispatchProcedure` + the `dispatchBoardManage` capability (Layer 2) — worker CRUD (§A.3)
+ * and visit scheduling (§B, members are board-read-only per 04-ui §6) admin surfaces. Attaches
+ * the resolved `CapabilitySet` as `ctx.capabilities`. */
 const dispatchAdminProcedure = dispatchProcedure.use(async ({ ctx, next }) => {
-  if (!(await isAdminOrOwner(ctx.session.organizationId, ctx.session.user.id))) {
-    throw new ForbiddenError('You must be an admin or owner to manage dispatch')
-  }
   const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
   capabilities.assert(PermissionKey.dispatchBoardManage)
   return next({ ctx: { capabilities } })

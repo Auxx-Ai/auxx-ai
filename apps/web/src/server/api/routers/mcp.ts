@@ -188,6 +188,7 @@ export const mcpRouter = createTRPCRouter({
       const server = servers.find((s) => s.slug === input.slug)
       if (!server) return null
       const [defInfo, endpoint, posture] = await Promise.all([
+        // Scope/visibility selection: determining what connection definition info to return (plan 21 §5.2).
         isAdminOrOwner(ctx.session.organizationId, ctx.session.userId).then((isAdmin) =>
           getConnectionDefinitionInfo(server.serverId, isAdmin)
         ),

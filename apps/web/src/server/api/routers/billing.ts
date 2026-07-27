@@ -26,31 +26,46 @@ import {
 
 const logger = createScopedLogger('billing-router')
 
-/** Cloud-only, member-readable billing procedures (view plan, invoices, etc.). */
-const cloudOnlyProcedure = protectedProcedure.use(async ({ next }) => {
+/** Throws outside cloud deployments — billing is a cloud-only concept. */
+async function assertCloudBilling() {
   if (isSelfHosted()) {
     throw new TRPCError({
       code: 'NOT_FOUND',
       message: 'Billing is not available in self-hosted mode',
     })
   }
+}
+
+/**
+ * Cloud-only, member-readable procedures for app-shell subscription STATE
+ * (plans, current subscription, trial status/eligibility) — consumed by plan
+ * gates/banners across the shell, so this stays open to any member rather
+ * than gated on a billing capability.
+ */
+const cloudOnlyProcedure = protectedProcedure.use(async ({ next }) => {
+  await assertCloudBilling()
   return next()
 })
 
 /**
+ * Cloud-only billing READS that expose actual billing data (invoices, payment
+ * methods, billing details, reactivation info, pricing preview) — gated on
+ * the `billing.view` capability so a member without it can't see billing data.
+ */
+const billingReadProcedure = permissionProcedure(PermissionKey.billingView).use(
+  async ({ next }) => {
+    await assertCloudBilling()
+    return next()
+  }
+)
+
+/**
  * Cloud-only billing WRITES — additionally require the `billing.manage`
- * capability. Reads stay open to any member; only state-changing billing ops
- * (plan changes, payment methods, billing address, portal access) are gated so
- * a member with `billing` = Read can view but not mutate.
+ * capability (plan changes, payment methods, billing address, portal access).
  */
 const manageBillingProcedure = permissionProcedure(PermissionKey.billingManage).use(
   async ({ next }) => {
-    if (isSelfHosted()) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'Billing is not available in self-hosted mode',
-      })
-    }
+    await assertCloudBilling()
     return next()
   }
 )
@@ -100,7 +115,7 @@ export const billingRouter = createTRPCRouter({
    * landing route also calls the provider's `syncFromAdminApi` directly. No-op for
    * non-Shopify orgs.
    */
-  syncShopifyStatus: cloudOnlyProcedure.mutation(async ({ ctx }) => {
+  syncShopifyStatus: billingReadProcedure.mutation(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
     if (!organizationId) {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
@@ -145,7 +160,7 @@ export const billingRouter = createTRPCRouter({
    * merchant picks/changes the plan on Shopify's page, approves, and returns to
    * /billing/subscription/activated.
    */
-  getShopifyPricingUrl: cloudOnlyProcedure.query(async ({ ctx }) => {
+  getShopifyPricingUrl: billingReadProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
     if (!organizationId) {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
@@ -160,7 +175,7 @@ export const billingRouter = createTRPCRouter({
    * merchant can't be mapped to such a plan, so this surfaces Partner Dashboard <-> DB
    * drift before merchants hit it. Enterprise/Demo are expected NULLs (not selfServed).
    */
-  validateShopifyPlanMapping: cloudOnlyProcedure.query(async ({ ctx }) => {
+  validateShopifyPlanMapping: billingReadProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
       .select({ id: schema.Plan.id, name: schema.Plan.name })
       .from(schema.Plan)
@@ -169,7 +184,7 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // Get organization invoices
-  getInvoices: cloudOnlyProcedure
+  getInvoices: billingReadProcedure
     .input(
       z.object({ limit: z.number().min(1).max(100).default(10), cursor: z.string().optional() })
     )
@@ -300,7 +315,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Calculate subscription preview (pricing, tax, proration)
-  calculateSubscriptionPreview: cloudOnlyProcedure
+  calculateSubscriptionPreview: billingReadProcedure
     .input(
       z.object({
         planName: z.string(),
@@ -471,7 +486,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Get billing details from Stripe customer (cached stripeCustomerId)
-  getBillingDetails: cloudOnlyProcedure.query(async ({ ctx }) => {
+  getBillingDetails: billingReadProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -584,7 +599,7 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Get payment methods from Stripe (cached stripeCustomerId)
-  getPaymentMethods: cloudOnlyProcedure.query(async ({ ctx }) => {
+  getPaymentMethods: billingReadProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -847,7 +862,7 @@ export const billingRouter = createTRPCRouter({
    * Get reactivation details for an organization
    * Used by the reactivation page to show org status and deletion timeline
    */
-  getReactivationDetails: cloudOnlyProcedure
+  getReactivationDetails: billingReadProcedure
     .input(z.object({ organizationId: z.string() }))
     .query(async ({ ctx, input }) => {
       try {

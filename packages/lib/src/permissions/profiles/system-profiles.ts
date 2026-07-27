@@ -27,6 +27,12 @@ interface SystemProfileSeed {
   appliesTo: ProfileAppliesTo
   /** `null` = sparse over `ROLE_DEFAULTS`; unset areas fall through to code. */
   baseLevel: Level | null
+  /**
+   * The governance rank this profile confers on assignment (plan 21 §2.a).
+   * Hidden from authoring (21 §2.0.1) — only these seeds carry non-`USER` ranks;
+   * every custom profile is `USER`. Agent profiles ignore it, like `baseLevel`.
+   */
+  role: OrganizationRole
   agentPolicy: AgentPermissionPolicy | null
 }
 
@@ -64,6 +70,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     icon: { iconId: 'crown', color: 'amber' },
     seat: 'full',
     appliesTo: 'member',
+    role: 'OWNER',
     baseLevel: Level.Full,
     agentPolicy: null,
   },
@@ -74,6 +81,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     icon: { iconId: 'shield', color: 'blue' },
     seat: 'full',
     appliesTo: 'member',
+    role: 'ADMIN',
     baseLevel: Level.Full,
     agentPolicy: null,
   },
@@ -84,6 +92,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     icon: { iconId: 'user', color: 'indigo' },
     seat: 'full',
     appliesTo: 'member',
+    role: 'USER',
     baseLevel: null,
     agentPolicy: null,
   },
@@ -94,6 +103,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     icon: { iconId: 'hard-hat', color: 'orange' },
     seat: 'worker',
     appliesTo: 'member',
+    role: 'USER',
     baseLevel: null,
     agentPolicy: null,
   },
@@ -104,6 +114,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     icon: { iconId: 'bot', color: 'violet' },
     seat: 'full',
     appliesTo: 'agent',
+    role: 'USER',
     baseLevel: null,
     agentPolicy: uniformAgentPolicy('full'),
   },
@@ -114,6 +125,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     icon: { iconId: 'message-circle', color: 'emerald' },
     seat: 'full',
     appliesTo: 'agent',
+    role: 'USER',
     baseLevel: null,
     agentPolicy: uniformAgentPolicy('none'),
   },
@@ -160,6 +172,7 @@ export async function ensureSystemProfiles(
     icon: seed.icon,
     seat: seed.seat,
     appliesTo: seed.appliesTo,
+    role: seed.role,
     baseLevel: seed.baseLevel,
     ceiling: null,
     agentPolicy: seed.agentPolicy,

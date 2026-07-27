@@ -64,6 +64,8 @@ async function assertCanManageTypeAccess(
     await assertCanManageMailTypeAccess(toContext(ctx), entityDefinitionId)
     return
   }
+  // Deliberately role-based, not a capability — governance decision (doc 04 §9):
+  // managing a def's record access is OWNER/ADMIN-only by rank (plan 21 §5.2).
   if (!(await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId))) {
     throw new TRPCError({
       code: 'FORBIDDEN',
@@ -402,6 +404,8 @@ export const resourceAccessRouter = createTRPCRouter({
    * on, so gate directly on admin/owner).
    */
   allTypeAccess: protectedProcedure.query(async ({ ctx }) => {
+    // Deliberately role-based, not a capability — governance decision (doc 04 §9):
+    // managing org-wide record access is OWNER/ADMIN-only by rank (plan 21 §5.2).
     if (!(await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId))) {
       throw new TRPCError({
         code: 'FORBIDDEN',

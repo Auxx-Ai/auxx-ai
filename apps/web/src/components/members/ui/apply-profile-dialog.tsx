@@ -1,7 +1,7 @@
 // apps/web/src/components/members/ui/apply-profile-dialog.tsx
 'use client'
 
-import type { SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -24,6 +24,8 @@ interface ApplyProfileDialogProps {
   onOpenChange: (open: boolean) => void
   /** The selected members this applies to — already narrowed to manageable rows. */
   members: Member[]
+  /** The signed-in member's role — caps which profiles' ranks are offered (§2.a.9). */
+  viewerRole: OrganizationRole | null | undefined
   onApply: (profileId: string) => void
   isApplying: boolean
 }
@@ -42,6 +44,7 @@ export function ApplyProfileDialog({
   open,
   onOpenChange,
   members,
+  viewerRole,
   onApply,
   isApplying,
 }: ApplyProfileDialogProps) {
@@ -58,8 +61,8 @@ export function ApplyProfileDialog({
   const seat = members[0]?.seatType ?? 'full'
 
   const options = useMemo(
-    () => (members[0] ? optionsFor(members[0]) : []),
-    [optionsFor, members[0]]
+    () => (members[0] ? optionsFor(members[0], viewerRole) : []),
+    [optionsFor, members[0], viewerRole]
   )
   const targetProfile = profileId ? profileById.get(profileId) : undefined
 

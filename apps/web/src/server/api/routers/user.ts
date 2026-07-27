@@ -173,6 +173,7 @@ export const userRouter = createTRPCRouter({
             message: "Cannot remove another user's avatar",
           })
         }
+        // Masking/visibility — determining who can edit agent avatars (plan 21 §5.2).
         const callerIsAdmin = await isAdminOrOwner(organizationId, userId)
         if (!callerIsAdmin) {
           throw new TRPCError({

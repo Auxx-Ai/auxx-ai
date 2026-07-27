@@ -36,6 +36,10 @@ export async function inviteMember(
     inviterName: string | null
     organizationName: string | null
     email: string
+    /** Rank for the invited member. Ignored when `permissionProfileId` is
+     * given: the profile DECLARES its rank (plan 21 §2.a.3) exactly as it
+     * declares its seat, and the rank guards run on the declared value. Kept
+     * as an input because `inviteBatch` has no profile picker. */
     role: OrganizationRole
     /** Seat packaging for the invited member — 'full' (default) or 'worker'
      * (UI "Field seat"). Carried on the invitation row and applied on accept.
@@ -56,22 +60,39 @@ export async function inviteMember(
     inviterName,
     organizationName,
     email,
-    role,
     permissionProfileId,
   } = params
 
   logger.info('Attempting to invite member', {
     organizationId,
     email,
-    role,
+    role: params.role,
     seatType: params.seatType,
     permissionProfileId,
     inviterUserId,
   })
 
-  // 1. Check inviter permissions — base members.manage gate + role-relative
-  //    escalation guards (§5). A grantee may not mint authority above their own.
+  // 1. Base members.manage gate FIRST — an unauthorized caller can never probe
+  //    which profile ids exist.
   await requireMemberManage(inviterUserId, organizationId, db)
+
+  // 1b. Resolve the chosen profile. It is verified to belong to THIS org (a
+  //     plain FK does not guarantee it) and to be offerable to a member at all
+  //     (§1.1), then its declared `seat` AND `role` replace the caller-supplied
+  //     values: the invite UI shows one profile select, and both the cap check
+  //     and the rank guards below must run on what the profile declares.
+  let profile: InvitableProfile | null = null
+  if (permissionProfileId) {
+    profile = await loadInvitableProfile({ organizationId, permissionProfileId }, db)
+  }
+  const seatType: SeatType = profile ? profile.seat : (params.seatType ?? 'full')
+  // The rank the new member will actually hold (plan 21 §2.a.3). The guards
+  // below run on THIS derived value — guarding `params.role` would let a
+  // profile-declared rank slip past them.
+  const role: OrganizationRole = profile ? profile.role : params.role
+
+  // 1c. Role-relative escalation guards (§5). A grantee may not mint authority
+  //     above their own.
   const inviterMembership = await findMemberByUser(organizationId, inviterUserId, db)
   const inviterRole: OrganizationRole = inviterMembership?.role ?? 'USER'
   if (role === 'OWNER' && inviterRole !== 'OWNER') {
@@ -80,18 +101,6 @@ export async function inviteMember(
   if (rankOf(role) > rankOf(inviterRole)) {
     throw new ForbiddenError("You don't have permission to invite a member with this role.")
   }
-
-  // 1b. Resolve the chosen profile — AFTER the permission checks, so an
-  //     unauthorized caller can never probe which profile ids exist. The profile
-  //     is verified to belong to THIS org (a plain FK does not guarantee it) and
-  //     to be offerable to a member at all (§1.1), then its declared `seat`
-  //     replaces any caller-supplied seat class: the invite UI shows one profile
-  //     select, and the cap check below must run on what the profile declares.
-  let profile: InvitableProfile | null = null
-  if (permissionProfileId) {
-    profile = await loadInvitableProfile({ organizationId, permissionProfileId }, db)
-  }
-  const seatType: SeatType = profile ? profile.seat : (params.seatType ?? 'full')
 
   // §2.A invariant: a field (worker) seat is always the Member role. Reject a
   // field-seat invite that carries ADMIN/OWNER rather than silently clamping —

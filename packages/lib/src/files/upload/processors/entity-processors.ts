@@ -171,6 +171,7 @@ export class UserProfileProcessor extends BaseAssetProcessor {
     if (!(await isAgentUser(organizationId, entityId))) {
       throw new Error("Cannot upload to another user's profile")
     }
+    // Masking/visibility — determining who can upload agent avatars (plan 21 §5.2).
     const callerIsAdmin = await isAdminOrOwner(organizationId, userId)
     if (!callerIsAdmin) {
       throw new Error('Admin required to update agent avatars')

@@ -2,8 +2,9 @@
 
 import { getCachedOrgHasActiveChat } from '@auxx/lib/cache'
 import { listOnDutyUserIds, setMemberChatDuty } from '@auxx/lib/chat-duty'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
 
 /**
  * Phase 4c — Chat duty.
@@ -39,8 +40,8 @@ export const chatDutyRouter = createTRPCRouter({
       })
     }),
 
-  /** Admin override — flip another member's flag. */
-  setMember: adminProcedure
+  /** channelsManage override — flip another member's flag. */
+  setMember: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ userId: z.string(), onDuty: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       return setMemberChatDuty({

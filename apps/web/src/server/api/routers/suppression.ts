@@ -3,16 +3,17 @@
 // slice 2 — Suppressions tab on Channels settings). A row blocks all sequence
 // enrollment for that address; removing it resubscribes.
 
+import { PermissionKey } from '@auxx/lib/permissions'
 import { deleteSuppression, listSuppressions, upsertSuppression } from '@auxx/lib/sequences'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 const PAGE_SIZE = 50
 
 export const suppressionRouter = createTRPCRouter({
   /** Newest-first page of suppression rows, optional email substring search. */
-  list: adminProcedure
+  list: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ search: z.string().trim().optional(), cursor: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       const rows = await listSuppressions(ctx.db, {
@@ -28,7 +29,7 @@ export const suppressionRouter = createTRPCRouter({
     }),
 
   /** Manually suppress an address (reason `manual`). Idempotent. */
-  add: adminProcedure
+  add: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ email: z.string().trim().toLowerCase().email() }))
     .mutation(async ({ ctx, input }) => {
       await upsertSuppression(ctx.db, {
@@ -39,7 +40,7 @@ export const suppressionRouter = createTRPCRouter({
     }),
 
   /** Remove a suppression row (= resubscribe the address). */
-  remove: adminProcedure
+  remove: permissionProcedure(PermissionKey.channelsManage)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const removed = await deleteSuppression(ctx.db, ctx.session.organizationId, input.id)

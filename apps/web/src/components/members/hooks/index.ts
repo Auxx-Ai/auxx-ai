@@ -5,7 +5,9 @@ export {
   type MemberProfile,
   type ProfileDelta,
   type ProfileOption,
+  type RankChange,
   RUNG_LABELS,
+  roleLabel,
   seatLabel,
   useMemberProfiles,
 } from './use-member-profiles'

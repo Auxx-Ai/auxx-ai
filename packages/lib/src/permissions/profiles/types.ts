@@ -6,7 +6,7 @@ import type {
   AgentPolicyClampEntry,
   PublishedAgentPermissionPolicy,
 } from '@auxx/database'
-import type { SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import type { Area, Level } from '../capabilities/registry'
 
 export type {
@@ -71,6 +71,11 @@ export interface CachedPermissionProfile {
   icon: { iconId: string; color: string } | null
   seat: SeatType
   appliesTo: ProfileAppliesTo
+  /**
+   * The rank this profile confers on assignment (plan 21 §2.a). Hidden from
+   * authoring (21 §2.0.1): non-`USER` only on the system owner/admin rows.
+   */
+  role: OrganizationRole
   /** Fallback rung for areas the profile's grant row does not set; `null` = fall through to `ROLE_DEFAULTS`. */
   baseLevel: Level | null
   ceiling: ProfileCeiling | null

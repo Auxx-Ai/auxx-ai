@@ -102,6 +102,7 @@ describe('listPermissionProfiles', () => {
       'id',
       'isSystem',
       'name',
+      'role',
       'seat',
       'slug',
     ])

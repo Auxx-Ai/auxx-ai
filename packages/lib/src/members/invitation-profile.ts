@@ -41,6 +41,12 @@ export interface InvitableProfile {
   /** Drives the invite-time seat cap check and the accepted member's `seatType`. */
   seat: SeatType
   appliesTo: ProfileAppliesTo
+  /**
+   * The rank this profile confers (plan 21 §2.a): replaces any caller-supplied
+   * role, exactly as `seat` replaces the caller's seat class. The invite rank
+   * guards must run against THIS value, not the form input.
+   */
+  role: OrganizationRole
 }
 
 /** Why acceptance could not honor the invitation's profile binding. */
@@ -98,6 +104,7 @@ export async function loadInvitableProfile(
       name: schema.PermissionProfile.name,
       seat: schema.PermissionProfile.seat,
       appliesTo: schema.PermissionProfile.appliesTo,
+      role: schema.PermissionProfile.role,
       organizationId: schema.PermissionProfile.organizationId,
     })
     .from(schema.PermissionProfile)
@@ -125,6 +132,7 @@ export async function loadInvitableProfile(
     name: profile.name,
     seat: profile.seat,
     appliesTo: profile.appliesTo,
+    role: profile.role,
   }
 }
 

@@ -2,7 +2,7 @@
 
 import { getOrgCache, getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { BadRequestError } from '@auxx/lib/errors'
-import { isAdminOrOwner } from '@auxx/lib/members'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import {
   batchUpdateOrganizationSettings,
   isSettingKey,
@@ -101,10 +101,9 @@ export const settingsRouter = createTRPCRouter({
       if (!isSettingKey(key)) {
         throw new BadRequestError(`Unknown setting: ${key}`)
       }
-      // Check permission: only owners and admins can update org settings
-      if (!(await isAdminOrOwner(organizationId, userId))) {
-        throw new Error('You do not have permission to update organization settings')
-      }
+      // Capability gate, not role (plan 21 §4.2): settingsManage is what a
+      // profile turns off.
+      await requirePermission(userId, organizationId, PermissionKey.settingsManage)
 
       await updateOrganizationSetting({ organizationId, key, value, db: ctx.db })
 
@@ -180,10 +179,8 @@ export const settingsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { settings } = input
-      // Check permission: only owners and admins can update org settings
-      if (!(await isAdminOrOwner(organizationId, userId))) {
-        throw new Error('You do not have permission to update organization settings')
-      }
+      // Capability gate, not role (plan 21 §4.2).
+      await requirePermission(userId, organizationId, PermissionKey.settingsManage)
 
       const unknownKey = settings.find((s) => !isSettingKey(s.key))
       if (unknownKey) {

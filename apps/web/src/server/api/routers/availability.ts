@@ -9,8 +9,9 @@ import {
   saveWeeklyHours,
   updateException,
 } from '@auxx/lib/availability'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected an ISO date (YYYY-MM-DD)')
 
@@ -57,7 +58,7 @@ export const availabilityRouter = createTRPCRouter({
       return getWeeklyHours(subject)
     }),
 
-  saveWeeklyHours: adminProcedure
+  saveWeeklyHours: permissionProcedure(PermissionKey.dispatchBoardManage)
     .input(z.object({ subject: subjectInputSchema, weekly: weeklyHoursSchema }))
     .mutation(async ({ ctx, input }) => {
       const subject = buildSubject(ctx.session.organizationId, input.subject)
@@ -77,7 +78,7 @@ export const availabilityRouter = createTRPCRouter({
       return listExceptions(subject, { from: input.from, to: input.to })
     }),
 
-  addException: adminProcedure
+  addException: permissionProcedure(PermissionKey.dispatchBoardManage)
     .input(
       z.object({
         subject: subjectInputSchema,
@@ -99,7 +100,7 @@ export const availabilityRouter = createTRPCRouter({
       })
     }),
 
-  updateException: adminProcedure
+  updateException: permissionProcedure(PermissionKey.dispatchBoardManage)
     .input(
       z.object({
         subject: subjectInputSchema,
@@ -122,7 +123,7 @@ export const availabilityRouter = createTRPCRouter({
       })
     }),
 
-  deleteException: adminProcedure
+  deleteException: permissionProcedure(PermissionKey.dispatchBoardManage)
     .input(z.object({ subject: subjectInputSchema, ids: z.array(z.string()).min(1) }))
     .mutation(async ({ ctx, input }) => {
       const subject = buildSubject(ctx.session.organizationId, input.subject)

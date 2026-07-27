@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import type { PermissionProfile } from '../hooks/use-profiles'
 import { useProfiles } from '../hooks/use-profiles'
-import { APPLIES_TO_COPY, DEFAULT_PROFILE_ICON, SEAT_LABEL } from './profile-copy'
+import { APPLIES_TO_COPY, DEFAULT_PROFILE_ICON, ROLE_RANK_LABEL, SEAT_LABEL } from './profile-copy'
 import { ProfileCreateDialog } from './profile-create-dialog'
 
 interface ProfileListProps {
@@ -74,6 +74,18 @@ export function ProfileList({ canEdit, onSelect }: ProfileListProps) {
                 : 'Assignable to full seats only. Seat class is fixed at creation.',
           },
           { label: APPLIES_TO_COPY[profile.appliesTo].label },
+          // Rank badge only on the system Owner/Admin rows (plan 21 §2.0.1) —
+          // role is declared, seeds-only; every custom profile is USER rank and
+          // shows no rank badge at all.
+          ...(profile.role !== 'USER'
+            ? [
+                {
+                  label: ROLE_RANK_LABEL[profile.role],
+                  variant: 'indigo' as const,
+                  description: `Assigning this profile makes the holder an ${ROLE_RANK_LABEL[profile.role]}.`,
+                },
+              ]
+            : []),
           ...(profile.isSystem
             ? [{ label: 'System', description: 'Seeded template. Not deletable.' }]
             : []),

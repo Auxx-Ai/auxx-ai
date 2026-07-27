@@ -21,7 +21,12 @@ import type { PermissionProfile } from '../hooks/use-profiles'
 import { AgentPolicyEditor } from './agent-policy-editor'
 import { LEVEL_LABELS } from './level-control'
 import { ProfileAreaGrid } from './profile-area-grid'
-import { APPLIES_TO_COPY, DEFAULT_PROFILE_ICON, type ProfileAppliesTo } from './profile-copy'
+import {
+  APPLIES_TO_COPY,
+  DEFAULT_PROFILE_ICON,
+  type ProfileAppliesTo,
+  ROLE_RANK_LABEL,
+} from './profile-copy'
 import { ProfileIdentitySection } from './profile-identity-section'
 import { ProfileSeatReference } from './profile-seat-reference'
 import { SeatTypeBadge } from './seat-type-badge'
@@ -100,6 +105,11 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
           {APPLIES_TO_COPY[profile.appliesTo as ProfileAppliesTo].label}
         </Badge>
         <SeatTypeBadge seatType={profile.seat} showFull />
+        {profile.role !== 'USER' && (
+          <Badge variant='indigo' size='xs' className='shrink-0'>
+            {ROLE_RANK_LABEL[profile.role]}
+          </Badge>
+        )}
         {profile.isSystem && (
           <Badge variant='secondary' size='xs' className='shrink-0'>
             System
@@ -187,6 +197,7 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
               roleDefaults={roleDefaults}
               baseLevel={draft.baseLevel}
               seat={profile.seat}
+              profileRole={profile.role}
               disabled={!editable}
               onChange={setAreaLevel}
             />

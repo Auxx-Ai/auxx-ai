@@ -10,7 +10,7 @@
 import { database as db } from '@auxx/database'
 import { getOrgCache } from '@auxx/lib/cache'
 import { AuxxError, AuxxErrorCodes } from '@auxx/lib/errors'
-import { isAdminOrOwner } from '@auxx/lib/members'
+import { isOwner } from '@auxx/lib/members'
 import {
   FeatureKey,
   FeaturePermissionService,
@@ -357,18 +357,18 @@ export const protectedProcedure = t.procedure
     })
   })
 /**
- * Admin (or owner) procedure
- *
- * Builds on `protectedProcedure` so admin routes share the same error-mapping
- * and mutation rate-limit middleware, then verifies the member's role via the
- * cached memberRoleMap (no extra DB query).
+ * Owner procedure — genuinely rank-shaped actions ONLY (plan 21 §2.b.4):
+ * delete the organization, transfer ownership, manage Owner roles. Everything
+ * else gates on a capability via `permissionProcedure` — `adminProcedure` was
+ * deleted 2026-07-27 once its last caller migrated (plan 21 §8 step 11); do
+ * not reintroduce a role gate for anything a profile should decide.
  */
-export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const allowed = await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId)
+export const ownerProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const allowed = await isOwner(ctx.session.organizationId, ctx.session.userId)
   if (!allowed) {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'You must be an admin or owner to perform this action',
+      message: 'Only the organization Owner can perform this action',
     })
   }
 

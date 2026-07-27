@@ -57,6 +57,10 @@ const USER_ADMIN_NONE_AREAS = new Set<Area>([
   Area.automationRules,
   Area.auditLog,
   Area.connectors,
+  // channels: plan 21 §6 — the migrated Tier C sites were all `adminProcedure`,
+  // so the member default must stay None to preserve behavior. Admins keep
+  // access via `ROLE_DEFAULTS.ADMIN` (`ALL_FULL`).
+  Area.channels,
 ])
 
 /**

@@ -1,7 +1,8 @@
 // apps/web/src/app/(protected)/app/settings/activity-log/page.tsx
 // Org-admin "Account Activity" route. Owns the filter state so the SettingsPage header
 // export button and the activity view share one source of truth. Access is enforced by
-// the auditLog.list adminProcedure; the nav item is gated to ADMIN.
+// `auditLog.list` asserting `permissionProcedure(PermissionKey.auditLogView)`; the nav
+// item is gated on the same `auditLog.view` capability, not on role.
 
 'use client'
 

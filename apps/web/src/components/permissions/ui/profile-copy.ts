@@ -1,6 +1,6 @@
 // apps/web/src/components/permissions/ui/profile-copy.ts
 
-import type { SeatType } from '@auxx/database/types'
+import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { AREA_ORDER, Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 
 /**
@@ -37,6 +37,27 @@ export const SEAT_LABEL: Record<SeatType, string> = {
 }
 
 /**
+ * Rank label for a profile's declared `role` (plan 21 §2.a/§2.0.1). Rank is
+ * declared, seeds-only and hidden from every authoring control — non-`USER`
+ * only ever appears on the system Owner/Admin rows, so a rank badge is only
+ * ever rendered when it is non-`USER` (custom profiles show no rank at all).
+ */
+export const ROLE_RANK_LABEL: Record<OrganizationRole, string> = {
+  OWNER: 'Owner',
+  ADMIN: 'Admin',
+  USER: 'Member',
+}
+
+/** Fall-through source named in the profile editor's "Not set" hint, keyed by
+ * the profile's own declared role (plan 21 §2.a.8) — honest about which code
+ * default an unset area actually falls through to. */
+export const UNSET_HINT_BY_ROLE: Record<OrganizationRole, string> = {
+  USER: 'Not set · member default',
+  ADMIN: 'Not set · admin default',
+  OWNER: 'Not set · owner default',
+}
+
+/**
  * The three field-seat surfaces — the ONLY areas a `worker` seat's ceiling leaves
  * open (§0.19). Everything else is `min`-clamped to `None` by `SEAT_CEILINGS`
  * before any profile, group, or personal grant is considered.
@@ -59,15 +80,13 @@ export const WORKER_SEAT_AREAS: ReadonlySet<Area> = new Set<Area>([
 export const WORKER_LOCK_REASON =
   'Field seats can never reach this area. The seat ceiling clamps it to None, whatever this profile says.'
 
-/** The §5.3 wording for an area whose routers are still a binary admin gate. */
-export const ROLE_GATED_REASON = 'Still role-gated. Admins reach this regardless.'
-
 /**
  * Grantable areas grouped by registry group, in area order — the same selection
  * the shared `LeveledAreaGrid` makes: `adminOnly` areas are never grantable below
  * ADMIN, and `workerOnly` areas are enforced only on a worker seat, so a control
- * for them would do nothing. `roleGated` areas ARE listed (they are grantable in
- * the model, §0.25) but render locked.
+ * for them would do nothing. (The binary-role-gate lock this list used to also
+ * carry for a subset of areas was retired 2026-07-27, plan 21 §8 step 11 — every
+ * listed area's lever is real now.)
  *
  * Duplicated rather than imported because the shared grid keeps this private and
  * exposes no per-area lock hook — which the profile editor needs for the seat

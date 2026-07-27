@@ -619,7 +619,9 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // v2: + updatedAt (snapshotted as `sourceProfileUpdatedAt` on a published agent
   // policy — doc 19 §2.3). A v1 blob has no key, which reads as `null` rather
   // than misbehaving, but the bump keeps the audit field honest after rollout.
-  profiles: { prefix: 'org:permission-profiles:v2', ttlSeconds: ONE_DAY },
+  // v2 → v3: `CachedPermissionProfile` gained `role` (plan 21 §3.1). A stale v2
+  // blob would surface `role: undefined` to the picker rank filters.
+  profiles: { prefix: 'org:permission-profiles:v3', ttlSeconds: ONE_DAY },
   hasPermissionGrants: { prefix: 'org:has-permission-grants', ttlSeconds: ONE_DAY },
   restrictedEntityDefIds: { prefix: 'org:restricted-entity-def-ids', ttlSeconds: ONE_DAY },
   restrictedInstanceIds: { prefix: 'org:restricted-instance-ids', ttlSeconds: ONE_DAY },

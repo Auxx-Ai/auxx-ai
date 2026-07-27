@@ -4,8 +4,8 @@ import { database, schema } from '@auxx/database'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
-import { BadRequestError, ForbiddenError } from '../../errors'
-import { isAdminOrOwner } from '../../members'
+import { BadRequestError } from '../../errors'
+import { PermissionKey, requirePermission } from '../../permissions'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import type { EntityPreDeleteHandler } from '../types'
 
@@ -20,12 +20,9 @@ import type { EntityPreDeleteHandler } from '../types'
 export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
   const { organizationId, userId, recordId } = event
 
-  const [isAdmin, systemUserId] = await Promise.all([
-    isAdminOrOwner(organizationId, userId),
-    getOrgCache().get(organizationId, 'systemUser'),
-  ])
-  if (!isAdmin && userId !== systemUserId) {
-    throw new ForbiddenError('Only admins can delete jobs')
+  const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
+  if (userId !== systemUserId) {
+    await requirePermission(userId, organizationId, PermissionKey.dispatchBoardManage)
   }
 
   const handler = new UnifiedCrudHandler(organizationId, userId)

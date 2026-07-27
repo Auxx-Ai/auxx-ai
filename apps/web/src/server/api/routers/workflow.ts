@@ -3,7 +3,7 @@
 import { schema } from '@auxx/database'
 import { WorkflowRunStatus } from '@auxx/database/enums'
 import { getCachedWorkflowAppCount } from '@auxx/lib/cache'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import {
   triggerManualResourceWorkflow,
   triggerManualResourceWorkflowBulk,
@@ -29,7 +29,12 @@ import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import {
+  createTRPCRouter,
+  notDemo,
+  permissionProcedure,
+  protectedProcedure,
+} from '~/server/api/trpc'
 import { resolveTemplateById } from '~/server/api/workflow-template-resolver'
 import { workflowTemplatesRouter } from './workflow-templates'
 
@@ -191,75 +196,81 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get all workflow apps for the organization
    */
-  list: protectedProcedure.input(listWorkflowsSchema).query(async ({ ctx, input }) => {
-    const workflowService = new WorkflowService(ctx.db)
-    try {
-      return await workflowService.getAll(ctx.session.organizationId, input)
-    } catch (error) {
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to fetch workflow apps',
-      })
-    }
-  }),
+  list: permissionProcedure(PermissionKey.workflowsManage)
+    .input(listWorkflowsSchema)
+    .query(async ({ ctx, input }) => {
+      const workflowService = new WorkflowService(ctx.db)
+      try {
+        return await workflowService.getAll(ctx.session.organizationId, input)
+      } catch (error) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch workflow apps',
+        })
+      }
+    }),
   /**
    * Get a specific workflow app by ID
    */
-  getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    await assertWorkflowAppNotSystemOwned(ctx.db, {
-      workflowAppId: input.id,
-      organizationId: ctx.session.organizationId,
-      isSuperAdmin: ctx.session.isSuperAdmin,
-      allowSuperAdminRead: true,
-    })
-    const workflowService = new WorkflowService(ctx.db)
-    try {
-      const workflowApp = await workflowService.getById(input.id, ctx.session.organizationId)
-      return toWorkflowAppResponse(workflowApp)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Workflow not found') {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+  getById: permissionProcedure(PermissionKey.workflowsManage)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.id,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
+      })
+      const workflowService = new WorkflowService(ctx.db)
+      try {
+        const workflowApp = await workflowService.getById(input.id, ctx.session.organizationId)
+        return toWorkflowAppResponse(workflowApp)
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Workflow not found') {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+        }
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch workflow' })
       }
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch workflow' })
-    }
-  }),
+    }),
   /**
    * Create a new workflow app with initial workflow version
    * Optionally from a template
    */
-  create: protectedProcedure.input(createWorkflowSchema).mutation(async ({ ctx, input }) => {
-    await assertWorkflowLimitNotReached(ctx.session.organizationId)
+  create: permissionProcedure(PermissionKey.workflowsManage)
+    .input(createWorkflowSchema)
+    .mutation(async ({ ctx, input }) => {
+      await assertWorkflowLimitNotReached(ctx.session.organizationId)
 
-    // Build template data (graph, trigger, resolved app/entity refs) when creating
-    // from a template. Resolution stays here since it merges file + admin sources.
-    let templateData: TemplateWorkflowData | undefined
-    if (input.templateId) {
-      const template = await resolveTemplateById(input.templateId)
-      if (!template) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found' })
+      // Build template data (graph, trigger, resolved app/entity refs) when creating
+      // from a template. Resolution stays here since it merges file + admin sources.
+      let templateData: TemplateWorkflowData | undefined
+      if (input.templateId) {
+        const template = await resolveTemplateById(input.templateId)
+        if (!template) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found' })
+        }
+        templateData = await buildTemplateWorkflowData(
+          ctx.session.organizationId,
+          ctx.session.userId,
+          template as TemplateForCreate,
+          !!input.icon
+        )
       }
-      templateData = await buildTemplateWorkflowData(
+
+      const created = await new WorkflowService(ctx.db).create(
         ctx.session.organizationId,
         ctx.session.userId,
-        template as TemplateForCreate,
-        !!input.icon
+        { ...input, ...templateData }
       )
-    }
-
-    const created = await new WorkflowService(ctx.db).create(
-      ctx.session.organizationId,
-      ctx.session.userId,
-      { ...input, ...templateData }
-    )
-    await recordAuditFromCtx(ctx, {
-      category: 'apps',
-      action: 'workflow.created',
-      targetType: 'WorkflowApp',
-      targetId: (created as { id?: string } | null)?.id ?? null,
-      metadata: { name: input.name, templateId: input.templateId ?? null },
-    })
-    return created
-  }),
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'workflow.created',
+        targetType: 'WorkflowApp',
+        targetId: (created as { id?: string } | null)?.id ?? null,
+        metadata: { name: input.name, templateId: input.templateId ?? null },
+      })
+      return created
+    }),
 
   /**
    * Create a manual-trigger workflow pre-wired to a resource.
@@ -269,7 +280,7 @@ export const workflowRouter = createTRPCRouter({
    * the right resource and shows up in the "Run Workflow" dialog once the user
    * builds it out and publishes it. Returns the created workflow app.
    */
-  createForResource: protectedProcedure
+  createForResource: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ entityDefinitionId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       await assertWorkflowLimitNotReached(ctx.session.organizationId)
@@ -291,38 +302,40 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Update an existing workflow app (updates active workflow)
    */
-  update: protectedProcedure.input(updateWorkflowSchema).mutation(async ({ ctx, input }) => {
-    await assertWorkflowAppNotSystemOwned(ctx.db, {
-      workflowAppId: input.id,
-      organizationId: ctx.session.organizationId,
-      isSuperAdmin: ctx.session.isSuperAdmin,
-    })
+  update: permissionProcedure(PermissionKey.workflowsManage)
+    .input(updateWorkflowSchema)
+    .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.id,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
 
-    // Block demo users from enabling workflows
-    if (input.enabled) {
-      const { DemoGuard } = await import('@auxx/lib/demo')
-      await DemoGuard.requireNotDemo(
-        ctx.session.organizationId,
-        'enable workflows',
-        ctx.session.isSuperAdmin
-      )
-    }
-
-    const workflowService = new WorkflowService(ctx.db)
-
-    try {
-      return await workflowService.update(ctx.session.organizationId, input)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Workflow not found') {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+      // Block demo users from enabling workflows
+      if (input.enabled) {
+        const { DemoGuard } = await import('@auxx/lib/demo')
+        await DemoGuard.requireNotDemo(
+          ctx.session.organizationId,
+          'enable workflows',
+          ctx.session.isSuperAdmin
+        )
       }
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update workflow' })
-    }
-  }),
+
+      const workflowService = new WorkflowService(ctx.db)
+
+      try {
+        return await workflowService.update(ctx.session.organizationId, input)
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Workflow not found') {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+        }
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update workflow' })
+      }
+    }),
   /**
    * Delete a workflow app (deletes all versions)
    */
-  delete: protectedProcedure
+  delete: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await assertWorkflowAppNotSystemOwned(ctx.db, {
@@ -351,7 +364,7 @@ export const workflowRouter = createTRPCRouter({
    * Duplicate a workflow app with its draft workflow
    * Creates a new WorkflowApp and copies the draft workflow data
    */
-  duplicate: protectedProcedure
+  duplicate: permissionProcedure(PermissionKey.workflowsManage)
     .input(
       z.object({
         id: z.string(),
@@ -385,54 +398,58 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Test workflow execution
    */
-  test: protectedProcedure.input(testWorkflowSchema).mutation(async ({ ctx, input }) => {
-    await assertWorkflowAppNotSystemOwned(ctx.db, {
-      workflowAppId: input.workflowId,
-      organizationId: ctx.session.organizationId,
-      isSuperAdmin: ctx.session.isSuperAdmin,
-      allowSuperAdminRead: true,
-    })
-    const workflowService = new WorkflowService(ctx.db)
-    try {
-      return await workflowService.test(input.workflowId, ctx.session.organizationId, input)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Workflow not found') {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+  test: permissionProcedure(PermissionKey.workflowsManage)
+    .input(testWorkflowSchema)
+    .mutation(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
+      })
+      const workflowService = new WorkflowService(ctx.db)
+      try {
+        return await workflowService.test(input.workflowId, ctx.session.organizationId, input)
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Workflow not found') {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+        }
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to test workflow' })
       }
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to test workflow' })
-    }
-  }),
+    }),
   /**
    * Get workflow execution statistics
    */
-  getStats: protectedProcedure.input(workflowStatsSchema).query(async ({ ctx, input }) => {
-    await assertWorkflowAppNotSystemOwned(ctx.db, {
-      workflowAppId: input.workflowId,
-      organizationId: ctx.session.organizationId,
-      isSuperAdmin: ctx.session.isSuperAdmin,
-      allowSuperAdminRead: true,
-    })
-    const statsService = new WorkflowStatsService(ctx.db)
-    try {
-      return await statsService.getStats(
-        input.workflowId,
-        ctx.session.organizationId,
-        input.timeRange
-      )
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Workflow not found') {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
-      }
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to fetch workflow statistics',
+  getStats: permissionProcedure(PermissionKey.workflowsManage)
+    .input(workflowStatsSchema)
+    .query(async ({ ctx, input }) => {
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+        allowSuperAdminRead: true,
       })
-    }
-  }),
+      const statsService = new WorkflowStatsService(ctx.db)
+      try {
+        return await statsService.getStats(
+          input.workflowId,
+          ctx.session.organizationId,
+          input.timeRange
+        )
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Workflow not found') {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch workflow statistics',
+        })
+      }
+    }),
   /**
    * Get detailed workflow execution statistics with time-series data
    */
-  getDetailedStats: protectedProcedure
+  getDetailedStats: permissionProcedure(PermissionKey.workflowsManage)
     .input(workflowDetailedStatsSchema)
     .query(async ({ ctx, input }) => {
       await assertWorkflowAppNotSystemOwned(ctx.db, {
@@ -463,7 +480,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Publish a new version of a workflow
    */
-  publish: protectedProcedure
+  publish: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ workflowId: z.string(), versionTitle: z.string().optional() }))
     .use(notDemo('publish workflows'))
     .mutation(async ({ ctx, input }) => {
@@ -491,7 +508,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get all versions of a workflow
    */
-  getVersions: protectedProcedure
+  getVersions: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ workflowId: z.string() }))
     .query(async ({ ctx, input }) => {
       await assertWorkflowAppNotSystemOwned(ctx.db, {
@@ -516,7 +533,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get a specific workflow version
    */
-  getVersionById: protectedProcedure
+  getVersionById: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ workflowId: z.string(), versionId: z.string() }))
     .query(async ({ ctx, input }) => {
       await assertWorkflowAppNotSystemOwned(ctx.db, {
@@ -545,7 +562,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Delete a specific workflow version
    */
-  deleteVersion: protectedProcedure
+  deleteVersion: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ workflowId: z.string(), versionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await assertWorkflowAppNotSystemOwned(ctx.db, {
@@ -581,7 +598,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Rename a specific workflow version
    */
-  renameVersion: protectedProcedure
+  renameVersion: permissionProcedure(PermissionKey.workflowsManage)
     .input(
       z.object({
         workflowId: z.string(),
@@ -616,7 +633,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Stop a workflow run
    */
-  stopWorkflowRun: protectedProcedure
+  stopWorkflowRun: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ runId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await assertWorkflowRunNotSystemOwned(ctx.db, {
@@ -643,7 +660,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Run a single node
    */
-  runSingleNode: protectedProcedure
+  runSingleNode: permissionProcedure(PermissionKey.workflowsManage)
     .input(
       z.object({
         workflowAppId: z.string(),
@@ -685,7 +702,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get workflow run details
    */
-  getWorkflowRun: protectedProcedure
+  getWorkflowRun: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ runId: z.string() }))
     .query(async ({ ctx, input }) => {
       await assertWorkflowRunNotSystemOwned(ctx.db, {
@@ -712,7 +729,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * List workflow runs
    */
-  listWorkflowRuns: protectedProcedure
+  listWorkflowRuns: permissionProcedure(PermissionKey.workflowsManage)
     .input(
       z.object({
         workflowAppId: z.string(),
@@ -893,7 +910,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Generate a new share token for a workflow
    */
-  generateShareToken: protectedProcedure
+  generateShareToken: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ id: z.string() }))
     .use(notDemo('share workflows'))
     .mutation(async ({ ctx, input }) => {
@@ -939,7 +956,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Revoke share token (disable sharing)
    */
-  revokeShareToken: protectedProcedure
+  revokeShareToken: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { id } = input
