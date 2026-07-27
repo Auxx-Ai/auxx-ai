@@ -30,6 +30,7 @@ import {
   BellRing,
   Bookmark,
   BookOpen,
+  Bot,
   Box,
   Boxes,
   Braces,
@@ -96,6 +97,7 @@ import {
   Grid,
   Hammer,
   Handshake,
+  HardHat,
   Hash,
   Heading1,
   Heading2,
@@ -271,6 +273,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'user-check', label: 'User Check', icon: UserCheck },
   { id: 'user-x', label: 'User X', icon: UserX },
   { id: 'circle-user', label: 'Circle User', icon: CircleUser },
+  { id: 'bot', label: 'Bot', icon: Bot },
   // Files/Documents
   { id: 'feather', label: 'Feather', icon: Feather },
   { id: 'file', label: 'File', icon: File },
@@ -352,6 +355,7 @@ export const ICON_DATA: IconItem[] = [
   // Tools
   { id: 'wrench', label: 'Wrench', icon: Wrench },
   { id: 'hammer', label: 'Hammer', icon: Hammer },
+  { id: 'hard-hat', label: 'Hard Hat', icon: HardHat },
   { id: 'key', label: 'Key', icon: Key },
   { id: 'lock', label: 'Lock', icon: Lock },
   { id: 'unlock', label: 'Unlock', icon: Unlock },
