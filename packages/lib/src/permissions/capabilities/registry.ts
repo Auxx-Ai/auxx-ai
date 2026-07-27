@@ -199,8 +199,11 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     label: 'Manage Permissions',
     description: 'Configure permission profiles and capability grants for groups and members.',
     group: 'Organization',
-    featureKey: FeatureKey.granularPermissions,
     // NOT adminOnly since doc 19 §0.25 — see `PERMISSION_AREAS[Area.permissions]`.
+    // Deliberately NO `granularPermissions` featureKey here (plan 23 §2.2): binding
+    // built-in profiles and permission reads must work on every plan. The plan gate
+    // lives in the four authoring paths instead (profile-save / profile-mutations /
+    // profile-delete / grant-service) per plan 19 §0.26.
   },
 
   // ── Integrations ──
@@ -612,7 +615,6 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // `permissionsManage` capability rather than a binary role check, so the
     // grant actually reaches a non-admin holder. Plan 21 §4 later migrated
     // every other router in the org group off its binary role gate too.
-    featureKey: FeatureKey.granularPermissions,
   },
   [Area.integrations]: {
     area: Area.integrations,

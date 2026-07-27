@@ -4,6 +4,8 @@ import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { BadRequestError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import {
+  FeatureKey,
+  FeaturePermissionService,
   getCapabilities,
   INSTANCE_ACCESS_RESOURCES,
   isInstanceAccessKey,
@@ -78,6 +80,26 @@ async function assertCanManageTypeAccess(
       message: 'You must be an admin or owner to manage record access',
     })
   }
+}
+
+/**
+ * Plan gate for per-def (type-level) record-access EDITING (plan 23 §2.1):
+ * writing def-wide grants is part of the paid `granularPermissions` feature.
+ * Mail-infra defs are exempt — inbox/mail sharing is core product on every
+ * plan — and removals (`revokeType`) stay ungated because revoking only
+ * tightens access (mirrors the `clearGranteeLevels` doctrine in the
+ * permissions router). `requireAccess` throws an AuxxError which
+ * `auxxErrorMiddleware` maps to the right HTTP status.
+ */
+async function assertTypeAccessEditFeature(
+  ctx: { db: any; session: { organizationId: string } },
+  entityDefinitionId: string
+): Promise<void> {
+  if (isMailSharingDef(entityDefinitionId)) return
+  await new FeaturePermissionService(ctx.db).requireAccess(
+    ctx.session.organizationId,
+    FeatureKey.granularPermissions
+  )
 }
 
 /**
@@ -188,6 +210,7 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
+      await assertTypeAccessEditFeature(ctx, input.entityDefinitionId)
       await assertProfileGranteesAuthorable(ctx.session.organizationId, input.granteeType, [
         input.granteeId,
       ])
@@ -332,6 +355,7 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
+      await assertTypeAccessEditFeature(ctx, input.entityDefinitionId)
       await assertProfileGranteesAuthorable(
         ctx.session.organizationId,
         input.granteeType,

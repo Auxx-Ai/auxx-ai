@@ -90,7 +90,7 @@ export interface CreatePermissionProfileInput {
 /**
  * Create a custom permission profile.
  *
- * `isSystem` is never authorable and the six reserved system slugs are refused —
+ * `isSystem` is never authorable and the reserved system slugs are refused —
  * a custom profile can never shadow the template a null binding resolves to.
  *
  * **The §6.1 escalation guard deliberately does not run here.** A brand-new

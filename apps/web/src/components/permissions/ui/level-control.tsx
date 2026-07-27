@@ -48,7 +48,8 @@ interface LevelControlProps {
  * A compact radio-tab level picker for one capability area. Renders one segment
  * per rung the area offers (`None` + each ladder rung — so `records` shows
  * None/Read/Edit/Full while a toggle area shows None/Full). Shows the effective
- * level (`value ?? inherited`); while inherited it renders muted, and a reset
+ * level (`value ?? inherited`, clamped down to the nearest rung the area
+ * actually offers); while inherited it renders muted, and a reset
  * button appears once an explicit level is set. Every rung stays selectable —
  * the raise-only rule for overrides is enforced server-side (an override at or
  * below the baseline is composed away), and surfaced in the UI as an "ignored"
@@ -72,6 +73,12 @@ export function LevelControl({
   )
   const effective = value ?? inherited
   const isExplicit = value !== undefined
+  // Clamp the highlighted segment to the area's own ladder: a level above the top
+  // rung (owner/admin `baseLevel: Full` on the Read-only `auditLog` area) or
+  // between rungs (a baseline of Edit on a Read/Full ladder) composes down to the
+  // highest rung at or below it — highlighting `effective` verbatim would match
+  // no segment and render the row as if the holder had no access.
+  const displayed = levels.filter((l) => l <= effective).at(-1) ?? Level.None
 
   return (
     <div className='flex items-center gap-1'>
@@ -104,7 +111,7 @@ export function LevelControl({
         </Button>
       </Tooltip>
       <RadioTab
-        value={String(effective)}
+        value={String(displayed)}
         onValueChange={(v) => onChange(Number(v) as Level)}
         size='xs'
         radioGroupClassName='after:rounded-lg'

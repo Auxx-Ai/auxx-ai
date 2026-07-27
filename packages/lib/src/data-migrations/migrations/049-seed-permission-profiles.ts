@@ -15,7 +15,7 @@ const LEGACY_POLICY_GRANTEE_TYPE = 'role'
 const LEGACY_POLICY_GRANTEE_ID = 'org_member'
 
 /**
- * Seed the six system permission profiles for every EXISTING org and move the
+ * Seed the system permission profiles for every EXISTING org and move the
  * `role:org_member` capability baseline onto each org's `member` profile
  * (plan 19 §5.2 / §9 step 2).
  *
