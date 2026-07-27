@@ -125,7 +125,7 @@ export function InviteProfileSelect({
         if (profile) onChange(profile)
       }}
       disabled={disabled || profiles.length === 0}>
-      <SelectTrigger>
+      <SelectTrigger variant='transparent' className='ps-0 pe-1'>
         <SelectValue placeholder='Select a permission profile' />
       </SelectTrigger>
       <SelectContent>
