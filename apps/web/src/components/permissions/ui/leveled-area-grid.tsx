@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/leveled-area-grid.tsx
 'use client'
 
-import { AREA_ORDER, type Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import { AREA_ORDER, type Area, type Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
@@ -49,13 +49,9 @@ interface LeveledAreaGridProps {
   baseline?: Partial<Record<Area, Level>>
   /**
    * `baseline` — the org-wide member baseline (raise or lower from role default);
-   * `override` — a group/user grant that can only raise above the baseline;
-   * `agent` — an AGENT grantee's own profile: SET-semantics over an all-Full
-   * base (capability layer v2 §0.2/§0.3), so every area falls through to
-   * **Full** rather than to any baseline, nothing is ever "ignored", and `None`
-   * is the meaningful rung (the only way to lock an area down for an agent).
+   * `override` — a group/user grant that can only raise above the baseline.
    */
-  mode: 'baseline' | 'override' | 'agent'
+  mode: 'baseline' | 'override'
   onChange: (area: Area, level: Level | undefined) => void
   disabled?: boolean
   /**
@@ -94,11 +90,8 @@ const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
  * Automation, …). `adminOnly` areas are never shown — they're not grantable below
  * ADMIN. In `override` mode each area inherits from the member baseline (and is
  * raise-only, enforced server-side); in `baseline` mode it inherits from the role
- * default; in `agent` mode there is no inheritance at all — an unset area IS Full
- * (§0.3), so it renders as a "Default" fall-through to Full. Every rung is
- * selectable in every mode — an override that doesn't lift the baseline is
- * composed away and flagged as "ignored" on the grantee (member surfaces only;
- * for an agent a `None` genuinely lowers, so nothing is ever ignored).
+ * default. Every rung is selectable in either mode — an override that doesn't
+ * lift the baseline is composed away and flagged as "ignored" on the grantee.
  *
  * An area may also nest child rows via `renderChildren` (the member baseline
  * supplies per-def workspace baselines under Records). Children are collapsed by
@@ -158,7 +151,7 @@ export function LeveledAreaGrid({
           placeholder='Search areas...'
         />
         <ButtonSwitch
-          label={mode === 'agent' ? 'Restrictions only' : 'Overrides only'}
+          label='Overrides only'
           checked={overridesOnly}
           onCheckedChange={setOverridesOnly}
           disabled={disabled}
@@ -180,14 +173,10 @@ export function LeveledAreaGrid({
               {rows.map(({ area, children, autoOpen }) => {
                 const meta = PERMISSION_AREAS[area]
                 const value = values[area]
-                // Agent profiles compose by SET over an all-Full base — an unset
-                // area IS Full, there is nothing to inherit from (§0.2/§0.3).
                 const inherited =
-                  mode === 'agent'
-                    ? Level.Full
-                    : mode === 'override'
-                      ? (baseline?.[area] ?? roleDefaults[area])
-                      : roleDefaults[area]
+                  mode === 'override'
+                    ? (baseline?.[area] ?? roleDefaults[area])
+                    : roleDefaults[area]
                 const isOpen = openAreas[area] ?? autoOpen
                 return (
                   <TreeRow
@@ -208,10 +197,6 @@ export function LeveledAreaGrid({
                         value={value}
                         inherited={inherited}
                         ignored={mode === 'override' && value !== undefined && value <= inherited}
-                        unsetHint={mode === 'agent' ? 'Default' : undefined}
-                        resetTooltip={
-                          mode === 'agent' ? 'Clear (back to full access)' : 'Reset to inherited'
-                        }
                         onChange={(level) => onChange(area, level)}
                         disabled={disabled}
                       />

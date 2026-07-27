@@ -591,8 +591,8 @@ function PermissionsGuideBody() {
             </GuideConcept>
             <GuideConcept
               glyph={<ShieldCheck className='size-3.5 text-muted-foreground' />}
-              term='Read, Read + Write, Full'>
-              Read lists and searches; Read + Write also creates, updates, and deletes. Full adds
+              term='Read, Edit, Full'>
+              Read lists and searches; Edit also creates, updates, and deletes. Full adds
               administration — including schema administration, which changes nothing today because
               no native schema-mutation tool exists yet.
             </GuideConcept>

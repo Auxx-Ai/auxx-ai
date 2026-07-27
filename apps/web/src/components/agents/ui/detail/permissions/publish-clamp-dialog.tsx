@@ -14,8 +14,8 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { ShieldAlert } from 'lucide-react'
+import { agentLevelLabel } from '~/components/permissions/ui/level-labels'
 import { useResources } from '~/components/resources/hooks'
-import { agentLevelLabel } from './agent-access-level'
 
 interface PublishClampDialogProps {
   open: boolean

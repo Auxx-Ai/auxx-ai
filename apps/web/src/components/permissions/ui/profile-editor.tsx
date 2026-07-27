@@ -25,7 +25,7 @@ import { AgentPolicyEditor } from './agent-policy-editor'
 import { GranteeDefAccessRows } from './grantee-def-access-rows'
 import { GranteeInstanceRows } from './grantee-instance-rows'
 import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
-import { LEVEL_LABELS } from './level-control'
+import { RUNG_LABELS } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import { ProfileAreaGrid } from './profile-area-grid'
 import {
@@ -92,7 +92,7 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
     isLoading: defAccessLoading,
     rows: defRows,
     setLevel: setDefLevel,
-  } = useGranteeDefAccess('profile', profile.id, 'member', {
+  } = useGranteeDefAccess('profile', profile.id, {
     levels: draft.levels,
     baseLevel: draft.baseLevel,
   })
@@ -361,7 +361,7 @@ function BaseLevelSelect({
           <SelectItem value={NO_BASE_LEVEL}>Member default</SelectItem>
           {[Level.None, Level.Read, Level.Edit, Level.Full].map((level) => (
             <SelectItem key={level} value={String(level)}>
-              {LEVEL_LABELS[level]}
+              {RUNG_LABELS[level]}
             </SelectItem>
           ))}
         </SelectContent>

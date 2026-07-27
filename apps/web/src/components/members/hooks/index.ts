@@ -6,7 +6,6 @@ export {
   type ProfileDelta,
   type ProfileOption,
   type RankChange,
-  RUNG_LABELS,
   roleLabel,
   seatLabel,
   useMemberProfiles,

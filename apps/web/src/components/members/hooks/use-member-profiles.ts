@@ -71,14 +71,6 @@ export interface ProfileDelta {
   isEmpty: boolean
 }
 
-/** Human label for a rung, mirroring `LEVEL_LABELS` in the permissions UI. */
-export const RUNG_LABELS: Record<Level, string> = {
-  [Level.None]: 'No access',
-  [Level.Read]: 'Read',
-  [Level.Edit]: 'Edit',
-  [Level.Full]: 'Full',
-}
-
 /** Seat-class wording — the DB value stays `'worker'`, the label is "Field seat". */
 export function seatLabel(seat: SeatType): string {
   return seat === 'worker' ? 'Field seat' : 'Full seat'

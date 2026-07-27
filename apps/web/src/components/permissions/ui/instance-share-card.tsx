@@ -17,10 +17,11 @@ import { Globe, Lock } from 'lucide-react'
 import { useCanAdminInstance } from '~/providers/capabilities-provider'
 import type { InstanceLevel, WorkspaceBaseline } from '../hooks/use-instance-share'
 import { useInstanceShare } from '../hooks/use-instance-share'
-import { InstanceShareBody, LEVEL_ORDER, LEVEL_TIER, levelHelper } from './instance-share-body'
+import { InstanceShareBody, LEVEL_ORDER, levelHelper } from './instance-share-body'
 import { INSTANCE_SHARE_COPY, type InstanceShareCopy } from './instance-share-copy'
+import { permissionLabel } from './level-labels'
 
-/** The workspace-baseline picker: Read / Write / Full + "No access (Restricted)". */
+/** The workspace-baseline picker: the three positive rungs + "No access (Restricted)". */
 function WorkspaceBaselineSelect({
   value,
   onChange,
@@ -38,13 +39,15 @@ function WorkspaceBaselineSelect({
       onValueChange={(v) => onChange(v as InstanceLevel | 'restricted')}
       disabled={disabled}>
       <SelectTrigger size='sm' variant='transparent' className='h-7 w-40'>
-        <SelectValue>{value === 'restricted' ? 'Restricted' : LEVEL_TIER[value]}</SelectValue>
+        <SelectValue>
+          {value === 'restricted' ? 'Restricted' : permissionLabel(value, 'long')}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent align='end' className='min-w-56'>
         {LEVEL_ORDER.map((level) => (
-          <SelectItem key={level} value={level} textValue={LEVEL_TIER[level]}>
+          <SelectItem key={level} value={level} textValue={permissionLabel(level, 'long')}>
             <div className='flex flex-col items-start'>
-              <span>{LEVEL_TIER[level]}</span>
+              <span>{permissionLabel(level, 'long')}</span>
               <span className='text-muted-foreground text-xs'>{levelHelper(copy, level)}</span>
             </div>
           </SelectItem>
@@ -110,8 +113,8 @@ function WorkspaceBaselineRow({
  * different `recordId` — nothing here is dataset-shaped except one entry in
  * {@link INSTANCE_SHARE_COPY}.
  *
- * Rows: a workspace-baseline row (org-wide default, Read/Write/Full/Restricted)
- * plus user/group grantees (Read/Write/Full). Editable to members who may
+ * Rows: a workspace-baseline row (org-wide default, the three positive rungs
+ * plus Restricted) and user/group grantees. Editable to members who may
  * administer the instance (OWNER/ADMIN or a `Full` grant); a read-only list
  * otherwise, and hidden entirely when neither admin nor any grant exists (same
  * affordance rule as `contact-shared-with-card.tsx`).

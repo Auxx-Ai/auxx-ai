@@ -9,11 +9,11 @@ import { AlertTriangle, Undo2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import {
   AGENT_LEVEL_DESCRIPTIONS,
-  AGENT_LEVEL_LABELS,
   AGENT_LEVEL_ORDER,
   followDefaultTooltip,
   usesDefaultLabel,
 } from './agent-policy-copy'
+import { agentLevelLabel } from './level-labels'
 
 interface AgentPolicyLevelControlProps {
   /**
@@ -36,6 +36,13 @@ interface AgentPolicyLevelControlProps {
    * ladder is on/off, where `Read` grants nothing. Rendered as a warning beside
    * the control rather than by hiding a rung, because the stored vocabulary is
    * four levels everywhere and a missing segment would misrepresent the value.
+   *
+   * NOTE: nothing computes this today (plan 26 §2.2/§2.3). The area rows that
+   * used to derive it now render the human `LevelControl`, which cannot offer an
+   * inert rung in the first place. It is kept for the rows this control still
+   * serves — the collection DEFAULT rows, which span areas and resource types
+   * that do not exist yet and so can legitimately carry a rung some future
+   * member of the collection cannot express.
    */
   inertNote?: string
   /** Accessible name for the control (the row's label). */
@@ -50,18 +57,22 @@ interface AgentPolicyLevelControlProps {
 }
 
 /**
- * The exact four-rung control for one agent policy rule.
+ * The exact four-rung control for the agent policy's few glanceable TOP rows —
+ * the three collection defaults and the three resource TYPE rows. The numerous
+ * narrow child rows (per record type, per resource item) use
+ * `AgentPolicyLevelSelect` instead, and the area rows use the human
+ * `LevelControl`, which knows each area's real ladder (plan 26 §2.2/§2.3).
  *
- * This is deliberately NOT the human `LevelControl` and not the additive
- * `AccessLevelSelect`: human grants are additive and max-wins, so their controls
- * legitimately speak of inheriting and of overrides being "ignored". Agent policy
- * is a SET — `None` removes authority, and routing it through an additive widget
- * would drop exactly that (plan 19 §0.5/§2.3/§7).
+ * What this control keeps that an additive human widget would drop: agent policy
+ * is a SET — `None` removes authority, so the ladder is rendered whole rather
+ * than as "positive levels plus inherit" (plan 19 §0.5/§2.3/§7).
  *
  * Consequences visible in this component:
- *  - all four rungs are always rendered, so the value is legible as one of four;
+ *  - all four rungs are always rendered, so the value is legible as one of four
+ *    — correct here precisely because these rows stand in for a whole collection,
+ *    including members of it that do not exist yet;
  *  - `None` is a first-class rung labelled *None*, never "inherit"/"not set";
- *  - a row with no rule of its own reads **"Default · Read + Write"** — the word
+ *  - a row with no rule of its own reads **"Default · Edit"** — the word
  *    *default* is always accompanied by the concrete rung it stands for.
  */
 export function AgentPolicyLevelControl({
@@ -127,7 +138,7 @@ export function AgentPolicyLevelControl({
             disabled={disabled}
             tooltip={AGENT_LEVEL_DESCRIPTIONS[level]}
             className='h-full w-auto min-w-0 rounded-lg px-2.5'>
-            {AGENT_LEVEL_LABELS[level]}
+            {agentLevelLabel(level)}
           </RadioTabItem>
         ))}
       </RadioTab>

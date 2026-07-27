@@ -1,6 +1,7 @@
 // apps/web/src/components/permissions/ui/agent-policy-copy.ts
 
 import type { AgentAccessLevel } from '@auxx/database'
+import { agentLevelLabel } from './level-labels'
 
 /**
  * Every user-facing string the agent-profile editor renders, in one place — the
@@ -14,14 +15,6 @@ import type { AgentAccessLevel } from '@auxx/database'
  *  2. Permissions do not enable tools and tools do not grant permission (§0.5a/§2.4).
  *  3. Editing reaches **bound drafts only**; production changes on publish (§0.3/§0.16).
  */
-
-/** Display label for each exact rung. The stored vocabulary is these four, always. */
-export const AGENT_LEVEL_LABELS: Record<AgentAccessLevel, string> = {
-  none: 'None',
-  read: 'Read',
-  read_write: 'Read + Write',
-  full: 'Full',
-}
 
 /** Ascending ladder order — the segment order of every control on this surface. */
 export const AGENT_LEVEL_ORDER: readonly AgentAccessLevel[] = ['none', 'read', 'read_write', 'full']
@@ -43,7 +36,7 @@ export const AGENT_LEVEL_DESCRIPTIONS: Record<AgentAccessLevel, string> = {
   none: 'No access. A deliberate deny, not an absent value, and nothing raises it back.',
   read: 'View, list and search.',
   read_write: 'Read, plus create, update and delete.',
-  full: 'Read + Write, plus administration and settings.',
+  full: 'Read and write, plus administration and settings.',
 }
 
 /** Header explainer for the whole editor. */
@@ -78,10 +71,10 @@ export const TOOLS_VS_PERMISSIONS = {
  * nothing.
  */
 export const DEFINITION_FULL_IS_INERT =
-  'Full adds definition administration on top of Read + Write. No native agent tool creates or ' +
+  'Full adds definition administration on top of Read and write. No native agent tool creates or ' +
   'alters entity definitions or fields today, and none checks the administration rung at all, ' +
-  'so on this grid Full currently behaves like Read + Write. It is stored exactly as you set it ' +
-  'and starts biting the day such a tool ships.'
+  'so on this grid Full currently behaves like Read and write. It is stored exactly as you set ' +
+  'it and starts biting the day such a tool ships.'
 
 /** §11a — mail is outside the four-level model; the areas grid must not imply otherwise. */
 export const MAIL_IS_OUTSIDE =
@@ -131,7 +124,7 @@ export const NO_POLICY_YET =
  * @example clampSentence('Deals', 'full', 'read') // 'Deals reduced from Full to Read (you hold Read)'
  */
 export function clampSentence(label: string, from: AgentAccessLevel, to: AgentAccessLevel): string {
-  return `${label} reduced from ${AGENT_LEVEL_LABELS[from]} to ${AGENT_LEVEL_LABELS[to]} (you hold ${AGENT_LEVEL_LABELS[to]})`
+  return `${label} reduced from ${agentLevelLabel(from)} to ${agentLevelLabel(to)} (you hold ${agentLevelLabel(to)})`
 }
 
 /** Heading for the clamp preview block. */
@@ -147,10 +140,10 @@ export const CLAMP_PREVIEW = {
 
 /** Tooltip on the "follow the default" reset affordance of an override row. */
 export function followDefaultTooltip(fallback: AgentAccessLevel): string {
-  return `Follow the default (${AGENT_LEVEL_LABELS[fallback]})`
+  return `Follow the default (${agentLevelLabel(fallback)})`
 }
 
 /** Muted text beside a row that carries no override of its own. */
 export function usesDefaultLabel(fallback: AgentAccessLevel): string {
-  return `Default · ${AGENT_LEVEL_LABELS[fallback]}`
+  return `Default · ${agentLevelLabel(fallback)}`
 }

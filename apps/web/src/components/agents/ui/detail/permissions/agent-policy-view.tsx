@@ -52,7 +52,7 @@ const AGENT_LEVEL: Record<AgentAccessLevel, ResolvedAccessLevel> = {
   full: 'full',
 }
 
-/** The agent ladder's names — `None / Read / Read + Write / Full`, never "Inherit" (§7). */
+/** The agent ladder's names — `None / Read / Edit / Full`, never "Inherit" (§7). */
 export const AGENT_LEVEL_META: ResolvedAccessLevelMetaMap = {
   none: AGENT_ACCESS_LEVEL_META.none,
   read: AGENT_ACCESS_LEVEL_META.read,

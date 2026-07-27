@@ -1,6 +1,7 @@
 // apps/web/src/components/permissions/ui/resolved-access-dialog.tsx
 'use client'
 
+import { Level } from '@auxx/lib/permissions/client'
 import { Badge, type BadgeProps } from '@auxx/ui/components/badge'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import {
@@ -14,14 +15,16 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { ShieldQuestion } from 'lucide-react'
 import { useState } from 'react'
+import { RUNG_LABELS } from './level-labels'
 
 /** Shared row chrome — same shape the leveled grids use. */
 const ROW_CLASS = 'bg-primary-50 hover:bg-primary-100'
 
 /**
  * The four rungs every leveled access model in the product resolves to. Shape is
- * shared; the *names* are not — callers supply them via {@link ResolvedAccessLevelMetaMap}
- * (`None / Read / Edit / Full` for humans, `None / Read / Read + Write / Full` for agents).
+ * shared, and so is the rung vocabulary (`None / Read / Edit / Full`, from
+ * `level-labels.ts`); callers still supply their own helper text and badge
+ * colours via {@link ResolvedAccessLevelMetaMap}.
  */
 export type ResolvedAccessLevel = 'none' | 'read' | 'write' | 'full'
 
@@ -40,10 +43,14 @@ export type ResolvedAccessLevelMetaMap = Record<ResolvedAccessLevel, ResolvedAcc
  * reads as an explicit denial, never as "inherit" or an empty cell (doc 19 §7).
  */
 const FALLBACK_LEVEL_META: ResolvedAccessLevelMetaMap = {
-  none: { label: 'No access', helper: 'Denied', variant: 'outline' },
-  read: { label: 'Read', helper: 'Read only', variant: 'sky' },
-  write: { label: 'Write', helper: 'Read plus write', variant: 'amber' },
-  full: { label: 'Full', helper: 'Write plus administration', variant: 'green' },
+  none: { label: RUNG_LABELS[Level.None], helper: 'Denied', variant: 'outline' },
+  read: { label: RUNG_LABELS[Level.Read], helper: 'Read only', variant: 'sky' },
+  write: { label: RUNG_LABELS[Level.Edit], helper: 'Read plus write', variant: 'amber' },
+  full: {
+    label: RUNG_LABELS[Level.Full],
+    helper: 'Read and write, plus administration',
+    variant: 'green',
+  },
 }
 
 export interface ResolvedAccessRow {

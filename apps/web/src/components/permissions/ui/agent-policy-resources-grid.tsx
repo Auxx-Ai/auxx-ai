@@ -16,8 +16,10 @@ import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { NormalizedAgentPolicy } from '../hooks/use-agent-policy'
 import { useInstanceResourceLists } from '../hooks/use-instance-resource-lists'
-import { AGENT_LEVEL_LABELS, AGENT_LEVEL_RANK, RESOURCE_AREA_CLAMP } from './agent-policy-copy'
+import { AGENT_LEVEL_RANK, RESOURCE_AREA_CLAMP } from './agent-policy-copy'
 import { AgentPolicyDefaultRow, AgentPolicyLevelControl } from './agent-policy-level-control'
+import { AgentPolicyLevelSelect } from './agent-policy-level-select'
+import { agentLevelLabel } from './level-labels'
 
 /** Display metadata per shareable resource type. */
 const TYPE_META: Record<InstanceAccessKey, { label: string; icon: ReactNode }> = {
@@ -42,6 +44,11 @@ const CHILD_DEPTH = 1
  *    area rung is the thing actually deciding (`AgentPolicyCapabilities.instanceLevel`);
  *  - a type that follows the global default has no entry at all, so "follow the
  *    default" on a type row drops its instance rules too — confirmed, never silent.
+ *
+ * The widget split follows the human surfaces (plan 26 §2.2): the three TYPE rows
+ * are few and glanceable, so they keep the segmented control (and with it the
+ * destructive reset tooltip above); the per-item rows repeat once per dataset, KB
+ * and dashboard, so they use the same dropdown the human per-instance rows do.
  */
 export function AgentPolicyResourcesGrid({
   policy,
@@ -127,7 +134,7 @@ export function AgentPolicyResourcesGrid({
               secondary={
                 clamped ? (
                   <Tooltip
-                    content={`The ${ceiling.label} area is set to ${AGENT_LEVEL_LABELS[ceiling.level]}, so every item here resolves to at most ${AGENT_LEVEL_LABELS[ceiling.level]} whatever these rules say.`}>
+                    content={`The ${ceiling.label} area is set to ${agentLevelLabel(ceiling.level)}, so every item here resolves to at most ${agentLevelLabel(ceiling.level)} whatever these rules say.`}>
                     <span className='rounded-md bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'>
                       Clamped by {ceiling.label}
                     </span>
@@ -142,7 +149,7 @@ export function AgentPolicyResourcesGrid({
                   label={TYPE_META[type].label}
                   value={entry?.default}
                   fallback={policy.resourceDefault}
-                  resetTooltip={`Follow the resource default (${AGENT_LEVEL_LABELS[policy.resourceDefault]}), removing this type's per-item rules`}
+                  resetTooltip={`Follow the resource default (${agentLevelLabel(policy.resourceDefault)}), removing this type's per-item rules`}
                   onChange={(level) => void handleTypeChange(type, level)}
                   disabled={disabled}
                 />
@@ -157,7 +164,7 @@ export function AgentPolicyResourcesGrid({
                   orientation='horizontal'
                   icon={<Library />}
                   title={`No ${TYPE_META[type].label.toLowerCase()}`}
-                  description={`Nothing to rule on yet. Anything created later resolves to ${AGENT_LEVEL_LABELS[typeLevel]}.`}
+                  description={`Nothing to rule on yet. Anything created later resolves to ${agentLevelLabel(typeLevel)}.`}
                 />
               ) : (
                 <div className='flex flex-col gap-0.5'>
@@ -168,8 +175,7 @@ export function AgentPolicyResourcesGrid({
                       rowClassName='bg-primary-50 hover:bg-primary-100'
                       title={<span className='truncate'>{item.name}</span>}
                       trailing={
-                        <AgentPolicyLevelControl
-                          label={item.name}
+                        <AgentPolicyLevelSelect
                           value={entry?.overrides[item.id]}
                           fallback={typeLevel}
                           onChange={(level) => onInstanceChange(type, item.id, level)}
@@ -189,8 +195,7 @@ export function AgentPolicyResourcesGrid({
                         <span className='text-xs text-muted-foreground'>Unknown item</span>
                       }
                       trailing={
-                        <AgentPolicyLevelControl
-                          label={id}
+                        <AgentPolicyLevelSelect
                           value={entry?.overrides[id]}
                           fallback={typeLevel}
                           onChange={(level) => onInstanceChange(type, id, level)}
