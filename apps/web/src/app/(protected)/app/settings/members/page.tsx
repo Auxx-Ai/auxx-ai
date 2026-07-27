@@ -70,7 +70,7 @@ export default function MembersPage() {
         button={headerButton}
         subHeaderClassName='p-0'
         subHeader={
-          <TabsList variant='outline'>
+          <TabsList variant='outline' className='border-b-0'>
             <TabsTrigger value='members' variant='outline'>
               <Users />
               Members
