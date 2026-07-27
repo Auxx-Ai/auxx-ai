@@ -50,13 +50,6 @@ function descriptionFor(granteeKind: string): string {
 }
 
 /**
- * Agent copy. Agents compose by SET over an all-Full base — no baseline, no
- * inheritance — so the surface is a restriction editor, not an elevation one.
- */
-const AGENT_DESCRIPTION =
-  'What this agent can reach when it runs. An area you leave on Default gives the agent full access. Set a lower level (or None) to restrict it.'
-
-/**
  * The Layer-2 (per-area None/Read/Edit/Full) override editor for a single grantee
  * — a member or a team — surfaced on their detail page's Permissions tab. Reuses
  * the org-wide {@link usePermissionGrants} store and renders one grantee's sparse
@@ -65,26 +58,15 @@ const AGENT_DESCRIPTION =
  * (raise-only enforced server-side; an override that lifts nothing is flagged
  * "ignored"). Sits above the Layer-3 Record-access grid, which overrides the
  * Records area per record type.
- *
- * `mode='agent'` retargets the same store at an AGENT grantee (the agent's
- * backing `userId`, still a `user`-type grant row): the grid switches to
- * SET-semantics — unset ⇒ **Full**, `None` is a real rung, nothing is "ignored"
- * — per capability layer v2 §0.2/§0.3. The write path is identical either way,
- * and it is what keeps the two states apart: an unset area OMITS its key from
- * the saved map (compose falls through to Full), while `None` writes an explicit
- * `Level.None` (kept server-side for AGENT grantees, stripped for humans).
  */
 export function GranteeLevelsSection({
   granteeKind,
   granteeId,
   canEdit,
-  mode = 'override',
 }: {
   granteeKind: MemberOrGroup
   granteeId: string
   canEdit: boolean
-  /** `override` — a member/team grant; `agent` — an agent's own profile. */
-  mode?: 'override' | 'agent'
 }) {
   const { isLoading, roleDefaults, effectiveBaseline, groupGrants, userGrants, save } =
     usePermissionGrants()
@@ -92,12 +74,11 @@ export function GranteeLevelsSection({
   const persisted = granteeKind === 'group' ? groupGrants : userGrants
   const values = persisted.find((g) => g.granteeId === granteeId)?.levels ?? {}
 
-  const principal = mode === 'agent' ? 'agent' : 'member'
   const {
     isLoading: defAccessLoading,
     rows: defRows,
     setLevel: setDefLevel,
-  } = useGranteeDefAccess(granteeKind, granteeId, principal)
+  } = useGranteeDefAccess(granteeKind, granteeId)
   const {
     isLoading: instanceRowsLoadingAll,
     lists: instanceLists,
@@ -107,10 +88,9 @@ export function GranteeLevelsSection({
 
   const handleChange = (area: Area, level: Level | undefined) => {
     const next = { ...values }
-    // `undefined` DELETES the key (no grant → the grantee's fall-through: the
-    // baseline for a member, Full for an agent); an explicit level — including
-    // `Level.None`, which is `0` and must not be conflated with absent — is
-    // stored as-is.
+    // `undefined` DELETES the key (no grant → the grantee falls through to the
+    // member baseline); an explicit level — including `Level.None`, which is `0`
+    // and must not be conflated with absent — is stored as-is.
     if (level === undefined) delete next[area]
     else next[area] = level
     save(granteeKind, granteeId, next)
@@ -147,14 +127,7 @@ export function GranteeLevelsSection({
 
         return {
           matchCount: matched.length,
-          rows: (
-            <GranteeDefAccessRows
-              rows={matched}
-              canEdit={canEdit}
-              principal={principal}
-              onChange={setDefLevel}
-            />
-          ),
+          rows: <GranteeDefAccessRows rows={matched} canEdit={canEdit} onChange={setDefLevel} />,
         }
       }
 
@@ -162,13 +135,11 @@ export function GranteeLevelsSection({
       if (!instanceKey) return undefined
 
       // This grantee's composed level for the area shown right above these
-      // rows, re-derived with the same fall-through `LeveledAreaGrid` uses for
-      // this `mode` — so the dead-grant warning needs no extra server call
-      // (§B.2.8). Agents compose by SET over an all-Full base (no baseline).
+      // rows, re-derived with the same fall-through `LeveledAreaGrid`'s
+      // `override` mode uses — so the dead-grant warning needs no extra server
+      // call (§B.2.8).
       const areaLevel =
-        mode === 'agent'
-          ? (values[area] ?? Level.Full)
-          : (values[area] ?? effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None)
+        values[area] ?? effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None
 
       const instanceLoading = instanceRowsLoadingAll || instanceLists[instanceKey].isLoading
       if (instanceLoading)
@@ -211,9 +182,7 @@ export function GranteeLevelsSection({
       defAccessLoading,
       defRows,
       canEdit,
-      principal,
       setDefLevel,
-      mode,
       values,
       effectiveBaseline,
       roleDefaults,
@@ -229,7 +198,7 @@ export function GranteeLevelsSection({
     <SettingsSection
       icon={SlidersHorizontal}
       title='Access levels'
-      description={mode === 'agent' ? AGENT_DESCRIPTION : descriptionFor(granteeKind)}>
+      description={descriptionFor(granteeKind)}>
       {isLoading || !roleDefaults ? (
         <div className='space-y-2'>
           <Skeleton className='h-16 w-full rounded-lg' />
@@ -237,7 +206,7 @@ export function GranteeLevelsSection({
         </div>
       ) : (
         <LeveledAreaGrid
-          mode={mode}
+          mode='override'
           values={values}
           roleDefaults={roleDefaults}
           baseline={effectiveBaseline}

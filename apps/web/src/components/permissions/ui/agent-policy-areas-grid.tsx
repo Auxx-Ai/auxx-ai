@@ -2,13 +2,7 @@
 'use client'
 
 import type { AgentAccessLevel } from '@auxx/database'
-import {
-  AREA_ORDER,
-  type Area,
-  type AreaMetadata,
-  Level,
-  PERMISSION_AREAS,
-} from '@auxx/lib/permissions/client'
+import { AREA_ORDER, type Area, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
@@ -16,8 +10,10 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { SlidersHorizontal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { NormalizedAgentPolicy } from '../hooks/use-agent-policy'
-import { AGENT_LEVEL_LABELS, MAIL_IS_OUTSIDE } from './agent-policy-copy'
-import { AgentPolicyDefaultRow, AgentPolicyLevelControl } from './agent-policy-level-control'
+import { followDefaultTooltip, MAIL_IS_OUTSIDE, usesDefaultLabel } from './agent-policy-copy'
+import { AgentPolicyDefaultRow } from './agent-policy-level-control'
+import { clampToArea, LevelControl } from './level-control'
+import { agentLevelOfLevel, LEVEL_OF_AGENT_LEVEL } from './level-labels'
 
 /**
  * The areas the agent policy can express. `workerOnly` areas are excluded: their
@@ -47,47 +43,21 @@ const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
 /** Every area this grid renders — also the keyspace the clamp preview checks. */
 export const AGENT_POLICY_AREAS: readonly Area[] = AREA_GROUPS.flatMap((g) => g.areas)
 
-/** The §2.3 label→ladder mapping, area half. */
-const AREA_LEVEL_OF: Record<AgentAccessLevel, Level> = {
-  none: Level.None,
-  read: Level.Read,
-  read_write: Level.Edit,
-  full: Level.Full,
-}
-
-/** Inverse of {@link AREA_LEVEL_OF}, for naming what a rung actually resolves to. */
-function agentLevelOfAreaLevel(level: Level): AgentAccessLevel {
-  if (level >= Level.Full) return 'full'
-  if (level >= Level.Edit) return 'read_write'
-  if (level >= Level.Read) return 'read'
-  return 'none'
-}
-
-/**
- * Whether a rung is inert for this area, and the sentence that says so.
- *
- * Areas do not all implement four rungs — most are on/off (a lone `Full` rung),
- * and `dispatchBoard` skips `Edit`. The stored vocabulary is still four levels,
- * so rather than hide a segment (which would misrepresent a stored value) the
- * control keeps all four and warns when the chosen one collapses downward.
- */
-function inertNoteFor(meta: AreaMetadata, level: AgentAccessLevel): string | undefined {
-  if (level === 'none') return undefined
-  const target = AREA_LEVEL_OF[level]
-  let actual = Level.None
-  for (const rung of meta.rungs) {
-    if (rung.level <= target) actual = rung.level
-  }
-  if (actual === target) return undefined
-  return `${meta.label} has no ${AGENT_LEVEL_LABELS[level]} rung, so this behaves as ${AGENT_LEVEL_LABELS[agentLevelOfAreaLevel(actual)]}.`
-}
-
 /**
  * The exact per-area grid: one explicit default plus sparse overrides, every
- * value one of `None / Read / Read + Write / Full`.
+ * value one of `None / Read / Edit / Full`.
  *
  * The default is not cosmetic — an area added by a future deploy resolves through
  * it, which is why it is authored here rather than inferred (plan 19 §0.5).
+ *
+ * The area rows use the HUMAN {@link LevelControl} (plan 26 §2.3). Areas do not
+ * all implement four rungs — most are on/off (a lone `Full` rung), and
+ * `dispatchBoard` skips `Edit` — and that control renders `[None, ...area.rungs]`
+ * and clamps the highlighted segment down to the nearest real rung. So a rung the
+ * area cannot express is no longer offerable at all, which is a better answer
+ * than offering it and warning that the pick is inert. The DEFAULT row above
+ * keeps the full four-rung control: it stands in for areas that do not exist yet,
+ * whose ladders are unknowable here.
  */
 export function AgentPolicyAreasGrid({
   policy,
@@ -159,7 +129,14 @@ export function AgentPolicyAreasGrid({
               {areas.map((area) => {
                 const meta = PERMISSION_AREAS[area]
                 const override = policy.areas.overrides[area]
-                const effective = override ?? policy.areas.default
+                // The collection default is one rung for EVERY area at once, so
+                // on an area that doesn't implement it (most are on/off) it
+                // resolves downward. Name the resolved rung, not the authored
+                // one: the segment highlight is already clamped, and "Default ·
+                // Read" beside a highlighted None reads as a contradiction.
+                const resolvedDefault = agentLevelOfLevel(
+                  clampToArea(meta, LEVEL_OF_AGENT_LEVEL[policy.areas.default])
+                )
                 return (
                   <TreeRow
                     key={area}
@@ -171,12 +148,21 @@ export function AgentPolicyAreasGrid({
                         : meta.description
                     }
                     trailing={
-                      <AgentPolicyLevelControl
-                        label={meta.label}
-                        value={override}
-                        fallback={policy.areas.default}
-                        inertNote={inertNoteFor(meta, effective)}
-                        onChange={(level) => onOverrideChange(area, level)}
+                      <LevelControl
+                        area={meta}
+                        value={override === undefined ? undefined : LEVEL_OF_AGENT_LEVEL[override]}
+                        inherited={LEVEL_OF_AGENT_LEVEL[policy.areas.default]}
+                        // Never "ignored": agent policy is a SET, so nothing an
+                        // author writes here is composed away by a baseline.
+                        ignored={false}
+                        unsetHint={usesDefaultLabel(resolvedDefault)}
+                        resetTooltip={followDefaultTooltip(resolvedDefault)}
+                        onChange={(level) =>
+                          onOverrideChange(
+                            area,
+                            level === undefined ? undefined : agentLevelOfLevel(level)
+                          )
+                        }
                         disabled={disabled}
                       />
                     }

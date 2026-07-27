@@ -8,11 +8,7 @@ import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Lock, ShieldCheck } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
-import type {
-  GranteeDefAccessRow,
-  GranteePrincipal,
-  useGranteeDefAccess,
-} from '../hooks/use-grantee-def-access'
+import type { GranteeDefAccessRow, useGranteeDefAccess } from '../hooks/use-grantee-def-access'
 import { AccessLevelSelect } from './access-level-select'
 
 /** Indent of the def rows under the Records area row (matches `DefBaselineRows`). */
@@ -27,28 +23,20 @@ const CHILD_DEPTH = 1
  *
  * Presentational only — filtering, loading and persistence are owned by the
  * host, exactly like `DefBaselineRows` is host-driven by `MemberBaselineTab`.
- * Extracted from the former standalone `GranteeDefAccessSection` (capability
- * layer v2 Part B.0) so the same rows nest under the Records area instead of
- * living in a flat section of their own.
+ * Rows always nest under the Records area row (capability layer v2 Part B.0);
+ * the flat standalone section they were extracted from is gone.
  */
 export function GranteeDefAccessRows({
   rows,
   isLoading = false,
   canEdit,
-  principal = 'member',
   depth = CHILD_DEPTH,
   onChange,
 }: {
   rows: GranteeDefAccessRow[]
   isLoading?: boolean
   canEdit: boolean
-  /**
-   * `agent` switches the "Inherit" fall-through to the agent SET-semantics
-   * default (Full) — see {@link GranteePrincipal}.
-   */
-  principal?: GranteePrincipal
-  /** Row indent. Defaults to nesting under a parent area row; the retired flat
-   *  `GranteeDefAccessSection` passes `0` to keep its own un-nested layout. */
+  /** Row indent. Defaults to nesting one level under the parent area row. */
   depth?: number
   onChange: (
     entityDefinitionId: string,
@@ -83,7 +71,6 @@ export function GranteeDefAccessRows({
           key={row.resource.entityDefinitionId}
           row={row}
           canEdit={canEdit}
-          principal={principal}
           depth={depth}
           onChange={(level) => onChange(row.resource.entityDefinitionId, level)}
         />
@@ -96,13 +83,11 @@ export function GranteeDefAccessRows({
 function DefAccessRow({
   row,
   canEdit,
-  principal,
   depth,
   onChange,
 }: {
   row: GranteeDefAccessRow
   canEdit: boolean
-  principal: GranteePrincipal
   depth: number
   onChange: (level: Parameters<ReturnType<typeof useGranteeDefAccess>['setLevel']>[1]) => void
 }) {
@@ -142,7 +127,7 @@ function DefAccessRow({
             value={grantLevel}
             includeInherit
             inheritedLevel={inheritedLevel}
-            inheritLabelText={inheritLabelText ?? (principal === 'agent' ? 'Default' : undefined)}
+            inheritLabelText={inheritLabelText}
             onInherit={() => onChange('inherit')}
             onChange={(level) => onChange(level)}
             disabled={!canEdit}

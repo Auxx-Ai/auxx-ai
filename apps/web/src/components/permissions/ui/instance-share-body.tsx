@@ -24,6 +24,7 @@ import {
   INSTANCE_SHARE_COPY,
   type InstanceShareCopy,
 } from './instance-share-copy'
+import { permissionLabel } from './level-labels'
 
 export const LEVEL_ORDER: InstanceLevel[] = [
   ResourcePermission.view,
@@ -31,19 +32,13 @@ export const LEVEL_ORDER: InstanceLevel[] = [
   ResourcePermission.admin,
 ]
 
-export const LEVEL_TIER: Record<InstanceLevel, string> = {
-  [ResourcePermission.view]: 'Read',
-  [ResourcePermission.edit]: 'Write',
-  [ResourcePermission.admin]: 'Full',
-}
-
 export function levelHelper(copy: InstanceShareCopy, level: InstanceLevel): string {
   if (level === ResourcePermission.edit) return copy.levels.write
   if (level === ResourcePermission.admin) return copy.levels.full
   return copy.levels.read
 }
 
-/** The Read / Write / Full picker for a grantee row. */
+/** The Read only / Read and write / Full access picker for a grantee row. */
 export function InstanceLevelSelect({
   value,
   onChange,
@@ -57,14 +52,14 @@ export function InstanceLevelSelect({
 }) {
   return (
     <Select value={value} onValueChange={(v) => onChange(v as InstanceLevel)} disabled={disabled}>
-      <SelectTrigger size='sm' variant='transparent' className='h-7 w-32'>
-        <SelectValue>{LEVEL_TIER[value]}</SelectValue>
+      <SelectTrigger size='sm' variant='transparent' className='h-7 w-36'>
+        <SelectValue>{permissionLabel(value, 'long')}</SelectValue>
       </SelectTrigger>
       <SelectContent align='end' className='min-w-56'>
         {LEVEL_ORDER.map((level) => (
-          <SelectItem key={level} value={level} textValue={LEVEL_TIER[level]}>
+          <SelectItem key={level} value={level} textValue={permissionLabel(level, 'long')}>
             <div className='flex flex-col items-start'>
-              <span>{LEVEL_TIER[level]}</span>
+              <span>{permissionLabel(level, 'long')}</span>
               <span className='text-muted-foreground text-xs'>{levelHelper(copy, level)}</span>
             </div>
           </SelectItem>
@@ -79,7 +74,7 @@ export function InstanceLevelSelect({
  * (capability layer v2 Part B.2.3) so the standalone Share card/dialog AND the
  * nested per-instance rows on the Member baseline / grantee-override grids
  * (`instance-baseline-rows.tsx` / `grantee-instance-rows.tsx`) render the exact
- * same grantee list, Read/Write/Full picker, revoke button and "add people or
+ * same grantee list, level picker, revoke button and "add people or
  * groups" trigger. Every mount is driven by its own {@link useInstanceShare},
  * so opening several nested rows at once just runs several small `forInstance`
  * queries (accepted per-open-row cost, §B.2.4) — no new mutation surface.
@@ -124,7 +119,7 @@ export function InstanceShareBody({ recordId }: { recordId: RecordId }) {
       onChange={changeLevel}
       onRevoke={revoke}
       defaultChoice={ResourcePermission.view}
-      renderLockedLabel={(choice) => LEVEL_TIER[choice]}
+      renderLockedLabel={(choice) => permissionLabel(choice, 'long')}
       renderPicker={({ value, onChange, disabled, actorId }) => {
         const isDeadGrant = granteeAreaLevelByActor.get(actorId) === Level.None
         return (

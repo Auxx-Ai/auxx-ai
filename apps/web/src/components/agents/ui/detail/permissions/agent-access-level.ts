@@ -2,6 +2,7 @@
 
 import type { AgentAccessLevel } from '@auxx/database'
 import type { BadgeProps } from '@auxx/ui/components/badge'
+import { agentLevelLabel } from '~/components/permissions/ui/level-labels'
 
 /**
  * The four exact rungs an agent policy can express, ascending
@@ -20,7 +21,7 @@ export const AGENT_ACCESS_RANK: Record<AgentAccessLevel, number> = {
 }
 
 interface AgentAccessLevelMeta {
-  /** The label the plan uses verbatim — `None / Read / Read + Write / Full`. */
+  /** The rung's name, from the one shared display vocabulary (plan 26 §2.1). */
   label: string
   /** One line of what the rung authorizes. */
   helper: string
@@ -28,31 +29,31 @@ interface AgentAccessLevelMeta {
 }
 
 /**
- * Labels are fixed by plan 19 §0.5 and must not drift into the human
- * `Inherit / Read / Edit / Full` vocabulary — an agent never inherits, so
- * showing `None` as "Inherit" (the doc 16 §10 bug, one screen over) would
- * misdescribe a deny as an unset default.
+ * Rung names come from the shared ladder vocabulary; only the helper line and
+ * badge colour are agent-specific. What plan 19 §0.5/§7 actually forbids is
+ * showing `None` as "Inherit" (the doc 16 §10 bug, one screen over) — an agent
+ * never inherits, so a deny must never read as an unset default.
  */
 export const AGENT_ACCESS_LEVEL_META: Record<AgentAccessLevel, AgentAccessLevelMeta> = {
-  none: { label: 'None', helper: 'Denied — cannot discover or use', variant: 'outline' },
-  read: { label: 'Read', helper: 'List, read, and search', variant: 'sky' },
+  none: {
+    label: agentLevelLabel('none'),
+    helper: 'Denied — cannot discover or use',
+    variant: 'outline',
+  },
+  read: { label: agentLevelLabel('read'), helper: 'List, read, and search', variant: 'sky' },
   read_write: {
-    label: 'Read + Write',
+    label: agentLevelLabel('read_write'),
     helper: 'Read plus create, update, and delete',
     variant: 'amber',
   },
   full: {
     // Schema administration rides on this rung but has no native tool yet, so the
     // helper says so rather than the tab carrying a footnote about it.
-    label: 'Full',
-    helper: 'Read + Write plus administration and settings — schema administration has no tool yet',
+    label: agentLevelLabel('full'),
+    helper:
+      'Read and write, plus administration and settings — schema administration has no tool yet',
     variant: 'green',
   },
-}
-
-/** `None / Read / Read + Write / Full` for a rung. */
-export function agentLevelLabel(level: AgentAccessLevel): string {
-  return AGENT_ACCESS_LEVEL_META[level].label
 }
 
 /**

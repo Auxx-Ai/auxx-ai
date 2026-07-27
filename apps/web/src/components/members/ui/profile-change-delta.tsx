@@ -6,8 +6,9 @@ import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowRight } from 'lucide-react'
 import { useMemo } from 'react'
+import { RUNG_LABELS } from '~/components/permissions/ui/level-labels'
 import type { ProfileDelta } from '../hooks'
-import { RUNG_LABELS, roleLabel } from '../hooks'
+import { roleLabel } from '../hooks'
 
 interface ProfileChangeDeltaProps {
   delta: ProfileDelta

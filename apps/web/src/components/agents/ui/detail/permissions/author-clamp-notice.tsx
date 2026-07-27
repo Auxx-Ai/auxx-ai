@@ -4,7 +4,7 @@
 import type { AgentPermissionPolicy } from '@auxx/database'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { ShieldAlert } from 'lucide-react'
-import { agentLevelLabel } from './agent-access-level'
+import { agentLevelLabel } from '~/components/permissions/ui/level-labels'
 import { useAuthorClampPreview } from './use-author-clamp-preview'
 
 /**

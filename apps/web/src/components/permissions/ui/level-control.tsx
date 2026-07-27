@@ -8,13 +8,20 @@ import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { RUNG_LABELS } from './level-labels'
 
-/** Display labels for each rung, indexed by {@link Level}. */
-export const LEVEL_LABELS: Record<Level, string> = {
-  [Level.None]: 'None',
-  [Level.Read]: 'Read',
-  [Level.Edit]: 'Edit',
-  [Level.Full]: 'Full',
+/**
+ * The highest rung `area` actually offers at or below `level` — what a level
+ * from outside this area's ladder composes down to.
+ *
+ * Exported because callers need the same answer the control displays: an agent
+ * policy's collection default is one rung for every area at once, so a row must
+ * be able to name what that default resolves to *here* rather than repeating a
+ * rung the area cannot express.
+ */
+export function clampToArea(area: AreaMetadata, level: Level): Level {
+  const levels = [Level.None, ...area.rungs.map((r) => r.level)]
+  return levels.filter((l) => l <= level).at(-1) ?? Level.None
 }
 
 interface LevelControlProps {
@@ -78,7 +85,7 @@ export function LevelControl({
   // between rungs (a baseline of Edit on a Read/Full ladder) composes down to the
   // highest rung at or below it — highlighting `effective` verbatim would match
   // no segment and render the row as if the holder had no access.
-  const displayed = levels.filter((l) => l <= effective).at(-1) ?? Level.None
+  const displayed = clampToArea(area, effective)
 
   return (
     <div className='flex items-center gap-1'>
@@ -123,7 +130,7 @@ export function LevelControl({
             size='xs'
             disabled={disabled}
             className='h-full w-auto min-w-0 rounded-lg px-2.5'>
-            {LEVEL_LABELS[level]}
+            {RUNG_LABELS[level]}
           </RadioTabItem>
         ))}
       </RadioTab>

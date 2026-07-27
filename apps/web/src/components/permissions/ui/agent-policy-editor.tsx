@@ -45,7 +45,7 @@ interface AgentPolicyEditorProps {
 /**
  * The agent half of the permission-profile editor (plan 19 §7): three exact-policy
  * grids — **Areas**, **Record types**, **Resources** — each with an explicit
- * default plus sparse overrides at `None / Read / Read + Write / Full`.
+ * default plus sparse overrides at `None / Read / Edit / Full`.
  *
  * What this surface is careful about, in the order it is easy to get wrong:
  *
@@ -56,7 +56,8 @@ interface AgentPolicyEditorProps {
  *  - **Not the additive def control.** Human def grants compose max-wins with
  *    `'none'` skipped; this policy is a SET and must be able to remove authority,
  *    so it is authored here and saved onto `PermissionProfile.agentPolicy`
- *    (§0.5/§2.3) — never through `GranteeDefAccessSection`.
+ *    (§0.5/§2.3) — never through the human per-def rows (`GranteeDefAccessRows`),
+ *    which write `ResourceAccess`.
  *  - **Every collection has a default**, so a record type or resource created
  *    tomorrow has a deterministic posture (§0.5/§2.3).
  *  - **Permissions are not tools.** Effective ability is the intersection of the

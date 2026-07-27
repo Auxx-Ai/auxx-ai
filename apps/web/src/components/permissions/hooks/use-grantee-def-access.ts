@@ -32,16 +32,6 @@ import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permissio
 export type GranteeKind = 'user' | 'group' | 'profile'
 
 /**
- * How the grantee's Layer-2 area levels compose — which decides what an
- * unconfigured def falls through to:
- * - `member` (default) — human/team: own override → org policy → role default.
- * - `agent` — an AGENT grantee (`userType:'AGENT'`), which composes by SET over
- *   an all-Full base (capability layer v2 §0.2/§0.3): no org policy, no group
- *   tier, so an unset Records area is **Full**, not the member baseline.
- */
-export type GranteePrincipal = 'member' | 'agent'
-
-/**
  * Typed against the full `ResourceGranteeType` (not the narrower
  * `SharingGranteeType`, which excludes `profile` by construction) so a
  * `'profile'` kind resolves to a real, authorable grantee address. Total over
@@ -78,9 +68,9 @@ export interface GranteeDefAccessRow {
 /**
  * Grantee-centric view of entity-def access (capability layer v2
  * grantee-def-access): the transpose of {@link useDefAccess}. For one grantee (a
- * member or a team) it lists every in-scope CRM def with that grantee's effective
- * level and lets an admin set it, editing the same type-level `ResourceAccess`
- * rows the per-def Permissions tab writes.
+ * member, a team, or a profile — see {@link GranteeKind}) it lists every in-scope
+ * CRM def with that grantee's effective level and lets an admin set it, editing
+ * the same type-level `ResourceAccess` rows the per-def Permissions tab writes.
  *
  * Reads once from `resourceAccess.allTypeAccess` (all type rows, org-wide) and
  * `useResources`, then derives per def: the baseline (`role:org_member` row), the
@@ -95,7 +85,6 @@ export interface GranteeDefAccessRow {
 export function useGranteeDefAccess(
   granteeKind: GranteeKind,
   granteeId: string,
-  principal: GranteePrincipal = 'member',
   /**
    * Required (and only meaningful) for `granteeKind: 'profile'` — the
    * profile's own live draft: its per-area base `levels` and blanket
@@ -127,17 +116,15 @@ export function useGranteeDefAccess(
   const targetBasePermission = useCallback(
     (area: Area): ResourcePermission => {
       const level =
-        principal === 'agent'
-          ? (ownAreaLevels[area] ?? Level.Full)
-          : granteeKind === 'profile'
-            ? (ownAreaLevels[area] ??
-              profileOwnLevels?.baseLevel ??
-              roleDefaults?.[area] ??
-              Level.None)
-            : (ownAreaLevels[area] ?? effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None)
+        granteeKind === 'profile'
+          ? (ownAreaLevels[area] ??
+            profileOwnLevels?.baseLevel ??
+            roleDefaults?.[area] ??
+            Level.None)
+          : (ownAreaLevels[area] ?? effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None)
       return levelToRecordBasePermission(level) ?? ResourcePermission.none
     },
-    [principal, granteeKind, ownAreaLevels, profileOwnLevels, effectiveBaseline, roleDefaults]
+    [granteeKind, ownAreaLevels, profileOwnLevels, effectiveBaseline, roleDefaults]
   )
 
   const workspaceBasePermission = useCallback(
@@ -250,23 +237,14 @@ export function useGranteeDefAccess(
           inheritLabelText:
             configuredBaseline !== undefined || baseArea === Area.records
               ? undefined
-              : `${principal === 'agent' ? 'Default' : 'Inherit'} · ${
-                  PERMISSION_AREAS[baseArea].label
-                }`,
+              : `Inherit · ${PERMISSION_AREAS[baseArea].label}`,
           isNoEffect:
             grantLevel !== undefined &&
             PERMISSION_RANK[grantLevel] <= PERMISSION_RANK[baselineLevel],
         }
       })
       .sort((a, b) => a.resource.plural.localeCompare(b.resource.plural))
-  }, [
-    resources,
-    baselineByDef,
-    grantByDef,
-    principal,
-    targetBasePermission,
-    workspaceBasePermission,
-  ])
+  }, [resources, baselineByDef, grantByDef, targetBasePermission, workspaceBasePermission])
 
   /**
    * Set this grantee's level for a def. `'inherit'` revokes the explicit row;

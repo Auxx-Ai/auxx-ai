@@ -140,7 +140,7 @@ export function ProfileList({ canEdit, onSelect }: ProfileListProps) {
       <SettingsSection
         icon={Bot}
         title='Agent profiles'
-        description='Agent profiles carry an exact policy (None, Read, Read + Write, or Full) that is snapshotted onto the agent version at publish. Editing one changes draft agents; production changes only on the next publish.'>
+        description='Agent profiles carry an exact policy (None, Read, Edit, or Full) that is snapshotted onto the agent version at publish. Editing one changes draft agents; production changes only on the next publish.'>
         {agentProfiles.length === 0 ? (
           <EmptySection
             orientation='horizontal'

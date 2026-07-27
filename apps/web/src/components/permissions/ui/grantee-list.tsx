@@ -19,7 +19,7 @@ import { unmanageableGrantsNote } from '../utils/grantee'
 /**
  * Render the level picker for one editable grantee row. The neutral list is
  * agnostic to what "level" means — mail passes a `LensSelect`, instance-access
- * passes a Read/Write/Full select (§4, resolved open item #1).
+ * passes an access-rung select (§4, resolved open item #1).
  */
 export type RenderPicker<TChoice extends string> = (args: {
   value: TChoice
