@@ -8,8 +8,10 @@ import { useMemo } from 'react'
 import { MainPageLoading } from '~/components/global/main-page-states'
 import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
+import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { ArticlesTabArrow } from '../preview/articles-tab-arrow'
 import { KBPreviewHintProvider } from '../preview/preview-hint-context'
+import { KBEditorAccessProvider, useKBEditorAccess } from './kb-editor-access-context'
 import { KBEditorHeader } from './kb-editor-header'
 import { KBTabPanel } from './kb-tab-panel'
 
@@ -27,23 +29,6 @@ interface KBEditorFrameProps {
  */
 export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps) {
   const { knowledgeBase, isLoading } = useKnowledgeBase(knowledgeBaseId)
-  const [panelParam] = useQueryState(
-    'panel',
-    parseAsStringLiteral(PANEL_VALUES).withDefault('general')
-  )
-  // The learned KB ("AI Memory") is always on the article tree.
-  const activePanel = knowledgeBase?.kind === 'learned' ? 'articles' : panelParam
-
-  const leftPanels = useMemo(() => {
-    if (!knowledgeBase) return []
-    return [
-      {
-        key: 'kb-tab-panel',
-        content: <KBTabPanel knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />,
-        width: activePanel === 'articles' ? 320 : 512,
-      },
-    ]
-  }, [knowledgeBase, knowledgeBaseId, activePanel])
 
   if (isLoading || !knowledgeBase) {
     return (
@@ -52,6 +37,41 @@ export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps)
       </MainPage>
     )
   }
+
+  return (
+    <KBEditorAccessProvider knowledgeBaseId={knowledgeBaseId}>
+      <KBEditorFrameBody knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase}>
+        {children}
+      </KBEditorFrameBody>
+    </KBEditorAccessProvider>
+  )
+}
+
+interface KBEditorFrameBodyProps {
+  knowledgeBaseId: string
+  knowledgeBase: KnowledgeBase
+  children: React.ReactNode
+}
+
+function KBEditorFrameBody({ knowledgeBaseId, knowledgeBase, children }: KBEditorFrameBodyProps) {
+  const { canAdmin } = useKBEditorAccess()
+  const [panelParam] = useQueryState(
+    'panel',
+    parseAsStringLiteral(PANEL_VALUES).withDefault('general')
+  )
+  // The learned KB ("AI Memory") is always on the article tree; so is any KB
+  // the member can't administer — settings/layout are Full-only (doc 24 §A.2.4).
+  const activePanel = knowledgeBase.kind === 'learned' || !canAdmin ? 'articles' : panelParam
+
+  const leftPanels = useMemo(() => {
+    return [
+      {
+        key: 'kb-tab-panel',
+        content: <KBTabPanel knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />,
+        width: activePanel === 'articles' ? 320 : 512,
+      },
+    ]
+  }, [knowledgeBase, knowledgeBaseId, activePanel])
 
   return (
     <KBPreviewHintProvider>

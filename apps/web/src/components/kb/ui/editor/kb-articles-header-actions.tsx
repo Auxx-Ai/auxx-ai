@@ -22,12 +22,14 @@ import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { inferCreateParent } from '../../utils/infer-create-parent'
 import { CrawlWebsiteWizard } from './crawl-website-wizard'
 import { CreateKnowledgeSourceDialog } from './create-knowledge-source-dialog'
+import { useKBEditorAccess } from './kb-editor-access-context'
 
 interface KBArticlesHeaderActionsProps {
   knowledgeBaseId: string
 }
 
 export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderActionsProps) {
+  const { canEdit } = useKBEditorAccess()
   const articles = useArticleList(knowledgeBaseId)
   const activeTabId = useActiveTabId(knowledgeBaseId)
   const activeArticle = useActiveArticle(knowledgeBaseId)
@@ -83,6 +85,10 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
     },
     [activeTabId, createArticle]
   )
+
+  // Create/import/crawl are all Edit-instance affordances — hide the whole
+  // entry point for view-only members (doc 24 §A.2.4).
+  if (!canEdit) return null
 
   return (
     <>

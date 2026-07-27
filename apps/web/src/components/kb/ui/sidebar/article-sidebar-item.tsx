@@ -56,6 +56,7 @@ import { usePublishWithConfirm } from '../../hooks/use-publish-with-confirm'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { ArticleSettingsDialog } from '../editor/article-settings-dialog'
+import { useKBEditorAccess } from '../editor/kb-editor-access-context'
 import { ArticleInsertLine } from './article-insert-line'
 
 function StatusDot({
@@ -110,6 +111,7 @@ export function ArticleSidebarItem({
   isOpen = false,
   onToggleOpen,
 }: ArticleSidebarItemProps) {
+  const { canEdit } = useKBEditorAccess()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname() ?? ''
@@ -299,17 +301,21 @@ export function ArticleSidebarItem({
         </>
       )}
       <DropdownMenuGroup>
-        <DropdownMenuItem onSelect={() => setIsRenaming(true)}>
-          <Pencil /> Rename
-        </DropdownMenuItem>
-        {!isLink && (
+        {canEdit && (
+          <DropdownMenuItem onSelect={() => setIsRenaming(true)}>
+            <Pencil /> Rename
+          </DropdownMenuItem>
+        )}
+        {!isLink && canEdit && (
           <DropdownMenuItem onClick={handleAddSubItem}>
             <Files /> Add sub-item
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
-          <Cog /> Page settings
-        </DropdownMenuItem>
+        {canEdit && (
+          <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+            <Cog /> Page settings
+          </DropdownMenuItem>
+        )}
         {!isHeader && !isLink && (
           <DropdownMenuItem asChild>
             <a href={previewHref} target='_blank' rel='noopener'>
@@ -317,9 +323,11 @@ export function ArticleSidebarItem({
             </a>
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => duplicateArticle(article)}>
-          <BookCopy /> Duplicate
-        </DropdownMenuItem>
+        {canEdit && (
+          <DropdownMenuItem onClick={() => duplicateArticle(article)}>
+            <BookCopy /> Duplicate
+          </DropdownMenuItem>
+        )}
         {(article.articleKind === 'page' || article.articleKind === 'category') && (
           <FavoriteToggleMenuItem
             targetType='ARTICLE'
@@ -340,36 +348,40 @@ export function ArticleSidebarItem({
           </DropdownMenuGroup>
         </>
       )}
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
-        {isArchived ? (
-          <DropdownMenuItem onClick={() => unarchiveArticle(article.id)}>
-            <ArchiveRestore /> Unarchive
+      {canEdit && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            {isArchived ? (
+              <DropdownMenuItem onClick={() => unarchiveArticle(article.id)}>
+                <ArchiveRestore /> Unarchive
+              </DropdownMenuItem>
+            ) : article.isPublished ? (
+              <>
+                <DropdownMenuItem onClick={() => requestUnpublish(article)}>
+                  <EyeOff /> Unpublish
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
+                  <Archive /> Archive
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem onClick={() => requestPublish(article)}>
+                  <Send /> Publish
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
+                  <Archive /> Archive
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+            <Trash2 /> Delete
           </DropdownMenuItem>
-        ) : article.isPublished ? (
-          <>
-            <DropdownMenuItem onClick={() => requestUnpublish(article)}>
-              <EyeOff /> Unpublish
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
-              <Archive /> Archive
-            </DropdownMenuItem>
-          </>
-        ) : (
-          <>
-            <DropdownMenuItem onClick={() => requestPublish(article)}>
-              <Send /> Publish
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
-              <Archive /> Archive
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={handleDelete} variant='destructive'>
-        <Trash2 /> Delete
-      </DropdownMenuItem>
+        </>
+      )}
     </DropdownMenuContent>
   )
 
@@ -437,7 +449,7 @@ export function ArticleSidebarItem({
               isHeader && '-ml-3.5 opacity-0 group-hover/row:opacity-100'
             )}
             {...attributes}
-            {...(isRenaming ? {} : listeners)}>
+            {...(isRenaming || !canEdit ? {} : listeners)}>
             {!isHeader && (
               <span className='flex items-center group-hover/row:hidden size-4'>{icon}</span>
             )}
@@ -474,6 +486,7 @@ export function ArticleSidebarItem({
               }, 200)
             }}
             onDoubleClick={() => {
+              if (!canEdit) return
               if (navTimerRef.current) {
                 clearTimeout(navTimerRef.current)
                 navTimerRef.current = null

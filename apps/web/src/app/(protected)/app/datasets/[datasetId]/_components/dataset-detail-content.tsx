@@ -3,6 +3,7 @@
 'use client'
 
 import type { DocumentEntity as Document } from '@auxx/database/types'
+import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import {
   MainPage,
@@ -20,6 +21,7 @@ import { DocumentManagement } from '~/components/datasets/documents/document-man
 import { DatasetSearch } from '~/components/datasets/search/dataset-search'
 import { DatasetSettings } from '~/components/datasets/settings/dataset-settings'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
+import { useAccess } from '~/providers/capabilities-provider'
 import { DatasetActions } from './dataset-actions'
 import { useDatasetDetail } from './dataset-detail-provider'
 import { DatasetHeader } from './dataset-header'
@@ -30,6 +32,8 @@ import { DatasetHeader } from './dataset-header'
  */
 export function DatasetDetailContent() {
   const { currentTab, setCurrentTab, dataset, documents } = useDatasetDetail()
+  const { canAdminInstance } = useAccess()
+  const canAdmin = dataset ? canAdminInstance(toRecordId('dataset', dataset.id)) : false
 
   // Drawer state — synced to URL via ?id= param
   const [selectedDocumentId, setSelectedDocumentId] = useQueryState(
@@ -136,7 +140,7 @@ export function DatasetDetailContent() {
           </TabsContent>
 
           <TabsContent value='settings' className='overflow-y-auto'>
-            <DatasetSettings dataset={dataset} />
+            <DatasetSettings dataset={dataset} readOnly={!canAdmin} />
           </TabsContent>
         </Tabs>
       </MainPageContent>

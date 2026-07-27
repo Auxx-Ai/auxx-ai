@@ -1,6 +1,7 @@
 // apps/web/src/components/datasets/documents/document-detail-drawer.tsx
 'use client'
 import type { DocumentEntity as Document } from '@auxx/database/types'
+import { toRecordId } from '@auxx/types/resource'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -41,6 +42,7 @@ import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { DocumentSegmentsTab } from '../segments/document-segments'
@@ -77,6 +79,8 @@ export function DocumentDetailDrawer({
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
   const { deleteDocument, reprocessDocument, updateDocument } = useDatasetDetail()
+  const { canEditInstance } = useAccess()
+  const canEdit = canEditInstance(toRecordId('dataset', datasetId))
   const [confirm, ConfirmDialog] = useConfirm()
   const [editingTitle, setEditingTitle] = useState(document.title || document.filename || '')
   const [isRenaming, setIsRenaming] = useState(false)
@@ -228,7 +232,7 @@ export function DocumentDetailDrawer({
                 onBlur={handleTitleBlur}
                 onKeyDown={handleTitleKeyDown}
                 placeholder='Enter title'
-                disabled={isRenaming || updateDocumentMutation.isPending}
+                disabled={isRenaming || updateDocumentMutation.isPending || !canEdit}
                 className={cn(
                   'mr-2 h-7 min-w-0 w-full appearance-none rounded-md border bg-transparent px-1 outline-none',
                   'border-transparent',
@@ -251,58 +255,62 @@ export function DocumentDetailDrawer({
                     <Download />
                   </Button>
                 </Tooltip>
-                <Tooltip content='Reprocess file'>
-                  <Button
-                    variant='ghost'
-                    size='icon-sm'
-                    className='rounded-full'
-                    loading={displayDocument.status === 'PROCESSING'}
-                    onClick={handleReprocess}>
-                    <RefreshCw />
-                  </Button>
-                </Tooltip>
-
-                <DropdownMenu modal={false}>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant='ghost' size='icon-sm' className='rounded-full'>
-                      <MoreHorizontal />
+                {canEdit && (
+                  <Tooltip content='Reprocess file'>
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      className='rounded-full'
+                      loading={displayDocument.status === 'PROCESSING'}
+                      onClick={handleReprocess}>
+                      <RefreshCw />
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align='end' className='w-48'>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        // Focus the input to start renaming
-                        const input = window.document.getElementById('title') as HTMLInputElement
-                        if (input) {
-                          input.focus()
-                          input.select()
-                        }
-                      }}>
-                      <TextCursorInput />
-                      Rename
-                    </DropdownMenuItem>
+                  </Tooltip>
+                )}
 
-                    {displayDocument.status === 'ARCHIVED' ? (
+                {canEdit && (
+                  <DropdownMenu modal={false}>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant='ghost' size='icon-sm' className='rounded-full'>
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align='end' className='w-48'>
                       <DropdownMenuItem
-                        onClick={() => updateDocument(document.id, { status: 'INDEXED' })}>
-                        <ArchiveRestore />
-                        Unarchive
+                        onClick={() => {
+                          // Focus the input to start renaming
+                          const input = window.document.getElementById('title') as HTMLInputElement
+                          if (input) {
+                            input.focus()
+                            input.select()
+                          }
+                        }}>
+                        <TextCursorInput />
+                        Rename
                       </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem
-                        onClick={() => updateDocument(document.id, { status: 'ARCHIVED' })}>
-                        <Archive />
-                        Archive
-                      </DropdownMenuItem>
-                    )}
 
-                    <DropdownMenuItem onClick={() => handleDelete()} variant='destructive'>
-                      <Trash2 />
-                      Delete
-                      <KeyboardShortcut shortcut='Del' />
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      {displayDocument.status === 'ARCHIVED' ? (
+                        <DropdownMenuItem
+                          onClick={() => updateDocument(document.id, { status: 'INDEXED' })}>
+                          <ArchiveRestore />
+                          Unarchive
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          onClick={() => updateDocument(document.id, { status: 'ARCHIVED' })}>
+                          <Archive />
+                          Archive
+                        </DropdownMenuItem>
+                      )}
+
+                      <DropdownMenuItem onClick={() => handleDelete()} variant='destructive'>
+                        <Trash2 />
+                        Delete
+                        <KeyboardShortcut shortcut='Del' />
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <DockToggleButton />
               </>
             }

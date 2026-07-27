@@ -51,9 +51,10 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
   const pending = useIsPending(dataset.id)
   const pendingLabel = usePendingLabel()
   const toggle = useListSelection((s) => s.toggle)
-  const { isRestrictedInstance } = useAccess()
+  const { isRestrictedInstance, canAdminInstance } = useAccess()
   const [shareOpen, setShareOpen] = useState(false)
   const isShared = isRestrictedInstance(dataset.id)
+  const canAdmin = canAdminInstance(toRecordId('dataset', dataset.id))
 
   const status = STATUS_DOT[dataset.status] ?? STATUS_DOT.ARCHIVED
   const creatorName = dataset.createdBy.name ?? dataset.createdBy.email ?? '?'
@@ -116,24 +117,30 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
               <Search />
               Browse
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={wrap(handleSettings)}>
-              <Settings />
-              Settings
-            </DropdownMenuItem>
+            {canAdmin && (
+              <DropdownMenuItem onClick={wrap(handleSettings)}>
+                <Settings />
+                Settings
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={wrap(() => setShareOpen(true))}>
               <Share2 />
               Share…
             </DropdownMenuItem>
             <FavoriteToggleMenuItem targetType='DATASET' targetIds={{ datasetId: dataset.id }} />
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={wrap(handleArchive)}>
-              <Archive />
-              Archive
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={wrap(handleDelete)} variant='destructive'>
-              <Trash />
-              Delete
-            </DropdownMenuItem>
+            {canAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={wrap(handleArchive)}>
+                  <Archive />
+                  Archive
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={wrap(handleDelete)} variant='destructive'>
+                  <Trash />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </>
         }
       />

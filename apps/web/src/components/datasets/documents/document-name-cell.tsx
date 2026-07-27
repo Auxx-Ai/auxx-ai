@@ -18,6 +18,8 @@ interface DocumentNameCellProps {
   onDelete: (document: Document) => void
   onArchive: (document: Document) => void
   onUnarchive: (document: Document) => void
+  /** Edit-instance gate on the parent dataset — hides archive/unarchive/delete when false. */
+  canEdit: boolean
 }
 
 /**
@@ -32,6 +34,7 @@ export function DocumentNameCell({
   onDelete,
   onArchive,
   onUnarchive,
+  canEdit,
 }: DocumentNameCellProps) {
   const fileExtension = document.filename?.split('.').pop()
   const displayName = document.title || document.filename || 'Unnamed Document'
@@ -59,22 +62,26 @@ export function DocumentNameCell({
         targetType='DOCUMENT'
         targetIds={{ documentId: document.id, datasetId: document.datasetId }}
       />
-      <DropdownMenuSeparator />
-      {document.status === 'ARCHIVED' ? (
-        <DropdownMenuItem onClick={() => onUnarchive(document)}>
-          <ArchiveRestore />
-          Unarchive
-        </DropdownMenuItem>
-      ) : (
-        <DropdownMenuItem onClick={() => onArchive(document)}>
-          <Archive />
-          Archive
-        </DropdownMenuItem>
+      {canEdit && (
+        <>
+          <DropdownMenuSeparator />
+          {document.status === 'ARCHIVED' ? (
+            <DropdownMenuItem onClick={() => onUnarchive(document)}>
+              <ArchiveRestore />
+              Unarchive
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onClick={() => onArchive(document)}>
+              <Archive />
+              Archive
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem variant='destructive' onClick={() => onDelete(document)}>
+            <Trash2 />
+            Delete
+          </DropdownMenuItem>
+        </>
       )}
-      <DropdownMenuItem variant='destructive' onClick={() => onDelete(document)}>
-        <Trash2 />
-        Delete
-      </DropdownMenuItem>
     </PrimaryCell>
   )
 }

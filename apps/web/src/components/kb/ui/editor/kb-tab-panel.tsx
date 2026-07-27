@@ -13,6 +13,7 @@ import { GeneralTab } from '../settings/general/general-tab'
 import { LayoutTab } from '../settings/layout/layout-tab'
 import { KBArticlesPanel } from '../sidebar/kb-articles-panel'
 import { KBArticlesHeaderActions } from './kb-articles-header-actions'
+import { useKBEditorAccess } from './kb-editor-access-context'
 
 const PANEL_VALUES = ['general', 'layout', 'articles'] as const
 
@@ -39,9 +40,12 @@ export function KBTabPanel({ knowledgeBaseId, knowledgeBase }: KBTabPanelProps) 
     parseAsStringLiteral(PANEL_VALUES).withDefault('general')
   )
   // The learned KB ("AI Memory") has no settings tabs — the panel is always
-  // the article tree, retitled "Memory".
+  // the article tree, retitled "Memory". Same for an Edit-level (non-admin)
+  // member — settings/layout are Full-only (doc 24 §A.2.4) — so General/Layout
+  // never mount and their autosave hooks never run for them.
+  const { canAdmin } = useKBEditorAccess()
   const isLearned = knowledgeBase.kind === 'learned'
-  const activePanel = isLearned ? 'articles' : panelParam
+  const activePanel = isLearned || !canAdmin ? 'articles' : panelParam
 
   const isSaving = useKnowledgeBaseStore((s) => Boolean(s.pendingDraftPatches[knowledgeBaseId]))
 

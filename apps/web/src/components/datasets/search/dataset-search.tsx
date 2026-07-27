@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
 import { Command, CornerDownLeft, FileSearch, Loader2, TestTubeDiagonal, XIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -100,12 +100,7 @@ export function DatasetSearch({ datasetIds }: DatasetSearchProps) {
         searchError: data.success ? null : data.error || 'Search failed',
       }))
 
-      if (data.success) {
-        toastSuccess({
-          title: 'Search completed',
-          description: `Found ${data.metrics?.totalResults || 0} results in ${data.metrics?.responseTime || 0}ms`,
-        })
-      } else {
+      if (!data.success) {
         toastError({
           title: 'Search failed',
           description: data.error || 'Unknown error occurred',

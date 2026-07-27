@@ -17,6 +17,7 @@ import { useArticleList } from '../../hooks/use-article-list'
 import { AFTER_GROUP_SUFFIX } from '../../hooks/use-article-move'
 import type { ArticleTreeNode } from '../../store/article-store'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
+import { useKBEditorAccess } from '../editor/kb-editor-access-context'
 
 type InsertMode = 'sibling-after' | 'first-child' | 'after-group'
 
@@ -49,6 +50,7 @@ export function ArticleInsertLine({
   knowledgeBaseId,
   mode = 'sibling-after',
 }: ArticleInsertLineProps) {
+  const { canEdit } = useKBEditorAccess()
   const articles = useArticleList(knowledgeBaseId)
   const setPending = usePendingInsertStore((s) => s.setPending)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -111,6 +113,10 @@ export function ArticleInsertLine({
     isAfterGroup ? 'left-0' : 'left-[-8px]',
     menuOpen ? 'bg-blue-500 text-white opacity-100' : 'text-muted-foreground opacity-0'
   )
+
+  // Create is an Edit-instance affordance — hide the insert line entirely for
+  // view-only members (doc 24 §A.2.4).
+  if (!canEdit) return null
 
   return (
     <>

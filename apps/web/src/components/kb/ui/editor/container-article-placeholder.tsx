@@ -20,6 +20,7 @@ import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { LinkArticlePicker } from '../sidebar/link-article-picker'
 import { ArticleEditorHeader } from './article-editor-header'
 import { ArticleEditorTop } from './article-editor-top'
+import { useKBEditorAccess } from './kb-editor-access-context'
 
 interface ContainerArticlePlaceholderProps {
   article: ArticleMeta
@@ -59,6 +60,7 @@ export function ContainerArticlePlaceholder({
   article,
   knowledgeBaseId,
 }: ContainerArticlePlaceholderProps) {
+  const { canEdit } = useKBEditorAccess()
   const router = useRouter()
   const articles = useArticleList(knowledgeBaseId)
   const { isCreating, updateArticleDraft } = useArticleMutations(knowledgeBaseId)
@@ -145,6 +147,7 @@ export function ContainerArticlePlaceholder({
                 knowledgeBaseId={knowledgeBaseId}
                 onUpdateMetadata={handleMetadataUpdate}
                 onAdvanceToContent={focusContent}
+                readOnly={!canEdit}
               />
               {isLink ? (
                 <div className='mx-auto mt-4 w-full max-w-md'>
@@ -168,41 +171,45 @@ export function ContainerArticlePlaceholder({
                 <div
                   ref={optionsRef}
                   className='mt-4 w-full overflow-hidden rounded-xl border text-left'>
-                  <GroupLabel>
-                    {article.articleKind === ArticleKind.tab
-                      ? 'Add to this tab'
-                      : 'Add to this section header'}
-                  </GroupLabel>
-                  <div className='flex flex-col p-1'>
-                    {options.map(({ kind, label, Icon }) => (
-                      <RowButton
-                        key={kind}
-                        disabled={isCreating}
-                        onClick={() => handleCreate(kind)}>
-                        <TreeRow
-                          icon={<Icon className='size-4 text-muted-foreground' />}
-                          title={label}
-                        />
-                      </RowButton>
-                    ))}
-                    <Popover open={linkOpen} onOpenChange={setLinkOpen}>
-                      <PopoverTrigger asChild>
-                        <RowButton>
-                          <TreeRow
-                            icon={<Database className='size-4 text-muted-foreground' />}
-                            title='Link an article'
-                          />
-                        </RowButton>
-                      </PopoverTrigger>
-                      <PopoverContent align='start' className='w-72 p-0'>
-                        <LinkArticlePicker
-                          knowledgeBaseId={knowledgeBaseId}
-                          targetParentArticleId={article.id}
-                          onClose={() => setLinkOpen(false)}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                  {canEdit && (
+                    <>
+                      <GroupLabel>
+                        {article.articleKind === ArticleKind.tab
+                          ? 'Add to this tab'
+                          : 'Add to this section header'}
+                      </GroupLabel>
+                      <div className='flex flex-col p-1'>
+                        {options.map(({ kind, label, Icon }) => (
+                          <RowButton
+                            key={kind}
+                            disabled={isCreating}
+                            onClick={() => handleCreate(kind)}>
+                            <TreeRow
+                              icon={<Icon className='size-4 text-muted-foreground' />}
+                              title={label}
+                            />
+                          </RowButton>
+                        ))}
+                        <Popover open={linkOpen} onOpenChange={setLinkOpen}>
+                          <PopoverTrigger asChild>
+                            <RowButton>
+                              <TreeRow
+                                icon={<Database className='size-4 text-muted-foreground' />}
+                                title='Link an article'
+                              />
+                            </RowButton>
+                          </PopoverTrigger>
+                          <PopoverContent align='start' className='w-72 p-0'>
+                            <LinkArticlePicker
+                              knowledgeBaseId={knowledgeBaseId}
+                              targetParentArticleId={article.id}
+                              onClose={() => setLinkOpen(false)}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </>
+                  )}
                   {children.length > 0 && (
                     <>
                       <div className='border-t' />
