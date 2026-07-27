@@ -5,10 +5,13 @@ import { MemberType, ResourceGranteeType, ResourcePermission } from '@auxx/datab
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, desc, eq, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import { NotificationService } from '../notifications'
-import { isInstanceAccessKey } from '../permissions/capabilities/instance-access'
+import {
+  INSTANCE_ACCESS_KEYS,
+  isInstanceAccessKey,
+} from '../permissions/capabilities/instance-access'
 import { satisfiesPermission } from './constants'
 import {
   grantedViaFor,
@@ -938,6 +941,43 @@ export async function getAllTypeAccess(ctx: ResourceAccessContext): Promise<Reso
     where: and(
       eq(schema.ResourceAccess.organizationId, organizationId),
       isNull(schema.ResourceAccess.entityInstanceId)
+    ),
+    orderBy: desc(schema.ResourceAccess.createdAt),
+  })
+
+  return grants.map((g: any) => ({
+    id: g.id,
+    entityDefinitionId: g.entityDefinitionId,
+    entityInstanceId: g.entityInstanceId,
+    granteeType: g.granteeType as ResourceGranteeType,
+    granteeId: g.granteeId,
+    permission: g.permission as ResourcePermission,
+    createdAt: g.createdAt,
+  }))
+}
+
+/**
+ * All instance-level (`entityInstanceId IS NOT NULL`) access rows for the org,
+ * across every instance-access resource (datasets/KB/dashboards — capability
+ * layer v2 Part B.2.5). The sibling of {@link getAllTypeAccess}: today only the
+ * type-level twin exists, so a collapsed per-instance row in the permissions
+ * grid can't show a "Restricted / Shared · N" badge without one query per
+ * instance. Reading every instance row for the org in one shot lets the client
+ * derive both the collapsed-row badge and a given grantee's own grant from a
+ * single payload; instance-access rows are sparse and org instance-row counts
+ * are small, so this stays cheap. Admin-only at the endpoint — it reveals the
+ * whole org's per-instance sharing map.
+ */
+export async function getAllInstanceAccess(
+  ctx: ResourceAccessContext
+): Promise<ResourceAccessInfo[]> {
+  const { db, organizationId } = ctx
+
+  const grants = await db.query.ResourceAccess.findMany({
+    where: and(
+      eq(schema.ResourceAccess.organizationId, organizationId),
+      inArray(schema.ResourceAccess.entityDefinitionId, INSTANCE_ACCESS_KEYS),
+      isNotNull(schema.ResourceAccess.entityInstanceId)
     ),
     orderBy: desc(schema.ResourceAccess.createdAt),
   })

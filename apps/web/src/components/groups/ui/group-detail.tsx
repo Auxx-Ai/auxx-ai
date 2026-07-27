@@ -16,7 +16,6 @@ import { Globe, Lock, ShieldCheck, UsersRound } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
-import { GranteeDefAccessSection } from '~/components/permissions/ui/grantee-def-access-section'
 import { GranteeLevelsSection } from '~/components/permissions/ui/grantee-levels-section'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -134,11 +133,6 @@ export function GroupDetail({ groupId }: { groupId: string }) {
               />
             )}
             <GranteeLevelsSection
-              granteeKind='group'
-              granteeId={group.id}
-              canEdit={canEditPermissions}
-            />
-            <GranteeDefAccessSection
               granteeKind='group'
               granteeId={group.id}
               canEdit={canEditPermissions}

@@ -17,7 +17,6 @@ import { ShieldCheck, User, Users } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
-import { GranteeDefAccessSection } from '~/components/permissions/ui/grantee-def-access-section'
 import { GranteeLevelsSection } from '~/components/permissions/ui/grantee-levels-section'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -155,11 +154,6 @@ export function MemberDetail({ userId }: { userId: string }) {
             )}
             <MemberAccessSection member={member} viewerRole={viewerRole} viewerId={viewerId} />
             <GranteeLevelsSection
-              granteeKind='user'
-              granteeId={member.userId}
-              canEdit={canEditPermissions}
-            />
-            <GranteeDefAccessSection
               granteeKind='user'
               granteeId={member.userId}
               canEdit={canEditPermissions}

@@ -27,6 +27,7 @@ export {
   checkAccess,
   checkTypeAccess,
   emitResourceAccessInstanceChanged,
+  getAllInstanceAccess,
   getAllTypeAccess,
   getInstanceAccess,
   getTypeAccess,

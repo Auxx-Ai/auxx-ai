@@ -15,7 +15,7 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { NormalizedAgentPolicy } from '../hooks/use-agent-policy'
-import { useAgentPolicyResourceInstances } from '../hooks/use-agent-policy-resources'
+import { useInstanceResourceLists } from '../hooks/use-instance-resource-lists'
 import { AGENT_LEVEL_LABELS, AGENT_LEVEL_RANK, RESOURCE_AREA_CLAMP } from './agent-policy-copy'
 import { AgentPolicyDefaultRow, AgentPolicyLevelControl } from './agent-policy-level-control'
 
@@ -59,7 +59,7 @@ export function AgentPolicyResourcesGrid({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState<Partial<Record<InstanceAccessKey, boolean>>>({})
-  const instances = useAgentPolicyResourceInstances(open)
+  const instances = useInstanceResourceLists(open)
   const [confirm, ConfirmDialog] = useConfirm()
 
   /** The rung each type's area allows — the ceiling every row below it is min'd with. */

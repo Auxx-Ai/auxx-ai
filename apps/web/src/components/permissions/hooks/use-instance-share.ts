@@ -2,6 +2,7 @@
 'use client'
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { Level } from '@auxx/lib/permissions/client'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
 import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
@@ -32,6 +33,15 @@ export type WorkspaceBaseline = InstanceLevel | 'restricted' | undefined
 export interface InstanceShareGrant {
   actorId: ActorId
   choice: InstanceLevel
+  /**
+   * The user grantee's own composed Layer-2 level for this instance's L2 area
+   * (capability layer v2 Part B.2.8), server-annotated on `forInstance`.
+   * `undefined` for group/team/role/profile grantees — they are level
+   * *sources*, not subjects — and while the annotation hasn't loaded yet.
+   * `Level.None` here means the grant is a dead grant: `effectiveInstanceLevel`
+   * short-circuits at area None before ever consulting this row.
+   */
+  granteeAreaLevel?: Level
 }
 
 /** The fixed grantee for the workspace baseline (everyone in the org). */
@@ -132,7 +142,13 @@ export function useInstanceShare({
       rows.flatMap((r) => {
         const actorId = granteeToActorId(r.granteeType, r.granteeId)
         if (!actorId) return []
-        return [{ actorId, choice: r.permission as InstanceLevel }]
+        return [
+          {
+            actorId,
+            choice: r.permission as InstanceLevel,
+            granteeAreaLevel: r.granteeAreaLevel,
+          },
+        ]
       }),
     [rows]
   )

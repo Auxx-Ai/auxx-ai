@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/profile-editor.tsx
 'use client'
 
-import { Level } from '@auxx/lib/permissions/client'
+import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -14,12 +14,19 @@ import {
 } from '@auxx/ui/components/select'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { ChevronLeft, SlidersHorizontal } from 'lucide-react'
+import { useCallback } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useGranteeDefAccess } from '../hooks/use-grantee-def-access'
+import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { useProfileEditor } from '../hooks/use-profile-editor'
 import type { PermissionProfile } from '../hooks/use-profiles'
 import { AgentPolicyEditor } from './agent-policy-editor'
+import { GranteeDefAccessRows } from './grantee-def-access-rows'
+import { GranteeInstanceRows } from './grantee-instance-rows'
+import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
 import { LEVEL_LABELS } from './level-control'
+import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import { ProfileAreaGrid } from './profile-area-grid'
 import {
   APPLIES_TO_COPY,
@@ -74,6 +81,121 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
   const isAgentProfile = profile.appliesTo === 'agent'
   const editable = canEdit && !isOwner
   const icon = draft.icon ?? DEFAULT_PROFILE_ICON
+
+  // Per-def overrides nested under Records, and per-instance grants nested
+  // under Datasets / Knowledge base / Dashboards — this profile's OWN
+  // `ResourceAccess` rows (`granteeType: 'profile'`), user requirement:
+  // "expand Records and set the permissions for Companies", combined into
+  // this same grid (not a separate section). Called unconditionally (rules of
+  // hooks) even for an agent profile, which never renders `ProfileAreaGrid`.
+  const {
+    isLoading: defAccessLoading,
+    rows: defRows,
+    setLevel: setDefLevel,
+  } = useGranteeDefAccess('profile', profile.id, 'member', {
+    levels: draft.levels,
+    baseLevel: draft.baseLevel,
+  })
+  const {
+    isLoading: instanceRowsLoadingAll,
+    lists: instanceLists,
+    rowsByKey: instanceRowsByKey,
+    setGrant: setInstanceGrant,
+  } = useInstanceGranteeRows('profile', profile.id)
+
+  /**
+   * `ProfileAreaGrid`'s `renderChildren` — the profile-authoring twin of
+   * `grantee-levels-section.tsx`'s host-owned `renderChildren` (capability
+   * layer v2 Part B). A profile is a level SOURCE, not a subject
+   * (`resourceAccess.forInstance`'s doc comment), so the per-instance rows
+   * never show the dead-grant warning (`isUser` stays `false`).
+   */
+  const renderChildren = useCallback(
+    (area: Area, filter: AreaChildFilter): AreaChildren | undefined => {
+      if (area === Area.records) {
+        if (defAccessLoading)
+          return {
+            matchCount: 0,
+            rows: (
+              <GranteeDefAccessRows rows={[]} isLoading canEdit={editable} onChange={setDefLevel} />
+            ),
+          }
+
+        const matched = defRows.filter((row) => {
+          if (filter.overridesOnly && row.grantLevel === undefined) return false
+          if (!filter.query) return true
+          const { plural, label } = row.resource
+          return (
+            plural.toLowerCase().includes(filter.query) ||
+            label.toLowerCase().includes(filter.query)
+          )
+        })
+
+        return {
+          matchCount: matched.length,
+          rows: <GranteeDefAccessRows rows={matched} canEdit={editable} onChange={setDefLevel} />,
+        }
+      }
+
+      const instanceKey = AREA_TO_INSTANCE_KEY[area]
+      if (!instanceKey) return undefined
+
+      // This profile's own composed level for the area shown right above
+      // these rows — the same fall-through the parent row itself renders
+      // (`ProfileAreaRow`'s `inherited`).
+      const areaLevel = draft.levels[area] ?? draft.baseLevel ?? roleDefaults?.[area] ?? Level.None
+
+      const instanceLoading = instanceRowsLoadingAll || instanceLists[instanceKey].isLoading
+      if (instanceLoading)
+        return {
+          matchCount: 0,
+          rows: (
+            <GranteeInstanceRows
+              rows={[]}
+              isLoading
+              canEdit={editable}
+              isUser={false}
+              areaLevel={areaLevel}
+              areaLabel=''
+              onChange={setInstanceGrant}
+            />
+          ),
+        }
+
+      const matched = instanceRowsByKey[instanceKey].filter((row) => {
+        if (filter.overridesOnly && row.grantLevel === undefined) return false
+        if (!filter.query) return true
+        return row.name.toLowerCase().includes(filter.query)
+      })
+
+      return {
+        matchCount: matched.length,
+        rows: (
+          <GranteeInstanceRows
+            rows={matched}
+            canEdit={editable}
+            isUser={false}
+            areaLevel={areaLevel}
+            areaLabel={PERMISSION_AREAS[area].label}
+            onChange={setInstanceGrant}
+          />
+        ),
+      }
+    },
+    [
+      defAccessLoading,
+      defRows,
+      editable,
+      setDefLevel,
+      draft.levels,
+      draft.baseLevel,
+      roleDefaults,
+      instanceRowsLoadingAll,
+      instanceLists,
+      instanceRowsByKey,
+      setInstanceGrant,
+    ]
+  )
 
   const handleDiscard = async () => {
     const confirmed = await confirm({
@@ -200,6 +322,7 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
               profileRole={profile.role}
               disabled={!editable}
               onChange={setAreaLevel}
+              renderChildren={renderChildren}
             />
           </SettingsSection>
         )}
