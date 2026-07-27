@@ -44,7 +44,6 @@ export { requirePermission } from './capabilities/require'
 export {
   ALL_KEYS,
   ENTITY_WRITE_KEYS,
-  effectiveDefault,
   ROLE_DEFAULTS,
   SEAT_CEILINGS,
   WORKER_SEAT_KEYS,

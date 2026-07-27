@@ -20,6 +20,8 @@ import { migration039GoogleAppClientPendingApproval } from './migrations/039-goo
 import { migration040BackfillDashboardInstanceAccess } from './migrations/040-backfill-dashboard-instance-access'
 import { migration049SeedPermissionProfiles } from './migrations/049-seed-permission-profiles'
 import { migration050AgentVersionPermissionPolicy } from './migrations/050-agent-version-permission-policy'
+import { migration051GoogleAppScopeAlignment } from './migrations/051-google-app-scope-alignment'
+import { migration052MemberBaselineBackfill } from './migrations/052-member-baseline-backfill'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -56,6 +58,8 @@ function buildRegistry(): DataMigrationDef[] {
     migration040BackfillDashboardInstanceAccess,
     migration049SeedPermissionProfiles,
     migration050AgentVersionPermissionPolicy,
+    migration051GoogleAppScopeAlignment,
+    migration052MemberBaselineBackfill,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

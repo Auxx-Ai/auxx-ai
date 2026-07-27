@@ -67,10 +67,15 @@ export const PERMISSION_RANK: Record<ResourcePermission, number> = {
  * is why `grant-service` keeps (never strips) `None` for profile grantees.
  *
  * `profileBaseLevel` is the profile's fallback rung for areas it does not set
- * (`Full` on owner/admin). Leaving it `null` on the member/field-tech profiles is
- * what keeps a **newly added area automatically admin-accessible on deploy**:
- * unset areas fall through to `ROLE_DEFAULTS[role]`, so nothing needs a backfill
- * into every org's every profile (§0.6/§0.7).
+ * (`Full` on owner/admin, `null` on member/field-tech). Plan 22 (member
+ * baseline strip) changes what leaving it `null` on member/field-tech means: a
+ * newly added area now ships **closed** for members by default — unset areas
+ * fall through to `ROLE_DEFAULTS.USER`, the all-`None` floor, not the old
+ * generous map — and needs an explicit `MEMBER_BASELINE_LEVELS`/
+ * `FIELD_TECH_BASELINE_LEVELS` entry (`seat-policy.ts`) plus a backfill to
+ * become member-visible. `ROLE_DEFAULTS.ADMIN`/`.OWNER` are still `ALL_FULL`,
+ * so the same `null` on the owner/admin profiles keeps behaving as before —
+ * the recovery guarantee (plan 21 §2.a.7) is unaffected.
  *
  * **OWNER is never clamped by a ceiling** (§0.10) — the short-circuit runs BEFORE
  * the ceiling. Last-owner protection guarantees ≥1 owner exists, so a mis-shaped
@@ -84,12 +89,14 @@ export const PERMISSION_RANK: Record<ResourcePermission, number> = {
  * `computeUserCapabilities` no longer skips their `PermissionGrant` rows.
  *
  * **Rollout window (doc 19 §9 step 2):** when the org has no `PermissionProfile`
- * rows yet — i.e. before data migration 041 runs — `profileBaseLevel` and
- * `profileLevels` arrive empty and `base` falls through to `ROLE_DEFAULTS[role]`.
- * An org that never customized its old baseline is unaffected; one that DID
- * customize composes from the code defaults until 041 copies its levels onto the
- * `member` profile. That is the documented, accepted window (no dual-read shim),
- * not a bug.
+ * rows yet — i.e. before `ensureSystemProfiles`/data migration 041 runs —
+ * `profileBaseLevel` and `profileLevels` arrive empty and `base` falls through
+ * to `ROLE_DEFAULTS[role]`. Post plan-22 that fallback is `None` for a member
+ * (the profiles substrate — including the seeded Member baseline grant row —
+ * must ship in the same deployment as the strip, per plan 22's "Deployment
+ * reality" note, precisely so this window fails closed rather than dropping a
+ * customized baseline). ADMIN/OWNER are unaffected either way (`ALL_FULL`).
+ * That is the documented, accepted window (no dual-read shim), not a bug.
  *
  * Areas expand to their key set (union) = the resolved PermissionKey[]. An
  * undefined role (non-member) fails closed to an empty set.
@@ -207,9 +214,11 @@ export function composeUserCapabilities(input: {
 
   const resolved = buildAreaLevels((area) => {
     // Base: the bound profile's explicit level, else its blanket `baseLevel`,
-    // else the shipped role default. Sparse by design — an area the profile never
-    // touches keeps its code default, so a NEW area ships enabled instead of
-    // silently reading as None.
+    // else the shipped role default. Plan 22 flips the USER fall-through: an
+    // area the profile never touches now falls through to `ROLE_DEFAULTS.USER`,
+    // the all-`None` floor — a NEW area ships CLOSED for members by default,
+    // not silently enabled. (ADMIN/OWNER still fall through to `ALL_FULL`, the
+    // recovery guarantee, plan 21 §2.a.7 — unaffected by this plan.)
     const base = profileLevels?.[area] ?? profileBaseLevel ?? roleDefault[area]
 
     // Camp-1, raise-only. Groups + direct user grant can only lift `base`.

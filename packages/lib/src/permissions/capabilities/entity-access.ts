@@ -157,14 +157,15 @@ export function effectiveRecordLevel(
  * `effectiveRecordLevel` satisfies `view`, OR the field-seat `recordsViewLinked`
  * carve-out (narrowed rows; a restricted def still needs a grant).
  *
- * The carve-out is **worker-seat only**. `recordsLinked` is not in
- * `USER_ADMIN_NONE_AREAS`, so `ROLE_DEFAULTS.USER` hands it out at `Full` and a
- * full seat holds `recordsViewLinked` too — without the seat check, that branch
- * would grant view of every unrestricted def to a member whose base records
- * level is `None`, silently defeating the Layer-2 lever (restricted defs stayed
- * correct; they require a grant either way). The row narrowing that is supposed
- * to make the verb safe (`resolveLinkedRecordIds`) is still unwired, so the
- * carve-out is only sound where the seat ceiling already confines it.
+ * The carve-out is **worker-seat only**. `recordsLinked` is not omitted from
+ * `MEMBER_BASELINE_LEVELS` (seat-policy.ts) — the Member profile's seeded
+ * grant hands it out at `Full` — so a full seat holds `recordsViewLinked` too;
+ * without the seat check, that branch would grant view of every unrestricted
+ * def to a member whose base records level is `None`, silently defeating the
+ * Layer-2 lever (restricted defs stayed correct; they require a grant either
+ * way). The row narrowing that is supposed to make the verb safe
+ * (`resolveLinkedRecordIds`) is still unwired, so the carve-out is only sound
+ * where the seat ceiling already confines it.
  */
 export function canViewRecord(caps: ResolvedRecordAccess, entityDefinitionId: string): boolean {
   const level = effectiveRecordLevel(caps, entityDefinitionId)

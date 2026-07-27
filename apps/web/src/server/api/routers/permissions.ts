@@ -95,6 +95,21 @@ const permissionsProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 })
 
 /**
+ * Profile READS are also served to `agentsManage` holders: the agent builder's
+ * Permissions tab renders the bound profile and its resolved policy read-only
+ * for anyone who can open the builder (doc 14 §0.9 — only *editing* is
+ * restricted, and binding still runs through `agent.update`'s own guards).
+ * Without this, a member granted `agents` but not `permissions` 403s on the tab.
+ */
+const profileReadProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
+  if (!capabilities.has(PermissionKey.agentsManage)) {
+    capabilities.assert(PermissionKey.permissionsManage)
+  }
+  return next({ ctx: { capabilities } })
+})
+
+/**
  * Thin write/read surface for Layer-2 capability grants and permission profiles.
  * Every procedure below (except `myCapabilities`, which is every member's own
  * snapshot) is gated on the `permissions` area via {@link permissionsProcedure};
@@ -126,8 +141,15 @@ export const permissionsRouter = createTRPCRouter({
   }),
 
   /**
-   * The USER role's per-area level defaults — the informational baseline the
-   * settings page shows beside each editable area (what admins deviate from).
+   * The USER role's per-area level defaults. Post plan-22 (member baseline
+   * strip) this is the all-`None` floor, not an informational baseline —
+   * `ROLE_DEFAULTS.USER` is what an area falls through to when NOTHING sets
+   * it, and nothing does by default anymore. The baseline the settings page
+   * should show beside each editable area (what admins deviate from) now
+   * lives in the Member profile's seeded `PermissionGrant` row instead,
+   * served through `listGrants`' `bridgeMemberBaselineGrants`. Kept as-is
+   * (still returns `ROLE_DEFAULTS.USER`) — this endpoint's consumer-facing
+   * behavior is out of this plan's scope.
    */
   roleDefaults: permissionsProcedure.query(() => ROLE_DEFAULTS.USER),
 
@@ -237,7 +259,7 @@ export const permissionsRouter = createTRPCRouter({
    * see the system profiles supplying its `ROLE_DEFAULTS`, it simply cannot edit
    * them.
    */
-  listProfiles: permissionsProcedure.query(async ({ ctx }) =>
+  listProfiles: profileReadProcedure.query(async ({ ctx }) =>
     listPermissionProfiles(ctx.session.organizationId)
   ),
 
@@ -251,11 +273,11 @@ export const permissionsRouter = createTRPCRouter({
    * cache entry, so an id from another org is indistinguishable from a missing
    * one and both raise `NotFoundError` (404) rather than leaking existence.
    *
-   * Reading an agent profile is capability-gated like the rest of this router;
-   * *writing* one stays OWNER/ADMIN-only inside `savePermissionProfile`
-   * (doc 14 §0.9).
+   * Reading a profile is served to `permissionsManage` OR `agentsManage`
+   * holders (see {@link profileReadProcedure}); *writing* one stays
+   * OWNER/ADMIN-only inside `savePermissionProfile` (doc 14 §0.9).
    */
-  getProfile: permissionsProcedure
+  getProfile: profileReadProcedure
     .input(z.object({ profileId: z.string() }))
     .query(async ({ ctx, input }) =>
       getPermissionProfile(ctx.session.organizationId, input.profileId)

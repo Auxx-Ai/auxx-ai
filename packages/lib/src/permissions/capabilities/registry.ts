@@ -602,8 +602,10 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     rungs: [{ level: Level.Full, keys: [PermissionKey.permissionsManage] }],
     // Doc 19 §0.25 reverses doc 09's deferral: this area is GRANTABLE. It governs
     // creating/editing permission profiles and assigning them to HUMANS. The USER
-    // default stays `None` (it is in `USER_ADMIN_NONE_AREAS`, the real source of
-    // truth for the baseline — dropping `adminOnly` must never flip a default on).
+    // default stays `None` (`ROLE_DEFAULTS.USER` is the all-`None` floor, plan
+    // 22 — omitted from `MEMBER_BASELINE_LEVELS` in seat-policy.ts, the real
+    // source of truth for the Member baseline — so dropping `adminOnly` must
+    // never flip a default on).
     // Agent-side profile editing and assignment stay OWNER/ADMIN-only and are
     // enforced separately in `profile-save.ts` / `profile-mutations.ts`, not by
     // this area (doc 14 §0.9). `permissionsRouter` is fronted by the
@@ -636,8 +638,9 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     rungs: [{ level: Level.Full, keys: [PermissionKey.channelsManage] }],
     // Created 2026-07-27 per plan 21 §6 Option A — mail infra previously had NO
     // capability home; these routers were `adminProcedure`. USER default is
-    // `None` (see `USER_ADMIN_NONE_AREAS` in seat-policy.ts) — the migrated
-    // sites were admin-only, so admins keep access via `ROLE_DEFAULTS.ADMIN`.
+    // `None` (`ROLE_DEFAULTS.USER` is the all-`None` floor, plan 22 — omitted
+    // from `MEMBER_BASELINE_LEVELS` in seat-policy.ts) — the migrated sites
+    // were admin-only, so admins keep access via `ROLE_DEFAULTS.ADMIN`.
   },
   [Area.aiConfig]: {
     area: Area.aiConfig,

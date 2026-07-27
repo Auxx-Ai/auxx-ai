@@ -52,7 +52,7 @@ export const ROLE_RANK_LABEL: Record<OrganizationRole, string> = {
  * the profile's own declared role (plan 21 §2.a.8) — honest about which code
  * default an unset area actually falls through to. */
 export const UNSET_HINT_BY_ROLE: Record<OrganizationRole, string> = {
-  USER: 'Not set · member default',
+  USER: 'Not set · no access',
   ADMIN: 'Not set · admin default',
   OWNER: 'Not set · owner default',
 }

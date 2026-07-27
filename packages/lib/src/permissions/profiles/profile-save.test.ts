@@ -110,6 +110,7 @@ vi.mock('../feature-permission-service', () => ({
 
 import { ForbiddenError } from '../../errors'
 import { Area, Level } from '../capabilities/registry'
+import { MEMBER_BASELINE_LEVELS } from '../capabilities/seat-policy'
 import { computeEffectiveStatesUncached } from './effective-state'
 import { assertNoEscalation } from './escalation-guard'
 import { savePermissionProfile } from './profile-save'
@@ -369,6 +370,32 @@ function makeStore(fixture: Fixture = {}): Store {
       levels: fixture.supportLevels,
     })
   }
+  // Plan 22 §2.2: `ROLE_DEFAULTS.USER` floors to None, so an actor with no
+  // explicit grant of their own no longer "holds" anything for free — the
+  // escalation guard tests below need the actor to genuinely hold access
+  // themselves for "the actor holds that level" to still mean what it says.
+  // `p_actor` ("ops") is a bare custom profile — those are NOT auto-seeded —
+  // but a §1.3 fallback to `member` can widen ANY baseline area (not just
+  // Records: `recordsLinked` is also in `MEMBER_BASELINE_LEVELS`), so this
+  // carries the same baseline as its own grant (a stand-in for an admin having
+  // cloned "ops" from Member, per plan 22 §6 open item 2).
+  grants.push({
+    id: 'pg_actor',
+    organizationId: ORG,
+    granteeType: 'profile',
+    granteeId: 'p_actor',
+    levels: MEMBER_BASELINE_LEVELS,
+  })
+  // The seeded Member baseline (plan 22 §2.2) — `u_holder`'s §1.3 fallback
+  // template when `p_support` is deleted needs its own real grant row now,
+  // or the fallback would compose all-None instead of the realistic baseline.
+  grants.push({
+    id: 'pg_member',
+    organizationId: ORG,
+    granteeType: 'profile',
+    granteeId: 'p_member',
+    levels: MEMBER_BASELINE_LEVELS,
+  })
 
   staleCache.profiles = structuredClone(profiles)
   staleCache.memberRoleMap = {
@@ -490,9 +517,12 @@ describe('computeEffectiveStatesUncached — the §6.1.4 cache bypass', () => {
       userIds: ['u_holder'],
       tx: fakeRunner(store) as never,
     })
-    // The clamp is gone, so the USER role default surfaces. Nothing about the
-    // holder's grants changed — only the row read from the transaction.
-    expect(after.get('u_holder')?.areas[Area.records]).toBe(Level.Full)
+    // The clamp is gone, but `p_support` never granted `records` of its own
+    // (no `supportLevels` here) — so the area falls through to
+    // ROLE_DEFAULTS.USER, plan 22's all-None floor, not the old generous
+    // default. Nothing about the holder's grants changed — only the row read
+    // from the transaction (the clamp's removal is genuinely a no-op here).
+    expect(after.get('u_holder')?.areas[Area.records]).toBe(Level.None)
   })
 
   it('drops a LEGACY stored `defs` ceiling instead of throwing (plan 20 §2.a.5)', async () => {
@@ -500,7 +530,11 @@ describe('computeEffectiveStatesUncached — the §6.1.4 cache bypass', () => {
     // only the keys it knows, so the def half is silently gone (the holder's
     // pre-existing group grant on HR composes as UNCAPPED) while the areas half
     // still clamps. This is the whole "no data migration needed" argument.
+    // `files: Full` is explicit on the profile's own grant row (plan 22: an
+    // unset area floors to None now, so the ceiling needs a REAL base above
+    // Read to demonstrate it clamping anything).
     const store = makeStore({
+      supportLevels: { [Area.files]: Level.Full },
       supportCeiling: {
         defs: { mode: 'only', slugs: [] },
         areas: { [Area.files]: Level.Read },
@@ -567,6 +601,10 @@ describe('savePermissionProfile — §6.1 escalation guard end to end', () => {
   })
 
   it('PERMITS a raise the actor holds themselves, and writes metadata in the same txn', async () => {
+    // The actor holds `records: Full` via `p_actor`'s own grant row (`makeStore`
+    // always seeds one, plan 22 §2.2 — `ROLE_DEFAULTS.USER` no longer gives this
+    // for free), so raising `p_support` from Read to Full is within the actor's
+    // own authority.
     const store = makeStore({ supportLevels: { [Area.records]: Level.Read } })
     await savePermissionProfile({
       organizationId: ORG,
@@ -586,9 +624,10 @@ describe('savePermissionProfile — §6.1 escalation guard end to end', () => {
     // the `member` profile. If the sweep skipped the null-bound branch the
     // affected set would be empty, the comparison vacuous, and this save would
     // succeed — which is exactly the hole §6.1.3 calls out.
-    // `members` is grantable but USER-default `None` (`USER_ADMIN_NONE_AREAS`),
-    // so the actor does not hold it either — the raise is a real delta for
-    // `u_null` and above the actor's own level.
+    // `members` is grantable but USER-default `None` (omitted from
+    // `MEMBER_BASELINE_LEVELS` in seat-policy.ts, plan 22), so the actor does
+    // not hold it either — the raise is a real delta for `u_null` and above
+    // the actor's own level.
     const store = makeStore({ nullBoundHolder: true })
     await expect(
       savePermissionProfile({
@@ -599,7 +638,10 @@ describe('savePermissionProfile — §6.1 escalation guard end to end', () => {
         db: fakeRunner(store) as never,
       })
     ).rejects.toBeInstanceOf(ForbiddenError)
-    expect(store.PermissionGrant).toHaveLength(0)
+    // pg_actor + pg_member — `makeStore`'s always-seeded baseline rows (plan 22
+    // §2.2), unaffected by the rejected save (no `supportLevels` here, so no
+    // `p_support` row exists to roll back either).
+    expect(store.PermissionGrant).toHaveLength(2)
   })
 
   it('lets an OWNER make a change no other actor could (§0.10 recovery)', async () => {
@@ -666,8 +708,10 @@ describe('the guard evaluates a DELETION (§6.1.3) — no delete mutation requir
 
   it('DENIES a deletion whose system-template fallback widens past the actor', async () => {
     // Both profiles clamp Records to None. Deleting the support profile drops its
-    // clamp, so the holder rises to the USER role default — above the actor, whose
-    // own clamp stays put.
+    // clamp, so the holder rises to the seeded Member baseline (plan 22 §2.2,
+    // `records: Full` — the §1.3 fallback, not the bare ROLE_DEFAULTS.USER floor)
+    // — above the actor, whose own ceiling clamps their `p_actor` grant back to
+    // None.
     const store = makeStore({
       supportCeiling: { areas: { [Area.records]: Level.None } },
       actorCeiling: { areas: { [Area.records]: Level.None } },
@@ -689,6 +733,8 @@ describe('the guard evaluates a DELETION (§6.1.3) — no delete mutation requir
   })
 
   it('PERMITS the same deletion for an actor who holds that area level', async () => {
+    // No `actorCeiling` this time, so the actor's OWN `p_actor` grant
+    // (`records: Full`, `makeStore`'s always-seeded row) is unclamped.
     const store = makeStore({ supportCeiling: { areas: { [Area.records]: Level.None } } })
     const { before, after } = await simulateDelete(store, ['u_holder'])
 

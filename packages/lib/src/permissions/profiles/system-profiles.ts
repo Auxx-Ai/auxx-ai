@@ -4,12 +4,14 @@ import {
   type AgentKind,
   type Database,
   database,
+  type PermissionGrantInsert,
   type PermissionProfileInsert,
   schema,
   type Transaction,
 } from '@auxx/database'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
-import { Level } from '../capabilities/registry'
+import { type Area, Level } from '../capabilities/registry'
+import { FIELD_TECH_BASELINE_LEVELS, MEMBER_BASELINE_LEVELS } from '../capabilities/seat-policy'
 import type {
   AgentAccessLevel,
   AgentPermissionPolicy,
@@ -34,6 +36,14 @@ interface SystemProfileSeed {
    */
   role: OrganizationRole
   agentPolicy: AgentPermissionPolicy | null
+  /**
+   * The profile's seeded baseline, written as a `PermissionGrant` row by
+   * `ensureSystemProfiles` (plan 22 §2.2/§2.3) — `null` for the profiles that
+   * don't need one (owner/admin lean on `baseLevel: Full`; the two agent
+   * profiles use `agentPolicy` instead). With `ROLE_DEFAULTS.USER` now the
+   * all-`None` floor, `member`/`field_tech` are the only seeds that carry one.
+   */
+  levels: Partial<Record<Area, Level>> | null
 }
 
 /** A total agent policy at one uniform level — the two agent seeds' shape. */
@@ -47,15 +57,26 @@ function uniformAgentPolicy(level: AgentAccessLevel): AgentPermissionPolicy {
 }
 
 /**
- * The six system profiles seeded into every org (§5.1). Deliberately **sparse
- * over `ROLE_DEFAULTS`** (§0.6): `member` and `field_tech` store nothing at all
- * (null `baseLevel`, no `PermissionGrant` row), so a newly added capability area
- * inherits its shipped code default on deploy instead of needing a backfill into
- * every org's every profile.
+ * The six system profiles seeded into every org (§5.1). Plan 22 reverses doc
+ * 19 §0.6's original *sparse-over-`ROLE_DEFAULTS`* rationale for the USER
+ * rank: unset now means `None` (`ROLE_DEFAULTS.USER` is the all-`None` floor),
+ * so a profile that stores nothing composes to nothing. `member` and
+ * `field_tech` therefore carry their out-of-the-box access as an explicit
+ * `levels` map — {@link MEMBER_BASELINE_LEVELS} / {@link
+ * FIELD_TECH_BASELINE_LEVELS} — which `ensureSystemProfiles` writes as a
+ * `PermissionGrant` row, but ONLY at the moment the profile row is first
+ * created (never re-applied to a pre-existing row), so an admin who
+ * deliberately cleared the Member baseline keeps it cleared through later
+ * org top-ups. The map still lives in code, so the shipped default stays
+ * PR-reviewable (the surviving half of doc 19 §0.6's argument) — it is
+ * written as DATA instead of composed from `ROLE_DEFAULTS` at read time.
  *
  * `owner`/`admin` express "everything" as `baseLevel: Full` rather than an
- * all-Full grant row — which also keeps seeding clear of
- * `assertGrantableLevels`' admin-only rejection.
+ * all-Full grant row (`levels: null`) — which also keeps seeding clear of
+ * `assertGrantableLevels`' admin-only rejection; `ROLE_DEFAULTS.ADMIN`/`.OWNER`
+ * staying `ALL_FULL` means there is nothing to seed for them anyway. The two
+ * agent profiles likewise seed `levels: null` — their authority lives in
+ * `agentPolicy`, never the additive grant reducers.
  *
  * `field_tech`'s cap is `SEAT_CEILINGS`, not a `ceiling` on this row (§0.20) —
  * the seat ceiling is a billing invariant and must never become profile-driven.
@@ -73,6 +94,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     role: 'OWNER',
     baseLevel: Level.Full,
     agentPolicy: null,
+    levels: null,
   },
   {
     slug: 'admin',
@@ -84,6 +106,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     role: 'ADMIN',
     baseLevel: Level.Full,
     agentPolicy: null,
+    levels: null,
   },
   {
     slug: 'member',
@@ -95,6 +118,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     role: 'USER',
     baseLevel: null,
     agentPolicy: null,
+    levels: MEMBER_BASELINE_LEVELS,
   },
   {
     slug: 'field_tech',
@@ -106,6 +130,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     role: 'USER',
     baseLevel: null,
     agentPolicy: null,
+    levels: FIELD_TECH_BASELINE_LEVELS,
   },
   {
     slug: 'agent',
@@ -117,6 +142,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     role: 'USER',
     baseLevel: null,
     agentPolicy: uniformAgentPolicy('full'),
+    levels: null,
   },
   {
     slug: 'chat_agent',
@@ -128,6 +154,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     role: 'USER',
     baseLevel: null,
     agentPolicy: uniformAgentPolicy('none'),
+    levels: null,
   },
 ]
 
@@ -143,14 +170,24 @@ export function systemProfileSeed(slug: SystemProfileSlug): SystemProfileSeed | 
  * safe to call from every org-creation and org-top-up path (§5.2).
  *
  * Conflicts on the `(organizationId, slug)` unique key are ignored, so an
- * existing org's edited system rows are never clobbered. Writes NO
- * `PermissionGrant` rows (see {@link SYSTEM_PROFILE_SEEDS}) and depends on
- * nothing but the `Organization` row — in particular NOT on the org's system
- * user — so it can run inside the org-creation transaction.
+ * existing org's edited system rows are never clobbered. For every profile
+ * row that was actually a NEW insert (not a conflict-skipped pre-existing one)
+ * and whose seed carries a non-null `levels` (plan 22 §2.2/§2.3 —
+ * `member`/`field_tech`), also writes that map as the profile's
+ * `PermissionGrant` row: a direct insert, on purpose — the seeding path does
+ * not run `assertGrantableLevels` or the escalation guard, both of which exist
+ * to police an ADMIN actor authoring a grant, not the system boot-strapping
+ * its own baseline. Restricting this to freshly-inserted rows (via `.returning()`
+ * on the conflict-ignoring insert, which Postgres populates ONLY with rows it
+ * actually inserted) is what keeps a re-run of this function on an existing
+ * org from resurrecting a Member baseline an admin deliberately cleared.
  *
- * Deliberately NOT plan-gated: a Free org gets `ROLE_DEFAULTS` through empty
- * system profiles it cannot edit, which is today's member-baseline behavior
- * (§0.26).
+ * Depends on nothing but the `Organization` row — in particular NOT on the
+ * org's system user — so it can run inside the org-creation transaction.
+ *
+ * Deliberately NOT plan-gated: a Free org gets the Member/Field-Tech baseline
+ * through system profiles it cannot edit, which is today's member-baseline
+ * behavior (§0.26).
  *
  * @param organizationId - Org to seed.
  * @param db - Optional connection OR transaction. Pass the tx when calling from
@@ -179,11 +216,36 @@ export async function ensureSystemProfiles(
     isSystem: true,
   }))
 
-  await db
+  const insertedProfiles = await db
     .insert(schema.PermissionProfile)
     .values(values)
     .onConflictDoNothing({
       target: [schema.PermissionProfile.organizationId, schema.PermissionProfile.slug],
+    })
+    .returning({ id: schema.PermissionProfile.id, slug: schema.PermissionProfile.slug })
+
+  // Postgres only returns the rows an `onConflictDoNothing` insert actually
+  // inserted — a pre-existing profile is silently skipped and absent here — so
+  // this is exactly "the system profiles that did not already exist for this
+  // org", never a pre-existing (possibly admin-edited or baseline-cleared) row.
+  const grantValues: PermissionGrantInsert[] = insertedProfiles.flatMap((profile) => {
+    const levels = SYSTEM_SEED_BY_SLUG.get(profile.slug as SystemProfileSlug)?.levels
+    if (!levels) return []
+    return [{ organizationId, granteeType: 'profile' as const, granteeId: profile.id, levels }]
+  })
+
+  if (grantValues.length === 0) return
+
+  // `id` is intentionally omitted — same `$defaultFn(createId)` as above.
+  await db
+    .insert(schema.PermissionGrant)
+    .values(grantValues)
+    .onConflictDoNothing({
+      target: [
+        schema.PermissionGrant.organizationId,
+        schema.PermissionGrant.granteeType,
+        schema.PermissionGrant.granteeId,
+      ],
     })
 }
 

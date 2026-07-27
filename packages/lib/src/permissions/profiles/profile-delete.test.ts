@@ -134,6 +134,7 @@ vi.mock('../feature-permission-service', () => ({
 
 import { ForbiddenError, NotFoundError } from '../../errors'
 import { Area, Level } from '../capabilities/registry'
+import { FIELD_TECH_BASELINE_LEVELS, MEMBER_BASELINE_LEVELS } from '../capabilities/seat-policy'
 import { deletePermissionProfile, previewPermissionProfileDeletion } from './profile-delete'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -474,13 +475,49 @@ function makeStore(fixture: Fixture = {}): Store {
       { id: 'u_actor', userType: 'USER' },
     ],
     PermissionProfile: profiles,
+    // Plan 22 §2.2/§2.3: `member`/`field_tech` are seeded with an explicit
+    // baseline grant row now (ROLE_DEFAULTS.USER floors to None, so a fallback
+    // to either template with no grant row would compose all-None — not the
+    // realistic post-strip shape). `p_actor` ("ops") is a bare CUSTOM profile —
+    // those are NOT auto-seeded — but the actor needs to genuinely HOLD
+    // whatever the Member baseline grants for the "actor holds that level
+    // themselves" tests below to mean what they say post-strip (a deletion
+    // falling back to `member` can widen ANY baseline area, not just Records),
+    // so it carries the same baseline as its own grant (a stand-in for an
+    // admin having cloned "ops" from Member, per plan 22 §6 open item 2).
     PermissionGrant: [
       {
         id: 'pg_support',
         organizationId: ORG,
         granteeType: 'profile',
         granteeId: 'p_support',
-        levels: { [Area.records]: Level.Read },
+        // `dashboards: Read` — post plan-22 an area gate closed (None) blocks
+        // instance-level access entirely (`effectiveInstanceLevel`'s `areaLevel
+        // === Level.None` short-circuit), so the profile needs SOME explicit
+        // dashboards access for its own `dash_1` instance row (below) to be
+        // reachable at all before the profile is deleted.
+        levels: { [Area.records]: Level.Read, [Area.dashboards]: Level.Read },
+      },
+      {
+        id: 'pg_actor',
+        organizationId: ORG,
+        granteeType: 'profile',
+        granteeId: 'p_actor',
+        levels: MEMBER_BASELINE_LEVELS,
+      },
+      {
+        id: 'pg_member',
+        organizationId: ORG,
+        granteeType: 'profile',
+        granteeId: 'p_member',
+        levels: MEMBER_BASELINE_LEVELS,
+      },
+      {
+        id: 'pg_field_tech',
+        organizationId: ORG,
+        granteeType: 'profile',
+        granteeId: 'p_field_tech',
+        levels: FIELD_TECH_BASELINE_LEVELS,
       },
     ],
     EntityGroupMember: [
@@ -644,7 +681,9 @@ describe('deletePermissionProfile — invalidation happens AFTER commit', () => 
     expect(
       store.OrganizationMember.find((row) => row.userId === 'u_holder')?.permissionProfileId
     ).toBe('p_support')
-    expect(store.PermissionGrant).toHaveLength(1)
+    // pg_support, pg_actor, pg_member, pg_field_tech (plan 22's seeded baseline
+    // rows) — none touched by a rolled-back delete.
+    expect(store.PermissionGrant).toHaveLength(4)
   })
 })
 

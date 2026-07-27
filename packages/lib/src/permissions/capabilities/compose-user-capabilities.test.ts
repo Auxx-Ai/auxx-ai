@@ -1,31 +1,72 @@
 // packages/lib/src/permissions/capabilities/compose-user-capabilities.test.ts
 
+import type { SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
 import { composeUserCapabilities } from './compose-user-capabilities'
-import { AREA_ORDER, Area, Level, PERMISSION_AREAS, PermissionKey } from './registry'
-import { ALL_KEYS, effectiveDefault, WORKER_SEAT_KEYS } from './seat-policy'
+import {
+  AREA_ORDER,
+  Area,
+  areaLevelFromKeys,
+  buildAreaLevels,
+  expandLevelsToKeys,
+  Level,
+  PERMISSION_AREAS,
+  PermissionKey,
+} from './registry'
+import {
+  ALL_KEYS,
+  FIELD_TECH_BASELINE_LEVELS,
+  MEMBER_BASELINE_LEVELS,
+  ROLE_DEFAULTS,
+  SEAT_CEILINGS,
+  WORKER_SEAT_KEYS,
+} from './seat-policy'
 
 const sorted = (keys: PermissionKey[]) => [...keys].sort()
+
+/**
+ * Rebuilds `seat-policy.ts`'s deleted `effectiveDefault` helper for the two
+ * roles plan 22 leaves untouched (`ROLE_DEFAULTS.ADMIN`/`.OWNER` are still
+ * `ALL_FULL`): `min(ROLE_DEFAULTS[role][area], SEAT_CEILINGS[seatType][area])`,
+ * expanded to keys. There is deliberately no `'USER'` case — post plan 22
+ * `ROLE_DEFAULTS.USER` is the all-`None` floor, not "the generous default", so
+ * a USER comparison belongs against {@link MEMBER_BASELINE_LEVELS} (an actual
+ * composition input), never against this bare role map.
+ */
+function legacyEffectiveDefault(role: 'ADMIN' | 'OWNER', seatType: SeatType): PermissionKey[] {
+  const defaults = ROLE_DEFAULTS[role]
+  const ceiling = SEAT_CEILINGS[seatType]
+  const clamped = buildAreaLevels((area) => Math.min(defaults[area], ceiling[area]) as Level)
+  return expandLevelsToKeys(clamped)
+}
 
 describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
   it('gives OWNER and ADMIN every key (full seat)', () => {
     for (const role of ['OWNER', 'ADMIN'] as const) {
       const caps = composeUserCapabilities({ role, seatType: 'full', typeAccessRows: [] })
-      expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault('OWNER', 'full')))
+      expect(sorted(caps.keys)).toEqual(sorted(legacyEffectiveDefault('OWNER', 'full')))
       // Sanity: admins hold the adminOnly keys.
       expect(caps.keys).toContain(PermissionKey.settingsManage)
       expect(caps.keys).toContain(PermissionKey.membersManage)
     }
   })
 
-  it('gives USER the role default (adminOnly areas absent)', () => {
-    const caps = composeUserCapabilities({ role: 'USER', seatType: 'full', typeAccessRows: [] })
-    expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault('USER', 'full')))
+  it('gives a Member-profile USER the seeded baseline (adminOnly areas absent)', () => {
+    // Plan 22: a bare compose (no `profileLevels`) now floors to None —
+    // `ROLE_DEFAULTS.USER` is the floor, not "the default". What USED to be the
+    // role default is now the seeded Member profile's explicit baseline, so this
+    // must compose WITH `MEMBER_BASELINE_LEVELS` to reproduce the pre-strip set.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: MEMBER_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
     expect(caps.keys).not.toContain(PermissionKey.settingsManage)
     expect(caps.keys).not.toContain(PermissionKey.billingManage)
     expect(caps.keys).not.toContain(PermissionKey.membersManage)
     expect(caps.keys).not.toContain(PermissionKey.permissionsManage)
-    // A full USER holds full records (view/edit/delete/import).
+    // A full-seat Member holds full records (view/edit/delete/import).
     expect(caps.keys).toContain(PermissionKey.recordsDelete)
     expect(caps.keys).toContain(PermissionKey.recordsImport)
   })
@@ -40,11 +81,19 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
   })
 
   it("a worker seat's effective default is exactly WORKER_SEAT_KEYS", () => {
-    const caps = composeUserCapabilities({ role: 'USER', seatType: 'worker', typeAccessRows: [] })
+    // Plan 22: a bare compose now floors to None on a worker seat too, so this
+    // must compose WITH the seeded Field Tech baseline (§2.3) to reproduce the
+    // pre-strip worker default.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'worker',
+      profileLevels: FIELD_TECH_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
     expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
   })
 
-  it('the profile base falls through PER AREA: sets records=Read, leaves workflows at USER default', () => {
+  it('the profile base falls through PER AREA: sets records=Read, workflows unset now composes None (plan 22 §2.5)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
@@ -56,8 +105,10 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).toContain(PermissionKey.recordsView)
     expect(caps.keys).not.toContain(PermissionKey.recordsEdit)
     expect(caps.keys).not.toContain(PermissionKey.recordsDelete)
-    // workflows is UNSET in the policy → falls through to the USER default, NOT None.
-    expect(caps.keys).toContain(PermissionKey.workflowsManage)
+    // workflows is UNSET in the policy → post plan-22 that falls through to
+    // ROLE_DEFAULTS.USER, the all-None floor — the intended behavior change
+    // (doc 19 §1.1's Tom bug, one rank down, closed for real by plan 22).
+    expect(caps.keys).not.toContain(PermissionKey.workflowsManage)
   })
 
   it('the profile base lowers a set area (records → Read)', () => {
@@ -89,16 +140,18 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      // Profile baseline: records at Read.
-      profileLevels: { [Area.records]: Level.Read },
-      // Group raises records to Full; a None on workflows can't lower the default.
+      // Profile baseline: the seeded Member baseline (plan 22 §2.2, workflows:
+      // Full), with records explicitly lowered to Read.
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.records]: Level.Read },
+      // Group raises records to Full; a None on workflows can't lower the
+      // profile's Full (raise-only, Camp-1).
       groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
       typeAccessRows: [],
     })
     expect(caps.keys).toContain(PermissionKey.recordsView)
     expect(caps.keys).toContain(PermissionKey.recordsEdit)
     expect(caps.keys).toContain(PermissionKey.recordsDelete)
-    // workflows stays at the USER default despite the group's None (raise-only).
+    // workflows stays at the profile's Full despite the group's None (raise-only).
     expect(caps.keys).toContain(PermissionKey.workflowsManage)
   })
 
@@ -117,7 +170,10 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'worker',
-      // A group + user grant Full on several areas — the worker ceiling zeroes all but three.
+      // The seeded Field Tech baseline (plan 22 §2.3) supplies the three surfaces.
+      profileLevels: FIELD_TECH_BASELINE_LEVELS,
+      // A group + user grant Full on several OTHER areas — the worker ceiling
+      // zeroes all but the three field-seat surfaces regardless.
       groupLevels: [
         {
           [Area.records]: Level.Full,
@@ -134,7 +190,14 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
   })
 
   it('a direct user grant raises the profile-lowered baseline (records → Full)', () => {
-    const base = composeUserCapabilities({ role: 'USER', seatType: 'full', typeAccessRows: [] })
+    // `base`: an ordinary Member-profile holder (plan 22 §2.2) — the generous
+    // default is now data on the profile, not a bare role fall-through.
+    const base = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: MEMBER_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
@@ -240,15 +303,16 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
 })
 
 describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () => {
-  it('null binding: USER / worker seat / ADMIN compose byte-identically to the pre-profile model', () => {
+  it('null binding: ADMIN composes byte-identically to the pre-profile model', () => {
     // A null `permissionProfileId` resolves to a SPARSE system profile
     // (`baseLevel: null`, no grant row), so `base` falls through to
-    // ROLE_DEFAULTS[role] — exactly what the deleted `role:org_member` tier did
-    // when the org had never customized. This is the migration's no-op proof.
+    // ROLE_DEFAULTS[role]. For ADMIN that fall-through is still `ALL_FULL`
+    // (plan 22 leaves it untouched) — exactly what the deleted `role:org_member`
+    // tier did when the org had never customized. This is the migration's no-op
+    // proof, for the role plan 22 doesn't change.
     const cases = [
-      { role: 'USER' as const, seatType: 'full' as const },
-      { role: 'USER' as const, seatType: 'worker' as const },
       { role: 'ADMIN' as const, seatType: 'full' as const },
+      { role: 'ADMIN' as const, seatType: 'worker' as const },
     ]
     for (const { role, seatType } of cases) {
       const nullBound = composeUserCapabilities({
@@ -260,7 +324,29 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
         profileCeiling: null,
         typeAccessRows: [],
       })
-      expect(sorted(nullBound.keys)).toEqual(sorted(effectiveDefault(role, seatType)))
+      expect(sorted(nullBound.keys)).toEqual(sorted(legacyEffectiveDefault(role, seatType)))
+    }
+  })
+
+  it('null binding: a USER with no seeded Member row fails CLOSED (plan 22 §2.5/§5 missing-seed posture)', () => {
+    // Pre plan 22 this exact shape (no levels, no baseLevel) fell through to
+    // ROLE_DEFAULTS.USER's generous map — the migration's no-op proof used to
+    // cover USER too. Plan 22 makes that fall-through the all-None floor
+    // instead: the profiles substrate (including the seeded Member grant row)
+    // must ship in the same deployment as the strip (plan 22's "Deployment
+    // reality" note) precisely so this shape never actually occurs against a
+    // live org. Here it is the deliberately-accepted "no seed yet" case — it
+    // must fail closed, not throw and not silently stay generous.
+    for (const seatType of ['full', 'worker'] as const) {
+      const nullBound = composeUserCapabilities({
+        role: 'USER',
+        seatType,
+        profileLevels: undefined,
+        profileBaseLevel: null,
+        profileCeiling: null,
+        typeAccessRows: [],
+      })
+      expect(nullBound.keys).toEqual([])
     }
   })
 
@@ -294,8 +380,14 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       seatType: 'worker',
       profileBaseLevel: null,
       profileCeiling: null,
-      // Even an all-Full profile base cannot escape the billing invariant.
-      profileLevels: { [Area.records]: Level.Full, [Area.settings]: Level.Full },
+      // The seeded Field Tech baseline (plan 22 §2.3) supplies the three worker
+      // surfaces; records/settings are ALSO forced Full to prove even an
+      // all-Full profile base cannot escape the billing invariant.
+      profileLevels: {
+        ...FIELD_TECH_BASELINE_LEVELS,
+        [Area.records]: Level.Full,
+        [Area.settings]: Level.Full,
+      },
       typeAccessRows: [],
     })
     expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
@@ -342,14 +434,17 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
     // `None` is LOAD-BEARING on a profile grantee — it is the composition BASE, so
     // `grant-service.granteeKeepsNoneLevels` must never strip it. Stripping would
     // make this area fall through to the role default: a silent fail-OPEN.
+    // Modeled on the seeded Member baseline with ONE area explicitly zeroed (an
+    // admin editing the profile down) — post plan-22 a bare UNSET area is None
+    // too, so this pins the EXPLICIT-None case specifically, distinct from that.
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      profileLevels: { [Area.records]: Level.None },
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.records]: Level.None },
       typeAccessRows: [],
     })
     for (const key of RECORDS_KEYS) expect(caps.keys).not.toContain(key)
-    // Unset areas are untouched.
+    // The Member baseline's other areas are untouched.
     expect(caps.keys).toContain(PermissionKey.workflowsManage)
   })
 
@@ -442,10 +537,13 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
     expect(sorted(admin.keys)).toEqual(sorted(ALL_KEYS))
   })
 
-  it('a foreign/unresolvable binding degrades to the role default, never to no-access', () => {
+  it('a foreign/unresolvable binding degrades to the None floor, not silently generous (plan 22 §2.5)', () => {
     // What `resolveBaseProfile` yields when the bound id is not in the org's
-    // projection or the org has no seeded rows at all (the §5.2 runtime fallback):
-    // no levels, no baseLevel, no ceiling. Must NOT fail closed.
+    // projection or the org has no seeded rows at all (the §5.2 runtime
+    // fallback): no levels, no baseLevel, no ceiling. Pre plan 22 this degraded
+    // to the generous ROLE_DEFAULTS.USER map ("never to no-access"); post
+    // plan 22 the fall-through IS the all-None floor — the missing-seed posture
+    // is deliberately accepted (plan 22 §5), not a silent widen.
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
@@ -454,10 +552,10 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       profileCeiling: null,
       typeAccessRows: [],
     })
-    expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault('USER', 'full')))
+    expect(caps.keys).toEqual([])
   })
 
-  it('a `null` ceiling composes to the EXACT pre-plan-20 blob (the whole safety claim)', () => {
+  it('a `null` ceiling composes to the EXACT pre-plan-20 blob for ADMIN/OWNER (the whole safety claim)', () => {
     // Plan 20 §6 null-binding parity. Every real member has `ceiling: null` (all
     // six seeded profiles ship it, and nothing ever wrote one), so deleting the
     // definition ceiling cannot change anybody's access — this pins the FULL
@@ -465,11 +563,14 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
     //
     // These literals are the pre-change output with `ceilingDefs: null` dropped:
     // the only field the removal touched. Anything else moving fails here.
+    //
+    // OWNER/ADMIN only: plan 22 leaves `ROLE_DEFAULTS.ADMIN`/`.OWNER` untouched
+    // (`ALL_FULL`), so the pre-plan-20 parity claim still holds byte-for-byte.
+    // The USER half of this claim is retired by plan 22 — see the sibling test
+    // below.
     const cases = [
       { role: 'OWNER' as const, seatType: 'full' as const },
       { role: 'ADMIN' as const, seatType: 'full' as const },
-      { role: 'USER' as const, seatType: 'full' as const },
-      { role: 'USER' as const, seatType: 'worker' as const },
     ]
     for (const { role, seatType } of cases) {
       const caps = composeUserCapabilities({
@@ -495,7 +596,36 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
         defAccess: { def_a: 'admin' },
         instanceAccess: { inst_a: 'none', inst_b: 'edit' },
       })
-      expect(sorted(caps.keys)).toEqual(sorted(effectiveDefault(role, seatType)))
+      expect(sorted(caps.keys)).toEqual(sorted(legacyEffectiveDefault(role, seatType)))
+    }
+  })
+
+  it('plan 22: the same missing-seed shape composes a USER to keys:[] but keeps defAccess/instanceAccess (§5 missing-seed posture)', () => {
+    // USER is the one role plan 22 changes: the pre-plan-20 blob comparison
+    // above no longer holds for it, ON PURPOSE — an org with no seeded Member
+    // row now fails CLOSED for members (empty `keys`), not generously open.
+    // `defAccess`/`instanceAccess` are computed independently of `role` (see
+    // `compose-user-capabilities.ts`), so they are untouched either way.
+    for (const seatType of ['full', 'worker'] as const) {
+      const caps = composeUserCapabilities({
+        role: 'USER',
+        seatType,
+        profileLevels: undefined,
+        profileBaseLevel: null,
+        profileCeiling: null,
+        typeAccessRows: [
+          { entityDefinitionId: 'def_a', permission: 'view' },
+          { entityDefinitionId: 'def_a', permission: 'admin' },
+          { entityDefinitionId: 'def_locked', permission: 'none' },
+        ],
+        instanceAccessRows: [
+          { entityInstanceId: 'inst_a', permission: 'none' },
+          { entityInstanceId: 'inst_b', permission: 'edit' },
+        ],
+      })
+      expect(caps.keys).toEqual([])
+      expect(caps.defAccess).toEqual({ def_a: 'admin' })
+      expect(caps.instanceAccess).toEqual({ inst_a: 'none', inst_b: 'edit' })
     }
   })
 
@@ -577,7 +707,14 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
         { entityInstanceId: 'inst_b', permission: 'edit' as const },
       ],
     }
-    const human = composeUserCapabilities({ role: 'USER', seatType: 'full', ...rows })
+    const human = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      // An ordinary Member-profile holder (plan 22 §2.2) — needs SOME keys so
+      // the contrast with the empty AGENT branch above is meaningful.
+      profileLevels: MEMBER_BASELINE_LEVELS,
+      ...rows,
+    })
     expect(human.defAccess).toEqual({ def_a: 'admin' })
     expect(human.instanceAccess).toEqual({ inst_a: 'none', inst_b: 'edit' })
     expect(human.keys.length).toBeGreaterThan(0)
@@ -591,5 +728,142 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
       typeAccessRows: [],
     })
     expect(caps.keys).toEqual([])
+  })
+})
+
+/**
+ * Plan 22 §5 verification — the member baseline strip's own acceptance
+ * criteria, pinned directly rather than folded into the repaired tests above
+ * (which pin individual composition mechanics, not the plan's specific claims).
+ */
+describe('plan 22 (member baseline strip) — §5 verification', () => {
+  it('fresh-org parity: a full-seat Member composes byte-identically to the OLD generous default', () => {
+    // The central claim: the baseline MOVED (code → seeded grant row), nothing
+    // about what a fresh org's member actually holds changed. Asserted against
+    // LITERAL values, not against `MEMBER_BASELINE_LEVELS` itself — comparing
+    // the seed to itself would prove nothing.
+    const expected: Record<Area, Level> = {
+      [Area.records]: Level.Full,
+      [Area.recordsLinked]: Level.Full,
+      [Area.workflows]: Level.Full,
+      [Area.agents]: Level.Full,
+      [Area.comments]: Level.Full,
+      [Area.dispatchBoard]: Level.Full,
+      [Area.dispatchMySchedule]: Level.Full,
+      [Area.dispatchVisitReports]: Level.Full,
+      [Area.settings]: Level.None,
+      [Area.billing]: Level.None,
+      [Area.members]: Level.None,
+      [Area.permissions]: Level.None,
+      [Area.integrations]: Level.None,
+      [Area.channels]: Level.None,
+      [Area.aiConfig]: Level.None,
+      [Area.automationRules]: Level.None,
+      [Area.auditLog]: Level.None,
+      [Area.files]: Level.Full,
+      [Area.connectors]: Level.None,
+      [Area.datasets]: Level.Read,
+      [Area.knowledgeBase]: Level.Edit,
+      [Area.dashboards]: Level.Full,
+    }
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: MEMBER_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
+    const keys = new Set(caps.keys)
+    for (const area of AREA_ORDER) {
+      expect(areaLevelFromKeys(keys, area)).toBe(expected[area])
+    }
+  })
+
+  it('field-seat parity: a worker-seat Field Tech composes exactly the three surfaces Full, the rest None', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'worker',
+      profileLevels: FIELD_TECH_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
+    const keys = new Set(caps.keys)
+    const workerAreas = new Set([
+      Area.recordsLinked,
+      Area.dispatchMySchedule,
+      Area.dispatchVisitReports,
+    ])
+    for (const area of AREA_ORDER) {
+      expect(areaLevelFromKeys(keys, area)).toBe(workerAreas.has(area) ? Level.Full : Level.None)
+    }
+  })
+
+  it('sparse custom profile: only the set areas hold, every unset area composes None', () => {
+    // The intended behavior change (doc 19 §1.1's Tom bug, one rank down):
+    // a custom profile that sets two areas no longer silently inherits Full
+    // everywhere else through the old generous fall-through.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: { [Area.records]: Level.Edit, [Area.knowledgeBase]: Level.Full },
+      typeAccessRows: [],
+    })
+    const keys = new Set(caps.keys)
+    for (const area of AREA_ORDER) {
+      if (area === Area.records) expect(areaLevelFromKeys(keys, area)).toBe(Level.Edit)
+      else if (area === Area.knowledgeBase) expect(areaLevelFromKeys(keys, area)).toBe(Level.Full)
+      else expect(areaLevelFromKeys(keys, area)).toBe(Level.None)
+    }
+  })
+
+  it('admin/owner untouched: ROLE_DEFAULTS.ADMIN/.OWNER stay all-Full', () => {
+    // The recovery guarantee (plan 21 §2.a.7) is explicitly out of scope for
+    // plan 22 — only `ROLE_DEFAULTS.USER` was stripped. The unseeded-org admin
+    // parity test in `admin-profile-parity.test.ts` pins this end to end; this
+    // pins the map itself.
+    for (const area of AREA_ORDER) {
+      expect(ROLE_DEFAULTS.ADMIN[area]).toBe(Level.Full)
+      expect(ROLE_DEFAULTS.OWNER[area]).toBe(Level.Full)
+    }
+  })
+
+  it('missing-seed posture: no Member profile row composes a USER to all-None without throwing; ADMIN still composes Full', () => {
+    expect(() => {
+      const userCaps = composeUserCapabilities({
+        role: 'USER',
+        seatType: 'full',
+        profileLevels: undefined,
+        profileBaseLevel: null,
+        profileCeiling: null,
+        typeAccessRows: [],
+      })
+      expect(userCaps.keys).toEqual([])
+
+      const adminCaps = composeUserCapabilities({
+        role: 'ADMIN',
+        seatType: 'full',
+        profileLevels: undefined,
+        profileBaseLevel: null,
+        profileCeiling: null,
+        typeAccessRows: [],
+      })
+      expect(sorted(adminCaps.keys)).toEqual(sorted(ALL_KEYS))
+    }).not.toThrow()
+  })
+
+  it('new-area/channels pin: absent from MEMBER_BASELINE_LEVELS — member composes None, admin composes Full', () => {
+    // Pins plan 21 §6's "member default stays None" and plan 22 §2.5's
+    // fail-closed-by-default policy for a NEW area in one assertion: `channels`
+    // is the first area both plans actually name.
+    expect(MEMBER_BASELINE_LEVELS[Area.channels]).toBeUndefined()
+
+    const member = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: MEMBER_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
+    expect(areaLevelFromKeys(new Set(member.keys), Area.channels)).toBe(Level.None)
+
+    const admin = composeUserCapabilities({ role: 'ADMIN', seatType: 'full', typeAccessRows: [] })
+    expect(areaLevelFromKeys(new Set(admin.keys), Area.channels)).toBe(Level.Full)
   })
 })
