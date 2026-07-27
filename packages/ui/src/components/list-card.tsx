@@ -145,7 +145,9 @@ export interface ListCardProps {
 /**
  * Renders a `{ label?, icon?, variant?, description? }[]` chip row — handy for
  * `badges`/`headerEnd`. Pass `options.gap` (a Tailwind gap class) to override the
- * default tight `gap-0.5`, e.g. when mixing icon-only and label chips.
+ * default `gap-1`, e.g. when mixing icon-only and label chips. Anything tighter
+ * reads as zero: every `Badge` paints a 1px non-inset `ring`, so each neighbour
+ * eats 1px of the gap and the two ring strokes end up flush.
  */
 export function renderBadgeChips(
   chips: ListCardBadgeChip[],
@@ -153,7 +155,7 @@ export function renderBadgeChips(
 ): React.ReactNode {
   if (chips.length === 0) return null
   return (
-    <div className={cn('flex flex-row items-center shrink-0', options?.gap ?? 'gap-0.5')}>
+    <div className={cn('flex flex-row items-center shrink-0', options?.gap ?? 'gap-1')}>
       {chips.map((chip, i) => {
         const badge = (
           <Badge key={`chip-${i}`} size='xs' variant={chip.variant ?? 'gray'}>

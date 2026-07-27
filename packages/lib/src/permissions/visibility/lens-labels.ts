@@ -21,9 +21,9 @@ export const LENS_LABELS: Record<Lens | 'manager', LensLabel> = {
   full: { label: 'Full access', helper: 'Read and reply to conversations' },
   subject: {
     label: 'Subject only',
-    helper: 'See who, when, and subject lines — not message content',
+    helper: 'See who, when, and subject lines, not message content',
   },
-  metadata: { label: 'Activity only', helper: 'See who and when — not subjects or content' },
+  metadata: { label: 'Activity only', helper: 'See who and when, not subjects or content' },
   none: { label: 'No access', helper: 'Hidden unless individually shared' },
   manager: { label: 'Manager', helper: 'Full access + manage sharing' },
 }

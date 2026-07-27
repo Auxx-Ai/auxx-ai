@@ -38,7 +38,7 @@ function descriptionFor(granteeKind: string): string {
  * inheritance — so the surface is a restriction editor, not an elevation one.
  */
 const AGENT_DESCRIPTION =
-  'What this agent can reach when it runs. An area you leave on Default gives the agent full access — set a lower level (or None) to restrict it.'
+  'What this agent can reach when it runs. An area you leave on Default gives the agent full access. Set a lower level (or None) to restrict it.'
 
 /**
  * The Layer-2 (per-area None/Read/Edit/Full) override editor for a single grantee

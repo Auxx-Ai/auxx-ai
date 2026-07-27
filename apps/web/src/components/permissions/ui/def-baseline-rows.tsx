@@ -74,7 +74,7 @@ export function DefBaselineRows({
           title={<span className='truncate'>{row.resource.plural}</span>}
           secondary={
             row.isLockedDown ? (
-              <Tooltip content='Restricted: hidden from everyone by default — only members you grant access (directly or via a team) can see this type.'>
+              <Tooltip content='Restricted: hidden from everyone by default. Only members you grant access (directly or via a team) can see this type.'>
                 <Lock className='size-3 text-muted-foreground' />
               </Tooltip>
             ) : undefined

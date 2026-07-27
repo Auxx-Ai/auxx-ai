@@ -444,7 +444,7 @@ function GranteeRow({
               load-bearing one. */}
           {ignored && (
             <Tooltip
-              content={`Ignored — this grant is at or below the workspace baseline (${baselineLevel}).`}>
+              content={`Ignored: this grant is at or below the workspace baseline (${baselineLevel}).`}>
               <AlertTriangle className='size-4 text-amber-500' />
             </Tooltip>
           )}

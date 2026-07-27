@@ -787,6 +787,74 @@ describe('savePermissionProfile — the other §6.1.5 gates', () => {
     ).rejects.toThrow('PLAN_GATE')
   })
 
+  /**
+   * Regression: `saveProfile`'s zod input shipped without an `agentPolicy` field
+   * while the editor sent one. A zod object STRIPS unknown keys, so every save
+   * succeeded, invalidated the cache and reported saved — and persisted nothing.
+   * These pin the field end to end, and pin the parse that stands between an
+   * authored blob and the jsonb the runtime enforces verbatim.
+   */
+  it('PERSISTS an authored agentPolicy, coerced into the closed vocabulary', async () => {
+    const store = makeStore({})
+    const profile = store.PermissionProfile.find((row) => row.id === 'p_support')
+    if (profile) profile.appliesTo = 'agent'
+    const actor = store.OrganizationMember.find((row) => row.userId === 'u_actor')
+    if (actor) actor.role = 'ADMIN'
+
+    await savePermissionProfile({
+      organizationId: ORG,
+      actorUserId: 'u_actor',
+      profileId: 'p_support',
+      agentPolicy: {
+        areas: { default: 'read', overrides: { records: 'full', tickets: 'sideways' } },
+        definitions: { default: 'none', overrides: { hr: 'read_write' } },
+        resourceDefault: 'none',
+        resources: { dataset: { default: 'read', overrides: {} } },
+      } as never,
+      db: fakeRunner(store) as never,
+    })
+
+    expect(store.PermissionProfile.find((row) => row.id === 'p_support')?.agentPolicy).toEqual({
+      // `sideways` is not a rung — dropped, so `tickets` reads as the `read`
+      // default rather than being guessed at.
+      areas: { default: 'read', overrides: { records: 'full' } },
+      definitions: { default: 'none', overrides: { hr: 'read_write' } },
+      resourceDefault: 'none',
+      resources: { dataset: { default: 'read', overrides: {} } },
+    })
+  })
+
+  it('clears the agentPolicy on an explicit null, and leaves it alone when omitted', async () => {
+    const store = makeStore({})
+    const profile = store.PermissionProfile.find((row) => row.id === 'p_support')
+    if (profile) {
+      profile.appliesTo = 'agent'
+      profile.agentPolicy = { areas: { default: 'full', overrides: {} } }
+    }
+    const actor = store.OrganizationMember.find((row) => row.userId === 'u_actor')
+    if (actor) actor.role = 'ADMIN'
+
+    await savePermissionProfile({
+      organizationId: ORG,
+      actorUserId: 'u_actor',
+      profileId: 'p_support',
+      name: 'renamed',
+      db: fakeRunner(store) as never,
+    })
+    expect(
+      store.PermissionProfile.find((row) => row.id === 'p_support')?.agentPolicy
+    ).not.toBeNull()
+
+    await savePermissionProfile({
+      organizationId: ORG,
+      actorUserId: 'u_actor',
+      profileId: 'p_support',
+      agentPolicy: null,
+      db: fakeRunner(store) as never,
+    })
+    expect(store.PermissionProfile.find((row) => row.id === 'p_support')?.agentPolicy).toBeNull()
+  })
+
   it('refuses profile-scoped resource grants until step 9', async () => {
     const store = makeStore({})
     await expect(

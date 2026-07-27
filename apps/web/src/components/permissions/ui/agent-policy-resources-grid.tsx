@@ -82,7 +82,7 @@ export function AgentPolicyResourcesGrid({
     if (overrideCount > 0) {
       const confirmed = await confirm({
         title: `Follow the resource default for ${TYPE_META[type].label.toLowerCase()}?`,
-        description: `This removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} on this type as well — the shape has nowhere to keep them once the type follows the default.`,
+        description: `This removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} on this type as well. The shape has nowhere to keep them once the type follows the default.`,
         confirmText: 'Remove rules',
         cancelText: 'Cancel',
         destructive: true,
@@ -98,7 +98,7 @@ export function AgentPolicyResourcesGrid({
 
       <AgentPolicyDefaultRow
         title='Default for every resource'
-        description='What a resource type with no rule of its own resolves to — including types added later.'
+        description='What a resource type with no rule of its own resolves to, including types added later.'
         value={policy.resourceDefault}
         onChange={onDefaultChange}
         disabled={disabled}
@@ -142,7 +142,7 @@ export function AgentPolicyResourcesGrid({
                   label={TYPE_META[type].label}
                   value={entry?.default}
                   fallback={policy.resourceDefault}
-                  resetTooltip={`Follow the resource default (${AGENT_LEVEL_LABELS[policy.resourceDefault]}) — removes this type's per-item rules`}
+                  resetTooltip={`Follow the resource default (${AGENT_LEVEL_LABELS[policy.resourceDefault]}), removing this type's per-item rules`}
                   onChange={(level) => void handleTypeChange(type, level)}
                   disabled={disabled}
                 />
@@ -157,7 +157,7 @@ export function AgentPolicyResourcesGrid({
                   orientation='horizontal'
                   icon={<Library />}
                   title={`No ${TYPE_META[type].label.toLowerCase()}`}
-                  description={`Nothing to rule on yet — anything created later resolves to ${AGENT_LEVEL_LABELS[typeLevel]}.`}
+                  description={`Nothing to rule on yet. Anything created later resolves to ${AGENT_LEVEL_LABELS[typeLevel]}.`}
                 />
               ) : (
                 <div className='flex flex-col gap-0.5'>
@@ -201,7 +201,7 @@ export function AgentPolicyResourcesGrid({
                   ))}
                   {list.truncated ? (
                     <p className='px-1 py-1 text-xs text-muted-foreground'>
-                      Showing the first page only — rule on anything not listed here from that
+                      Showing the first page only. Rule on anything not listed here from that
                       resource’s own page.
                     </p>
                   ) : null}

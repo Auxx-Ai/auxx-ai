@@ -33,7 +33,7 @@ export function ProfileSeatReference() {
         </Badge>
       </div>
       <p className='mt-1 text-sm text-muted-foreground'>
-        A field seat can only ever reach the areas below — whatever this profile, a group, or a
+        A field seat can only ever reach the areas below, whatever this profile, a group, or a
         personal override says. This clamp is applied last and is not editable here; moving someone
         off it is a seat change, not a profile change.
       </p>

@@ -267,8 +267,8 @@ export function useMemberProfiles() {
             disabled: true,
             reason:
               profile.seat === 'worker'
-                ? 'Field-seat profile — this member holds a full seat. Change the seat first.'
-                : 'Full-seat profile — this member holds a field seat. Change the seat first.',
+                ? 'Field-seat profile. This member holds a full seat. Change the seat first.'
+                : 'Full-seat profile. This member holds a field seat. Change the seat first.',
           }
         }
         // `seatType='worker' ⇒ role='USER'`: a field-seat profile never binds to

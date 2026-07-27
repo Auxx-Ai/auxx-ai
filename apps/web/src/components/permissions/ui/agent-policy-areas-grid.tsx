@@ -79,7 +79,7 @@ function inertNoteFor(meta: AreaMetadata, level: AgentAccessLevel): string | und
     if (rung.level <= target) actual = rung.level
   }
   if (actual === target) return undefined
-  return `${meta.label} has no ${AGENT_LEVEL_LABELS[level]} rung — this behaves as ${AGENT_LEVEL_LABELS[agentLevelOfAreaLevel(actual)]}.`
+  return `${meta.label} has no ${AGENT_LEVEL_LABELS[level]} rung, so this behaves as ${AGENT_LEVEL_LABELS[agentLevelOfAreaLevel(actual)]}.`
 }
 
 /**
@@ -124,7 +124,7 @@ export function AgentPolicyAreasGrid({
     <div className='flex flex-col gap-3'>
       <AgentPolicyDefaultRow
         title='Default for every area'
-        description='What an area with no rule below resolves to — including areas added in a future release.'
+        description='What an area with no rule below resolves to, including areas added in a future release.'
         value={policy.areas.default}
         onChange={onDefaultChange}
         disabled={disabled}
@@ -167,7 +167,7 @@ export function AgentPolicyAreasGrid({
                     title={meta.label}
                     description={
                       meta.adminOnly
-                        ? `${meta.description} Admin-only for people — an agent may still hold it, but a non-admin publishing this profile has it clamped to their own access.`
+                        ? `${meta.description} Admin-only for people. An agent may still hold it, but a non-admin publishing this profile has it clamped to their own access.`
                         : meta.description
                     }
                     trailing={

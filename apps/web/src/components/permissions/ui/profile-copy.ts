@@ -57,10 +57,10 @@ export const WORKER_SEAT_AREAS: ReadonlySet<Area> = new Set<Area>([
 
 /** Locked-row reason for an area a field seat can never reach. */
 export const WORKER_LOCK_REASON =
-  'Field seats can never reach this area — the seat ceiling clamps it to None, whatever this profile says.'
+  'Field seats can never reach this area. The seat ceiling clamps it to None, whatever this profile says.'
 
 /** The §5.3 wording for an area whose routers are still a binary admin gate. */
-export const ROLE_GATED_REASON = 'Still role-gated — admins reach this regardless.'
+export const ROLE_GATED_REASON = 'Still role-gated. Admins reach this regardless.'
 
 /**
  * Grantable areas grouped by registry group, in area order — the same selection

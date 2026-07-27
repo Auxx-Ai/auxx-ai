@@ -224,7 +224,7 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     key: FeatureKey.workerSeats,
     type: 'static',
     label: 'Field Seats',
-    description: 'Bundled field seats — cheaper, capability-capped member seats for field staff.',
+    description: 'Bundled field seats: cheaper, capability-capped member seats for field staff.',
     group: 'Team',
     unit: 'seats',
   },

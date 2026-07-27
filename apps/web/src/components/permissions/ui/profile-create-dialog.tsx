@@ -121,7 +121,7 @@ export function ProfileCreateDialog({
         <DialogHeader>
           <DialogTitle>{cloneFrom ? 'Duplicate profile' : 'New permission profile'}</DialogTitle>
           <DialogDescription>
-            Seat class and principal type are fixed once the profile exists — pick them now.
+            Seat class and principal type are fixed once the profile exists, so pick them now.
             Everything else is editable afterwards.
           </DialogDescription>
         </DialogHeader>
@@ -171,8 +171,7 @@ export function ProfileCreateDialog({
             <RadioGroup
               value={appliesTo}
               onValueChange={(value) => setAppliesTo(value as ProfileAppliesTo)}
-              disabled={isPending || !!cloneFrom}
-              className='grid gap-2 sm:grid-cols-2'>
+              disabled={isPending || !!cloneFrom}>
               <RadioGroupItemCard
                 value='member'
                 icon={<Users />}

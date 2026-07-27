@@ -4,7 +4,6 @@ export { useAgent } from './use-agent'
 export { useAgentMutations } from './use-agent-mutations'
 export {
   type AgentProfileOption,
-  readDraftProfileId,
   useAgentPermissionProfiles,
   useAgentProfileBinding,
 } from './use-agent-permission-profiles'

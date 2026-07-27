@@ -321,7 +321,7 @@ async function runDeletion(
   // §0.24 — a template must always exist to fall back to.
   if (profile.isSystem) {
     throw new ForbiddenError(
-      `The '${profile.name}' profile is a system profile and cannot be deleted — it is the template holders fall back to.`
+      `The '${profile.name}' profile is a system profile and cannot be deleted. It is the template holders fall back to.`
     )
   }
   // §0.25 / doc 14 §0.9 — `permissions` being grantable must not hand agent

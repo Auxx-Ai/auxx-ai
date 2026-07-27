@@ -90,7 +90,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
   {
     slug: 'field_tech',
     name: 'Field Tech',
-    description: 'Field seat — assigned schedule, visit reports, and linked records only.',
+    description: 'Field seat: assigned schedule, visit reports, and linked records only.',
     icon: { iconId: 'hard-hat', color: 'orange' },
     seat: 'worker',
     appliesTo: 'member',
@@ -100,7 +100,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
   {
     slug: 'agent',
     name: 'Internal Agent',
-    description: 'Permissive default for internal agents — full access to every domain.',
+    description: 'Permissive default for internal agents. Full access to every domain.',
     icon: { iconId: 'bot', color: 'violet' },
     seat: 'full',
     appliesTo: 'agent',
@@ -110,7 +110,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
   {
     slug: 'chat_agent',
     name: 'Chat Agent',
-    description: 'Fail-closed default for customer-facing agents — no access until granted.',
+    description: 'Fail-closed default for customer-facing agents. No access until granted.',
     icon: { iconId: 'message-circle', color: 'emerald' },
     seat: 'full',
     appliesTo: 'agent',

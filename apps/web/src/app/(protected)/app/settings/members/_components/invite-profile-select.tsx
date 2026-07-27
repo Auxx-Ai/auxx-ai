@@ -100,17 +100,15 @@ export function InviteProfileSelect({
       </SelectTrigger>
       <SelectContent>
         {profiles.map((profile) => (
-          <SelectItem key={profile.id} value={profile.id}>
-            <span className='flex flex-col gap-0.5 text-left'>
-              <span className='flex items-center gap-2'>
-                <span className='font-medium'>{profile.name}</span>
-                <span className='text-muted-foreground text-xs'>
-                  {seatClassLabel(profile.seat)}
-                </span>
-              </span>
-              {profile.description ? (
-                <span className='text-muted-foreground text-xs'>{profile.description}</span>
-              ) : null}
+          // `description` renders OUTSIDE Radix's ItemText, so it stays in the
+          // dropdown instead of being copied into the trigger.
+          <SelectItem
+            key={profile.id}
+            value={profile.id}
+            description={profile.description ?? undefined}>
+            <span className='flex items-center gap-2'>
+              <span className='font-medium'>{profile.name}</span>
+              <span className='text-muted-foreground text-xs'>{seatClassLabel(profile.seat)}</span>
             </span>
           </SelectItem>
         ))}

@@ -40,7 +40,7 @@ export const AGENT_LEVEL_RANK: Record<AgentAccessLevel, number> = {
  * for an absent value.
  */
 export const AGENT_LEVEL_DESCRIPTIONS: Record<AgentAccessLevel, string> = {
-  none: 'No access. A deliberate deny — not an absent value, and nothing raises it back.',
+  none: 'No access. A deliberate deny, not an absent value, and nothing raises it back.',
   read: 'View, list and search.',
   read_write: 'Read, plus create, update and delete.',
   full: 'Read + Write, plus administration and settings.',
@@ -50,7 +50,7 @@ export const AGENT_LEVEL_DESCRIPTIONS: Record<AgentAccessLevel, string> = {
 export const POLICY_INTRO = {
   title: 'This policy is exact',
   body:
-    'Every area, record type and resource resolves to exactly one of four levels — there is no ' +
+    'Every area, record type and resource resolves to exactly one of four levels. There is no ' +
     '"not set" at run time. A rule you leave alone follows the collection default shown above ' +
     'it, and that default is itself one of the four levels, so anything created later has a ' +
     'deterministic posture too.',
@@ -66,7 +66,7 @@ export const TOOLS_VS_PERMISSIONS = {
   body:
     'Permissions decide what an agent is allowed to reach. Tools decide what it can call. ' +
     'Neither implies the other: granting Full here enables no tool, and enabling a tool grants ' +
-    'no permission. What the agent can actually do is the intersection — a tool it holds, ' +
+    'no permission. What the agent can actually do is the intersection: a tool it holds, ' +
     'pointed at a target this policy allows.',
   link: 'Tools live on the agent’s Tools tab.',
 } as const
@@ -79,18 +79,18 @@ export const TOOLS_VS_PERMISSIONS = {
  */
 export const DEFINITION_FULL_IS_INERT =
   'Full adds definition administration on top of Read + Write. No native agent tool creates or ' +
-  'alters entity definitions or fields today, and none checks the administration rung at all — ' +
+  'alters entity definitions or fields today, and none checks the administration rung at all, ' +
   'so on this grid Full currently behaves like Read + Write. It is stored exactly as you set it ' +
   'and starts biting the day such a tool ships.'
 
 /** §11a — mail is outside the four-level model; the areas grid must not imply otherwise. */
 export const MAIL_IS_OUTSIDE =
   'Mail is outside this model. There is no mail area, and mail tools are authorized by the ' +
-  'mailbox the agent is given — this grid neither opens nor closes them.'
+  'mailbox the agent is given. This grid neither opens nor closes them.'
 
 /** Why threads/inboxes/datasets/KBs/dashboards are absent from the definitions grid. */
 export const DEFINITIONS_EXCLUSIONS =
-  'Threads, inboxes, messages and other mail records are not listed — they are not governed by ' +
+  'Threads, inboxes, messages and other mail records are not listed. They are not governed by ' +
   'this keyspace. Datasets, knowledge bases and dashboards have their own grid below.'
 
 /** The resources grid's intersection rule — an instance rule can never beat its area. */
@@ -100,7 +100,7 @@ export const RESOURCE_AREA_CLAMP =
 
 /** Publication semantics (§0.3/§0.16) — shown whether or not there are pending edits. */
 export const PUBLICATION_NOTE =
-  'Saving reaches bound agent drafts only — their builder Chat and draft evals. Live agents keep ' +
+  'Saving reaches bound agent drafts only: their builder Chat and draft evals. Live agents keep ' +
   'the policy they were published with until someone republishes them.'
 
 /** The state after a save, before a republish. */
@@ -121,17 +121,17 @@ export const PLAN_GATED_NOTE =
 
 /** A profile that has never carried an agent policy. Fail-closed is the safe start. */
 export const NO_POLICY_YET =
-  'This profile carries no agent policy yet. It starts fail-closed — None everywhere — and is ' +
+  'This profile carries no agent policy yet. It starts fail-closed at None everywhere, and is ' +
   'written the first time you save.'
 
 /**
  * §2.4a — the author clamp, in the exact shape the plan requires: name the key,
  * both rungs, and the authority that bounded it. Never a silent downgrade.
  *
- * @example clampSentence('Deals', 'full', 'read') // 'Deals reduced from Full to Read — you hold Read'
+ * @example clampSentence('Deals', 'full', 'read') // 'Deals reduced from Full to Read (you hold Read)'
  */
 export function clampSentence(label: string, from: AgentAccessLevel, to: AgentAccessLevel): string {
-  return `${label} reduced from ${AGENT_LEVEL_LABELS[from]} to ${AGENT_LEVEL_LABELS[to]} — you hold ${AGENT_LEVEL_LABELS[to]}`
+  return `${label} reduced from ${AGENT_LEVEL_LABELS[from]} to ${AGENT_LEVEL_LABELS[to]} (you hold ${AGENT_LEVEL_LABELS[to]})`
 }
 
 /** Heading for the clamp preview block. */
@@ -139,10 +139,10 @@ export const CLAMP_PREVIEW = {
   title: 'Publishing would reduce this policy',
   body:
     'A published agent can never exceed the person who published it. These rules would be lowered ' +
-    'to your own access at publish time — the agent would run with the reduced rung, and the ' +
+    'to your own access at publish time. The agent would run with the reduced rung, and the ' +
     'reduction is recorded on the published version. An owner or admin publishing the same ' +
     'profile may keep more of it.',
-  clear: 'You hold everything this policy asks for — publishing it would reduce nothing.',
+  clear: 'You hold everything this policy asks for, so publishing it would reduce nothing.',
 } as const
 
 /** Tooltip on the "follow the default" reset affordance of an override row. */

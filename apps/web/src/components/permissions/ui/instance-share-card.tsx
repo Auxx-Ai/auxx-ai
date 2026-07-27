@@ -188,7 +188,7 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
       <p className='text-muted-foreground text-xs'>
         {restricted ? (
           <>
-            This {copy.noun} is <span className='font-medium'>restricted</span> — only the people
+            This {copy.noun} is <span className='font-medium'>restricted</span>. Only the people
             below and admins can access it.
           </>
         ) : (

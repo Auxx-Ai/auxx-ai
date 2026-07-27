@@ -40,7 +40,7 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
  */
 export default function PermissionsPage() {
   useUser({ requireRoles: ['ADMIN', 'OWNER'] })
-  const [tab, setTab] = useQueryState('t', { defaultValue: 'baseline' })
+  const [tab, setTab] = useQueryState('t', { defaultValue: 'profiles' })
   const { hasAccess } = useFeatureFlags()
 
   const canEdit = hasAccess(FeatureKey.granularPermissions)
@@ -54,7 +54,7 @@ export default function PermissionsPage() {
         breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Permissions' }]}
         subHeaderClassName='p-0'
         subHeader={
-          <TabsList variant='outline'>
+          <TabsList variant='outline' className='border-b-0'>
             <TabsTrigger value='profiles' variant='outline'>
               <IdCard />
               Profiles

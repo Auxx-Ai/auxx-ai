@@ -32,7 +32,6 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import {
-  readDraftProfileId,
   useAgentPermissionProfiles,
   useAgentProfileBinding,
   useAgentProfilePolicy,
@@ -80,7 +79,7 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
   const canEditProfile = isAdminOrOwner
   const isDelegated = agent.runAsUserId != null
 
-  const boundProfileId = readDraftProfileId(agent)
+  const boundProfileId = agent.permissionProfileId
   // An unbound draft is not unrestricted — §1.3 resolves it to the system
   // profile for its kind (`internal → agent`, `chat → chat_agent`), so that is
   // the policy the tab must show.

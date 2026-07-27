@@ -6,7 +6,7 @@ import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
-import { Bot, Info, Library, ShieldCheck, SlidersHorizontal, Table2 } from 'lucide-react'
+import { Bot, Library, SlidersHorizontal, Table2 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { useUser } from '~/hooks/use-user'
@@ -17,16 +17,7 @@ import { useAgentPolicyDefinitions } from '../hooks/use-agent-policy-definitions
 import { useAgentPolicySave } from '../hooks/use-agent-policy-save'
 import { AGENT_POLICY_AREAS, AgentPolicyAreasGrid } from './agent-policy-areas-grid'
 import { AgentPolicyClampPreview } from './agent-policy-clamp-preview'
-import {
-  ADMIN_ONLY_NOTE,
-  NO_POLICY_YET,
-  PLAN_GATED_NOTE,
-  POLICY_INTRO,
-  PUBLICATION_NOTE,
-  TOOLS_VS_PERMISSIONS,
-  UNPUBLISHED_TITLE,
-  UNSAVED_TITLE,
-} from './agent-policy-copy'
+import { UNPUBLISHED_TITLE, UNSAVED_TITLE } from './agent-policy-copy'
 import { AgentPolicyDefinitionsGrid } from './agent-policy-definitions-grid'
 import { AgentPolicyResourcesGrid } from './agent-policy-resources-grid'
 
@@ -47,8 +38,6 @@ interface AgentPolicyEditorProps {
    * of leaving the reader to guess whether a live agent just changed.
    */
   boundDrafts?: BoundAgentDraft[]
-  /** Link to the agent's Tools tab, when the editor is rendered with agent context. */
-  toolsHref?: string
   /** Force read-only regardless of the viewer's authority (e.g. a locked profile). */
   readOnly?: boolean
 }
@@ -70,12 +59,10 @@ interface AgentPolicyEditorProps {
  *    (§0.5/§2.3) — never through `GranteeDefAccessSection`.
  *  - **Every collection has a default**, so a record type or resource created
  *    tomorrow has a deterministic posture (§0.5/§2.3).
- *  - **Permissions are not tools.** Effective ability is the intersection; the
- *    explainer and the Tools cross-link are part of the feature, not decoration
- *    (§0.5a/§2.4).
+ *  - **Permissions are not tools.** Effective ability is the intersection of the
+ *    two (§0.5a/§2.4) — granting Full here enables no tool.
  *  - **Publication semantics.** A save reaches bound drafts only; production
- *    changes on publish, and the editor says so before and after every write
- *    (§0.3/§0.16).
+ *    changes on publish, and the editor says so after a write (§0.3/§0.16).
  *  - **Author clamp.** Publishing lowers the policy to the publisher's own
  *    authority; the reduction is previewed here and disclosed at publish (§2.4a).
  *  - **OWNER/ADMIN only.** Agent-side profile editing is admin-gated (doc 14
@@ -89,7 +76,6 @@ export function AgentPolicyEditor({
   profileId,
   savedPolicy,
   boundDrafts,
-  toolsHref,
   readOnly = false,
 }: AgentPolicyEditorProps) {
   const { isAdminOrOwner } = useUser()
@@ -101,7 +87,6 @@ export function AgentPolicyEditor({
     policy,
     isDirty,
     changeCount,
-    isNew,
     reset,
     setAreasDefault,
     setAreaOverride,
@@ -127,46 +112,6 @@ export function AgentPolicyEditor({
 
   return (
     <div className='flex flex-col gap-4'>
-      {!isAdminOrOwner ? (
-        <Alert className='flex gap-3'>
-          <ShieldCheck className='size-4 shrink-0' />
-          <span>{ADMIN_ONLY_NOTE}</span>
-        </Alert>
-      ) : null}
-
-      {isAdminOrOwner && !planAllowsWrites ? (
-        <Alert className='flex gap-3'>
-          <ShieldCheck className='size-4 shrink-0' />
-          <span>{PLAN_GATED_NOTE}</span>
-        </Alert>
-      ) : null}
-
-      <Alert className='flex gap-3'>
-        <Info className='size-4 shrink-0' />
-        <div className='flex min-w-0 flex-col gap-1'>
-          <span className='font-medium'>{POLICY_INTRO.title}</span>
-          <span className='opacity-90'>{POLICY_INTRO.body}</span>
-          <span className='mt-1 font-medium'>{TOOLS_VS_PERMISSIONS.title}</span>
-          <span className='opacity-90'>
-            {TOOLS_VS_PERMISSIONS.body}{' '}
-            {toolsHref ? (
-              <Link href={toolsHref} className='underline'>
-                {TOOLS_VS_PERMISSIONS.link}
-              </Link>
-            ) : (
-              TOOLS_VS_PERMISSIONS.link
-            )}
-          </span>
-        </div>
-      </Alert>
-
-      {isNew ? (
-        <Alert className='flex gap-3'>
-          <Bot className='size-4 shrink-0' />
-          <span>{NO_POLICY_YET}</span>
-        </Alert>
-      ) : null}
-
       {savedThisSession ? (
         <Alert variant='warning' className='flex gap-3'>
           <Bot className='size-4 shrink-0' />
@@ -174,8 +119,8 @@ export function AgentPolicyEditor({
             <span className='font-medium'>{UNPUBLISHED_TITLE}</span>
             <span className='opacity-90'>
               {draftCount > 0
-                ? `${draftCount} agent draft${draftCount === 1 ? '' : 's'} bound to this profile now run a policy that differs from what is published. Publish each one to move the change into production — no live agent changed when you saved.`
-                : 'Agent drafts bound to this profile now run a policy that differs from what is published. Publish each one to move the change into production — no live agent changed when you saved.'}
+                ? `${draftCount} agent draft${draftCount === 1 ? '' : 's'} bound to this profile now run a policy that differs from what is published. Publish each one to move the change into production. No live agent changed when you saved.`
+                : 'Agent drafts bound to this profile now run a policy that differs from what is published. Publish each one to move the change into production. No live agent changed when you saved.'}
             </span>
             {boundDrafts && boundDrafts.length > 0 ? (
               <ul className='mt-1 flex flex-wrap gap-x-3 gap-y-0.5'>
@@ -190,17 +135,7 @@ export function AgentPolicyEditor({
             ) : null}
           </div>
         </Alert>
-      ) : (
-        <Alert className='flex gap-3'>
-          <Bot className='size-4 shrink-0' />
-          <span>
-            {PUBLICATION_NOTE}
-            {draftCount > 0
-              ? ` Bound right now: ${boundDrafts?.map((d) => d.name).join(', ')}.`
-              : ''}
-          </span>
-        </Alert>
-      )}
+      ) : null}
 
       <AgentPolicyClampPreview entries={clampEntries} />
 
@@ -235,7 +170,7 @@ export function AgentPolicyEditor({
       <Section
         title='Resources'
         icon={<Library className='size-4' />}
-        description='Datasets, knowledge bases and dashboards — per type, and per item.'
+        description='Datasets, knowledge bases and dashboards, per type and per item.'
         initialOpen>
         <AgentPolicyResourcesGrid
           policy={policy}
@@ -252,8 +187,7 @@ export function AgentPolicyEditor({
           <span className='text-sm'>
             <span className='font-medium'>{UNSAVED_TITLE}</span>
             <span className='text-muted-foreground'>
-              {' '}
-              — {changeCount} rule{changeCount === 1 ? '' : 's'} differ from the saved policy.
+              : {changeCount} rule{changeCount === 1 ? '' : 's'} differ from the saved policy.
             </span>
           </span>
           <div className='flex items-center gap-2'>

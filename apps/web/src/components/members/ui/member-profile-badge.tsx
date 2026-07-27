@@ -32,7 +32,7 @@ interface MemberProfileBadgeProps {
 export function MemberProfileBadge({ profile, seatType, className }: MemberProfileBadgeProps) {
   const fieldSeat =
     seatType === 'worker' ? (
-      <Tooltip content='Billed as a field seat — schedule and assigned jobs only.'>
+      <Tooltip content='Billed as a field seat: schedule and assigned jobs only.'>
         <Badge variant='amber' size='xs' className='gap-1'>
           <HardHat />
           <span>{seatLabel(seatType)}</span>
@@ -47,7 +47,7 @@ export function MemberProfileBadge({ profile, seatType, className }: MemberProfi
       <Tooltip
         content={
           profile.description ??
-          `${profile.name} — the access this member composes from (${seatLabel(profile.seat)}).`
+          `${profile.name}: the access this member composes from (${seatLabel(profile.seat)}).`
         }>
         <Badge variant='secondary' size='xs' className={cn('gap-1', className)}>
           {profile.icon?.iconId ? (

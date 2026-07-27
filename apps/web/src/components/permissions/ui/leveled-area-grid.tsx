@@ -69,7 +69,7 @@ interface LeveledAreaGridProps {
 }
 
 /** The §5.3 wording for an area whose routers are still a binary admin gate. */
-const ROLE_GATED_NOTE = 'Still role-gated — admins reach this regardless.'
+const ROLE_GATED_NOTE = 'Still role-gated. Admins reach this regardless.'
 
 /**
  * Grantable areas, grouped by registry `group` in area order. Excludes
@@ -219,7 +219,7 @@ export function LeveledAreaGrid({
                         ignored={mode === 'override' && value !== undefined && value <= inherited}
                         unsetHint={mode === 'agent' ? 'Default' : undefined}
                         resetTooltip={
-                          mode === 'agent' ? 'Clear — back to full access' : 'Reset to inherited'
+                          mode === 'agent' ? 'Clear (back to full access)' : 'Reset to inherited'
                         }
                         onChange={(level) => onChange(area, level)}
                         disabled={disabled || meta.roleGated === true}
