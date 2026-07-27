@@ -22,6 +22,8 @@ interface DocumentColumnsActions {
   onDelete: (document: Document) => void
   onArchive: (document: Document) => void
   onUnarchive: (document: Document) => void
+  /** Edit-instance gate on the parent dataset — hides archive/unarchive/delete when false. */
+  canEdit: boolean
 }
 
 /**
@@ -34,6 +36,7 @@ export function createDocumentColumns({
   onDelete,
   onArchive,
   onUnarchive,
+  canEdit,
 }: DocumentColumnsActions): ExtendedColumnDef<Document>[] {
   return [
     {
@@ -47,6 +50,7 @@ export function createDocumentColumns({
           onDelete={onDelete}
           onArchive={onArchive}
           onUnarchive={onUnarchive}
+          canEdit={canEdit}
         />
       ),
       enableHiding: false,

@@ -13,6 +13,7 @@ import { useArticleEditorSurface } from './article-editor-surface'
 import { ArticlePublishCluster } from './article-publish-cluster'
 import { ArticleSettingsDialog } from './article-settings-dialog'
 import { HiddenParentBadge } from './hidden-parent-badge'
+import { useKBEditorAccess } from './kb-editor-access-context'
 
 interface DiffHeaderInfo {
   /** Older side label, e.g. "Published" / "v3" / "Before". */
@@ -38,6 +39,7 @@ interface ArticleEditorHeaderProps {
 }
 
 export function ArticleEditorHeader({ article, knowledgeBaseId, diff }: ArticleEditorHeaderProps) {
+  const { canEdit } = useKBEditorAccess()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const articles = useArticleList(knowledgeBaseId)
   // Source-owned KBs aren't independently publishable, so the embedding surface
@@ -51,14 +53,16 @@ export function ArticleEditorHeader({ article, knowledgeBaseId, diff }: ArticleE
 
   return (
     <div className='flex w-full items-center gap-2 overflow-x-auto no-scrollbar border-b bg-primary-150 px-3 py-1.5 rounded-b-none'>
-      <Button
-        variant='outline'
-        size='xs'
-        className='shrink-0'
-        onClick={() => setIsSettingsOpen(true)}>
-        <Cog /> Page settings
-      </Button>
-      {!hidePublishing && (
+      {canEdit && (
+        <Button
+          variant='outline'
+          size='xs'
+          className='shrink-0'
+          onClick={() => setIsSettingsOpen(true)}>
+          <Cog /> Page settings
+        </Button>
+      )}
+      {!hidePublishing && canEdit && (
         <ArticlePublishCluster article={article} knowledgeBaseId={knowledgeBaseId} />
       )}
       <HiddenParentBadge article={article} knowledgeBaseId={knowledgeBaseId} />

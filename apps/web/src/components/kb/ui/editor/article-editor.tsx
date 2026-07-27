@@ -24,6 +24,7 @@ import { type ArticleMeta, getArticleStoreState } from '../../store/article-stor
 import { ArticleEditorFooter } from './article-editor-footer'
 import { ArticleEditorHeader } from './article-editor-header'
 import { ArticleEditorTop } from './article-editor-top'
+import { useKBEditorAccess } from './kb-editor-access-context'
 
 const emptyContent: JSONContent[] = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
 
@@ -33,6 +34,7 @@ interface ArticleEditorProps {
 }
 
 export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) {
+  const { canEdit } = useKBEditorAccess()
   const {
     draftContentJson,
     isLoading: isContentLoading,
@@ -111,7 +113,9 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
     }
   }
 
-  const bodyReadOnly = locked || managed
+  // View-level (non-edit) members get the same read-only surface as a
+  // source-managed article or a Kopilot-held write turn (doc 24 §A.2.4).
+  const bodyReadOnly = locked || managed || !canEdit
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
@@ -130,14 +134,16 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
             Managed by {sourceName ? <span className='font-medium'>{sourceName}</span> : 'a source'}
             <span className='ml-1 text-muted-foreground'>— this article is read-only.</span>
           </span>
-          <Button
-            variant='outline'
-            size='xs'
-            className='ml-auto'
-            loading={detachArticle.isPending}
-            onClick={handleDetach}>
-            Edit / detach
-          </Button>
+          {canEdit && (
+            <Button
+              variant='outline'
+              size='xs'
+              className='ml-auto'
+              loading={detachArticle.isPending}
+              onClick={handleDetach}>
+              Edit / detach
+            </Button>
+          )}
         </div>
       )}
       {review.pending && (
@@ -167,7 +173,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                 knowledgeBaseId={knowledgeBaseId}
                 onUpdateMetadata={handleMetadataUpdate}
                 onAdvanceToContent={focusBodyEditor}
-                readOnly={managed}
+                readOnly={managed || !canEdit}
               />
               <div className='relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch'>
                 {!isContentLoading && (

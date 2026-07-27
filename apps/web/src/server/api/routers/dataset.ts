@@ -470,8 +470,11 @@ export const datasetRouter = createTRPCRouter({
       if (!organizationId) {
         throw new Error('No organization found')
       }
-      // Full — testing embedding/search config is a settings-level operation.
-      ctx.capabilities.assertAdminInstance('dataset', input.datasetId)
+      // Read — running an ephemeral test search returns nothing a view-level
+      // user can't already see via listByDocument (includeInactive only
+      // surfaces disabled segments, same view). Saving config (`dataset.update`)
+      // stays admin; this just executes a throwaway query.
+      ctx.capabilities.assertViewInstance('dataset', input.datasetId)
       logger.info('Testing search configuration', {
         datasetId: input.datasetId,
         testQuery: input.testQuery,

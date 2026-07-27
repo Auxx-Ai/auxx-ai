@@ -14,6 +14,7 @@ import { KBPreview } from '../preview/kb-preview'
 import { ArticleDiffPane } from './article-diff-pane'
 import { ArticleEditor } from './article-editor'
 import { ContainerArticlePlaceholder } from './container-article-placeholder'
+import { useKBEditorAccess } from './kb-editor-access-context'
 
 interface KBEditorPageBodyProps {
   knowledgeBaseId: string
@@ -30,11 +31,14 @@ export function KBEditorPageBody({ knowledgeBaseId, slug }: KBEditorPageBodyProp
   const [activePanel] = useQueryState('panel', { defaultValue: 'general' })
   const { knowledgeBase } = useKnowledgeBase(knowledgeBaseId)
   const hasArticlesLoaded = useIsArticleListLoaded(knowledgeBaseId)
+  const { canAdmin } = useKBEditorAccess()
 
   if (!knowledgeBase) return null
 
-  // The learned KB ("AI Memory") has no site preview — always the editor.
-  if (activePanel !== 'articles' && knowledgeBase.kind !== 'learned') {
+  // The learned KB ("AI Memory") has no site preview — always the editor. Nor
+  // does an Edit-level (non-admin) member get the site preview even via a
+  // stale `?panel=general` deep link — settings/layout are Full-only.
+  if (activePanel !== 'articles' && knowledgeBase.kind !== 'learned' && canAdmin) {
     return <KBPreview knowledgeBase={knowledgeBase} activeSlugPath={slug} />
   }
 

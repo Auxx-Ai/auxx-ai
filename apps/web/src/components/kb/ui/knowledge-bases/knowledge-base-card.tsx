@@ -43,8 +43,9 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
   const [confirm, ConfirmDialog] = useConfirm()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  const { isRestrictedInstance } = useAccess()
+  const { isRestrictedInstance, canAdminInstance } = useAccess()
   const isShared = isRestrictedInstance(kb.id)
+  const canAdmin = canAdminInstance(toRecordId('kb', kb.id))
 
   const bulkMode = useBulkMode()
   const selected = useIsSelected(kb.id)
@@ -126,10 +127,12 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
               <Book />
               Open
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-              <Settings />
-              Settings
-            </DropdownMenuItem>
+            {canAdmin && (
+              <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                <Settings />
+                Settings
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setShareOpen(true)}>
               <Share2 />
               Share…
@@ -138,11 +141,15 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
               targetType='KNOWLEDGE_BASE'
               targetIds={{ knowledgeBaseId: kb.id }}
             />
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant='destructive' onClick={() => void handleDelete()}>
-              <Trash />
-              Delete
-            </DropdownMenuItem>
+            {canAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant='destructive' onClick={() => void handleDelete()}>
+                  <Trash />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </>
         }
       />

@@ -33,6 +33,7 @@ import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { inferCreateParent } from '../../utils/infer-create-parent'
+import { useKBEditorAccess } from '../editor/kb-editor-access-context'
 import { ArticleSidebarItemPreview } from './article-sidebar-item'
 import { ArticleTreeSection } from './article-tree-section'
 import { KBTabStrip } from './kb-tab-strip'
@@ -61,6 +62,7 @@ function collectDescendants(parentId: string, all: ArticleMeta[]): ArticleMeta[]
 
 export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   const router = useRouter()
+  const { canEdit } = useKBEditorAccess()
 
   const articles = useArticleList(knowledgeBaseId)
   const activeArticle = useActiveArticle(knowledgeBaseId)
@@ -273,7 +275,9 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
         onTabChange={handleTabChange}
       />
       <DndContext
-        sensors={sensors}
+        // Move is an Edit-instance affordance — an empty sensor list means no
+        // drag can ever start for view-only members (doc 24 §A.2.4).
+        sensors={canEdit ? sensors : []}
         collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
@@ -291,36 +295,42 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
             articleOpenStates={articleOpenStates}
             toggleArticleOpen={toggleArticleOpen}
           />
-          {tabSubtree.length === 0 && !(pending && pending.parentId === effectiveTabId) && (
-            <div className='px-6 text-center text-base text-muted-foreground'>
-              Nothing here yet.
-              <br /> Add a{' '}
-              <button
-                type='button'
-                onClick={() => void handleCreateInTab(ArticleKind.header)}
-                disabled={isCreating}
-                className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
-                Section Header
-              </button>
-              , a{' '}
-              <button
-                type='button'
-                onClick={() => void handleCreateInTab(ArticleKind.page)}
-                disabled={isCreating}
-                className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
-                Page
-              </button>
-              , or a{' '}
-              <button
-                type='button'
-                onClick={() => void handleCreateInTab(ArticleKind.link)}
-                disabled={isCreating}
-                className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
-                Link
-              </button>
-              .
-            </div>
-          )}
+          {tabSubtree.length === 0 &&
+            !(pending && pending.parentId === effectiveTabId) &&
+            (canEdit ? (
+              <div className='px-6 text-center text-base text-muted-foreground'>
+                Nothing here yet.
+                <br /> Add a{' '}
+                <button
+                  type='button'
+                  onClick={() => void handleCreateInTab(ArticleKind.header)}
+                  disabled={isCreating}
+                  className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
+                  Section Header
+                </button>
+                , a{' '}
+                <button
+                  type='button'
+                  onClick={() => void handleCreateInTab(ArticleKind.page)}
+                  disabled={isCreating}
+                  className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
+                  Page
+                </button>
+                , or a{' '}
+                <button
+                  type='button'
+                  onClick={() => void handleCreateInTab(ArticleKind.link)}
+                  disabled={isCreating}
+                  className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
+                  Link
+                </button>
+                .
+              </div>
+            ) : (
+              <div className='px-6 text-center text-base text-muted-foreground'>
+                Nothing here yet.
+              </div>
+            ))}
         </div>
 
         <DragOverlay
@@ -340,7 +350,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
       </DndContext>
 
       <div className='mt-2 px-2'>
-        {tabSubtree.length > 0 && (
+        {tabSubtree.length > 0 && canEdit && (
           <DropdownMenu
             open={addMenuOpen}
             onOpenChange={(open) => {

@@ -20,6 +20,7 @@ import { LAYOUT_TAB_ENABLED } from '../../constant'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { useKBPreviewHint } from '../preview/preview-hint-context'
 import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
+import { useKBEditorAccess } from './kb-editor-access-context'
 import { KBPublishCluster } from './kb-publish-cluster'
 
 const PANEL_VALUES = ['general', 'layout', 'articles'] as const
@@ -49,7 +50,9 @@ function getInitials(name?: string): string {
  * panel is forced to the article tree), no publish cluster (it is INTERNAL
  * and never site-published), and a plain breadcrumb instead of the KB
  * switcher (the learned KB is excluded from `kb.list`, so the switcher
- * neither names it nor offers it).
+ * neither names it nor offers it). An Edit-level (non-admin) member gets the
+ * same trimmed chrome minus the switcher swap — settings/layout/publish are
+ * Full-only (doc 24 §A.2.4); Share stays for everyone.
  */
 export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeaderProps) {
   const [panel, setPanel] = useQueryState(
@@ -58,6 +61,7 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
   )
   const { lockSession } = useKBPreviewHint()
   const [shareOpen, setShareOpen] = useState(false)
+  const { canAdmin } = useKBEditorAccess()
   const isLearned = knowledgeBase.kind === 'learned'
 
   // Once the user has reached the Articles panel they've found the answer the
@@ -85,7 +89,7 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
               open={shareOpen}
               onOpenChange={setShareOpen}
             />
-            <KBPublishCluster kbId={knowledgeBaseId} />
+            {canAdmin && <KBPublishCluster kbId={knowledgeBaseId} />}
           </div>
         )
       }>
@@ -115,7 +119,7 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
           </MainPageBreadcrumbDropdown>
         )}
       </MainPageBreadcrumb>
-      {!isLearned && (
+      {!isLearned && canAdmin && (
         <MainPageTabs
           value={panel}
           onValueChange={(v) => setPanel(v as KBEditorPanel)}

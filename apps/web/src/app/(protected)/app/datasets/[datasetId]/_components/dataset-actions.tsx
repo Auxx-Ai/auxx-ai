@@ -17,6 +17,7 @@ import { useState } from 'react'
 import { useDatasetActions } from '~/components/datasets/hooks/use-dataset-actions'
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDatasetDetail } from './dataset-detail-provider'
 
 /**
@@ -25,6 +26,9 @@ import { useDatasetDetail } from './dataset-detail-provider'
 export function DatasetActions() {
   const { dataset, setCurrentTab, refetch, setUploadDialogOpen } = useDatasetDetail()
   const [shareOpen, setShareOpen] = useState(false)
+  const { canEditInstance, canAdminInstance } = useAccess()
+  const canEdit = dataset ? canEditInstance(toRecordId('dataset', dataset.id)) : false
+  const canAdmin = dataset ? canAdminInstance(toRecordId('dataset', dataset.id)) : false
 
   const { handleDelete, handleArchive, isDeleting, isArchiving, ConfirmDialog } = useDatasetActions(
     {
@@ -86,10 +90,12 @@ export function DatasetActions() {
           <Share2 />
           Share
         </Button>
-        <Button onClick={handleUpload} size='sm'>
-          <Upload />
-          Upload
-        </Button>
+        {canEdit && (
+          <Button onClick={handleUpload} size='sm'>
+            <Upload />
+            Upload
+          </Button>
+        )}
 
         {/* More Actions Dropdown */}
         <DropdownMenu>
@@ -109,15 +115,22 @@ export function DatasetActions() {
               <Download />
               Export
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleArchive} disabled={isArchiving}>
-              <Archive />
-              Archive
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleDelete} variant='destructive' disabled={isDeleting}>
-              <Trash2 />
-              Delete
-            </DropdownMenuItem>
+            {canAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleArchive} disabled={isArchiving}>
+                  <Archive />
+                  Archive
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleDelete}
+                  variant='destructive'
+                  disabled={isDeleting}>
+                  <Trash2 />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

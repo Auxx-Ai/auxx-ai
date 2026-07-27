@@ -49,10 +49,11 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
   const [isUploading, setIsUploading] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
 
-  // Uploading documents is a Write on this dataset (per-instance, mirrors the
-  // `document.batchProcess` router gate) — hide the upload affordances otherwise.
+  // Uploading/archiving/deleting documents is a Write on this dataset
+  // (per-instance, mirrors the `document.*` router gates) — hide those
+  // affordances otherwise.
   const { canEditInstance } = useAccess()
-  const canUpload = canEditInstance(toRecordId('dataset', datasetId))
+  const canEdit = canEditInstance(toRecordId('dataset', datasetId))
 
   // Get utils for cache invalidation
   const utils = api.useUtils()
@@ -283,35 +284,39 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
         onDelete: handleDelete,
         onArchive: handleArchive,
         onUnarchive: handleUnarchive,
+        canEdit,
       }),
-    [handleViewDetails, handleDownload, handleDelete, handleArchive, handleUnarchive]
+    [handleViewDetails, handleDownload, handleDelete, handleArchive, handleUnarchive, canEdit]
   )
-  // Bulk actions
+  // Bulk actions — all mutate documents (same edit-instance gate as the row menu).
   const bulkActions = useMemo(
-    () => [
-      {
-        label: 'Available',
-        icon: CircleDot,
-        variant: 'outline' as const,
-        action: handleBulkEnable,
-        disabled: () => false,
-      },
-      {
-        label: 'Disabled',
-        icon: CircleSlash,
-        variant: 'outline' as const,
-        action: handleBulkDisable,
-        disabled: () => false,
-      },
-      {
-        label: 'Delete Selected',
-        icon: Trash2,
-        variant: 'destructive' as const,
-        action: handleBulkDelete,
-        disabled: () => false,
-      },
-    ],
-    [handleBulkEnable, handleBulkDisable, handleBulkDelete]
+    () =>
+      canEdit
+        ? [
+            {
+              label: 'Available',
+              icon: CircleDot,
+              variant: 'outline' as const,
+              action: handleBulkEnable,
+              disabled: () => false,
+            },
+            {
+              label: 'Disabled',
+              icon: CircleSlash,
+              variant: 'outline' as const,
+              action: handleBulkDisable,
+              disabled: () => false,
+            },
+            {
+              label: 'Delete Selected',
+              icon: Trash2,
+              variant: 'destructive' as const,
+              action: handleBulkDelete,
+              disabled: () => false,
+            },
+          ]
+        : [],
+    [handleBulkEnable, handleBulkDisable, handleBulkDelete, canEdit]
   )
   // Handle row click to view details
   const handleRowClick = useCallback(
@@ -332,7 +337,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
     <FileDropZone
       onFilesDropped={handleDocumentsDropped}
       currentFolderName={dataset?.name || 'Dataset'}
-      disabled={isDocumentsLoading || isUploading || isUploadActive || !canUpload}>
+      disabled={isDocumentsLoading || isUploading || isUploadActive || !canEdit}>
       {/* Dynamic Table */}
       <DynamicTable<Document>
         tableId='dataset-documents'
@@ -349,7 +354,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
         onRefresh={refetch}
         searchPlaceholder='Search documents...'
         searchKeys={['filename', 'title', 'mimeType']}
-        onAddNew={canUpload ? () => setUploadDialogOpen(true) : undefined}
+        onAddNew={canEdit ? () => setUploadDialogOpen(true) : undefined}
         customFilter={
           <DocumentFilterBar
             filterValue={documentFilter}
@@ -365,12 +370,12 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
             description={
               documentFilter !== 'all'
                 ? 'Try adjusting your filters to find documents.'
-                : canUpload
+                : canEdit
                   ? 'Upload your first documents to get started with this dataset.'
                   : "This dataset has no documents yet. You don't have permission to add files here."
             }
             button={
-              documentFilter === 'all' && canUpload ? (
+              documentFilter === 'all' && canEdit ? (
                 <Button onClick={() => setUploadDialogOpen(true)} variant='outline'>
                   <Plus />
                   Upload Documents
