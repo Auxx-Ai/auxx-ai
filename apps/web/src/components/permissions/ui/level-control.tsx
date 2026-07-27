@@ -75,7 +75,7 @@ export function LevelControl({
 
   return (
     <div className='flex items-center gap-1'>
-      <Tooltip content='This override is ignored — the member baseline already grants this level of access.'>
+      <Tooltip content='This override is ignored. The member baseline already grants this level of access.'>
         <AlertTriangle
           className={cn('size-3.5 text-amber-500', !ignored && 'invisible')}
           aria-hidden={!ignored}

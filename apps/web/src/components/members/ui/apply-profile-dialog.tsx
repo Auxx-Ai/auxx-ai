@@ -93,7 +93,7 @@ export function ApplyProfileDialog({
             <span>
               The selection mixes full seats and field seats. A profile declares its seat class and
               applying one can never move a member between classes, so select members that share a
-              seat — or change a seat first from the row menu.
+              seat, or change a seat first from the row menu.
             </span>
           </div>
         ) : (

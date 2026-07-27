@@ -153,7 +153,7 @@ export function MemberAccessSection({ member, viewerRole, viewerId }: MemberAcce
                       disabled={seatBlocksPromotion}
                       description={
                         seatBlocksPromotion
-                          ? 'Field seats are always Members — change the seat first.'
+                          ? 'Field seats are always Members. Change the seat first.'
                           : undefined
                       }>
                       Owner
@@ -164,7 +164,7 @@ export function MemberAccessSection({ member, viewerRole, viewerId }: MemberAcce
                     disabled={seatBlocksPromotion}
                     description={
                       seatBlocksPromotion
-                        ? 'Field seats are always Members — change the seat first.'
+                        ? 'Field seats are always Members. Change the seat first.'
                         : undefined
                     }>
                     Admin

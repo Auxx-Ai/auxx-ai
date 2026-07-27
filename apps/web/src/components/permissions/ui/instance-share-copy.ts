@@ -42,7 +42,7 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
   },
   dashboard: {
     noun: 'dashboard',
-    baselineHint: 'Shared with the workspace by default — restrict it to make it private.',
+    baselineHint: 'Shared with the workspace by default. Restrict it to make it private.',
     levels: {
       read: 'View',
       write: 'Edit widgets & layout',

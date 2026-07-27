@@ -37,7 +37,7 @@ const COPY: Record<GranteeKind, { description: string }> = {
  * lowered above, or the type itself is restricted workspace-wide.
  */
 const AGENT_DESCRIPTION =
-  'Access to individual record types. Each row shows what this agent gets by default — pick a level to override it for that type.'
+  'Access to individual record types. Each row shows what this agent gets by default. Pick a level to override it for that type.'
 
 /** Neutral copy for a grantee kind this section does not model (e.g. `profile`). */
 const FALLBACK_DESCRIPTION =
@@ -182,7 +182,7 @@ function DefAccessRow({
       title={<span className='truncate'>{resource.plural}</span>}
       secondary={
         isLockedDown ? (
-          <Tooltip content='Restricted: hidden from everyone by default — only members you grant access (directly or via a team) can see this type.'>
+          <Tooltip content='Restricted: hidden from everyone by default. Only members you grant access (directly or via a team) can see this type.'>
             <Lock className='size-3 text-muted-foreground' />
           </Tooltip>
         ) : undefined

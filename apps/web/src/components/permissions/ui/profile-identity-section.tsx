@@ -121,7 +121,7 @@ export function ProfileIdentitySection({
           title='Seat class'
           type={BaseType.STRING}
           showIcon
-          description='Fixed at creation. Change it by cloning this profile onto the other seat class and reassigning — assignment is never a billing event.'>
+          description='Fixed at creation. Change it by cloning this profile onto the other seat class and reassigning. Assignment is never a billing event.'>
           <ReadOnlyRow>
             <SeatTypeBadge seatType={seat} showFull />
           </ReadOnlyRow>

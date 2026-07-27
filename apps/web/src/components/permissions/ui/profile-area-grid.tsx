@@ -185,7 +185,7 @@ function ProfileAreaRow({
           value={value}
           inherited={inherited}
           unsetHint={unsetHint}
-          resetTooltip='Clear — back to the default'
+          resetTooltip='Clear (back to the default)'
           onChange={onChange}
           disabled={disabled || lockReason !== null}
         />

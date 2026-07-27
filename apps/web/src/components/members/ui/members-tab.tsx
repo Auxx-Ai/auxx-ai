@@ -176,7 +176,7 @@ function MembersTabInner() {
       const confirmed = await confirm({
         title: 'Switch to a field seat?',
         description:
-          'This limits the member to their schedule and assigned jobs — they lose access to tickets, records and other areas. You can switch them back to a full member later.',
+          'This limits the member to their schedule and assigned jobs. They lose access to tickets, records and other areas. You can switch them back to a full member later.',
         confirmText: 'Switch to field seat',
         cancelText: 'Cancel',
         destructive: true,
@@ -420,9 +420,9 @@ function MembersTabInner() {
                 </SelectContent>
               </Select>
               {selectedMember?.seatType === 'worker' ? (
-                <Tooltip content='Field seats are always members — change to Full member first.'>
+                <Tooltip content='Field seats are always members. Change to Full member first.'>
                   <p className='text-xs text-muted-foreground'>
-                    Field seats are always members — change to Full member first to promote.
+                    Field seats are always members. Change to Full member first to promote.
                   </p>
                 </Tooltip>
               ) : (
@@ -484,7 +484,7 @@ function MembersTabInner() {
                 {selectedMember?.user.name || 'This member'} is on the {selectedMemberProfile?.name}{' '}
                 profile, which is a {seatLabel(selectedMemberProfile?.seat ?? 'full')} profile.
                 After the seat change you will need to pick a {seatLabel(newSeatType)} profile for
-                them — a profile can never carry a member across seat classes.
+                them. A profile can never carry a member across seat classes.
               </p>
             )}
           </div>

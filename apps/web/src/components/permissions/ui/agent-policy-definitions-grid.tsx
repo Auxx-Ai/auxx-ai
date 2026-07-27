@@ -72,7 +72,7 @@ export function AgentPolicyDefinitionsGrid({
     <div className='flex flex-col gap-3'>
       <AgentPolicyDefaultRow
         title='Default for every record type'
-        description='What a record type with no rule below resolves to — including types created later.'
+        description='What a record type with no rule below resolves to, including types created later.'
         value={policy.definitions.default}
         onChange={onDefaultChange}
         disabled={disabled}

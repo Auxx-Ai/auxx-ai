@@ -75,7 +75,7 @@ export function ProfileList({ canEdit, onSelect }: ProfileListProps) {
           },
           { label: APPLIES_TO_COPY[profile.appliesTo].label },
           ...(profile.isSystem
-            ? [{ label: 'System', description: 'Seeded template — not deletable.' }]
+            ? [{ label: 'System', description: 'Seeded template. Not deletable.' }]
             : []),
         ])}
         menuItems={
@@ -100,7 +100,7 @@ export function ProfileList({ canEdit, onSelect }: ProfileListProps) {
       <SettingsSection
         icon={Users}
         title='People profiles'
-        description='A profile supplies the base access a member starts from. Every member resolves to one — explicitly assigned, or the system profile for their role and seat.'>
+        description='A profile supplies the base access a member starts from. Every member resolves to one: explicitly assigned, or the system profile for their role and seat.'>
         {isLoading ? (
           <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
             <ListCard loading />
@@ -128,7 +128,7 @@ export function ProfileList({ canEdit, onSelect }: ProfileListProps) {
       <SettingsSection
         icon={Bot}
         title='Agent profiles'
-        description='Agent profiles carry an exact policy — None / Read / Read + Write / Full — that is snapshotted onto the agent version at publish. Editing one changes draft agents; production changes only on the next publish.'>
+        description='Agent profiles carry an exact policy (None, Read, Read + Write, or Full) that is snapshotted onto the agent version at publish. Editing one changes draft agents; production changes only on the next publish.'>
         {agentProfiles.length === 0 ? (
           <EmptySection
             orientation='horizontal'

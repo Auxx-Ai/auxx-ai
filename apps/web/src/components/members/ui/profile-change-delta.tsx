@@ -50,7 +50,7 @@ export function ProfileChangeDelta({
     <div className={cn('flex flex-col gap-3 rounded-xl border bg-muted/30 p-3', className)}>
       <p className='text-xs text-muted-foreground'>
         {from?.name ?? 'Current profile'} <ArrowRight className='inline size-3' />{' '}
-        <span className='font-medium text-foreground'>{to?.name ?? 'New profile'}</span> — this is
+        <span className='font-medium text-foreground'>{to?.name ?? 'New profile'}</span>. This is
         the member's effective access after the change, including their team and personal grants.
       </p>
 
