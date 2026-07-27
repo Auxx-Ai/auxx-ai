@@ -74,7 +74,8 @@ function orderRank(profile: CachedPermissionProfile): number {
 
 /**
  * Stable ordering for every profile surface: the seeded ladder
- * (owner → admin → member → field_tech → agent → chat_agent) then custom rows
+ * (owner → admin → member → field_tech → agent → chat_agent → support_agent →
+ * analyst_agent) then custom rows
  * alphabetically. Deterministic so a picker never reshuffles between renders.
  */
 function compareProfiles(a: CachedPermissionProfile, b: CachedPermissionProfile): number {

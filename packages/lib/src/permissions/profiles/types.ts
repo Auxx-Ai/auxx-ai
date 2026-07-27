@@ -27,6 +27,8 @@ export const SYSTEM_PROFILE_SLUGS = [
   'field_tech',
   'agent',
   'chat_agent',
+  'support_agent',
+  'analyst_agent',
 ] as const
 
 export type SystemProfileSlug = (typeof SYSTEM_PROFILE_SLUGS)[number]
@@ -40,7 +42,7 @@ export type ProfileAppliesTo = 'member' | 'agent' | 'any'
  *
  * **Unauthored, deliberately.** Plan 20 §2.a.1/§2.a.3 removed the authoring
  * surface: no UI writes this, no seed writes this (`system-profiles.ts` ships
- * `ceiling: null` for all six), and no mutation accepts it — `saveProfile` and
+ * `ceiling: null` for every seed), and no mutation accepts it — `saveProfile` and
  * `savePermissionProfile` have no `ceiling` input. It survives ONLY as the clamp
  * seam a future per-definition deny tier (doc 19 §11.4) will hang off, which is
  * one `Math.min` in `composeUserCapabilities` and no cached-blob field.

@@ -46,7 +46,7 @@ interface SystemProfileSeed {
   levels: Partial<Record<Area, Level>> | null
 }
 
-/** A total agent policy at one uniform level — the two agent seeds' shape. */
+/** A total agent policy at one uniform level — the `agent`/`chat_agent` seeds' shape. */
 function uniformAgentPolicy(level: AgentAccessLevel): AgentPermissionPolicy {
   return {
     areas: { default: level, overrides: {} },
@@ -57,7 +57,7 @@ function uniformAgentPolicy(level: AgentAccessLevel): AgentPermissionPolicy {
 }
 
 /**
- * The six system profiles seeded into every org (§5.1). Plan 22 reverses doc
+ * The system profiles seeded into every org (§5.1). Plan 22 reverses doc
  * 19 §0.6's original *sparse-over-`ROLE_DEFAULTS`* rationale for the USER
  * rank: unset now means `None` (`ROLE_DEFAULTS.USER` is the all-`None` floor),
  * so a profile that stores nothing composes to nothing. `member` and
@@ -74,9 +74,12 @@ function uniformAgentPolicy(level: AgentAccessLevel): AgentPermissionPolicy {
  * `owner`/`admin` express "everything" as `baseLevel: Full` rather than an
  * all-Full grant row (`levels: null`) — which also keeps seeding clear of
  * `assertGrantableLevels`' admin-only rejection; `ROLE_DEFAULTS.ADMIN`/`.OWNER`
- * staying `ALL_FULL` means there is nothing to seed for them anyway. The two
+ * staying `ALL_FULL` means there is nothing to seed for them anyway. The
  * agent profiles likewise seed `levels: null` — their authority lives in
- * `agentPolicy`, never the additive grant reducers.
+ * `agentPolicy`, never the additive grant reducers. Between the all-`full`
+ * `agent` and all-`none` `chat_agent` sit two curated presets (plan 23 §2.3):
+ * `support_agent` (KB-answering, record-working) and `analyst_agent`
+ * (read-only analysis).
  *
  * `field_tech`'s cap is `SEAT_CEILINGS`, not a `ceiling` on this row (§0.20) —
  * the seat ceiling is a billing invariant and must never become profile-driven.
@@ -156,6 +159,61 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     agentPolicy: uniformAgentPolicy('none'),
     levels: null,
   },
+  {
+    slug: 'support_agent',
+    name: 'Support Agent',
+    description:
+      'Customer-facing support preset: answers from the knowledge base and works support records. No org or admin access.',
+    icon: { iconId: 'headphones', color: 'sky' },
+    seat: 'full',
+    appliesTo: 'agent',
+    role: 'USER',
+    baseLevel: null,
+    agentPolicy: {
+      areas: {
+        default: 'none',
+        overrides: {
+          knowledgeBase: 'read',
+          records: 'read_write',
+          recordsLinked: 'read',
+          comments: 'full',
+          files: 'read',
+        },
+      },
+      definitions: { default: 'read_write', overrides: {} },
+      resourceDefault: 'none',
+      resources: { kb: { default: 'read', overrides: {} } },
+    },
+    levels: null,
+  },
+  {
+    slug: 'analyst_agent',
+    name: 'Analyst Agent',
+    description:
+      'Read-only analysis preset: reads records, datasets, dashboards, and the knowledge base. Writes nothing.',
+    icon: { iconId: 'line-chart', color: 'cyan' },
+    seat: 'full',
+    appliesTo: 'agent',
+    role: 'USER',
+    baseLevel: null,
+    agentPolicy: {
+      areas: {
+        default: 'none',
+        overrides: {
+          records: 'read',
+          recordsLinked: 'read',
+          datasets: 'read',
+          dashboards: 'read',
+          knowledgeBase: 'read',
+          files: 'read',
+        },
+      },
+      definitions: { default: 'read', overrides: {} },
+      resourceDefault: 'read',
+      resources: {},
+    },
+    levels: null,
+  },
 ]
 
 const SYSTEM_SEED_BY_SLUG = new Map(SYSTEM_PROFILE_SEEDS.map((seed) => [seed.slug, seed]))
@@ -166,7 +224,7 @@ export function systemProfileSeed(slug: SystemProfileSlug): SystemProfileSeed | 
 }
 
 /**
- * Seed the six system permission profiles for an org — **idempotent**, so it is
+ * Seed the system permission profiles for an org — **idempotent**, so it is
  * safe to call from every org-creation and org-top-up path (§5.2).
  *
  * Conflicts on the `(organizationId, slug)` unique key are ignored, so an

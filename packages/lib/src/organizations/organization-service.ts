@@ -742,7 +742,7 @@ export class OrganizationService {
         updatedAt: new Date(),
       })
 
-      // Seed the six system permission profiles INSIDE the transaction: every
+      // Seed the system permission profiles INSIDE the transaction: every
       // principal starts with a null binding, which resolves to one of these rows
       // in code (§1.3), so an org must never be able to commit without them. The
       // downstream `OrganizationSeeder` call runs outside this txn inside a
