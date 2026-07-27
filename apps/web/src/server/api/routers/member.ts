@@ -335,12 +335,18 @@ export const memberRouter = createTRPCRouter({
         invites: z.array(
           z.object({
             email: z.string().email(),
-            role: z.enum(OrganizationRole),
+            role: z.enum(OrganizationRole).default('USER'),
             seatType: z.enum(SeatType).default('full'),
+            /** Permission profile chosen in the invite UI. Its `seat` supersedes
+             * `seatType` and drives the cap check (§1.1, §7). Without it a batch
+             * invitation binds nothing and the accepted member falls back to the
+             * system template for their role (§1.3). */
+            permissionProfileId: z.string().nullish(),
           })
         ),
       })
     )
+    .use(notDemo('invite team members'))
     .mutation(async ({ ctx, input }) => {
       const [org] = await ctx.db
         .select({ name: schema.Organization.name })
@@ -348,7 +354,12 @@ export const memberRouter = createTRPCRouter({
         .where(eq(schema.Organization.id, ctx.session.organizationId))
         .limit(1)
 
-      const results = []
+      const results: Array<{
+        email: string
+        success: boolean
+        message?: string
+        error?: string
+      }> = []
       for (const invite of input.invites) {
         try {
           const result = await inviteMember(
@@ -360,6 +371,7 @@ export const memberRouter = createTRPCRouter({
               email: invite.email,
               role: invite.role,
               seatType: invite.seatType,
+              permissionProfileId: invite.permissionProfileId,
             },
             ctx.db
           )
