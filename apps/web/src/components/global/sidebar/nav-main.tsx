@@ -12,7 +12,6 @@ import { usePathname } from 'next/navigation'
 import type * as React from 'react'
 import { useMemo } from 'react'
 import type { SidebarProps } from '~/constants/menu'
-import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CollapsibleSidebarSection } from './collapsible-sidebar-section'
@@ -43,7 +42,6 @@ export function NavMain({ menu, itemActions }: Props) {
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const { hasAccess } = useFeatureFlags()
   const { can } = useAccess()
-  const { isAdminOrOwner } = useUser()
   const isOpen = getGroupOpen('configurations')
 
   /** Toggle the Configurations group open/closed state */
@@ -51,8 +49,8 @@ export function NavMain({ menu, itemActions }: Props) {
     toggleGroup('configurations')
   }
 
-  // Filter items by feature access + Layer-2 capability (and admin-only gates)
-  // then compute URLs — into NEW objects, never mutating the shared `menu.items`
+  // Filter items by feature access + Layer-2 capability, then compute URLs —
+  // into NEW objects, never mutating the shared `menu.items`
   // (the module-level `SIDEBAR_MENU`, also read by the command palette). Mutating
   // it would permanently prune entries: once an item is filtered out it could
   // never reappear when a realtime permission change re-grants access. Memoized
@@ -61,12 +59,10 @@ export function NavMain({ menu, itemActions }: Props) {
     return menu.items
       .filter((item) => !item.featureKey || hasAccess(item.featureKey))
       .filter((item) => !item.permissionKey || can(item.permissionKey))
-      .filter((item) => !item.adminOnly || isAdminOrOwner)
       .map((item) => {
         const subItems = item.items
           ?.filter((sub) => !sub.featureKey || hasAccess(sub.featureKey))
           .filter((sub) => !sub.permissionKey || can(sub.permissionKey))
-          .filter((sub) => !sub.adminOnly || isAdminOrOwner)
           .map((sub) => ({
             ...sub,
             url: item.skipParentSlug
@@ -83,7 +79,7 @@ export function NavMain({ menu, itemActions }: Props) {
         return { ...item, items: subItems, url: getUrl(menu.route, item.slug) }
       })
       .filter((item) => !item.items || item.items.length > 0)
-  }, [menu, can, hasAccess, isAdminOrOwner])
+  }, [menu, can, hasAccess])
 
   function isActive(item: SidebarProps) {
     if (item.items?.length) {

@@ -18,7 +18,7 @@ import {
   MainPageNoPermission,
   MainPageNotFound,
 } from '~/components/global/main-page-states'
-import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 function AgentDetailLoader({ slug }: { slug: string }) {
@@ -62,9 +62,9 @@ export default function AgentDetailPage() {
   const params = useParams<{ slug: string }>()
   const slug = params?.slug
   const { hasAccess } = useFeatureFlags()
-  const { isAdminOrOwner } = useUser()
+  const { can } = useAccess()
 
-  if (!hasAccess(FeatureKey.agents) || !isAdminOrOwner) {
+  if (!hasAccess(FeatureKey.agents) || !can('agents.manage')) {
     return (
       <MainPage>
         <MainPageHeader>
@@ -75,7 +75,7 @@ export default function AgentDetailPage() {
         </MainPageHeader>
         <MainPageNoPermission
           title='Agents Not Available'
-          description='Agents are admin-only and require the agents feature on your plan.'
+          description='Agents require the agents feature on your plan and permission to manage agents.'
         />
       </MainPage>
     )
