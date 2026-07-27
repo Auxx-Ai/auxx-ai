@@ -9,6 +9,7 @@ import { assertGrantableLevels } from '../capabilities/grant-service'
 import { type Area, type Level, parseAreaLevels } from '../capabilities/registry'
 import { FeaturePermissionService } from '../feature-permission-service'
 import { FeatureKey } from '../types'
+import { parseAgentPolicy } from './agent-policy'
 import { computeEffectiveStatesUncached, type QueryRunner } from './effective-state'
 import {
   type ActorAuthority,
@@ -110,7 +111,7 @@ export async function savePermissionProfile(
 
   if ((input.defAccess?.length ?? 0) > 0 || (input.instanceAccess?.length ?? 0) > 0) {
     throw new BadRequestError(
-      'Profile-scoped resource grants are not enabled yet — see plans/permissions/v2/19-permission-profiles.md step 9.'
+      'Profile-scoped resource grants are not enabled yet. See plans/permissions/v2/19-permission-profiles.md step 9.'
     )
   }
 
@@ -119,7 +120,7 @@ export async function savePermissionProfile(
     const actorRole = await loadActorRole(tx, organizationId, actorUserId)
 
     if (profile.slug === 'owner') {
-      throw new ForbiddenError('The Owner profile is not editable — it is the recovery guarantee.')
+      throw new ForbiddenError('The Owner profile is not editable. It is the recovery guarantee.')
     }
     // §0.25: making the `permissions` area grantable must NOT hand agent policy
     // to a non-admin. Agent-side profile editing stays OWNER/ADMIN-only.
@@ -327,7 +328,12 @@ async function applyWrites(
   if (input.description !== undefined) patch.description = input.description
   if (input.icon !== undefined) patch.icon = input.icon
   if (input.baseLevel !== undefined) patch.baseLevel = input.baseLevel
-  if (input.agentPolicy !== undefined) patch.agentPolicy = input.agentPolicy
+  // `null` clears the policy (a profile that carries none); anything else is
+  // coerced into the closed vocabulary before it reaches jsonb — an authored
+  // policy is enforced verbatim at run time, so it never goes in unparsed.
+  if (input.agentPolicy !== undefined) {
+    patch.agentPolicy = input.agentPolicy === null ? null : parseAgentPolicy(input.agentPolicy)
+  }
 
   if (Object.keys(patch).length > 0) {
     await tx

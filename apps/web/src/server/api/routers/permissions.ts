@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/permissions.ts
 
 import {
+  type AgentPermissionPolicy,
   type Area,
   clearGranteeLevels,
   createPermissionProfile,
@@ -41,6 +42,34 @@ const levelsInput = z.record(z.string(), z.coerce.number().int().min(Level.None)
 
 /** Profile identity chrome (§7): an icon id + colour token, or nothing. */
 const iconInput = z.object({ iconId: z.string(), color: z.string() }).nullable()
+
+/**
+ * One exact-policy keyspace of an agent profile: an explicit `default` plus
+ * sparse `overrides` (plan 19 §2.3).
+ *
+ * The rung vocabulary is closed, so it is a `z.enum` rather than a loose string —
+ * a typo'd rung must be a 400, not a value silently dropped into "reads as the
+ * default". Keys stay free strings (area slugs, entity `apiSlug`s, instance ids);
+ * `parseAgentPolicy` inside the save is the gate that normalizes them.
+ */
+const exactAgentPolicyInput = z.object({
+  default: z.enum(['none', 'read', 'read_write', 'full']),
+  overrides: z.record(z.string(), z.enum(['none', 'read', 'read_write', 'full'])),
+})
+
+/**
+ * `PermissionProfile.agentPolicy` — the agent half of a profile (§2.3). Typed as
+ * `ZodType<AgentPermissionPolicy>` on purpose: if the stored shape gains a
+ * keyspace, this input fails to compile instead of quietly stripping it, which is
+ * exactly the failure this field shipped with (the whole editor reported saved and
+ * persisted nothing).
+ */
+const agentPolicyInput: z.ZodType<AgentPermissionPolicy> = z.object({
+  areas: exactAgentPolicyInput,
+  definitions: exactAgentPolicyInput,
+  resourceDefault: z.enum(['none', 'read', 'read_write', 'full']),
+  resources: z.record(z.string(), exactAgentPolicyInput),
+})
 
 /**
  * The Layer-2 gate for this router: the `permissions` area itself.
@@ -301,6 +330,11 @@ export const permissionsRouter = createTRPCRouter({
         icon: iconInput.optional(),
         levels: levelsInput.nullish(),
         baseLevel: z.number().int().min(Level.None).max(Level.Full).nullish(),
+        /**
+         * The agent-profile exact policy. OWNER/ADMIN-only — the save enforces
+         * that, not this input. `null` clears it; omit to leave it untouched.
+         */
+        agentPolicy: agentPolicyInput.nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -316,6 +350,7 @@ export const permissionsRouter = createTRPCRouter({
         // is the real gate (drops unknown areas, clamps each value).
         levels: input.levels as Partial<Record<Area, Level>> | null | undefined,
         baseLevel: input.baseLevel as Level | null | undefined,
+        agentPolicy: input.agentPolicy,
       })
 
       await recordAuditFromCtx(ctx, {
@@ -328,6 +363,9 @@ export const permissionsRouter = createTRPCRouter({
           name: profile.name,
           levels: input.levels ?? undefined,
           baseLevel: input.baseLevel ?? undefined,
+          // The policy IS the authority for an agent profile — an audit row that
+          // omits it records that permissions changed without recording to what.
+          agentPolicy: input.agentPolicy === undefined ? undefined : input.agentPolicy,
         },
       })
 

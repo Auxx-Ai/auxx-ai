@@ -219,6 +219,21 @@ export function parsePublishedAgentPolicy(
 }
 
 /**
+ * Coerce an authored `PermissionProfile.agentPolicy` into the trusted shape
+ * before it is stored.
+ *
+ * This is the real gate on the profile-save path — the router's zod input only
+ * checks the envelope, exactly as `parseAreaLevels` is the gate for human
+ * `levels`. Values outside the closed rung vocabulary are DROPPED (the key then
+ * reads as its collection default) and an unreadable `default` falls back to
+ * `'none'`, so a malformed payload can only ever narrow authority, never widen
+ * it.
+ */
+export function parseAgentPolicy(raw: unknown): AgentPermissionPolicy {
+  return authorizationOnlyPolicy(parsePublishedAgentPolicy(raw))
+}
+
+/**
  * The authorization-only projection of a policy — everything that decides what
  * the agent may do, and nothing that merely records who published it.
  *
