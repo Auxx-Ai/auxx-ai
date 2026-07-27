@@ -47,11 +47,11 @@ export interface GranteeRef {
  *
  * **Today that set is `settings` alone.** `permissions` left it in doc 19 §0.25
  * (it must be grantable to be a delegable area) and `billing`/`members` were
- * never `adminOnly` — they are default-`None`-but-grantable via
- * `USER_ADMIN_NONE_AREAS`. §6.1.5's parenthetical listing all four as blocked
- * here does not match the registry; the §6.1 escalation guard, not this check,
- * is what keeps `billing`/`members`/`permissions` from being handed out by
- * someone who does not hold them.
+ * never `adminOnly` — they are default-`None`-but-grantable, omitted from
+ * `MEMBER_BASELINE_LEVELS` in seat-policy.ts (plan 22). §6.1.5's parenthetical
+ * listing all four as blocked here does not match the registry; the §6.1
+ * escalation guard, not this check, is what keeps `billing`/`members`/
+ * `permissions` from being handed out by someone who does not hold them.
  *
  * The seeded `owner`/`admin` system profiles express "everything" via
  * `PermissionProfile.baseLevel`, NOT an all-Full grant row, so system seeding

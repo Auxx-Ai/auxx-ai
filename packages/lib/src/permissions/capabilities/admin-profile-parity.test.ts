@@ -16,8 +16,16 @@ import {
   effectiveRecordLevel,
   type ResolvedRecordAccess,
 } from './entity-access'
-import { AREA_ORDER, Area, areaLevelFromKeys, Level, PermissionKey } from './registry'
-import { effectiveDefault, ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
+import {
+  AREA_ORDER,
+  Area,
+  areaLevelFromKeys,
+  buildAreaLevels,
+  expandLevelsToKeys,
+  Level,
+  PermissionKey,
+} from './registry'
+import { ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
 
 /**
  * **ADMIN parity — doc 19 §5.3 pieces 1+2 (step 10), verified against §9.1's
@@ -46,6 +54,21 @@ import { effectiveDefault, ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
  */
 
 // ─────────────────────────── the pre-change oracle ───────────────────────────
+
+/**
+ * Rebuilds `seat-policy.ts`'s deleted `effectiveDefault` helper: per area
+ * `min(ROLE_DEFAULTS[role][area], SEAT_CEILINGS[seatType][area])`, expanded to
+ * keys. Only ever called with `'ADMIN'`/`'OWNER'` in this file — both stay
+ * `ALL_FULL` in `ROLE_DEFAULTS` after plan 22 (the strip only touched `USER`),
+ * so this is byte-identical to the pre-strip helper for every case this file
+ * exercises.
+ */
+function effectiveDefault(role: 'ADMIN' | 'OWNER', seatType: SeatType): PermissionKey[] {
+  const defaults = ROLE_DEFAULTS[role]
+  const ceiling = SEAT_CEILINGS[seatType]
+  const clamped = buildAreaLevels((area) => Math.min(defaults[area], ceiling[area]) as Level)
+  return expandLevelsToKeys(clamped)
+}
 
 /** What the removed short-circuit produced for AREAS. */
 const bypassAreaKeys = (seatType: SeatType) => new Set(effectiveDefault('ADMIN', seatType))

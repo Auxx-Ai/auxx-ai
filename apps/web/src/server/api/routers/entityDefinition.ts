@@ -100,9 +100,10 @@ export const entityDefinitionRouter = createTRPCRouter({
   // administration), so it is gated on `settingsManage` rather than the
   // `channels` area (plan 21 §4.3/§6 — decided individually). Admins hold
   // `settingsManage` via `ROLE_DEFAULTS.ADMIN`, members stay `None` by default
-  // (`USER_ADMIN_NONE_AREAS`), so behavior is preserved. Was `protectedProcedure`
-  // — any member could create a def (perms v2 doc 09). Editing/deleting existing
-  // defs is gated on def-`admin`.
+  // (`settings` is omitted from `MEMBER_BASELINE_LEVELS` in seat-policy.ts,
+  // plan 22), so behavior is preserved. Was `protectedProcedure` — any member
+  // could create a def (perms v2 doc 09). Editing/deleting existing defs is
+  // gated on def-`admin`.
   create: permissionProcedure(PermissionKey.settingsManage)
     .input(createEntityDefinitionSchema)
     .mutation(async ({ ctx, input }) => {

@@ -140,7 +140,14 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // inboxes, labels, suppression, chat duty, recordings). A stale v8 blob lacks
   // `channelsManage` entirely, which 403s admins on the newly-migrated routers
   // (org cache flush does not reach user capability blobs).
+  // v10: member baseline strip (plan 22) — `ROLE_DEFAULTS.USER` went from a
+  // generous per-area map to the all-`None` floor; the Member/Field-Tech
+  // baseline moved onto a seeded `PermissionGrant` row instead. A stale v9 blob
+  // was composed under the old generous fall-through, so it holds keys a
+  // member's profile no longer grants — fail-OPEN on a stale blob, the same
+  // dangerous direction as v7→v8, so this bump ships in the SAME change as the
+  // strip rather than being treated as cosmetic.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v9', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v10', ttlSeconds: ONE_DAY },
 }

@@ -49,6 +49,7 @@ vi.mock('../feature-permission-service', () => ({
 import { composeUserCapabilities } from './compose-user-capabilities'
 import { setGranteeLevels } from './grant-service'
 import { Area, Level, PermissionKey, parseAreaLevels } from './registry'
+import { MEMBER_BASELINE_LEVELS } from './seat-policy'
 
 const ORG = 'org_1'
 
@@ -154,15 +155,19 @@ describe('setGranteeLevels — Level.None storability (v2 §1)', () => {
   })
 
   it('a profile grant round-trips an explicit None into a composed None for that area', async () => {
-    // End-to-end proof of the same invariant: the levels that reach the DB are the
-    // levels the composer consumes.
+    // End-to-end proof of the same invariant: the levels that reach the DB are
+    // the levels the composer consumes. `prof_member`'s row models the seeded
+    // Member baseline (plan 22 §2.2) with an admin override zeroing `records` —
+    // post plan-22 an unset area floors to None too, so this must ground the
+    // "other areas untouched" half in the baseline's OWN explicit levels, not
+    // the old ROLE_DEFAULTS.USER fall-through.
     const sink: { levels?: Record<string, number> } = {}
     await setGranteeLevels({
       organizationId: ORG,
       granteeType: 'profile',
       granteeId: 'prof_member',
       grantedById: 'u_admin',
-      levels: { [Area.records]: Level.None },
+      levels: { ...MEMBER_BASELINE_LEVELS, [Area.records]: Level.None },
       db: fakeDb(sink),
     })
     const caps = composeUserCapabilities({
@@ -173,7 +178,8 @@ describe('setGranteeLevels — Level.None storability (v2 §1)', () => {
     })
     expect(caps.keys).not.toContain(PermissionKey.recordsView)
     expect(caps.keys).not.toContain(PermissionKey.recordsEdit)
-    // Unset areas are untouched.
+    // Other Member-baseline areas persist — they're explicit in the map now,
+    // not a role-default fall-through.
     expect(caps.keys).toContain(PermissionKey.workflowsManage)
   })
 

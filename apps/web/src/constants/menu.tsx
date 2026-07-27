@@ -61,8 +61,6 @@ export type SidebarProps = {
   featureKey?: string
   /** Layer-2 capability key required for this item to be visible (§7.3) */
   permissionKey?: string
-  /** When true, only admins/owners see this item */
-  adminOnly?: boolean
   /**
    * When true, this item is visible to any member who administers ≥1 def
    * (OWNER/ADMIN or a def-`admin` grantee) — Custom Fields is *derived* from
@@ -125,7 +123,6 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     icon: <Bot />,
     featureKey: 'agents',
     permissionKey: 'agents.manage',
-    adminOnly: true,
   },
   {
     id: 'calls',
@@ -189,7 +186,6 @@ export const SIDEBAR_MENU: SidebarProps[] = [
       },
     ],
   },
-  // Member-visible by design (no adminOnly) — dashboards are member-safe.
 
   {
     id: 'resources',
