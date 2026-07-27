@@ -19,6 +19,7 @@ import {
   getCachedAgents,
   getCachedMembers,
   getCachedPermissionProfileBySlug,
+  getCachedPermissionProfiles,
   onCacheEvent,
 } from '../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
@@ -265,6 +266,15 @@ export interface UpdateAgentInput {
    * rejected with `BadRequestError` otherwise. Omit to leave untouched.
    */
   runAsUserId?: string | null
+  /**
+   * The DRAFT permission-profile binding (plan 19 §0.16). Production keeps
+   * running the active version's `permissionPolicy` snapshot until the agent is
+   * published, so this only changes what the *next* publish resolves — which is
+   * why it also flips `hasUnpublishedChanges`. `null` unbinds, falling back to
+   * the system profile for the agent's kind (§1.3). Must be a profile in this
+   * org whose `appliesTo` admits agents. Omit to leave untouched.
+   */
+  permissionProfileId?: string | null
 }
 
 /**
@@ -310,6 +320,13 @@ export async function updateAgent(
   // `resolveAgentRunCapabilities` (§0.6), so reject it at the write instead.
   if (input.runAsUserId != null) {
     await assertRunAsCandidate(organizationId, input.runAsUserId)
+  }
+
+  // A binding the resolver would refuse is worse than no binding: it resolves
+  // fail-closed at run time (`resolveDraftAgentPolicy`), so the agent goes inert
+  // with no sign at the write. Refuse it here instead.
+  if (input.permissionProfileId != null) {
+    await assertAgentProfileCandidate(organizationId, input.permissionProfileId)
   }
 
   await db.transaction(async (tx) => {
@@ -358,8 +375,17 @@ export async function updateAgent(
     // versioned too). Identity/lifecycle edits (name/slug/description/
     // mentionable/archivedAt) never mark dirty. The SQL guard sets it true only
     // when an active version exists — pre-setup drafts have no baseline.
+    //
+    // `permissionProfileId` counts even though the binding itself is NOT in
+    // `AgentConfigSnapshot`: `configHash` folds in the resolved policy, so a
+    // rebind genuinely changes what the next publish would write. Leaving it out
+    // would show "no unpublished changes" on a draft whose authority differs
+    // from production.
     const behaviorChanged =
-      input.prompt !== undefined || input.modelId !== undefined || input.appAccounts !== undefined
+      input.prompt !== undefined ||
+      input.modelId !== undefined ||
+      input.appAccounts !== undefined ||
+      input.permissionProfileId !== undefined
     if (behaviorChanged) {
       patch.hasUnpublishedChanges = sql`${schema.Agent.activeVersionId} is not null`
     }
@@ -830,6 +856,12 @@ export interface AgentDetail extends AgentSummary {
   activeVersionNumber: number | null
   /** Whether the draft (this view's behavior fields) diverges from the active version. */
   hasUnpublishedChanges: boolean
+  /**
+   * The DRAFT permission-profile binding; `null` falls back to the system
+   * profile for this agent's kind (plan 19 §1.3). Not the resolved policy —
+   * that is `AgentVersion.permissionPolicy`, cut at publish.
+   */
+  permissionProfileId: string | null
 }
 
 /**
@@ -873,6 +905,7 @@ export async function getAgentDetail(
       modelId: schema.Agent.modelId,
       activeVersionId: schema.Agent.activeVersionId,
       hasUnpublishedChanges: schema.Agent.hasUnpublishedChanges,
+      permissionProfileId: schema.Agent.permissionProfileId,
       activeVersionNumber: schema.AgentVersion.versionNumber,
     })
     .from(schema.Agent)
@@ -894,6 +927,7 @@ export async function getAgentDetail(
     activeVersionId: row.activeVersionId ?? null,
     activeVersionNumber: row.activeVersionNumber ?? null,
     hasUnpublishedChanges: row.hasUnpublishedChanges,
+    permissionProfileId: row.permissionProfileId ?? null,
   }
 }
 
@@ -936,6 +970,28 @@ async function assertRunAsCandidate(organizationId: string, runAsUserId: string)
   }
   if (member.user?.userType !== 'USER') {
     throw new BadRequestError('An agent can only run as a human member, not another agent.')
+  }
+}
+
+/**
+ * Verify a draft profile binding is one an agent may actually hold: a profile in
+ * THIS org (the cache is org-scoped, so a foreign id simply misses) whose
+ * `appliesTo` admits agents. A `member` profile carries no `agentPolicy` at all,
+ * so binding one resolves to `emptyAgentPolicy()` — an agent that silently can
+ * do nothing (plan 19 §1.3).
+ */
+async function assertAgentProfileCandidate(
+  organizationId: string,
+  permissionProfileId: string
+): Promise<void> {
+  const profile = (await getCachedPermissionProfiles(organizationId)).find(
+    (p) => p.id === permissionProfileId
+  )
+  if (!profile) {
+    throw new BadRequestError('Permission profile not found in this organization.')
+  }
+  if (profile.appliesTo !== 'agent' && profile.appliesTo !== 'any') {
+    throw new BadRequestError(`The "${profile.name}" profile cannot be bound to an agent.`)
   }
 }
 

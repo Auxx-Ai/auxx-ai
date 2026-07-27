@@ -211,6 +211,14 @@ export const agentRouter = createTRPCRouter({
          * validates the target is an ACTIVE `userType:'USER'` member.
          */
         runAsUserId: z.string().nullable().optional(),
+        /**
+         * The DRAFT permission-profile binding (capability layer v2 §0.16).
+         * `null` unbinds (falls back to the system profile for the agent's
+         * kind); omit to leave unchanged. The service validates the profile is
+         * in this org and admits agents. Production is unaffected until the
+         * agent is published.
+         */
+        permissionProfileId: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -240,6 +248,9 @@ export const agentRouter = createTRPCRouter({
       if (patch.archivedAt !== undefined) updatePayload.archivedAt = patch.archivedAt
       if (patch.appAccounts !== undefined) updatePayload.appAccounts = patch.appAccounts
       if (patch.runAsUserId !== undefined) updatePayload.runAsUserId = patch.runAsUserId
+      if (patch.permissionProfileId !== undefined) {
+        updatePayload.permissionProfileId = patch.permissionProfileId
+      }
 
       // Exclude the writer's own socket from the `agent:updated` broadcast so
       // the persona editor's autosave doesn't echo back and remount over the
