@@ -1,11 +1,7 @@
 // apps/web/src/components/permissions/hooks/use-grantee-def-access.ts
 'use client'
 
-import {
-  ResourceGranteeType,
-  ResourcePermission,
-  type SharingGranteeType,
-} from '@auxx/database/enums'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import {
   Area,
   ENTITY_BASE_AREAS,
@@ -22,17 +18,18 @@ import { api } from '~/trpc/react'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
 /**
- * The grantee axis this section edits: an individual member or a team.
+ * The grantee axis this section edits: an individual member, a team, or (doc 19
+ * §9 step 9 lifted the write guard) a **profile itself** — the profile editor's
+ * own Records-area nesting (capability layer v2 Part B extension, plan 24).
  *
- * A `'profile'` kind is deliberately absent. It is not a missing tab — the
- * grantee-centric def grid writes `ResourceAccess` rows through
- * `resourceAccess.grantType`/`revokeType`, and profile-grantee `ResourceAccess`
- * writes are refused at the service layer (`assertProfileGranteeSupported`) until
- * every resolver reads them. Adding it here would ship a picker whose every
- * selection 400s. Per-def profile access is therefore explicitly **unsupported**
- * on this surface; it belongs to the profile-side def grid in doc 19 §7.
+ * A `'profile'` grantee is NOT a member/team override: it has no separate
+ * workspace-baseline-relative composition, because a profile's def override
+ * doesn't raise above anything external — it's authored directly on the
+ * profile being edited. Its "own area levels" therefore come from the caller's
+ * live (possibly unsaved) draft, passed in as `profileOwnLevels`, never from
+ * `usePermissionGrants()`'s persisted `groupGrants`/`userGrants`.
  */
-export type GranteeKind = 'user' | 'group'
+export type GranteeKind = 'user' | 'group' | 'profile'
 
 /**
  * How the grantee's Layer-2 area levels compose — which decides what an
@@ -45,14 +42,16 @@ export type GranteeKind = 'user' | 'group'
 export type GranteePrincipal = 'member' | 'agent'
 
 /**
- * Typed against `SharingGranteeType`, not `ResourceGranteeType`: the wider union
- * carries `'profile'`, whose ResourceAccess writes are still refused server-side.
- * Total over {@link GranteeKind} by construction — there is no fall-through
- * branch that could turn an unmodelled kind into a `user` write.
+ * Typed against the full `ResourceGranteeType` (not the narrower
+ * `SharingGranteeType`, which excludes `profile` by construction) so a
+ * `'profile'` kind resolves to a real, authorable grantee address. Total over
+ * {@link GranteeKind} by construction — there is no fall-through branch that
+ * could turn an unmodelled kind into a `user` write.
  */
-const GRANTEE_TYPE: Record<GranteeKind, SharingGranteeType> = {
+const GRANTEE_TYPE: Record<GranteeKind, ResourceGranteeType> = {
   user: ResourceGranteeType.user,
   group: ResourceGranteeType.group,
+  profile: ResourceGranteeType.profile,
 }
 
 /** One def's row in the grantee-centric Access grid. */
@@ -96,7 +95,15 @@ export interface GranteeDefAccessRow {
 export function useGranteeDefAccess(
   granteeKind: GranteeKind,
   granteeId: string,
-  principal: GranteePrincipal = 'member'
+  principal: GranteePrincipal = 'member',
+  /**
+   * Required (and only meaningful) for `granteeKind: 'profile'` — the
+   * profile's own live draft: its per-area base `levels` and blanket
+   * `baseLevel`, exactly as the profile editor's own grid renders them. A
+   * profile grantee has no external baseline to raise above, so its "Inherit"
+   * fall-through is this draft, not `usePermissionGrants()`'s persisted maps.
+   */
+  profileOwnLevels?: { levels: Partial<Record<Area, Level>>; baseLevel: Level | null }
 ) {
   const utils = api.useUtils()
   const { resources, isLoading: resourcesLoading } = useResources()
@@ -112,19 +119,25 @@ export function useGranteeDefAccess(
     userGrants,
   } = usePermissionGrants()
   const ownAreaLevels = useMemo(() => {
+    if (granteeKind === 'profile') return profileOwnLevels?.levels ?? {}
     const persisted = granteeKind === 'group' ? groupGrants : userGrants
     return persisted.find((g) => g.granteeId === granteeId)?.levels ?? {}
-  }, [granteeKind, granteeId, groupGrants, userGrants])
+  }, [granteeKind, granteeId, groupGrants, userGrants, profileOwnLevels])
 
   const targetBasePermission = useCallback(
     (area: Area): ResourcePermission => {
       const level =
         principal === 'agent'
           ? (ownAreaLevels[area] ?? Level.Full)
-          : (ownAreaLevels[area] ?? effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None)
+          : granteeKind === 'profile'
+            ? (ownAreaLevels[area] ??
+              profileOwnLevels?.baseLevel ??
+              roleDefaults?.[area] ??
+              Level.None)
+            : (ownAreaLevels[area] ?? effectiveBaseline[area] ?? roleDefaults?.[area] ?? Level.None)
       return levelToRecordBasePermission(level) ?? ResourcePermission.none
     },
-    [principal, ownAreaLevels, effectiveBaseline, roleDefaults]
+    [principal, granteeKind, ownAreaLevels, profileOwnLevels, effectiveBaseline, roleDefaults]
   )
 
   const workspaceBasePermission = useCallback(

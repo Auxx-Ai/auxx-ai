@@ -1,49 +1,52 @@
-// apps/web/src/components/permissions/hooks/use-agent-policy-resources.ts
+// apps/web/src/components/permissions/hooks/use-instance-resource-lists.ts
 'use client'
 
 import type { InstanceAccessKey } from '@auxx/lib/permissions/client'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 
-/**
- * Instance lists for the Resources grid — one query per shareable resource type
- * (`dataset` / `kb` / `dashboard`), each fetched only while its type row is
- * expanded.
- *
- * Lazy on purpose: the policy itself is sparse, so an admin who only sets type
- * defaults never pays for three list queries. The lists are needed for the
- * *names* of instance overrides, not for the policy's correctness — an override
- * whose instance no longer exists is simply never looked up.
- */
-
-/** How many instances one type row lists before it says "showing the first N". */
+/** How many instances one list fetches before it says "showing the first N". */
 const INSTANCE_PAGE_SIZE = 100
 
 /** One selectable resource instance. */
-export interface PolicyResourceInstance {
+export interface InstanceResourceItem {
   id: string
   name: string
 }
 
 /** One resource type's loaded instances. */
-export interface PolicyResourceList {
-  items: PolicyResourceInstance[]
+export interface InstanceResourceList {
+  items: InstanceResourceItem[]
   isLoading: boolean
   /** More instances exist than were fetched — the grid says so rather than lying. */
   truncated: boolean
 }
 
-/** Which type rows are currently expanded (and therefore worth querying). */
-export type OpenResourceTypes = Partial<Record<InstanceAccessKey, boolean>>
+/** Which resource types are currently worth querying. */
+export type OpenInstanceTypes = Partial<Record<InstanceAccessKey, boolean>>
 
 /**
- * Fetch the instances of every expanded resource type.
+ * Fetch the instances of every "open" instance-access resource type — one
+ * query per shareable type (`api.dataset.list` / `api.kb.list` /
+ * `api.dashboard.list`), each fetched only while its caller marks it `open`.
  *
- * @param open - Expanded state per type; a collapsed type issues no query.
+ * Generalized (capability layer v2 Part B.3) out of the agent-policy Resources
+ * grid, which fetches lazily per manually-expanded type row (the policy is
+ * sparse, so an admin who only sets type defaults never pays for three list
+ * queries). The Datasets / Knowledge base / Dashboards area rows on the
+ * Member baseline and grantee-override grids are the second caller: they pass
+ * every key `open: true` unconditionally, because their host's search box has
+ * to match against instance names to decide whether to auto-expand an area —
+ * unlike the agent-policy grid, there is no search there to defer the fetch
+ * behind.
+ *
+ * The lists are needed for the *names* of instances, not for correctness — an
+ * override/grant whose instance no longer exists (or is outside the first
+ * page) is simply rendered with its raw id and kept until cleared.
  */
-export function useAgentPolicyResourceInstances(
-  open: OpenResourceTypes
-): Record<InstanceAccessKey, PolicyResourceList> {
+export function useInstanceResourceLists(
+  open: OpenInstanceTypes
+): Record<InstanceAccessKey, InstanceResourceList> {
   const datasets = api.dataset.list.useQuery(
     { limit: INSTANCE_PAGE_SIZE },
     { enabled: open.dataset === true, staleTime: 60_000 }

@@ -5,8 +5,11 @@ import { Area, type Level } from '@auxx/lib/permissions/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useCallback } from 'react'
 import { useDefBaselines } from '../hooks/use-def-baselines'
+import { useInstanceBaselineRows } from '../hooks/use-instance-baseline-rows'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from '../hooks/use-permission-grants'
 import { DefBaselineRows } from './def-baseline-rows'
+import { InstanceBaselineRows } from './instance-baseline-rows'
+import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
 import { type AreaChildFilter, type AreaChildren, LeveledAreaGrid } from './leveled-area-grid'
 
 /**
@@ -32,6 +35,12 @@ import { type AreaChildFilter, type AreaChildren, LeveledAreaGrid } from './leve
 export function MemberBaselineTab({ disabled = false }: { disabled?: boolean }) {
   const { isLoading, roleDefaults, baseline, save, remove } = usePermissionGrants()
   const { isLoading: defsLoading, rows: defRows, setBaseline: setDefBaseline } = useDefBaselines()
+  const {
+    isLoading: instanceRowsLoadingAll,
+    lists: instanceLists,
+    rowsByKey: instanceRowsByKey,
+    setBaseline: setInstanceBaseline,
+  } = useInstanceBaselineRows()
 
   const handleChange = (area: Area, level: Level | undefined) => {
     const next = { ...baseline }
@@ -45,34 +54,71 @@ export function MemberBaselineTab({ disabled = false }: { disabled?: boolean }) 
   }
 
   /**
-   * Per-def workspace baselines nested under Records. "Overrides only" here means
-   * "defs with a stored `role:org_member` row"; the match count lets the grid keep
-   * (and expand) the Records row when a def name — not the area label — matched.
+   * Per-def workspace baselines nested under Records, and per-instance
+   * workspace baselines nested under Datasets / Knowledge base / Dashboards
+   * (capability layer v2 Part B). "Overrides only" means "has a stored
+   * `role:org_member` row of its own"; the match count lets the grid keep
+   * (and expand) the parent area row when a def/instance name — not the area
+   * label — matched.
    */
   const renderChildren = useCallback(
     (area: Area, filter: AreaChildFilter): AreaChildren | undefined => {
-      if (area !== Area.records) return undefined
-      if (defsLoading)
+      if (area === Area.records) {
+        if (defsLoading)
+          return {
+            matchCount: 0,
+            rows: <DefBaselineRows rows={[]} isLoading onChange={setDefBaseline} />,
+          }
+
+        const matched = defRows.filter((row) => {
+          if (filter.overridesOnly && row.baselineLevel === undefined) return false
+          if (!filter.query) return true
+          const { plural, label } = row.resource
+          return (
+            plural.toLowerCase().includes(filter.query) ||
+            label.toLowerCase().includes(filter.query)
+          )
+        })
+
+        return {
+          matchCount: matched.length,
+          rows: <DefBaselineRows rows={matched} disabled={disabled} onChange={setDefBaseline} />,
+        }
+      }
+
+      const instanceKey = AREA_TO_INSTANCE_KEY[area]
+      if (!instanceKey) return undefined
+
+      const instanceLoading = instanceRowsLoadingAll || instanceLists[instanceKey].isLoading
+      if (instanceLoading)
         return {
           matchCount: 0,
-          rows: <DefBaselineRows rows={[]} isLoading onChange={setDefBaseline} />,
+          rows: <InstanceBaselineRows rows={[]} isLoading onChange={setInstanceBaseline} />,
         }
 
-      const matched = defRows.filter((row) => {
+      const matched = instanceRowsByKey[instanceKey].filter((row) => {
         if (filter.overridesOnly && row.baselineLevel === undefined) return false
         if (!filter.query) return true
-        const { plural, label } = row.resource
-        return (
-          plural.toLowerCase().includes(filter.query) || label.toLowerCase().includes(filter.query)
-        )
+        return row.name.toLowerCase().includes(filter.query)
       })
 
       return {
         matchCount: matched.length,
-        rows: <DefBaselineRows rows={matched} disabled={disabled} onChange={setDefBaseline} />,
+        rows: (
+          <InstanceBaselineRows rows={matched} disabled={disabled} onChange={setInstanceBaseline} />
+        ),
       }
     },
-    [defsLoading, defRows, disabled, setDefBaseline]
+    [
+      defsLoading,
+      defRows,
+      disabled,
+      setDefBaseline,
+      instanceRowsLoadingAll,
+      instanceLists,
+      instanceRowsByKey,
+      setInstanceBaseline,
+    ]
   )
 
   if (isLoading || !roleDefaults) {

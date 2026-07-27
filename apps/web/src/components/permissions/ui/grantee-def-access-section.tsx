@@ -1,27 +1,21 @@
 // apps/web/src/components/permissions/ui/grantee-def-access-section.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { TreeRow } from '@auxx/ui/components/tree-row'
-import { cn } from '@auxx/ui/lib/utils'
-import { Lock, ShieldCheck } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
-import { Tooltip } from '~/components/global/tooltip'
 import {
-  type GranteeDefAccessRow,
   type GranteeKind,
   type GranteePrincipal,
   useGranteeDefAccess,
 } from '../hooks/use-grantee-def-access'
-import { AccessLevelSelect } from './access-level-select'
+import { GranteeDefAccessRows } from './grantee-def-access-rows'
 
-const COPY: Record<GranteeKind, { description: string }> = {
+const COPY: Partial<Record<GranteeKind, { description: string }>> = {
   user: {
     description:
       'Access to individual record types. Each row shows what this member gets by default; pick a level to override it for that type.',
@@ -143,81 +137,18 @@ export function GranteeDefAccessSection({
               description='No record types match your search.'
             />
           ) : (
-            <div className='border p-1 rounded-xl flex flex-col gap-1'>
-              {filteredRows.map((row) => (
-                <DefAccessRow
-                  key={row.resource.entityDefinitionId}
-                  row={row}
-                  canEdit={canEdit}
-                  principal={principal}
-                  onChange={(level) => setLevel(row.resource.entityDefinitionId, level)}
-                />
-              ))}
+            <div className='border p-1 rounded-xl'>
+              <GranteeDefAccessRows
+                rows={filteredRows}
+                canEdit={canEdit}
+                principal={principal}
+                depth={0}
+                onChange={(entityDefinitionId, level) => setLevel(entityDefinitionId, level)}
+              />
             </div>
           )}
         </div>
       )}
     </SettingsSection>
-  )
-}
-
-/** One record-type row: def icon + name, restriction lock, override pill, picker. */
-function DefAccessRow({
-  row,
-  canEdit,
-  principal,
-  onChange,
-}: {
-  row: GranteeDefAccessRow
-  canEdit: boolean
-  principal: GranteePrincipal
-  onChange: (level: Parameters<ReturnType<typeof useGranteeDefAccess>['setLevel']>[1]) => void
-}) {
-  const { resource, isLockedDown, grantLevel, inheritedLevel, inheritLabelText, isNoEffect } = row
-  const isOverridden = grantLevel !== undefined
-  return (
-    <TreeRow
-      rowClassName='bg-primary-50 hover:bg-primary-100'
-      icon={<EntityIcon iconId={resource.icon} color={resource.color} size='xs' />}
-      title={<span className='truncate'>{resource.plural}</span>}
-      secondary={
-        isLockedDown ? (
-          <Tooltip content='Restricted: hidden from everyone by default. Only members you grant access (directly or via a team) can see this type.'>
-            <Lock className='size-3 text-muted-foreground' />
-          </Tooltip>
-        ) : undefined
-      }
-      actions={
-        <>
-          {isOverridden && (
-            <Tooltip
-              content={
-                isNoEffect
-                  ? 'This override is at or below the default, so it changes nothing.'
-                  : 'Overrides the default for this record type.'
-              }>
-              <Badge
-                variant='secondary'
-                size='xs'
-                className={cn(isNoEffect && 'border-amber-300 text-amber-600')}>
-                Override
-              </Badge>
-            </Tooltip>
-          )}
-          <AccessLevelSelect
-            value={grantLevel}
-            includeInherit
-            inheritedLevel={inheritedLevel}
-            inheritLabelText={inheritLabelText ?? (principal === 'agent' ? 'Default' : undefined)}
-            onInherit={() => onChange('inherit')}
-            onChange={(level) => onChange(level)}
-            disabled={!canEdit}
-            size='sm'
-            variant='transparent'
-            className='h-7 w-44'
-          />
-        </>
-      }
-    />
   )
 }

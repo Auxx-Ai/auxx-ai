@@ -25,6 +25,13 @@ export type RenderPicker<TChoice extends string> = (args: {
   value: TChoice
   onChange: (choice: TChoice) => void
   disabled: boolean
+  /**
+   * The row's actor, handed through so a picker can look up per-grantee data
+   * the neutral `{ actorId, choice }` grant shape doesn't otherwise carry (e.g.
+   * the instance-share dead-grant warning, capability layer v2 Part B.2.8).
+   * Additive — existing pickers destructure only `value`/`onChange`/`disabled`.
+   */
+  actorId: ActorId
 }) => ReactNode
 
 export interface GranteeListProps<TChoice extends string> {
@@ -214,6 +221,7 @@ function GranteeRow<TChoice extends string>({
               value: choice,
               onChange: (next) => onChange(actorId, next),
               disabled,
+              actorId,
             })}
             <TreeRowButton
               variant='destructive'

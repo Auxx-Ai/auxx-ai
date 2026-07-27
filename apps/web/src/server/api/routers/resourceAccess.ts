@@ -1,16 +1,22 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { BadRequestError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { getCapabilities, isInstanceAccessKey } from '@auxx/lib/permissions'
-import type { ResourceAccessContext } from '@auxx/lib/resource-access'
+import {
+  getCapabilities,
+  INSTANCE_ACCESS_RESOURCES,
+  isInstanceAccessKey,
+  type Level,
+} from '@auxx/lib/permissions'
+import type { ResourceAccessContext, ResourceAccessInfo } from '@auxx/lib/resource-access'
 import {
   assertCanManageMailSharing,
   assertCanManageMailTypeAccess,
   assertMailSharingFeature,
   checkAccess,
   checkTypeAccess,
+  getAllInstanceAccess,
   getAllTypeAccess,
   getInstanceAccess,
   getTypeAccess,
@@ -371,16 +377,62 @@ export const resourceAccessRouter = createTRPCRouter({
       })
     }),
 
-  /** Get all access grants for a specific instance */
+  /**
+   * Get all access grants for a specific instance.
+   *
+   * `user` grantees are annotated with `granteeAreaLevel` — their composed
+   * Layer-2 level for the instance's L2 `area` (capability layer v2 Part
+   * B.2.8) — so the Share UI can warn when a grant is inert: `effectiveInstanceLevel`
+   * short-circuits at area None *before* consulting instance rows, so sharing to
+   * a user whose profile composes that area to None is a silent no-op. Skipped
+   * for non-`user` grantees (group/team/role/profile are level *sources*, not
+   * subjects) and for defs outside the instance-access registry.
+   * `getCapabilities` is cache-backed, and only the few user grantees on one
+   * instance are resolved, so this stays cheap even though it fans out to one
+   * cache read per grantee.
+   */
   forInstance: protectedProcedure
     .input(
       z.object({
         recordId: z.string(),
       })
     )
-    .query(async ({ ctx, input }) => {
-      return getInstanceAccess(toContext(ctx), input.recordId as RecordId)
-    }),
+    .query(
+      async ({ ctx, input }): Promise<Array<ResourceAccessInfo & { granteeAreaLevel?: Level }>> => {
+        const recordId = input.recordId as RecordId
+        const rows = await getInstanceAccess(toContext(ctx), recordId)
+        const { entityDefinitionId } = parseRecordId(recordId)
+        if (!isInstanceAccessKey(entityDefinitionId)) return rows
+
+        const area = INSTANCE_ACCESS_RESOURCES[entityDefinitionId].area
+        return Promise.all(
+          rows.map(async (row) => {
+            if (row.granteeType !== ResourceGranteeType.user) return row
+            const capabilities = await getCapabilities(row.granteeId, ctx.session.organizationId)
+            return { ...row, granteeAreaLevel: capabilities.areaLevel(area) }
+          })
+        )
+      }
+    ),
+
+  /**
+   * All instance-level access rows for the org's instance-access resources
+   * (datasets/KB/dashboards — capability layer v2 Part B.2.5). The instance
+   * twin of `allTypeAccess`: today only type-level rows can be read in bulk,
+   * so a collapsed per-instance row in the permissions grid can't show a
+   * "Restricted / Shared · N" badge without one query per instance. Same
+   * admin gate as `allTypeAccess` — it reveals the org's per-instance sharing
+   * map.
+   */
+  allInstanceAccess: protectedProcedure.query(async ({ ctx }): Promise<ResourceAccessInfo[]> => {
+    if (!(await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId))) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'You must be an admin or owner to view instance-level access',
+      })
+    }
+    return getAllInstanceAccess(toContext(ctx))
+  }),
 
   /** Get all type-level access grants for an entity type */
   forType: protectedProcedure

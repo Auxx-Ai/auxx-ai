@@ -8,9 +8,10 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { Lock, SlidersHorizontal } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { LevelControl } from './level-control'
+import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import {
   PROFILE_AREA_GROUPS,
   UNSET_HINT_BY_ROLE,
@@ -44,6 +45,19 @@ interface ProfileAreaGridProps {
   profileRole?: OrganizationRole
   onChange: (area: Area, level: Level | undefined) => void
   disabled?: boolean
+  /**
+   * Render nested child rows under an area — Records → this profile's per-def
+   * overrides, Datasets / Knowledge base / Dashboards → this profile's
+   * per-instance grants (capability layer v2 Part B, extended to the profile
+   * editor: "expand Records and set the permissions for Companies", combined
+   * into this same grid rather than a separate section). Mirrors
+   * `LeveledAreaGrid`'s `renderChildren` contract exactly — same
+   * {@link AreaChildFilter}/{@link AreaChildren} shape, same search/auto-expand
+   * behavior — even though this grid predates and isn't built on
+   * `LeveledAreaGrid` (its three-state Not-set/explicit/Locked row is its own
+   * thing; only the nesting mechanism is shared).
+   */
+  renderChildren?: (area: Area, filter: AreaChildFilter) => AreaChildren | undefined
 }
 
 /** Why one row is not editable, or `null` when it is. */
@@ -67,6 +81,13 @@ function lockReasonFor(area: Area, seat: SeatType): string | null {
  * 3. **Locked** — a field seat can never reach a non-worker area (§0.19: the
  *    editor refuses to author a contradiction with `SEAT_CEILINGS`). Locked rows
  *    render disabled at the level that actually applies, with the reason on hover.
+ *
+ * An area may also nest child rows via `renderChildren` — Records → this
+ * profile's per-def overrides, Datasets / Knowledge base / Dashboards → this
+ * profile's per-instance grants (capability layer v2 Part B, extended here so
+ * "expand Records, set Companies" lives in this same grid rather than a
+ * separate section). Children are collapsed by default and participate in the
+ * search, exactly like `LeveledAreaGrid`'s area rows.
  */
 export function ProfileAreaGrid({
   values,
@@ -76,26 +97,48 @@ export function ProfileAreaGrid({
   profileRole = 'USER',
   onChange,
   disabled = false,
+  renderChildren,
 }: ProfileAreaGridProps) {
   const [search, setSearch] = useState('')
   const [configuredOnly, setConfiguredOnly] = useState(false)
+  /** Explicit expand state per area; absent = follow the row's `autoOpen`. */
+  const [openAreas, setOpenAreas] = useState<Partial<Record<Area, boolean>>>({})
   const query = search.trim().toLowerCase()
 
+  /**
+   * Groups with their areas narrowed by the search query and the "set areas
+   * only" toggle, each carrying its resolved children — same shape as
+   * `LeveledAreaGrid`'s `filteredGroups`: an area survives when it matches
+   * itself OR one of its children does, and the latter also auto-expands it.
+   */
   const groups = useMemo(() => {
-    const out: Array<{ group: string; areas: Area[] }> = []
+    const out: Array<{
+      group: string
+      rows: Array<{ area: Area; children: AreaChildren | undefined; autoOpen: boolean }>
+    }> = []
     for (const { group, areas } of PROFILE_AREA_GROUPS) {
-      const rows = areas.filter((area) => {
-        if (configuredOnly && values[area] === undefined) return false
-        if (!query) return true
+      const rows: Array<{ area: Area; children: AreaChildren | undefined; autoOpen: boolean }> = []
+      for (const area of areas) {
         const meta = PERMISSION_AREAS[area]
-        return (
-          meta.label.toLowerCase().includes(query) || meta.description.toLowerCase().includes(query)
-        )
-      })
-      if (rows.length > 0) out.push({ group, areas: rows })
+        const selfMatch =
+          !query ||
+          meta.label.toLowerCase().includes(query) ||
+          meta.description.toLowerCase().includes(query)
+        // A parent that matched by its own label shows all of its children;
+        // otherwise the query narrows them and a survivor rescues the parent.
+        const children = renderChildren?.(area, {
+          query: selfMatch ? '' : query,
+          overridesOnly: configuredOnly,
+        })
+        const childMatch = (children?.matchCount ?? 0) > 0
+        if (configuredOnly && values[area] === undefined && !childMatch) continue
+        if (!selfMatch && !childMatch) continue
+        rows.push({ area, children, autoOpen: !selfMatch && childMatch })
+      }
+      if (rows.length > 0) out.push({ group, rows })
     }
     return out
-  }, [query, configuredOnly, values])
+  }, [query, configuredOnly, values, renderChildren])
 
   return (
     <div className='flex flex-col gap-3'>
@@ -121,22 +164,32 @@ export function ProfileAreaGrid({
         />
       ) : (
         <div className='flex flex-col gap-4'>
-          {groups.map(({ group, areas }) => (
+          {groups.map(({ group, rows }) => (
             <div key={group} className='flex flex-col gap-0.5'>
               <span className='px-1 text-xs font-semibold uppercase text-primary-600'>{group}</span>
-              {areas.map((area) => (
-                <ProfileAreaRow
-                  key={area}
-                  area={area}
-                  value={values[area]}
-                  roleDefault={roleDefaults[area]}
-                  baseLevel={baseLevel}
-                  seat={seat}
-                  profileRole={profileRole}
-                  disabled={disabled}
-                  onChange={(level) => onChange(area, level)}
-                />
-              ))}
+              {rows.map(({ area, children, autoOpen }) => {
+                const isOpen = openAreas[area] ?? autoOpen
+                return (
+                  <ProfileAreaRow
+                    key={area}
+                    area={area}
+                    value={values[area]}
+                    roleDefault={roleDefaults[area]}
+                    baseLevel={baseLevel}
+                    seat={seat}
+                    profileRole={profileRole}
+                    disabled={disabled}
+                    onChange={(level) => onChange(area, level)}
+                    childRows={children?.rows}
+                    isOpen={isOpen}
+                    onToggleOpen={
+                      children !== undefined
+                        ? () => setOpenAreas((prev) => ({ ...prev, [area]: !isOpen }))
+                        : undefined
+                    }
+                  />
+                )
+              })}
             </div>
           ))}
         </div>
@@ -155,6 +208,9 @@ function ProfileAreaRow({
   profileRole,
   disabled,
   onChange,
+  childRows,
+  isOpen,
+  onToggleOpen,
 }: {
   area: Area
   value: Level | undefined
@@ -164,6 +220,11 @@ function ProfileAreaRow({
   profileRole: OrganizationRole
   disabled: boolean
   onChange: (level: Level | undefined) => void
+  /** Nested rows from `renderChildren` (Records → per-def, Datasets / Knowledge
+   *  base / Dashboards → per-instance). `undefined` = no children for this area. */
+  childRows?: ReactNode
+  isOpen?: boolean
+  onToggleOpen?: () => void
 }) {
   const meta = PERMISSION_AREAS[area]
   const lockReason = lockReasonFor(area, seat)
@@ -193,6 +254,9 @@ function ProfileAreaRow({
           </Tooltip>
         ) : undefined
       }
+      expandable={childRows !== undefined}
+      isOpen={childRows !== undefined ? isOpen : undefined}
+      onToggleOpen={childRows !== undefined ? onToggleOpen : undefined}
       trailing={
         <LevelControl
           area={meta}
@@ -203,7 +267,8 @@ function ProfileAreaRow({
           onChange={onChange}
           disabled={disabled || lockReason !== null}
         />
-      }
-    />
+      }>
+      {childRows}
+    </TreeRow>
   )
 }

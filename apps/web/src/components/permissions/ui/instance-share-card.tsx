@@ -17,57 +17,8 @@ import { Globe, Lock } from 'lucide-react'
 import { useCanAdminInstance } from '~/providers/capabilities-provider'
 import type { InstanceLevel, WorkspaceBaseline } from '../hooks/use-instance-share'
 import { useInstanceShare } from '../hooks/use-instance-share'
-import { GranteeList } from './grantee-list'
+import { InstanceShareBody, LEVEL_ORDER, LEVEL_TIER, levelHelper } from './instance-share-body'
 import { INSTANCE_SHARE_COPY, type InstanceShareCopy } from './instance-share-copy'
-
-const LEVEL_ORDER: InstanceLevel[] = [
-  ResourcePermission.view,
-  ResourcePermission.edit,
-  ResourcePermission.admin,
-]
-
-const LEVEL_TIER: Record<InstanceLevel, string> = {
-  [ResourcePermission.view]: 'Read',
-  [ResourcePermission.edit]: 'Write',
-  [ResourcePermission.admin]: 'Full',
-}
-
-function levelHelper(copy: InstanceShareCopy, level: InstanceLevel): string {
-  if (level === ResourcePermission.edit) return copy.levels.write
-  if (level === ResourcePermission.admin) return copy.levels.full
-  return copy.levels.read
-}
-
-/** The Read / Write / Full picker for a grantee row. */
-function InstanceLevelSelect({
-  value,
-  onChange,
-  copy,
-  disabled,
-}: {
-  value: InstanceLevel
-  onChange: (value: InstanceLevel) => void
-  copy: InstanceShareCopy
-  disabled: boolean
-}) {
-  return (
-    <Select value={value} onValueChange={(v) => onChange(v as InstanceLevel)} disabled={disabled}>
-      <SelectTrigger size='sm' variant='transparent' className='h-7 w-32'>
-        <SelectValue>{LEVEL_TIER[value]}</SelectValue>
-      </SelectTrigger>
-      <SelectContent align='end' className='min-w-56'>
-        {LEVEL_ORDER.map((level) => (
-          <SelectItem key={level} value={level} textValue={LEVEL_TIER[level]}>
-            <div className='flex flex-col items-start'>
-              <span>{LEVEL_TIER[level]}</span>
-              <span className='text-muted-foreground text-xs'>{levelHelper(copy, level)}</span>
-            </div>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
 
 /** The workspace-baseline picker: Read / Write / Full + "No access (Restricted)". */
 function WorkspaceBaselineSelect({
@@ -169,11 +120,10 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
   const { entityDefinitionId: key } = parseRecordId(recordId)
   const isSupported = key in INSTANCE_SHARE_COPY
   const canAdmin = useCanAdminInstance(recordId)
-  const { grants, unmanageableGrants, baseline, grant, changeLevel, revoke, setBaseline } =
-    useInstanceShare({
-      recordId,
-      enabled: isSupported,
-    })
+  const { grants, unmanageableGrants, baseline, setBaseline } = useInstanceShare({
+    recordId,
+    enabled: isSupported,
+  })
 
   if (!isSupported) return null
   const copy = INSTANCE_SHARE_COPY[key as keyof typeof INSTANCE_SHARE_COPY]
@@ -208,20 +158,7 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
         />
       </div>
 
-      <GranteeList<InstanceLevel>
-        grants={grants}
-        onGrant={grant}
-        onChange={changeLevel}
-        onRevoke={revoke}
-        defaultChoice={ResourcePermission.view}
-        renderLockedLabel={(choice) => LEVEL_TIER[choice]}
-        renderPicker={({ value, onChange, disabled }) => (
-          <InstanceLevelSelect value={value} onChange={onChange} copy={copy} disabled={disabled} />
-        )}
-        disabled={!canAdmin}
-        unmanageableGrants={unmanageableGrants}
-        emptyHint={`Not shared with anyone specific. Adjust the workspace default above to restrict this ${copy.noun}.`}
-      />
+      <InstanceShareBody recordId={recordId} />
     </div>
   )
 }

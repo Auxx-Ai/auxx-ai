@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/grantee-overrides-tab.tsx
 'use client'
 
-import type { Area, Level } from '@auxx/lib/permissions/client'
+import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -11,13 +11,18 @@ import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Folder, Plus, SlidersHorizontal, Trash2, Users } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useActor, useActors } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
 import { useUser } from '~/hooks/use-user'
+import { useGranteeDefAccess } from '../hooks/use-grantee-def-access'
+import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
-import { LeveledAreaGrid } from './leveled-area-grid'
+import { GranteeDefAccessRows } from './grantee-def-access-rows'
+import { GranteeInstanceRows } from './grantee-instance-rows'
+import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
+import { type AreaChildFilter, type AreaChildren, LeveledAreaGrid } from './leveled-area-grid'
 
 /**
  * The grantee kinds this tab edits.
@@ -337,6 +342,119 @@ function GranteeAccessDetail({
   onChange: (area: Area, level: Level | undefined) => void
 }) {
   const { name } = useGranteeName(granteeType, granteeId)
+  const {
+    isLoading: defAccessLoading,
+    rows: defRows,
+    setLevel: setDefLevel,
+  } = useGranteeDefAccess(granteeType, granteeId)
+  const {
+    isLoading: instanceRowsLoadingAll,
+    lists: instanceLists,
+    rowsByKey: instanceRowsByKey,
+    setGrant: setInstanceGrant,
+  } = useInstanceGranteeRows(granteeType, granteeId)
+
+  /**
+   * Per-def overrides nested under Records (capability layer v2 Part B.0), and
+   * per-instance grants nested under Datasets / Knowledge base / Dashboards
+   * (Part B) — the grantee-scoped twin of `MemberBaselineTab`'s
+   * `renderChildren`. "Overrides only" means "has an explicit grant for this
+   * grantee"; a def/instance-name match keeps (and expands) the parent area
+   * row even when the area label itself didn't match.
+   */
+  const renderChildren = useCallback(
+    (area: Area, filter: AreaChildFilter): AreaChildren | undefined => {
+      if (area === Area.records) {
+        if (defAccessLoading)
+          return {
+            matchCount: 0,
+            rows: (
+              <GranteeDefAccessRows
+                rows={[]}
+                isLoading
+                canEdit={!disabled}
+                onChange={setDefLevel}
+              />
+            ),
+          }
+
+        const matched = defRows.filter((row) => {
+          if (filter.overridesOnly && row.grantLevel === undefined) return false
+          if (!filter.query) return true
+          const { plural, label } = row.resource
+          return (
+            plural.toLowerCase().includes(filter.query) ||
+            label.toLowerCase().includes(filter.query)
+          )
+        })
+
+        return {
+          matchCount: matched.length,
+          rows: <GranteeDefAccessRows rows={matched} canEdit={!disabled} onChange={setDefLevel} />,
+        }
+      }
+
+      const instanceKey = AREA_TO_INSTANCE_KEY[area]
+      if (!instanceKey) return undefined
+
+      // This grantee's composed level for the area shown right above these
+      // rows — the raise-only override grid's own inherited-value formula
+      // (`LeveledAreaGrid`'s `override` mode), re-derived here so the
+      // dead-grant warning needs no extra server call (§B.2.8).
+      const areaLevel = values[area] ?? baseline[area] ?? roleDefaults[area] ?? Level.None
+
+      const instanceLoading = instanceRowsLoadingAll || instanceLists[instanceKey].isLoading
+      if (instanceLoading)
+        return {
+          matchCount: 0,
+          rows: (
+            <GranteeInstanceRows
+              rows={[]}
+              isLoading
+              canEdit={!disabled}
+              isUser={granteeType === 'user'}
+              areaLevel={areaLevel}
+              areaLabel=''
+              onChange={setInstanceGrant}
+            />
+          ),
+        }
+
+      const matched = instanceRowsByKey[instanceKey].filter((row) => {
+        if (filter.overridesOnly && row.grantLevel === undefined) return false
+        if (!filter.query) return true
+        return row.name.toLowerCase().includes(filter.query)
+      })
+
+      return {
+        matchCount: matched.length,
+        rows: (
+          <GranteeInstanceRows
+            rows={matched}
+            canEdit={!disabled}
+            isUser={granteeType === 'user'}
+            areaLevel={areaLevel}
+            areaLabel={PERMISSION_AREAS[area].label}
+            onChange={setInstanceGrant}
+          />
+        ),
+      }
+    },
+    [
+      defAccessLoading,
+      defRows,
+      disabled,
+      setDefLevel,
+      values,
+      baseline,
+      roleDefaults,
+      instanceRowsLoadingAll,
+      instanceLists,
+      instanceRowsByKey,
+      granteeType,
+      setInstanceGrant,
+    ]
+  )
 
   return (
     <Section
@@ -350,6 +468,7 @@ function GranteeAccessDetail({
         baseline={baseline}
         onChange={onChange}
         disabled={disabled}
+        renderChildren={renderChildren}
       />
     </Section>
   )
