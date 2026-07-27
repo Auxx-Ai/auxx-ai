@@ -82,50 +82,42 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
   }
 
   return (
-    <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
+    <div className='flex flex-1 flex-col'>
       <ConfirmDialog />
 
-      <div className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex items-start gap-3'>
-          <Button variant='ghost' size='icon-sm' aria-label='Back to profiles' onClick={onBack}>
-            <ChevronLeft />
-          </Button>
-          <EntityIcon
-            iconId={icon.iconId}
-            color={icon.color}
-            className='size-9! rounded-md border'
-          />
-          <div className='space-y-1'>
-            <div className='flex flex-wrap items-center gap-2'>
-              <span className='text-base font-semibold'>{draft.name || profile.name}</span>
-              <Badge variant='secondary' size='xs'>
-                {APPLIES_TO_COPY[profile.appliesTo as ProfileAppliesTo].label}
-              </Badge>
-              <SeatTypeBadge seatType={profile.seat} showFull />
-              {profile.isSystem && (
-                <Badge variant='secondary' size='xs'>
-                  System
-                </Badge>
-              )}
-            </div>
-            <p className='text-sm text-muted-foreground'>
-              {APPLIES_TO_COPY[profile.appliesTo as ProfileAppliesTo].description}
-            </p>
-          </div>
-        </div>
+      <div className='flex h-9 shrink-0 items-center gap-2 border-b bg-primary-150 px-2'>
+        <Button
+          variant='ghost'
+          size='icon-xs'
+          className='rounded-md'
+          aria-label='Back to profiles'
+          onClick={onBack}>
+          <ChevronLeft />
+        </Button>
+        <EntityIcon iconId={icon.iconId} color={icon.color} size='sm' className='shrink-0' />
+        <span className='truncate text-sm font-medium'>{draft.name || profile.name}</span>
+        <Badge variant='secondary' size='xs' className='shrink-0'>
+          {APPLIES_TO_COPY[profile.appliesTo as ProfileAppliesTo].label}
+        </Badge>
+        <SeatTypeBadge seatType={profile.seat} showFull />
+        {profile.isSystem && (
+          <Badge variant='secondary' size='xs' className='shrink-0'>
+            System
+          </Badge>
+        )}
 
-        <div className='flex items-center gap-2'>
+        <div className='ml-auto flex shrink-0 items-center gap-2'>
           {isDirty && (
             <Badge variant='secondary' size='xs' className='border-amber-300 text-amber-600'>
               Unsaved changes
             </Badge>
           )}
-          <Button variant='ghost' size='sm' onClick={handleDiscard} disabled={!isDirty || isSaving}>
+          <Button variant='ghost' size='xs' onClick={handleDiscard} disabled={!isDirty || isSaving}>
             Discard
           </Button>
           <Button
             variant='outline'
-            size='sm'
+            size='xs'
             loading={isSaving}
             loadingText='Saving...'
             // Never savable mid-hydration: the payload carries the WHOLE profile
@@ -138,67 +130,69 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
         </div>
       </div>
 
-      {isOwner && (
-        <div className='rounded-xl border border-dashed p-4 text-sm text-muted-foreground'>
-          The Owner profile is fixed. Owners bypass every permission check by design — that bypass
-          is what guarantees a mis-shaped profile can always be repaired, so this profile carries no
-          levels of its own.
-        </div>
-      )}
+      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
+        {isOwner && (
+          <div className='rounded-xl border border-dashed p-4 text-sm text-muted-foreground'>
+            The Owner profile is fixed. Owners bypass every permission check by design. That bypass
+            is what guarantees a mis-shaped profile can always be repaired, so this profile carries
+            no levels of its own.
+          </div>
+        )}
 
-      {!canEdit && !isOwner && (
-        <div className='rounded-xl border border-dashed p-4 text-sm text-muted-foreground'>
-          Profiles are read-only on your plan. Upgrade to granular permissions to edit them — the
-          system profiles below still supply everyone's access in the meantime.
-        </div>
-      )}
+        {!canEdit && !isOwner && (
+          <div className='rounded-xl border border-dashed p-4 text-sm text-muted-foreground'>
+            Profiles are read-only on your plan. Upgrade to granular permissions to edit them. The
+            system profiles below still supply everyone's access in the meantime.
+          </div>
+        )}
 
-      <ProfileIdentitySection
-        name={draft.name}
-        description={draft.description}
-        icon={draft.icon}
-        slug={profile.slug}
-        seat={profile.seat}
-        appliesTo={profile.appliesTo as ProfileAppliesTo}
-        isSystem={profile.isSystem}
-        disabled={!editable}
-        onChange={patch}
-      />
+        <ProfileIdentitySection
+          name={draft.name}
+          description={draft.description}
+          icon={draft.icon}
+          slug={profile.slug}
+          seat={profile.seat}
+          appliesTo={profile.appliesTo as ProfileAppliesTo}
+          isSystem={profile.isSystem}
+          disabled={!editable}
+          onChange={patch}
+        />
 
-      {profile.seat === 'worker' && <ProfileSeatReference />}
+        {profile.seat === 'worker' && <ProfileSeatReference />}
 
-      {isAgentProfile ? (
-        // An agent profile has no additive base — its rules are exact (SET
-        // semantics) and live in `agentPolicy`, with their own save path. Never
-        // render the human base map for one.
-        <AgentPolicyEditor profileId={profile.id} savedPolicy={agentPolicy} readOnly={!canEdit} />
-      ) : isLoading || !roleDefaults ? (
-        <div className='space-y-2'>
-          <Skeleton className='h-16 w-full rounded-lg' />
-          <Skeleton className='h-16 w-full rounded-lg' />
-        </div>
-      ) : (
-        <SettingsSection
-          icon={SlidersHorizontal}
-          title='Base access'
-          description='Where a holder starts. Teams and personal grants can raise from here, never lower it.'
-          action={
-            <BaseLevelSelect
-              value={draft.baseLevel}
+        {isAgentProfile ? (
+          // An agent profile has no additive base — its rules are exact (SET
+          // semantics) and live in `agentPolicy`, with their own save path. Never
+          // render the human base map for one.
+          <AgentPolicyEditor profileId={profile.id} savedPolicy={agentPolicy} readOnly={!canEdit} />
+        ) : isLoading || !roleDefaults ? (
+          <div className='space-y-2'>
+            <Skeleton className='h-16 w-full rounded-lg' />
+            <Skeleton className='h-16 w-full rounded-lg' />
+          </div>
+        ) : (
+          <SettingsSection
+            icon={SlidersHorizontal}
+            title='Base access'
+            description='Where a holder starts. Teams and personal grants can raise from here, never lower it.'
+            action={
+              <BaseLevelSelect
+                value={draft.baseLevel}
+                disabled={!editable}
+                onChange={(baseLevel) => patch({ baseLevel })}
+              />
+            }>
+            <ProfileAreaGrid
+              values={draft.levels}
+              roleDefaults={roleDefaults}
+              baseLevel={draft.baseLevel}
+              seat={profile.seat}
               disabled={!editable}
-              onChange={(baseLevel) => patch({ baseLevel })}
+              onChange={setAreaLevel}
             />
-          }>
-          <ProfileAreaGrid
-            values={draft.levels}
-            roleDefaults={roleDefaults}
-            baseLevel={draft.baseLevel}
-            seat={profile.seat}
-            disabled={!editable}
-            onChange={setAreaLevel}
-          />
-        </SettingsSection>
-      )}
+          </SettingsSection>
+        )}
+      </div>
     </div>
   )
 }
