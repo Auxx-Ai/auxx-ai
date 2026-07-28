@@ -2,6 +2,7 @@
 
 // apps/web/src/components/workflow/mass-workflow-trigger-dialog.tsx
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -24,6 +25,7 @@ import { Play, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { invalidateBatchResources } from '~/components/workflow/utils/invalidate-resource'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { api } from '~/trpc/react'
 import { showWorkflowProgressToast } from './workflow-progress-toast'
@@ -53,6 +55,11 @@ export function MassWorkflowTriggerDialog({
 }: MassWorkflowTriggerDialogProps) {
   const router = useRouter()
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('')
+  // The workflow LIST here is filtered server-side by `canViewInstance` (plan 30
+  // §2.2) — running is the `view` rung, so nothing to gate on the client. The
+  // "Create Workflow" escape hatch is a different action: coarse `workflows.manage`.
+  const { can } = useAccess()
+  const canCreateWorkflow = can(PermissionKey.workflowsManage)
 
   // Parse first RecordId to get entityDefinitionId for querying workflows
   const entityDefinitionId =
@@ -188,17 +195,19 @@ export function MassWorkflowTriggerDialog({
         )}
 
         <DialogFooter>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='sm:mr-auto'
-            onClick={() => createForResource.mutate({ entityDefinitionId })}
-            disabled={isLoading || entityDefinitionId.length === 0}
-            loading={createForResource.isPending}
-            loadingText='Creating...'>
-            <Plus />
-            Create Workflow
-          </Button>
+          {canCreateWorkflow && (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='sm:mr-auto'
+              onClick={() => createForResource.mutate({ entityDefinitionId })}
+              disabled={isLoading || entityDefinitionId.length === 0}
+              loading={createForResource.isPending}
+              loadingText='Creating...'>
+              <Plus />
+              Create Workflow
+            </Button>
+          )}
           <Button
             variant='ghost'
             size='sm'

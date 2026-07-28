@@ -27,6 +27,13 @@ interface WorkflowVersionsPopoverProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   workflowId: string
+  /**
+   * Whether restore / rename / delete are offered. Version *management* is the
+   * `edit` rung of per-workflow instance access (plan 30 §4); browsing and
+   * previewing versions is a `view`-level read. Defaults to `true` so callers
+   * that don't gate keep today's behavior.
+   */
+  canManageVersions?: boolean
 }
 
 /**
@@ -37,6 +44,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
   open,
   onOpenChange,
   workflowId,
+  canManageVersions = true,
 }) => {
   const mod = isMac() ? '⌘' : 'Ctrl'
   const [confirm, ConfirmDialog] = useConfirm()
@@ -376,6 +384,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
                         onRename={handleRenameVersion}
                         onRestore={handleRestoreVersion}
                         onDelete={handleDeleteVersion}
+                        canManage={canManageVersions}
                         formatDate={formatDate}
                         isDirty={isDirty}
                         workflowName={workflow?.name || 'Untitled Workflow'}

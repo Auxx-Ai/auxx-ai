@@ -13,7 +13,12 @@ import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance
 
 /** Every instance-access key is always "open" here — same rationale as the
  *  baseline-scope hook: the host's search box has to match instance names. */
-const ALWAYS_OPEN: OpenInstanceTypes = { dataset: true, kb: true, dashboard: true }
+const ALWAYS_OPEN: OpenInstanceTypes = {
+  dataset: true,
+  kb: true,
+  dashboard: true,
+  workflow: true,
+}
 
 /** One dataset/kb/dashboard row nested under its area in a grantee scope. */
 export interface InstanceGranteeRow {

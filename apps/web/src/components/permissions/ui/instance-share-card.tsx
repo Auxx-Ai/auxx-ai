@@ -152,6 +152,11 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
         )}
       </p>
 
+      {/* What this card does NOT control. Shown in both states, but it exists for
+          the restricted one: a workflow locked down here still fires from every
+          schedule, event, rule, webhook, and poll (plan 30 §2.1). */}
+      {copy.scopeNote ? <p className='text-muted-foreground text-xs'>{copy.scopeNote}</p> : null}
+
       <div className='space-y-0.5'>
         <WorkspaceBaselineRow
           baseline={baseline}

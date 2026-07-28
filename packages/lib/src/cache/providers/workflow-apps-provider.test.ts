@@ -83,3 +83,78 @@ describe('byWebhookEndpoint', () => {
     expect(matched).toEqual([])
   })
 })
+
+/**
+ * `list({ excludeIds })` — the per-member access exclusion (plan 30). This is
+ * where the workflow list actually paginates (the "query" is this in-memory
+ * accessor, not SQL), so it is the one place that decides whether `total` and
+ * `hasMore` describe the set the caller may see or the set before filtering.
+ */
+describe('list — excludeIds is applied BEFORE pagination', () => {
+  // Six enabled apps with identical `updatedAt`, so the sort is stable and the
+  // order stays a..f.
+  const six = () => ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => app(id, true, null))
+
+  it('total and hasMore describe the FILTERED set', async () => {
+    const { workflows, total, hasMore } = await accessorOver(six()).list({
+      excludeIds: ['c', 'd'],
+      limit: 2,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['a', 'b'])
+    expect(total).toBe(4)
+    expect(hasMore).toBe(true)
+  })
+
+  it('a full page stays full — excluded rows do not eat page slots', async () => {
+    // Post-pagination filtering would slice [a,b] and then drop nothing here but
+    // return a SHORT page for any window overlapping c/d. Excluding first keeps
+    // every page dense.
+    const { workflows } = await accessorOver(six()).list({
+      excludeIds: ['b', 'c'],
+      limit: 2,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['a', 'd'])
+  })
+
+  it('never returns an empty page alongside hasMore: true', async () => {
+    // The pathology the fix exists for: with post-pagination filtering, page 2
+    // (offset 2, limit 2) sliced [c,d], dropped BOTH, and still reported
+    // `hasMore: true` against the unfiltered total of 6 — an empty page that
+    // tells the client to keep going. Filtering first, page 2 is [e,f] and the
+    // list ends honestly.
+    const { workflows, total, hasMore } = await accessorOver(six()).list({
+      excludeIds: ['c', 'd'],
+      limit: 2,
+      offset: 2,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['e', 'f'])
+    expect(workflows).not.toHaveLength(0)
+    expect(total).toBe(4)
+    expect(hasMore).toBe(false)
+  })
+
+  it('composes with the other predicates rather than replacing them', async () => {
+    const apps = [...six(), { ...app('sys', true, null), ownerType: 'sequence' }]
+    const { workflows, total } = await accessorOver(apps).list({
+      excludeIds: ['a'],
+      search: 'b',
+      limit: 50,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['b'])
+    expect(total).toBe(1)
+  })
+
+  it('is a no-op when nothing is excluded (the common case)', async () => {
+    const { workflows, total, hasMore } = await accessorOver(six()).list({
+      excludeIds: [],
+      limit: 3,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['a', 'b', 'c'])
+    expect(total).toBe(6)
+    expect(hasMore).toBe(true)
+  })
+})

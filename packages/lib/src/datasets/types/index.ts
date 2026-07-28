@@ -352,6 +352,16 @@ export interface DatasetFilters {
   }
   /** When true (default in UI), excludes managed datasets (e.g. KB-backed). */
   hideManaged?: boolean
+  /**
+   * Dataset ids to exclude from the query — the caller's per-member access
+   * exclusion (plan 30 / `CapabilitySet.deniedInstanceIds('dataset')`).
+   *
+   * Applied with the other predicates and therefore BEFORE `limit`/`offset` and
+   * inside the `totalCount` query, so pagination and totals describe the set the
+   * member may actually see. Filtering the returned page instead leaves
+   * `totalCount`/`hasMore` speaking for rows the caller can never receive.
+   */
+  excludeIds?: readonly string[]
 }
 /**
  * Filter parameters for listing documents

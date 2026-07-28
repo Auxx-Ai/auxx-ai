@@ -346,6 +346,9 @@ export const useWorkflowSave = () => {
     // Check read-only state
     const canvasReadOnly = useCanvasStore.getState().readOnly
     const isViewerMode = useWorkflowStore.getState().isViewerMode
+    // Per-workflow instance access — read fresh rather than through the memoized
+    // `isReadOnly` below, since this fires from an unload listener (plan 30 §4).
+    const instanceReadOnly = useWorkflowStore.getState().instanceReadOnly
 
     // Also check run state for read-only conditions
     const { useRunStore } = require('../store/run-store')
@@ -354,7 +357,7 @@ export const useWorkflowSave = () => {
       runState.runViewMode === 'previous' || // Viewing history
       (runState.runViewMode === 'live' && runState.isRunning) // Live execution
 
-    if (canvasReadOnly || isViewerMode || runStateReadOnly || isReadOnly) {
+    if (canvasReadOnly || isViewerMode || instanceReadOnly || runStateReadOnly || isReadOnly) {
       return
     }
 

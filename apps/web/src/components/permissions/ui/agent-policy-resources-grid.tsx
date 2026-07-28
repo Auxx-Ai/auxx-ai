@@ -10,7 +10,7 @@ import {
 } from '@auxx/lib/permissions/client'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
-import { BookOpen, Database, LayoutDashboard, Library } from 'lucide-react'
+import { BookOpen, Database, LayoutDashboard, Library, Workflow } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -26,6 +26,7 @@ const TYPE_META: Record<InstanceAccessKey, { label: string; icon: ReactNode }> =
   dataset: { label: 'Datasets', icon: <Database className='size-4' /> },
   kb: { label: 'Knowledge bases', icon: <BookOpen className='size-4' /> },
   dashboard: { label: 'Dashboards', icon: <LayoutDashboard className='size-4' /> },
+  workflow: { label: 'Workflows', icon: <Workflow className='size-4' /> },
 }
 
 const CHILD_DEPTH = 1

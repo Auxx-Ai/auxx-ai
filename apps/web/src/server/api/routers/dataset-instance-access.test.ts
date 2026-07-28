@@ -16,22 +16,58 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * observed side effect: "did the write get through?".
  */
 
-const { datasetService, searchService, featureService, onCacheEvent } = vi.hoisted(() => ({
-  datasetService: {
-    create: vi.fn(async () => ({ id: 'dset_new' })),
-    getById: vi.fn(async () => ({ id: 'dset_1' })),
-    getStats: vi.fn(async () => ({ documentCount: 0 })),
-    list: vi.fn(async () => ({ datasets: [], totalCount: 0, hasMore: false })),
-    update: vi.fn(async () => ({ id: 'dset_1' })),
-    updateMetrics: vi.fn(async () => undefined),
-    delete: vi.fn(async () => undefined),
-  },
-  searchService: {
-    search: vi.fn(async () => ({ results: [], total: 0, responseTime: 1, searchType: 'hybrid' })),
-  },
-  featureService: { requireAccess: vi.fn(async () => undefined) },
-  onCacheEvent: vi.fn(async () => undefined),
-}))
+const { datasetService, searchService, featureService, onCacheEvent, listFixture } = vi.hoisted(
+  () => {
+    /** The org's datasets, as the query sees them. Mutated per test. */
+    const listFixture: { ids: string[] } = { ids: [] }
+    return {
+      listFixture,
+      datasetService: {
+        create: vi.fn(async () => ({ id: 'dset_new' })),
+        getById: vi.fn(async () => ({ id: 'dset_1' })),
+        getStats: vi.fn(async () => ({ documentCount: 0 })),
+        /**
+         * Stands in for `DatasetService.list`, reproducing the ONE property
+         * `list`'s contract rests on: `excludeIds` is applied with the other
+         * predicates and **before** the slice (the real service pushes it into
+         * the where-clause shared by the `findMany` and the `count()`), so
+         * `totalCount`/`hasMore` describe the filtered set. A mock that ignored
+         * `excludeIds` would let a router that stopped passing it still pass.
+         */
+        list: vi.fn(
+          async (
+            _organizationId: string,
+            filters: { excludeIds?: readonly string[] },
+            pagination: { page: number; limit: number }
+          ) => {
+            const excluded = new Set(filters.excludeIds ?? [])
+            const visible = listFixture.ids.filter((id) => !excluded.has(id))
+            const offset = (pagination.page - 1) * pagination.limit
+            const page = visible.slice(offset, offset + pagination.limit)
+            return {
+              datasets: page.map((id) => ({ id })),
+              totalCount: visible.length,
+              hasMore: visible.length > offset + page.length,
+            }
+          }
+        ),
+        update: vi.fn(async () => ({ id: 'dset_1' })),
+        updateMetrics: vi.fn(async () => undefined),
+        delete: vi.fn(async () => undefined),
+      },
+      searchService: {
+        search: vi.fn(async () => ({
+          results: [],
+          total: 0,
+          responseTime: 1,
+          searchType: 'hybrid',
+        })),
+      },
+      featureService: { requireAccess: vi.fn(async () => undefined) },
+      onCacheEvent: vi.fn(async () => undefined),
+    }
+  }
+)
 
 vi.mock('@auxx/lib/datasets', () => ({
   DatasetService: class {
@@ -217,25 +253,87 @@ describe('dataset router — reads stay open at instance view', () => {
   })
 })
 
-describe('dataset router — list drops instances the member may not view', () => {
-  it('filters restricted datasets out of the page instead of 403ing the whole list', async () => {
-    const RESTRICTED = 'dset_restrictedcuid0000000000'
-    datasetService.list.mockResolvedValueOnce({
-      datasets: [{ id: DATASET_ID }, { id: RESTRICTED }],
+describe('dataset router — list excludes instances the member may not view', () => {
+  const RESTRICTED = 'dset_restrictedcuid0000000000'
+  const DSET_C = 'dset_ccuid000000000000000000'
+  const DSET_D = 'dset_dcuid000000000000000000'
+  const DSET_E = 'dset_ecuid000000000000000000'
+  const DSET_F = 'dset_fcuid000000000000000000'
+  const DSET_G = 'dset_gcuid000000000000000000'
+
+  /** A member at datasets Read who may view everything except `ids`. */
+  const restrictedFrom = (...ids: string[]) =>
+    capabilitiesFor(ResourcePermission.view, {
+      [DATASET_ID]: ResourcePermission.view,
+      ...Object.fromEntries(ids.map((id) => [id, ResourcePermission.none])),
+    })
+
+  it('drops a restricted dataset instead of 403ing the whole list', async () => {
+    listFixture.ids = [DATASET_ID, RESTRICTED]
+    const result = await caller(restrictedFrom(RESTRICTED)).list({})
+    expect(result.datasets).toEqual([{ id: DATASET_ID }])
+  })
+
+  it('the exclusion goes INTO the query, not over its result', async () => {
+    listFixture.ids = [DATASET_ID, RESTRICTED]
+    await caller(restrictedFrom(RESTRICTED)).list({})
+    expect(datasetService.list).toHaveBeenCalledTimes(1)
+    const filters = datasetService.list.mock.calls[0]?.[1] as { excludeIds?: readonly string[] }
+    expect(filters.excludeIds).toContain(RESTRICTED)
+  })
+
+  it('totalCount and hasMore describe the FILTERED set', async () => {
+    // The contract this file used to pin the OTHER way round. Post-pagination
+    // filtering reported the unfiltered `totalCount` (6) and left `hasMore`
+    // speaking for rows the caller can never receive.
+    listFixture.ids = [DATASET_ID, RESTRICTED, DSET_C, DSET_D, DSET_E, DSET_F]
+    const result = await caller(restrictedFrom(RESTRICTED, DSET_E)).list({ page: 1, limit: 2 })
+    expect(result.totalCount).toBe(4)
+    expect(result.hasMore).toBe(true)
+  })
+
+  it('a full page stays full — excluded datasets do not eat page slots', async () => {
+    listFixture.ids = [DATASET_ID, RESTRICTED, DSET_C, DSET_D]
+    const result = await caller(restrictedFrom(RESTRICTED)).list({ page: 1, limit: 2 })
+    expect(result.datasets).toEqual([{ id: DATASET_ID }, { id: DSET_C }])
+  })
+
+  it('never returns an empty page alongside hasMore: true', async () => {
+    // The pathology: with post-pagination filtering, page 2 sliced the two
+    // adjacent restricted rows, dropped both, and still said `hasMore: true`
+    // against the unfiltered total — an empty page telling the client to keep
+    // paging. The two restricted ids sit in the same page slot on purpose. Walk
+    // every page and assert no page is both empty and "there's more".
+    listFixture.ids = [DATASET_ID, DSET_C, DSET_D, DSET_E, DSET_F, DSET_G]
+    const caps = restrictedFrom(DSET_D, DSET_E)
+    const seen: string[] = []
+    for (let page = 1; page <= 3; page++) {
+      const result = await caller(caps).list({ page, limit: 2 })
+      expect(result.hasMore && result.datasets.length === 0).toBe(false)
+      seen.push(...result.datasets.map((d: { id: string }) => d.id))
+    }
+    expect(seen).toEqual([DATASET_ID, DSET_C, DSET_F, DSET_G])
+  })
+
+  it('returns an empty result for a member with datasets: None, without querying', async () => {
+    listFixture.ids = [DATASET_ID, RESTRICTED]
+    const result = await caller(capabilitiesFor(ResourcePermission.none, {})).list({})
+    expect(result).toEqual({ datasets: [], totalCount: 0, hasMore: false })
+    // The area gate being shut denies every dataset, INCLUDING row-less ones —
+    // the one denial an id exclusion cannot express. So the router must
+    // short-circuit rather than hand the query an (incomplete) exclusion list.
+    expect(datasetService.list).not.toHaveBeenCalled()
+  })
+
+  it('an unrestricted org pays nothing — the exclusion is empty', async () => {
+    listFixture.ids = [DATASET_ID, DSET_C]
+    const result = await caller(capabilitiesFor(ResourcePermission.admin, {})).list({})
+    expect(result).toEqual({
+      datasets: [{ id: DATASET_ID }, { id: DSET_C }],
       totalCount: 2,
       hasMore: false,
-    } as any)
-
-    const result = await caller(
-      capabilitiesFor(ResourcePermission.view, {
-        [DATASET_ID]: ResourcePermission.view,
-        [RESTRICTED]: ResourcePermission.none,
-      })
-    ).list({})
-
-    expect(result.datasets).toEqual([{ id: DATASET_ID }])
-    // The unfiltered count is deliberately preserved by the router — assert what
-    // it actually returns so a future change to that contract is visible.
-    expect(result.totalCount).toBe(2)
+    })
+    const filters = datasetService.list.mock.calls[0]?.[1] as { excludeIds?: readonly string[] }
+    expect(filters.excludeIds).toEqual([])
   })
 })

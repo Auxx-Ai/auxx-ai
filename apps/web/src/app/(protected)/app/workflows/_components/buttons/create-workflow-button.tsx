@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/workflows/_components/buttons/create-workflow-button.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -16,6 +16,7 @@ import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dia
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
 import { useOrganization } from '~/hooks/use-organization'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useWorkflows } from '../providers/workflows-provider'
 
@@ -25,9 +26,14 @@ export function CreateWorkflowButton() {
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const currentOrganization = useOrganization()
   const { isAtLimit, getLimit } = useFeatureFlags()
+  const { can } = useAccess()
   const { stats } = useWorkflows()
   const atLimit = isAtLimit(FeatureKey.workflowsLimit, stats.total)
   const workflowLimit = getLimit(FeatureKey.workflowsLimit)
+
+  // Creating a workflow is the coarse `workflows.manage` rung — it is not
+  // per-instance (there is no instance yet). Hide, don't disable (plan 30 §4).
+  if (!can(PermissionKey.workflowsManage)) return null
 
   if (atLimit) {
     return (

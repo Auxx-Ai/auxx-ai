@@ -19,6 +19,10 @@ export enum PermissionKey {
   recordsViewLinked = 'records.viewLinked',
 
   // automation
+  // workflows is an instance-access resource — per-workflow `ResourceAccess`
+  // grants sit on these three rungs (plan 30 §1).
+  workflowsView = 'workflows.view',
+  workflowsEdit = 'workflows.edit',
   workflowsManage = 'workflows.manage',
   agentsManage = 'agents.manage',
 
@@ -117,9 +121,23 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
 
   // ── Automation ──
   {
+    key: PermissionKey.workflowsView,
+    label: 'View & Run Workflows',
+    description: 'See workflows shared with you and run them manually from a record.',
+    group: 'Automation',
+    featureKey: FeatureKey.workflows,
+  },
+  {
+    key: PermissionKey.workflowsEdit,
+    label: 'Edit Workflows',
+    description: 'Edit, save, publish, and test workflows, and manage their versions.',
+    group: 'Automation',
+    featureKey: FeatureKey.workflows,
+  },
+  {
     key: PermissionKey.workflowsManage,
     label: 'Manage Workflows',
-    description: 'Create, edit, and run automation workflows.',
+    description: 'Create, rename, duplicate, delete, and configure workflows.',
     group: 'Automation',
     featureKey: FeatureKey.workflows,
   },
@@ -486,25 +504,51 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.workflows]: {
     area: Area.workflows,
     label: 'Workflows',
-    description: 'Create, edit, and run automation workflows.',
+    description:
+      'View and run workflows, edit and publish them, or create, duplicate, and delete them.',
     group: 'Automation',
-    rungs: [{ level: Level.Full, keys: [PermissionKey.workflowsManage] }],
-    // Closed 2026-07-27 (plan 21 §4.2, first of the four §4.2 holes). This was
-    // a HOLE closure, not a pure migration — `workflow.ts` was 25×
-    // `protectedProcedure` and never read `workflowsManage`; every member,
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.workflowsView] },
+      { level: Level.Edit, keys: [PermissionKey.workflowsEdit] },
+      { level: Level.Full, keys: [PermissionKey.workflowsManage] },
+    ],
+    // `Read`/`Edit` rungs added 2026-07-27 (plan 30 §1) — prerequisite for
+    // per-workflow instance access. Workflows are an `INSTANCE_ACCESS_RESOURCES`
+    // entry with `baselineAtCreate: false`, so a workflow with NO explicit
+    // `ResourceAccess` row falls back to THIS area level; on the old single-rung
+    // ladder that fallback could only be `None` or `Full`, which would have made
+    // the per-instance view/edit tiers half-decorative.
+    //   Read  = see the workflow, open it read-only, and RUN it manually from a
+    //           record (user decision 2026-07-27 — `view` means "may run it").
+    //   Edit  = edit nodes, save, publish, test-run, manage versions.
+    //   Full  = create, rename, duplicate, delete, settings, share tokens.
+    // Purely a SPLIT of the old Full rung: no path got more permissive, and no
+    // migration is needed (`Level` is ordinal, and zero `PermissionGrant` rows
+    // store `workflows: 1` or `2`).
+    //
+    // WORKER SEATS: `workflows` is deliberately NOT in `WORKER_AREAS`
+    // (`seat-policy.ts`), so `SEAT_CEILINGS.worker` clamps it to `None` — and
+    // that stays true (user decision 2026-07-27). The consequence is explicit,
+    // not incidental: **a field-tech seat cannot run a manual workflow from a
+    // record**, because manual run is gated on the `Read` rung. Reopening that
+    // means adding `Area.workflows` to `WORKER_AREAS`, nothing else.
+    //
+    // HEADLESS EXECUTION IS NOT GATED BY ANY OF THIS (plan 30 §2.1). Schedules,
+    // record-CRUD events, record rules, message-received, app triggers, webhook
+    // endpoints, polling, and resume/approval jobs all run as the system and
+    // read no member capabilities — a workflow restricted to `None` for everyone
+    // STILL FIRES. Only user-initiated runs consult these rungs.
+    //
+    // Prior history — closed 2026-07-27 (plan 21 §4.2, first of the four §4.2
+    // holes). This was a HOLE closure, not a pure migration — `workflow.ts` was
+    // 25× `protectedProcedure` and never read `workflowsManage`; every member,
     // not just admins, could manage workflows in production regardless of
-    // this area's level. All management/read procedures (list, get, create,
-    // update, delete, duplicate, test, publish, versions, run control,
-    // stats, share tokens) now assert `permissionProcedure(workflowsManage)`
-    // — the area has no separate read key, so read/list asserts it too.
-    // `getManualWorkflows` / `triggerManualResource(Bulk)` stay on
-    // `protectedProcedure`: they're invoked from other features' record UI
-    // (any member triggers an existing published workflow, doesn't manage
-    // it), not workflow management. Production behavior change for
-    // restricted profiles; member default is unaffected —
-    // `ROLE_DEFAULTS.USER[workflows]` is Full, so every full-seat member
-    // still holds `workflowsManage` out of the box. Only orgs that
-    // deliberately restrict a profile below Full now see it enforced.
+    // this area's level. All management procedures (create, update, delete,
+    // duplicate, test, publish, versions, run control, stats, share tokens)
+    // assert `permissionProcedure(workflowsManage)`; re-tiering read/list onto
+    // `workflowsView` and authoring onto `workflowsEdit` is plan 30 phase 2.
+    // Member default is unaffected — `MEMBER_BASELINE_LEVELS[workflows]` is
+    // Full, so every full-seat member still holds all three keys out of the box.
     featureKey: FeatureKey.workflows,
   },
   [Area.agents]: {

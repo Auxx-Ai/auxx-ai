@@ -33,6 +33,12 @@ export interface WorkflowFilter {
   search?: string
   limit: number
   offset: number
+  /**
+   * Workflow ids the caller may not view (plan 30 per-workflow instance
+   * access). Applied with the other predicates **before** pagination, so
+   * `total`/`hasMore` describe the set the member can actually see.
+   */
+  excludeIds?: readonly string[]
 }
 export interface WorkflowCreateInput {
   name: string

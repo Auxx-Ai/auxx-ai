@@ -8,8 +8,10 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import { NotificationService } from '../notifications'
+import type { NotificationTargetIds, NotificationTargetType } from '../notifications/client'
 import {
   INSTANCE_ACCESS_KEYS,
+  type InstanceAccessKey,
   isInstanceAccessKey,
 } from '../permissions/capabilities/instance-access'
 import { satisfiesPermission } from './constants'
@@ -127,6 +129,55 @@ async function resolveShareRecipients(
     .map((member: { memberRefId: string }) => member.memberRefId)
 }
 
+/**
+ * Per-instance-access-resource share-notification wiring: which table carries the
+ * display `name`, the noun for the message, and the notification target shape.
+ *
+ * Keyed by {@link InstanceAccessKey} so a missing entry is a TYPE error rather
+ * than a silent fall-through — the previous ternary chains defaulted to
+ * `DASHBOARD`/`{ dashboardId }`, so adding `workflow` to
+ * `INSTANCE_ACCESS_RESOURCES` would have mislabeled every workflow share and
+ * un-share notification as a dashboard one.
+ */
+const INSTANCE_SHARE_NOTIFICATION_CONFIG: Record<
+  InstanceAccessKey,
+  {
+    table:
+      | typeof schema.Dataset
+      | typeof schema.KnowledgeBase
+      | typeof schema.Dashboard
+      | typeof schema.WorkflowApp
+    noun: string
+    targetType: NotificationTargetType
+    targetIds: (instanceId: string) => NotificationTargetIds
+  }
+> = {
+  dataset: {
+    table: schema.Dataset,
+    noun: 'dataset',
+    targetType: 'DATASET',
+    targetIds: (id) => ({ datasetId: id }),
+  },
+  kb: {
+    table: schema.KnowledgeBase,
+    noun: 'knowledge base',
+    targetType: 'KNOWLEDGE_BASE',
+    targetIds: (id) => ({ knowledgeBaseId: id }),
+  },
+  dashboard: {
+    table: schema.Dashboard,
+    noun: 'dashboard',
+    targetType: 'DASHBOARD',
+    targetIds: (id) => ({ dashboardId: id }),
+  },
+  workflow: {
+    table: schema.WorkflowApp,
+    noun: 'workflow',
+    targetType: 'WORKFLOW',
+    targetIds: (id) => ({ workflowAppId: id }),
+  },
+}
+
 async function notifyNewInstanceShare(
   ctx: ResourceAccessContext,
   input: GrantInstanceAccessInput,
@@ -178,20 +229,11 @@ async function notifyNewInstanceShare(
     return
   }
 
-  const resourceConfig = {
-    dataset: { table: schema.Dataset, noun: 'dataset', targetType: 'DATASET' as const },
-    kb: {
-      table: schema.KnowledgeBase,
-      noun: 'knowledge base',
-      targetType: 'KNOWLEDGE_BASE' as const,
-    },
-    dashboard: {
-      table: schema.Dashboard,
-      noun: 'dashboard',
-      targetType: 'DASHBOARD' as const,
-    },
-  }[entityDefinitionId]
-  if (!resourceConfig) return
+  // Redundant with the guard at the top of the function, but it NARROWS
+  // `entityDefinitionId` to `InstanceAccessKey` — which is what makes both the
+  // config lookup and `metadata.resourceKey` below type-safe.
+  if (!isInstanceAccessKey(entityDefinitionId)) return
+  const resourceConfig = INSTANCE_SHARE_NOTIFICATION_CONFIG[entityDefinitionId]
 
   const [resource] = await ctx.db
     .select({ name: resourceConfig.table.name })
@@ -211,12 +253,7 @@ async function notifyNewInstanceShare(
       : input.permission === ResourcePermission.edit
         ? 'write'
         : 'read'
-  const targetIds =
-    entityDefinitionId === 'dataset'
-      ? { datasetId: entityInstanceId }
-      : entityDefinitionId === 'kb'
-        ? { knowledgeBaseId: entityInstanceId }
-        : { dashboardId: entityInstanceId }
+  const targetIds = resourceConfig.targetIds(entityInstanceId)
 
   await Promise.all(
     recipientIds.map((userId) =>
@@ -535,22 +572,16 @@ export async function revokeInstanceAccess(
         ...input,
         permission: ResourcePermission.view,
       })
-      const targetType =
-        entityDefinitionId === 'thread'
-          ? 'THREAD'
-          : entityDefinitionId === 'dataset'
-            ? 'DATASET'
-            : entityDefinitionId === 'kb'
-              ? 'KNOWLEDGE_BASE'
-              : 'DASHBOARD'
-      const targetIds =
-        entityDefinitionId === 'thread'
-          ? { threadId: entityInstanceId }
-          : entityDefinitionId === 'dataset'
-            ? { datasetId: entityInstanceId }
-            : entityDefinitionId === 'kb'
-              ? { knowledgeBaseId: entityInstanceId }
-              : { dashboardId: entityInstanceId }
+      // Table-driven rather than a ternary chain: the chain's trailing branch
+      // was `DASHBOARD`, so every key added to `INSTANCE_ACCESS_RESOURCES`
+      // after dashboards silently un-shared the wrong notification target.
+      const config = isInstanceAccessKey(entityDefinitionId)
+        ? INSTANCE_SHARE_NOTIFICATION_CONFIG[entityDefinitionId]
+        : null
+      const targetType: NotificationTargetType = config ? config.targetType : 'THREAD'
+      const targetIds: NotificationTargetIds = config
+        ? config.targetIds(entityInstanceId)
+        : { threadId: entityInstanceId }
       await new NotificationService(db).deleteNotificationsByTarget(
         targetType,
         targetIds as never,

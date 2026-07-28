@@ -9,6 +9,7 @@ import {
   DashboardNotification,
   DatasetNotification,
   KnowledgeBaseNotification,
+  WorkflowNotification,
 } from './items/resource-notifications'
 import { SettingsNotification } from './items/settings-notification'
 import { StaticNotification } from './items/static-notification'
@@ -79,6 +80,13 @@ export function NotificationItemDispatch(props: NotificationItemDispatchProps) {
         <DashboardNotification
           {...props}
           notification={props.notification as NotificationEntity<'DASHBOARD'>}
+        />
+      )
+    case 'WORKFLOW':
+      return (
+        <WorkflowNotification
+          {...props}
+          notification={props.notification as NotificationEntity<'WORKFLOW'>}
         />
       )
     case 'SETTINGS':

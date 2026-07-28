@@ -21,6 +21,7 @@ import { ArrowLeft, TestTube2 } from 'lucide-react'
 import Link from 'next/link'
 import { use, useState } from 'react'
 import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
+import { useWorkflowAccess } from '~/components/workflow/hooks/use-workflow-access'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
@@ -49,6 +50,10 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
     isLoading,
     error,
   } = api.workflow.getById.useQuery({ id: workflowId }, { enabled: !!workflowId })
+
+  // Test-running is an authoring action — the `edit` rung of per-workflow
+  // instance access (plan 30 §4). `workflow.test` enforces it server-side.
+  const { canEdit } = useWorkflowAccess(workflowId)
 
   const testWorkflow = api.workflow.test.useMutation({
     onSuccess: (result) => {
@@ -244,14 +249,16 @@ export default function TestWorkflowPage({ params }: TestWorkflowPageProps) {
                   </div>
                 </div>
 
-                <Button
-                  className='w-full'
-                  onClick={handleRunTest}
-                  loading={isTestRunning}
-                  loadingText='Running test...'>
-                  <TestTube2 className='h-4 w-4 mr-2' />
-                  Run Test
-                </Button>
+                {canEdit && (
+                  <Button
+                    className='w-full'
+                    onClick={handleRunTest}
+                    loading={isTestRunning}
+                    loadingText='Running test...'>
+                    <TestTube2 className='h-4 w-4 mr-2' />
+                    Run Test
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>

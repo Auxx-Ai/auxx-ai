@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/panels/settings/workflow-access-settings.tsx
 
+import { toRecordId } from '@auxx/types/resource'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -50,12 +51,47 @@ import {
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { InstanceShareCard } from '~/components/permissions/ui/instance-share-card'
 import { useWorkflowSave } from '~/components/workflow/hooks/use-workflow-save'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import Field from '../../ui/field'
 import Section from '../../ui/section'
+
+/**
+ * Who inside the workspace can see, run, and edit this workflow — per-workflow
+ * instance access (plan 30). The sibling of {@link WorkflowAccessSettings},
+ * which covers *outside* access (public share link + API keys) and is Full-only.
+ *
+ * Shown at every rung, not just `admin`: {@link InstanceShareCard} renders
+ * itself read-only for members who can't administer the workflow, so a `view` or
+ * `edit` holder can still see who it is shared with. The card hides itself when
+ * there is nothing to show (no admin rights AND no grants), so the section
+ * mirrors that condition rather than leaving an empty shell behind.
+ *
+ * Its copy carries the plan 30 §2.1 carve-out
+ * (`INSTANCE_SHARE_COPY.workflow.scopeNote`) — restricting a workflow here stops
+ * PEOPLE, never automation; schedules, record events, record rules, webhooks and
+ * polling run as the system and keep firing it.
+ */
+export function WorkflowMemberAccessSection({ workflowAppId }: { workflowAppId: string }) {
+  const { canAdminInstance, isRestrictedInstance } = useAccess()
+  const recordId = toRecordId('workflow', workflowAppId)
+  // `isRestrictedInstance` is the org-wide "this instance carries ≥1 explicit
+  // `ResourceAccess` row" signal — i.e. exactly when the card has grants to list.
+  if (!canAdminInstance(recordId) && !isRestrictedInstance(workflowAppId)) return null
+
+  return (
+    <Section
+      title='People with access'
+      description='Who in your workspace can open, run, and edit this workflow'
+      collapsible={false}>
+      <InstanceShareCard recordId={recordId} />
+    </Section>
+  )
+}
 
 /** Access mode for web access (public or organization) */
 type AccessMode = 'public' | 'organization'

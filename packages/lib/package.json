@@ -778,11 +778,35 @@
       "import": "./dist/permissions/index.mjs",
       "default": "./src/permissions/index.ts"
     },
+    "./permissions/capabilities/capability-set": {
+      "types": "./src/permissions/capabilities/capability-set.ts",
+      "source": "./src/permissions/capabilities/capability-set.ts",
+      "import": "./dist/permissions/capabilities/capability-set.mjs",
+      "default": "./src/permissions/capabilities/capability-set.ts"
+    },
+    "./permissions/capabilities/instance-access": {
+      "types": "./src/permissions/capabilities/instance-access.ts",
+      "source": "./src/permissions/capabilities/instance-access.ts",
+      "import": "./dist/permissions/capabilities/instance-access.mjs",
+      "default": "./src/permissions/capabilities/instance-access.ts"
+    },
+    "./permissions/capabilities/registry": {
+      "types": "./src/permissions/capabilities/registry.ts",
+      "source": "./src/permissions/capabilities/registry.ts",
+      "import": "./dist/permissions/capabilities/registry.mjs",
+      "default": "./src/permissions/capabilities/registry.ts"
+    },
     "./permissions/client": {
       "types": "./src/permissions/client.ts",
       "source": "./src/permissions/client.ts",
       "import": "./dist/permissions/client.mjs",
       "default": "./src/permissions/client.ts"
+    },
+    "./permissions/types": {
+      "types": "./src/permissions/types.ts",
+      "source": "./src/permissions/types.ts",
+      "import": "./dist/permissions/types.mjs",
+      "default": "./src/permissions/types.ts"
     },
     "./permissions/visibility": {
       "types": "./src/permissions/visibility/index.ts",

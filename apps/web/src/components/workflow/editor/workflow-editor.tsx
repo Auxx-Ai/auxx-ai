@@ -6,11 +6,13 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ReactFlowProvider, type Viewport } from '@xyflow/react'
 import { memo, useEffect, useRef } from 'react'
+import { NoAccess } from '~/components/permissions/ui/no-access'
 import { WorkflowCanvas } from '../canvas/workflow-canvas'
 import { WorkflowToolbar } from '../canvas/workflow-toolbar'
 import {
   useEagerAppOutputs,
   useRunDeepLink,
+  useWorkflowAccess,
   useWorkflowBlocks,
   useWorkflowInit,
   useWorkflowShortcuts,
@@ -135,12 +137,38 @@ export const WorkflowEditor = memo<WorkflowEditorProps>(
     // Initialize workflow data
     const { nodes, edges, viewport, isLoading, error } = useWorkflowInit({ workflowId })
 
+    // Per-workflow instance access (plan 30 §4). The route param IS the
+    // `WorkflowApp.id`, so this resolves before the workflow fetch returns.
+    const { canView, canEdit } = useWorkflowAccess(workflowId)
+    const setInstanceReadOnly = useWorkflowStore((state) => state.setInstanceReadOnly)
+
+    /**
+     * Publish the `view`-without-`edit` clamp into the store so `useReadOnly()`
+     * — and through it the whole canvas, every node panel, and `useWorkflowSave`
+     * — sees it. Cleared on unmount because the workflow stores are module-level
+     * singletons: a restricted workflow must not leave the next one read-only.
+     */
+    useEffect(() => {
+      setInstanceReadOnly(!canEdit)
+      return () => setInstanceReadOnly(false)
+    }, [canEdit, setInstanceReadOnly])
+
     // Focus management
     useEffect(() => {
       if (containerRef.current) {
         containerRef.current.focus()
       }
     }, [])
+
+    // Restricted to `none` on this workflow — the server 403s every read anyway,
+    // so show the permission surface instead of a "failed to load" error.
+    if (!canView) {
+      return (
+        <div className={cn('workflow-editor-container relative h-full outline-none', className)}>
+          <NoAccess area='this workflow' backHref='/app/workflows' backLabel='Back to workflows' />
+        </div>
+      )
+    }
 
     // Show loading state while fetching workflow data
     if (isLoading) {

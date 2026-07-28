@@ -36,12 +36,36 @@ export const ResourceAccess = pgTable(
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Entity definition identifier - can be:
-     * - An actual EntityDefinition.id (CUID) for custom entities
-     * - A built-in type string: 'inbox', 'snippet', 'folder', 'workflow', 'document'
+     * What kind of thing is being accessed. Two disjoint keyspaces share this
+     * column:
      *
-     * This follows the codebase pattern where entityDefinitionId can reference
-     * either custom entity definitions or built-in system types.
+     * 1. **An `EntityDefinition.id` (CUID)** — a CRM record type, system or
+     *    custom. These rows are type- or instance-level RECORD restriction, read
+     *    by `canViewRecord` / `canViewEntity`.
+     *
+     * 2. **A reserved slug** — a built-in domain with no `EntityDefinition` row.
+     *    Two families, with different readers:
+     *      - **Mail / messaging infrastructure**: `'inbox'`, `'thread'`,
+     *        `'message'`, `'signature'`, `'snippet'`, `'sequence'`. These carry
+     *        mail-SHARING semantics (see `lens`), not def restriction, and are
+     *        read by the mail-visibility composer.
+     *      - **Instance-access resources**: `'dataset'`, `'kb'`, `'dashboard'`,
+     *        `'workflow'` — the authoritative list is
+     *        `INSTANCE_ACCESS_RESOURCES` in
+     *        `@auxx/lib/permissions/capabilities/instance-access`, and
+     *        `isInstanceAccessKey()` is the guard. Each pairs an L2 area with
+     *        per-instance grants; `entityInstanceId` holds the resource's own
+     *        cuid2 (`Dataset.id`, `KnowledgeBase.id`, `Dashboard.id`,
+     *        `WorkflowApp.id`), NOT an `EntityInstance.id`.
+     *
+     * Deliberately NOT in either family: `'article'` (inherits its KB's grants —
+     * no per-article rows are ever written). `'folder'` and `'document'` were
+     * listed here historically but nothing has ever written them.
+     *
+     * Keep this list in sync with `INSTANCE_ACCESS_RESOURCES` and with
+     * `NON_RECORD_DEF_SLUGS` (`permissions/capabilities/entity-access.ts`) plus
+     * its hand-kept client mirror `NON_RECORD_ENTITY_SLUGS`
+     * (`resources/registry/types.ts`).
      */
     entityDefinitionId: text().notNull(),
 

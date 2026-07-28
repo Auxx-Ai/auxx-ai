@@ -28,7 +28,8 @@ export type OpenInstanceTypes = Partial<Record<InstanceAccessKey, boolean>>
 /**
  * Fetch the instances of every "open" instance-access resource type — one
  * query per shareable type (`api.dataset.list` / `api.kb.list` /
- * `api.dashboard.list`), each fetched only while its caller marks it `open`.
+ * `api.dashboard.list` / `api.workflow.list`), each fetched only while its
+ * caller marks it `open`.
  *
  * Generalized (capability layer v2 Part B.3) out of the agent-policy Resources
  * grid, which fetches lazily per manually-expanded type row (the policy is
@@ -56,6 +57,12 @@ export function useInstanceResourceLists(
     enabled: open.dashboard === true,
     staleTime: 60_000,
   })
+  // Like the other three, `workflow.list` asserts nothing coarse and filters by
+  // `canViewInstance` — the editor sees the workflows they may view, never a 403.
+  const workflows = api.workflow.list.useQuery(
+    { limit: INSTANCE_PAGE_SIZE, offset: 0 },
+    { enabled: open.workflow === true, staleTime: 60_000 }
+  )
 
   return useMemo(
     () => ({
@@ -77,6 +84,11 @@ export function useInstanceResourceLists(
         isLoading: dashboards.isLoading && open.dashboard === true,
         truncated: false,
       },
+      workflow: {
+        items: (workflows.data?.workflows ?? []).map((w) => ({ id: w.id, name: w.name })),
+        isLoading: workflows.isLoading && open.workflow === true,
+        truncated: workflows.data?.hasMore === true,
+      },
     }),
     [
       datasets.data,
@@ -85,6 +97,8 @@ export function useInstanceResourceLists(
       kbs.isLoading,
       dashboards.data,
       dashboards.isLoading,
+      workflows.data,
+      workflows.isLoading,
       open,
     ]
   )

@@ -10,7 +10,7 @@ import {
 } from '@auxx/lib/permissions/client'
 import { isAccessManageable } from '@auxx/lib/resources/client'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { BookOpen, Database, LayoutDashboard } from 'lucide-react'
+import { BookOpen, Database, LayoutDashboard, Workflow } from 'lucide-react'
 import { useMemo } from 'react'
 import {
   ResolvedAccessBadge,
@@ -41,6 +41,11 @@ const RESOURCE_TYPE_META: Record<
     label: 'Dashboards',
     icon: <LayoutDashboard className='size-4' />,
     description: 'Dashboards and their widgets.',
+  },
+  workflow: {
+    label: 'Workflows',
+    icon: <Workflow className='size-4' />,
+    description: 'Workflows the agent may see and run.',
   },
 }
 
