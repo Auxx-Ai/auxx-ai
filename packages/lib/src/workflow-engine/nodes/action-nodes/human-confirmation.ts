@@ -100,15 +100,14 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     const db = context.db ?? database
     const isDryRun = contextManager.isDebugMode()
     try {
-      // Handle test/dry run mode (except for 'live' which acts like production)
-      // If test_behavior is 'live', always act like production regardless of isDryRun
-      if (config.test_behavior === 'live') {
-        // Continue to live mode execution below
-      } else if (isDryRun || config.test_behavior) {
+      // test_behavior ONLY applies to builder test runs. A production run always creates a real
+      // approval request and pauses — never auto-approve because the node carries the default
+      // 'always_approve' test setting. 'live' opts a test run into the real approval path too.
+      if (isDryRun && config.test_behavior !== 'live') {
         return await this.handleTestMode(node, config, contextManager)
       }
-      // Check if we're running in 'live' test mode
-      const isTestMode = config.test_behavior === 'live'
+      // A debug run that reaches the real approval path is flagged as test data
+      const isTestMode = isDryRun
       // Use preprocessed data if available, otherwise compute on the fly
       let message: string | undefined
       let assignees: {
