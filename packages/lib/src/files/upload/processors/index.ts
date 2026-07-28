@@ -9,7 +9,6 @@ import {
   CustomFieldProcessor,
   KnowledgeBaseProcessor,
   MessageProcessor,
-  TicketProcessor,
   UserProfileProcessor,
   WorkflowRunProcessor,
 } from './entity-processors'
@@ -36,7 +35,6 @@ export function initializeProcessors(): void {
   // Register processors directly by EntityType
   ProcessorRegistry.registerForEntity('FILE', (orgId) => new FileProcessor(orgId))
   ProcessorRegistry.registerForEntity('DATASET', (orgId) => new DatasetAssetProcessor(orgId))
-  ProcessorRegistry.registerForEntity('TICKET', (orgId) => new TicketProcessor(orgId))
   ProcessorRegistry.registerForEntity('ARTICLE', (orgId) => new ArticleProcessor(orgId))
   ProcessorRegistry.registerForEntity('USER_PROFILE', (orgId) => new UserProfileProcessor(orgId))
   ProcessorRegistry.registerForEntity('WORKFLOW_RUN', (orgId) => new WorkflowRunProcessor(orgId))

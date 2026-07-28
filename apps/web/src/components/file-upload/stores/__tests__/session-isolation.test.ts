@@ -27,9 +27,9 @@ describe('Session Isolation', () => {
         },
       })
 
-      // Create session 2 with different config (TICKET is a valid entity type)
+      // Create session 2 with different config (COMMENT is a valid entity type)
       const session2Id = await store.createSession({
-        entityType: 'TICKET',
+        entityType: 'COMMENT',
         validationConfig: {
           maxFiles: 1,
           maxFileSize: 2 * 1024 * 1024, // 2MB
@@ -51,7 +51,7 @@ describe('Session Isolation', () => {
       expect(session1.validationConfig?.maxFileSize).toBe(10 * 1024 * 1024)
       expect(session1.behaviorConfig?.allowMultiple).toBe(true)
 
-      expect(session2.entityType).toBe('TICKET')
+      expect(session2.entityType).toBe('COMMENT')
       expect(session2.validationConfig?.maxFiles).toBe(1)
       expect(session2.validationConfig?.maxFileSize).toBe(2 * 1024 * 1024)
       expect(session2.behaviorConfig?.allowMultiple).toBe(false)
@@ -76,8 +76,8 @@ describe('Session Isolation', () => {
       const store = useUploadStore.getState()
 
       // Create sessions with different valid entity types
-      const ticketSession = await store.createSession({
-        entityType: 'TICKET',
+      const commentSession = await store.createSession({
+        entityType: 'COMMENT',
         validationConfig: { maxFiles: 1, maxFileSize: 2 * 1024 * 1024 },
       })
 
@@ -88,9 +88,9 @@ describe('Session Isolation', () => {
 
       // Sessions should be independent
       const state = useUploadStore.getState()
-      expect(state.sessions[ticketSession]).toBeDefined()
+      expect(state.sessions[commentSession]).toBeDefined()
       expect(state.sessions[messageSession]).toBeDefined()
-      expect(state.sessions[ticketSession].entityType).toBe('TICKET')
+      expect(state.sessions[commentSession].entityType).toBe('COMMENT')
       expect(state.sessions[messageSession].entityType).toBe('MESSAGE')
     })
   })

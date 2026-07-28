@@ -14,63 +14,6 @@ import type { PresignedUploadSession } from '../session-types'
 import { BaseAssetProcessor } from './base-asset-processor'
 import { BaseAttachmentProcessor } from './base-attachment-processor'
 import type { ProcessorResult } from './types'
-// ============= Ticket Processor =============
-export class TicketProcessor extends BaseAttachmentProcessor {
-  protected readonly entityType = 'TICKET'
-  protected readonly fileVisibility = 'PRIVATE'
-  protected readonly preferredProvider = 'S3'
-  protected readonly maxFileSize = 25 * 1024 * 1024 // 25MB
-  protected readonly allowedMimeTypes = [
-    'image/*',
-    'application/pdf',
-    'text/plain',
-    'text/csv',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/zip',
-    'application/x-zip-compressed',
-  ]
-  protected readonly assetKind: AssetKind = 'EMAIL_ATTACHMENT'
-  /**
-   * Override processConfig for ticket-specific validation and policies
-   */
-  async processConfig(init: UploadInitConfig): Promise<ProcessorConfigResult> {
-    const base = await super.processConfig(init)
-    const warnings = [...base.warnings]
-    // Ticket-specific validations and warnings
-    if (init.expectedSize > this.maxFileSize) {
-      throw new Error(
-        `File size exceeds maximum allowed for ticket attachments (${this.maxFileSize / 1024 / 1024}MB)`
-      )
-    }
-    return {
-      config: base.config,
-      warnings,
-    }
-  }
-  protected async validateEntityAccess(
-    entityId: string,
-    organizationId: string,
-    userId: string
-  ): Promise<void> {
-    const [ticket] = await db
-      .select({ id: schema.Ticket.id })
-      .from(schema.Ticket)
-      .where(
-        and(
-          eq(schema.Ticket.id, entityId),
-          eq(schema.Ticket.organizationId, organizationId)
-          // Add user access validation based on your business rules
-        )
-      )
-      .limit(1)
-    if (!ticket) {
-      throw new Error('Ticket not found or access denied')
-    }
-  }
-}
 // ============= User Profile Processor =============
 export class UserProfileProcessor extends BaseAssetProcessor {
   protected readonly entityType = 'USER_PROFILE'

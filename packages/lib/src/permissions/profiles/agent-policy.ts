@@ -287,11 +287,17 @@ export function authorizationOnlyPolicy(policy: PublishedAgentPermissionPolicy):
  * `packages/database/drizzle/0311_agent_version_permission_policy.sql`, and is what
  * data migration 050 treats as "the flat DDL default that may need correcting".
  *
- * **The SQL literal still spells that rung `"full"` and is deliberately left
- * that way**: it is a shipped, already-applied migration, and rewriting an
- * applied file changes nothing for anyone who ran it. It only ever backfilled
- * rows that existed at the time, so a fresh database writes it never; the rows it
- * DID write are re-spelled by data migration 054 (plan 26 Phase 2).
+ * **The SQL literal is kept byte-equivalent to this function, and was corrected
+ * in place once** (2026-07-28) after #1351 renamed the rung vocabulary and #1364
+ * retired `resourceDefault`. The earlier reasoning for leaving it spelled `"full"`
+ * — "already applied, and a fresh database writes it never" — held only for the
+ * two environments it was checked against. It is false for any environment that
+ * still has `AgentVersion` rows AND has not yet reached 0311: there, the DDL
+ * writes a blob `parsePublishedAgentPolicy` cannot read, and every version
+ * composes to all-`none` until the worker drains its boot-enqueued
+ * data-migrations job. Correcting the file is safe because Drizzle's migrator
+ * selects by `folderMillis > lastDbMigration.created_at`, never by hash — an
+ * environment that already applied 0311 will not re-run it.
  *
  * Deliberately NOT the fallback for an unreadable policy — that is
  * {@link emptyAgentPolicy}.

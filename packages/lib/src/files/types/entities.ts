@@ -12,7 +12,6 @@
 export const ENTITY_TYPES = {
   FILE: 'FILE',
   DATASET: 'DATASET',
-  TICKET: 'TICKET',
   ARTICLE: 'ARTICLE',
   USER_PROFILE: 'USER_PROFILE',
   WORKFLOW_RUN: 'WORKFLOW_RUN',
@@ -341,56 +340,6 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     maxConcurrentUploads: 5,
     enableBatchUpload: true,
     supportedFeatures: { progress: true, preview: true, retry: true, pause: true, resume: true },
-  },
-
-  [ENTITY_TYPES.TICKET]: {
-    entityType: ENTITY_TYPES.TICKET,
-    displayName: 'Ticket Attachment',
-    description: 'Attach files to support tickets',
-    stages: [
-      { name: 'validation', displayName: 'Validation', weight: 50, estimatedDuration: 1 },
-      {
-        name: 'attachment-creation',
-        displayName: 'Attachment Creation',
-        weight: 50,
-        estimatedDuration: 2,
-      },
-    ],
-    validation: {
-      maxFileSize: 25 * 1024 * 1024, // 25MB
-      allowedMimeTypes: [
-        'image/*',
-        'text/*',
-        'application/pdf',
-        // 'text/plain',
-        // 'text/csv',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/zip',
-        'application/x-zip-compressed',
-      ],
-      allowedExtensions: [
-        '.jpg',
-        '.jpeg',
-        '.png',
-        '.gif',
-        '.bmp',
-        '.webp',
-        '.pdf',
-        '.txt',
-        '.csv',
-        '.doc',
-        '.docx',
-        '.zip',
-      ],
-      scanForViruses: true,
-      requireExtension: true,
-      blockExecutables: true,
-    },
-    defaultVisibility: 'private',
-    maxConcurrentUploads: 3,
-    enableBatchUpload: true,
-    supportedFeatures: { progress: true, preview: true, retry: true, pause: false, resume: false },
   },
 
   [ENTITY_TYPES.ARTICLE]: {

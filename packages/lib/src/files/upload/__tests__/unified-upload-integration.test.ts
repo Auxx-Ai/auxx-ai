@@ -3,13 +3,13 @@
 import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vitest'
 import { StorageManager } from '../../storage/storage-manager'
 import type { UploadInitConfig, UploadPreparedConfig } from '../init-types'
-import { TicketProcessor } from '../processors/entity-processors'
+import { ArticleProcessor } from '../processors/entity-processors'
 import { FileProcessor } from '../processors/file-processor'
 import { ProcessorRegistry } from '../processors/processor-registry'
 import { SessionManager } from '../session-manager'
 
 const { ticketSelectRowsRef, createSelectBuilder, selectMock } = vi.hoisted(() => {
-  // Maintains the mocked Ticket rows returned from the Drizzle select builder
+  // Maintains the mocked entity rows returned from the Drizzle select builder
   const ticketSelectRowsRef = {
     value: [{ id: 'ticket123' }],
   }
@@ -75,7 +75,6 @@ vi.mock('@auxx/redis', () => ({
 // Mock database and services
 vi.mock('@auxx/database', () => ({
   schema: {
-    Ticket: { id: 'id', organizationId: 'organizationId' },
     Article: { id: 'id', organizationId: 'organizationId' },
     WorkflowRun: { id: 'id', organizationId: 'organizationId' },
     User: { id: 'id' },
@@ -110,7 +109,7 @@ vi.mock('@auxx/database', () => ({
       })
     ),
     query: {
-      Ticket: {
+      Article: {
         findFirst: vi.fn(async () => ticketSelectRowsRef.value[0] ?? null),
       },
     },
@@ -190,7 +189,7 @@ describe('Unified Upload Integration Tests', () => {
 
     // Register processors using canonical EntityType values
     ProcessorRegistry.registerForEntity('FILE', (orgId) => new FileProcessor(orgId))
-    ProcessorRegistry.registerForEntity('TICKET', (orgId) => new TicketProcessor(orgId))
+    ProcessorRegistry.registerForEntity('ARTICLE', (orgId) => new ArticleProcessor(orgId))
   })
 
   describe('Complete Upload Flow', () => {
@@ -254,34 +253,6 @@ describe('Unified Upload Integration Tests', () => {
       )
       expect(session.policy).toEqual(config.policy)
       expect(session.uploadPlan).toEqual(config.uploadPlan)
-    })
-
-    it('should complete ticket attachment upload flow with validation', async () => {
-      // Step 1: Get processor for ticket attachment
-      const processor = ProcessorRegistry.getForEntityType('TICKET', 'org123')
-      expect(processor).toBeInstanceOf(TicketProcessor)
-
-      // Step 2: Process configuration with entity validation
-      const init: UploadInitConfig = {
-        organizationId: 'org123',
-        userId: 'user123',
-        fileName: 'support-document.pdf',
-        mimeType: 'application/pdf',
-        expectedSize: 5 * 1024 * 1024, // 5MB
-        entityType: 'TICKET',
-        entityId: 'ticket123',
-      }
-
-      const { config } = await processor.processConfig(init)
-
-      expect(config.policy.allowedMimeTypes).toContain('application/pdf')
-      expect(config.policy.allowedMimeTypes).not.toContain('*/*')
-
-      // Step 3: Create session
-      const session = await SessionManager.createSessionFromConfig(config)
-
-      expect(session.entityType).toBe('TICKET') // ✅ Use canonical EntityType
-      expect(session.entityId).toBe('ticket123')
     })
 
     it('should handle multipart upload for large files', async () => {
@@ -485,7 +456,7 @@ describe('Unified Upload Integration Tests', () => {
     })
 
     it('should handle validation failures', async () => {
-      const processor = ProcessorRegistry.getForEntityType('TICKET', 'org123')
+      const processor = ProcessorRegistry.getForEntityType('ARTICLE', 'org123')
 
       // Mock database to return null (entity not found)
       ticketSelectRowsRef.value = []
@@ -497,12 +468,12 @@ describe('Unified Upload Integration Tests', () => {
         fileName: 'test.pdf',
         mimeType: 'application/pdf',
         expectedSize: 1024 * 1024,
-        entityType: 'TICKET',
-        entityId: 'nonexistent-ticket',
+        entityType: 'ARTICLE',
+        entityId: 'nonexistent-article',
       }
 
       await expect(processor.processConfig(init)).rejects.toThrow(
-        'Entity validation failed: Ticket not found or access denied'
+        'Entity validation failed: Article not found or access denied'
       )
     })
 

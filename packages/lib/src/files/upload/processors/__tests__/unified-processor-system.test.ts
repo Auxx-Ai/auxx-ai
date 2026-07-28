@@ -1,10 +1,10 @@
 // packages/lib/src/files/upload/processors/__tests__/unified-processor-system.test.ts
 
-import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityType } from '../../../types/entities'
 import { ENTITY_TYPES } from '../../../types/entities'
 import type { UploadInitConfig } from '../../init-types'
-import { TicketProcessor, UserProfileProcessor, WorkflowRunProcessor } from '../entity-processors'
+import { UserProfileProcessor, WorkflowRunProcessor } from '../entity-processors'
 import { FileProcessor } from '../file-processor'
 import { ProcessorRegistry } from '../processor-registry'
 
@@ -30,10 +30,6 @@ vi.mock('@auxx/database', () => ({
   database: {
     select: vi.fn(() => createSelectBuilder(ticketSelectRowsRef)),
     query: {
-      Ticket: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
       Article: {
         findFirst: vi.fn(),
         findMany: vi.fn(),
@@ -56,7 +52,6 @@ vi.mock('@auxx/database', () => ({
     delete: vi.fn(),
   },
   schema: {
-    Ticket: { id: 'id', organizationId: 'organizationId' },
     Article: { id: 'id', organizationId: 'organizationId' },
     WorkflowRun: { id: 'id', organizationId: 'organizationId' },
     User: { id: 'id' },
@@ -143,7 +138,7 @@ describe('Unified Processor System', () => {
       ProcessorRegistry.registerForEntity(ENTITY_TYPES.FILE, (orgId) => new FileProcessor(orgId))
 
       expect(ProcessorRegistry.hasProcessor(ENTITY_TYPES.FILE)).toBe(true)
-      expect(ProcessorRegistry.hasProcessor(ENTITY_TYPES.TICKET)).toBe(false)
+      expect(ProcessorRegistry.hasProcessor(ENTITY_TYPES.ARTICLE)).toBe(false)
     })
 
     it('should return processor instance for registered EntityType', () => {
@@ -227,7 +222,7 @@ describe('Unified Processor System', () => {
     it('should warn when entityType suggests attachment processor', async () => {
       const attachmentConfig = {
         ...baseConfig,
-        entityType: ENTITY_TYPES.TICKET as EntityType,
+        entityType: ENTITY_TYPES.COMMENT as EntityType,
       }
 
       const result = await processor.processConfig(attachmentConfig)
@@ -243,92 +238,6 @@ describe('Unified Processor System', () => {
       expect(() => {
         ;(result.config as any).provider = 'GOOGLE_DRIVE'
       }).toThrow()
-    })
-  })
-
-  describe('TicketProcessor processConfig', () => {
-    let processor: TicketProcessor
-
-    beforeEach(async () => {
-      processor = new TicketProcessor('org123')
-
-      // Set up ticket rows for the select builder to return
-      ticketSelectRowsRef.value = [{ id: 'ticket123' }]
-
-      // Also reset the database.select mock to use ticket rows
-      const { database } = await import('@auxx/database')
-      vi.mocked(database.select).mockImplementation(
-        () => createSelectBuilder(ticketSelectRowsRef) as any
-      )
-    })
-
-    it('should process config with ticket-specific policies', async () => {
-      const config: UploadInitConfig = {
-        organizationId: 'org123',
-        userId: 'user123',
-        fileName: 'attachment.pdf',
-        mimeType: 'application/pdf',
-        expectedSize: 5 * 1024 * 1024, // 5MB
-        entityType: ENTITY_TYPES.TICKET,
-        entityId: 'ticket123',
-      }
-
-      const result = await processor.processConfig(config)
-
-      expect(result.config.policy.allowedMimeTypes).toContain('application/pdf')
-      expect(result.config.policy.allowedMimeTypes).toContain('image/*')
-      expect(result.warnings).toHaveLength(0)
-    })
-
-    it('should throw error when entityId is missing', async () => {
-      const config: UploadInitConfig = {
-        organizationId: 'org123',
-        userId: 'user123',
-        fileName: 'attachment.pdf',
-        mimeType: 'application/pdf',
-        expectedSize: 5 * 1024 * 1024,
-        entityType: ENTITY_TYPES.TICKET,
-        // entityId missing
-      }
-
-      await expect(processor.processConfig(config)).rejects.toThrow(
-        'Entity ID is required for TICKET attachments'
-      )
-    })
-
-    it('should throw error when file exceeds size limit', async () => {
-      const config: UploadInitConfig = {
-        organizationId: 'org123',
-        userId: 'user123',
-        fileName: 'huge-file.pdf',
-        mimeType: 'application/pdf',
-        expectedSize: 30 * 1024 * 1024, // 30MB (exceeds 25MB limit)
-        entityType: ENTITY_TYPES.TICKET,
-        entityId: 'ticket123',
-      }
-
-      await expect(processor.processConfig(config)).rejects.toThrow(
-        'File exceeds allowed size of 25MB'
-      )
-    })
-
-    it('should throw error when entity access fails', async () => {
-      // Return empty rows to simulate ticket not found
-      ticketSelectRowsRef.value = []
-
-      const config: UploadInitConfig = {
-        organizationId: 'org123',
-        userId: 'user123',
-        fileName: 'attachment.pdf',
-        mimeType: 'application/pdf',
-        expectedSize: 5 * 1024 * 1024,
-        entityType: ENTITY_TYPES.TICKET,
-        entityId: 'nonexistent-ticket',
-      }
-
-      await expect(processor.processConfig(config)).rejects.toThrow(
-        'Entity validation failed: Ticket not found or access denied'
-      )
     })
   })
 

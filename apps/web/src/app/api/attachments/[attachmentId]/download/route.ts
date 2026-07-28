@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return new Response('Organization required', { status: 400 })
     }
 
-    // Message attachments are `full`-tier (mail-permissions §7).
+    // Resolves the attachment's owning record and applies that record's own gate.
     const { canViewAttachment } = await import('../../attachment-visibility')
     if (!(await canViewAttachment(attachmentId, session.user.id, organizationId))) {
       return new Response('Not found', { status: 404 })
@@ -36,12 +36,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Use AttachmentService to get download ref (lazy import to avoid bundling sharp unnecessarily)
     const { AttachmentService } = await import('@auxx/lib/files/server')
     const attachmentService = new AttachmentService(organizationId, session.user.id)
-
-    // Check if attachment exists and user has access
-    const attachment = await attachmentService.get(attachmentId)
-    if (!attachment) {
-      return new Response('Not found', { status: 404 })
-    }
 
     // Get download reference (handles both files and assets)
     const downloadRef = await attachmentService.getDownloadRef(attachmentId)
