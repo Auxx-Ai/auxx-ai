@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { toastSuccess } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
 import { Copy, FileJson, Trash2 } from 'lucide-react'
@@ -29,6 +29,7 @@ import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
+import { api } from '~/trpc/react'
 import { webhookDefinition } from './schema'
 import type { WebhookNodeData } from './types'
 import { WebhookTestEvents } from './webhook-test-events'
@@ -56,6 +57,23 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
   // Use webhook test listener hook
   const { events, isListening, connectionStatus, startListening, stopListening, clearEvents } =
     useWebhookTestListener(workflowId)
+
+  // The `?test=true` webhook endpoint is anonymous, so it only resolves the
+  // DRAFT graph while this window is open. Arming is gated on instance `edit`
+  // server-side and expires with the captured-event list.
+  const armWebhookTest = api.workflow.armWebhookTest.useMutation()
+
+  const handleStartListening = async () => {
+    try {
+      await armWebhookTest.mutateAsync({ workflowId })
+      startListening()
+    } catch (error) {
+      toastError({
+        title: 'Could not start webhook test',
+        description: error instanceof Error ? error.message : 'Failed to open the test window',
+      })
+    }
+  }
 
   // Generate webhook URLs
   const baseWebhookUrl = `${window.location.origin}/api/workflows/${workflowId}/webhook`
@@ -190,10 +208,10 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
                   isListening &&
                     'bg-bad-200 hover:bg-bad-200 text-bad-500 hover:text-bad-500 border-bad-300'
                 )}
-                loading={isListening}
-                loadingText='Listening...'
-                disabled={isReadOnly}
-                onClick={() => (isListening ? stopListening() : startListening())}>
+                loading={isListening || armWebhookTest.isPending}
+                loadingText={armWebhookTest.isPending ? 'Starting...' : 'Listening...'}
+                disabled={isReadOnly || armWebhookTest.isPending}
+                onClick={() => (isListening ? stopListening() : handleStartListening())}>
                 {isListening ? 'Stop Listening' : 'Test Webhook'}
               </Button>
             )}
