@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import { effectiveInstanceLevel, toResolvedRecordAccess } from './entity-access'
-import { INSTANCE_ACCESS_VIEW_KEYS, type InstanceAccessKey } from './instance-access'
-import { Area, Level, PermissionKey } from './registry'
-import { MEMBER_BASELINE_LEVELS } from './seat-policy'
+import { INSTANCE_ACCESS_READ_KEYS, type InstanceAccessKey } from './instance-access'
+import { Area, areaLevelFromKeys, Level, PermissionKey } from './registry'
+import { MEMBER_BASELINE_LEVELS, SEAT_CEILINGS } from './seat-policy'
 
 /**
  * Per-INSTANCE enforcement for the instance-access resources (datasets / KBs /
@@ -42,7 +42,12 @@ interface MemberOpts {
    * grantee union (`user` + `role:org_member` + bound profile + groups) — i.e.
    * what `computeUserCapabilities`' second query returns for them.
    */
-  rows?: Array<{ entityInstanceId: string; permission: ResourcePermission }>
+  rows?: Array<{
+    /** The instance-access resource the row is for; defaults to `'dataset'`. */
+    entityDefinitionId?: InstanceAccessKey
+    entityInstanceId: string
+    permission: ResourcePermission
+  }>
   /**
    * The org-wide "has ≥1 instance row for anyone" set
    * (`restrictedInstanceIdsProvider`). Defaults to the instances in `rows`;
@@ -59,7 +64,7 @@ function member(opts: MemberOpts = {}) {
     seatType,
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     typeAccessRows: [],
-    instanceAccessRows: opts.rows ?? [],
+    instanceAccessRows: (opts.rows ?? []).map((row) => ({ entityDefinitionId: 'dataset', ...row })),
   })
   const restricted = new Set(
     opts.restrictedInstances ?? (opts.rows ?? []).map((r) => r.entityInstanceId)
@@ -74,7 +79,8 @@ function member(opts: MemberOpts = {}) {
     (id) => id,
     caps.instanceAccess,
     restricted,
-    {}
+    {},
+    new Set(caps.instanceDerivedKeys)
   )
   // The client only ever sees the wire snapshot — build its view from that, not
   // from the composed blob, so a field dropped in serialization shows up here.
@@ -299,54 +305,142 @@ describe('OWNER regression (plan 24 §A.4)', () => {
 })
 
 /**
- * `hasAnyInstanceGrant()` + `INSTANCE_ACCESS_VIEW_KEYS` — the two halves of
- * `permissionProcedure`'s front-door waiver (plan 25 §2).
+ * The area Read rung DERIVED from instance grants (handoff item 5b) — the
+ * replacement for `permissionProcedure`'s deleted type-blind waiver.
  *
- * Pinned as UNIT assertions rather than through a router on purpose: the waiver
- * grants nothing, so it is behaviorally invisible downstream — every procedure
- * behind those keys asserts on a specific instance immediately after, and denies
- * the same callers either way. That invisibility IS the safety argument, and it
- * is also why widening the waiver has to be caught here.
+ * Driven through the real composer into a real `CapabilitySet` and its wire
+ * snapshot, because the whole point is behavioral: `can('<area>.view')` must
+ * become true for a member whose only access is one shared instance, so the
+ * sidebar / cmd+K / landing-page guards and the coarse procedure assert all stop
+ * firing against them.
+ *
+ * The four properties that must hold together — take any one away and this is
+ * either useless or a leak:
+ *  1. a ≥`view` grant derives the Read rung, at any grant strength;
+ *  2. it derives NOTHING above Read (those rungs front instance-LESS actions);
+ *  3. it is TYPE-AWARE (a dashboard grant is not a workflows key);
+ *  4. it does NOT change the member's AREA LEVEL — otherwise every row-less
+ *     instance of a `baselineAtCreate: false` resource falls back to `view`.
  */
-describe('the permissionProcedure waiver inputs (plan 25 §2)', () => {
-  it('hasAnyInstanceGrant is true for a row that reaches view, at any rung', () => {
-    for (const permission of ['view', 'edit', 'admin'] as const) {
-      expect(
-        member({ rows: [{ entityInstanceId: 'ds_x', permission }] }).server.hasAnyInstanceGrant()
-      ).toBe(true)
-    }
+describe('the area Read rung derived from instance grants (item 5b)', () => {
+  /** A member with the named area shut on their profile. */
+  const closed = (area: Area, rows: MemberOpts['rows'], seatType?: SeatType) =>
+    member({
+      seatType,
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [area]: Level.None },
+      rows,
+    })
+
+  it.each([
+    'view',
+    'edit',
+    'admin',
+  ] as const)('a `%s` grant on ONE dataset makes can(datasets.view) true with the area shut', (permission) => {
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission }])
+    expect(m.server.can(PermissionKey.datasetsView)).toBe(true)
+    expect(m.caps.instanceDerivedKeys).toEqual([PermissionKey.datasetsView])
+    // The grant is real, not just a front door.
+    expect(m.server.canViewInstance('dataset', 'ds_x')).toBe(true)
   })
 
-  it('hasAnyInstanceGrant is false with no rows, and false for `none` rows only', () => {
-    // A restriction is not a grant — it must not open the front door.
-    expect(member().server.hasAnyInstanceGrant()).toBe(false)
+  it('an `admin` grant derives the Read rung ONLY — never edit/manage', () => {
+    // `datasetsManage` fronts dataset CREATION, which has no instance to assert
+    // on. Deriving it from one shared instance would hand out org-wide authoring.
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'admin' }])
+    expect(m.server.can(PermissionKey.datasetsView)).toBe(true)
+    expect(m.server.can(PermissionKey.datasetsEdit)).toBe(false)
+    expect(m.server.can(PermissionKey.datasetsManage)).toBe(false)
+  })
+
+  it('an explicit `none` restriction derives NOTHING (a restriction is not a grant)', () => {
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_locked', permission: 'none' }])
+    expect(m.caps.instanceDerivedKeys).toEqual([])
+    expect(m.server.can(PermissionKey.datasetsView)).toBe(false)
+  })
+
+  it('no rows at all derives nothing', () => {
+    expect(closed(Area.datasets, []).server.can(PermissionKey.datasetsView)).toBe(false)
+  })
+
+  it('is TYPE-AWARE: a dashboard grant does not open the workflows door', () => {
+    // The looseness this replaces: dashboards are `baselineAtCreate: true`, so
+    // EVERY dashboard writes a `role:org_member @ view` row at create. Under the
+    // old type-blind waiver that made "holds an instance grant" true for
+    // practically every member of every org, and the Read rung of all four
+    // instance-access areas decorative.
+    const m = member({
+      profileLevels: {
+        ...MEMBER_BASELINE_LEVELS,
+        [Area.workflows]: Level.None,
+        [Area.datasets]: Level.None,
+        [Area.knowledgeBase]: Level.None,
+      },
+      rows: [{ entityDefinitionId: 'dashboard', entityInstanceId: 'dash_x', permission: 'view' }],
+    })
+    expect(m.caps.instanceDerivedKeys).toEqual([PermissionKey.dashboardsView])
+    expect(m.server.can(PermissionKey.workflowsView)).toBe(false)
+    expect(m.server.can(PermissionKey.datasetsView)).toBe(false)
+    expect(m.server.can(PermissionKey.knowledgeBaseView)).toBe(false)
+  })
+
+  it('the SEAT CEILING still dominates — a worker seat derives nothing', () => {
+    // `workflows`/`datasets` are outside WORKER_AREAS, so the ceiling shuts them
+    // regardless of any grant. Without this check the member would hold a front
+    // door key into an area every enforcement point then denies — a 403 maze.
+    expect(SEAT_CEILINGS.worker[Area.datasets]).toBe(Level.None)
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'admin' }], 'worker')
+    expect(m.caps.instanceDerivedKeys).toEqual([])
+    expect(m.server.can(PermissionKey.datasetsView)).toBe(false)
+    expect(m.server.canViewInstance('dataset', 'ds_x')).toBe(false)
+  })
+
+  it('OWNER is unaffected — holds everything, derives nothing', () => {
+    const m = member({ role: 'OWNER', rows: [{ entityInstanceId: 'ds_x', permission: 'view' }] })
+    expect(m.caps.instanceDerivedKeys).toEqual([])
+    expect(m.server.can(PermissionKey.datasetsView)).toBe(true)
+    expect(m.server.can(PermissionKey.datasetsManage)).toBe(true)
+  })
+
+  it('THE LEAK GUARD: the derived key does NOT raise the area level', () => {
+    // `areaLevelFromKeys` is the absent-row fallback `effectiveInstanceLevel` and
+    // `instanceListScope` read. If the derived `datasets.view` were folded into
+    // `keys`, the area would read `Level.Read` and — `dataset` being
+    // `baselineAtCreate: false` — EVERY dataset in the org with no explicit row
+    // would resolve to `view`. "Shared one dataset" would silently mean "can see
+    // them all". This is the assertion that keeps the two key sets apart.
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'admin' }])
+    expect(m.server.areaLevel(Area.datasets)).toBe(Level.None)
+    expect(areaLevelFromKeys(new Set(m.caps.keys), Area.datasets)).toBe(Level.None)
+    expect(m.caps.keys).not.toContain(PermissionKey.datasetsView)
+    // …and the row-less dataset stays invisible on BOTH resolvers.
+    expect(levelFor(m, 'dataset', 'ds_someone_elses')).toBeUndefined()
+    expect(m.server.instanceListScope('dataset')).toEqual({
+      kind: 'include',
+      includeIds: ['ds_x'],
+    })
+  })
+
+  it('survives the wire round-trip and the client `can()` union rebuilds it', () => {
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'view' }])
+    const snapshot = m.server.toClientCapabilities()
+    expect(snapshot.instanceDerivedKeys).toEqual([PermissionKey.datasetsView])
+    // The client `can()` reads the union (capabilities-provider.tsx)…
     expect(
-      member({
-        rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
-      }).server.hasAnyInstanceGrant()
-    ).toBe(false)
+      new Set<string>([...snapshot.keys, ...(snapshot.instanceDerivedKeys ?? [])]).has(
+        PermissionKey.datasetsView
+      )
+    ).toBe(true)
+    // …while `toResolvedRecordAccess` keeps `keys` pure, so the client mirror of
+    // the area fallback agrees with the server's.
+    expect(m.client.keys.has(PermissionKey.datasetsView)).toBe(false)
   })
 
-  it('the waivable keys are exactly the Read rung of each instance-access area', () => {
-    // The scope that closes the create hole: `workflowsManage` fronts `create`,
-    // which has NO instance to assert on, so waiving it would let a `None`-area
-    // grant holder create workflows.
-    expect([...INSTANCE_ACCESS_VIEW_KEYS].sort()).toEqual(
-      [
-        PermissionKey.datasetsView,
-        PermissionKey.knowledgeBaseView,
-        PermissionKey.dashboardsView,
-        PermissionKey.workflowsView,
-      ].sort()
-    )
-    for (const key of [
-      PermissionKey.workflowsManage,
-      PermissionKey.datasetsManage,
-      PermissionKey.knowledgeBaseManage,
-      PermissionKey.dashboardsManage,
-      PermissionKey.workflowsEdit,
-    ]) {
-      expect(INSTANCE_ACCESS_VIEW_KEYS.has(key)).toBe(false)
-    }
+  it('the derived keys are exactly the Read rung of each instance-access area', () => {
+    expect(INSTANCE_ACCESS_READ_KEYS).toEqual({
+      dataset: [PermissionKey.datasetsView],
+      kb: [PermissionKey.knowledgeBaseView],
+      dashboard: [PermissionKey.dashboardsView],
+      workflow: [PermissionKey.workflowsView],
+    })
   })
 })

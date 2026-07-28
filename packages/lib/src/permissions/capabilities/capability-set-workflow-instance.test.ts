@@ -38,7 +38,12 @@ interface MemberOpts {
   role?: OrganizationRole
   seatType?: SeatType
   profileLevels?: Partial<Record<Area, Level>>
-  rows?: Array<{ entityInstanceId: string; permission: ResourcePermission }>
+  /** `entityDefinitionId` defaults to `'workflow'` — the resource under test here. */
+  rows?: Array<{
+    entityDefinitionId?: string
+    entityInstanceId: string
+    permission: ResourcePermission
+  }>
   restrictedInstances?: string[]
 }
 
@@ -50,7 +55,10 @@ function member(opts: MemberOpts = {}) {
     seatType,
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     typeAccessRows: [],
-    instanceAccessRows: opts.rows ?? [],
+    instanceAccessRows: (opts.rows ?? []).map((row) => ({
+      entityDefinitionId: 'workflow',
+      ...row,
+    })),
   })
   const restricted = new Set(
     opts.restrictedInstances ?? (opts.rows ?? []).map((r) => r.entityInstanceId)
@@ -65,7 +73,8 @@ function member(opts: MemberOpts = {}) {
     (id) => id,
     caps.instanceAccess,
     restricted,
-    {}
+    {},
+    new Set(caps.instanceDerivedKeys)
   )
   return { caps, server, client: toResolvedRecordAccess(server.toClientCapabilities()) }
 }

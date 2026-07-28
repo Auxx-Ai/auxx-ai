@@ -54,6 +54,11 @@ export async function getCapabilities(
     resolved.toDefinitionId,
     caps.instanceAccess ?? {},
     new Set(restrictedInstanceIds),
-    resolved.defBaseOverrides
+    resolved.defBaseOverrides,
+    // Composed, not recomputed here: `instanceDerivedKeys` is type-aware, and the
+    // type lives on the ResourceAccess row that only the composer reads. `?? []`
+    // covers a blob composed before the field existed — a missing derived key
+    // fails CLOSED (the member simply sees the coarse gate they saw before).
+    new Set(caps.instanceDerivedKeys ?? [])
   )
 }

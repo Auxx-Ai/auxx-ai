@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/instance-grant-overrides-area-none.test.ts
 
 import { ResourcePermission } from '@auxx/database/enums'
-import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
+import { Area, expandLevelsToKeys, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -25,7 +25,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *  3. area `None` + an explicit `'none'` restriction ⇒ denied, absent from list;
  *  4. OWNER unaffected.
  *
- * Plus the hole the type-blind front-door waiver could have opened: a
+ * Plus the hole the derived Read rung must not open (handoff item 5b, which
+ * replaced the type-blind front-door waiver this file was written against): a
  * `workflows: None` member holding a grant reaches `permissionProcedure`'s Read
  * rung, but must NOT reach the Manage rung that fronts `create` — which has no
  * instance to assert on.
@@ -224,32 +225,23 @@ vi.mock('@auxx/lib/permissions', async () => {
 })
 
 /**
- * Mirrors the REAL `permissionProcedure` gate from `trpc.ts`, including the plan
- * 25 §2 waiver — without it, `workflow.getById` would 403 at the front door for
- * exactly the member this file is about, and every case below would pass for the
- * wrong reason. Only the plan-AND and the `getCapabilities` read are dropped
- * (ctx already carries the set).
+ * Mirrors the REAL `permissionProcedure` gate from `trpc.ts`: a plain
+ * `capabilities.assert(key)`. The plan 25 §2 waiver that used to sit here is
+ * GONE (handoff item 5b) — `workflow.getById` reaches the member this file is
+ * about because they now genuinely hold the derived `workflowsView` key, which
+ * {@link caps} synthesizes below exactly as `composeUserCapabilities` does. Only
+ * the plan-AND and the `getCapabilities` read are dropped (ctx carries the set).
  */
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')
   const t = initTRPC.context<Record<string, unknown>>().create()
-  const { INSTANCE_ACCESS_VIEW_KEYS } = await import(
-    '@auxx/lib/permissions/capabilities/instance-access'
-  )
   return {
     createTRPCRouter: t.router,
     capabilityProcedure: t.procedure,
     protectedProcedure: t.procedure,
     permissionProcedure: (key: string) =>
       t.procedure.use(({ ctx, next }) => {
-        const capabilities = (
-          ctx as {
-            capabilities: { assert: (k: string) => void; hasAnyInstanceGrant: () => boolean }
-          }
-        ).capabilities
-        const waived =
-          INSTANCE_ACCESS_VIEW_KEYS.has(key as never) && capabilities.hasAnyInstanceGrant()
-        if (!waived) capabilities.assert(key)
+        ;(ctx as { capabilities: { assert: (k: string) => void } }).capabilities.assert(key)
         return next()
       }),
     notDemo:
@@ -283,6 +275,17 @@ function caps(opts: {
   role?: 'MEMBER' | 'OWNER'
 }) {
   const rows = opts.rows ?? {}
+  // The item-5b derived Read rung, reproduced exactly as `composeUserCapabilities`
+  // computes it: any ≥`view` row on this area's resource synthesizes the area's
+  // Read key (full seat, so no ceiling clamp applies). This is what lets a member
+  // composing the area to `None` past `permissionProcedure`'s coarse assert now
+  // that the waiver is gone.
+  const derivedReadKey = PERMISSION_AREAS[opts.area].rungs.find((r) => r.level === Level.Read)
+    ?.keys[0]
+  const derived =
+    derivedReadKey && Object.values(rows).some((p) => p !== ResourcePermission.none)
+      ? [derivedReadKey]
+      : []
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [opts.area]: opts.areaLevel ?? Level.None })),
     {},
@@ -292,7 +295,9 @@ function caps(opts: {
     undefined,
     undefined,
     rows,
-    new Set(Object.keys(rows))
+    new Set(Object.keys(rows)),
+    undefined,
+    new Set(derived)
   )
 }
 
@@ -404,19 +409,19 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
   })
 })
 
-describe('the front-door waiver is scoped to the Read rung (no create hole)', () => {
+describe('the derived Read rung is scoped to the Read rung (no create hole)', () => {
   const granted = () => caps({ area: Area.workflows, rows: { [SHARED]: ResourcePermission.admin } })
 
   it('a `workflows: None` member holding an admin grant reaches the Read-rung procedure', async () => {
-    // `permissionProcedure(workflowsView)` waives its coarse assert, and
-    // `assertViewInstance` then lets them through on their own row.
+    // The composer DERIVES `workflowsView` from their instance grant, so the
+    // coarse assert passes, and `assertViewInstance` then judges the row itself.
     await expect(wf(granted()).getById({ id: SHARED })).resolves.toBeDefined()
   })
 
   it('…but is still refused `create`, which sits on the Manage rung', async () => {
     // `create` has NO instance to assert on, so the coarse rung is the only
-    // gate. Widening the waiver past the Read rung would hand every grant
-    // holder the ability to create workflows in an area they compose to None.
+    // gate. Deriving anything past the Read rung would hand every grant holder
+    // the ability to create workflows in an area they compose to None.
     await expect(wf(granted()).create({ name: 'x', enabled: false })).rejects.toMatchObject(
       FORBIDDEN
     )
@@ -430,13 +435,10 @@ describe('the front-door waiver is scoped to the Read rung (no create hole)', ()
   })
 
   it('a member holding ONLY an explicit `none` row is refused too', async () => {
-    // These two are the safety argument for the waiver's looseness, not a test
-    // OF it: the waiver grants nothing, so widening it (e.g.
-    // `hasAnyInstanceGrant` returning true unconditionally) changes NO router
-    // outcome — `assertViewInstance` denies the same callers either way. The
-    // waiver's own inputs are pinned as unit assertions in
-    // `packages/lib/.../capability-set-instance.test.ts`, which is the only
-    // place a widening can be caught.
+    // Denied TWICE over now: a `none` row derives no Read key (so the coarse
+    // assert fires), and `assertViewInstance` would deny anyway. The derived
+    // key's own inputs — Read rung only, type-aware, seat-clamped — are pinned
+    // in `packages/lib/.../capability-set-instance.test.ts`.
     await expect(
       wf(caps({ area: Area.workflows, rows: { [OTHER]: ResourcePermission.none } })).getById({
         id: SHARED,

@@ -58,31 +58,47 @@ export function isInstanceAccessKey(key: string): key is InstanceAccessKey {
 }
 
 /**
- * The `Level.Read` rung keys of every instance-access resource's L2 area — the
- * ONLY keys a coarse procedure gate may waive in favour of an explicit instance
- * grant (plan 25 §2).
+ * The `Level.Read` rung keys of each instance-access resource's L2 area, keyed
+ * BY RESOURCE — the keys {@link import('./compose-user-capabilities')
+ * .composeUserCapabilities} synthesizes for a member who holds ≥1 instance grant
+ * reaching `view` on that resource (plan 25 §2 / handoff item 5b).
  *
- * Since an explicit instance row now beats the area floor
+ * Since an explicit instance row beats the area floor
  * ({@link import('./entity-access').effectiveInstanceLevel}), a member composing
- * `workflows: None` who holds one `read` grant must still reach
- * `workflow.getById` — but the base procedure asserts `workflowsView`, which
- * they do not hold. `permissionProcedure` therefore waives the assert for the
- * keys in this set when the member holds ANY instance grant, and lets the
- * procedure's own `assert{View,Edit,Admin}Instance` decide.
+ * `workflows: None` who holds one `view` grant genuinely has workflow access —
+ * but their composed key set, built purely from resolved AREA levels, said
+ * otherwise, so every coarse gate (sidebar, cmd+K, landing-page guards, the
+ * `permissionProcedure` front door) fired against them. Deriving the Read rung
+ * from the grants they actually hold makes the coarse key TRUE for exactly the
+ * members it should be true for.
  *
- * **Read rung only, deliberately.** The waiver is sound only for procedures that
- * immediately assert on a specific instance. The higher rungs of these same
- * areas gate the instance-LESS actions — `workflowsManage` fronts `create` /
- * `createForResource`, which have no instance to assert on — so waiving those
- * would hand a `None`-area member the ability to create. Derived from
- * {@link INSTANCE_ACCESS_RESOURCES} rather than hand-listed: an area with no
- * `Level.Read` rung contributes nothing and therefore fails closed.
+ * **Read rung only, deliberately.** The higher rungs of these same areas front
+ * the instance-LESS actions — `workflowsManage` fronts `create` /
+ * `createForResource`, `datasetsManage` fronts dataset creation — which have no
+ * instance to assert on, so an `admin` grant on ONE instance must never expand
+ * to them. The derived key confers only "the feature's front door is open"; the
+ * per-instance `assert{View,Edit,Admin}Instance` still decides everything else.
+ *
+ * **Per-resource, not a flat union.** The predecessor of this map was a single
+ * type-blind `Set` used by the `permissionProcedure` waiver; because dashboards
+ * are `baselineAtCreate: true`, every dashboard writes a `role:org_member @ view`
+ * row at create, so in any org with ≥1 dashboard "holds an instance grant" was
+ * effectively always true and the front door stood open on ALL four areas.
+ * Keying by resource is what makes a dashboard grant confer `dashboards.view`
+ * and nothing else.
+ *
+ * Derived from {@link INSTANCE_ACCESS_RESOURCES} rather than hand-listed: an
+ * area with no `Level.Read` rung contributes nothing and therefore fails closed.
  */
-export const INSTANCE_ACCESS_VIEW_KEYS: ReadonlySet<PermissionKey> = new Set(
-  INSTANCE_ACCESS_KEYS.flatMap(
-    (key) =>
+export const INSTANCE_ACCESS_READ_KEYS: Readonly<
+  Record<InstanceAccessKey, readonly PermissionKey[]>
+> = INSTANCE_ACCESS_KEYS.reduce(
+  (acc, key) => {
+    acc[key] =
       PERMISSION_AREAS[INSTANCE_ACCESS_RESOURCES[key].area].rungs.find(
         (rung) => rung.level === Level.Read
       )?.keys ?? []
-  )
+    return acc
+  },
+  {} as Record<InstanceAccessKey, readonly PermissionKey[]>
 )

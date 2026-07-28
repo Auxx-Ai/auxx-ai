@@ -259,7 +259,9 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       role: 'USER',
       seatType: 'full',
       typeAccessRows: [],
-      instanceAccessRows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
+      instanceAccessRows: [
+        { entityDefinitionId: 'dataset', entityInstanceId: 'ds_locked', permission: 'none' },
+      ],
     })
     expect(caps.instanceAccess).toEqual({ ds_locked: 'none' })
   })
@@ -270,8 +272,8 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     // last-wins reducer would leave the person the instance was just shared with
     // sitting on the lockdown marker.
     const rows = [
-      { entityInstanceId: 'ds_locked', permission: 'none' as const },
-      { entityInstanceId: 'ds_locked', permission: 'edit' as const },
+      { entityDefinitionId: 'dataset', entityInstanceId: 'ds_locked', permission: 'none' as const },
+      { entityDefinitionId: 'dataset', entityInstanceId: 'ds_locked', permission: 'edit' as const },
     ]
     for (const instanceAccessRows of [rows, [...rows].reverse()]) {
       const caps = composeUserCapabilities({
@@ -312,7 +314,9 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
       userLevels: { [Area.knowledgeBase]: Level.Full },
       typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
-      instanceAccessRows: [{ entityInstanceId: 'inst_a', permission: 'none' }],
+      instanceAccessRows: [
+        { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
+      ],
     })
     for (const userType of ['USER', 'SYSTEM'] as const) {
       const withType = composeUserCapabilities({
@@ -323,7 +327,9 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
         groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
         userLevels: { [Area.knowledgeBase]: Level.Full },
         typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
-        instanceAccessRows: [{ entityInstanceId: 'inst_a', permission: 'none' }],
+        instanceAccessRows: [
+          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
+        ],
       })
       expect(withType).toEqual(legacy)
     }
@@ -623,13 +629,22 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
           { entityDefinitionId: 'def_locked', permission: 'none' },
         ],
         instanceAccessRows: [
-          { entityInstanceId: 'inst_a', permission: 'none' },
-          { entityInstanceId: 'inst_b', permission: 'edit' },
+          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
+          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_b', permission: 'edit' },
         ],
       })
-      expect(Object.keys(caps).sort()).toEqual(['defAccess', 'instanceAccess', 'keys'])
+      expect(Object.keys(caps).sort()).toEqual([
+        'defAccess',
+        'instanceAccess',
+        'instanceDerivedKeys',
+        'keys',
+      ])
       expect(caps).toEqual({
         keys: caps.keys,
+        // OWNER short-circuits and ADMIN already holds `datasets.view` from the
+        // all-Full profile, so nothing is DERIVED for either — the `edit` row on
+        // `inst_b` would derive the Read rung for a member, not for these two.
+        instanceDerivedKeys: role === 'OWNER' ? [] : [PermissionKey.datasetsView],
         defAccess: { def_a: 'admin' },
         instanceAccess: { inst_a: 'none', inst_b: 'edit' },
       })
@@ -656,8 +671,8 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
           { entityDefinitionId: 'def_locked', permission: 'none' },
         ],
         instanceAccessRows: [
-          { entityInstanceId: 'inst_a', permission: 'none' },
-          { entityInstanceId: 'inst_b', permission: 'edit' },
+          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
+          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_b', permission: 'edit' },
         ],
       })
       expect(caps.keys).toEqual([])
@@ -726,7 +741,9 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
         { entityDefinitionId: 'def_deals', permission: 'admin' as const },
         { entityDefinitionId: 'def_a', permission: 'view' as const },
       ],
-      instanceAccessRows: [{ entityInstanceId: 'kb_1', permission: 'edit' as const }],
+      instanceAccessRows: [
+        { entityDefinitionId: 'kb', entityInstanceId: 'kb_1', permission: 'edit' as const },
+      ],
     })
     expect(caps.defAccess).toEqual({})
     expect(caps.instanceAccess).toEqual({})
@@ -740,8 +757,8 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
         { entityDefinitionId: 'def_locked', permission: 'none' as const },
       ],
       instanceAccessRows: [
-        { entityInstanceId: 'inst_a', permission: 'none' as const },
-        { entityInstanceId: 'inst_b', permission: 'edit' as const },
+        { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' as const },
+        { entityDefinitionId: 'dataset', entityInstanceId: 'inst_b', permission: 'edit' as const },
       ],
     }
     const human = composeUserCapabilities({
@@ -940,7 +957,9 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       seatType: opts.seatType ?? 'full',
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [opts.area]: Level.None },
       typeAccessRows: [],
-      instanceAccessRows: opts.rows,
+      // Every row belongs to the resource under test — the composer needs the
+      // type to decide WHICH area's Read rung (if any) it derives.
+      instanceAccessRows: opts.rows.map((row) => ({ entityDefinitionId: opts.key, ...row })),
     })
     const access: ResolvedRecordAccess = {
       role,

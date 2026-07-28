@@ -4,13 +4,18 @@ import type { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType, UserType } from '@auxx/database/types'
 import type { ProfileCeiling } from '../profiles/types'
 import {
+  INSTANCE_ACCESS_READ_KEYS,
+  INSTANCE_ACCESS_RESOURCES,
+  isInstanceAccessKey,
+} from './instance-access'
+import {
   type Area,
   buildAreaLevels,
   expandLevelsToKeys,
   Level,
   type PermissionKey,
 } from './registry'
-import { ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
+import { ALL_KEYS, ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
 
 /**
  * A user's composed Layer-2 capability set for one org.
@@ -21,6 +26,26 @@ import { ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
  */
 export interface UserCapabilities {
   keys: PermissionKey[]
+  /**
+   * Coarse capability keys SYNTHESIZED from the member's instance grants — the
+   * `Level.Read` rung of an instance-access area the member holds ≥1 `view`-or-
+   * better instance grant on (handoff item 5b). Kept in a SEPARATE field from
+   * {@link keys} on purpose, and the separation is load-bearing:
+   *
+   * `keys` is the ONLY input {@link import('./registry').areaLevelFromKeys} has
+   * for recovering a member's AREA level, and that recovered level is what
+   * `effectiveInstanceLevel` / `instanceListScope` use as the absent-row
+   * fallback for the `baselineAtCreate: false` resources. Folding a derived
+   * `workflows.view` into `keys` would make `areaLevelFromKeys` report
+   * `Level.Read` for the area, and every row-LESS workflow in the org would fall
+   * back to `view` — turning "shared one workflow" into "can see all of them".
+   *
+   * So: `keys` answers *"what is my area level"*, `keys ∪ instanceDerivedKeys`
+   * answers *"may I reach this feature's front door"*. `CapabilitySet.can` /
+   * `has` / `assert` and the client `can()` read the union; `areaLevel()`,
+   * `resolved()` and every area-level computation read `keys` alone.
+   */
+  instanceDerivedKeys: PermissionKey[]
   defAccess: Record<string, ResourcePermission>
   /**
    * Highest instance-level ResourceAccess permission per `entityInstanceId`
@@ -143,8 +168,18 @@ export function composeUserCapabilities(input: {
   /** Sparse levels on the member's direct user grant (raise-only). */
   userLevels?: Partial<Record<Area, Level>>
   typeAccessRows: Array<{ entityDefinitionId: string; permission: ResourcePermission }>
-  /** Instance-level rows (entityInstanceId IS NOT NULL) for the instance-access resources. */
-  instanceAccessRows?: Array<{ entityInstanceId: string; permission: ResourcePermission }>
+  /**
+   * Instance-level rows (entityInstanceId IS NOT NULL) for the instance-access
+   * resources. `entityDefinitionId` is the resource KEY (`dataset` | `kb` |
+   * `dashboard` | `workflow`) and is REQUIRED — it is what makes
+   * {@link UserCapabilities.instanceDerivedKeys} type-aware, so a dashboard
+   * grant cannot open the workflows front door.
+   */
+  instanceAccessRows?: Array<{
+    entityDefinitionId: string
+    entityInstanceId: string
+    permission: ResourcePermission
+  }>
 }): UserCapabilities {
   const {
     role,
@@ -186,13 +221,13 @@ export function composeUserCapabilities(input: {
   }
 
   // Fail closed: a non-member holds no capabilities.
-  if (!role) return { keys: [], defAccess, instanceAccess }
+  if (!role) return { keys: [], instanceDerivedKeys: [], defAccess, instanceAccess }
 
   // AGENT principals hold NO composed capability (doc 19 §0.16/§2.3). Their
   // authority lives exclusively in `AgentVersion.permissionPolicy`, resolved by
   // `AgentPolicyCapabilities` — see the note above this function.
   if (userType === 'AGENT') {
-    return { keys: [], defAccess: {}, instanceAccess: {} }
+    return { keys: [], instanceDerivedKeys: [], defAccess: {}, instanceAccess: {} }
   }
 
   const ceiling = SEAT_CEILINGS[seatType]
@@ -201,9 +236,14 @@ export function composeUserCapabilities(input: {
   // profile ceiling is consulted, clamped only by the seat ceiling (a billing
   // invariant). Last-owner protection guarantees ≥1 owner exists, so a
   // mis-shaped profile is always fixable from inside the product.
+  //
+  // No derived keys: an owner already holds every rung the seat ceiling allows,
+  // so synthesizing a Read rung could only ever be a no-op — or, worse, hand
+  // back an area the ceiling deliberately closed.
   if (role === 'OWNER') {
     return {
       keys: expandLevelsToKeys(buildAreaLevels((area) => ceiling[area])),
+      instanceDerivedKeys: [],
       defAccess,
       instanceAccess,
     }
@@ -243,9 +283,51 @@ export function composeUserCapabilities(input: {
 
   return {
     keys: expandLevelsToKeys(resolved),
+    instanceDerivedKeys: deriveInstanceReadKeys(instanceAccessRows, ceiling),
     defAccess,
     instanceAccess,
   }
+}
+
+/**
+ * Synthesize the `Level.Read` rung of every instance-access area the member
+ * holds ≥1 `view`-or-better instance grant on — see
+ * {@link UserCapabilities.instanceDerivedKeys} for why the result is kept out of
+ * `keys`.
+ *
+ * Three properties, each deliberate:
+ *
+ * - **Read rung only, regardless of grant strength.** An `admin` grant on one
+ *   workflow yields `workflows.view`, never `workflows.manage` — that rung
+ *   fronts `create`, which has no instance to assert on.
+ * - **Type-aware.** The row's `entityDefinitionId` names the resource, so a
+ *   dashboard grant opens `dashboards.view` and nothing else. This is what
+ *   `baselineAtCreate: true` makes essential: every dashboard writes a
+ *   `role:org_member @ view` row at create, so "holds SOME instance grant" is
+ *   true for practically every member of every org with a dashboard.
+ * - **The seat ceiling still dominates**, matching `effectiveInstanceLevel`,
+ *   which checks the same clamp before it reads any row. Without this a worker
+ *   seat holding one grant would be handed a front-door key to an area its
+ *   billing packaging excludes — and the enforcement path would then deny it
+ *   anyway, which is a 403 maze rather than a hidden nav entry.
+ *
+ * Rows whose `entityDefinitionId` is not a registered instance-access key are
+ * skipped (fail closed); `'none'` rows never reach `view` and so never derive.
+ * Ordered by {@link ALL_KEYS} so the cached blob is byte-stable across recomputes
+ * regardless of row order.
+ */
+function deriveInstanceReadKeys(
+  rows: Array<{ entityDefinitionId: string; permission: ResourcePermission }>,
+  ceiling: Record<Area, Level>
+): PermissionKey[] {
+  const held = new Set<PermissionKey>()
+  for (const row of rows) {
+    if (PERMISSION_RANK[row.permission] < PERMISSION_RANK.view) continue
+    if (!isInstanceAccessKey(row.entityDefinitionId)) continue
+    if (ceiling[INSTANCE_ACCESS_RESOURCES[row.entityDefinitionId].area] === Level.None) continue
+    for (const key of INSTANCE_ACCESS_READ_KEYS[row.entityDefinitionId]) held.add(key)
+  }
+  return held.size === 0 ? [] : ALL_KEYS.filter((key) => held.has(key))
 }
 
 /**

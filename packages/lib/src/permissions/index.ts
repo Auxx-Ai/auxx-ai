@@ -19,8 +19,8 @@ export {
 } from './capabilities/grant-service'
 export {
   INSTANCE_ACCESS_KEYS,
+  INSTANCE_ACCESS_READ_KEYS,
   INSTANCE_ACCESS_RESOURCES,
-  INSTANCE_ACCESS_VIEW_KEYS,
   type InstanceAccessKey,
   type InstanceAccessResourceConfig,
   isInstanceAccessKey,

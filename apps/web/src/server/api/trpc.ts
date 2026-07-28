@@ -15,7 +15,6 @@ import {
   FeatureKey,
   FeaturePermissionService,
   getCapabilities,
-  INSTANCE_ACCESS_VIEW_KEYS,
   PERMISSION_REGISTRY_MAP,
   type PermissionKey,
 } from '@auxx/lib/permissions'
@@ -399,27 +398,19 @@ export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
  * `featureKey`, asserts the key, and attaches the resolved set as
  * `ctx.capabilities` so router bodies reuse it with zero re-resolve.
  *
- * **The instance-grant waiver (plan 25 §2).** Since an explicit instance
- * `ResourceAccess` row now beats the area floor, a member composing e.g.
- * `workflows: None` who was granted `read` on ONE workflow holds no
- * `workflowsView` key — and would 403 at this front door before the procedure's
- * own `assertViewInstance` ever ran, making the grant inert all over again. So
- * for the `Level.Read` rung keys of the instance-access areas
- * ({@link INSTANCE_ACCESS_VIEW_KEYS}) the coarse assert is WAIVED when the member
- * holds any instance grant at all.
+ * **There is no instance-grant waiver here any more** (handoff item 5b, replacing
+ * plan 25 §2's). A member composing `workflows: None` who holds one explicit
+ * `view` grant now genuinely HOLDS `workflowsView`: `composeUserCapabilities`
+ * synthesizes the area's Read rung from their instance grants, type-aware, at
+ * composition time. So the plain assert below is correct for them and the
+ * type-blind waiver — which any org with ≥1 dashboard turned into an open door
+ * on all four instance-access areas — is gone.
  *
- * The waiver is deliberately loose in two ways, both bounded:
- *  - **Type-blind.** `instanceAccess` keys on the bare instance CUID with no
- *    resource type, so "holds a *workflow* grant" is unanswerable without
- *    changing the cached blob shape — which would force a `user:capabilities:vN`
- *    bump. A member holding only a dataset grant therefore also gets through the
- *    workflow door, and is stopped one line later by `assertViewInstance`.
- *  - **Front door only.** It grants NOTHING. Every procedure behind these keys
- *    asserts on a specific instance immediately after; that is a real
- *    precondition, which is why the waiver is scoped to the Read rung — the
- *    higher rungs front the instance-LESS actions (`workflowsManage` fronts
- *    `create`/`createForResource`, which have no instance to assert on) and
- *    stay strict.
+ * The derived key is a FRONT DOOR only: it says the member has some access
+ * inside the feature, never which instance. Every procedure behind an
+ * instance-access Read key must still assert per instance, and any procedure
+ * that returns ORG-WIDE data behind one must scope that data to the instances
+ * the member can view (see `dataset.getOrganizationStats`).
  *
  * The `FeatureKey` plan-AND is unaffected and still runs first — it is the whole
  * reason instance-scoped procedures use this rather than `capabilityProcedure`.
@@ -437,8 +428,7 @@ export const permissionProcedure = (key: PermissionKey) =>
       )
     }
     const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
-    const waived = INSTANCE_ACCESS_VIEW_KEYS.has(key) && capabilities.hasAnyInstanceGrant()
-    if (!waived) capabilities.assert(key)
+    capabilities.assert(key)
     return next({ ctx: { capabilities } })
   })
 

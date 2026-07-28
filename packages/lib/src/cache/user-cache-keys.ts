@@ -147,7 +147,26 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // member's profile no longer grants — fail-OPEN on a stale blob, the same
   // dangerous direction as v7→v8, so this bump ships in the SAME change as the
   // strip rather than being treated as cosmetic.
+  // v11: ONE bump for the whole accumulated instance-access batch, all three
+  // parts of which change what a v10 blob contains:
+  //   1. `dashboards.edit` (#1344) split the dashboards ladder into
+  //      Read/Edit/Full. A v10 blob was expanded against the 2-rung ladder, so
+  //      it lacks the key entirely and a Full-level holder cannot edit widgets.
+  //   2. `workflows.view` / `workflows.edit` (#1345) split the single-rung
+  //      workflows area the same way, and `workflow` joined
+  //      `INSTANCE_ACCESS_RESOURCES`.
+  //   3. `UserCapabilities` gained `instanceDerivedKeys` (item 5b) — the area
+  //      Read rungs synthesized from a member's own instance grants, which is
+  //      what makes `can('workflows.view')` true for a member whose only access
+  //      is one shared workflow. A v10 blob has no such field, so every coarse
+  //      gate (sidebar, cmd+K, the KB/Dashboards landing redirects) would keep
+  //      firing against them until the 24h TTL expired.
+  // All three fail CLOSED on a stale blob (a missing key denies), so this is a
+  // lost-access bump rather than a lost-restriction one — but it is still
+  // mandatory: a dev flush is NOT a substitute, because during a rollout a
+  // draining old instance repopulates the same keyspace, which is the entire
+  // reason `vN` exists.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v10', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v11', ttlSeconds: ONE_DAY },
 }
