@@ -44,9 +44,9 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const { getResourceById } = useResources()
-  // Settings (`dashboard.update`) and Delete are Full per instance; Duplicate is
-  // the coarse `dashboards.manage` rung (it CREATES a dashboard). Open / Favorite
-  // / Share… stay at Read — the share dialog is already read-only for non-admins.
+  // Settings (`dashboard.update`), Share… and Delete are Full per instance;
+  // Duplicate is the coarse `dashboards.manage` rung (it CREATES a dashboard).
+  // Open / Favorite stay at Read.
   const { can, canAdminInstance } = useAccess()
   const canAdmin = canAdminInstance(toRecordId('dashboard', dashboard.id))
   const canCreate = can('dashboards.manage')
@@ -151,10 +151,12 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
                 Settings
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => setShareOpen(true)}>
-              <Share2 />
-              Share…
-            </DropdownMenuItem>
+            {canAdmin && (
+              <DropdownMenuItem onClick={() => setShareOpen(true)}>
+                <Share2 />
+                Share…
+              </DropdownMenuItem>
+            )}
             {canAdmin && (
               <>
                 <DropdownMenuSeparator />
@@ -172,11 +174,13 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
       />
-      <InstanceShareDialog
-        recordId={toRecordId('dashboard', dashboard.id)}
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-      />
+      {canAdmin && (
+        <InstanceShareDialog
+          recordId={toRecordId('dashboard', dashboard.id)}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
     </>
   )
 }

@@ -318,15 +318,19 @@ export function DashboardDetailView({
         targetIds={{ dashboardId: dashboard.id }}
         size='icon-xs'
       />
-      <Button variant='outline' size='sm' onClick={() => setShareOpen(true)}>
-        <Share2 />
-        Share
-      </Button>
-      <InstanceShareDialog
-        recordId={dashboardRecordId}
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-      />
+      {canAdmin && (
+        <>
+          <Button variant='outline' size='sm' onClick={() => setShareOpen(true)}>
+            <Share2 />
+            Share
+          </Button>
+          <InstanceShareDialog
+            recordId={dashboardRecordId}
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+          />
+        </>
+      )}
       <DashboardPublishCluster
         dashboard={dashboard}
         activeVersionNumber={persistedVersionNumber ?? dashboard.versionNumber}

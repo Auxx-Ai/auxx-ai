@@ -86,10 +86,12 @@ export function DatasetActions() {
     <>
       <div className='flex items-center gap-2'>
         {/* Primary Actions */}
-        <Button onClick={() => setShareOpen(true)} variant='outline' size='sm'>
-          <Share2 />
-          Share
-        </Button>
+        {canAdmin && (
+          <Button onClick={() => setShareOpen(true)} variant='outline' size='sm'>
+            <Share2 />
+            Share
+          </Button>
+        )}
         {canEdit && (
           <Button onClick={handleUpload} size='sm'>
             <Upload />
@@ -135,11 +137,13 @@ export function DatasetActions() {
         </DropdownMenu>
       </div>
 
-      <InstanceShareDialog
-        recordId={toRecordId('dataset', dataset.id)}
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-      />
+      {canAdmin && (
+        <InstanceShareDialog
+          recordId={toRecordId('dataset', dataset.id)}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
       <ConfirmDialog />
     </>
   )
