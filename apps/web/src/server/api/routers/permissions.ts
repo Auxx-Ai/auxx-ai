@@ -18,18 +18,28 @@ import {
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
-import { bridgeMemberBaselineGrants, resolveGrantGrantee } from './permissions-member-baseline'
 
 /**
- * Grantee vocabulary for capability grants (§3.2).
+ * Grantee vocabulary for capability grants (§3.2) — the two **override** tiers,
+ * and only those.
  *
- * TODO(plan-19-step-7): `'profile'` is deliberately absent. The shipped
- * Member-baseline tab still addresses the baseline as `role:org_member` and
- * `permissions-member-baseline.ts` redirects it onto the org's `member` profile in
- * both directions; no client sends `'profile'` until step 7 ships the Profiles
- * editor, and an unused write vocabulary is a surface nobody validated.
+ * `'profile'` is absent because a profile is the composition BASE, not a raise
+ * above it, and every base write must go through {@link
+ * permissionsRouter.saveProfile}: that is the only path running the §6.1
+ * escalation guard over each holder's resulting effective state.
+ * `setGranteeLevels` runs `assertGrantableLevels` alone, which today blocks only
+ * the single `adminOnly` area (`settings`) — so a `profile` grantee here would
+ * let a non-admin `permissionsManage` holder write `billing`/`members`/
+ * `permissions` into a profile's base with no authority check at all.
+ *
+ * `'role'` is absent for the same reason, one step removed: plan 19 §0.8 deleted
+ * the `role:org_member` `PermissionGrant` tier (no composer reads it — see
+ * `compute-user-capabilities.ts`'s grantee union), and the interim bridge that
+ * redirected that address onto the org's `member` profile was exactly the
+ * guard-free side door described above. Both are gone; the Member profile is
+ * edited in one place, Profiles → Member.
  */
-const granteeType = z.enum(['role', 'group', 'user'])
+const granteeType = z.enum(['group', 'user'])
 
 /**
  * A sparse per-area level payload: `{ [areaSlug]: 0-3 }`; missing areas fall
@@ -118,14 +128,15 @@ const profileReadProcedure = protectedProcedure.use(async ({ ctx, next }) => {
  * the profile pair to `profiles/profile-save.ts`, which runs the §6.1 escalation
  * guard inside its own transaction.
  *
- * TODO(plan-19-step-7): the org-wide member baseline is addressed by the shipped
- * client as `role:org_member`, a `PermissionGrant` tier step 2 deleted. Both
- * directions are redirected onto the org's `member` permission profile — the tier
- * the composer actually reads (§0.8) — at this boundary, in
- * `permissions-member-baseline.ts`. Step 7 replaces the tab with the
- * Member-profile editor and deletes that module. `ResourceAccess`'s
- * `role:org_member` rows (per-def / per-instance baselines) are a DIFFERENT,
- * still-live mechanism and are not touched here.
+ * **The two write surfaces are not interchangeable.** `grant`/`revoke` reach the
+ * raise-only override tiers (`group`, `user`); `saveProfile` is the ONLY way to
+ * write a profile's per-area base, because it is the only one that runs the §6.1
+ * escalation guard. See {@link granteeType} for why `'profile'`/`'role'` are not
+ * on the wire.
+ *
+ * `ResourceAccess`'s `role:org_member` rows (the per-def / per-instance workspace
+ * defaults) are a DIFFERENT, still-live mechanism on a different table and are
+ * not touched here — they are written through the `resourceAccess` router.
  */
 export const permissionsRouter = createTRPCRouter({
   /**
@@ -144,35 +155,31 @@ export const permissionsRouter = createTRPCRouter({
    * The USER role's per-area level defaults. Post plan-22 (member baseline
    * strip) this is the all-`None` floor, not an informational baseline —
    * `ROLE_DEFAULTS.USER` is what an area falls through to when NOTHING sets
-   * it, and nothing does by default anymore. The baseline the settings page
-   * should show beside each editable area (what admins deviate from) now
-   * lives in the Member profile's seeded `PermissionGrant` row instead,
-   * served through `listGrants`' `bridgeMemberBaselineGrants`. Kept as-is
-   * (still returns `ROLE_DEFAULTS.USER`) — this endpoint's consumer-facing
-   * behavior is out of this plan's scope.
+   * it, and nothing does by default anymore. The baseline an override grid
+   * shows beside each area (what a grant deviates from) lives in the Member
+   * profile's seeded `PermissionGrant` row, which arrives as an ordinary
+   * `profile` row through {@link permissionsRouter.listGrants}.
    */
   roleDefaults: permissionsProcedure.query(() => ROLE_DEFAULTS.USER),
 
   /**
-   * Every stored grant row for the org (the member baseline + group + user
-   * overrides), each a sparse per-area level map. One query hydrates all three
-   * sections of the permissions settings page.
+   * Every stored grant row for the org — the profile bases plus the group and
+   * user overrides — each a sparse per-area level map. One query hydrates the
+   * whole permissions settings page.
    *
-   * TODO(plan-19-step-7): the `member` profile's row is presented as
-   * `role:org_member` so the shipped baseline tab reads back exactly what the
-   * redirected write stored — see `permissions-member-baseline.ts`.
+   * Rows are returned verbatim: the org's `member` profile is one `profile` row
+   * among the others, with no address rewriting. (It used to be presented as
+   * `role:org_member` for the retired Member-baseline grid; that bridge, and the
+   * guard-free write path it implied, are gone.)
    */
   listGrants: permissionsProcedure.query(async ({ ctx }) => {
-    const rows = await listGranteeGrants(ctx.session.organizationId, ctx.db)
-    const grants = await bridgeMemberBaselineGrants(ctx.session.organizationId, rows)
+    const grants = await listGranteeGrants(ctx.session.organizationId, ctx.db)
     return { grants }
   }),
 
   /**
-   * Set (upsert) the per-area levels for one grantee.
-   *
-   * TODO(plan-19-step-7): a `role:org_member` target is redirected onto the org's
-   * `member` profile — the only tier the composer reads (§0.8).
+   * Set (upsert) the per-area levels for one **override** grantee (group or
+   * user). Profile bases are not writable here — see {@link granteeType}.
    */
   grant: permissionsProcedure
     .input(
@@ -183,13 +190,11 @@ export const permissionsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const grantee = await resolveGrantGrantee(ctx.session.organizationId, input)
-
       const grant = await setGranteeLevels({
         db: ctx.db,
         organizationId: ctx.session.organizationId,
-        granteeType: grantee.granteeType,
-        granteeId: grantee.granteeId,
+        granteeType: input.granteeType,
+        granteeId: input.granteeId,
         // Coerced `Record<string, number>`; `parseAreaLevels` in the service
         // normalizes to a trusted `Partial<Record<Area, Level>>`.
         levels: input.levels as Partial<Record<Area, Level>>,
@@ -201,10 +206,9 @@ export const permissionsRouter = createTRPCRouter({
         action: 'permission.granted',
         targetType: 'PermissionGrant',
         targetId: grant.id,
-        // The RESOLVED grantee — the row that was actually written.
         newState: {
-          granteeType: grantee.granteeType,
-          granteeId: grantee.granteeId,
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
           levels: input.levels,
         },
       })
@@ -212,10 +216,7 @@ export const permissionsRouter = createTRPCRouter({
       return grant
     }),
 
-  /**
-   * Remove the grant row for one grantee. A `role:org_member` target is
-   * redirected the same way as {@link permissionsRouter.grant}.
-   */
+  /** Remove the grant row for one override grantee (group or user). */
   revoke: permissionsProcedure
     .input(
       z.object({
@@ -224,21 +225,19 @@ export const permissionsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const grantee = await resolveGrantGrantee(ctx.session.organizationId, input)
-
       const removed = await clearGranteeLevels({
         db: ctx.db,
         organizationId: ctx.session.organizationId,
-        granteeType: grantee.granteeType,
-        granteeId: grantee.granteeId,
+        granteeType: input.granteeType,
+        granteeId: input.granteeId,
       })
 
       await recordAuditFromCtx(ctx, {
         category: 'members',
         action: 'permission.revoked',
         targetType: 'PermissionGrant',
-        targetId: `${grantee.granteeType}:${grantee.granteeId}`,
-        newState: { granteeType: grantee.granteeType, granteeId: grantee.granteeId, removed },
+        targetId: `${input.granteeType}:${input.granteeId}`,
+        newState: { granteeType: input.granteeType, granteeId: input.granteeId, removed },
       })
 
       return { removed }

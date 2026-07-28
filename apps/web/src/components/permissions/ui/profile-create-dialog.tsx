@@ -63,7 +63,7 @@ export function ProfileCreateDialog({
   onCreated,
 }: ProfileCreateDialogProps) {
   const { createProfile, saveProfile, takenSlugs, isCreating, isSaving } = useProfiles()
-  const { profileGrants, baseline } = usePermissionGrants()
+  const { profileGrants } = usePermissionGrants()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -98,12 +98,10 @@ export function ProfileCreateDialog({
     if (!created) return
 
     if (cloneFrom) {
-      // The source's area levels live in its own `PermissionGrant` row; the org's
-      // `member` profile is still presented as `role:org_member` by the baseline
-      // bridge — TODO(plan-19-step-7): drop the fallback with the bridge.
+      // Every profile's area levels — the org's `member` profile included — live
+      // in its own `PermissionGrant` row, keyed by profile id.
       const levels: Partial<Record<Area, Level>> =
-        profileGrants.find((g) => g.granteeId === cloneFrom.id)?.levels ??
-        (cloneFrom.slug === 'member' ? baseline : {})
+        profileGrants.find((g) => g.granteeId === cloneFrom.id)?.levels ?? {}
       await saveProfile({
         profileId: created.id,
         levels,
