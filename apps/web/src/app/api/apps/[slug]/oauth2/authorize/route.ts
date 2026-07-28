@@ -6,6 +6,8 @@ import { database as db } from '@auxx/database'
 import { resolveAppConnectionForRuntime } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
 import { resolveOAuth2Client, resolveOwnClientRequirement } from '@auxx/lib/connections'
+import { AuxxError } from '@auxx/lib/errors'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -128,6 +130,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         { error: 'OAuth not configured for this app connection' },
         { status: 400 }
       )
+    }
+
+    // Scope is a property of the method, exactly as in `apps.saveSecretConnection`: with a picked
+    // method the def owns the scope, otherwise the `type` param does (the fallback lookup above
+    // already constrains `cd.global` to it). This is the same value stashed as `global` in the
+    // Redis state below, which the callback turns into the credential's `userId` column —
+    // `null` (org-wide) when org-scoped.
+    //
+    // Org-scoped connections gate on the integrations key; user-scoped ones
+    // belong to the caller (plan 21 §4.1).
+    const isOrgScoped = connectionDefinitionId ? connDef.global === true : isGlobal
+    if (isOrgScoped) {
+      try {
+        await requirePermission(session.user.id, organizationId, PermissionKey.integrationsManage)
+      } catch (permissionError) {
+        // Returned explicitly so the AuxxError keeps its own 403 instead of being flattened
+        // into the outer catch's generic 500.
+        if (permissionError instanceof AuxxError) {
+          return NextResponse.json(
+            { error: permissionError.message },
+            { status: permissionError.statusCode }
+          )
+        }
+        throw permissionError
+      }
     }
 
     // Generate state token for CSRF protection

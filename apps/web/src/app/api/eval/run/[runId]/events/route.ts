@@ -7,6 +7,8 @@
 // transport, not storage. See conventions.md §8.
 
 import { database as db, schema } from '@auxx/database'
+import { getCapabilities } from '@auxx/lib/permissions'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { createScopedLogger } from '@auxx/logger'
 import { RedisEventRouter } from '@auxx/redis'
 import type { AssertionResult, EvalTraceEvent } from '@auxx/types/evals'
@@ -37,6 +39,21 @@ export async function GET(
     (session.user as { defaultOrganizationId?: string; organizationId?: string })
       .defaultOrganizationId ?? (session.user as { organizationId?: string }).organizationId
   if (!organizationId) return new Response('No organization', { status: 403 })
+
+  // Same class of gap as the Kopilot stream route: this handler authenticated
+  // with `getSession` and scoped by org, but read no capabilities — so any
+  // authenticated member could replay an eval run's full trace (agent messages,
+  // tool calls, assertion verdicts) while every `eval.*` tRPC procedure sits
+  // behind `permissionProcedure(agentsManage)`.
+  //
+  // Capability only, deliberately: `evalManageProcedure` also plan-ANDs
+  // `agentProcedures`, but this is a read-only RECONNECT stream for a run that
+  // was already started behind that gate, and failing a live reconnect on a
+  // mid-run plan change would be worse than the gap it closes.
+  const capabilities = await getCapabilities(session.user.id, organizationId)
+  if (!capabilities.can(PermissionKey.agentsManage)) {
+    return new Response('Forbidden', { status: 403 })
+  }
 
   const [run] = await db
     .select()

@@ -1,6 +1,9 @@
 // apps/web/src/app/api/imports/[importJobId]/events/route.ts
 
 import { database as db, schema } from '@auxx/database'
+import { AuxxError } from '@auxx/lib/errors'
+import { requirePermission } from '@auxx/lib/permissions'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { createScopedLogger } from '@auxx/logger'
 import { createDedicatedClient } from '@auxx/redis'
 import { and, eq } from 'drizzle-orm'
@@ -19,6 +22,22 @@ const IMPORT_EVENTS_CHANNEL = 'import:events'
 /**
  * SSE endpoint for import job events.
  * Clients subscribe to receive real-time updates on import progress.
+ *
+ * Gated on `records.import`, matching its tRPC sibling: every procedure in
+ * `server/api/routers/data-import.ts` runs through
+ * `permissionProcedure(recordsImport)`. Before this, the handler authenticated
+ * with `getSession` and scoped by org but read no capabilities, so any
+ * authenticated member could stream a live import — the `planning:row` events
+ * forwarded verbatim below carry the imported record VALUES (`fields`) plus
+ * `existingRecordId`, and the terminal replay carries `statistics`.
+ *
+ * The gate deliberately runs **before** the job lookup, so an unauthorized
+ * caller cannot probe job existence.
+ *
+ * `recordsImport` carries no `featureKey` in the permission registry, so
+ * `requirePermission` here reduces to `getCapabilities(...).assert(key)` — no
+ * plan-AND today. It is used rather than a bare `can()` so the Layer-1 gate
+ * comes along automatically if the key is ever linked to a feature.
  */
 export async function GET(
   request: NextRequest,
@@ -37,6 +56,17 @@ export async function GET(
 
   if (!organizationId) {
     return new Response('Organization not found', { status: 403 })
+  }
+
+  try {
+    await requirePermission(session.user.id, organizationId, PermissionKey.recordsImport)
+  } catch (error) {
+    // Returned explicitly so the AuxxError keeps its own status instead of
+    // surfacing as an unhandled 500 — this handler has no tRPC error formatter.
+    if (error instanceof AuxxError) {
+      return new Response(error.message, { status: error.statusCode })
+    }
+    throw error
   }
 
   // Verify access to the import job

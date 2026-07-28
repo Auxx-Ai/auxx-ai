@@ -1,10 +1,12 @@
 // apps/web/src/app/api/files/download/[fileId]/route.ts
 
+import { AuxxError } from '@auxx/lib/errors'
 import {
   createFileDownloadResponse,
   createFileService,
   parseRangeHeader,
 } from '@auxx/lib/files/server'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { isFileRef, parseFileRef } from '@auxx/types/file-ref'
 import { headers } from 'next/headers'
@@ -15,6 +17,59 @@ const logger = createScopedLogger('api-files-download')
 
 interface RouteParams {
   params: Promise<{ fileId: string }>
+}
+
+/**
+ * Session + `files.view` gate shared by GET and HEAD.
+ *
+ * Returns the resolved caller on success, or the `Response` to send back.
+ *
+ * Both handlers previously authenticated with `auth.api.getSession` alone and
+ * read no capabilities: `FileService.get` scopes on organization + soft-delete
+ * only, so any authenticated member of the org could stream the CONTENT of any
+ * `FolderFile` or `MediaAsset` (GET), or read its name/size/mimeType (HEAD),
+ * simply by knowing — or guessing — an id. The eight file reads on the tRPC
+ * sibling `fileRouter` (`list`, `getById`, `search`, `getDownloadInfo`, …) all
+ * sit behind `permissionProcedure(PermissionKey.filesView)`; this route is the
+ * same read, so it takes the same key.
+ *
+ * {@link requirePermission} runs the identical pair `permissionProcedure` runs:
+ * the `FeatureKey.files` plan gate, then `getCapabilities(...).assert(...)`.
+ * It THROWS an {@link AuxxError} rather than returning a boolean, and an App
+ * Router handler has no `auxxErrorMiddleware`/`errorFormatter` in the path — so
+ * the throw is mapped to `error.statusCode` here (403 for the `ForbiddenError`
+ * both gates raise). Anything that is not an `AuxxError` is rethrown, so a
+ * genuine failure surfaces as the handler's 500 instead of masquerading as a
+ * permission denial. Same shape as the sibling
+ * `api/files/upload/sessions/route.ts`.
+ *
+ * The gate deliberately runs **before** {@link resolveFile}, so an unauthorized
+ * caller cannot probe file existence through the 404-vs-200 difference either.
+ */
+async function authorize(): Promise<
+  { ok: true; organizationId: string; userId: string } | { ok: false; response: Response }
+> {
+  const session = await auth.api.getSession({ headers: await headers() })
+
+  if (!session?.user) {
+    return { ok: false, response: new Response('Unauthorized', { status: 401 }) }
+  }
+
+  const organizationId = (session.user as any).defaultOrganizationId
+  if (!organizationId) {
+    return { ok: false, response: new Response('Organization ID is required', { status: 400 }) }
+  }
+
+  try {
+    await requirePermission(session.user.id, organizationId, PermissionKey.filesView)
+  } catch (error) {
+    if (error instanceof AuxxError) {
+      return { ok: false, response: new Response(error.message, { status: error.statusCode }) }
+    }
+    throw error
+  }
+
+  return { ok: true, organizationId, userId: session.user.id }
 }
 
 /**
@@ -53,24 +108,17 @@ async function resolveFile(
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { fileId } = await params
-    const session = await auth.api.getSession({ headers: await headers() })
-
-    if (!session?.user) {
-      return new Response('Unauthorized', { status: 401 })
-    }
-
-    const organizationId = (session.user as any).defaultOrganizationId
-    if (!organizationId) {
-      return new Response('Organization ID is required', { status: 400 })
-    }
 
     if (!fileId) {
       return new Response('File ID is required', { status: 400 })
     }
 
+    const caller = await authorize()
+    if (!caller.ok) return caller.response
+
     logger.info(`Downloading file: ${fileId}`)
 
-    const resolved = await resolveFile(fileId, organizationId, session.user.id)
+    const resolved = await resolveFile(fileId, caller.organizationId, caller.userId)
     if (!resolved) {
       return new Response('File not found', { status: 404 })
     }
@@ -103,18 +151,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function HEAD(_request: NextRequest, { params }: RouteParams) {
   try {
     const { fileId } = await params
-    const session = await auth.api.getSession({ headers: await headers() })
 
-    if (!session?.user) {
-      return new Response('Unauthorized', { status: 401 })
+    if (!fileId) {
+      return new Response('File ID is required', { status: 400 })
     }
 
-    const organizationId = (session.user as any).defaultOrganizationId
-    if (!organizationId) {
-      return new Response('Organization ID is required', { status: 400 })
-    }
+    const caller = await authorize()
+    if (!caller.ok) return caller.response
 
-    const resolved = await resolveFile(fileId, organizationId, session.user.id)
+    const resolved = await resolveFile(fileId, caller.organizationId, caller.userId)
     if (!resolved) {
       return new Response('File not found', { status: 404 })
     }

@@ -1,7 +1,9 @@
 // apps/web/src/app/api/workflow/run/[runId]/events/route.ts
 
 import { database as db, schema } from '@auxx/database'
+import { getCapabilities } from '@auxx/lib/permissions'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine'
+import { assertWorkflowRunNotSystemOwned } from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
 import { createDedicatedClient } from '@auxx/redis'
 import { and, asc, eq } from 'drizzle-orm'
@@ -14,6 +16,26 @@ const logger = createScopedLogger('workflow-run-events-api')
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+/**
+ * SSE replay + live tail of a workflow run's node executions.
+ *
+ * Gated on instance **`view`** of the run's parent `WorkflowApp`, matching the
+ * tRPC sibling `workflow.getWorkflowRun` (`permissionProcedure(workflowsView)` +
+ * `assertViewInstance`): reading a run trace is a read, and `view` already means
+ * "you may RUN it" (plan 30 §2). Before this, the handler authenticated with
+ * `getSession` alone and read no capabilities, so any authenticated org member
+ * could replay any run's full trace — node inputs and outputs included — even
+ * for a workflow they hold an explicit `none` restriction on.
+ *
+ * The gate deliberately runs **before** the run/node-execution reads, so an
+ * unauthorized caller cannot probe run state at all.
+ *
+ * No `FeatureKey.workflows` plan-AND: this follows the read-only precedent
+ * (`workflow.list` / `getManualWorkflows` use `capabilityProcedure` and skip it)
+ * and its own REST siblings in `/api/workflows/[workflowId]/run`, which resolve
+ * capabilities directly. An org off a workflows plan can still replay traces of
+ * runs it already produced — accepted, read-only.
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ runId: string }> }
@@ -29,7 +51,32 @@ export async function GET(
   const organizationId =
     (session.user as any).defaultOrganizationId || (session.user as any).organizationId
 
-  // Verify access and get current state
+  // System-owned workflows (Sequences plan §3.4) stay invisible to org users.
+  // The guard is org-scoped and also resolves the parent `WorkflowApp.id`, which
+  // is what per-workflow instance access keys on — the URL only carries a run id.
+  // A run belonging to another org is indistinguishable from one that never
+  // existed (both `undefined` → 404), so run ids are not probeable across orgs.
+  let workflowAppId: string | undefined
+  try {
+    workflowAppId = await assertWorkflowRunNotSystemOwned(db, {
+      runId,
+      organizationId,
+      isSuperAdmin: (session.user as any).isSuperAdmin,
+      allowSuperAdminRead: true,
+    })
+  } catch (_error) {
+    return new Response('Forbidden', { status: 403 })
+  }
+  if (!workflowAppId) {
+    return new Response('Workflow run not found', { status: 404 })
+  }
+
+  const capabilities = await getCapabilities(session.user.id, organizationId)
+  if (!capabilities.canViewInstance('workflow', workflowAppId)) {
+    return new Response('Forbidden', { status: 403 })
+  }
+
+  // Get current state. Authorization already happened above.
   const [workflowRun] = await db
     .select()
     .from(schema.WorkflowRun)
@@ -38,15 +85,22 @@ export async function GET(
     )
     .limit(1)
 
-  const nodeExecutions = await db
-    .select()
-    .from(schema.WorkflowNodeExecution)
-    .where(eq(schema.WorkflowNodeExecution.workflowRunId, runId))
-    .orderBy(asc(schema.WorkflowNodeExecution.createdAt))
-
   if (!workflowRun) {
     return new Response('Workflow run not found', { status: 404 })
   }
+
+  // Org-scoped through the run we just loaded: filtering on `workflowRunId`
+  // alone was a latent IDOR if a run id ever leaked across org boundaries.
+  const nodeExecutions = await db
+    .select()
+    .from(schema.WorkflowNodeExecution)
+    .where(
+      and(
+        eq(schema.WorkflowNodeExecution.workflowRunId, runId),
+        eq(schema.WorkflowNodeExecution.organizationId, workflowRun.organizationId)
+      )
+    )
+    .orderBy(asc(schema.WorkflowNodeExecution.createdAt))
 
   const encoder = new TextEncoder()
 

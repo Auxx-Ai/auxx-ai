@@ -2,6 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { kbArticleChannel } from '@auxx/lib/kb'
+import { getCapabilities } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { createDedicatedClient } from '@auxx/redis'
 import { and, eq } from 'drizzle-orm'
@@ -24,6 +25,25 @@ export const dynamic = 'force-dynamic'
  * Auth happens at connect time only; subsequent events are delivered
  * to whoever is subscribed to the channel. This matches the existing
  * imports/documents SSE pattern.
+ *
+ * Gated on instance **`view`** of the article's home KnowledgeBase, matching the
+ * tRPC sibling `kb.getArticleById` (`capabilityProcedure` +
+ * `assertViewInstance('kb', kbId)`). Before this, the only check was "the
+ * article exists in the caller's org", so any authenticated org member could
+ * tail the channel — and `kb-article-resync` carries the article's ENTIRE
+ * `contentJson`, `kb-article-patch` its block-level diffs — even for a KB they
+ * hold an explicit `none` restriction on.
+ *
+ * Articles inherit their KB's access level (doc 12 §0.5) and
+ * `Article.homeKnowledgeBaseId` is `notNull`, so the row read below resolves the
+ * gate's subject totally. The gate runs **before the stream opens** and before
+ * any further read, so an unauthorized caller never gets a subscription.
+ *
+ * No `FeatureKey.knowledgeBase` plan-AND: the tRPC sibling is a
+ * `capabilityProcedure`, which runs no plan gate, and this is the same
+ * read-only surface (it also matches the run-trace SSE precedent). An org
+ * downgraded off the KB plan can still tail an article it already owns —
+ * accepted, and deliberately not a stricter gate than the tRPC read it mirrors.
  */
 export async function GET(
   request: NextRequest,
@@ -44,15 +64,22 @@ export async function GET(
     return new Response('Organization not found', { status: 403 })
   }
 
-  // Verify access: article must belong to this org.
+  // Org scope + resolve the gate's subject. An article in another org is
+  // indistinguishable from one that never existed (both → 404), so article ids
+  // are not probeable across orgs.
   const [article] = await db
-    .select({ id: schema.Article.id })
+    .select({ id: schema.Article.id, homeKnowledgeBaseId: schema.Article.homeKnowledgeBaseId })
     .from(schema.Article)
     .where(and(eq(schema.Article.id, articleId), eq(schema.Article.organizationId, organizationId)))
     .limit(1)
 
   if (!article) {
     return new Response('Article not found', { status: 404 })
+  }
+
+  const capabilities = await getCapabilities(session.user.id, organizationId)
+  if (!capabilities.canViewInstance('kb', article.homeKnowledgeBaseId)) {
+    return new Response('Forbidden', { status: 403 })
   }
 
   const encoder = new TextEncoder()
