@@ -5,7 +5,7 @@ import type { ActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { INDENT_REM, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Plus, Trash2, Users } from 'lucide-react'
 import { type ReactNode, useMemo } from 'react'
@@ -64,6 +64,15 @@ export interface GranteeListProps<TChoice extends string> {
    * Not editable here: revoking one needs a surface that can address its kind.
    */
   unmanageableGrants?: UnmanageableGrant[]
+  /**
+   * `TreeRow` indent for the grantee rows. `0` (the default) is right for the
+   * surfaces that own their whole panel — the Share card and dialog. Nested
+   * mounts must pass their host row's depth **+ 1**: a grantee list opened under
+   * a per-instance row is a grandchild of the area row, and rendering it at 0
+   * left the people flush with the area instead of under the dataset they
+   * belong to.
+   */
+  depth?: number
 }
 
 /**
@@ -90,6 +99,7 @@ export function GranteeList<TChoice extends string>({
   lockedActorIds = [],
   hideAddButton = false,
   unmanageableGrants,
+  depth = 0,
 }: GranteeListProps<TChoice>) {
   const locked = useMemo(() => new Set(lockedActorIds), [lockedActorIds])
   const hiddenNote = useMemo(
@@ -97,14 +107,21 @@ export function GranteeList<TChoice extends string>({
     [unmanageableGrants]
   )
 
+  // `TreeRow` indents itself from `depth`; the empty state, the disclosure note
+  // and the add trigger are plain elements, so they take the same offset by hand
+  // or they hang left of the rows they belong to.
+  const indent = { paddingLeft: `${depth * INDENT_REM}rem` }
+
   return (
     <div className='space-y-0.5'>
       {grants.length === 0 && !hiddenNote ? (
-        <EmptySection
-          icon={<Users className='size-5' />}
-          title='No one added yet'
-          description={emptyHint}
-        />
+        <div style={indent}>
+          <EmptySection
+            icon={<Users className='size-5' />}
+            title='No one added yet'
+            description={emptyHint}
+          />
+        </div>
       ) : (
         grants.map(({ actorId, choice }) => (
           <GranteeRow
@@ -113,6 +130,7 @@ export function GranteeList<TChoice extends string>({
             choice={choice}
             isLocked={locked.has(actorId)}
             disabled={disabled}
+            depth={depth}
             renderPicker={renderPicker}
             renderLockedLabel={renderLockedLabel}
             onChange={onChange}
@@ -121,15 +139,21 @@ export function GranteeList<TChoice extends string>({
         ))
       )}
 
-      {hiddenNote && <p className='px-2 pt-1 text-muted-foreground text-xs'>{hiddenNote}</p>}
+      {hiddenNote && (
+        <p className='px-2 pt-1 text-muted-foreground text-xs' style={indent}>
+          {hiddenNote}
+        </p>
+      )}
 
       {!hideAddButton && (
-        <GranteeAddButton
-          grants={grants}
-          onGrant={onGrant}
-          defaultChoice={defaultChoice}
-          disabled={disabled}
-        />
+        <div style={indent}>
+          <GranteeAddButton
+            grants={grants}
+            onGrant={onGrant}
+            defaultChoice={defaultChoice}
+            disabled={disabled}
+          />
+        </div>
       )}
     </div>
   )
@@ -183,6 +207,7 @@ function GranteeRow<TChoice extends string>({
   choice,
   isLocked,
   disabled,
+  depth,
   renderPicker,
   renderLockedLabel,
   onChange,
@@ -192,6 +217,7 @@ function GranteeRow<TChoice extends string>({
   choice: TChoice
   isLocked: boolean
   disabled: boolean
+  depth: number
   renderPicker: RenderPicker<TChoice>
   renderLockedLabel: (choice: TChoice) => ReactNode
   onChange: (actorId: ActorId, choice: TChoice) => void
@@ -209,6 +235,7 @@ function GranteeRow<TChoice extends string>({
 
   return (
     <TreeRow
+      depth={depth}
       icon={<ActorAvatar type={type} avatarUrl={actor?.avatarUrl} />}
       title={showLoading ? <Skeleton className='h-4 w-24 rounded-full' /> : name}
       rowClassName={cn('bg-primary-50 hover:bg-primary-100', isLocked && 'opacity-70')}

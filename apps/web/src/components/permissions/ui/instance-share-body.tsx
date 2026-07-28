@@ -88,7 +88,18 @@ export function InstanceLevelSelect({
  * driven by the `granteeAreaLevel` the server annotates onto `forInstance` for
  * `user` grantees only.
  */
-export function InstanceShareBody({ recordId }: { recordId: RecordId }) {
+export function InstanceShareBody({
+  recordId,
+  depth = 0,
+}: {
+  recordId: RecordId
+  /**
+   * Indent for the grantee rows. `0` suits the Share card and dialog, which own
+   * their panel. A nested mount passes its instance row's depth **+ 1** — the
+   * people belong under the dataset, not level with the area above it.
+   */
+  depth?: number
+}) {
   const { entityDefinitionId: key } = parseRecordId(recordId)
   const isSupported = key in INSTANCE_SHARE_COPY
   const canAdmin = useCanAdminInstance(recordId)
@@ -119,6 +130,7 @@ export function InstanceShareBody({ recordId }: { recordId: RecordId }) {
       onChange={changeLevel}
       onRevoke={revoke}
       defaultChoice={ResourcePermission.view}
+      depth={depth}
       renderLockedLabel={(choice) => permissionLabel(choice, 'long')}
       renderPicker={({ value, onChange, disabled, actorId }) => {
         const isDeadGrant = granteeAreaLevelByActor.get(actorId) === Level.None

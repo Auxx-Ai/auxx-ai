@@ -65,15 +65,28 @@ export function ProfileList({ canEdit, onSelect }: ProfileListProps) {
         subtitle={profile.slug}
         description={profile.description ?? APPLIES_TO_COPY[profile.appliesTo].description}
         badges={renderBadgeChips([
-          {
-            label: SEAT_LABEL[profile.seat],
-            variant: profile.seat === 'worker' ? 'amber' : 'gray',
-            description:
-              profile.seat === 'worker'
-                ? 'Assignable to field seats only. Seat class is fixed at creation.'
-                : 'Assignable to full seats only. Seat class is fixed at creation.',
-          },
-          { label: APPLIES_TO_COPY[profile.appliesTo].label },
+          // A full seat is the unremarkable case — only the field-seat
+          // restriction is worth a chip.
+          ...(profile.seat === 'worker'
+            ? [
+                {
+                  label: SEAT_LABEL.worker,
+                  variant: 'amber' as const,
+                  description: 'Assignable to field seats only. Seat class is fixed at creation.',
+                },
+              ]
+            : []),
+          // The section this card sits in already states the binding, so
+          // `member`/`agent` need no chip. `any` still does: it lands under
+          // "People profiles" while being agent-bindable too.
+          ...(profile.appliesTo === 'any'
+            ? [
+                {
+                  label: APPLIES_TO_COPY.any.label,
+                  description: APPLIES_TO_COPY.any.description,
+                },
+              ]
+            : []),
           // Rank badge only on the system Owner/Admin rows (plan 21 §2.0.1) —
           // role is declared, seeds-only; every custom profile is USER rank and
           // shows no rank badge at all.

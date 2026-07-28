@@ -2,8 +2,9 @@
 'use client'
 
 import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
-import { Badge } from '@auxx/ui/components/badge'
+import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
+import { IconPicker } from '@auxx/ui/components/icon-picker'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
@@ -14,7 +15,8 @@ import {
 } from '@auxx/ui/components/select'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { ChevronLeft, SlidersHorizontal } from 'lucide-react'
-import { useCallback } from 'react'
+import { type KeyboardEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react'
+import { FormSaveBar } from '~/components/global/forms/form-save-bar'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useGranteeDefAccess } from '../hooks/use-grantee-def-access'
@@ -28,15 +30,8 @@ import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
 import { RUNG_LABELS } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import { ProfileAreaGrid } from './profile-area-grid'
-import {
-  APPLIES_TO_COPY,
-  DEFAULT_PROFILE_ICON,
-  type ProfileAppliesTo,
-  ROLE_RANK_LABEL,
-} from './profile-copy'
-import { ProfileIdentitySection } from './profile-identity-section'
+import { DEFAULT_PROFILE_ICON } from './profile-copy'
 import { ProfileSeatReference } from './profile-seat-reference'
-import { SeatTypeBadge } from './seat-type-badge'
 
 /** Sentinel for "no blanket rung" in the `baseLevel` select (`null` is a real state). */
 const NO_BASE_LEVEL = 'member_default'
@@ -55,12 +50,20 @@ interface ProfileEditorProps {
  * state before and after inside a single transaction. A profile authors no cap of
  * its own — teams and personal grants only ever raise from the base.
  *
+ * ALL of identity lives in the header strip — icon picker, name, and description,
+ * the latter two always-live `AutosizeInput`s that read as text until you type in
+ * them (`ProcedureDetailBar`'s idiom). Unlike that bar, though, every one of them
+ * writes to the **draft** via `patch` and never fires a mutation of its own,
+ * because of the one-transaction rule above. The bottom `FormSaveBar` is the only
+ * thing that saves.
+ *
  * Two things this screen deliberately does not offer:
  * - **The `owner` profile is not editable** (§0.10). It is the recovery guarantee:
  *   OWNER short-circuits before any clamp is consulted, so a mis-shaped profile is
  *   always fixable. Everything renders read-only.
- * - **`seat`, `appliesTo`, `slug` and `isSystem` are immutable** (§0.18) — see
- *   `ProfileIdentitySection`.
+ * - **`seat`, `appliesTo`, `slug` and `isSystem` are immutable** (§0.18): changing a
+ *   profile's seat class under existing holders would break the billing invariant,
+ *   so that is *clone and reassign*, never an edit here.
  */
 export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) {
   const {
@@ -76,11 +79,87 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
     agentPolicy,
   } = useProfileEditor(profile)
   const [confirm, ConfirmDialog] = useConfirm()
+  const headerRef = useRef<HTMLDivElement>(null)
+  const stickyTop = useStickyChromeOffset(headerRef)
 
   const isOwner = profile.slug === 'owner'
   const isAgentProfile = profile.appliesTo === 'agent'
   const editable = canEdit && !isOwner
   const icon = draft.icon ?? DEFAULT_PROFILE_ICON
+
+  // Header rename (`ProcedureDetailBar`'s idiom): a local buffer so typing stays
+  // smooth, re-seeded from the draft when it changes externally (hydration,
+  // profile switch, Discard) but NEVER while focused — that would clobber an
+  // in-progress edit.
+  const nameInputRef = useRef<AutosizeInputRef>(null)
+  const [nameValue, setNameValue] = useState(draft.name)
+  const [nameFocused, setNameFocused] = useState(false)
+
+  useEffect(() => {
+    if (!nameFocused) setNameValue(draft.name)
+  }, [draft.name, nameFocused])
+
+  /** Commits to the DRAFT only — a profile saves in ONE transaction (§6.1.4). */
+  const commitName = () => {
+    const trimmed = nameValue.trim()
+    // Empty is not a name (the save mutation would reject it) and unchanged is a
+    // no-op — both revert rather than dirtying the draft.
+    if (!trimmed || trimmed === draft.name) {
+      setNameValue(draft.name)
+      return
+    }
+    patch({ name: trimmed })
+  }
+
+  // Enter blurs rather than committing directly, so blur stays the single commit
+  // path; Escape restores the draft value before blurring, so its commit no-ops.
+  const handleNameKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      nameInputRef.current?.blur()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setNameValue(draft.name)
+      nameInputRef.current?.blur()
+    }
+  }
+
+  // Same idiom for the description, which shares the strip with the name.
+  const descriptionInputRef = useRef<AutosizeInputRef>(null)
+  const [descriptionValue, setDescriptionValue] = useState(draft.description)
+  const [descriptionFocused, setDescriptionFocused] = useState(false)
+
+  useEffect(() => {
+    if (!descriptionFocused) setDescriptionValue(draft.description)
+  }, [draft.description, descriptionFocused])
+
+  /**
+   * Commits to the DRAFT only. Unlike the name, an empty value IS meaningful — it
+   * clears the description — so only an unchanged value reverts. `ProfileDraft`
+   * types `description` as a plain string; `useProfileEditor.save()` is what maps
+   * `''` to the wire's `null`.
+   */
+  const commitDescription = () => {
+    const trimmed = descriptionValue.trim()
+    if (trimmed === draft.description) {
+      setDescriptionValue(draft.description)
+      return
+    }
+    patch({ description: trimmed })
+  }
+
+  const handleDescriptionKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      descriptionInputRef.current?.blur()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setDescriptionValue(draft.description)
+      descriptionInputRef.current?.blur()
+    }
+  }
 
   // Per-def overrides nested under Records, and per-instance grants nested
   // under Datasets / Knowledge base / Dashboards — this profile's OWN
@@ -212,54 +291,91 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
     <div className='flex flex-1 flex-col'>
       <ConfirmDialog />
 
-      <div className='flex h-9 shrink-0 items-center gap-2 border-b bg-primary-150 px-2'>
+      {/*
+        Sticky so Back stays reachable while scrolling a long area grid. `top` is
+        measured, not hardcoded: `SettingsPage` pins its own title + tab strip at
+        the top of the same scroll viewport and that block's height changes with
+        the breakpoint (its description wraps on narrow screens).
+      */}
+      <div
+        ref={headerRef}
+        style={{ top: stickyTop }}
+        className='sticky z-10 flex h-9 shrink-0 items-center gap-2 border-b bg-primary-150 px-2'>
         <Button
           variant='ghost'
           size='icon-xs'
-          className='rounded-md'
+          className='shrink-0 rounded-md'
           aria-label='Back to profiles'
           onClick={onBack}>
           <ChevronLeft />
         </Button>
-        <EntityIcon iconId={icon.iconId} color={icon.color} size='sm' className='shrink-0' />
-        <span className='truncate text-sm font-medium'>{draft.name || profile.name}</span>
-        <Badge variant='secondary' size='xs' className='shrink-0'>
-          {APPLIES_TO_COPY[profile.appliesTo as ProfileAppliesTo].label}
-        </Badge>
-        <SeatTypeBadge seatType={profile.seat} showFull />
-        {profile.role !== 'USER' && (
-          <Badge variant='indigo' size='xs' className='shrink-0'>
-            {ROLE_RANK_LABEL[profile.role]}
-          </Badge>
-        )}
-        {profile.isSystem && (
-          <Badge variant='secondary' size='xs' className='shrink-0'>
-            System
-          </Badge>
+
+        {editable ? (
+          <IconPicker
+            value={{ icon: icon.iconId, color: icon.color }}
+            onChange={(value) => patch({ icon: { iconId: value.icon, color: value.color } })}
+            modal={false}>
+            <button type='button' aria-label='Pick profile icon' className='shrink-0'>
+              <EntityIcon iconId={icon.iconId} color={icon.color} size='sm' />
+            </button>
+          </IconPicker>
+        ) : (
+          <EntityIcon iconId={icon.iconId} color={icon.color} size='sm' className='shrink-0' />
         )}
 
-        <div className='ml-auto flex shrink-0 items-center gap-2'>
-          {isDirty && (
-            <Badge variant='secondary' size='xs' className='border-amber-300 text-amber-600'>
-              Unsaved changes
-            </Badge>
-          )}
-          <Button variant='ghost' size='xs' onClick={handleDiscard} disabled={!isDirty || isSaving}>
-            Discard
-          </Button>
-          <Button
-            variant='outline'
-            size='xs'
-            loading={isSaving}
-            loadingText='Saving...'
-            // Never savable mid-hydration: the payload carries the WHOLE profile
-            // (§6.1.4), so submitting before `getProfile` lands would write a
-            // half-loaded draft.
-            disabled={!editable || !isDirty || isLoading}
-            onClick={() => void save()}>
-            Save profile
-          </Button>
-        </div>
+        {editable ? (
+          <AutosizeInput
+            ref={nameInputRef}
+            value={nameValue}
+            onChange={(e) => setNameValue(e.target.value)}
+            onFocus={() => setNameFocused(true)}
+            onBlur={() => {
+              setNameFocused(false)
+              commitName()
+            }}
+            onKeyDown={handleNameKeyDown}
+            placeholder='Profile name'
+            className='shrink-0'
+            inputClassName='text-sm font-medium text-foreground bg-transparent outline-none truncate placeholder:text-muted-foreground'
+            minWidth={40}
+            maxWidth={240}
+          />
+        ) : (
+          <span className='shrink-0 truncate text-sm font-medium'>
+            {draft.name || profile.name}
+          </span>
+        )}
+
+        {/* Immutable (§0.18) — the one place the stable slug stays visible. */}
+        <span className='shrink-0 font-mono text-xs text-muted-foreground'>@{profile.slug}</span>
+
+        {/*
+          The description takes whatever is left of the strip. `inputStyle.width`
+          overrides `AutosizeInput`'s measured width on purpose: here we want a
+          remainder-filling box that truncates, not a grow-to-content one, so it
+          yields before the name (`shrink-0`) and the slug (`shrink-0`) do.
+        */}
+        {editable ? (
+          <AutosizeInput
+            ref={descriptionInputRef}
+            value={descriptionValue}
+            onChange={(e) => setDescriptionValue(e.target.value)}
+            onFocus={() => setDescriptionFocused(true)}
+            onBlur={() => {
+              setDescriptionFocused(false)
+              commitDescription()
+            }}
+            onKeyDown={handleDescriptionKeyDown}
+            placeholder='Add a description'
+            className='min-w-0 flex-1'
+            inputStyle={{ width: '100%' }}
+            inputClassName='w-full truncate bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground'
+          />
+        ) : draft.description ? (
+          <span className='min-w-0 flex-1 truncate text-xs text-muted-foreground'>
+            {draft.description}
+          </span>
+        ) : null}
       </div>
 
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
@@ -278,18 +394,6 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
           </div>
         )}
 
-        <ProfileIdentitySection
-          name={draft.name}
-          description={draft.description}
-          icon={draft.icon}
-          slug={profile.slug}
-          seat={profile.seat}
-          appliesTo={profile.appliesTo as ProfileAppliesTo}
-          isSystem={profile.isSystem}
-          disabled={!editable}
-          onChange={patch}
-        />
-
         {profile.seat === 'worker' && <ProfileSeatReference />}
 
         {isAgentProfile ? (
@@ -307,12 +411,18 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
             icon={SlidersHorizontal}
             title='Base access'
             description='Where a holder starts. Teams and personal grants can raise from here, never lower it.'
+            // Gated on `isOwner`, NOT on `editable`: for an un-entitled plan the
+            // select still reports a real fall-through value, but the Owner
+            // profile carries no levels at all — offering the control there
+            // contradicts the callout above.
             action={
-              <BaseLevelSelect
-                value={draft.baseLevel}
-                disabled={!editable}
-                onChange={(baseLevel) => patch({ baseLevel })}
-              />
+              isOwner ? undefined : (
+                <BaseLevelSelect
+                  value={draft.baseLevel}
+                  disabled={!editable}
+                  onChange={(baseLevel) => patch({ baseLevel })}
+                />
+              )
             }>
             <ProfileAreaGrid
               values={draft.levels}
@@ -326,9 +436,66 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
             />
           </SettingsSection>
         )}
+
+        {/*
+          `dirty` drives visibility, so a read-only profile (owner / un-entitled
+          plan) never sees the bar at all. `isLoading` stays in `saveDisabled`:
+          the payload carries the WHOLE profile (§6.1.4), so submitting before
+          `getProfile` lands would write a half-loaded draft.
+        */}
+        <FormSaveBar
+          dirty={isDirty}
+          isSaving={isSaving}
+          onSave={() => void save()}
+          onDiscard={() => void handleDiscard()}
+          label='Unsaved profile changes'
+          saveDisabled={!editable || isLoading}
+        />
       </div>
     </div>
   )
+}
+
+/**
+ * Height of the sticky chrome already pinned at the top of the enclosing
+ * `ScrollArea` viewport (`SettingsPage`'s title block + tab strip), so a nested
+ * sticky header can offset past it instead of hiding underneath it.
+ *
+ * Measured rather than hardcoded because that block's height is breakpoint- and
+ * content-dependent. Returns `0` when the editor is not inside a scroll area, so
+ * the header simply pins to the top.
+ */
+function useStickyChromeOffset(ref: RefObject<HTMLElement | null>): number {
+  const [offset, setOffset] = useState(0)
+
+  useEffect(() => {
+    const el = ref.current
+    const viewport = el?.closest<HTMLElement>('[data-slot="scroll-area-viewport"]')
+    const content = viewport?.firstElementChild as HTMLElement | null | undefined
+    if (!el || !content) return
+
+    // This editor's own branch of the scroll content — everything sticky before
+    // it is chrome we have to clear.
+    let branch: HTMLElement = el
+    while (branch.parentElement && branch.parentElement !== content) branch = branch.parentElement
+    if (branch.parentElement !== content) return
+
+    const measure = () => {
+      let total = 0
+      for (const node of Array.from(content.children)) {
+        if (node === branch) break
+        if (getComputedStyle(node).position === 'sticky')
+          total += node.getBoundingClientRect().height
+      }
+      setOffset(total)
+    }
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [ref])
+
+  return offset
 }
 
 /**
