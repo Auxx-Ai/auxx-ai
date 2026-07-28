@@ -17,7 +17,7 @@ import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker
 import {
   ActorPickerContent,
   type ActorPickerContentProps,
-  CURRENT_USER_ACTOR_ID,
+  CURRENT_USER_ACTOR,
 } from './actor-picker-content'
 
 /**
@@ -86,8 +86,15 @@ export function ActorPicker({
   multi = true,
   onSelectSingle,
   disabled,
+  allowCurrentUser,
+  pinnedItem,
   ...pickerProps
 }: ActorPickerProps) {
+  // Mirrors the content's resolution, so the trigger renders the same pinned
+  // row the list offers instead of handing a synthetic id to ActorBadge (which
+  // would resolve it to "Unknown").
+  const pinned = allowCurrentUser ? CURRENT_USER_ACTOR : pinnedItem
+
   // Normalize value — callers may pass a single string when switching operators
   const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
 
@@ -156,9 +163,9 @@ export function ActorPicker({
       <ItemsListView
         items={normalizedValue}
         renderItem={(item) =>
-          item === CURRENT_USER_ACTOR_ID ? (
+          item === pinned?.actorId ? (
             <span className='rounded-md bg-primary-200/60 px-1.5 py-0.5 text-xs font-medium text-primary-700'>
-              Current user
+              {pinned.name}
             </span>
           ) : (
             <ActorBadge actorId={item as ActorId} size={triggerProps?.badgeSize} />
@@ -205,6 +212,8 @@ export function ActorPicker({
           multi={multi}
           onSelectSingle={multi ? undefined : handleSelectSingle}
           disabled={disabled}
+          allowCurrentUser={allowCurrentUser}
+          pinnedItem={pinnedItem}
           {...pickerProps}
         />
       </PopoverContentDialogAware>

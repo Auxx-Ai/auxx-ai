@@ -10,9 +10,9 @@ import { ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useGroupsForUser } from '~/components/groups'
+import { ProfilePicker } from '~/components/pickers/profile-picker'
 import { roleLabel, seatLabel, useAssignProfile, useMemberProfiles } from '../hooks'
 import type { Member } from '../types'
-import { MemberProfilePicker } from './member-profile-picker'
 import { ProfileChangeDelta } from './profile-change-delta'
 
 interface MemberAccessSectionProps {
@@ -125,12 +125,13 @@ export function MemberAccessSection({ member, viewerRole, viewerId }: MemberAcce
               isLoading ? (
                 <Skeleton className='h-8 w-56' />
               ) : (
-                <MemberProfilePicker
+                <ProfilePicker
                   options={options}
                   value={selectedId}
                   onChange={setPendingProfileId}
                   disabled={!canAssign || isAssigning}
-                  variant='transparent'
+                  showSeat
+                  triggerProps={{ variant: 'transparent', className: 'min-w-56' }}
                 />
               )
             }

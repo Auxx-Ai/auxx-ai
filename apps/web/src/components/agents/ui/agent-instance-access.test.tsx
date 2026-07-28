@@ -153,10 +153,18 @@ vi.mock('~/components/agents/hooks/use-agent-permission-profiles', () => ({
   useAgentProfileBinding: () => ({ setProfile: vi.fn(), isSaving: false }),
   useAgentProfilePolicy: () => ({ policy: null }),
 }))
-vi.mock('~/components/agents/ui/detail/permissions/agent-profile-picker', () => ({
-  AgentProfilePicker: ({ disabled }: { disabled?: boolean }) => (
+vi.mock('~/components/pickers/profile-picker', () => ({
+  ProfilePicker: ({ disabled }: { disabled?: boolean }) => (
     <div data-testid='profile-picker' data-disabled={String(!!disabled)} />
   ),
+}))
+vi.mock('~/components/pickers/actor-picker', () => ({
+  ActorPicker: ({ disabled }: { disabled?: boolean }) => (
+    <div data-testid='run-as-picker' data-disabled={String(!!disabled)} />
+  ),
+}))
+vi.mock('~/components/resources/hooks/use-actor', () => ({
+  useActor: () => ({ actor: undefined, isLoading: false, isNotFound: false }),
 }))
 vi.mock('~/components/agents/ui/detail/permissions/agent-policy-view', () => ({
   AgentPolicySummary: () => null,
@@ -458,7 +466,7 @@ describe('AgentPermissionsSection — the authority pair is instance-admin AND o
     renderSection('admin', true)
 
     expect(screen.getByTestId('profile-picker').dataset.disabled).toBe('false')
-    expect(screen.getByRole('combobox')).not.toHaveAttribute('data-disabled')
+    expect(screen.getByTestId('run-as-picker').dataset.disabled).toBe('false')
   })
 
   it('freezes them for an ORG ADMIN restricted to `edit` on this agent', () => {
@@ -467,7 +475,7 @@ describe('AgentPermissionsSection — the authority pair is instance-admin AND o
     renderSection('edit', true)
 
     expect(screen.getByTestId('profile-picker').dataset.disabled).toBe('true')
-    expect(screen.getByRole('combobox')).toHaveAttribute('data-disabled')
+    expect(screen.getByTestId('run-as-picker').dataset.disabled).toBe('true')
     expect(screen.getByText(/do not administer this agent/i)).toBeTruthy()
   })
 
@@ -475,7 +483,7 @@ describe('AgentPermissionsSection — the authority pair is instance-admin AND o
     renderSection('admin', false)
 
     expect(screen.getByTestId('profile-picker').dataset.disabled).toBe('true')
-    expect(screen.getByRole('combobox')).toHaveAttribute('data-disabled')
+    expect(screen.getByTestId('run-as-picker').dataset.disabled).toBe('true')
     expect(screen.getByText(/Only an owner or admin can change these/i)).toBeTruthy()
   })
 })

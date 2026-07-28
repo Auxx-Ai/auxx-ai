@@ -14,9 +14,9 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { AlertTriangle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { ProfilePicker } from '~/components/pickers/profile-picker'
 import { type MemberProfile, seatLabel, useMemberProfiles } from '../hooks'
 import type { Member } from '../types'
-import { MemberProfilePicker } from './member-profile-picker'
 import { ProfileChangeDelta } from './profile-change-delta'
 
 interface ApplyProfileDialogProps {
@@ -101,11 +101,13 @@ export function ApplyProfileDialog({
           </div>
         ) : (
           <div className='flex flex-col gap-3'>
-            <MemberProfilePicker
+            <ProfilePicker
               options={options}
               value={profileId}
               onChange={setProfileId}
               disabled={isApplying}
+              showSeat
+              triggerProps={{ variant: 'outline', className: 'w-full' }}
             />
 
             {targetProfile &&

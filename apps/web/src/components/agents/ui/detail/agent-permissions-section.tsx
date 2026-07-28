@@ -2,17 +2,11 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { type Actor, type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   CircleHelp,
   ExternalLink,
@@ -25,11 +19,13 @@ import {
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
-import { getInitials } from '~/components/members/utils'
+import { ActorPicker } from '~/components/pickers/actor-picker'
+import { ProfilePicker } from '~/components/pickers/profile-picker'
+import { useActor } from '~/components/resources/hooks/use-actor'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { api } from '~/trpc/react'
 import { useAgentAccess } from '../../hooks/use-agent-access'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import {
@@ -40,11 +36,22 @@ import {
 import type { AgentDetail } from '../../store/agent-store'
 import { AgentGuideDialog } from './agent-guide-dialog'
 import { AgentPolicySummary, AgentResolvedPolicyDialog } from './permissions/agent-policy-view'
-import { AgentProfilePicker } from './permissions/agent-profile-picker'
 import { AuthorClampNotice } from './permissions/author-clamp-notice'
 
-/** Select sentinel for "no delegation" — `runAsUserId = null`. */
-const OWN_PERMISSIONS = '__own__'
+/**
+ * Picker sentinel for "no delegation" — `runAsUserId = null`. Shaped like the
+ * actor picker's own `placeholder:currentUser`: it flows through the picker as
+ * an ordinary ActorId and is translated back to `null` on save.
+ */
+const OWN_PERMISSIONS_ACTOR_ID = 'placeholder:ownPermissions' as ActorId
+
+/** Synthetic actor so the sentinel renders through the shared `ActorItem` row. */
+const OWN_PERMISSIONS_ACTOR: Actor = {
+  actorId: OWN_PERMISSIONS_ACTOR_ID,
+  type: 'system',
+  name: 'Own permissions (default)',
+  avatarUrl: null,
+}
 
 interface AgentPermissionsSectionProps {
   agent: AgentDetail
@@ -95,19 +102,27 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
     : fallbackFor(agent.kind)
   const { policy } = useAgentProfilePolicy(resolvedProfile?.id ?? null)
 
-  const { data: memberData } = api.member.all.useQuery()
-  // `member.all` already hard-filters to `userType: 'USER'`, so agents can
-  // never appear here; ACTIVE is the remaining run-as requirement (§0.6).
-  const members = useMemo(
-    () => (memberData?.members ?? []).filter((m) => m.status === 'ACTIVE'),
-    [memberData]
-  )
-  const runAsMember = members.find((m) => m.userId === agent.runAsUserId)
-  const runAsName = runAsMember?.user.name || runAsMember?.user.email || 'that member'
+  // Every profile the agent may bind, as picker options. The hook already
+  // filters to `appliesTo: 'agent' | 'any'`, so nothing here is unbindable and
+  // no option carries a disabled reason.
+  const profileOptions = useMemo(() => profiles.map((profile) => ({ profile })), [profiles])
 
-  const handleRunAsChange = (value: string) => {
+  // `target: 'user'` is exactly the run-as candidate set — the actor service
+  // lists only ACTIVE members with `userType: 'USER'`, which is the §0.6
+  // requirement, so no client-side filtering is left to do.
+  const runAsActorId = agent.runAsUserId
+    ? toActorId('user', agent.runAsUserId)
+    : OWN_PERMISSIONS_ACTOR_ID
+  const { actor: runAsActor } = useActor({ actorId: runAsActorId, enabled: isDelegated })
+  const runAsName = runAsActor?.name || 'that member'
+
+  const handleRunAsChange = (actorId: ActorId) => {
+    // Re-picking the current row (or deselecting it, which the picker reports as
+    // an empty selection and this maps back to the sentinel) is not a change —
+    // don't spend a mutation, and don't mark the draft unpublished, on a no-op.
+    if (actorId === runAsActorId) return
     void updateAgent(agent.id, {
-      runAsUserId: value === OWN_PERMISSIONS ? null : value,
+      runAsUserId: actorId === OWN_PERMISSIONS_ACTOR_ID ? null : getActorRawId(actorId),
     })
   }
 
@@ -151,8 +166,8 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
 
         <SettingsSection
           icon={ShieldCheck}
-          title='Profile'
-          description='Supplies this draft its exact policy.'
+          title='Access'
+          description='The profile this draft resolves its policy from, and who it runs as.'
           action={
             <Button variant='ghost' size='xs' asChild>
               <Link href='/app/settings/permissions'>
@@ -161,58 +176,50 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
               </Link>
             </Button>
           }>
-          <AgentProfilePicker
-            boundProfileId={boundProfileId}
-            resolvedProfile={resolvedProfile}
-            agentKind={agent.kind}
-            profiles={profiles}
-            isLoading={profilesLoading}
-            disabled={!canEditProfile || isSaving}
-            onChange={(profileId) => void setProfile(agent.id, profileId)}
-          />
-        </SettingsSection>
-
-        <SettingsSection
-          icon={UserCog}
-          title='Run as'
-          description='Delegate to a member. Runs resolve whichever of the two is narrower.'>
           <div className='flex flex-col gap-2'>
-            <Select
-              value={agent.runAsUserId ?? OWN_PERMISSIONS}
-              onValueChange={handleRunAsChange}
-              disabled={!canEditRunAs || isUpdating}>
-              <SelectTrigger size='sm' className='w-full max-w-96'>
-                <SelectValue placeholder='Own permissions (default)' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={OWN_PERMISSIONS} textValue='Own permissions (default)'>
-                  <div className='flex flex-col items-start'>
-                    <span>Own permissions (default)</span>
-                    <span className='text-muted-foreground text-xs'>
-                      Uses this agent&apos;s published policy
-                    </span>
-                  </div>
-                </SelectItem>
-                {members.map((member) => {
-                  const label = member.user.name || member.user.email || 'Unnamed member'
-                  return (
-                    <SelectItem key={member.userId} value={member.userId} textValue={label}>
-                      <div className='flex items-center gap-2'>
-                        <Avatar className='size-5 rounded-full'>
-                          {member.user.image && (
-                            <AvatarImage src={member.user.image} alt={member.user.name ?? ''} />
-                          )}
-                          <AvatarFallback className='text-[10px]'>
-                            {getInitials(member.user.name, member.user.email)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{label}</span>
-                      </div>
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
+            <FieldPanel orientation='responsive' breakpoint='sm' resizeId='agent-permissions'>
+              <FieldPanelRow
+                title='Profile'
+                description='Supplies this draft its exact policy.'
+                icon={<ShieldCheck />}
+                showIcon>
+                {profilesLoading ? (
+                  <Skeleton className='my-1 h-7 w-56' />
+                ) : (
+                  <ProfilePicker
+                    value={resolvedProfile?.id}
+                    options={profileOptions}
+                    onChange={(profileId) => void setProfile(agent.id, profileId)}
+                    disabled={!canEditProfile || isSaving}
+                    emptyLabel='Select a permission profile'
+                    // An unbound draft is not unrestricted — §1.3 resolves it to
+                    // the system profile for its kind, so the trigger shows that
+                    // profile and labels it as inherited rather than sitting empty.
+                    hint={
+                      boundProfileId === null ? `· default for ${agent.kind} agents` : undefined
+                    }
+                  />
+                )}
+              </FieldPanelRow>
+
+              <FieldPanelRow
+                title='Run as'
+                description='Delegate to a member. Runs resolve whichever of the two is narrower.'
+                icon={<UserCog />}
+                showIcon>
+                <ActorPicker
+                  target='user'
+                  multi={false}
+                  value={[runAsActorId]}
+                  onChange={(next) => handleRunAsChange(next[0] ?? OWN_PERMISSIONS_ACTOR_ID)}
+                  pinnedItem={OWN_PERMISSIONS_ACTOR}
+                  disabled={!canEditRunAs || isUpdating}
+                  emptyLabel='Own permissions (default)'
+                  placeholder='Search members...'
+                />
+              </FieldPanelRow>
+            </FieldPanel>
+
             {isDelegated && (
               <p className='text-xs text-muted-foreground'>
                 Runs fail if {runAsName} is deactivated or removed.
