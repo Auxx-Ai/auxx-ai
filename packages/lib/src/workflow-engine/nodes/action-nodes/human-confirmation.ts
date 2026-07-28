@@ -4,13 +4,12 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { type Database, database, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { type ActorId, parseActorId } from '@auxx/types/actor'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { getCachedWorkflowApp } from '../../../cache/workflow-app-queries'
 import { publisher } from '../../../events/publisher'
 import { enqueueEmailJob } from '../../../jobs/email'
 import { getQueue, Queues } from '../../../jobs/queues'
-import { NotificationService } from '../../../notifications/notification-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -19,6 +18,10 @@ import type {
   WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import {
+  approvalEmailEnabled,
+  getApprovalAssigneeUserIds,
+} from '../../services/approval-recipients'
 import { ApprovalResponseService } from '../../services/approval-response-service'
 import { BaseNodeProcessor } from '../base-node'
 
@@ -29,7 +32,18 @@ interface HumanConfirmationNodeData {
     actorIds?: string[] // ActorId format: ["user:abc", "group:xyz"]
     variable?: { id: string } // Variable reference (resolved at execution time)
   }
-  // Notification settings
+  /**
+   * Notification settings.
+   *
+   * `in_app` means **"ping me live"**, not "surface this in-app": the Approvals
+   * tab and the bell badge both derive from `ApprovalRequest`, so turning it off
+   * hides nothing — the request still appears and still counts. It suppresses
+   * the realtime pulse/sound alone (plans/today/05-bell-and-feed-dedupe.md §2,
+   * decision 5).
+   *
+   * `email` is the workflow author's half of the email decision; each recipient
+   * holds the other half in `notification.approval.email`. Both must be on.
+   */
   notification_methods: {
     in_app: boolean
     email: boolean
@@ -365,46 +379,34 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     requireLogin: boolean
   ): Promise<void> {
     const db = contextManager.getContext().db ?? database
-    const notificationService = new NotificationService(db)
     // Get all users (direct + from groups)
-    const allUserIds = await this.getAllAssigneeUserIds(
-      db,
-      assignees,
-      approvalRequest.organizationId
-    )
-    // Send in-app notifications
+    const allUserIds = await getApprovalAssigneeUserIds(db, {
+      assigneeUsers: assignees.userIds,
+      assigneeGroups: assignees.groups,
+      organizationId: approvalRequest.organizationId,
+    })
+    // Live ping — deliberately NOT a `Notification` row. The bell badge counts
+    // `unread notifications + pending approvals`, so a row describing a request
+    // that is simultaneously pending in `ApprovalRequest` would make one item
+    // read as 2 (plans/today/05-bell-and-feed-dedupe.md §1).
     if (methods.in_app) {
-      for (const userId of allUserIds) {
-        try {
-          const result = await notificationService.sendNotification({
-            type: 'WORKFLOW_APPROVAL_REQUIRED' as any,
-            userId,
-            targetType: 'APPROVAL',
-            targetIds: { approvalRequestId: approvalRequest.id },
-            message: `Approval required for workflow "${approvalRequest.workflowName}"`,
-            actorId: approvalRequest.createdById,
-            organizationId: approvalRequest.organizationId,
-            metadata: {
-              kind: 'WORKFLOW_APPROVAL_REQUIRED',
-              workflowName: approvalRequest.workflowName,
-              workflowId: approvalRequest.workflowId,
-              workflowRunId: approvalRequest.workflowRunId,
-              nodeId: approvalRequest.nodeId,
-              expiresAt: approvalRequest.expiresAt.toISOString(),
-            },
-          })
-          contextManager.log('INFO', approvalRequest.nodeId, 'Sent approval notification', {
-            userId,
-            notificationId: result.id,
-          })
-        } catch (error) {
-          contextManager.log(
-            'ERROR',
-            approvalRequest.nodeId,
-            `Failed to send in-app notification to user ${userId}`,
-            { error: error instanceof Error ? error.message : String(error) }
-          )
-        }
+      try {
+        // Lazy import — the realtime barrel must not be pulled into the node
+        // module graph statically (see the app-runtime/vitest cycle notes).
+        const { getRealtimeService, publishApprovalPing } = await import('../../../realtime')
+        await publishApprovalPing(getRealtimeService(), allUserIds, {
+          approvalRequestId: approvalRequest.id,
+          organizationId: approvalRequest.organizationId,
+          workflowName: approvalRequest.workflowName,
+          expiresAt: approvalRequest.expiresAt?.toISOString() ?? null,
+        })
+        contextManager.log('INFO', approvalRequest.nodeId, 'Pinged approval assignees', {
+          userCount: allUserIds.length,
+        })
+      } catch (error) {
+        contextManager.log('ERROR', approvalRequest.nodeId, 'Failed to ping approval assignees', {
+          error: error instanceof Error ? error.message : String(error),
+        })
       }
     }
     // Send email notifications
@@ -440,6 +442,10 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
 
     for (const user of users) {
       try {
+        // Recipient's half of the email decision — ANDs with the node's
+        // `methods.email` (§7). Unset still sends.
+        if (!(await approvalEmailEnabled(approvalRequest.organizationId, user.id, db))) continue
+
         let approvalUrl = baseUrl
 
         if (!requireLogin) {
@@ -465,30 +471,6 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         )
       }
     }
-  }
-  private async getAllAssigneeUserIds(
-    db: Database,
-    assignees: { userIds: string[]; groups: string[] },
-    organizationId: string
-  ): Promise<string[]> {
-    const allUserIds = new Set(assignees.userIds)
-    if (assignees.groups.length > 0) {
-      // TODO: Filter by group when group membership schema is finalized
-      const groupMembers = await db
-        .select({ userId: schema.OrganizationMember.userId })
-        .from(schema.OrganizationMember)
-        .where(eq(schema.OrganizationMember.organizationId, organizationId))
-      groupMembers.forEach((member) => allUserIds.add(member.userId))
-    }
-    if (allUserIds.size === 0) return []
-
-    // Exclude agent (synthetic) users — approval notifications must never
-    // fan out to an agent's sentinel email.
-    const humans = await db
-      .select({ id: schema.User.id })
-      .from(schema.User)
-      .where(and(inArray(schema.User.id, Array.from(allUserIds)), eq(schema.User.userType, 'USER')))
-    return humans.map((u) => u.id)
   }
   private async scheduleTimeout(
     approvalRequestId: string,

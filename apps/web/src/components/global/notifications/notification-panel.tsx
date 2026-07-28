@@ -32,6 +32,7 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { useApprovalsCount } from './hooks/use-approvals-count'
 import { useNotifications } from './hooks/use-notifications'
 import { type NotificationPanelMode, useNotificationPanelStore } from './notification-panel-store'
 import { ApprovalsTab } from './ui/approvals-tab'
@@ -108,17 +109,10 @@ export function NotificationPanel() {
     refetchOnWindowFocus: true,
   })
 
-  // Tab badge = pending workflow confirmations + fresh suggestion bundles. Both
-  // run while the panel is open so the badge is right before the tab is clicked.
-  const { data: pendingConfirmationCount } = api.approval.getPendingCount.useQuery(undefined, {
-    enabled: open,
-    refetchOnWindowFocus: true,
-  })
-  const { data: freshSuggestionData } = api.approvals.count.useQuery(
-    { filters: { ownerScope: 'mine_and_unassigned', status: ['FRESH'] } },
-    { enabled: open, refetchOnWindowFocus: true }
-  )
-  const approvalsCount = (pendingConfirmationCount ?? 0) + (freshSuggestionData?.count ?? 0)
+  // Tab badge = pending workflow confirmations + fresh suggestion bundles. Shared
+  // with the sidebar bell through one hook (and so one cache entry) — two copies
+  // of these queries could drift apart on filters or gating.
+  const { count: approvalsCount } = useApprovalsCount()
 
   const invalidate = () => {
     void utils.notification.getNotifications.invalidate()

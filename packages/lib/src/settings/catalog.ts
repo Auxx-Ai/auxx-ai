@@ -165,6 +165,15 @@ export const SETTINGS_CATALOG = {
     defaultValue: true,
     description: 'Play a sound for notification-bell alerts (mentions, approvals)',
   },
+  'notification.approval.email': {
+    scope: 'NOTIFICATION',
+    access: 'user',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description:
+      'Email me when a workflow needs my approval, and when it is about to expire (it still appears in Approvals either way)',
+  },
   'notification.dispatch.email': {
     scope: 'NOTIFICATION',
     access: 'user',

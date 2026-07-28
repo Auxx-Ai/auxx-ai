@@ -17,6 +17,8 @@ export type {
   AgentUpdatedEvent,
   AiStatus,
   AiValueMetadata,
+  ApprovalPingEvent,
+  ApprovalResolvedEvent,
   DataConnectorSyncEvent,
   DataExportJobEvent,
   EvalCaseChangedEvent,
@@ -51,6 +53,8 @@ export { shapeMailEventForLens } from './mail-event-shaping'
 export {
   flushMailBatch,
   publishAgentUpdated,
+  publishApprovalPing,
+  publishApprovalResolved,
   publishCapabilitiesChanged,
   publishCountsChanged,
   publishDataConnectorSync,

@@ -7,6 +7,7 @@ import { publisher } from '../../events/publisher'
 import { getQueue, Queues } from '../../jobs/queues'
 import { NotificationService } from '../../notifications/notification-service'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
+import { type ApprovalAudience, getApprovalAssigneeUserIds } from './approval-recipients'
 
 const logger = createScopedLogger('approval-response-service')
 interface ApprovalResponseResult {
@@ -30,6 +31,7 @@ export class ApprovalResponseService {
     ipAddress?: string
   ): Promise<ApprovalResponseResult> {
     let organizationId: string | undefined
+    let audience: ApprovalAudience | undefined
     // Start transaction
     const result = await this.db.transaction(async (tx) => {
       // Get the approval request with responses using relational query API
@@ -43,6 +45,11 @@ export class ApprovalResponseService {
         throw new Error('Approval request not found')
       }
       organizationId = approvalRequest.organizationId
+      audience = {
+        assigneeUsers: approvalRequest.assigneeUsers ?? [],
+        assigneeGroups: approvalRequest.assigneeGroups ?? [],
+        organizationId: approvalRequest.organizationId,
+      }
       const responses = approvalRequest.responses
       if (approvalRequest.status !== 'pending') {
         return {
@@ -124,7 +131,10 @@ export class ApprovalResponseService {
         nextPath,
       }
     })
-    // Clean up approval notifications after successful response (non-critical)
+    // Clean up approval notifications after successful response (non-critical).
+    // Near-dead now that REQUIRED/REMINDER no longer mint — only legacy rows are
+    // left to retract. Deliberately NOT widened to `WORKFLOW_APPROVAL_COMPLETED`,
+    // which is supposed to persist (plans/today/05-bell-and-feed-dedupe.md §8.4).
     if (result.success) {
       try {
         const notificationService = new NotificationService(this.db)
@@ -139,8 +149,35 @@ export class ApprovalResponseService {
           error: error instanceof Error ? error.message : String(error),
         })
       }
+      await this.publishResolved(approvalRequestId, audience)
     }
     return result
+  }
+
+  /**
+   * Drop a no-longer-pending approval out of every assignee's bell count without
+   * waiting for a refocus. Best-effort — a failed publish only costs the other
+   * assignees a stale badge until their next refetch, never the decision itself.
+   */
+  private async publishResolved(
+    approvalRequestId: string,
+    audience: ApprovalAudience | undefined
+  ): Promise<void> {
+    if (!audience) return
+    try {
+      const userIds = await getApprovalAssigneeUserIds(this.db, audience)
+      // Lazy import — keeps the realtime barrel out of this module's static graph.
+      const { getRealtimeService, publishApprovalResolved } = await import('../../realtime')
+      await publishApprovalResolved(getRealtimeService(), userIds, {
+        approvalRequestId,
+        organizationId: audience.organizationId,
+      })
+    } catch (error) {
+      logger.warn('Failed to publish approval:resolved', {
+        approvalRequestId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
   /**
    * Process approval via email link (with token validation)
@@ -236,6 +273,12 @@ export class ApprovalResponseService {
         error: error instanceof Error ? error.message : String(error),
       })
     }
+
+    await this.publishResolved(approvalRequestId, {
+      assigneeUsers: approvalRequest.assigneeUsers ?? [],
+      assigneeGroups: approvalRequest.assigneeGroups ?? [],
+      organizationId: approvalRequest.organizationId,
+    })
 
     logger.info('Approval request cancelled', {
       approvalRequestId,

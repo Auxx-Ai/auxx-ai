@@ -478,3 +478,42 @@ export interface TableViewChangedEvent {
   event: 'tableView:changed'
   data: { tableId?: string; kind: 'created' | 'updated' | 'defaultChanged' | 'deleted' }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Workflow approval events (per-assignee user channel)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * A workflow approval wants this assignee's attention — a freshly created
+ * request, or a reminder re-ping on one that is still undecided
+ * (plans/today/05-bell-and-feed-dedupe.md §5). Replaces the
+ * `WORKFLOW_APPROVAL_REQUIRED` / `_REMINDER` notification rows, which
+ * double-counted against a bell badge derived from `ApprovalRequest`.
+ *
+ * Refresh signal only: the client **invalidates** the two approval counts
+ * rather than incrementing them. A reminder re-pings a request that is already
+ * counted, and the server's pending predicate (unexpired + run still
+ * RUNNING/WAITING) is not reproducible client-side.
+ */
+export interface ApprovalPingEvent {
+  event: 'approval'
+  data: {
+    approvalRequestId: string
+    organizationId: string
+    workflowName?: string | null
+    /** ISO string. */
+    expiresAt?: string | null
+    /** Set only when the ping is a reminder rather than the first request. */
+    reminderNumber?: number
+  }
+}
+
+/**
+ * A workflow approval left the pending set — decided, cancelled, timed out, or
+ * cleaned up with its workflow run. The client invalidates the approval counts
+ * and lists; no sound, no pulse.
+ */
+export interface ApprovalResolvedEvent {
+  event: 'approval:resolved'
+  data: { approvalRequestId: string; organizationId: string }
+}

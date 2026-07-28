@@ -5,7 +5,10 @@ import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
-import { NotificationService } from '../../notifications/notification-service'
+import {
+  approvalEmailEnabled,
+  getApprovalAssigneeUserIds,
+} from '../../workflow-engine/services/approval-recipients'
 import { enqueueEmailJob } from '../email'
 import type { JobContext } from '../types'
 
@@ -99,13 +102,12 @@ async function sendReminderNotifications(
   approvalRequest: any,
   reminderNumber: number
 ): Promise<void> {
-  const notificationService = new NotificationService(db)
   // Get all assignee user IDs
-  const allUserIds = await getAllAssigneeUserIds(
-    approvalRequest.assigneeUsers,
-    approvalRequest.assigneeGroups,
-    approvalRequest.organizationId
-  )
+  const allUserIds = await getApprovalAssigneeUserIds(db, {
+    assigneeUsers: approvalRequest.assigneeUsers,
+    assigneeGroups: approvalRequest.assigneeGroups,
+    organizationId: approvalRequest.organizationId,
+  })
   // Calculate time remaining
   const timeRemaining = approvalRequest.expiresAt.getTime() - Date.now()
   const hoursRemaining = Math.floor(timeRemaining / (1000 * 60 * 60))
@@ -120,34 +122,25 @@ async function sendReminderNotifications(
   } else {
     timeRemainingStr = `${minutesRemaining} minute${minutesRemaining > 1 ? 's' : ''}`
   }
-  // Send in-app notifications
-  for (const userId of allUserIds) {
-    try {
-      await notificationService.sendNotification({
-        type: 'WORKFLOW_APPROVAL_REMINDER' as any,
-        userId,
-        targetType: 'APPROVAL',
-        targetIds: { approvalRequestId: approvalRequest.id },
-        message: `Reminder #${reminderNumber}: Approval still pending for "${approvalRequest.workflow.name}" - ${timeRemainingStr} remaining`,
-        organizationId: approvalRequest.organizationId,
-        metadata: {
-          kind: 'WORKFLOW_APPROVAL_REMINDER',
-          workflowName: approvalRequest.workflow.name,
-          workflowId: approvalRequest.workflowId,
-          workflowRunId: approvalRequest.workflowRunId,
-          nodeId: approvalRequest.nodeId,
-          reminderNumber,
-          timeRemaining: timeRemainingStr,
-          expiresAt: approvalRequest.expiresAt.toISOString(),
-        },
-      })
-    } catch (error) {
-      logger.warn('Failed to send in-app reminder notification', {
-        userId,
-        approvalRequestId: approvalRequest.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
+  // Live re-ping, not a notification row. The request is still pending in
+  // `ApprovalRequest` and therefore already counted on the bell — a reminder row
+  // would push a single approval to 2, and the next one to 3
+  // (plans/today/05-bell-and-feed-dedupe.md §1).
+  try {
+    // Lazy import — see the realtime barrel cycle note in the confirmation node.
+    const { getRealtimeService, publishApprovalPing } = await import('../../realtime')
+    await publishApprovalPing(getRealtimeService(), allUserIds, {
+      approvalRequestId: approvalRequest.id,
+      organizationId: approvalRequest.organizationId,
+      workflowName: approvalRequest.workflow?.name ?? approvalRequest.workflowName,
+      expiresAt: approvalRequest.expiresAt?.toISOString() ?? null,
+      reminderNumber,
+    })
+  } catch (error) {
+    logger.warn('Failed to ping approval assignees', {
+      approvalRequestId: approvalRequest.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
   // Send email reminders
   await sendEmailReminders(approvalRequest, allUserIds, reminderNumber, timeRemainingStr)
@@ -174,6 +167,10 @@ async function sendEmailReminders(
   const approvalUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
   for (const user of users) {
     try {
+      // Same recipient gate as the request email — one key for both, so nobody
+      // can end up receiving reminders for an email they never got (§7).
+      if (!(await approvalEmailEnabled(approvalRequest.organizationId, user.id))) continue
+
       await enqueueEmailJob('approval-reminder', {
         recipient: { email: user.email, name: user.name || 'User' },
         workflowName: approvalRequest.workflow.name,
@@ -194,29 +191,6 @@ async function sendEmailReminders(
       })
     }
   }
-}
-/**
- * Get all users assigned to an approval (direct + groups)
- */
-async function getAllAssigneeUserIds(
-  directUsers: string[],
-  groupIds: string[],
-  organizationId: string
-): Promise<string[]> {
-  const userIds = new Set(directUsers)
-  if (groupIds.length > 0) {
-    // Note: This complex many-to-many relationship query would require joins
-    // For now, using a simpler approach - this may need refinement based on schema
-    const groupMembers = await db
-      .select({
-        userId: schema.OrganizationMember.userId,
-      })
-      .from(schema.OrganizationMember)
-      .where(eq(schema.OrganizationMember.organizationId, organizationId))
-    // TODO: Add proper group filtering when schema structure is clarified
-    groupMembers.forEach((member) => userIds.add(member.userId))
-  }
-  return Array.from(userIds)
 }
 /**
  * Cancel all reminder jobs for an approval
