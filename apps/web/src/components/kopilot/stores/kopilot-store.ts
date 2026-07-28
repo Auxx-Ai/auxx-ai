@@ -440,6 +440,11 @@ export const useKopilotStore = create<KopilotState>()(
         set({
           activeSessionId: null,
           activeSessionAgentId: null,
+          // Drop the per-session model pin so a new chat starts on the org
+          // system default again. Without this the last picked model leaks
+          // across every subsequent new chat for the lifetime of the tab,
+          // and changing the org default appears to have no effect.
+          selectedModelId: null,
           ...emptyTreeState,
           stream: { ...initialStreamState },
           isStreaming: false,
