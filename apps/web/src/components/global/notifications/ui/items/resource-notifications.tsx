@@ -68,7 +68,8 @@ export function DashboardNotification(props: NotificationItemProps<'DASHBOARD'>)
  * resource, so `resourceAccess.grantInstance` now emits `RESOURCE_SHARED` for it).
  *
  * `useFavoriteWorkflow` reads `api.workflow.getById`, which gates on the
- * `workflowsView` rung plus `assertViewInstance`, so the member the share was
+ * `workflowsView` rung plus `assertViewInstance` — and the share itself derives
+ * that rung for the grantee (handoff item 5b), so the member the share was
  * just granted to resolves the name. A later revoke drops them to the
  * Unavailable row, same as the other three types.
  */

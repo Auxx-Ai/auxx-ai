@@ -178,9 +178,14 @@ export async function computeUserCapabilities(
 
   // Second ResourceAccess query: INSTANCE-level rows (entityInstanceId IS NOT
   // NULL) for the instance-access resources (datasets etc., §1.2), reusing the
-  // same grantee union. Keyed on the globally-unique instance CUID alone.
+  // same grantee union. `instanceAccess` itself is keyed on the globally-unique
+  // instance CUID alone; `entityDefinitionId` rides along (same query, one more
+  // column — the WHERE clause already filters on it) because
+  // `UserCapabilities.instanceDerivedKeys` must know WHICH resource a grant is
+  // for, or a dashboard grant would open the workflows front door.
   const instanceAccessPromise = db
     .select({
+      entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
       entityInstanceId: schema.ResourceAccess.entityInstanceId,
       permission: schema.ResourceAccess.permission,
     })
@@ -234,6 +239,7 @@ export async function computeUserCapabilities(
       permission: ResourcePermission
     }>,
     instanceAccessRows: instanceAccessRows as Array<{
+      entityDefinitionId: string
       entityInstanceId: string
       permission: ResourcePermission
     }>,

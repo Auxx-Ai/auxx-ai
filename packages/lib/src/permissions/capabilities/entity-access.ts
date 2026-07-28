@@ -258,6 +258,19 @@ export function administersAnyDef(caps: ResolvedRecordAccess): boolean {
  */
 export interface ClientCapabilities {
   keys: PermissionKey[]
+  /**
+   * Coarse keys synthesized from the member's instance grants — the mirror of
+   * {@link import('./compose-user-capabilities').UserCapabilities.instanceDerivedKeys}.
+   * The client `can()` gate reads `keys ∪ instanceDerivedKeys`; every AREA-level
+   * computation ({@link toResolvedRecordAccess} → `areaLevelFromKeys` →
+   * `effectiveInstanceLevel` / `instanceListScope`, and the agent-policy clamp
+   * previews) reads `keys` alone. Optional — absent = `[]`.
+   *
+   * Mixing them would be a leak, not a nicety: a derived `workflows.view` inside
+   * `keys` makes `areaLevelFromKeys` report `Level.Read` for the area, and every
+   * workflow with no explicit row would then fall back to `view`.
+   */
+  instanceDerivedKeys?: PermissionKey[]
   defAccess: Record<string, ResourcePermission>
   restrictedEntityDefIds: string[]
   /**
@@ -278,7 +291,15 @@ export interface ClientCapabilities {
   restrictedInstanceIds?: string[]
 }
 
-/** Rebuild the Set-backed {@link ResolvedRecordAccess} from a wire snapshot. */
+/**
+ * Rebuild the Set-backed {@link ResolvedRecordAccess} from a wire snapshot.
+ *
+ * `instanceDerivedKeys` is deliberately NOT merged into `keys` here: this view's
+ * `keys` is the AREA-level source of truth for `effectiveInstanceLevel` /
+ * `instanceListScope`, and folding a derived Read key into it would re-open the
+ * area's absent-row fallback for every instance in the org. The front-door union
+ * lives in the `can()` gate (`capabilities-provider`), not in this view.
+ */
 export function toResolvedRecordAccess(caps: ClientCapabilities): ResolvedRecordAccess {
   return {
     role: caps.role,

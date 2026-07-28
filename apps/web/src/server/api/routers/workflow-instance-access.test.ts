@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/workflow-instance-access.test.ts
 
 import { ResourcePermission } from '@auxx/database/enums'
-import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
+import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -211,39 +211,28 @@ vi.mock('@auxx/lib/permissions', async () => {
 })
 
 /**
- * The `permissionProcedure` stand-in mirrors the REAL builder's gate: the real
- * `capabilities.assert(key)`, WAIVED for the `INSTANCE_ACCESS_VIEW_KEYS` when the
- * member holds any instance grant (plan 25 §2 — otherwise a `workflows: None`
- * member with one explicit grant 403s at the front door and the grant is inert
- * all over again). Kept in lockstep with `trpc.ts`; only the plan-AND and the
- * `getCapabilities` read are dropped, since ctx carries the set already.
+ * The `permissionProcedure` stand-in mirrors the REAL builder's gate: a plain
+ * `capabilities.assert(key)`. There is no waiver any more (handoff item 5b) —
+ * a `workflows: None` member holding one explicit grant now genuinely HOLDS
+ * `workflowsView`, because `composeUserCapabilities` derives that Read rung from
+ * their instance grants. Kept in lockstep with `trpc.ts`; only the plan-AND and
+ * the `getCapabilities` read are dropped, since ctx carries the set already.
  *
  * So the coarse rung on the procedure builder is under test alongside the
  * per-instance asserts in the bodies. (The dataset/KB files couldn't do this —
  * their routers assert coarse keys inline.) Dropping
- * `permissionProcedure(workflowsManage)` from `create` fails a case below, and
- * so does widening the waiver to the Manage rung.
+ * `permissionProcedure(workflowsManage)` from `create` fails a case below.
  */
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')
   const t = initTRPC.context<Record<string, unknown>>().create()
-  const { INSTANCE_ACCESS_VIEW_KEYS } = await import(
-    '@auxx/lib/permissions/capabilities/instance-access'
-  )
   return {
     createTRPCRouter: t.router,
     capabilityProcedure: t.procedure,
     protectedProcedure: t.procedure,
     permissionProcedure: (key: string) =>
       t.procedure.use(({ ctx, next }) => {
-        const capabilities = (
-          ctx as {
-            capabilities: { assert: (k: string) => void; hasAnyInstanceGrant: () => boolean }
-          }
-        ).capabilities
-        const waived =
-          INSTANCE_ACCESS_VIEW_KEYS.has(key as never) && capabilities.hasAnyInstanceGrant()
-        if (!waived) capabilities.assert(key)
+        ;(ctx as { capabilities: { assert: (k: string) => void } }).capabilities.assert(key)
         return next()
       }),
     // The real one blocks demo orgs; irrelevant to capability gating, and it
@@ -296,18 +285,30 @@ function capabilitiesFor(
   } = {}
 ) {
   const instances = opts.instances ?? { [WF_ID]: permission }
+  const seatType = opts.seatType ?? 'full'
+  // Reproduce `composeUserCapabilities`' derived Read rung: any ≥`view` workflow
+  // row synthesizes `workflowsView`, clamped away on a worker seat (workflows is
+  // outside WORKER_AREAS). Without this a `workflows: None` grantee would 403 at
+  // the coarse front door — the exact regression item 5b closes.
+  const derived =
+    seatType !== 'worker' &&
+    Object.values(instances).some((p) => p !== ResourcePermission.none && p !== undefined)
+      ? [PermissionKey.workflowsView]
+      : []
   return new CapabilitySet(
     new Set(
       expandLevelsToKeys({ [Area.workflows]: AREA_LEVEL_OF[opts.areaPermission ?? permission] })
     ),
     {},
     opts.role ?? 'MEMBER',
-    opts.seatType ?? 'full',
+    seatType,
     undefined,
     undefined,
     undefined,
     instances,
-    new Set(Object.keys(instances))
+    new Set(Object.keys(instances)),
+    undefined,
+    new Set(derived)
   )
 }
 

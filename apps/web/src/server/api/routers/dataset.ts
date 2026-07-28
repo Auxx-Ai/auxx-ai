@@ -10,7 +10,7 @@ import { onCacheEvent } from '@auxx/lib/cache'
 import { DatasetService } from '@auxx/lib/datasets'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
-import { and, count, eq, sum } from 'drizzle-orm'
+import { and, count, eq, inArray, notInArray, sum } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 
@@ -356,15 +356,29 @@ export const datasetRouter = createTRPCRouter({
     if (!organizationId) {
       throw new Error('No organization found')
     }
-    // Org-wide aggregate — no single instance to key on; gate on the coarse
-    // `datasets` area Read rung.
-    ctx.capabilities.assert(PermissionKey.datasetsView)
+    // NOT a coarse `datasetsView` assert. The area Read rung is now SYNTHESIZED
+    // from a member's instance grants (`UserCapabilities.instanceDerivedKeys`),
+    // so a member shared exactly ONE dataset holds `datasets.view` — and this
+    // is an org-wide aggregate, which under that key would have handed them
+    // counts, document totals and byte sizes for every dataset in the org.
+    //
+    // Scoped instead, the same way `list` is: the totals describe exactly the
+    // datasets the member may open, so the stat tiles agree with the grid
+    // beneath them. A member with no datasets at all gets zeros rather than a
+    // 403, matching `list`'s empty page (the landing page owns the "No Access"
+    // surface).
+    const scope = ctx.capabilities.instanceListScope('dataset')
+    if (scope.kind === 'none') {
+      return { total: 0, byStatus: {} as Record<string, number>, totalDocuments: 0, totalSize: 0n }
+    }
     // Get overall counts and stats from the database.
     // Managed datasets (KB-synced private datasets) are hidden from /app/datasets and
     // excluded here so the totals match what the user actually sees and can manage.
     const userDatasetFilter = and(
       eq(schema.Dataset.organizationId, organizationId),
-      eq(schema.Dataset.isManaged, false)
+      eq(schema.Dataset.isManaged, false),
+      scope.excludeIds?.length ? notInArray(schema.Dataset.id, scope.excludeIds) : undefined,
+      scope.includeIds ? inArray(schema.Dataset.id, scope.includeIds) : undefined
     )
     const [{ totalCount }] = await ctx.db
       .select({ totalCount: count() })
@@ -399,18 +413,26 @@ export const datasetRouter = createTRPCRouter({
     }
   }),
   /**
-   * Get available embedding options for organization
+   * Get the org's default embedding model, for one dataset's settings form.
+   *
+   * Takes a `datasetId` and asserts per instance. It used to be an instance-LESS
+   * query gated on the coarse `datasetsView` rung, which stopped being a real
+   * gate once that rung became derivable from a single instance grant — and this
+   * returns org-level AI configuration, not dataset content. Its only caller is
+   * the per-dataset Embedding settings section, which always has the dataset in
+   * hand, so naming it costs nothing and makes the gate honest.
    */
-  getAvailableEmbeddingOptions: capabilityProcedure.query(async ({ ctx }) => {
-    const organizationId = ctx.session.user.defaultOrganizationId
-    if (!organizationId) {
-      throw new Error('No organization found')
-    }
-    // Org-wide option list — gate on the coarse `datasets` area Read rung.
-    ctx.capabilities.assert(PermissionKey.datasetsView)
-    const datasetService = new DatasetService(ctx.db)
-    return await datasetService.getAvailableEmbeddingOptions(organizationId)
-  }),
+  getAvailableEmbeddingOptions: capabilityProcedure
+    .input(z.object({ datasetId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organizationId = ctx.session.user.defaultOrganizationId
+      if (!organizationId) {
+        throw new Error('No organization found')
+      }
+      ctx.capabilities.assertViewInstance('dataset', input.datasetId)
+      const datasetService = new DatasetService(ctx.db)
+      return await datasetService.getAvailableEmbeddingOptions(organizationId)
+    }),
   /**
    * Get recommended search configuration for a dataset
    */

@@ -332,7 +332,11 @@ function composeState(
     .map((row) => ({ entityDefinitionId: row.entityDefinitionId, permission: row.permission }))
   const instanceAccessRows = inputs.instanceRows
     .filter((row) => matchesGrantee(row, userId, profileId, groupIds))
-    .map((row) => ({ entityInstanceId: row.entityInstanceId ?? '', permission: row.permission }))
+    .map((row) => ({
+      entityDefinitionId: row.entityDefinitionId,
+      entityInstanceId: row.entityInstanceId ?? '',
+      permission: row.permission,
+    }))
 
   const caps = composeUserCapabilities({
     role,

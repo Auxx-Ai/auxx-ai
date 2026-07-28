@@ -39,7 +39,10 @@ export function useNavigationActions(): PaletteAction[] {
   return useMemo<PaletteAction[]>(() => {
     const actions: PaletteAction[] = []
 
-    if (hasAccess('dashboards')) {
+    // View, not Manage — matches SIDEBAR_MENU. Without the capability half this
+    // entry walked members straight into the landing page's /access-denied
+    // redirect, because `dashboards-list-view.tsx` guards on the same key.
+    if (hasAccess('dashboards') && can('dashboards.view')) {
       actions.push({
         id: 'nav.dashboards',
         label: 'Dashboards',

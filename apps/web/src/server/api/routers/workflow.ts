@@ -240,13 +240,14 @@ const ADMIN_ONLY_UPDATE_FIELDS = [
  * Base procedure: `permissionProcedure(workflowsView)` everywhere the instance
  * assert does the real work. That keeps the `FeatureKey.workflows` plan-AND
  * these procedures have always run (`capabilityProcedure` does NOT run it) and
- * costs nothing — `workflowsView` is an `INSTANCE_ACCESS_VIEW_KEYS` member, so
- * `permissionProcedure` waives its coarse assert for a member who holds any
- * instance grant (plan 25 §2) and lets the per-instance assert below decide.
- * **Every procedure on this base MUST assert on a specific instance** — that
- * waiver is what makes the coarse rung non-load-bearing here.
+ * costs nothing — a member composing `workflows: None` who holds one explicit
+ * instance grant genuinely HOLDS `workflowsView`, because the composer derives
+ * that Read rung from their grants (handoff item 5b, replacing plan 25 §2's
+ * front-door waiver). **Every procedure on this base MUST assert on a specific
+ * instance**, and must NOT return org-wide data: the derived key says only "this
+ * member has some workflow access", never which workflow.
  * `create`/`createForResource` have no instance to assert on and therefore sit
- * on `workflowsManage`, which is NOT waived. `list` and `getManualWorkflows` are
+ * on `workflowsManage`, which is never derived. `list` and `getManualWorkflows` are
  * the two exceptions in the other direction: they render passively inside other
  * screens, so they use `capabilityProcedure` and FILTER rather than assert (plan
  * 30 §2.2 — a 403 there is a broken screen, not a denied action).

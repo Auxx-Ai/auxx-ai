@@ -98,7 +98,11 @@ interface CapabilitiesContextType {
    * the bare `entityInstanceId` (CUID), NOT a `RecordId`.
    */
   isRestrictedInstance: (instanceId: string) => boolean
-  /** The current member's composed capability keys. */
+  /**
+   * The current member's composed capability keys, from resolved AREA levels
+   * only — instance-derived Read rungs are excluded, because the consumers of
+   * this field recover area levels from it. Use `can()` for gating.
+   */
   capabilities: PermissionKey[]
   isLoading: boolean
 }
@@ -164,7 +168,14 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   useRealtimeRoom(organizationId ? rooms.orgEvents(organizationId) : null, handlers)
 
   const value = useMemo<CapabilitiesContextType>(() => {
-    const capKeys = new Set<string>(snapshot.keys)
+    // The `can()` gate reads the UNION of resolved-area keys and the Read rungs
+    // derived from instance grants, so a member whose only access to a feature is
+    // one shared instance still passes the coarse nav / cmd+K / landing-page
+    // gates. `toResolvedRecordAccess` below deliberately gets `snapshot` with its
+    // pure `keys` — that view is the AREA-level source of truth for
+    // `canViewInstance`, and merging the derived key there would hand them every
+    // row-less instance in the org.
+    const capKeys = new Set<string>([...snapshot.keys, ...(snapshot.instanceDerivedKeys ?? [])])
     const resolved = toResolvedRecordAccess(snapshot)
     const restrictedInstances = new Set<string>(snapshot.restrictedInstanceIds ?? [])
 
@@ -196,6 +207,9 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       canEditInstance: (recordId: RecordId) => canEditInstance(resolved, recordId),
       canAdminInstance: (recordId: RecordId) => canAdminInstance(resolved, recordId),
       isRestrictedInstance: (instanceId: string) => restrictedInstances.has(instanceId),
+      // Pure area-derived keys, NOT the `can()` union: the only consumers feed
+      // this straight into `areaLevelFromKeys` (the agent-policy / author clamp
+      // previews), which must read a true area rung.
       capabilities: snapshot.keys,
       isLoading: false,
     }

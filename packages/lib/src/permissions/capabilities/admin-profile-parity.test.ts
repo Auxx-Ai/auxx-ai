@@ -92,7 +92,11 @@ function composeAdmin(
     groupLevels?: Array<Partial<Record<Area, Level>>>
     userLevels?: Partial<Record<Area, Level>>
     typeAccessRows?: Array<{ entityDefinitionId: string; permission: ResourcePermission }>
-    instanceAccessRows?: Array<{ entityInstanceId: string; permission: ResourcePermission }>
+    instanceAccessRows?: Array<{
+      entityDefinitionId: string
+      entityInstanceId: string
+      permission: ResourcePermission
+    }>
   } = {}
 ) {
   const seed = systemProfileSeed('admin')
@@ -117,7 +121,11 @@ function adminAccess(
     restricted?: string[]
     restrictedInstances?: string[]
     typeAccessRows?: Array<{ entityDefinitionId: string; permission: ResourcePermission }>
-    instanceAccessRows?: Array<{ entityInstanceId: string; permission: ResourcePermission }>
+    instanceAccessRows?: Array<{
+      entityDefinitionId: string
+      entityInstanceId: string
+      permission: ResourcePermission
+    }>
   } = {}
 ): ResolvedRecordAccess {
   const caps = composeAdmin({
@@ -200,11 +208,18 @@ describe('ADMIN parity — areas (byte-identical to the removed short-circuit)',
     )
   })
 
-  it('the composed blob carries exactly three fields (no ceiling rides out)', () => {
+  it('the composed blob carries exactly four fields (no ceiling rides out)', () => {
     // Plan 20 §2.a.2: `ceilingDefs` is gone from `UserCapabilities`. Pinned here
     // as a shape assertion because a re-added field would silently ride into the
     // cached blob and force another `user:capabilities:vN` bump.
-    expect(Object.keys(composeAdmin()).sort()).toEqual(['defAccess', 'instanceAccess', 'keys'])
+    // `instanceDerivedKeys` joined the shape in item 5b — and did force the
+    // v10 → v11 bump, which is exactly the tripwire this assertion is.
+    expect(Object.keys(composeAdmin()).sort()).toEqual([
+      'defAccess',
+      'instanceAccess',
+      'instanceDerivedKeys',
+      'keys',
+    ])
   })
 })
 
@@ -289,7 +304,13 @@ describe('ADMIN parity — instance-access resources', () => {
     // nothing at all on a private one. OWNER remains the recovery path.
     const shared = adminAccess({
       restrictedInstances: ['dash_1'],
-      instanceAccessRows: [{ entityInstanceId: 'dash_1', permission: ResourcePermission.view }],
+      instanceAccessRows: [
+        {
+          entityDefinitionId: 'dashboard',
+          entityInstanceId: 'dash_1',
+          permission: ResourcePermission.view,
+        },
+      ],
     })
     expect(effectiveInstanceLevel(shared, 'dashboard', 'dash_1')).toBe(ResourcePermission.view)
     expect(effectiveInstanceLevel({ ...shared, role: 'OWNER' }, 'dashboard', 'dash_1')).toBe(

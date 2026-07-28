@@ -72,6 +72,14 @@ export class CapabilitySet implements CapabilityView {
    * @param defBaseOverrides Per-def record base for defs whose base comes from
    *                   another Layer-2 area. Canonical `entityDefinitionId`
    *                   keys; `null` means that area is closed.
+   * @param instanceDerivedKeys Coarse Read-rung keys SYNTHESIZED at composition
+   *                   time from the member's instance grants (see
+   *                   {@link import('./compose-user-capabilities').UserCapabilities.instanceDerivedKeys}).
+   *                   Read by {@link can}/{@link has}/{@link assert} ONLY —
+   *                   {@link areaLevel} and {@link resolved} deliberately ignore
+   *                   them, because `keys` is the area-level source of truth
+   *                   that `effectiveInstanceLevel` reads its absent-row
+   *                   fallback from.
    */
   constructor(
     private readonly keys: ReadonlySet<PermissionKey>,
@@ -83,23 +91,39 @@ export class CapabilitySet implements CapabilityView {
     private readonly defIdToDefinitionId: DefIdToSlug = (id) => id,
     private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
     private readonly restrictedInstanceIds: ReadonlySet<string> = new Set(),
-    private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {}
+    private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {},
+    private readonly instanceDerivedKeys: ReadonlySet<PermissionKey> = new Set()
   ) {}
 
-  /** O(1) Set lookup — whether the member holds `key`. */
+  /**
+   * O(1) Set lookup — whether the member holds `key`, either from their resolved
+   * area levels or as a Read rung derived from an instance grant.
+   *
+   * The derived half is a FRONT DOOR, not an authorization answer: it says only
+   * that the member has *some* access inside that feature, so the coarse gate
+   * (nav, cmd+K, a landing-page guard, `permissionProcedure`) must not deny them
+   * outright. Anything that reads org-wide data behind such a key must scope
+   * itself per instance — see `dataset.getOrganizationStats` for the pattern.
+   */
   can(key: PermissionKey): boolean {
-    return this.keys.has(key)
+    return this.keys.has(key) || this.instanceDerivedKeys.has(key)
   }
 
   /** Alias for {@link can} — reads better at some call sites. */
   has(key: PermissionKey): boolean {
-    return this.keys.has(key)
+    return this.can(key)
   }
 
   /**
    * The member's effective {@link Level} for one {@link Area}, recovered from the
    * already-composed (seat-clamped) key set via {@link areaLevelFromKeys}. Zero
-   * I/O, and by construction identical to what every `can()` gate sees.
+   * I/O.
+   *
+   * Reads `keys` ONLY — never the instance-derived keys. This is the area-level
+   * source of truth `effectiveInstanceLevel` / `instanceListScope` take their
+   * absent-row fallback from, so a member whose only workflow access is one
+   * explicit grant must still report `workflows: None` here. `can()` and this
+   * method therefore disagree for exactly those members, on purpose.
    */
   areaLevel(area: Area): Level {
     return areaLevelFromKeys(this.keys, area)
@@ -110,7 +134,7 @@ export class CapabilitySet implements CapabilityView {
    * lacks `key`. The single enforcement primitive every guard funnels through.
    */
   assert(key: PermissionKey): void {
-    if (this.keys.has(key)) return
+    if (this.can(key)) return
     const label = PERMISSION_REGISTRY_MAP.get(key)?.label ?? key
     throw new ForbiddenError(`You don't have permission to ${label}.`)
   }
@@ -157,6 +181,7 @@ export class CapabilitySet implements CapabilityView {
   toClientCapabilities(): ClientCapabilities {
     return {
       keys: [...this.keys],
+      instanceDerivedKeys: [...this.instanceDerivedKeys],
       defAccess: { ...this.defAccess },
       restrictedEntityDefIds: [...this.restrictedDefIds],
       defBaseOverrides: { ...this.defBaseOverrides },
@@ -307,26 +332,6 @@ export class CapabilitySet implements CapabilityView {
     const areaLevel = areaLevelFromKeys(this.keys, cfg.area)
     if (areaLevel === Level.None) return undefined
     return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
-  }
-
-  /**
-   * Whether this member holds ANY instance grant reaching `view`, across ALL
-   * instance-access resources. Deliberately TYPE-BLIND: `instanceAccess` keys on
-   * the bare instance CUID with no resource type, so the composed blob cannot
-   * answer "does this member hold a *workflow* grant?" without a shape change
-   * (and therefore a `user:capabilities:vN` bump). Zero I/O.
-   *
-   * Used ONLY as the coarse front-door waiver in `permissionProcedure` (plan
-   * 25 §2): a member composing an instance-access area to `None` still has to
-   * reach the procedure whose per-instance assert will judge them. It is safe
-   * because it is scoped to `INSTANCE_ACCESS_VIEW_KEYS` and every
-   * procedure behind those keys asserts on a specific instance immediately
-   * after — it is NOT an authorization answer and must never be used as one.
-   */
-  hasAnyInstanceGrant(): boolean {
-    return Object.values(this.instanceAccess).some((permission) =>
-      satisfiesPermission(permission, ResourcePermission.view)
-    )
   }
 
   /**

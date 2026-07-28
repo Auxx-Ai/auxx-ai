@@ -63,7 +63,9 @@ export function EmbeddingSettingsSection({
     },
   })
 
-  const embeddingOptions = api.dataset.getAvailableEmbeddingOptions.useQuery()
+  const embeddingOptions = api.dataset.getAvailableEmbeddingOptions.useQuery({
+    datasetId: dataset.id,
+  })
 
   const unifiedModelData = api.aiIntegration.getUnifiedModelData.useQuery(
     {
