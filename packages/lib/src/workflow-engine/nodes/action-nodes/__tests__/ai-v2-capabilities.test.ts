@@ -168,7 +168,7 @@ describe('AI node tool execution is bound by the workflow author', () => {
   })
 
   it('warns into the run log when the principal is not an active member', async () => {
-    // The scheduled-trigger fallback: `workflowApp.createdById || 'system'`.
+    // E.g. a headless run, whose principal is the org system user rather than a member.
     capsByUser.set(AUTHOR, NONE_VIEW)
 
     const ctxManager = fakeContextManager()

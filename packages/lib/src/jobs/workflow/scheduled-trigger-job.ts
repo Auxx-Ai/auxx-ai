@@ -217,7 +217,11 @@ export async function executeScheduledTrigger(ctx: JobContext<ScheduledTriggerJo
         trigger_config: triggerConfig,
       },
       mode: 'production',
-      userId: workflowApp.createdById || 'system', // Use workflow creator or system
+      // The workflow's author, or absent when their `User` row was deleted
+      // (`WorkflowApp.createdById` is `ON DELETE SET NULL`). `createRun` resolves
+      // the org's system user for the absent case — inventing an id here would
+      // violate `WorkflowRun.createdBy`'s FK and drop the run.
+      userId: workflowApp.createdById,
       organizationId,
       // Note: no user email/name for scheduled triggers
     })
