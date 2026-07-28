@@ -21,7 +21,7 @@ import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
-import { Check, Copy, ExternalLink, Globe, Link, Lock } from 'lucide-react'
+import { Check, Copy, ExternalLink, Globe, Link, Link2Off, Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useKbPublicUrl } from '~/components/kb/hooks/use-kb-public-url'
@@ -33,7 +33,33 @@ interface KBSitePublishDialogProps {
   kbId: string
 }
 
-type PublishMode = 'PUBLISHED' | 'UNLISTED'
+/**
+ * One user-facing choice over two stored columns.
+ *
+ * `publishStatus` (is the site live / indexable) and `visibility` (must a
+ * reader sign in) are orthogonal in the schema but answer one question, and
+ * splitting them across two screens let the copy lie — the old "Public" card
+ * claimed "anyone can find and read this" even for an INTERNAL KB.
+ *
+ * `UNLISTED + INTERNAL` is deliberately unreachable: once sign-in is required,
+ * unlisted adds nothing, because a crawler cannot authenticate either way.
+ */
+type AccessMode = 'public' | 'unlisted' | 'internal'
+
+const MODE_WRITES: Record<
+  AccessMode,
+  { status: 'PUBLISHED' | 'UNLISTED'; visibility: 'PUBLIC' | 'INTERNAL' }
+> = {
+  public: { status: 'PUBLISHED', visibility: 'PUBLIC' },
+  unlisted: { status: 'UNLISTED', visibility: 'PUBLIC' },
+  internal: { status: 'PUBLISHED', visibility: 'INTERNAL' },
+}
+
+function modeOf(publishStatus?: string | null, visibility?: string | null): AccessMode {
+  // Visibility wins: an INTERNAL KB is internal whatever its publish status.
+  if (visibility === 'INTERNAL') return 'internal'
+  return publishStatus === 'UNLISTED' ? 'unlisted' : 'public'
+}
 
 export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishDialogProps) {
   const utils = api.useUtils()
@@ -43,15 +69,13 @@ export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishD
     { enabled: open }
   )
 
-  const [mode, setMode] = useState<PublishMode>('PUBLISHED')
+  const [mode, setMode] = useState<AccessMode>('public')
   const { copied: copiedLink, copy: copyLink } = useCopy({
     toastMessage: 'Public URL copied to clipboard',
   })
 
   useEffect(() => {
-    if (open && kb) {
-      setMode(kb.publishStatus === 'UNLISTED' ? 'UNLISTED' : 'PUBLISHED')
-    }
+    if (open && kb) setMode(modeOf(kb.publishStatus, kb.visibility))
   }, [open, kb])
 
   const publishMutation = api.kb.publishSite.useMutation()
@@ -60,15 +84,22 @@ export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishD
   const pendingSections = draftedSections((kb?.draftSettings ?? null) as never)
   const pendingCount = pendingSections.size
 
+  // The draft flush happens server-side only when going live from DRAFT, so the
+  // warning below must not promise it on an already-live site.
+  const willFlushDraft = kb?.publishStatus === 'DRAFT'
+
+  const MODE_TOAST: Record<AccessMode, string> = {
+    public: 'Knowledge base is now public',
+    unlisted: 'Knowledge base set to unlisted',
+    internal: 'Knowledge base set to internal',
+  }
+
   const handleConfirm = async () => {
     try {
-      await publishMutation.mutateAsync({ id: kbId, status: mode })
+      await publishMutation.mutateAsync({ id: kbId, ...MODE_WRITES[mode] })
       utils.kb.byId.invalidate({ id: kbId })
       utils.kb.list.invalidate()
-      toastSuccess({
-        title:
-          mode === 'PUBLISHED' ? 'Knowledge base is now public' : 'Knowledge base set to unlisted',
-      })
+      toastSuccess({ title: MODE_TOAST[mode] })
       onOpenChange(false)
     } catch (error) {
       toastError({
@@ -90,9 +121,10 @@ export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishD
         <DialogHeader>
           <DialogTitle>Publish knowledge base</DialogTitle>
           <DialogDescription>
-            {publishedCount === 1
-              ? '1 article will be visible at the public URL.'
-              : `${publishedCount} articles will be visible at the public URL.`}
+            {publishedCount === 1 ? '1 article' : `${publishedCount} articles`}{' '}
+            {mode === 'internal'
+              ? 'will be visible to signed-in members of your organization.'
+              : 'will be visible at the public URL.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -132,7 +164,7 @@ export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishD
             </InputGroup>
           )}
 
-          {pendingCount > 0 && (
+          {pendingCount > 0 && willFlushDraft && (
             <p className='text-xs text-amber-700 dark:text-amber-400'>
               Publishing will also apply{' '}
               {pendingCount === 1
@@ -142,20 +174,27 @@ export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishD
             </p>
           )}
 
-          <RadioGroup value={mode} onValueChange={(v) => setMode(v as PublishMode)}>
+          <RadioGroup value={mode} onValueChange={(v) => setMode(v as AccessMode)}>
             <RadioGroupItemCard
-              value='PUBLISHED'
+              value='public'
               id='kb-publish-public'
               icon={<Globe />}
               label='Public'
               description='Anyone can find and read this knowledge base. Search engines may index it.'
             />
             <RadioGroupItemCard
-              value='UNLISTED'
+              value='unlisted'
               id='kb-publish-unlisted'
-              icon={<Lock />}
+              icon={<Link2Off />}
               label='Unlisted'
               description="Accessible by direct link only. Search engines won't index it."
+            />
+            <RadioGroupItemCard
+              value='internal'
+              id='kb-publish-internal'
+              icon={<Lock />}
+              label='Internal'
+              description='Visitors must sign in and be a member of your organization. Never indexed.'
             />
           </RadioGroup>
         </div>

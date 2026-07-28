@@ -284,14 +284,29 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return result
     }),
 
+  // `status` and `visibility` are one user-facing choice ("who can see this
+  // site"), so they are written together. The draft flush is NOT client
+  // controlled — the service flushes only when the site is going live from
+  // DRAFT, so editing access on a live site cannot ship unrelated presentation
+  // drafts. Pending settings publish through `publishPendingSettings`.
   publishSite: capabilityProcedure
-    .input(z.object({ id: z.string(), status: z.enum(['PUBLISHED', 'UNLISTED']) }))
+    .input(
+      z.object({
+        id: z.string(),
+        status: z.enum(['PUBLISHED', 'UNLISTED']),
+        visibility: z.enum(['PUBLIC', 'INTERNAL']).optional(),
+      })
+    )
     .use(notDemo('publish knowledge base'))
     .mutation(async ({ ctx, input }) => {
       // Full — turning the whole public KB site on (governance, §0.6).
       ctx.capabilities.assertAdminInstance('kb', input.id)
-      const result = await getKBService(ctx).publishKnowledgeBase(input.id, input.status)
+      const result = await getKBService(ctx).publishKnowledgeBase(input.id, input.status, {
+        visibility: input.visibility,
+      })
       void fireKBRevalidate(input.id)
+      // Visibility feeds the agent-prompt KB catalog, same as `update`.
+      await onCacheEvent('kb.updated', { orgId: getUserOrganizationId(ctx.session) })
       return result
     }),
 

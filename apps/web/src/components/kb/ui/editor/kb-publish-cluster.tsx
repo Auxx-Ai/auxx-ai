@@ -118,6 +118,11 @@ export function KBPublishCluster({ kbId }: KBPublishClusterProps) {
   const isPublished = kb?.publishStatus === 'PUBLISHED'
   const isUnlisted = kb?.publishStatus === 'UNLISTED'
   const isLive = isPublished || isUnlisted
+  // `visibility: INTERNAL` outranks publishStatus for what a reader experiences,
+  // so the Public/Unlisted shortcuts below would be lying if we offered them —
+  // "Make public" on an INTERNAL KB writes publishStatus and leaves it internal.
+  // Access is edited in one place (the publish dialog) when internal.
+  const isInternal = kb?.visibility === 'INTERNAL'
 
   return (
     <>
@@ -138,7 +143,7 @@ export function KBPublishCluster({ kbId }: KBPublishClusterProps) {
               className='gap-2 border-r-0'
               onClick={() => setIsMenuOpen((prev) => !prev)}>
               <span className='inline-block size-2 rounded-full bg-emerald-500' />
-              {isUnlisted ? 'Live · Unlisted' : 'Live'}
+              {isInternal ? 'Live · Internal' : isUnlisted ? 'Live · Unlisted' : 'Live'}
             </Button>
             {hasPending && (
               <>
@@ -187,15 +192,16 @@ export function KBPublishCluster({ kbId }: KBPublishClusterProps) {
             <DropdownMenuItem onClick={() => setIsPublishDialogOpen(true)}>
               <Settings /> Publish settings
             </DropdownMenuItem>
-            {isPublished ? (
-              <DropdownMenuItem onClick={() => handleSwitchVisibility('UNLISTED')}>
-                <Lock /> Make unlisted
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={() => handleSwitchVisibility('PUBLISHED')}>
-                <Globe /> Make public
-              </DropdownMenuItem>
-            )}
+            {!isInternal &&
+              (isPublished ? (
+                <DropdownMenuItem onClick={() => handleSwitchVisibility('UNLISTED')}>
+                  <Lock /> Make unlisted
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => handleSwitchVisibility('PUBLISHED')}>
+                  <Globe /> Make public
+                </DropdownMenuItem>
+              ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleUnpublish} variant='destructive'>
               <Trash2 /> Unpublish site
