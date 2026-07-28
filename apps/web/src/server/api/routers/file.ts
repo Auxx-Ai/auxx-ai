@@ -6,12 +6,18 @@ import {
   createFilesystemService,
   createMediaAssetService,
 } from '@auxx/lib/files'
-import { PermissionKey } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
+import {
+  capabilityProcedure,
+  createTRPCRouter,
+  permissionProcedure,
+  protectedProcedure,
+} from '~/server/api/trpc'
+import { assertDatasetDocumentAssetAccess } from '~/server/lib/dataset-document-asset-access'
 
 const logger = createScopedLogger('api/file')
 
@@ -106,11 +112,29 @@ const getFileSystemSchema = z.object({
   lastSync: z.date().optional(),
 })
 
+/**
+ * Which resource authorizes an attachment preview.
+ *
+ * `files` (the default) — the Files app is the authority, so the request runs
+ * the `FeatureKey.files` plan gate plus `filesView`, i.e. exactly what
+ * `permissionProcedure(PermissionKey.filesView)` used to run for every caller.
+ *
+ * `datasetDocument` — the asset belongs to a dataset document, which is dataset
+ * content and authorizes against the parent dataset instead. See
+ * `assertDatasetDocumentAssetAccess` for why, and for the check that stops the
+ * scope from being claimed over an unrelated asset.
+ */
+const attachmentPreviewScopeSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('files') }),
+  z.object({ kind: z.literal('datasetDocument'), documentId: z.string() }),
+])
+
 const getAttachmentPreviewRefSchema = z.object({
   type: z.enum(['file', 'asset']),
   id: z.string(),
   version: z.union([z.literal('current'), z.literal('latest'), z.number()]).default('current'),
   disposition: z.enum(['inline', 'attachment']).default('inline'),
+  scope: attachmentPreviewScopeSchema.default({ kind: 'files' }),
 })
 
 export const fileRouter = createTRPCRouter({
@@ -372,24 +396,46 @@ export const fileRouter = createTRPCRouter({
   /**
    * Get preview download reference for attachment (files or assets).
    *
-   * `filesView`, matching every other read on this router: the returned ref is a
-   * live, presigned download URL for any `FolderFile` or `MediaAsset` in the org,
-   * resolved by id with no ownership or folder check — as a bare
-   * `protectedProcedure` it made the `filesView` gate on `getDownloadInfo` (the
-   * same read, one procedure over) decorative.
+   * The returned ref is a live, presigned download URL for any `FolderFile` or
+   * `MediaAsset` in the org, resolved by id with no ownership or folder check, so
+   * it must be authorized — as a bare `protectedProcedure` it made the `filesView`
+   * gate on `getDownloadInfo` (the same read, one procedure over) decorative.
    *
-   * Both UI callers are covered by the key: the Files detail drawer (Files is the
-   * authority) and the dataset document drawer, which is reachable only by a
-   * member holding `datasets: Read` — and the member baseline ships `files: Full`
-   * (`seat-policy.ts` `MEMBER_BASELINE_LEVELS`), while a worker seat has
-   * `datasets: None` and cannot open that drawer at all. So no principal loses a
-   * surface here except a member whose admin *deliberately* set `files` below
-   * `Read`.
+   * Authorization is per `input.scope`, because the two callers are owned by
+   * different resources. The Files detail drawer keeps `FeatureKey.files` +
+   * `filesView`; the dataset document drawer authorizes against its parent
+   * dataset, matching `document.getDownloadUrl`, which already resolves the same
+   * bytes for the same principal. A single `permissionProcedure(filesView)` here
+   * meant a member scoped to a dataset with `files` below Read could download a
+   * document but not preview it — the gate blocked no content, it only broke the
+   * pane. No plan gate on the dataset branch, matching every procedure in
+   * `routers/document.ts`, which is `capabilityProcedure` throughout.
+   *
+   * The gates run BEFORE the try/catch below on purpose: that catch rewrites
+   * anything that is not a `TRPCError` into a 400, which would flatten a denial
+   * into `BAD_REQUEST` instead of 403/404.
    */
-  getAttachmentPreviewRef: permissionProcedure(PermissionKey.filesView)
+  getAttachmentPreviewRef: capabilityProcedure
     .input(getAttachmentPreviewRefSchema)
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+
+      if (input.scope.kind === 'datasetDocument') {
+        if (input.type !== 'asset') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Dataset documents are backed by media assets',
+          })
+        }
+        await assertDatasetDocumentAssetAccess(ctx.db, ctx.capabilities, {
+          documentId: input.scope.documentId,
+          assetId: input.id,
+          organizationId,
+        })
+      } else {
+        await new FeaturePermissionService().requireAccess(organizationId, FeatureKey.files)
+        ctx.capabilities.assert(PermissionKey.filesView)
+      }
 
       try {
         if (input.type === 'file') {
