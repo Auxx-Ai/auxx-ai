@@ -3,9 +3,10 @@
 import { createScopedLogger } from '../../../logger'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import type { WorkflowFileData } from '../../types/file-variable'
 import { BaseNodeProcessor } from '../base-node'
+import { applyFormInputOutputVariables, type TypeOptions } from '../form-input/form-input-processor'
 
 const logger = createScopedLogger('manual-trigger-processor')
 
@@ -77,11 +78,53 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
       if (files.length > 0) {
         this.setFileVariables(nodeId, files, contextManager)
       } else {
+        // The bare key stays for `{{nodeId}}` and back-compat...
         contextManager.setVariable(nodeId, value)
+        // ...but the picker emits `{{nodeId.value}}`, and nothing else publishes
+        // it: the form-input node is wired into this trigger, so it is
+        // NON_EXECUTABLE and its own processor never runs. Without this, every
+        // simple-type input interpolated to an empty string.
+        const config = await this.findFormInputConfig(nodeId, contextManager)
+        applyFormInputOutputVariables({
+          nodeId,
+          value,
+          inputType: config?.inputType ?? BaseType.STRING,
+          typeOptions: config?.typeOptions,
+          label: config?.label,
+          ctx: contextManager,
+        })
       }
     }
 
     contextManager.setVariable('manualInputs', triggerData)
+  }
+
+  /**
+   * Find the form-input node this trigger input came from, for its declared type.
+   *
+   * `triggerData` is keyed by form-input node id, but carries no type information.
+   * Returns null when the graph is unavailable or the id is not a form-input node,
+   * in which case the caller falls back to STRING — the default branch of the
+   * output contract, and the shape a bare scalar already has.
+   */
+  private async findFormInputConfig(
+    nodeId: string,
+    contextManager: ExecutionContextManager
+  ): Promise<{ inputType?: BaseType; typeOptions?: TypeOptions; label?: string } | null> {
+    const workflow = (await contextManager.getVariable('sys.workflow')) as
+      | { graph?: { nodes?: Array<Record<string, any>> } }
+      | undefined
+    const nodes = workflow?.graph?.nodes
+    if (!Array.isArray(nodes)) return null
+
+    const node = nodes.find((candidate) => (candidate?.nodeId ?? candidate?.id) === nodeId)
+    if (!node || node.type !== 'form-input') return null
+
+    return {
+      inputType: node.data?.inputType as BaseType | undefined,
+      typeOptions: node.data?.typeOptions as TypeOptions | undefined,
+      label: node.data?.label as string | undefined,
+    }
   }
 
   /**
