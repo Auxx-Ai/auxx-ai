@@ -9,6 +9,8 @@ export {
   snoozeBundle,
 } from './actions-service'
 export {
+  type CountBundlesArgs,
+  countBundles,
   createBundleFromHeadlessRun,
   getBundle,
   type ListBundlesArgs,

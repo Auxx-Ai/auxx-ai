@@ -155,26 +155,6 @@ export const approvalRouter = createTRPCRouter({
     }),
 
   /**
-   * Clean up orphaned approval requests for the organization
-   * Requires admin permissions
-   */
-  cleanupOrphaned: protectedProcedure.mutation(async ({ ctx }) => {
-    // TODO: Add admin permission check here if needed
-    // if (ctx.session.user.role !== 'ADMIN') {
-    //   throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' })
-    // }
-
-    const queryService = new ApprovalQueryService(ctx.db)
-    const count = await queryService.cleanupOrphanedApprovals(ctx.session.user.organizationId)
-
-    return {
-      success: true,
-      message: `Cleaned up ${count} orphaned approval requests`,
-      count,
-    }
-  }),
-
-  /**
    * Clean up orphaned approval requests for a specific workflow run
    * Requires admin permissions
    */

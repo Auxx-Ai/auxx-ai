@@ -4,6 +4,7 @@ import { schema } from '@auxx/database'
 import {
   approveBundle,
   cancelPendingSend,
+  countBundles,
   getBundle,
   listBundles,
   rejectBundle,
@@ -60,6 +61,50 @@ export const approvalsRouter = createTRPCRouter({
         limit: input?.limit,
       })
       if (!result.ok) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
+      }
+      return result.value
+    }),
+
+  /**
+   * Count of bundles matching the same filter shape as `list`. Powers the
+   * notification panel's Approvals tab badge, which needs the number without
+   * paging the list in.
+   */
+  count: protectedProcedure
+    .input(
+      z
+        .object({
+          filters: z
+            .object({
+              ownerScope: z
+                .enum(['mine', 'mine_and_unassigned', 'all'])
+                .default('mine_and_unassigned'),
+              entityDefinitionId: z.string().optional(),
+              status: z.array(z.string()).optional(),
+            })
+            .optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const ownerScope = input?.filters?.ownerScope ?? 'mine_and_unassigned'
+      const ownerId =
+        ownerScope === 'mine' || ownerScope === 'mine_and_unassigned'
+          ? ctx.session.userId
+          : undefined
+
+      const result = await countBundles(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        ownerId,
+        filters: {
+          status: input?.filters?.status ?? ['FRESH'],
+          entityDefinitionId: input?.filters?.entityDefinitionId,
+        },
+      })
+      // Discriminating on `error` rather than `ok` — `Result.ok` is a plain
+      // boolean getter, so `!result.ok` does not narrow the union.
+      if (result.error) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
       }
       return result.value

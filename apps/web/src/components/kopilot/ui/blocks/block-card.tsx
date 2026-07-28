@@ -29,6 +29,40 @@ export interface BlockCardAction {
   onClick: () => void
   /** Blue text for primary action. Default: muted */
   primary?: boolean
+  /** Red text for a destructive action — deny, reject. Default: muted */
+  destructive?: boolean
+}
+
+/**
+ * The text-pill action treatment shared by every approval surface — Kopilot's
+ * in-chat blocks and the notification panel's approval rows. Deliberately not a
+ * shadcn `Button`: at `h-7` it sits correctly against both the block footer and
+ * the notification row's `h-9` header strip.
+ */
+export function BlockCardActionButton({
+  label,
+  onClick,
+  primary,
+  destructive,
+  disabled,
+}: BlockCardAction & { disabled?: boolean }) {
+  return (
+    <button
+      type='button'
+      disabled={disabled}
+      className={cn(
+        'flex h-7 cursor-pointer items-center justify-center rounded-full px-2 text-xs font-medium hover:bg-foreground/5',
+        'disabled:pointer-events-none disabled:opacity-50',
+        primary
+          ? 'text-blue-600 dark:text-blue-400'
+          : destructive
+            ? 'text-red-600 dark:text-red-400'
+            : 'text-foreground/65'
+      )}
+      onClick={onClick}>
+      {label}
+    </button>
+  )
 }
 
 interface BlockCardProps {
@@ -118,16 +152,7 @@ export function BlockCard({
           )}
           <div className='flex'>
             {actions?.map((action) => (
-              <button
-                key={action.label}
-                type='button'
-                className={cn(
-                  'flex h-7 cursor-pointer items-center justify-center rounded-full px-2 text-xs font-medium hover:bg-foreground/5',
-                  action.primary ? 'text-blue-600 dark:text-blue-400' : 'text-foreground/65'
-                )}
-                onClick={action.onClick}>
-                {action.label}
-              </button>
+              <BlockCardActionButton key={action.label} {...action} />
             ))}
           </div>
         </div>

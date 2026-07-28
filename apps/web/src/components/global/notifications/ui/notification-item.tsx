@@ -20,7 +20,6 @@ interface NotificationItemDispatchProps {
   notification: NotificationEntity
   onDelete: (id: string) => void
   onRead: (id: string) => void
-  onOpenApproval: (id: string) => void
 }
 
 /** Dispatch a notification to the renderer for its destination type. */

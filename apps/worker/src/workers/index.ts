@@ -269,6 +269,25 @@ export async function setupSchedules() {
     }
   )
 
+  // Orphaned workflow-approval sweep — every 15 minutes. Flips `pending`
+  // ApprovalRequests to `timeout` once their WorkflowRun has reached a terminal
+  // state (STOPPED/FAILED/SUCCEEDED). The per-run cleanup path already covers
+  // orderly stops; this is the backstop for runs that died another way. Global
+  // (no org scope) and idempotent, so cadence is unhurried on purpose.
+  await maintenanceQueue.upsertJobScheduler(
+    'approvalOrphanSweeperJob',
+    { pattern: '*/15 * * * *' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 9,
+        removeOnComplete: { count: 24 },
+        removeOnFail: { count: 50 },
+      },
+    }
+  )
+
   // Eval-run watchdog — every 5 minutes. Times out runs whose heartbeat went
   // stale (worker died mid-run) or that were never claimed off the queue.
   await maintenanceQueue.upsertJobScheduler(
