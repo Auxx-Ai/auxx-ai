@@ -247,6 +247,40 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(grantee.defAccess).toEqual({ def_locked: 'view' })
   })
 
+  it("keeps a lone baseline 'none' INSTANCE row (it is the per-instance downward marker)", () => {
+    // The mirror-image of the `defAccess` rule directly above: on instances a
+    // `none` row is KEPT, because `effectiveInstanceLevel` reads the composed
+    // entry itself rather than "is there an entry at all". Dropping it here is
+    // what plan 24's "Restricted" baseline would have to survive.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      typeAccessRows: [],
+      instanceAccessRows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
+    })
+    expect(caps.instanceAccess).toEqual({ ds_locked: 'none' })
+  })
+
+  it("lets a real grant outrank the baseline 'none' on the SAME instance, in either row order", () => {
+    // A grantee of a Restricted instance composes BOTH rows. The reduce is
+    // max-by-rank, so row order must not decide the outcome — a first-wins or
+    // last-wins reducer would leave the person the instance was just shared with
+    // sitting on the lockdown marker.
+    const rows = [
+      { entityInstanceId: 'ds_locked', permission: 'none' as const },
+      { entityInstanceId: 'ds_locked', permission: 'edit' as const },
+    ]
+    for (const instanceAccessRows of [rows, [...rows].reverse()]) {
+      const caps = composeUserCapabilities({
+        role: 'USER',
+        seatType: 'full',
+        typeAccessRows: [],
+        instanceAccessRows,
+      })
+      expect(caps.instanceAccess).toEqual({ ds_locked: 'edit' })
+    }
+  })
+
   it("a baseline 'view' row makes the def visible to everyone (grant present)", () => {
     const caps = composeUserCapabilities({
       role: 'USER',

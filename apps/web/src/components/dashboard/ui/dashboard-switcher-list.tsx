@@ -3,8 +3,10 @@
 'use client'
 
 import type { SelectOption } from '@auxx/types/custom-field'
+import { toRecordId } from '@auxx/types/resource'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useDashboardMutations } from '../hooks/use-dashboard-mutations'
 
@@ -35,10 +37,21 @@ export function DashboardSwitcherList({
 }: DashboardSwitcherListProps) {
   const dashboards = api.dashboard.list.useQuery(undefined, { staleTime: 30_000 })
   const { updateDashboard, deleteDashboard } = useDashboardMutations()
+  const { canAdminInstance } = useAccess()
 
   const dashboardOptions: SelectOption[] = useMemo(
     () => (dashboards.data ?? []).map((d) => ({ value: d.id, label: d.name })),
     [dashboards.data]
+  )
+
+  // Manage mode is a single all-or-nothing switch over the WHOLE list — the
+  // picker has no per-row suppression — and both of its writes (inline rename →
+  // `dashboard.update`, row × → `dashboard.delete`) are Full per instance. Same
+  // rule as the bulk bar (doc 24 §A.2.6): render it only when every listed
+  // dashboard passes admin, so a manage click can never 403.
+  const canManage = useMemo(
+    () => (dashboards.data ?? []).every((d) => canAdminInstance(toRecordId('dashboard', d.id))),
+    [dashboards.data, canAdminInstance]
   )
 
   const prevOptionsRef = useRef<SelectOption[]>(dashboardOptions)
@@ -74,7 +87,7 @@ export function DashboardSwitcherList({
       onChange={() => {}}
       multi={false}
       onSelectSingle={onSelectDashboard}
-      canManage={true}
+      canManage={canManage}
       canAdd={false}
       manageLabel='Manage dashboards'
       placeholder='Search dashboards...'

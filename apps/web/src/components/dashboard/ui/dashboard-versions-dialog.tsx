@@ -21,11 +21,18 @@ export function DashboardVersionsDialog({
   onOpenChange,
   dashboardId,
   activeVersionNumber,
+  canEdit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   dashboardId: string
   activeVersionNumber: number | null
+  /**
+   * Edit-instance on this dashboard. Reading history is Read
+   * (`dashboard.listVersions`), but restore / delete / label-rename are all Edit
+   * — without it the dialog is a read-only log.
+   */
+  canEdit: boolean
 }) {
   const versionsQuery = api.dashboard.listVersions.useQuery({ id: dashboardId }, { enabled: open })
   const { restoreVersion, deleteVersion, renameVersion } = useDashboardMutations()
@@ -54,6 +61,7 @@ export function DashboardVersionsDialog({
           'This version is loaded as an editable draft. Review it, then Publish to make it the live dashboard.',
         confirmText: 'Restore to draft',
       })}
+      canRestore={canEdit}
       onRestore={async (v) => {
         if (v.versionNumber == null) return false
         const dashboard = await restoreVersion(dashboardId, v.versionNumber)
@@ -61,15 +69,23 @@ export function DashboardVersionsDialog({
         adoptDraft(dashboard.draftLayout ?? dashboard.layout, dashboard.hasUnpublishedChanges)
         return true
       }}
-      onDelete={async (v) => {
-        if (v.versionNumber == null) return false
-        return deleteVersion(dashboardId, v.versionNumber)
-      }}
-      onRenameLabel={async (versionId, label) => {
-        const v = versionsQuery.data?.find((x) => x.id === versionId)
-        if (!v) return
-        await renameVersion(dashboardId, v.versionNumber, label)
-      }}
+      onDelete={
+        canEdit
+          ? async (v) => {
+              if (v.versionNumber == null) return false
+              return deleteVersion(dashboardId, v.versionNumber)
+            }
+          : undefined
+      }
+      onRenameLabel={
+        canEdit
+          ? async (versionId, label) => {
+              const v = versionsQuery.data?.find((x) => x.id === versionId)
+              if (!v) return
+              await renameVersion(dashboardId, v.versionNumber, label)
+            }
+          : undefined
+      }
     />
   )
 }

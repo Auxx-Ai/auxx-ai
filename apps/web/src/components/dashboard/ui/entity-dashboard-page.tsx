@@ -18,12 +18,14 @@ import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { MainPageLoading, MainPageNoPermission } from '~/components/global/main-page-states'
 import { useResources } from '~/components/resources'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { DashboardDetailView } from './dashboard-detail-view'
 
 export function EntityDashboardPage({ slug }: { slug: string }) {
   const { hasAccess } = useFeatureFlags()
+  const { can } = useAccess()
   const utils = api.useUtils()
   const { getResourceById } = useResources()
   const resource = getResourceById(slug)
@@ -71,28 +73,40 @@ export function EntityDashboardPage({ slug }: { slug: string }) {
     )
   }
 
+  // `dashboard.create` is the coarse `dashboards.manage` rung — a Read/Edit
+  // member sees the same empty state without the CTA (same rule as
+  // `CreateDashboardButton`), not a button that 403s.
   const plural = resource?.plural?.toLowerCase() ?? 'records'
+  const canCreate = can('dashboards.manage')
   return (
     <MainPageContent>
       <EmptyState
         icon={ChartColumn}
         title='No dashboard yet'
-        description={`Create a dashboard to visualize your ${plural}.`}
+        description={
+          canCreate
+            ? `Create a dashboard to visualize your ${plural}.`
+            : `No dashboard has been set up for ${plural} yet.`
+        }
         button={
-          <Button
-            onClick={() => {
-              if (!resource) return
-              createDashboard.mutate({
-                name: `${resource.plural} Dashboard`,
-                icon: { iconId: resource.icon, color: resource.color },
-                entityDefinitionId: resource.id,
-              })
-            }}
-            disabled={!resource}
-            loading={createDashboard.isPending}
-            loadingText='Creating...'>
-            Create dashboard
-          </Button>
+          !canCreate ? (
+            <div className='h-12' />
+          ) : (
+            <Button
+              onClick={() => {
+                if (!resource) return
+                createDashboard.mutate({
+                  name: `${resource.plural} Dashboard`,
+                  icon: { iconId: resource.icon, color: resource.color },
+                  entityDefinitionId: resource.id,
+                })
+              }}
+              disabled={!resource}
+              loading={createDashboard.isPending}
+              loadingText='Creating...'>
+              Create dashboard
+            </Button>
+          )
         }
       />
     </MainPageContent>

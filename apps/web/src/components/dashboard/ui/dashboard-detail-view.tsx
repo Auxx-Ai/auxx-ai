@@ -48,6 +48,7 @@ import { RecordDrawer } from '~/components/records/record-drawer'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { useDashboardAutosave } from '../hooks/use-dashboard-autosave'
 import { useDashboardDraftSync } from '../hooks/use-dashboard-draft-sync'
@@ -84,13 +85,26 @@ export function DashboardDetailView({
   const draftQuery = useDashboardDraftSync(dashboard.id)
   useDashboardAutosave()
 
+  // Per-instance tiers for THIS dashboard, derived once (doc 24 §A.2.4's shape,
+  // by props rather than a context — the tree is three components deep):
+  //   canEdit  → widgets/tabs/layout, publish, discard, version restore/delete/
+  //              rename. Everything downstream of it hangs off `isEditMode`, so
+  //              gating the mode is what gates the whole canvas.
+  //   canAdmin → dashboard settings (`dashboard.update`) + archive.
+  //   canCreate → the coarse `dashboards.manage` rung behind Duplicate.
+  const { can, canEditInstance, canAdminInstance } = useAccess()
+  const dashboardRecordId = toRecordId('dashboard', dashboard.id)
+  const canEdit = canEditInstance(dashboardRecordId)
+  const canAdmin = canAdminInstance(dashboardRecordId)
+  const canCreate = can('dashboards.manage')
+
   const enteredInitialEditRef = useRef(false)
   const enterEditModeAction = useDashboardStore((s) => s.enterEditMode)
   useEffect(() => {
-    if (!startInEditMode || enteredInitialEditRef.current || !draftQuery.data) return
+    if (!canEdit || !startInEditMode || enteredInitialEditRef.current || !draftQuery.data) return
     enteredInitialEditRef.current = true
     enterEditModeAction()
-  }, [startInEditMode, draftQuery.data, enterEditModeAction])
+  }, [canEdit, startInEditMode, draftQuery.data, enterEditModeAction])
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [tabParam, setTab] = useQueryState('tab')
@@ -103,7 +117,13 @@ export function DashboardDetailView({
   const [openRecordId, setOpenRecordId] = useState<RecordId | null>(null)
 
   const tabs = useDashboardStore(selectCurrentTabs)
-  const isEditMode = useDashboardStore((s) => s.isEditMode)
+  const storeIsEditMode = useDashboardStore((s) => s.isEditMode)
+  // One gate for the whole editable canvas: the tab strip's add/rename/reorder/
+  // delete, the grid's drag/resize, every widget card action, the config panel,
+  // and richText's inline editor all key off `isEditMode`. Clamping it here means
+  // a Read member can never render a widget/layout affordance even if the store
+  // carries a stale edit flag.
+  const isEditMode = storeIsEditMode && canEdit
   const hasUnpublishedChanges = useDashboardStore(selectHasUnpublishedChanges)
   const viewLayer = useDashboardStore(selectViewLayer)
   const setViewLayer = useDashboardStore((s) => s.setViewLayer)
@@ -208,21 +228,23 @@ export function DashboardDetailView({
     // Command-palette scope for the open dashboard. Edit-only actions mirror
     // the header cluster's affordances.
     <CommandContext kind='page' label={dashboard.name}>
-      <CommandAction
-        label={isEditMode ? 'Done editing' : 'Edit dashboard'}
-        icon={isEditMode ? 'check' : 'edit'}
-        keywords='edit done toggle layout arrange'
-        priority={10}
-        perform={() => {
-          useCommandPaletteStore.getState().close()
-          if (isEditMode) {
-            exitEditMode()
-          } else {
-            setOpenRecordId(null)
-            enterEditMode()
-          }
-        }}
-      />
+      {canEdit && (
+        <CommandAction
+          label={isEditMode ? 'Done editing' : 'Edit dashboard'}
+          icon={isEditMode ? 'check' : 'edit'}
+          keywords='edit done toggle layout arrange'
+          priority={10}
+          perform={() => {
+            useCommandPaletteStore.getState().close()
+            if (isEditMode) {
+              exitEditMode()
+            } else {
+              setOpenRecordId(null)
+              enterEditMode()
+            }
+          }}
+        />
+      )}
       <CommandAction
         label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
         icon='star'
@@ -258,7 +280,7 @@ export function DashboardDetailView({
           />
         </>
       )}
-      {hasUnpublishedChanges && (
+      {canEdit && hasUnpublishedChanges && (
         <>
           <CommandAction
             label='Publish changes'
@@ -301,7 +323,7 @@ export function DashboardDetailView({
         Share
       </Button>
       <InstanceShareDialog
-        recordId={toRecordId('dashboard', dashboard.id)}
+        recordId={dashboardRecordId}
         open={shareOpen}
         onOpenChange={setShareOpen}
       />
@@ -314,6 +336,9 @@ export function DashboardDetailView({
         isDiscarding={isDiscarding}
         saveState={saveState}
         hasPersisted={hasPersisted}
+        canEdit={canEdit}
+        canAdmin={canAdmin}
+        canCreate={canCreate}
         viewLayer={viewLayer}
         onViewLayerChange={setViewLayer}
         onEnterEdit={() => {
