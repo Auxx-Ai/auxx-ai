@@ -15,6 +15,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
+import type { DefAccessRow } from '../ui/grantee-def-access-rows'
 import {
   useGranteeAccess,
   useInvalidateGranteeAccess,
@@ -49,23 +50,22 @@ const GRANTEE_TYPE: Record<GranteeKind, ResourceGranteeType> = {
   profile: ResourceGranteeType.profile,
 }
 
-/** One def's row in the grantee-centric Access grid. */
-export interface GranteeDefAccessRow {
+/**
+ * One def's row in the grantee-centric Access grid: the shared
+ * {@link DefAccessRow} the renderer consumes, plus the two fields only this side
+ * has.
+ *
+ * `resource` stays because the HOSTS filter on it — a search matches a def's
+ * plural *or* its singular label, which the flattened `title` alone cannot
+ * answer. `baselineLevel` is what `isLockedDown`/`isNoEffect` are derived from
+ * and is asserted directly by this hook's tests.
+ */
+export interface GranteeDefAccessRow extends DefAccessRow {
   resource: Resource
   /** The def's `role:org_member` baseline, or its base-area default when unconfigured. */
   baselineLevel: ResourcePermission
   /** Baseline = No Access → non-grantees are locked out ("Restricted"). */
   isLockedDown: boolean
-  /** This grantee's explicit grant, or `undefined` (= Inherit / follows the inherited level). */
-  grantLevel: ResourcePermission | undefined
-  /**
-   * What the grantee gets WITHOUT an explicit grant here — the resolved "Inherit"
-   * value: the def's workspace baseline if configured, else the grantee's general
-   * mapped Layer-2 base area. Displayed in the picker's Inherit option.
-   */
-  inheritedLevel: ResourcePermission
-  /** Source-aware label when an unconfigured def inherits another L2 area. */
-  inheritLabelText?: string
   /** Explicit grant that lifts nothing above the baseline → does nothing. */
   isNoEffect: boolean
 }
@@ -213,6 +213,9 @@ export function useGranteeDefAccess(
         // grantee's general Records level.
         const inheritedLevel = configuredBaseline ?? targetBasePermission(baseArea)
         return {
+          id: resource.entityDefinitionId,
+          icon: { iconId: resource.icon, color: resource.color },
+          title: resource.plural,
           resource,
           baselineLevel,
           isLockedDown: baselineLevel === ResourcePermission.none,

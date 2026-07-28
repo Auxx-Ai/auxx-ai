@@ -35,7 +35,26 @@ const h = vi.hoisted(() => ({
   /** Types whose list query has ever been enabled — the react-query cache, modelled. */
   everOpened: new Set<string>(),
   definitionsLoading: false,
+  /** A workspace with nothing to rule on — the other half of the empty state. */
+  definitionsEmpty: false,
 }))
+
+const DEFINITIONS = [
+  {
+    apiSlug: 'companies',
+    entityDefinitionId: 'def_companies',
+    label: 'Companies',
+    icon: 'building',
+    color: 'blue',
+  },
+  {
+    apiSlug: 'deals',
+    entityDefinitionId: 'def_deals',
+    label: 'Deals',
+    icon: 'handshake',
+    color: 'green',
+  },
+]
 
 vi.mock('~/hooks/use-user', () => ({ useUser: () => ({ isAdminOrOwner: true }) }))
 vi.mock('~/providers/feature-flag-provider', () => ({
@@ -57,22 +76,7 @@ vi.mock('../hooks/use-agent-policy-save', () => ({
 }))
 vi.mock('../hooks/use-agent-policy-definitions', () => ({
   useAgentPolicyDefinitions: () => ({
-    definitions: [
-      {
-        apiSlug: 'companies',
-        entityDefinitionId: 'def_companies',
-        label: 'Companies',
-        icon: 'building',
-        color: 'blue',
-      },
-      {
-        apiSlug: 'deals',
-        entityDefinitionId: 'def_deals',
-        label: 'Deals',
-        icon: 'handshake',
-        color: 'green',
-      },
-    ],
+    definitions: h.definitionsEmpty ? [] : DEFINITIONS,
     isLoading: h.definitionsLoading,
   }),
 }))
@@ -113,6 +117,7 @@ beforeAll(() => {
 beforeEach(() => {
   h.everOpened.clear()
   h.definitionsLoading = false
+  h.definitionsEmpty = false
   h.confirm.mockReset()
   h.confirm.mockResolvedValue(true)
 })
@@ -536,6 +541,120 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
     // `resourceDefault` — a rule of its own, so it rescues its area.
     expect(rowTitles()).toContain('Knowledge Base')
     expect(rowTitles()).not.toContain('Dashboards')
+  })
+})
+
+/**
+ * Plan 33 phase 2 — the agent rows now go through `GranteeDefAccessRows`, and the
+ * empty state moved to the host with them. It had to: the component cannot tell a
+ * search that matched nothing from a workspace with nothing in it, because the
+ * host is what applies the filter. Before the move it claimed the second in both
+ * cases, so typing a miss reported that the workspace had no record types
+ * (plan 33 drift #2 — the only one of the four with a user-visible wrong answer).
+ */
+describe('plan 33 drift #2 — an empty list says which kind of empty it is', () => {
+  /**
+   * The reachable shape of a search miss, and it is not the obvious one: a query
+   * is only handed DOWN to the children when the area's own label missed it
+   * (`ProfileAreaGrid` passes `query: selfMatch ? '' : query`), and an area whose
+   * children all miss too is dropped entirely. So the one way to see a filtered
+   * empty list is a query that matches ONLY the structural "All X" row.
+   */
+  it('reports a search MISS, not an empty workspace', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    await user.type(screen.getByPlaceholderText('Search areas...'), 'all record')
+
+    expect(screen.getByText('Nothing matches your search.')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing to rule on beyond the default above.')).toBeNull()
+    // The collection default still renders: it is what an empty list falls
+    // through to, so it is needed most exactly when there is nothing below it.
+    expect(ruleOf('All record types')).toBe('No access')
+  })
+
+  it('reports the "Set areas only" filter, not an empty workspace', async () => {
+    const user = userEvent.setup()
+    // An area rule keeps Records on screen under the filter; no definition rule
+    // means the child list under it comes back empty.
+    renderEditor({
+      areas: { default: 'view', overrides: { records: 'admin' } },
+      definitions: { default: 'none', overrides: {} },
+      resourceDefault: 'none',
+      resources: {},
+    } as unknown as AgentPermissionPolicy)
+
+    await user.click(screen.getByRole('switch'))
+    await toggleArea(user, 'Records')
+
+    expect(screen.getByText('Nothing here has a rule of its own.')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing to rule on beyond the default above.')).toBeNull()
+  })
+
+  it('reports a search MISS under an instance area too', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    // Same shape as the record-type case: only the structural "All X" row
+    // matches, so the area survives with an empty child list under it.
+    await user.type(screen.getByPlaceholderText('Search areas...'), 'all knowledge')
+
+    expect(screen.getByText('Nothing matches your search.')).toBeInTheDocument()
+    expect(screen.queryByText(/^Nothing to rule on yet/)).toBeNull()
+    expect(ruleOf('All knowledge bases')).toBe('Read only')
+  })
+
+  it('reports an empty workspace when nothing is filtered', async () => {
+    const user = userEvent.setup()
+    h.definitionsEmpty = true
+    renderEditor({
+      areas: { default: 'view', overrides: { records: 'admin' } },
+      definitions: { default: 'none', overrides: {} },
+      resourceDefault: 'none',
+      resources: {},
+    } as unknown as AgentPermissionPolicy)
+    await toggleArea(user, 'Records')
+
+    expect(screen.getByText('Nothing to rule on beyond the default above.')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing matches your search.')).toBeNull()
+  })
+})
+
+/**
+ * Plan 33 phases 2 + 4 — the agent rows are now the SAME components the human
+ * grantee grids render. Two things had to change with them and two had to not.
+ */
+describe('plan 33 §1 — the agent rows share the grantee renderers', () => {
+  it('grows the resource-type icon on instance rows (D3)', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Knowledge Base')
+
+    // The agent instance rows had no icon at all; the shared row draws
+    // `INSTANCE_TYPE_META[key].icon`, so a KB row now shows the KB glyph.
+    expect(row('Returns Policy').querySelector('svg.lucide-book-open')).toBeTruthy()
+  })
+
+  it('badges a row that carries a rule of its own (D2)', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Records')
+
+    // `definitions.overrides.companies` exists; Deals follows the collection
+    // default, so only one of the two is a rule.
+    expect(within(row('Companies')).getByText('Override')).toBeInTheDocument()
+    expect(within(row('Deals')).queryByText('Override')).toBeNull()
+  })
+
+  it('offers NO sharing action — an agent policy has no grantees to manage', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Knowledge Base')
+
+    // `showSharing` is the discriminant. "Manage who else can reach this" opens a
+    // dialog about the INSTANCE's grantees, which is a different subject from the
+    // profile rule this row authors.
+    expect(screen.queryByRole('button', { name: 'Manage sharing' })).toBeNull()
   })
 })
 

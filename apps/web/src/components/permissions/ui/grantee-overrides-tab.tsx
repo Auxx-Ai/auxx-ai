@@ -22,7 +22,7 @@ import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
 import { GranteeDefAccessRows } from './grantee-def-access-rows'
 import { GranteeInstanceRows } from './grantee-instance-rows'
-import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
+import { AREA_TO_INSTANCE_KEY, deadGrantWarning } from './instance-share-copy'
 import { type AreaChildFilter, type AreaChildren, LeveledAreaGrid } from './leveled-area-grid'
 
 /**
@@ -417,9 +417,6 @@ function GranteeAccessDetail({
               rows={[]}
               isLoading
               canEdit={!disabled}
-              isUser={granteeType === 'user'}
-              areaLevel={areaLevel}
-              areaLabel=''
               onChange={setInstanceGrant}
             />
           ),
@@ -438,9 +435,11 @@ function GranteeAccessDetail({
             rows={matched}
             truncated={instanceLists[instanceKey].truncated}
             canEdit={!disabled}
-            isUser={granteeType === 'user'}
-            areaLevel={areaLevel}
-            areaLabel={PERMISSION_AREAS[area].label}
+            deadGrantTooltip={
+              granteeType === 'user' && areaLevel === Level.None
+                ? deadGrantWarning(PERMISSION_AREAS[area].label)
+                : undefined
+            }
             onChange={setInstanceGrant}
           />
         ),

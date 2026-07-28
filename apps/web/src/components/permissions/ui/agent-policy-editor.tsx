@@ -6,9 +6,9 @@ import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, FeatureKey, type Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { Bot, SlidersHorizontal } from 'lucide-react'
+import { Bot, Library, SlidersHorizontal, Table2 } from 'lucide-react'
 import Link from 'next/link'
-import { useCallback, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
@@ -21,9 +21,11 @@ import {
   type OpenInstanceTypes,
   useInstanceResourceLists,
 } from '../hooks/use-instance-resource-lists'
+import { AccessRowSelect, AccessTreeRow } from './access-tree-row'
 import { AgentPolicyClampPreview } from './agent-policy-clamp-preview'
 import {
   ADMIN_AREAS_NOTE,
+  AGENT_INHERIT_LABEL,
   ALL_RECORD_TYPES_TITLE,
   allInstancesTitle,
   DEFINITION_FULL_IS_INERT,
@@ -33,12 +35,16 @@ import {
   UNSAVED_TITLE,
   usesDefaultLabel,
 } from './agent-policy-copy'
-import { AgentPolicyDefRows } from './agent-policy-def-rows'
-import { AgentPolicyInstanceRows, RESOURCE_TYPE_META } from './agent-policy-instance-rows'
 import { BaseLevelSelect } from './base-level-select'
-import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
+import {
+  type AccessRowsEmptyState,
+  type DefAccessRow,
+  GranteeDefAccessRows,
+} from './grantee-def-access-rows'
+import { GranteeInstanceRows, type InstanceAccessRow } from './grantee-instance-rows'
+import { AREA_TO_INSTANCE_KEY, INSTANCE_TYPE_META } from './instance-share-copy'
 import { clampToArea } from './level-control'
-import { LEVEL_OF_PERMISSION, permissionOfLevel } from './level-labels'
+import { LEVEL_OF_PERMISSION, permissionLabel, permissionOfLevel } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import { ProfileAreaGrid } from './profile-area-grid'
 import {
@@ -71,6 +77,25 @@ interface AgentPolicyEditorProps {
 /** Whether a query matches a row title, with an empty query matching everything. */
 function matches(title: string, query: string): boolean {
   return !query || title.toLowerCase().includes(query)
+}
+
+/**
+ * What an empty child list says. "Nothing matched your filter" and "this
+ * workspace has nothing to rule on" are different statements, and the agent rows
+ * used to make the second one in both cases — so typing `zzz` reported that the
+ * workspace had no record types (plan 33 drift #2). The host is the only place
+ * that knows which of the two happened, because the host owns the filter.
+ */
+function emptyStateFor(
+  filter: AreaChildFilter,
+  icon: ReactNode,
+  empty: { title: string; description: string }
+): AccessRowsEmptyState {
+  if (filter.query)
+    return { icon, title: 'No matches', description: 'Nothing matches your search.' }
+  if (filter.overridesOnly)
+    return { icon, title: 'No matches', description: 'Nothing here has a rule of its own.' }
+  return { icon, ...empty }
 }
 
 /**
@@ -187,7 +212,7 @@ export function AgentPolicyEditor({
       const overrideCount = Object.keys(policy.resources[type]?.overrides ?? {}).length
       if (overrideCount > 0) {
         const confirmed = await confirm({
-          title: `Follow the resource default for ${RESOURCE_TYPE_META[type].label.toLowerCase()}?`,
+          title: `Follow the resource default for ${INSTANCE_TYPE_META[type].label.toLowerCase()}?`,
           description: `This removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} on this type as well. The shape has nowhere to keep them once the type follows the default.`,
           confirmText: 'Remove rules',
           cancelText: 'Cancel',
@@ -263,6 +288,29 @@ export function AgentPolicyEditor({
         // it would keep Records visible under "Set areas only" forever.
         const allRowCounts = !filter.overridesOnly && matches(ALL_RECORD_TYPES_TITLE, filter.query)
 
+        // Both families are ordinary rows now — the orphan ones just carry the
+        // flag, since the host is what knows which override ids have no def left.
+        const defRows: DefAccessRow[] = [
+          ...rows.map((def) => ({
+            id: def.apiSlug,
+            icon: { iconId: def.icon, color: def.color },
+            title: def.label,
+            description: `Policy key: ${def.apiSlug}`,
+            grantLevel: overrides[def.apiSlug],
+            inheritedLevel: policy.definitions.default,
+            inheritLabelText: AGENT_INHERIT_LABEL,
+          })),
+          ...orphans.map((slug) => ({
+            id: slug,
+            icon: null,
+            title: slug,
+            grantLevel: overrides[slug],
+            inheritedLevel: policy.definitions.default,
+            inheritLabelText: AGENT_INHERIT_LABEL,
+            isOrphan: true,
+          })),
+        ]
+
         return {
           // While the list is loading, every override looks like an orphan
           // (nothing is "known" yet) — count none of them rather than reporting
@@ -270,15 +318,33 @@ export function AgentPolicyEditor({
           matchCount:
             (definitionsLoading ? 0 : rows.length + orphans.length) + (allRowCounts ? 1 : 0),
           rows: (
-            <AgentPolicyDefRows
-              collectionDefault={policy.definitions.default}
-              overrides={overrides}
-              rows={rows}
-              orphans={orphans}
+            <GranteeDefAccessRows
+              rows={defRows}
               isLoading={definitionsLoading}
-              onDefaultChange={setDefinitionsDefault}
-              onOverrideChange={setDefinitionOverride}
-              disabled={disabled}
+              canEdit={!disabled}
+              includeNone
+              leadingRow={
+                <AccessTreeRow
+                  icon={<Table2 className='size-4' />}
+                  title={ALL_RECORD_TYPES_TITLE}
+                  description='What a record type with no rule of its own resolves to, including types created later.'
+                  actions={
+                    <AccessRowSelect
+                      value={policy.definitions.default}
+                      includeNone
+                      onChange={setDefinitionsDefault}
+                      disabled={disabled}
+                    />
+                  }
+                />
+              }
+              emptyState={emptyStateFor(filter, <Table2 />, {
+                title: 'No record types',
+                description: 'Nothing to rule on beyond the default above.',
+              })}
+              onChange={(apiSlug, level) =>
+                setDefinitionOverride(apiSlug, level === 'inherit' ? undefined : level)
+              }
             />
           ),
         }
@@ -308,25 +374,75 @@ export function AgentPolicyEditor({
       // Unlike the record-type default, a resource TYPE entry is a deliberate
       // departure from `resourceDefault` — so it is a rule of its own and does
       // rescue its area under "Set areas only".
+      const meta = INSTANCE_TYPE_META[type]
       const allRowCounts =
         (!filter.overridesOnly || entry !== undefined) &&
-        matches(allInstancesTitle(RESOURCE_TYPE_META[type].label), filter.query)
+        matches(allInstancesTitle(meta.label), filter.query)
+
+      /** What an instance with no rule of its own resolves to. */
+      const typeLevel = entry?.default ?? policy.resourceDefault
+      const instanceRows: InstanceAccessRow[] = [
+        ...items.map((item) => ({
+          key: type,
+          id: item.id,
+          name: item.name,
+          grantLevel: overrides[item.id],
+          inheritedLevel: typeLevel,
+          inheritLabelText: AGENT_INHERIT_LABEL,
+        })),
+        ...orphans.map((id) => ({
+          key: type,
+          id,
+          name: id,
+          grantLevel: overrides[id],
+          inheritedLevel: typeLevel,
+          inheritLabelText: AGENT_INHERIT_LABEL,
+          isOrphan: true,
+        })),
+      ]
+
+      const overrideCount = Object.keys(overrides).length
+      const noun = meta.label.toLowerCase().replace(/s$/, '')
 
       return {
         matchCount: (list.isLoading ? 0 : items.length + orphans.length) + (allRowCounts ? 1 : 0),
         rows: (
-          <AgentPolicyInstanceRows
-            type={type}
-            typeDefault={entry?.default}
-            resourceDefault={policy.resourceDefault}
-            overrides={overrides}
-            items={items}
-            orphans={orphans}
+          <GranteeInstanceRows
+            rows={instanceRows}
             isLoading={list.isLoading}
             truncated={list.truncated}
-            onTypeDefaultChange={(level) => void handleTypeChange(type, level)}
-            onInstanceChange={(instanceId, level) => setInstanceOverride(type, instanceId, level)}
-            disabled={disabled}
+            canEdit={!disabled}
+            showSharing={false}
+            leadingRow={
+              <AccessTreeRow
+                icon={<meta.icon className='size-4' />}
+                title={allInstancesTitle(meta.label)}
+                description={
+                  overrideCount > 0
+                    ? `What a ${noun} with no rule of its own resolves to, including ones created later. Choosing Default follows the resource default (${permissionLabel(policy.resourceDefault)}) and removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} below with it.`
+                    : `What a ${noun} with no rule of its own resolves to, including ones created later.`
+                }
+                actions={
+                  <AccessRowSelect
+                    value={entry?.default}
+                    includeInherit
+                    includeNone
+                    inheritLabelText={AGENT_INHERIT_LABEL}
+                    inheritedLevel={policy.resourceDefault}
+                    onInherit={() => void handleTypeChange(type, undefined)}
+                    onChange={(level) => void handleTypeChange(type, level)}
+                    disabled={disabled}
+                  />
+                }
+              />
+            }
+            emptyState={emptyStateFor(filter, <Library />, {
+              title: `No ${meta.label.toLowerCase()}`,
+              description: `Nothing to rule on yet. Anything created later resolves to ${permissionLabel(typeLevel)}.`,
+            })}
+            onChange={(_key, instanceId, level) =>
+              setInstanceOverride(type, instanceId, level === 'inherit' ? undefined : level)
+            }
           />
         ),
       }

@@ -1,7 +1,6 @@
 // apps/web/src/components/permissions/ui/grantee-instance-rows.test.tsx
 
 import { ResourcePermission } from '@auxx/database/enums'
-import { Level } from '@auxx/lib/permissions/client'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -30,7 +29,11 @@ import { GranteeInstanceRows } from './grantee-instance-rows'
  * rather than assumed.
  */
 
+// Radix's Select drives itself off pointer capture, which jsdom does not implement.
 beforeAll(() => {
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
   Element.prototype.scrollIntoView = () => {}
 })
 
@@ -51,15 +54,7 @@ const ROWS: InstanceGranteeRow[] = [
 function renderRows(props: Partial<React.ComponentProps<typeof GranteeInstanceRows>> = {}) {
   return render(
     <TooltipProvider>
-      <GranteeInstanceRows
-        rows={ROWS}
-        canEdit
-        isUser
-        areaLevel={Level.Read}
-        areaLabel='Workflows'
-        onChange={vi.fn()}
-        {...props}
-      />
+      <GranteeInstanceRows rows={ROWS} canEdit onChange={vi.fn()} {...props} />
     </TooltipProvider>
   )
 }
@@ -179,7 +174,6 @@ describe('GranteeInstanceRows — the effective line (§2.5, finding 4)', () => 
 
   it('renders no line for a group/profile, which has no effective access', () => {
     renderRows({
-      isUser: false,
       rows: [
         {
           key: 'workflow',
@@ -200,19 +194,26 @@ describe('GranteeInstanceRows — the dead-grant warning survived the change (§
    * Plan 25 §2 left exactly one inert row shape: an explicit `none` on a member
    * who already composes the area to `None`. A positive grant on such a member is
    * a REAL single-instance share, so warning about it would now be wrong.
+   *
+   * Plan 33 §3 moved the "does this apply at all" half to the HOST — `isUser` +
+   * `areaLevel` + `areaLabel` existed only to compute one string from two inputs
+   * the host already held. What stayed here is the per-ROW half, which is the
+   * half plan 25 §2 narrowed.
    */
-  it('marks an explicit No-access row on a None-area member', () => {
+  const TOOLTIP = 'No effect — their profile already has no Workflows access to take away.'
+
+  it('marks an explicit No-access row when the host says the warning applies', () => {
     renderRows({
-      areaLevel: Level.None,
+      deadGrantTooltip: TOOLTIP,
       rows: [{ key: 'workflow', id: 'wf_1', name: 'Order intake', grantLevel: 'none' }],
     })
 
     expect(document.querySelector('svg.lucide-triangle-alert')).toBeTruthy()
   })
 
-  it('leaves a POSITIVE grant on a None-area member unmarked', () => {
+  it('leaves a POSITIVE grant unmarked even then', () => {
     renderRows({
-      areaLevel: Level.None,
+      deadGrantTooltip: TOOLTIP,
       rows: [
         { key: 'workflow', id: 'wf_1', name: 'Order intake', grantLevel: ResourcePermission.view },
       ],
@@ -221,13 +222,86 @@ describe('GranteeInstanceRows — the dead-grant warning survived the change (§
     expect(document.querySelector('svg.lucide-triangle-alert')).toBeNull()
   })
 
-  it('never marks a team, whose area level this component does not model', () => {
+  it('marks nothing when the host says the concept does not apply', () => {
+    // A team or a profile: no composed area level of their own to be inert
+    // against, so the host hands in no tooltip at all.
     renderRows({
-      isUser: false,
-      areaLevel: Level.None,
       rows: [{ key: 'workflow', id: 'wf_1', name: 'Order intake', grantLevel: 'none' }],
     })
 
     expect(document.querySelector('svg.lucide-triangle-alert')).toBeNull()
+  })
+})
+
+/**
+ * Plan 33 phase 3 — the props the agent policy needs before its own instance-row
+ * file is deleted (phase 4).
+ */
+describe('GranteeInstanceRows — the shared-component props (plan 33 §3)', () => {
+  const LEADING = <div data-testid='leading'>All workflows</div>
+
+  it('renders the leading row above the list', () => {
+    renderRows({ leadingRow: LEADING })
+
+    const leading = screen.getByTestId('leading')
+    const first = screen.getByText('Order intake')
+    expect(leading.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('keeps the leading row on screen while loading and when empty', () => {
+    const { unmount } = renderRows({ rows: [], isLoading: true, leadingRow: LEADING })
+    expect(screen.getByTestId('leading')).toBeInTheDocument()
+    expect(screen.queryByText('Order intake')).toBeNull()
+    unmount()
+
+    renderRows({ rows: [], leadingRow: LEADING })
+    expect(screen.getByTestId('leading')).toBeInTheDocument()
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+  })
+
+  it('says what the HOST says when the list is empty', () => {
+    renderRows({
+      rows: [],
+      emptyState: { icon: null, title: 'No workflows', description: 'Nothing to rule on yet.' },
+    })
+
+    expect(screen.getByText('No workflows')).toBeInTheDocument()
+    expect(screen.queryByText('No matches')).toBeNull()
+  })
+
+  it('drops the sharing action, and its dialog, when the surface has no instance to share', () => {
+    // An agent policy row authors a PROFILE's rule. There is no grantee list on
+    // the other side of it, so offering "manage who else can reach this" would
+    // open a dialog about a different subject entirely.
+    renderRows({ showSharing: false })
+
+    expect(screen.queryByRole('button', { name: 'Manage sharing' })).toBeNull()
+    expect(screen.queryByTestId('share-card')).toBeNull()
+  })
+
+  it('renders an orphan row muted, with its own note, and still clearable', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    renderRows({
+      onChange,
+      rows: [
+        {
+          key: 'workflow',
+          id: 'wf_gone',
+          name: 'wf_gone',
+          grantLevel: ResourcePermission.none,
+          inheritedLevel: ResourcePermission.view,
+          inheritLabelText: 'Default',
+          isOrphan: true,
+        },
+      ],
+    })
+
+    expect(screen.getByText('wf_gone').className).toContain('text-muted-foreground')
+    expect(screen.getByText('Unknown item')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /^Default/ }))
+    expect(onChange).toHaveBeenCalledWith('workflow', 'wf_gone', 'inherit')
   })
 })

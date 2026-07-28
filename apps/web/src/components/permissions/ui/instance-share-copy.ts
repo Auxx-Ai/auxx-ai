@@ -101,18 +101,49 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
 }
 
 /**
- * Display metadata for the per-instance rows nested under the Datasets /
- * Knowledge base / Dashboards area rows (capability layer v2 Part B) — the
- * `instance-baseline-rows.tsx` / `grantee-instance-rows.tsx` twin of
- * `agent-policy-instance-rows.tsx`'s own `RESOURCE_TYPE_META` (kept separate
- * there — different rows, different write path, §B.2.1).
+ * Display metadata for every surface that names a shareable resource TYPE: the
+ * per-instance rows on the Workspace defaults and grantee grids, the agent
+ * policy tree's *"All X"* rows, and the read-only agent policy view.
+ *
+ * **This is the only copy** (plan 33 §4.3). There were three — this one and two
+ * private `RESOURCE_TYPE_META` tables — justified as *"different rows, different
+ * write path"*. That is true of the COMPONENTS and false of a display table whose
+ * entries said the same thing, which is how one of them ended up without the
+ * `agent` key that `INSTANCE_ACCESS_RESOURCES` had already grown.
+ *
+ * `description` is consumed only by the read-only agent policy view today; it is
+ * here rather than in a fourth table because "what is this resource" is the same
+ * sentence wherever it is asked.
  */
-export const INSTANCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon: LucideIcon }> = {
-  dataset: { label: 'Datasets', icon: Database },
-  kb: { label: 'Knowledge bases', icon: BookOpen },
-  dashboard: { label: 'Dashboards', icon: LayoutDashboard },
-  workflow: { label: 'Workflows', icon: Workflow },
-  agent: { label: 'Agents', icon: Bot },
+export const INSTANCE_TYPE_META: Record<
+  InstanceAccessKey,
+  { label: string; icon: LucideIcon; description: string }
+> = {
+  dataset: {
+    label: 'Datasets',
+    icon: Database,
+    description: 'Stored datasets and their rows.',
+  },
+  kb: {
+    label: 'Knowledge bases',
+    icon: BookOpen,
+    description: 'Knowledge bases and their articles.',
+  },
+  dashboard: {
+    label: 'Dashboards',
+    icon: LayoutDashboard,
+    description: 'Dashboards and their widgets.',
+  },
+  workflow: {
+    label: 'Workflows',
+    icon: Workflow,
+    description: 'Workflows the agent may see and run.',
+  },
+  agent: {
+    label: 'Agents',
+    icon: Bot,
+    description: 'Agents, their prompts and their tools.',
+  },
 }
 
 /**

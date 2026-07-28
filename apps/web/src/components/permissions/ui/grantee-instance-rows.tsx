@@ -5,24 +5,62 @@ import { ResourcePermission } from '@auxx/database/enums'
 import { type InstanceAccessKey, Level } from '@auxx/lib/permissions/client'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { EmptySection } from '@auxx/ui/components/section'
-import { TreeRow, TreeRowButton, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { TreeRowButton, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Library, Users } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import type { InstanceGranteeRow } from '../hooks/use-instance-grantee-rows'
-import { AccessLevelSelect } from './access-level-select'
-import {
-  deadGrantWarning,
-  INSTANCE_ROW_COPY,
-  INSTANCE_SHARE_COPY,
-  INSTANCE_TYPE_META,
-} from './instance-share-copy'
+import { ACCESS_ROW_DEPTH, AccessRowSelect, AccessTreeRow } from './access-tree-row'
+import type { AccessRowsEmptyState } from './grantee-def-access-rows'
+import { INSTANCE_SHARE_COPY, INSTANCE_TYPE_META } from './instance-share-copy'
 import { InstanceShareDialog } from './instance-share-dialog'
 import { InstanceTruncationNote } from './instance-truncation-note'
 import { effectiveLevelLabel, LEVEL_OF_PERMISSION } from './level-labels'
 
-/** Indent of the instance rows under their Datasets / Knowledge base / Dashboards area row. */
-const CHILD_DEPTH = 1
+/**
+ * One instance row, in the vocabulary the ROW needs (plan 33 §2). Both callers
+ * pre-compose it: the human hosts through `useInstanceGranteeRows`, the agent
+ * editor in its own `renderChildren`.
+ *
+ * `key` is the resource TYPE, not this row's identity — `id` is. The two words
+ * are load-bearing and its def sibling ({@link DefAccessRow}) spends `id` the
+ * same way on purpose.
+ */
+export interface InstanceAccessRow {
+  key: InstanceAccessKey
+  id: string
+  name: string
+  /** Help text beside the title. Scope-specific, so the composer supplies it. */
+  description?: string
+  /** This row's own explicit rule; `undefined` = no row, falls through. */
+  grantLevel: ResourcePermission | undefined
+  /**
+   * What a row with no rule of its own resolves to, shown on the fall-through
+   * option. The agent surface passes its type default; the HUMAN surface
+   * deliberately passes nothing — see the note on {@link GranteeInstanceRows}.
+   */
+  inheritedLevel?: ResourcePermission
+  /** Name for that option — the agent surface passes `'Default'`, not "Inherit". */
+  inheritLabelText?: string
+  /**
+   * Human only — what this grantee can ACTUALLY open, composed server-side.
+   * `null` = no access, absent = not applicable (a team/profile has none).
+   */
+  effectiveLevel?: ResourcePermission | null
+  /** The rule names an instance that is gone, or outside the fetched page. */
+  isOrphan?: boolean
+}
+
+/** Orphan copy is constant per family, so the row owns it rather than every host. */
+const ORPHAN_SECONDARY = 'Unknown item'
+const ORPHAN_DESCRIPTION =
+  'This rule names an item that no longer exists (or is outside the first page listed here). It is kept until you clear it.'
+
+const SEARCH_MISS: AccessRowsEmptyState = {
+  icon: <Library />,
+  title: 'No matches',
+  description: 'No items match your search.',
+}
 
 /**
  * The effective-access line (plan 31 §2.5) — what this grantee can ACTUALLY
@@ -56,16 +94,23 @@ function effectiveLabel(level: ResourcePermission | null): string {
 
 /**
  * The nested per-instance rows under a Datasets / Knowledge base / Dashboards /
- * Workflows area row in a **grantee scope** (a member/team/profile's own
- * overrides — capability layer v2 Part B): one instance per row with THIS
- * grantee's own explicit grant — Inherit (no row) / Read / Read+write / Full /
- * No Access.
+ * Workflows / Agents area row — **the only per-instance child-row renderer**
+ * (plan 33 §1). Four hosts drive it: the profile editor, the grantee overrides
+ * tab, a member/team's Access levels section, and the agent policy editor, whose
+ * own row file this replaced.
  *
- * Unlike the area-level grid above it, this picker is **not raise-only**
- * (§B.2.6): it writes the grantee's raw `ResourceAccess` row through
- * `grantInstance`/`revokeInstance`, so it can restrict a specific instance for
- * one member even while their area level stays open. Copy therefore never uses
- * "override"/"raise" language — see `instance-share-copy.ts`'s `grantee` entry.
+ * In a **grantee scope** (a member/team/profile's own overrides — capability
+ * layer v2 Part B) each row carries THIS grantee's own explicit grant: Inherit
+ * (no row) / Read / Read+write / Full / No Access. Unlike the area-level grid
+ * above it, this picker is **not raise-only** (§B.2.6): it writes the raw
+ * `ResourceAccess` row through `grantInstance`/`revokeInstance`, so it can
+ * restrict one instance for one member while their area level stays open. Copy
+ * therefore never uses "override"/"raise" language — see `instance-share-copy.ts`.
+ *
+ * **The deny option is intrinsic here**, not a prop: on both surfaces an
+ * instance row is exactly how access is taken away, which is not true one level
+ * over on the def rows (plan 33 §7.2 / D4, and the reason `includeNone` is a prop
+ * THERE and absent here).
  *
  * **These rows are leaves** (plan 31 §2.1). They used to expand into
  * `InstanceShareBody`, which lists *every* grantee on the instance — so a page
@@ -79,41 +124,64 @@ function effectiveLabel(level: ResourcePermission | null): string {
  * The capability survives as a **"Manage sharing"** action opening
  * `InstanceShareDialog` (§2.3) — the same scope switch, made explicit as a modal
  * titled *Share <noun>* rather than ambient tree depth. One dialog is hoisted for
- * the whole list, so N rows do not mount N dialogs.
+ * the whole list, so N rows do not mount N dialogs. `showSharing` turns it off
+ * for the agent policy, whose rows author a profile's rule and have no instance
+ * whose *sharing* they could manage.
  *
  * The `Shared · N` / `Restricted` badge went with the expand (§2.2): it is
  * org-scope information (how many *other* people hold this instance) on a page
  * about one person. `InstanceBaselineRows` keeps its own, where that count is
  * the point of the row.
  *
- * Dead-row warning (§B.2.8, re-aimed by plan 25 §2): shown only for `user`
- * grantees (`isUser`), using the composed area level the HOST already knows from
- * the same grid (the area row sits directly above these rows) — no extra server
- * call. An explicit row now beats the area floor, so a positive grant on a
- * `None`-area member is a real single-instance share; only an explicit
- * `No access` row on such a member is inert, because it takes away access they
+ * Dead-row warning (§B.2.8, re-aimed by plan 25 §2): the HOST decides whether it
+ * applies at all and hands in the tooltip; this renders it on the rows that are
+ * actually inert. An explicit row now beats the area floor, so a positive grant
+ * on a `None`-area member is a real single-instance share; only an explicit
+ * `No access` row on such a member is dead, because it takes away access they
  * never had.
+ *
+ * **`inheritedLevel` is optional and the human hosts leave it unset** (plan 33
+ * D1/§7.1). The correct value there is *what this grantee reaches without their
+ * own row*, and it is not available client-side: `effective.instances[id]`
+ * includes the grant, and `effective.instanceFallback[key]` is the org-wide
+ * row-less fallback, wrong whenever a group grant exists. Either would trade a
+ * missing label for a lying one on the surface where the fall-through is least
+ * obvious. Closing it needs a second composed level from `permissions.granteeAccess`.
  */
 export function GranteeInstanceRows({
   rows,
   isLoading = false,
   truncated = false,
   canEdit,
-  isUser,
-  areaLevel,
-  areaLabel,
+  depth = ACCESS_ROW_DEPTH,
+  showSharing = true,
+  deadGrantTooltip,
+  leadingRow,
+  emptyState = SEARCH_MISS,
   onChange,
 }: {
-  rows: InstanceGranteeRow[]
+  rows: InstanceAccessRow[]
   isLoading?: boolean
   /** More instances exist than were fetched — see {@link InstanceTruncationNote}. */
   truncated?: boolean
   canEdit: boolean
-  /** Whether this grantee is a single member (vs. a team) — gates the dead-grant warning. */
-  isUser: boolean
-  /** This grantee's own composed level for the area these instances belong to. */
-  areaLevel: Level
-  areaLabel: string
+  /** Row indent. Defaults to nesting one level under the parent area row. */
+  depth?: number
+  /** Offer "Manage sharing" (and mount its dialog). Off for the agent policy. */
+  showSharing?: boolean
+  /**
+   * Tooltip for a rule this grantee cannot possibly feel, or `undefined` when the
+   * concept does not apply. Replaced `isUser` + `areaLevel` + `areaLabel`, which
+   * existed only to compute this one string from inputs the host already holds.
+   */
+  deadGrantTooltip?: string
+  /**
+   * Rendered above the list and OUTSIDE the loading/empty branches — the agent's
+   * *"All X"* type default, which is what a row reading *"Default · None"* falls
+   * through to and so is needed most when the list is empty.
+   */
+  leadingRow?: ReactNode
+  emptyState?: AccessRowsEmptyState
   onChange: (
     key: InstanceAccessKey,
     instanceId: string,
@@ -127,44 +195,38 @@ export function GranteeInstanceRows({
    */
   const [sharingRecordId, setSharingRecordId] = useState<RecordId | null>(null)
 
-  if (isLoading) {
-    return (
-      <div className='flex flex-col gap-0.5'>
-        <TreeRowSkeleton depth={CHILD_DEPTH} />
-        <TreeRowSkeleton depth={CHILD_DEPTH} />
-      </div>
-    )
-  }
-
-  if (rows.length === 0) {
-    return (
-      <>
-        <EmptySection
-          orientation='horizontal'
-          icon={<Library />}
-          title='No matches'
-          description='No items match your search.'
-        />
-        {truncated ? <InstanceTruncationNote /> : null}
-      </>
-    )
-  }
-
-  const showDeadRowWarning = isUser && areaLevel === Level.None
-
   return (
     <div className='flex flex-col gap-0.5'>
-      {rows.map((row) => (
-        <GranteeInstanceRowItem
-          key={`${row.key}:${row.id}`}
-          row={row}
-          disabled={!canEdit}
-          showDeadRowWarning={showDeadRowWarning}
-          areaLabel={areaLabel}
-          onManageSharing={() => setSharingRecordId(toRecordId(row.key, row.id))}
-          onChange={(level) => onChange(row.key, row.id, level)}
+      {leadingRow}
+
+      {isLoading ? (
+        <>
+          <TreeRowSkeleton depth={depth} />
+          <TreeRowSkeleton depth={depth} />
+        </>
+      ) : rows.length === 0 ? (
+        <EmptySection
+          orientation='horizontal'
+          icon={emptyState.icon}
+          title={emptyState.title}
+          description={emptyState.description}
         />
-      ))}
+      ) : (
+        rows.map((row) => (
+          <InstanceAccessRowItem
+            key={`${row.key}:${row.id}`}
+            row={row}
+            depth={depth}
+            disabled={!canEdit}
+            deadGrantTooltip={deadGrantTooltip}
+            onManageSharing={
+              showSharing ? () => setSharingRecordId(toRecordId(row.key, row.id)) : undefined
+            }
+            onChange={(level) => onChange(row.key, row.id, level)}
+          />
+        ))
+      )}
+
       {truncated ? <InstanceTruncationNote /> : null}
 
       {sharingRecordId && (
@@ -180,59 +242,64 @@ export function GranteeInstanceRows({
   )
 }
 
-function GranteeInstanceRowItem({
+/** One instance row: type icon + name, dead-rule warning, sharing, picker. */
+function InstanceAccessRowItem({
   row,
+  depth,
   disabled,
-  showDeadRowWarning,
-  areaLabel,
+  deadGrantTooltip,
   onManageSharing,
   onChange,
 }: {
-  row: InstanceGranteeRow
+  row: InstanceAccessRow
+  depth: number
   disabled: boolean
-  showDeadRowWarning: boolean
-  areaLabel: string
-  onManageSharing: () => void
+  deadGrantTooltip?: string
+  /** Absent = this surface offers no sharing action. */
+  onManageSharing?: () => void
   onChange: (level: ResourcePermission | 'inherit') => void
 }) {
   const meta = INSTANCE_TYPE_META[row.key]
-  const isDeadRow = showDeadRowWarning && row.grantLevel === ResourcePermission.none
+  const isDeadRow = deadGrantTooltip !== undefined && row.grantLevel === ResourcePermission.none
 
   return (
-    <TreeRow
-      depth={CHILD_DEPTH}
-      rowClassName='bg-primary-50 hover:bg-primary-100'
-      icon={<meta.icon className='size-4' />}
-      title={<span className='truncate'>{row.name}</span>}
-      description={INSTANCE_ROW_COPY.grantee.description(INSTANCE_SHARE_COPY[row.key].noun)}
+    <AccessTreeRow
+      depth={depth}
+      muted={row.isOrphan}
+      icon={<meta.icon className={cn('size-4', row.isOrphan && 'text-muted-foreground')} />}
+      title={row.name}
+      description={row.isOrphan ? ORPHAN_DESCRIPTION : row.description}
       secondary={
-        row.effectiveLevel !== undefined ? (
+        row.isOrphan ? (
+          <span className='text-muted-foreground text-xs'>{ORPHAN_SECONDARY}</span>
+        ) : row.effectiveLevel !== undefined ? (
           <span className='whitespace-nowrap text-xs'>{effectiveLabel(row.effectiveLevel)}</span>
         ) : undefined
       }
       actions={
         <>
           {isDeadRow && (
-            <Tooltip content={deadGrantWarning(areaLabel)}>
+            <Tooltip content={deadGrantTooltip}>
               <AlertTriangle className='size-3.5 text-amber-500' />
             </Tooltip>
           )}
-          <TreeRowButton
-            tooltipText={`Manage who else can reach this ${INSTANCE_SHARE_COPY[row.key].noun}`}
-            aria-label='Manage sharing'
-            onClick={onManageSharing}>
-            <Users />
-          </TreeRowButton>
-          <AccessLevelSelect
+          {onManageSharing && (
+            <TreeRowButton
+              tooltipText={`Manage who else can reach this ${INSTANCE_SHARE_COPY[row.key].noun}`}
+              aria-label='Manage sharing'
+              onClick={onManageSharing}>
+              <Users />
+            </TreeRowButton>
+          )}
+          <AccessRowSelect
             value={row.grantLevel}
             includeInherit
             includeNone
+            inheritedLevel={row.inheritedLevel}
+            inheritLabelText={row.inheritLabelText}
             onInherit={() => onChange('inherit')}
             onChange={(level) => onChange(level)}
             disabled={disabled}
-            size='sm'
-            variant='transparent'
-            className='h-7 w-44'
           />
         </>
       }

@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/profile-editor.tsx
 'use client'
 
-import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import { Area } from '@auxx/lib/permissions/client'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
 import { IconPicker } from '@auxx/ui/components/icon-picker'
@@ -176,8 +176,8 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
    * `ProfileAreaGrid`'s `renderChildren` — the profile-authoring twin of
    * `grantee-levels-section.tsx`'s host-owned `renderChildren` (capability
    * layer v2 Part B). A profile is a level SOURCE, not a subject
-   * (`resourceAccess.forInstance`'s doc comment), so the per-instance rows
-   * never show the dead-grant warning (`isUser` stays `false`).
+   * (`resourceAccess.forInstance`'s doc comment), so the per-instance rows never
+   * show the dead-grant warning — this host passes no `deadGrantTooltip` at all.
    */
   const renderChildren = useCallback(
     (area: Area, filter: AreaChildFilter): AreaChildren | undefined => {
@@ -209,11 +209,6 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
       const instanceKey = AREA_TO_INSTANCE_KEY[area]
       if (!instanceKey) return undefined
 
-      // This profile's own composed level for the area shown right above
-      // these rows — the same fall-through the parent row itself renders
-      // (`ProfileAreaRow`'s `inherited`).
-      const areaLevel = draft.levels[area] ?? draft.baseLevel ?? roleDefaults?.[area] ?? Level.None
-
       const instanceLoading = instanceRowsLoadingAll || instanceLists[instanceKey].isLoading
       if (instanceLoading)
         return {
@@ -223,9 +218,6 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
               rows={[]}
               isLoading
               canEdit={editable}
-              isUser={false}
-              areaLevel={areaLevel}
-              areaLabel=''
               onChange={setInstanceGrant}
             />
           ),
@@ -244,9 +236,6 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
             rows={matched}
             truncated={instanceLists[instanceKey].truncated}
             canEdit={editable}
-            isUser={false}
-            areaLevel={areaLevel}
-            areaLabel={PERMISSION_AREAS[area].label}
             onChange={setInstanceGrant}
           />
         ),
@@ -257,9 +246,6 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
       defRows,
       editable,
       setDefLevel,
-      draft.levels,
-      draft.baseLevel,
-      roleDefaults,
       instanceRowsLoadingAll,
       instanceLists,
       instanceRowsByKey,
