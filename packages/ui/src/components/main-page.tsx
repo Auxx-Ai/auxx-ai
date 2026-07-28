@@ -362,6 +362,14 @@ interface MainPageBreadcrumbDropdownProps {
    * intercepts arrow keys and fights cmdk for focus.
    */
   popover?: boolean
+  /**
+   * Controlled open state. Pass with `onOpenChange` when the body needs to close
+   * the floater itself — e.g. a switcher that navigates on select while the page
+   * shell stays mounted, which would otherwise leave the popover hanging open.
+   * Omit for the default uncontrolled behavior.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
@@ -372,6 +380,8 @@ const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
   contentClassName,
   align = 'start',
   popover = false,
+  open,
+  onOpenChange,
 }) => {
   const triggerClassName = cn(
     'flex items-center gap-1 rounded py-0.5 px-1.5 hover:bg-primary-200 text-nowrap shrink-0 outline-none',
@@ -390,14 +400,14 @@ const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
       <BreadcrumbSeparator data-crumb-sep />
       <BreadcrumbItem className={className}>
         {popover ? (
-          <Popover>
+          <Popover open={open} onOpenChange={onOpenChange}>
             <PopoverTrigger className={triggerClassName}>{triggerInner}</PopoverTrigger>
             <PopoverContent align={align} className={cn('p-0', contentClassName)}>
               {children}
             </PopoverContent>
           </Popover>
         ) : (
-          <DropdownMenu>
+          <DropdownMenu open={open} onOpenChange={onOpenChange}>
             <DropdownMenuTrigger className={triggerClassName}>{triggerInner}</DropdownMenuTrigger>
             <DropdownMenuContent align={align} className={contentClassName}>
               {children}

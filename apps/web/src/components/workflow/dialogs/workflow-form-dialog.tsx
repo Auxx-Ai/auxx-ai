@@ -103,9 +103,11 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
       setName('')
       setDescription('')
       setIconValue(DEFAULT_ICON)
-      // Invalidate to refresh the workflow data in the UI
+      // Invalidate to refresh the workflow data in the UI. `list` matters too:
+      // the breadcrumb switcher renames from a row, so its own list must repaint.
       if (props.mode === 'edit') {
         void utils.workflow.getById.invalidate({ id: props.workflow.id })
+        void utils.workflow.list.invalidate()
       }
     },
     onError: (error) => {

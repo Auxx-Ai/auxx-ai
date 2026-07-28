@@ -26,7 +26,6 @@ import { ChevronDown, Plug, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
-import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -40,6 +39,7 @@ import {
   useConnectorDraftStore,
   visibleMappings,
 } from '../stores/connector-draft-store'
+import { ConnectorBreadcrumbSwitcher } from './connector-breadcrumb-switcher'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorResyncBanner } from './connector-resync-banner'
 import { ConnectorRunsPanel } from './connector-runs-panel'
@@ -51,11 +51,6 @@ type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuer
 
 interface ConnectorDetailViewProps {
   connector: Connector
-}
-
-function iconIdForType(type: string): string {
-  if (type.startsWith('app:')) return `brand:${type.slice('app:'.length)}`
-  return 'plug'
 }
 
 /**
@@ -376,11 +371,10 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Connectors' href='/app/connectors' />
-          <MainPageBreadcrumbItem
-            title={connector.name}
-            icon={
-              <AppIcon iconId={iconIdForType(connector.type)} fallbackIconId='plug' size='xs' />
-            }
+          <ConnectorBreadcrumbSwitcher
+            activeConnectorId={connector.id}
+            activeLabel={connector.name}
+            activeType={connector.type}
           />
           <ConnectorStatusLine
             status={liveStatus}
