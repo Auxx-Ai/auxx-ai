@@ -1,14 +1,20 @@
 // apps/web/src/app/api/workflows/[workflowId]/run/route.ts
 
 import { database as db } from '@auxx/database'
+import { getCapabilities } from '@auxx/lib/permissions'
 import { RedisWorkflowExecutionReporter, WorkflowEventType } from '@auxx/lib/workflow-engine'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine/utils/serialization'
-import { assertWorkflowVersionNotSystemOwned, WorkflowExecutionService } from '@auxx/lib/workflows'
+import {
+  assertWorkflowRunNotSystemOwned,
+  assertWorkflowVersionNotSystemOwned,
+  WorkflowExecutionService,
+} from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
 import { RedisEventRouter } from '@auxx/redis'
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
 import { auth } from '~/auth/server'
+import { mayStopWorkflowRun } from '~/server/lib/workflow-run-stop-access'
 
 // Types for file handling
 interface UploadedFile {
@@ -87,6 +93,16 @@ function isUploadedFileArray(value: any[]): value is UploadedFile[] {
   )
 }
 
+/**
+ * SSE test-run endpoint. `workflowId` here is a `Workflow.id` (a version/draft),
+ * NOT the parent `WorkflowApp.id` — instance access keys on the parent, so the
+ * system-owned guard hands it back rather than us querying twice.
+ *
+ * Gated on instance `edit` (plan 30 §2.4): test-running is an authoring action,
+ * matching the tRPC sibling `workflow.test`. Before this, the route
+ * authenticated with `getSession` alone and read no capabilities at all, so any
+ * authenticated member could test-execute any workflow in their org.
+ */
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ workflowId: string }> }
@@ -105,14 +121,26 @@ export async function POST(
   const userEmail = session.user.email || undefined
   const userName = session.user.name || undefined
 
-  // System-owned workflows (Sequences plan §3.4) aren't runnable directly by org users.
+  // System-owned workflows (Sequences plan §3.4) aren't runnable directly by org
+  // users. The guard also resolves the parent WorkflowApp id, which is what
+  // per-workflow instance access is keyed on.
+  let workflowAppId: string | undefined
   try {
-    await assertWorkflowVersionNotSystemOwned(db, {
+    workflowAppId = await assertWorkflowVersionNotSystemOwned(db, {
       workflowId,
       organizationId,
       isSuperAdmin: (session.user as any).isSuperAdmin,
     })
   } catch (_error) {
+    return new Response('Forbidden', { status: 403 })
+  }
+  if (!workflowAppId) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  // Write — test-run is authoring, so instance `edit` on the parent workflow.
+  const capabilities = await getCapabilities(userId, organizationId)
+  if (!capabilities.canEditInstance('workflow', workflowAppId)) {
     return new Response('Forbidden', { status: 403 })
   }
 
@@ -305,6 +333,39 @@ export async function DELETE(
 
   const organizationId = (session.user as any).defaultOrganizationId
   const userId = session.user.id
+
+  // Keyed off the RUN being stopped rather than the version in the path. This
+  // handler previously read no capabilities at all.
+  let workflowAppId: string | undefined
+  try {
+    workflowAppId = await assertWorkflowRunNotSystemOwned(db, {
+      runId,
+      organizationId,
+      isSuperAdmin: (session.user as any).isSuperAdmin,
+    })
+  } catch (_error) {
+    return new Response('Forbidden', { status: 403 })
+  }
+  if (!workflowAppId) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  // Instance `edit` stops ANY run; instance `view` stops only a run the caller
+  // started themselves (plan 30 — the corollary of "`view` means you may RUN
+  // it"). Unowned and system/headless runs need `edit`. Shared verbatim with the
+  // tRPC sibling `workflow.stopWorkflowRun` so the two surfaces cannot drift.
+  const capabilities = await getCapabilities(userId, organizationId)
+  const mayStop = await mayStopWorkflowRun({
+    db,
+    capabilities,
+    runId,
+    workflowAppId,
+    organizationId,
+    userId,
+  })
+  if (!mayStop) {
+    return new Response('Forbidden', { status: 403 })
+  }
 
   logger.info('DELETE workflow run request', { workflowId, runId, userId })
 

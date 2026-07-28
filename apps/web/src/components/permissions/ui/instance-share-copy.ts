@@ -6,7 +6,7 @@ import {
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
 } from '@auxx/lib/permissions/client'
-import { BookOpen, Database, LayoutDashboard, type LucideIcon } from 'lucide-react'
+import { BookOpen, Database, LayoutDashboard, type LucideIcon, Workflow } from 'lucide-react'
 
 /**
  * Per-resource UI copy for the generic {@link import('./instance-share-card').InstanceShareCard}
@@ -21,6 +21,12 @@ export interface InstanceShareCopy {
   baselineHint: string
   /** What Read / Write / Full mean for this resource. */
   levels: { read: string; write: string; full: string }
+  /**
+   * A carve-out this resource's access does NOT cover, shown alongside the
+   * baseline hint. Only set where restricting the resource would otherwise be
+   * read as stopping something it does not stop (workflows: automation).
+   */
+  scopeNote?: string
 }
 
 /**
@@ -55,6 +61,21 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
       full: 'Manage & delete',
     },
   },
+  workflow: {
+    noun: 'workflow',
+    baselineHint: 'Shared with the workspace by default. Restrict it to lock it down.',
+    levels: {
+      read: 'View & run manually',
+      write: 'Edit, publish & test',
+      full: 'Rename, duplicate, delete & configure',
+    },
+    // Plan 30 §2.1 — the single most misreadable thing about restricting a
+    // workflow. Say it on the card, not in a doc.
+    scopeNote:
+      'This controls people, not automation. Schedules, record events, record rules, webhooks, ' +
+      'and polling triggers run as the system and keep firing this workflow even when nobody ' +
+      'here can see it. Only runs someone starts by hand are affected.',
+  },
 }
 
 /**
@@ -68,6 +89,7 @@ export const INSTANCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon
   dataset: { label: 'Datasets', icon: Database },
   kb: { label: 'Knowledge bases', icon: BookOpen },
   dashboard: { label: 'Dashboards', icon: LayoutDashboard },
+  workflow: { label: 'Workflows', icon: Workflow },
 }
 
 /**

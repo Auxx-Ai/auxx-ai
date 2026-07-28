@@ -36,6 +36,7 @@ export {
   assertWorkflowAppNotSystemOwned,
   assertWorkflowRunNotSystemOwned,
   assertWorkflowVersionNotSystemOwned,
+  getWorkflowRunCreatorId,
   type WorkflowAppAccessOptions,
 } from './workflow-app-access-guard'
 export {

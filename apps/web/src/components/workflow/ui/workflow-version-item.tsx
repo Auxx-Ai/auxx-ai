@@ -30,6 +30,12 @@ interface WorkflowVersionItemProps {
   onRename: (id: string, title: string) => void
   onRestore: (id: string, title: string) => void
   onDelete: (id: string, title: string) => void
+  /**
+   * Whether the rename / restore / delete menu is offered. Version management
+   * is the `edit` rung of per-workflow instance access (plan 30 §4); a `view`
+   * holder still browses and previews versions. Defaults to `true`.
+   */
+  canManage?: boolean
   formatDate: (date: Date) => string
   isDirty: boolean
   workflowName: string
@@ -47,6 +53,7 @@ export const WorkflowVersionItem = React.memo<WorkflowVersionItemProps>(
     onRename,
     onRestore,
     onDelete,
+    canManage = true,
     formatDate,
     isDirty,
     workflowName,
@@ -132,7 +139,7 @@ export const WorkflowVersionItem = React.memo<WorkflowVersionItemProps>(
           </div>
         </div>
         <div className='flex items-center gap-2'>
-          {!isRenaming && !version.isDraft && (
+          {canManage && !isRenaming && !version.isDraft && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

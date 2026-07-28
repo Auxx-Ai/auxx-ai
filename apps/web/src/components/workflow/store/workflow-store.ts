@@ -37,6 +37,25 @@ interface WorkflowStore extends DragState {
   /** Set viewer mode state */
   setViewerMode: (isViewer: boolean) => void
 
+  /**
+   * Whether per-workflow instance access clamps this member to read-only —
+   * i.e. they hold `view` on the workflow but not `edit` (plan 30 §4).
+   *
+   * Lives in the store rather than being read from `useAccess()` inside
+   * {@link import('../hooks/use-read-only').useReadOnly} on purpose: that hook
+   * runs inside node/handle components which also render in the PUBLIC
+   * `WorkflowViewer` (`/workflows/[id]`), outside `CapabilitiesProvider`, where
+   * `useAccess()` throws. `WorkflowEditor` — which only ever mounts under
+   * `(protected)` — pushes the resolved value in and clears it on unmount.
+   *
+   * Defaults to `false` so any surface that never sets it (viewer, template
+   * preview) behaves exactly as before; those paths are already read-only via
+   * `isViewerMode`.
+   */
+  instanceReadOnly: boolean
+  /** Set the per-workflow instance-access read-only clamp. */
+  setInstanceReadOnly: (readOnly: boolean) => void
+
   // Helpline state
   helpLineHorizontal: HelpLineHorizontalPosition | null
   helpLineVertical: HelpLineVerticalPosition | null
@@ -152,6 +171,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
     // Viewer mode (read-only public embed)
     isViewerMode: false,
     setViewerMode: (isViewer) => set({ isViewerMode: isViewer }),
+
+    // Per-workflow instance access (plan 30 §4)
+    instanceReadOnly: false,
+    setInstanceReadOnly: (readOnly) => set({ instanceReadOnly: readOnly }),
 
     // Helpline initial state
     helpLineHorizontal: null,

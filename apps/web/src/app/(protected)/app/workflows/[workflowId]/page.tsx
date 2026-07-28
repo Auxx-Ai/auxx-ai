@@ -21,6 +21,7 @@ import { DockedPanelsContainer } from '~/components/global/docked-panels-contain
 import { Tooltip } from '~/components/global/tooltip'
 import { WorkflowEditor } from '~/components/workflow'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
+import { useWorkflowAccess } from '~/components/workflow/hooks/use-workflow-access'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useMedia } from '~/hooks/use-media'
@@ -61,6 +62,10 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
     { id: workflowId },
     { enabled: !!workflowId }
   )
+
+  // Renaming the workflow (the header's Settings button opens the name/
+  // description form) is the `admin` rung of per-workflow access (plan 30 §4).
+  const { canAdmin } = useWorkflowAccess(workflowId)
 
   // Show docked panel in editor mode, or executions mode when docked
   const showDockedPanel = isDocked && (mode === 'editor' || mode === 'executions')
@@ -162,15 +167,17 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
                 onValueChange={(v) => setMode(v as 'editor' | 'analytics' | 'executions')}
                 className='flex-1 shrink-0'
               />
-              <Tooltip content='Edit Workflow Details'>
-                <Button
-                  variant='ghost'
-                  size='icon-sm'
-                  onClick={() => setEditDialogOpen(true)}
-                  disabled={isLoading}>
-                  <Settings />
-                </Button>
-              </Tooltip>
+              {canAdmin && (
+                <Tooltip content='Edit Workflow Details'>
+                  <Button
+                    variant='ghost'
+                    size='icon-sm'
+                    onClick={() => setEditDialogOpen(true)}
+                    disabled={isLoading}>
+                    <Settings />
+                  </Button>
+                </Tooltip>
+              )}
             </div>
           }>
           <MainPageBreadcrumb>

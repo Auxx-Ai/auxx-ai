@@ -1,14 +1,16 @@
 // apps/web/src/app/(protected)/app/workflows/_components/lists/workflows-grid-view.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { TRIGGER_NAME_MAP, type WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
+import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Copy, Edit, Pause, Play, Trash } from 'lucide-react'
+import { Copy, Edit, Pause, Play, Share2, Trash } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import {
@@ -18,10 +20,12 @@ import {
   useListSelection,
   usePendingLabel,
 } from '~/components/list-selection'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useWorkflows } from '../providers/workflows-provider'
 
@@ -34,6 +38,14 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  // Per-workflow instance access (plan 30 §4). Rename ("Edit"), Enable/Disable
+  // and Delete are the `admin` rung; Duplicate additionally CREATES a workflow,
+  // so it needs the coarse `workflows.manage` key too. Open / Favorite / Share…
+  // stay at `view` — the share dialog is already read-only for non-admins.
+  const { can, canAdminInstance } = useAccess()
+  const canAdmin = canAdminInstance(toRecordId('workflow', workflow.id))
+  const canCreate = can(PermissionKey.workflowsManage)
   const bulkMode = useBulkMode()
   const selected = useIsSelected(workflow.id)
   const pending = useIsPending(workflow.id)
@@ -111,34 +123,46 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
         }
         menu={
           <>
-            <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
-              <Edit />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setDuplicateDialogOpen(true)}>
-              <Copy />
-              Duplicate
-            </DropdownMenuItem>
+            {canAdmin && (
+              <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                <Edit />
+                Edit
+              </DropdownMenuItem>
+            )}
+            {canAdmin && canCreate && (
+              <DropdownMenuItem onClick={() => setDuplicateDialogOpen(true)}>
+                <Copy />
+                Duplicate
+              </DropdownMenuItem>
+            )}
             <FavoriteToggleMenuItem targetType='WORKFLOW' targetIds={{ workflowId: workflow.id }} />
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleToggleEnabled} disabled={updateWorkflow.isPending}>
-              {workflow.enabled ? (
-                <>
-                  <Pause />
-                  Disable
-                </>
-              ) : (
-                <>
-                  <Play />
-                  Enable
-                </>
-              )}
+            <DropdownMenuItem onClick={() => setShareOpen(true)}>
+              <Share2 />
+              Share…
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleDelete} variant='destructive'>
-              <Trash />
-              Delete
-            </DropdownMenuItem>
+            {canAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleToggleEnabled} disabled={updateWorkflow.isPending}>
+                  {workflow.enabled ? (
+                    <>
+                      <Pause />
+                      Disable
+                    </>
+                  ) : (
+                    <>
+                      <Play />
+                      Enable
+                    </>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+                  <Trash />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </>
         }
       />
@@ -158,6 +182,11 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
         onOpenChange={setDuplicateDialogOpen}
         workflowId={workflow.id}
         workflowName={workflow.name}
+      />
+      <InstanceShareDialog
+        recordId={toRecordId('workflow', workflow.id)}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
       />
     </>
   )

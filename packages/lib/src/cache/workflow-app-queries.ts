@@ -57,6 +57,10 @@ export async function getCachedWorkflowAppCount(organizationId: string): Promise
 /**
  * Get workflow apps list with filtering and pagination from cache.
  * Used by the workflow list view — pure cache read, zero DB queries.
+ *
+ * `excludeIds` (plan 30) is the caller's per-member access exclusion; it is
+ * applied with the other predicates, before pagination, so `total`/`hasMore`
+ * describe the filtered set.
  */
 export async function getCachedWorkflowAppsList(
   organizationId: string,
@@ -66,6 +70,7 @@ export async function getCachedWorkflowAppsList(
     enabled?: boolean
     limit?: number
     offset?: number
+    excludeIds?: readonly string[]
   }
 ) {
   return getOrgCache().from(organizationId, 'workflowApps').list(filters)

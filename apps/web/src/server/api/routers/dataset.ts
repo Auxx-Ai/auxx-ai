@@ -255,6 +255,24 @@ export const datasetRouter = createTRPCRouter({
     if (!organizationId) {
       return { datasets: [], totalCount: 0, hasMore: false }
     }
+    // No coarse assert — narrow to the datasets the member may view (a
+    // `datasets: None` member gets an empty list rather than a 403, which
+    // matters because this feeds passive UI like the permission grids).
+    //
+    // The exclusion is computed UP FRONT and handed to the query, so `limit`,
+    // `page`, `totalCount` and `hasMore` all describe the FILTERED set.
+    // Filtering the returned page instead (what this did originally) leaves
+    // `totalCount`/`hasMore` describing the unfiltered page, returns short
+    // pages, and can hand back an EMPTY page with `hasMore: true` — which
+    // breaks any client that stops on an empty page.
+    //
+    // The denied set is near-empty in practice: `dataset` is
+    // `baselineAtCreate: false`, so the ONLY exclusions are explicitly-restricted
+    // datasets. See `deniedInstanceIds` for the proof that no non-restriction
+    // denial path exists once the area gate is open.
+    const { deniesAll, deniedIds } = ctx.capabilities.deniedInstanceIds('dataset')
+    if (deniesAll) return { datasets: [], totalCount: 0, hasMore: false }
+
     const datasetService = new DatasetService(ctx.db)
     const filters = {
       status: input.status,
@@ -262,6 +280,7 @@ export const datasetRouter = createTRPCRouter({
       createdById: input.createdById,
       dateRange: input.dateRange,
       hideManaged: input.hideManaged,
+      excludeIds: deniedIds,
     }
     const pagination = {
       page: input.page,
@@ -269,13 +288,7 @@ export const datasetRouter = createTRPCRouter({
       sortBy: input.sortBy,
       sortOrder: input.sortOrder,
     }
-    const result = await datasetService.list(organizationId, filters, pagination)
-    // Filter the page to datasets the member may view. With base-Read fallback
-    // (§0.1) nearly all rows pass; only explicitly-restricted datasets drop.
-    const datasets = result.datasets.filter((d: { id: string }) =>
-      ctx.capabilities.canViewInstance('dataset', d.id)
-    )
-    return { ...result, datasets }
+    return await datasetService.list(organizationId, filters, pagination)
   }),
   /**
    * Update a dataset

@@ -24,6 +24,7 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import { useDockPortal } from '~/components/global/dock-portal-provider'
 import { Tooltip } from '~/components/global/tooltip'
 import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
+import { useWorkflowAccess } from '~/components/workflow/hooks/use-workflow-access'
 import { useWorkflowSave } from '~/components/workflow/hooks/use-workflow-save'
 import { useWorkflowTrigger } from '~/components/workflow/hooks/use-workflow-trigger'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
@@ -35,7 +36,7 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import Section from '../../ui/section'
-import { WorkflowAccessSettings } from './workflow-access-settings'
+import { WorkflowAccessSettings, WorkflowMemberAccessSection } from './workflow-access-settings'
 
 interface WorkflowSettingsPanelProps {
   className?: string
@@ -100,6 +101,14 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
   // Check if workflow has a manual trigger (required for sharing)
   const { triggerType } = useWorkflowTrigger()
   const isManualTrigger = triggerType === WorkflowTriggerType.MANUAL
+
+  // Per-workflow instance access (plan 30 §4). Everything this panel writes —
+  // rename, description, icon, enable/disable, duplicate, delete, and the
+  // public/API share tokens — is the `admin` rung. The "People with access"
+  // section below is deliberately NOT gated: it renders itself read-only for
+  // non-admins, so a `view`/`edit` holder can still see who the workflow is
+  // shared with (plan 24 §A.2.3).
+  const { canAdmin } = useWorkflowAccess(workflowAppId)
 
   // Mutations - for enable/disable toggle (with toast)
   const toggleWorkflow = api.workflow.update.useMutation({
@@ -300,43 +309,54 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
           title='Workflow Settings'
           onClose={closeSettingsPanel}
           actions={
-            <>
-              {/* Enable/Disable Toggle */}
-              <Tooltip content={workflow?.enabled ? 'Disable workflow' : 'Enable workflow'}>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='rounded-full gap-1.5 text-xs'
-                  onClick={handleToggleEnabled}
-                  disabled={toggleWorkflow.isPending}
-                  tabIndex={-1}>
-                  <div
-                    className={`size-2 rounded-full ${workflow?.enabled ? 'bg-good-500' : 'bg-bad-500'}`}
-                  />
-                  {workflow?.enabled ? 'Enabled' : 'Disabled'}
-                </Button>
-              </Tooltip>
-
-              {/* More Actions Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant='ghost' size='icon-sm' className='rounded-full' tabIndex={-1}>
-                    <MoreHorizontal />
+            canAdmin ? (
+              <>
+                {/* Enable/Disable Toggle */}
+                <Tooltip content={workflow?.enabled ? 'Disable workflow' : 'Enable workflow'}>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='rounded-full gap-1.5 text-xs'
+                    onClick={handleToggleEnabled}
+                    disabled={toggleWorkflow.isPending}
+                    tabIndex={-1}>
+                    <div
+                      className={`size-2 rounded-full ${workflow?.enabled ? 'bg-good-500' : 'bg-bad-500'}`}
+                    />
+                    {workflow?.enabled ? 'Enabled' : 'Disabled'}
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align='end'>
-                  <DropdownMenuItem onClick={() => setDuplicateDialogOpen(true)}>
-                    <Copy />
-                    Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleDelete} variant='destructive'>
-                    <Trash2 />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
+                </Tooltip>
+
+                {/* More Actions Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant='ghost' size='icon-sm' className='rounded-full' tabIndex={-1}>
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end'>
+                    <DropdownMenuItem onClick={() => setDuplicateDialogOpen(true)}>
+                      <Copy />
+                      Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+                      <Trash2 />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              // Status stays visible at every rung — it's a read, and knowing a
+              // workflow is disabled explains why a manual run does nothing.
+              <span className='flex items-center gap-1.5 pr-1 text-xs text-muted-foreground'>
+                <span
+                  className={`size-2 rounded-full ${workflow?.enabled ? 'bg-good-500' : 'bg-bad-500'}`}
+                />
+                {workflow?.enabled ? 'Enabled' : 'Disabled'}
+              </span>
+            )
           }
         />
         {/* Content */}
@@ -347,23 +367,35 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
             onCollapsedChange={setIsDescriptionCollapsed}
             className='sticky top-0 z-12 border-b bg-primary-50/90 backdrop-blur-sm'>
             <div className='relative flex flex-row gap-1 px-2 py-1.5'>
-              <IconPicker
-                value={
-                  localIcon
-                    ? { icon: localIcon.iconId, color: localIcon.color }
-                    : { icon: 'text', color: 'blue' }
-                }
-                onChange={handleIconChange}>
-                <button
-                  type='button'
-                  className='rounded-md p-0.5 hover:bg-primary-100 transition-colors'>
+              {/* Renaming and re-iconing the workflow is the `admin` rung — the
+                  icon stays visible, just not pickable (plan 30 §4). */}
+              {canAdmin ? (
+                <IconPicker
+                  value={
+                    localIcon
+                      ? { icon: localIcon.iconId, color: localIcon.color }
+                      : { icon: 'text', color: 'blue' }
+                  }
+                  onChange={handleIconChange}>
+                  <button
+                    type='button'
+                    className='rounded-md p-0.5 hover:bg-primary-100 transition-colors'>
+                    <EntityIcon
+                      iconId={localIcon?.iconId ?? 'text'}
+                      color={localIcon?.color ?? 'blue'}
+                      className='size-6'
+                    />
+                  </button>
+                </IconPicker>
+              ) : (
+                <div className='p-0.5'>
                   <EntityIcon
                     iconId={localIcon?.iconId ?? 'text'}
                     color={localIcon?.color ?? 'blue'}
                     className='size-6'
                   />
-                </button>
-              </IconPicker>
+                </div>
+              )}
               <Input
                 id='title'
                 variant='transparent'
@@ -372,6 +404,7 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
                 onBlur={handleTitleBlur}
                 onKeyDown={handleTitleKeyDown}
                 placeholder='Enter workflow title'
+                readOnly={!canAdmin}
                 tabIndex={-1}
                 className={cn(
                   'h-7 min-w-0 w-full appearance-none rounded-md border px-1 outline-none focus-visible:ring-1 focus-visible:ring-blue-500',
@@ -394,13 +427,18 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
                 onKeyDown={handleDescriptionKeyDown}
                 onFocus={() => setIsDescriptionCollapsed(false)}
                 onBlur={() => setIsDescriptionCollapsed(true)}
+                readOnly={!canAdmin}
                 className='w-full resize-none appearance-none border-none py-1 px-2 bg-transparent text-xs leading-[18px] caret-[#295EFF] outline-none dark:bg-transparent'
                 placeholder='Enter workflow description'
               />
             </div>
           </CollapseWrap>
           <div className='flex-1'>
-            {workflowAppId && isManualTrigger && (
+            {/* Who inside the workspace can reach this workflow. Shown at every
+                rung — the card is read-only for non-admins (plan 30 §4). */}
+            {workflowAppId && <WorkflowMemberAccessSection workflowAppId={workflowAppId} />}
+            {/* Public link + API keys are outside access, and Full-only. */}
+            {workflowAppId && canAdmin && isManualTrigger && (
               <WorkflowAccessSettings
                 workflowAppId={workflowAppId}
                 shareToken={workflowAppData?.shareToken}
@@ -413,7 +451,7 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
                 workflowEnabled={workflow?.enabled}
               />
             )}
-            {workflowAppId && !isManualTrigger && (
+            {workflowAppId && canAdmin && !isManualTrigger && (
               <Section title='Sharing' collapsible={false}>
                 <div className='flex items-start gap-3 p-3 bg-muted/50 rounded-lg'>
                   <Info className='size-5 text-muted-foreground shrink-0 mt-0.5' />

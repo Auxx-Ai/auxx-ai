@@ -16,6 +16,7 @@ import {
   isNotNull,
   lte,
   ne,
+  notInArray,
   or,
   type SQL,
   sql,
@@ -674,6 +675,15 @@ export class DatasetService {
 
     if (filters?.hideManaged !== false) {
       conditions.push(eq(schema.Dataset.isManaged, false))
+    }
+
+    // Access exclusion (see `DatasetFilters.excludeIds`). Guarded on non-empty:
+    // Drizzle renders an empty `notInArray` as invalid SQL. Because this clause
+    // is shared by BOTH halves of `list` — the paginated `findMany` and the
+    // `count()` — excluding here keeps the page, `totalCount` and `hasMore`
+    // describing one and the same filtered set.
+    if (filters?.excludeIds?.length) {
+      conditions.push(notInArray(schema.Dataset.id, [...filters.excludeIds]))
     }
 
     return conditions.length === 1 ? conditions[0]! : and(...conditions)

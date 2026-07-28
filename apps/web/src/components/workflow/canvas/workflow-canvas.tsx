@@ -32,6 +32,7 @@ import {
   useEdgeStatusUpdater,
   useNodesInteractions,
   useNodeValidation,
+  useReadOnly,
   useSelectionInteractions,
   useWorkflowRunNodeSync,
   useWorkflowSave,
@@ -84,12 +85,16 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
     const reactFlowInstance = useReactFlow()
     const { theme } = useTheme()
 
-    // Get read-only state from canvas store (overrides prop)
-    const canvasReadOnly = useCanvasStore((state) => state.readOnly)
+    // Read-only state from the single client authority (canvas version preview,
+    // viewer mode, run playback, AND per-workflow instance access — plan 30 §4).
+    // Previously this read `canvasStore.readOnly` directly and so missed the
+    // other three sources; the ReactFlow drag/connect/edge handlers below are
+    // the last place a `view`-level member could still mutate the graph.
+    const { isReadOnly } = useReadOnly()
     const versionPreviewData = useCanvasStore((state) => state.versionPreviewData)
 
     // Determine final read-only state
-    const readOnly = propReadOnly || canvasReadOnly
+    const readOnly = propReadOnly || isReadOnly
 
     // Help overlay state
     const helpOverlayOpen = usePanelStore((state) => state.helpOverlayOpen)

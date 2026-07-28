@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { WorkflowRunStatus } from '@auxx/database/enums'
 import { getCachedWorkflowAppCount } from '@auxx/lib/cache'
+import { ForbiddenError } from '@auxx/lib/errors'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import {
   triggerManualResourceWorkflow,
@@ -30,12 +31,13 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import {
+  capabilityProcedure,
   createTRPCRouter,
   notDemo,
   permissionProcedure,
-  protectedProcedure,
 } from '~/server/api/trpc'
 import { resolveTemplateById } from '~/server/api/workflow-template-resolver'
+import { mayStopWorkflowRun } from '~/server/lib/workflow-run-stop-access'
 import { workflowTemplatesRouter } from './workflow-templates'
 
 // Create TRPC error handler for WorkflowExecutionService
@@ -192,29 +194,122 @@ const workflowDetailedStatsSchema = z.object({
 })
 // Processing mode schema
 const processingModeSchema = z.object({ mode: z.enum(['RULES_ONLY', 'WORKFLOWS_ONLY', 'HYBRID']) })
+
+/**
+ * `workflow.update` fields that are workflow SETTINGS or SHARING rather than
+ * authoring, and therefore sit on the Full rung (plan 30 §4: "Settings, Delete"
+ * and "Share tokens" are Full, while Save/Publish are Edit).
+ *
+ * `update` is a single fat mutation fed by three different surfaces — the
+ * canvas auto-save (`use-workflow-save.ts`), the settings panel's enable
+ * toggle, and the access-settings panel — so the tier can't come from the
+ * procedure alone. Presence of ANY of these keys escalates the assert from
+ * `assertEditInstance` to `assertAdminInstance`. Everything else (`graph`,
+ * `envVars`, `variables`, `triggerType`, `entityDefinitionId`) is authoring.
+ */
+const ADMIN_ONLY_UPDATE_FIELDS = [
+  'name',
+  'description',
+  'enabled',
+  'icon',
+  'webEnabled',
+  'apiEnabled',
+  'accessMode',
+  'config',
+  'rateLimit',
+] as const satisfies readonly (keyof z.infer<typeof updateWorkflowSchema>)[]
+
+/**
+ * Per-workflow instance access (plan 30). `workflow` is an
+ * `INSTANCE_ACCESS_RESOURCES` key with `baselineAtCreate: false`, so a workflow
+ * with no explicit `ResourceAccess` row falls back to the member's `workflows`
+ * area level — Read ⇒ `view`, Edit ⇒ `edit`, Full ⇒ `admin`.
+ *
+ * Tiers (plan 30 §4):
+ *  - **view** — see it, open it read-only, read versions/runs/stats, RUN it
+ *    manually from a record (`view` means "may run it", user decision
+ *    2026-07-27), and STOP a run they started themselves (the corollary — see
+ *    {@link mayStopWorkflowRun}; someone else's run, an unowned run, and a
+ *    system/headless run all need `edit`).
+ *  - **edit** — save, publish, test, run single nodes, stop ANY run on the
+ *    workflow, manage versions.
+ *  - **admin** — delete, rename/settings, share tokens.
+ *  - Creating (`create`, `createForResource`, `duplicate`) has no instance to
+ *    key on, so it gates on the coarse `workflowsManage` rung.
+ *
+ * Base procedure: `permissionProcedure(workflowsView)` everywhere the instance
+ * assert does the real work. That keeps the `FeatureKey.workflows` plan-AND
+ * these procedures have always run (`capabilityProcedure` does NOT run it) and
+ * costs nothing — `effectiveInstanceLevel` already returns `undefined` when the
+ * area level is `None`, so the coarse Read gate can only deny callers the
+ * instance assert would deny anyway. `list` and `getManualWorkflows` are the
+ * two exceptions: they render passively inside other screens, so they use
+ * `capabilityProcedure` and FILTER rather than assert (plan 30 §2.2 — a 403
+ * there is a broken screen, not a denied action).
+ *
+ * NOT gated by any of this (plan 30 §2.1): **headless execution**. Schedules,
+ * record-CRUD events, record rules, message-received, app triggers, webhook
+ * endpoints, polling, and resume/approval jobs all run as the system through
+ * `@auxx/lib/workflow-engine` and read no member capabilities — a workflow
+ * restricted to `none` for every member STILL FIRES. Only user-initiated runs
+ * (this router + the SSE test-run REST route) consult instance access.
+ *
+ * `WorkflowApp.isPublic` is a DIFFERENT axis and deliberately untouched:
+ * it exposes a workflow to ANONYMOUS callers via `apps/api`'s unauthenticated
+ * `/api/v1/workflows/public/:id` + the share-token pages, where there is no
+ * member and no `CapabilitySet` to consult. So (a) `isPublic: true` grants a
+ * restricted member NOTHING here — they still can't open, edit, or list it; and
+ * (b) restricting a workflow to `none` does NOT close its public URL. Closing
+ * that is what `isPublic` / `webEnabled` / `apiEnabled` / `revokeShareToken`
+ * are for — all of which are Full-rung, so only an instance admin can flip them.
+ */
 export const workflowRouter = createTRPCRouter({
   /**
    * Get all workflow apps for the organization
    */
-  list: permissionProcedure(PermissionKey.workflowsManage)
-    .input(listWorkflowsSchema)
-    .query(async ({ ctx, input }) => {
-      const workflowService = new WorkflowService(ctx.db)
-      try {
-        return await workflowService.getAll(ctx.session.organizationId, input)
-      } catch (error) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to fetch workflow apps',
-        })
-      }
-    }),
+  list: capabilityProcedure.input(listWorkflowsSchema).query(async ({ ctx, input }) => {
+    // No coarse assert — narrow to the workflows the member may view
+    // (`kb.list` / `dataset.list` precedent). A `workflows: None` member gets an
+    // empty list rather than a 403, which matters because this feeds the
+    // permission grids' Workflows row (`use-instance-resource-lists.ts`) and the
+    // workflows landing page.
+    //
+    // The exclusion is computed UP FRONT and handed to the query, so `limit`,
+    // `offset`, `total` and `hasMore` all describe the FILTERED set. Filtering
+    // the returned page instead (what this did originally, and what
+    // `dataset.list` still does) leaves `total`/`hasMore` describing the
+    // unfiltered page, returns short pages, and can hand back an EMPTY page with
+    // `hasMore: true` — which breaks any client that stops on an empty page.
+    //
+    // The denied set is near-empty in practice: `workflow` is
+    // `baselineAtCreate: false`, so the ONLY exclusions are explicitly-restricted
+    // workflows (plan 30 §3 — restriction is the rare case). See
+    // `deniedInstanceIds` for the proof that no non-restriction denial path
+    // exists once the area gate is open.
+    const { deniesAll, deniedIds } = ctx.capabilities.deniedInstanceIds('workflow')
+    if (deniesAll) return { workflows: [], total: 0, hasMore: false }
+
+    const workflowService = new WorkflowService(ctx.db)
+    try {
+      return await workflowService.getAll(ctx.session.organizationId, {
+        ...input,
+        excludeIds: deniedIds,
+      })
+    } catch (error) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to fetch workflow apps',
+      })
+    }
+  }),
   /**
    * Get a specific workflow app by ID
    */
-  getById: permissionProcedure(PermissionKey.workflowsManage)
+  getById: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
+      // Read — opening a workflow (read-only at `view`, editable at `edit`).
+      ctx.capabilities.assertViewInstance('workflow', input.id)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.id,
         organizationId: ctx.session.organizationId,
@@ -239,6 +334,7 @@ export const workflowRouter = createTRPCRouter({
   create: permissionProcedure(PermissionKey.workflowsManage)
     .input(createWorkflowSchema)
     .mutation(async ({ ctx, input }) => {
+      // Full — no instance exists yet to key on, so the coarse rung is the gate.
       await assertWorkflowLimitNotReached(ctx.session.organizationId)
 
       // Build template data (graph, trigger, resolved app/entity refs) when creating
@@ -283,6 +379,7 @@ export const workflowRouter = createTRPCRouter({
   createForResource: permissionProcedure(PermissionKey.workflowsManage)
     .input(z.object({ entityDefinitionId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      // Full — creating, same as `create`.
       await assertWorkflowLimitNotReached(ctx.session.organizationId)
 
       const created = await new WorkflowService(ctx.db).createForResource(
@@ -302,9 +399,17 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Update an existing workflow app (updates active workflow)
    */
-  update: permissionProcedure(PermissionKey.workflowsManage)
+  update: permissionProcedure(PermissionKey.workflowsView)
     .input(updateWorkflowSchema)
     .mutation(async ({ ctx, input }) => {
+      // Write — saving the draft graph / env vars. ESCALATES to Full when the
+      // payload also carries settings or sharing fields (see
+      // `ADMIN_ONLY_UPDATE_FIELDS`): rename, enable/disable, icon, and the
+      // web/API share configuration are all Full-rung actions.
+      ctx.capabilities.assertEditInstance('workflow', input.id)
+      if (ADMIN_ONLY_UPDATE_FIELDS.some((field) => input[field] !== undefined)) {
+        ctx.capabilities.assertAdminInstance('workflow', input.id)
+      }
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.id,
         organizationId: ctx.session.organizationId,
@@ -335,9 +440,12 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Delete a workflow app (deletes all versions)
    */
-  delete: permissionProcedure(PermissionKey.workflowsManage)
+  delete: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Full — destroying the workflow and every version (KB/dataset/dashboard
+      // delete precedent).
+      ctx.capabilities.assertAdminInstance('workflow', input.id)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.id,
         organizationId: ctx.session.organizationId,
@@ -372,6 +480,10 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Read on the source + the coarse Full rung to create the copy (plan 30
+      // §8 open item 3, dashboards precedent: a `view` holder could rebuild it
+      // by hand anyway, so `admin` on the source isn't the bar).
+      ctx.capabilities.assertViewInstance('workflow', input.id)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.id,
         organizationId: ctx.session.organizationId,
@@ -398,9 +510,12 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Test workflow execution
    */
-  test: permissionProcedure(PermissionKey.workflowsManage)
+  test: permissionProcedure(PermissionKey.workflowsView)
     .input(testWorkflowSchema)
     .mutation(async ({ ctx, input }) => {
+      // Write — test-running is an authoring action (plan 30 §4), and the SSE
+      // sibling `/api/workflows/[workflowId]/run` gates identically.
+      ctx.capabilities.assertEditInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -420,9 +535,11 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get workflow execution statistics
    */
-  getStats: permissionProcedure(PermissionKey.workflowsManage)
+  getStats: permissionProcedure(PermissionKey.workflowsView)
     .input(workflowStatsSchema)
     .query(async ({ ctx, input }) => {
+      // Read — observability on a workflow you can already see and run.
+      ctx.capabilities.assertViewInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -449,9 +566,11 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get detailed workflow execution statistics with time-series data
    */
-  getDetailedStats: permissionProcedure(PermissionKey.workflowsManage)
+  getDetailedStats: permissionProcedure(PermissionKey.workflowsView)
     .input(workflowDetailedStatsSchema)
     .query(async ({ ctx, input }) => {
+      // Read — same as `getStats`.
+      ctx.capabilities.assertViewInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -480,10 +599,12 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Publish a new version of a workflow
    */
-  publish: permissionProcedure(PermissionKey.workflowsManage)
+  publish: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ workflowId: z.string(), versionTitle: z.string().optional() }))
     .use(notDemo('publish workflows'))
     .mutation(async ({ ctx, input }) => {
+      // Write — publishing the draft into a new version (plan 30 §4).
+      ctx.capabilities.assertEditInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -508,9 +629,12 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get all versions of a workflow
    */
-  getVersions: permissionProcedure(PermissionKey.workflowsManage)
+  getVersions: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ workflowId: z.string() }))
     .query(async ({ ctx, input }) => {
+      // Read — the versions list is visible at `view`; restore/delete/rename
+      // are the Edit-tier half (plan 30 §7).
+      ctx.capabilities.assertViewInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -533,9 +657,11 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get a specific workflow version
    */
-  getVersionById: permissionProcedure(PermissionKey.workflowsManage)
+  getVersionById: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ workflowId: z.string(), versionId: z.string() }))
     .query(async ({ ctx, input }) => {
+      // Read — one version's snapshot.
+      ctx.capabilities.assertViewInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -562,9 +688,12 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Delete a specific workflow version
    */
-  deleteVersion: permissionProcedure(PermissionKey.workflowsManage)
+  deleteVersion: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ workflowId: z.string(), versionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Write — version management is Edit, not Full (plan 30 §4). It destroys a
+      // snapshot, never the workflow: the active version is refused downstream.
+      ctx.capabilities.assertEditInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -598,7 +727,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Rename a specific workflow version
    */
-  renameVersion: permissionProcedure(PermissionKey.workflowsManage)
+  renameVersion: permissionProcedure(PermissionKey.workflowsView)
     .input(
       z.object({
         workflowId: z.string(),
@@ -607,6 +736,9 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Write — labelling a version, not renaming the workflow (that's `update`
+      // with `name`, which escalates to Full).
+      ctx.capabilities.assertEditInstance('workflow', input.workflowId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowId,
         organizationId: ctx.session.organizationId,
@@ -633,14 +765,34 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Stop a workflow run
    */
-  stopWorkflowRun: permissionProcedure(PermissionKey.workflowsManage)
+  stopWorkflowRun: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ runId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await assertWorkflowRunNotSystemOwned(ctx.db, {
+      // Run control, keyed on the run's PARENT app — the input names a RUN, so
+      // the guard hands the app id back for instance access to key on.
+      const workflowAppId = await assertWorkflowRunNotSystemOwned(ctx.db, {
         runId: input.runId,
         organizationId: ctx.session.organizationId,
         isSuperAdmin: ctx.session.isSuperAdmin,
       })
+      if (!workflowAppId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow run not found' })
+      }
+      // Instance `edit` stops ANY run; instance `view` stops only a run the
+      // caller started themselves — the corollary of "`view` means you may RUN
+      // it" (plan 30 §2). Unowned and system-started runs need `edit`; see
+      // {@link mayStopWorkflowRun}.
+      const mayStop = await mayStopWorkflowRun({
+        db: ctx.db,
+        capabilities: ctx.capabilities,
+        runId: input.runId,
+        workflowAppId,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+      })
+      if (!mayStop) {
+        throw new ForbiddenError("You don't have permission to stop this run.")
+      }
       const executionService = new WorkflowExecutionService(ctx.db, {
         errorHandler: createTRPCErrorHandler,
       })
@@ -660,7 +812,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Run a single node
    */
-  runSingleNode: permissionProcedure(PermissionKey.workflowsManage)
+  runSingleNode: permissionProcedure(PermissionKey.workflowsView)
     .input(
       z.object({
         workflowAppId: z.string(),
@@ -679,6 +831,8 @@ export const workflowRouter = createTRPCRouter({
     )
     .use(notDemo('run workflow nodes'))
     .mutation(async ({ ctx, input }) => {
+      // Write — running a single node is a builder/debug action (plan 30 §4).
+      ctx.capabilities.assertEditInstance('workflow', input.workflowAppId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowAppId,
         organizationId: ctx.session.organizationId,
@@ -702,15 +856,20 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get workflow run details
    */
-  getWorkflowRun: permissionProcedure(PermissionKey.workflowsManage)
+  getWorkflowRun: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ runId: z.string() }))
     .query(async ({ ctx, input }) => {
-      await assertWorkflowRunNotSystemOwned(ctx.db, {
+      // Read — run detail. Keyed on the run's parent app (see `stopWorkflowRun`).
+      const workflowAppId = await assertWorkflowRunNotSystemOwned(ctx.db, {
         runId: input.runId,
         organizationId: ctx.session.organizationId,
         isSuperAdmin: ctx.session.isSuperAdmin,
         allowSuperAdminRead: true,
       })
+      if (!workflowAppId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow run not found' })
+      }
+      ctx.capabilities.assertViewInstance('workflow', workflowAppId)
       const executionService = new WorkflowExecutionService(ctx.db, {
         errorHandler: createTRPCErrorHandler,
       })
@@ -729,7 +888,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * List workflow runs
    */
-  listWorkflowRuns: permissionProcedure(PermissionKey.workflowsManage)
+  listWorkflowRuns: permissionProcedure(PermissionKey.workflowsView)
     .input(
       z.object({
         workflowAppId: z.string(),
@@ -741,6 +900,8 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      // Read — run history for a workflow you can see.
+      ctx.capabilities.assertViewInstance('workflow', input.workflowAppId)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: input.workflowAppId,
         organizationId: ctx.session.organizationId,
@@ -774,7 +935,7 @@ export const workflowRouter = createTRPCRouter({
    * Get available manual workflows for an entity
    * Used to populate the workflow selection dropdown
    */
-  getManualWorkflows: protectedProcedure
+  getManualWorkflows: capabilityProcedure
     .input(
       z.object({
         entityDefinitionId: z.string().min(1),
@@ -794,21 +955,33 @@ export const workflowRouter = createTRPCRouter({
         })
       }
 
-      // Map to simpler format for UI
-      return result.value.map((item) => ({
-        id: item.workflowApp.id,
-        name: item.workflowApp.name,
-        description: item.workflowApp.description,
-      }))
+      const apps: { workflowApp: { id: string; name: string; description: string | null } }[] =
+        result.value
+
+      // FILTER, never assert (plan 30 §2.2). This dropdown renders inside other
+      // features' record UI, so a 403 would be a broken screen rather than a
+      // denied action — a member without `view` on a workflow simply doesn't see
+      // it offered. `triggerManualResource(Bulk)` asserts for real.
+      return apps
+        .filter((item) => ctx.capabilities.canViewInstance('workflow', item.workflowApp.id))
+        .map((item) => ({
+          id: item.workflowApp.id,
+          name: item.workflowApp.name,
+          description: item.workflowApp.description,
+        }))
     }),
 
   /**
    * Manually trigger a specific workflow for a resource
    *
    * UX: User selects a workflow from dropdown, then triggers it
-   * Permissions: Any authenticated team member
+   * Permissions: instance `view` on the workflow — "`view` means you may RUN
+   * it" (plan 30 §2, user decision 2026-07-27). Note the consequence for seats:
+   * `workflows` is not in `WORKER_AREAS`, so a field-tech seat composes
+   * `workflows: None` and therefore CANNOT trigger a manual workflow from a
+   * record. Deliberate (plan 30 §8 item 1).
    */
-  triggerManualResource: protectedProcedure
+  triggerManualResource: permissionProcedure(PermissionKey.workflowsView)
     .input(
       z.object({
         workflowAppId: z.string(),
@@ -816,6 +989,10 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Read — user-initiated run. Headless triggers for this same workflow
+      // (schedules, record events, rules, webhooks) bypass all of this and keep
+      // firing (plan 30 §2.1).
+      ctx.capabilities.assertViewInstance('workflow', input.workflowAppId)
       const result = await triggerManualResourceWorkflow({
         workflowAppId: input.workflowAppId,
         recordId: input.recordId as RecordId,
@@ -860,9 +1037,10 @@ export const workflowRouter = createTRPCRouter({
    *
    * UX: User selects multiple contacts/tickets, selects workflow from dropdown
    * Strategy: Best-effort execution with detailed results
-   * Permissions: Any authenticated team member
+   * Permissions: instance `view` on the workflow, same as
+   * {@link triggerManualResource}.
    */
-  triggerManualResourceBulk: protectedProcedure
+  triggerManualResourceBulk: permissionProcedure(PermissionKey.workflowsView)
     .input(
       z.object({
         workflowAppId: z.string(),
@@ -870,6 +1048,10 @@ export const workflowRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Read — asserted ONCE: the workflow is single, only the records are
+      // plural (plan 30 §2.2). Per-record read authority is the record layer's
+      // job, not this one's.
+      ctx.capabilities.assertViewInstance('workflow', input.workflowAppId)
       const result = await triggerManualResourceWorkflowBulk({
         workflowAppId: input.workflowAppId,
         recordIds: input.recordIds as RecordId[],
@@ -910,12 +1092,16 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Generate a new share token for a workflow
    */
-  generateShareToken: permissionProcedure(PermissionKey.workflowsManage)
+  generateShareToken: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ id: z.string() }))
     .use(notDemo('share workflows'))
     .mutation(async ({ ctx, input }) => {
       const { id } = input
 
+      // Full — minting a share token opens an ANONYMOUS surface (plan 30 §4).
+      // This is the `isPublic`/`webEnabled` axis, not member instance access, so
+      // it must sit at the top rung.
+      ctx.capabilities.assertAdminInstance('workflow', id)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: id,
         organizationId: ctx.session.organizationId,
@@ -956,11 +1142,13 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Revoke share token (disable sharing)
    */
-  revokeShareToken: permissionProcedure(PermissionKey.workflowsManage)
+  revokeShareToken: permissionProcedure(PermissionKey.workflowsView)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { id } = input
 
+      // Full — closing the anonymous surface, symmetric with generate.
+      ctx.capabilities.assertAdminInstance('workflow', id)
       await assertWorkflowAppNotSystemOwned(ctx.db, {
         workflowAppId: id,
         organizationId: ctx.session.organizationId,

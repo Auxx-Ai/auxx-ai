@@ -202,6 +202,13 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
        * List workflow apps with filtering, sorting, and pagination for the list view.
        * Always excludes system-owned apps (Sequences plan §3.4) — the list surface is
        * only for org-authored workflows.
+       *
+       * `excludeIds` is the per-member access exclusion (plan 30): the ids the
+       * caller may not view, computed from their `CapabilitySet` and applied
+       * HERE, alongside every other predicate and **before** `total`/`hasMore`
+       * and the slice. Filtering the returned page instead would make `total`
+       * describe the unfiltered set and could hand back an empty page with
+       * `hasMore: true`.
        */
       async list(filters?: {
         search?: string
@@ -209,9 +216,14 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
         enabled?: boolean
         limit?: number
         offset?: number
+        excludeIds?: readonly string[]
       }): Promise<{ workflows: CachedWorkflowApp[]; total: number; hasMore: boolean }> {
         let data = (await dataFn()).filter((app) => !app.ownerType)
 
+        if (filters?.excludeIds?.length) {
+          const excluded = new Set(filters.excludeIds)
+          data = data.filter((app) => !excluded.has(app.id))
+        }
         if (filters?.enabled !== undefined) {
           data = data.filter((app) => app.enabled === filters.enabled)
         }

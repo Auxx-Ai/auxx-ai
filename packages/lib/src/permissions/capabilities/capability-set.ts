@@ -10,8 +10,11 @@ import {
   canAdministerRecord,
   canEditRecord,
   canViewRecord,
+  deniedInstanceIds,
+  type InstanceExclusion,
   levelToPermission,
   NON_RECORD_DEF_SLUGS,
+  type OrgSharedInstanceAccessKey,
   type ResolvedRecordAccess,
 } from './entity-access'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
@@ -300,6 +303,31 @@ export class CapabilitySet implements CapabilityView {
     if (areaLevel === Level.None) return undefined
     if (this.restrictedInstanceIds.has(instanceId)) return this.instanceAccess[instanceId]
     return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
+  }
+
+  /**
+   * The exclusion a paginated LIST query needs so `limit`/`offset`/`total` run
+   * over the rows this member may actually see — the complement of
+   * {@link canViewInstance}, computed up front instead of filtering a page after
+   * the fact. Delegates to the shared client-safe
+   * {@link import('./entity-access').deniedInstanceIds}, which carries the proof
+   * that no non-restriction denial path exists. Zero I/O.
+   *
+   * ```ts
+   * const { deniesAll, deniedIds } = ctx.capabilities.deniedInstanceIds('workflow')
+   * if (deniesAll) return { workflows: [], total: 0, hasMore: false }
+   * return service.getAll(orgId, { ...input, excludeIds: deniedIds })
+   * ```
+   */
+  deniedInstanceIds(key: OrgSharedInstanceAccessKey): InstanceExclusion {
+    return deniedInstanceIds(
+      {
+        ...this.resolved(),
+        instanceAccess: this.instanceAccess,
+        restrictedInstanceIds: this.restrictedInstanceIds,
+      },
+      key
+    )
   }
 
   /** Whether the member may VIEW the instance (Read). Zero I/O. */

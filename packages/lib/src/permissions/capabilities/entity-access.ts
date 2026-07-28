@@ -27,15 +27,15 @@ import { SEAT_CEILINGS } from './seat-policy'
  * view/edit gates pass them through:
  * - **Mail/messaging infrastructure** (`inbox`…`sequence`) — the mail visibility
  *   system.
- * - **Instance-access resources** (`dataset`, `kb`, `dashboard`) — their own L2
- *   area + per-instance `ResourceAccess` grants, disjoint from type-level def
- *   enforcement (plan 11 §0.6 / plan 12 §0.11 / plan 13 §0.6). `article`
- *   inherits its KB's grants (no per-article grants), so it is a non-record def
- *   too. Nothing calls `canViewEntity('dataset'|'kb'|'article'|'dashboard')`, so
- *   this is inert for enforcement; it keeps the client mirror
- *   `NON_RECORD_ENTITY_SLUGS` in `resources/registry/types.ts` consistent (that
- *   set hides datasets / KBs / articles / dashboards from the entity-def Access
- *   grid).
+ * - **Instance-access resources** (`dataset`, `kb`, `dashboard`, `workflow`) —
+ *   their own L2 area + per-instance `ResourceAccess` grants, disjoint from
+ *   type-level def enforcement (plan 11 §0.6 / plan 12 §0.11 / plan 13 §0.6 /
+ *   plan 30 §5). `article` inherits its KB's grants (no per-article grants), so
+ *   it is a non-record def too. Nothing calls
+ *   `canViewEntity('dataset'|'kb'|'article'|'dashboard'|'workflow')`, so this is
+ *   inert for enforcement; it keeps the client mirror `NON_RECORD_ENTITY_SLUGS`
+ *   in `resources/registry/types.ts` consistent (that set hides datasets / KBs /
+ *   articles / dashboards / workflows from the entity-def Access grid).
  *
  * Keyed by entity slug; the caller resolves the def to its slug before checking.
  */
@@ -50,6 +50,7 @@ export const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
   'kb',
   'article',
   'dashboard',
+  'workflow',
 ])
 
 /**
@@ -339,6 +340,85 @@ export function effectiveInstanceLevel(
 }
 
 const EMPTY_INSTANCE_SET: ReadonlySet<string> = new Set()
+
+/**
+ * Instance-access keys whose absent-row fallback is the member's AREA level
+ * (`baselineAtCreate: false` — `dataset`, `kb`, `workflow`). Derived from
+ * {@link INSTANCE_ACCESS_RESOURCES} rather than hand-listed, so flipping a
+ * resource to `baselineAtCreate: true` removes it here and makes
+ * {@link deniedInstanceIds} a COMPILE error at its call sites instead of a
+ * silent leak — see that function for why the distinction is load-bearing.
+ */
+export type OrgSharedInstanceAccessKey = {
+  [K in InstanceAccessKey]: (typeof INSTANCE_ACCESS_RESOURCES)[K]['baselineAtCreate'] extends false
+    ? K
+    : never
+}[InstanceAccessKey]
+
+/**
+ * The exclusion a paginated LIST query needs so that `limit`/`offset`/`total`
+ * run over the set the member may actually see.
+ *
+ * Post-pagination filtering (fetch a page, then drop the rows the member can't
+ * view) makes `total`/`hasMore` describe the UNFILTERED page, returns short
+ * pages, and — with enough restrictions — an EMPTY page alongside
+ * `hasMore: true`, which breaks any client that stops on an empty page.
+ */
+export interface InstanceExclusion {
+  /**
+   * `true` ⇒ the member may view NO instance of this resource (their L2 area
+   * gate is closed). {@link InstanceExclusion.deniedIds} is meaningless; the
+   * caller must return an empty list without querying at all.
+   */
+  deniesAll: boolean
+  /** Instance ids to exclude from the query. Empty when `deniesAll`. */
+  deniedIds: string[]
+}
+
+/**
+ * The instance ids a member may NOT view for an org-shared instance-access
+ * resource — the complement of {@link canViewInstance}, computed UP FRONT so a
+ * list query can exclude them BEFORE it paginates.
+ *
+ * Enumerating the denied set is only sound for `baselineAtCreate: false`
+ * resources, which is why the `key` parameter is narrowed to
+ * {@link OrgSharedInstanceAccessKey}. There, {@link effectiveInstanceLevel} has
+ * exactly three outcomes and only two of them can deny:
+ *  1. `role === 'OWNER'` → `admin`. Never denies.
+ *  2. area level `None` → `undefined`. Denies EVERYTHING, including instances
+ *     with no row — not enumerable, hence `deniesAll`.
+ *  3. instance in `restrictedInstanceIds` → that member's own row, which denies
+ *     when it is absent or below `view`. **Enumerable** — the set is exactly the
+ *     org's explicitly-shared instances.
+ *  4. otherwise → `levelToPermission(areaLevel)`, which for a non-`None` area is
+ *     always ≥ `view`. Never denies.
+ * So outside the `deniesAll` case, an instance can only be denied by an explicit
+ * `ResourceAccess` row — there is no fourth, non-restriction denial path. With
+ * `baselineAtCreate: true` (dashboards) branch 4 flips to `undefined` and every
+ * row-less instance is denied, which no id list can express.
+ *
+ * `restrictedInstanceIds` is org-wide across ALL instance-access resources, so
+ * the result may name ids of other types (a restricted dataset while listing
+ * workflows). Harmless: ids are globally-unique cuid2s, so excluding a foreign
+ * id can never drop a row of the type being listed.
+ */
+export function deniedInstanceIds(
+  caps: ResolvedRecordAccess,
+  key: OrgSharedInstanceAccessKey
+): InstanceExclusion {
+  if (caps.role === 'OWNER') return { deniesAll: false, deniedIds: [] }
+  if (areaLevelFromKeys(caps.keys, INSTANCE_ACCESS_RESOURCES[key].area) === Level.None) {
+    return { deniesAll: true, deniedIds: [] }
+  }
+  const deniedIds: string[] = []
+  for (const instanceId of caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET) {
+    const level = caps.instanceAccess?.[instanceId]
+    if (level === undefined || !satisfiesPermission(level, ResourcePermission.view)) {
+      deniedIds.push(instanceId)
+    }
+  }
+  return { deniesAll: false, deniedIds }
+}
 
 /**
  * Instance-access VIEW gate (Read) — the client mirror of

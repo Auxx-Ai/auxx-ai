@@ -1,11 +1,12 @@
 // apps/web/src/components/global/notifications/ui/items/resource-notifications.tsx
 'use client'
 
-import { Book, Database, LayoutDashboard } from 'lucide-react'
+import { Book, Database, LayoutDashboard, Workflow } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useFavoriteDashboard } from '~/components/favorites/hooks/use-favorite-dashboard'
 import { useFavoriteDataset } from '~/components/favorites/hooks/use-favorite-dataset'
 import { useFavoriteKnowledgeBase } from '~/components/favorites/hooks/use-favorite-knowledge-base'
+import { useFavoriteWorkflow } from '~/components/favorites/hooks/use-favorite-workflow'
 import { getNotificationCopy } from '../../copy/notification-copy'
 import { useNotificationPanelStore } from '../../notification-panel-store'
 import { NotificationRow, NotificationRowSkeleton } from '../notification-row'
@@ -62,7 +63,33 @@ export function DashboardNotification(props: NotificationItemProps<'DASHBOARD'>)
   )
 }
 
-function ResourceRow<T extends 'DATASET' | 'KNOWLEDGE_BASE' | 'DASHBOARD'>({
+/**
+ * Workflow share notifications (plan 30 §3 — `workflow` is an instance-access
+ * resource, so `resourceAccess.grantInstance` now emits `RESOURCE_SHARED` for it).
+ *
+ * `useFavoriteWorkflow` reads `api.workflow.getById`, which gates on the
+ * `workflowsView` rung plus `assertViewInstance`, so the member the share was
+ * just granted to resolves the name. A later revoke drops them to the
+ * Unavailable row, same as the other three types.
+ */
+export function WorkflowNotification(props: NotificationItemProps<'WORKFLOW'>) {
+  const { notification } = props
+  const { workflow, isLoading, isNotFound } = useFavoriteWorkflow(
+    notification.targetIds.workflowAppId
+  )
+  if (isNotFound) return <UnavailableNotification {...props} />
+  if (isLoading || !workflow) return <NotificationRowSkeleton />
+  return (
+    <ResourceRow
+      {...props}
+      icon={<Workflow className='size-4' />}
+      fallbackSubtitle={workflow.name}
+      href={`/app/workflows/${workflow.id}`}
+    />
+  )
+}
+
+function ResourceRow<T extends 'DATASET' | 'KNOWLEDGE_BASE' | 'DASHBOARD' | 'WORKFLOW'>({
   notification,
   icon,
   fallbackSubtitle,

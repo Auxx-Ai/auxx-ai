@@ -17,7 +17,12 @@ import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
 /** Every instance-access key is always "open" here — see the hook doc below. */
-const ALWAYS_OPEN: OpenInstanceTypes = { dataset: true, kb: true, dashboard: true }
+const ALWAYS_OPEN: OpenInstanceTypes = {
+  dataset: true,
+  kb: true,
+  dashboard: true,
+  workflow: true,
+}
 
 /** One dataset/kb/dashboard row nested under its area on the Member baseline grid. */
 export interface InstanceBaselineRow {

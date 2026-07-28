@@ -52,6 +52,11 @@ export async function assertWorkflowAppNotSystemOwned(
  * Same guard, resolved from a `Workflow.id` (a specific version/draft) —
  * the workflow-run REST route (`/api/workflows/[workflowId]/run`) addresses
  * a version directly rather than its parent `WorkflowApp`.
+ *
+ * @returns the parent `WorkflowApp.id`, or `undefined` when no such version
+ * exists in the org. Per-workflow instance access (plan 30) keys on the PARENT
+ * app id, so callers holding only a version id need it — returning it here
+ * saves the second lookup, since this guard already joins the parent row.
  */
 export async function assertWorkflowVersionNotSystemOwned(
   db: Database,
@@ -59,9 +64,9 @@ export async function assertWorkflowVersionNotSystemOwned(
     workflowId: string
     organizationId: string
   } & WorkflowAppAccessOptions
-): Promise<void> {
+): Promise<string | undefined> {
   const [row] = await db
-    .select({ ownerType: schema.WorkflowApp.ownerType })
+    .select({ ownerType: schema.WorkflowApp.ownerType, workflowAppId: schema.WorkflowApp.id })
     .from(schema.Workflow)
     .innerJoin(schema.WorkflowApp, eq(schema.WorkflowApp.id, schema.Workflow.workflowAppId))
     .where(
@@ -72,14 +77,56 @@ export async function assertWorkflowVersionNotSystemOwned(
     )
     .limit(1)
 
-  if (!row?.ownerType) return
-  if (params.allowSuperAdminRead && params.isSuperAdmin) return
+  if (!row?.ownerType) return row?.workflowAppId
+  if (params.allowSuperAdminRead && params.isSuperAdmin) return row.workflowAppId
   throw new ForbiddenError(SYSTEM_OWNED_MESSAGE)
+}
+
+/**
+ * The `User.id` that started a workflow run, or `null` when it has no owner.
+ *
+ * NOT a guard — pure ownership data for the "a `view` holder may stop a run
+ * THEY started" rule (plan 30, user decision 2026-07-27). Deliberately separate
+ * from {@link assertWorkflowRunNotSystemOwned} so that guard's contract and its
+ * three existing call sites stay unchanged; the stop paths pay one extra read
+ * only when the caller lacks instance `edit`.
+ *
+ * `null` covers three cases, all of which must DENY a `view`-only caller:
+ *  - the run does not exist (callers resolve it through the guard first, so this
+ *    is unreachable there),
+ *  - `createdBy` was nulled by `ON DELETE SET NULL` when the creator's `User`
+ *    row went away,
+ *  - the column was never written.
+ *
+ * Headless runs are NOT `null`: every programmatic start resolves
+ * `SystemUserService.getSystemUserForActions(orgId)` and writes that system
+ * `User.id`, so an id comparison against the caller already excludes them — no
+ * `'system'` sentinel to special-case.
+ */
+export async function getWorkflowRunCreatorId(
+  db: Database,
+  params: { runId: string; organizationId: string }
+): Promise<string | null> {
+  const [row] = await db
+    .select({ createdBy: schema.WorkflowRun.createdBy })
+    .from(schema.WorkflowRun)
+    .where(
+      and(
+        eq(schema.WorkflowRun.id, params.runId),
+        eq(schema.WorkflowRun.organizationId, params.organizationId)
+      )
+    )
+    .limit(1)
+
+  return row?.createdBy ?? null
 }
 
 /**
  * Same guard, resolved from a `WorkflowRun.id` — the stop/get/list-run
  * surfaces address runs directly, not their parent app.
+ *
+ * @returns the parent `WorkflowApp.id`, or `undefined` when no such run exists
+ * in the org (see {@link assertWorkflowVersionNotSystemOwned} for why).
  */
 export async function assertWorkflowRunNotSystemOwned(
   db: Database,
@@ -87,9 +134,9 @@ export async function assertWorkflowRunNotSystemOwned(
     runId: string
     organizationId: string
   } & WorkflowAppAccessOptions
-): Promise<void> {
+): Promise<string | undefined> {
   const [row] = await db
-    .select({ ownerType: schema.WorkflowApp.ownerType })
+    .select({ ownerType: schema.WorkflowApp.ownerType, workflowAppId: schema.WorkflowApp.id })
     .from(schema.WorkflowRun)
     .innerJoin(schema.WorkflowApp, eq(schema.WorkflowApp.id, schema.WorkflowRun.workflowAppId))
     .where(
@@ -100,7 +147,7 @@ export async function assertWorkflowRunNotSystemOwned(
     )
     .limit(1)
 
-  if (!row?.ownerType) return
-  if (params.allowSuperAdminRead && params.isSuperAdmin) return
+  if (!row?.ownerType) return row?.workflowAppId
+  if (params.allowSuperAdminRead && params.isSuperAdmin) return row.workflowAppId
   throw new ForbiddenError(SYSTEM_OWNED_MESSAGE)
 }

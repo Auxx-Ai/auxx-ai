@@ -20,7 +20,11 @@ import { useCallback } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { VariableEditorDialog } from '~/components/workflow/dialogs/variable-editor-dialog'
-import { useNonTriggerDefinitions, useReadOnly } from '~/components/workflow/hooks'
+import {
+  useNonTriggerDefinitions,
+  useReadOnly,
+  useWorkflowAccess,
+} from '~/components/workflow/hooks'
 import { useChecklist } from '~/components/workflow/hooks/use-checklist'
 import { RunHistory } from '~/components/workflow/panels/run/run-history'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
@@ -54,6 +58,12 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   const { save } = useWorkflowSave()
   // Read-only state for disabling editing actions
   const { isReadOnly } = useReadOnly()
+  // Per-workflow instance access (plan 30 §4). Two different vocabularies on
+  // purpose: a TRANSIENT read-only state (version preview, live run) keeps the
+  // long-standing disabled-with-tooltip treatment because the affordance comes
+  // back, while a PERMANENT lack of the `edit` rung hides the control outright —
+  // the repo's hide-don't-disable rule (plan 24 §A.2.3).
+  const { canEdit } = useWorkflowAccess()
 
   // Get validation state from checklist hook
   const { errorCount, warningCount } = useChecklist()
@@ -182,25 +192,29 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
           className
         )}>
         <div className='flex items-center p-1 gap-1 overflow-x-auto overflow-y-visible no-scrollbar shrink-0 flex-1'>
-          {/* File operations */}
-          <Tooltip
-            content={isReadOnly ? 'Save disabled in read-only mode' : 'Save'}
-            shortcut={[mod, 'S']}>
-            <Button
-              variant='ghost'
-              size='icon-sm'
-              onClick={handleSave}
-              disabled={!isDirty || isReadOnly}
-              loading={isSaving}
-              loadingText='Saving...'>
-              <Save />
-            </Button>
-          </Tooltip>
+          {/* File operations — Save is the `edit` rung (plan 30 §4) */}
+          {canEdit && (
+            <>
+              <Tooltip
+                content={isReadOnly ? 'Save disabled in read-only mode' : 'Save'}
+                shortcut={[mod, 'S']}>
+                <Button
+                  variant='ghost'
+                  size='icon-sm'
+                  onClick={handleSave}
+                  disabled={!isDirty || isReadOnly}
+                  loading={isSaving}
+                  loadingText='Saving...'>
+                  <Save />
+                </Button>
+              </Tooltip>
 
-          <Separator orientation='vertical' className='h-6' />
+              <Separator orientation='vertical' className='h-6' />
+            </>
+          )}
 
           {/* View options */}
-          {!isReadOnly && (
+          {canEdit && !isReadOnly && (
             <AddNodeTrigger
               position='standalone'
               onNodeAdded={handleNodeAdded}
@@ -216,44 +230,53 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
               </div>
             </AddNodeTrigger>
           )}
-          {isReadOnly && (
+          {canEdit && isReadOnly && (
             <Tooltip content='Add Block disabled in read-only mode'>
               <Button variant='ghost' size='icon-sm' disabled>
                 <Plus />
               </Button>
             </Tooltip>
           )}
-          <Tooltip
-            content={isReadOnly ? 'Variables disabled in read-only mode' : 'Environment Variables'}
-            shortcut='E'>
-            <Button
-              variant='ghost'
-              size='sm'
-              onClick={() => setVariableEditorOpen(true)}
-              disabled={isReadOnly}
-              className='text-comparison-500 border border-transparent hover:bg-comparison-50 hover:border-comparison-200 hover:text-comparison-600'>
-              <Variable />
-              ENV
-            </Button>
-          </Tooltip>
+          {canEdit && (
+            <>
+              <Tooltip
+                content={
+                  isReadOnly ? 'Variables disabled in read-only mode' : 'Environment Variables'
+                }
+                shortcut='E'>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => setVariableEditorOpen(true)}
+                  disabled={isReadOnly}
+                  className='text-comparison-500 border border-transparent hover:bg-comparison-50 hover:border-comparison-200 hover:text-comparison-600'>
+                  <Variable />
+                  ENV
+                </Button>
+              </Tooltip>
 
-          {/* <div className="flex-1" /> */}
-          <Separator orientation='vertical' className='h-6' />
+              {/* <div className="flex-1" /> */}
+              <Separator orientation='vertical' className='h-6' />
+            </>
+          )}
 
           {/* Actions */}
           <WorkflowChecklist />
-          <Tooltip
-            content={isReadOnly ? 'Test disabled in read-only mode' : 'Test this workflow'}
-            shortcut='T'>
-            <Button
-              size='sm'
-              variant={runPanelOpen ? 'secondary' : 'ghost'}
-              onClick={handleTest}
-              disabled={isReadOnly}>
-              <Play />
-              <span className='hidden sm:inline'>Test</span>
-            </Button>
-          </Tooltip>
+          {/* Test-run is an authoring action — the `edit` rung (plan 30 §4) */}
+          {canEdit && (
+            <Tooltip
+              content={isReadOnly ? 'Test disabled in read-only mode' : 'Test this workflow'}
+              shortcut='T'>
+              <Button
+                size='sm'
+                variant={runPanelOpen ? 'secondary' : 'ghost'}
+                onClick={handleTest}
+                disabled={isReadOnly}>
+                <Play />
+                <span className='hidden sm:inline'>Test</span>
+              </Button>
+            </Tooltip>
+          )}
           <Popover open={historyPopoverOpen} onOpenChange={setHistoryPopoverOpen}>
             <PopoverTrigger asChild>
               <div className='shrink-0'>
@@ -281,32 +304,38 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
           </Tooltip>
           <Separator orientation='vertical' className='h-6' />
 
-          <Tooltip
-            variant='destructive'
-            content={
-              errorCount > 0
-                ? `Cannot publish: ${errorCount} error${errorCount > 1 ? 's' : ''} must be fixed`
-                : isReadOnly
-                  ? 'Publish disabled in read-only mode'
-                  : warningCount > 0
-                    ? `Publish Current Version (${warningCount} warning${warningCount > 1 ? 's' : ''})`
-                    : 'Publish Current Version'
-            }>
-            <Button
-              variant='ghost'
-              size='sm'
-              onClick={handlePublish}
-              disabled={publishMutation.isPending || isReadOnly}
-              loading={publishMutation.isPending}
-              loadingText='Publishing...'>
-              <Upload />
-              <span className='hidden sm:inline'>Publish</span>
-            </Button>
-          </Tooltip>
+          {/* Publish is the `edit` rung (plan 30 §4) */}
+          {canEdit && (
+            <Tooltip
+              variant='destructive'
+              content={
+                errorCount > 0
+                  ? `Cannot publish: ${errorCount} error${errorCount > 1 ? 's' : ''} must be fixed`
+                  : isReadOnly
+                    ? 'Publish disabled in read-only mode'
+                    : warningCount > 0
+                      ? `Publish Current Version (${warningCount} warning${warningCount > 1 ? 's' : ''})`
+                      : 'Publish Current Version'
+              }>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={handlePublish}
+                disabled={publishMutation.isPending || isReadOnly}
+                loading={publishMutation.isPending}
+                loadingText='Publishing...'>
+                <Upload />
+                <span className='hidden sm:inline'>Publish</span>
+              </Button>
+            </Tooltip>
+          )}
+          {/* The version LIST is readable at `view`; restore/delete/rename are
+              hidden inside the popover for non-editors. */}
           <WorkflowVersionsPopover
             open={isShowVersions}
             onOpenChange={(open) => useCanvasStore.setState({ showVersions: open })}
             workflowId={workflow?.id || ''}
+            canManageVersions={canEdit}
           />
         </div>
         {/* Help & Dock toggle */}
