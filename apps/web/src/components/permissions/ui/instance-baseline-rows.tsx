@@ -10,13 +10,13 @@ import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { Library } from 'lucide-react'
 import { useState } from 'react'
 import type { InstanceBaselineRow } from '../hooks/use-instance-baseline-rows'
-import { AccessLevelSelect } from './access-level-select'
+import { ACCESS_ROW_DEPTH, AccessRowSelect } from './access-tree-row'
 import { InstanceShareBody } from './instance-share-body'
 import { INSTANCE_ROW_COPY, INSTANCE_TYPE_META } from './instance-share-copy'
 import { InstanceTruncationNote } from './instance-truncation-note'
 
 /** Indent of the instance rows under their collection row. */
-const CHILD_DEPTH = 1
+const CHILD_DEPTH = ACCESS_ROW_DEPTH
 
 /**
  * The per-instance rows under a Datasets / Knowledge bases / Dashboards /
@@ -36,6 +36,11 @@ const CHILD_DEPTH = 1
  * row's subject IS everyone, so the grantees nested under it are exactly the
  * exceptions to the level it sets. On a grantee row they would be a different
  * subject entirely.
+ *
+ * That is also why the row itself stays on `TreeRow` rather than `AccessTreeRow`
+ * (plan 33 §7.3): the shared primitive deliberately offers no `expandable`, so
+ * this family cannot collapse into it without putting that distinction behind a
+ * boolean. Only the picker is shared, which is where the two genuinely agree.
  */
 export function InstanceBaselineRows({
   rows,
@@ -131,7 +136,7 @@ function InstanceBaselineRowItem({
               Shared · {row.badge}
             </Badge>
           ) : undefined}
-          <AccessLevelSelect
+          <AccessRowSelect
             value={row.baselineLevel}
             includeInherit
             includeNone
@@ -139,9 +144,6 @@ function InstanceBaselineRowItem({
             onInherit={() => onChange('inherit')}
             onChange={(level) => onChange(level)}
             disabled={disabled}
-            size='sm'
-            variant='transparent'
-            className='h-7 w-44'
           />
         </>
       }>

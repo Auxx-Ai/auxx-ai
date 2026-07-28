@@ -179,6 +179,27 @@ export const AGENT_POLICY_AREAS: readonly Area[] = AGENT_POLICY_AREA_GROUPS.flat
  */
 export type AgentPolicyInstanceKey = Exclude<InstanceAccessKey, 'agent'>
 
+/**
+ * The runtime companion of {@link AgentPolicyInstanceKey}, for the surfaces that
+ * have to ENUMERATE the types rather than narrow one.
+ *
+ * Deliberately an exhaustive `Record`, not `INSTANCE_ACCESS_KEYS.filter(…)`: the
+ * record is what makes a genuinely new instance-access resource a compile error,
+ * which is the property the private `RESOURCE_TYPE_META` tables were carrying by
+ * accident before plan 33 §4.3 merged them into `INSTANCE_TYPE_META` (which
+ * cannot carry it — it must include `agent`).
+ */
+const AGENT_POLICY_INSTANCE_KEY_SET: Record<AgentPolicyInstanceKey, true> = {
+  dataset: true,
+  kb: true,
+  dashboard: true,
+  workflow: true,
+}
+
+export const AGENT_POLICY_INSTANCE_KEYS = Object.keys(
+  AGENT_POLICY_INSTANCE_KEY_SET
+) as AgentPolicyInstanceKey[]
+
 /** The icon a profile falls back to when it carries no `icon` of its own. */
 export const DEFAULT_PROFILE_ICON = { iconId: 'shield-check', color: 'blue' }
 

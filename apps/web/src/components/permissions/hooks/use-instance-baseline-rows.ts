@@ -16,13 +16,16 @@ import { deriveInstanceBadge, type InstanceAccessBadge } from '../utils/instance
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
-/** Every instance-access key is always "open" here — see the hook doc below. */
-const ALWAYS_OPEN: OpenInstanceTypes = {
-  dataset: true,
-  kb: true,
-  dashboard: true,
-  workflow: true,
-}
+/**
+ * Every instance-access key is always "open" here — see the hook doc below.
+ *
+ * **Derived, not listed**, for the reason `use-instance-grantee-rows.ts` gives:
+ * the hand-written version silently omitted `agent` when it joined the registry,
+ * leaving the Agents area row nesting an always-empty list.
+ */
+const ALWAYS_OPEN: OpenInstanceTypes = Object.fromEntries(
+  INSTANCE_ACCESS_KEYS.map((key) => [key, true])
+)
 
 /** One dataset/kb/dashboard/workflow row on the Workspace defaults tab. */
 export interface InstanceBaselineRow {

@@ -6,9 +6,9 @@ import type { ResourcePermission } from '@auxx/database/enums'
 import { AREA_ORDER, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { isAccessManageable } from '@auxx/lib/resources/client'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { BookOpen, Database, LayoutDashboard, Workflow } from 'lucide-react'
 import { useMemo } from 'react'
-import type { AgentPolicyInstanceKey } from '~/components/permissions/ui/profile-copy'
+import { INSTANCE_TYPE_META } from '~/components/permissions/ui/instance-share-copy'
+import { AGENT_POLICY_INSTANCE_KEYS } from '~/components/permissions/ui/profile-copy'
 import {
   ResolvedAccessBadge,
   ResolvedAccessDialog,
@@ -19,34 +19,6 @@ import {
 } from '~/components/permissions/ui/resolved-access-dialog'
 import { useResources } from '~/components/resources/hooks'
 import { AGENT_ACCESS_LEVEL_META, hasAgentOverride, resolveAgentLevel } from './agent-access-level'
-
-// Keyed by `AgentPolicyInstanceKey`, not `InstanceAccessKey` — `agent` is
-// deliberately outside an agent policy's keyspace (see that type).
-const RESOURCE_TYPE_META: Record<
-  AgentPolicyInstanceKey,
-  { label: string; icon: React.ReactNode; description: string }
-> = {
-  dataset: {
-    label: 'Datasets',
-    icon: <Database className='size-4' />,
-    description: 'Stored datasets and their rows.',
-  },
-  kb: {
-    label: 'Knowledge bases',
-    icon: <BookOpen className='size-4' />,
-    description: 'Knowledge bases and their articles.',
-  },
-  dashboard: {
-    label: 'Dashboards',
-    icon: <LayoutDashboard className='size-4' />,
-    description: 'Dashboards and their widgets.',
-  },
-  workflow: {
-    label: 'Workflows',
-    icon: <Workflow className='size-4' />,
-    description: 'Workflows the agent may see and run.',
-  },
-}
 
 /**
  * Stored rungs onto {@link ResolvedAccessDialog}'s own presentation keyspace.
@@ -192,16 +164,16 @@ export function AgentResolvedPolicyDialog({
         key: instances.key,
         title: instances.title,
         defaultRow: { label: instances.defaultLabel, level: AGENT_LEVEL[instances.level] },
-        // Driven off `RESOURCE_TYPE_META`, not `INSTANCE_ACCESS_RESOURCES` —
-        // the latter now carries `agent`, which an agent policy never expresses.
-        rows: (Object.keys(RESOURCE_TYPE_META) as AgentPolicyInstanceKey[]).map((type) => {
+        // Driven off `AGENT_POLICY_INSTANCE_KEYS`, not `INSTANCE_ACCESS_KEYS` —
+        // the latter carries `agent`, which an agent policy never expresses.
+        rows: AGENT_POLICY_INSTANCE_KEYS.map((type) => {
           const perType = policy.resources?.[type]
           const perTypeOverrides = Object.keys(perType?.overrides ?? {}).length
-          const meta = RESOURCE_TYPE_META[type]
+          const meta = INSTANCE_TYPE_META[type]
           return {
             id: type,
             label: meta.label,
-            icon: meta.icon,
+            icon: <meta.icon className='size-4' />,
             description:
               perTypeOverrides > 0
                 ? `${meta.description} ${perTypeOverrides} with a rule of their own.`

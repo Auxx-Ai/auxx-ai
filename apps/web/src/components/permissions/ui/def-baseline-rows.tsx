@@ -4,15 +4,15 @@
 import type { ResourcePermission } from '@auxx/database/enums'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { EmptySection } from '@auxx/ui/components/section'
-import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { Lock, ShieldCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Tooltip } from '~/components/global/tooltip'
 import type { DefBaselineRow } from '../hooks/use-def-baselines'
-import { AccessLevelSelect } from './access-level-select'
+import { ACCESS_ROW_DEPTH, AccessRowSelect, AccessTreeRow } from './access-tree-row'
 
 /** Indent of the def rows under their collection row. */
-const CHILD_DEPTH = 1
+const CHILD_DEPTH = ACCESS_ROW_DEPTH
 
 /**
  * The per-def rows under the Record types collection on the Workspace
@@ -67,12 +67,11 @@ export function DefBaselineRows({
   return (
     <div className='flex flex-col gap-0.5'>
       {rows.map((row) => (
-        <TreeRow
+        <AccessTreeRow
           key={row.resource.entityDefinitionId}
           depth={CHILD_DEPTH}
-          rowClassName='bg-primary-50 hover:bg-primary-100'
           icon={<EntityIcon iconId={row.resource.icon} color={row.resource.color} size='xs' />}
-          title={<span className='truncate'>{row.resource.plural}</span>}
+          title={row.resource.plural}
           secondary={
             row.isLockedDown ? (
               <Tooltip content='Restricted: hidden from everyone by default. Only members you grant access (directly or via a team) can see this type.'>
@@ -81,7 +80,7 @@ export function DefBaselineRows({
             ) : undefined
           }
           actions={
-            <AccessLevelSelect
+            <AccessRowSelect
               value={row.baselineLevel}
               includeInherit
               includeNone
@@ -90,9 +89,6 @@ export function DefBaselineRows({
               onInherit={() => onChange(row.resource.entityDefinitionId, 'inherit')}
               onChange={(level) => onChange(row.resource.entityDefinitionId, level)}
               disabled={disabled}
-              size='sm'
-              variant='transparent'
-              className='h-7 w-44'
             />
           }
           onDrill={() =>

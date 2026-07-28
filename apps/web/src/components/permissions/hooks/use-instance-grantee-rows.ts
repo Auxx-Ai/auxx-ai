@@ -7,32 +7,37 @@ import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
+import type { InstanceAccessRow } from '../ui/grantee-instance-rows'
+import { INSTANCE_ROW_COPY, INSTANCE_SHARE_COPY } from '../ui/instance-share-copy'
 import { useGranteeAccess, useInvalidateGranteeAccess } from './use-grantee-access'
 import type { GranteeKind } from './use-grantee-def-access'
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
 
-/** Every instance-access key is always "open" here — same rationale as the
- *  baseline-scope hook: the host's search box has to match instance names. */
-const ALWAYS_OPEN: OpenInstanceTypes = {
-  dataset: true,
-  kb: true,
-  dashboard: true,
-  workflow: true,
-}
+/**
+ * Every instance-access key is always "open" here — same rationale as the
+ * baseline-scope hook: the host's search box has to match instance names.
+ *
+ * **Derived, not listed.** A hand-written map silently omitted `agent` when it
+ * joined the registry in the 2026-07-28 agents slice, and because
+ * `AREA_TO_INSTANCE_KEY` IS derived, the Agents area row started nesting an
+ * always-empty list — a phantom control, with no failing test anywhere.
+ */
+const ALWAYS_OPEN: OpenInstanceTypes = Object.fromEntries(
+  INSTANCE_ACCESS_KEYS.map((key) => [key, true])
+)
 
-/** One dataset/kb/dashboard row nested under its area in a grantee scope. */
-export interface InstanceGranteeRow {
-  key: InstanceAccessKey
-  id: string
-  name: string
-  /** This grantee's own explicit grant; `undefined` = Inherit (no row). */
-  grantLevel: ResourcePermission | undefined
+/**
+ * One dataset/kb/dashboard/workflow/agent row nested under its area in a grantee
+ * scope: the shared {@link InstanceAccessRow} the renderer consumes, narrowed to
+ * what this scope always supplies.
+ */
+export interface InstanceGranteeRow extends InstanceAccessRow {
   /**
    * What the grantee can ACTUALLY reach here, composed server-side through the
    * enforcement predicate; `null` = no access, `undefined` = not applicable
    * (a group/profile has no effective access — see {@link useGranteeAccess}).
    *
-   * Distinct from {@link grantLevel} on purpose, and the gap between them is the
+   * Distinct from `grantLevel` on purpose, and the gap between them is the
    * point: a user-level `none` LOSES to any group's `view`, so an admin can set
    * No access, watch the select change, and change nothing (plan 31 finding 4).
    */
@@ -85,6 +90,10 @@ export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: stri
         key,
         id: item.id,
         name: item.name,
+        // Scope-specific copy, so it is composed here rather than inside a row
+        // component four surfaces share — the agent policy's rows say something
+        // else entirely about the same instance.
+        description: INSTANCE_ROW_COPY.grantee.description(INSTANCE_SHARE_COPY[key].noun),
         grantLevel: own?.instances[item.id],
         // An instance absent from `effective.instances` has no row anywhere in
         // the org, so its answer is the per-type row-less fallback. A pure

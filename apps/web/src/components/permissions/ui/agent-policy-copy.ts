@@ -153,6 +153,15 @@ export function usesDefaultLabel(fallback: ResourcePermission): string {
 }
 
 /**
+ * What the fall-through option is CALLED on an agent row. An agent policy
+ * composes by SET over its own defaults, so there is nothing external to inherit
+ * from and the human "Inherit" would misdescribe the state (capability layer v2
+ * §0.2). Named here rather than typed inline at each row, which is how the four
+ * child-row files drifted in the first place.
+ */
+export const AGENT_INHERIT_LABEL = 'Default'
+
+/**
  * Title of the first child row under `Area.records` — the `definitions.default`
  * rule (plan 29 §1.1). Exported because the host filters the tree's search
  * against it as well as rendering it.
