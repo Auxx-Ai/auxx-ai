@@ -128,6 +128,7 @@ export function ProfilePicker({
           onChange={onChange}
           options={options}
           onSelectSingle={handleSelectSingle}
+          onManage={() => handleOpenChange(false)}
           disabled={disabled}
           {...pickerProps}
         />

@@ -4,16 +4,22 @@
 
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
+  CommandItem,
   CommandList,
+  CommandPlaceholder,
   CommandSeparator,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
+import { Settings2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ProfileItem } from './profile-item'
 import type { ProfilePickerContentProps } from './types'
+
+/** Where profiles are authored — the one destination every picker points at. */
+export const MANAGE_PROFILES_HREF = '/app/settings/permissions'
 
 /**
  * ProfilePickerContent — the searchable permission-profile list, wrapped in its
@@ -47,10 +53,13 @@ export function ProfileCommandBody({
   placeholder = 'Search profiles...',
   isLoading = false,
   showSeat = false,
+  showManage = true,
+  onManage,
   onSelectSingle,
   onCaptureChange,
 }: Omit<ProfilePickerContentProps, 'className'>) {
   const [search, setSearch] = useState('')
+  const router = useRouter()
 
   // Notify parent about capture state on mount/unmount
   useEffect(() => {
@@ -86,10 +95,20 @@ export function ProfileCommandBody({
     [onChange, onSelectSingle]
   )
 
+  const handleManage = useCallback(() => {
+    // The wrapper closes first so the popover is gone before the route changes.
+    onManage?.()
+    router.push(MANAGE_PROFILES_HREF)
+  }, [onManage, router])
+
   const hasSystemSection = grouped.system.length > 0
   const hasCustomSection = grouped.custom.length > 0
   // Headings only earn their space when both groups are on screen.
   const showGroupHeadings = hasSystemSection && hasCustomSection
+  // `CommandEmpty` counts every rendered item, so the always-present Manage row
+  // would keep it from ever firing. The list is filtered here anyway, so the
+  // empty state is stated outright instead of inferred.
+  const isEmpty = !hasSystemSection && !hasCustomSection
 
   return (
     <>
@@ -102,7 +121,11 @@ export function ProfileCommandBody({
         autoFocus
       />
       <CommandList>
-        <CommandEmpty>{isLoading ? 'Loading profiles...' : 'No profiles found'}</CommandEmpty>
+        {isEmpty && (
+          <CommandPlaceholder>
+            {isLoading ? 'Loading profiles...' : 'No profiles found'}
+          </CommandPlaceholder>
+        )}
 
         {hasSystemSection && (
           <CommandGroup
@@ -136,6 +159,18 @@ export function ProfileCommandBody({
               />
             ))}
           </CommandGroup>
+        )}
+
+        {showManage && (
+          <>
+            {!isEmpty && <CommandSeparator />}
+            <CommandGroup aria-label='Profile settings'>
+              <CommandItem value='__manage__' onSelect={handleManage}>
+                <Settings2 className='size-4 text-muted-foreground' />
+                <span>Manage profiles</span>
+              </CommandItem>
+            </CommandGroup>
+          </>
         )}
       </CommandList>
     </>

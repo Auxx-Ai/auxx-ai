@@ -36,6 +36,7 @@ export type {
   ProfilePickerProps,
 } from './profile-picker'
 export {
+  MANAGE_PROFILES_HREF,
   ProfileCommandBody,
   ProfileGlyph,
   ProfileItem,

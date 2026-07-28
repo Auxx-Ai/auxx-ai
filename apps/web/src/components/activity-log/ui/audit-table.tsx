@@ -105,15 +105,18 @@ export function AuditTable({
   }
 
   return (
-    <div className='flex flex-col flex-1 overflow-y-auto w-full'>
-      <table className='w-full caption-bottom text-sm max-w-full table-fixed'>
+    <div className='flex flex-col flex-1 overflow-auto w-full'>
+      <table
+        className={`caption-bottom text-sm table-fixed w-full ${
+          isAdmin ? 'min-w-[1240px]' : 'min-w-[1040px]'
+        }`}>
         <TableHeader className='sticky top-0 bg-background z-10'>
           <TableRow>
             <TableHead className='w-[300px]'>When</TableHead>
             {isAdmin && <TableHead className='w-[110px]'>Org</TableHead>}
             <TableHead className='w-[220px]'>Action</TableHead>
             <TableHead className='w-[160px]'>Actor</TableHead>
-            <TableHead className='flex-1'>Target</TableHead>
+            <TableHead className='min-w-[240px]'>Target</TableHead>
             <TableHead className='w-[120px]'>IP</TableHead>
             {isAdmin && <TableHead className='w-[90px]'>Visibility</TableHead>}
           </TableRow>
@@ -126,12 +129,14 @@ export function AuditTable({
                 key={row.id}
                 className={onRowClick ? 'cursor-pointer' : undefined}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}>
-                <TableCell className='font-mono text-xs w-[190px]'>
+                <TableCell className='font-mono text-xs'>
                   <div className='flex items-center gap-2'>
-                    <Badge variant={badge.variant} size='xs'>
+                    <Badge variant={badge.variant} size='xs' className='shrink-0'>
                       {badge.label}
                     </Badge>
-                    <span>{format(new Date(row.createdAt), 'MMM dd, HH:mm:ss')}</span>
+                    <span className='whitespace-nowrap'>
+                      {format(new Date(row.createdAt), 'MMM dd, HH:mm:ss')}
+                    </span>
                   </div>
                 </TableCell>
                 {isAdmin && (
@@ -145,7 +150,7 @@ export function AuditTable({
                 <TableCell className='w-[160px] overflow-hidden'>
                   <AuditActor row={row} />
                 </TableCell>
-                <TableCell className='flex-1 font-mono text-xs overflow-hidden min-w-0'>
+                <TableCell className='font-mono text-xs overflow-hidden'>
                   <div className='break-words'>
                     {row.targetType ? (
                       <>

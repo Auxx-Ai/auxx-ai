@@ -214,10 +214,11 @@ export function TriggersSectionContent({
   }
 
   return (
-    <div className='space-y-4'>
+    <>
       {/* The picker has no inline trigger (it's opened from the section-header "Add trigger"
-          dropdown), so it anchors to a zero-height element at the top of the list and aligns
-          to the end — i.e. it floats just under the "Add trigger" button. */}
+          dropdown), so it anchors to a zero-height element above the list and aligns to the
+          end — i.e. it floats just under the "Add trigger" button. It sits outside the
+          spaced container so its anchor doesn't add a gap above the first row. */}
       <TriggerSourcePickerPopover
         open={isPickerOpen}
         onOpenChange={handlePickerOpenChange}
@@ -227,121 +228,123 @@ export function TriggersSectionContent({
         anchor={<div className='h-0 w-full' aria-hidden />}
       />
 
-      <AgentTriggerDialog
-        open={isDialogOpen}
-        onOpenChange={handleDialogOpenChange}
-        agentId={agent.id}
-        kind={dialogKind}
-        trigger={editingTrigger ?? undefined}
-        appSelection={appSelectionForDialog}
-        webhookSelection={webhookSelectionForDialog}
-        onSuccess={invalidateList}
-        onRepick={() => {
-          setEditingTrigger(null)
-          setCreatingBuiltinKind(null)
-          setPendingAppSelection(null)
-          setPendingWebhookSelection(null)
-          onAddingKindChange('source')
-        }}
-      />
+      <div className='space-y-4'>
+        <AgentTriggerDialog
+          open={isDialogOpen}
+          onOpenChange={handleDialogOpenChange}
+          agentId={agent.id}
+          kind={dialogKind}
+          trigger={editingTrigger ?? undefined}
+          appSelection={appSelectionForDialog}
+          webhookSelection={webhookSelectionForDialog}
+          onSuccess={invalidateList}
+          onRepick={() => {
+            setEditingTrigger(null)
+            setCreatingBuiltinKind(null)
+            setPendingAppSelection(null)
+            setPendingWebhookSelection(null)
+            onAddingKindChange('source')
+          }}
+        />
 
-      {triggers.isLoading ? (
-        <EmptySection loading className='mx-3' />
-      ) : (
-        <div className='flex flex-col pe-4'>
-          {BUILTIN_KINDS.map((kind) => {
-            const existing = builtinByKind[kind]
-            if (existing) {
+        {triggers.isLoading ? (
+          <EmptySection loading className='mx-3' />
+        ) : (
+          <div className='flex flex-col pe-4'>
+            {BUILTIN_KINDS.map((kind) => {
+              const existing = builtinByKind[kind]
+              if (existing) {
+                return (
+                  <TriggerRow
+                    key={existing.id}
+                    meta={KIND_META[kind]}
+                    title={<TriggerLabel row={existing} />}
+                    description={KIND_META[kind].description}
+                    lastFiredAt={existing.lastFiredAt}
+                    hasError={!!existing.lastError}
+                    enabled={existing.enabled}
+                    isEditable={canAdmin}
+                    isDeletable={false}
+                    readOnly={!canAdmin}
+                    onEdit={() => setEditingTrigger(existing)}
+                    onToggle={(checked) =>
+                      updateTrigger.mutate({ id: existing.id, enabled: checked })
+                    }
+                  />
+                )
+              }
               return (
                 <TriggerRow
-                  key={existing.id}
+                  key={`virtual-${kind}`}
                   meta={KIND_META[kind]}
-                  title={<TriggerLabel row={existing} />}
+                  title={<span className='text-muted-foreground'>On {kind}</span>}
                   description={KIND_META[kind].description}
-                  lastFiredAt={existing.lastFiredAt}
-                  hasError={!!existing.lastError}
-                  enabled={existing.enabled}
+                  lastFiredAt={null}
+                  hasError={false}
+                  enabled={false}
                   isEditable={canAdmin}
                   isDeletable={false}
                   readOnly={!canAdmin}
-                  onEdit={() => setEditingTrigger(existing)}
-                  onToggle={(checked) =>
-                    updateTrigger.mutate({ id: existing.id, enabled: checked })
-                  }
+                  onEdit={() => setCreatingBuiltinKind(kind)}
+                  onToggle={(checked) => {
+                    if (!checked) return
+                    createTrigger.mutate({
+                      agentId: agent.id,
+                      enabled: true,
+                      trigger: { kind },
+                    })
+                  }}
                 />
               )
-            }
-            return (
-              <TriggerRow
-                key={`virtual-${kind}`}
-                meta={KIND_META[kind]}
-                title={<span className='text-muted-foreground'>On {kind}</span>}
-                description={KIND_META[kind].description}
-                lastFiredAt={null}
-                hasError={false}
-                enabled={false}
-                isEditable={canAdmin}
-                isDeletable={false}
-                readOnly={!canAdmin}
-                onEdit={() => setCreatingBuiltinKind(kind)}
-                onToggle={(checked) => {
-                  if (!checked) return
-                  createTrigger.mutate({
-                    agentId: agent.id,
-                    enabled: true,
-                    trigger: { kind },
-                  })
-                }}
-              />
-            )
-          })}
+            })}
 
-          {customRows.map((row) => {
-            const meta = KIND_META[row.kind as TriggerKind]
-            const isDirectEventRow =
-              row.kind === 'event' && !row.entityDefinitionId && !!row.eventType
-            const isEditable = !isDirectEventRow
+            {customRows.map((row) => {
+              const meta = KIND_META[row.kind as TriggerKind]
+              const isDirectEventRow =
+                row.kind === 'event' && !row.entityDefinitionId && !!row.eventType
+              const isEditable = !isDirectEventRow
 
-            let iconOverride: ReactNode | undefined
-            if (row.kind === 'app' && row.triggerAppId) {
-              const installation =
-                appInstallations.find((i) => i.installationId === row.triggerInstallationId) ??
-                appInstallations.find((i) => i.app.id === row.triggerAppId)
-              const avatarUrl = installation?.app.avatarUrl
-              if (avatarUrl) {
-                iconOverride = (
-                  <Tooltip content={installation?.app.title ?? meta.label}>
-                    <span className='inline-flex'>
-                      <AppIcon iconId={avatarUrl} size='sm' />
-                    </span>
-                  </Tooltip>
-                )
+              let iconOverride: ReactNode | undefined
+              if (row.kind === 'app' && row.triggerAppId) {
+                const installation =
+                  appInstallations.find((i) => i.installationId === row.triggerInstallationId) ??
+                  appInstallations.find((i) => i.app.id === row.triggerAppId)
+                const avatarUrl = installation?.app.avatarUrl
+                if (avatarUrl) {
+                  iconOverride = (
+                    <Tooltip content={installation?.app.title ?? meta.label}>
+                      <span className='inline-flex'>
+                        <AppIcon iconId={avatarUrl} size='sm' />
+                      </span>
+                    </Tooltip>
+                  )
+                }
               }
-            }
 
-            return (
-              <TriggerRow
-                key={row.id}
-                meta={meta}
-                icon={iconOverride}
-                title={<TriggerLabel row={row} />}
-                lastFiredAt={row.lastFiredAt}
-                hasError={!!row.lastError}
-                enabled={row.enabled}
-                isEditable={canAdmin && isEditable}
-                isDeletable={canAdmin}
-                readOnly={!canAdmin}
-                onEdit={() => setEditingTrigger(row)}
-                onDelete={() => handleDelete(row)}
-                onToggle={(checked) => updateTrigger.mutate({ id: row.id, enabled: checked })}
-              />
-            )
-          })}
-        </div>
-      )}
+              return (
+                <TriggerRow
+                  key={row.id}
+                  meta={meta}
+                  icon={iconOverride}
+                  title={<TriggerLabel row={row} />}
+                  lastFiredAt={row.lastFiredAt}
+                  hasError={!!row.lastError}
+                  enabled={row.enabled}
+                  isEditable={canAdmin && isEditable}
+                  isDeletable={canAdmin}
+                  readOnly={!canAdmin}
+                  onEdit={() => setEditingTrigger(row)}
+                  onDelete={() => handleDelete(row)}
+                  onToggle={(checked) => updateTrigger.mutate({ id: row.id, enabled: checked })}
+                />
+              )
+            })}
+          </div>
+        )}
 
-      <ConfirmDialog />
-    </div>
+        <ConfirmDialog />
+      </div>
+    </>
   )
 }
 
