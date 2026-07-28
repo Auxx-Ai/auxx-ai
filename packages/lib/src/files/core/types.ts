@@ -21,7 +21,6 @@ export type EntityType =
   | 'TASK'
   | 'ORDER'
   | 'PRODUCT'
-  | 'TICKET'
   | 'ARTICLE'
   | 'WORKFLOW_RUN'
   | 'DATASET'

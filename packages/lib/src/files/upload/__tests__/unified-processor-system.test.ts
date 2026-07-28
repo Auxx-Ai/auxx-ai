@@ -64,7 +64,7 @@ describe('Unified Processor System', () => {
   describe('Processor Registry', () => {
     it('should have simplified EntityType mapping', () => {
       // Test that registry supports EntityType directly
-      const entityTypes: EntityType[] = ['FILE', 'DATASET', 'TICKET']
+      const entityTypes: EntityType[] = ['FILE', 'DATASET', 'ARTICLE']
 
       entityTypes.forEach((entityType) => {
         expect(() => {
