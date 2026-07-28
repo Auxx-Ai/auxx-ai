@@ -3,11 +3,15 @@
 
 import { Settings } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { getNotificationCopy } from '../../copy/notification-copy'
 import { useNotificationPanelStore } from '../../notification-panel-store'
 import { NotificationRow } from '../notification-row'
 import type { NotificationItemProps } from './item-props'
 
+/**
+ * Deep links into settings — plan overages, the automated-send guard. Every sender
+ * on this target writes its own prose and carries no copy template, so the message
+ * is shown as written.
+ */
 export function SettingsNotification({
   notification,
   onDelete,
@@ -15,20 +19,17 @@ export function SettingsNotification({
 }: NotificationItemProps<'SETTINGS'>) {
   const router = useRouter()
   const close = useNotificationPanelStore((state) => state.close)
-  const copy = getNotificationCopy(notification)
   return (
     <NotificationRow
       {...notification}
-      title={copy.title}
-      subtitle={copy.subtitle}
-      actor={notification.actor}
       icon={<Settings className='size-4' />}
       onOpen={() => {
         router.push(notification.targetIds.path)
         close()
       }}
       onDelete={onDelete}
-      onRead={onRead}
-    />
+      onRead={onRead}>
+      {notification.message}
+    </NotificationRow>
   )
 }

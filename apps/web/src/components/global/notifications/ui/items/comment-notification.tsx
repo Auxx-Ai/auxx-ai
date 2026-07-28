@@ -5,14 +5,16 @@ import type { NotificationEntity } from '@auxx/lib/notifications/client'
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import type React from 'react'
 import { threadHref } from '~/components/kbar/thread-href'
 import { useRecordEditorStore } from '~/components/records/record-editor-store'
 import { useRecord } from '~/components/resources/hooks/use-record'
 import type { RecordMeta } from '~/components/resources/store/record-store'
 import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { useThread } from '~/components/threads/hooks'
-import { getNotificationCopy } from '../../copy/notification-copy'
 import { useNotificationPanelStore } from '../../notification-panel-store'
+import { Emphasis, NotificationActor, NotificationRecord } from '../notification-chips'
+import { notificationMetadata } from '../notification-metadata'
 import { NotificationRow, NotificationRowSkeleton } from '../notification-row'
 import type { NotificationItemProps } from './item-props'
 import { UnavailableNotification } from './static-notification'
@@ -40,7 +42,9 @@ function ThreadCommentNotification(props: NotificationItemProps<'COMMENT'> & { t
       notification={notification}
       onDelete={onDelete}
       onRead={onRead}
-      subtitle={thread.subject}
+      // Threads are addressed through `useThread` here, not the record store, so
+      // the subject is emphasised text rather than a RecordBadge.
+      on={thread.subject ? <Emphasis>{thread.subject}</Emphasis> : undefined}
       onOpen={() => {
         router.push(`${threadHref(thread)}#comment-${notification.targetIds.commentId}`)
         close()
@@ -67,7 +71,7 @@ function EntityCommentNotification(
       notification={notification}
       onDelete={onDelete}
       onRead={onRead}
-      subtitle={record.displayName}
+      on={<NotificationRecord recordId={recordId} />}
       onOpen={() => {
         if (href) {
           const separator = href.includes('?') ? '&' : '?'
@@ -81,30 +85,61 @@ function EntityCommentNotification(
   )
 }
 
+/**
+ * Shared shell for the three comment notification types. `on` is the parent the
+ * comment hangs off — a record badge, or the thread subject when the comment is on
+ * a mail thread.
+ */
 function CommentRow({
   notification,
-  subtitle,
+  on,
   onOpen,
   onDelete,
   onRead,
 }: {
   notification: NotificationEntity<'COMMENT'>
-  subtitle?: string | null
+  on?: React.ReactNode
   onOpen: () => void
   onDelete: (id: string) => void
   onRead: (id: string) => void
 }) {
-  const copy = getNotificationCopy(notification)
+  const metadata = notificationMetadata(notification)
+  const actor = <NotificationActor notification={notification} />
+  const context = on ? <> on {on}</> : null
+
+  const message =
+    metadata?.kind === 'COMMENT_MENTION' ? (
+      <>
+        {actor} mentioned you{context}
+      </>
+    ) : metadata?.kind === 'COMMENT_REPLY' ? (
+      <>
+        {actor} replied to your comment{context}
+      </>
+    ) : metadata?.kind === 'COMMENT_REACTION' ? (
+      <>
+        {actor} reacted to your comment{context}
+      </>
+    ) : (
+      notification.message
+    )
+
+  const snippet =
+    metadata?.kind === 'COMMENT_REACTION'
+      ? metadata.reaction
+      : metadata?.kind === 'COMMENT_MENTION' || metadata?.kind === 'COMMENT_REPLY'
+        ? metadata.snippet
+        : undefined
+
   return (
     <NotificationRow
       {...notification}
-      title={copy.title}
-      subtitle={copy.subtitle ?? subtitle}
-      actor={notification.actor}
+      subtitle={snippet}
       icon={<MessageSquare className='size-4' />}
       onOpen={onOpen}
       onDelete={onDelete}
-      onRead={onRead}
-    />
+      onRead={onRead}>
+      {message}
+    </NotificationRow>
   )
 }

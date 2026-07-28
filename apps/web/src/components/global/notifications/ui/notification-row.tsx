@@ -3,7 +3,6 @@
 
 import type { NotificationType } from '@auxx/database/types'
 import { DEFAULT_NOTIFICATION_ICON, NOTIFICATION_ICON_MAP } from '@auxx/lib/notifications/client'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -17,8 +16,14 @@ interface NotificationRowProps {
   isRead: boolean
   createdAt: Date
   type: NotificationType
-  actor?: { name: string | null; image: string | null } | null
-  title: React.ReactNode
+  /**
+   * The composed message line. Each target renderer writes its own sentence here
+   * — it is the one place that has both the notification's metadata and the target
+   * it resolved, so it can mix in `NotificationActor` / `NotificationRecord` /
+   * `Emphasis` chips instead of interpolating names into a string.
+   */
+  children: React.ReactNode
+  /** Secondary line — a comment snippet, an access level, a due date. */
   subtitle?: React.ReactNode
   icon?: React.ReactNode
   onOpen?: () => void
@@ -39,8 +44,7 @@ export function NotificationRow({
   isRead,
   createdAt,
   type,
-  actor,
-  title,
+  children,
   subtitle,
   icon,
   onOpen,
@@ -76,15 +80,6 @@ export function NotificationRow({
       <div className='flex h-9 items-center gap-1.5 rounded-t-lg bg-primary-150/50 px-2 text-muted-foreground text-xs font-medium'>
         {icon ?? <EntityIcon {...iconConfig} size='sm' />}
         <span className='truncate'>{formatNotificationType(type)}</span>
-        {actor ? (
-          <div className='flex min-w-0 items-center gap-1'>
-            <Avatar className='size-4'>
-              <AvatarImage src={actor.image || undefined} alt={actor.name || ''} />
-              <AvatarFallback className='text-[9px]'>{actor.name?.charAt(0) || '?'}</AvatarFallback>
-            </Avatar>
-            <span className='truncate'>{actor.name}</span>
-          </div>
-        ) : null}
         <span className='ml-auto shrink-0 font-normal'>
           {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
         </span>
@@ -102,7 +97,8 @@ export function NotificationRow({
         </Button>
       </div>
       <div className='rounded-b-lg border-border border-t-[0.5px] px-3 py-2'>
-        <p className='text-sm'>{title}</p>
+        {/* leading-6 keeps a wrapped message clear of the h-5 chips it may contain. */}
+        <p className='text-sm leading-6'>{children}</p>
         {subtitle ? (
           <p className='mt-0.5 line-clamp-2 text-muted-foreground text-xs'>{subtitle}</p>
         ) : null}
