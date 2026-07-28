@@ -4,12 +4,12 @@
 import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SlidersHorizontal } from 'lucide-react'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useGranteeAccess } from '../hooks/use-grantee-access'
 import { type GranteeKind, useGranteeDefAccess } from '../hooks/use-grantee-def-access'
 import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
-import { usePermissionGrants } from '../hooks/use-permission-grants'
+import { useGrantWrites, useRoleDefaults } from '../hooks/use-permission-grants'
 import { GranteeDefAccessRows } from './grantee-def-access-rows'
 import { GranteeInstanceRows } from './grantee-instance-rows'
 import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
@@ -52,9 +52,18 @@ function descriptionFor(granteeKind: string): string {
 
 /**
  * The Layer-2 (per-area None/Read/Edit/Full) override editor for a single grantee
- * — a member or a team — surfaced on their detail page's Permissions tab. Reuses
- * the org-wide {@link usePermissionGrants} store and renders one grantee's sparse
- * level map through {@link LeveledAreaGrid} in `override` mode: every area
+ * — a member or a team — surfaced on their detail page's Permissions tab.
+ *
+ * Reads ONE grantee (plan 31 §2.4): `useGranteeAccess` supplies this grantee's
+ * own area levels, the Member profile's baseline and the composed `effective`
+ * line. It used to read the org-wide `usePermissionGrants` store — every grant
+ * row in the org — and pick this grantee's out client-side. That hook survives
+ * for the surfaces that genuinely are org-wide; only the writes
+ * ({@link useGrantWrites}) and the role defaults ({@link useRoleDefaults}) are
+ * still shared with it.
+ *
+ * Renders that sparse level map through {@link LeveledAreaGrid} in
+ * `override` mode: every area
  * inherits the effective member baseline and can only be *raised* above it
  * (raise-only enforced server-side; an override that lifts nothing is flagged
  * "ignored"). Sits above the Layer-3 Record-access grid, which overrides the
@@ -69,11 +78,29 @@ export function GranteeLevelsSection({
   granteeId: string
   canEdit: boolean
 }) {
-  const { isLoading, roleDefaults, effectiveBaseline, groupGrants, userGrants, save } =
-    usePermissionGrants()
+  const { roleDefaults, isLoading: roleDefaultsLoading } = useRoleDefaults()
+  const { save } = useGrantWrites()
+  // One grantee, not the org (plan 31 §2.4). `useGranteeDefAccess` and
+  // `useInstanceGranteeRows` below run the same query — React Query dedupes it,
+  // so all three read one request. `effective` is null for a team, which is
+  // exactly when the area line must not render.
+  const {
+    isLoading: granteeLoading,
+    own,
+    baseline,
+    effective,
+  } = useGranteeAccess(granteeKind, granteeId)
 
-  const persisted = granteeKind === 'group' ? groupGrants : userGrants
-  const values = persisted.find((g) => g.granteeId === granteeId)?.levels ?? {}
+  // Memoized: both feed `renderChildren`'s dependency list, and a fresh object
+  // each render would rebuild every nested grid on every keystroke in the
+  // grid's search box.
+  const values = useMemo(() => own?.areas ?? {}, [own])
+  /** The org-wide member baseline per area — role default merged with org policy. */
+  const effectiveBaseline = useMemo(
+    () => ({ ...(roleDefaults ?? {}), ...(baseline?.areas ?? {}) }),
+    [roleDefaults, baseline]
+  )
+  const isLoading = roleDefaultsLoading || granteeLoading
 
   const {
     isLoading: defAccessLoading,
@@ -86,10 +113,6 @@ export function GranteeLevelsSection({
     rowsByKey: instanceRowsByKey,
     setGrant: setInstanceGrant,
   } = useInstanceGranteeRows(granteeKind, granteeId)
-  // Same query `useInstanceGranteeRows` already runs — React Query dedupes it,
-  // so reading it here for the area rows costs no extra request. `effective` is
-  // null for a team, which is exactly when the area line must not render.
-  const { effective } = useGranteeAccess(granteeKind, granteeId)
 
   const handleChange = (area: Area, level: Level | undefined) => {
     const next = { ...values }

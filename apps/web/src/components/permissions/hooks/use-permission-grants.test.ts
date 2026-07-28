@@ -29,6 +29,7 @@ const {
   grantMutate,
   revokeMutate,
   granteeAccessInvalidate,
+  granteeAccessSetData,
   grantOptions,
   revokeOptions,
 } = vi.hoisted(() => ({
@@ -38,9 +39,18 @@ const {
   grantMutate: vi.fn(),
   revokeMutate: vi.fn(),
   granteeAccessInvalidate: vi.fn(),
+  granteeAccessSetData: vi.fn(),
   /** The options object each mutation was registered with, so its hooks can be fired. */
-  grantOptions: { current: undefined as undefined | { onSettled?: () => void } },
-  revokeOptions: { current: undefined as undefined | { onSettled?: () => void } },
+  grantOptions: {
+    current: undefined as
+      | undefined
+      | { onSettled?: () => void; onMutate?: (input: unknown) => Promise<void> | void },
+  },
+  revokeOptions: {
+    current: undefined as
+      | undefined
+      | { onSettled?: () => void; onMutate?: (input: unknown) => Promise<void> | void },
+  },
 }))
 
 vi.mock('~/trpc/react', () => ({
@@ -48,7 +58,7 @@ vi.mock('~/trpc/react', () => ({
     useUtils: () => ({
       permissions: {
         listGrants: { setData: vi.fn(), cancel: vi.fn(), invalidate: vi.fn() },
-        granteeAccess: { invalidate: granteeAccessInvalidate },
+        granteeAccess: { invalidate: granteeAccessInvalidate, setData: granteeAccessSetData },
       },
     }),
     permissions: {
@@ -56,13 +66,19 @@ vi.mock('~/trpc/react', () => ({
       listProfiles: { useQuery: listProfilesQuery },
       roleDefaults: { useQuery: roleDefaultsQuery },
       grant: {
-        useMutation: (options?: { onSettled?: () => void }) => {
+        useMutation: (options?: {
+          onSettled?: () => void
+          onMutate?: (input: unknown) => Promise<void> | void
+        }) => {
           grantOptions.current = options
           return { mutate: grantMutate, isPending: false }
         },
       },
       revoke: {
-        useMutation: (options?: { onSettled?: () => void }) => {
+        useMutation: (options?: {
+          onSettled?: () => void
+          onMutate?: (input: unknown) => Promise<void> | void
+        }) => {
           revokeOptions.current = options
           return { mutate: revokeMutate, isPending: false }
         },
@@ -314,5 +330,96 @@ describe('granteeAccess is refetched after an area-level write', () => {
     grantOptions.current?.onSettled?.()
 
     expect(granteeAccessInvalidate).toHaveBeenCalledWith()
+  })
+})
+
+/**
+ * Plan 31 §2.4, phase 2's areas half — **the write patches `granteeAccess.own`
+ * optimistically, and `effective` never.**
+ *
+ * The grantee detail page reads its area levels from `granteeAccess.own.areas`
+ * now, not from the org-wide `listGrants`. Without an optimistic patch on that
+ * key the ladder would snap back to its pre-write rung until the refetch landed,
+ * so the patch is what keeps the control feeling immediate.
+ *
+ * `effective` must stay untouched in the same breath. `own` is a row the server
+ * stores verbatim, so the client predicts it exactly; `effective` is composed
+ * across the profile, every group and the ceilings, and predicting it here would
+ * be a second implementation of composition racing the enforcement path. It is
+ * left stale on purpose and refetched by the invalidation above.
+ *
+ * These fire the real `onMutate` the hook registered. The previous version of
+ * this file could not have caught a regression here: its `useUtils` mock had no
+ * `granteeAccess.setData` at all, and the suite stayed green because nothing
+ * ever invoked the callback — the same partial-mock trap that hid the missing
+ * refetch this file was written to pin.
+ */
+describe('an area-level write patches granteeAccess.own optimistically', () => {
+  /** A cached payload in the shape `granteeAccess` returns. */
+  const cached = {
+    own: { areas: { [Area.files]: Level.Read }, defs: {}, instances: {} },
+    baseline: { areas: {}, defs: {}, instances: {} },
+    effective: {
+      areas: { [Area.files]: Level.Full },
+      defs: {},
+      instances: {},
+      instanceFallback: {},
+    },
+  }
+
+  /** Run the hook's `setData` updater over {@link cached} and return the result. */
+  function patched() {
+    const call = granteeAccessSetData.mock.calls.at(-1)
+    const updater = call?.[1] as (prev: typeof cached) => typeof cached
+    return { input: call?.[0], next: updater(cached) }
+  }
+
+  beforeEach(() => {
+    granteeAccessSetData.mockReset()
+    setup({ grants: [], profiles: [] })
+  })
+
+  it('writes the new levels onto own.areas, addressed to the written grantee', async () => {
+    await grantOptions.current?.onMutate?.({
+      granteeType: 'user',
+      granteeId: 'usr_1',
+      levels: { [Area.files]: Level.Full },
+    })
+
+    const { input, next } = patched()
+    expect(input).toEqual({ granteeType: 'user', granteeId: 'usr_1' })
+    expect(next.own.areas).toEqual({ [Area.files]: Level.Full })
+  })
+
+  it('leaves effective alone — it is composed, and the refetch owns it', async () => {
+    await grantOptions.current?.onMutate?.({
+      granteeType: 'user',
+      granteeId: 'usr_1',
+      levels: { [Area.files]: Level.Full },
+    })
+
+    expect(patched().next.effective).toBe(cached.effective)
+  })
+
+  it('clears own.areas on revoke, which stores no row at all', async () => {
+    await revokeOptions.current?.onMutate?.({ granteeType: 'group', granteeId: 'grp_1' })
+
+    const { input, next } = patched()
+    expect(input).toEqual({ granteeType: 'group', granteeId: 'grp_1' })
+    expect(next.own.areas).toEqual({})
+  })
+
+  it('does not touch the cache when the grantee page is not mounted', async () => {
+    granteeAccessSetData.mockReset()
+    await grantOptions.current?.onMutate?.({
+      granteeType: 'user',
+      granteeId: 'usr_1',
+      levels: {},
+    })
+
+    // The updater is handed `undefined` by React Query when the key is cold,
+    // and must hand it straight back rather than inventing a payload.
+    const updater = granteeAccessSetData.mock.calls.at(-1)?.[1] as (prev: unknown) => unknown
+    expect(updater(undefined)).toBeUndefined()
   })
 })

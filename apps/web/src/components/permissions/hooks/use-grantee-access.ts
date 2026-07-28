@@ -2,8 +2,11 @@
 'use client'
 
 import { useCallback } from 'react'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import type { GranteeKind } from './use-grantee-def-access'
+
+/** The whole `granteeAccess` payload, as the query cache holds it. */
+export type GranteeAccessData = RouterOutputs['permissions']['granteeAccess']
 
 /**
  * Invalidate every `granteeAccess` query — call after ANY permission write.
@@ -36,6 +39,39 @@ export function useInvalidateGranteeAccess() {
   return useCallback(() => {
     void utils.permissions.granteeAccess.invalidate()
   }, [utils])
+}
+
+/**
+ * Optimistically patch one grantee's cached payload, so a select moves the
+ * instant it is clicked instead of after a round-trip.
+ *
+ * **Patch `own` and `baseline` only. Never `effective`.** That is not a style
+ * rule, it is the line the last bug in this file was on: `own` and `baseline`
+ * are rows the server stores verbatim, so the client can predict them exactly;
+ * `effective` is COMPOSED — `max` across the grantee's profile, every group they
+ * are in and their own row, then clamped by the profile and seat ceilings — and
+ * predicting it here would mean a second implementation of composition running
+ * against the enforcement path. Leave it stale and let
+ * {@link useInvalidateGranteeAccess} refetch it; a briefly-behind effective line
+ * is honest, a confidently-wrong one is not.
+ *
+ * A no-op when the query is not mounted, which is what makes it safe to fire
+ * from the shared write path regardless of which surface is on screen.
+ */
+export function usePatchGranteeAccess() {
+  const utils = api.useUtils()
+  return useCallback(
+    (
+      granteeType: GranteeKind,
+      granteeId: string,
+      patch: (prev: GranteeAccessData) => GranteeAccessData
+    ) => {
+      utils.permissions.granteeAccess.setData({ granteeType, granteeId }, (prev) =>
+        prev ? patch(prev) : prev
+      )
+    },
+    [utils]
+  )
 }
 
 /**

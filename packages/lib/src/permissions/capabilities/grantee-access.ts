@@ -2,7 +2,8 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
+import { getCachedPermissionProfiles } from '../../cache'
 import { getCapabilities } from './get-capabilities'
 import {
   INSTANCE_ACCESS_KEYS,
@@ -21,6 +22,12 @@ export type AccessGranteeType = 'user' | 'group' | 'profile'
  */
 const WORKSPACE_BASELINE_GRANTEE_TYPE = 'role'
 const WORKSPACE_BASELINE_GRANTEE_ID = 'org_member'
+
+/**
+ * The `PermissionProfile.slug` that IS the org-wide area-level baseline
+ * (doc 19 §0.8) — what every override grid measures "raise only" against.
+ */
+const MEMBER_PROFILE_SLUG = 'member'
 
 /**
  * The rows keyed to THIS grantee — what the Access grids' selects read and write.
@@ -75,6 +82,26 @@ export interface GranteeEffectiveAccess {
  * fact the grid already states out loud, with no grantee in it.
  */
 export interface GranteeBaselineAccess {
+  /**
+   * The **Member profile**'s own sparse area levels — the org-wide floor an
+   * override grid renders its *Inherit* fall-through from, and the level
+   * `useGranteeDefAccess` maps to a record permission for an unconfigured def.
+   *
+   * Same "one org-wide fact, no grantee in it" argument as {@link defs} below,
+   * one layer up: it is a single row, and every grid that reads it already
+   * states it out loud.
+   *
+   * **Levels only, deliberately — not the profile's `baseLevel`, and not the
+   * grantee's actually-bound profile.** Both are faithful to what the client
+   * derived from `listGrants` before this field existed, and neither is quite
+   * the truth: a member bound to a custom profile falls through to THAT
+   * profile, not to Member. The grids do not lie about it, because the composed
+   * `effective.areas` line (#1352) sits on the same row and wins any
+   * disagreement — but if that fall-through is ever made accurate, this is the
+   * field to change, and the copy above the grid ("raise access above the
+   * member baseline") has to move with it.
+   */
+  areas: Partial<Record<Area, Level>>
   defs: Record<string, ResourcePermission>
   instances: Record<string, ResourcePermission>
 }
@@ -112,10 +139,12 @@ export interface GranteeAccess {
  * re-derives a composition rule, which is why this addition needs **no cache
  * bump**: it reads the existing blob unchanged.
  *
- * Two DB reads, both org-scoped and indexed: the grantee's own `PermissionGrant`
- * row, and the org's `ResourceAccess` rows. The latter stays org-wide because
- * `effective.instances` must cover every instance the org manages a row on — but
- * it never leaves this function; only one grantee's levels go over the wire.
+ * Two DB reads, both org-scoped and indexed: the `PermissionGrant` rows at two
+ * addresses (this grantee's, and the Member profile's — see
+ * {@link GranteeBaselineAccess.areas}), and the org's `ResourceAccess` rows. The
+ * latter stays org-wide because `effective.instances` must cover every instance
+ * the org manages a row on — but it never leaves this function; only one
+ * grantee's levels go over the wire.
  */
 export async function getGranteeAccess(
   params: {
@@ -127,18 +156,39 @@ export async function getGranteeAccess(
 ): Promise<GranteeAccess> {
   const { organizationId, granteeType, granteeId } = params
 
-  const [grantRow, accessRows] = await Promise.all([
-    db
-      .select({ levels: schema.PermissionGrant.levels })
-      .from(schema.PermissionGrant)
-      .where(
-        and(
-          eq(schema.PermissionGrant.organizationId, organizationId),
-          eq(schema.PermissionGrant.granteeType, granteeType),
-          eq(schema.PermissionGrant.granteeId, granteeId)
-        )
+  // Cache read, not a query — the same `profiles` org-cache entry
+  // `computeUserCapabilities` resolves the bound base profile from, so the id
+  // this finds is the id composition uses.
+  const profiles = await getCachedPermissionProfiles(organizationId)
+  const memberProfileId = profiles.find((p) => p.slug === MEMBER_PROFILE_SLUG)?.id ?? null
+
+  // Two addresses, one query: this grantee's row and the Member profile's. When
+  // the grantee IS the Member profile they are the same row, and it correctly
+  // lands in both halves.
+  const grantAddresses = [
+    and(
+      eq(schema.PermissionGrant.granteeType, granteeType),
+      eq(schema.PermissionGrant.granteeId, granteeId)
+    ),
+  ]
+  if (memberProfileId) {
+    grantAddresses.push(
+      and(
+        eq(schema.PermissionGrant.granteeType, 'profile'),
+        eq(schema.PermissionGrant.granteeId, memberProfileId)
       )
-      .limit(1),
+    )
+  }
+
+  const [grantRows, accessRows] = await Promise.all([
+    db
+      .select({
+        granteeType: schema.PermissionGrant.granteeType,
+        granteeId: schema.PermissionGrant.granteeId,
+        levels: schema.PermissionGrant.levels,
+      })
+      .from(schema.PermissionGrant)
+      .where(and(eq(schema.PermissionGrant.organizationId, organizationId), or(...grantAddresses))),
     db
       .select({
         entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
@@ -151,12 +201,24 @@ export async function getGranteeAccess(
       .where(eq(schema.ResourceAccess.organizationId, organizationId)),
   ])
 
+  let ownLevels: unknown
+  let baselineLevels: unknown
+  for (const row of grantRows) {
+    if (row.granteeType === granteeType && row.granteeId === granteeId) ownLevels = row.levels
+    if (row.granteeType === 'profile' && row.granteeId === memberProfileId)
+      baselineLevels = row.levels
+  }
+
   const own: GranteeOwnAccess = {
-    areas: parseAreaLevels(grantRow[0]?.levels),
+    areas: parseAreaLevels(ownLevels),
     defs: {},
     instances: {},
   }
-  const baseline: GranteeBaselineAccess = { defs: {}, instances: {} }
+  const baseline: GranteeBaselineAccess = {
+    areas: parseAreaLevels(baselineLevels),
+    defs: {},
+    instances: {},
+  }
 
   /** Instance id → its resource type, so each id is resolved against its OWN area. */
   const keyOfInstance = new Map<string, InstanceAccessKey>()
