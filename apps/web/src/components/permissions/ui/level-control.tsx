@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/level-control.tsx
 'use client'
 
-import { type AreaMetadata, Level } from '@auxx/lib/permissions/client'
+import { type AreaMetadata, clampLevelToArea, Level } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { cn } from '@auxx/ui/lib/utils'
@@ -11,17 +11,17 @@ import { Tooltip } from '~/components/global/tooltip'
 import { RUNG_LABELS } from './level-labels'
 
 /**
- * The highest rung `area` actually offers at or below `level` — what a level
- * from outside this area's ladder composes down to.
+ * {@link clampLevelToArea} for callers already holding the area's metadata — the
+ * highest rung `area` actually offers at or below `level`.
  *
  * Exported because callers need the same answer the control displays: an agent
  * policy's collection default is one rung for every area at once, so a row must
  * be able to name what that default resolves to *here* rather than repeating a
- * rung the area cannot express.
+ * rung the area cannot express. The rule itself lives in the registry, because
+ * the publish-time author clamp has to normalize by exactly the same ladder.
  */
 export function clampToArea(area: AreaMetadata, level: Level): Level {
-  const levels = [Level.None, ...area.rungs.map((r) => r.level)]
-  return levels.filter((l) => l <= level).at(-1) ?? Level.None
+  return clampLevelToArea(area.area, level)
 }
 
 interface LevelControlProps {

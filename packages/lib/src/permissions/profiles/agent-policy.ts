@@ -10,7 +10,7 @@ import { type ResourcePermission, ResourcePermissionValues } from '@auxx/databas
 import { createScopedLogger } from '@auxx/logger'
 import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from '../capabilities/instance-access'
-import { AREA_ORDER, type Area, Level } from '../capabilities/registry'
+import { AREA_ORDER, type Area, clampLevelToArea, Level } from '../capabilities/registry'
 import { systemProfileForAgentKind } from './system-profiles'
 import type { CachedPermissionProfile } from './types'
 
@@ -69,6 +69,24 @@ export function permissionToAreaLevel(permission: ResourcePermission): Level {
 /** Inverse of {@link permissionToAreaLevel} — used by the publish-time clamp. */
 export function areaLevelToPermission(level: Level): ResourcePermission {
   return POLICY_LADDER[Math.min(POLICY_LADDER.length - 1, Math.max(0, level))] ?? 'none'
+}
+
+/**
+ * An authored rung expressed on the area's OWN ladder (plan 19 §2.3 + the
+ * registry's per-area rungs).
+ *
+ * The policy is authored on the flat four-rung vocabulary, but an area's ladder
+ * can be shorter: `auditLog` tops out at `Read`, `files`/`billing` skip `Edit`.
+ * `'admin'` on `auditLog` therefore is not authority the agent has and the human
+ * lacks — `expandLevelsToKeys` composes both to `auditLogView`. Normalizing here
+ * keeps the clamp comparing like with like, so an OWNER (whose composed rung on
+ * `auditLog` is `Read`, the ceiling) no longer reads as "reduced".
+ */
+export function clampPermissionToArea(
+  area: Area,
+  permission: ResourcePermission
+): ResourcePermission {
+  return areaLevelToPermission(clampLevelToArea(area, permissionToAreaLevel(permission)))
 }
 
 /**
@@ -325,9 +343,12 @@ function expandProfilePolicy(
 ): PublishedAgentPermissionPolicy {
   const parsed = parsePublishedAgentPolicy(agentPolicy)
 
+  // Materialized on the area's OWN ladder ({@link clampPermissionToArea}), so the
+  // snapshot states the rung the agent actually composes rather than the one the
+  // flat vocabulary let the author type.
   const areaOverrides: Record<string, ResourcePermission> = {}
   for (const area of AREA_ORDER) {
-    areaOverrides[area] = lookupExactPolicy(parsed.areas, area)
+    areaOverrides[area] = clampPermissionToArea(area, lookupExactPolicy(parsed.areas, area))
   }
 
   return {

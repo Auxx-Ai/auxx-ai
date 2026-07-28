@@ -43,7 +43,9 @@ export type { AreaMetadata, PermissionMetadata } from './capabilities/registry'
 export {
   AREA_ORDER,
   Area,
+  areaCeilingLevel,
   buildAreaLevels,
+  clampLevelToArea,
   expandLevelsToKeys,
   isPermissionKey,
   Level,

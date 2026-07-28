@@ -4,6 +4,7 @@
 import type { ResourcePermission } from '@auxx/database/enums'
 import {
   type Area,
+  clampLevelToArea,
   Level,
   PERMISSION_AREAS,
   PERMISSION_RANK,
@@ -11,6 +12,7 @@ import {
 } from '@auxx/lib/permissions/client'
 import { useMemo } from 'react'
 import { useAccess } from '~/providers/capabilities-provider'
+import { LEVEL_OF_PERMISSION } from '../ui/level-labels'
 import type { NormalizedAgentPolicy } from './use-agent-policy'
 
 /**
@@ -102,7 +104,14 @@ export function useAgentPolicyClamp(
     const reductions: AgentPolicyClampPreviewEntry[] = []
 
     for (const area of areas) {
-      const asked = lookup(policy.areas, area)
+      // On the area's OWN ladder, both sides. `areaLevelFromKeys` cannot return
+      // more than the area's top rung, so an authored rung above that ceiling
+      // (`Full` on the Read-only `auditLog`) has to be normalized the same way —
+      // otherwise the preview announces a reduction to every viewer including an
+      // owner, while the row beside it already reads the clamped rung.
+      const asked = toPermission(
+        clampLevelToArea(area, LEVEL_OF_PERMISSION[lookup(policy.areas, area)])
+      )
       const holds = toPermission(areaLevelFromKeys(area, held))
       if (PERMISSION_RANK[asked] > PERMISSION_RANK[holds]) {
         reductions.push({
