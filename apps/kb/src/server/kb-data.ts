@@ -9,11 +9,11 @@ import {
   Organization,
 } from '@auxx/database'
 import type { ArticleKind } from '@auxx/database/types'
-import { isOrgMember } from '@auxx/lib/cache'
 import { MediaAssetService } from '@auxx/lib/files/server'
 import type { ArticleNodeJSON, KBLayoutKB } from '@auxx/ui/components/kb'
 import { and, eq, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { canViewKB } from './kb-access'
 
 export interface PublicArticleListItem {
   id: string
@@ -116,6 +116,19 @@ function filterVisibleSubtree<
   })
 }
 
+/**
+ * The single data-layer chokepoint every KB read funnels through — and
+ * therefore the place the INTERNAL access gate lives, so a seventh route
+ * cannot be added ungated.
+ *
+ * **INVARIANT: never call this with a session from inside a `'use cache'`
+ * scope.** The gate below is per-user; baking its result into a scope keyed on
+ * `(orgSlug, kbSlug)` would be a cross-user capability leak — strictly worse
+ * than the bug it fixes. The session is a parameter (never an ambient
+ * `cookies()` read) precisely so this stays checkable: every cached caller
+ * reaches this function via `getPublicKBPayload*`, which passes no `opts` at
+ * all and so short-circuits at the `!opts?.session` line below.
+ */
 export async function loadKBPayload(
   orgSlug: string,
   kbSlug: string,
@@ -151,8 +164,12 @@ export async function loadKBPayload(
 
   if (kb.visibility === 'INTERNAL') {
     if (!opts?.session) return { kb: null, articles: [], accessDenied: 'unauthenticated' }
-    const member = await isOrgMember(kb.organizationId, opts.session.userId)
-    if (!member) return { kb: null, articles: [], accessDenied: 'forbidden' }
+    // Per-instance gate. `canViewKB` subsumes the membership check it replaced
+    // (a non-member composes to `Level.None`) and additionally honours both an
+    // explicit `ResourceAccess` row on this KB and a coarse `knowledgeBase:
+    // None` composition — neither of which this app used to see.
+    const viewable = await canViewKB(kb.id, kb.organizationId, opts.session.userId)
+    if (!viewable) return { kb: null, articles: [], accessDenied: 'forbidden' }
   }
 
   const pub = alias(ArticleRevision, 'pub')

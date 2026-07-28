@@ -1,7 +1,5 @@
 // apps/kb/src/app/[orgSlug]/[kbSlug]/[...articleSlug]/page.tsx
 
-import { WEBAPP_URL } from '@auxx/config/urls'
-import { isOrgMember } from '@auxx/lib/cache'
 import {
   findArticleBySlugPath,
   findFirstNavigableUnder,
@@ -17,6 +15,7 @@ import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { ArticleMarkdownCopy } from '~/components/article-markdown-copy'
 import { getLocalSession, getLoginUrl } from '~/lib/auth'
+import { canViewKB, kbDenialRedirect } from '../../../../server/kb-access'
 import {
   getCachedKBVisibility,
   getPublicKBPayloadWithContent,
@@ -149,14 +148,16 @@ async function InternalArticleGate({
   if (!session) {
     redirect(getLoginUrl(kbId, `/${orgSlug}/${kbSlug}/${articleSlug.join('/')}`))
   }
-  const member = await isOrgMember(organizationId, session.userId)
-  if (!member) {
-    redirect(`${WEBAPP_URL}/kb-auth/no-access`)
+  if (!(await canViewKB(kbId, organizationId, session.userId))) {
+    await kbDenialRedirect(organizationId, session.userId)
   }
 
-  const { articles } = await loadKBPayloadWithContent(orgSlug, kbSlug, {
+  const { articles, accessDenied } = await loadKBPayloadWithContent(orgSlug, kbSlug, {
     session: { userId: session.userId },
   })
+  // See the layout gate: covers a revocation landing between the pre-flight
+  // and the chokepoint, which would otherwise 404 instead of explaining.
+  if (accessDenied === 'forbidden') await kbDenialRedirect(organizationId, session.userId)
   return (
     <ArticleBodyContent
       articles={articles}

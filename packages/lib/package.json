@@ -784,6 +784,12 @@
       "import": "./dist/permissions/capabilities/capability-set.mjs",
       "default": "./src/permissions/capabilities/capability-set.ts"
     },
+    "./permissions/capabilities/get-capabilities": {
+      "types": "./src/permissions/capabilities/get-capabilities.ts",
+      "source": "./src/permissions/capabilities/get-capabilities.ts",
+      "import": "./dist/permissions/capabilities/get-capabilities.mjs",
+      "default": "./src/permissions/capabilities/get-capabilities.ts"
+    },
     "./permissions/capabilities/instance-access": {
       "types": "./src/permissions/capabilities/instance-access.ts",
       "source": "./src/permissions/capabilities/instance-access.ts",

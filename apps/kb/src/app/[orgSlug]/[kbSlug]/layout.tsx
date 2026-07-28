@@ -1,7 +1,5 @@
 // apps/kb/src/app/[orgSlug]/[kbSlug]/layout.tsx
 
-import { WEBAPP_URL } from '@auxx/config/urls'
-import { isOrgMember } from '@auxx/lib/cache'
 import { KBLayout } from '@auxx/ui/components/kb'
 import '@auxx/ui/global.css'
 import type { Metadata } from 'next'
@@ -9,6 +7,7 @@ import { cacheLife, cacheTag } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { getLocalSession, getLoginUrl } from '~/lib/auth'
+import { canViewKB, kbDenialRedirect } from '../../../server/kb-access'
 import { getCachedKBVisibility, getPublicKBPayload, kbTag } from '../../../server/kb-cache'
 import { loadKBPayload } from '../../../server/kb-data'
 
@@ -102,14 +101,18 @@ async function InternalKBLayoutGate({
   if (!session) {
     redirect(getLoginUrl(kbId, `/${orgSlug}/${kbSlug}`))
   }
-  const member = await isOrgMember(organizationId, session.userId)
-  if (!member) {
-    redirect(`${WEBAPP_URL}/kb-auth/no-access`)
+  if (!(await canViewKB(kbId, organizationId, session.userId))) {
+    await kbDenialRedirect(organizationId, session.userId)
   }
 
-  const { kb, articles } = await loadKBPayload(orgSlug, kbSlug, {
+  const { kb, articles, accessDenied } = await loadKBPayload(orgSlug, kbSlug, {
     session: { userId: session.userId },
   })
+  // The chokepoint denied after the pre-flight allowed — the two read
+  // capabilities a moment apart, so a grant revoked in between lands here.
+  // Without this the member gets a bare 404 mid-layout instead of the
+  // no-access screen the pre-flight would have sent them to.
+  if (accessDenied === 'forbidden') await kbDenialRedirect(organizationId, session.userId)
   if (!kb) notFound()
 
   const basePath = `/${orgSlug}/${kbSlug}`

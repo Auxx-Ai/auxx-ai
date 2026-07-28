@@ -1,6 +1,5 @@
 // apps/kb/src/app/_md/[orgSlug]/[kbSlug]/[...articleSlug]/route.ts
 
-import { isOrgMember } from '@auxx/lib/cache'
 import { articleToMarkdown } from '@auxx/lib/kb/markdown'
 import {
   findArticleBySlugPath,
@@ -9,6 +8,7 @@ import {
 } from '@auxx/ui/components/kb'
 import { cacheLife, cacheTag } from 'next/cache'
 import { getLocalSession } from '~/lib/auth'
+import { canViewKB } from '../../../../../server/kb-access'
 import {
   getCachedKBVisibility,
   getPublicKBPayloadWithContent,
@@ -40,10 +40,12 @@ export async function GET(req: Request, { params }: RouteParams): Promise<Respon
     return renderPublic(req, orgSlug, kbSlug, articleSlug)
   }
 
+  // Denials stay an opaque 404 for the same reason as `search.json`.
   const session = await getLocalSession()
   if (!session) return new Response('Not Found', { status: 404 })
-  const member = await isOrgMember(visibility.organizationId, session.userId)
-  if (!member) return new Response('Not Found', { status: 404 })
+  if (!(await canViewKB(visibility.id, visibility.organizationId, session.userId))) {
+    return new Response('Not Found', { status: 404 })
+  }
 
   const { articles } = await loadKBPayloadWithContent(orgSlug, kbSlug, {
     session: { userId: session.userId },

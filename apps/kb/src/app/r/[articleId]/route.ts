@@ -6,11 +6,11 @@
 // at click time and 308-redirects.
 
 import { ArticlePlacement, database, KnowledgeBase, Organization } from '@auxx/database'
-import { isOrgMember } from '@auxx/lib/cache'
 import { and, desc, eq } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { type NextRequest, NextResponse } from 'next/server'
 import { getLocalSession, getLoginUrl } from '~/lib/auth'
+import { canViewKB } from '~/server/kb-access'
 
 interface RouteContext {
   params: Promise<{ articleId: string }>
@@ -49,11 +49,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext): Promise<Respons
   if (row.kbVisibility === 'INTERNAL') {
     const session = await getLocalSession()
     if (!session) {
-      const slugPath = await buildSlugPath(row.id, row.knowledgeBaseId)
-      redirect(getLoginUrl(row.knowledgeBaseId, `/${row.orgSlug}/${row.kbSlug}/${slugPath}`))
+      // Return to THIS route, not the canonical article URL: resolving the
+      // slug path here would run pre-auth and leak the org handle, KB slug and
+      // title-derived path into a redirect an unauthenticated caller holding
+      // only an article id can trigger. `/r/<id>` re-resolves after login and
+      // preserves the deep link.
+      redirect(getLoginUrl(row.knowledgeBaseId, `/r/${articleId}`))
     }
-    const member = await isOrgMember(row.organizationId, session.userId)
-    if (!member) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!(await canViewKB(row.knowledgeBaseId, row.organizationId, session.userId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   const slugPath = await buildSlugPath(row.id, row.knowledgeBaseId)
