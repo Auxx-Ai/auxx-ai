@@ -2,7 +2,12 @@
 
 import type { AgentPermissionPolicy } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
-import { countChanges, normalizeAgentPolicy, stableKey } from './use-agent-policy'
+import {
+  countChanges,
+  normalizeAgentPolicy,
+  resourceTypeAreaLevel,
+  stableKey,
+} from './use-agent-policy'
 
 /**
  * Plan 29 §5 verification #1 — the tree unification is a RENDERING change, so a
@@ -17,7 +22,13 @@ import { countChanges, normalizeAgentPolicy, stableKey } from './use-agent-polic
  * provider mocking between the test and the thing under test.
  */
 
-/** A policy exercising all four keyspaces, both orphan families included. */
+/**
+ * A policy exercising all four keyspaces, both orphan families included.
+ *
+ * It still carries `resourceDefault` on purpose: data migration 055 retired the
+ * field, and an un-migrated row (or an old client's payload) must normalize
+ * without it rather than round-tripping a value the model no longer reads.
+ */
 const STORED = {
   areas: { default: 'view', overrides: { records: 'admin', auditLog: 'none' } },
   definitions: { default: 'none', overrides: { companies: 'view', gone_away: 'admin' } },
@@ -56,8 +67,25 @@ describe('agent policy round-trip (plan 29 §5)', () => {
 
     expect(empty.areas.default).toBe('none')
     expect(empty.definitions.default).toBe('none')
-    expect(empty.resourceDefault).toBe('none')
     expect(empty.resources).toEqual({})
+    // No resource keyspace of its own — every type reads through the area map,
+    // which is all-`none` here.
+    expect(resourceTypeAreaLevel(empty, 'kb')).toBe('none')
+  })
+
+  it('falls a resource type with no rule through to its own area, not a sibling', () => {
+    const policy = normalizeAgentPolicy({
+      areas: { default: 'none', overrides: { datasets: 'edit', knowledgeBase: 'view' } },
+      definitions: { default: 'none', overrides: {} },
+      resources: {},
+    } as unknown as AgentPermissionPolicy)
+
+    expect(resourceTypeAreaLevel(policy, 'dataset')).toBe('edit')
+    expect(resourceTypeAreaLevel(policy, 'kb')).toBe('view')
+    // Not in the area map → `areas.default`.
+    expect(resourceTypeAreaLevel(policy, 'dashboard')).toBe('none')
+    // Not a registered resource type at all → fail closed.
+    expect(resourceTypeAreaLevel(policy, 'retired_kind')).toBe('none')
   })
 
   it('counts a cleared resource type as its default PLUS every per-item rule it drops', () => {

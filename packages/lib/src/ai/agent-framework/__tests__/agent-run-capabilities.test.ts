@@ -77,7 +77,6 @@ function policy(defs: Record<string, 'none' | 'view' | 'edit' | 'admin'>) {
     clamp: [],
     areas: { default: 'admin', overrides: {} },
     definitions: { default: 'none', overrides: defs },
-    resourceDefault: 'none',
     resources: {},
   } satisfies PublishedAgentPermissionPolicy
 }
@@ -330,7 +329,6 @@ describe("source: 'draft' resolves the live binding, 'active' the snapshot (§15
         agentPolicy: {
           areas: { default: 'admin', overrides: {} },
           definitions: { default: 'none', overrides: { 'def-a': 'edit' } },
-          resourceDefault: 'none',
           resources: {},
         },
       },

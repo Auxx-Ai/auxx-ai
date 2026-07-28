@@ -53,10 +53,15 @@ type BaseLevelSelectProps = {
  * default in code — which is also why a newly added area is automatically
  * reachable for Owner/Admin on deploy instead of needing a backfill.
  *
- * Shared by the human profile editor (`Unset areas fall through to`, offering the
- * `Member default` sentinel) and the agent policy header (plan 29 §2.2/§4a: the
- * areas default and the `New resource types fall through to` default, neither of
- * which offers the sentinel).
+ * Shared by the human profile editor and the agent policy header, both labelled
+ * `Unset areas fall through to` (plan 29 §2.2/§4a). Only the human one offers the
+ * `Member default` sentinel — an agent's default is mandatory and fails closed.
+ *
+ * One control per editor. The agent header briefly carried a second,
+ * `New resource types fall through to`, backing an `AgentPermissionPolicy`
+ * field that answered the same question one level above the area rung it was then
+ * intersected with; a resource type with no rule now falls through to its own
+ * area, exactly as a human's absent instance row does.
  */
 export function BaseLevelSelect(props: BaseLevelSelectProps) {
   const { label, value, disabled = false } = props

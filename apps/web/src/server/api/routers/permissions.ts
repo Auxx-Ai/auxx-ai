@@ -81,7 +81,6 @@ const exactAgentPolicyInput = z.object({
 const agentPolicyInput: z.ZodType<AgentPermissionPolicy> = z.object({
   areas: exactAgentPolicyInput,
   definitions: exactAgentPolicyInput,
-  resourceDefault: z.enum(ResourcePermissionValues),
   resources: z.record(z.string(), exactAgentPolicyInput),
 })
 

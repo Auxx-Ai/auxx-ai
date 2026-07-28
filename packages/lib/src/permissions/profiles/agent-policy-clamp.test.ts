@@ -121,7 +121,10 @@ describe('the §9.1 author-clamp case', () => {
     // Resource instances: the member holds nothing, so neither does the agent.
     expect(policy.resources.kb?.default).toBe('none')
     expect(policy.resources.dataset?.default).toBe('none')
-    expect(policy.resourceDefault).toBe('none')
+    expect(policy.resources.dashboard?.default).toBe('none')
+    // There is no separate resource default left to bound — a resource type a
+    // future deploy adds reads through `areas.default`, floored just below.
+    expect(policy.areas.default).toBe('none')
 
     // The clamp is reported, never silent (§13).
     expect(reductions.length).toBeGreaterThan(0)
@@ -148,7 +151,9 @@ describe('the §9.1 author-clamp case', () => {
     expect(policy.areas.overrides[Area.records]).toBe('admin')
     expect(policy.definitions.default).toBe('admin')
     expect(policy.definitions.overrides.deals).toBe('admin')
-    expect(policy.resourceDefault).toBe('admin')
+    // Every registered type is materialized at the rung it fell through to.
+    expect(policy.resources.kb?.default).toBe('admin')
+    expect(policy.resources.dashboard?.default).toBe('admin')
     expect(policy.publishedByUserId).toBe('u-admin')
   })
 
@@ -190,7 +195,7 @@ describe('clamp mechanics', () => {
     // when an owner publishes it.
     expect(policy.areas.overrides[Area.records]).toBe('none')
     expect(policy.definitions.default).toBe('none')
-    expect(policy.resourceDefault).toBe('none')
+    expect(policy.resources.kb?.default).toBe('none')
     expect(reductions).toEqual([])
   })
 
@@ -247,10 +252,53 @@ describe('clamp mechanics', () => {
       definitions: DEFS,
     })
     // areas.default answers only for an area a future deploy adds; the member holds
-    // None on most areas, so the conservative floor is None.
+    // None on most areas, so the conservative floor is None. A future resource TYPE
+    // arrives with a new area and reads through that same floor — which is why the
+    // retired `resourceDefault` needed no replacement of its own.
     expect(policy.areas.default).toBe('none')
     expect(policy.definitions.default).toBe('view')
-    expect(policy.resourceDefault).toBe('none')
+  })
+
+  it('materializes a type the profile left to fall through, bounded by the publisher', () => {
+    // The publisher holds the `dashboards` AREA outright but nothing on any
+    // dashboard instance — the `baselineAtCreate: true` shape. The profile names
+    // no `dashboard` rule, so it would fall through to that Full area at run time;
+    // materializing the entry is what stops the snapshot exceeding its publisher.
+    const areaButNoInstances = publisher({
+      areas: { [Area.dashboards]: Level.Full },
+      defDefault: 'admin',
+      instanceDefault: 'none',
+    })
+    const { policy, reductions } = clampAgentPolicyToPublisher({
+      resolved: allFullResolved(),
+      publisher: areaButNoInstances,
+      publisherUserId: 'u-dash',
+      definitions: DEFS,
+    })
+
+    expect(policy.areas.overrides[Area.dashboards]).toBe('admin')
+    expect(policy.resources.dashboard).toEqual({ default: 'none', overrides: {} })
+    expect(reductions).toEqual(
+      expect.arrayContaining([{ domain: 'resource', key: 'dashboard', from: 'admin', to: 'none' }])
+    )
+  })
+
+  it('clamps a rule naming a resource type this deploy does not register', () => {
+    const { policy } = clampAgentPolicyToPublisher({
+      resolved: {
+        ...allFullResolved(),
+        resources: { retired_kind: { default: 'admin', overrides: { 'x-1': 'admin' } } },
+      },
+      publisher: MEMBER_RECORDS_READ,
+      publisherUserId: 'u-member',
+      definitions: DEFS,
+    })
+    // Kept (the type may come back) but floored by the publisher's weakest
+    // instance bound — there is no gate to probe for an unregistered type.
+    expect(policy.resources.retired_kind).toEqual({
+      default: 'none',
+      overrides: { 'x-1': 'none' },
+    })
   })
 
   it('carries a dangling definition override (archived def) instead of dropping it', () => {

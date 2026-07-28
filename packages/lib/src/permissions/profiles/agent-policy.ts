@@ -9,6 +9,7 @@ import type {
 import { type ResourcePermission, ResourcePermissionValues } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
+import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from '../capabilities/instance-access'
 import { AREA_ORDER, type Area, Level } from '../capabilities/registry'
 import { systemProfileForAgentKind } from './system-profiles'
 import type { CachedPermissionProfile } from './types'
@@ -96,18 +97,49 @@ export function policyDefinitionLevel(
 }
 
 /**
- * The published rung for one resource instance. A resource TYPE absent from
- * `resources` falls back to `resourceDefault` — that is what makes the snapshot
- * total for resource types (and instances) created after publication.
+ * The rung a resource type falls through to when the policy names no rule for it
+ * — its own L2 area, which is the *human* model's fallback verbatim
+ * (`INSTANCE_ACCESS_RESOURCES`: for `baselineAtCreate: false` resources "an
+ * absent instance row → the base L2 area level").
+ *
+ * This is what replaced a top-level `resourceDefault` field. That field answered
+ * the same question a second time, one level up from the area rung it was then
+ * intersected with, so the editor had to offer two blanket dropdowns whose
+ * difference nobody could state — and an `All datasets` row could read
+ * *"Default · None"* under a `Datasets: Read` area, contradicting its own parent.
+ *
+ * An UNREGISTERED type (a snapshot naming a resource kind this deploy no longer
+ * has) has no area to ask, so it fails closed at `'none'`. It is inert either
+ * way — nothing can call `canViewInstance` for a key the registry dropped.
+ */
+function resourceTypeAreaLevel(
+  policy: PublishedAgentPermissionPolicy,
+  resourceType: string
+): ResourcePermission {
+  const config = INSTANCE_ACCESS_RESOURCES[resourceType as InstanceAccessKey]
+  return config ? policyAreaLevel(policy, config.area) : 'none'
+}
+
+/**
+ * The published rung for one resource instance: the most specific rule that
+ * names it, intersected with its coarse L2 area gate.
+ *
+ * The intersection is the whole composition model in one line (§0.5) — an area
+ * of `None` closes the feature no matter what a stale instance rule says — and it
+ * is also what makes the snapshot total. A type with no entry, or a type added by
+ * a deploy that postdates publication, resolves through
+ * {@link resourceTypeAreaLevel} to the area rung, which `areas.default` already
+ * answers for an area the snapshot predates.
  */
 export function policyResourceLevel(
   policy: PublishedAgentPermissionPolicy,
   resourceType: string,
   instanceId: string
 ): ResourcePermission {
+  const areaGate = resourceTypeAreaLevel(policy, resourceType)
   const forType = policy.resources[resourceType]
-  if (!forType) return policy.resourceDefault
-  return lookupExactPolicy(forType, instanceId)
+  if (!forType) return areaGate
+  return minPermission(lookupExactPolicy(forType, instanceId), areaGate)
 }
 
 /** Coerce an arbitrary stored value into the closed rung vocabulary, or `null`. */
@@ -162,11 +194,14 @@ export function parsePublishedAgentPolicy(
     clamp?: unknown
   }
 
-  const resourceDefault = parsePolicyPermission(source.resourceDefault) ?? fallbackDefault
+  // A type entry whose own `default` is unreadable falls back to `fallbackDefault`
+  // (`'none'`), NOT to its area rung: the area fall-through is for a type with no
+  // entry at all, and a corrupt entry must not read as a wider rule than the
+  // absence it replaced.
   const resources: Record<string, ExactAgentPolicy> = {}
   if (source.resources && typeof source.resources === 'object') {
     for (const [type, value] of Object.entries(source.resources as Record<string, unknown>)) {
-      resources[type] = parseExactPolicy(value, resourceDefault)
+      resources[type] = parseExactPolicy(value, fallbackDefault)
     }
   }
 
@@ -179,7 +214,6 @@ export function parsePublishedAgentPolicy(
     clamp: Array.isArray(source.clamp) ? source.clamp : [],
     areas: parseExactPolicy(source.areas, fallbackDefault),
     definitions: parseExactPolicy(source.definitions, fallbackDefault),
-    resourceDefault,
     resources,
   }
 }
@@ -217,13 +251,11 @@ export function parseAgentPolicy(raw: unknown): AgentPermissionPolicy {
 export function authorizationOnlyPolicy(policy: PublishedAgentPermissionPolicy): {
   areas: ExactAgentPolicy
   definitions: ExactAgentPolicy
-  resourceDefault: ResourcePermission
   resources: Partial<Record<string, ExactAgentPolicy>>
 } {
   return {
     areas: policy.areas,
     definitions: policy.definitions,
-    resourceDefault: policy.resourceDefault,
     resources: policy.resources,
   }
 }
@@ -254,7 +286,6 @@ export function legacyFullAgentPolicy(): PublishedAgentPermissionPolicy {
     clamp: [],
     areas: { default: 'admin', overrides: {} },
     definitions: { default: 'admin', overrides: {} },
-    resourceDefault: 'admin',
     resources: {},
   }
 }
@@ -271,7 +302,6 @@ export function emptyAgentPolicy(): PublishedAgentPermissionPolicy {
     clamp: [],
     areas: { default: 'none', overrides: {} },
     definitions: { default: 'none', overrides: {} },
-    resourceDefault: 'none',
     resources: {},
   }
 }
@@ -307,7 +337,6 @@ function expandProfilePolicy(
     clamp: [],
     areas: { default: parsed.areas.default, overrides: areaOverrides },
     definitions: parsed.definitions,
-    resourceDefault: parsed.resourceDefault,
     resources: parsed.resources,
   }
 }

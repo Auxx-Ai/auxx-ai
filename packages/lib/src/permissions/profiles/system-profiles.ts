@@ -42,12 +42,18 @@ interface SystemProfileSeed {
   levels: Partial<Record<Area, Level>> | null
 }
 
-/** A total agent policy at one uniform level — the `agent`/`chat_agent` seeds' shape. */
+/**
+ * A total agent policy at one uniform level — the `agent`/`chat_agent` seeds'
+ * shape.
+ *
+ * `resources` stays empty: every resource type falls through to its own area,
+ * and every area is `level` here, so the uniform posture reaches instances
+ * without restating itself five times.
+ */
 function uniformAgentPolicy(level: ResourcePermission): AgentPermissionPolicy {
   return {
     areas: { default: level, overrides: {} },
     definitions: { default: level, overrides: {} },
-    resourceDefault: level,
     resources: {},
   }
 }
@@ -177,7 +183,11 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
         },
       },
       definitions: { default: 'edit', overrides: {} },
-      resourceDefault: 'none',
+      // Kept explicit even though `knowledgeBase: view` above already supplies
+      // this rung by fall-through — the entry PINS instance access at `view` if
+      // that area is later raised, which is the preset's whole shape ("answers
+      // from the KB", never rewrites it). Every other type has no entry and
+      // follows its own area, all of which are `none` here.
       resources: { kb: { default: 'view', overrides: {} } },
     },
     levels: null,
@@ -205,7 +215,10 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
         },
       },
       definitions: { default: 'view', overrides: {} },
-      resourceDefault: 'view',
+      // Nothing to state: datasets, dashboards and KBs each follow the `view`
+      // area above, and workflows/agents follow `areas.default` to `none` —
+      // which is exactly what the old `resourceDefault: 'view'` resolved to once
+      // it was intersected with those same areas.
       resources: {},
     },
     levels: null,

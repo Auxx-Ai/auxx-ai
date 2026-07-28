@@ -3,7 +3,12 @@
 
 import type { AgentPermissionPolicy } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
-import { AREA_ORDER, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import {
+  AREA_ORDER,
+  INSTANCE_ACCESS_RESOURCES,
+  type InstanceAccessKey,
+  PERMISSION_AREAS,
+} from '@auxx/lib/permissions/client'
 import { isAccessManageable } from '@auxx/lib/resources/client'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { useMemo } from 'react'
@@ -66,13 +71,18 @@ interface AgentDomainDefault {
 }
 
 /**
- * The three domains the runtime enforces and the rung every key in each one falls
- * back to (§2.3). Single source for both the tab's summary line and the dialog's
- * `Default` rows.
+ * The two domains that carry a blanket default of their own, and the rung every
+ * key in each one falls back to (§2.3). Single source for both the tab's summary
+ * line and the dialog's `Default` rows.
+ *
+ * **Resources is deliberately absent.** A resource type with no rule of its own
+ * follows its own L2 area, so there is no single rung to print for the domain —
+ * the per-type rows each carry their own answer instead. Printing one would mean
+ * inventing a number the policy no longer holds.
  */
 export function agentPolicyDomainDefaults(
   policy: AgentPermissionPolicy
-): [AgentDomainDefault, AgentDomainDefault, AgentDomainDefault] {
+): [AgentDomainDefault, AgentDomainDefault] {
   return [
     { key: 'areas', title: 'Areas', defaultLabel: 'Default', level: policy.areas.default },
     {
@@ -81,13 +91,16 @@ export function agentPolicyDomainDefaults(
       defaultLabel: 'Default · incl. created later',
       level: policy.definitions.default,
     },
-    {
-      key: 'resources',
-      title: 'Resources',
-      defaultLabel: 'Default',
-      level: policy.resourceDefault,
-    },
   ]
+}
+
+/**
+ * The rung a resource type with no rule of its own resolves to — its L2 area.
+ * Read-only mirror of `resourceTypeAreaLevel` in `use-agent-policy.ts`.
+ */
+function typeAreaLevel(policy: AgentPermissionPolicy, type: InstanceAccessKey): ResourcePermission {
+  const area = INSTANCE_ACCESS_RESOURCES[type].area
+  return policy.areas.overrides[area] ?? policy.areas.default
 }
 
 /** One line of the three domain defaults — the tab's answer to "what does this agent get?". */
@@ -133,7 +146,7 @@ export function AgentResolvedPolicyDialog({
 
   const domains = useMemo<ResolvedAccessDomain[]>(() => {
     if (!policy) return []
-    const [areas, definitions, instances] = agentPolicyDomainDefaults(policy)
+    const [areas, definitions] = agentPolicyDomainDefaults(policy)
 
     return [
       {
@@ -161,9 +174,11 @@ export function AgentResolvedPolicyDialog({
         })),
       },
       {
-        key: instances.key,
-        title: instances.title,
-        defaultRow: { label: instances.defaultLabel, level: AGENT_LEVEL[instances.level] },
+        key: 'resources',
+        title: 'Resources',
+        // No `defaultRow`: there is no blanket resource default left to print —
+        // each type answers from its own area. See `agentPolicyDomainDefaults`.
+        //
         // Driven off `AGENT_POLICY_INSTANCE_KEYS`, not `INSTANCE_ACCESS_KEYS` —
         // the latter carries `agent`, which an agent policy never expresses.
         rows: AGENT_POLICY_INSTANCE_KEYS.map((type) => {
@@ -178,7 +193,7 @@ export function AgentResolvedPolicyDialog({
               perTypeOverrides > 0
                 ? `${meta.description} ${perTypeOverrides} with a rule of their own.`
                 : meta.description,
-            level: AGENT_LEVEL[perType?.default ?? policy.resourceDefault],
+            level: AGENT_LEVEL[perType?.default ?? typeAreaLevel(policy, type)],
             isOverride: perType !== undefined,
           }
         }),

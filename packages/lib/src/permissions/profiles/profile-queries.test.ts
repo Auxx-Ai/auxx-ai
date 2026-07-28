@@ -61,7 +61,6 @@ const agentProfile = profile({
   agentPolicy: {
     areas: { default: 'view', overrides: {} },
     definitions: { default: 'none', overrides: {} },
-    resourceDefault: 'none',
     resources: {},
   },
 })
