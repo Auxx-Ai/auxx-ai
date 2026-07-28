@@ -1,4 +1,10 @@
-// apps/kb/proxy.ts
+// apps/kb/src/proxy.ts
+//
+// MUST live under `src/`: Next resolves the proxy at `src/proxy.ts` whenever the
+// app uses a `src` directory, and silently registers nothing when the file sits
+// at the package root. It lived at the root from #517/#535 until 2026-07-28, so
+// none of this ever ran — `.md` URLs fell through to the HTML article page and
+// foreign hosts were served normally. `apps/web/src/proxy.ts` is the precedent.
 
 import { type NextRequest, NextResponse } from 'next/server'
 
