@@ -69,7 +69,7 @@ describe('LeveledAreaGrid — effectiveLevels is additive', () => {
   })
 })
 
-describe('LeveledAreaGrid — the line marks a DISCREPANCY, not every row', () => {
+describe('LeveledAreaGrid — the line reports EVERY area it has a level for', () => {
   it('shows the composed level when it exceeds what the ladder displays', () => {
     // The member's own row says nothing and their profile base is None, so the
     // ladder reads "No access" — but a team raised them to Edit.
@@ -78,21 +78,26 @@ describe('LeveledAreaGrid — the line marks a DISCREPANCY, not every row', () =
     expect(screen.getByText('Effective · Edit')).toBeTruthy()
   })
 
-  it('stays silent when the composed level agrees with the ladder', () => {
+  /**
+   * Agreement is still reported. The line used to be suppressed here, which made
+   * its absence say two things at once — "the ladder is the truth on this row"
+   * and "this surface has no effective access to report at all" (teams, above).
+   */
+  it('shows the composed level when it agrees with the ladder', () => {
     // `value` is undefined, `inherited` falls through to roleDefaults = None,
-    // and composition also lands on None. Nothing to report.
+    // and composition also lands on None.
     renderGrid({ effectiveLevels: { [Area.workflows]: Level.None } })
 
-    expect(screen.queryByText(/^Effective ·/)).toBeNull()
+    expect(screen.getByText('Effective · No access')).toBeTruthy()
   })
 
-  it('stays silent when an explicit override already displays the composed level', () => {
+  it('shows the composed level when an explicit override already displays it', () => {
     renderGrid({
       values: { [Area.workflows]: Level.Full },
       effectiveLevels: { [Area.workflows]: Level.Full },
     })
 
-    expect(screen.queryByText(/^Effective ·/)).toBeNull()
+    expect(screen.getByText('Effective · Full')).toBeTruthy()
   })
 
   /**
@@ -109,12 +114,17 @@ describe('LeveledAreaGrid — the line marks a DISCREPANCY, not every row', () =
     expect(screen.getByText('Effective · No access')).toBeTruthy()
   })
 
-  it('reports per area, not across the grid', () => {
+  /**
+   * Sparse in, sparse out: an area missing from `effectiveLevels` still renders
+   * no line, so a partial map never invents a rung for the areas it omits.
+   */
+  it('reports per area, and only for the areas it was given', () => {
     renderGrid({
       effectiveLevels: { [Area.workflows]: Level.Read, [Area.dashboards]: Level.None },
     })
 
-    expect(screen.getAllByText(/^Effective ·/)).toHaveLength(1)
+    expect(screen.getAllByText(/^Effective ·/)).toHaveLength(2)
     expect(screen.getByText('Effective · Read')).toBeTruthy()
+    expect(screen.getByText('Effective · No access')).toBeTruthy()
   })
 })

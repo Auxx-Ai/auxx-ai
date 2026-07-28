@@ -186,16 +186,18 @@ export function LeveledAreaGrid({
                     key={area}
                     title={meta.label}
                     description={meta.description}
-                    // Shown ONLY where it disagrees with the ladder, unlike the
-                    // instance rows, which always show it. Not an inconsistency:
-                    // the ladder here always highlights a concrete rung
-                    // (`value ?? inherited`), so a matching line would be noise
-                    // on every row and the discrepancy — a group raise, a
-                    // profile ceiling, the seat clamp — is the whole signal. A
-                    // grantee instance row's select reads a bare "Inherit" with
-                    // no rung named, so there it has to be unconditional.
+                    // Unconditional, like the instance rows: every area states
+                    // what this grantee can ACTUALLY reach, not only the ones
+                    // where composition disagrees with the ladder. Showing it
+                    // only on disagreement made the line's absence ambiguous —
+                    // a reader could not tell "the ladder is the truth here"
+                    // from "this surface never reports effective access" (it
+                    // doesn't for teams, which have none). Agreement is a
+                    // confirmation worth reading; the discrepancies — a group
+                    // raise, a profile ceiling, the seat clamp — still stand out
+                    // against the rung the control shows.
                     secondary={
-                      effective !== undefined && effective !== (value ?? inherited) ? (
+                      effective !== undefined ? (
                         <span className='whitespace-nowrap text-xs'>
                           Effective · {effectiveLevelLabel(effective)}
                         </span>
