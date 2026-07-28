@@ -2,6 +2,7 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Empty,
   EmptyDescription,
@@ -11,7 +12,7 @@ import {
 } from '@auxx/ui/components/empty'
 import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
 import { cn } from '@auxx/ui/lib/utils'
-import { CircleCheck } from 'lucide-react'
+import { CircleCheck, TriangleAlert } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -130,6 +131,35 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
         <NotificationRowSkeleton />
         <NotificationRowSkeleton />
       </>
+    )
+  }
+
+  // A failed query must not read as "no work to do". Both sources returning
+  // nothing looks identical to both sources erroring, and an approval inbox that
+  // quietly claims to be empty is worse than one that admits it is broken.
+  const loadError = confirmations.error ?? (suggestionsEnabled ? suggestions.error : null)
+  if (loadError && !confirmationItems.length && !suggestionItems.length) {
+    return (
+      <div className='flex flex-1 items-center justify-center'>
+        <Empty className='border-0'>
+          <EmptyHeader>
+            <EmptyMedia variant='icon'>
+              <TriangleAlert />
+            </EmptyMedia>
+            <EmptyTitle>Couldn't load approvals</EmptyTitle>
+            <EmptyDescription>{loadError.message}</EmptyDescription>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => {
+                void confirmations.refetch()
+                if (suggestionsEnabled) void suggestions.refetch()
+              }}>
+              Try again
+            </Button>
+          </EmptyHeader>
+        </Empty>
+      </div>
     )
   }
 

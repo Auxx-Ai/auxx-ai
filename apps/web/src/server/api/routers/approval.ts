@@ -29,8 +29,8 @@ export const approvalRouter = createTRPCRouter({
   getPendingRequests: protectedProcedure.query(async ({ ctx }) => {
     const queryService = new ApprovalQueryService(ctx.db)
     return await queryService.getPendingApprovalsForUser(
-      ctx.session.user.id,
-      ctx.session.user.organizationId
+      ctx.session.userId,
+      ctx.session.organizationId
     )
   }),
 
@@ -41,9 +41,12 @@ export const approvalRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const queryService = new ApprovalQueryService(ctx.db)
-      const canApprove = await queryService.canUserApprove(ctx.session.user.id, input.id)
+      // View, not approve: an approver may read a request they already decided or
+      // one that expired. Gating reads on `canUserApprove` 403s the moment the
+      // request goes terminal, which is exactly when you want to look at it.
+      const canView = await queryService.canUserViewApproval(ctx.session.userId, input.id)
 
-      if (!canApprove) {
+      if (!canView) {
         throw new TRPCError({
           code: 'FORBIDDEN',
           message: 'You are not authorized to view this approval request',
@@ -58,7 +61,7 @@ export const approvalRouter = createTRPCRouter({
    */
   getPendingCount: protectedProcedure.query(async ({ ctx }) => {
     const queryService = new ApprovalQueryService(ctx.db)
-    return await queryService.getPendingCount(ctx.session.user.id, ctx.session.user.organizationId)
+    return await queryService.getPendingCount(ctx.session.userId, ctx.session.organizationId)
   }),
 
   /**
@@ -76,7 +79,7 @@ export const approvalRouter = createTRPCRouter({
       const queryService = new ApprovalQueryService(ctx.db)
 
       // Verify user can approve this request
-      const canApprove = await queryService.canUserApprove(ctx.session.user.id, input.id)
+      const canApprove = await queryService.canUserApprove(ctx.session.userId, input.id)
 
       if (!canApprove) {
         throw new TRPCError({
@@ -87,7 +90,7 @@ export const approvalRouter = createTRPCRouter({
 
       return await responseService.processApprovalResponse(
         input.id,
-        ctx.session.user.id,
+        ctx.session.userId,
         'approve',
         input.comment
       )
@@ -108,7 +111,7 @@ export const approvalRouter = createTRPCRouter({
       const queryService = new ApprovalQueryService(ctx.db)
 
       // Verify user can deny this request
-      const canApprove = await queryService.canUserApprove(ctx.session.user.id, input.id)
+      const canApprove = await queryService.canUserApprove(ctx.session.userId, input.id)
 
       if (!canApprove) {
         throw new TRPCError({
@@ -119,7 +122,7 @@ export const approvalRouter = createTRPCRouter({
 
       return await responseService.processApprovalResponse(
         input.id,
-        ctx.session.user.id,
+        ctx.session.userId,
         'deny',
         input.comment
       )
@@ -132,7 +135,7 @@ export const approvalRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const queryService = new ApprovalQueryService(ctx.db)
-      return await queryService.canUserApprove(ctx.session.user.id, input.id)
+      return await queryService.canUserApprove(ctx.session.userId, input.id)
     }),
 
   /**
@@ -148,7 +151,7 @@ export const approvalRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const queryService = new ApprovalQueryService(ctx.db)
       return await queryService.getApprovalMetrics(
-        ctx.session.user.organizationId,
+        ctx.session.organizationId,
         input.startDate,
         input.endDate
       )

@@ -3,7 +3,21 @@ import { type Database, schema } from '@auxx/database'
 import { ApprovalStatus, MemberType } from '@auxx/database/enums'
 import type { ApprovalStatus as ApprovalStatusType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, count, desc, eq, gt, gte, inArray, lt, lte, or, sql } from 'drizzle-orm'
+import {
+  and,
+  arrayContains,
+  arrayOverlaps,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  lt,
+  lte,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { getCachedUserGroupIds } from '../../cache'
 import { NotificationService } from '../../notifications/notification-service'
 
@@ -49,9 +63,12 @@ export class ApprovalQueryService {
           eq(schema.ApprovalRequest.status, 'pending' as any),
           gt(schema.ApprovalRequest.expiresAt, new Date()),
           or(
-            sql`${userId} = ANY(${schema.ApprovalRequest.assigneeUsers})`,
+            arrayContains(schema.ApprovalRequest.assigneeUsers, [userId]),
+            // arrayOverlaps, not a hand-written `&&`: the `sql` template flattens
+            // a JS array into one parameter per element, so Postgres received a
+            // bare string where it wanted an array literal and threw 22P02.
             userGroups.length > 0
-              ? sql`${schema.ApprovalRequest.assigneeGroups} && ${userGroups}`
+              ? arrayOverlaps(schema.ApprovalRequest.assigneeGroups, userGroups)
               : sql`false`
           ),
           inArray(schema.WorkflowRun.status, ['RUNNING', 'WAITING'])
@@ -75,28 +92,37 @@ export class ApprovalQueryService {
           eq(schema.ApprovalRequest.status, ApprovalStatus.pending),
           gt(schema.ApprovalRequest.expiresAt, new Date()),
           or(
-            sql`${userId} = ANY(${schema.ApprovalRequest.assigneeUsers})`,
+            arrayContains(schema.ApprovalRequest.assigneeUsers, [userId]),
+            // arrayOverlaps, not a hand-written `&&`: the `sql` template flattens
+            // a JS array into one parameter per element, so Postgres received a
+            // bare string where it wanted an array literal and threw 22P02.
             userGroups.length > 0
-              ? sql`${schema.ApprovalRequest.assigneeGroups} && ${userGroups}`
+              ? arrayOverlaps(schema.ApprovalRequest.assigneeGroups, userGroups)
               : sql`false`
           ),
           inArray(schema.WorkflowRun.status, ['RUNNING', 'WAITING'])
         )
       )
-    return count
+    // `count(*)` is int8, which pg hands back as a string. The caller adds this
+    // to the suggestion count for the tab badge, so leaving it would concatenate.
+    return Number(count ?? 0)
   }
   /**
-   * Check if a user can approve a specific request
+   * Check if a user is an approver on a request — an org member who is named
+   * directly or through one of their groups.
+   *
+   * This is the *audience* check, deliberately separate from {@link canUserApprove}:
+   * it says nothing about whether the request is still actionable. Reading a
+   * request you already decided, or one that expired, is legitimate; only acting
+   * on it is not.
    */
-  async canUserApprove(userId: string, approvalRequestId: string): Promise<boolean> {
+  async canUserViewApproval(userId: string, approvalRequestId: string): Promise<boolean> {
     const [request] = await this.db
       .select()
       .from(schema.ApprovalRequest)
       .where(eq(schema.ApprovalRequest.id, approvalRequestId))
       .limit(1)
-    if (!request || request.status !== 'pending' || request!.expiresAt < new Date()) {
-      return false
-    }
+    if (!request) return false
     // Check if user is a member of the organization
     const [userMembership] = await this.db
       .select()
@@ -114,6 +140,21 @@ export class ApprovalQueryService {
       request.assigneeUsers.includes(userId) ||
       request.assigneeGroups.some((groupId) => userGroupIds.includes(groupId))
     )
+  }
+  /**
+   * Check if a user can approve a specific request — an approver (see
+   * {@link canUserViewApproval}) on a request that is still pending and unexpired.
+   */
+  async canUserApprove(userId: string, approvalRequestId: string): Promise<boolean> {
+    const [request] = await this.db
+      .select()
+      .from(schema.ApprovalRequest)
+      .where(eq(schema.ApprovalRequest.id, approvalRequestId))
+      .limit(1)
+    if (!request || request.status !== 'pending') return false
+    // Nullable in the schema — a request with no expiry never expires.
+    if (request.expiresAt && request.expiresAt < new Date()) return false
+    return await this.canUserViewApproval(userId, approvalRequestId)
   }
   /**
    * Get approval request with full context including workflow run data
