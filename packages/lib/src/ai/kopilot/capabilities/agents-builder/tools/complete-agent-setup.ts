@@ -40,7 +40,7 @@ finalization signal. No arguments — operates on the agent in session context.`
       additionalProperties: false,
     },
     execute: async (_args, agentDeps) => {
-      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps, 'admin')
       if (!auth.ok) return { success: false, output: null, error: auth.error }
       const { agentId } = auth
 

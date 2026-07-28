@@ -143,7 +143,7 @@ export function createCreateEvalCaseTool(getDeps: GetToolDeps): AgentToolDefinit
       return { caseId: o?.caseId, name: o?.name }
     },
     execute: async (args, agentDeps) => {
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'edit')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
       const { agentId } = ctx
       const { organizationId, userId } = agentDeps

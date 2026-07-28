@@ -14,6 +14,14 @@ import { PublishClampDialog } from './permissions/publish-clamp-dialog'
 
 interface AgentPublishClusterProps {
   agentId: string
+  /**
+   * Whether the viewer holds the `admin` rung on THIS agent (plan 25 §4.2).
+   * Splits the cluster along the tier line: Publish, Archive/Unarchive and
+   * Delete are administration; Discard and Version history are authoring, so an
+   * `edit`-only holder keeps them. The whole cluster is unmounted for a `view`
+   * holder by {@link import('./agent-detail-view').AgentDetailView}.
+   */
+  canAdmin: boolean
   /** Mirrors the autosave indicator while Archive/Unarchive persists. */
   onSavingChange?: (saving: boolean) => void
   onSaved?: () => void
@@ -31,6 +39,7 @@ const PILL_TOOLTIP =
  */
 export function AgentPublishCluster({
   agentId,
+  canAdmin,
   onSavingChange,
   onSaved,
 }: AgentPublishClusterProps) {
@@ -115,26 +124,32 @@ export function AgentPublishCluster({
       <PublishClusterShell
         status={{ isPublished, hasUnsaved, isArchived }}
         pillTooltip={PILL_TOOLTIP}
-        publish={{ onClick: () => void handlePublish(), isPending: isPublishing }}
+        publish={
+          canAdmin ? { onClick: () => void handlePublish(), isPending: isPublishing } : undefined
+        }
         discard={{ onClick: handleDiscard, isPending: isDiscarding }}>
         <DropdownMenuItem onClick={() => setIsVersionsOpen(true)}>
           <History /> Version history
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => void handleArchiveToggle()} disabled={isUpdating}>
-          {isArchived ? (
-            <>
-              <ArchiveRestore /> Unarchive
-            </>
-          ) : (
-            <>
-              <Archive /> Archive
-            </>
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuItem variant='destructive' onClick={() => void handleDelete()}>
-          <Trash2 /> Delete
-        </DropdownMenuItem>
+        {canAdmin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void handleArchiveToggle()} disabled={isUpdating}>
+              {isArchived ? (
+                <>
+                  <ArchiveRestore /> Unarchive
+                </>
+              ) : (
+                <>
+                  <Archive /> Archive
+                </>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuItem variant='destructive' onClick={() => void handleDelete()}>
+              <Trash2 /> Delete
+            </DropdownMenuItem>
+          </>
+        )}
       </PublishClusterShell>
 
       <AgentVersionsDialog

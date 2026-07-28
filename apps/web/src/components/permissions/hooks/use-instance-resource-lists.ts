@@ -63,6 +63,11 @@ export function useInstanceResourceLists(
     { limit: INSTANCE_PAGE_SIZE, offset: 0 },
     { enabled: open.workflow === true, staleTime: 60_000 }
   )
+  // `agent.list` is unpaginated (the `kb.list` shape), so it can never truncate.
+  const agents = api.agent.list.useQuery(undefined, {
+    enabled: open.agent === true,
+    staleTime: 60_000,
+  })
 
   return useMemo(
     () => ({
@@ -89,6 +94,14 @@ export function useInstanceResourceLists(
         isLoading: workflows.isLoading && open.workflow === true,
         truncated: workflows.data?.hasMore === true,
       },
+      agent: {
+        // `Agent.name` is nullable (chat-driven creation leaves it unset and
+        // writes `slug = id`), so fall back to the slug rather than rendering a
+        // blank row.
+        items: (agents.data ?? []).map((a) => ({ id: a.id, name: a.name ?? a.slug })),
+        isLoading: agents.isLoading && open.agent === true,
+        truncated: false,
+      },
     }),
     [
       datasets.data,
@@ -99,6 +112,8 @@ export function useInstanceResourceLists(
       dashboards.isLoading,
       workflows.data,
       workflows.isLoading,
+      agents.data,
+      agents.isLoading,
       open,
     ]
   )

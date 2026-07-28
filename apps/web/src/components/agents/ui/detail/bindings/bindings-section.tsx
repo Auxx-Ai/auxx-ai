@@ -10,6 +10,7 @@ import { Plus, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAgentAccess } from '../../../hooks/use-agent-access'
 import type { AgentDetail } from '../../../store/agent-store'
 import { AddBindingDialog } from './add-binding-dialog'
 import { BindingRow } from './binding-row'
@@ -53,6 +54,7 @@ export function BindingsSection({ agent }: BindingsSectionProps) {
   const toolMeta = useToolMeta(agent)
   const { bindings, save } = useBindings(agent)
   const refLabel = useBindingRefLabel()
+  const { canEdit } = useAgentAccess(agent.id)
 
   // Split overrides into enabled-tool entries (shown) vs disabled-tool entries
   // (kept inert, hidden — surfaced only as a count).
@@ -101,16 +103,19 @@ export function BindingsSection({ agent }: BindingsSectionProps) {
       description='Tools are scoped by their built-in defaults. Override an input to pin a value or rebind it.'
       collapsible={false}
       actions={
-        <Button
-          variant='ghost'
-          size='xs'
-          onClick={() => {
-            setEditing(null)
-            setDialogOpen(true)
-          }}>
-          <Plus />
-          Add override
-        </Button>
+        // Bindings are authoring (plan 25 §4.2) — `edit`, not `admin`.
+        canEdit ? (
+          <Button
+            variant='ghost'
+            size='xs'
+            onClick={() => {
+              setEditing(null)
+              setDialogOpen(true)
+            }}>
+            <Plus />
+            Add override
+          </Button>
+        ) : undefined
       }>
       {toolMeta.isLoading ? (
         <EmptySection loading className='mx-3' />

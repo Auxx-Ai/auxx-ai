@@ -64,7 +64,11 @@ export default function AgentDetailPage() {
   const { hasAccess } = useFeatureFlags()
   const { can } = useAccess()
 
-  if (!hasAccess(FeatureKey.agents) || !can('agents.manage')) {
+  // `agents.view` — the coarse "is there an agents surface for me" gate. The
+  // per-agent answer is enforced server-side by `agent.getById`, which asserts
+  // instance access on the RESOLVED id; a member restricted from THIS agent
+  // falls through to the not-found state below rather than this lock screen.
+  if (!hasAccess(FeatureKey.agents) || !can('agents.view')) {
     return (
       <MainPage>
         <MainPageHeader>
@@ -75,7 +79,7 @@ export default function AgentDetailPage() {
         </MainPageHeader>
         <MainPageNoPermission
           title='Agents Not Available'
-          description='Agents require the agents feature on your plan and permission to manage agents.'
+          description='Agents require the agents feature on your plan and permission to use agents.'
         />
       </MainPage>
     )

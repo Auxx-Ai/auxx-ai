@@ -88,7 +88,7 @@ export function createGetSuiteDiffTool(getDeps: GetToolDeps): AgentToolDefinitio
       ],
     },
     execute: async (args, agentDeps) => {
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'view')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
 
       const baselineSuiteRunId =

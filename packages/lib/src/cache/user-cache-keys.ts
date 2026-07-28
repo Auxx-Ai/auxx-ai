@@ -166,7 +166,26 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // mandatory: a dev flush is NOT a substitute, because during a rollout a
   // draining old instance repopulates the same keyspace, which is the entire
   // reason `vN` exists.
+  // v12: agents instance access (plan 25 §4.2). `Area.agents` split from its
+  // single `Full → agents.manage` rung into Read/Edit/Full, and `agent` joined
+  // `INSTANCE_ACCESS_RESOURCES` — the same pair of changes `workflow` made in
+  // v11's part 2, so the same two staleness effects apply:
+  //   1. A v11 blob's `keys` hold `agents.manage` but NOT `agents.view` /
+  //      `agents.edit`, because it was expanded against the 1-rung ladder.
+  //      `areaLevelFromKeys` walks rungs in order and `break`s at the first
+  //      unheld one, so `Area.agents` composes to **None** off a v11 blob, not
+  //      to Full — the member loses agents entirely rather than keeping them.
+  //   2. A v11 blob carries no `agent` rows in `instanceAccess` or
+  //      `instanceDerivedKeys` at all: its instance query ran with `agent`
+  //      absent from `INSTANCE_ACCESS_KEYS`, so an explicit grant is invisible
+  //      and cannot rescue (1).
+  // Both fail CLOSED, so this stays a lost-access bump like v11 — but note the
+  // direction is only lucky, not structural. Had `areaLevelFromKeys` taken the
+  // highest SATISFIED rung instead of stopping at the first gap, a v11 blob
+  // would have read `Full` and handed every member `admin` on every agent
+  // (`baselineAtCreate: false` ⇒ the area level IS the absent-row fallback) for
+  // the full ONE_DAY TTL, silently voiding every restriction this slice ships.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v11', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v12', ttlSeconds: ONE_DAY },
 }

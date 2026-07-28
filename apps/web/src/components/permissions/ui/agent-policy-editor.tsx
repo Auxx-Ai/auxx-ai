@@ -3,13 +3,7 @@
 
 import type { AgentPermissionPolicy } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
-import {
-  Area,
-  FeatureKey,
-  type InstanceAccessKey,
-  type Level,
-  PERMISSION_AREAS,
-} from '@auxx/lib/permissions/client'
+import { Area, FeatureKey, type Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Bot, SlidersHorizontal } from 'lucide-react'
@@ -47,7 +41,11 @@ import { clampToArea } from './level-control'
 import { LEVEL_OF_PERMISSION, permissionOfLevel } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import { ProfileAreaGrid } from './profile-area-grid'
-import { AGENT_POLICY_AREA_GROUPS, AGENT_POLICY_AREAS } from './profile-copy'
+import {
+  AGENT_POLICY_AREA_GROUPS,
+  AGENT_POLICY_AREAS,
+  type AgentPolicyInstanceKey,
+} from './profile-copy'
 
 /** A draft agent bound to this profile — what a save actually reaches. */
 export interface BoundAgentDraft {
@@ -181,7 +179,7 @@ export function AgentPolicyEditor({
    * them. Never silent (plan 29 §2.3).
    */
   const handleTypeChange = useCallback(
-    async (type: InstanceAccessKey, level: ResourcePermission | undefined) => {
+    async (type: AgentPolicyInstanceKey, level: ResourcePermission | undefined) => {
       if (level !== undefined) {
         setResourceTypeDefault(type, level)
         return
@@ -287,7 +285,13 @@ export function AgentPolicyEditor({
       }
 
       const type = AREA_TO_INSTANCE_KEY[area]
-      if (!type) return undefined
+      // `agent` is an instance-access key but NOT an agent-policy one — an agent
+      // policy has nothing to say about which agents an agent may reach (see
+      // `AgentPolicyInstanceKey`). `Area.agents` is already excluded from
+      // `AGENT_POLICY_AREA_GROUPS`, so this branch is unreachable in practice;
+      // narrowing here is what makes that exclusion checkable rather than
+      // assumed, since `AREA_TO_INSTANCE_KEY` is derived from the full registry.
+      if (!type || type === 'agent') return undefined
 
       const entry = policy.resources[type]
       const overrides = entry?.overrides ?? {}

@@ -71,7 +71,7 @@ export function createListEvalCasesTool(getDeps: GetToolDeps): AgentToolDefiniti
       total: 1,
     },
     execute: async (args, agentDeps) => {
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'view')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
 
       const procedureId = typeof args.procedureId === 'string' ? args.procedureId : undefined

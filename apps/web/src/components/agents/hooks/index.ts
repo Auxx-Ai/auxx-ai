@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/hooks/index.ts
 
 export { useAgent } from './use-agent'
+export { type AgentAccess, useAgentAccess } from './use-agent-access'
 export { useAgentMutations } from './use-agent-mutations'
 export {
   type AgentProfileOption,

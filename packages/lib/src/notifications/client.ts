@@ -14,6 +14,7 @@ export const NOTIFICATION_TARGET_TYPES = [
   'KNOWLEDGE_BASE',
   'DASHBOARD',
   'WORKFLOW',
+  'AGENT',
   'SETTINGS',
   'NONE',
 ] as const
@@ -33,6 +34,8 @@ export interface NotificationTargetIdsMap {
   DASHBOARD: { dashboardId: string }
   /** The `WorkflowApp.id` — the instance-access key `workflow` is keyed on it. */
   WORKFLOW: { workflowAppId: string }
+  /** The `Agent.id`. Deep links route by SLUG, so the renderer resolves it. */
+  AGENT: { agentId: string }
   SETTINGS: { path: string }
   NONE: Record<string, never>
 }
@@ -52,7 +55,7 @@ export type NotificationMetadata =
       resourceName: string
       noun: string
       /** Mirrors `InstanceAccessKey` — kept as a literal union so this module stays client-safe. */
-      resourceKey: 'dataset' | 'kb' | 'dashboard' | 'workflow'
+      resourceKey: 'dataset' | 'kb' | 'dashboard' | 'workflow' | 'agent'
       level: 'read' | 'write' | 'full'
     }
   | { kind: 'MESSAGE_SHARED'; subject?: string | null; lens: string }

@@ -73,7 +73,7 @@ The previous prompt is replaced wholesale.`,
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps, 'edit')
       if (!auth.ok) return { success: false, output: null, error: auth.error }
       const { agentId } = auth
 

@@ -135,7 +135,7 @@ has two, send all three in the call.`,
       additionalProperties: false,
     },
     execute: async (args, agentDeps) => {
-      const auth = await resolveAgentAuthoring(getDeps, agentDeps)
+      const auth = await resolveAgentAuthoring(getDeps, agentDeps, 'admin')
       if (!auth.ok) return { success: false, output: null, error: auth.error }
       const { agentId } = auth
 

@@ -44,6 +44,24 @@ export const INSTANCE_ACCESS_RESOURCES = {
   // restricted to `none` still fires — see the `Area.workflows` note in
   // `registry.ts` and plan 30 §2.1.
   workflow: { baselineAtCreate: false, area: Area.workflows },
+  // org-shared; absent instance row → base L2 `agents` level (plan 25 §4.2).
+  // Same posture as workflows and for the same reason: members compose
+  // `agents: Full`, so RESTRICTION is the use case ("only the support leads may
+  // touch the escalation agent"), and `false` means no create-time row write
+  // and no backfill migration. The `Area.agents` Read/Edit rungs exist
+  // precisely so this fallback can land on a real view/edit tier.
+  //
+  // `view` means USABLE, not merely visible (user decision 2026-07-27): chat in
+  // Kopilot, DM, @-mention, assign, and appear in actor pickers. There was no
+  // pre-existing "usable but not editable" tier to preserve — `actor.list` /
+  // `actor.search` filtered agents not at all, and `dmEnabled` / `mentionable`
+  // are org-wide booleans with no grantee dimension.
+  //
+  // Instance access gates HUMAN-INITIATED work only. The autonomous paths
+  // (schedule, record event, app trigger, webhook, visitor, eval) pass no
+  // `invokerUserId` by design, so a restricted agent still runs headlessly —
+  // the same carve-out `workflow` documents above.
+  agent: { baselineAtCreate: false, area: Area.agents },
 } as const satisfies Record<string, InstanceAccessResourceConfig>
 
 /** The set of resource keys backed by instance-level access. */

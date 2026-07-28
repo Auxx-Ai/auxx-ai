@@ -27,6 +27,47 @@ type EvalRunEvent =
   | { type: 'status'; status: string; assertionResults?: AssertionResult[] }
   | { type: 'done' }
 
+/**
+ * Which agent an eval run exercised, or `null` when the run is orphaned.
+ *
+ * Tries the case link first (`EvalCase.agentId` is denormalized from `target`
+ * precisely so the hot path need not join), then the suite run. Both columns are
+ * nullable, so `null` genuinely means "no agent to judge this against" rather
+ * than "lookup failed".
+ */
+async function resolveEvalRunAgentId(
+  caseId: string | null,
+  suiteRunId: string | null,
+  organizationId: string
+): Promise<string | null> {
+  if (caseId) {
+    const [row] = await db
+      .select({ agentId: schema.EvalCase.agentId })
+      .from(schema.EvalCase)
+      .where(
+        and(eq(schema.EvalCase.id, caseId), eq(schema.EvalCase.organizationId, organizationId))
+      )
+      .limit(1)
+    if (row?.agentId) return row.agentId
+  }
+
+  if (suiteRunId) {
+    const [row] = await db
+      .select({ agentId: schema.EvalSuiteRun.agentId })
+      .from(schema.EvalSuiteRun)
+      .where(
+        and(
+          eq(schema.EvalSuiteRun.id, suiteRunId),
+          eq(schema.EvalSuiteRun.organizationId, organizationId)
+        )
+      )
+      .limit(1)
+    if (row?.agentId) return row.agentId
+  }
+
+  return null
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ runId: string }> }
@@ -44,14 +85,14 @@ export async function GET(
   // with `getSession` and scoped by org, but read no capabilities — so any
   // authenticated member could replay an eval run's full trace (agent messages,
   // tool calls, assertion verdicts) while every `eval.*` tRPC procedure sits
-  // behind `permissionProcedure(agentsManage)`.
+  // behind a capability gate.
   //
   // Capability only, deliberately: `evalManageProcedure` also plan-ANDs
   // `agentProcedures`, but this is a read-only RECONNECT stream for a run that
   // was already started behind that gate, and failing a live reconnect on a
   // mid-run plan change would be worse than the gap it closes.
   const capabilities = await getCapabilities(session.user.id, organizationId)
-  if (!capabilities.can(PermissionKey.agentsManage)) {
+  if (!capabilities.can(PermissionKey.agentsView)) {
     return new Response('Forbidden', { status: 403 })
   }
 
@@ -61,6 +102,29 @@ export async function GET(
     .where(and(eq(schema.EvalRun.id, runId), eq(schema.EvalRun.organizationId, organizationId)))
     .limit(1)
   if (!run) return new Response('Eval run not found', { status: 404 })
+
+  // Per-agent access (plan 25 §4.2). The coarse key above answers "may this
+  // member reach evals at all", never "may they replay THIS agent's run" — the
+  // standing "requirePermission is coarse-key only" trap. Reading an eval trace
+  // is a `view`-tier read of the agent it exercised.
+  //
+  // `EvalRun` carries no `agentId` of its own; it hangs off a case or a suite
+  // run, and BOTH links are nullable (`onDelete: 'set null'` — deleting a case
+  // keeps its runs by the history-retention policy). An ORPHANED run therefore
+  // has no agent to judge, so it falls back to the area's top rung rather than
+  // being waved through: same shape as #1345, where a workflow run with no
+  // resolvable owner needs `edit` instead of the owner short-circuit.
+  const agentId = await resolveEvalRunAgentId(run.caseId, run.suiteRunId, organizationId)
+  if (agentId === null) {
+    if (!capabilities.can(PermissionKey.agentsManage)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+  } else if (!capabilities.canViewInstance('agent', agentId)) {
+    // `canViewInstance`, not `assertViewInstance`: App Router route handlers have
+    // no `auxxErrorMiddleware`, so a thrown `AuxxError` would surface as a 500
+    // rather than this 403.
+    return new Response('Forbidden', { status: 403 })
+  }
 
   // Resume point: `Last-Event-ID` (our trace sequence) or `?afterSequence=`.
   const lastEventId = request.headers.get('last-event-id')

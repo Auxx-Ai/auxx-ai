@@ -122,7 +122,11 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'agents',
     icon: <Bot />,
     featureKey: 'agents',
-    permissionKey: 'agents.manage',
+    // The nav entry is a "can I get in at all" gate, so it reads the Read rung
+    // (`agents.view`), not the authoring one — matching the `workflows.view`
+    // entry below. #1346 left workflows on `.manage` and hid the sidebar from
+    // every view/edit holder; do not repeat it here.
+    permissionKey: 'agents.view',
   },
   {
     id: 'calls',

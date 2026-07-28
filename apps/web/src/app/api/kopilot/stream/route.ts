@@ -47,7 +47,7 @@ import {
 } from '@auxx/lib/ai/kopilot/capabilities'
 import { createMcpCapabilities } from '@auxx/lib/ai/mcp'
 import { getCachedAgentById } from '@auxx/lib/cache'
-import { ForbiddenError } from '@auxx/lib/errors'
+import { AuxxError, ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import {
   type CapabilityView,
@@ -69,6 +69,7 @@ import {
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
 import { auth } from '~/auth/server'
+import { assertAgentAccess } from '~/server/lib/agent-instance-access'
 import { resolveTaskNotification } from './task-notification'
 
 const logger = createScopedLogger('kopilot-stream')
@@ -107,24 +108,38 @@ function renderDmInstructions(instructions: Record<string, unknown> | null): str
  * agent-side check (`buildDmTriggerContext`) tests the org-wide `dmEnabled`
  * toggle, not the caller.
  *
- * Two gates, matching what `permissionProcedure(agentsManage)` runs for the
- * tRPC siblings: the {@link FeatureKey.agents} plan-AND (the route's existing
- * {@link FeatureKey.kopilot} gate does not cover the agents feature) and the
- * capability itself.
+ * Three gates, and the id-aware one is the point (permissions v2 item 4, plan
+ * 25 §4.2 — the TODO that used to sit here is DONE):
  *
- * TODO(permissions v2, item 4 — agents instance access): `Area.agents` is a
- * SINGLE-RUNG area today (`Full → agents.manage` is its only rung, see
- * `registry.ts`), so this is deliberately agent-id-blind — there is no View
- * rung to gate on yet. When item 4 splits the area into View/Edit/Full,
- * re-point this at the new View rung and add
- * `capabilities.assertViewInstance('agent', agentId)` beside it, taking the id
- * as a parameter. **Extend this function — do not add a second gate elsewhere.**
+ *  1. the {@link FeatureKey.agents} plan-AND (the route's existing
+ *     {@link FeatureKey.kopilot} gate does not cover the agents feature);
+ *  2. the coarse {@link PermissionKey.agentsView} rung. This used to be
+ *     `agentsManage`, because `Area.agents` had no lower rung to aim at.
+ *     Chatting with an agent is USING it, not authoring it, so Read is the
+ *     correct front door now that the area has one;
+ *  3. per-agent instance access on the RESOLVED agent id. `agentId` arrives
+ *     verbatim on the request body, so it goes through
+ *     {@link assertAgentAccess} — which resolves id-or-slug to a real
+ *     `Agent.id` first. Asserting the raw value would find no `ResourceAccess`
+ *     row for a slug, fall through to the area level, and hand over a
+ *     restricted agent.
+ *
+ * **Denials are returned, never thrown.** App Router route handlers have no
+ * `auxxErrorMiddleware`, so an escaping `AuxxError` surfaces as a 500 rather
+ * than the 403 the caller must see. Every `AuxxError` from the resolve+assert
+ * is collapsed into the same message on purpose: a restricted agent, an
+ * archived one and an id from another org are then indistinguishable, so this
+ * endpoint cannot be used to enumerate the org's agents. Anything that is not
+ * an `AuxxError` is a genuine fault and rethrows.
+ *
+ * **Extend this function — do not add a second gate elsewhere.**
  */
 async function resolveAgentAccessDenial(params: {
   organizationId: string
   userId: string
+  agentId: string
 }): Promise<string | null> {
-  const { organizationId, userId } = params
+  const { organizationId, userId, agentId } = params
   const hasAgents = await new FeaturePermissionService().hasAccess(
     organizationId,
     FeatureKey.agents
@@ -132,8 +147,15 @@ async function resolveAgentAccessDenial(params: {
   if (!hasAgents) return 'Agents are not available on your plan'
 
   const capabilities = await getCapabilities(userId, organizationId)
-  if (!capabilities.can(PermissionKey.agentsManage)) {
+  if (!capabilities.can(PermissionKey.agentsView)) {
     return 'You do not have access to this agent'
+  }
+
+  try {
+    await assertAgentAccess({ capabilities, organizationId, idOrSlug: agentId, tier: 'view' })
+  } catch (error) {
+    if (error instanceof AuxxError) return 'You do not have access to this agent'
+    throw error
   }
   return null
 }
@@ -244,7 +266,11 @@ export async function POST(request: NextRequest) {
   // is authorized separately below. Plain Kopilot (no agent) skips this
   // entirely.
   if (!body.sessionId && body.agentId) {
-    const denial = await resolveAgentAccessDenial({ organizationId, userId })
+    const denial = await resolveAgentAccessDenial({
+      organizationId,
+      userId,
+      agentId: body.agentId,
+    })
     if (denial) return new Response(denial, { status: 403 })
   }
 
@@ -434,10 +460,15 @@ export async function POST(request: NextRequest) {
         // profile was tightened). Authorize the RESOLVED id on every turn.
         //
         // Builder sessions are included on purpose: their agent is the subject
-        // of editing, which is exactly what `agentsManage` fronts. Sessions
-        // with no agent (plain Kopilot) read no capabilities at all.
+        // of editing, and `view` is the floor for touching it at all (the
+        // authoring tools re-assert Edit/Full for themselves). Sessions with no
+        // agent (plain Kopilot) read no capabilities at all.
         if (sessionAgentId) {
-          const denial = await resolveAgentAccessDenial({ organizationId, userId })
+          const denial = await resolveAgentAccessDenial({
+            organizationId,
+            userId,
+            agentId: sessionAgentId,
+          })
           if (denial) {
             send({ type: 'turn-error', error: denial, code: 'forbidden' })
             cleanup()

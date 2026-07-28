@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/eval.ts
 
-import type { EvalCaseEntity } from '@auxx/database'
+import type { EvalCaseEntity, EvalRunEntity, EvalSuiteRunEntity } from '@auxx/database'
 import {
   cancelEvalRun,
   compareSuiteRuns,
@@ -35,19 +35,42 @@ import {
 } from '@auxx/types/evals/schema'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
+import { assertAgentAccess } from '~/server/lib/agent-instance-access'
+import { createTRPCRouter, permissionProcedure } from '../trpc'
 import { unwrap } from '../unwrap'
 
-/** permissionProcedure(agentsManage) + the `agentProcedures` feature gate (evals exercise procedures). */
-const evalManageProcedure = permissionProcedure(PermissionKey.agentsManage).use(
-  async ({ ctx, next }) => {
-    await new FeaturePermissionService().requireAccess(
-      ctx.session.organizationId,
-      FeatureKey.agentProcedures
-    )
-    return next()
-  }
-)
+/**
+ * Per-agent instance access for evals (plan 25 §4.2, user decision 2026-07-28):
+ * **reads need `view` on the owning agent, writes need `edit`** — an agent's
+ * simulations, suites and run traces are part of the agent, so they are judged
+ * by the same `ResourceAccess` row the agent itself is.
+ *
+ * Until this landed, 11 of these procedures were bare `protectedProcedure` and
+ * read no capabilities at all: any org member could list, open and diff any
+ * agent's eval suites and run history. That was the hole, not a re-tiering.
+ *
+ * Base procedure is `permissionProcedure(agentsView)` throughout — the same
+ * choice `workflow.ts` made. A member composing `agents: None` who holds one
+ * explicit instance grant genuinely HOLDS `agentsView` (the composer derives the
+ * Read rung from their grants), so the coarse rung is a front door and the
+ * per-instance assert below it does the real work. **Every procedure here
+ * asserts on a specific agent** — there is no org-wide eval list to filter, both
+ * `list` and `listSuiteRuns` are already scoped to one required `agentId`.
+ *
+ * `run` / `runAll` spend org credits at the `edit` tier. Deliberate (user,
+ * 2026-07-28): an instance editor authoring simulations must be able to run
+ * them, and every other spend on the agent (drafts, procedures) is already edit.
+ */
+const evalProcedure = permissionProcedure(PermissionKey.agentsView)
+
+/** {@link evalProcedure} + the `agentProcedures` feature gate (evals exercise procedures). */
+const evalWriteProcedure = evalProcedure.use(async ({ ctx, next }) => {
+  await new FeaturePermissionService().requireAccess(
+    ctx.session.organizationId,
+    FeatureKey.agentProcedures
+  )
+  return next()
+})
 
 /** Parse a persisted case row's JSONB into typed, validated fields. */
 function parseCase(row: EvalCaseEntity) {
@@ -61,16 +84,68 @@ function parseCase(row: EvalCaseEntity) {
   }
 }
 
+/**
+ * The agent a persisted CASE belongs to. `EvalCase.agentId` is the denormalized
+ * copy the service keeps in sync on every write; `target` is the source of truth
+ * and covers any row the column is null on.
+ *
+ * A case that resolves to no agent cannot be judged by instance access, so it is
+ * a 404 rather than an ungated read — the same "unjudgeable ⇒ invisible" rule
+ * `assertAgentAccess` applies to an unresolvable agent id.
+ */
+function caseAgentId(row: EvalCaseEntity): string {
+  if (row.agentId) return row.agentId
+  const target = agentEvalTargetSchema.safeParse(row.target)
+  if (!target.success) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
+  return target.data.agentId
+}
+
+/**
+ * The agent a persisted RUN belongs to — read off the immutable
+ * `definitionSnapshot`, NOT the case.
+ *
+ * `EvalRun.caseId` is `ON DELETE SET NULL` (runs outlive their case by policy),
+ * so joining back to `EvalCase` would leave every orphaned run ungatable.
+ * Snapshot truth is also the more correct answer: a case later re-targeted to
+ * another agent must not retroactively move the runs it already produced.
+ */
+function runAgentId(run: EvalRunEntity): string {
+  const snapshot = run.definitionSnapshot as { case?: { target?: unknown } } | null
+  const target = agentEvalTargetSchema.safeParse(snapshot?.case?.target)
+  if (!target.success) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
+  return target.data.agentId
+}
+
+/**
+ * The agent a SUITE run belongs to (`EvalSuiteRun.agentId`, denormalized from
+ * the `runAll` selection). Nullable and FK-less — suite history outlives deleted
+ * agents — so a null is an unjudgeable suite and therefore a 404.
+ */
+function suiteAgentId(suite: EvalSuiteRunEntity): string {
+  if (!suite.agentId)
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval suite run not found' })
+  return suite.agentId
+}
+
 export const evalRouter = createTRPCRouter({
   // ── Case CRUD ───────────────────────────────────────────────────────────
-  list: protectedProcedure
+  list: evalProcedure
     .input(z.object({ agentId: z.string().min(1), procedureId: z.string().min(1).optional() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      // Scoped to ONE agent, so this asserts rather than filters. The resolved id
+      // also goes downstream — `EvalCase.agentId` stores `Agent.id`, so a slug
+      // would have silently listed nothing.
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: input.agentId,
+        tier: 'view',
+      })
       const cases = unwrap(
         await listEvalCasesByAgent({
           organizationId,
-          agentId: input.agentId,
+          agentId,
           procedureId: input.procedureId,
         }),
         'list eval cases'
@@ -116,7 +191,7 @@ export const evalRouter = createTRPCRouter({
       })
     }),
 
-  getById: protectedProcedure
+  getById: evalProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const found = unwrap(
@@ -124,10 +199,17 @@ export const evalRouter = createTRPCRouter({
         'get eval case'
       )
       if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
+      // The row we already loaded carries the agent — no second lookup.
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: caseAgentId(found),
+        tier: 'view',
+      })
       return parseCase(found)
     }),
 
-  create: evalManageProcedure
+  create: evalWriteProcedure
     .input(
       z.object({
         name: z.string().min(1),
@@ -139,12 +221,22 @@ export const evalRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // The new case's OWNER is `target.agentId` — authoring an eval onto an
+      // agent is editing that agent.
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: input.target.agentId,
+        tier: 'edit',
+      })
       const created = unwrap(
         await createEvalCase({
           organizationId: ctx.session.organizationId,
           createdById: ctx.session.userId,
           name: input.name,
-          target: input.target,
+          // Persist the RESOLVED id: `target.agentId` is what every later
+          // instance assert keys on, and it must never hold a slug.
+          target: { ...input.target, agentId },
           config: input.config,
           assertions: input.assertions,
           suggestionId: input.suggestionId,
@@ -157,7 +249,7 @@ export const evalRouter = createTRPCRouter({
       return { id: created.id }
     }),
 
-  update: evalManageProcedure
+  update: evalWriteProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -170,11 +262,34 @@ export const evalRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const found = unwrap(await getEvalCaseById({ organizationId, id: input.id }), 'get eval case')
+      if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: caseAgentId(found),
+        tier: 'edit',
+      })
+
+      // A `target` patch can RE-TARGET the case onto another agent, which is a
+      // write to that agent too — assert it, and persist the resolved id.
+      let patch = input.patch
+      if (patch.target) {
+        const agentId = await assertAgentAccess({
+          capabilities: ctx.capabilities,
+          organizationId,
+          idOrSlug: patch.target.agentId,
+          tier: 'edit',
+        })
+        patch = { ...patch, target: { ...patch.target, agentId } }
+      }
+
       const updated = unwrap(
         await updateEvalCase({
-          organizationId: ctx.session.organizationId,
+          organizationId,
           id: input.id,
-          patch: input.patch,
+          patch,
           excludeSocketId: ctx.headers.get('x-realtime-socket-id') ?? undefined,
         }),
         'update eval case'
@@ -182,12 +297,21 @@ export const evalRouter = createTRPCRouter({
       return { id: updated.id }
     }),
 
-  delete: evalManageProcedure
+  delete: evalWriteProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const found = unwrap(await getEvalCaseById({ organizationId, id: input.id }), 'get eval case')
+      if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: caseAgentId(found),
+        tier: 'edit',
+      })
       unwrap(
         await deleteEvalCase({
-          organizationId: ctx.session.organizationId,
+          organizationId,
           id: input.id,
           excludeSocketId: ctx.headers.get('x-realtime-socket-id') ?? undefined,
         }),
@@ -199,7 +323,7 @@ export const evalRouter = createTRPCRouter({
   // ── Editor support (tool responses) ───────────────────────────────────────
   // The displayed tool list is derived client-side from the unified catalog
   // (`useToolGroups`); only mock validation needs the server's Zod schemas.
-  validateMock: protectedProcedure
+  validateMock: evalProcedure
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -207,18 +331,25 @@ export const evalRouter = createTRPCRouter({
         output: z.unknown(),
       })
     )
-    .query(async ({ ctx, input }) =>
-      validateAgentToolMock({
+    .query(async ({ ctx, input }) => {
+      // Reads the agent's tool schemas — `view` on the agent, not just on evals.
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: input.agentId,
+        tier: 'view',
+      })
+      return validateAgentToolMock({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.userId,
-        agentId: input.agentId,
+        agentId,
         toolName: input.toolName,
         output: input.output,
       })
-    ),
+    }),
 
   // ── Validation ──────────────────────────────────────────────────────────
-  validate: protectedProcedure
+  validate: evalProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const found = unwrap(
@@ -226,6 +357,12 @@ export const evalRouter = createTRPCRouter({
         'get eval case'
       )
       if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: caseAgentId(found),
+        tier: 'view',
+      })
       const parsed = parseCase(found)
       return validateEvalCase({
         organizationId: ctx.session.organizationId,
@@ -237,9 +374,23 @@ export const evalRouter = createTRPCRouter({
     }),
 
   // ── Runs ──────────────────────────────────────────────────────────────────
-  listRuns: protectedProcedure
+  listRuns: evalProcedure
     .input(z.object({ caseId: z.string().min(1), cursor: z.string().optional() }))
     .query(async ({ ctx, input }) => {
+      // Only a case id arrives, so the owning agent costs one lookup. The runs
+      // themselves carry it in their snapshots, but we must gate BEFORE loading
+      // them, and a page of runs can span no more than the one case anyway.
+      const found = unwrap(
+        await getEvalCaseById({ organizationId: ctx.session.organizationId, id: input.caseId }),
+        'get eval case'
+      )
+      if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: caseAgentId(found),
+        tier: 'view',
+      })
       const limit = 20
       const runs = unwrap(
         await listEvalRuns({
@@ -256,7 +407,7 @@ export const evalRouter = createTRPCRouter({
       return { runs: page, nextCursor }
     }),
 
-  getRun: protectedProcedure
+  getRun: evalProcedure
     .input(z.object({ runId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const run = unwrap(
@@ -264,13 +415,32 @@ export const evalRouter = createTRPCRouter({
         'get eval run'
       )
       if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
+      // The trace is the agent's transcript — gate it on the agent that ran.
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: runAgentId(run),
+        tier: 'view',
+      })
       return run
     }),
 
   /** AI credits + tokens a single eval run consumed (rolled up from AiUsage). */
-  getRunCredits: protectedProcedure
+  getRunCredits: evalProcedure
     .input(z.object({ runId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
+      // Spend is org data keyed on a run; the run's agent decides who may see it.
+      const run = unwrap(
+        await getEvalRun({ organizationId: ctx.session.organizationId, runId: input.runId }),
+        'get eval run'
+      )
+      if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: runAgentId(run),
+        tier: 'view',
+      })
       return unwrap(
         await getEvalRunCredits({
           organizationId: ctx.session.organizationId,
@@ -280,7 +450,7 @@ export const evalRouter = createTRPCRouter({
       )
     }),
 
-  getSuiteRun: protectedProcedure
+  getSuiteRun: evalProcedure
     .input(z.object({ suiteRunId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const suite = unwrap(
@@ -291,11 +461,17 @@ export const evalRouter = createTRPCRouter({
         'get eval suite run'
       )
       if (!suite) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval suite run not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: suiteAgentId(suite),
+        tier: 'view',
+      })
       return suite
     }),
 
   /** Iteration-history feed: suite runs for an agent (optionally one procedure), newest first. */
-  listSuiteRuns: protectedProcedure
+  listSuiteRuns: evalProcedure
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -304,11 +480,17 @@ export const evalRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: input.agentId,
+        tier: 'view',
+      })
       const limit = 20
       const suiteRuns = unwrap(
         await listEvalSuiteRuns({
           organizationId: ctx.session.organizationId,
-          agentId: input.agentId,
+          agentId,
           procedureId: input.procedureId,
           limit: limit + 1,
           before: input.cursor ? new Date(input.cursor) : undefined,
@@ -322,9 +504,23 @@ export const evalRouter = createTRPCRouter({
     }),
 
   /** Child runs of a suite without trace/snapshot payloads (suite detail view). */
-  listSuiteChildRuns: protectedProcedure
+  listSuiteChildRuns: evalProcedure
     .input(z.object({ suiteRunId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
+      const suite = unwrap(
+        await getEvalSuiteRun({
+          organizationId: ctx.session.organizationId,
+          suiteRunId: input.suiteRunId,
+        }),
+        'get eval suite run'
+      )
+      if (!suite) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval suite run not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: suiteAgentId(suite),
+        tier: 'view',
+      })
       return unwrap(
         await listSuiteChildRunSummaries({
           organizationId: ctx.session.organizationId,
@@ -335,7 +531,7 @@ export const evalRouter = createTRPCRouter({
     }),
 
   /** Verdict diff of two terminal suites (5B). Read-only; computed on request. */
-  compareSuiteRuns: protectedProcedure
+  compareSuiteRuns: evalProcedure
     .input(
       z.object({
         baselineSuiteRunId: z.string().min(1),
@@ -343,6 +539,30 @@ export const evalRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      // BOTH sides are read, so both must be viewable — `compareSuiteRuns`
+      // accepts any two suite ids, including ones from different agents, so
+      // asserting only the candidate would leak the baseline's verdicts.
+      const [baseline, candidate] = await Promise.all([
+        getEvalSuiteRun({
+          organizationId: ctx.session.organizationId,
+          suiteRunId: input.baselineSuiteRunId,
+        }),
+        getEvalSuiteRun({
+          organizationId: ctx.session.organizationId,
+          suiteRunId: input.candidateSuiteRunId,
+        }),
+      ])
+      for (const loaded of [baseline, candidate]) {
+        const suite = unwrap(loaded, 'get eval suite run')
+        if (!suite) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval suite run not found' })
+        await assertAgentAccess({
+          capabilities: ctx.capabilities,
+          organizationId: ctx.session.organizationId,
+          idOrSlug: suiteAgentId(suite),
+          tier: 'view',
+        })
+      }
+
       const result = await compareSuiteRuns({
         organizationId: ctx.session.organizationId,
         baselineSuiteRunId: input.baselineSuiteRunId,
@@ -361,7 +581,7 @@ export const evalRouter = createTRPCRouter({
     }),
 
   // ── Execute ───────────────────────────────────────────────────────────────
-  run: evalManageProcedure
+  run: evalWriteProcedure
     // `useDraft`: run the current draft (the Simulations editor surface always
     // passes true); headless/CI default to the pinned version (regression gate).
     .input(z.object({ id: z.string().min(1), useDraft: z.boolean().optional() }))
@@ -369,6 +589,14 @@ export const evalRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const found = unwrap(await getEvalCaseById({ organizationId, id: input.id }), 'get eval case')
       if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
+      // `edit`, not `view` — this spends org credits (accepted, see the header).
+      // The case row is already loaded, so the tier costs no extra query.
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: caseAgentId(found),
+        tier: 'edit',
+      })
       const parsed = parseCase(found)
 
       const prepared = await prepareRunSnapshots({
@@ -424,7 +652,7 @@ export const evalRouter = createTRPCRouter({
       return { runId: run.id }
     }),
 
-  runAll: evalManageProcedure
+  runAll: evalWriteProcedure
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -436,13 +664,20 @@ export const evalRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+      // `edit` — a suite is the expensive spend on this router (N runs).
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: input.agentId,
+        tier: 'edit',
+      })
 
       // Shared with the Kopilot `run_eval_suite` tool — selection, snapshots,
       // atomic suite creation, and per-child enqueue all live in the lib recipe.
       const result = await startAgentSuiteRun({
         organizationId,
         userId,
-        agentId: input.agentId,
+        agentId,
         procedureId: input.procedureId,
         caseIds: input.caseIds,
         useDraft: input.useDraft,
@@ -464,33 +699,48 @@ export const evalRouter = createTRPCRouter({
       return { suiteRunId: result.value.suiteRun.id, runIds: result.value.runIds }
     }),
 
-  cancelRun: evalManageProcedure
+  cancelRun: evalWriteProcedure
     .input(z.object({ runId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const run = unwrap(await getEvalRun({ organizationId, runId: input.runId }), 'get eval run')
+      if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: runAgentId(run),
+        tier: 'edit',
+      })
       const cancelled = unwrap(
-        await cancelEvalRun({ organizationId: ctx.session.organizationId, runId: input.runId }),
+        await cancelEvalRun({ organizationId, runId: input.runId }),
         'cancel eval run'
       )
       if (!cancelled) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
       return { status: cancelled.status }
     }),
 
-  deleteRun: evalManageProcedure
+  deleteRun: evalWriteProcedure
     .input(z.object({ runId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      unwrap(
-        await deleteEvalRun({ organizationId: ctx.session.organizationId, runId: input.runId }),
-        'delete eval run'
-      )
+      const { organizationId } = ctx.session
+      const run = unwrap(await getEvalRun({ organizationId, runId: input.runId }), 'get eval run')
+      if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: runAgentId(run),
+        tier: 'edit',
+      })
+      unwrap(await deleteEvalRun({ organizationId, runId: input.runId }), 'delete eval run')
       return { ok: true as const }
     }),
 
   // ── Suggestions ───────────────────────────────────────────────────────────
   // Mutation, not query: it spends tokens and is non-idempotent. The client holds
   // the result keyed by the returned `draftHash` rather than auto-refetching.
-  // `evalManageProcedure` gates the spend; org/agent scoping is enforced inside the
-  // service by `getAttachedProcedureDraft`.
-  suggest: evalManageProcedure
+  // Instance `edit` on the agent gates the spend; org/agent scoping is enforced
+  // inside the service by `getAttachedProcedureDraft`.
+  suggest: evalWriteProcedure
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -499,16 +749,22 @@ export const evalRouter = createTRPCRouter({
         force: z.boolean().optional(),
       })
     )
-    .mutation(async ({ ctx, input }) =>
-      unwrap(
+    .mutation(async ({ ctx, input }) => {
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        idOrSlug: input.agentId,
+        tier: 'edit',
+      })
+      return unwrap(
         await suggestAgentSimulations({
           organizationId: ctx.session.organizationId,
           userId: ctx.session.userId,
-          agentId: input.agentId,
+          agentId,
           procedureId: input.procedureId,
           force: input.force,
         }),
         'suggest simulations'
       )
-    ),
+    }),
 })
