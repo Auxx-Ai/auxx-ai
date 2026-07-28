@@ -394,6 +394,7 @@ export function DocumentDetailDrawer({
                     interactive
                     knownMimeType={displayDocument.mimeType ?? undefined}
                     filename={displayDocument.title || displayDocument.filename || undefined}
+                    scope={{ kind: 'datasetDocument', documentId: displayDocument.id }}
                   />
                 ) : (
                   <div className='flex flex-col items-center justify-center h-64 text-center'>

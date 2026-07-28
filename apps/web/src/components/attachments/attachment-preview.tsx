@@ -37,6 +37,13 @@ interface AttachmentPreviewProps {
   knownMimeType?: string
   /** Filename — used for display in the fallback state */
   filename?: string
+  /**
+   * Which resource authorizes the preview. Defaults to the Files app being the
+   * authority (`FeatureKey.files` + `filesView`). Pass `datasetDocument` when the
+   * asset belongs to a dataset document so it authorizes against the parent
+   * dataset instead — a member scoped to datasets need not hold `files` access.
+   */
+  scope?: { kind: 'files' } | { kind: 'datasetDocument'; documentId: string }
 }
 
 /**
@@ -54,6 +61,7 @@ export function AttachmentPreview({
   height = 300,
   knownMimeType,
   filename: filenameProp,
+  scope = { kind: 'files' },
 }: AttachmentPreviewProps) {
   const isPreviewable = knownMimeType ? canPreviewInline(knownMimeType) : true
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -77,6 +85,7 @@ export function AttachmentPreview({
       id,
       version,
       disposition: 'inline',
+      scope,
     },
     {
       enabled: Boolean(id) && isPreviewable,
@@ -183,7 +192,7 @@ export function AttachmentPreview({
   // On-demand download query for non-previewable files
   const { refetch: fetchDownloadRef, isFetching: isDownloading } =
     api.file.getAttachmentPreviewRef.useQuery(
-      { type, id, version, disposition: 'attachment' },
+      { type, id, version, disposition: 'attachment', scope },
       { enabled: false }
     )
 
