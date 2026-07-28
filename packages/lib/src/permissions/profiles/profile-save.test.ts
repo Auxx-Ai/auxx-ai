@@ -852,21 +852,21 @@ describe('savePermissionProfile — the other §6.1.5 gates', () => {
       actorUserId: 'u_actor',
       profileId: 'p_support',
       agentPolicy: {
-        areas: { default: 'read', overrides: { records: 'full', tickets: 'sideways' } },
-        definitions: { default: 'none', overrides: { hr: 'read_write' } },
+        areas: { default: 'view', overrides: { records: 'admin', tickets: 'sideways' } },
+        definitions: { default: 'none', overrides: { hr: 'edit' } },
         resourceDefault: 'none',
-        resources: { dataset: { default: 'read', overrides: {} } },
+        resources: { dataset: { default: 'view', overrides: {} } },
       } as never,
       db: fakeRunner(store) as never,
     })
 
     expect(store.PermissionProfile.find((row) => row.id === 'p_support')?.agentPolicy).toEqual({
-      // `sideways` is not a rung — dropped, so `tickets` reads as the `read`
+      // `sideways` is not a rung — dropped, so `tickets` reads as the `view`
       // default rather than being guessed at.
-      areas: { default: 'read', overrides: { records: 'full' } },
-      definitions: { default: 'none', overrides: { hr: 'read_write' } },
+      areas: { default: 'view', overrides: { records: 'admin' } },
+      definitions: { default: 'none', overrides: { hr: 'edit' } },
       resourceDefault: 'none',
-      resources: { dataset: { default: 'read', overrides: {} } },
+      resources: { dataset: { default: 'view', overrides: {} } },
     })
   })
 

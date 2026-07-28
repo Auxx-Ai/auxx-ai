@@ -63,7 +63,7 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
     permission: {
       target: 'unmodeled',
       domain: 'mail',
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'enforced',
       note: 'getThreadLens rejects on a "none" lens before drafting or sending.',
     },

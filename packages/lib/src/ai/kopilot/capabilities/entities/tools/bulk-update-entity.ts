@@ -28,7 +28,7 @@ export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'bulk_update_entity',
     permission: {
       target: 'definition',
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'enforced',
       note: 'Own per-def assertEditEntity before any DB work (bypasses UnifiedCrudHandler by design).',
     },

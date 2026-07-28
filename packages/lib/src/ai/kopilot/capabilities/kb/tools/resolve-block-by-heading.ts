@@ -20,7 +20,7 @@ export function createResolveBlockByHeadingTool(getDeps: GetToolDeps): AgentTool
     permission: {
       target: 'instance',
       keys: ['kb'],
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewKb → canViewInstance on the article’s home KB.',
     },

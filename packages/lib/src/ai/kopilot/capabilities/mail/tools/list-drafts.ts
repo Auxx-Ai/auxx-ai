@@ -66,7 +66,7 @@ export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition 
     permission: {
       target: 'unmodeled',
       domain: 'mail',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'Thread ids resolved through the viewer-scoped ThreadQueryService before drafts are loaded.',
     },

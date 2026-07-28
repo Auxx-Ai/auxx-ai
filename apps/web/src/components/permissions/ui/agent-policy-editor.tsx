@@ -1,7 +1,8 @@
 // apps/web/src/components/permissions/ui/agent-policy-editor.tsx
 'use client'
 
-import type { AgentAccessLevel, AgentPermissionPolicy } from '@auxx/database'
+import type { AgentPermissionPolicy } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import {
   Area,
   FeatureKey,
@@ -43,7 +44,7 @@ import { AgentPolicyInstanceRows, RESOURCE_TYPE_META } from './agent-policy-inst
 import { BaseLevelSelect } from './base-level-select'
 import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
 import { clampToArea } from './level-control'
-import { agentLevelOfLevel, LEVEL_OF_AGENT_LEVEL } from './level-labels'
+import { LEVEL_OF_PERMISSION, permissionOfLevel } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import { ProfileAreaGrid } from './profile-area-grid'
 import { AGENT_POLICY_AREA_GROUPS, AGENT_POLICY_AREAS } from './profile-copy'
@@ -180,7 +181,7 @@ export function AgentPolicyEditor({
    * them. Never silent (plan 29 §2.3).
    */
   const handleTypeChange = useCallback(
-    async (type: InstanceAccessKey, level: AgentAccessLevel | undefined) => {
+    async (type: InstanceAccessKey, level: ResourcePermission | undefined) => {
       if (level !== undefined) {
         setResourceTypeDefault(type, level)
         return
@@ -201,12 +202,17 @@ export function AgentPolicyEditor({
     [confirm, policy.resources, setResourceTypeDefault, clearResourceType]
   )
 
-  /** The area overrides in the human grid's `Level` spelling (plan 26 Phase 2 deletes this edge). */
+  /**
+   * The area overrides in the grid's numeric `Level` spelling. This is the ONLY
+   * conversion left at the grid edge: plan 26 Phase 2 collapsed the agent rung
+   * strings into `ResourcePermission`, but `Level` stays numeric by design —
+   * composition's max/min comparisons are arithmetic (§2.6).
+   */
   const areaValues = useMemo(() => {
     const values: Partial<Record<Area, Level>> = {}
     for (const area of AGENT_POLICY_AREAS) {
       const level = policy.areas.overrides[area]
-      if (level !== undefined) values[area] = LEVEL_OF_AGENT_LEVEL[level]
+      if (level !== undefined) values[area] = LEVEL_OF_PERMISSION[level]
     }
     return values
   }, [policy.areas.overrides])
@@ -221,8 +227,8 @@ export function AgentPolicyEditor({
   const unsetHintFor = useCallback(
     (area: Area) =>
       usesDefaultLabel(
-        agentLevelOfLevel(
-          clampToArea(PERMISSION_AREAS[area], LEVEL_OF_AGENT_LEVEL[policy.areas.default])
+        permissionOfLevel(
+          clampToArea(PERMISSION_AREAS[area], LEVEL_OF_PERMISSION[policy.areas.default])
         )
       ),
     [policy.areas.default]
@@ -378,26 +384,26 @@ export function AgentPolicyEditor({
           <div className='flex flex-wrap items-center justify-end gap-3'>
             <BaseLevelSelect
               label='Unset areas fall through to'
-              value={LEVEL_OF_AGENT_LEVEL[policy.areas.default]}
+              value={LEVEL_OF_PERMISSION[policy.areas.default]}
               disabled={disabled}
-              onChange={(level) => setAreasDefault(agentLevelOfLevel(level))}
+              onChange={(level) => setAreasDefault(permissionOfLevel(level))}
             />
             <BaseLevelSelect
               label='New resource types fall through to'
-              value={LEVEL_OF_AGENT_LEVEL[policy.resourceDefault]}
+              value={LEVEL_OF_PERMISSION[policy.resourceDefault]}
               disabled={disabled}
-              onChange={(level) => setResourceDefault(agentLevelOfLevel(level))}
+              onChange={(level) => setResourceDefault(permissionOfLevel(level))}
             />
           </div>
         }>
         <ProfileAreaGrid
           values={areaValues}
-          baseLevel={LEVEL_OF_AGENT_LEVEL[policy.areas.default]}
+          baseLevel={LEVEL_OF_PERMISSION[policy.areas.default]}
           areaGroups={AGENT_POLICY_AREA_GROUPS}
           unsetHintFor={unsetHintFor}
           disabled={disabled}
           onChange={(area, level) =>
-            setAreaOverride(area, level === undefined ? undefined : agentLevelOfLevel(level))
+            setAreaOverride(area, level === undefined ? undefined : permissionOfLevel(level))
           }
           renderChildren={renderChildren}
           onAreaOpenChange={handleAreaOpenChange}

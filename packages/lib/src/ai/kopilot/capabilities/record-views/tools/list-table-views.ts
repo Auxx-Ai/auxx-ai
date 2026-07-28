@@ -67,7 +67,7 @@ export function createListTableViewsTool(getDeps: GetToolDeps): AgentToolDefinit
     name: 'list_table_views',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the page’s def, matching its create/update/preview siblings (19b G7). Views are named, filtered projections OF the def, so listing them needs the same Read rung as reading it.',
     },

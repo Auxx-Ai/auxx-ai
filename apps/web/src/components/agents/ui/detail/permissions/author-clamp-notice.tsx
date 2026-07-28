@@ -4,7 +4,7 @@
 import type { AgentPermissionPolicy } from '@auxx/database'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { ShieldAlert } from 'lucide-react'
-import { agentLevelLabel } from '~/components/permissions/ui/level-labels'
+import { permissionLabel } from '~/components/permissions/ui/level-labels'
 import { useAuthorClampPreview } from './use-author-clamp-preview'
 
 /**
@@ -37,8 +37,8 @@ export function AuthorClampNotice({ policy }: { policy: AgentPermissionPolicy | 
         <ul className='mt-2 flex flex-col gap-1'>
           {rows.map((row) => (
             <li key={`${row.domain}:${row.label}`}>
-              <strong>{row.label}</strong> reduced from {agentLevelLabel(row.from)} to{' '}
-              {agentLevelLabel(row.to)} — you hold {agentLevelLabel(row.to)}.
+              <strong>{row.label}</strong> reduced from {permissionLabel(row.from)} to{' '}
+              {permissionLabel(row.to)} — you hold {permissionLabel(row.to)}.
             </li>
           ))}
         </ul>

@@ -1,16 +1,16 @@
 // apps/web/src/components/permissions/ui/agent-policy-instance-rows.tsx
 'use client'
 
-import type { AgentAccessLevel } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { InstanceAccessKey } from '@auxx/lib/permissions/client'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { BookOpen, Database, LayoutDashboard, Library, Workflow } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { InstanceResourceItem } from '../hooks/use-instance-resource-lists'
+import { AccessLevelSelect } from './access-level-select'
 import { allInstancesTitle } from './agent-policy-copy'
-import { AgentPolicyLevelSelect } from './agent-policy-level-select'
-import { agentLevelLabel } from './level-labels'
+import { permissionLabel } from './level-labels'
 
 /** Indent of every agent-policy child row under its area row. */
 const CHILD_DEPTH = 1
@@ -30,11 +30,11 @@ export const RESOURCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon
 interface AgentPolicyInstanceRowsProps {
   type: InstanceAccessKey
   /** `resources[type].default`, or `undefined` when the type has no entry at all. */
-  typeDefault: AgentAccessLevel | undefined
+  typeDefault: ResourcePermission | undefined
   /** `resourceDefault` — what a type with no entry of its own resolves to. */
-  resourceDefault: AgentAccessLevel
+  resourceDefault: ResourcePermission
   /** The sparse per-instance rules of this type. */
-  overrides: Partial<Record<string, AgentAccessLevel>>
+  overrides: Partial<Record<string, ResourcePermission>>
   /** Instances that survived the host's filter. */
   items: InstanceResourceItem[]
   /** Override ids naming an instance that is gone (or outside the first page). */
@@ -46,8 +46,8 @@ interface AgentPolicyInstanceRowsProps {
    * The "All X" row changed. `undefined` means *follow the resource default*,
    * which DROPS this type's per-item rules — the host confirms before calling.
    */
-  onTypeDefaultChange: (level: AgentAccessLevel | undefined) => void
-  onInstanceChange: (instanceId: string, level: AgentAccessLevel | undefined) => void
+  onTypeDefaultChange: (level: ResourcePermission | undefined) => void
+  onInstanceChange: (instanceId: string, level: ResourcePermission | undefined) => void
   disabled?: boolean
 }
 
@@ -98,15 +98,22 @@ export function AgentPolicyInstanceRows({
         title={allInstancesTitle(meta.label)}
         description={
           overrideCount > 0
-            ? `What a ${meta.label.toLowerCase().replace(/s$/, '')} with no rule of its own resolves to, including ones created later. Choosing Default follows the resource default (${agentLevelLabel(resourceDefault)}) and removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} below with it.`
+            ? `What a ${meta.label.toLowerCase().replace(/s$/, '')} with no rule of its own resolves to, including ones created later. Choosing Default follows the resource default (${permissionLabel(resourceDefault)}) and removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} below with it.`
             : `What a ${meta.label.toLowerCase().replace(/s$/, '')} with no rule of its own resolves to, including ones created later.`
         }
         trailing={
-          <AgentPolicyLevelSelect
+          <AccessLevelSelect
             value={typeDefault}
-            fallback={resourceDefault}
+            includeInherit
+            includeNone
+            inheritLabelText='Default'
+            inheritedLevel={resourceDefault}
+            onInherit={() => onTypeDefaultChange(undefined)}
             onChange={onTypeDefaultChange}
             disabled={disabled}
+            size='sm'
+            variant='transparent'
+            className='h-7 w-44'
           />
         }
       />
@@ -121,7 +128,7 @@ export function AgentPolicyInstanceRows({
           orientation='horizontal'
           icon={<Library />}
           title={`No ${meta.label.toLowerCase()}`}
-          description={`Nothing to rule on yet. Anything created later resolves to ${agentLevelLabel(typeLevel)}.`}
+          description={`Nothing to rule on yet. Anything created later resolves to ${permissionLabel(typeLevel)}.`}
         />
       ) : (
         <>
@@ -132,11 +139,18 @@ export function AgentPolicyInstanceRows({
               rowClassName='bg-primary-50 hover:bg-primary-100'
               title={<span className='truncate'>{item.name}</span>}
               trailing={
-                <AgentPolicyLevelSelect
+                <AccessLevelSelect
                   value={overrides[item.id]}
-                  fallback={typeLevel}
+                  includeInherit
+                  includeNone
+                  inheritLabelText='Default'
+                  inheritedLevel={typeLevel}
+                  onInherit={() => onInstanceChange(item.id, undefined)}
                   onChange={(level) => onInstanceChange(item.id, level)}
                   disabled={disabled}
+                  size='sm'
+                  variant='transparent'
+                  className='h-7 w-44'
                 />
               }
             />
@@ -151,11 +165,18 @@ export function AgentPolicyInstanceRows({
               description='This rule names an item that no longer exists (or is outside the first page listed here). It is kept until you clear it.'
               secondary={<span className='text-xs text-muted-foreground'>Unknown item</span>}
               trailing={
-                <AgentPolicyLevelSelect
+                <AccessLevelSelect
                   value={overrides[id]}
-                  fallback={typeLevel}
+                  includeInherit
+                  includeNone
+                  inheritLabelText='Default'
+                  inheritedLevel={typeLevel}
+                  onInherit={() => onInstanceChange(id, undefined)}
                   onChange={(level) => onInstanceChange(id, level)}
                   disabled={disabled}
+                  size='sm'
+                  variant='transparent'
+                  className='h-7 w-44'
                 />
               }
             />

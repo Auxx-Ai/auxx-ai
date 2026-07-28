@@ -9,15 +9,11 @@ import {
   schema,
   type Transaction,
 } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { type Area, Level } from '../capabilities/registry'
 import { FIELD_TECH_BASELINE_LEVELS, MEMBER_BASELINE_LEVELS } from '../capabilities/seat-policy'
-import type {
-  AgentAccessLevel,
-  AgentPermissionPolicy,
-  ProfileAppliesTo,
-  SystemProfileSlug,
-} from './types'
+import type { AgentPermissionPolicy, ProfileAppliesTo, SystemProfileSlug } from './types'
 
 /** One seeded system-profile row (§5.1). */
 interface SystemProfileSeed {
@@ -47,7 +43,7 @@ interface SystemProfileSeed {
 }
 
 /** A total agent policy at one uniform level — the `agent`/`chat_agent` seeds' shape. */
-function uniformAgentPolicy(level: AgentAccessLevel): AgentPermissionPolicy {
+function uniformAgentPolicy(level: ResourcePermission): AgentPermissionPolicy {
   return {
     areas: { default: level, overrides: {} },
     definitions: { default: level, overrides: {} },
@@ -76,7 +72,7 @@ function uniformAgentPolicy(level: AgentAccessLevel): AgentPermissionPolicy {
  * `assertGrantableLevels`' admin-only rejection; `ROLE_DEFAULTS.ADMIN`/`.OWNER`
  * staying `ALL_FULL` means there is nothing to seed for them anyway. The
  * agent profiles likewise seed `levels: null` — their authority lives in
- * `agentPolicy`, never the additive grant reducers. Between the all-`full`
+ * `agentPolicy`, never the additive grant reducers. Between the all-`admin`
  * `agent` and all-`none` `chat_agent` sit two curated presets (plan 23 §2.3):
  * `support_agent` (KB-answering, record-working) and `analyst_agent`
  * (read-only analysis).
@@ -144,7 +140,7 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     appliesTo: 'agent',
     role: 'USER',
     baseLevel: null,
-    agentPolicy: uniformAgentPolicy('full'),
+    agentPolicy: uniformAgentPolicy('admin'),
     levels: null,
   },
   {
@@ -173,16 +169,16 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
       areas: {
         default: 'none',
         overrides: {
-          knowledgeBase: 'read',
-          records: 'read_write',
-          recordsLinked: 'read',
-          comments: 'full',
-          files: 'read',
+          knowledgeBase: 'view',
+          records: 'edit',
+          recordsLinked: 'view',
+          comments: 'admin',
+          files: 'view',
         },
       },
-      definitions: { default: 'read_write', overrides: {} },
+      definitions: { default: 'edit', overrides: {} },
       resourceDefault: 'none',
-      resources: { kb: { default: 'read', overrides: {} } },
+      resources: { kb: { default: 'view', overrides: {} } },
     },
     levels: null,
   },
@@ -200,16 +196,16 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
       areas: {
         default: 'none',
         overrides: {
-          records: 'read',
-          recordsLinked: 'read',
-          datasets: 'read',
-          dashboards: 'read',
-          knowledgeBase: 'read',
-          files: 'read',
+          records: 'view',
+          recordsLinked: 'view',
+          datasets: 'view',
+          dashboards: 'view',
+          knowledgeBase: 'view',
+          files: 'view',
         },
       },
-      definitions: { default: 'read', overrides: {} },
-      resourceDefault: 'read',
+      definitions: { default: 'view', overrides: {} },
+      resourceDefault: 'view',
       resources: {},
     },
     levels: null,

@@ -96,8 +96,8 @@ export const INSTANCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon
  * The reverse of `INSTANCE_ACCESS_RESOURCES` — which instance-access key (if
  * any) a given L2 area expands into per-instance rows for. Shared by every
  * `renderChildren` host that nests `InstanceBaselineRows` / `GranteeInstanceRows`
- * under an area row (`member-baseline-tab.tsx`, `grantee-overrides-tab.tsx`,
- * `grantee-levels-section.tsx`) so the mapping is defined once.
+ * under an area row (`grantee-overrides-tab.tsx`, `grantee-levels-section.tsx`)
+ * so the mapping is defined once.
  */
 export const AREA_TO_INSTANCE_KEY: Partial<Record<Area, InstanceAccessKey>> = Object.fromEntries(
   INSTANCE_ACCESS_KEYS.map((key) => [INSTANCE_ACCESS_RESOURCES[key].area, key])

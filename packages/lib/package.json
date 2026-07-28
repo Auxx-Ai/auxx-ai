@@ -796,6 +796,12 @@
       "import": "./dist/permissions/capabilities/registry.mjs",
       "default": "./src/permissions/capabilities/registry.ts"
     },
+    "./permissions/capabilities/seat-policy": {
+      "types": "./src/permissions/capabilities/seat-policy.ts",
+      "source": "./src/permissions/capabilities/seat-policy.ts",
+      "import": "./dist/permissions/capabilities/seat-policy.mjs",
+      "default": "./src/permissions/capabilities/seat-policy.ts"
+    },
     "./permissions/client": {
       "types": "./src/permissions/client.ts",
       "source": "./src/permissions/client.ts",

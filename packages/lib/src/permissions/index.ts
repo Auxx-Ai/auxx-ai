@@ -55,7 +55,6 @@ export { OverageDetectionService } from './overage-detection-service'
 export { handlePlanDowngrade } from './overage-handler'
 export type {
   ActorAuthority,
-  AgentAccessLevel,
   AgentPermissionPolicy,
   CachedPermissionProfile,
   CreatePermissionProfileInput,

@@ -72,7 +72,7 @@ export function InstanceLevelSelect({
 /**
  * The generic per-instance grantee list — extracted out of `InstanceShareCard`
  * (capability layer v2 Part B.2.3) so the standalone Share card/dialog AND the
- * nested per-instance rows on the Member baseline / grantee-override grids
+ * nested per-instance rows on the Workspace defaults / grantee-override grids
  * (`instance-baseline-rows.tsx` / `grantee-instance-rows.tsx`) render the exact
  * same grantee list, level picker, revoke button and "add people or
  * groups" trigger. Every mount is driven by its own {@link useInstanceShare},

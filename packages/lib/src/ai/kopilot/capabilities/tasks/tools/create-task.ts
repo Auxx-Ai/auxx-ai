@@ -29,7 +29,7 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
     permission: {
       target: 'unmodeled',
       domain: 'tasks',
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'unenforced',
       note: 'KNOWN GAP. Creates and assigns a task for any actor with no check — deliberate (same reasoning as `create_note`, doc 14 §8.3): the human `task.create` router is `protectedProcedure` with no capability gate either, so gating the agent path alone would make the agent stricter than the human it acts for. Reviewed as part of 19b G7 and left BEHAVIOURALLY UNCHANGED; `linkedRecordIds` is validated against known def ids but not against `canViewEntity`, which is the one thing worth revisiting once a `tasks` area exists.',
     },

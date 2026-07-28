@@ -1,7 +1,8 @@
 // apps/web/src/components/agents/ui/detail/permissions/agent-policy-view.tsx
 'use client'
 
-import type { AgentAccessLevel, AgentPermissionPolicy } from '@auxx/database'
+import type { AgentPermissionPolicy } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import {
   AREA_ORDER,
   INSTANCE_ACCESS_RESOURCES,
@@ -49,20 +50,25 @@ const RESOURCE_TYPE_META: Record<
   },
 }
 
-/** Agent rungs onto the shared four-rung shape — labels differ, shape does not. */
-const AGENT_LEVEL: Record<AgentAccessLevel, ResolvedAccessLevel> = {
+/**
+ * Stored rungs onto {@link ResolvedAccessDialog}'s own presentation keyspace.
+ * That union (`none/read/write/full`) is a shared dialog's internal shape, not a
+ * storage vocabulary, so plan 26 Phase 2 left it alone — this stays a real map,
+ * not an identity.
+ */
+const AGENT_LEVEL: Record<ResourcePermission, ResolvedAccessLevel> = {
   none: 'none',
-  read: 'read',
-  read_write: 'write',
-  full: 'full',
+  view: 'read',
+  edit: 'write',
+  admin: 'full',
 }
 
 /** The agent ladder's names — `None / Read / Edit / Full`, never "Inherit" (§7). */
 export const AGENT_LEVEL_META: ResolvedAccessLevelMetaMap = {
   none: AGENT_ACCESS_LEVEL_META.none,
-  read: AGENT_ACCESS_LEVEL_META.read,
-  write: AGENT_ACCESS_LEVEL_META.read_write,
-  full: AGENT_ACCESS_LEVEL_META.full,
+  read: AGENT_ACCESS_LEVEL_META.view,
+  write: AGENT_ACCESS_LEVEL_META.edit,
+  full: AGENT_ACCESS_LEVEL_META.admin,
 }
 
 /** The four-level badge — never rendered as "Inherit" (§7: agent `None` is a deny). */
@@ -70,7 +76,7 @@ export function AgentLevelBadge({
   level,
   isOverride,
 }: {
-  level: AgentAccessLevel
+  level: ResourcePermission
   isOverride?: boolean
 }) {
   return (
@@ -86,7 +92,7 @@ interface AgentDomainDefault {
   key: string
   title: string
   defaultLabel: string
-  level: AgentAccessLevel
+  level: ResourcePermission
 }
 
 /**

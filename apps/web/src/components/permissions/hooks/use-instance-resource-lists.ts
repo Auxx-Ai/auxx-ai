@@ -35,7 +35,7 @@ export type OpenInstanceTypes = Partial<Record<InstanceAccessKey, boolean>>
  * grid, which fetches lazily per manually-expanded type row (the policy is
  * sparse, so an admin who only sets type defaults never pays for three list
  * queries). The Datasets / Knowledge base / Dashboards area rows on the
- * Member baseline and grantee-override grids are the second caller: they pass
+ * Workspace defaults and grantee-override grids are the second caller: they pass
  * every key `open: true` unconditionally, because their host's search box has
  * to match against instance names to decide whether to auto-expand an area —
  * unlike the agent-policy grid, there is no search there to defer the fetch

@@ -16,7 +16,7 @@ import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
-/** One CRM def's row under the expandable Records area. */
+/** One CRM def's row under the Record types collection. */
 export interface DefBaselineRow {
   resource: Resource
   /**
@@ -39,11 +39,11 @@ export interface DefBaselineRow {
  * The org-wide **workspace baseline** per CRM def — the `role:org_member`
  * type-level `ResourceAccess` row that the per-def Permissions tab writes as
  * "Default for all members" (`use-def-access`), read in bulk so the permissions
- * page can nest every def under its Layer-2 Records row.
+ * page's Workspace defaults tab can list every def in one place.
  *
  * Reads `resourceAccess.allTypeAccess` (all type rows, org-wide) plus
  * `useResources`, and derives per def: the configured baseline (if any), the
- * level it inherits from the member baseline's Records rung, and whether it is
+ * level it inherits from the Member profile's Records rung, and whether it is
  * locked down. Writes go through `grantType` / `revokeType` with an optimistic
  * cache patch, so picking **No Access** shows its restriction lock without a
  * reload.
@@ -163,7 +163,7 @@ export function useDefBaselines() {
 
   /**
    * Set a def's workspace baseline. `'inherit'` deletes the row so the def falls
-   * back to the Records area level; every explicit level (including `none`, the
+   * back to the Member profile's Records level; every explicit level (including `none`, the
    * restriction marker) writes it.
    */
   const setBaseline = useCallback(

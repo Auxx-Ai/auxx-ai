@@ -21,7 +21,7 @@ export function createUpdateRecordViewTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'update_table_view',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the page’s def, matching the human router.',
     },

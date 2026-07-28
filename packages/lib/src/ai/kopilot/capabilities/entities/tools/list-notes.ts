@@ -60,7 +60,7 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'list_notes',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the def parsed out of the recordId; silent-empty on denial (19b G3).',
     },

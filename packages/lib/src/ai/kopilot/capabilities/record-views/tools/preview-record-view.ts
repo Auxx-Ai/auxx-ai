@@ -18,7 +18,7 @@ export function createPreviewRecordViewTool(getDeps: GetToolDeps): AgentToolDefi
     name: 'preview_table_view',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the page’s def, short-circuiting before countRecordMatches so the count never leaks (19b G6).',
     },

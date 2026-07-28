@@ -26,7 +26,7 @@ export function createListEntitiesTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'list_entities',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'Output filtered by canViewEntity — an unviewable def is absent from the catalog.',
     },

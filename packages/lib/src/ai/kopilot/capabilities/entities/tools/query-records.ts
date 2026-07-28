@@ -54,7 +54,7 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'query_records',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity before the query; an unviewable def reads as empty.',
     },

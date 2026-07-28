@@ -192,12 +192,12 @@ function changeCount(): number | null {
  * (`gone_away`) and one on an item that is not in the fetched list (`kb_gone`).
  */
 const FULL_POLICY = {
-  areas: { default: 'read', overrides: { records: 'full', settings: 'full' } },
-  definitions: { default: 'none', overrides: { companies: 'read', gone_away: 'full' } },
+  areas: { default: 'view', overrides: { records: 'admin', settings: 'admin' } },
+  definitions: { default: 'none', overrides: { companies: 'view', gone_away: 'admin' } },
   resourceDefault: 'none',
   resources: {
-    kb: { default: 'read', overrides: { kb_1: 'full', kb_gone: 'none' } },
-    dataset: { default: 'read', overrides: {} },
+    kb: { default: 'view', overrides: { kb_1: 'admin', kb_gone: 'none' } },
+    dataset: { default: 'view', overrides: {} },
   },
 } as unknown as AgentPermissionPolicy
 
@@ -235,7 +235,7 @@ describe('plan 29 §5 bar 2 — every rule reachable before is reachable after',
 
     // An agent row never reads "Not set": the blanket default is one rung for
     // every area at once, so each row names what it resolves to THERE. Billing
-    // implements Read, so `areas.default: 'read'` lands on Read…
+    // implements Read, so `areas.default: 'view'` lands on Read…
     expect(hintOf('Billing')).toBe('Default · Read')
     // …while Comments is a Full-only ladder, so the same default composes down to
     // None — and the highlighted segment agrees, which is the whole point (#1342).
@@ -488,7 +488,7 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
     // per-definition one.
     renderEditor({
       areas: { default: 'none', overrides: {} },
-      definitions: { default: 'none', overrides: { companies: 'read' } },
+      definitions: { default: 'none', overrides: { companies: 'view' } },
       resourceDefault: 'none',
       resources: {},
     } as unknown as AgentPermissionPolicy)
@@ -509,7 +509,7 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
     const user = userEvent.setup()
     renderEditor({
       areas: { default: 'none', overrides: {} },
-      definitions: { default: 'read', overrides: {} },
+      definitions: { default: 'view', overrides: {} },
       resourceDefault: 'none',
       resources: {},
     } as unknown as AgentPermissionPolicy)
@@ -527,7 +527,7 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
       areas: { default: 'none', overrides: {} },
       definitions: { default: 'none', overrides: {} },
       resourceDefault: 'none',
-      resources: { kb: { default: 'read', overrides: {} } },
+      resources: { kb: { default: 'view', overrides: {} } },
     } as unknown as AgentPermissionPolicy)
 
     await user.click(screen.getByRole('switch'))
@@ -536,5 +536,64 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
     // `resourceDefault` — a rule of its own, so it rescues its area.
     expect(rowTitles()).toContain('Knowledge Base')
     expect(rowTitles()).not.toContain('Dashboards')
+  })
+})
+
+/**
+ * Plan 26 Phase 2 — the vocabulary collapse deleted `AgentPolicyLevelSelect`, the
+ * wrapper that used to encode these rules, and inlined `AccessLevelSelect` at the
+ * six child-row call sites (§2.5a). Two discriminants had to survive that move
+ * intact, and both are the kind of thing a "pure rename" quietly breaks.
+ */
+describe('plan 26 §2.5a — the two select discriminants survive the wrapper deletion', () => {
+  it('offers Default on a row that HAS a fall-through, naming the rung it resolves to', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Records')
+
+    // `definitions.overrides.companies` may be cleared back to the collection
+    // default, so the option exists AND states the concrete rung behind it —
+    // the word "default" never appears alone on this surface.
+    await user.click(within(row('Companies')).getByRole('combobox'))
+    const option = screen.getByRole('option', { name: /^Default · No access/ })
+    expect(option).toBeInTheDocument()
+
+    await user.click(option)
+    expect(ruleOf('Companies')).toBe('Default · No access')
+  })
+
+  it('offers NO Default on the mandatory "All record types" row, but keeps None', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Records')
+
+    await user.click(within(row('All record types')).getByRole('combobox'))
+    const options = screen.getAllByRole('option').map((o) => o.textContent ?? '')
+
+    // `definitions.default` is mandatory — there is nothing to fall through to,
+    // so a Default option would emit a value the store has nowhere to put.
+    expect(options.some((text) => text.startsWith('Default'))).toBe(false)
+    // …and `None` is a first-class, selectable rung here: for an agent it is a
+    // deliberate deny, never "unset" (plan 19 §7). Losing `includeNone` on this
+    // row would make a deny unauthorable.
+    expect(options.some((text) => text.startsWith('No access'))).toBe(true)
+    expect(options).toHaveLength(4)
+  })
+
+  it('keeps None selectable on the header defaults and never offers "Member default"', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    // `BaseLevelSelect` is discriminated on `allowUnset`. `Level.None === 0`, so
+    // `String(0)` is a REAL option that must not collapse into the human
+    // `member_default` sentinel — an agent's defaults are mandatory and fail
+    // closed at None, so the sentinel must be absent while None must be present.
+    await user.click(headerSelect('Unset areas fall through to'))
+    const options = screen.getAllByRole('option').map((o) => o.textContent ?? '')
+    expect(options).toEqual(['None', 'Read', 'Edit', 'Full'])
+
+    await user.click(screen.getByRole('option', { name: 'None' }))
+    expect(headerSelect('Unset areas fall through to').textContent).toContain('None')
+    expect(changeCount()).toBe(1)
   })
 })

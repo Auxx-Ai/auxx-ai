@@ -19,11 +19,11 @@ import { countChanges, normalizeAgentPolicy, stableKey } from './use-agent-polic
 
 /** A policy exercising all four keyspaces, both orphan families included. */
 const STORED = {
-  areas: { default: 'read', overrides: { records: 'full', auditLog: 'none' } },
-  definitions: { default: 'none', overrides: { companies: 'read', gone_away: 'full' } },
+  areas: { default: 'view', overrides: { records: 'admin', auditLog: 'none' } },
+  definitions: { default: 'none', overrides: { companies: 'view', gone_away: 'admin' } },
   resourceDefault: 'none',
   resources: {
-    kb: { default: 'read', overrides: { kb_1: 'full', kb_missing: 'none' } },
+    kb: { default: 'view', overrides: { kb_1: 'admin', kb_missing: 'none' } },
     dataset: { default: 'none', overrides: {} },
   },
 } as unknown as AgentPermissionPolicy
@@ -41,11 +41,11 @@ describe('agent policy round-trip (plan 29 §5)', () => {
     const reordered = {
       resources: {
         dataset: { overrides: {}, default: 'none' },
-        kb: { overrides: { kb_missing: 'none', kb_1: 'full' }, default: 'read' },
+        kb: { overrides: { kb_missing: 'none', kb_1: 'admin' }, default: 'view' },
       },
       resourceDefault: 'none',
-      definitions: { overrides: { gone_away: 'full', companies: 'read' }, default: 'none' },
-      areas: { overrides: { auditLog: 'none', records: 'full' }, default: 'read' },
+      definitions: { overrides: { gone_away: 'admin', companies: 'view' }, default: 'none' },
+      areas: { overrides: { auditLog: 'none', records: 'admin' }, default: 'view' },
     } as unknown as AgentPermissionPolicy
 
     expect(stableKey(normalizeAgentPolicy(reordered))).toBe(stableKey(normalizeAgentPolicy(STORED)))

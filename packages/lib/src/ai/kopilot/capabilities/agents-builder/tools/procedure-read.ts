@@ -17,7 +17,7 @@ export function createReadProcedureTool(getDeps: GetToolDeps): AgentToolDefiniti
     permission: {
       target: 'area',
       area: 'agents',
-      level: 'full',
+      level: 'admin',
       enforcement: 'enforced',
       note: 'resolveAgentAuthoring — PermissionKey.agentsManage (the agents area’s only rung) on the caller’s own CapabilitySet, plus an org-scope check on the session agent ref. Enforcement is proven behaviourally by agents-builder/tools/__tests__/agent-authoring-guard.test.ts.',
     },

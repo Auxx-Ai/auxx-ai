@@ -1,7 +1,8 @@
 // apps/web/src/components/permissions/hooks/use-agent-policy.ts
 'use client'
 
-import type { AgentAccessLevel, AgentPermissionPolicy, ExactAgentPolicy } from '@auxx/database'
+import type { AgentPermissionPolicy, ExactAgentPolicy } from '@auxx/database'
+import { type ResourcePermission, ResourcePermissionValues } from '@auxx/database/enums'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 /**
@@ -23,11 +24,11 @@ export interface NormalizedAgentPolicy extends AgentPermissionPolicy {
   resources: Record<string, ExactAgentPolicy>
 }
 
-const LEVELS: ReadonlySet<string> = new Set(['none', 'read', 'read_write', 'full'])
+const LEVELS: ReadonlySet<string> = new Set<string>(ResourcePermissionValues)
 
 /** Coerce one stored value into the closed vocabulary, or `null`. */
-function parseLevel(raw: unknown): AgentAccessLevel | null {
-  return typeof raw === 'string' && LEVELS.has(raw) ? (raw as AgentAccessLevel) : null
+function parseLevel(raw: unknown): ResourcePermission | null {
+  return typeof raw === 'string' && LEVELS.has(raw) ? (raw as ResourcePermission) : null
 }
 
 /**
@@ -37,9 +38,9 @@ function parseLevel(raw: unknown): AgentAccessLevel | null {
  * imported because `@auxx/lib/permissions/client` does not re-export the agent
  * policy helpers — see the note in the editor's report.
  */
-function parseExact(raw: unknown, fallback: AgentAccessLevel): ExactAgentPolicy {
+function parseExact(raw: unknown, fallback: ResourcePermission): ExactAgentPolicy {
   const source = (raw ?? {}) as { default?: unknown; overrides?: unknown }
-  const overrides: Record<string, AgentAccessLevel> = {}
+  const overrides: Record<string, ResourcePermission> = {}
   if (source.overrides && typeof source.overrides === 'object') {
     for (const [key, value] of Object.entries(source.overrides as Record<string, unknown>)) {
       const level = parseLevel(value)
@@ -143,17 +144,17 @@ export interface UseAgentPolicyResult {
   /** Throw the draft away and re-seed from the saved policy. */
   reset: () => void
   /** Replace the default every unlisted area resolves to. */
-  setAreasDefault: (level: AgentAccessLevel) => void
+  setAreasDefault: (level: ResourcePermission) => void
   /** Set (or, with `undefined`, remove) one area's override. */
-  setAreaOverride: (area: string, level: AgentAccessLevel | undefined) => void
+  setAreaOverride: (area: string, level: ResourcePermission | undefined) => void
   /** Replace the default every unlisted entity definition resolves to. */
-  setDefinitionsDefault: (level: AgentAccessLevel) => void
+  setDefinitionsDefault: (level: ResourcePermission) => void
   /** Set (or remove) one definition's override, keyed by `apiSlug` (§3). */
-  setDefinitionOverride: (apiSlug: string, level: AgentAccessLevel | undefined) => void
+  setDefinitionOverride: (apiSlug: string, level: ResourcePermission | undefined) => void
   /** Replace the posture for resource types with no rules of their own. */
-  setResourceDefault: (level: AgentAccessLevel) => void
+  setResourceDefault: (level: ResourcePermission) => void
   /** Give one resource type its own default. */
-  setResourceTypeDefault: (type: string, level: AgentAccessLevel) => void
+  setResourceTypeDefault: (type: string, level: ResourcePermission) => void
   /**
    * Drop a resource type's entry so it follows `resourceDefault` again. Its
    * instance rules go with it — the shape has nowhere to keep them.
@@ -167,7 +168,7 @@ export interface UseAgentPolicyResult {
   setInstanceOverride: (
     type: string,
     instanceId: string,
-    level: AgentAccessLevel | undefined
+    level: ResourcePermission | undefined
   ) => void
 }
 
@@ -199,7 +200,7 @@ export function useAgentPolicy(
   )
 
   const setOverride = useCallback(
-    (keyspace: 'areas' | 'definitions', key: string, level: AgentAccessLevel | undefined) => {
+    (keyspace: 'areas' | 'definitions', key: string, level: ResourcePermission | undefined) => {
       patchExact(keyspace, (current) => {
         const overrides = { ...current.overrides }
         if (level === undefined) delete overrides[key]
@@ -211,28 +212,28 @@ export function useAgentPolicy(
   )
 
   const setAreasDefault = useCallback(
-    (level: AgentAccessLevel) => patchExact('areas', (c) => ({ ...c, default: level })),
+    (level: ResourcePermission) => patchExact('areas', (c) => ({ ...c, default: level })),
     [patchExact]
   )
   const setAreaOverride = useCallback(
-    (area: string, level: AgentAccessLevel | undefined) => setOverride('areas', area, level),
+    (area: string, level: ResourcePermission | undefined) => setOverride('areas', area, level),
     [setOverride]
   )
   const setDefinitionsDefault = useCallback(
-    (level: AgentAccessLevel) => patchExact('definitions', (c) => ({ ...c, default: level })),
+    (level: ResourcePermission) => patchExact('definitions', (c) => ({ ...c, default: level })),
     [patchExact]
   )
   const setDefinitionOverride = useCallback(
-    (apiSlug: string, level: AgentAccessLevel | undefined) =>
+    (apiSlug: string, level: ResourcePermission | undefined) =>
       setOverride('definitions', apiSlug, level),
     [setOverride]
   )
 
-  const setResourceDefault = useCallback((level: AgentAccessLevel) => {
+  const setResourceDefault = useCallback((level: ResourcePermission) => {
     setDraft((prev) => ({ ...prev, resourceDefault: level }))
   }, [])
 
-  const setResourceTypeDefault = useCallback((type: string, level: AgentAccessLevel) => {
+  const setResourceTypeDefault = useCallback((type: string, level: ResourcePermission) => {
     setDraft((prev) => {
       const current = prev.resources[type] ?? { default: prev.resourceDefault, overrides: {} }
       return { ...prev, resources: { ...prev.resources, [type]: { ...current, default: level } } }
@@ -248,7 +249,7 @@ export function useAgentPolicy(
   }, [])
 
   const setInstanceOverride = useCallback(
-    (type: string, instanceId: string, level: AgentAccessLevel | undefined) => {
+    (type: string, instanceId: string, level: ResourcePermission | undefined) => {
       setDraft((prev) => {
         const current = prev.resources[type] ?? { default: prev.resourceDefault, overrides: {} }
         const overrides = { ...current.overrides }

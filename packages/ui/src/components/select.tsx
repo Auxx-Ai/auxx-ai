@@ -183,9 +183,11 @@ function SelectItem({
         className
       )}
       {...props}>
-      <span className='absolute right-2 flex size-3.5 items-center justify-center'>
-        <SelectPrimitive.ItemIndicator>
-          <Check className='size-4' />
+      <span className='absolute right-2 flex size-4 items-center justify-center'>
+        <SelectPrimitive.ItemIndicator asChild>
+          <div className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
         </SelectPrimitive.ItemIndicator>
       </span>
       <div className='flex flex-col'>

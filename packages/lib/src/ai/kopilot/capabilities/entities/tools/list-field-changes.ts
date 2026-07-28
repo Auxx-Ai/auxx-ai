@@ -93,7 +93,7 @@ export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'list_field_changes',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'EntityInstance lookup then canViewEntity; silent-empty on denial (19b G3).',
     },

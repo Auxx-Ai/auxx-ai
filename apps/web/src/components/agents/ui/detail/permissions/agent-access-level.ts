@@ -1,26 +1,20 @@
 // apps/web/src/components/agents/ui/detail/permissions/agent-access-level.ts
 
-import type { AgentAccessLevel } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { BadgeProps } from '@auxx/ui/components/badge'
-import { agentLevelLabel } from '~/components/permissions/ui/level-labels'
+import { permissionLabel } from '~/components/permissions/ui/level-labels'
 
 /**
  * The four exact rungs an agent policy can express, ascending
  * (plan 19 §0.5 / §2.3). Agent policy is **SET semantics**, not additive:
  * every lookup returns exactly one of these — there is no `inherit`, and
- * `none` is a deliberate deny rather than an unset value.
+ * `none` is a deliberate deny rather than an unset value. Rank comparisons use
+ * the shared `PERMISSION_RANK`; plan 26 Phase 2 collapsed the private agent
+ * spelling (and its private rank table) into `ResourcePermission`.
  */
-export const AGENT_ACCESS_LEVELS: AgentAccessLevel[] = ['none', 'read', 'read_write', 'full']
+export const AGENT_ACCESS_LEVELS: ResourcePermission[] = ['none', 'view', 'edit', 'admin']
 
-/** Ascending rank, for comparing a requested rung against an allowed one. */
-export const AGENT_ACCESS_RANK: Record<AgentAccessLevel, number> = {
-  none: 0,
-  read: 1,
-  read_write: 2,
-  full: 3,
-}
-
-interface AgentAccessLevelMeta {
+interface AgentRungMeta {
   /** The rung's name, from the one shared display vocabulary (plan 26 §2.1). */
   label: string
   /** One line of what the rung authorizes. */
@@ -34,22 +28,22 @@ interface AgentAccessLevelMeta {
  * showing `None` as "Inherit" (the doc 16 §10 bug, one screen over) — an agent
  * never inherits, so a deny must never read as an unset default.
  */
-export const AGENT_ACCESS_LEVEL_META: Record<AgentAccessLevel, AgentAccessLevelMeta> = {
+export const AGENT_ACCESS_LEVEL_META: Record<ResourcePermission, AgentRungMeta> = {
   none: {
-    label: agentLevelLabel('none'),
+    label: permissionLabel('none'),
     helper: 'Denied — cannot discover or use',
     variant: 'outline',
   },
-  read: { label: agentLevelLabel('read'), helper: 'List, read, and search', variant: 'sky' },
-  read_write: {
-    label: agentLevelLabel('read_write'),
+  view: { label: permissionLabel('view'), helper: 'List, read, and search', variant: 'sky' },
+  edit: {
+    label: permissionLabel('edit'),
     helper: 'Read plus create, update, and delete',
     variant: 'amber',
   },
-  full: {
+  admin: {
     // Schema administration rides on this rung but has no native tool yet, so the
     // helper says so rather than the tab carrying a footnote about it.
-    label: agentLevelLabel('full'),
+    label: permissionLabel('admin'),
     helper:
       'Read and write, plus administration and settings — schema administration has no tool yet',
     variant: 'green',
@@ -63,8 +57,8 @@ export const AGENT_ACCESS_LEVEL_META: Record<AgentAccessLevel, AgentAccessLevelM
  * snapshot without a cast.
  */
 export interface ExactAgentPolicyLike {
-  default: AgentAccessLevel
-  overrides?: Partial<Record<string, AgentAccessLevel>>
+  default: ResourcePermission
+  overrides?: Partial<Record<string, ResourcePermission>>
 }
 
 /**
@@ -76,8 +70,8 @@ export interface ExactAgentPolicyLike {
 export function resolveAgentLevel(
   policy: ExactAgentPolicyLike | undefined,
   key: string,
-  fallback: AgentAccessLevel
-): AgentAccessLevel {
+  fallback: ResourcePermission
+): ResourcePermission {
   if (!policy) return fallback
   return policy.overrides?.[key] ?? policy.default
 }

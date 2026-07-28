@@ -19,7 +19,7 @@ export function createSetDefaultRecordViewTool(getDeps: GetToolDeps): AgentToolD
     name: 'set_default_table_view',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the def whose org-wide default it flips, in ADDITION to the pre-existing isAdminOrOwner role check (kept — it mirrors the admin-only `tableView.setDefault` tRPC procedure, and it is what bounds the org-wide blast radius). Deliberately NOT declared `full`: `canAdministerDef` has zero agent-tool callers (19b G8), so claiming a Full rung here would assert a check nothing performs. The role gate is the authority half; `Read` is the capability half.',
     },

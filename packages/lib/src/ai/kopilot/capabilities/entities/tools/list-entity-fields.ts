@@ -38,7 +38,7 @@ export function createListEntityFieldsTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'list_entity_fields',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the resolved def; denial is the ordinary not-found error and the suggested-slug list is filtered (19b G4).',
     },

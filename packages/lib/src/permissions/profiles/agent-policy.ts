@@ -1,14 +1,14 @@
 // packages/lib/src/permissions/profiles/agent-policy.ts
 
 import type {
-  AgentAccessLevel,
   AgentKind,
   AgentPermissionPolicy,
   ExactAgentPolicy,
   PublishedAgentPermissionPolicy,
 } from '@auxx/database'
-import { ResourcePermission } from '@auxx/database/enums'
+import { type ResourcePermission, ResourcePermissionValues } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
+import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
 import { AREA_ORDER, type Area, Level } from '../capabilities/registry'
 import { systemProfileForAgentKind } from './system-profiles'
 import type { CachedPermissionProfile } from './types'
@@ -16,94 +16,58 @@ import type { CachedPermissionProfile } from './types'
 const logger = createScopedLogger('agent-permission-policy')
 
 /**
- * Rank of the four exact agent rungs, so `min` is a numeric comparison. Unlike
- * the human `PERMISSION_RANK`, `'none'` here is a real, LOAD-BEARING value — it
- * removes authority rather than merely failing to grant it (plan 19 §0.5), which
- * is exactly why agent policy must never enter the additive, skip-`none`
- * reducers in `compose-user-capabilities.ts`.
+ * Ascending ladder order — `POLICY_LADDER[rank]`, the inverse of
+ * {@link PERMISSION_RANK}.
+ *
+ * The rungs are {@link ResourcePermission} — the same `none/view/edit/admin`
+ * strings every `ResourceAccess` row is stored in (plan 26 Phase 2). Agent policy
+ * used to spell them `none/read/read_write/full`, which made every boundary
+ * between it and the rest of the permission model a bijection to cross; those
+ * conversions are deleted.
+ *
+ * What did NOT collapse with the spelling is the meaning of the bottom rung.
+ * `PERMISSION_RANK` ranks `'none'` at 0 for both vocabularies, but in the additive
+ * human reducers a stored `'none'` is a grant-row marker that grants nobody and is
+ * SKIPPED, while here it is LOAD-BEARING — it removes authority (plan 19 §0.5),
+ * which is exactly why an agent policy must never be fed to those reducers.
  */
-export const AGENT_LEVEL_RANK: Record<AgentAccessLevel, number> = {
-  none: 0,
-  read: 1,
-  read_write: 2,
-  full: 3,
-}
-
-/** Ascending ladder order — `AGENT_LEVELS[rank]`. */
-const AGENT_LEVELS: readonly AgentAccessLevel[] = ['none', 'read', 'read_write', 'full']
+const POLICY_LADDER: readonly ResourcePermission[] = ['none', 'view', 'edit', 'admin']
 
 /** The lower of two exact rungs — the primitive every intersection is built on. */
-export function minAgentLevel(a: AgentAccessLevel, b: AgentAccessLevel): AgentAccessLevel {
-  return AGENT_LEVEL_RANK[a] <= AGENT_LEVEL_RANK[b] ? a : b
+export function minPermission(a: ResourcePermission, b: ResourcePermission): ResourcePermission {
+  return PERMISSION_RANK[a] <= PERMISSION_RANK[b] ? a : b
 }
 
 /**
- * The label→ladder mapping of plan 19 §2.3, area half:
+ * The rung→ladder mapping of plan 19 §2.3, area half:
  *
- * | Published label | Area `Level` |
+ * | Stored rung | Area `Level` |
  * |---|---|
- * | `None`        | `Level.None` |
- * | `Read`        | `Level.Read` |
- * | `Read + Write`| `Level.Edit` |
- * | `Full`        | `Level.Full` |
- */
-export function agentLevelToAreaLevel(level: AgentAccessLevel): Level {
-  switch (level) {
-    case 'none':
-      return Level.None
-    case 'read':
-      return Level.Read
-    case 'read_write':
-      return Level.Edit
-    case 'full':
-      return Level.Full
-  }
-}
-
-/**
- * The label→ladder mapping of plan 19 §2.3, definition/resource half:
- * `None` → no effective permission (`undefined`), `Read` → `view`,
- * `Read + Write` → `edit`, `Full` → `admin`.
+ * | `none`  | `Level.None` |
+ * | `view`  | `Level.Read` |
+ * | `edit`  | `Level.Edit` |
+ * | `admin` | `Level.Full` |
  *
- * `undefined` (not `'none'`) is returned for the bottom rung because that is the
- * vocabulary every downstream gate already speaks — `satisfiesPermission` treats
- * a stored `'none'` as a *grant row marker*, not as "denied".
+ * `Level` stays numeric on purpose — composition's max/min comparisons are by
+ * design (plan 26 §2.6), so this is the one conversion the collapse keeps.
+ * Written out rather than derived from {@link PERMISSION_RANK}: the two tables
+ * happen to agree numerically today, and a silent reorder of a *ranking* table
+ * must not be able to shift an *area rung*.
  */
-export function agentLevelToPermission(level: AgentAccessLevel): ResourcePermission | undefined {
-  switch (level) {
-    case 'none':
-      return undefined
-    case 'read':
-      return ResourcePermission.view
-    case 'read_write':
-      return ResourcePermission.edit
-    case 'full':
-      return ResourcePermission.admin
-  }
+const AREA_LEVEL_OF_PERMISSION: Record<ResourcePermission, Level> = {
+  none: Level.None,
+  view: Level.Read,
+  edit: Level.Edit,
+  admin: Level.Full,
 }
 
-/** Inverse of {@link agentLevelToAreaLevel} — used by the publish-time clamp. */
-export function areaLevelToAgentLevel(level: Level): AgentAccessLevel {
-  return AGENT_LEVELS[Math.min(AGENT_LEVELS.length - 1, Math.max(0, level))] ?? 'none'
+export function permissionToAreaLevel(permission: ResourcePermission): Level {
+  return AREA_LEVEL_OF_PERMISSION[permission]
 }
 
-/**
- * Inverse of {@link agentLevelToPermission} — used by the publish-time clamp to
- * express a human's resolved definition/instance permission on the agent ladder.
- */
-export function permissionToAgentLevel(
-  permission: ResourcePermission | undefined
-): AgentAccessLevel {
-  switch (permission) {
-    case ResourcePermission.admin:
-      return 'full'
-    case ResourcePermission.edit:
-      return 'read_write'
-    case ResourcePermission.view:
-      return 'read'
-    default:
-      return 'none'
-  }
+/** Inverse of {@link permissionToAreaLevel} — used by the publish-time clamp. */
+export function areaLevelToPermission(level: Level): ResourcePermission {
+  return POLICY_LADDER[Math.min(POLICY_LADDER.length - 1, Math.max(0, level))] ?? 'none'
 }
 
 /**
@@ -111,7 +75,7 @@ export function permissionToAgentLevel(
  * override wins, otherwise the keyspace's explicit `default` answers, so every
  * lookup returns exactly one of the four rungs (plan 19 §2.3).
  */
-export function lookupExactPolicy(policy: ExactAgentPolicy, key: string): AgentAccessLevel {
+export function lookupExactPolicy(policy: ExactAgentPolicy, key: string): ResourcePermission {
   return policy.overrides[key] ?? policy.default
 }
 
@@ -119,7 +83,7 @@ export function lookupExactPolicy(policy: ExactAgentPolicy, key: string): AgentA
 export function policyAreaLevel(
   policy: PublishedAgentPermissionPolicy,
   area: Area | string
-): AgentAccessLevel {
+): ResourcePermission {
   return lookupExactPolicy(policy.areas, area)
 }
 
@@ -127,7 +91,7 @@ export function policyAreaLevel(
 export function policyDefinitionLevel(
   policy: PublishedAgentPermissionPolicy,
   apiSlug: string
-): AgentAccessLevel {
+): ResourcePermission {
   return lookupExactPolicy(policy.definitions, apiSlug)
 }
 
@@ -140,15 +104,17 @@ export function policyResourceLevel(
   policy: PublishedAgentPermissionPolicy,
   resourceType: string,
   instanceId: string
-): AgentAccessLevel {
+): ResourcePermission {
   const forType = policy.resources[resourceType]
   if (!forType) return policy.resourceDefault
   return lookupExactPolicy(forType, instanceId)
 }
 
 /** Coerce an arbitrary stored value into the closed rung vocabulary, or `null`. */
-export function parseAgentAccessLevel(raw: unknown): AgentAccessLevel | null {
-  return typeof raw === 'string' && raw in AGENT_LEVEL_RANK ? (raw as AgentAccessLevel) : null
+export function parsePolicyPermission(raw: unknown): ResourcePermission | null {
+  return typeof raw === 'string' && (ResourcePermissionValues as readonly string[]).includes(raw)
+    ? (raw as ResourcePermission)
+    : null
 }
 
 /**
@@ -157,14 +123,14 @@ export function parseAgentAccessLevel(raw: unknown): AgentAccessLevel | null {
  * the closed vocabulary are DROPPED (they then read as the default) rather than
  * guessed at.
  */
-function parseExactPolicy(raw: unknown, fallbackDefault: AgentAccessLevel): ExactAgentPolicy {
+function parseExactPolicy(raw: unknown, fallbackDefault: ResourcePermission): ExactAgentPolicy {
   const source = (raw ?? {}) as { default?: unknown; overrides?: unknown }
-  const parsedDefault = parseAgentAccessLevel(source.default) ?? fallbackDefault
+  const parsedDefault = parsePolicyPermission(source.default) ?? fallbackDefault
 
-  const overrides: Record<string, AgentAccessLevel> = {}
+  const overrides: Record<string, ResourcePermission> = {}
   if (source.overrides && typeof source.overrides === 'object') {
     for (const [key, value] of Object.entries(source.overrides as Record<string, unknown>)) {
-      const level = parseAgentAccessLevel(value)
+      const level = parsePolicyPermission(value)
       if (level) overrides[key] = level
     }
   }
@@ -180,23 +146,23 @@ function parseExactPolicy(raw: unknown, fallbackDefault: AgentAccessLevel): Exac
  * in practice this is a cheap pass-through. It exists because the column is jsonb
  * and a hand-written row, a future shape change, or a partially-migrated blob
  * must resolve to *something* deterministic rather than throwing inside a run —
- * and the safe direction for an unreadable policy is `'none'`, not `'full'`.
+ * and the safe direction for an unreadable policy is `'none'`, not `'admin'`.
  *
  * @param raw - The stored jsonb value.
  * @param fallbackDefault - Rung to use for an unreadable `default`. Defaults to
- *   `'none'` (fail closed). Pass `'full'` only where preserving legacy behavior
+ *   `'none'` (fail closed). Pass `'admin'` only where preserving legacy behavior
  *   is the explicit intent.
  */
 export function parsePublishedAgentPolicy(
   raw: unknown,
-  fallbackDefault: AgentAccessLevel = 'none'
+  fallbackDefault: ResourcePermission = 'none'
 ): PublishedAgentPermissionPolicy {
   const source = (raw ?? {}) as Partial<PublishedAgentPermissionPolicy> & {
     resources?: unknown
     clamp?: unknown
   }
 
-  const resourceDefault = parseAgentAccessLevel(source.resourceDefault) ?? fallbackDefault
+  const resourceDefault = parsePolicyPermission(source.resourceDefault) ?? fallbackDefault
   const resources: Record<string, ExactAgentPolicy> = {}
   if (source.resources && typeof source.resources === 'object') {
     for (const [type, value] of Object.entries(source.resources as Record<string, unknown>)) {
@@ -251,7 +217,7 @@ export function parseAgentPolicy(raw: unknown): AgentPermissionPolicy {
 export function authorizationOnlyPolicy(policy: PublishedAgentPermissionPolicy): {
   areas: ExactAgentPolicy
   definitions: ExactAgentPolicy
-  resourceDefault: AgentAccessLevel
+  resourceDefault: ResourcePermission
   resources: Partial<Record<string, ExactAgentPolicy>>
 } {
   return {
@@ -263,13 +229,20 @@ export function authorizationOnlyPolicy(policy: PublishedAgentPermissionPolicy):
 }
 
 /**
- * The all-`full` policy that preserves today's dormant agent posture — every agent
+ * The all-`admin` policy that preserves today's dormant agent posture — every agent
  * currently composes `Level.Full` on every area with no explicit grant row
- * (plan 14 §0.3), so "preserve current behavior" IS all-`full`.
+ * (plan 14 §0.3), so "preserve current behavior" IS all-`admin`.
  *
  * Mirrors the JSON literal inlined into
  * `packages/database/drizzle/0311_agent_version_permission_policy.sql`, and is what
- * data migration 042 treats as "the flat DDL default that may need correcting".
+ * data migration 050 treats as "the flat DDL default that may need correcting".
+ *
+ * **The SQL literal still spells that rung `"full"` and is deliberately left
+ * that way**: it is a shipped, already-applied migration, and rewriting an
+ * applied file changes nothing for anyone who ran it. It only ever backfilled
+ * rows that existed at the time, so a fresh database writes it never; the rows it
+ * DID write are re-spelled by data migration 054 (plan 26 Phase 2).
+ *
  * Deliberately NOT the fallback for an unreadable policy — that is
  * {@link emptyAgentPolicy}.
  */
@@ -279,15 +252,15 @@ export function legacyFullAgentPolicy(): PublishedAgentPermissionPolicy {
     sourceProfileUpdatedAt: null,
     publishedByUserId: null,
     clamp: [],
-    areas: { default: 'full', overrides: {} },
-    definitions: { default: 'full', overrides: {} },
-    resourceDefault: 'full',
+    areas: { default: 'admin', overrides: {} },
+    definitions: { default: 'admin', overrides: {} },
+    resourceDefault: 'admin',
     resources: {},
   }
 }
 
 /**
- * The fail-closed policy used when nothing else can be resolved. Never `'full'`:
+ * The fail-closed policy used when nothing else can be resolved. Never `'admin'`:
  * an agent whose authorization cannot be determined must be inert, not omnipotent.
  */
 export function emptyAgentPolicy(): PublishedAgentPermissionPolicy {
@@ -322,7 +295,7 @@ function expandProfilePolicy(
 ): PublishedAgentPermissionPolicy {
   const parsed = parsePublishedAgentPolicy(agentPolicy)
 
-  const areaOverrides: Record<string, AgentAccessLevel> = {}
+  const areaOverrides: Record<string, ResourcePermission> = {}
   for (const area of AREA_ORDER) {
     areaOverrides[area] = lookupExactPolicy(parsed.areas, area)
   }

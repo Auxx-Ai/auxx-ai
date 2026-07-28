@@ -1,0 +1,1169 @@
+{
+  "empty": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "none",
+        "overrides": {}
+      },
+      "definitions": {
+        "default": "none",
+        "overrides": {}
+      },
+      "resourceDefault": "none",
+      "resources": {}
+    },
+    "composed": {
+      "keys": [],
+      "areaLevels": {
+        "records": 0,
+        "recordsLinked": 0,
+        "workflows": 0,
+        "agents": 0,
+        "comments": 0,
+        "dispatchBoard": 0,
+        "dispatchMySchedule": 0,
+        "dispatchVisitReports": 0,
+        "settings": 0,
+        "billing": 0,
+        "members": 0,
+        "permissions": 0,
+        "integrations": 0,
+        "channels": 0,
+        "aiConfig": 0,
+        "automationRules": 0,
+        "auditLog": 0,
+        "files": 0,
+        "connectors": 0,
+        "datasets": 0,
+        "knowledgeBase": 0,
+        "dashboards": 0
+      },
+      "defs": {
+        "deals": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "r-deals": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "def-deals": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "contacts": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "companies": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "snippet": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "kb:kb-unlisted": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "dataset:ds-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "dashboard:dash-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "workflow:wf-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        }
+      }
+    }
+  },
+  "legacyFull": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "full",
+        "overrides": {}
+      },
+      "definitions": {
+        "default": "full",
+        "overrides": {}
+      },
+      "resourceDefault": "full",
+      "resources": {}
+    },
+    "composed": {
+      "keys": [
+        "agents.manage",
+        "aiConfig.manage",
+        "auditLog.view",
+        "automationRules.manage",
+        "billing.manage",
+        "billing.view",
+        "channels.manage",
+        "comments.manage",
+        "connectors.manage",
+        "dashboards.edit",
+        "dashboards.manage",
+        "dashboards.view",
+        "datasets.edit",
+        "datasets.manage",
+        "datasets.view",
+        "dispatch.board.manage",
+        "dispatch.board.view",
+        "dispatch.mySchedule",
+        "dispatch.visitReports",
+        "files.manage",
+        "files.view",
+        "integrations.manage",
+        "knowledgeBase.edit",
+        "knowledgeBase.manage",
+        "knowledgeBase.view",
+        "members.manage",
+        "permissions.manage",
+        "records.delete",
+        "records.edit",
+        "records.import",
+        "records.view",
+        "records.viewLinked",
+        "settings.manage",
+        "workflows.edit",
+        "workflows.manage",
+        "workflows.view"
+      ],
+      "areaLevels": {
+        "records": 3,
+        "recordsLinked": 3,
+        "workflows": 3,
+        "agents": 3,
+        "comments": 3,
+        "dispatchBoard": 3,
+        "dispatchMySchedule": 3,
+        "dispatchVisitReports": 3,
+        "settings": 3,
+        "billing": 3,
+        "members": 3,
+        "permissions": 3,
+        "integrations": 3,
+        "channels": 3,
+        "aiConfig": 3,
+        "automationRules": 3,
+        "auditLog": 3,
+        "files": 3,
+        "connectors": 3,
+        "datasets": 3,
+        "knowledgeBase": 3,
+        "dashboards": 3
+      },
+      "defs": {
+        "deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "r-deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "def-deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "contacts": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "companies": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "snippet": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "kb:kb-unlisted": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "dataset:ds-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "dashboard:dash-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "workflow:wf-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        }
+      }
+    }
+  },
+  "mixed": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "read",
+        "overrides": {
+          "records": "read_write",
+          "knowledgeBase": "full",
+          "datasets": "read",
+          "dashboards": "none",
+          "workflows": "full",
+          "billing": "none",
+          "auditLog": "read"
+        }
+      },
+      "definitions": {
+        "default": "read",
+        "overrides": {
+          "deals": "full",
+          "contacts": "none",
+          "gone_away": "read_write"
+        }
+      },
+      "resourceDefault": "read_write",
+      "resources": {
+        "kb": {
+          "default": "read",
+          "overrides": {
+            "kb-1": "full"
+          }
+        },
+        "dataset": {
+          "default": "none",
+          "overrides": {}
+        },
+        "unregistered_type": {
+          "default": "full",
+          "overrides": {
+            "x": "read"
+          }
+        }
+      }
+    },
+    "composed": {
+      "keys": [
+        "auditLog.view",
+        "datasets.view",
+        "dispatch.board.view",
+        "files.view",
+        "knowledgeBase.edit",
+        "knowledgeBase.manage",
+        "knowledgeBase.view",
+        "records.edit",
+        "records.view",
+        "workflows.edit",
+        "workflows.manage",
+        "workflows.view"
+      ],
+      "areaLevels": {
+        "records": 2,
+        "recordsLinked": 1,
+        "workflows": 3,
+        "agents": 1,
+        "comments": 1,
+        "dispatchBoard": 1,
+        "dispatchMySchedule": 1,
+        "dispatchVisitReports": 1,
+        "settings": 1,
+        "billing": 0,
+        "members": 1,
+        "permissions": 1,
+        "integrations": 1,
+        "channels": 1,
+        "aiConfig": 1,
+        "automationRules": 1,
+        "auditLog": 1,
+        "files": 1,
+        "connectors": 1,
+        "datasets": 1,
+        "knowledgeBase": 3,
+        "dashboards": 0
+      },
+      "defs": {
+        "deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "r-deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "def-deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "contacts": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": true,
+          "viewAccess": null
+        },
+        "companies": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": true,
+          "viewAccess": "view"
+        },
+        "snippet": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": true,
+          "viewAccess": "view"
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "kb:kb-unlisted": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "dataset:ds-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "dashboard:dash-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "workflow:wf-1": {
+          "view": true,
+          "edit": true,
+          "admin": false
+        }
+      }
+    }
+  },
+  "allRungsAreas": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "none",
+        "overrides": {
+          "records": "none",
+          "recordsLinked": "read",
+          "workflows": "read_write",
+          "agents": "full",
+          "comments": "none",
+          "dispatchBoard": "read",
+          "dispatchMySchedule": "read_write",
+          "dispatchVisitReports": "full",
+          "settings": "none",
+          "billing": "read",
+          "members": "read_write",
+          "permissions": "full",
+          "integrations": "none",
+          "channels": "read",
+          "aiConfig": "read_write",
+          "automationRules": "full",
+          "auditLog": "none",
+          "files": "read",
+          "connectors": "read_write",
+          "datasets": "full",
+          "knowledgeBase": "none",
+          "dashboards": "read"
+        }
+      },
+      "definitions": {
+        "default": "read_write",
+        "overrides": {}
+      },
+      "resourceDefault": "full",
+      "resources": {}
+    },
+    "composed": {
+      "keys": [
+        "agents.manage",
+        "automationRules.manage",
+        "billing.view",
+        "dashboards.view",
+        "datasets.edit",
+        "datasets.manage",
+        "datasets.view",
+        "dispatch.board.view",
+        "dispatch.visitReports",
+        "files.view",
+        "permissions.manage",
+        "workflows.edit",
+        "workflows.view"
+      ],
+      "areaLevels": {
+        "records": 0,
+        "recordsLinked": 1,
+        "workflows": 2,
+        "agents": 3,
+        "comments": 0,
+        "dispatchBoard": 1,
+        "dispatchMySchedule": 2,
+        "dispatchVisitReports": 3,
+        "settings": 0,
+        "billing": 1,
+        "members": 2,
+        "permissions": 3,
+        "integrations": 0,
+        "channels": 1,
+        "aiConfig": 2,
+        "automationRules": 3,
+        "auditLog": 0,
+        "files": 1,
+        "connectors": 2,
+        "datasets": 3,
+        "knowledgeBase": 0,
+        "dashboards": 1
+      },
+      "defs": {
+        "deals": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": false,
+          "viewAccess": "edit"
+        },
+        "r-deals": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": false,
+          "viewAccess": "edit"
+        },
+        "def-deals": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": false,
+          "viewAccess": "edit"
+        },
+        "contacts": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": false,
+          "viewAccess": "edit"
+        },
+        "companies": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": false,
+          "viewAccess": "edit"
+        },
+        "snippet": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": false,
+          "viewAccess": "edit"
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "kb:kb-unlisted": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "dataset:ds-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "dashboard:dash-1": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "workflow:wf-1": {
+          "view": true,
+          "edit": true,
+          "admin": false
+        }
+      }
+    }
+  },
+  "seed:agent": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "full",
+        "overrides": {}
+      },
+      "definitions": {
+        "default": "full",
+        "overrides": {}
+      },
+      "resourceDefault": "full",
+      "resources": {}
+    },
+    "composed": {
+      "keys": [
+        "agents.manage",
+        "aiConfig.manage",
+        "auditLog.view",
+        "automationRules.manage",
+        "billing.manage",
+        "billing.view",
+        "channels.manage",
+        "comments.manage",
+        "connectors.manage",
+        "dashboards.edit",
+        "dashboards.manage",
+        "dashboards.view",
+        "datasets.edit",
+        "datasets.manage",
+        "datasets.view",
+        "dispatch.board.manage",
+        "dispatch.board.view",
+        "dispatch.mySchedule",
+        "dispatch.visitReports",
+        "files.manage",
+        "files.view",
+        "integrations.manage",
+        "knowledgeBase.edit",
+        "knowledgeBase.manage",
+        "knowledgeBase.view",
+        "members.manage",
+        "permissions.manage",
+        "records.delete",
+        "records.edit",
+        "records.import",
+        "records.view",
+        "records.viewLinked",
+        "settings.manage",
+        "workflows.edit",
+        "workflows.manage",
+        "workflows.view"
+      ],
+      "areaLevels": {
+        "records": 3,
+        "recordsLinked": 3,
+        "workflows": 3,
+        "agents": 3,
+        "comments": 3,
+        "dispatchBoard": 3,
+        "dispatchMySchedule": 3,
+        "dispatchVisitReports": 3,
+        "settings": 3,
+        "billing": 3,
+        "members": 3,
+        "permissions": 3,
+        "integrations": 3,
+        "channels": 3,
+        "aiConfig": 3,
+        "automationRules": 3,
+        "auditLog": 3,
+        "files": 3,
+        "connectors": 3,
+        "datasets": 3,
+        "knowledgeBase": 3,
+        "dashboards": 3
+      },
+      "defs": {
+        "deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "r-deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "def-deals": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "contacts": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "companies": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        },
+        "snippet": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": true,
+          "edit": true,
+          "admin": true,
+          "write": true,
+          "viewAccess": "admin"
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "kb:kb-unlisted": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "dataset:ds-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "dashboard:dash-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        },
+        "workflow:wf-1": {
+          "view": true,
+          "edit": true,
+          "admin": true
+        }
+      }
+    }
+  },
+  "seed:chat_agent": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "none",
+        "overrides": {}
+      },
+      "definitions": {
+        "default": "none",
+        "overrides": {}
+      },
+      "resourceDefault": "none",
+      "resources": {}
+    },
+    "composed": {
+      "keys": [],
+      "areaLevels": {
+        "records": 0,
+        "recordsLinked": 0,
+        "workflows": 0,
+        "agents": 0,
+        "comments": 0,
+        "dispatchBoard": 0,
+        "dispatchMySchedule": 0,
+        "dispatchVisitReports": 0,
+        "settings": 0,
+        "billing": 0,
+        "members": 0,
+        "permissions": 0,
+        "integrations": 0,
+        "channels": 0,
+        "aiConfig": 0,
+        "automationRules": 0,
+        "auditLog": 0,
+        "files": 0,
+        "connectors": 0,
+        "datasets": 0,
+        "knowledgeBase": 0,
+        "dashboards": 0
+      },
+      "defs": {
+        "deals": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "r-deals": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "def-deals": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "contacts": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "companies": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "snippet": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": false,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "kb:kb-unlisted": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "dataset:ds-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "dashboard:dash-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "workflow:wf-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        }
+      }
+    }
+  },
+  "seed:support_agent": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "none",
+        "overrides": {
+          "knowledgeBase": "read",
+          "records": "read_write",
+          "recordsLinked": "read",
+          "comments": "full",
+          "files": "read"
+        }
+      },
+      "definitions": {
+        "default": "read_write",
+        "overrides": {}
+      },
+      "resourceDefault": "none",
+      "resources": {
+        "kb": {
+          "default": "read",
+          "overrides": {}
+        }
+      }
+    },
+    "composed": {
+      "keys": [
+        "comments.manage",
+        "files.view",
+        "knowledgeBase.view",
+        "records.edit",
+        "records.view"
+      ],
+      "areaLevels": {
+        "records": 2,
+        "recordsLinked": 1,
+        "workflows": 0,
+        "agents": 0,
+        "comments": 3,
+        "dispatchBoard": 0,
+        "dispatchMySchedule": 0,
+        "dispatchVisitReports": 0,
+        "settings": 0,
+        "billing": 0,
+        "members": 0,
+        "permissions": 0,
+        "integrations": 0,
+        "channels": 0,
+        "aiConfig": 0,
+        "automationRules": 0,
+        "auditLog": 0,
+        "files": 1,
+        "connectors": 0,
+        "datasets": 0,
+        "knowledgeBase": 1,
+        "dashboards": 0
+      },
+      "defs": {
+        "deals": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": "edit"
+        },
+        "r-deals": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": "edit"
+        },
+        "def-deals": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": "edit"
+        },
+        "contacts": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": "edit"
+        },
+        "companies": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": "edit"
+        },
+        "snippet": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": true,
+          "edit": true,
+          "admin": false,
+          "write": true,
+          "viewAccess": "edit"
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "kb:kb-unlisted": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "dataset:ds-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "dashboard:dash-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        },
+        "workflow:wf-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        }
+      }
+    }
+  },
+  "seed:analyst_agent": {
+    "policy": {
+      "sourceProfileId": null,
+      "sourceProfileUpdatedAt": null,
+      "publishedByUserId": null,
+      "clamp": [],
+      "areas": {
+        "default": "none",
+        "overrides": {
+          "records": "read",
+          "recordsLinked": "read",
+          "datasets": "read",
+          "dashboards": "read",
+          "knowledgeBase": "read",
+          "files": "read"
+        }
+      },
+      "definitions": {
+        "default": "read",
+        "overrides": {}
+      },
+      "resourceDefault": "read",
+      "resources": {}
+    },
+    "composed": {
+      "keys": [
+        "dashboards.view",
+        "datasets.view",
+        "files.view",
+        "knowledgeBase.view",
+        "records.view"
+      ],
+      "areaLevels": {
+        "records": 1,
+        "recordsLinked": 1,
+        "workflows": 0,
+        "agents": 0,
+        "comments": 0,
+        "dispatchBoard": 0,
+        "dispatchMySchedule": 0,
+        "dispatchVisitReports": 0,
+        "settings": 0,
+        "billing": 0,
+        "members": 0,
+        "permissions": 0,
+        "integrations": 0,
+        "channels": 0,
+        "aiConfig": 0,
+        "automationRules": 0,
+        "auditLog": 0,
+        "files": 1,
+        "connectors": 0,
+        "datasets": 1,
+        "knowledgeBase": 1,
+        "dashboards": 1
+      },
+      "defs": {
+        "deals": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": "view"
+        },
+        "r-deals": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": "view"
+        },
+        "def-deals": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": "view"
+        },
+        "contacts": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": "view"
+        },
+        "companies": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": "view"
+        },
+        "snippet": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": null
+        },
+        "never-heard-of-it": {
+          "view": true,
+          "edit": false,
+          "admin": false,
+          "write": false,
+          "viewAccess": "view"
+        }
+      },
+      "instances": {
+        "kb:kb-1": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "kb:kb-unlisted": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "dataset:ds-1": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "dashboard:dash-1": {
+          "view": true,
+          "edit": false,
+          "admin": false
+        },
+        "workflow:wf-1": {
+          "view": false,
+          "edit": false,
+          "admin": false
+        }
+      }
+    }
+  }
+}

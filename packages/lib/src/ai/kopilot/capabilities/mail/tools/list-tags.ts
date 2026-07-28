@@ -30,7 +30,7 @@ export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'list_tags',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the `tag` definition, silent-empty on denial. Re-targeted from `unmodeled/mail` (19b G2/G7): tags are ordinary EntityInstances of the `tag` system def, which is NOT in NON_RECORD_DEF_SLUGS — so unlike threads/inboxes they DO resolve through the definition ladder, and a real rung existed all along. `update_thread` already resolves the same def id.',
     },

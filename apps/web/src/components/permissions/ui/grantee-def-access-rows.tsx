@@ -22,7 +22,7 @@ const CHILD_DEPTH = 1
  * `ResourceAccess` rows `useGranteeDefAccess` composes.
  *
  * Presentational only — filtering, loading and persistence are owned by the
- * host, exactly like `DefBaselineRows` is host-driven by `MemberBaselineTab`.
+ * host, exactly like `DefBaselineRows` is host-driven by `WorkspaceDefaultsTab`.
  * Rows always nest under the Records area row (capability layer v2 Part B.0);
  * the flat standalone section they were extracted from is gone.
  */

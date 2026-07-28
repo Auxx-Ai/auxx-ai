@@ -621,7 +621,16 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // than misbehaving, but the bump keeps the audit field honest after rollout.
   // v2 → v3: `CachedPermissionProfile` gained `role` (plan 21 §3.1). A stale v2
   // blob would surface `role: undefined` to the picker rank filters.
-  profiles: { prefix: 'org:permission-profiles:v3', ttlSeconds: ONE_DAY },
+  // v3 → v4: the agent-policy rung VOCABULARY changed (plan 26 Phase 2 —
+  // `read→view`, `read_write→edit`, `full→admin`; data migration 054). The TYPE
+  // is unchanged, which is exactly why this needs a bump rather than looking
+  // cosmetic: `agentPolicy` is cached VERBATIM, and the new `parsePolicyPermission`
+  // DROPS a retired rung as an unknown value. A v3 blob written by a draining old
+  // instance therefore parses to `default: 'none'` with every override discarded —
+  // the agent composes to nothing. Fail-closed, but a real outage for the full
+  // ONE_DAY TTL, and a flush cannot fix it during a rollout because the old
+  // instance repopulates the same keyspace.
+  profiles: { prefix: 'org:permission-profiles:v4', ttlSeconds: ONE_DAY },
   hasPermissionGrants: { prefix: 'org:has-permission-grants', ttlSeconds: ONE_DAY },
   restrictedEntityDefIds: { prefix: 'org:restricted-entity-def-ids', ttlSeconds: ONE_DAY },
   restrictedInstanceIds: { prefix: 'org:restricted-instance-ids', ttlSeconds: ONE_DAY },
@@ -642,7 +651,11 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // permissionProfileId (the draft binding) — doc 19 §2.3/§8.1. A v2 blob has
   // neither key, so every agent would resolve a `null` policy and fail closed
   // mid-rollout; the bump is what makes that impossible.
-  agents: { prefix: 'org:agents:v3', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  // v4: the agent-policy rung vocabulary changed (plan 26 Phase 2, data migration
+  // 054) and `permissionPolicy` is cached verbatim — same reasoning as
+  // `profiles` v3 → v4 above. A v3 blob's retired rungs are dropped by
+  // `parsePublishedAgentPolicy`, so the version composes to all-`none`.
+  agents: { prefix: 'org:agents:v4', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
   // v5: defaultLens/status normalized to scalars (were SINGLE_SELECT arrays —
   // poisoned strict lens comparisons). v4: + ownerUserId (§11 personal
   // accounts). v3: + isPersonal. v2: + defaultLens (mail-permissions §2.2).

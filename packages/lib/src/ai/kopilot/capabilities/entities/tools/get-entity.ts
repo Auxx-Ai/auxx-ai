@@ -30,7 +30,7 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'get_entity',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the recordId’s def before the read.',
     },

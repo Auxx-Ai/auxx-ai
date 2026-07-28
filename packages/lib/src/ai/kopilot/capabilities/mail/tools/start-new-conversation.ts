@@ -61,7 +61,7 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
     permission: {
       target: 'unmodeled',
       domain: 'mail',
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'unenforced',
       note: 'KNOWN GAP (19b G2). Sends outbound email through MessageSenderService with no visibility lens and no capability check. Approval-gated in chat, but approval mode is "auto" on autonomous runs.',
     },

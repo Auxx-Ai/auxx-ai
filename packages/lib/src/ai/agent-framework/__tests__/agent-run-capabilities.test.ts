@@ -69,13 +69,13 @@ function fakeCaps(viewable: string[]): CapabilityView {
 }
 
 /** A published snapshot whose `definitions` map names exactly these defs. */
-function policy(defs: Record<string, 'none' | 'read' | 'read_write' | 'full'>) {
+function policy(defs: Record<string, 'none' | 'view' | 'edit' | 'admin'>) {
   return {
     sourceProfileId: 'p-agent',
     sourceProfileUpdatedAt: null,
     publishedByUserId: 'u-admin',
     clamp: [],
-    areas: { default: 'full', overrides: {} },
+    areas: { default: 'admin', overrides: {} },
     definitions: { default: 'none', overrides: defs },
     resourceDefault: 'none',
     resources: {},
@@ -106,7 +106,7 @@ describe('resolveAgentRunCapabilities — the published policy is the agent auth
       agent: {
         userId: 'agent-user',
         runAsUserId: null,
-        permissionPolicy: policy({ 'def-a': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'view' }),
       },
       organizationId: ORG,
     })
@@ -144,7 +144,7 @@ describe('run-as is delegation, never replacement (§0.15)', () => {
       agent: {
         userId: 'agent-user',
         runAsUserId: 'human-1',
-        permissionPolicy: policy({ 'def-a': 'none', 'def-b': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'none', 'def-b': 'view' }),
       },
       organizationId: ORG,
     })
@@ -163,7 +163,7 @@ describe('run-as is delegation, never replacement (§0.15)', () => {
       agent: {
         userId: 'agent-user',
         runAsUserId: 'human-1',
-        permissionPolicy: policy({ 'def-a': 'read', 'def-b': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'view', 'def-b': 'view' }),
       },
       organizationId: ORG,
     })
@@ -202,7 +202,7 @@ describe('run-as is delegation, never replacement (§0.15)', () => {
         userId: 'agent-user',
         runAsUserId: 'human-1',
         name: 'Triage Bot',
-        permissionPolicy: policy({ 'def-a': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'view' }),
       },
       organizationId: ORG,
     })
@@ -232,7 +232,7 @@ describe('invoker intersection (§0.5)', () => {
       agent: {
         userId: 'agent-user',
         runAsUserId: null,
-        permissionPolicy: policy({ 'def-a': 'read', 'def-b': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'view', 'def-b': 'view' }),
       },
       organizationId: ORG,
       invokerUserId: 'human-1',
@@ -255,7 +255,7 @@ describe('invoker intersection (§0.5)', () => {
       agent: {
         userId: 'agent-user',
         runAsUserId: 'human-1',
-        permissionPolicy: policy({ 'def-a': 'read', 'def-b': 'read', 'def-c': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'view', 'def-b': 'view', 'def-c': 'view' }),
       },
       organizationId: ORG,
       invokerUserId: 'human-2',
@@ -276,7 +276,7 @@ describe('invoker intersection (§0.5)', () => {
       agent: {
         userId: 'agent-user',
         runAsUserId: 'human-1',
-        permissionPolicy: policy({ 'def-a': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'view' }),
       },
       organizationId: ORG,
       invokerUserId: 'human-1',
@@ -290,7 +290,7 @@ describe('invoker intersection (§0.5)', () => {
       agent: {
         userId: 'agent-user',
         runAsUserId: null,
-        permissionPolicy: policy({ 'def-a': 'read' }),
+        permissionPolicy: policy({ 'def-a': 'view' }),
       },
       organizationId: ORG,
       invokerUserId: null,
@@ -309,11 +309,11 @@ describe("source: 'draft' resolves the live binding, 'active' the snapshot (§15
     kind: 'internal' as const,
     permissionProfileId: 'p-draft',
     // The ACTIVE snapshot says read on def-a.
-    permissionPolicy: policy({ 'def-a': 'read' }),
+    permissionPolicy: policy({ 'def-a': 'view' }),
   }
 
   beforeEach(() => {
-    // …while the DRAFT profile says read_write on def-a and nothing else.
+    // …while the DRAFT profile says edit on def-a and nothing else.
     draftProfiles = [
       {
         id: 'p-draft',
@@ -321,15 +321,15 @@ describe("source: 'draft' resolves the live binding, 'active' the snapshot (§15
         name: 'Custom',
         description: null,
         icon: null,
-        seat: 'full',
+        seat: 'admin',
         appliesTo: 'agent',
         baseLevel: null,
         ceiling: null,
         isSystem: false,
         updatedAt: null,
         agentPolicy: {
-          areas: { default: 'full', overrides: {} },
-          definitions: { default: 'none', overrides: { 'def-a': 'read_write' } },
+          areas: { default: 'admin', overrides: {} },
+          definitions: { default: 'none', overrides: { 'def-a': 'edit' } },
           resourceDefault: 'none',
           resources: {},
         },

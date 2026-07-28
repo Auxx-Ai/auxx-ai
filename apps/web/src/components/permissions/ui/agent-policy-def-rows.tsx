@@ -1,30 +1,30 @@
 // apps/web/src/components/permissions/ui/agent-policy-def-rows.tsx
 'use client'
 
-import type { AgentAccessLevel } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { Table2 } from 'lucide-react'
 import type { AgentPolicyDefinition } from '../hooks/use-agent-policy-definitions'
+import { AccessLevelSelect } from './access-level-select'
 import { ALL_RECORD_TYPES_TITLE } from './agent-policy-copy'
-import { AgentPolicyLevelSelect } from './agent-policy-level-select'
 
 /** Indent of every agent-policy child row under its area row. */
 const CHILD_DEPTH = 1
 
 interface AgentPolicyDefRowsProps {
   /** `definitions.default` — mandatory, so this row offers no `Default` option. */
-  collectionDefault: AgentAccessLevel
+  collectionDefault: ResourcePermission
   /** The sparse per-`apiSlug` rules. */
-  overrides: Partial<Record<string, AgentAccessLevel>>
+  overrides: Partial<Record<string, ResourcePermission>>
   /** Definition rows that survived the host's filter. */
   rows: AgentPolicyDefinition[]
   /** Override slugs naming a definition this workspace no longer has. */
   orphans: string[]
   isLoading?: boolean
-  onDefaultChange: (level: AgentAccessLevel) => void
-  onOverrideChange: (apiSlug: string, level: AgentAccessLevel | undefined) => void
+  onDefaultChange: (level: ResourcePermission) => void
+  onOverrideChange: (apiSlug: string, level: ResourcePermission | undefined) => void
   disabled?: boolean
 }
 
@@ -65,10 +65,14 @@ export function AgentPolicyDefRows({
         title={ALL_RECORD_TYPES_TITLE}
         description='What a record type with no rule of its own resolves to, including types created later.'
         trailing={
-          <AgentPolicyLevelSelect
+          <AccessLevelSelect
             value={collectionDefault}
+            includeNone
             onChange={onDefaultChange}
             disabled={disabled}
+            size='sm'
+            variant='transparent'
+            className='h-7 w-44'
           />
         }
       />
@@ -97,11 +101,18 @@ export function AgentPolicyDefRows({
               title={<span className='truncate'>{def.label}</span>}
               description={`Policy key: ${def.apiSlug}`}
               trailing={
-                <AgentPolicyLevelSelect
+                <AccessLevelSelect
                   value={overrides[def.apiSlug]}
-                  fallback={collectionDefault}
+                  includeInherit
+                  includeNone
+                  inheritLabelText='Default'
+                  inheritedLevel={collectionDefault}
+                  onInherit={() => onOverrideChange(def.apiSlug, undefined)}
                   onChange={(level) => onOverrideChange(def.apiSlug, level)}
                   disabled={disabled}
+                  size='sm'
+                  variant='transparent'
+                  className='h-7 w-44'
                 />
               }
             />
@@ -117,11 +128,18 @@ export function AgentPolicyDefRows({
               description='This rule names a record type that no longer exists in this workspace. It is kept until you clear it, and does nothing meanwhile.'
               secondary={<span className='text-xs text-muted-foreground'>Unknown type</span>}
               trailing={
-                <AgentPolicyLevelSelect
+                <AccessLevelSelect
                   value={overrides[slug]}
-                  fallback={collectionDefault}
+                  includeInherit
+                  includeNone
+                  inheritLabelText='Default'
+                  inheritedLevel={collectionDefault}
+                  onInherit={() => onOverrideChange(slug, undefined)}
                   onChange={(level) => onOverrideChange(slug, level)}
                   disabled={disabled}
+                  size='sm'
+                  variant='transparent'
+                  className='h-7 w-44'
                 />
               }
             />

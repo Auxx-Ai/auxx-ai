@@ -23,7 +23,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
     permission: {
       target: 'instance',
       keys: ['kb'],
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'Rows filtered by canViewKb. Same doc-18 caveat as get_article: no visitor clamp and includeUnpublished defaults true.',
     },

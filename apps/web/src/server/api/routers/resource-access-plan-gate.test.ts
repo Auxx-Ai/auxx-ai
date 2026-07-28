@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
  * (core product on every plan) and `revokeType` stays ungated (removal only
  * tightens — the `clearGranteeLevels` doctrine).
  *
- * Structural assertions (same style as permissions-member-baseline.test.ts's
+ * Structural assertions (same style as the retired permissions-member-baseline.test.ts's
  * third block): the router can't be imported under vitest without mocking the
  * whole trpc/session/db stack, so we pin the gate's presence in source.
  */

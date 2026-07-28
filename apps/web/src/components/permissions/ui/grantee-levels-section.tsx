@@ -99,8 +99,8 @@ export function GranteeLevelsSection({
   /**
    * Per-def overrides nested under Records (capability layer v2 Part B.0), and
    * per-instance grants nested under Datasets / Knowledge base / Dashboards
-   * (Part B) — the grantee-scoped twin of `MemberBaselineTab`'s
-   * `renderChildren`. "Overrides only" means "has an explicit grant for this
+   * (Part B) — the grantee-scoped twin of the Workspace defaults tab's own
+   * per-def / per-instance rows. "Overrides only" means "has an explicit grant for this
    * grantee"; a def/instance-name match keeps (and expands) the parent area
    * row even when the area label itself didn't match.
    */
