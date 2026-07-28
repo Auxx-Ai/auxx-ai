@@ -16,7 +16,13 @@ import { useQueryState } from 'nuqs'
 import { useEffect, useMemo, useState } from 'react'
 import { NoAccess } from '~/components/permissions/ui/no-access'
 import { getRecordDrillPanels } from '~/components/records/record-drill-panels'
-import { toRecordId, useRecord, useResource, useResourceProperty } from '~/components/resources'
+import {
+  toRecordId,
+  useCanViewRecordResource,
+  useRecord,
+  useResource,
+  useResourceProperty,
+} from '~/components/resources'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
@@ -35,6 +41,7 @@ import type { DetailViewProps } from './types'
 export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: DetailViewProps) {
   const { resource, isLoading: resourceLoading } = useResource(apiSlug)
   const { can, canViewEntity } = useAccess()
+  const canViewRecordResource = useCanViewRecordResource()
 
   // Get resource properties including id (entityDefinitionId) and entityType
   const resourceProps = useResourceProperty(apiSlug, [
@@ -100,8 +107,15 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
   // sections, active-tab fallback, and lazy query owners all consume the same
   // list. This also handles a hidden default or a denied `?tab=` deep link.
   const visibleMainTabs = useMemo(
-    () => config.mainTabs.filter((tab) => !tab.permissionKey || can(tab.permissionKey)),
-    [config.mainTabs, can]
+    () =>
+      config.mainTabs
+        .filter((tab) => !tab.permissionKey || can(tab.permissionKey))
+        // Layer-3 per-definition gate for tabs that list another definition's
+        // records (contact → Tickets, part → Subparts/Vendors). Load-bearing on
+        // this surface specifically: `tickets` is the contact page's DEFAULT tab,
+        // so without it a `tickets: None` member lands on it.
+        .filter((tab) => canViewRecordResource(tab.recordResource)),
+    [config.mainTabs, can, canViewRecordResource]
   )
   const requestedMainTab = mainTab ?? config.defaultTab ?? 'overview'
   const activeMainTab = visibleMainTabs.some((tab) => tab.value === requestedMainTab)

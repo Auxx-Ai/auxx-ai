@@ -12,6 +12,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import TicketRow from '~/components/tickets/ticket-row'
+import { useAccess } from '~/providers/capabilities-provider'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Contact relationship field on the ticket def — also the filter key below. */
@@ -27,6 +28,11 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
   const contactId = entityInstanceId
   const entityDefinitionId = useResourceProperty('ticket', 'id')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  // The tab itself is gated on READ of the ticket definition (drawer config
+  // `recordResource`); creating from here additionally needs WRITE on it — a
+  // `tickets: Read` member sees the list without a create affordance.
+  const { canEditEntity } = useAccess()
+  const canCreate = !!entityDefinitionId && canEditEntity(entityDefinitionId)
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -63,7 +69,7 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
 
   // Generic create dialog, pre-linked to this contact. Shared across the empty
   // and populated states below.
-  const createDialog = (
+  const createDialog = canCreate && (
     <RecordEditorDialog
       open={isCreateOpen}
       onOpenChange={setIsCreateOpen}
@@ -95,13 +101,17 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
       <div className='flex flex-1 items-center justify-center w-full'>
         <EmptyState
           icon={TicketIcon}
-          title='Create a ticket'
-          description='Create a ticket for this contact'
+          title={canCreate ? 'Create a ticket' : 'No tickets'}
+          description={
+            canCreate ? 'Create a ticket for this contact' : 'This contact has no tickets yet'
+          }
           button={
-            <Button variant='outline' size='sm' onClick={() => setIsCreateOpen(true)}>
-              <Plus />
-              Create Ticket
-            </Button>
+            canCreate ? (
+              <Button variant='outline' size='sm' onClick={() => setIsCreateOpen(true)}>
+                <Plus />
+                Create Ticket
+              </Button>
+            ) : undefined
           }
         />
         {createDialog}
@@ -117,10 +127,12 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
         collapsible={false}
         icon={<TicketIcon className='size-4 text-muted-foreground/50' />}
         actions={
-          <Button variant='ghost' size='sm' onClick={() => setIsCreateOpen(true)}>
-            <Plus />
-            Create Ticket
-          </Button>
+          canCreate ? (
+            <Button variant='ghost' size='sm' onClick={() => setIsCreateOpen(true)}>
+              <Plus />
+              Create Ticket
+            </Button>
+          ) : undefined
         }>
         <div className='space-y-4 sm:p-4'>
           {records.map((record) => (

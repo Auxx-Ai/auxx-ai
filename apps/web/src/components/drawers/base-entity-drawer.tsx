@@ -47,7 +47,7 @@ import {
   useRecordDrillStack,
   useRecordPeekStack,
 } from '~/components/records/record-drill-panels'
-import { useRecord, useResource } from '~/components/resources'
+import { useCanViewRecordResource, useRecord, useResource } from '~/components/resources'
 import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
@@ -179,6 +179,7 @@ function DrawerRecordFrame({
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const { hasAccess } = useFeatureFlags()
   const { can } = useAccess()
+  const canViewRecordResource = useCanViewRecordResource()
   const organizationId = useDehydratedOrganizationId()
   const user = useDehydratedUser()
 
@@ -242,6 +243,20 @@ function DrawerRecordFrame({
     return getEntityDrawerConfig(entityType, entityDefinitionId ?? undefined)
   }, [entityType, entityDefinitionId])
 
+  // The registry tabs this viewer may see — resolved ONCE so the tab strip and
+  // the rendered TabsContent below can never disagree. A `recordResource` tab
+  // lists another definition's records, so it is gated on that definition's read
+  // level: with `tickets: None` the contact drawer must not offer a Tickets tab
+  // at all (an always-empty tab fronting a Create button reads as a bug).
+  const visibleAdditionalTabs = React.useMemo(
+    () =>
+      (drawerConfig?.additionalTabs ?? [])
+        .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
+        .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
+        .filter((tab) => canViewRecordResource(tab.recordResource)),
+    [drawerConfig, hasAccess, readOnly, entityType, canViewRecordResource]
+  )
+
   // Build tabs from registry + base tabs
   const tabs = React.useMemo(() => {
     if (!drawerConfig) return []
@@ -255,18 +270,15 @@ function DrawerRecordFrame({
       // Restricted mode drops the communication/comment tabs (§11.4).
       .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
 
-    const additionalTabs = drawerConfig.additionalTabs
-      .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
-      .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
-      .map((tab) => ({
-        value: tab.value,
-        label: tab.label,
-        icon: getIconComponent(tab.icon),
-      }))
+    const additionalTabs = visibleAdditionalTabs.map((tab) => ({
+      value: tab.value,
+      label: tab.label,
+      icon: getIconComponent(tab.icon),
+    }))
 
     // Overview first, then entity-specific tabs, then the shared timeline/comments/tasks tabs
     return [overviewTab, ...additionalTabs, ...trailingTabs]
-  }, [drawerConfig, hasAccess, readOnly, entityType])
+  }, [drawerConfig, visibleAdditionalTabs, readOnly, entityType])
 
   // Tab order persistence
   const tabOrderStorageKey = React.useMemo(() => {
@@ -300,6 +312,15 @@ function DrawerRecordFrame({
     if (!savedTabOrder || savedTabOrder.length === 0) return tabs
     return applyTabOrder(tabs, savedTabOrder)
   }, [tabs, savedTabOrder])
+
+  // A `?tab=` pointing at a tab this viewer can't see (a stale deep link, or a
+  // frame whose entity type has no such tab) must not render a blank body.
+  // Resolved locally and deliberately NOT written back to the URL: every frame
+  // of the peek stack shares this one query param, so a write here would clobber
+  // the frame underneath.
+  const effectiveTab = orderedTabs.some((tab) => tab.value === activeTab)
+    ? activeTab
+    : (orderedTabs[0]?.value ?? 'overview')
 
   const handleTabReorder = React.useCallback(
     (newOrder: string[]) => {
@@ -336,12 +357,12 @@ function DrawerRecordFrame({
   // entityType has drill panels, so it becomes the root NavStackPanel's
   // content when it does (byte-identical render otherwise).
   const tabsBlock = (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full h-full'>
+    <Tabs value={effectiveTab} onValueChange={setActiveTab} className='w-full h-full'>
       <div className='w-full h-full flex gap-0'>
         <div className='w-full h-full flex flex-col overflow-auto justify-start'>
           <OverflowTabsList
             tabs={orderedTabs}
-            value={activeTab}
+            value={effectiveTab}
             onValueChange={setActiveTab}
             variant='outline'
             canReorder={!!tabOrderStorageKey}
@@ -417,21 +438,19 @@ function DrawerRecordFrame({
               <TasksSection recordId={recordId} />
             </TabsContent>
 
-            {/* Dynamic tabs from registry */}
-            {drawerConfig.additionalTabs
-              .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
-              .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType, tab.value))
-              .map((tab) => (
-                <TabsContent key={tab.value} value={tab.value} className='w-full'>
-                  <LazyTabComponent
-                    entityType={entityType}
-                    tabValue={tab.value}
-                    entityInstanceId={entityInstanceId}
-                    recordId={recordId}
-                    record={record}
-                  />
-                </TabsContent>
-              ))}
+            {/* Dynamic tabs from registry — same filtered list as the strip, so a
+                gated-out tab has no mountable content either. */}
+            {visibleAdditionalTabs.map((tab) => (
+              <TabsContent key={tab.value} value={tab.value} className='w-full'>
+                <LazyTabComponent
+                  entityType={entityType}
+                  tabValue={tab.value}
+                  entityInstanceId={entityInstanceId}
+                  recordId={recordId}
+                  record={record}
+                />
+              </TabsContent>
+            ))}
           </div>
         </div>
       </div>
@@ -738,6 +757,7 @@ function TabCards({
   readOnly?: boolean
 }) {
   const { can } = useAccess()
+  const canViewRecordResource = useCanViewRecordResource()
   const cards = drawerConfig.tabCards?.[tab]
     ?.filter((c) => (c.position ?? 'after') === position)
     // Restricted mode drops communication overview cards (e.g. work_order:communications).
@@ -745,6 +765,9 @@ function TabCards({
     // Layer-2 capability gate — hide the whole section (header included) when the
     // viewer lacks the key, mirroring the card's router procedure gate.
     .filter((c) => !c.permissionKey || can(c.permissionKey))
+    // Layer-3 per-definition gate for cards that are purely another definition's
+    // records (service_request work orders/quotes, quote jobs).
+    .filter((c) => canViewRecordResource(c.recordResource))
   if (!cards?.length) return null
 
   return (

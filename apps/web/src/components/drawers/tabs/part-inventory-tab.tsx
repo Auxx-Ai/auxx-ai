@@ -25,6 +25,7 @@ import { useMemo } from 'react'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useAccess } from '~/providers/capabilities-provider'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Map movement type values to badge color variants */
@@ -70,6 +71,10 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
   const subpartDefId = useResourceProperty('subpart', 'id')
+  // The tab itself is NOT `recordResource`-gated — it leads with the part's own
+  // on-hand quantity — so the stock_movement gate sits on the write action.
+  const { canEditEntity } = useAccess()
+  const canAdjustStock = !!stockMovementDefId && canEditEntity(stockMovementDefId)
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
   const stockStatus =
@@ -171,16 +176,18 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
         title={`Stock Movements (${records.length})`}
         initialOpen
         actions={
-          <StockAdjustmentPopover
-            partId={partId}
-            currentQoH={qoh}
-            hasSubparts={hasSubparts}
-            onSuccess={handleAdjustSuccess}>
-            <Button variant='ghost' size='xs'>
-              <Package />
-              Adjust Stock
-            </Button>
-          </StockAdjustmentPopover>
+          canAdjustStock ? (
+            <StockAdjustmentPopover
+              partId={partId}
+              currentQoH={qoh}
+              hasSubparts={hasSubparts}
+              onSuccess={handleAdjustSuccess}>
+              <Button variant='ghost' size='xs'>
+                <Package />
+                Adjust Stock
+              </Button>
+            </StockAdjustmentPopover>
+          ) : undefined
         }>
         {records.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>

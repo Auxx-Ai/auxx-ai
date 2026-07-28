@@ -16,6 +16,7 @@ import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-d
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { VendorPartRow } from './part-vendors-tab-row'
@@ -31,6 +32,10 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
 
   // Resolve vendor_part entity definition ID
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
+  // The tab is gated on READ of vendor_part (drawer config `recordResource`);
+  // adding one additionally needs WRITE.
+  const { canEditEntity } = useAccess()
+  const canCreate = !!vendorPartDefId && canEditEntity(vendorPartDefId)
 
   // Filter vendor parts by parent part
   const filters: ConditionGroup[] = useMemo(
@@ -132,10 +137,12 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
         title={`Suppliers (${records.length})`}
         initialOpen
         actions={
-          <Button variant='ghost' size='xs' onClick={() => setIsVendorDialogOpen(true)}>
-            <Store />
-            Add Supplier
-          </Button>
+          canCreate ? (
+            <Button variant='ghost' size='xs' onClick={() => setIsVendorDialogOpen(true)}>
+              <Store />
+              Add Supplier
+            </Button>
+          ) : undefined
         }>
         {records.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>

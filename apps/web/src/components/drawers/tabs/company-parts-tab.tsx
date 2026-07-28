@@ -15,6 +15,7 @@ import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-d
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { ContactVendorPartRow } from './contact-parts-tab-row'
@@ -31,6 +32,10 @@ export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
 
   // Resolve vendor_part entity definition ID
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
+  // The tab is gated on READ of vendor_part (drawer config `recordResource`);
+  // adding one additionally needs WRITE.
+  const { canEditEntity } = useAccess()
+  const canCreate = !!vendorPartDefId && canEditEntity(vendorPartDefId)
 
   // Filter vendor parts by supplier company
   const filters: ConditionGroup[] = useMemo(
@@ -131,10 +136,12 @@ export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
           collapsible={false}
           icon={<Package className='size-4 text-muted-foreground/50' />}
           actions={
-            <Button variant='ghost' size='sm' onClick={() => setIsDialogOpen(true)}>
-              <Package />
-              Add Part
-            </Button>
+            canCreate ? (
+              <Button variant='ghost' size='sm' onClick={() => setIsDialogOpen(true)}>
+                <Package />
+                Add Part
+              </Button>
+            ) : undefined
           }>
           {records.length === 0 ? (
             <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>

@@ -15,7 +15,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   contact: {
     entityType: 'contact',
     additionalTabs: [
-      { value: 'tickets', label: 'Tickets', icon: 'ticket' },
+      { value: 'tickets', label: 'Tickets', icon: 'ticket', recordResource: 'ticket' },
       { value: 'conversations', label: 'Conversations', icon: 'mail' },
     ],
     actions: {
@@ -38,7 +38,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
 
   company: {
     entityType: 'company',
-    additionalTabs: [{ value: 'parts', label: 'Parts', icon: 'package' }],
+    additionalTabs: [
+      { value: 'parts', label: 'Parts', icon: 'package', recordResource: 'vendor_part' },
+    ],
     actions: {
       enableArchive: true,
       enableDelete: true,
@@ -68,8 +70,8 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   part: {
     entityType: 'part',
     additionalTabs: [
-      { value: 'subparts', label: 'Subparts', icon: 'layers' },
-      { value: 'vendors', label: 'Suppliers', icon: 'truck' },
+      { value: 'subparts', label: 'Subparts', icon: 'layers', recordResource: 'subpart' },
+      { value: 'vendors', label: 'Suppliers', icon: 'truck', recordResource: 'vendor_part' },
     ],
     actions: {
       enableArchive: true,
@@ -92,8 +94,13 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     // from the Details field panel (showInPanel:false) so they only appear here.
     tabCards: {
       overview: [
-        { value: 'work-orders', label: 'Work orders', icon: 'wrench' },
-        { value: 'quotes', label: 'Quotes', icon: 'file-text' },
+        {
+          value: 'work-orders',
+          label: 'Work orders',
+          icon: 'wrench',
+          recordResource: 'work_order',
+        },
+        { value: 'quotes', label: 'Quotes', icon: 'file-text', recordResource: 'quote' },
       ],
     },
   },
@@ -155,7 +162,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         },
         { value: 'customer', label: 'Customer' },
         { value: 'origin', label: 'Origin' },
-        { value: 'jobs', label: 'Jobs' },
+        { value: 'jobs', label: 'Jobs', recordResource: 'work_order' },
         // Deposit visibility (deposit-accounting plan 16 §D.5) — the card itself renders
         // null when the quote has no deposit charge, so this stays in the list unconditionally.
         { value: 'deposit', label: 'Deposit', permissionKey: 'dispatch.board.view' },

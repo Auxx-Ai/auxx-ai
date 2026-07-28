@@ -16,6 +16,16 @@ export interface MainTabDefinition {
   /** Capability required to render the tab and mount its query-owning content. */
   permissionKey?: string
   /**
+   * Resource slug of the record type this tab LISTS (e.g. `ticket` for the
+   * contact page's Tickets tab) — the per-definition twin of `permissionKey`,
+   * which is too coarse here (`records.view` is true for anyone holding any
+   * record access). The tab is hidden when the viewer can't read that
+   * definition. See {@link DrawerTabDefinition.recordResource}; omit for tabs
+   * that also show the base record's OWN data (part Inventory mixes stock
+   * movements with the part's on-hand fields).
+   */
+  recordResource?: string
+  /**
    * Cancel the wrapping `<Section>`'s horizontal inset so the content (e.g. a
    * line-items table) spans edge-to-edge — the `sections` layout twin of the
    * drawer card's `fullBleed` (drawer-config-types.ts). Applies `-mx-3` to the

@@ -1,7 +1,7 @@
 // apps/web/src/components/drawers/tabs/part-vendors-tab-row.tsx
 'use client'
 
-import type { RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -17,6 +17,7 @@ import { Edit, MoreHorizontal, Star, Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { useAccess } from '~/providers/capabilities-provider'
 
 const VENDOR_PART_ATTRIBUTES = [
   'vendor_part_vendor_sku',
@@ -40,6 +41,10 @@ interface VendorPartRowProps {
 export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: VendorPartRowProps) {
   const { values } = useSystemValues(recordId, VENDOR_PART_ATTRIBUTES, { autoFetch: true })
   // const { resource: contactResource } = useResource('contacts')
+  // Read-only viewers of the vendor_part definition get the row without its
+  // actions menu — every item in it (edit, set preferred, remove) is a write.
+  const { canEditEntity } = useAccess()
+  const canEdit = canEditEntity(parseRecordId(recordId).entityDefinitionId)
 
   const vendorSku = values.vendor_part_vendor_sku as string | undefined
   const unitPrice = values.vendor_part_unit_price as number | null | undefined
@@ -93,30 +98,32 @@ export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: Ve
         )}
       </TableCell>
       <TableCell>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='icon-sm'>
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>
-            <DropdownMenuItem onClick={onEdit}>
-              <Edit />
-              Edit
-            </DropdownMenuItem>
-            {!isPreferred && (
-              <DropdownMenuItem onClick={onSetPreferred}>
-                <Star />
-                Set as Preferred
+        {canEdit && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' size='icon-sm'>
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuItem onClick={onEdit}>
+                <Edit />
+                Edit
               </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant='destructive' onClick={onDelete}>
-              <Trash2 />
-              Remove
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {!isPreferred && (
+                <DropdownMenuItem onClick={onSetPreferred}>
+                  <Star />
+                  Set as Preferred
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant='destructive' onClick={onDelete}>
+                <Trash2 />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </TableCell>
     </TableRow>
   )

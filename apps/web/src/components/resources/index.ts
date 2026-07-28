@@ -4,6 +4,8 @@
 export {
   // Types
   type FieldInfo,
+  // Per-definition read gate for `recordResource` surfaces (tabs, cards)
+  useCanViewRecordResource,
   // Entity field values
   useEntityValues,
   useField,
