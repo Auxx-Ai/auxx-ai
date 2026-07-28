@@ -6,13 +6,6 @@ import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosi
 import { Button } from '@auxx/ui/components/button'
 import { IconPicker } from '@auxx/ui/components/icon-picker'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { ChevronLeft, SlidersHorizontal } from 'lucide-react'
 import { type KeyboardEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react'
@@ -24,17 +17,14 @@ import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { useProfileEditor } from '../hooks/use-profile-editor'
 import type { PermissionProfile } from '../hooks/use-profiles'
 import { AgentPolicyEditor } from './agent-policy-editor'
+import { BaseLevelSelect } from './base-level-select'
 import { GranteeDefAccessRows } from './grantee-def-access-rows'
 import { GranteeInstanceRows } from './grantee-instance-rows'
 import { AREA_TO_INSTANCE_KEY } from './instance-share-copy'
-import { RUNG_LABELS } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import { ProfileAreaGrid } from './profile-area-grid'
 import { DEFAULT_PROFILE_ICON } from './profile-copy'
 import { ProfileSeatReference } from './profile-seat-reference'
-
-/** Sentinel for "no blanket rung" in the `baseLevel` select (`null` is a real state). */
-const NO_BASE_LEVEL = 'member_default'
 
 interface ProfileEditorProps {
   profile: PermissionProfile
@@ -418,6 +408,8 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
             action={
               isOwner ? undefined : (
                 <BaseLevelSelect
+                  label='Unset areas fall through to'
+                  allowUnset
                   value={draft.baseLevel}
                   disabled={!editable}
                   onChange={(baseLevel) => patch({ baseLevel })}
@@ -496,43 +488,4 @@ function useStickyChromeOffset(ref: RefObject<HTMLElement | null>): number {
   }, [ref])
 
   return offset
-}
-
-/**
- * The profile's blanket rung for areas its base map does not set (§0.7). Keeping
- * it explicit is what makes the grid's "Not set" state readable: a row either
- * falls through to this profile default or, when there is none, to the member
- * default in code — which is also why a newly added area is automatically
- * reachable for Owner/Admin on deploy instead of needing a backfill.
- */
-function BaseLevelSelect({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: Level | null
-  disabled: boolean
-  onChange: (level: Level | null) => void
-}) {
-  return (
-    <div className='flex items-center gap-2'>
-      <span className='text-xs text-muted-foreground'>Unset areas fall through to</span>
-      <Select
-        value={value === null ? NO_BASE_LEVEL : String(value)}
-        disabled={disabled}
-        onValueChange={(next) => onChange(next === NO_BASE_LEVEL ? null : (Number(next) as Level))}>
-        <SelectTrigger size='sm' className='w-44'>
-          <SelectValue placeholder='Member default' />
-        </SelectTrigger>
-        <SelectContent align='end'>
-          <SelectItem value={NO_BASE_LEVEL}>Member default</SelectItem>
-          {[Level.None, Level.Read, Level.Edit, Level.Full].map((level) => (
-            <SelectItem key={level} value={String(level)}>
-              {RUNG_LABELS[level]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
 }
