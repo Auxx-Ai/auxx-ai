@@ -4,7 +4,11 @@ import { FeaturePermissionService } from '../../../../../permissions'
 import { FeatureKey } from '../../../../../permissions/client'
 import type { AgentDeps } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { type AgentAuthoringResolution, resolveAgentAuthoring } from './agent-authoring-guard'
+import {
+  type AgentAuthoringResolution,
+  type AgentAuthoringTier,
+  resolveAgentAuthoring,
+} from './agent-authoring-guard'
 
 /**
  * Authorization for the procedure- and eval-authoring tools (Phase 7 §4.0).
@@ -20,9 +24,10 @@ import { type AgentAuthoringResolution, resolveAgentAuthoring } from './agent-au
  */
 export async function resolveProcedureAuthoring(
   getDeps: GetToolDeps,
-  agentDeps: AgentDeps
+  agentDeps: AgentDeps,
+  tier: AgentAuthoringTier
 ): Promise<AgentAuthoringResolution> {
-  const resolved = await resolveAgentAuthoring(getDeps, agentDeps)
+  const resolved = await resolveAgentAuthoring(getDeps, agentDeps, tier)
   if (!resolved.ok) return resolved
 
   try {

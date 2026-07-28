@@ -31,6 +31,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
+import { useAgentAccess } from '../../hooks/use-agent-access'
 import { usePersonaRealtime } from '../../hooks/use-persona-realtime'
 import { useProcedureRealtime } from '../../procedures/hooks/use-procedure-realtime'
 import { ProcedureDetailBar } from '../../procedures/ui/procedure-detail-bar'
@@ -124,6 +125,11 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   // enforce it). Self-hosted is unlimited, so the gate is a no-op there.
   const { hasAccess } = useFeatureFlags()
   const canProcedures = hasAccess(FeatureKey.agentProcedures)
+  // Per-agent instance access (plan 25 §4.2). Triggers are administration —
+  // they decide when the agent runs autonomously — so their Add affordance sits
+  // on `admin`, matching `agentTrigger.create`'s `tier: 'admin'` assert.
+  // Everything else on this page is authoring and sits on `edit`.
+  const { canEdit, canAdmin } = useAgentAccess(agent.id)
 
   // Chat-kind agents fire from their `ChatWidget.agentId` binding, not from
   // AgentTrigger rows — there are no user-configurable triggers in v5, so the
@@ -240,6 +246,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                     <PersonaEditor
                       key={personaReloadKey}
                       agent={agent}
+                      readOnly={!canEdit}
                       onAutosaveChange={onAutosaveChange}
                     />
                   </Section>
@@ -285,28 +292,30 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                       description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
                       collapsible={false}
                       actions={
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant='ghost' size='xs'>
-                              <Plus />
-                              Add trigger
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align='end'>
-                            <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
-                              <Clock />
-                              Scheduled
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setAddingKind('event')}>
-                              <Zap />
-                              Event
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setAddingKind('source')}>
-                              <Plug />
-                              App or webhook
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        canAdmin ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant='ghost' size='xs'>
+                                <Plus />
+                                Add trigger
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align='end'>
+                              <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
+                                <Clock />
+                                Scheduled
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setAddingKind('event')}>
+                                <Zap />
+                                Event
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setAddingKind('source')}>
+                                <Plug />
+                                App or webhook
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : undefined
                       }>
                       <TriggersSectionContent
                         agent={agent}

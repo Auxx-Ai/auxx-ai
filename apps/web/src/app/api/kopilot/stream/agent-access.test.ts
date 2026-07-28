@@ -1,10 +1,12 @@
 // apps/web/src/app/api/kopilot/stream/agent-access.test.ts
 
+import { ResourcePermission } from '@auxx/database/enums'
 import {
   Area,
   expandLevelsToKeys,
   FeatureKey,
   Level,
+  PermissionKey,
   type PermissionKey as PermissionKeyType,
 } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +31,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `body.agentId` before the stream opens (plain 403), while a CONTINUATION turn
  * restores its agent from the SESSION ROW and is authorized inside the stream
  * (`turn-error` / `forbidden`). Deleting either arm reopens the hole.
+ *
+ * **Permissions v2 item 4 (plan 25 §4.2) then made the gate agent-ID-AWARE.**
+ * The coarse rung dropped from `agents.manage` to the new `agents.view` (chat is
+ * USE, not authoring), and `assertViewInstance('agent', id)` joined it on the
+ * resolved id. Three things below exist only for that:
+ *  - a member at `agents: Full` restricted from ONE agent is refused it;
+ *  - a member at `agents: None` holding ONE explicit grant reaches exactly it;
+ *  - a SLUG in `body.agentId` is resolved to the real `Agent.id` before the
+ *    assert, or the row lookup misses and the area level lets them straight in.
+ * The status code is asserted on every denial, not merely "it didn't run": the
+ * `assert*Instance` helpers THROW `AuxxError`, and this is an App Router handler
+ * with no `auxxErrorMiddleware` to map it — an escaping throw is a 500.
  */
 
 const {
@@ -36,6 +50,7 @@ const {
   getSession,
   hasFeature,
   getCachedAgentById,
+  getAllCachedAgents,
   createSession,
   getSessionById,
   runTurn,
@@ -45,6 +60,14 @@ const {
   getSession: vi.fn(),
   hasFeature: vi.fn(),
   getCachedAgentById: vi.fn(),
+  /**
+   * `resolveAgentId`'s only input — the org agents cache. Returning a row with
+   * BOTH an id and a slug is what makes the "addressed by slug" case meaningful:
+   * a resolver that handed the raw input straight through would look up a
+   * `ResourceAccess` row keyed on the slug, find none, and fall back to the area
+   * level.
+   */
+  getAllCachedAgents: vi.fn(),
   createSession: vi.fn(),
   getSessionById: vi.fn(),
   /**
@@ -86,12 +109,15 @@ vi.mock('@auxx/lib/permissions', async () => {
 
 vi.mock('@auxx/lib/cache', () => ({
   getCachedAgentById,
+  getAllCachedAgents,
   getCachedDefaultModel: vi.fn(async () => null),
 }))
 
-vi.mock('@auxx/lib/errors', () => ({
-  ForbiddenError: class ForbiddenError extends Error {},
-}))
+// NOT stubbed any more. `agent-instance-access` throws the real `NotFoundError`
+// and `CapabilitySet.assertViewInstance` the real `ForbiddenError`, and the
+// route's `error instanceof AuxxError` catch is what keeps those from escaping
+// as a 500 — a hand-rolled stub class would make that catch pass vacuously.
+// `@auxx/lib/errors` is a dependency-free leaf, so importing it is safe here.
 
 vi.mock('@auxx/lib/members', () => ({ isAdminOrOwner }))
 
@@ -179,15 +205,35 @@ const { POST } = await import('./route')
 const ORG_ID = 'org_cuid000000000000000000000'
 const USER_ID = 'usr_cuid000000000000000000000'
 const AGENT_ID = 'agt_cuid000000000000000000000'
+const AGENT_SLUG = 'escalation-lead'
 const SESSION_ID = 'ses_cuid000000000000000000000'
 
-/** A real `CapabilitySet` composed from one area level, exactly as the composer does. */
-function capabilitiesWith(agentsLevel: Level) {
+/**
+ * A real `CapabilitySet` composed from one area level, exactly as the composer
+ * does.
+ *
+ * `instances` adds explicit `ResourceAccess` instance rows (what the share
+ * dialog writes) and, with them, the derived Read rung
+ * `composeUserCapabilities` synthesizes for any member holding a ≥`view` grant —
+ * without it an `agents: None` grantee would be refused at the coarse front door
+ * and the `include` regime would be untestable.
+ */
+function capabilitiesWith(agentsLevel: Level, instances: Record<string, ResourcePermission> = {}) {
+  const derived = Object.values(instances).some((p) => p !== ResourcePermission.none)
+    ? [PermissionKey.agentsView]
+    : []
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.agents]: agentsLevel }) as PermissionKeyType[]),
     {},
     'MEMBER',
-    'full'
+    'full',
+    undefined,
+    undefined,
+    undefined,
+    instances,
+    new Set(Object.keys(instances)),
+    undefined,
+    new Set(derived as PermissionKeyType[])
   )
 }
 
@@ -197,11 +243,11 @@ function capabilitiesWith(agentsLevel: Level) {
  * a restricted profile, or any worker seat (`agents` is absent from
  * `WORKER_AREAS`, so `SEAT_CEILINGS.worker` clamps it to None).
  */
-function signedIn(agentsLevel: Level) {
+function signedIn(agentsLevel: Level, instances: Record<string, ResourcePermission> = {}) {
   getSession.mockResolvedValue({
     user: { id: USER_ID, defaultOrganizationId: ORG_ID, isSuperAdmin: false },
   })
-  getCapabilities.mockResolvedValue(capabilitiesWith(agentsLevel))
+  getCapabilities.mockResolvedValue(capabilitiesWith(agentsLevel, instances))
 }
 
 /** The session row a continuation turn restores its agent from. */
@@ -224,6 +270,7 @@ beforeEach(() => {
   getSession.mockReset()
   getCapabilities.mockReset()
   getCachedAgentById.mockReset().mockResolvedValue({ id: AGENT_ID, dmEnabled: true })
+  getAllCachedAgents.mockReset().mockResolvedValue([{ id: AGENT_ID, slug: AGENT_SLUG }])
   getSessionById.mockReset()
   createSession.mockReset().mockResolvedValue({
     isErr: () => false,
@@ -254,7 +301,7 @@ describe('POST /api/kopilot/stream — new session binds body.agentId', () => {
     expect(runTurn).toHaveBeenCalledTimes(1)
   })
 
-  it('403s a member without agents.manage — THE hole', async () => {
+  it('403s a member with the agents area shut — THE hole', async () => {
     // Before the fix this member got a full agent turn.
     signedIn(Level.None)
     const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
@@ -351,9 +398,9 @@ describe('POST /api/kopilot/stream — continuation turns restore the agent from
 })
 
 describe('POST /api/kopilot/stream — sessions with no agent in play', () => {
-  it('runs a plain Kopilot session for a member without agents.manage', async () => {
-    // The gate must not leak onto master Kopilot: `agentsManage` fronts agent
-    // AUTHORING, and plain Kopilot is the human alone.
+  it('runs a plain Kopilot session for a member with the agents area shut', async () => {
+    // The gate must not leak onto master Kopilot: the `agents` area fronts the
+    // agent feature, and plain Kopilot is the human alone.
     signedIn(Level.None)
     const res = await POST(request({ message: 'hi' }))
     expect(res.status).toBe(200)
@@ -398,10 +445,11 @@ describe('POST /api/kopilot/stream — builder sessions', () => {
     expect(runTurn).toHaveBeenCalledTimes(1)
   })
 
-  it('403s a builder session for a member without agents.manage', async () => {
-    // Deliberate: a builder session's agent is the SUBJECT OF EDITING, which is
-    // exactly what `agentsManage` fronts. The page hosting it is already
-    // capability-gated client-side, so no legitimate session loses anything.
+  it('403s a builder session for a member with the agents area shut', async () => {
+    // Deliberate: a builder session's agent is the SUBJECT OF EDITING, and
+    // `view` is the floor for touching it at all (each authoring tool re-asserts
+    // its own Edit/Full rung). The page hosting it is already capability-gated
+    // client-side, so no legitimate session loses anything.
     signedIn(Level.None)
     const res = await POST(request({ message: 'build', agentId: AGENT_ID, sessionType: 'builder' }))
     expect(res.status).toBe(403)
@@ -415,5 +463,147 @@ describe('POST /api/kopilot/stream — builder sessions', () => {
     const body = await res.text()
     expect(body).toContain('forbidden')
     expect(runTurn).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/kopilot/stream — the coarse rung is agents.view, not agents.manage', () => {
+  it('a member at agents: Read may chat', async () => {
+    // The re-point (permissions v2 item 4). Chatting is USING the agent; under
+    // the old `agentsManage` gate this member — the ordinary read-only seat the
+    // View rung was created for — got a 403.
+    signedIn(Level.Read)
+    const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
+    expect(res.status).toBe(200)
+    await res.text()
+    expect(runTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it('a member at agents: Edit may chat', async () => {
+    signedIn(Level.Edit)
+    const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
+    expect(res.status).toBe(200)
+    await res.text()
+    expect(runTurn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('POST /api/kopilot/stream — per-agent instance access (plan 25 §4.2)', () => {
+  const OTHER_AGENT_ID = 'agt_othercuid00000000000000'
+
+  it('403s an agent restricted to `none` under an OPEN agents area', async () => {
+    // The `exclude` regime: the member administers agents generally, and one
+    // agent carries an explicit `none` row for them. The coarse rung passes, so
+    // only the per-instance assert can refuse this.
+    signedIn(Level.Full, { [AGENT_ID]: ResourcePermission.none })
+    const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
+    // The status code, not merely "it didn't run": `assertViewInstance` throws
+    // `AuxxError`, and this route has no `auxxErrorMiddleware`. An uncaught
+    // throw here is a 500 while still satisfying every `not.toHaveBeenCalled`.
+    expect(res.status).toBe(403)
+    expect(res.headers.get('Content-Type')).not.toBe('text/event-stream')
+    expect(createSession).not.toHaveBeenCalled()
+    expect(runTurn).not.toHaveBeenCalled()
+  })
+
+  it('lets the same member through to an agent they are NOT restricted from', async () => {
+    signedIn(Level.Full, { [OTHER_AGENT_ID]: ResourcePermission.none })
+    const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
+    expect(res.status).toBe(200)
+    await res.text()
+    expect(runTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it('a member at agents: None reaches exactly the ONE agent shared with them', async () => {
+    // The `include` regime — an explicit instance row beats the closed area
+    // floor (plan 25 §2), and the derived Read rung is what gets them past the
+    // coarse gate to find out.
+    signedIn(Level.None, { [AGENT_ID]: ResourcePermission.view })
+    const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
+    expect(res.status).toBe(200)
+    await res.text()
+    expect(runTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it('and reaches nothing else', async () => {
+    signedIn(Level.None, { [AGENT_ID]: ResourcePermission.view })
+    getAllCachedAgents.mockResolvedValue([
+      { id: AGENT_ID, slug: AGENT_SLUG },
+      { id: OTHER_AGENT_ID, slug: 'other-agent' },
+    ])
+    const res = await POST(request({ message: 'hi', agentId: OTHER_AGENT_ID }))
+    expect(res.status).toBe(403)
+    expect(createSession).not.toHaveBeenCalled()
+  })
+
+  it('resolves a SLUG before asserting — a restricted agent stays restricted', async () => {
+    // `agentId` arrives verbatim on the body and the agent detail page routes by
+    // slug. `assertViewInstance('agent', 'escalation-lead')` finds no
+    // `ResourceAccess` row (they key on `Agent.id`), falls back to the area
+    // level — `Full` here — and hands the agent over. Only the resolve stops it.
+    signedIn(Level.Full, { [AGENT_ID]: ResourcePermission.none })
+    const res = await POST(request({ message: 'hi', agentId: AGENT_SLUG }))
+    expect(res.status).toBe(403)
+    expect(createSession).not.toHaveBeenCalled()
+  })
+
+  it('an agent id from another org is refused, not 500ed', async () => {
+    // `resolveAgentId` throws `NotFoundError` — an `AuxxError` like any other,
+    // and uncaught it would escape this handler as a 500. Collapsed into the
+    // same denial as a restriction so the endpoint cannot be used to enumerate.
+    signedIn(Level.Full)
+    const res = await POST(request({ message: 'hi', agentId: 'agt_fromanotherorg0000000000' }))
+    expect(res.status).toBe(403)
+    expect(createSession).not.toHaveBeenCalled()
+  })
+
+  it('refuses a CONTINUATION turn on a restricted agent', async () => {
+    // The half that matters after turn 1: `sessionAgentId` comes off the session
+    // ROW, so a member restricted from an agent AFTER the session was opened
+    // must lose it on the next send.
+    signedIn(Level.Full, { [AGENT_ID]: ResourcePermission.none })
+    existingSession(AGENT_ID)
+    const res = await POST(request({ message: 'again', sessionId: SESSION_ID }))
+    const body = await res.text()
+    expect(body).toContain('turn-error')
+    expect(body).toContain('forbidden')
+    expect(runTurn).not.toHaveBeenCalled()
+  })
+
+  it('the plan gate still fires ahead of the instance check', async () => {
+    // FeatureKey.agents is Layer 1 and outranks any Layer-2 grant: an org
+    // without the feature gets the plan message even for an agent the member
+    // holds an explicit `admin` row on.
+    signedIn(Level.Full, { [AGENT_ID]: ResourcePermission.admin })
+    hasFeature.mockImplementation(async (_org: string, key: string) => key !== FeatureKey.agents)
+    const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
+    expect(res.status).toBe(403)
+    await expect(res.text()).resolves.toContain('plan')
+    expect(getAllCachedAgents).not.toHaveBeenCalled()
+    expect(createSession).not.toHaveBeenCalled()
+  })
+
+  it('an OWNER keeps every agent, restriction row or not', async () => {
+    // §0.10 recovery guarantee — nothing authored on an agent can lock the last
+    // owner out of the chat that would let them undo it.
+    getSession.mockResolvedValue({
+      user: { id: USER_ID, defaultOrganizationId: ORG_ID, isSuperAdmin: false },
+    })
+    getCapabilities.mockResolvedValue(
+      new CapabilitySet(
+        new Set(expandLevelsToKeys({ [Area.agents]: Level.Full }) as PermissionKeyType[]),
+        {},
+        'OWNER',
+        'full',
+        undefined,
+        undefined,
+        undefined,
+        { [AGENT_ID]: ResourcePermission.none },
+        new Set([AGENT_ID])
+      )
+    )
+    const res = await POST(request({ message: 'hi', agentId: AGENT_ID }))
+    expect(res.status).toBe(200)
+    await res.text()
+    expect(runTurn).toHaveBeenCalledTimes(1)
   })
 })

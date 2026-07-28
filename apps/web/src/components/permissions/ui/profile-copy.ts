@@ -1,7 +1,13 @@
 // apps/web/src/components/permissions/ui/profile-copy.ts
 
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
-import { AREA_ORDER, Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import {
+  AREA_ORDER,
+  Area,
+  type InstanceAccessKey,
+  Level,
+  PERMISSION_AREAS,
+} from '@auxx/lib/permissions/client'
 
 /**
  * Shared copy + constants for the permission-profile editor (doc 19 §7).
@@ -92,16 +98,21 @@ export const WORKER_LOCK_REASON =
 export function areaGroups({
   excludeAdminOnly,
   excludeWorkerOnly,
+  exclude,
 }: {
   excludeAdminOnly: boolean
   excludeWorkerOnly: boolean
+  /** Areas dropped by name, for reasons no registry flag expresses. */
+  exclude?: readonly Area[]
 }): Array<{ group: string; areas: Area[] }> {
   const order: string[] = []
   const byGroup = new Map<string, Area[]>()
+  const excluded = new Set(exclude ?? [])
   for (const area of AREA_ORDER) {
     const meta = PERMISSION_AREAS[area]
     if (excludeAdminOnly && meta.adminOnly) continue
     if (excludeWorkerOnly && meta.workerOnly) continue
+    if (excluded.has(area)) continue
     if (!byGroup.has(meta.group)) {
       byGroup.set(meta.group, [])
       order.push(meta.group)
@@ -133,14 +144,40 @@ export const PROFILE_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = area
  * the *human* baseline; an agent's authority comes from this policy and nothing
  * else, bounded at publish by the §2.4a author clamp — so the honest treatment is
  * to show the rung and name the clamp, not to hide it.
+ *
+ * **`Area.agents` is excluded by name** (plan 25 §4.2.DECIDED, decision 4). It
+ * became an `INSTANCE_ACCESS_RESOURCES` key in 2026-07-28's agents slice, and
+ * {@link AREA_TO_INSTANCE_KEY} is *derived* from that registry — so leaving the
+ * area here would auto-grow per-agent child rows **inside another agent's
+ * policy** ("which agents may this agent access") with no code change and no
+ * failing test. Nothing consumes agent-vs-agent instance access, so that is a
+ * control wired to nothing: the exact phantom-control failure
+ * `NON_RECORD_ENTITY_SLUGS`' doc comment exists to prevent. Re-admitting it
+ * means first building the thing it would claim to configure.
  */
 export const AGENT_POLICY_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = areaGroups({
   excludeAdminOnly: false,
   excludeWorkerOnly: true,
+  exclude: [Area.agents],
 })
 
 /** Every area the agent policy renders — also the keyspace the clamp preview checks. */
 export const AGENT_POLICY_AREAS: readonly Area[] = AGENT_POLICY_AREA_GROUPS.flatMap((g) => g.areas)
+
+/**
+ * The instance-access resource types an AGENT policy can express per-instance
+ * rules for — every one except `agent` itself, for the reason on
+ * {@link AGENT_POLICY_AREA_GROUPS}.
+ *
+ * This is a TYPE-level exclusion on purpose. Dropping `Area.agents` from the
+ * groups above stops the rows rendering today, but nothing would stop a future
+ * edit re-admitting the area and silently growing "which agents may this agent
+ * access" controls again. Every agent-policy map keyed by resource type is
+ * `Record<AgentPolicyInstanceKey, …>`, so the exclusion survives as a compile
+ * error while a genuinely NEW instance-access resource still breaks the build
+ * the way an exhaustive map should.
+ */
+export type AgentPolicyInstanceKey = Exclude<InstanceAccessKey, 'agent'>
 
 /** The icon a profile falls back to when it carries no `icon` of its own. */
 export const DEFAULT_PROFILE_ICON = { iconId: 'shield-check', color: 'blue' }

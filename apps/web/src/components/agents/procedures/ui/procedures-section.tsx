@@ -9,6 +9,7 @@ import { ListChecks, Plus } from 'lucide-react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
+import { useAgentAccess } from '../../hooks/use-agent-access'
 import type { AgentDetail } from '../../store/agent-store'
 import { ProcedureRow } from './procedure-row'
 
@@ -31,7 +32,10 @@ export function ProceduresSection({ agent, onSelect }: ProceduresSectionProps) {
   // Beta gate — also enforced on the tab visibility + backend mutations. Hides the
   // "Add procedure" action if the org loses entitlement while this view is mounted.
   const { hasAccess } = useFeatureFlags()
-  const canEdit = hasAccess(FeatureKey.agentProcedures)
+  // Two independent gates, both required: the org's plan entitlement, and the
+  // viewer's `edit` rung on THIS agent (plan 25 §4.2 — procedures are authoring).
+  const { canEdit: canEditAgent } = useAgentAccess(agent.id)
+  const canEdit = hasAccess(FeatureKey.agentProcedures) && canEditAgent
 
   const procedures = api.agentProcedure.list.useQuery({ agentId: agent.id })
   const invalidate = () => utils.agentProcedure.list.invalidate({ agentId: agent.id })

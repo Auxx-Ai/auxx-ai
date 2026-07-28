@@ -24,6 +24,10 @@ export enum PermissionKey {
   workflowsView = 'workflows.view',
   workflowsEdit = 'workflows.edit',
   workflowsManage = 'workflows.manage',
+  // agents is an instance-access resource — per-agent `ResourceAccess` grants
+  // sit on these three rungs (plan 25 §4.2.DECIDED).
+  agentsView = 'agents.view',
+  agentsEdit = 'agents.edit',
   agentsManage = 'agents.manage',
 
   // collaboration
@@ -142,9 +146,23 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     featureKey: FeatureKey.workflows,
   },
   {
+    key: PermissionKey.agentsView,
+    label: 'View & Use Agents',
+    description: 'See agents shared with you and chat with, mention, or assign work to them.',
+    group: 'Automation',
+    featureKey: FeatureKey.agents,
+  },
+  {
+    key: PermissionKey.agentsEdit,
+    label: 'Edit Agents',
+    description: 'Edit an agent’s prompt, tools, knowledge scope, procedures, and evals.',
+    group: 'Automation',
+    featureKey: FeatureKey.agents,
+  },
+  {
     key: PermissionKey.agentsManage,
     label: 'Manage Agents',
-    description: 'Create and configure Kopilot agents.',
+    description: 'Create, publish, delete, and configure Kopilot agents.',
     group: 'Automation',
     featureKey: FeatureKey.agents,
   },
@@ -554,16 +572,57 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.agents]: {
     area: Area.agents,
     label: 'Agents',
-    description: 'Create and configure Kopilot agents.',
+    description:
+      'Use agents shared with you, edit their prompt and tools, or create, publish, and delete them.',
     group: 'Automation',
-    rungs: [{ level: Level.Full, keys: [PermissionKey.agentsManage] }],
-    // Migrated 2026-07-27 (plan 21 §4.1, Tier B): every sibling authoring
-    // router that used to gate on a bare `adminProcedure` now asserts
-    // `agentsManage` instead — `agent-toolset.ts`, `agent-trigger.ts`,
-    // `agent-scope.ts`, `agent-procedure.ts` + `procedure.ts`
-    // (`agentProceduresManageProcedure`), and `eval.ts`'s `evalManageProcedure`
-    // all route through `permissionProcedure(agentsManage)`, matching
-    // `agent.ts`. The area's lever is fully real; flag dropped.
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.agentsView] },
+      { level: Level.Edit, keys: [PermissionKey.agentsEdit] },
+      { level: Level.Full, keys: [PermissionKey.agentsManage] },
+    ],
+    // `Read`/`Edit` rungs added 2026-07-28 (plan 25 §4.2.DECIDED) — prerequisite
+    // for per-agent instance access, exactly as plan 30 §1 was for workflows.
+    // Agents are an `INSTANCE_ACCESS_RESOURCES` entry with
+    // `baselineAtCreate: false`, so an agent with NO explicit `ResourceAccess`
+    // row falls back to THIS area level; on the old single-rung ladder that
+    // fallback could only be `None` or `Full`, which would have handed every
+    // member `admin` on every agent the moment instance access shipped.
+    //   Read  = see the agent and USE it — chat in Kopilot, DM it, @-mention it,
+    //           assign work to it, pick it in an actor picker (user decision
+    //           2026-07-27: `view` means "usable"). There is no separate
+    //           "usable but not editable" tier being preserved here; usability
+    //           and manageability were the SAME key before this split.
+    //   Edit  = prompt, drafts, toolsets, knowledge scope, procedures, evals,
+    //           and RENAME (name + slug). Rename sits here rather than on Full
+    //           — deliberately unlike `Area.workflows` above — because it is an
+    //           authoring field, and `agent.update`'s `ADMIN_ONLY_UPDATE_FIELDS`
+    //           reflects that (user decision 2026-07-28).
+    //   Full  = create, publish, delete, archive, triggers, and the agent's own
+    //           permission profile / `runAsUserId`.
+    // Purely a SPLIT of the old Full rung: no path got more permissive, and no
+    // migration is needed. `Level` is ordinal, and the dev check that #1344's
+    // dashboards rung established as the bar came back clean — all 25
+    // `PermissionGrant` rows carrying an `agents` level store `3` (Full), none
+    // store `1` or `2`, and `ResourceAccess` had zero `agent` rows — so nothing
+    // silently gained rights. `MEMBER_BASELINE_LEVELS[agents]` is `Full`, so no
+    // member regresses and RESTRICTION is the use case, not sharing-up.
+    //
+    // SHARING AN AGENT IS NOT A CAPABILITY GRANT. A chatting user acts as
+    // THEMSELVES: `agent-run-capabilities.ts` intersects the agent's published
+    // policy with the invoker's own capabilities for every human-driven path
+    // (Kopilot SSE, mention, assignment), so an agent can never read data on
+    // someone's behalf that they could not read directly. What a share DOES
+    // hand over is the agent's bound third-party credentials and installed app
+    // tools, which run on the agent's connection — see plan 25 §4.2.DECIDED and
+    // the share dialog's scope note.
+    //
+    // Prior history — migrated 2026-07-27 (plan 21 §4.1, Tier B): every sibling
+    // authoring router that used to gate on a bare `adminProcedure` asserts an
+    // agents key instead (`agent-toolset.ts`, `agent-trigger.ts`,
+    // `agent-scope.ts`, `agent-procedure.ts` + `procedure.ts`, and `eval.ts`'s
+    // `evalManageProcedure`). That pass covered the MUTATING procedures only —
+    // 13 read procedures in those same routers stayed bare `protectedProcedure`
+    // and read no capabilities at all until this slice.
     featureKey: FeatureKey.agents,
   },
   [Area.comments]: {

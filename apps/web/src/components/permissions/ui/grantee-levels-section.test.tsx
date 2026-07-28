@@ -28,6 +28,12 @@ const { granteeAccess, save, defAccess, instanceRows } = vi.hoisted(() => ({
   granteeAccess: { current: undefined as unknown },
   save: vi.fn(),
   defAccess: { isLoading: false, rows: [], setLevel: vi.fn() },
+  // One entry per `InstanceAccessKey`. `agent` joined the registry in the
+  // 2026-07-28 agents slice, and because `AREA_TO_INSTANCE_KEY` is DERIVED from
+  // that registry, the Agents area row immediately started nesting instance
+  // rows — so a mock missing the key crashes on `instances[type].isLoading`
+  // rather than merely under-covering. Adding an instance-access resource will
+  // do this again; the fix is another entry here, not a guard in the component.
   instanceRows: {
     isLoading: false,
     lists: {
@@ -35,8 +41,9 @@ const { granteeAccess, save, defAccess, instanceRows } = vi.hoisted(() => ({
       kb: { items: [], isLoading: false, truncated: false },
       dashboard: { items: [], isLoading: false, truncated: false },
       workflow: { items: [], isLoading: false, truncated: false },
+      agent: { items: [], isLoading: false, truncated: false },
     },
-    rowsByKey: { dataset: [], kb: [], dashboard: [], workflow: [] },
+    rowsByKey: { dataset: [], kb: [], dashboard: [], workflow: [], agent: [] },
     setGrant: vi.fn(),
   },
 }))

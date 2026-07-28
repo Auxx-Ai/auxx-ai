@@ -1,6 +1,13 @@
 // apps/web/src/app/api/eval/run/[runId]/events/agent-access.test.ts
 
-import { Area, expandLevelsToKeys, Level, type PermissionKey } from '@auxx/lib/permissions/client'
+import { ResourcePermission } from '@auxx/database/enums'
+import {
+  Area,
+  expandLevelsToKeys,
+  Level,
+  type PermissionKey,
+  PermissionKey as PermissionKeyEnum,
+} from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -8,23 +15,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * scoped the run by organization, but read no capabilities — so any
  * authenticated member could replay any eval run's full trace (agent messages,
  * tool calls, assertion verdicts) while every `eval.*` tRPC procedure sits
- * behind `permissionProcedure(agentsManage)`.
+ * behind a capability gate.
  *
  * Behavioral: the real handler runs, with a REAL `CapabilitySet`. The DB read
- * is the observed side effect — the gate must land ahead of it.
+ * is the observed side effect — the coarse gate must land ahead of it.
+ *
+ * **The fake distinguishes tables on purpose.** The original version stubbed
+ * `from()` as a table-blind passthrough, so every query in the handler returned
+ * the same row. That made all four tests pass against a handler that never ran
+ * its per-agent check at all: the run row carried no `caseId`, so it always took
+ * the orphan branch. A fake that models the return value but not the REQUEST
+ * cannot fail on the request — the same lesson `grantee-access.test.ts` records
+ * for `fakeDb`'s invisible WHERE clause.
  */
 
-const { getCapabilities, getSession, limit } = vi.hoisted(() => ({
+const { getCapabilities, getSession, selectFrom } = vi.hoisted(() => ({
   getCapabilities: vi.fn(),
   getSession: vi.fn(),
-  limit: vi.fn(async () => [] as unknown[]),
+  // table name -> rows. Set per test; an unset table yields [].
+  selectFrom: vi.fn((_table: string) => [] as unknown[]),
 }))
 
 vi.mock('@auxx/database', () => ({
   database: {
-    select: () => ({ from: () => ({ where: () => ({ limit }) }) }),
+    select: () => ({
+      from: (table: string) => ({ where: () => ({ limit: async () => selectFrom(table) }) }),
+    }),
   },
-  schema: { EvalRun: { id: 'id', organizationId: 'organizationId' } },
+  schema: {
+    EvalRun: { id: 'id', organizationId: 'organizationId' },
+    EvalCase: { id: 'id', organizationId: 'organizationId', agentId: 'agentId' },
+    EvalSuiteRun: { id: 'id', organizationId: 'organizationId', agentId: 'agentId' },
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn() }))
@@ -51,15 +73,41 @@ const { GET } = await import('./route')
 const ORG_ID = 'org_cuid000000000000000000000'
 const USER_ID = 'usr_cuid000000000000000000000'
 const RUN_ID = 'evr_cuid000000000000000000000'
+const CASE_ID = 'evc_cuid000000000000000000000'
+const SUITE_RUN_ID = 'esr_cuid000000000000000000000'
+const AGENT_ID = 'agt_cuid000000000000000000000'
 
-function signedIn(agentsLevel: Level) {
+/**
+ * @param agentsLevel the member's composed `Area.agents` level
+ * @param instance an explicit `ResourceAccess` row on {@link AGENT_ID}, or none.
+ *   `instanceAccess` is keyed by bare instance id and `restrictedInstanceIds`
+ *   marks which ids carry an explicit row — both are needed, or the row is
+ *   invisible to `effectiveInstanceLevel`.
+ */
+function signedIn(agentsLevel: Level, instance?: ResourcePermission) {
   getSession.mockResolvedValue({ user: { id: USER_ID, defaultOrganizationId: ORG_ID } })
+  // Item 5b: a grant that reaches `view` synthesizes the area's Read rung into
+  // `instanceDerivedKeys`, which is what lets a member composing `agents: None`
+  // past a coarse `agents.view` front door at all. `computeUserCapabilities`
+  // does this in production, so a harness that omits it would report a 403 the
+  // real system never returns.
+  const derived =
+    instance !== undefined && instance !== ResourcePermission.none
+      ? new Set([PermissionKeyEnum.agentsView])
+      : new Set<PermissionKey>()
   getCapabilities.mockResolvedValue(
     new CapabilitySet(
       new Set(expandLevelsToKeys({ [Area.agents]: agentsLevel }) as PermissionKey[]),
       {},
       'MEMBER',
-      'full'
+      'full',
+      (id) => id,
+      new Set(),
+      (id) => id,
+      instance === undefined ? {} : { [AGENT_ID]: instance },
+      instance === undefined ? new Set() : new Set([AGENT_ID]),
+      {},
+      derived
     )
   )
 }
@@ -73,44 +121,112 @@ const request = () =>
 
 const params = { params: Promise.resolve({ runId: RUN_ID }) }
 
+/**
+ * Wire the three tables the handler reads.
+ *
+ * `caseAgentId` and `suiteAgentId` are INDEPENDENT so the case→suite fallback
+ * can actually be exercised. An earlier version drove both from one flag, which
+ * meant the "falls back to the suite run" test never took the suite branch at
+ * all — deleting that branch outright left the whole file green.
+ */
+function withRun(
+  opts: {
+    caseId?: string | null
+    suiteRunId?: string | null
+    caseAgentId?: string | null
+    suiteAgentId?: string | null
+  } = {}
+) {
+  const {
+    caseId = CASE_ID,
+    suiteRunId = SUITE_RUN_ID,
+    caseAgentId = AGENT_ID,
+    suiteAgentId = AGENT_ID,
+  } = opts
+  selectFrom.mockImplementation((table: unknown) => {
+    // The mocked `schema` entries are objects; identify them by reference.
+    if (table === mockedSchema.EvalRun) {
+      return [{ id: RUN_ID, status: 'passed', trace: [], assertionResults: [], caseId, suiteRunId }]
+    }
+    if (table === mockedSchema.EvalCase) return caseAgentId ? [{ agentId: caseAgentId }] : []
+    if (table === mockedSchema.EvalSuiteRun) return suiteAgentId ? [{ agentId: suiteAgentId }] : []
+    return []
+  })
+}
+
+const { schema: mockedSchema } = await import('@auxx/database')
+
 beforeEach(() => {
   getSession.mockReset()
   getCapabilities.mockReset()
-  limit
-    .mockReset()
-    .mockResolvedValue([{ id: RUN_ID, status: 'passed', trace: [], assertionResults: [] }])
+  selectFrom.mockReset()
+  withRun()
 })
 
-describe('GET /api/eval/run/[runId]/events', () => {
+describe('GET /api/eval/run/[runId]/events — coarse gate', () => {
   it('401s without a session', async () => {
     getSession.mockResolvedValue(null)
     const res = await GET(request(), params)
     expect(res.status).toBe(401)
-    expect(limit).not.toHaveBeenCalled()
+    expect(selectFrom).not.toHaveBeenCalled()
   })
 
-  it('403s a member without agents.manage before touching the run', async () => {
+  it('403s a member without agents.view before touching the run', async () => {
     signedIn(Level.None)
     const res = await GET(request(), params)
     expect(res.status).toBe(403)
     // The gate must precede the DB read — otherwise existence is still probeable.
-    expect(limit).not.toHaveBeenCalled()
-  })
-
-  it('streams the run for a member holding agents.manage', async () => {
-    signedIn(Level.Full)
-    const res = await GET(request(), params)
-    expect(res.status).toBe(200)
-    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
-    expect(limit).toHaveBeenCalledTimes(1)
-    const body = await res.text()
-    expect(body).toContain('connected')
+    expect(selectFrom).not.toHaveBeenCalled()
   })
 
   it('404s an unknown run for an authorized member', async () => {
     signedIn(Level.Full)
-    limit.mockResolvedValueOnce([])
+    selectFrom.mockImplementation(() => [])
     const res = await GET(request(), params)
     expect(res.status).toBe(404)
+  })
+})
+
+describe('GET /api/eval/run/[runId]/events — per-agent access', () => {
+  it('streams a run whose agent the member may view', async () => {
+    signedIn(Level.Read)
+    const res = await GET(request(), params)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+    expect(await res.text()).toContain('connected')
+  })
+
+  it('403s a member restricted on THAT agent, even holding the whole area', async () => {
+    // The exact bypass the per-instance check exists for: `agents: Full` is the
+    // top rung, and an explicit `none` row must still win.
+    signedIn(Level.Full, ResourcePermission.none)
+    const res = await GET(request(), params)
+    expect(res.status).toBe(403)
+  })
+
+  it('streams for a member with agents: None plus an explicit grant on that agent', async () => {
+    // Plan 25 §2: an explicit instance row outranks a closed area floor.
+    signedIn(Level.None, ResourcePermission.view)
+    const res = await GET(request(), params)
+    expect(res.status).toBe(200)
+  })
+
+  it('falls back to the SUITE RUN when the case no longer names an agent', async () => {
+    // `EvalCase.agentId` is nullable and the case row itself may be gone; the
+    // suite run still knows which agent ran. This must resolve to a real agent
+    // — not to the orphan branch — so a restriction on that agent still binds.
+    withRun({ caseAgentId: null, suiteAgentId: AGENT_ID })
+    signedIn(Level.Full, ResourcePermission.none)
+    expect((await GET(request(), params)).status).toBe(403)
+    signedIn(Level.None, ResourcePermission.view)
+    expect((await GET(request(), params)).status).toBe(200)
+  })
+
+  it('requires the top rung for an orphaned run with no agent to judge', async () => {
+    withRun({ caseId: null, suiteRunId: null, caseAgentId: null, suiteAgentId: null })
+    signedIn(Level.Edit)
+    expect((await GET(request(), params)).status).toBe(403)
+    signedIn(Level.Full)
+    expect((await GET(request(), params)).status).toBe(200)
   })
 })

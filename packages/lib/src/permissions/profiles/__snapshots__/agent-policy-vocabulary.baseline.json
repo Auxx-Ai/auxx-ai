@@ -141,7 +141,9 @@
     },
     "composed": {
       "keys": [
+        "agents.edit",
         "agents.manage",
+        "agents.view",
         "aiConfig.manage",
         "auditLog.view",
         "automationRules.manage",
@@ -330,6 +332,7 @@
     },
     "composed": {
       "keys": [
+        "agents.view",
         "auditLog.view",
         "datasets.view",
         "dispatch.board.view",
@@ -489,7 +492,9 @@
     },
     "composed": {
       "keys": [
+        "agents.edit",
         "agents.manage",
+        "agents.view",
         "automationRules.manage",
         "billing.view",
         "dashboards.view",
@@ -626,7 +631,9 @@
     },
     "composed": {
       "keys": [
+        "agents.edit",
         "agents.manage",
+        "agents.view",
         "aiConfig.manage",
         "auditLog.view",
         "automationRules.manage",

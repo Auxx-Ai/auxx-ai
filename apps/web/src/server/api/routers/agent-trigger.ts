@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/agent-trigger.ts
 
 import { database, schema } from '@auxx/database'
-import { type AgentTriggerInput, AgentTriggerService, agentExistsInOrg } from '@auxx/lib/agents'
+import { type AgentTriggerInput, AgentTriggerService } from '@auxx/lib/agents'
 import { enqueueAgentJob } from '@auxx/lib/ai/agent-framework'
 import { getCachedAgentById, onCacheEvent } from '@auxx/lib/cache'
 import { PermissionKey } from '@auxx/lib/permissions'
@@ -10,7 +10,8 @@ import { createSession } from '@auxx/services'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
+import { assertAgentAccess } from '~/server/lib/agent-instance-access'
+import { createTRPCRouter, permissionProcedure } from '../trpc'
 
 const logger = createScopedLogger('agent-trigger-router')
 
@@ -78,10 +79,24 @@ const triggerInputSchema = z.union([
   dmInputSchema,
 ])
 
-async function ensureAgentInOrg(organizationId: string, agentId: string): Promise<void> {
-  if (!(await agentExistsInOrg(organizationId, agentId))) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+/**
+ * `AgentTrigger.id` → the row, or a 404. Four of the six procedures here are
+ * keyed on a TRIGGER id, but per-instance access lives on the **agent**: the
+ * trigger carries it only transitively. Loading the row first is what turns
+ * `input.id` into an `Agent.id` the assert can key on — without it those
+ * procedures would fall back to the coarse area rung and hand a restricted
+ * agent's triggers to anyone.
+ *
+ * The 404 lands BEFORE the assert on purpose (same rule as
+ * `resolveAgentId`): a trigger from another org must not be distinguishable
+ * from one the caller is restricted from.
+ */
+async function loadTrigger(triggerId: string, organizationId: string) {
+  const trigger = await new AgentTriggerService().getTrigger(triggerId, organizationId)
+  if (!trigger) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Trigger not found' })
   }
+  return trigger
 }
 
 function rowToDto(row: typeof schema.AgentTrigger.$inferSelect) {
@@ -111,17 +126,43 @@ function rowToDto(row: typeof schema.AgentTrigger.$inferSelect) {
   }
 }
 
+/**
+ * Agent triggers — per-agent instance access (plan 25 §4.2).
+ *
+ * Tiers here are deliberately lopsided: reading which triggers exist and what
+ * they fired is **view**, but every WRITE is **admin**, not edit. A trigger is
+ * the thing that makes an agent act autonomously on its OWN credentials with no
+ * invoker to intersect against (`agent-run-capabilities.ts` only narrows to the
+ * invoker on human-driven paths; schedules, record events, app triggers and
+ * webhooks pass none). So authoring a trigger is closer to publishing the agent
+ * than to editing its prompt — user decision 2026-07-28, same rung as
+ * `runAsUserId` and `permissionProfileId`. `runNow` fires the agent on the spot,
+ * so it sits on the same rung as creating the trigger that would have fired it.
+ *
+ * Base procedure is `permissionProcedure(agentsView)` throughout, with the real
+ * decision in the body (`workflow.ts` precedent): the coarse rung keeps the
+ * plan-AND these procedures already ran, and a member composing `agents: None`
+ * who holds one explicit instance grant genuinely holds `agentsView` because the
+ * composer derives that Read rung from their grants. **Every procedure on that
+ * base must assert on a specific agent** — the derived key says only "this
+ * member has some agent access", never which agent.
+ */
 export const agentTriggerRouter = createTRPCRouter({
-  list: protectedProcedure
+  list: permissionProcedure(PermissionKey.agentsView)
     .input(z.object({ agentId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await ensureAgentInOrg(organizationId, input.agentId)
-      const rows = await new AgentTriggerService().listForAgent(input.agentId, organizationId)
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: input.agentId,
+        tier: 'view',
+      })
+      const rows = await new AgentTriggerService().listForAgent(agentId, organizationId)
       return rows.map(rowToDto)
     }),
 
-  create: permissionProcedure(PermissionKey.agentsManage)
+  create: permissionProcedure(PermissionKey.agentsView)
     .input(
       z.object({
         agentId: z.string().min(1),
@@ -132,10 +173,15 @@ export const agentTriggerRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await ensureAgentInOrg(organizationId, input.agentId)
+      const agentId = await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: input.agentId,
+        tier: 'admin',
+      })
 
       const row = await new AgentTriggerService().createTrigger({
-        agentId: input.agentId,
+        agentId,
         organizationId,
         createdById: userId,
         enabled: input.enabled,
@@ -149,7 +195,7 @@ export const agentTriggerRouter = createTRPCRouter({
 
       logger.info('Agent trigger created', {
         organizationId,
-        agentId: input.agentId,
+        agentId,
         triggerId: row.id,
         kind: row.kind,
       })
@@ -157,7 +203,7 @@ export const agentTriggerRouter = createTRPCRouter({
       return rowToDto(row)
     }),
 
-  update: permissionProcedure(PermissionKey.agentsManage)
+  update: permissionProcedure(PermissionKey.agentsView)
     .input(
       z.object({
         id: z.string().min(1),
@@ -168,6 +214,13 @@ export const agentTriggerRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      const trigger = await loadTrigger(input.id, organizationId)
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: trigger.agentId,
+        tier: 'admin',
+      })
       const row = await new AgentTriggerService().updateTrigger(input.id, organizationId, {
         enabled: input.enabled,
         instructions: input.instructions,
@@ -177,25 +230,36 @@ export const agentTriggerRouter = createTRPCRouter({
       return rowToDto(row)
     }),
 
-  delete: permissionProcedure(PermissionKey.agentsManage)
+  delete: permissionProcedure(PermissionKey.agentsView)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const service = new AgentTriggerService()
-      await service.deleteTrigger(input.id, organizationId)
+      const trigger = await loadTrigger(input.id, organizationId)
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: trigger.agentId,
+        tier: 'admin',
+      })
+      await new AgentTriggerService().deleteTrigger(input.id, organizationId)
       await onCacheEvent('agent.updated', { orgId: organizationId })
       return { ok: true as const }
     }),
 
-  runNow: permissionProcedure(PermissionKey.agentsManage)
+  runNow: permissionProcedure(PermissionKey.agentsView)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const service = new AgentTriggerService()
-      const trigger = await service.getTrigger(input.id, organizationId)
-      if (!trigger) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Trigger not found' })
-      }
+      const trigger = await loadTrigger(input.id, organizationId)
+      // Firing the agent by hand is the trigger's whole effect, minus the wait —
+      // it runs on the agent's credentials with `approvalMode: 'auto'`. Same
+      // admin rung as authoring the trigger.
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: trigger.agentId,
+        tier: 'admin',
+      })
 
       const agent = await getCachedAgentById(organizationId, trigger.agentId)
       if (!agent || agent.archivedAt) {
@@ -254,7 +318,7 @@ export const agentTriggerRouter = createTRPCRouter({
       return { sessionId: session.id }
     }),
 
-  listRuns: protectedProcedure
+  listRuns: permissionProcedure(PermissionKey.agentsView)
     .input(
       z.object({
         id: z.string().min(1),
@@ -264,6 +328,15 @@ export const agentTriggerRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      // Single-agent shape: every row returned belongs to the ONE trigger named
+      // in the input, so this asserts rather than filters.
+      const trigger = await loadTrigger(input.id, organizationId)
+      await assertAgentAccess({
+        capabilities: ctx.capabilities,
+        organizationId,
+        idOrSlug: trigger.agentId,
+        tier: 'view',
+      })
       const conditions = [
         eq(schema.AiAgentSession.organizationId, organizationId),
         eq(schema.AiAgentSession.agentTriggerId, input.id),

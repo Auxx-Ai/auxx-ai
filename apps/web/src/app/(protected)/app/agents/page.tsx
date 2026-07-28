@@ -20,7 +20,13 @@ export default function AgentsPage() {
   const { hasAccess } = useFeatureFlags()
   const { can } = useAccess()
 
-  if (!hasAccess(FeatureKey.agents) || !can('agents.manage')) {
+  // `agents.view`, NOT `agents.manage` (plan 25 §4.2.DECIDED): `view` is the
+  // *usable* rung, and this is the "can I get in at all" gate. Gating the
+  // landing page on the authoring key leaves a member holding view/edit — or
+  // one single shared agent — staring at a lock screen. #1346 shipped exactly
+  // that bug for workflows. Creating an agent is still `agents.manage`; that
+  // gate lives on `CreateAgentButton`.
+  if (!hasAccess(FeatureKey.agents) || !can('agents.view')) {
     return (
       <MainPage>
         <MainPageHeader>
@@ -33,7 +39,7 @@ export default function AgentsPage() {
           <EmptyState
             icon={Lock}
             title='Agents Not Available'
-            description='Agents require the agents feature on your plan and permission to manage agents.'
+            description='Agents require the agents feature on your plan and permission to use agents.'
             button={<div className='h-12' />}
           />
         </MainPageContent>

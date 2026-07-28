@@ -2,7 +2,6 @@
 'use client'
 
 import type { ResourcePermission } from '@auxx/database/enums'
-import type { InstanceAccessKey } from '@auxx/lib/permissions/client'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { BookOpen, Database, LayoutDashboard, Library, Workflow } from 'lucide-react'
@@ -11,6 +10,7 @@ import type { InstanceResourceItem } from '../hooks/use-instance-resource-lists'
 import { AccessLevelSelect } from './access-level-select'
 import { allInstancesTitle } from './agent-policy-copy'
 import { permissionLabel } from './level-labels'
+import type { AgentPolicyInstanceKey } from './profile-copy'
 
 /** Indent of every agent-policy child row under its area row. */
 const CHILD_DEPTH = 1
@@ -19,8 +19,16 @@ const CHILD_DEPTH = 1
  * Display metadata per shareable resource type. The plural label is what the
  * "All X" row is named after, so it also reaches the host's destructive-confirm
  * copy — exported rather than duplicated there.
+ *
+ * Keyed by {@link AgentPolicyInstanceKey}, NOT `InstanceAccessKey`: `agent`
+ * joined the instance-access registry in 2026-07-28's agents slice, and an
+ * agent policy has nothing to say about which agents an agent may reach. See
+ * that type for why the exclusion is structural rather than a runtime filter.
  */
-export const RESOURCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon: ReactNode }> = {
+export const RESOURCE_TYPE_META: Record<
+  AgentPolicyInstanceKey,
+  { label: string; icon: ReactNode }
+> = {
   dataset: { label: 'Datasets', icon: <Database className='size-4' /> },
   kb: { label: 'Knowledge bases', icon: <BookOpen className='size-4' /> },
   dashboard: { label: 'Dashboards', icon: <LayoutDashboard className='size-4' /> },
@@ -28,7 +36,7 @@ export const RESOURCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon
 }
 
 interface AgentPolicyInstanceRowsProps {
-  type: InstanceAccessKey
+  type: AgentPolicyInstanceKey
   /** `resources[type].default`, or `undefined` when the type has no entry at all. */
   typeDefault: ResourcePermission | undefined
   /** `resourceDefault` — what a type with no entry of its own resolves to. */

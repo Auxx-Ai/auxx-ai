@@ -6,7 +6,7 @@ import {
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
 } from '@auxx/lib/permissions/client'
-import { BookOpen, Database, LayoutDashboard, type LucideIcon, Workflow } from 'lucide-react'
+import { BookOpen, Bot, Database, LayoutDashboard, type LucideIcon, Workflow } from 'lucide-react'
 
 /**
  * Per-resource UI copy for the generic {@link import('./instance-share-card').InstanceShareCard}
@@ -76,6 +76,28 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
       'and polling triggers run as the system and keep firing this workflow even when nobody ' +
       'here can see it. Only runs someone starts by hand are affected.',
   },
+  agent: {
+    noun: 'agent',
+    baselineHint: 'Shared with the workspace by default. Restrict it to lock it down.',
+    levels: {
+      read: 'Chat, mention & assign work',
+      write: 'Edit prompt, tools & knowledge',
+      full: 'Publish, rename & delete',
+    },
+    // Plan 25 §4.2.DECIDED. The obvious fear — "sharing an agent hands over
+    // everything the agent can reach" — is FALSE here, and saying so is the
+    // point: `agent-run-capabilities.ts` intersects the agent's published policy
+    // with the INVOKER's own capabilities on every human-driven path, so the
+    // note must not repeat the warning plan 25 §4.2.a originally drafted. What a
+    // share genuinely does hand over is narrower and invisible in the policy
+    // grid: the agent's bound connections and installed app tools.
+    scopeNote:
+      'People you share this with chat as themselves — the agent cannot read anything on their ' +
+      'behalf that they could not read directly. What they do gain is the agent’s connected ' +
+      'accounts and installed app tools, which run on the agent’s credentials. Automation is ' +
+      'unaffected: schedules, record events, and app triggers run as the system and keep going ' +
+      'even when nobody here can see the agent.',
+  },
 }
 
 /**
@@ -90,6 +112,7 @@ export const INSTANCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon
   kb: { label: 'Knowledge bases', icon: BookOpen },
   dashboard: { label: 'Dashboards', icon: LayoutDashboard },
   workflow: { label: 'Workflows', icon: Workflow },
+  agent: { label: 'Agents', icon: Bot },
 }
 
 /**

@@ -129,45 +129,88 @@ export class GroupMemberService {
    * receive email/notification fan-out). Pass `includeAgents: true` for
    * agent-aware paths (e.g. agent trigger routing).
    *
+   * `canSeeAgent` applies per-agent instance access (plan 25 §4.2) when the
+   * caller is a USER-facing surface. It belongs here rather than in the caller
+   * because an agent reaches the output through **three** doors and only one is
+   * visible in `actorIds`: the `agent:<id>` spelling, the legacy
+   * `user:<backingUserId>` spelling that this method deliberately reroutes, and
+   * group membership expanded inside the loop below. A caller that filtered its
+   * input array would close one and look like it had closed all three.
+   *
+   * Omit it for system paths (trigger routing, notification fan-out), which run
+   * with no invoking user and must not be clamped by anyone's visibility.
+   *
    * @returns Array of unique user IDs
    */
   async expandToUsers(
     actorIds: ActorId[],
-    options: { includeAgents?: boolean } = {}
+    options: { includeAgents?: boolean; canSeeAgent?: (agentId: string) => boolean } = {}
   ): Promise<string[]> {
     const includeAgents = options.includeAgents ?? false
+    const canSeeAgent = options.canSeeAgent ?? (() => true)
     const userIds = new Set<string>()
 
     // Index agents by id so `agent:<id>` actors expand to their backing user id.
     // Drafts have no backing user — skip them by filtering on userId.
     const agents = await getCachedAgents(this.organizationId)
-    const agentById = new Map(agents.filter((a) => a.userId !== null).map((a) => [a.id, a]))
-    const agentUserIdSet = new Set(
+    const visibleAgents = agents.filter((a) => canSeeAgent(a.id))
+    const agentById = new Map(visibleAgents.filter((a) => a.userId !== null).map((a) => [a.id, a]))
+    // Door 2: the legacy `user:<backingUserId>` spelling. Two sets, not one —
+    // `visible` decides whether an agent may be resolved, `all` decides whether
+    // a given user id IS an agent at all. Collapsing them would let an agent the
+    // caller cannot see fall through as an ordinary user.
+    const visibleAgentUserIds = new Set(
+      visibleAgents.map((a) => a.userId).filter((id): id is string => id !== null)
+    )
+    const allAgentUserIds = new Set(
       agents.map((a) => a.userId).filter((id): id is string => id !== null)
     )
+
+    /**
+     * Add a `user:`-spelled id, applying the agent rules when it turns out to
+     * name an agent's backing user. A genuine human user is always added.
+     */
+    const addUserActor = (id: string) => {
+      if (!allAgentUserIds.has(id)) {
+        userIds.add(id)
+        return
+      }
+      if (includeAgents && visibleAgentUserIds.has(id)) userIds.add(id)
+    }
 
     for (const actorId of actorIds) {
       try {
         const { type, id } = parseActorId(actorId)
 
         if (type === 'user') {
-          // Defensive: if a caller still passes user:<agentUserId> (legacy),
-          // route through includeAgents the same way it would for an agent.
-          if (includeAgents || !agentUserIdSet.has(id)) {
-            userIds.add(id)
-          }
+          // Defensive: a caller may still pass user:<agentUserId> (legacy), so
+          // route it through the same agent rules an `agent:` id would take.
+          addUserActor(id)
         } else if (type === 'agent') {
           if (!includeAgents) continue
+          // `agentById` holds VISIBLE agents only, so an unseeable id misses.
           const agent = agentById.get(id)
           if (agent?.userId) userIds.add(agent.userId)
         } else if (type === 'group') {
+          // Door 3: group membership. A group the caller may see can still
+          // contain an agent they may not — closed by `agentById` below holding
+          // VISIBLE agents only.
           const members = includeAgents
             ? await this.getAllMemberActors(id)
             : await this.getUserActors(id)
           for (const member of members) {
             const parsed = parseActorId(member.actorId)
             if (parsed.type === 'user') {
-              userIds.add(parsed.id)
+              // `addUserActor` rather than a bare add, but note this arm is
+              // currently DEFENSIVE, not load-bearing: `getUserActors` already
+              // drops any member whose id belongs to an agent (see its
+              // `!agentUserIds.has(...)` filter), so an agent member always
+              // arrives on the `agent:` branch instead. Mutating this line to a
+              // bare `userIds.add` therefore kills no test — verified, and said
+              // out loud rather than left to imply coverage it does not have.
+              // It stays because the day `getUserActors` stops pre-splitting,
+              // this is the line that decides whether door 3 reopens.
+              addUserActor(parsed.id)
             } else if (parsed.type === 'agent') {
               const agent = agentById.get(parsed.id)
               if (agent?.userId) userIds.add(agent.userId)

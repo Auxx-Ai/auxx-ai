@@ -75,11 +75,13 @@ export function useNavigationActions(): PaletteAction[] {
       })
     }
 
-    if (hasAccess('agents') && can('agents.manage')) {
+    // `agents.view` — navigation is reachability, not authoring (see the
+    // `workflows.view` entry below).
+    if (hasAccess('agents') && can('agents.view')) {
       actions.push({
         id: 'nav.agents',
         label: 'Agents',
-        subtitle: 'Manage your agents',
+        subtitle: 'Your agents',
         icon: 'brain',
         keywords: 'agents ai',
         perform: () => nav('/agents'),

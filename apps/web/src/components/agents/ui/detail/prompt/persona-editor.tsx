@@ -25,6 +25,13 @@ import type { AutosaveState } from '../../shared/autosave-indicator'
 
 interface PersonaEditorProps {
   agent: AgentDetail
+  /**
+   * The viewer holds `view` but not `edit` on this agent (plan 25 §4.2). The
+   * prompt is still shown — `view` is *usable*, and reading the persona is part
+   * of knowing what you are chatting with — but TipTap mounts non-editable, so
+   * no autosave can fire.
+   */
+  readOnly?: boolean
   /** Lifted autosave state — used by the page-header indicator. */
   onAutosaveChange?: (state: AutosaveState) => void
 }
@@ -64,7 +71,7 @@ function readPromptContent(
  * the subtree's host changes (portal target swap or simple reparenting),
  * leaving the view DOM in a broken state.
  */
-export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
+export function PersonaEditor({ agent, readOnly, onAutosaveChange }: PersonaEditorProps) {
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
   const { patch } = useAgentAutosave(agent.id, { onStateChange: onAutosaveChange })
   const utils = api.useUtils()
@@ -166,6 +173,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
                   referencePickerRef={referencePickerRef}
                   referenceTabs={PERSONA_REFERENCE_TABS}
                   allowedBlocks={PERSONA_BLOCKS}
+                  editable={!readOnly}
                 />
               </div>
             </CollapseWrap>
@@ -195,6 +203,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
                   referencePickerRef={referencePickerRef}
                   referenceTabs={PERSONA_REFERENCE_TABS}
                   allowedBlocks={PERSONA_BLOCKS}
+                  editable={!readOnly}
                 />
               )}
             </ScrollArea>

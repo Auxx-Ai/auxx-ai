@@ -19,6 +19,7 @@ import {
 } from '~/components/pickers/trigger-source'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { useAgentAccess } from '../../../hooks/use-agent-access'
 import type { AgentDetail } from '../../../store/agent-store'
 import { AgentTriggerDialog } from './agent-trigger-dialog'
 import { TriggerLabel } from './trigger-label'
@@ -96,6 +97,12 @@ export function TriggersSectionContent({
     useState<WebhookEndpointSource | null>(null)
   const { appInstallations } = useAppsContext()
   const utils = api.useUtils()
+  // Triggers are ADMINISTRATION, not authoring (plan 25 §4.2): a trigger makes
+  // the agent act autonomously on its own credentials, with no invoker to
+  // intersect against. All four `agentTrigger` writes — create, update, delete,
+  // runNow — assert `admin` server-side, so every affordance here (edit, delete,
+  // and the enable switch, which is an `update`) follows.
+  const { canAdmin } = useAgentAccess(agent.id)
 
   const triggers = api.agentTrigger.list.useQuery({ agentId: agent.id })
 
@@ -254,8 +261,9 @@ export function TriggersSectionContent({
                   lastFiredAt={existing.lastFiredAt}
                   hasError={!!existing.lastError}
                   enabled={existing.enabled}
-                  isEditable
+                  isEditable={canAdmin}
                   isDeletable={false}
+                  readOnly={!canAdmin}
                   onEdit={() => setEditingTrigger(existing)}
                   onToggle={(checked) =>
                     updateTrigger.mutate({ id: existing.id, enabled: checked })
@@ -272,8 +280,9 @@ export function TriggersSectionContent({
                 lastFiredAt={null}
                 hasError={false}
                 enabled={false}
-                isEditable
+                isEditable={canAdmin}
                 isDeletable={false}
+                readOnly={!canAdmin}
                 onEdit={() => setCreatingBuiltinKind(kind)}
                 onToggle={(checked) => {
                   if (!checked) return
@@ -319,8 +328,9 @@ export function TriggersSectionContent({
                 lastFiredAt={row.lastFiredAt}
                 hasError={!!row.lastError}
                 enabled={row.enabled}
-                isEditable={isEditable}
-                isDeletable
+                isEditable={canAdmin && isEditable}
+                isDeletable={canAdmin}
+                readOnly={!canAdmin}
                 onEdit={() => setEditingTrigger(row)}
                 onDelete={() => handleDelete(row)}
                 onToggle={(checked) => updateTrigger.mutate({ id: row.id, enabled: checked })}
@@ -346,6 +356,8 @@ interface TriggerRowProps {
   enabled: boolean
   isEditable: boolean
   isDeletable: boolean
+  /** The viewer lacks `admin` on this agent — the enable switch is frozen too. */
+  readOnly?: boolean
   onEdit?: () => void
   onDelete?: () => void
   onToggle: (checked: boolean) => void
@@ -366,6 +378,7 @@ function TriggerRow({
   enabled,
   isEditable,
   isDeletable,
+  readOnly,
   onEdit,
   onDelete,
   onToggle,
@@ -424,7 +437,13 @@ function TriggerRow({
               </button>
             </Tooltip>
           ) : null}
-          <Switch size='xs' className='ml-1' checked={enabled} onCheckedChange={onToggle} />
+          <Switch
+            size='xs'
+            className='ml-1'
+            checked={enabled}
+            disabled={readOnly}
+            onCheckedChange={onToggle}
+          />
         </>
       }
     />

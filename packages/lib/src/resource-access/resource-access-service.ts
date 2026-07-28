@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { onCacheEvent } from '../cache'
 import { NotificationService } from '../notifications'
 import type { NotificationTargetIds, NotificationTargetType } from '../notifications/client'
@@ -147,6 +148,14 @@ const INSTANCE_SHARE_NOTIFICATION_CONFIG: Record<
       | typeof schema.KnowledgeBase
       | typeof schema.Dashboard
       | typeof schema.WorkflowApp
+      | typeof schema.Agent
+    /**
+     * Which column names the instance in the notification. Explicit rather than
+     * an implicit `table.name`, because `Agent` HAS no `name` column — an
+     * agent's display name is User-owned, carried on its backing `User` row —
+     * so the assumption that every shareable table has one is false.
+     */
+    nameColumn: AnyPgColumn
     noun: string
     targetType: NotificationTargetType
     targetIds: (instanceId: string) => NotificationTargetIds
@@ -154,27 +163,42 @@ const INSTANCE_SHARE_NOTIFICATION_CONFIG: Record<
 > = {
   dataset: {
     table: schema.Dataset,
+    nameColumn: schema.Dataset.name,
     noun: 'dataset',
     targetType: 'DATASET',
     targetIds: (id) => ({ datasetId: id }),
   },
   kb: {
     table: schema.KnowledgeBase,
+    nameColumn: schema.KnowledgeBase.name,
     noun: 'knowledge base',
     targetType: 'KNOWLEDGE_BASE',
     targetIds: (id) => ({ knowledgeBaseId: id }),
   },
   dashboard: {
     table: schema.Dashboard,
+    nameColumn: schema.Dashboard.name,
     noun: 'dashboard',
     targetType: 'DASHBOARD',
     targetIds: (id) => ({ dashboardId: id }),
   },
   workflow: {
     table: schema.WorkflowApp,
+    nameColumn: schema.WorkflowApp.name,
     noun: 'workflow',
     targetType: 'WORKFLOW',
     targetIds: (id) => ({ workflowAppId: id }),
+  },
+  agent: {
+    table: schema.Agent,
+    // No `name` column on `Agent` — the display name lives on the backing
+    // `User`. `slug` is the stable, always-present, human-readable identifier
+    // (it is what the agent detail route is keyed by), so it stands in here
+    // rather than widening this query into a join for one resource.
+    nameColumn: schema.Agent.slug,
+    noun: 'agent',
+    targetType: 'AGENT',
+    targetIds: (id) => ({ agentId: id }),
   },
 }
 
@@ -236,7 +260,7 @@ async function notifyNewInstanceShare(
   const resourceConfig = INSTANCE_SHARE_NOTIFICATION_CONFIG[entityDefinitionId]
 
   const [resource] = await ctx.db
-    .select({ name: resourceConfig.table.name })
+    .select({ name: resourceConfig.nameColumn })
     .from(resourceConfig.table)
     .where(
       and(
@@ -246,6 +270,11 @@ async function notifyNewInstanceShare(
     )
     .limit(1)
   if (!resource) return
+
+  // `Agent.name` is nullable — chat-driven creation leaves it unset — while the
+  // other four tables' name columns are `notNull`. Without this the message
+  // reads "shared the agent null with you".
+  const resourceName = resource.name ?? `Untitled ${resourceConfig.noun}`
 
   const level =
     input.permission === ResourcePermission.admin
@@ -264,10 +293,10 @@ async function notifyNewInstanceShare(
         actorId: ctx.userId,
         targetType: resourceConfig.targetType,
         targetIds: targetIds as never,
-        message: `${actorName} shared the ${resourceConfig.noun} ${resource.name} with you`,
+        message: `${actorName} shared the ${resourceConfig.noun} ${resourceName} with you`,
         metadata: {
           kind: 'RESOURCE_SHARED',
-          resourceName: resource.name,
+          resourceName,
           noun: resourceConfig.noun,
           resourceKey: entityDefinitionId,
           level,

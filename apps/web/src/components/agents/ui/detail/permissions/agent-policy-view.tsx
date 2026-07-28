@@ -3,16 +3,12 @@
 
 import type { AgentPermissionPolicy } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
-import {
-  AREA_ORDER,
-  INSTANCE_ACCESS_RESOURCES,
-  type InstanceAccessKey,
-  PERMISSION_AREAS,
-} from '@auxx/lib/permissions/client'
+import { AREA_ORDER, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { isAccessManageable } from '@auxx/lib/resources/client'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { BookOpen, Database, LayoutDashboard, Workflow } from 'lucide-react'
 import { useMemo } from 'react'
+import type { AgentPolicyInstanceKey } from '~/components/permissions/ui/profile-copy'
 import {
   ResolvedAccessBadge,
   ResolvedAccessDialog,
@@ -24,8 +20,10 @@ import {
 import { useResources } from '~/components/resources/hooks'
 import { AGENT_ACCESS_LEVEL_META, hasAgentOverride, resolveAgentLevel } from './agent-access-level'
 
+// Keyed by `AgentPolicyInstanceKey`, not `InstanceAccessKey` — `agent` is
+// deliberately outside an agent policy's keyspace (see that type).
 const RESOURCE_TYPE_META: Record<
-  InstanceAccessKey,
+  AgentPolicyInstanceKey,
   { label: string; icon: React.ReactNode; description: string }
 > = {
   dataset: {
@@ -194,7 +192,9 @@ export function AgentResolvedPolicyDialog({
         key: instances.key,
         title: instances.title,
         defaultRow: { label: instances.defaultLabel, level: AGENT_LEVEL[instances.level] },
-        rows: (Object.keys(INSTANCE_ACCESS_RESOURCES) as InstanceAccessKey[]).map((type) => {
+        // Driven off `RESOURCE_TYPE_META`, not `INSTANCE_ACCESS_RESOURCES` —
+        // the latter now carries `agent`, which an agent policy never expresses.
+        rows: (Object.keys(RESOURCE_TYPE_META) as AgentPolicyInstanceKey[]).map((type) => {
           const perType = policy.resources?.[type]
           const perTypeOverrides = Object.keys(perType?.overrides ?? {}).length
           const meta = RESOURCE_TYPE_META[type]

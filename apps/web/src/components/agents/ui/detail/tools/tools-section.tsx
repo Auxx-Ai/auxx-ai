@@ -8,6 +8,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { Lock, Plus, Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useAgentAccess } from '~/components/agents/hooks/use-agent-access'
 import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
@@ -41,6 +42,7 @@ export function ToolsSection({ agent, onAutosaveChange, onNavigate }: ToolsSecti
   const { catalog, isLoading: catalogIsLoading } = useToolCatalog({
     surface: agent.kind === 'chat' ? 'chat' : undefined,
   })
+  const { canEdit } = useAgentAccess(agent.id)
 
   const handleSavingChange = useCallback(
     (saving: boolean) => {
@@ -212,16 +214,19 @@ export function ToolsSection({ agent, onAutosaveChange, onNavigate }: ToolsSecti
         initialOpen
         collapsible={false}
         actions={
-          <Button
-            size='xs'
-            variant='ghost'
-            onClick={() => {
-              setPendingAppId(null)
-              setDialogOpen(true)
-            }}>
-            <Plus />
-            Add tools
-          </Button>
+          // Toolsets are authoring (plan 25 §4.2) — `edit`, not `admin`.
+          canEdit ? (
+            <Button
+              size='xs'
+              variant='ghost'
+              onClick={() => {
+                setPendingAppId(null)
+                setDialogOpen(true)
+              }}>
+              <Plus />
+              Add tools
+            </Button>
+          ) : undefined
         }>
         {catalogIsLoading ? (
           <div className='flex flex-col pe-4'>
@@ -256,13 +261,21 @@ export function ToolsSection({ agent, onAutosaveChange, onNavigate }: ToolsSecti
                 restrictionCountBySlug={restrictionCountBySlug}
                 collapsed={collapsed}
                 onToggleCollapsed={toggleCollapsed}
-                onRemove={handleRemove}
-                onToggleTool={toggleTool}
-                onAddToApp={(appId) => {
-                  setPendingAppId(appId)
-                  setDialogOpen(true)
-                }}
-                onOpenAccountPicker={setAccountPickerAppId}
+                // Every mutating affordance on a row is an optional callback,
+                // so withholding them renders the whole tree read-only for a
+                // `view` holder (`agentToolset.listTools` is `agentsView`, so
+                // they can still SEE what the agent may call).
+                onRemove={canEdit ? handleRemove : undefined}
+                onToggleTool={canEdit ? toggleTool : undefined}
+                onAddToApp={
+                  canEdit
+                    ? (appId) => {
+                        setPendingAppId(appId)
+                        setDialogOpen(true)
+                      }
+                    : undefined
+                }
+                onOpenAccountPicker={canEdit ? setAccountPickerAppId : undefined}
                 boundCredIdByApp={boundCredIdByApp}
                 warnNotExternalSafe={agent.kind === 'chat'}
                 mcpReconnectSlugs={mcpReconnectSlugs}

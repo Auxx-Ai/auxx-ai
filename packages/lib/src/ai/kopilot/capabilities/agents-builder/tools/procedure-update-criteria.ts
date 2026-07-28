@@ -52,7 +52,7 @@ export function createUpdateProcedureCriteriaTool(getDeps: GetToolDeps): AgentTo
       },
     },
     execute: async (args, agentDeps) => {
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'edit')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
 
       const procedureId = typeof args.procedureId === 'string' ? args.procedureId : ''

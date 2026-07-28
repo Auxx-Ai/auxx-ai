@@ -121,7 +121,7 @@ export function createUpdateEvalCaseMockTool(getDeps: GetToolDeps): AgentToolDef
       return { caseId: o?.caseId, mockCount: o?.mocks?.length }
     },
     execute: async (args, agentDeps) => {
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'edit')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
 
       const caseId = typeof args.caseId === 'string' ? args.caseId : ''

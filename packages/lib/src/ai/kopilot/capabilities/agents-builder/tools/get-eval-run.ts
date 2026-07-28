@@ -75,7 +75,7 @@ export function createGetEvalRunTool(getDeps: GetToolDeps): AgentToolDefinition 
       truncated: false,
     },
     execute: async (args, agentDeps) => {
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'view')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
 
       const runId = typeof args.runId === 'string' ? args.runId : ''

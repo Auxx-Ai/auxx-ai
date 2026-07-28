@@ -265,4 +265,5 @@ const NOUNS: Record<InstanceAccessKey, string> = {
   kb: 'knowledge base',
   dashboard: 'dashboard',
   workflow: 'workflow',
+  agent: 'agent',
 }

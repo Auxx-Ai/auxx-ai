@@ -30,6 +30,7 @@ import { getInitials } from '~/components/members/utils'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
+import { useAgentAccess } from '../../hooks/use-agent-access'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import {
   useAgentPermissionProfiles,
@@ -67,6 +68,12 @@ interface AgentPermissionsSectionProps {
 export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsSectionProps) {
   const { hasAccess } = useFeatureFlags()
   const { isAdminOrOwner } = useUser()
+  // `permissionProfileId` and `runAsUserId` are `ADMIN_ONLY_UPDATE_FIELDS` on
+  // `agent.update` (plan 25 §4.2) — they decide whose capabilities a run
+  // resolves against. Org rank alone is no longer enough: an OWNER/ADMIN who
+  // has been restricted to `edit` on THIS agent would otherwise get an enabled
+  // control that 403s. Both conditions must hold.
+  const { canAdmin } = useAgentAccess(agent.id)
   const { updateAgent, isUpdating } = useAgentMutations()
   const { profiles, byId, isLoading: profilesLoading, fallbackFor } = useAgentPermissionProfiles()
   const { setProfile, isSaving } = useAgentProfileBinding()
@@ -75,8 +82,8 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
 
   const hasGranularPermissions = hasAccess(FeatureKey.granularPermissions)
   /** Run-as is an agent field, not a policy — it needs no plan feature. */
-  const canEditRunAs = isAdminOrOwner
-  const canEditProfile = isAdminOrOwner
+  const canEditRunAs = isAdminOrOwner && canAdmin
+  const canEditProfile = isAdminOrOwner && canAdmin
   const isDelegated = agent.runAsUserId != null
 
   const boundProfileId = agent.permissionProfileId
@@ -124,11 +131,13 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
       <div className='space-y-6'>
         <DraftVersusPublished agent={agent} />
 
-        {!isAdminOrOwner && (
+        {!canEditProfile && (
           <Alert>
             <ShieldCheck className='size-4' />
             <AlertDescription>
-              Only an owner or admin can change these. The resolved policy is read-only.
+              {isAdminOrOwner
+                ? 'You do not administer this agent, so these are read-only. Ask someone with full access to this agent to change them.'
+                : 'Only an owner or admin can change these. The resolved policy is read-only.'}
             </AlertDescription>
           </Alert>
         )}

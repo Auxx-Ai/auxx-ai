@@ -441,6 +441,12 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
       kb: [PermissionKey.knowledgeBaseView],
       dashboard: [PermissionKey.dashboardsView],
       workflow: [PermissionKey.workflowsView],
+      // `agent` joined the registry in 2026-07-28's agents slice. It is
+      // non-empty precisely because `Area.agents` gained a `Level.Read` rung in
+      // the same change — the derivation is "the area's Read rung or nothing",
+      // so an instance-access area with no Read rung would land here as `[]`
+      // and fail closed rather than confer a key it has no name for.
+      agent: [PermissionKey.agentsView],
     })
   })
 })

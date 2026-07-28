@@ -74,7 +74,7 @@ Optionally pass \`body\` (the step DSL) to seed the procedure now, or omit it an
       },
     },
     execute: async (args, agentDeps) => {
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'edit')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
 
       const name = typeof args.name === 'string' ? args.name.trim() : ''

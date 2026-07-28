@@ -34,6 +34,22 @@ import { SYSTEM_PROFILE_SEEDS } from './system-profiles'
  *
  * It also pins the migration's own idempotence, which is the other half of the
  * bar: a second pass over already-migrated input must be the identity.
+ *
+ * **AMENDED 2026-07-28 — the fixture is no longer a pristine pre-rename
+ * capture.** The agents instance-access slice (plan 25 §4.2) split `Area.agents`
+ * from one `Full → agents.manage` rung into Read/Edit/Full, so every scenario
+ * composing a non-`None` agents level now expands to more keys than the capture
+ * recorded. The whole delta was `+4 × agents.view` and `+3 × agents.edit`
+ * across five scenarios — nothing removed, no `areaLevels` entry moved — and the
+ * fixture was amended by exactly that rule (`level ≥ 1 ⇒ view`, `≥ 2 ⇒ edit`).
+ * {@link agentsRungsAreTheOnlyAmendment} re-derives it from `areaLevels` so the
+ * amendment stays checkable instead of resting on this comment.
+ *
+ * Note the shape of that change: the `mixed` scenario composed `agents` at
+ * `Level.Read` with ZERO keys, because the 1-rung ladder had nothing to expand
+ * at Read. That rung was inert; now it confers `agents.view`. #1345's workflows
+ * split had the same effect and it was accepted then for the same reason — the
+ * rung meaning something is the point of adding it.
  */
 
 const RESOURCES: PolicyResourceRef[] = [
@@ -131,6 +147,29 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
     if (!legacy || !empty) throw new Error('missing baseline scenario')
     expect(legacy.composed.keys.length).toBeGreaterThan(20)
     expect(empty.composed.keys).toEqual([])
+  })
+
+  /**
+   * The 2026-07-28 amendment, re-derived rather than asserted in prose.
+   *
+   * The fixture was hand-edited when `Area.agents` gained its Read/Edit rungs,
+   * which is exactly the kind of edit that can quietly launder a real
+   * regression into a "baseline update". Every recorded agents key must follow
+   * from that scenario's recorded agents `areaLevel` and nothing else — so an
+   * amendment that added a key the ladder does not imply, or dropped one it
+   * does, fails here naming the scenario.
+   */
+  it('carries exactly the agents keys its recorded area level implies (agentsRungsAreTheOnlyAmendment)', () => {
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      const level = scenario.composed.areaLevels.agents ?? 0
+      const expected = [
+        ...(level >= 1 ? [PermissionKey.agentsView] : []),
+        ...(level >= 2 ? [PermissionKey.agentsEdit] : []),
+        ...(level >= 3 ? [PermissionKey.agentsManage] : []),
+      ]
+      const actual = scenario.composed.keys.filter((key) => key.startsWith('agents.')).sort()
+      expect(actual, name).toEqual([...expected].sort())
+    }
   })
 })
 

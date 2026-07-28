@@ -80,7 +80,7 @@ The results arrive automatically as a \`<task-notification>\` message in a later
       // Same contract as the eval tRPC router: agentProcedures feature + admin,
       // and the session agent verified org-scoped. One guard, shared with the
       // procedure-authoring tools.
-      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps)
+      const ctx = await resolveProcedureAuthoring(getDeps, agentDeps, 'edit')
       if (!ctx.ok) return { success: false, output: null, error: ctx.error }
 
       const procedureId = typeof args.procedureId === 'string' ? args.procedureId : undefined

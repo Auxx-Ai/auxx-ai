@@ -13,6 +13,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { AvatarUpload } from '../../../file-upload/ui/avatar-upload'
+import { useAgentAccess } from '../../hooks/use-agent-access'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import type { AgentDetail } from '../../store/agent-store'
 import { toSlug } from '../../utils/agent-slug'
@@ -26,12 +27,20 @@ interface AgentHeroProps {
  * Detail-view header for a completed agent. Three inline editors (name, slug,
  * description) sit alongside the avatar uploader. Setup-mode agents use a
  * different surface — this hero only renders post-`setupCompletedAt`.
+ *
+ * Per-agent instance access (plan 25 §4.2) splits the four fields along the
+ * tier line. **Name and slug are RENAME — the `admin` rung.** The slug is not
+ * cosmetic: it is the agent's `@handle` and its URL, so changing it re-points
+ * every mention. Description and avatar are descriptive authoring and sit on
+ * `edit`, next to the prompt. A `view` holder edits none of them and sees plain
+ * text instead of click-to-edit buttons.
  */
 export function AgentHero({ agent }: AgentHeroProps) {
   const isArchived = !!agent.archivedAt
   const router = useRouter()
   const utils = api.useUtils()
   const { updateAgent } = useAgentMutations()
+  const { canEdit } = useAgentAccess(agent.id)
 
   const handleSlugCommit = useCallback(
     async (next: string) => {
@@ -53,6 +62,7 @@ export function AgentHero({ agent }: AgentHeroProps) {
           size='xs'
           compact
           shape='square'
+          disabled={!canEdit}
           fallback={<Bot className='size-4' />}
           onUploadComplete={() => {
             utils.agent.list.invalidate()
@@ -70,8 +80,15 @@ export function AgentHero({ agent }: AgentHeroProps) {
       </div>
       <div className='flex flex-col align-start flex-1 min-w-0'>
         <div className='flex items-center gap-2'>
+          {/* Rename is EDIT, not admin (user decision 2026-07-28): `agent.update`'s
+              `ADMIN_ONLY_UPDATE_FIELDS` covers only `runAsUserId` /
+              `permissionProfileId` / `archivedAt`, so name and slug are authoring
+              fields on the server. Gating them on admin here would hide an
+              affordance the server allows — and would make `agent.checkSlug`'s
+              instance-`edit` path (the live slug hint below) unreachable. */}
           <InlineNameField
             initialName={agent.name}
+            readOnly={!canEdit}
             onCommit={(next) => updateAgent(agent.id, { name: next })}
           />
           {agent.kind === 'chat' ? (
@@ -88,11 +105,13 @@ export function AgentHero({ agent }: AgentHeroProps) {
           <InlineSlugField
             agentId={agent.id}
             initialSlug={agent.slug}
+            readOnly={!canEdit}
             onCommit={handleSlugCommit}
           />
           <span className='shrink-0'>·</span>
           <InlineDescriptionField
             initialDescription={agent.description}
+            readOnly={!canEdit}
             onCommit={(next) =>
               updateAgent(agent.id, { description: next.length > 0 ? next : null })
             }
@@ -107,10 +126,12 @@ export function AgentHero({ agent }: AgentHeroProps) {
 
 interface InlineNameFieldProps {
   initialName: string | null
+  /** Renders as static text — no click-to-edit button, no input. */
+  readOnly?: boolean
   onCommit: (next: string) => void
 }
 
-function InlineNameField({ initialName, onCommit }: InlineNameFieldProps) {
+function InlineNameField({ initialName, readOnly, onCommit }: InlineNameFieldProps) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(initialName ?? '')
   const inputRef = useRef<AutosizeInputRef>(null)
@@ -155,6 +176,18 @@ function InlineNameField({ initialName, onCommit }: InlineNameFieldProps) {
     }
   }
 
+  if (readOnly) {
+    return (
+      <span
+        className={cn(
+          'text-lg font-medium dark:text-neutral-400 truncate text-left px-1 -mx-1',
+          initialName ? 'text-neutral-900' : 'italic text-muted-foreground'
+        )}>
+        {initialName ?? 'Untitled agent'}
+      </span>
+    )
+  }
+
   if (!editing) {
     return (
       <button
@@ -188,10 +221,12 @@ function InlineNameField({ initialName, onCommit }: InlineNameFieldProps) {
 interface InlineSlugFieldProps {
   agentId: string
   initialSlug: string
+  /** Renders as static text — no click-to-edit button, no input. */
+  readOnly?: boolean
   onCommit: (next: string) => void
 }
 
-function InlineSlugField({ agentId, initialSlug, onCommit }: InlineSlugFieldProps) {
+function InlineSlugField({ agentId, initialSlug, readOnly, onCommit }: InlineSlugFieldProps) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(initialSlug)
   const [error, setError] = useState<string | null>(null)
@@ -283,6 +318,10 @@ function InlineSlugField({ agentId, initialSlug, onCommit }: InlineSlugFieldProp
     }
   }
 
+  if (readOnly) {
+    return <span className='font-mono text-xs px-1 -mx-1 truncate text-left'>@{initialSlug}</span>
+  }
+
   if (!editing) {
     return (
       <button
@@ -325,10 +364,16 @@ function InlineSlugField({ agentId, initialSlug, onCommit }: InlineSlugFieldProp
 
 interface InlineDescriptionFieldProps {
   initialDescription: string | null
+  /** Renders as static text — no click-to-edit button, no input. */
+  readOnly?: boolean
   onCommit: (next: string) => void
 }
 
-function InlineDescriptionField({ initialDescription, onCommit }: InlineDescriptionFieldProps) {
+function InlineDescriptionField({
+  initialDescription,
+  readOnly,
+  onCommit,
+}: InlineDescriptionFieldProps) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(initialDescription ?? '')
   const inputRef = useRef<AutosizeInputRef>(null)
@@ -366,6 +411,14 @@ function InlineDescriptionField({ initialDescription, onCommit }: InlineDescript
       e.preventDefault()
       cancel()
     }
+  }
+
+  if (readOnly) {
+    // No "Add a description" affordance — it would advertise an edit this
+    // member cannot make. An empty description simply renders nothing.
+    return initialDescription ? (
+      <span className='text-xs px-1 -mx-1 truncate text-left min-w-0'>{initialDescription}</span>
+    ) : null
   }
 
   if (!editing) {
