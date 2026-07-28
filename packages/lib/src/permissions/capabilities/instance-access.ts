@@ -1,6 +1,6 @@
 // packages/lib/src/permissions/capabilities/instance-access.ts
 
-import { Area } from './registry'
+import { Area, Level, PERMISSION_AREAS, type PermissionKey } from './registry'
 
 /**
  * Per-resource declaration for instance-level access (doc 08 §1.1 / doc 11 §1.1).
@@ -56,3 +56,33 @@ export const INSTANCE_ACCESS_KEYS = Object.keys(INSTANCE_ACCESS_RESOURCES) as In
 export function isInstanceAccessKey(key: string): key is InstanceAccessKey {
   return Object.hasOwn(INSTANCE_ACCESS_RESOURCES, key)
 }
+
+/**
+ * The `Level.Read` rung keys of every instance-access resource's L2 area — the
+ * ONLY keys a coarse procedure gate may waive in favour of an explicit instance
+ * grant (plan 25 §2).
+ *
+ * Since an explicit instance row now beats the area floor
+ * ({@link import('./entity-access').effectiveInstanceLevel}), a member composing
+ * `workflows: None` who holds one `read` grant must still reach
+ * `workflow.getById` — but the base procedure asserts `workflowsView`, which
+ * they do not hold. `permissionProcedure` therefore waives the assert for the
+ * keys in this set when the member holds ANY instance grant, and lets the
+ * procedure's own `assert{View,Edit,Admin}Instance` decide.
+ *
+ * **Read rung only, deliberately.** The waiver is sound only for procedures that
+ * immediately assert on a specific instance. The higher rungs of these same
+ * areas gate the instance-LESS actions — `workflowsManage` fronts `create` /
+ * `createForResource`, which have no instance to assert on — so waiving those
+ * would hand a `None`-area member the ability to create. Derived from
+ * {@link INSTANCE_ACCESS_RESOURCES} rather than hand-listed: an area with no
+ * `Level.Read` rung contributes nothing and therefore fails closed.
+ */
+export const INSTANCE_ACCESS_VIEW_KEYS: ReadonlySet<PermissionKey> = new Set(
+  INSTANCE_ACCESS_KEYS.flatMap(
+    (key) =>
+      PERMISSION_AREAS[INSTANCE_ACCESS_RESOURCES[key].area].rungs.find(
+        (rung) => rung.level === Level.Read
+      )?.keys ?? []
+  )
+)

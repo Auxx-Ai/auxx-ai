@@ -82,11 +82,13 @@ export function InstanceLevelSelect({
  * Editability is gated on {@link useCanAdminInstance} exactly as before: an
  * instance-restricted admin sees this list read-only (§B.2.7).
  *
- * Dead-grant warning (§B.2.8): a `user` grant whose composed area level is
- * `None` is inert — `effectiveInstanceLevel` closes the area gate before ever
- * consulting the instance row — so each such row gets an inline warning icon,
- * driven by the `granteeAreaLevel` the server annotates onto `forInstance` for
- * `user` grantees only.
+ * Dead-row warning (§B.2.8, re-aimed by plan 25 §2): an explicit instance row
+ * now beats the area floor, so a positive grant to a member composing the area
+ * to `None` is a REAL single-instance share, not a no-op. What is inert is an
+ * explicit `'none'` RESTRICTION on such a member — it removes access they never
+ * had — and only those rows get the inline warning icon, driven by the
+ * `granteeAreaLevel` the server annotates onto `forInstance` for `user`
+ * grantees only.
  */
 export function InstanceShareBody({
   recordId,
@@ -114,10 +116,16 @@ export function InstanceShareBody({
     return PERMISSION_AREAS[area].label
   }, [isSupported, key])
 
-  const granteeAreaLevelByActor = useMemo(() => {
-    const map = new Map<string, Level | undefined>()
-    for (const g of grants) map.set(g.actorId, g.granteeAreaLevel)
-    return map
+  // An explicit `'none'` restriction on a member who already composes the area
+  // to `None` — the only row shape that is still genuinely inert (plan 25 §2).
+  const deadRowActorIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const g of grants) {
+      if (g.granteeAreaLevel === Level.None && g.permission === ResourcePermission.none) {
+        ids.add(g.actorId)
+      }
+    }
+    return ids
   }, [grants])
 
   if (!isSupported) return null
@@ -133,10 +141,10 @@ export function InstanceShareBody({
       depth={depth}
       renderLockedLabel={(choice) => permissionLabel(choice, 'long')}
       renderPicker={({ value, onChange, disabled, actorId }) => {
-        const isDeadGrant = granteeAreaLevelByActor.get(actorId) === Level.None
+        const isDeadRow = deadRowActorIds.has(actorId)
         return (
           <>
-            {isDeadGrant && areaLabel && (
+            {isDeadRow && areaLabel && (
               <Tooltip content={deadGrantWarning(areaLabel)}>
                 <AlertTriangle className='size-3.5 text-amber-500' />
               </Tooltip>

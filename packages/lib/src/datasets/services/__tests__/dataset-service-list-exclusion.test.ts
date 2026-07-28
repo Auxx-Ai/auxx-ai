@@ -60,6 +60,12 @@ async function whereClausesFor(excludeIds?: readonly string[]) {
   return captured
 }
 
+async function whereClausesForInclude(includeIds?: readonly string[]) {
+  const { db, captured } = fakeDb()
+  await new DatasetService(db as never).list('org_1', { includeIds }, { page: 1, limit: 20 })
+  return captured
+}
+
 describe('DatasetService.list — excludeIds', () => {
   it('runs the page query and the totalCount query over the same where-clause', async () => {
     const captured = await whereClausesFor(['dset_a', 'dset_b'])
@@ -80,5 +86,33 @@ describe('DatasetService.list — excludeIds', () => {
     const captured = await whereClausesFor([])
     expect(sqlShape(captured.page)).not.toContain(' not in ')
     expect(sqlShape(captured.page)).toBe(sqlShape((await whereClausesFor(undefined)).page))
+  })
+})
+
+/**
+ * `DatasetFilters.includeIds` — the plan 25 §2 inverse: a `datasets: None`
+ * member holding explicit grants sees exactly those datasets. Same two
+ * properties, and the same empty-array hazard (`inArray([])` is invalid SQL too).
+ */
+describe('DatasetService.list — includeIds', () => {
+  it('emits an `in` predicate when ids are named', async () => {
+    const captured = await whereClausesForInclude(['dset_a', 'dset_b'])
+    const shape = sqlShape(captured.page)
+    expect(shape).toContain(' in ')
+    expect(shape).not.toContain(' not in ')
+  })
+
+  it('runs the page query and the totalCount query over the same where-clause', async () => {
+    const captured = await whereClausesForInclude(['dset_a'])
+    expect(captured.page).toBeDefined()
+    expect(captured.count).toBe(captured.page)
+  })
+
+  it('emits NO predicate for an empty id list', async () => {
+    // Drizzle renders an empty `inArray` as invalid SQL. `instanceListScope`
+    // returns `kind: 'none'` in that case and the router short-circuits before
+    // reaching here, but the guard must hold on its own.
+    const captured = await whereClausesForInclude([])
+    expect(sqlShape(captured.page)).toBe(sqlShape((await whereClausesForInclude(undefined)).page))
   })
 })

@@ -137,7 +137,9 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'workflows',
     icon: <Zap />,
     featureKey: 'workflows',
-    permissionKey: 'workflows.manage',
+    // View, not Manage: workflows gained Read/Edit rungs in plan 30, so gating the
+    // nav entry on Manage hid it from every legitimate Read/Edit holder.
+    permissionKey: 'workflows.view',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
   {

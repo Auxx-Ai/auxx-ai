@@ -405,12 +405,15 @@ export const resourceAccessRouter = createTRPCRouter({
    * Get all access grants for a specific instance.
    *
    * `user` grantees are annotated with `granteeAreaLevel` — their composed
-   * Layer-2 level for the instance's L2 `area` (capability layer v2 Part
-   * B.2.8) — so the Share UI can warn when a grant is inert: `effectiveInstanceLevel`
-   * short-circuits at area None *before* consulting instance rows, so sharing to
-   * a user whose profile composes that area to None is a silent no-op. Skipped
-   * for non-`user` grantees (group/team/role/profile are level *sources*, not
-   * subjects) and for defs outside the instance-access registry.
+   * Layer-2 level for the instance's L2 `area` (capability layer v2 Part B.2.8)
+   * — so the Share UI can warn when a row is inert. Since plan 25 §2 an explicit
+   * row BEATS the area floor, so `Level.None` alone no longer means dead: a
+   * positive grant to such a member is exactly how a single-instance share
+   * works. Only `Level.None` paired with an explicit `'none'` permission is
+   * inert (it removes access they never had), which is the pairing
+   * `instance-share-body.tsx` warns on. Skipped for non-`user` grantees
+   * (group/team/role/profile are level *sources*, not subjects) and for defs
+   * outside the instance-access registry.
    * `getCapabilities` is cache-backed, and only the few user grantees on one
    * instance are resolved, so this stays cheap even though it fans out to one
    * cache read per grantee.

@@ -128,16 +128,18 @@ describe('the Area.workflows ladder (plan 30 §1)', () => {
     expect(levelFor(m, 'workflow', 'wf_unrestricted')).toBe(permission)
   })
 
-  it('area None denies a workflow outright, row or no row', () => {
+  it('area None denies a workflow with NO row, but an explicit row overrides it', () => {
     const m = member({
       profileLevels: { [Area.workflows]: Level.None },
       rows: [{ entityInstanceId: 'wf_shared', permission: 'admin' }],
     })
+    // Fail-closed for the unshared majority — the load-bearing half.
     expect(levelFor(m, 'workflow', 'wf_unrestricted')).toBeUndefined()
-    // A dead grant: the row composes, but the area short-circuit is checked
-    // first (plan 24 §B.2.8 — the behaviour plan 25 §2 will deliberately flip).
+    // …and the grant is LIVE (plan 25 §2, flipped from plan 24 §B.2.8's dead
+    // grant): most-specific-wins runs all the way down, so "no workflows except
+    // this one" is expressible at last.
     expect(m.caps.instanceAccess).toEqual({ wf_shared: 'admin' })
-    expect(levelFor(m, 'workflow', 'wf_shared')).toBeUndefined()
+    expect(levelFor(m, 'workflow', 'wf_shared')).toBe(ResourcePermission.admin)
   })
 })
 
@@ -238,6 +240,12 @@ describe('worker seats compose `workflows: None` (plan 30 §8 item 1 — DELIBER
     // manual workflow from a record. Reopening it means adding `Area.workflows`
     // to `WORKER_AREAS` — at which point this test should fail loudly rather
     // than the semantics changing silently.
+    //
+    // Load-bearing since plan 25 §2: an explicit row now outranks the AREA
+    // floor, so the seat ceiling had to become an explicit check in
+    // `effectiveInstanceLevel` instead of riding on the already-clamped key set.
+    // Without it this exact case — worker seat + `admin` grant — would hand out
+    // a workflow the seat's billing packaging excludes.
     const m = member({
       seatType: 'worker',
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.workflows]: Level.Full },
@@ -273,27 +281,32 @@ describe('the seeded Member baseline is unaffected by the rung split', () => {
 })
 
 /**
- * `deniedInstanceIds` — the exclusion `workflow.list` computes UP FRONT so its
- * query can filter before it paginates.
+ * `instanceListScope` — the id filter `workflow.list` computes UP FRONT so its
+ * query can narrow before it paginates.
  *
- * The property that matters is not the shape of the returned array but that it
- * is the exact COMPLEMENT of `canViewInstance`. Every case below asserts that
- * equivalence over a candidate id list, so the exclusion and the gate cannot
- * drift into a leak (an id the gate denies but the exclusion omits) or a
- * disappearance (an id the gate allows but the exclusion drops).
+ * The property that matters is not the shape of the returned lists but that
+ * applying them reproduces `canViewInstance` EXACTLY. Every case below asserts
+ * that equivalence over a candidate id list, so the filter and the gate cannot
+ * drift into a leak (an id the gate denies but the filter admits) or a
+ * disappearance (an id the gate allows but the filter drops — the plan 25 §2
+ * failure mode: an empty page for a workflow you can demonstrably open).
  */
-describe('deniedInstanceIds — the list exclusion is the complement of the gate', () => {
+describe('instanceListScope — the list filter reproduces the gate exactly', () => {
   const CANDIDATES = ['wf_open', 'wf_locked', 'wf_other', 'wf_shared', 'wf_never_touched']
 
   /** What the list SHOULD contain, derived from the shipped per-instance gate. */
   const viewableByGate = (m: ReturnType<typeof member>) =>
     CANDIDATES.filter((id) => m.server.canViewInstance('workflow', id))
 
-  /** What the list DOES contain once the exclusion is applied to the query. */
-  const viewableByExclusion = (m: ReturnType<typeof member>) => {
-    const { deniesAll, deniedIds } = m.server.deniedInstanceIds('workflow')
-    if (deniesAll) return []
-    const excluded = new Set(deniedIds)
+  /** What the list DOES contain once the scope is applied to the query. */
+  const viewableByScope = (m: ReturnType<typeof member>) => {
+    const scope = m.server.instanceListScope('workflow')
+    if (scope.kind === 'none') return []
+    if (scope.kind === 'include') {
+      const included = new Set(scope.includeIds)
+      return CANDIDATES.filter((id) => included.has(id))
+    }
+    const excluded = new Set(scope.excludeIds)
     return CANDIDATES.filter((id) => !excluded.has(id))
   }
 
@@ -304,12 +317,13 @@ describe('deniedInstanceIds — the list exclusion is the complement of the gate
         { entityInstanceId: 'wf_shared', permission: 'view' },
       ],
     })
-    const { deniesAll, deniedIds } = m.server.deniedInstanceIds('workflow')
-    expect(deniesAll).toBe(false)
     // `wf_shared` carries a row but the member may still VIEW it, so it must NOT
     // be excluded — "has a row" is not "is denied".
-    expect(deniedIds).toEqual(['wf_locked'])
-    expect(viewableByExclusion(m)).toEqual(viewableByGate(m))
+    expect(m.server.instanceListScope('workflow')).toEqual({
+      kind: 'exclude',
+      excludeIds: ['wf_locked'],
+    })
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
   })
 
   it('excludes a workflow whose rows do not include this member', () => {
@@ -318,28 +332,55 @@ describe('deniedInstanceIds — the list exclusion is the complement of the gate
     // as denial. Still a restriction — still enumerable from
     // `restrictedInstanceIds`.
     const m = member({ rows: [], restrictedInstances: ['wf_locked'] })
-    expect(m.server.deniedInstanceIds('workflow').deniedIds).toEqual(['wf_locked'])
-    expect(viewableByExclusion(m)).toEqual(viewableByGate(m))
+    expect(m.server.instanceListScope('workflow').excludeIds).toEqual(['wf_locked'])
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
   })
 
-  it('area None denies EVERYTHING — not expressible as an id list', () => {
-    // The one non-restriction denial path, and the reason `deniesAll` exists:
-    // with the area gate closed even a row-less workflow is denied, so no
-    // exclusion list could be complete. The caller must return an empty list.
+  it('area None with NO grants sees nothing at all', () => {
+    // Row-less denial cannot be enumerated as an exclusion, so this arm must be
+    // `'none'` and the caller must return an empty list without querying.
     const m = member({ profileLevels: { [Area.workflows]: Level.None } })
-    expect(m.server.deniedInstanceIds('workflow')).toEqual({ deniesAll: true, deniedIds: [] })
+    expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'none' })
     expect(viewableByGate(m)).toEqual([])
-    expect(viewableByExclusion(m)).toEqual([])
+    expect(viewableByScope(m)).toEqual([])
   })
 
-  it('a worker seat is the same deniesAll case (seat ceiling, not a row)', () => {
+  it('area None WITH a grant INVERTS to an allow-list (plan 25 §2)', () => {
+    // The live repro. Before the flip this member got `deniesAll` and an empty
+    // page while `getById('wf_shared')` succeeded — `list` silently
+    // contradicting `canViewInstance`.
+    const m = member({
+      profileLevels: { [Area.workflows]: Level.None },
+      rows: [
+        { entityInstanceId: 'wf_shared', permission: 'view' },
+        { entityInstanceId: 'wf_locked', permission: 'none' },
+      ],
+    })
+    expect(m.server.instanceListScope('workflow')).toEqual({
+      kind: 'include',
+      includeIds: ['wf_shared'],
+    })
+    expect(viewableByGate(m)).toEqual(['wf_shared'])
+    expect(viewableByScope(m)).toEqual(['wf_shared'])
+  })
+
+  it('area None whose only rows are `none` restrictions still sees nothing', () => {
+    const m = member({
+      profileLevels: { [Area.workflows]: Level.None },
+      rows: [{ entityInstanceId: 'wf_locked', permission: 'none' }],
+    })
+    expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'none' })
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
+  })
+
+  it('a worker seat sees nothing even holding an admin grant (seat ceiling)', () => {
     const m = member({
       seatType: 'worker',
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.workflows]: Level.Full },
       rows: [{ entityInstanceId: 'wf_shared', permission: 'admin' }],
     })
-    expect(m.server.deniedInstanceIds('workflow').deniesAll).toBe(true)
-    expect(viewableByExclusion(m)).toEqual(viewableByGate(m))
+    expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'none' })
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
   })
 
   it('excludes nothing for an OWNER, even with a `none` row', () => {
@@ -347,17 +388,17 @@ describe('deniedInstanceIds — the list exclusion is the complement of the gate
       role: 'OWNER',
       rows: [{ entityInstanceId: 'wf_locked', permission: 'none' }],
     })
-    expect(m.server.deniedInstanceIds('workflow')).toEqual({ deniesAll: false, deniedIds: [] })
-    expect(viewableByExclusion(m)).toEqual(CANDIDATES)
-    expect(viewableByExclusion(m)).toEqual(viewableByGate(m))
+    expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'exclude', excludeIds: [] })
+    expect(viewableByScope(m)).toEqual(CANDIDATES)
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
   })
 
   it('excludes nothing when the org has no instance rows at all', () => {
     // The overwhelmingly common shape under `baselineAtCreate: false`: the
     // exclusion is empty, so the query is unchanged and the fix costs nothing.
     const m = member()
-    expect(m.server.deniedInstanceIds('workflow')).toEqual({ deniesAll: false, deniedIds: [] })
-    expect(viewableByExclusion(m)).toEqual(viewableByGate(m))
+    expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'exclude', excludeIds: [] })
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
   })
 
   it('is grantable-up: an explicit grant on a restricted workflow drops out of the exclusion', () => {
@@ -367,8 +408,8 @@ describe('deniedInstanceIds — the list exclusion is the complement of the gate
         { entityInstanceId: 'wf_locked', permission: 'view' },
       ],
     })
-    expect(m.server.deniedInstanceIds('workflow').deniedIds).toEqual([])
-    expect(viewableByExclusion(m)).toEqual(viewableByGate(m))
+    expect(m.server.instanceListScope('workflow').excludeIds).toEqual([])
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
   })
 
   it('carries ids of OTHER instance-access types, which is harmless', () => {
@@ -378,9 +419,26 @@ describe('deniedInstanceIds — the list exclusion is the complement of the gate
     // a workflow the member may see — documented here so nobody "fixes" it by
     // adding a per-type query.
     const m = member({ rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }] })
-    expect(m.server.deniedInstanceIds('workflow').deniedIds).toEqual(['ds_locked'])
-    expect(viewableByExclusion(m)).toEqual(CANDIDATES)
-    expect(viewableByExclusion(m)).toEqual(viewableByGate(m))
+    expect(m.server.instanceListScope('workflow').excludeIds).toEqual(['ds_locked'])
+    expect(viewableByScope(m)).toEqual(CANDIDATES)
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
+  })
+
+  it('an allow-list may name foreign ids too, equally harmless', () => {
+    // The `include` mirror of the case above: a `datasets: None` member holding
+    // one dataset grant, listing WORKFLOWS. The allow-list names the dataset id,
+    // which matches no workflow row — an over-broad allow-list can no more admit
+    // a workflow than an over-broad exclusion can drop one.
+    const m = member({
+      profileLevels: { [Area.workflows]: Level.None },
+      rows: [{ entityInstanceId: 'ds_shared', permission: 'view' }],
+    })
+    expect(m.server.instanceListScope('workflow')).toEqual({
+      kind: 'include',
+      includeIds: ['ds_shared'],
+    })
+    expect(viewableByScope(m)).toEqual([])
+    expect(viewableByScope(m)).toEqual(viewableByGate(m))
   })
 })
 

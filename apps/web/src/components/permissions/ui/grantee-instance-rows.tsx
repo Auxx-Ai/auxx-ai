@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/grantee-instance-rows.tsx
 'use client'
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import { ResourcePermission } from '@auxx/database/enums'
 import { type InstanceAccessKey, Level } from '@auxx/lib/permissions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
@@ -39,9 +39,13 @@ const CHILD_DEPTH = 1
  * the Share card and dialog show, covering every OTHER grantee on that
  * instance (not just this one).
  *
- * Dead-grant warning (§B.2.8): shown only for `user` grantees (`isUser`),
- * using the composed area level the HOST already knows from the same grid
- * (the area row sits directly above these rows) — no extra server call.
+ * Dead-row warning (§B.2.8, re-aimed by plan 25 §2): shown only for `user`
+ * grantees (`isUser`), using the composed area level the HOST already knows from
+ * the same grid (the area row sits directly above these rows) — no extra server
+ * call. An explicit row now beats the area floor, so a positive grant on a
+ * `None`-area member is a real single-instance share; only an explicit
+ * `No access` row on such a member is inert, because it takes away access they
+ * never had.
  */
 export function GranteeInstanceRows({
   rows,
@@ -86,7 +90,7 @@ export function GranteeInstanceRows({
     )
   }
 
-  const showDeadGrantWarning = isUser && areaLevel === Level.None
+  const showDeadRowWarning = isUser && areaLevel === Level.None
 
   return (
     <div className='flex flex-col gap-0.5'>
@@ -95,7 +99,7 @@ export function GranteeInstanceRows({
           key={`${row.key}:${row.id}`}
           row={row}
           disabled={!canEdit}
-          showDeadGrantWarning={showDeadGrantWarning}
+          showDeadRowWarning={showDeadRowWarning}
           areaLabel={areaLabel}
           onChange={(level) => onChange(row.key, row.id, level)}
         />
@@ -107,20 +111,20 @@ export function GranteeInstanceRows({
 function GranteeInstanceRowItem({
   row,
   disabled,
-  showDeadGrantWarning,
+  showDeadRowWarning,
   areaLabel,
   onChange,
 }: {
   row: InstanceGranteeRow
   disabled: boolean
-  showDeadGrantWarning: boolean
+  showDeadRowWarning: boolean
   areaLabel: string
   onChange: (level: ResourcePermission | 'inherit') => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const meta = INSTANCE_TYPE_META[row.key]
   const recordId = toRecordId(row.key, row.id)
-  const isDeadGrant = showDeadGrantWarning && row.grantLevel !== undefined
+  const isDeadRow = showDeadRowWarning && row.grantLevel === ResourcePermission.none
 
   return (
     <TreeRow
@@ -134,7 +138,7 @@ function GranteeInstanceRowItem({
       onToggleOpen={() => setIsOpen((v) => !v)}
       actions={
         <>
-          {isDeadGrant && (
+          {isDeadRow && (
             <Tooltip content={deadGrantWarning(areaLabel)}>
               <AlertTriangle className='size-3.5 text-amber-500' />
             </Tooltip>

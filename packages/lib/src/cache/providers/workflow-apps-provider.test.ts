@@ -158,3 +158,72 @@ describe('list — excludeIds is applied BEFORE pagination', () => {
     expect(hasMore).toBe(true)
   })
 })
+
+/**
+ * `list({ includeIds })` — the INVERSE filter (plan 25 §2): a member composing
+ * `workflows: None` who holds explicit instance grants may see exactly those
+ * workflows, and the denied set (every row-less workflow in the org) is
+ * unbounded, so only an allow-list can express it.
+ */
+describe('list — includeIds narrows to an allow-list, also BEFORE pagination', () => {
+  const six = () => ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => app(id, true, null))
+
+  it('returns only the named ids, and total describes THAT set', async () => {
+    const { workflows, total, hasMore } = await accessorOver(six()).list({
+      includeIds: ['b', 'e'],
+      limit: 50,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['b', 'e'])
+    expect(total).toBe(2)
+    expect(hasMore).toBe(false)
+  })
+
+  it('paginates over the narrowed set', async () => {
+    const { workflows, total, hasMore } = await accessorOver(six()).list({
+      includeIds: ['b', 'd', 'f'],
+      limit: 2,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['b', 'd'])
+    expect(total).toBe(3)
+    expect(hasMore).toBe(true)
+  })
+
+  it('ignores ids that name no workflow (foreign instance-access ids)', async () => {
+    // `restrictedInstanceIds` is org-wide across datasets/KBs/dashboards, so an
+    // allow-list built from it can name a dataset id while listing workflows.
+    const { workflows, total } = await accessorOver(six()).list({
+      includeIds: ['b', 'ds_shared'],
+      limit: 50,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['b'])
+    expect(total).toBe(1)
+  })
+
+  it('an EMPTY allow-list is treated as "not set", never as "show nothing"', async () => {
+    // `instanceListScope` returns `kind: 'none'` for that case and the router
+    // short-circuits, so an empty array must never reach here — but if it does,
+    // silently blanking the list would be the worst possible reading.
+    const { workflows, total } = await accessorOver(six()).list({
+      includeIds: [],
+      limit: 50,
+      offset: 0,
+    })
+    expect(workflows).toHaveLength(6)
+    expect(total).toBe(6)
+  })
+
+  it('composes with the other predicates rather than replacing them', async () => {
+    const apps = [...six(), { ...app('sys', true, null), ownerType: 'sequence' }]
+    const { workflows, total } = await accessorOver(apps).list({
+      includeIds: ['a', 'b', 'sys'],
+      search: 'b',
+      limit: 50,
+      offset: 0,
+    })
+    expect(workflows.map((w: CachedWorkflowApp) => w.id)).toEqual(['b'])
+    expect(total).toBe(1)
+  })
+})

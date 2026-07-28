@@ -34,12 +34,21 @@ export interface InstanceShareGrant {
   actorId: ActorId
   choice: InstanceLevel
   /**
+   * The raw stored permission, INCLUDING `'none'` — which {@link choice} cannot
+   * express. Only the dead-row warning reads it (see {@link granteeAreaLevel}).
+   */
+  permission: ResourcePermission
+  /**
    * The user grantee's own composed Layer-2 level for this instance's L2 area
    * (capability layer v2 Part B.2.8), server-annotated on `forInstance`.
    * `undefined` for group/team/role/profile grantees — they are level
    * *sources*, not subjects — and while the annotation hasn't loaded yet.
-   * `Level.None` here means the grant is a dead grant: `effectiveInstanceLevel`
-   * short-circuits at area None before ever consulting this row.
+   *
+   * `Level.None` no longer means the row is dead: since plan 25 §2 an explicit
+   * row beats the area floor, so a positive grant on a `None`-area member is
+   * precisely how a single-instance share works. Only `Level.None` combined with
+   * an explicit `'none'` {@link permission} is inert — it removes access the
+   * member never had.
    */
   granteeAreaLevel?: Level
 }
@@ -146,6 +155,7 @@ export function useInstanceShare({
           {
             actorId,
             choice: r.permission as InstanceLevel,
+            permission: r.permission,
             granteeAreaLevel: r.granteeAreaLevel,
           },
         ]

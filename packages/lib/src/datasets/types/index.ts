@@ -354,7 +354,7 @@ export interface DatasetFilters {
   hideManaged?: boolean
   /**
    * Dataset ids to exclude from the query — the caller's per-member access
-   * exclusion (plan 30 / `CapabilitySet.deniedInstanceIds('dataset')`).
+   * exclusion (plan 30 / `CapabilitySet.instanceListScope('dataset')`).
    *
    * Applied with the other predicates and therefore BEFORE `limit`/`offset` and
    * inside the `totalCount` query, so pagination and totals describe the set the
@@ -362,6 +362,13 @@ export interface DatasetFilters {
    * `totalCount`/`hasMore` speaking for rows the caller can never receive.
    */
   excludeIds?: readonly string[]
+  /**
+   * The caller may see ONLY these dataset ids — the inverse of
+   * {@link excludeIds}, used when the member composes `datasets: None` but holds
+   * explicit instance grants (plan 25 §2). Mutually exclusive with
+   * `excludeIds`; `CapabilitySet.instanceListScope` never produces both.
+   */
+  includeIds?: readonly string[]
 }
 /**
  * Filter parameters for listing documents

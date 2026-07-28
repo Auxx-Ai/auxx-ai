@@ -240,12 +240,16 @@ const ADMIN_ONLY_UPDATE_FIELDS = [
  * Base procedure: `permissionProcedure(workflowsView)` everywhere the instance
  * assert does the real work. That keeps the `FeatureKey.workflows` plan-AND
  * these procedures have always run (`capabilityProcedure` does NOT run it) and
- * costs nothing — `effectiveInstanceLevel` already returns `undefined` when the
- * area level is `None`, so the coarse Read gate can only deny callers the
- * instance assert would deny anyway. `list` and `getManualWorkflows` are the
- * two exceptions: they render passively inside other screens, so they use
- * `capabilityProcedure` and FILTER rather than assert (plan 30 §2.2 — a 403
- * there is a broken screen, not a denied action).
+ * costs nothing — `workflowsView` is an `INSTANCE_ACCESS_VIEW_KEYS` member, so
+ * `permissionProcedure` waives its coarse assert for a member who holds any
+ * instance grant (plan 25 §2) and lets the per-instance assert below decide.
+ * **Every procedure on this base MUST assert on a specific instance** — that
+ * waiver is what makes the coarse rung non-load-bearing here.
+ * `create`/`createForResource` have no instance to assert on and therefore sit
+ * on `workflowsManage`, which is NOT waived. `list` and `getManualWorkflows` are
+ * the two exceptions in the other direction: they render passively inside other
+ * screens, so they use `capabilityProcedure` and FILTER rather than assert (plan
+ * 30 §2.2 — a 403 there is a broken screen, not a denied action).
  *
  * NOT gated by any of this (plan 30 §2.1): **headless execution**. Schedules,
  * record-CRUD events, record rules, message-received, app triggers, webhook
@@ -274,26 +278,30 @@ export const workflowRouter = createTRPCRouter({
     // permission grids' Workflows row (`use-instance-resource-lists.ts`) and the
     // workflows landing page.
     //
-    // The exclusion is computed UP FRONT and handed to the query, so `limit`,
+    // The filter is computed UP FRONT and handed to the query, so `limit`,
     // `offset`, `total` and `hasMore` all describe the FILTERED set. Filtering
-    // the returned page instead (what this did originally, and what
-    // `dataset.list` still does) leaves `total`/`hasMore` describing the
-    // unfiltered page, returns short pages, and can hand back an EMPTY page with
-    // `hasMore: true` — which breaks any client that stops on an empty page.
+    // the returned page instead (what this did originally) leaves
+    // `total`/`hasMore` describing the unfiltered page, returns short pages, and
+    // can hand back an EMPTY page with `hasMore: true` — which breaks any client
+    // that stops on an empty page.
     //
-    // The denied set is near-empty in practice: `workflow` is
-    // `baselineAtCreate: false`, so the ONLY exclusions are explicitly-restricted
-    // workflows (plan 30 §3 — restriction is the rare case). See
-    // `deniedInstanceIds` for the proof that no non-restriction denial path
-    // exists once the area gate is open.
-    const { deniesAll, deniedIds } = ctx.capabilities.deniedInstanceIds('workflow')
-    if (deniesAll) return { workflows: [], total: 0, hasMore: false }
+    // Two shapes, because `instanceListScope` is the list-side twin of
+    // `canViewInstance` and that gate now has two regimes (plan 25 §2):
+    //  - open `workflows` area → `exclude`, near-empty in practice (`workflow` is
+    //    `baselineAtCreate: false`, so the ONLY exclusions are explicitly
+    //    restricted workflows — plan 30 §3, restriction is the rare case);
+    //  - `workflows: None` + explicit grants → `include`, naming exactly the
+    //    workflows shared with this member. Returning an empty list here instead
+    //    would contradict `getById`, which lets them open it.
+    const scope = ctx.capabilities.instanceListScope('workflow')
+    if (scope.kind === 'none') return { workflows: [], total: 0, hasMore: false }
 
     const workflowService = new WorkflowService(ctx.db)
     try {
       return await workflowService.getAll(ctx.session.organizationId, {
         ...input,
-        excludeIds: deniedIds,
+        excludeIds: scope.excludeIds,
+        includeIds: scope.includeIds,
       })
     } catch (error) {
       throw new TRPCError({

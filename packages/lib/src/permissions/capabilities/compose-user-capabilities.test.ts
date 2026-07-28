@@ -1,8 +1,11 @@
 // packages/lib/src/permissions/capabilities/compose-user-capabilities.test.ts
 
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
 import { composeUserCapabilities } from './compose-user-capabilities'
+import { effectiveInstanceLevel, type ResolvedRecordAccess } from './entity-access'
+import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
 import {
   AREA_ORDER,
   Area,
@@ -899,5 +902,134 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
 
     const admin = composeUserCapabilities({ role: 'ADMIN', seatType: 'full', typeAccessRows: [] })
     expect(areaLevelFromKeys(new Set(admin.keys), Area.channels)).toBe(Level.Full)
+  })
+})
+
+/**
+ * Plan 25 §2 — an explicit instance row beats the area floor.
+ *
+ * These drive the REAL composition (`composeUserCapabilities`) into the REAL
+ * resolver (`effectiveInstanceLevel`), so they pin the whole path a share
+ * travels: rows compose into `instanceAccess`, `restrictedInstanceIds` marks the
+ * instance as explicitly managed, and the resolver reads the row BEFORE the area
+ * gate.
+ *
+ * The three properties that must hold together — take any one away and the
+ * change is either useless or a leak:
+ *  1. area `None` + an explicit ≥`view` row ⇒ access (the live repro);
+ *  2. area `None` + NO row ⇒ denied (fail-closed for the unshared majority);
+ *  3. area `None` + an explicit `'none'` row ⇒ denied (restrictions still bite).
+ *
+ * Run across all four registry keys so the rule is uniform over
+ * `baselineAtCreate` — dashboards (`true`) must behave identically to the three
+ * org-shared resources here.
+ */
+describe('plan 25 §2 — an explicit instance grant overrides the area-None floor', () => {
+  /** Compose a full-seat USER whose ONE named area is closed, then resolve one instance. */
+  function resolve(opts: {
+    area: Area
+    rows: Array<{ entityInstanceId: string; permission: ResourcePermission }>
+    instanceId: string
+    key: InstanceAccessKey
+    role?: 'USER' | 'OWNER'
+    seatType?: SeatType
+  }) {
+    const role = opts.role ?? 'USER'
+    const caps = composeUserCapabilities({
+      role,
+      seatType: opts.seatType ?? 'full',
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [opts.area]: Level.None },
+      typeAccessRows: [],
+      instanceAccessRows: opts.rows,
+    })
+    const access: ResolvedRecordAccess = {
+      role,
+      seatType: opts.seatType ?? 'full',
+      keys: new Set(caps.keys),
+      defAccess: caps.defAccess,
+      restrictedEntityDefIds: new Set(),
+      instanceAccess: caps.instanceAccess,
+      // Grantee-agnostic by construction (see `computeUserCapabilities`): any row
+      // on an instance puts it under explicit management, grant or restriction.
+      restrictedInstanceIds: new Set(opts.rows.map((r) => r.entityInstanceId)),
+    }
+    return { caps, level: effectiveInstanceLevel(access, opts.key, opts.instanceId) }
+  }
+
+  const KEYS: InstanceAccessKey[] = ['workflow', 'dataset', 'kb', 'dashboard']
+
+  it.each(KEYS)('%s: area None + an explicit `view` grant resolves to view', (key) => {
+    const area = INSTANCE_ACCESS_RESOURCES[key].area
+    const { caps, level } = resolve({
+      area,
+      key,
+      instanceId: 'inst_shared',
+      rows: [{ entityInstanceId: 'inst_shared', permission: 'view' }],
+    })
+    // The area really is shut — otherwise this test proves nothing.
+    expect(areaLevelFromKeys(new Set(caps.keys), area)).toBe(Level.None)
+    expect(level).toBe('view')
+  })
+
+  it.each(KEYS)('%s: area None + NO row is still denied (fail-closed)', (key) => {
+    const { level } = resolve({
+      area: INSTANCE_ACCESS_RESOURCES[key].area,
+      key,
+      instanceId: 'inst_untouched',
+      rows: [{ entityInstanceId: 'inst_shared', permission: 'admin' }],
+    })
+    expect(level).toBeUndefined()
+  })
+
+  it.each(KEYS)('%s: area None + an explicit `none` restriction is denied', (key) => {
+    const { level } = resolve({
+      area: INSTANCE_ACCESS_RESOURCES[key].area,
+      key,
+      instanceId: 'inst_locked',
+      rows: [{ entityInstanceId: 'inst_locked', permission: 'none' }],
+    })
+    expect(level).toBe('none')
+  })
+
+  it.each(KEYS)('%s: the grant carries its own rung, not a flattened view', (key) => {
+    // A share is not silently downgraded to Read by the closed area: `edit` and
+    // `admin` grants survive intact, which is what makes "you may manage exactly
+    // this one" expressible.
+    for (const permission of ['edit', 'admin'] as const) {
+      const { level } = resolve({
+        area: INSTANCE_ACCESS_RESOURCES[key].area,
+        key,
+        instanceId: 'inst_shared',
+        rows: [{ entityInstanceId: 'inst_shared', permission }],
+      })
+      expect(level).toBe(permission)
+    }
+  })
+
+  it('OWNER is unaffected — still admin on a closed area with a `none` row', () => {
+    const { level } = resolve({
+      area: Area.workflows,
+      key: 'workflow',
+      role: 'OWNER',
+      instanceId: 'inst_locked',
+      rows: [{ entityInstanceId: 'inst_locked', permission: 'none' }],
+    })
+    expect(level).toBe('admin')
+  })
+
+  it('a worker seat is NOT lifted by a grant — the seat ceiling still dominates', () => {
+    // The regression the reorder opened: `effectiveInstanceLevel` used to reach
+    // the seat clamp implicitly, through the already-clamped key set. It is now
+    // an explicit check, and this is the test that keeps it there.
+    const { level } = resolve({
+      // Full on the profile; the ceiling, not the profile, is what shuts it.
+      area: Area.records,
+      key: 'workflow',
+      seatType: 'worker',
+      instanceId: 'inst_shared',
+      rows: [{ entityInstanceId: 'inst_shared', permission: 'admin' }],
+    })
+    expect(SEAT_CEILINGS.worker[Area.workflows]).toBe(Level.None)
+    expect(level).toBeUndefined()
   })
 })

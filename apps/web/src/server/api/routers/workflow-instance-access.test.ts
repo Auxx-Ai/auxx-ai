@@ -52,17 +52,27 @@ const {
       /**
        * Stands in for `WorkflowService.getAll` → the cached-list accessor,
        * reproducing the ONE property `list`'s contract rests on: the access
-       * exclusion is applied with the other predicates and **before** the slice,
+       * filter is applied with the other predicates and **before** the slice,
        * so `total`/`hasMore` describe the filtered set. A mock that ignored
-       * `excludeIds` would let a router that stopped passing it still pass.
+       * `excludeIds`/`includeIds` would let a router that stopped passing them
+       * still pass. Empty arrays mean "not set" on both, exactly as the real
+       * accessor treats them.
        */
       getAll: vi.fn(
         async (
           _organizationId: string,
-          filters: { limit: number; offset: number; excludeIds?: readonly string[] }
+          filters: {
+            limit: number
+            offset: number
+            excludeIds?: readonly string[]
+            includeIds?: readonly string[]
+          }
         ) => {
           const excluded = new Set(filters.excludeIds ?? [])
-          const visible = listFixture.ids.filter((id) => !excluded.has(id))
+          const included = filters.includeIds?.length ? new Set(filters.includeIds) : null
+          const visible = listFixture.ids.filter(
+            (id) => !excluded.has(id) && (included === null || included.has(id))
+          )
           const page = visible.slice(filters.offset, filters.offset + filters.limit)
           return {
             workflows: page.map((id) => ({ id })),
@@ -201,22 +211,39 @@ vi.mock('@auxx/lib/permissions', async () => {
 })
 
 /**
- * The `permissionProcedure` stand-in runs the REAL `capabilities.assert(key)`
- * against the test ctx, so the coarse rung on the procedure builder is under
- * test alongside the per-instance asserts in the bodies. (The dataset/KB files
- * couldn't do this — their routers assert coarse keys inline.) Dropping
- * `permissionProcedure(workflowsManage)` from `create` fails a case below.
+ * The `permissionProcedure` stand-in mirrors the REAL builder's gate: the real
+ * `capabilities.assert(key)`, WAIVED for the `INSTANCE_ACCESS_VIEW_KEYS` when the
+ * member holds any instance grant (plan 25 §2 — otherwise a `workflows: None`
+ * member with one explicit grant 403s at the front door and the grant is inert
+ * all over again). Kept in lockstep with `trpc.ts`; only the plan-AND and the
+ * `getCapabilities` read are dropped, since ctx carries the set already.
+ *
+ * So the coarse rung on the procedure builder is under test alongside the
+ * per-instance asserts in the bodies. (The dataset/KB files couldn't do this —
+ * their routers assert coarse keys inline.) Dropping
+ * `permissionProcedure(workflowsManage)` from `create` fails a case below, and
+ * so does widening the waiver to the Manage rung.
  */
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')
   const t = initTRPC.context<Record<string, unknown>>().create()
+  const { INSTANCE_ACCESS_VIEW_KEYS } = await import(
+    '@auxx/lib/permissions/capabilities/instance-access'
+  )
   return {
     createTRPCRouter: t.router,
     capabilityProcedure: t.procedure,
     protectedProcedure: t.procedure,
     permissionProcedure: (key: string) =>
       t.procedure.use(({ ctx, next }) => {
-        ;(ctx as { capabilities: { assert: (k: string) => void } }).capabilities.assert(key)
+        const capabilities = (
+          ctx as {
+            capabilities: { assert: (k: string) => void; hasAnyInstanceGrant: () => boolean }
+          }
+        ).capabilities
+        const waived =
+          INSTANCE_ACCESS_VIEW_KEYS.has(key as never) && capabilities.hasAnyInstanceGrant()
+        if (!waived) capabilities.assert(key)
         return next()
       }),
     // The real one blocks demo orgs; irrelevant to capability gating, and it
