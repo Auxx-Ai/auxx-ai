@@ -258,6 +258,47 @@ export class UserCacheService {
   }
 
   /**
+   * Flush specific cache keys for ALL users, by Redis SCAN over the key's prefix.
+   * Does NOT recompute — the next read per user triggers a lazy recompute.
+   *
+   * The `vN` in each prefix ({@link USER_CACHE_KEY_CONFIG}) remains the mechanism
+   * for a real rollout: a shape change that reaches users bumps it, so old and
+   * new blobs occupy different keyspaces and a draining old instance cannot
+   * repopulate the new one. A flush cannot give that guarantee mid-deploy.
+   * This is the counterpart for the dev loop — while a shape is still being
+   * iterated on and nothing is live, flushing beats burning a version per edit.
+   *
+   * Scanning `prefix:*` catches every variant at once: `:data` and `:hash`, and
+   * both the plain `userId` and org-scoped `userId:orgId` scopes.
+   */
+  async flushKeyForAllUsers(keys: readonly UserCacheKeyName[]): Promise<void> {
+    for (const keyName of keys) {
+      this.localCache.deleteByPrefix(USER_CACHE_KEY_CONFIG[keyName].prefix)
+    }
+
+    const redis = await this.getRedis()
+    if (!redis) return
+
+    for (const keyName of keys) {
+      const prefix = USER_CACHE_KEY_CONFIG[keyName].prefix
+      let cursor = '0'
+      do {
+        const [nextCursor, matchedKeys] = await redis.scan(
+          cursor,
+          'MATCH',
+          `${prefix}:*`,
+          'COUNT',
+          100
+        )
+        cursor = nextCursor
+        if (matchedKeys.length > 0) {
+          await Promise.all(matchedKeys.map((k) => redis.del(k)))
+        }
+      } while (cursor !== '0')
+    }
+  }
+
+  /**
    * Invalidate org-scoped user cache keys for ALL members of an organization.
    * Fetches the member list from org cache, then invalidates each member's keys.
    * Call after org-level changes that affect user-scoped data (e.g. shared views, org settings).

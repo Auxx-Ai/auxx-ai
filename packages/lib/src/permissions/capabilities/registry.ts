@@ -61,6 +61,7 @@ export enum PermissionKey {
 
   // dashboards (instance-access resource — per-dashboard ResourceAccess grants, doc 13 §2)
   dashboardsView = 'dashboards.view',
+  dashboardsEdit = 'dashboards.edit',
   dashboardsManage = 'dashboards.manage',
 
   // channels (mail + channel infrastructure — created 2026-07-27, plan 21 §6 Option A)
@@ -313,14 +314,21 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
   {
     key: PermissionKey.dashboardsView,
     label: 'View Dashboards',
-    description: 'See dashboards shared with you.',
+    description: 'See dashboards shared with you and the widgets on them.',
+    group: 'Analytics',
+    featureKey: FeatureKey.dashboards,
+  },
+  {
+    key: PermissionKey.dashboardsEdit,
+    label: 'Edit Dashboard Widgets',
+    description: 'Add, remove, and edit the widgets and layout inside dashboards.',
     group: 'Analytics',
     featureKey: FeatureKey.dashboards,
   },
   {
     key: PermissionKey.dashboardsManage,
     label: 'Manage Dashboards',
-    description: 'Create, delete, and configure dashboards.',
+    description: 'Create, rename, delete, and configure dashboards.',
     group: 'Analytics',
     featureKey: FeatureKey.dashboards,
   },
@@ -714,12 +722,20 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.dashboards]: {
     area: Area.dashboards,
     label: 'Dashboards',
-    description: 'See dashboards shared with you, or create and manage dashboards.',
+    description:
+      'View dashboards, edit their widgets and layout, or create, rename, and delete them.',
     group: 'Analytics',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.dashboardsView] },
+      { level: Level.Edit, keys: [PermissionKey.dashboardsEdit] },
       { level: Level.Full, keys: [PermissionKey.dashboardsManage] },
     ],
+    // `Edit` rung added 2026-07-27: dashboards were the only instance-access
+    // area on a 2-rung ladder even though the share dialog and `dashboard.ts`
+    // already spoke three per-instance tiers (view / edit widgets / manage).
+    // Read = see the dashboard and its widgets; Edit = add/remove/edit widgets
+    // and layout (draft, publish, versions); Full = rename, delete, create.
+    // Purely a SPLIT of the old Full rung — no path got more permissive.
     featureKey: FeatureKey.dashboards,
   },
 }

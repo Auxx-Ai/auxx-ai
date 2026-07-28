@@ -93,6 +93,11 @@ export const memberRouter = createTRPCRouter({
           seatType: m.seatType,
           status: m.status,
           organizationId: m.organizationId,
+          // Without this the member detail's profile picker resolves every member
+          // to the system template for their role/seat, so an explicit CUSTOM
+          // binding is invisible — and assigning one appears to do nothing, since
+          // the refetch after a successful write reports the same fallback.
+          permissionProfileId: m.permissionProfileId ?? null,
           user: m.user!,
         }))
 

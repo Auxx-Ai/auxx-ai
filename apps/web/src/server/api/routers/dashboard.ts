@@ -170,8 +170,12 @@ export const dashboardRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...patch } = input
-      // Write — editing dashboard metadata.
-      ctx.capabilities.assertEditInstance('dashboard', id)
+      // Full — this patch is entirely CONTAINER metadata (name, description,
+      // icon, list position, primary-entity link); widget/layout edits never
+      // come through here, they go to `saveDraft`/`publish`. Renaming is a Full
+      // act per the dashboards ladder, so the whole patch sits at Full rather
+      // than splitting one input across two rungs.
+      ctx.capabilities.assertAdminInstance('dashboard', id)
       return unwrap(
         await updateDashboard(ctx.db, ctx.session.organizationId, ctx.session.userId, id, patch)
       )
@@ -200,7 +204,7 @@ export const dashboardRouter = createTRPCRouter({
   saveDraft: capabilityProcedure
     .input(z.object({ id: z.string(), doc: draftLayoutDocSchema }))
     .mutation(async ({ ctx, input }) => {
-      // Write — auto-saving draft layout edits.
+      // Edit — auto-saving draft widget/layout edits.
       ctx.capabilities.assertEditInstance('dashboard', input.id)
       return unwrap(
         await saveDraft(
@@ -216,7 +220,7 @@ export const dashboardRouter = createTRPCRouter({
   publish: capabilityProcedure
     .input(z.object({ id: z.string(), label: z.string().max(120).nullable().optional() }))
     .mutation(async ({ ctx, input }) => {
-      // Write — publishing the draft into a new version.
+      // Edit — publishing the widget/layout draft into a new version.
       ctx.capabilities.assertEditInstance('dashboard', input.id)
       return unwrap(
         await publishDashboard(
@@ -233,7 +237,7 @@ export const dashboardRouter = createTRPCRouter({
   discardDraft: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      // Write — discarding draft edits.
+      // Edit — discarding draft widget/layout edits.
       ctx.capabilities.assertEditInstance('dashboard', input.id)
       return unwrap(await discardDashboardDraft(ctx.db, ctx.session.organizationId, input.id))
     }),
@@ -259,7 +263,7 @@ export const dashboardRouter = createTRPCRouter({
   restoreVersion: capabilityProcedure
     .input(z.object({ id: z.string(), versionNumber: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
-      // Write — restoring a version onto the draft.
+      // Edit — restoring a version onto the draft.
       ctx.capabilities.assertEditInstance('dashboard', input.id)
       return unwrap(
         await restoreVersion(ctx.db, ctx.session.organizationId, input.id, input.versionNumber)
@@ -269,7 +273,7 @@ export const dashboardRouter = createTRPCRouter({
   deleteVersion: capabilityProcedure
     .input(z.object({ id: z.string(), versionNumber: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
-      // Write — deleting a non-live version.
+      // Edit — deleting a non-live version.
       ctx.capabilities.assertEditInstance('dashboard', input.id)
       return unwrap(
         await deleteVersion(ctx.db, ctx.session.organizationId, input.id, input.versionNumber)
@@ -285,7 +289,7 @@ export const dashboardRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Write — annotating a version's label.
+      // Edit — annotating a VERSION's label (not the dashboard's name).
       ctx.capabilities.assertEditInstance('dashboard', input.id)
       return unwrap(
         await renameVersion(

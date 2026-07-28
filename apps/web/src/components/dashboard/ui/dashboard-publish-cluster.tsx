@@ -11,7 +11,9 @@
 // `extraSegments` carries the mode controls in the same ButtonGroup:
 //   • view mode — the Edit button.
 //   • edit mode — Add widget ▾, then Done (exit edit; the draft stays parked).
-// The chevron menu (Version history / Duplicate / Settings / Archive) is constant.
+// The chevron menu holds Version history (Read) / Duplicate (`dashboards.manage`)
+// / Settings + Archive (Full per instance); each entry renders only at its tier,
+// so the menu shrinks rather than 403-ing (hide-don't-disable, doc 24 §A.2.3).
 // In view mode with a parked draft the status pill doubles as a Live/Draft view
 // toggle (via the shell's `pillOverride`): its label + dot show what the canvas is
 // showing NOW, and clicking flips between the published version and the draft so
@@ -50,6 +52,15 @@ export interface DashboardPublishClusterProps {
   saveState: SaveState
   /** No persisted version yet — disables Edit. */
   hasPersisted: boolean
+  /**
+   * Edit-instance on this dashboard — gates Edit / Add widget / Done and the
+   * Publish/Discard segments, plus every write in the version-history dialog.
+   */
+  canEdit: boolean
+  /** Admin-instance (Full) — gates Settings and Archive. */
+  canAdmin: boolean
+  /** Coarse `dashboards.manage` — gates Duplicate (it CREATES a dashboard). */
+  canCreate: boolean
   /** View-mode canvas layer — drives the Live/Draft toggle. */
   viewLayer: ViewLayer
   onViewLayerChange: (layer: ViewLayer) => void
@@ -69,6 +80,9 @@ export function DashboardPublishCluster({
   isDiscarding,
   saveState,
   hasPersisted,
+  canEdit,
+  canAdmin,
+  canCreate,
   viewLayer,
   onViewLayerChange,
   onEnterEdit,
@@ -113,7 +127,8 @@ export function DashboardPublishCluster({
     if (ok) onDiscard()
   }
 
-  const editSegment = (
+  // Read-only members get no Edit entry point at all — hide, don't disable.
+  const editSegment = canEdit ? (
     <Button
       size='xs'
       variant='outline'
@@ -122,7 +137,7 @@ export function DashboardPublishCluster({
       onClick={onEnterEdit}>
       <Pencil /> Edit
     </Button>
-  )
+  ) : null
 
   const editModeSegments = (
     <>
@@ -168,21 +183,34 @@ export function DashboardPublishCluster({
         // While editing, the autosave indicator conveys status — drop the pill.
         hidePill={isEditMode}
         extraSegments={isEditMode ? editModeSegments : editSegment}
-        publish={{ onClick: onPublish, isPending: isPublishing }}
-        discard={{ onClick: () => void handleDiscard(), isPending: isDiscarding }}>
+        // Publish/Discard are Edit — omitting the slots drops the segments.
+        publish={canEdit ? { onClick: onPublish, isPending: isPublishing } : undefined}
+        discard={
+          canEdit ? { onClick: () => void handleDiscard(), isPending: isDiscarding } : undefined
+        }>
+        {/* Version history itself is Read (`listVersions`); the dialog's own
+            writes are gated by `canEdit`. */}
         <DropdownMenuItem onClick={() => setVersionsOpen(true)}>
           <History /> Version history
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => void handleDuplicate()}>
-          <Copy /> Duplicate
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-          <Settings /> Settings
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant='destructive' onClick={() => void handleArchive()}>
-          <Archive /> Archive
-        </DropdownMenuItem>
+        {canCreate && (
+          <DropdownMenuItem onClick={() => void handleDuplicate()}>
+            <Copy /> Duplicate
+          </DropdownMenuItem>
+        )}
+        {canAdmin && (
+          <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+            <Settings /> Settings
+          </DropdownMenuItem>
+        )}
+        {canAdmin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant='destructive' onClick={() => void handleArchive()}>
+              <Archive /> Archive
+            </DropdownMenuItem>
+          </>
+        )}
       </PublishClusterShell>
 
       <DashboardVersionsDialog
@@ -190,6 +218,7 @@ export function DashboardPublishCluster({
         onOpenChange={setVersionsOpen}
         dashboardId={dashboard.id}
         activeVersionNumber={activeVersionNumber}
+        canEdit={canEdit}
       />
       <DashboardFormDialog
         dashboard={dashboard}

@@ -39,6 +39,13 @@ export interface VersionHistoryDialogProps {
   currentVersionId: string | null
   /** Resolves the restore mutation; the dialog owns the confirm. Return false to keep it open. */
   onRestore: (version: VersionRowData) => Promise<boolean>
+  /**
+   * Whether the viewer may restore a version onto the draft. Defaults to `true`.
+   * Pass `false` when reading history is allowed but writing is not (e.g. a
+   * dashboard the member holds Read on: `listVersions` is Read, `restoreVersion`
+   * is Edit) — the row's restore control is then not rendered at all.
+   */
+  canRestore?: boolean
   /** Presence enables the inline {@link VersionLabelRow} on every row. */
   onRenameLabel?: (versionId: string, label: string | null) => Promise<void>
   /**
@@ -84,6 +91,7 @@ export function VersionHistoryDialog({
   isLoading,
   currentVersionId,
   onRestore,
+  canRestore = true,
   onRenameLabel,
   onDelete,
   deleteConfirm,
@@ -212,7 +220,7 @@ export function VersionHistoryDialog({
                         </div>
                         <div className='flex shrink-0 items-center gap-1'>
                           {renderRowActions?.(v, { isCurrent })}
-                          {!isCurrent && (
+                          {canRestore && !isCurrent && (
                             <Tooltip content='Restore as draft'>
                               <Button
                                 size='icon-xs'

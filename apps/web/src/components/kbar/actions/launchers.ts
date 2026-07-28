@@ -106,7 +106,9 @@ export function useLauncherActions(): PaletteAction[] {
       })
     }
 
-    if (hasAccess('dashboards')) {
+    // Creating a dashboard is the `dashboards` Full rung (`dashboards.manage`) —
+    // mirrors CreateDashboardButton; Read/Edit members can browse but not create.
+    if (hasAccess('dashboards') && can('dashboards.manage')) {
       actions.push({
         id: 'create.dashboard',
         label: 'Create Dashboard',

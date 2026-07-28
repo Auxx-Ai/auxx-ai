@@ -34,6 +34,7 @@ import {
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { useResources } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDashboardMutations } from '../hooks/use-dashboard-mutations'
 import { DashboardFormDialog } from './dashboard-form-dialog'
 
@@ -43,6 +44,12 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const { getResourceById } = useResources()
+  // Settings (`dashboard.update`) and Delete are Full per instance; Duplicate is
+  // the coarse `dashboards.manage` rung (it CREATES a dashboard). Open / Favorite
+  // / Share… stay at Read — the share dialog is already read-only for non-admins.
+  const { can, canAdminInstance } = useAccess()
+  const canAdmin = canAdminInstance(toRecordId('dashboard', dashboard.id))
+  const canCreate = can('dashboards.manage')
   // Entity-linked dashboards (plan 02) show a small badge with the entity's
   // icon + plural — the second "door" onto this same row (the other is its
   // own `/app/<entity>/dashboard` route).
@@ -132,23 +139,31 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardSummary }) {
               targetType='DASHBOARD'
               targetIds={{ dashboardId: dashboard.id }}
             />
-            <DropdownMenuItem onClick={() => void handleDuplicate()}>
-              <Copy />
-              Duplicate
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-              <Settings />
-              Settings
-            </DropdownMenuItem>
+            {canCreate && (
+              <DropdownMenuItem onClick={() => void handleDuplicate()}>
+                <Copy />
+                Duplicate
+              </DropdownMenuItem>
+            )}
+            {canAdmin && (
+              <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                <Settings />
+                Settings
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setShareOpen(true)}>
               <Share2 />
               Share…
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant='destructive' onClick={() => void handleDelete()}>
-              <Trash />
-              Delete
-            </DropdownMenuItem>
+            {canAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant='destructive' onClick={() => void handleDelete()}>
+                  <Trash />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </>
         }
       />
