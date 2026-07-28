@@ -10,18 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { ShieldCheck } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ProfilePicker } from '~/components/pickers/profile-picker'
 import { useUser } from '~/hooks/use-user'
 import {
   useAgentPermissionProfiles,
@@ -69,6 +62,10 @@ export function ApplyProfileDialog({
   const count = agentIds.length
   const noun = `${count} agent${count === 1 ? '' : 's'}`
 
+  // The hook already filters to `appliesTo: 'agent' | 'any'`, so every listed
+  // profile is bindable and none carries a disabled reason.
+  const options = useMemo(() => profiles.map((profile) => ({ profile })), [profiles])
+
   const handleApply = async () => {
     if (!profileId) return
     setIsApplying(true)
@@ -106,30 +103,15 @@ export function ApplyProfileDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Select value={profileId} onValueChange={setProfileId} disabled={isLoading || isApplying}>
-          <SelectTrigger size='sm'>
-            <SelectValue placeholder='Select a permission profile' />
-          </SelectTrigger>
-          <SelectContent>
-            {profiles.map((profile) => (
-              <SelectItem key={profile.id} value={profile.id} textValue={profile.name}>
-                <div className='flex items-start gap-2'>
-                  {profile.icon ? (
-                    <EntityIcon iconId={profile.icon.iconId} color={profile.icon.color} size='xs' />
-                  ) : (
-                    <ShieldCheck className='size-4 text-muted-foreground' />
-                  )}
-                  <div className='flex flex-col items-start'>
-                    <span>{profile.name}</span>
-                    {profile.description && (
-                      <span className='text-muted-foreground text-xs'>{profile.description}</span>
-                    )}
-                  </div>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <ProfilePicker
+          value={profileId || undefined}
+          options={options}
+          onChange={setProfileId}
+          disabled={isLoading || isApplying}
+          isLoading={isLoading}
+          emptyLabel='Select a permission profile'
+          triggerProps={{ variant: 'outline', className: 'w-full' }}
+        />
 
         <p className='text-xs text-muted-foreground'>
           Publishing clamps the policy to the publisher&apos;s own access, per agent — an agent can

@@ -29,7 +29,7 @@ const EMPTY_EXCLUDE_IDS: ActorId[] = []
 export const CURRENT_USER_ACTOR_ID = 'placeholder:currentUser' as ActorId
 
 /** Synthetic Actor used to render the sentinel with the shared ActorItem UI. */
-const CURRENT_USER_ACTOR: Actor = {
+export const CURRENT_USER_ACTOR: Actor = {
   actorId: CURRENT_USER_ACTOR_ID,
   type: 'user',
   name: 'Current user',
@@ -108,8 +108,21 @@ export interface ActorPickerContentProps {
    * Show a "Current user" pseudo-row. Selecting it toggles `CURRENT_USER_ACTOR_ID`
    * in `value` via the normal onChange — the picker does not know about filter
    * semantics. Only intended for filter-builder contexts (tables, mail views).
+   *
+   * Sugar for `pinnedItem={CURRENT_USER_ACTOR}`.
    */
   allowCurrentUser?: boolean
+
+  /**
+   * A synthetic actor pinned above the results in its own group, for a choice
+   * that is not a real actor — "Current user" in filter builders, "Own
+   * permissions" in the agent builder's run-as row.
+   *
+   * Its `actorId` is a sentinel that flows through `value`/`onChange` like any
+   * other, so the picker stays ignorant of what the caller means by it; the
+   * caller translates it on save. Ignored when `allowCurrentUser` is set.
+   */
+  pinnedItem?: Actor
 
   /**
    * Externally controlled search string. When defined, the picker uses this value
@@ -148,12 +161,15 @@ export function ActorPickerContent({
   excludeIds = EMPTY_EXCLUDE_IDS,
   agentFilter,
   allowCurrentUser = false,
+  pinnedItem,
   externalSearch,
   showInput = true,
 }: ActorPickerContentProps) {
   const [internalSearch, setInternalSearch] = useState('')
   const search = externalSearch !== undefined ? externalSearch : internalSearch
   const setSearch = setInternalSearch
+
+  const pinned = allowCurrentUser ? CURRENT_USER_ACTOR : pinnedItem
 
   // Notify parent about capture state on mount/unmount
   useEffect(() => {
@@ -162,10 +178,10 @@ export function ActorPickerContent({
   }, [onCaptureChange])
 
   // Track initial selected actorIds (snapshot at mount) - prevents layout shifts.
-  // Exclude the current-user sentinel — it is rendered by its own pinned row,
-  // not via actor hydration.
+  // Exclude the pinned sentinel — it is rendered by its own pinned row, not via
+  // actor hydration (the actor service cannot resolve a synthetic id).
   const [initialSelectedIds] = useState<ActorId[]>(() =>
-    value.filter((id) => id !== CURRENT_USER_ACTOR_ID)
+    value.filter((id) => id !== pinned?.actorId)
   )
 
   // Get actors from store (preloaded)
@@ -314,12 +330,12 @@ export function ActorPickerContent({
       <CommandList>
         <CommandEmpty>No results found</CommandEmpty>
 
-        {allowCurrentUser && (!search || 'current user'.includes(search.toLowerCase())) && (
+        {pinned && (!search || pinned.name.toLowerCase().includes(search.toLowerCase())) && (
           <>
             <CommandGroup aria-label='Placeholder'>
               <ActorItem
-                actor={CURRENT_USER_ACTOR}
-                isSelected={isSelected(CURRENT_USER_ACTOR_ID)}
+                actor={pinned}
+                isSelected={isSelected(pinned.actorId)}
                 onToggle={handleToggle}
                 multi={multi}
               />

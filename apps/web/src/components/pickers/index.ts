@@ -29,6 +29,19 @@ export type { FileSelection } from './files-picker'
 export { FilesPicker } from './files-picker'
 export type { MultiSelectPickerProps } from './multi-select-picker'
 export { MultiSelectPicker } from './multi-select-picker'
+export type {
+  PickerProfile,
+  ProfilePickerContentProps,
+  ProfilePickerOption,
+  ProfilePickerProps,
+} from './profile-picker'
+export {
+  ProfileCommandBody,
+  ProfileGlyph,
+  ProfileItem,
+  ProfilePicker,
+  ProfilePickerContent,
+} from './profile-picker'
 export type { RecordItemProps, RecordPickerContentProps, RecordPickerProps } from './record-picker'
 export { RecordItem, RecordPicker, RecordPickerContent } from './record-picker'
 export type {

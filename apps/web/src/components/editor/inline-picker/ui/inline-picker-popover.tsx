@@ -45,9 +45,11 @@ export function InlinePickerPopover({
   }
 
   // Virtual anchor ref that returns cursor position
-  // Uses cached rect to maintain position during close animation
+  // Uses cached rect to maintain position during close animation.
+  // The fallback mirrors the guard above: an anchor must always measure to a
+  // rect, and Floating UI only calls this in the browser.
   const virtualRef = useRef({
-    getBoundingClientRect: () => lastRectRef.current,
+    getBoundingClientRect: () => lastRectRef.current ?? new DOMRect(),
   })
 
   // Focus the command input when popover opens
