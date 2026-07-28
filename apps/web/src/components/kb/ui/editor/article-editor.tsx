@@ -183,7 +183,13 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                     knowledgeBaseId={knowledgeBaseId}
                     onReady={handleBodyEditorReady}
                     readOnly={bodyReadOnly}
-                    hideGutter={managed}
+                    // Collapse the gutter for every *durable* read-only state —
+                    // its drag handles are dead weight and its pull-left margin
+                    // leaves the body sitting left of the title. Deliberately
+                    // NOT `bodyReadOnly`: `locked` is a transient Kopilot turn,
+                    // and folding the gutter mid-turn would shift the body
+                    // sideways and back.
+                    hideGutter={managed || !canEdit}
                   />
                 )}
                 {locked && (
