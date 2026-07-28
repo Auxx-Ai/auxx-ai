@@ -21,16 +21,6 @@ import { api } from '~/trpc/react'
  */
 export type MemberProfile = RouterOutputs['permissions']['listProfiles'][number]
 
-/**
- * The legacy `PermissionGrant` address the shipped baseline tab still writes.
- * `permissions-member-baseline.ts` presents the org's `member` profile row under
- * this grantee in BOTH directions, so a lookup by `profile:<member profile id>`
- * finds nothing — see {@link profileLevels}.
- *
- * TODO(plan-19-step-7): drops out with the bridge.
- */
-const LEGACY_BASELINE = { granteeType: 'role', granteeId: 'org_member' } as const
-
 /** A profile option for one member, with the §0.21 seat-mismatch verdict. */
 export interface ProfileOption {
   profile: MemberProfile
@@ -199,7 +189,13 @@ export function useMemberProfiles() {
     [profileById, systemProfileFor]
   )
 
-  /** The profile's own sparse per-area levels, off its `PermissionGrant` row. */
+  /**
+   * The profile's own sparse per-area levels, off its `PermissionGrant` row.
+   *
+   * Keyed by profile id for every profile including `member`: the interim
+   * `role:org_member` address the retired Member-baseline tab used is gone, so
+   * there is no second place to look.
+   */
   const profileLevels = useCallback(
     (profile: MemberProfile | undefined): Partial<Record<Area, Level>> => {
       if (!profile) return {}
@@ -207,17 +203,7 @@ export function useMemberProfiles() {
       const own = grants.find(
         (g) => g.granteeType === 'profile' && g.granteeId === profile.id
       )?.levels
-      if (own) return own as Partial<Record<Area, Level>>
-      // The `member` profile's row is presented under the legacy baseline address.
-      if (profile.slug === 'member') {
-        const bridged = grants.find(
-          (g) =>
-            g.granteeType === LEGACY_BASELINE.granteeType &&
-            g.granteeId === LEGACY_BASELINE.granteeId
-        )?.levels
-        if (bridged) return bridged as Partial<Record<Area, Level>>
-      }
-      return {}
+      return (own as Partial<Record<Area, Level>> | undefined) ?? {}
     },
     [grantsQuery.data]
   )
@@ -307,13 +293,20 @@ export function useMemberProfiles() {
 
   /**
    * Every profile offered for one member, in list order, each carrying its
-   * seat-mismatch verdict. A mismatched profile is **kept and disabled with a
-   * reason** rather than hidden (§0.21/§0.22) — hiding it would read as "this
-   * profile does not exist", which is exactly the confusion the rule prevents.
+   * seat-mismatch verdict. A profile from the other seat class is **excluded**:
+   * a full-seat member is never offered a field-seat profile, and a field-seat
+   * member sees only field-seat profiles. Assignment must never move a member
+   * between seat classes — that is a billing event with its own cap-checked
+   * action in the members-list row menu — so an option that could only ever be
+   * refused is noise, not information.
    *
-   * Two rank filters run before the seat check (plan 21 §2.a.9/§3.4), both by
-   * rank rather than slug so a future non-system admin-rank profile is covered
-   * for free:
+   * The one mismatch kept is the member's OWN binding, listed disabled with the
+   * reason: a seat change does not re-bind the profile, so a member can be
+   * sitting on a profile from the other class and the picker has to say so
+   * rather than fall back to a blank trigger.
+   *
+   * Two rank filters run first (plan 21 §2.a.9/§3.4), both by rank rather than
+   * slug so a future non-system admin-rank profile is covered for free:
    * - The Owner profile is never offered — assigning it is an ownership
    *   transfer with its own confirmed action, regardless of who is looking.
    * - No option outranks the viewer — in practice this only hides the Admin
@@ -321,12 +314,19 @@ export function useMemberProfiles() {
    */
   const optionsFor = useCallback(
     (
-      member: { role: OrganizationRole; seatType: SeatType },
+      member: {
+        role: OrganizationRole
+        seatType: SeatType
+        permissionProfileId?: string | null
+      },
       viewerRole: OrganizationRole | null | undefined
     ): ProfileOption[] =>
       profiles
         .filter((profile) => profile.role !== 'OWNER')
         .filter((profile) => !viewerRole || ROLE_RANK[profile.role] <= ROLE_RANK[viewerRole])
+        .filter(
+          (profile) => profile.seat === member.seatType || profile.id === member.permissionProfileId
+        )
         .map((profile) => {
           if (profile.seat !== member.seatType) {
             return {

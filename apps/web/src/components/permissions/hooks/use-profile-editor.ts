@@ -48,11 +48,10 @@ function draftKey(draft: ProfileDraft): string {
  *
  * Three reads hydrate one draft: the list row supplies identity, `getProfile`
  * supplies the profile's own metadata and the agent policy, and its area levels
- * come from its `PermissionGrant` row via `usePermissionGrants().profileGrants`. The
- * org's **`member`** profile is the exception: while the Member-baseline bridge is
- * in place its grant row is presented as `role:org_member`
- * (`permissions-member-baseline.ts`), so its levels arrive in `baseline` instead
- * — TODO(plan-19-step-7): drop that fallback with the bridge.
+ * come from its `PermissionGrant` row via `usePermissionGrants().profileGrants`.
+ * The org's **`member`** profile is no exception — its row arrives under its own
+ * profile id like every other, now that the `role:org_member` baseline bridge is
+ * gone. This editor is the ONLY surface that writes it.
  *
  * Hydration is keyed on the profile id plus the load state and only re-runs when
  * one of those changes, so a background refetch can never silently overwrite an
@@ -60,7 +59,7 @@ function draftKey(draft: ProfileDraft): string {
  */
 export function useProfileEditor(profile: PermissionProfile) {
   const { saveProfile, isSaving } = useProfiles()
-  const { isLoading: grantsLoading, roleDefaults, baseline, profileGrants } = usePermissionGrants()
+  const { isLoading: grantsLoading, roleDefaults, profileGrants } = usePermissionGrants()
   const detailQuery = api.permissions.getProfile.useQuery(
     { profileId: profile.id },
     { staleTime: 30_000 }
@@ -68,12 +67,11 @@ export function useProfileEditor(profile: PermissionProfile) {
   const detail = detailQuery.data
   const isLoading = grantsLoading || detailQuery.isLoading
 
-  /** The profile's persisted area levels (see the `member` bridge note above). */
-  const persistedLevels = useMemo<Partial<Record<Area, Level>>>(() => {
-    const own = profileGrants.find((g) => g.granteeId === profile.id)?.levels
-    if (own) return own
-    return profile.slug === 'member' ? baseline : {}
-  }, [profileGrants, profile.id, profile.slug, baseline])
+  /** The profile's persisted area levels — its own `PermissionGrant` row, or none. */
+  const persistedLevels = useMemo<Partial<Record<Area, Level>>>(
+    () => profileGrants.find((g) => g.granteeId === profile.id)?.levels ?? {},
+    [profileGrants, profile.id]
+  )
 
   const buildDraft = useCallback(
     (): ProfileDraft => ({
