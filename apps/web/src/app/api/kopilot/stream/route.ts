@@ -54,6 +54,7 @@ import {
   FeatureKey,
   FeaturePermissionService,
   getCapabilities,
+  PermissionKey,
 } from '@auxx/lib/permissions'
 import { docToText } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
@@ -91,6 +92,50 @@ function renderDmInstructions(instructions: Record<string, unknown> | null): str
   }
   const text = docToText(instructions, {})
   return text.length > 0 ? text : null
+}
+
+/**
+ * Whether the caller may run a turn that targets a user-authored agent.
+ * Returns `null` when allowed, or the denial message when not.
+ *
+ * **This closes a live authorization hole.** Until 2026-07-27 this route
+ * authenticated with `auth.api.getSession` alone and read no capabilities at
+ * all, while every `agent.*` tRPC procedure requires
+ * {@link PermissionKey.agentsManage}. `agentId` arrives verbatim on the request
+ * body, so any authenticated member could POST an arbitrary agent id and chat
+ * with an agent they cannot see in the UI — including the DM path, whose only
+ * agent-side check (`buildDmTriggerContext`) tests the org-wide `dmEnabled`
+ * toggle, not the caller.
+ *
+ * Two gates, matching what `permissionProcedure(agentsManage)` runs for the
+ * tRPC siblings: the {@link FeatureKey.agents} plan-AND (the route's existing
+ * {@link FeatureKey.kopilot} gate does not cover the agents feature) and the
+ * capability itself.
+ *
+ * TODO(permissions v2, item 4 — agents instance access): `Area.agents` is a
+ * SINGLE-RUNG area today (`Full → agents.manage` is its only rung, see
+ * `registry.ts`), so this is deliberately agent-id-blind — there is no View
+ * rung to gate on yet. When item 4 splits the area into View/Edit/Full,
+ * re-point this at the new View rung and add
+ * `capabilities.assertViewInstance('agent', agentId)` beside it, taking the id
+ * as a parameter. **Extend this function — do not add a second gate elsewhere.**
+ */
+async function resolveAgentAccessDenial(params: {
+  organizationId: string
+  userId: string
+}): Promise<string | null> {
+  const { organizationId, userId } = params
+  const hasAgents = await new FeaturePermissionService().hasAccess(
+    organizationId,
+    FeatureKey.agents
+  )
+  if (!hasAgents) return 'Agents are not available on your plan'
+
+  const capabilities = await getCapabilities(userId, organizationId)
+  if (!capabilities.can(PermissionKey.agentsManage)) {
+    return 'You do not have access to this agent'
+  }
+  return null
 }
 
 export const runtime = 'nodejs'
@@ -189,6 +234,18 @@ export async function POST(request: NextRequest) {
 
   if (!body.message || typeof body.message !== 'string') {
     return new Response('Message is required', { status: 400 })
+  }
+
+  // Agent authorization, first half: a NEW session binds `body.agentId`
+  // verbatim, so refuse before `createSession` writes a row pointing at an
+  // agent the caller can't reach — and as plain HTTP, before the stream opens.
+  // `agentId` is documented as ignored on existing sessions, so a stale value
+  // from the client must not deny a turn it has no effect on; the resolved id
+  // is authorized separately below. Plain Kopilot (no agent) skips this
+  // entirely.
+  if (!body.sessionId && body.agentId) {
+    const denial = await resolveAgentAccessDenial({ organizationId, userId })
+    if (denial) return new Response(denial, { status: 403 })
   }
 
   // Async-task continuation: validate, dedupe, and rewrite the body from DB
@@ -367,6 +424,25 @@ export async function POST(request: NextRequest) {
             title: placeholderTitle,
             createdAt: createResult.value.createdAt.toISOString(),
           })
+        }
+
+        // Agent authorization, second half — the one that matters on turn 2.
+        // `sessionAgentId` is restored from the SESSION ROW on continuation
+        // turns, not from the body, so authorizing only the body-supplied id
+        // would let every turn after the first sail through on a session whose
+        // agent the caller can't access (including one bound before their
+        // profile was tightened). Authorize the RESOLVED id on every turn.
+        //
+        // Builder sessions are included on purpose: their agent is the subject
+        // of editing, which is exactly what `agentsManage` fronts. Sessions
+        // with no agent (plain Kopilot) read no capabilities at all.
+        if (sessionAgentId) {
+          const denial = await resolveAgentAccessDenial({ organizationId, userId })
+          if (denial) {
+            send({ type: 'turn-error', error: denial, code: 'forbidden' })
+            cleanup()
+            return
+          }
         }
 
         // Existing-session DM gate: re-resolve the cached agent on every send

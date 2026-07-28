@@ -369,8 +369,24 @@ export const fileRouter = createTRPCRouter({
       }
     }),
 
-  /** Get preview download reference for attachment (files or assets) */
-  getAttachmentPreviewRef: protectedProcedure
+  /**
+   * Get preview download reference for attachment (files or assets).
+   *
+   * `filesView`, matching every other read on this router: the returned ref is a
+   * live, presigned download URL for any `FolderFile` or `MediaAsset` in the org,
+   * resolved by id with no ownership or folder check — as a bare
+   * `protectedProcedure` it made the `filesView` gate on `getDownloadInfo` (the
+   * same read, one procedure over) decorative.
+   *
+   * Both UI callers are covered by the key: the Files detail drawer (Files is the
+   * authority) and the dataset document drawer, which is reachable only by a
+   * member holding `datasets: Read` — and the member baseline ships `files: Full`
+   * (`seat-policy.ts` `MEMBER_BASELINE_LEVELS`), while a worker seat has
+   * `datasets: None` and cannot open that drawer at all. So no principal loses a
+   * surface here except a member whose admin *deliberately* set `files` below
+   * `Read`.
+   */
+  getAttachmentPreviewRef: permissionProcedure(PermissionKey.filesView)
     .input(getAttachmentPreviewRefSchema)
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session

@@ -4,6 +4,8 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { resolveMcpConnectionForRuntime } from '@auxx/lib/ai/mcp'
+import { AuxxError } from '@auxx/lib/errors'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -19,6 +21,12 @@ const logger = createScopedLogger('mcp-oauth-authorize')
  * MCP OAuth authorize — mirrors the app route at `/api/apps/[slug]/oauth2/authorize`, keyed on
  * `McpServer.id` instead of an app slug + installation. Always uses PKCE and appends the RFC 8707
  * `resource` indicator (the MCP endpoint) per the MCP spec.
+ *
+ * Gated on `integrationsManage`, matching `mcpAdminProcedure` — the tRPC sibling `mcp.connect`
+ * and every other mutating MCP procedure. This handler leads to an ORG-LEVEL credential write
+ * (its callback calls `saveMcpConnection` with the `organizationId` stashed in Redis state), so
+ * before this gate any authenticated member could enumerate server ids via the bare
+ * `protectedProcedure` `mcp.list` and connect an org-wide MCP credential.
  */
 export async function GET(
   request: NextRequest,
@@ -31,6 +39,20 @@ export async function GET(
   const organizationId = (session.user as { defaultOrganizationId?: string }).defaultOrganizationId
   if (!organizationId) {
     return NextResponse.json({ error: 'No organization' }, { status: 401 })
+  }
+
+  // Ahead of every read, the Redis state write and the redirect. Returned explicitly so the
+  // AuxxError keeps its own 403 instead of being swallowed by the outer 500 handler below.
+  try {
+    await requirePermission(session.user.id, organizationId, PermissionKey.integrationsManage)
+  } catch (permissionError) {
+    if (permissionError instanceof AuxxError) {
+      return NextResponse.json(
+        { error: permissionError.message },
+        { status: permissionError.statusCode }
+      )
+    }
+    throw permissionError
   }
 
   const { serverId } = await params
