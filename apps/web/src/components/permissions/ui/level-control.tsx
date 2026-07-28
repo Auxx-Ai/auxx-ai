@@ -117,23 +117,37 @@ export function LevelControl({
           <Undo2 />
         </Button>
       </Tooltip>
-      <RadioTab
-        value={String(displayed)}
-        onValueChange={(v) => onChange(Number(v) as Level)}
-        size='xs'
-        radioGroupClassName='after:rounded-lg'
-        className={cn('rounded-lg', !isExplicit && '')}>
-        {levels.map((level) => (
-          <RadioTabItem
-            key={level}
-            value={String(level)}
-            size='xs'
-            disabled={disabled}
-            className='h-full w-auto min-w-0 rounded-lg px-2.5'>
-            {RUNG_LABELS[level]}
-          </RadioTabItem>
-        ))}
-      </RadioTab>
+      {/*
+        Fixed-width slot for the ladder, so every row's hint/reset cluster starts
+        at the same x whatever the area's rung count. The min-width belongs HERE
+        and not on `RadioTab`: that component's own container is the grey pill, so
+        widening it would stretch an empty pill behind a 2-rung toggle. The
+        wrapper keeps the pill content-sized and pins it right instead.
+        `min-w-` (not `w-`) so a hypothetical 5-rung area overflows the slot and
+        renders correctly-but-unaligned rather than clipped. 52 = 208px is the
+        smallest 0.25rem step that clears the widest ladder we ship —
+        None/Read/Edit/Full measures 206.4px (4 × (px-2.5 = 20px + the 30.6px
+        `text-xs`/500 "None") + the pill's 4px p-0.5).
+      */}
+      <div className='flex min-w-52 justify-end'>
+        <RadioTab
+          value={String(displayed)}
+          onValueChange={(v) => onChange(Number(v) as Level)}
+          size='xs'
+          radioGroupClassName='after:rounded-lg'
+          className={cn('rounded-lg', !isExplicit && '')}>
+          {levels.map((level) => (
+            <RadioTabItem
+              key={level}
+              value={String(level)}
+              size='xs'
+              disabled={disabled}
+              className='h-full w-auto min-w-0 rounded-lg px-2.5'>
+              {RUNG_LABELS[level]}
+            </RadioTabItem>
+          ))}
+        </RadioTab>
+      </div>
     </div>
   )
 }

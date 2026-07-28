@@ -161,7 +161,7 @@ function GranteeInstanceRowItem({
           />
         </>
       }>
-      {isOpen && <InstanceShareBody recordId={recordId} />}
+      {isOpen && <InstanceShareBody recordId={recordId} depth={CHILD_DEPTH + 1} />}
     </TreeRow>
   )
 }
