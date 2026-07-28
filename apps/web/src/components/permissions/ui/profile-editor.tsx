@@ -242,6 +242,7 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
         rows: (
           <GranteeInstanceRows
             rows={matched}
+            truncated={instanceLists[instanceKey].truncated}
             canEdit={editable}
             isUser={false}
             areaLevel={areaLevel}

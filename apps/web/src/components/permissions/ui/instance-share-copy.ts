@@ -115,6 +115,15 @@ export const INSTANCE_ROW_COPY = {
     description:
       'The default access every member starts with for each item. Expand an item to see or ' +
       'change who else can reach it.',
+    /**
+     * `InstanceShareBody`'s empty state. Names the workspace-default control
+     * sitting directly above the list — true under `InstanceBaselineRows` and
+     * the Share card, where that control is the `role:org_member` row itself.
+     * Passed in rather than hardcoded (plan 31 §2.6) so a mount whose scope has
+     * no such control cannot inherit the sentence by accident.
+     */
+    emptyHint: (noun: string) =>
+      `Not shared with anyone specific. Adjust the workspace default above to restrict this ${noun}.`,
   },
   grantee: {
     description: (noun: string) => `Their own access to this ${noun}, on top of the default above.`,

@@ -381,6 +381,32 @@ export function effectiveInstanceLevel(
   if ((caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET).has(instanceId)) {
     return caps.instanceAccess?.[instanceId]
   }
+  return instanceFallbackLevel(caps, key)
+}
+
+/**
+ * What {@link effectiveInstanceLevel} answers for an instance the org holds NO
+ * `ResourceAccess` row on — the area fall-through, on its own.
+ *
+ * Extracted (plan 31 §2.4) so a caller resolving MANY instances at once can ask
+ * one question per resource type instead of one per id: `permissions.granteeAccess`
+ * returns explicit answers for the instances the org manages a row on, and this
+ * value for everything else, so the client's per-row lookup is
+ * `instances[id] ?? instanceFallback[key]` — never a re-derivation. The
+ * extraction, rather than a second copy, is the point: §2.5 is explicit that a
+ * display path which drifts from enforcement is the same class of bug with a
+ * quieter failure.
+ *
+ * Order matters and mirrors its caller exactly: OWNER first (§0.10), then the
+ * seat ceiling (a billing invariant that outranks every row), then the area gate.
+ */
+export function instanceFallbackLevel(
+  caps: ResolvedRecordAccess,
+  key: InstanceAccessKey
+): ResourcePermission | undefined {
+  if (caps.role === 'OWNER') return ResourcePermission.admin
+  const cfg = INSTANCE_ACCESS_RESOURCES[key]
+  if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
   const areaLevel = areaLevelFromKeys(caps.keys, cfg.area)
   if (areaLevel === Level.None) return undefined
   return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)

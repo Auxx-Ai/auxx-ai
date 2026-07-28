@@ -44,6 +44,23 @@ export const RUNG_LABELS_LONG: Record<Level, string> = {
 /** Which form of the label a caller wants. */
 export type LabelForm = 'short' | 'long'
 
+/**
+ * The rung as it appears in an **effective-access line** (plan 31 §2.5) — what a
+ * grantee can ACTUALLY reach, shown beside the grant they hold.
+ *
+ * Short form, except `None`, which takes the long spelling: "Effective · None"
+ * reads as a missing value when it sits beside a ladder that also has a None
+ * rung, where "Effective · No access" is unambiguous.
+ *
+ * Lives here rather than at its two call sites (the area rows and the instance
+ * rows) because plan 26 Phase 1 made this file the ONE rung vocabulary — a
+ * second spelling of a rung anywhere else is precisely what that cleanup
+ * deleted, four maps at a time.
+ */
+export function effectiveLevelLabel(level: Level): string {
+  return level === Level.None ? RUNG_LABELS_LONG[Level.None] : RUNG_LABELS[level]
+}
+
 function labelOf(level: Level, form: LabelForm): string {
   return form === 'long' ? RUNG_LABELS_LONG[level] : RUNG_LABELS[level]
 }

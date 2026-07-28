@@ -135,7 +135,12 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
         matchCount: matched.length,
         configuredCount: all.filter((row) => row.baselineLevel !== undefined).length,
         rows: (
-          <InstanceBaselineRows rows={matched} disabled={disabled} onChange={setInstanceBaseline} />
+          <InstanceBaselineRows
+            rows={matched}
+            truncated={instanceLists[key].truncated}
+            disabled={disabled}
+            onChange={setInstanceBaseline}
+          />
         ),
       })
     }

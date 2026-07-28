@@ -7,6 +7,7 @@ import {
   clearGranteeLevels,
   createPermissionProfile,
   getCapabilities,
+  getGranteeAccess,
   getPermissionProfile,
   Level,
   listGranteeGrants,
@@ -179,6 +180,44 @@ export const permissionsRouter = createTRPCRouter({
     const grants = await listGranteeGrants(ctx.session.organizationId, ctx.db)
     return { grants }
   }),
+
+  /**
+   * Everything ONE grantee page needs, for one grantee (plan 31 §2.4): the rows
+   * keyed to them (`own`, what the selects edit) and what they can actually reach
+   * (`effective`, what the lines report).
+   *
+   * Replaces three org-wide reads the grantee pages did and filtered client-side
+   * — {@link permissionsRouter.listGrants}, `resourceAccess.allTypeAccess` and
+   * `resourceAccess.allInstanceAccess`. Those three SURVIVE: the overrides tab's
+   * grantee LIST legitimately needs to know who has an override at all, and the
+   * Workspace defaults tab is org-wide by definition. Only the grantee DETAIL
+   * switched.
+   *
+   * Same `permissions` gate as its neighbours, which is at least as strict as the
+   * `isAdminOrOwner` the two `resourceAccess` reads it replaces used —
+   * OWNER/ADMIN hold `permissionsManage` through `ROLE_DEFAULTS`. It returns
+   * strictly less than they did: one grantee's levels, never the org's map.
+   *
+   * `effective` is `null` for `group`/`profile` — they are level sources, not
+   * subjects. See `getGranteeAccess`.
+   */
+  granteeAccess: permissionsProcedure
+    .input(
+      z.object({
+        granteeType: z.enum(['user', 'group', 'profile']),
+        granteeId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) =>
+      getGranteeAccess(
+        {
+          organizationId: ctx.session.organizationId,
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
+        },
+        ctx.db
+      )
+    ),
 
   /**
    * Set (upsert) the per-area levels for one **override** grantee (group or

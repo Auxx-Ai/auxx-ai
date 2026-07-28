@@ -39,14 +39,6 @@ interface LevelControlProps {
   /** Emits the new explicit level, or `undefined` to reset the area to inherited. */
   onChange: (level: Level | undefined) => void
   disabled?: boolean
-  /**
-   * Muted text rendered beside the control while nothing explicit is stored —
-   * how a caller names the fall-through. Agent grantees pass `'Default'` so an
-   * unset area reads "Default · Full" (set-semantics: absent ⇒ Full) instead of
-   * silently looking identical to an explicit Full. Omitted for the member
-   * surfaces, where the reset button alone marks the explicit state.
-   */
-  unsetHint?: string
   /** Tooltip on the reset button. Defaults to the inherit wording. */
   resetTooltip?: string
 }
@@ -60,9 +52,16 @@ interface LevelControlProps {
  * button appears once an explicit level is set. Every rung stays selectable —
  * the raise-only rule for overrides is enforced server-side (an override at or
  * below the baseline is composed away), and surfaced in the UI as an "ignored"
- * warning rather than a disabled rung. For AGENT grantees (set-semantics, no
- * inheritance) the caller passes `unsetHint` so the unset state is legible as a
- * default rather than an inherited value.
+ * warning rather than a disabled rung.
+ *
+ * **The fall-through hint is NOT here.** It used to render in this trailing
+ * cluster as an `unsetHint` prop, which put "Not set · no access" at the far
+ * right of the row, hard against the ladder it describes. It now lives in the
+ * row's `secondary` slot beside the title — see `ProfileAreaGrid`'s
+ * `ProfileAreaRow`, its only caller. Two things fell out: the hint no longer
+ * has to reserve width in this cluster to keep rows aligned (it was rendered
+ * `invisible` rather than dropped, purely for layout), and it now sits with the
+ * other left-side row state instead of competing with the control.
  */
 export function LevelControl({
   area,
@@ -71,7 +70,6 @@ export function LevelControl({
   ignored = false,
   onChange,
   disabled = false,
-  unsetHint,
   resetTooltip = 'Reset to inherited',
 }: LevelControlProps) {
   const levels = useMemo<Level[]>(
@@ -95,41 +93,45 @@ export function LevelControl({
           aria-hidden={!ignored}
         />
       </Tooltip>
-      {unsetHint !== undefined && (
-        <span
-          className={cn(
-            'text-xs text-muted-foreground whitespace-nowrap',
-            isExplicit && 'invisible'
-          )}
-          aria-hidden={isExplicit}>
-          {unsetHint}
-        </span>
-      )}
-      <Tooltip content={resetTooltip}>
-        <Button
-          type='button'
-          size='icon-sm'
-          variant='ghost'
-          aria-label={resetTooltip}
-          disabled={disabled || !isExplicit}
-          className={cn('size-6 text-muted-foreground', !isExplicit && 'invisible')}
-          onClick={() => onChange(undefined)}>
-          <Undo2 />
-        </Button>
-      </Tooltip>
       {/*
-        Fixed-width slot for the ladder, so every row's hint/reset cluster starts
-        at the same x whatever the area's rung count. The min-width belongs HERE
-        and not on `RadioTab`: that component's own container is the grey pill, so
-        widening it would stretch an empty pill behind a 2-rung toggle. The
-        wrapper keeps the pill content-sized and pins it right instead.
-        `min-w-` (not `w-`) so a hypothetical 5-rung area overflows the slot and
-        renders correctly-but-unaligned rather than clipped. 52 = 208px is the
-        smallest 0.25rem step that clears the widest ladder we ship —
-        None/Read/Edit/Full measures 206.4px (4 × (px-2.5 = 20px + the 30.6px
-        `text-xs`/500 "None") + the pill's 4px p-0.5).
+        Fixed-width slot holding the reset button AND the ladder, right-pinned so
+        every row's ladder ends at the same x whatever the area's rung count.
+
+        The reset button lives INSIDE the slot (it used to sit outside, left of
+        it) so it hugs the pill it acts on. Outside, it was separated from the
+        pill by however much of the slot a narrow ladder left empty — on a 2-rung
+        None/Full toggle that gap was most of the slot's width, and the button
+        read as belonging to nothing. The trade is deliberate: reset buttons no
+        longer share an x across rows, because "next to its own picker" beats
+        "aligned with a picker three rows up".
+
+        The min-width belongs HERE and not on `RadioTab`: that component's own
+        container is the grey pill, so widening it would stretch an empty pill
+        behind a 2-rung toggle. This wrapper keeps the pill content-sized and
+        pins the group right instead. `min-w-` (not `w-`) so a hypothetical
+        5-rung area overflows and renders correctly-but-unaligned rather than
+        clipped.
+
+        60 = 240px, re-derived for the new contents (it was 52 = 208px when the
+        slot held the ladder alone): the widest ladder we ship,
+        None/Read/Edit/Full, measures 206.4px — 4 × (px-2.5 = 20px + the 30.6px
+        `text-xs`/500 "None") + the pill's 4px p-0.5 — plus the size-6 (24px)
+        button and the 4px gap-1 = 234.4px. 240 is the smallest 0.25rem step that
+        clears it, with 5.6px of slack.
       */}
-      <div className='flex min-w-52 justify-end'>
+      <div className='flex min-w-60 items-center justify-end gap-1'>
+        <Tooltip content={resetTooltip}>
+          <Button
+            type='button'
+            size='icon-sm'
+            variant='ghost'
+            aria-label={resetTooltip}
+            disabled={disabled || !isExplicit}
+            className={cn('size-6 shrink-0 text-muted-foreground', !isExplicit && 'invisible')}
+            onClick={() => onChange(undefined)}>
+            <Undo2 />
+          </Button>
+        </Tooltip>
         <RadioTab
           value={String(displayed)}
           onValueChange={(v) => onChange(Number(v) as Level)}

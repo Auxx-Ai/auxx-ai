@@ -15,6 +15,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
+import { useInvalidateGranteeAccess } from './use-grantee-access'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
 
 /**
@@ -139,7 +140,13 @@ export function useGranteeDefAccess(
 
   // Broad on purpose: the per-def Permissions tab reads the same rows under
   // `resourceAccess.forType`, so a write here must refresh that key too.
-  const invalidate = useCallback(() => utils.resourceAccess.invalidate(), [utils])
+  // `granteeAccess` rides along because a def write moves its COMPOSED
+  // `effective` half, which no optimistic patch here can predict.
+  const invalidateGranteeAccess = useInvalidateGranteeAccess()
+  const invalidate = useCallback(() => {
+    invalidateGranteeAccess()
+    return utils.resourceAccess.invalidate()
+  }, [utils, invalidateGranteeAccess])
 
   /** Optimistically upsert (or, with `permission` undefined, drop) one type row. */
   const patchLocal = useCallback(

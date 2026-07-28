@@ -10,6 +10,7 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { LevelControl } from './level-control'
+import { effectiveLevelLabel } from './level-labels'
 import { PROFILE_AREA_GROUPS } from './profile-copy'
 
 /** The grid's live filter, handed to {@link LeveledAreaGridProps.renderChildren}. */
@@ -64,6 +65,23 @@ interface LeveledAreaGridProps {
    * auto-expand a parent whose own label doesn't match the search.
    */
   renderChildren?: (area: Area, filter: AreaChildFilter) => AreaChildren | undefined
+  /**
+   * What this grantee can ACTUALLY reach per area — `CapabilitySet.areaLevel`,
+   * from `permissions.granteeAccess` (plan 31 §2.4).
+   *
+   * **Optional, and absent means today's behaviour** — the profile editor
+   * renders `ProfileAreaGrid`, not this component, and a group/profile has no
+   * effective access to report, so those surfaces simply pass nothing.
+   *
+   * Why this exists: the ladder shows `values[area] ?? inherited`, where
+   * `inherited` is the member profile's base. Real composition is
+   * `min(min(max(profileBase, maxOverGroups, userLevel), profileCeiling), seatCeiling)`
+   * — so the row displays the first and last terms of that `max` and NEITHER
+   * clamp. A member raised by a team reads "Inherit · No access" here while
+   * reaching the area fine. Same class as plan 31 finding 4, one level up; the
+   * plan names it only for instance rows.
+   */
+  effectiveLevels?: Partial<Record<Area, Level>>
 }
 
 /**
@@ -88,6 +106,7 @@ export function LeveledAreaGrid({
   onChange,
   disabled = false,
   renderChildren,
+  effectiveLevels,
 }: LeveledAreaGridProps) {
   const [search, setSearch] = useState('')
   const [overridesOnly, setOverridesOnly] = useState(false)
@@ -160,12 +179,28 @@ export function LeveledAreaGrid({
                     ? (baseline?.[area] ?? roleDefaults[area])
                     : roleDefaults[area]
                 const isOpen = openAreas[area] ?? autoOpen
+                const effective = effectiveLevels?.[area]
                 return (
                   <TreeRow
                     rowClassName='bg-primary-50 hover:bg-primary-100'
                     key={area}
                     title={meta.label}
                     description={meta.description}
+                    // Shown ONLY where it disagrees with the ladder, unlike the
+                    // instance rows, which always show it. Not an inconsistency:
+                    // the ladder here always highlights a concrete rung
+                    // (`value ?? inherited`), so a matching line would be noise
+                    // on every row and the discrepancy — a group raise, a
+                    // profile ceiling, the seat clamp — is the whole signal. A
+                    // grantee instance row's select reads a bare "Inherit" with
+                    // no rung named, so there it has to be unconditional.
+                    secondary={
+                      effective !== undefined && effective !== (value ?? inherited) ? (
+                        <span className='whitespace-nowrap text-xs'>
+                          Effective · {effectiveLevelLabel(effective)}
+                        </span>
+                      ) : undefined
+                    }
                     expandable={children !== undefined}
                     isOpen={children !== undefined ? isOpen : undefined}
                     onToggleOpen={
