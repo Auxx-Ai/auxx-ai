@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import { effectiveInstanceLevel, toResolvedRecordAccess } from './entity-access'
-import type { InstanceAccessKey } from './instance-access'
-import { Area, Level } from './registry'
+import { INSTANCE_ACCESS_VIEW_KEYS, type InstanceAccessKey } from './instance-access'
+import { Area, Level, PermissionKey } from './registry'
 import { MEMBER_BASELINE_LEVELS } from './seat-policy'
 
 /**
@@ -184,28 +184,51 @@ describe('grantee-scoped instance grants (plan 24 §B.4)', () => {
   })
 })
 
-describe('dead grants — an instance grant under a closed area (plan 24 §B.2.8)', () => {
-  it('grants nothing to a member whose profile closes the area', () => {
-    // `effectiveInstanceLevel` short-circuits at area None BEFORE consulting
-    // instance rows, so sharing to a sparse-profile holder is a silent no-op.
-    // This is the behaviour the Share UI's "No effect" warning describes — and
-    // the behaviour plan 25 §2 will deliberately flip, so it is pinned here.
+describe('an instance grant under a closed area (plan 24 §B.2.8, flipped by plan 25 §2)', () => {
+  it('takes effect anyway — an explicit row beats the area floor', () => {
+    // Was the "dead grant" case: `effectiveInstanceLevel` short-circuited at
+    // area None BEFORE consulting instance rows, so sharing to a sparse-profile
+    // holder was a silent no-op and the only workaround was raising their
+    // profile — which, under `baselineAtCreate: false`, hands them EVERY
+    // dataset. Plan 25 §2 inverted it: most-specific-wins runs all the way down.
     const m = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.None },
       rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }],
     })
-    expect(levelFor(m, 'dataset', 'ds_shared')).toBeUndefined()
-    expect(m.server.canViewInstance('dataset', 'ds_shared')).toBe(false)
+    expect(levelFor(m, 'dataset', 'ds_shared')).toBe(ResourcePermission.admin)
+    expect(m.server.canViewInstance('dataset', 'ds_shared')).toBe(true)
 
-    // The two signals the server annotation (`forInstance.granteeAreaLevel`) is
-    // built from: the grant is genuinely stored, and the area is genuinely shut.
+    // The grant is genuinely stored and the area is genuinely shut — the two
+    // signals the server annotation (`forInstance.granteeAreaLevel`) is built
+    // from. Their combination no longer means "inert"; only pairing a shut area
+    // with an explicit `'none'` row does.
     expect(m.caps.instanceAccess).toEqual({ ds_shared: 'admin' })
     expect(m.server.areaLevel(Area.datasets)).toBe(Level.None)
   })
 
-  it('the same grant takes effect once the profile grants the area', () => {
-    // The other half of the warning's lifecycle — without this the test above
-    // would pass for a grant that never works at all.
+  it('but a member with NO row on that closed area still sees nothing', () => {
+    // The load-bearing half: the flip must not turn a closed area into an open
+    // one. Only instances someone deliberately authored a row for escape.
+    const m = member({
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.None },
+      rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }],
+    })
+    expect(levelFor(m, 'dataset', 'ds_untouched')).toBeUndefined()
+    expect(m.server.canViewInstance('dataset', 'ds_untouched')).toBe(false)
+  })
+
+  it('an explicit `none` row on a closed area still denies', () => {
+    const m = member({
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.None },
+      rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
+    })
+    expect(levelFor(m, 'dataset', 'ds_locked')).toBe(ResourcePermission.none)
+    expect(m.server.canViewInstance('dataset', 'ds_locked')).toBe(false)
+  })
+
+  it('the same grant takes effect with the area open too', () => {
+    // The other half of the lifecycle — without this the test above would pass
+    // for a grant that never works at all.
     const m = member({ rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }] })
     expect(m.server.areaLevel(Area.datasets)).toBe(Level.Read)
     expect(levelFor(m, 'dataset', 'ds_shared')).toBe(ResourcePermission.admin)
@@ -213,7 +236,10 @@ describe('dead grants — an instance grant under a closed area (plan 24 §B.2.8
 
   it('an area closed only by the SEAT ceiling kills the grant too', () => {
     // A worker seat zeroes `datasets` regardless of the profile, and the ceiling
-    // is applied last — an instance grant must not slip past a billing invariant.
+    // is applied last — an instance grant must not slip past a billing
+    // invariant. Load-bearing since plan 25 §2: with the row now outranking the
+    // AREA floor, the seat clamp had to become an explicit check in
+    // `effectiveInstanceLevel` rather than riding on the seat-clamped key set.
     const m = member({
       seatType: 'worker',
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.Full },
@@ -269,5 +295,58 @@ describe('OWNER regression (plan 24 §A.4)', () => {
     const other = member({ restrictedInstances: ['dash_private'] })
     expect(levelFor(owner, 'dashboard', 'dash_private')).toBe(ResourcePermission.admin)
     expect(levelFor(other, 'dashboard', 'dash_private')).toBeUndefined()
+  })
+})
+
+/**
+ * `hasAnyInstanceGrant()` + `INSTANCE_ACCESS_VIEW_KEYS` — the two halves of
+ * `permissionProcedure`'s front-door waiver (plan 25 §2).
+ *
+ * Pinned as UNIT assertions rather than through a router on purpose: the waiver
+ * grants nothing, so it is behaviorally invisible downstream — every procedure
+ * behind those keys asserts on a specific instance immediately after, and denies
+ * the same callers either way. That invisibility IS the safety argument, and it
+ * is also why widening the waiver has to be caught here.
+ */
+describe('the permissionProcedure waiver inputs (plan 25 §2)', () => {
+  it('hasAnyInstanceGrant is true for a row that reaches view, at any rung', () => {
+    for (const permission of ['view', 'edit', 'admin'] as const) {
+      expect(
+        member({ rows: [{ entityInstanceId: 'ds_x', permission }] }).server.hasAnyInstanceGrant()
+      ).toBe(true)
+    }
+  })
+
+  it('hasAnyInstanceGrant is false with no rows, and false for `none` rows only', () => {
+    // A restriction is not a grant — it must not open the front door.
+    expect(member().server.hasAnyInstanceGrant()).toBe(false)
+    expect(
+      member({
+        rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
+      }).server.hasAnyInstanceGrant()
+    ).toBe(false)
+  })
+
+  it('the waivable keys are exactly the Read rung of each instance-access area', () => {
+    // The scope that closes the create hole: `workflowsManage` fronts `create`,
+    // which has NO instance to assert on, so waiving it would let a `None`-area
+    // grant holder create workflows.
+    expect([...INSTANCE_ACCESS_VIEW_KEYS].sort()).toEqual(
+      [
+        PermissionKey.datasetsView,
+        PermissionKey.knowledgeBaseView,
+        PermissionKey.dashboardsView,
+        PermissionKey.workflowsView,
+      ].sort()
+    )
+    for (const key of [
+      PermissionKey.workflowsManage,
+      PermissionKey.datasetsManage,
+      PermissionKey.knowledgeBaseManage,
+      PermissionKey.dashboardsManage,
+      PermissionKey.workflowsEdit,
+    ]) {
+      expect(INSTANCE_ACCESS_VIEW_KEYS.has(key)).toBe(false)
+    }
   })
 })

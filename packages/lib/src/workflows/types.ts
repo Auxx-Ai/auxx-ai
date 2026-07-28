@@ -39,6 +39,13 @@ export interface WorkflowFilter {
    * `total`/`hasMore` describe the set the member can actually see.
    */
   excludeIds?: readonly string[]
+  /**
+   * The caller may view ONLY these workflow ids — the inverse of
+   * {@link excludeIds}, used when the member composes `workflows: None` but
+   * holds explicit instance grants (plan 25 §2). Mutually exclusive with
+   * `excludeIds`; `CapabilitySet.instanceListScope` never produces both.
+   */
+  includeIds?: readonly string[]
 }
 export interface WorkflowCreateInput {
   name: string

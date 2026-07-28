@@ -291,7 +291,8 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/schedule'),
       })
     }
-    if (hasAccess('workflows') && can('workflows.manage')) {
+    // View, not Manage — matches SIDEBAR_MENU; Manage fronts creation, not reaching the list.
+    if (hasAccess('workflows') && can('workflows.view')) {
       actions.push({
         id: 'nav.workflows',
         label: 'Workflows',

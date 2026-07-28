@@ -209,6 +209,12 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
        * and the slice. Filtering the returned page instead would make `total`
        * describe the unfiltered set and could hand back an empty page with
        * `hasMore: true`.
+       *
+       * `includeIds` is its inverse (plan 25 §2): the ONLY ids the caller may
+       * view, used when they compose `workflows: None` yet hold explicit
+       * instance grants. `CapabilitySet.instanceListScope` produces one or the
+       * other, never both; an empty array on either is treated as "not set" so
+       * an accidental empty allow-list can never silently blank the list.
        */
       async list(filters?: {
         search?: string
@@ -217,9 +223,14 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
         limit?: number
         offset?: number
         excludeIds?: readonly string[]
+        includeIds?: readonly string[]
       }): Promise<{ workflows: CachedWorkflowApp[]; total: number; hasMore: boolean }> {
         let data = (await dataFn()).filter((app) => !app.ownerType)
 
+        if (filters?.includeIds?.length) {
+          const included = new Set(filters.includeIds)
+          data = data.filter((app) => included.has(app.id))
+        }
         if (filters?.excludeIds?.length) {
           const excluded = new Set(filters.excludeIds)
           data = data.filter((app) => !excluded.has(app.id))

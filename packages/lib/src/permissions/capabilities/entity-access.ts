@@ -310,9 +310,34 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  * `effectiveInstanceLevel`, kept byte-for-byte in sync so client affordances and
  * server enforcement never drift (§1.4):
  *  - OWNER → `admin` (the §0.10 recovery bypass — never self-lock).
- *  - L2 area gate closed (`None`) → `undefined`.
- *  - explicit instance row (incl. workspace baseline / `'none'`) → wins.
+ *  - explicit instance row (incl. workspace baseline / `'none'`) → wins, even
+ *    when the L2 area gate is closed.
+ *  - L2 area gate closed (`None`) and NO row → `undefined`.
  *  - otherwise fall back to the base L2 area level (`baselineAtCreate: false`).
+ *
+ * **An explicit instance row beats the area floor** (plan 25 §2, decided
+ * 2026-07-27). The row check used to sit BELOW the `areaLevel === Level.None`
+ * return, which made every share to a sparse-profile member inert: the only way
+ * to make "you may see this ONE workflow" work was to raise their profile to
+ * `workflows: Read`, and because `workflow` is `baselineAtCreate: false` that
+ * granted read on EVERY workflow — the exact opposite of a single-instance
+ * share. Most-specific-wins now runs all the way down, matching
+ * {@link effectiveRecordLevel}, where an explicit per-def grant has always
+ * REPLACED the base rather than being clamped by it.
+ *
+ * Fail-closed is preserved by `restrictedInstanceIds`: the unshared majority
+ * have no row at all, so they fall through to the area gate and are denied. Only
+ * an instance someone deliberately authored a row for can escape the floor, and
+ * an explicit `'none'` row still denies (it is the per-instance downward marker).
+ *
+ * **The SEAT ceiling still dominates, and is now checked explicitly.** It used
+ * to be enforced implicitly: `areaLevelFromKeys` reads an already seat-clamped
+ * key set, so a closed seat area meant `areaLevel === Level.None` and the
+ * short-circuit denied before any row was read. Now that a row outranks the
+ * floor, that implicit path is gone and the clamp has to be stated — otherwise
+ * one `admin` grant would hand a worker seat a workflow its billing packaging
+ * excludes. Same shape as {@link effectiveRecordLevel}'s records-ceiling check
+ * (§3: a clamp applied at some seams only is defeated by the others).
  *
  * **ADMIN no longer bypasses** (doc 19 §5.3 piece 2, step 10). On the seeded
  * all-`Full` `admin` profile the fallback branch returns `admin` anyway for the
@@ -331,11 +356,12 @@ export function effectiveInstanceLevel(
 ): ResourcePermission | undefined {
   if (caps.role === 'OWNER') return ResourcePermission.admin
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
-  const areaLevel = areaLevelFromKeys(caps.keys, cfg.area)
-  if (areaLevel === Level.None) return undefined
+  if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
   if ((caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET).has(instanceId)) {
     return caps.instanceAccess?.[instanceId]
   }
+  const areaLevel = areaLevelFromKeys(caps.keys, cfg.area)
+  if (areaLevel === Level.None) return undefined
   return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
 }
 
@@ -346,7 +372,7 @@ const EMPTY_INSTANCE_SET: ReadonlySet<string> = new Set()
  * (`baselineAtCreate: false` — `dataset`, `kb`, `workflow`). Derived from
  * {@link INSTANCE_ACCESS_RESOURCES} rather than hand-listed, so flipping a
  * resource to `baselineAtCreate: true` removes it here and makes
- * {@link deniedInstanceIds} a COMPILE error at its call sites instead of a
+ * {@link instanceListScope} a COMPILE error at its call sites instead of a
  * silent leak — see that function for why the distinction is load-bearing.
  */
 export type OrgSharedInstanceAccessKey = {
@@ -356,68 +382,101 @@ export type OrgSharedInstanceAccessKey = {
 }[InstanceAccessKey]
 
 /**
- * The exclusion a paginated LIST query needs so that `limit`/`offset`/`total`
+ * The id filter a paginated LIST query needs so that `limit`/`offset`/`total`
  * run over the set the member may actually see.
  *
  * Post-pagination filtering (fetch a page, then drop the rows the member can't
  * view) makes `total`/`hasMore` describe the UNFILTERED page, returns short
  * pages, and — with enough restrictions — an EMPTY page alongside
  * `hasMore: true`, which breaks any client that stops on an empty page.
+ *
+ * Three outcomes, because plan 25 §2 made the member's visible set either a
+ * near-total set with holes or a tiny explicit allow-list, and no single id list
+ * can express both:
+ *  - `'none'` — view nothing; return an empty list WITHOUT querying.
+ *  - `'exclude'` — everything except {@link excludeIds} (the open-area case; the
+ *    array is usually empty).
+ *  - `'include'` — ONLY {@link includeIds} (the closed-area case: the member
+ *    composes the area to `None` but holds explicit instance grants).
+ *
+ * The unused arm is typed `undefined` on each variant so a caller that has
+ * already excluded `'none'` can spread both fields into a filter object without
+ * branching.
  */
-export interface InstanceExclusion {
-  /**
-   * `true` ⇒ the member may view NO instance of this resource (their L2 area
-   * gate is closed). {@link InstanceExclusion.deniedIds} is meaningless; the
-   * caller must return an empty list without querying at all.
-   */
-  deniesAll: boolean
-  /** Instance ids to exclude from the query. Empty when `deniesAll`. */
-  deniedIds: string[]
-}
+export type InstanceListScope =
+  | { kind: 'none'; excludeIds?: undefined; includeIds?: undefined }
+  | { kind: 'exclude'; excludeIds: string[]; includeIds?: undefined }
+  | { kind: 'include'; includeIds: string[]; excludeIds?: undefined }
 
 /**
- * The instance ids a member may NOT view for an org-shared instance-access
- * resource — the complement of {@link canViewInstance}, computed UP FRONT so a
- * list query can exclude them BEFORE it paginates.
+ * The id filter that reproduces {@link canViewInstance} for an org-shared
+ * instance-access resource, computed UP FRONT so a list query can apply it
+ * BEFORE it paginates. The list-side twin of `canViewInstance` — if these two
+ * disagree, a member sees an empty page for an instance they can demonstrably
+ * open.
  *
- * Enumerating the denied set is only sound for `baselineAtCreate: false`
- * resources, which is why the `key` parameter is narrowed to
+ * Enumerating either side is only sound for `baselineAtCreate: false` resources,
+ * which is why the `key` parameter is narrowed to
  * {@link OrgSharedInstanceAccessKey}. There, {@link effectiveInstanceLevel} has
- * exactly three outcomes and only two of them can deny:
- *  1. `role === 'OWNER'` → `admin`. Never denies.
- *  2. area level `None` → `undefined`. Denies EVERYTHING, including instances
- *     with no row — not enumerable, hence `deniesAll`.
- *  3. instance in `restrictedInstanceIds` → that member's own row, which denies
- *     when it is absent or below `view`. **Enumerable** — the set is exactly the
- *     org's explicitly-shared instances.
- *  4. otherwise → `levelToPermission(areaLevel)`, which for a non-`None` area is
- *     always ≥ `view`. Never denies.
- * So outside the `deniesAll` case, an instance can only be denied by an explicit
- * `ResourceAccess` row — there is no fourth, non-restriction denial path. With
+ * exactly four outcomes:
+ *  1. `role === 'OWNER'` → `admin`. Never denies → `exclude` with nothing.
+ *  1b. seat ceiling closes the area → `undefined` for everything, rows included
+ *     → `'none'`.
+ *  2. instance in `restrictedInstanceIds` → that member's own row, which denies
+ *     when it is absent or below `view`. **Enumerable both ways** — the set is
+ *     exactly the org's explicitly-managed instances.
+ *  3. no row + area level `None` → `undefined`. Denies every row-LESS instance,
+ *     which no exclusion list can enumerate — so this case inverts to `include`,
+ *     naming the explicitly-granted instances instead. When none of the member's
+ *     rows reach `view`, the answer is `'none'`.
+ *  4. no row + open area → `levelToPermission(areaLevel)`, always ≥ `view`.
+ *     Never denies.
+ * So an instance is denied either by an explicit `ResourceAccess` row or by the
+ * area floor with no row — there is no third denial path. With
  * `baselineAtCreate: true` (dashboards) branch 4 flips to `undefined` and every
- * row-less instance is denied, which no id list can express.
+ * row-less instance is denied even on an open area, so that resource would need
+ * the `include` form unconditionally; the type narrowing makes flipping a
+ * resource a COMPILE error at the call sites rather than a silent leak.
  *
  * `restrictedInstanceIds` is org-wide across ALL instance-access resources, so
  * the result may name ids of other types (a restricted dataset while listing
- * workflows). Harmless: ids are globally-unique cuid2s, so excluding a foreign
- * id can never drop a row of the type being listed.
+ * workflows). Harmless in both directions: ids are globally-unique cuid2s, so a
+ * foreign id can neither drop a row of the type being listed (`exclude`) nor
+ * admit one (`include`).
  */
-export function deniedInstanceIds(
+export function instanceListScope(
   caps: ResolvedRecordAccess,
   key: OrgSharedInstanceAccessKey
-): InstanceExclusion {
-  if (caps.role === 'OWNER') return { deniesAll: false, deniedIds: [] }
-  if (areaLevelFromKeys(caps.keys, INSTANCE_ACCESS_RESOURCES[key].area) === Level.None) {
-    return { deniesAll: true, deniedIds: [] }
+): InstanceListScope {
+  if (caps.role === 'OWNER') return { kind: 'exclude', excludeIds: [] }
+  const area = INSTANCE_ACCESS_RESOURCES[key].area
+  // The seat ceiling dominates every row (see `effectiveInstanceLevel`), so a
+  // seat that excludes the area sees nothing regardless of grants.
+  if (SEAT_CEILINGS[caps.seatType][area] === Level.None) return { kind: 'none' }
+  const managed = caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET
+
+  if (areaLevelFromKeys(caps.keys, area) === Level.None) {
+    // Area closed: the visible set is exactly the member's own ≥`view` rows
+    // (plan 25 §2). An allow-list, not a deny-list — every row-less instance is
+    // invisible and there is no bound on how many of those there are.
+    const includeIds: string[] = []
+    for (const instanceId of managed) {
+      const level = caps.instanceAccess?.[instanceId]
+      if (level !== undefined && satisfiesPermission(level, ResourcePermission.view)) {
+        includeIds.push(instanceId)
+      }
+    }
+    return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
   }
-  const deniedIds: string[] = []
-  for (const instanceId of caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET) {
+
+  const excludeIds: string[] = []
+  for (const instanceId of managed) {
     const level = caps.instanceAccess?.[instanceId]
     if (level === undefined || !satisfiesPermission(level, ResourcePermission.view)) {
-      deniedIds.push(instanceId)
+      excludeIds.push(instanceId)
     }
   }
-  return { deniesAll: false, deniedIds }
+  return { kind: 'exclude', excludeIds }
 }
 
 /**

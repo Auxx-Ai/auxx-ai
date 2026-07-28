@@ -259,19 +259,23 @@ export const datasetRouter = createTRPCRouter({
     // `datasets: None` member gets an empty list rather than a 403, which
     // matters because this feeds passive UI like the permission grids).
     //
-    // The exclusion is computed UP FRONT and handed to the query, so `limit`,
+    // The filter is computed UP FRONT and handed to the query, so `limit`,
     // `page`, `totalCount` and `hasMore` all describe the FILTERED set.
     // Filtering the returned page instead (what this did originally) leaves
     // `totalCount`/`hasMore` describing the unfiltered page, returns short
     // pages, and can hand back an EMPTY page with `hasMore: true` — which
     // breaks any client that stops on an empty page.
     //
-    // The denied set is near-empty in practice: `dataset` is
-    // `baselineAtCreate: false`, so the ONLY exclusions are explicitly-restricted
-    // datasets. See `deniedInstanceIds` for the proof that no non-restriction
-    // denial path exists once the area gate is open.
-    const { deniesAll, deniedIds } = ctx.capabilities.deniedInstanceIds('dataset')
-    if (deniesAll) return { datasets: [], totalCount: 0, hasMore: false }
+    // Two shapes, because `instanceListScope` is the list-side twin of
+    // `canViewInstance` and that gate now has two regimes (plan 25 §2):
+    //  - open `datasets` area → `exclude`, near-empty in practice (`dataset` is
+    //    `baselineAtCreate: false`, so the ONLY exclusions are explicitly
+    //    restricted datasets);
+    //  - `datasets: None` + explicit grants → `include`, naming exactly the
+    //    datasets shared with this member. Returning an empty list here instead
+    //    would contradict `getById`, which lets them open it.
+    const scope = ctx.capabilities.instanceListScope('dataset')
+    if (scope.kind === 'none') return { datasets: [], totalCount: 0, hasMore: false }
 
     const datasetService = new DatasetService(ctx.db)
     const filters = {
@@ -280,7 +284,8 @@ export const datasetRouter = createTRPCRouter({
       createdById: input.createdById,
       dateRange: input.dateRange,
       hideManaged: input.hideManaged,
-      excludeIds: deniedIds,
+      excludeIds: scope.excludeIds,
+      includeIds: scope.includeIds,
     }
     const pagination = {
       page: input.page,

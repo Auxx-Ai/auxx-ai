@@ -122,12 +122,19 @@ export const INSTANCE_ROW_COPY = {
 } as const
 
 /**
- * The dead-grant warning (capability layer v2 §B.2.8): a `user` grant on an
- * instance is inert when that member's own composed area level is `None` —
- * `effectiveInstanceLevel` closes the area gate before ever consulting the
- * instance row, so the grant silently does nothing until their profile grants
- * the area.
+ * The dead-row warning (capability layer v2 §B.2.8, re-aimed by plan 25 §2).
+ *
+ * It used to mark any `user` row on a member whose composed area level was
+ * `None`, because `effectiveInstanceLevel` closed the area gate *before* it
+ * consulted instance rows and every such share was silently inert. Plan 25 §2
+ * inverted that: an explicit row now beats the area floor, so a POSITIVE grant
+ * against a sparse profile is exactly how "no workflows except this one" is
+ * expressed — warning about it would now be actively wrong.
+ *
+ * What remains genuinely dead is the opposite row: an explicit `none`
+ * RESTRICTION on a member who already composes the area to `None`. It takes away
+ * something they never had.
  */
 export function deadGrantWarning(areaLabel: string): string {
-  return `No effect — their profile has no ${areaLabel} access.`
+  return `No effect — their profile already has no ${areaLabel} access to take away.`
 }

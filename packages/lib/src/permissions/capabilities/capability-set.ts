@@ -10,8 +10,8 @@ import {
   canAdministerRecord,
   canEditRecord,
   canViewRecord,
-  deniedInstanceIds,
-  type InstanceExclusion,
+  type InstanceListScope,
+  instanceListScope,
   levelToPermission,
   NON_RECORD_DEF_SLUGS,
   type OrgSharedInstanceAccessKey,
@@ -25,7 +25,7 @@ import {
   PERMISSION_REGISTRY_MAP,
   PermissionKey,
 } from './registry'
-import { ENTITY_WRITE_KEYS } from './seat-policy'
+import { ENTITY_WRITE_KEYS, SEAT_CEILINGS } from './seat-policy'
 
 /**
  * Resolves the definition part of a RecordId (a system slug like `work_order`,
@@ -284,14 +284,17 @@ export class CapabilitySet implements CapabilityView {
   /**
    * Effective per-instance permission for an instance-access resource
    * (most-specific-wins), or `undefined` = no access (§1.4). OWNER bypasses to
-   * `admin` (§0.10); the coarse L2 area gate must be open; an explicit instance
-   * row (incl. the workspace baseline / `'none'`) wins; otherwise fall back to
-   * the base L2 area level (for `baselineAtCreate: false` resources). Zero I/O.
+   * `admin` (§0.10); an explicit instance row (incl. the workspace baseline /
+   * `'none'`) wins outright; with no row, the coarse L2 area gate must be open
+   * and supplies the fallback level (for `baselineAtCreate: false` resources).
+   * The SEAT ceiling is checked before any of that — it is a billing invariant
+   * and outranks even an explicit row. Zero I/O.
    *
-   * **ADMIN no longer bypasses** (doc 19 §5.3 piece 2, step 10) — kept
-   * byte-for-byte in sync with the client mirror
+   * **An explicit row beats the area floor** (plan 25 §2) and **ADMIN no longer
+   * bypasses** (doc 19 §5.3 piece 2, step 10) — kept byte-for-byte in sync with
+   * the client mirror
    * {@link import('./entity-access').effectiveInstanceLevel}, which carries the
-   * full rationale.
+   * full rationale for both.
    */
   private effectiveInstanceLevel(
     key: InstanceAccessKey,
@@ -299,28 +302,53 @@ export class CapabilitySet implements CapabilityView {
   ): ResourcePermission | undefined {
     if (this.role === 'OWNER') return ResourcePermission.admin
     const cfg = INSTANCE_ACCESS_RESOURCES[key]
+    if (SEAT_CEILINGS[this.seatType][cfg.area] === Level.None) return undefined
+    if (this.restrictedInstanceIds.has(instanceId)) return this.instanceAccess[instanceId]
     const areaLevel = areaLevelFromKeys(this.keys, cfg.area)
     if (areaLevel === Level.None) return undefined
-    if (this.restrictedInstanceIds.has(instanceId)) return this.instanceAccess[instanceId]
     return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
   }
 
   /**
-   * The exclusion a paginated LIST query needs so `limit`/`offset`/`total` run
-   * over the rows this member may actually see — the complement of
+   * Whether this member holds ANY instance grant reaching `view`, across ALL
+   * instance-access resources. Deliberately TYPE-BLIND: `instanceAccess` keys on
+   * the bare instance CUID with no resource type, so the composed blob cannot
+   * answer "does this member hold a *workflow* grant?" without a shape change
+   * (and therefore a `user:capabilities:vN` bump). Zero I/O.
+   *
+   * Used ONLY as the coarse front-door waiver in `permissionProcedure` (plan
+   * 25 §2): a member composing an instance-access area to `None` still has to
+   * reach the procedure whose per-instance assert will judge them. It is safe
+   * because it is scoped to `INSTANCE_ACCESS_VIEW_KEYS` and every
+   * procedure behind those keys asserts on a specific instance immediately
+   * after — it is NOT an authorization answer and must never be used as one.
+   */
+  hasAnyInstanceGrant(): boolean {
+    return Object.values(this.instanceAccess).some((permission) =>
+      satisfiesPermission(permission, ResourcePermission.view)
+    )
+  }
+
+  /**
+   * The id filter a paginated LIST query needs so `limit`/`offset`/`total` run
+   * over the rows this member may actually see — the list-side twin of
    * {@link canViewInstance}, computed up front instead of filtering a page after
    * the fact. Delegates to the shared client-safe
-   * {@link import('./entity-access').deniedInstanceIds}, which carries the proof
-   * that no non-restriction denial path exists. Zero I/O.
+   * {@link import('./entity-access').instanceListScope}, which carries the proof
+   * that its two id lists reproduce the gate exactly. Zero I/O.
    *
    * ```ts
-   * const { deniesAll, deniedIds } = ctx.capabilities.deniedInstanceIds('workflow')
-   * if (deniesAll) return { workflows: [], total: 0, hasMore: false }
-   * return service.getAll(orgId, { ...input, excludeIds: deniedIds })
+   * const scope = ctx.capabilities.instanceListScope('workflow')
+   * if (scope.kind === 'none') return { workflows: [], total: 0, hasMore: false }
+   * return service.getAll(orgId, {
+   *   ...input,
+   *   excludeIds: scope.excludeIds,
+   *   includeIds: scope.includeIds,
+   * })
    * ```
    */
-  deniedInstanceIds(key: OrgSharedInstanceAccessKey): InstanceExclusion {
-    return deniedInstanceIds(
+  instanceListScope(key: OrgSharedInstanceAccessKey): InstanceListScope {
+    return instanceListScope(
       {
         ...this.resolved(),
         instanceAccess: this.instanceAccess,

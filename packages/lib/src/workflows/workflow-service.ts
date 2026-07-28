@@ -89,6 +89,7 @@ export class WorkflowService {
         limit: filters.limit,
         offset: filters.offset,
         excludeIds: filters.excludeIds,
+        includeIds: filters.includeIds,
       })
 
       const workflows = cached.workflows.map((app) => ({
