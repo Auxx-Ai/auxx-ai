@@ -15,8 +15,12 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
-import { useInvalidateGranteeAccess } from './use-grantee-access'
-import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
+import {
+  useGranteeAccess,
+  useInvalidateGranteeAccess,
+  usePatchGranteeAccess,
+} from './use-grantee-access'
+import { MEMBER_BASELINE_GRANTEE_ID, useRoleDefaults } from './use-permission-grants'
 
 /**
  * The grantee axis this section edits: an individual member, a team, or (doc 19
@@ -73,10 +77,17 @@ export interface GranteeDefAccessRow {
  * CRM def with that grantee's effective level and lets an admin set it, editing
  * the same type-level `ResourceAccess` rows the per-def Permissions tab writes.
  *
- * Reads once from `resourceAccess.allTypeAccess` (all type rows, org-wide) and
- * `useResources`, then derives per def: the baseline (`role:org_member` row), the
- * locked-down flag (baseline = No Access), this grantee's grant, and whether that
- * grant is a no-op (≤ baseline). Writes reuse `grantType`/`revokeType`.
+ * Reads ONE grantee, not the org (plan 31 §2.4): `permissions.granteeAccess`
+ * supplies this grantee's own type rows, the org's `role:org_member` workspace
+ * defaults and the Member profile's area levels; `useResources` supplies the def
+ * list. It used to pull `resourceAccess.allTypeAccess` — every type row for
+ * every grantee — and narrow client-side. That was properly gated, so this is a
+ * SHAPE fix, not an authorization one; `allTypeAccess` survives for the
+ * Workspace defaults tab, which is org-wide by definition.
+ *
+ * Derives per def: the baseline (`role:org_member` row), the locked-down flag
+ * (baseline = No Access), this grantee's grant, and whether that grant is a
+ * no-op (≤ baseline). Writes reuse `grantType`/`revokeType`.
  *
  * **First-touch rule (correctness, not polish):** setting an explicit grant on a
  * def with no baseline row yet ALSO writes `role:org_member @ edit`, so the def
@@ -101,18 +112,17 @@ export function useGranteeDefAccess(
 
   // The grantee's Layer-2 levels — what unconfigured (non-restricted) defs
   // inherit from their mapped base area. Own override → member baseline → role default.
-  const {
-    isLoading: grantsLoading,
-    roleDefaults,
-    effectiveBaseline,
-    groupGrants,
-    userGrants,
-  } = usePermissionGrants()
-  const ownAreaLevels = useMemo(() => {
-    if (granteeKind === 'profile') return profileOwnLevels?.levels ?? {}
-    const persisted = granteeKind === 'group' ? groupGrants : userGrants
-    return persisted.find((g) => g.granteeId === granteeId)?.levels ?? {}
-  }, [granteeKind, granteeId, groupGrants, userGrants, profileOwnLevels])
+  const { roleDefaults, isLoading: roleDefaultsLoading } = useRoleDefaults()
+  const { isLoading: granteeLoading, own, baseline } = useGranteeAccess(granteeKind, granteeId)
+  const ownAreaLevels = useMemo(
+    () => (granteeKind === 'profile' ? (profileOwnLevels?.levels ?? {}) : (own?.areas ?? {})),
+    [granteeKind, own, profileOwnLevels]
+  )
+  /** The org-wide member baseline per area — role default merged with org policy. */
+  const effectiveBaseline = useMemo<Partial<Record<Area, Level>>>(
+    () => ({ ...(roleDefaults ?? {}), ...(baseline?.areas ?? {}) }),
+    [roleDefaults, baseline]
+  )
 
   const targetBasePermission = useCallback(
     (area: Area): ResourcePermission => {
@@ -136,10 +146,9 @@ export function useGranteeDefAccess(
     [effectiveBaseline, roleDefaults]
   )
 
-  const rowsQuery = api.resourceAccess.allTypeAccess.useQuery(undefined, { staleTime: 30_000 })
-
   // Broad on purpose: the per-def Permissions tab reads the same rows under
-  // `resourceAccess.forType`, so a write here must refresh that key too.
+  // `resourceAccess.forType`, and the Workspace defaults tab under
+  // `resourceAccess.allTypeAccess`, so a write here must refresh those keys too.
   // `granteeAccess` rides along because a def write moves its COMPOSED
   // `effective` half, which no optimistic patch here can predict.
   const invalidateGranteeAccess = useInvalidateGranteeAccess()
@@ -148,38 +157,27 @@ export function useGranteeDefAccess(
     return utils.resourceAccess.invalidate()
   }, [utils, invalidateGranteeAccess])
 
-  /** Optimistically upsert (or, with `permission` undefined, drop) one type row. */
+  const patchGranteeAccess = usePatchGranteeAccess()
+
+  /**
+   * Optimistically upsert (or, with `permission` undefined, drop) one type row
+   * in this grantee's cached payload — what makes a def write feel instant.
+   *
+   * Patches `own.defs` or `baseline.defs` depending on which row is being
+   * written; both are stored verbatim by the server, so the client predicts them
+   * exactly. `effective.defs` is left alone and refetched — see
+   * {@link usePatchGranteeAccess}.
+   */
   const patchLocal = useCallback(
-    (
-      entityDefinitionId: string,
-      rowGranteeType: ResourceGranteeType,
-      rowGranteeId: string,
-      permission?: ResourcePermission
-    ) => {
-      utils.resourceAccess.allTypeAccess.setData(undefined, (prev) => {
-        const rows = (prev ?? []).filter(
-          (r) =>
-            !(
-              r.entityDefinitionId === entityDefinitionId &&
-              r.granteeType === rowGranteeType &&
-              r.granteeId === rowGranteeId
-            )
-        )
-        if (permission) {
-          rows.unshift({
-            id: `optimistic-${entityDefinitionId}-${rowGranteeType}-${rowGranteeId}`,
-            entityDefinitionId,
-            entityInstanceId: null,
-            granteeType: rowGranteeType,
-            granteeId: rowGranteeId,
-            permission,
-            createdAt: new Date(),
-          } as (typeof rows)[number])
-        }
-        return rows
+    (entityDefinitionId: string, target: 'own' | 'baseline', permission?: ResourcePermission) => {
+      patchGranteeAccess(granteeKind, granteeId, (prev) => {
+        const defs = { ...prev[target].defs }
+        if (permission) defs[entityDefinitionId] = permission
+        else delete defs[entityDefinitionId]
+        return { ...prev, [target]: { ...prev[target], defs } }
       })
     },
-    [utils]
+    [patchGranteeAccess, granteeKind, granteeId]
   )
 
   const grantType = api.resourceAccess.grantType.useMutation({
@@ -197,41 +195,20 @@ export function useGranteeDefAccess(
     onSettled: () => void invalidate(),
   })
 
-  const allRows = useMemo(() => rowsQuery.data ?? [], [rowsQuery.data])
-
   /** Per-def baseline permission (`role:org_member` row), keyed by def id. */
-  const baselineByDef = useMemo(() => {
-    const map = new Map<string, ResourcePermission>()
-    for (const r of allRows) {
-      if (
-        r.granteeType === ResourceGranteeType.role &&
-        r.granteeId === MEMBER_BASELINE_GRANTEE_ID
-      ) {
-        map.set(r.entityDefinitionId, r.permission)
-      }
-    }
-    return map
-  }, [allRows])
+  const baselineByDef = useMemo(() => baseline?.defs ?? {}, [baseline])
 
   /** This grantee's explicit grant per def, keyed by def id. */
-  const grantByDef = useMemo(() => {
-    const map = new Map<string, ResourcePermission>()
-    for (const r of allRows) {
-      if (r.granteeType === granteeType && r.granteeId === granteeId) {
-        map.set(r.entityDefinitionId, r.permission)
-      }
-    }
-    return map
-  }, [allRows, granteeType, granteeId])
+  const grantByDef = useMemo(() => own?.defs ?? {}, [own])
 
   const rows = useMemo<GranteeDefAccessRow[]>(() => {
     return resources
       .filter(isAccessManageable)
       .map((resource) => {
-        const configuredBaseline = baselineByDef.get(resource.entityDefinitionId)
+        const configuredBaseline = baselineByDef[resource.entityDefinitionId]
         const baseArea = ENTITY_BASE_AREAS[resource.entityType ?? ''] ?? Area.records
         const baselineLevel = configuredBaseline ?? workspaceBasePermission(baseArea)
-        const grantLevel = grantByDef.get(resource.entityDefinitionId)
+        const grantLevel = grantByDef[resource.entityDefinitionId]
         // Configured def → inherit its workspace baseline; unconfigured → the
         // grantee's general Records level.
         const inheritedLevel = configuredBaseline ?? targetBasePermission(baseArea)
@@ -260,21 +237,16 @@ export function useGranteeDefAccess(
   const setLevel = useCallback(
     (entityDefinitionId: string, level: ResourcePermission | 'inherit') => {
       if (level === 'inherit') {
-        patchLocal(entityDefinitionId, granteeType, granteeId)
+        patchLocal(entityDefinitionId, 'own')
         revokeType.mutate({ entityDefinitionId, granteeType, granteeId })
         return
       }
       // First-touch: keep everyone at the default while this grantee is raised.
-      if (!baselineByDef.has(entityDefinitionId)) {
+      if (baselineByDef[entityDefinitionId] === undefined) {
         const resource = resources.find((item) => item.entityDefinitionId === entityDefinitionId)
         const baseArea = ENTITY_BASE_AREAS[resource?.entityType ?? ''] ?? Area.records
         const defaultBaseline = workspaceBasePermission(baseArea)
-        patchLocal(
-          entityDefinitionId,
-          ResourceGranteeType.role,
-          MEMBER_BASELINE_GRANTEE_ID,
-          defaultBaseline
-        )
+        patchLocal(entityDefinitionId, 'baseline', defaultBaseline)
         grantType.mutate({
           entityDefinitionId,
           granteeType: ResourceGranteeType.role,
@@ -282,7 +254,7 @@ export function useGranteeDefAccess(
           permission: defaultBaseline,
         })
       }
-      patchLocal(entityDefinitionId, granteeType, granteeId, level)
+      patchLocal(entityDefinitionId, 'own', level)
       grantType.mutate({ entityDefinitionId, granteeType, granteeId, permission: level })
     },
     [
@@ -298,7 +270,7 @@ export function useGranteeDefAccess(
   )
 
   return {
-    isLoading: resourcesLoading || rowsQuery.isLoading || grantsLoading,
+    isLoading: resourcesLoading || granteeLoading || roleDefaultsLoading,
     rows,
     setLevel,
   }

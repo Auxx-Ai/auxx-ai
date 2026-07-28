@@ -5,7 +5,7 @@ import type { Area, GranteeGrant, GrantGranteeType, Level } from '@auxx/lib/perm
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { useInvalidateGranteeAccess } from './use-grantee-access'
+import { useInvalidateGranteeAccess, usePatchGranteeAccess } from './use-grantee-access'
 
 /**
  * The fixed `ResourceAccess` grantee id for the org-wide **workspace default** —
@@ -32,35 +32,42 @@ const MEMBER_PROFILE_SLUG = 'member'
 export type OverrideGranteeType = Extract<GrantGranteeType, 'group' | 'user'>
 
 /**
- * Loads every grant row for the org and exposes the permission surfaces it
- * feeds — the profile bases, group overrides and user overrides, plus the Member
- * profile's own levels as the {@link baseline} every override is measured
- * against — with save/remove mutations that write sparse level maps through the
- * grant service.
- *
- * `save`/`remove` reach the **override** tiers only (`group`, `user`). A
- * profile's base is written by `permissions.saveProfile` (see
- * {@link useProfileEditor}), the only path that runs the doc 19 §6.1 escalation
- * guard over each holder's resulting effective state.
- *
- * `save` always upserts — an empty map stores an empty override row, which
- * composes to nothing but keeps the grantee listed across reloads; `remove`
- * deletes the row. Writes update the `listGrants` cache optimistically
- * (the server stores exactly the sparse map the client sends), so successful
- * saves never refetch — only a failed write invalidates to re-sync. The
- * `permission-grant.changed` realtime event separately refreshes affected
- * members' own capabilities.
+ * The USER role's code defaults — a server constant, so it is fetched once and
+ * never refetched. Split out of {@link usePermissionGrants} because the
+ * grantee-scoped surfaces need it WITHOUT the org-wide `listGrants` read that
+ * hook exists to run (plan 31 §2.4).
  */
-export function usePermissionGrants() {
-  const utils = api.useUtils()
-  const grantsQuery = api.permissions.listGrants.useQuery(undefined, { staleTime: 30_000 })
-  // The USER role's code defaults — a server constant, never worth refetching.
-  const roleDefaultsQuery = api.permissions.roleDefaults.useQuery(undefined, {
+export function useRoleDefaults() {
+  const query = api.permissions.roleDefaults.useQuery(undefined, {
     staleTime: Number.POSITIVE_INFINITY,
   })
-  // Grant rows are keyed by profile ID; only the profile list knows which id is
-  // the `member` slug. Same query key as `useProfiles`, so React Query dedupes it.
-  const profilesQuery = api.permissions.listProfiles.useQuery(undefined, { staleTime: 30_000 })
+  return { roleDefaults: query.data, isLoading: query.isLoading }
+}
+
+/**
+ * The area-level write path — `permissions.grant` / `permissions.revoke` with
+ * their optimistic cache handling — with **no org-wide read attached**.
+ *
+ * Split out of {@link usePermissionGrants} so a grantee detail page can write
+ * area levels without pulling every grant row in the org into its query cache
+ * (plan 31 §2.4). `usePermissionGrants` composes this with the `listGrants`
+ * query for the surfaces that genuinely are org-wide — the overrides tab's
+ * grantee LIST, and the profile surfaces.
+ *
+ * Reaches the **override** tiers only (`group`, `user`). A profile's base is
+ * written by `permissions.saveProfile`, the only path that runs the doc 19 §6.1
+ * escalation guard over each holder's resulting effective state.
+ *
+ * Two optimistic patches, both predictable-by-construction because the server
+ * stores exactly the sparse map we send: the `listGrants` row (for the overrides
+ * tab) and `granteeAccess.own.areas` (for the detail pages). Both are no-ops
+ * where the query is not mounted, so one write path serves both surfaces.
+ * `granteeAccess.effective` is deliberately NOT patched — see
+ * {@link usePatchGranteeAccess}.
+ */
+export function useGrantWrites() {
+  const utils = api.useUtils()
+  const patchGranteeAccess = usePatchGranteeAccess()
 
   /** Upsert (or drop, when `levels` is undefined) one grantee row in the cache. */
   const setLocalGrant = useCallback(
@@ -78,21 +85,32 @@ export function usePermissionGrants() {
   )
   const resync = useCallback(() => utils.permissions.listGrants.invalidate(), [utils])
   /**
-   * `listGrants` stays optimistic-with-no-refetch (the server stores exactly the
-   * sparse map we send), but `granteeAccess.effective` is COMPOSED — this write
-   * changes it and we cannot predict the new value here without re-implementing
-   * composition. So it refetches, on success as well as failure.
+   * `listGrants` and `granteeAccess.own` stay optimistic (the server stores
+   * exactly the sparse map we send), but `granteeAccess.effective` is COMPOSED —
+   * this write changes it and we cannot predict the new value here without
+   * re-implementing composition. So it refetches, on success as well as failure.
    */
   const invalidateGranteeAccess = useInvalidateGranteeAccess()
+
+  const applyLocal = useCallback(
+    (
+      granteeType: OverrideGranteeType,
+      granteeId: string,
+      levels?: Partial<Record<Area, Level>>
+    ) => {
+      setLocalGrant(granteeType, granteeId, levels)
+      patchGranteeAccess(granteeType, granteeId, (prev) => ({
+        ...prev,
+        own: { ...prev.own, areas: levels ?? {} },
+      }))
+    },
+    [setLocalGrant, patchGranteeAccess]
+  )
 
   const grant = api.permissions.grant.useMutation({
     onMutate: async (input) => {
       await utils.permissions.listGrants.cancel()
-      setLocalGrant(
-        input.granteeType,
-        input.granteeId,
-        input.levels as Partial<Record<Area, Level>>
-      )
+      applyLocal(input.granteeType, input.granteeId, input.levels as Partial<Record<Area, Level>>)
     },
     onError: (error) => {
       toastError({ title: 'Error saving permission', description: error.message })
@@ -103,7 +121,7 @@ export function usePermissionGrants() {
   const revoke = api.permissions.revoke.useMutation({
     onMutate: async (input) => {
       await utils.permissions.listGrants.cancel()
-      setLocalGrant(input.granteeType, input.granteeId)
+      applyLocal(input.granteeType, input.granteeId)
     },
     onError: (error) => {
       toastError({ title: 'Error clearing permission', description: error.message })
@@ -112,8 +130,63 @@ export function usePermissionGrants() {
     onSettled: invalidateGranteeAccess,
   })
 
+  /**
+   * Upsert an override grantee's sparse level map (`{}` stores an empty row).
+   *
+   * Narrowed to the two raise-only tiers, matching `permissions.grant`'s input
+   * enum. `'profile'` and the legacy `'role'` are both excluded server-side
+   * because `setGranteeLevels` runs no escalation guard; a profile base is
+   * written through `permissions.saveProfile` instead.
+   */
+  const save = useCallback(
+    (granteeType: OverrideGranteeType, granteeId: string, levels: Partial<Record<Area, Level>>) => {
+      // Sparse by contract — the router's `z.record` input type isn't partial.
+      grant.mutate({ granteeType, granteeId, levels: levels as Record<Area, Level> })
+    },
+    [grant]
+  )
+
+  const remove = useCallback(
+    (granteeType: OverrideGranteeType, granteeId: string) =>
+      revoke.mutate({ granteeType, granteeId }),
+    [revoke]
+  )
+
+  return { save, remove, isSaving: grant.isPending || revoke.isPending }
+}
+
+/**
+ * Loads every grant row for the org and exposes the permission surfaces it
+ * feeds — the profile bases, group overrides and user overrides, plus the Member
+ * profile's own levels as the {@link baseline} every override is measured
+ * against — with save/remove mutations that write sparse level maps through the
+ * grant service.
+ *
+ * `save`/`remove` reach the **override** tiers only (`group`, `user`). A
+ * profile's base is written by `permissions.saveProfile` (see
+ * {@link useProfileEditor}), the only path that runs the doc 19 §6.1 escalation
+ * guard over each holder's resulting effective state.
+ *
+ * `save`/`remove` are {@link useGrantWrites} verbatim — see there for the
+ * optimistic-cache contract.
+ *
+ * **This is the ORG-WIDE hook: it reads every grant row in the org.** A surface
+ * about ONE grantee must not use it (plan 31 §2.4) — take `own.areas` /
+ * `baseline.areas` from {@link useGranteeAccess}, `roleDefaults` from
+ * {@link useRoleDefaults} and the writes from {@link useGrantWrites}. What
+ * legitimately stays here: the overrides tab's grantee LIST (it has to know who
+ * holds an override at all) and the profile surfaces, which read
+ * {@link profileGrants} across the org by definition.
+ */
+export function usePermissionGrants() {
+  const grantsQuery = api.permissions.listGrants.useQuery(undefined, { staleTime: 30_000 })
+  const { roleDefaults, isLoading: roleDefaultsLoading } = useRoleDefaults()
+  // Grant rows are keyed by profile ID; only the profile list knows which id is
+  // the `member` slug. Same query key as `useProfiles`, so React Query dedupes it.
+  const profilesQuery = api.permissions.listProfiles.useQuery(undefined, { staleTime: 30_000 })
+  const { save, remove, isSaving } = useGrantWrites()
+
   const grants = useMemo(() => grantsQuery.data?.grants ?? [], [grantsQuery.data])
-  const roleDefaults = roleDefaultsQuery.data
 
   /** The org's `member` system profile — the row every other tier is measured against. */
   const memberProfileId = useMemo(
@@ -170,37 +243,15 @@ export function usePermissionGrants() {
     [roleDefaults, baseline]
   )
 
-  /**
-   * Upsert an override grantee's sparse level map (`{}` stores an empty row).
-   *
-   * Narrowed to the two raise-only tiers, matching `permissions.grant`'s input
-   * enum. `'profile'` and the legacy `'role'` are both excluded server-side
-   * because `setGranteeLevels` runs no escalation guard; a profile base is
-   * written through `permissions.saveProfile` instead.
-   */
-  const save = useCallback(
-    (granteeType: OverrideGranteeType, granteeId: string, levels: Partial<Record<Area, Level>>) => {
-      // Sparse by contract — the router's `z.record` input type isn't partial.
-      grant.mutate({ granteeType, granteeId, levels: levels as Record<Area, Level> })
-    },
-    [grant]
-  )
-
-  const remove = useCallback(
-    (granteeType: OverrideGranteeType, granteeId: string) =>
-      revoke.mutate({ granteeType, granteeId }),
-    [revoke]
-  )
-
   return {
-    isLoading: grantsQuery.isLoading || roleDefaultsQuery.isLoading || profilesQuery.isLoading,
+    isLoading: grantsQuery.isLoading || roleDefaultsLoading || profilesQuery.isLoading,
     roleDefaults,
     baseline,
     groupGrants,
     userGrants,
     profileGrants,
     effectiveBaseline,
-    isSaving: grant.isPending || revoke.isPending,
+    isSaving,
     save,
     remove,
   }

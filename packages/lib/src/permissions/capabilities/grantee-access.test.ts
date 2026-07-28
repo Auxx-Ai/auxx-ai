@@ -26,9 +26,39 @@ import { Area, Level } from './registry'
 const ORG = 'org_1'
 const USER = 'user_alice'
 
-const h = vi.hoisted(() => ({ caps: null as unknown }))
+const MEMBER_PROFILE_ID = 'prof_member'
+const MEMBER_PROFILE_SLUG = 'member'
+
+const h = vi.hoisted(() => ({
+  caps: null as unknown,
+  profiles: [] as { id: string; slug: string }[],
+  /** Disjunct count of every `or(...)` the module built, in call order. */
+  orArgs: [] as number[],
+}))
 
 vi.mock('./get-capabilities', () => ({ getCapabilities: async () => h.caps }))
+// The Member-profile lookup is a cache read, not a query — stubbed here so the
+// test never loads the real cache barrel (see the standing vitest gotcha).
+vi.mock('../../cache', () => ({ getCachedPermissionProfiles: async () => h.profiles }))
+
+/**
+ * `or` is spied, not stubbed, because `fakeDb` below cannot see a WHERE clause:
+ * it returns whatever rows a test declares regardless of what was asked for. So
+ * "the grant query asks for BOTH addresses" is invisible to every other
+ * assertion in this file — dropping the Member-profile address entirely would
+ * leave them all green while `baseline.areas` came back empty against a real
+ * database. Counting the disjuncts is the cheapest thing that actually fails.
+ */
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>()
+  return {
+    ...actual,
+    or: (...args: Parameters<typeof actual.or>) => {
+      h.orArgs.push(args.length)
+      return actual.or(...args)
+    },
+  }
+})
 
 const { getGranteeAccess } = await import('./grantee-access')
 
@@ -41,11 +71,28 @@ interface AccessRow {
   permission: ResourcePermission
 }
 
+/** A `PermissionGrant` row as the first select projects it. */
+interface GrantRow {
+  granteeType: string
+  granteeId: string
+  levels: unknown
+}
+
 /**
- * The two selects `getGranteeAccess` issues, in order: the grantee's own
- * `PermissionGrant` row (`.limit(1)`) and the org's `ResourceAccess` rows.
+ * The two selects `getGranteeAccess` issues, in order: the `PermissionGrant`
+ * rows at the grantee's address AND the Member profile's, then the org's
+ * `ResourceAccess` rows.
+ *
+ * `grants` accepts either a bare levels map — the common case, read as the
+ * grantee's own row — or explicit rows when a test cares about the Member
+ * profile's baseline levels too.
  */
-function fakeDb(grantLevels: unknown, accessRows: AccessRow[]) {
+function fakeDb(
+  grants: unknown | GrantRow[],
+  accessRows: AccessRow[],
+  grantee: { granteeType: string; granteeId: string } = { granteeType: 'user', granteeId: USER }
+) {
+  const grantRows: GrantRow[] = Array.isArray(grants) ? grants : [{ ...grantee, levels: grants }]
   let call = 0
   const builder = (rows: unknown[]) => {
     const chain = {
@@ -59,13 +106,18 @@ function fakeDb(grantLevels: unknown, accessRows: AccessRow[]) {
   return {
     select: () => {
       call += 1
-      return call === 1 ? builder([{ levels: grantLevels }]) : builder(accessRows)
+      return call === 1 ? builder(grantRows) : builder(accessRows)
     },
   } as never
 }
 
 /** A real `CapabilitySet`, composed exactly as the read path composes one. */
-function capsFor(input: Parameters<typeof composeUserCapabilities>[0], seatType = 'full' as const) {
+function capsFor(
+  input: Parameters<typeof composeUserCapabilities>[0],
+  // Not `'full' as const` — that narrows the parameter itself, so the worker-seat
+  // case below could not pass its own seat in (a pre-existing tsc error).
+  seatType: Parameters<typeof composeUserCapabilities>[0]['seatType'] = 'full'
+) {
   const composed = composeUserCapabilities(input)
   const instanceIds = new Set(Object.keys(composed.instanceAccess))
   return new CapabilitySet(
@@ -88,6 +140,8 @@ const DASH = 'dash_shared'
 
 beforeEach(() => {
   h.caps = null
+  h.profiles = [{ id: MEMBER_PROFILE_ID, slug: MEMBER_PROFILE_SLUG }]
+  h.orArgs = []
 })
 
 describe('getGranteeAccess — own / baseline / effective are split cleanly', () => {
@@ -308,15 +362,19 @@ describe('getGranteeAccess — a group/profile is a level SOURCE, not a subject'
 
     const result = await getGranteeAccess(
       { organizationId: ORG, granteeType: 'group', granteeId: 'grp_support' },
-      fakeDb({ [Area.workflows]: Level.Read }, [
-        {
-          entityDefinitionId: 'workflow',
-          entityInstanceId: WF,
-          granteeType: 'group',
-          granteeId: 'grp_support',
-          permission: ResourcePermission.view,
-        },
-      ])
+      fakeDb(
+        { [Area.workflows]: Level.Read },
+        [
+          {
+            entityDefinitionId: 'workflow',
+            entityInstanceId: WF,
+            granteeType: 'group',
+            granteeId: 'grp_support',
+            permission: ResourcePermission.view,
+          },
+        ],
+        { granteeType: 'group', granteeId: 'grp_support' }
+      )
     )
 
     expect(result.own.instances).toEqual({ [WF]: ResourcePermission.view })
@@ -328,10 +386,111 @@ describe('getGranteeAccess — a group/profile is a level SOURCE, not a subject'
 
     const result = await getGranteeAccess(
       { organizationId: ORG, granteeType: 'profile', granteeId: 'prof_1' },
-      fakeDb({}, [])
+      fakeDb({}, [], { granteeType: 'profile', granteeId: 'prof_1' })
     )
 
     expect(result.effective).toBeNull()
+  })
+})
+
+describe('getGranteeAccess — the Member profile supplies the baseline area levels', () => {
+  /**
+   * The override grids render their *Inherit* fall-through from these. Before
+   * they rode this payload the grantee pages read `permissions.listGrants` —
+   * every grant row in the org — and picked the Member profile's out
+   * client-side, which is the shape §2.4 exists to remove.
+   */
+  it("returns the Member profile's levels alongside the grantee's own", async () => {
+    h.caps = capsFor({ role: 'USER', seatType: 'full', typeAccessRows: [] })
+
+    const result = await getGranteeAccess(
+      { organizationId: ORG, granteeType: 'user', granteeId: USER },
+      fakeDb(
+        [
+          { granteeType: 'user', granteeId: USER, levels: { [Area.workflows]: Level.Edit } },
+          {
+            granteeType: 'profile',
+            granteeId: MEMBER_PROFILE_ID,
+            levels: { [Area.workflows]: Level.Read, [Area.datasets]: Level.Read },
+          },
+          // Another profile's row must not be mistaken for the baseline — the
+          // query asks for two addresses, and only one of them is Member.
+          {
+            granteeType: 'profile',
+            granteeId: 'prof_support',
+            levels: { [Area.workflows]: Level.Full },
+          },
+        ],
+        []
+      )
+    )
+
+    expect(result.own.areas).toEqual({ [Area.workflows]: Level.Edit })
+    expect(result.baseline.areas).toEqual({
+      [Area.workflows]: Level.Read,
+      [Area.datasets]: Level.Read,
+    })
+  })
+
+  it('asks the grant query for BOTH addresses', async () => {
+    h.caps = capsFor({ role: 'USER', seatType: 'full', typeAccessRows: [] })
+
+    await getGranteeAccess(
+      { organizationId: ORG, granteeType: 'user', granteeId: USER },
+      fakeDb({}, [])
+    )
+
+    expect(h.orArgs).toEqual([2])
+  })
+
+  it('asks for one address only when the org has no Member profile', async () => {
+    h.profiles = []
+    h.caps = capsFor({ role: 'USER', seatType: 'full', typeAccessRows: [] })
+
+    await getGranteeAccess(
+      { organizationId: ORG, granteeType: 'user', granteeId: USER },
+      fakeDb({}, [])
+    )
+
+    // Not two-with-a-null: an `or` over an undefined arm is a query bug, not an
+    // empty result.
+    expect(h.orArgs).toEqual([1])
+  })
+
+  it('reports an empty baseline when the org has no Member profile', async () => {
+    h.profiles = []
+    h.caps = capsFor({ role: 'USER', seatType: 'full', typeAccessRows: [] })
+
+    const result = await getGranteeAccess(
+      { organizationId: ORG, granteeType: 'user', granteeId: USER },
+      fakeDb({ [Area.workflows]: Level.Edit }, [])
+    )
+
+    // The same state `resolveBaseProfile` composes against — empty, not absent.
+    expect(result.baseline.areas).toEqual({})
+    expect(result.own.areas).toEqual({ [Area.workflows]: Level.Edit })
+  })
+
+  it('serves the same row to both halves when the grantee IS the Member profile', async () => {
+    h.caps = capsFor({ role: 'USER', seatType: 'full', typeAccessRows: [] })
+
+    const result = await getGranteeAccess(
+      { organizationId: ORG, granteeType: 'profile', granteeId: MEMBER_PROFILE_ID },
+      fakeDb(
+        [
+          {
+            granteeType: 'profile',
+            granteeId: MEMBER_PROFILE_ID,
+            levels: { [Area.workflows]: Level.Read },
+          },
+        ],
+        [],
+        { granteeType: 'profile', granteeId: MEMBER_PROFILE_ID }
+      )
+    )
+
+    expect(result.own.areas).toEqual({ [Area.workflows]: Level.Read })
+    expect(result.baseline.areas).toEqual({ [Area.workflows]: Level.Read })
   })
 })
 
