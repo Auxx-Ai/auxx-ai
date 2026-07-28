@@ -57,8 +57,10 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
   const clearHighlight = useNotificationPanelStore((state) => state.clearHighlight)
   const [flashedId, setFlashedId] = useState<string>()
 
-  // Refetch on focus so a confirmation answered elsewhere (email link, another
-  // tab) does not linger here — neither source publishes realtime in v1.
+  // Confirmations publish `approval` / `approval:resolved` on the viewer's user
+  // room (`useNotificationSubscription`), which invalidates this query. Focus
+  // refetch stays as the backstop for a missed frame and for suggestions, which
+  // are still refetch-driven pending the `ownerScope` call (plan §6).
   const confirmations = api.approval.getPendingRequests.useQuery(undefined, {
     refetchOnWindowFocus: true,
   })
@@ -87,8 +89,9 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
   )
 
   /**
-   * No realtime for v1 — a resolved row refetches both lists and both badge
-   * counts, so the tab badge cannot drift from what the sections show.
+   * The acting client refetches both lists and both badge counts itself rather
+   * than waiting for its own `approval:resolved` frame, so the tab badge cannot
+   * drift from what the sections show.
    */
   const onResolved = () => {
     void utils.approval.getPendingRequests.invalidate()

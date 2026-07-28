@@ -12,6 +12,7 @@ vi.mock('@auxx/database', () => ({
     WorkflowRun: {},
     User: { id: {}, email: {}, name: {}, userType: {} },
     OrganizationMember: { userId: {}, organizationId: {} },
+    EntityGroupMember: { groupInstanceId: {}, memberType: {}, memberRefId: {} },
   },
 }))
 vi.mock('../../../../cache/workflow-app-queries', () => ({
@@ -52,6 +53,7 @@ function makeMockDb() {
     select: () => {
       const builder: any = {
         from: () => builder,
+        innerJoin: () => builder,
         where: async () => [],
       }
       return builder

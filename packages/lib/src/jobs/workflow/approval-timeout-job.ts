@@ -6,6 +6,7 @@ import type { ApprovalRequestEntity as ApprovalRequest } from '@auxx/database/ty
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
+import { getApprovalAssigneeUserIds } from '../../workflow-engine/services/approval-recipients'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
 import type { JobContext } from '../types'
 
@@ -89,22 +90,27 @@ async function sendTimeoutNotifications(approvalRequest: ApprovalRequest): Promi
     // Import notification service dynamically to avoid circular dependencies
     const { NotificationService } = await import('../../notifications/notification-service')
     const notificationService = new NotificationService(db)
-    // Get all assignee user IDs
-    const userIds = new Set<string>((approvalRequest.assigneeUsers ?? []) as string[])
-    // Add users from groups
-    if (approvalRequest.assigneeGroups && approvalRequest.assigneeGroups.length > 0) {
-      // Note: This complex many-to-many relationship query would require joins
-      // For now, using a simpler approach - this may need refinement based on schema
-      const groupMembers = await db
-        .select({
-          userId: schema.OrganizationMember.userId,
-        })
-        .from(schema.OrganizationMember)
-        .where(eq(schema.OrganizationMember.organizationId, approvalRequest.organizationId))
-      // TODO: Add proper group filtering when schema structure is clarified
-      groupMembers.forEach((member) => userIds.add(member.userId))
+    const userIds = await getApprovalAssigneeUserIds(db, {
+      assigneeUsers: (approvalRequest.assigneeUsers ?? []) as string[],
+      assigneeGroups: (approvalRequest.assigneeGroups ?? []) as string[],
+      organizationId: approvalRequest.organizationId,
+    })
+    // Drop the expired request out of everyone's bell count without a refresh.
+    try {
+      const { getRealtimeService, publishApprovalResolved } = await import('../../realtime')
+      await publishApprovalResolved(getRealtimeService(), userIds, {
+        approvalRequestId: approvalRequest.id,
+        organizationId: approvalRequest.organizationId,
+      })
+    } catch (error) {
+      logger.warn('Failed to publish approval:resolved on timeout', {
+        approvalRequestId: approvalRequest.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
-    // Send notifications
+    // `WORKFLOW_APPROVAL_COMPLETED` is the one approval notification that is not
+    // a duplicate: the request is gone from the Approvals tab by the time this
+    // mints, so without the row nothing says it resolved.
     for (const userId of userIds) {
       try {
         await notificationService.sendNotification({

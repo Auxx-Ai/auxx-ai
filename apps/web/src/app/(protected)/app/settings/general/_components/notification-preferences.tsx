@@ -5,7 +5,8 @@ import { FieldPanel } from '~/components/global/forms/field-panel'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 
 /**
- * Notification preferences: sound toggles + dispatch (field-service) email prefs
+ * Notification preferences: sound toggles + the email prefs a recipient controls —
+ * workflow approvals (plans/today/05-bell-and-feed-dedupe.md §7) and dispatch
  * (plans/dispatch/19-client-notifications.md §4.9). Renders only these chosen keys — the
  * rest of the NOTIFICATION scope (emailDigest, future keys) stays UI-less by design. Values
  * are stored per-user via the settings service.
@@ -20,6 +21,10 @@ export function NotificationPreferences(): JSX.Element {
       <FieldPanel className='mt-1 p-0' resizeId='notification-preferences' defaultLabelWidth={220}>
         <SettingsFieldRow settingKey='notification.sound.newMessage' title='New message sound' />
         <SettingsFieldRow settingKey='notification.sound.bell' title='Notification sound' />
+        <SettingsFieldRow
+          settingKey='notification.approval.email'
+          title='Approval request emails'
+        />
         <SettingsFieldRow
           settingKey='notification.dispatch.email'
           title='Dispatch reschedule/cancel/reassign emails'

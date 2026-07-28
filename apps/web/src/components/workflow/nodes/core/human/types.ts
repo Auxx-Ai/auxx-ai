@@ -22,9 +22,13 @@ export interface HumanConfirmationNodeData extends BaseNodeData {
   // Notification settings
   /** Methods to notify assignees about the confirmation request */
   notification_methods: {
-    /** Send in-app notifications */
+    /**
+     * Ping assignees live (bell pulse + sound). Not "surface this in-app" — the
+     * Approvals tab and bell badge read `ApprovalRequest` directly, so turning
+     * this off hides nothing (plans/today/05-bell-and-feed-dedupe.md §2).
+     */
     in_app: boolean
-    /** Send email notifications */
+    /** Send email notifications, if the recipient's own email preference allows. */
     email: boolean
   }
 

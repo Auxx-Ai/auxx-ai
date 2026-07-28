@@ -199,10 +199,12 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
               </VarEditorField>
             </Field>
             {/* Notification Methods */}
-            <Field title='Notification Methods' description='How to notify assignees'>
+            <Field
+              title='Notification Methods'
+              description='How to alert assignees. Either way the request appears in their Approvals tab and counts on their bell.'>
               <div className='space-y-2'>
                 <div className='flex items-center justify-between'>
-                  <Label htmlFor='in-app'>In-app notification</Label>
+                  <Label htmlFor='in-app'>Live alert (bell pulse and sound)</Label>
                   <Switch
                     id='in-app'
                     size='sm'
@@ -221,7 +223,7 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                   />
                 </div>
                 <div className='flex items-center justify-between'>
-                  <Label htmlFor='email'>Email notification</Label>
+                  <Label htmlFor='email'>Email (if the recipient allows it)</Label>
                   <Switch
                     id='email'
                     size='sm'

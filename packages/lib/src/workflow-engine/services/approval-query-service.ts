@@ -20,6 +20,7 @@ import {
 } from 'drizzle-orm'
 import { getCachedUserGroupIds } from '../../cache'
 import { NotificationService } from '../../notifications/notification-service'
+import { getApprovalAssigneeUserIds } from './approval-recipients'
 
 const logger = createScopedLogger('approval-query-service')
 /**
@@ -420,6 +421,8 @@ export class ApprovalQueryService {
       .select({
         id: schema.ApprovalRequest.id,
         organizationId: schema.ApprovalRequest.organizationId,
+        assigneeUsers: schema.ApprovalRequest.assigneeUsers,
+        assigneeGroups: schema.ApprovalRequest.assigneeGroups,
       })
       .from(schema.ApprovalRequest)
       .where(
@@ -472,6 +475,29 @@ export class ApprovalQueryService {
               : String(notificationError),
         })
         // Don't throw - approval cleanup succeeded, notification cleanup is best effort
+      }
+
+      // Drop the cleaned-up requests out of every assignee's bell count live.
+      try {
+        // Lazy import — keeps the realtime barrel out of this module's static graph.
+        const { getRealtimeService, publishApprovalResolved } = await import('../../realtime')
+        const realtimeService = getRealtimeService()
+        for (const approval of approvalsToCleanup) {
+          const userIds = await getApprovalAssigneeUserIds(this.db, {
+            assigneeUsers: approval.assigneeUsers ?? [],
+            assigneeGroups: approval.assigneeGroups ?? [],
+            organizationId: approval.organizationId,
+          })
+          await publishApprovalResolved(realtimeService, userIds, {
+            approvalRequestId: approval.id,
+            organizationId: approval.organizationId,
+          })
+        }
+      } catch (publishError) {
+        logger.warn('Failed to publish approval:resolved during run cleanup', {
+          workflowRunId,
+          error: publishError instanceof Error ? publishError.message : String(publishError),
+        })
       }
     }
     if (updated.length > 0) {

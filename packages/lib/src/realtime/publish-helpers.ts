@@ -4,6 +4,8 @@ import { database, schema } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { type Lens, maxLens } from '../permissions/visibility/lens'
 import type {
+  ApprovalPingEvent,
+  ApprovalResolvedEvent,
   DataConnectorSyncEvent,
   DataExportJobEvent,
   FieldValueUpdateEntry,
@@ -540,6 +542,53 @@ export async function flushMailBatch(
     }
   }
   await Promise.allSettled(promises)
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Workflow approval helpers
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Ping each assignee's private room that a workflow approval wants them
+ * (plans/today/05-bell-and-feed-dedupe.md §5). Used for both the first request
+ * and every reminder — the client invalidates its counts either way, so a
+ * re-ping on an already-counted request is harmless.
+ *
+ * Confirmations are assignee-scoped, so this fans out over `rooms.user` rather
+ * than the org room; no unassigned audience exists for them.
+ *
+ * Fire-and-forget: errors are swallowed so a Pusher hiccup never fails the
+ * workflow run or the reminder job.
+ */
+export async function publishApprovalPing(
+  realtimeService: RealtimeService,
+  userIds: string[],
+  data: ApprovalPingEvent['data']
+) {
+  if (userIds.length === 0) return
+  await Promise.allSettled(
+    userIds.map((userId) =>
+      realtimeService.publish(rooms.user(userId), 'approval', data).catch(() => {})
+    )
+  )
+}
+
+/**
+ * Tell each assignee that an approval left the pending set — decided,
+ * cancelled, timed out, or cleaned up with its run. Same fan-out and the same
+ * fire-and-forget contract as {@link publishApprovalPing}.
+ */
+export async function publishApprovalResolved(
+  realtimeService: RealtimeService,
+  userIds: string[],
+  data: ApprovalResolvedEvent['data']
+) {
+  if (userIds.length === 0) return
+  await Promise.allSettled(
+    userIds.map((userId) =>
+      realtimeService.publish(rooms.user(userId), 'approval:resolved', data).catch(() => {})
+    )
+  )
 }
 
 // ════════════════════════════════════════════════════════════════════════════

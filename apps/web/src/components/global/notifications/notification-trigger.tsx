@@ -11,28 +11,48 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Bell } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
+import { useApprovalsCount } from './hooks/use-approvals-count'
 import { useNotificationPanelStore } from './notification-panel-store'
+
+/** How long the badge stays flashed after a bump. */
+const PULSE_MS = 500
 
 export function NotificationTrigger() {
   const toggle = useNotificationPanelStore((state) => state.toggle)
   const open = useNotificationPanelStore((state) => state.open)
+  const bellPulse = useNotificationPanelStore((state) => state.bellPulse)
   const { isMobile, setOpenMobile } = useSidebar()
-  const { data } = api.notification.getUnreadCount.useQuery(undefined, {
+  const unread = api.notification.getUnreadCount.useQuery(undefined, {
     refetchOnWindowFocus: true,
   })
-  const unreadCount = data?.count ?? 0
-  const previousUnreadCount = useRef(unreadCount)
+  // Approvals are state-derived (`ApprovalRequest`), not row-derived — nothing
+  // pending mints a notification, so the two sources never double-count the same
+  // item (plans/today/05-bell-and-feed-dedupe.md §1).
+  const approvals = useApprovalsCount()
+  const total = (unread.data?.count ?? 0) + approvals.count
+  // A badge that failed to load and a badge that is zero look identical. Say so.
+  const isError = !!unread.error || approvals.isError
+  const previousTotal = useRef(total)
   const [badgePulse, setBadgePulse] = useState(false)
 
   useEffect(() => {
-    if (unreadCount > previousUnreadCount.current) {
+    if (total > previousTotal.current) {
       setBadgePulse(true)
-      const timer = setTimeout(() => setBadgePulse(false), 500)
-      previousUnreadCount.current = unreadCount
+      const timer = setTimeout(() => setBadgePulse(false), PULSE_MS)
+      previousTotal.current = total
       return () => clearTimeout(timer)
     }
-    previousUnreadCount.current = unreadCount
-  }, [unreadCount])
+    previousTotal.current = total
+  }, [total])
+
+  // Explicit pulses (an approval reminder re-pinging a request that is already
+  // counted) never move the total, so they get their own channel.
+  useEffect(() => {
+    if (!bellPulse) return
+    setBadgePulse(true)
+    const timer = setTimeout(() => setBadgePulse(false), PULSE_MS)
+    return () => clearTimeout(timer)
+  }, [bellPulse])
 
   return (
     <SidebarMenuItem>
@@ -47,13 +67,19 @@ export function NotificationTrigger() {
         <Bell />
         <span>Notifications</span>
       </SidebarMenuButton>
-      {unreadCount > 0 ? (
+      {isError ? (
+        <SidebarMenuBadge
+          className='text-destructive'
+          title="Couldn't load notification counts — open the panel to retry">
+          !
+        </SidebarMenuBadge>
+      ) : total > 0 ? (
         <SidebarMenuBadge
           className={cn(
             'transition-colors',
             badgePulse && 'animate-in zoom-in-50 text-blue-500 duration-300'
           )}>
-          {unreadCount > 99 ? '99+' : unreadCount}
+          {total > 99 ? '99+' : total}
         </SidebarMenuBadge>
       ) : null}
     </SidebarMenuItem>
