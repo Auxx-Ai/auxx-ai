@@ -75,8 +75,13 @@ export function normalizeAgentPolicy(
   }
 }
 
-/** Stable serialization (sorted keys) so a jsonb round-trip never reads as dirty. */
-function stableKey(policy: NormalizedAgentPolicy): string {
+/**
+ * Stable serialization (sorted keys) so a jsonb round-trip never reads as dirty.
+ *
+ * Exported for the plan 29 §5 round-trip test — a policy authored on the old
+ * screen and re-rendered on the unified tree must produce an unchanged key.
+ */
+export function stableKey(policy: NormalizedAgentPolicy): string {
   const exact = (p: ExactAgentPolicy) => ({
     default: p.default,
     overrides: Object.keys(p.overrides)
@@ -93,8 +98,13 @@ function stableKey(policy: NormalizedAgentPolicy): string {
   })
 }
 
-/** How many individual rules differ between the saved policy and the draft. */
-function countChanges(saved: NormalizedAgentPolicy, draft: NormalizedAgentPolicy): number {
+/**
+ * How many individual rules differ between the saved policy and the draft.
+ *
+ * Exported for the plan 29 §5 round-trip test — re-rendering an unedited policy
+ * on the unified tree must leave this at `0`.
+ */
+export function countChanges(saved: NormalizedAgentPolicy, draft: NormalizedAgentPolicy): number {
   let changes = 0
   const diffExact = (a: ExactAgentPolicy, b: ExactAgentPolicy) => {
     if (a.default !== b.default) changes += 1

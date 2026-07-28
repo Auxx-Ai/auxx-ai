@@ -82,8 +82,8 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
  * Display metadata for the per-instance rows nested under the Datasets /
  * Knowledge base / Dashboards area rows (capability layer v2 Part B) — the
  * `instance-baseline-rows.tsx` / `grantee-instance-rows.tsx` twin of
- * `agent-policy-resources-grid.tsx`'s own local `TYPE_META` (kept separate
- * there — different grid, different write path, §B.2.1).
+ * `agent-policy-instance-rows.tsx`'s own `RESOURCE_TYPE_META` (kept separate
+ * there — different rows, different write path, §B.2.1).
  */
 export const INSTANCE_TYPE_META: Record<InstanceAccessKey, { label: string; icon: LucideIcon }> = {
   dataset: { label: 'Datasets', icon: Database },

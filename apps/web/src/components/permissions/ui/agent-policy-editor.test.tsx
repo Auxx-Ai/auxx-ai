@@ -1,0 +1,540 @@
+// apps/web/src/components/permissions/ui/agent-policy-editor.test.tsx
+
+import type { AgentPermissionPolicy } from '@auxx/database'
+import { PermissionKey } from '@auxx/lib/permissions/client'
+import { TooltipProvider } from '@auxx/ui/components/tooltip'
+import { render, screen, within } from '@testing-library/react'
+import userEvent, { type UserEvent } from '@testing-library/user-event'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PROFILE_AREA_GROUPS } from './profile-copy'
+
+/**
+ * Plan 29 §5 verification bars 2–4, on the unified tree.
+ *
+ * The plan collapses three flat sections into ONE `ProfileAreaGrid`, so the
+ * question these tests answer is not "does it look right" but **"is every rule
+ * that was authorable before still authorable"** — every area (including the
+ * `adminOnly` ones only agents get), all three collection defaults, the per-def
+ * and per-instance rules, and both orphan families. Then: the destructive
+ * confirm survived the move, and search/filter still reach child rows.
+ *
+ * Everything is asserted through the rendered tree rather than the draft hook,
+ * because the tree IS the change — `use-agent-policy.test.ts` already covers the
+ * data seams.
+ */
+
+const h = vi.hoisted(() => ({
+  confirm: vi.fn(),
+  /** Instance lists, revealed only once their type has been opened at least once. */
+  items: {
+    dataset: [{ id: 'ds_1', name: 'Sales data' }],
+    kb: [{ id: 'kb_1', name: 'Returns Policy' }],
+    dashboard: [] as Array<{ id: string; name: string }>,
+    workflow: [] as Array<{ id: string; name: string }>,
+  } as Record<string, Array<{ id: string; name: string }>>,
+  /** Types whose list query has ever been enabled — the react-query cache, modelled. */
+  everOpened: new Set<string>(),
+  definitionsLoading: false,
+}))
+
+vi.mock('~/hooks/use-user', () => ({ useUser: () => ({ isAdminOrOwner: true }) }))
+vi.mock('~/providers/feature-flag-provider', () => ({
+  useFeatureFlags: () => ({ hasAccess: () => true }),
+}))
+// A viewer who holds everything, so the §2.4a clamp preview reports no reduction
+// and the tree is the only thing on screen.
+vi.mock('~/providers/capabilities-provider', () => ({
+  useAccess: () => ({
+    capabilities: Object.values(PermissionKey),
+    canViewEntity: () => true,
+    canEditEntity: () => true,
+    canAdministerDef: () => true,
+    isLoading: false,
+  }),
+}))
+vi.mock('../hooks/use-agent-policy-save', () => ({
+  useAgentPolicySave: () => ({ savePolicy: vi.fn(), isSaving: false }),
+}))
+vi.mock('../hooks/use-agent-policy-definitions', () => ({
+  useAgentPolicyDefinitions: () => ({
+    definitions: [
+      {
+        apiSlug: 'companies',
+        entityDefinitionId: 'def_companies',
+        label: 'Companies',
+        icon: 'building',
+        color: 'blue',
+      },
+      {
+        apiSlug: 'deals',
+        entityDefinitionId: 'def_deals',
+        label: 'Deals',
+        icon: 'handshake',
+        color: 'green',
+      },
+    ],
+    isLoading: h.definitionsLoading,
+  }),
+}))
+// Lazy, exactly like the real hook: a type that has never been marked open has
+// fetched nothing, so its instances are not on screen and not searchable. Once
+// opened it stays populated, mirroring react-query keeping the cached page when
+// the query is disabled again.
+vi.mock('../hooks/use-instance-resource-lists', () => ({
+  useInstanceResourceLists: (open: Record<string, boolean>) => {
+    for (const [type, isOpen] of Object.entries(open)) if (isOpen) h.everOpened.add(type)
+    const list = (type: string) => ({
+      items: h.everOpened.has(type) ? (h.items[type] ?? []) : [],
+      isLoading: false,
+      truncated: false,
+    })
+    return {
+      dataset: list('dataset'),
+      kb: list('kb'),
+      dashboard: list('dashboard'),
+      workflow: list('workflow'),
+    }
+  },
+}))
+vi.mock('~/hooks/use-confirm', () => ({
+  useConfirm: () => [h.confirm, () => null] as const,
+}))
+
+import { AgentPolicyEditor } from './agent-policy-editor'
+
+// Radix's Select drives itself off pointer capture, which jsdom does not implement.
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+  Element.prototype.scrollIntoView = () => {}
+})
+
+beforeEach(() => {
+  h.everOpened.clear()
+  h.definitionsLoading = false
+  h.confirm.mockReset()
+  h.confirm.mockResolvedValue(true)
+})
+
+/** One rendered `TreeRow` line — area rows and child rows alike. */
+const ROW = 'div[class*="group/tree-row"]'
+/** The row's own title slot (`TreeRow`'s `titleNode`), never a group heading. */
+const TITLE = 'span.truncate.px-1.text-foreground'
+
+function allRows(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>(ROW))
+}
+
+function titleOf(row: HTMLElement): string {
+  return row.querySelector(TITLE)?.textContent?.trim() ?? ''
+}
+
+/** Every row title currently on screen, in document order. */
+function rowTitles(): string[] {
+  return allRows().map(titleOf)
+}
+
+function findRow(title: string): HTMLElement | undefined {
+  return allRows().find((row) => titleOf(row) === title)
+}
+
+function row(title: string): HTMLElement {
+  const found = findRow(title)
+  if (!found) throw new Error(`no row titled "${title}" — on screen: ${rowTitles().join(', ')}`)
+  return found
+}
+
+/** The rung a child row's dropdown currently shows. */
+function ruleOf(title: string): string {
+  return within(row(title)).getByRole('combobox').textContent?.trim() ?? ''
+}
+
+/** Expand (or collapse) one area row through its chevron. */
+async function toggleArea(user: UserEvent, title: string) {
+  const chevron = row(title).querySelector<HTMLElement>(
+    'button[aria-label="Expand"], button[aria-label="Collapse"]'
+  )
+  if (!chevron) throw new Error(`area row "${title}" is not expandable`)
+  await user.click(chevron)
+}
+
+/** Choose one option on a child row's rule dropdown. */
+async function pick(user: UserEvent, title: string, option: RegExp) {
+  await user.click(within(row(title)).getByRole('combobox'))
+  await user.click(screen.getByRole('option', { name: option }))
+}
+
+/** An area row's muted fall-through hint (`LevelControl`'s `unsetHint`). */
+function hintOf(title: string): string {
+  const el = row(title).querySelector('span.text-xs.text-muted-foreground.whitespace-nowrap')
+  if (!el || el.getAttribute('aria-hidden') === 'true') return ''
+  return el.textContent?.trim() ?? ''
+}
+
+/** One of the two header `BaseLevelSelect`s, by its sentence fragment. */
+function headerSelect(label: string): HTMLElement {
+  const wrapper = screen.getByText(label).parentElement
+  if (!wrapper) throw new Error(`no header select labelled "${label}"`)
+  return within(wrapper).getByRole('combobox')
+}
+
+/** The unsaved-changes bar's rule count, or `null` when the bar is absent. */
+function changeCount(): number | null {
+  const bar = screen.queryByText(/differ from the saved policy/)
+  const match = bar?.textContent?.match(/(\d+) rules? differ/)
+  return match ? Number(match[1]) : null
+}
+
+/**
+ * A policy exercising every keyspace the editor can author, both orphan families
+ * included — an override on a record type this workspace does not have
+ * (`gone_away`) and one on an item that is not in the fetched list (`kb_gone`).
+ */
+const FULL_POLICY = {
+  areas: { default: 'read', overrides: { records: 'full', settings: 'full' } },
+  definitions: { default: 'none', overrides: { companies: 'read', gone_away: 'full' } },
+  resourceDefault: 'none',
+  resources: {
+    kb: { default: 'read', overrides: { kb_1: 'full', kb_gone: 'none' } },
+    dataset: { default: 'read', overrides: {} },
+  },
+} as unknown as AgentPermissionPolicy
+
+function renderEditor(policy: AgentPermissionPolicy | null = FULL_POLICY) {
+  return render(
+    <TooltipProvider>
+      <AgentPolicyEditor profileId='profile_1' savedPolicy={policy} />
+    </TooltipProvider>
+  )
+}
+
+describe('plan 29 §5 bar 2 — every rule reachable before is reachable after', () => {
+  it('renders every agent area, including the adminOnly ones the human grid hides', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    // `Settings` is `adminOnly`. The human grid excludes it; the agent grid must
+    // not, because an agent's authority comes from this policy alone (§2.1).
+    const humanAreas = PROFILE_AREA_GROUPS.flatMap((group) => group.areas)
+    expect(humanAreas).not.toContain('settings')
+    expect(rowTitles()).toContain('Settings')
+
+    // …and it is a live control, not a read-only mention.
+    const settings = row('Settings')
+    expect(within(settings).getByText('Full')).toBeInTheDocument()
+    await user.click(settings.querySelector('[role="radio"][value="0"]') as HTMLElement)
+    expect(
+      row('Settings').querySelector('[role="radio"][value="0"]')?.getAttribute('aria-checked')
+    ).toBe('true')
+    expect(changeCount()).toBe(1)
+  })
+
+  it('names the rung the blanket default RESOLVES to on each area, never "not set"', () => {
+    renderEditor()
+
+    // An agent row never reads "Not set": the blanket default is one rung for
+    // every area at once, so each row names what it resolves to THERE. Billing
+    // implements Read, so `areas.default: 'read'` lands on Read…
+    expect(hintOf('Billing')).toBe('Default · Read')
+    // …while Comments is a Full-only ladder, so the same default composes down to
+    // None — and the highlighted segment agrees, which is the whole point (#1342).
+    expect(hintOf('Comments')).toBe('Default · None')
+    expect(
+      row('Comments').querySelector('[role="radio"][aria-checked="true"]')?.getAttribute('value')
+    ).toBe('0')
+    // A row with a rule of its own hides the hint entirely.
+    expect(hintOf('Records')).toBe('')
+  })
+
+  it('offers both header collection defaults, and both are editable', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    // `areas.default` and `resourceDefault` — the two keyspaces that answer for
+    // keys with NO row of their own, so they cannot live on a row (§2.2/§4a).
+    expect(headerSelect('Unset areas fall through to').textContent).toContain('Read')
+    expect(headerSelect('New resource types fall through to').textContent).toContain('None')
+
+    await user.click(headerSelect('Unset areas fall through to'))
+    await user.click(screen.getByRole('option', { name: 'Full' }))
+    expect(headerSelect('Unset areas fall through to').textContent).toContain('Full')
+    expect(changeCount()).toBe(1)
+
+    await user.click(headerSelect('New resource types fall through to'))
+    await user.click(screen.getByRole('option', { name: 'Read' }))
+    expect(headerSelect('New resource types fall through to').textContent).toContain('Read')
+    expect(changeCount()).toBe(2)
+  })
+
+  it('offers definitions.default as the "All record types" child row, and it is editable', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    // Collapsed: the collection default is not on screen until Records is opened.
+    expect(findRow('All record types')).toBeUndefined()
+
+    await toggleArea(user, 'Records')
+    expect(ruleOf('All record types')).toBe('No access')
+
+    await pick(user, 'All record types', /^Read and write/)
+    expect(ruleOf('All record types')).toBe('Read and write')
+    expect(changeCount()).toBe(1)
+  })
+
+  it('offers each resource type default as its "All X" child row, and it is editable', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    await toggleArea(user, 'Knowledge Base')
+    expect(ruleOf('All knowledge bases')).toBe('Read only')
+
+    await pick(user, 'All knowledge bases', /^Full access/)
+    expect(ruleOf('All knowledge bases')).toBe('Full access')
+    expect(changeCount()).toBe(1)
+  })
+
+  it('offers per-record-type rules under Records, and they are editable', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Records')
+
+    // `definitions.overrides.companies`, plus a definition with no rule of its
+    // own reading as the collection default it resolves to.
+    expect(ruleOf('Companies')).toBe('Read only')
+    expect(ruleOf('Deals')).toBe('Default · No access')
+
+    await pick(user, 'Deals', /^Read only/)
+    expect(ruleOf('Deals')).toBe('Read only')
+    expect(changeCount()).toBe(1)
+  })
+
+  it('offers per-instance rules under their area, and they are editable', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Knowledge Base')
+
+    expect(ruleOf('Returns Policy')).toBe('Full access')
+
+    await pick(user, 'Returns Policy', /^Read only/)
+    expect(ruleOf('Returns Policy')).toBe('Read only')
+    expect(changeCount()).toBe(1)
+  })
+
+  it('keeps both orphan families reachable — unknown record type and unknown item', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    await toggleArea(user, 'Records')
+    const unknownType = row('gone_away')
+    expect(within(unknownType).getByText('Unknown type')).toBeInTheDocument()
+    expect(ruleOf('gone_away')).toBe('Full access')
+
+    await toggleArea(user, 'Knowledge Base')
+    const unknownItem = row('kb_gone')
+    expect(within(unknownItem).getByText('Unknown item')).toBeInTheDocument()
+    expect(ruleOf('kb_gone')).toBe('No access')
+
+    // Reachable means clearable: an orphan must be removable, since nothing else
+    // on the screen can reach a key whose target is gone. Clearing it removes the
+    // override, and the row goes with it — the override was the only reason the
+    // row existed.
+    await pick(user, 'gone_away', /^Default/)
+    expect(findRow('gone_away')).toBeUndefined()
+    expect(changeCount()).toBe(1)
+  })
+})
+
+describe('plan 29 §5 bar 3 — the destructive confirm survived the move', () => {
+  it("confirms and then drops the type's per-item rules", async () => {
+    const user = userEvent.setup()
+    h.confirm.mockResolvedValue(true)
+    renderEditor()
+    await toggleArea(user, 'Knowledge Base')
+
+    await pick(user, 'All knowledge bases', /^Default/)
+
+    expect(h.confirm).toHaveBeenCalledTimes(1)
+    expect(h.confirm.mock.calls[0][0]).toMatchObject({ destructive: true })
+    expect(h.confirm.mock.calls[0][0].description).toContain('2 per-item rules')
+
+    // `clearResourceType` ran: the type entry is gone, so the listed instance
+    // falls through to `resourceDefault` and the orphan row has nothing left.
+    expect(ruleOf('All knowledge bases')).toBe('Default · No access')
+    expect(ruleOf('Returns Policy')).toBe('Default · No access')
+    expect(findRow('kb_gone')).toBeUndefined()
+    // The type default plus the two per-item rules it took with it.
+    expect(changeCount()).toBe(3)
+  })
+
+  it('keeps every per-item rule when the confirm is cancelled', async () => {
+    const user = userEvent.setup()
+    h.confirm.mockResolvedValue(false)
+    renderEditor()
+    await toggleArea(user, 'Knowledge Base')
+
+    await pick(user, 'All knowledge bases', /^Default/)
+
+    expect(h.confirm).toHaveBeenCalledTimes(1)
+    expect(ruleOf('All knowledge bases')).toBe('Read only')
+    expect(ruleOf('Returns Policy')).toBe('Full access')
+    expect(ruleOf('kb_gone')).toBe('No access')
+    expect(changeCount()).toBeNull()
+  })
+
+  it('does not confirm when the type carries no per-item rules', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Datasets')
+
+    // `resources.dataset` has a default of its own but an empty override map,
+    // so following the resource default destroys nothing and must not nag.
+    await pick(user, 'All datasets', /^Default/)
+
+    expect(h.confirm).not.toHaveBeenCalled()
+    expect(ruleOf('All datasets')).toBe('Default · No access')
+    expect(changeCount()).toBe(1)
+  })
+
+  it('does not confirm when the "All X" row moves between explicit rungs', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Knowledge Base')
+
+    await pick(user, 'All knowledge bases', /^Full access/)
+
+    expect(h.confirm).not.toHaveBeenCalled()
+    expect(ruleOf('Returns Policy')).toBe('Full access')
+    expect(ruleOf('kb_gone')).toBe('No access')
+  })
+})
+
+describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach child rows', () => {
+  it('keeps and auto-expands an area whose only match is a record type name', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    await user.type(screen.getByPlaceholderText('Search areas...'), 'compan')
+
+    expect(rowTitles()).toContain('Records')
+    // Auto-expanded, without anyone clicking the chevron.
+    expect(ruleOf('Companies')).toBe('Read only')
+    // …and narrowed to the match: the sibling definition is gone.
+    expect(findRow('Deals')).toBeUndefined()
+    // Areas that matched neither themselves nor a child are gone.
+    expect(rowTitles()).not.toContain('Billing')
+  })
+
+  it('keeps an area whose only match is an instance name, once that list is fetched', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    const search = screen.getByPlaceholderText('Search areas...')
+
+    // Before the area is ever opened its list is unfetched, so the instance name
+    // matches nothing and the area is filtered away.
+    await user.type(search, 'returns')
+    expect(rowTitles()).not.toContain('Knowledge Base')
+
+    // Open it once — that is the fetch — then collapse it again.
+    await user.clear(search)
+    await toggleArea(user, 'Knowledge Base')
+    await toggleArea(user, 'Knowledge Base')
+
+    await user.type(search, 'returns')
+
+    // Now the same query keeps the area alive: nothing about the area row itself
+    // matched, so only the child rule can have rescued it.
+    expect(rowTitles()).toContain('Knowledge Base')
+    expect(rowTitles()).not.toContain('Datasets')
+    // NOTE: it is NOT auto-expanded here, because an explicit collapse pins the
+    // row shut (`openAreas[area] ?? autoOpen` in `ProfileAreaGrid`) — and an
+    // instance can only be searchable AFTER its area was opened once. See the
+    // report: auto-expand is reachable for definitions (loaded eagerly) but not
+    // for instances. This asserts the half of the behaviour that is real.
+  })
+
+  it('cannot match inside an area whose list has never been fetched', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    // The documented tradeoff of the lazy fetch (`onAreaOpenChange`): a collapsed
+    // area has queried nothing, so its instances are not searchable yet.
+    await user.type(screen.getByPlaceholderText('Search areas...'), 'sales data')
+
+    expect(rowTitles()).not.toContain('Datasets')
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+  })
+
+  it('renders the "All X" row structurally even when it is not itself a match', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+    await toggleArea(user, 'Knowledge Base')
+
+    await user.type(screen.getByPlaceholderText('Search areas...'), 'returns')
+
+    // A child reading "Default · …" is unreadable without the row that says what
+    // the default IS, so it always renders — it just does not count as a match.
+    expect(ruleOf('All knowledge bases')).toBe('Read only')
+    expect(ruleOf('Returns Policy')).toBe('Full access')
+    // Its siblings that missed the query are gone, so the "All X" row is not
+    // simply riding along on an unfiltered list.
+    expect(findRow('kb_gone')).toBeUndefined()
+  })
+
+  it('"Set areas only" keeps an area whose only rule is on a child', async () => {
+    const user = userEvent.setup()
+    // `areas.overrides` says nothing about Records; the only rule under it is the
+    // per-definition one.
+    renderEditor({
+      areas: { default: 'none', overrides: {} },
+      definitions: { default: 'none', overrides: { companies: 'read' } },
+      resourceDefault: 'none',
+      resources: {},
+    } as unknown as AgentPermissionPolicy)
+
+    await user.click(screen.getByRole('switch'))
+
+    // Records carries no area rule at all — only the child rescues it.
+    expect(rowTitles()).toContain('Records')
+    expect(rowTitles()).not.toContain('Billing')
+
+    await toggleArea(user, 'Records')
+    expect(ruleOf('Companies')).toBe('Read only')
+    // Narrowed to rules: the definition with no rule of its own is not shown.
+    expect(findRow('Deals')).toBeUndefined()
+  })
+
+  it('does not let the mandatory definitions.default pin Records open under "Set areas only"', async () => {
+    const user = userEvent.setup()
+    renderEditor({
+      areas: { default: 'none', overrides: {} },
+      definitions: { default: 'read', overrides: {} },
+      resourceDefault: 'none',
+      resources: {},
+    } as unknown as AgentPermissionPolicy)
+
+    await user.click(screen.getByRole('switch'))
+
+    // `definitions.default` is stored on every policy, so counting it as a rule
+    // would keep Records visible forever and the toggle would mean nothing.
+    expect(rowTitles()).not.toContain('Records')
+  })
+
+  it('treats an existing resource-type entry as a rule under "Set areas only"', async () => {
+    const user = userEvent.setup()
+    renderEditor({
+      areas: { default: 'none', overrides: {} },
+      definitions: { default: 'none', overrides: {} },
+      resourceDefault: 'none',
+      resources: { kb: { default: 'read', overrides: {} } },
+    } as unknown as AgentPermissionPolicy)
+
+    await user.click(screen.getByRole('switch'))
+
+    // Unlike `definitions.default`, a type entry is a deliberate departure from
+    // `resourceDefault` — a rule of its own, so it rescues its area.
+    expect(rowTitles()).toContain('Knowledge Base')
+    expect(rowTitles()).not.toContain('Dashboards')
+  })
+})

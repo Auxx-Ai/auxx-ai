@@ -1,7 +1,8 @@
 // apps/web/src/components/permissions/ui/leveled-area-grid.tsx
 'use client'
 
-import { AREA_ORDER, type Area, type Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import type { Area, Level } from '@auxx/lib/permissions/client'
+import { PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
@@ -9,6 +10,7 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { LevelControl } from './level-control'
+import { PROFILE_AREA_GROUPS } from './profile-copy'
 
 /** The grid's live filter, handed to {@link LeveledAreaGridProps.renderChildren}. */
 export interface AreaChildFilter {
@@ -65,26 +67,6 @@ interface LeveledAreaGridProps {
 }
 
 /**
- * Grantable areas, grouped by registry `group` in area order. Excludes
- * `adminOnly` (never grantable below ADMIN) and `workerOnly` (enforced only on a
- * worker seat, so a level control here would do nothing).
- */
-const AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
-  const order: string[] = []
-  const byGroup = new Map<string, Area[]>()
-  for (const area of AREA_ORDER) {
-    const meta = PERMISSION_AREAS[area]
-    if (meta.adminOnly || meta.workerOnly) continue
-    if (!byGroup.has(meta.group)) {
-      byGroup.set(meta.group, [])
-      order.push(meta.group)
-    }
-    byGroup.get(meta.group)?.push(area)
-  }
-  return order.map((group) => ({ group, areas: byGroup.get(group) ?? [] }))
-})()
-
-/**
  * The shared leveled surface: every grantable area rendered as a labelled row
  * with its {@link LevelControl}, grouped by registry group (Records,
  * Automation, …). `adminOnly` areas are never shown — they're not grantable below
@@ -121,7 +103,7 @@ export function LeveledAreaGrid({
    */
   const filteredGroups = useMemo(() => {
     const groups: Array<{ group: string; rows: AreaRow[] }> = []
-    for (const { group, areas } of AREA_GROUPS) {
+    for (const { group, areas } of PROFILE_AREA_GROUPS) {
       const rows: AreaRow[] = []
       for (const area of areas) {
         const meta = PERMISSION_AREAS[area]

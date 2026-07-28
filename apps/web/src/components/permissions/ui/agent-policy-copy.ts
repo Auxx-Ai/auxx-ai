@@ -81,15 +81,22 @@ export const MAIL_IS_OUTSIDE =
   'Mail is outside this model. There is no mail area, and mail tools are authorized by the ' +
   'mailbox the agent is given. This grid neither opens nor closes them.'
 
-/** Why threads/inboxes/datasets/KBs/dashboards are absent from the definitions grid. */
+/** Why threads/inboxes/datasets/KBs/dashboards are absent from under Records. */
 export const DEFINITIONS_EXCLUSIONS =
-  'Threads, inboxes, messages and other mail records are not listed. They are not governed by ' +
-  'this keyspace. Datasets, knowledge bases and dashboards have their own grid below.'
+  'Threads, inboxes, messages and other mail records are not listed under Records. They are not ' +
+  'governed by that keyspace. Datasets, knowledge bases, dashboards and workflows are ruled on ' +
+  'under their own area rows instead.'
 
-/** The resources grid's intersection rule — an instance rule can never beat its area. */
-export const RESOURCE_AREA_CLAMP =
-  'A resource rule is intersected with its area: setting Knowledge Base to None on the Areas ' +
-  'grid closes every knowledge base here, whatever these rows say.'
+/**
+ * §2.1 — why `adminOnly` areas are offered here at all. Rendered once under the
+ * tree rather than appended to each admin-only row's description: the reason is
+ * the same sentence on every one of them, and the tree already has a lot to say
+ * per row.
+ */
+export const ADMIN_AREAS_NOTE =
+  'Admin-only areas are offered here. That flag means "not grantable below admin" for people; an ' +
+  "agent's authority comes from this policy alone, and a non-admin publishing this profile has " +
+  'it clamped to their own access.'
 
 /** Publication semantics (§0.3/§0.16) — shown whether or not there are pending edits. */
 export const PUBLICATION_NOTE =
@@ -146,4 +153,16 @@ export function followDefaultTooltip(fallback: AgentAccessLevel): string {
 /** Muted text beside a row that carries no override of its own. */
 export function usesDefaultLabel(fallback: AgentAccessLevel): string {
   return `Default · ${agentLevelLabel(fallback)}`
+}
+
+/**
+ * Title of the first child row under `Area.records` — the `definitions.default`
+ * rule (plan 29 §1.1). Exported because the host filters the tree's search
+ * against it as well as rendering it.
+ */
+export const ALL_RECORD_TYPES_TITLE = 'All record types'
+
+/** Title of the first child row under a resource area — that type's own default. */
+export function allInstancesTitle(pluralLabel: string): string {
+  return `All ${pluralLabel.toLowerCase()}`
 }

@@ -81,23 +81,27 @@ export const WORKER_LOCK_REASON =
   'Field seats can never reach this area. The seat ceiling clamps it to None, whatever this profile says.'
 
 /**
- * Grantable areas grouped by registry group, in area order — the same selection
- * the shared `LeveledAreaGrid` makes: `adminOnly` areas are never grantable below
- * ADMIN, and `workerOnly` areas are enforced only on a worker seat, so a control
- * for them would do nothing. (The binary-role-gate lock this list used to also
- * carry for a subset of areas was retired 2026-07-27, plan 21 §8 step 11 — every
- * listed area's lever is real now.)
+ * Areas grouped by registry `group`, in `AREA_ORDER`, groups ordered by first
+ * appearance — the one grouping loop every area grid renders from (plan 29 §2.1).
  *
- * Duplicated rather than imported because the shared grid keeps this private and
- * exposes no per-area lock hook — which the profile editor needs for the seat
- * lock (§0.19).
+ * Which areas are *offered* differs per surface, so both exclusions are explicit
+ * rather than baked in: see {@link PROFILE_AREA_GROUPS} (human surfaces) and
+ * {@link AGENT_POLICY_AREA_GROUPS} (agent policy) for the two callers and why
+ * they disagree about `adminOnly`.
  */
-export const PROFILE_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() => {
+export function areaGroups({
+  excludeAdminOnly,
+  excludeWorkerOnly,
+}: {
+  excludeAdminOnly: boolean
+  excludeWorkerOnly: boolean
+}): Array<{ group: string; areas: Area[] }> {
   const order: string[] = []
   const byGroup = new Map<string, Area[]>()
   for (const area of AREA_ORDER) {
     const meta = PERMISSION_AREAS[area]
-    if (meta.adminOnly || meta.workerOnly) continue
+    if (excludeAdminOnly && meta.adminOnly) continue
+    if (excludeWorkerOnly && meta.workerOnly) continue
     if (!byGroup.has(meta.group)) {
       byGroup.set(meta.group, [])
       order.push(meta.group)
@@ -105,7 +109,38 @@ export const PROFILE_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = (() 
     byGroup.get(meta.group)?.push(area)
   }
   return order.map((group) => ({ group, areas: byGroup.get(group) ?? [] }))
-})()
+}
+
+/**
+ * Grantable areas for the HUMAN surfaces (profile editor, member baseline,
+ * grantee overrides): `adminOnly` areas are never grantable below ADMIN, and
+ * `workerOnly` areas are enforced only on a worker seat, so a control for them
+ * would do nothing. (The binary-role-gate lock this list used to also carry for a
+ * subset of areas was retired 2026-07-27, plan 21 §8 step 11 — every listed
+ * area's lever is real now.)
+ */
+export const PROFILE_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = areaGroups({
+  excludeAdminOnly: true,
+  excludeWorkerOnly: true,
+})
+
+/**
+ * The areas the AGENT policy can express. `workerOnly` areas are excluded: their
+ * enforcement is gated on `seatType === 'worker'`, which an agent never is, so a
+ * control here would be a lever that does nothing.
+ *
+ * `adminOnly` areas ARE offered. That flag means "not grantable below ADMIN" on
+ * the *human* baseline; an agent's authority comes from this policy and nothing
+ * else, bounded at publish by the §2.4a author clamp — so the honest treatment is
+ * to show the rung and name the clamp, not to hide it.
+ */
+export const AGENT_POLICY_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = areaGroups({
+  excludeAdminOnly: false,
+  excludeWorkerOnly: true,
+})
+
+/** Every area the agent policy renders — also the keyspace the clamp preview checks. */
+export const AGENT_POLICY_AREAS: readonly Area[] = AGENT_POLICY_AREA_GROUPS.flatMap((g) => g.areas)
 
 /** The icon a profile falls back to when it carries no `icon` of its own. */
 export const DEFAULT_PROFILE_ICON = { iconId: 'shield-check', color: 'blue' }
