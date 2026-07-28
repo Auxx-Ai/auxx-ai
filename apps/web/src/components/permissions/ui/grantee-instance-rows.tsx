@@ -40,12 +40,11 @@ const CHILD_DEPTH = 1
  * it would hide the one thing this exists to show. It goes in `secondary`, the
  * visible slot beside the title. `description` keeps its existing row copy.
  *
- * **Unconditional here, unlike the area rows**, which show their line only when
- * it disagrees with their ladder. The difference is what the row already states:
- * an area row's ladder always highlights a concrete rung, while this row's
- * select reads a bare "Inherit" for every un-granted instance (it is not given
- * an `inheritedLevel` to name) — so there is nothing to disagree WITH, and a
- * conditional line would simply never appear on the rows that need it most.
+ * **Unconditional**, on every row that has an effective level to report — the
+ * same rule the area rows above now follow. Both surfaces once differed here
+ * (the area grid showed its line only where composition disagreed with the
+ * ladder), which made a missing line mean two different things depending on the
+ * row it was missing from.
  *
  * Level only, no source attribution — that is phase 3, and it needs a
  * `user:capabilities` bump because composition discards which row won.
