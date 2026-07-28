@@ -1,131 +1,117 @@
 // apps/web/src/components/kb/ui/settings/general/identity-section.tsx
 'use client'
 
-import { FieldType } from '@auxx/database/enums'
-import { Form, FormField } from '@auxx/ui/components/form'
+import { mergeDraftOverLive } from '@auxx/lib/kb/client'
+import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { Pencil } from 'lucide-react'
+import { useState } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { useKnowledgeBaseMutations } from '../../../hooks/use-knowledge-base-mutations'
 import type { KnowledgeBase } from '../../../store/knowledge-base-store'
-import { registerSettingsSubmit } from '../settings-submit-registry'
+import {
+  KnowledgeBaseDialog,
+  type KnowledgeBaseFormValues,
+} from '../../dialogs/kb-knowledge-base-dialog'
 
-const identitySchema = z.object({
-  slug: z
-    .string()
-    .min(1, 'Slug is required')
-    .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
-  customDomain: z.string().nullish(),
-  visibility: z.enum(['PUBLIC', 'INTERNAL']).default('PUBLIC'),
-})
-
-type IdentityFormValues = z.infer<typeof identitySchema>
-
-const VISIBILITY_OPTIONS = [
-  { label: 'Public', value: 'PUBLIC' },
-  { label: 'Internal — sign-in required', value: 'INTERNAL' },
-]
+/** Mirrors the publish dialog's three-way access choice. Display only. */
+const ACCESS_LABEL = {
+  public: 'Public — anyone can read it',
+  unlisted: 'Unlisted — direct link only',
+  internal: 'Internal — sign-in required',
+} as const
 
 interface IdentitySectionProps {
   knowledgeBaseId: string
   knowledgeBase: KnowledgeBase
 }
 
-function buildDefaults(kb: KnowledgeBase): IdentityFormValues {
-  return {
-    slug: kb.slug,
-    customDomain: kb.customDomain || '',
-    visibility: (kb.visibility as IdentityFormValues['visibility']) ?? 'PUBLIC',
-  }
-}
-
+/**
+ * Name and slug.
+ *
+ * Unlike every other settings section this one does NOT autosave into the draft
+ * envelope: `slug` is the live public URL and renaming it has a known
+ * cache-busting hazard, so it is read-only here and changed deliberately
+ * through the existing edit dialog rather than by a debounce. `name` IS
+ * draftable and rides along in that same dialog — the split write is the one
+ * `knowledge-base-card.tsx` already established.
+ *
+ * Access is shown read-only. `publishStatus` and `visibility` are one user
+ * choice and are edited together in `KBSitePublishDialog`; duplicating an
+ * editor here would let the two screens disagree, which is the bug that
+ * motivated merging them.
+ */
 export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySectionProps) {
-  const { updateKnowledgeBase, isUpdating } = useKnowledgeBaseMutations()
+  const { updateKnowledgeBase, updateDraftSettings, isUpdating, isUpdatingDraft } =
+    useKnowledgeBaseMutations()
+  const [editOpen, setEditOpen] = useState(false)
 
-  const form = useForm<IdentityFormValues>({
-    resolver: standardSchemaResolver(identitySchema),
-    defaultValues: buildDefaults(knowledgeBase),
-  })
+  const accessMode: keyof typeof ACCESS_LABEL =
+    knowledgeBase.visibility === 'INTERNAL'
+      ? 'internal'
+      : knowledgeBase.publishStatus === 'UNLISTED'
+        ? 'unlisted'
+        : 'public'
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-hydrate on KB switch
-  useEffect(() => {
-    form.reset(buildDefaults(knowledgeBase))
-  }, [knowledgeBase.id, form])
+  // Sibling sections all read through the draft, so a staged name shows here too.
+  const merged = mergeDraftOverLive(knowledgeBase as Record<string, unknown>) as KnowledgeBase
 
-  const onSubmit = async (data: IdentityFormValues) => {
-    await updateKnowledgeBase(knowledgeBaseId, {
-      slug: data.slug,
-      visibility: data.visibility,
-    })
+  const handleEditSubmit = async (values: KnowledgeBaseFormValues) => {
+    // Same split as `knowledge-base-card.tsx`: slug is live, name is drafted.
+    if (values.slug !== knowledgeBase.slug) {
+      await updateKnowledgeBase(knowledgeBaseId, { slug: values.slug })
+    }
+    if (values.name !== merged.name) {
+      await updateDraftSettings(knowledgeBaseId, { name: values.name })
+    }
+    setEditOpen(false)
   }
-
-  // Register with the global Save button — only triggers a submit if the form
-  // is currently dirty so we don't fire spurious requests for the live API.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: form.handleSubmit / form.formState are stable enough for this side effect
-  useEffect(() => {
-    return registerSettingsSubmit(`${knowledgeBaseId}:identity`, async () => {
-      if (!form.formState.isDirty) return
-      await form.handleSubmit(onSubmit)()
-    })
-  }, [knowledgeBaseId])
 
   return (
     <Section title='Identity' description='URL and access for this knowledge base.'>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          <FieldPanel orientation='responsive' className='p-0' resizeId='kb-settings'>
-            <FormField
-              control={form.control}
-              name='slug'
-              render={({ field, fieldState }) => (
-                <FieldPanelRow
-                  title='URL slug'
-                  description='Used in the URL of your knowledge base.'
-                  type={BaseType.STRING}
-                  showIcon
-                  isRequired
-                  validationError={fieldState.error?.message}>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
-                    value={field.value}
-                    onChange={(v) => field.onChange(v ?? '')}
-                    placeholder='my-knowledge-base'
-                    disabled={isUpdating}
-                  />
-                </FieldPanelRow>
-              )}
-            />
+      <FieldPanel orientation='responsive' className='p-0' resizeId='kb-settings'>
+        <FieldPanelRow
+          title='URL slug'
+          description='Used in the URL of your knowledge base. Changing it breaks existing links.'
+          type={BaseType.STRING}
+          showIcon>
+          <div className='flex min-h-8 w-full items-center justify-between gap-2'>
+            <span className='truncate font-mono text-muted-foreground text-sm'>
+              /{knowledgeBase.slug}
+            </span>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => setEditOpen(true)}
+              disabled={isUpdating || isUpdatingDraft}
+              aria-label='Edit name and slug'>
+              <Pencil />
+            </Button>
+          </div>
+        </FieldPanelRow>
 
-            <FormField
-              control={form.control}
-              name='visibility'
-              render={({ field, fieldState }) => (
-                <FieldPanelRow
-                  title='Visibility'
-                  description='Public knowledge bases are accessible to anyone with the link. Internal knowledge bases require visitors to sign in and be a member of your organization.'
-                  type={BaseType.ENUM}
-                  showIcon
-                  validationError={fieldState.error?.message}>
-                  <FieldInputAdapter
-                    fieldType={FieldType.SINGLE_SELECT}
-                    fieldOptions={{ options: VISIBILITY_OPTIONS }}
-                    value={field.value ?? 'PUBLIC'}
-                    onChange={(v) => field.onChange((v as string[])[0] ?? 'PUBLIC')}
-                    placeholder='Public'
-                    disabled={isUpdating}
-                    triggerProps={{ className: 'ps-0 pe-1 w-full' }}
-                  />
-                </FieldPanelRow>
-              )}
-            />
-          </FieldPanel>
-        </form>
-      </Form>
+        <FieldPanelRow
+          title='Access'
+          description='Changed from the Publish menu, which sets who can see the site in one place.'
+          type={BaseType.ENUM}
+          showIcon>
+          <span className='flex min-h-8 items-center text-muted-foreground text-sm'>
+            {ACCESS_LABEL[accessMode]}
+          </span>
+        </FieldPanelRow>
+      </FieldPanel>
+
+      {editOpen && (
+        <KnowledgeBaseDialog
+          open
+          onOpenChange={setEditOpen}
+          onSubmit={handleEditSubmit}
+          initialValues={{ name: merged.name, slug: knowledgeBase.slug }}
+          isSubmitting={isUpdating || isUpdatingDraft}
+          mode='edit'
+        />
+      )}
     </Section>
   )
 }

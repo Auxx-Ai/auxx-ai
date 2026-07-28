@@ -40,6 +40,7 @@ import {
 } from './knowledge-base/draft-settings-ops'
 import { getKnowledgeBaseById, listKnowledgeBases } from './knowledge-base/get-knowledge-base'
 import {
+  type PublishKBOptions,
   publishKnowledgeBase,
   unpublishKnowledgeBase,
 } from './knowledge-base/publish-knowledge-base'
@@ -92,8 +93,12 @@ export class KBService {
   deleteKnowledgeBase(id: string) {
     return deleteKnowledgeBase(this.ctx, id)
   }
-  publishKnowledgeBase(id: string, status: 'PUBLISHED' | 'UNLISTED') {
-    return publishKnowledgeBase(this.ctx, id, status)
+  publishKnowledgeBase(
+    id: string,
+    status: 'PUBLISHED' | 'UNLISTED',
+    options: PublishKBOptions = {}
+  ) {
+    return publishKnowledgeBase(this.ctx, id, status, options)
   }
   unpublishKnowledgeBase(id: string) {
     return unpublishKnowledgeBase(this.ctx, id)
