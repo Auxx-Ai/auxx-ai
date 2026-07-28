@@ -44,7 +44,7 @@ function InputSearch({
         onChange={onChange}
         className={cn(
           'flex w-full rounded-md py-1 shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-hidden  focus-visible:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-50',
-          'h-7 flex-1 border-none pl-7 text-xs',
+          'h-7 flex-1 border-none pl-7 text-xs ring-1 ring-primary-100',
           'bg-muted/50 hover:bg-muted focus-visible:bg-muted',
           'focus-visible:ring-1',
           className

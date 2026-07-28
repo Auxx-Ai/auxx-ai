@@ -2,7 +2,8 @@
 'use client'
 
 import { mergeDraftOverLive } from '@auxx/lib/kb/client'
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
+import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import {
   DropdownMenuItem,
@@ -14,6 +15,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useActiveKnowledgeBaseId } from '../../hooks/use-knowledge-base'
 import { useKnowledgeBaseMutations } from '../../hooks/use-knowledge-base-mutations'
@@ -51,13 +53,19 @@ export function KBSwitcherDropdownContent() {
 
   const { getLimit } = useFeatureFlags()
   const kbLimit = getLimit(FeatureKey.knowledgeBases)
+  // Mirrors the server: `kb.create` asserts the L2 area key AND the plan limit,
+  // `kb.delete` asserts `assertAdminInstance` per KB. Degrade-only — the router
+  // is still the enforcement point.
+  const { can, canAdminInstance } = useAccess()
+  const canManageKBs = can(PermissionKey.knowledgeBaseManage)
 
   const canCreateKB = useMemo(() => {
+    if (!canManageKBs) return false
     if (kbLimit === null || kbLimit === false || kbLimit === 0) return false
     if (kbLimit === '+' || kbLimit === true) return true
     if (typeof kbLimit === 'number') return knowledgeBases.length < kbLimit
     return true
-  }, [kbLimit, knowledgeBases.length])
+  }, [canManageKBs, kbLimit, knowledgeBases.length])
 
   const activeKB = useMemo(() => {
     const kb = knowledgeBases.find((k) => k.id === activeKBId)
@@ -135,6 +143,7 @@ export function KBSwitcherDropdownContent() {
         knowledgeBases.map((kb) => {
           const merged = mergeDraftOverLive(kb as Record<string, unknown>) as typeof kb
           const isActive = kb.id === activeKBId
+          const canDelete = canAdminInstance(toRecordId('kb', kb.id))
           return (
             <DropdownMenuItem
               key={kb.id}
@@ -153,17 +162,19 @@ export function KBSwitcherDropdownContent() {
                     targetIds={{ knowledgeBaseId: kb.id }}
                     revealOnHoverClassName='group-hover/kb-item:flex'
                   />
-                  <button
-                    type='button'
-                    aria-label={`Delete ${merged.name}`}
-                    className='hidden group-hover/kb-item:flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-bad-100 hover:text-bad-500'
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      handleDelete(kb.id, merged.name ?? 'this knowledge base')
-                    }}>
-                    <Trash2 className='size-3' />
-                  </button>
+                  {canDelete && (
+                    <button
+                      type='button'
+                      aria-label={`Delete ${merged.name}`}
+                      className='hidden group-hover/kb-item:flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-bad-100 hover:text-bad-500'
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleDelete(kb.id, merged.name ?? 'this knowledge base')
+                      }}>
+                      <Trash2 className='size-3' />
+                    </button>
+                  )}
                   {isActive && (
                     <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
                       <Check className='size-2.5! text-white' strokeWidth={4} />

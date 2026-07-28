@@ -18,6 +18,7 @@ import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import { usePublishWithConfirm } from '../../hooks/use-publish-with-confirm'
 import { type ArticleMeta, getArticleStoreState } from '../../store/article-store'
+import { useKBEditorAccess } from '../editor/kb-editor-access-context'
 import { TabSlugDialog } from './tab-slug-dialog'
 
 interface KBTabStripProps {
@@ -34,6 +35,10 @@ interface KBTabStripProps {
  * add UI.
  */
 export function KBTabStrip({ knowledgeBaseId, activeTabId, onTabChange }: KBTabStripProps) {
+  // View-level members get plain clickable pills: no `+`, no inline rename, no
+  // drag-reorder, no context menu. Every affordance behind `editable` maps to a
+  // mutation the router gates with `assertEditInstance` (doc 24 §A.2.4).
+  const { canEdit } = useKBEditorAccess()
   const articles = useArticleList(knowledgeBaseId)
   const tabs = useMemo(
     () =>
@@ -139,6 +144,7 @@ export function KBTabStrip({ knowledgeBaseId, activeTabId, onTabChange }: KBTabS
     <TabStrip
       tabs={tabs}
       activeTabId={activeTabId}
+      editable={canEdit}
       onSelect={onTabChange}
       onRename={(id, title) => void renameArticle(id, { title })}
       onReorder={handleReorder}
