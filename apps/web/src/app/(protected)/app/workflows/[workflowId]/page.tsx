@@ -23,6 +23,7 @@ import { WorkflowEditor } from '~/components/workflow'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { useWorkflowAccess } from '~/components/workflow/hooks/use-workflow-access'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { WorkflowBreadcrumbSwitcher } from '~/components/workflow/ui/workflow-breadcrumb-switcher'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
@@ -182,9 +183,9 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
           }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
-            <MainPageBreadcrumbItem
-              title={isLoading ? <Skeleton className='h-4 w-32' /> : workflow.name}
-              href={`/app/workflows/${workflowId}`}
+            <WorkflowBreadcrumbSwitcher
+              activeWorkflowId={workflowId}
+              activeLabel={isLoading ? <Skeleton className='h-4 w-32' /> : (workflow?.name ?? '')}
             />
           </MainPageBreadcrumb>
         </MainPageHeader>

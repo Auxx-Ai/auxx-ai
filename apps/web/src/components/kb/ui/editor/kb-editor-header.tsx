@@ -3,11 +3,9 @@
 
 import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { toRecordId } from '@auxx/types/resource'
-import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
   MainPageBreadcrumb,
-  MainPageBreadcrumbDropdown,
   MainPageBreadcrumbItem,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
@@ -19,7 +17,7 @@ import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-
 import { LAYOUT_TAB_ENABLED } from '../../constant'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { useKBPreviewHint } from '../preview/preview-hint-context'
-import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
+import { KBBreadcrumbSwitcher } from '../sidebar/kb-switcher'
 import { useKBEditorAccess } from './kb-editor-access-context'
 import { KBPublishCluster } from './kb-publish-cluster'
 
@@ -29,16 +27,6 @@ export type KBEditorPanel = (typeof PANEL_VALUES)[number]
 interface KBEditorHeaderProps {
   knowledgeBaseId: string
   knowledgeBase: KnowledgeBase
-}
-
-function getInitials(name?: string): string {
-  if (!name) return 'KB'
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
-    .substring(0, 2)
 }
 
 /**
@@ -109,18 +97,7 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
             icon={<Sparkles className='size-4 text-primary' />}
           />
         ) : (
-          <MainPageBreadcrumbDropdown
-            label={merged.name ?? 'Knowledge Base'}
-            icon={
-              <Avatar className='size-5 rounded'>
-                <AvatarFallback className='rounded bg-primary/10 text-[10px] text-primary'>
-                  {getInitials(merged.name)}
-                </AvatarFallback>
-              </Avatar>
-            }
-            contentClassName='w-72'>
-            <KBSwitcherDropdownContent />
-          </MainPageBreadcrumbDropdown>
+          <KBBreadcrumbSwitcher activeKnowledgeBase={merged} />
         )}
       </MainPageBreadcrumb>
       {!isLearned && canAdmin && (

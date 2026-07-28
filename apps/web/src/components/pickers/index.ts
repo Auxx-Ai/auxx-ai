@@ -8,6 +8,10 @@ export type {
   RelativeDatePreset,
 } from './date-time-picker'
 export { DateTimePicker, DEFAULT_DATE_PRESETS, Period, ViewType } from './date-time-picker'
+export type { EntityBreadcrumbSwitcherProps } from './entity-breadcrumb-switcher'
+export { EntityBreadcrumbSwitcher } from './entity-breadcrumb-switcher'
+export type { EntitySwitcherItem, EntitySwitcherListProps } from './entity-switcher-list'
+export { EntitySwitcherList } from './entity-switcher-list'
 export type {
   ExcludeFilter,
   ExternalNavigation,

@@ -4,7 +4,6 @@
 import {
   MainPage,
   MainPageBreadcrumb,
-  MainPageBreadcrumbDropdown,
   MainPageBreadcrumbItem,
   MainPageContent,
   MainPageHeader,
@@ -16,7 +15,7 @@ import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { ArticlesView } from '../articles/articles-view'
 import { KnowledgeBasesTab } from '../knowledge-bases/knowledge-bases-tab'
-import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
+import { KBBreadcrumbSwitcher } from '../sidebar/kb-switcher'
 import { ConnectSourceButton } from '../sources/connect-source-button'
 import { SourcesProvider } from '../sources/sources-provider'
 import { SourcesTab } from '../sources/sources-tab'
@@ -80,12 +79,7 @@ export function KBLandingShell() {
             href='/app/kb'
             className='hidden sm:inline-flex'
           />
-          <MainPageBreadcrumbDropdown
-            label='Open a knowledge base'
-            icon={<Book className='size-3.5' />}
-            contentClassName='w-72'>
-            <KBSwitcherDropdownContent />
-          </MainPageBreadcrumbDropdown>
+          <KBBreadcrumbSwitcher />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

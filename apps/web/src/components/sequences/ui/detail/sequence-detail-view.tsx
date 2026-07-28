@@ -22,6 +22,7 @@ import { LoadingSpinner } from '~/components/global/loading-content'
 import { Tooltip } from '~/components/global/tooltip'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api } from '~/trpc/react'
+import { SequenceBreadcrumbSwitcher } from '../sequence-breadcrumb-switcher'
 import { SequenceRecipients } from './sequence-recipients'
 import { SequenceSettingsDrawer } from './sequence-settings-drawer'
 import { SequenceStatsStrip } from './sequence-stats-strip'
@@ -182,7 +183,7 @@ export function SequenceDetailView({ sequenceId }: SequenceDetailViewProps) {
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
           <MainPageBreadcrumbItem title='Sequences' href='/app/workflows?t=sequences' />
-          <MainPageBreadcrumbItem title={sequence.name} />
+          <SequenceBreadcrumbSwitcher activeSequenceId={sequence.id} activeLabel={sequence.name} />
         </MainPageBreadcrumb>
       </MainPageHeader>
 

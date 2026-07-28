@@ -631,6 +631,17 @@ interface CommandDetailItemProps {
   trailing?: React.ReactNode
   /** Right-aligned slot revealed on hover/focus — e.g. icon buttons. */
   actions?: React.ReactNode
+  /**
+   * Absolutely-positioned slot that slides in from the row's right edge — pass a
+   * `RowSlideActions`. Adds `relative overflow-hidden` to the row when present.
+   */
+  slideActions?: React.ReactNode
+  /** How the leading visual is framed. `'tile'` wraps it in a bordered square. */
+  iconVariant?: 'plain' | 'tile'
+  /** Whether this row is the selected one — drives `selectionMode`. */
+  selected?: boolean
+  /** Selection indicator rendered at the row's right edge. Defaults to `'none'`. */
+  selectionMode?: 'check' | 'checkbox' | 'none'
   /** Feeds cmdk selection/filtering. */
   value: string
   /** Fires on click / Enter. */
@@ -641,10 +652,11 @@ interface CommandDetailItemProps {
 
 /**
  * A richer {@link CommandItem} for pickers that need more than an icon and a
- * label: a leading `EntityIcon` (from `iconId`/`color`, or an `icon` override),
- * a primary `title`, an optional `description` shown via a `TooltipExplanation`
- * help icon, an inline `secondary` slot (e.g. a Badge), a right-aligned
- * `trailing` slot (e.g. a price), and `actions` revealed on hover/focus.
+ * label: a leading `EntityIcon` (from `iconId`/`color`, or an `icon` override,
+ * optionally framed as a tile), a primary `title`, an optional `description`
+ * shown via a `TooltipExplanation` help icon, an inline `secondary` slot (e.g. a
+ * Badge), a right-aligned `trailing` slot (e.g. a price), `actions` revealed on
+ * hover/focus, a `selectionMode` indicator, and a sliding `slideActions` slot.
  */
 function CommandDetailItem({
   iconId,
@@ -655,34 +667,74 @@ function CommandDetailItem({
   secondary,
   trailing,
   actions,
+  slideActions,
+  iconVariant = 'plain',
+  selected = false,
+  selectionMode = 'none',
   value,
   onSelect,
   disabled,
   className,
 }: CommandDetailItemProps) {
   const leading = icon ?? (iconId ? <EntityIcon iconId={iconId} color={color} size='sm' /> : null)
+  const framedLeading =
+    leading && iconVariant === 'tile' ? (
+      <span className='flex size-5 shrink-0 items-center justify-center rounded-sm border'>
+        {leading}
+      </span>
+    ) : (
+      leading
+    )
+  const indicator =
+    selectionMode === 'checkbox' ? (
+      <Checkbox checked={selected} className='pointer-events-none' />
+    ) : selectionMode === 'check' && selected ? (
+      <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+        <Check className='size-2.5! text-white' strokeWidth={4} />
+      </div>
+    ) : null
   return (
     <CommandItem
       value={value}
       onSelect={onSelect}
       disabled={disabled}
-      className={cn('group flex items-center gap-2', className)}>
-      {leading && <span className='shrink-0 text-muted-foreground'>{leading}</span>}
+      className={cn(
+        'group/cmd-item flex items-center gap-2',
+        slideActions && 'relative overflow-hidden',
+        className
+      )}>
+      {framedLeading && <span className='shrink-0 text-muted-foreground'>{framedLeading}</span>}
       <div className='flex min-w-0 flex-1 items-center gap-1.5'>
         <span className='min-w-0 truncate text-sm'>{title}</span>
         {description && <TooltipExplanation text={description} className='shrink-0' />}
-        {secondary && <span className='min-w-0 shrink truncate'>{secondary}</span>}
+        {/* `[&>*]:ring-0` — Badge's base applies `ring-1 ring-current/35` to every
+            variant, which reads as a heavy outline on a dense row. Stripped here
+            so callers get a clean chip without restating it at every call site. */}
+        {secondary && <span className='min-w-0 shrink truncate [&>*]:ring-0'>{secondary}</span>}
       </div>
-      {(trailing || actions) && (
-        <div className='flex shrink-0 items-center gap-1'>
+      {(trailing || actions || indicator) && (
+        // With `slideActions`, the static cluster fades out as the slider comes
+        // in — the slider's background is deliberately translucent (it matches
+        // the row's own selected fill), so anything left underneath ghosts
+        // through and reads as noise. Timed to match `RowSlideActions`.
+        // `actions` and `slideActions` are not meant to be combined: put
+        // hover-revealed controls in the slider, not in `actions`.
+        <div
+          className={cn(
+            'flex shrink-0 items-center gap-1',
+            slideActions &&
+              'transition-opacity duration-200 ease-out group-hover/cmd-item:opacity-0 group-focus-within/cmd-item:opacity-0'
+          )}>
           {trailing}
           {actions && (
-            <span className='flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'>
+            <span className='flex items-center gap-1 opacity-0 transition-opacity group-hover/cmd-item:opacity-100 focus-within:opacity-100'>
               {actions}
             </span>
           )}
+          {indicator}
         </div>
       )}
+      {slideActions}
     </CommandItem>
   )
 }

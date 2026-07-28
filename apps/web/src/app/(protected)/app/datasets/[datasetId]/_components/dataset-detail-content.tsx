@@ -20,6 +20,7 @@ import { DocumentDetailDrawer } from '~/components/datasets/documents/document-d
 import { DocumentManagement } from '~/components/datasets/documents/document-management'
 import { DatasetSearch } from '~/components/datasets/search/dataset-search'
 import { DatasetSettings } from '~/components/datasets/settings/dataset-settings'
+import { DatasetBreadcrumbSwitcher } from '~/components/datasets/ui/dataset-breadcrumb-switcher'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useAccess } from '~/providers/capabilities-provider'
 import { DatasetActions } from './dataset-actions'
@@ -93,7 +94,7 @@ export function DatasetDetailContent() {
       <MainPageHeader action={<DatasetActions />}>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
-          <MainPageBreadcrumbItem title='Dataset Details' />
+          <DatasetBreadcrumbSwitcher activeDatasetId={dataset.id} activeLabel={dataset.name} />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent dockedPanels={dockedPanels}>

@@ -29,12 +29,7 @@ import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/clien
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { BreadcrumbItem } from '@auxx/ui/components/breadcrumb'
 import { Button } from '@auxx/ui/components/button'
-import {
-  MainPageAction,
-  MainPageBreadcrumbDropdown,
-  MainPageContent,
-  MainPageCrumbs,
-} from '@auxx/ui/components/main-page'
+import { MainPageAction, MainPageContent, MainPageCrumbs } from '@auxx/ui/components/main-page'
 import { Lock, Share2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
@@ -426,16 +421,12 @@ export function DashboardDetailView({
 
       <MainPageAction>{actionCluster}</MainPageAction>
       <MainPageCrumbs>
-        <MainPageBreadcrumbDropdown
-          label={<span className='max-w-[24ch] truncate'>{dashboard.name}</span>}
-          popover
-          contentClassName='w-64'>
-          <DashboardSwitcherList
-            activeDashboardId={dashboard.id}
-            onSelectDashboard={(id) => router.push(`/app/dashboards/${id}`)}
-            onActiveDashboardDeleted={() => router.push('/app/dashboards')}
-          />
-        </MainPageBreadcrumbDropdown>
+        <DashboardSwitcherList
+          activeDashboardId={dashboard.id}
+          activeDashboardName={dashboard.name}
+          onSelectDashboard={(id) => router.push(`/app/dashboards/${id}`)}
+          onActiveDashboardDeleted={() => router.push('/app/dashboards')}
+        />
         {dashboard.isPrivate && (
           <BreadcrumbItem>
             <Lock className='size-3.5 text-muted-foreground' aria-label='Private dashboard' />
