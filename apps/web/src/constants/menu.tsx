@@ -30,7 +30,6 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
-  Sun,
   Tag,
   Trash2,
   Truck,
@@ -101,13 +100,6 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     icon: <LayoutDashboard />,
     featureKey: 'dashboards',
     permissionKey: 'dashboards.view',
-  },
-  {
-    id: 'today',
-    label: 'Today',
-    slug: 'today',
-    icon: <Sun />,
-    featureKey: 'todayInbox',
   },
   {
     id: 'chats',

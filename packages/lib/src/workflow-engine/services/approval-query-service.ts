@@ -339,14 +339,13 @@ export class ApprovalQueryService {
    * Clean up orphaned approval requests for stopped/failed workflows
    */
   async cleanupOrphanedApprovals(organizationId?: string): Promise<number> {
-    // Find workflow run IDs that are no longer active
-    const terminalRuns = await this.db
+    // Terminal runs stay as a subquery rather than being selected into memory
+    // first: this runs on a 15-minute schedule across every org, and materialising
+    // every finished run id into an IN (...) list grows without bound.
+    const terminalRunIds = this.db
       .select({ id: schema.WorkflowRun.id })
       .from(schema.WorkflowRun)
       .where(inArray(schema.WorkflowRun.status, ['STOPPED', 'FAILED', 'SUCCEEDED'] as any))
-
-    const runIds = terminalRuns.map((r) => r.id)
-    if (runIds.length === 0) return 0
 
     const updated = await this.db
       .update(schema.ApprovalRequest)
@@ -357,7 +356,7 @@ export class ApprovalQueryService {
       .where(
         and(
           eq(schema.ApprovalRequest.status, 'pending' as any),
-          inArray(schema.ApprovalRequest.workflowRunId, runIds),
+          inArray(schema.ApprovalRequest.workflowRunId, terminalRunIds),
           ...(organizationId ? [eq(schema.ApprovalRequest.organizationId, organizationId)] : [])
         )
       )

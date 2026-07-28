@@ -27,13 +27,13 @@ kopilot** (`runHeadlessSuggestion`) for each candidate: the same
 human in the loop, and `approvalMode: 'capture'` — read-only tools execute
 for real, write tools are recorded instead of run. The model proposes 0..N
 actions and a one-line summary; a non-empty proposal is persisted as an
-**`AiSuggestion`** bundle (`status: 'FRESH'`). The Today page
-(`/app/today`) lists FRESH bundles one card at a time; **Yes** walks the
-bundle's actions in dependency order and actually invokes the tools (or
-promotes an already-created Draft to a scheduled send); **No** closes the
-bundle with no side effects undone. AI-originated sends get a 5-minute
-cancel buffer (`ScheduledMessage.source = 'AI_SUGGESTED'`), surfaced on a
-secondary `/app/today/pending` page.
+**`AiSuggestion`** bundle (`status: 'FRESH'`). The **Approvals tab** of the
+notification panel lists FRESH bundles one row at a time; **Approve** walks
+the bundle's actions in dependency order and actually invokes the tools (or
+promotes an already-created Draft to a scheduled send); **Dismiss** closes
+the bundle with no side effects undone. AI-originated sends get a 5-minute
+cancel buffer (`ScheduledMessage.source = 'AI_SUGGESTED'`), surfaced as an
+in-row countdown with an `Undo`.
 
 ---
 
@@ -210,38 +210,50 @@ avoid name collisions as the two evolve independently.
 
 ---
 
-## 7. Frontend (`apps/web/src/components/today/`)
+## 7. Frontend (`apps/web/src/components/global/notifications/`)
 
-### Routes
-- `/app/today` (`app/(protected)/app/today/page.tsx`) — `TodayPage`.
-- `/app/today/pending` (`.../today/pending/page.tsx`) — `PendingSendsPage`.
+There is no Today page. `/app/today`, `/app/today/pending`, and
+`components/today/` were deleted; triage lives in the **Approvals tab** of
+the notification side panel. See `plans/today/` for the rationale.
 
-Both are client components gated by `useFeatureFlags().hasAccess(FeatureKey.todayInbox)`;
-nav entries in `constants/menu.tsx` and the kbar command palette
-(`components/kbar/actions/navigation.ts`) carry the same gate.
+### The tab (`ui/approvals-tab.tsx`)
+Third item in the panel's `RadioTab` (All / Unread / Approvals). It reads
+its two source tables directly — **no `Notification` rows are minted for
+bundles** — and renders two sections:
 
-### `TodayPage` (`today-page.tsx`)
-Queries `approvals.list` (`mine_and_unassigned`, `status: ['FRESH']`, limit
-25) and `approvals.listPending` for a "N pending sends" pill linking to the
-pending page. Renders one `BundleCard` per bundle — no virtualization,
-list-only (no keyboard triage shortcuts currently implemented despite the
-plan doc mentioning `j/k/Enter/Esc` hotkeys).
+- **Needs a decision** — `approval.getPendingRequests` (workflow human
+  confirmations). Not feature-flagged, unpaginated, sorted `expiresAt` asc
+  nulls last.
+- **Suggestions** — `approvals.list` (`mine_and_unassigned`,
+  `status: ['FRESH']`, limit 25), cursor-paginated. Gated by
+  `useFeatureFlags().hasAccess(FeatureKey.todayInbox)`, which skips the
+  query entirely when off.
 
-### `BundleCard` (`bundle-card.tsx`)
+An empty section is hidden; both empty shows one `Empty` state. Search, the
+type filter, and the bulk delete actions are hidden on this tab.
+
+### `SuggestionRow` (`ui/items/suggestion-row.tsx`)
 Shows the bundle's `summary` (or a generic "`N` actions" fallback),
-Yes/No buttons wired to `approvals.approve`/`approvals.reject`
-(`api.useUtils()` invalidates `list`/`listPending` on settle), and a
-collapsible read-only `<details>` listing each `ProposedAction`
-(`toolName` + `summary`) — **no per-action edit or partial-approval UI**;
-Choose-mode was explicitly cut from v1. A `CONFLICT` approve error (stale
-bundle) surfaces as an "Out of date" toast and re-invalidates the list.
+Approve/Dismiss pills wired to `approvals.approve`/`approvals.reject`, and
+an inline expand listing each `ProposedAction` (`toolName` + `summary`) —
+**no per-action edit or partial-approval UI**; Choose-mode was explicitly
+cut from v1. A `STALE` bundle disables both actions behind an inline "Out of
+date" banner rather than letting the click 409. Approve does not drop the
+row: if the chain scheduled a send, the row flips in place to a countdown
+with `Undo` (`approvals.cancelPendingSend`); a `send_in_flight` conflict
+surfaces as "Send in flight, can't cancel." Snooze
+(`approvals.snooze`) and Open record live in the row's overflow menu.
 
-### `PendingSendsPage` (`pending-page.tsx`)
-Lists `approvals.listPending` rows with a client-side countdown to
-`scheduledAt` and a Cancel button (`approvals.cancelPendingSend`); a
-`send_in_flight` conflict surfaces as "Send in flight, can't cancel." No
-Zustand store anywhere in Today — plain React Query state throughout, with
-local `useState`/`setInterval` only for the countdown display.
+### `ConfirmationRow` (`ui/items/confirmation-row.tsx`)
+Absorbs the retired `HumanConfirmationDialog`. Collapsed: workflow name and
+`Expires in …`. Expanded (lazily fetches `approval.getApprovalDetails`):
+node, message, timestamps, and the decision comment `Textarea`. Approve has
+no confirm; **Deny does** — it stops a live run with no undo. A past-expiry
+request disables both actions.
+
+Panel state (`open`, `mode`, `highlightApprovalId`) lives in
+`notification-panel-store.ts`; `openApprovals(id?)` is how the kbar action
+and `APPROVAL` notification rows jump to the tab. Only `width` is persisted.
 
 ---
 

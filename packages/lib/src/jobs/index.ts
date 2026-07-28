@@ -285,6 +285,10 @@ export {
   type AppTriggerDispatchJobData,
   dispatchAppTrigger,
 } from './workflow/app-trigger-dispatch-job'
+export {
+  type ApprovalOrphanSweeperStats,
+  approvalOrphanSweeperJob,
+} from './workflow/approval-orphan-sweeper-job'
 export { approvalReminderJob } from './workflow/approval-reminder-job'
 export { approvalTimeoutJob } from './workflow/approval-timeout-job'
 export {

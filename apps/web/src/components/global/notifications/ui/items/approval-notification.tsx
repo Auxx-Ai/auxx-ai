@@ -2,6 +2,7 @@
 'use client'
 
 import { CircleCheck } from 'lucide-react'
+import { useNotificationPanelStore } from '../../notification-panel-store'
 import { Emphasis } from '../notification-chips'
 import { notificationMetadata } from '../notification-metadata'
 import { NotificationRow } from '../notification-row'
@@ -13,13 +14,16 @@ import type { NotificationItemProps } from './item-props'
  * There is no actor chip here — approvals are raised by the workflow engine, not a
  * teammate — so the row leads with the ask and names the workflow instead. The name
  * comes straight from metadata; there is nothing to fetch.
+ *
+ * Opening switches the panel to the Approvals tab and highlights the matching
+ * request there, rather than launching a separate dialog.
  */
 export function ApprovalNotification({
   notification,
   onDelete,
   onRead,
-  onOpenApproval,
-}: NotificationItemProps<'APPROVAL'> & { onOpenApproval: (id: string) => void }) {
+}: NotificationItemProps<'APPROVAL'>) {
+  const openApprovals = useNotificationPanelStore((state) => state.openApprovals)
   const metadata = notificationMetadata(notification)
   const workflowName =
     metadata?.kind === 'WORKFLOW_APPROVAL_REQUIRED' ||
@@ -42,7 +46,7 @@ export function ApprovalNotification({
       {...notification}
       subtitle={lead ? undefined : workflowName}
       icon={<CircleCheck className='size-4' />}
-      onOpen={() => onOpenApproval(notification.targetIds.approvalRequestId)}
+      onOpen={() => openApprovals(notification.targetIds.approvalRequestId)}
       onDelete={onDelete}
       onRead={onRead}>
       {lead ? (

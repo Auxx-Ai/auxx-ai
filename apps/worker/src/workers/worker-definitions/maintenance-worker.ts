@@ -10,6 +10,7 @@ import {
 import {
   agentDraftCleanupJob,
   applyScheduledSubscriptionChangesJob,
+  approvalOrphanSweeperJob,
   appStorageSweepJob,
   cleanupExpiredMediaAssetsJob,
   type DemoSeedJobData,
@@ -186,6 +187,11 @@ const jobMappings = {
 
   // App KV storage TTL sweep (hourly; lazy expiry on read makes cadence non-critical)
   appStorageSweepJob,
+
+  // Orphaned workflow-approval sweep (every 15 min; times out `pending` approvals
+  // whose WorkflowRun already reached a terminal state, e.g. after a crash that
+  // skipped the per-run cleanup path)
+  approvalOrphanSweeperJob,
 
   // Data migrations runner (enqueued at boot + from the superadmin panel)
   dataMigrationsJob,

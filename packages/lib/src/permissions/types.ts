@@ -143,7 +143,8 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     key: FeatureKey.todayInbox,
     type: 'boolean',
     label: 'Today Inbox',
-    description: 'AI suggestion bundles for stale records, surfaced in /app/today.',
+    description:
+      'AI suggestion bundles for stale records, surfaced in the Approvals tab of the notification panel.',
     group: 'AI',
   },
   {

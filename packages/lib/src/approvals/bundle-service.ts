@@ -1,7 +1,7 @@
 // packages/lib/src/approvals/bundle-service.ts
 
 import { type AiSuggestionEntity, type Database, schema, type Transaction } from '@auxx/database'
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { ConflictError, NotFoundError } from '../errors'
 import { Result, type TypedResult } from '../result'
 import type { HeadlessRunResult, StoredBundle } from './types'
@@ -194,6 +194,48 @@ export async function listBundles(
   const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : undefined
 
   return Result.ok({ items, nextCursor })
+}
+
+export interface CountBundlesArgs {
+  organizationId: string
+  /** Optional owner filter — when set, includes both the owner's bundles and unassigned. */
+  ownerId?: string
+  filters?: {
+    status?: string[]
+    entityDefinitionId?: string
+  }
+}
+
+/**
+ * Count bundles matching the same filter shape as {@link listBundles}, without
+ * paging the rows in. Used by the notification panel's Approvals tab badge,
+ * which needs the number before the user opens the tab.
+ */
+export async function countBundles(
+  db: DbHandle,
+  args: CountBundlesArgs
+): Promise<TypedResult<{ count: number }, Error>> {
+  const statuses = args.filters?.status ?? ['FRESH']
+
+  const conditions = [
+    eq(schema.AiSuggestion.organizationId, args.organizationId),
+    inArray(schema.AiSuggestion.status, statuses),
+  ]
+  if (args.filters?.entityDefinitionId) {
+    conditions.push(eq(schema.AiSuggestion.entityDefinitionId, args.filters.entityDefinitionId))
+  }
+  if (args.ownerId) {
+    conditions.push(
+      sql`(${schema.AiSuggestion.ownerUserId} = ${args.ownerId} OR ${schema.AiSuggestion.ownerUserId} IS NULL)`
+    )
+  }
+
+  const [row] = await db
+    .select({ value: count() })
+    .from(schema.AiSuggestion)
+    .where(and(...conditions))
+
+  return Result.ok({ count: row?.value ?? 0 })
 }
 
 function encodeCursor(createdAt: Date, id: string): string {

@@ -11,10 +11,10 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
 /**
  * Inline chips for the composed notification title (plans/notifications/v2/06-rich-item-copy.md).
  *
- * Nothing here is interactive: `NotificationRow` is already `role='button'` with an
- * `onClick`, so a nested link or hover card would fight the row for the click and
- * nest interactive elements. The chips are a visual treatment only — the row owns
- * navigation.
+ * Nothing here is interactive: the chips render inside `NotificationRow`'s body,
+ * which is itself a `<button>` when the row opens something, so a nested link or
+ * hover card would be an invalid nested control fighting the row for the click. The
+ * chips are a visual treatment only — the row owns navigation.
  *
  * The `inline-flex align-middle` wrappers are load-bearing, not cosmetic: both badge
  * variants start with `flex`, which is a *block* box, and would force a line break

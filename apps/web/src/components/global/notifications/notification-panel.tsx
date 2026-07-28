@@ -27,13 +27,14 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
-import { Bell, Check, ListFilter, Mail, MoreHorizontal, Play, Settings, Trash2 } from 'lucide-react'
+import { Bell, Check, ListFilter, MoreHorizontal, Settings, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useNotifications } from './hooks/use-notifications'
-import { useNotificationPanelStore } from './notification-panel-store'
+import { type NotificationPanelMode, useNotificationPanelStore } from './notification-panel-store'
+import { ApprovalsTab } from './ui/approvals-tab'
 import { NotificationItemDispatch } from './ui/notification-item'
 import { NotificationRowSkeleton } from './ui/notification-row'
 
@@ -74,20 +75,20 @@ const TYPE_GROUPS: Array<{ label: string; types: NotificationType[] }> = [
   },
 ]
 
-interface NotificationPanelProps {
-  onOpenApproval: (approvalRequestId: string) => void
-}
-
-export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
+export function NotificationPanel() {
   const open = useNotificationPanelStore((state) => state.open)
   const close = useNotificationPanelStore((state) => state.close)
-  const [mode, setMode] = useState<'all' | 'unread'>('all')
+  // Tab lives in the store — `openApprovals()` (kbar, approval rows) opens the
+  // panel straight onto the Approvals tab.
+  const mode = useNotificationPanelStore((state) => state.mode)
+  const setMode = useNotificationPanelStore((state) => state.setMode)
   const [search, setSearch] = useState('')
   const [types, setTypes] = useState<NotificationType[]>([])
   const viewportRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
+  const isApprovals = mode === 'approvals'
 
   const {
     notifications,
@@ -97,7 +98,8 @@ export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
     isFetchingNextPage,
     isLoading,
   } = useNotifications({
-    open,
+    // The notification feed has no bearing on the Approvals tab — stop the query.
+    open: open && !isApprovals,
     includeRead: mode === 'all',
     search,
     types,
@@ -105,6 +107,18 @@ export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
   const { data: unreadData } = api.notification.getUnreadCount.useQuery(undefined, {
     refetchOnWindowFocus: true,
   })
+
+  // Tab badge = pending workflow confirmations + fresh suggestion bundles. Both
+  // run while the panel is open so the badge is right before the tab is clicked.
+  const { data: pendingConfirmationCount } = api.approval.getPendingCount.useQuery(undefined, {
+    enabled: open,
+    refetchOnWindowFocus: true,
+  })
+  const { data: freshSuggestionData } = api.approvals.count.useQuery(
+    { filters: { ownerScope: 'mine_and_unassigned', status: ['FRESH'] } },
+    { enabled: open, refetchOnWindowFocus: true }
+  )
+  const approvalsCount = (pendingConfirmationCount ?? 0) + (freshSuggestionData?.count ?? 0)
 
   const invalidate = () => {
     void utils.notification.getNotifications.invalidate()
@@ -156,44 +170,50 @@ export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end' className='w-52'>
-              <DropdownMenuItem
-                disabled={!unreadData?.count || markAllAsRead.isPending}
-                onSelect={() => markAllAsRead.mutate()}>
-                <Check />
-                Mark all as read
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  void confirm({
-                    title: 'Delete all read notifications?',
-                    description: 'This removes every notification you have already read.',
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel',
-                    destructive: true,
-                  }).then((confirmed) => {
-                    if (confirmed) deleteRead.mutate()
-                  })
-                }}>
-                <Trash2 />
-                Delete all read
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                variant='destructive'
-                onSelect={() => {
-                  void confirm({
-                    title: 'Delete all notifications?',
-                    description: 'This action cannot be undone.',
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel',
-                    destructive: true,
-                  }).then((confirmed) => {
-                    if (confirmed) deleteAll.mutate()
-                  })
-                }}>
-                <Trash2 />
-                Delete all
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              {/* Bulk notification actions are meaningless — and the deletes are
+                  actively dangerous — against pending approvals. Hide, never disable. */}
+              {isApprovals ? null : (
+                <>
+                  <DropdownMenuItem
+                    disabled={!unreadData?.count || markAllAsRead.isPending}
+                    onSelect={() => markAllAsRead.mutate()}>
+                    <Check />
+                    Mark all as read
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void confirm({
+                        title: 'Delete all read notifications?',
+                        description: 'This removes every notification you have already read.',
+                        confirmText: 'Delete',
+                        cancelText: 'Cancel',
+                        destructive: true,
+                      }).then((confirmed) => {
+                        if (confirmed) deleteRead.mutate()
+                      })
+                    }}>
+                    <Trash2 />
+                    Delete all read
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant='destructive'
+                    onSelect={() => {
+                      void confirm({
+                        title: 'Delete all notifications?',
+                        description: 'This action cannot be undone.',
+                        confirmText: 'Delete',
+                        cancelText: 'Cancel',
+                        destructive: true,
+                      }).then((confirmed) => {
+                        if (confirmed) deleteAll.mutate()
+                      })
+                    }}>
+                    <Trash2 />
+                    Delete all
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem
                 onSelect={() => {
                   router.push('/app/settings/general')
@@ -208,61 +228,77 @@ export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
       />
 
       <div className='space-y-2 border-b-[0.5px] border-divider-regular p-2'>
-        <InputSearch
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder='Search notifications'
-        />
-        <div className='flex items-center justify-between gap-2'>
-          <RadioTab
-            value={mode}
-            onValueChange={(value) => setMode(value as 'all' | 'unread')}
-            size='sm'
-            className='border border-primary-200'>
-            <RadioTabItem value='all' size='sm'>
-              <Mail />
-              All
-            </RadioTabItem>
-            <RadioTabItem value='unread' size='sm'>
-              <Play />
-              Unread
-              {unreadData?.count ? (
-                <Badge variant='secondary' className='ml-1 h-5 min-w-5 px-1.5 text-xs'>
-                  {unreadData.count}
+        <RadioTab
+          value={mode}
+          onValueChange={(value) => setMode(value as NotificationPanelMode)}
+          size='sm'
+          className='w-full border border-primary-200'
+          radioGroupClassName='w-full'>
+          <RadioTabItem value='all' size='sm' className='gap-1 px-2'>
+            All
+          </RadioTabItem>
+          <RadioTabItem value='unread' size='sm' className='gap-1 px-2'>
+            Unread
+            {unreadData?.count ? (
+              <Badge variant='secondary' className='ml-1 h-5 min-w-5 px-1.5 text-xs'>
+                {unreadData.count}
+              </Badge>
+            ) : null}
+          </RadioTabItem>
+          <RadioTabItem value='approvals' size='sm' className='gap-1 px-2'>
+            Approvals
+            {approvalsCount ? (
+              <Badge variant='secondary' className='ml-1 h-5 min-w-5 px-1.5 text-xs'>
+                {approvalsCount}
+              </Badge>
+            ) : null}
+          </RadioTabItem>
+        </RadioTab>
+        {isApprovals ? null : (
+          <div className='flex items-center gap-2'>
+            <InputSearch
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder='Search notifications'
+            />
+            <span className='relative shrink-0'>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='outline' size='icon-sm' aria-label='Filter notifications'>
+                    <ListFilter />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end' className='max-h-[70vh] w-64 overflow-y-auto'>
+                  {TYPE_GROUPS.map((group, groupIndex) => (
+                    <div key={group.label}>
+                      {groupIndex ? <DropdownMenuSeparator /> : null}
+                      <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+                      {group.types.map((type) => (
+                        <DropdownMenuCheckboxItem
+                          key={type}
+                          checked={types.includes(type)}
+                          onCheckedChange={(checked) => toggleType(type, checked === true)}
+                          onSelect={(event) => event.preventDefault()}>
+                          {type
+                            .replace(/_/g, ' ')
+                            .toLowerCase()
+                            .replace(/\b\w/g, (character) => character.toUpperCase())}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </div>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {types.length ? (
+                <Badge
+                  variant='secondary'
+                  className='-top-1 -right-1 pointer-events-none absolute h-4 min-w-4 justify-center px-1 text-[10px] leading-none'>
+                  {types.length}
                 </Badge>
               ) : null}
-            </RadioTabItem>
-          </RadioTab>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant='outline' size='sm'>
-                <ListFilter />
-                Filter
-                {types.length ? <Badge variant='secondary'>{types.length}</Badge> : null}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align='end' className='max-h-[70vh] w-64 overflow-y-auto'>
-              {TYPE_GROUPS.map((group, groupIndex) => (
-                <div key={group.label}>
-                  {groupIndex ? <DropdownMenuSeparator /> : null}
-                  <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-                  {group.types.map((type) => (
-                    <DropdownMenuCheckboxItem
-                      key={type}
-                      checked={types.includes(type)}
-                      onCheckedChange={(checked) => toggleType(type, checked === true)}
-                      onSelect={(event) => event.preventDefault()}>
-                      {type
-                        .replace(/_/g, ' ')
-                        .toLowerCase()
-                        .replace(/\b\w/g, (character) => character.toUpperCase())}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </div>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            </span>
+          </div>
+        )}
       </div>
 
       <ScrollArea
@@ -270,7 +306,9 @@ export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
         viewportRef={viewportRef}
         viewportClassName='py-2 pb-6'
         scrollbarClassName='w-1'>
-        {isLoading ? (
+        {isApprovals ? (
+          <ApprovalsTab viewportRef={viewportRef} />
+        ) : isLoading ? (
           <>
             <NotificationRowSkeleton />
             <NotificationRowSkeleton />
@@ -284,7 +322,6 @@ export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
                 notification={notification as NotificationEntity}
                 onRead={(id) => markAsRead.mutate({ notificationIds: [id] })}
                 onDelete={(id) => deleteNotification.mutate({ notificationIds: [id] })}
-                onOpenApproval={onOpenApproval}
               />
             ))}
             <InfiniteScroll
@@ -298,7 +335,10 @@ export function NotificationPanel({ onOpenApproval }: NotificationPanelProps) {
             {isFetchingNextPage ? <NotificationRowSkeleton /> : null}
           </>
         ) : (
-          <div className='flex min-h-[320px] items-center justify-center'>
+          // flex-1 against the ScrollArea content wrapper's `min-h-full flex
+          // flex-col`, so the empty state centres in the whole panel rather than
+          // in a fixed box pinned to the top.
+          <div className='flex flex-1 items-center justify-center'>
             <Empty className='border-0'>
               <EmptyHeader>
                 <EmptyMedia variant='icon'>

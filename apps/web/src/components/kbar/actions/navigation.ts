@@ -3,6 +3,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo } from 'react'
+import { useNotificationPanelStore } from '~/components/global/notifications/notification-panel-store'
 import { useViewableResources } from '~/components/resources/hooks/use-viewable-resources'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -53,16 +54,21 @@ export function useNavigationActions(): PaletteAction[] {
       })
     }
 
-    if (hasAccess('todayInbox')) {
-      actions.push({
-        id: 'nav.today',
-        label: 'Today',
-        subtitle: "Today's inbox",
-        icon: 'sun',
-        keywords: 'today inbox',
-        perform: () => nav('/today'),
-      })
-    }
+    // The Approvals tab lives inside the notification panel and has no URL, so this
+    // is its only keyboard-reachable entry point. Deliberately ungated: `todayInbox`
+    // flags the suggestions *section*, not the tab — workflow confirmations must stay
+    // reachable for orgs without the flag.
+    actions.push({
+      id: 'nav.approvals',
+      label: 'Approvals',
+      subtitle: 'Approvals awaiting your decision',
+      icon: 'check-circle',
+      keywords: 'approvals approve confirmations suggestions today inbox',
+      perform: () => {
+        useNotificationPanelStore.getState().openApprovals()
+        useCommandPaletteStore.getState().close()
+      },
+    })
 
     if (hasAccess('kopilot')) {
       actions.push({
