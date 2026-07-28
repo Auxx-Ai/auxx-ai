@@ -23,6 +23,11 @@ export interface SectionProps {
   titleClassName?: string
   /** Custom className for the CollapsibleContent wrapper */
   description?: string
+  /**
+   * Secondary text rendered to the right of the description — same slot as
+   * `TreeRow`'s `secondary` (muted, truncating, not uppercased).
+   */
+  secondary?: React.ReactNode
   isRequired?: boolean
   children?: React.ReactNode
   actions?: React.ReactNode
@@ -59,6 +64,7 @@ export function Section({
   title,
   titleClassName,
   description,
+  secondary,
   isRequired = false,
   children,
   showEnable = false,
@@ -114,10 +120,13 @@ export function Section({
         data-slot='section'
         className={cn('p-3 pb-4 group-data-[state=closed]:pb-0 border-b flex flex-col min-h-0')}>
         <div className={cn('flex items-center justify-between pb-2')}>
-          <div className='flex items-center gap-1'>
+          <div className='flex min-w-0 items-center gap-1'>
             <div
               data-slot='section-title'
-              className={cn(titleClassName, 'flex items-center text-xs font-medium uppercase')}>
+              className={cn(
+                titleClassName,
+                'flex min-w-0 items-center text-xs font-medium uppercase'
+              )}>
               {icon && <span className='mr-1'>{icon}</span>}
               <CollapsibleTrigger
                 disabled={!showCollapseTrigger}
@@ -126,7 +135,14 @@ export function Section({
               </CollapsibleTrigger>
               {isRequired && <span className='mr-1 text-xs font-semibold text-[#D92D20]'>*</span>}
               {description && (
-                <TooltipExplanation text={description} className='text-primary-400' />
+                <TooltipExplanation text={description} className='text-primary-400 shrink-0' />
+              )}
+              {secondary && (
+                <span
+                  data-slot='section-secondary'
+                  className='ml-1 min-w-0 truncate font-normal text-primary-400 normal-case'>
+                  {secondary}
+                </span>
               )}
             </div>
             <CollapsibleTrigger

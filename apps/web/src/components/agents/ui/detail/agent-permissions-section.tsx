@@ -3,24 +3,22 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { type Actor, type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
+  AlertTriangle,
   CircleHelp,
-  ExternalLink,
   Lock,
   ScrollText,
   ShieldCheck,
   UserCog,
   Wrench,
 } from 'lucide-react'
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { SettingsSection } from '~/components/global/settings-page'
+import { Tooltip } from '~/components/global/tooltip'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { ProfilePicker } from '~/components/pickers/profile-picker'
 import { useActor } from '~/components/resources/hooks/use-actor'
@@ -35,7 +33,7 @@ import {
 } from '../../hooks/use-agent-permission-profiles'
 import type { AgentDetail } from '../../store/agent-store'
 import { AgentGuideDialog } from './agent-guide-dialog'
-import { AgentPolicySummary, AgentResolvedPolicyDialog } from './permissions/agent-policy-view'
+import { AgentResolvedPolicyDialog } from './permissions/agent-policy-view'
 import { AuthorClampNotice } from './permissions/author-clamp-notice'
 
 /**
@@ -133,6 +131,13 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
       initialOpen
       collapsible={false}
       description='What this agent can do when it runs.'
+      secondary={
+        <PermissionsHeaderNotes
+          agent={agent}
+          canEdit={canEditProfile}
+          isAdminOrOwner={isAdminOrOwner}
+        />
+      }
       actions={
         <Button
           variant='ghost'
@@ -143,20 +148,11 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
           <CircleHelp />
         </Button>
       }>
-      <div className='space-y-6'>
-        <DraftVersusPublished agent={agent} />
-
-        {!canEditProfile && (
-          <Alert>
-            <ShieldCheck className='size-4' />
-            <AlertDescription>
-              {isAdminOrOwner
-                ? 'You do not administer this agent, so these are read-only. Ask someone with full access to this agent to change them.'
-                : 'Only an owner or admin can change these. The resolved policy is read-only.'}
-            </AlertDescription>
-          </Alert>
-        )}
-
+      {/* `pe-1` on top of the Section's own `p-3` lands the content 16px from
+          the edge — the same inset the Tools section reaches via `-mx-3` + `pe-4`.
+          The root ScrollArea's bar is `w-1.5` but carries a `before:w-5` hit
+          strip, so 12px alone leaves it sitting over the panel's right edge. */}
+      <div className='space-y-4 pe-1'>
         {!hasGranularPermissions && (
           <UpgradeBanner
             title='Upgrade to author your own profiles'
@@ -164,92 +160,83 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
           />
         )}
 
-        <SettingsSection
-          icon={ShieldCheck}
-          title='Access'
-          description='The profile this draft resolves its policy from, and who it runs as.'
-          action={
-            <Button variant='ghost' size='xs' asChild>
-              <Link href='/app/settings/permissions'>
-                Edit in Settings
-                <ExternalLink />
-              </Link>
-            </Button>
-          }>
-          <div className='flex flex-col gap-2'>
-            <FieldPanel orientation='responsive' breakpoint='sm' resizeId='agent-permissions'>
-              <FieldPanelRow
-                title='Profile'
-                description='Supplies this draft its exact policy.'
-                icon={<ShieldCheck />}
-                showIcon>
-                {profilesLoading ? (
-                  <Skeleton className='my-1 h-7 w-56' />
-                ) : (
-                  <ProfilePicker
-                    value={resolvedProfile?.id}
-                    options={profileOptions}
-                    onChange={(profileId) => void setProfile(agent.id, profileId)}
-                    disabled={!canEditProfile || isSaving}
-                    emptyLabel='Select a permission profile'
-                    // An unbound draft is not unrestricted — §1.3 resolves it to
-                    // the system profile for its kind, so the trigger shows that
-                    // profile and labels it as inherited rather than sitting empty.
-                    hint={
-                      boundProfileId === null ? `· default for ${agent.kind} agents` : undefined
-                    }
-                  />
-                )}
-              </FieldPanelRow>
-
-              <FieldPanelRow
-                title='Run as'
-                description='Delegate to a member. Runs resolve whichever of the two is narrower.'
-                icon={<UserCog />}
-                showIcon>
-                <ActorPicker
-                  target='user'
-                  multi={false}
-                  value={[runAsActorId]}
-                  onChange={(next) => handleRunAsChange(next[0] ?? OWN_PERMISSIONS_ACTOR_ID)}
-                  pinnedItem={OWN_PERMISSIONS_ACTOR}
-                  disabled={!canEditRunAs || isUpdating}
-                  emptyLabel='Own permissions (default)'
-                  placeholder='Search members...'
+        <div className='flex flex-col gap-2'>
+          <FieldPanel orientation='responsive' breakpoint='sm' resizeId='agent-permissions'>
+            <FieldPanelRow
+              title='Profile'
+              description='Supplies this draft its exact policy.'
+              icon={<ShieldCheck />}
+              showIcon>
+              {profilesLoading ? (
+                <Skeleton className='my-1 h-7 w-56' />
+              ) : (
+                <ProfilePicker
+                  value={resolvedProfile?.id}
+                  options={profileOptions}
+                  onChange={(profileId) => void setProfile(agent.id, profileId)}
+                  disabled={!canEditProfile || isSaving}
+                  emptyLabel='Select a permission profile'
+                  triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                  // An unbound draft is not unrestricted — §1.3 resolves it to
+                  // the system profile for its kind, so the trigger shows that
+                  // profile and labels it as inherited rather than sitting empty.
+                  hint={boundProfileId === null ? `· default for ${agent.kind} agents` : undefined}
                 />
-              </FieldPanelRow>
-            </FieldPanel>
+              )}
+            </FieldPanelRow>
 
-            {isDelegated && (
-              <p className='text-xs text-muted-foreground'>
-                Runs fail if {runAsName} is deactivated or removed.
-              </p>
+            <FieldPanelRow
+              title='Run as'
+              description='Delegate to a member. Runs resolve whichever of the two is narrower.'
+              icon={<UserCog />}
+              showIcon>
+              <ActorPicker
+                target='user'
+                multi={false}
+                value={[runAsActorId]}
+                onChange={(next) => handleRunAsChange(next[0] ?? OWN_PERMISSIONS_ACTOR_ID)}
+                pinnedItem={OWN_PERMISSIONS_ACTOR}
+                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                disabled={!canEditRunAs || isUpdating}
+                emptyLabel='Own permissions (default)'
+                placeholder='Search members...'
+              />
+            </FieldPanelRow>
+
+            {/* The per-area rungs are the dialog's job, not a summary's: the
+                profile above already names the policy, and three rows reading
+                "Full" restated it without saying which records or which tools. */}
+            <FieldPanelRow
+              title='Resolved policy'
+              description='The exact rungs this draft resolves to, area by area.'
+              icon={<ScrollText />}
+              showIcon>
+              <div className='py-1'>
+                <Button variant='outline' size='xs' onClick={() => setPolicyOpen(true)}>
+                  View resolved policy
+                </Button>
+              </div>
+            </FieldPanelRow>
+          </FieldPanel>
+
+          {isDelegated && (
+            <p className='text-xs text-muted-foreground'>
+              Runs fail if {runAsName} is deactivated or removed.
+            </p>
+          )}
+
+          <div className='flex flex-wrap items-center gap-1 text-xs text-muted-foreground'>
+            <span>A call needs both: the tool enabled, and this policy allowing its target.</span>
+            {onNavigate && (
+              <Button variant='ghost' size='xs' onClick={() => onNavigate('tools')}>
+                <Wrench />
+                Go to Tools
+              </Button>
             )}
           </div>
-        </SettingsSection>
+        </div>
 
         <AuthorClampNotice policy={policy} />
-
-        <SettingsSection
-          icon={ScrollText}
-          title='Resolved policy'
-          action={
-            <Button variant='outline' size='xs' onClick={() => setPolicyOpen(true)}>
-              View resolved policy
-            </Button>
-          }>
-          <AgentPolicySummary policy={policy} />
-        </SettingsSection>
-
-        <div className='flex flex-wrap items-center gap-1 text-xs text-muted-foreground'>
-          <span>A call needs both: the tool enabled, and this policy allowing its target.</span>
-          {onNavigate && (
-            <Button variant='ghost' size='xs' onClick={() => onNavigate('tools')}>
-              <Wrench />
-              Go to Tools
-            </Button>
-          )}
-        </div>
       </div>
 
       {policyOpen && (
@@ -270,38 +257,65 @@ export function AgentPermissionsSection({ agent, onNavigate }: AgentPermissionsS
 }
 
 /**
- * Which policy is live: the draft's (Chat + eval runs) or a published version's.
- * Every control on this tab edits the draft (§0.3 / §0.16).
+ * One amber glyph in the section header carrying its whole message in the
+ * tooltip. `label` doubles as the accessible name, so the reason is readable
+ * without a hover — a tooltip alone would state it only to a mouse.
  */
-function DraftVersusPublished({ agent }: { agent: AgentDetail }) {
+function HeaderWarning({ label }: { label: string }) {
+  return (
+    <Tooltip content={label}>
+      <Button
+        variant='ghost'
+        size='icon-xs'
+        aria-label={label}
+        className='text-amber-600 hover:text-amber-600'>
+        <AlertTriangle />
+      </Button>
+    </Tooltip>
+  )
+}
+
+/**
+ * The two things true of this tab that are not settings on it: which policy is
+ * actually live, and whether the reader may change any of it.
+ *
+ * Both live in the header rather than as banners above the controls. They
+ * describe the whole tab and neither is actionable here — publishing happens
+ * from the hero, and a read-only reader has nothing to click — so a stacked
+ * pair of alerts only pushed the controls they qualify further down the page.
+ */
+function PermissionsHeaderNotes({
+  agent,
+  canEdit,
+  isAdminOrOwner,
+}: {
+  agent: AgentDetail
+  canEdit: boolean
+  isAdminOrOwner: boolean
+}) {
   const version = agent.activeVersionNumber
 
-  if (agent.hasUnpublishedChanges) {
-    return (
-      <Alert variant='warning'>
-        <ShieldCheck className='size-4' />
-        <AlertTitle>Unpublished changes</AlertTitle>
-        <AlertDescription>
-          This policy applies to draft Chat and eval runs only.
-          {version ? ` Production runs version ${version}.` : ''}
-        </AlertDescription>
-      </Alert>
-    )
-  }
-
-  if (!agent.activeVersionId) {
-    return (
-      <Alert>
-        <ShieldCheck className='size-4' />
-        <AlertTitle>Not published yet</AlertTitle>
-        <AlertDescription>This policy applies to draft Chat and eval runs.</AlertDescription>
-      </Alert>
-    )
-  }
+  // Editing is OWNER/ADMIN-only (doc 14 §0.9), and the two ways to fail it have
+  // different fixes — an admin who does not administer *this* agent has someone
+  // to ask, a non-admin does not — so the glyph names which one applies.
+  const readOnlyReason = isAdminOrOwner
+    ? 'You do not administer this agent, so these are read-only. Ask someone with full access to this agent to change them.'
+    : 'Only an owner or admin can change these. The resolved policy is read-only.'
 
   return (
-    <p className='text-xs text-muted-foreground'>
-      Production runs version {version}&apos;s published policy.
-    </p>
+    <span className='inline-flex items-center gap-1'>
+      {agent.hasUnpublishedChanges ? (
+        <HeaderWarning
+          label={`Unpublished changes. This policy applies to draft Chat and eval runs only.${
+            version ? ` Production runs version ${version}.` : ''
+          }`}
+        />
+      ) : !agent.activeVersionId ? (
+        <span className='truncate'>Not published — draft Chat and eval runs only</span>
+      ) : (
+        <span className='truncate'>Production runs version {version}&apos;s published policy</span>
+      )}
+      {!canEdit && <HeaderWarning label={readOnlyReason} />}
+    </span>
   )
 }

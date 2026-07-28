@@ -53,6 +53,19 @@ export interface ProfilePickerContentProps {
   /** Show each profile's seat class inline on its row (member surfaces). */
   showSeat?: boolean
 
+  /**
+   * Show the pinned "Manage profiles" row that navigates to the permissions
+   * settings page. Default true — authoring a profile is the natural next step
+   * from a picker that has none that fit.
+   */
+  showManage?: boolean
+
+  /**
+   * Called just before "Manage profiles" navigates, so a popover wrapper can
+   * close itself. The navigation itself is the picker's own.
+   */
+  onManage?: () => void
+
   /** Called after a pick, so a popover wrapper can close itself. */
   onSelectSingle?: (profileId: string) => void
 
@@ -67,7 +80,10 @@ export interface ProfilePickerContentProps {
  * Props for ProfilePicker — the popover wrapper around ProfilePickerContent.
  */
 export interface ProfilePickerProps
-  extends Omit<ProfilePickerContentProps, 'onCaptureChange' | 'className' | 'onSelectSingle'> {
+  extends Omit<
+    ProfilePickerContentProps,
+    'onCaptureChange' | 'className' | 'onSelectSingle' | 'onManage'
+  > {
   /** Custom trigger element (if not provided, uses the default PickerTrigger) */
   children?: React.ReactNode
 

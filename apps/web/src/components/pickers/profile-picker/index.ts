@@ -2,7 +2,11 @@
 
 export { ProfileGlyph, ProfileItem } from './profile-item'
 export { ProfilePicker } from './profile-picker'
-export { ProfileCommandBody, ProfilePickerContent } from './profile-picker-content'
+export {
+  MANAGE_PROFILES_HREF,
+  ProfileCommandBody,
+  ProfilePickerContent,
+} from './profile-picker-content'
 export type {
   PickerProfile,
   ProfilePickerContentProps,

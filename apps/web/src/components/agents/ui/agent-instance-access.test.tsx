@@ -476,7 +476,9 @@ describe('AgentPermissionsSection — the authority pair is instance-admin AND o
 
     expect(screen.getByTestId('profile-picker').dataset.disabled).toBe('true')
     expect(screen.getByTestId('run-as-picker').dataset.disabled).toBe('true')
-    expect(screen.getByText(/do not administer this agent/i)).toBeTruthy()
+    // The reason is the warning glyph's accessible name — the tooltip only
+    // renders its content on hover, the label is what states it unconditionally.
+    expect(screen.getByLabelText(/do not administer this agent/i)).toBeTruthy()
   })
 
   it('freezes them for a non-admin member who DOES administer the agent', () => {
@@ -484,6 +486,6 @@ describe('AgentPermissionsSection — the authority pair is instance-admin AND o
 
     expect(screen.getByTestId('profile-picker').dataset.disabled).toBe('true')
     expect(screen.getByTestId('run-as-picker').dataset.disabled).toBe('true')
-    expect(screen.getByText(/Only an owner or admin can change these/i)).toBeTruthy()
+    expect(screen.getByLabelText(/Only an owner or admin can change these/i)).toBeTruthy()
   })
 })
