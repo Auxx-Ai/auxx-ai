@@ -5,6 +5,7 @@ import { issueLoginToken, sanitizeReturnTo } from '@auxx/credentials/login-token
 import { database, schema } from '@auxx/database'
 import { isOrgMember } from '@auxx/lib/cache'
 import { getDemoEmailDomain } from '@auxx/lib/demo'
+import { getCapabilities } from '@auxx/lib/permissions'
 import { eq } from 'drizzle-orm'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
@@ -72,6 +73,13 @@ export async function POST(request: NextRequest) {
     const member = await isOrgMember(kb.organizationId, session.user.id)
     if (!member) {
       return NextResponse.json({ error: 'Not a member of this knowledge base' }, { status: 403 })
+    }
+    // Per-KB instance access. PRE-FLIGHT, NOT the enforcement point — the token
+    // carries no `kbId` claim and its audience is the shared KB origin, so
+    // apps/kb's per-request gate is what actually protects the content.
+    const capabilities = await getCapabilities(session.user.id, kb.organizationId)
+    if (!capabilities.canViewInstance('kb', kb.id)) {
+      return NextResponse.json({ error: 'No access to this knowledge base' }, { status: 403 })
     }
   }
 

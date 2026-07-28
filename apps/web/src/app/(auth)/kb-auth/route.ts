@@ -9,6 +9,7 @@ import { issueLoginToken, sanitizeReturnTo } from '@auxx/credentials/login-token
 import { database, schema } from '@auxx/database'
 import { isOrgMember } from '@auxx/lib/cache'
 import { getDemoEmailDomain } from '@auxx/lib/demo'
+import { getCapabilities } from '@auxx/lib/permissions'
 import { eq } from 'drizzle-orm'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
@@ -70,6 +71,18 @@ export async function GET(request: NextRequest) {
   const member = await isOrgMember(kb.organizationId, session.user.id)
   if (!member) {
     return NextResponse.redirect(new URL('/kb-auth/no-access', WEBAPP_URL))
+  }
+
+  // 6b. Per-KB instance access. PRE-FLIGHT, NOT the enforcement point: the
+  // minted token carries no `kbId` claim and its audience is the shared KB
+  // origin, so a token gated here is structurally valid for every other KB on
+  // that host, and the resulting 24h cookie carries no capability snapshot.
+  // apps/kb re-checks on every request (`apps/kb/src/server/kb-access.ts`) —
+  // that is the gate. This one only denies at the front door instead of after
+  // the bounce, so the user gets the right message.
+  const capabilities = await getCapabilities(session.user.id, kb.organizationId)
+  if (!capabilities.canViewInstance('kb', kb.id)) {
+    return NextResponse.redirect(new URL('/kb-auth/no-access?reason=restricted', WEBAPP_URL))
   }
 
   // 7. Issue login token bound to the KB's origin

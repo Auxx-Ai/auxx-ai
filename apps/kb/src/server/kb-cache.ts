@@ -23,7 +23,16 @@ export async function getCachedKBVisibility(orgSlug: string, kbSlug: string) {
   return getKBVisibility(orgSlug, kbSlug)
 }
 
-/** Public-only cached payload — never used for INTERNAL KBs. */
+/**
+ * Public-only cached payload — never used for INTERNAL KBs.
+ *
+ * Passes **no session on purpose**. `loadKBPayload`'s INTERNAL branch runs a
+ * per-user capability read; threading a session through here would bake that
+ * per-user answer into a scope keyed only on `(orgSlug, kbSlug)` and leak one
+ * member's access to every other visitor. Without a session an INTERNAL KB
+ * returns `{ kb: null }` before the gate, which is what keeps this cached
+ * payload structurally incapable of holding internal content.
+ */
 export async function getPublicKBPayload(orgSlug: string, kbSlug: string) {
   'use cache'
   cacheTag(kbTag(orgSlug, kbSlug))
@@ -31,7 +40,10 @@ export async function getPublicKBPayload(orgSlug: string, kbSlug: string) {
   return loadKBPayload(orgSlug, kbSlug)
 }
 
-/** Public-only cached payload with content — never used for INTERNAL KBs. */
+/**
+ * Public-only cached payload with content — never used for INTERNAL KBs.
+ * Passes no session for the same reason as {@link getPublicKBPayload}.
+ */
 export async function getPublicKBPayloadWithContent(orgSlug: string, kbSlug: string) {
   'use cache'
   cacheTag(kbTag(orgSlug, kbSlug))

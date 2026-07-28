@@ -7,7 +7,10 @@
     "dev": "next dev --turbopack --port 3002",
     "build": "next build",
     "clean": "rm -rf .turbo node_modules .next",
-    "start": "PORT=3002 node .next/standalone/apps/kb/server.js"
+    "start": "PORT=3002 node .next/standalone/apps/kb/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-sdk/s3-presigned-post": "catalog:",
@@ -40,6 +43,9 @@
     "prettier": "^3.8.1",
     "rimraf": "catalog:",
     "tailwindcss": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-tsconfig-paths": "catalog:",
+    "vitest": "catalog:"
   }
 }

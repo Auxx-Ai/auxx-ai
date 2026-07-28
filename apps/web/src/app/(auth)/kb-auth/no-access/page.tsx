@@ -35,6 +35,17 @@ function NoAccessContent() {
         description: "The knowledge base you're trying to access doesn't exist.",
       }
     }
+    // Only ever reached for a confirmed member of the owning organization, so
+    // it can safely say the org exists and point at an admin. The default
+    // branch below must stay anonymous — it also serves people with no
+    // relationship to the org at all.
+    if (reason === 'restricted') {
+      return {
+        title: "You don't have access to this knowledge base",
+        description:
+          'Your account is a member of this organization, but this knowledge base is restricted. Ask an admin to grant you access.',
+      }
+    }
     return {
       title: 'You do not have access',
       description:
