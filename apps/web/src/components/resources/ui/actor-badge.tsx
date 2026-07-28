@@ -101,6 +101,13 @@ interface ActorBadgeProps extends VariantProps<typeof actorBadgeVariants> {
   showIcon?: boolean
   /** Additional CSS classes */
   className?: string
+  /**
+   * Name to show when the actor store cannot resolve `actorId` (deleted user, an
+   * actor outside the current org). Callers that already carry a denormalized name
+   * — e.g. a notification row joins the actor — should pass it so a departed
+   * teammate still reads as themselves instead of "Unknown".
+   */
+  fallbackName?: string
   /** Optional callback to remove this actor. When provided, shows X icon. */
   onRemove?: (actorId: ActorId) => void
 }
@@ -132,6 +139,7 @@ export function ActorBadge({
   className,
   variant,
   size,
+  fallbackName,
   onRemove,
   ...props
 }: ActorBadgeProps) {
@@ -144,10 +152,10 @@ export function ActorBadge({
   // the whole render tree down instead of degrading this one badge.
   const type = actorAvatarType(actorId, actor?.type)
 
-  // Determine display name: name → email (for users) → 'Unknown'
+  // Determine display name: name → email (for users) → caller fallback → 'Unknown'
   const displayName = isNotFound
-    ? 'Unknown'
-    : actor?.name || (actor?.type === 'user' && actor?.email) || 'Unknown'
+    ? (fallbackName ?? 'Unknown')
+    : actor?.name || (actor?.type === 'user' && actor?.email) || fallbackName || 'Unknown'
 
   // Show loading state when actorId is undefined or when loading AND no cached data exists
   const showLoading = !actorId || (isLoading && !actor)

@@ -2,10 +2,13 @@
 'use client'
 
 import type { NotificationEntity } from '@auxx/lib/notifications/client'
-import { getNotificationCopy } from '../../copy/notification-copy'
 import { NotificationRow } from '../notification-row'
 import type { NotificationItemProps } from './item-props'
 
+/**
+ * The `NONE` target and the dispatch's fallback branch. There is no target to
+ * resolve and no guaranteed metadata shape, so the sender's message is the message.
+ */
 export function StaticNotification({
   notification,
   onDelete,
@@ -17,19 +20,18 @@ export function StaticNotification({
       onDelete: (id: string) => void
       onRead: (id: string) => void
     }) {
-  const copy = getNotificationCopy(notification)
   return (
-    <NotificationRow
-      {...notification}
-      title={copy.title}
-      subtitle={copy.subtitle}
-      actor={notification.actor}
-      onDelete={onDelete}
-      onRead={onRead}
-    />
+    <NotificationRow {...notification} onDelete={onDelete} onRead={onRead}>
+      {notification.message}
+    </NotificationRow>
   )
 }
 
+/**
+ * A notification whose target is gone — a revoked share, a deleted record. Not
+ * clickable, and it keeps the sender's message rather than a composed sentence:
+ * the live name a chip would resolve is exactly what is no longer available.
+ */
 export function UnavailableNotification({
   notification,
   onDelete,
@@ -39,15 +41,13 @@ export function UnavailableNotification({
   onDelete: (id: string) => void
   onRead: (id: string) => void
 }) {
-  const copy = getNotificationCopy(notification)
   return (
     <NotificationRow
       {...notification}
-      title={copy.title}
       subtitle='This item is no longer available.'
-      actor={notification.actor}
       onDelete={onDelete}
-      onRead={onRead}
-    />
+      onRead={onRead}>
+      {notification.message}
+    </NotificationRow>
   )
 }

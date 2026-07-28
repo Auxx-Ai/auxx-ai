@@ -9,12 +9,20 @@ import { useResource } from '~/components/resources/hooks/use-resource'
 import type { RecordMeta } from '~/components/resources/store/record-store'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useRecordLink } from '~/components/resources/utils/get-record-link'
-import { getNotificationCopy } from '../../copy/notification-copy'
 import { useNotificationPanelStore } from '../../notification-panel-store'
+import { NotificationRecord } from '../notification-chips'
 import { NotificationRow, NotificationRowSkeleton } from '../notification-row'
 import type { NotificationItemProps } from './item-props'
 import { UnavailableNotification } from './static-notification'
 
+/**
+ * Records — tickets, work orders, visits, quotes, record-rule notices.
+ *
+ * Every sender on this target (record rules, dispatch, quote acceptance) writes
+ * its own prose into `message` and carries no copy template, so the message line
+ * stays as written. The record itself surfaces as a badge on the subtitle line,
+ * which is where the plain display name used to sit.
+ */
 export function EntityInstanceNotification(props: NotificationItemProps<'ENTITY_INSTANCE'>) {
   const { notification, onDelete, onRead } = props
   const { entityDefinitionId, entityInstanceId } = notification.targetIds
@@ -28,7 +36,6 @@ export function EntityInstanceNotification(props: NotificationItemProps<'ENTITY_
   if (isNotFound) return <UnavailableNotification {...props} />
   if (isLoading || !record || !resource) return <NotificationRowSkeleton />
 
-  const copy = getNotificationCopy(notification)
   const open = () => {
     if (href) {
       router.push(href)
@@ -41,9 +48,7 @@ export function EntityInstanceNotification(props: NotificationItemProps<'ENTITY_
   return (
     <NotificationRow
       {...notification}
-      title={copy.title}
-      subtitle={copy.subtitle ?? record.displayName ?? resource.label}
-      actor={notification.actor}
+      subtitle={<NotificationRecord recordId={recordId} size='sm' />}
       icon={
         <RecordIcon
           iconId={resource.icon}
@@ -54,7 +59,8 @@ export function EntityInstanceNotification(props: NotificationItemProps<'ENTITY_
       }
       onOpen={open}
       onDelete={onDelete}
-      onRead={onRead}
-    />
+      onRead={onRead}>
+      {notification.message}
+    </NotificationRow>
   )
 }
