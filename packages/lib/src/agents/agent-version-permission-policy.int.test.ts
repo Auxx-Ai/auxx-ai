@@ -222,7 +222,10 @@ describe('publish snapshots the resolved permission policy', () => {
     const stored = await readVersion(version.id)
     expect(stored.permissionPolicy.areas.default).toBe('none')
     expect(stored.permissionPolicy.definitions.default).toBe('none')
-    expect(stored.permissionPolicy.resourceDefault).toBe('none')
+    // Every registered resource type is materialized at publish, each one at the
+    // rung its own area supplied — all `none` on this fail-closed profile.
+    expect(stored.permissionPolicy.resources.kb?.default).toBe('none')
+    expect(stored.permissionPolicy.resources.dataset?.default).toBe('none')
   })
 
   it('includes the policy in configHash, so the stored hash matches a recompute', async () => {

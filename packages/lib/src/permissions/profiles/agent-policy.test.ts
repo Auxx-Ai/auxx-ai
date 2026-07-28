@@ -48,7 +48,6 @@ function uniform(level: ResourcePermission): AgentPermissionPolicy {
   return {
     areas: { default: level, overrides: {} },
     definitions: { default: level, overrides: {} },
-    resourceDefault: level,
     resources: {},
   }
 }
@@ -80,7 +79,6 @@ describe('lookups are total — there is no run-time inherit (§2.3)', () => {
     ...emptyAgentPolicy(),
     areas: { default: 'view', overrides: { [Area.records]: 'admin' } },
     definitions: { default: 'edit', overrides: { deals: 'none' } },
-    resourceDefault: 'view',
     resources: { kb: { default: 'none', overrides: { 'kb-1': 'admin' } } },
   }
 
@@ -94,11 +92,27 @@ describe('lookups are total — there is no run-time inherit (§2.3)', () => {
     expect(policyDefinitionLevel(policy, 'a-def-that-did-not-exist-at-publish')).toBe('edit')
   })
 
-  it('answers an unlisted resource type from resourceDefault, not from another type', () => {
-    expect(policyResourceLevel(policy, 'kb', 'kb-1')).toBe('admin')
+  it('answers an unlisted resource type from its own area, not from another type', () => {
+    // `kb-1`'s own rule is `admin`, but `knowledgeBase` is only `view` here — the
+    // area gate is INSIDE this lookup now, so the rule cannot outrun its parent.
+    expect(policyResourceLevel(policy, 'kb', 'kb-1')).toBe('view')
     expect(policyResourceLevel(policy, 'kb', 'kb-2')).toBe('none')
-    // `dataset` has no entry at all → the top-level resourceDefault answers.
+    // `dataset` has no entry at all → the `datasets` area answers, not `kb`'s rule.
     expect(policyResourceLevel(policy, 'dataset', 'ds-1')).toBe('view')
+    // `records: admin` must not leak sideways into a resource type.
+    expect(policyResourceLevel(policy, 'dashboard', 'dash-1')).toBe('view')
+  })
+
+  it('fails closed for a resource type this deploy no longer registers', () => {
+    expect(policyResourceLevel(policy, 'a-retired-resource-kind', 'x-1')).toBe('none')
+  })
+
+  it('lets an area of none close a type that carries an explicit rule', () => {
+    const closed: PublishedAgentPermissionPolicy = {
+      ...policy,
+      areas: { default: 'none', overrides: {} },
+    }
+    expect(policyResourceLevel(closed, 'kb', 'kb-1')).toBe('none')
   })
 })
 
@@ -107,7 +121,21 @@ describe('parsePublishedAgentPolicy coerces defensively and fails closed', () =>
     const parsed = parsePublishedAgentPolicy(null)
     expect(parsed.areas.default).toBe('none')
     expect(parsed.definitions.default).toBe('none')
-    expect(parsed.resourceDefault).toBe('none')
+    expect(parsed.resources).toEqual({})
+    // No resource keyspace of its own to fail closed — an unreadable policy has
+    // an all-`none` area map, and every resource type reads through that.
+    expect(policyResourceLevel(parsed, 'kb', 'kb-1')).toBe('none')
+  })
+
+  it('reads a type entry with a corrupt default as none, not as its area rung', () => {
+    const parsed = parsePublishedAgentPolicy({
+      areas: { default: 'admin', overrides: {} },
+      resources: { kb: { default: 'sideways', overrides: {} } },
+    })
+    // The area fall-through is for a type with NO entry. A corrupt entry must not
+    // read wider than the absence it replaced.
+    expect(parsed.resources.kb?.default).toBe('none')
+    expect(policyResourceLevel(parsed, 'kb', 'kb-1')).toBe('none')
   })
 
   it('drops override values outside the closed vocabulary rather than guessing', () => {

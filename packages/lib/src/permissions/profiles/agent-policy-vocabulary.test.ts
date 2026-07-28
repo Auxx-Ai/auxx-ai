@@ -3,6 +3,7 @@
 import type { PublishedAgentPermissionPolicy } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import { migrateAgentPolicyVocabulary } from '../../data-migrations/migrations/054-agent-policy-vocabulary'
+import { dropResourceDefault } from '../../data-migrations/migrations/055-agent-policy-resource-area-fallthrough'
 import { AREA_ORDER, PermissionKey } from '../capabilities/registry'
 import baseline from './__snapshots__/agent-policy-vocabulary.baseline.json'
 import {
@@ -129,12 +130,44 @@ const SCENARIOS = baseline as unknown as Record<
   { policy: PublishedAgentPermissionPolicy; composed: ComposedSnapshot }
 >
 
+/**
+ * The stored-blob migration chain, in deploy order: 054 renames the rungs, 055
+ * retires `resourceDefault` in favour of the per-type area fall-through. A blob
+ * captured before either one experiences both, so the baseline must be replayed
+ * through both — and demanding the composed answer still match is what pins BOTH
+ * migrations as authority-preserving, not just the rename.
+ *
+ * 055 is where the `mixed` scenario earns its keep: it holds
+ * `resourceDefault: read_write` under `workflows: full` and names no `workflow`
+ * rule, so the retired field was genuinely load-bearing there (`min(edit, admin)`
+ * = edit). Dropping it without materializing would hand that agent `admin` on
+ * every workflow. The migration writes `workflow: { default: 'edit' }` and the
+ * composed answer is unchanged — which is exactly the line this test holds.
+ */
+function migrateStoredPolicy(policy: PublishedAgentPermissionPolicy) {
+  return dropResourceDefault(migrateAgentPolicyVocabulary(policy))
+}
+
 describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () => {
   it.each(Object.keys(SCENARIOS))('composes %s identically to the pre-rename baseline', (name) => {
     const scenario = SCENARIOS[name]
     if (!scenario) throw new Error(`missing baseline scenario ${name}`)
-    const migrated = migrateAgentPolicyVocabulary(scenario.policy)
-    expect(compose(migrated)).toEqual(scenario.composed)
+    expect(compose(migrateStoredPolicy(scenario.policy))).toEqual(scenario.composed)
+  })
+
+  it('needs 055 to hold that line — the rename alone would widen `mixed`', () => {
+    const scenario = SCENARIOS.mixed
+    if (!scenario) throw new Error('missing baseline scenario mixed')
+    // Renamed but NOT de-`resourceDefault`ed: the field is now ignored on read, so
+    // `workflow` falls straight through to its `full` area. A guard against this
+    // test being "fixed" one day by dropping the 055 step from the chain.
+    const renamedOnly = compose(migrateAgentPolicyVocabulary(scenario.policy))
+    expect(renamedOnly).not.toEqual(scenario.composed)
+    expect(renamedOnly.instances['workflow:wf-1']).toEqual({
+      view: true,
+      edit: true,
+      admin: true,
+    })
   })
 
   it('covers every scenario the baseline recorded — a silently emptied fixture must fail', () => {
@@ -197,6 +230,14 @@ describe('data migration 054 is idempotent', () => {
     })
   })
 
+  it('leaves 055 a clean hand-off — the two migrations touch disjoint fields', () => {
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      const renamed = migrateAgentPolicyVocabulary(scenario.policy)
+      // 055 never re-spells a rung, so running it cannot undo 054.
+      expect(JSON.stringify(dropResourceDefault(renamed)), name).not.toContain('"read_write"')
+    }
+  })
+
   it('rewrites the clamp trail, which is rendered but excluded from configHash', () => {
     const migrated = migrateAgentPolicyVocabulary({
       clamp: [{ domain: 'area', key: 'records', from: 'full', to: 'read' }],
@@ -204,6 +245,48 @@ describe('data migration 054 is idempotent', () => {
     expect(migrated).toEqual({
       clamp: [{ domain: 'area', key: 'records', from: 'admin', to: 'view' }],
     })
+  })
+})
+
+describe('data migration 055 retires resourceDefault without moving authority', () => {
+  it('is the identity on already-migrated input, in every scenario', () => {
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      const once = migrateStoredPolicy(scenario.policy)
+      expect(dropResourceDefault(once), name).toEqual(once)
+    }
+  })
+
+  it('drops the field entirely, in every scenario', () => {
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      expect(migrateStoredPolicy(scenario.policy), name).not.toHaveProperty('resourceDefault')
+    }
+  })
+
+  it('materializes only where the field was load-bearing, and at the old rung', () => {
+    const migrated = dropResourceDefault({
+      areas: { default: 'view', overrides: { workflows: 'admin', dashboards: 'none' } },
+      definitions: { default: 'none', overrides: {} },
+      resourceDefault: 'edit',
+      resources: { kb: { default: 'admin', overrides: {} } },
+    })
+    expect(migrated).toEqual({
+      areas: { default: 'view', overrides: { workflows: 'admin', dashboards: 'none' } },
+      definitions: { default: 'none', overrides: {} },
+      resources: {
+        // Already had a rule of its own — untouched.
+        kb: { default: 'admin', overrides: {} },
+        // `edit` sat BELOW `workflows: admin`, so it was doing work. Pinned.
+        workflow: { default: 'edit', overrides: {} },
+        // `edit` sat at or ABOVE these areas, so `min` picked the area either
+        // way and the fall-through now reproduces it with no entry at all.
+        // dataset (areas.default view), dashboard (none), agent (view): absent.
+      },
+    })
+  })
+
+  it('is a no-op on a blob that never carried the field', () => {
+    const already = { areas: { default: 'view', overrides: {} }, resources: {} }
+    expect(dropResourceDefault(already)).toBe(already)
   })
 })
 

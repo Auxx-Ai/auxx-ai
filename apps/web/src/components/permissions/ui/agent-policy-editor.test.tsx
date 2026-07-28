@@ -199,7 +199,6 @@ function changeCount(): number | null {
 const FULL_POLICY = {
   areas: { default: 'view', overrides: { records: 'admin', settings: 'admin' } },
   definitions: { default: 'none', overrides: { companies: 'view', gone_away: 'admin' } },
-  resourceDefault: 'none',
   resources: {
     kb: { default: 'view', overrides: { kb_1: 'admin', kb_gone: 'none' } },
     dataset: { default: 'view', overrides: {} },
@@ -252,24 +251,36 @@ describe('plan 29 §5 bar 2 — every rule reachable before is reachable after',
     expect(hintOf('Records')).toBe('')
   })
 
-  it('offers both header collection defaults, and both are editable', async () => {
+  it('offers ONE header collection default, and it is editable', async () => {
     const user = userEvent.setup()
     renderEditor()
 
-    // `areas.default` and `resourceDefault` — the two keyspaces that answer for
-    // keys with NO row of their own, so they cannot live on a row (§2.2/§4a).
+    // `areas.default` is the only keyspace left that answers for keys with NO row
+    // of their own, so it is the only one that cannot live on a row (§2.2/§4a).
     expect(headerSelect('Unset areas fall through to').textContent).toContain('Read')
-    expect(headerSelect('New resource types fall through to').textContent).toContain('None')
 
     await user.click(headerSelect('Unset areas fall through to'))
     await user.click(screen.getByRole('option', { name: 'Full' }))
     expect(headerSelect('Unset areas fall through to').textContent).toContain('Full')
     expect(changeCount()).toBe(1)
+  })
 
-    await user.click(headerSelect('New resource types fall through to'))
-    await user.click(screen.getByRole('option', { name: 'Read' }))
-    expect(headerSelect('New resource types fall through to').textContent).toContain('Read')
-    expect(changeCount()).toBe(2)
+  it('has no second blanket default — a resource type falls through to its own area', async () => {
+    const user = userEvent.setup()
+    // No `dataset` entry, and `datasets` overridden to `edit`: the "All datasets"
+    // row must read the AREA it sits under, not a policy-wide resource rung.
+    renderEditor({
+      areas: { default: 'none', overrides: { datasets: 'edit' } },
+      definitions: { default: 'none', overrides: {} },
+      resources: {},
+    } as unknown as AgentPermissionPolicy)
+
+    expect(screen.queryByText('New resource types fall through to')).not.toBeInTheDocument()
+
+    await toggleArea(user, 'Datasets')
+    // A child could once read "Default · No access" under a Read/Edit parent —
+    // the contradiction the second header dropdown made possible (#1362 follow-up).
+    expect(ruleOf('All datasets')).toBe('Default · Read and write')
   })
 
   it('offers definitions.default as the "All record types" child row, and it is editable', async () => {
@@ -364,9 +375,11 @@ describe('plan 29 §5 bar 3 — the destructive confirm survived the move', () =
     expect(h.confirm.mock.calls[0][0].description).toContain('2 per-item rules')
 
     // `clearResourceType` ran: the type entry is gone, so the listed instance
-    // falls through to `resourceDefault` and the orphan row has nothing left.
-    expect(ruleOf('All knowledge bases')).toBe('Default · No access')
-    expect(ruleOf('Returns Policy')).toBe('Default · No access')
+    // falls through to the `Knowledge Base` AREA — `areas.default` (`view`) here,
+    // since the policy names no override for it — and the orphan row has nothing
+    // left. It reads Read, not None: the child agrees with its parent now.
+    expect(ruleOf('All knowledge bases')).toBe('Default · Read only')
+    expect(ruleOf('Returns Policy')).toBe('Default · Read only')
     expect(findRow('kb_gone')).toBeUndefined()
     // The type default plus the two per-item rules it took with it.
     expect(changeCount()).toBe(3)
@@ -393,11 +406,11 @@ describe('plan 29 §5 bar 3 — the destructive confirm survived the move', () =
     await toggleArea(user, 'Datasets')
 
     // `resources.dataset` has a default of its own but an empty override map,
-    // so following the resource default destroys nothing and must not nag.
+    // so following the area destroys nothing and must not nag.
     await pick(user, 'All datasets', /^Default/)
 
     expect(h.confirm).not.toHaveBeenCalled()
-    expect(ruleOf('All datasets')).toBe('Default · No access')
+    expect(ruleOf('All datasets')).toBe('Default · Read only')
     expect(changeCount()).toBe(1)
   })
 
@@ -494,7 +507,6 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
     renderEditor({
       areas: { default: 'none', overrides: {} },
       definitions: { default: 'none', overrides: { companies: 'view' } },
-      resourceDefault: 'none',
       resources: {},
     } as unknown as AgentPermissionPolicy)
 
@@ -515,7 +527,6 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
     renderEditor({
       areas: { default: 'none', overrides: {} },
       definitions: { default: 'view', overrides: {} },
-      resourceDefault: 'none',
       resources: {},
     } as unknown as AgentPermissionPolicy)
 
@@ -531,14 +542,14 @@ describe('plan 29 §5 bar 4 — search and the "Set areas only" filter reach chi
     renderEditor({
       areas: { default: 'none', overrides: {} },
       definitions: { default: 'none', overrides: {} },
-      resourceDefault: 'none',
       resources: { kb: { default: 'view', overrides: {} } },
     } as unknown as AgentPermissionPolicy)
 
     await user.click(screen.getByRole('switch'))
 
     // Unlike `definitions.default`, a type entry is a deliberate departure from
-    // `resourceDefault` — a rule of its own, so it rescues its area.
+    // the area rung it would otherwise follow — a rule of its own, so it rescues
+    // its area.
     expect(rowTitles()).toContain('Knowledge Base')
     expect(rowTitles()).not.toContain('Dashboards')
   })
@@ -580,7 +591,6 @@ describe('plan 33 drift #2 — an empty list says which kind of empty it is', ()
     renderEditor({
       areas: { default: 'view', overrides: { records: 'admin' } },
       definitions: { default: 'none', overrides: {} },
-      resourceDefault: 'none',
       resources: {},
     } as unknown as AgentPermissionPolicy)
 
@@ -610,7 +620,6 @@ describe('plan 33 drift #2 — an empty list says which kind of empty it is', ()
     renderEditor({
       areas: { default: 'view', overrides: { records: 'admin' } },
       definitions: { default: 'none', overrides: {} },
-      resourceDefault: 'none',
       resources: {},
     } as unknown as AgentPermissionPolicy)
     await toggleArea(user, 'Records')

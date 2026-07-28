@@ -3,6 +3,7 @@
 
 import type { AgentPermissionPolicy, ExactAgentPolicy } from '@auxx/database'
 import { type ResourcePermission, ResourcePermissionValues } from '@auxx/database/enums'
+import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from '@auxx/lib/permissions/client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 /**
@@ -61,19 +62,36 @@ export function normalizeAgentPolicy(
   raw: AgentPermissionPolicy | null | undefined
 ): NormalizedAgentPolicy {
   const source = (raw ?? {}) as Partial<AgentPermissionPolicy>
-  const resourceDefault = parseLevel(source.resourceDefault) ?? 'none'
   const resources: Record<string, ExactAgentPolicy> = {}
   if (source.resources && typeof source.resources === 'object') {
     for (const [type, value] of Object.entries(source.resources)) {
-      resources[type] = parseExact(value, resourceDefault)
+      resources[type] = parseExact(value, 'none')
     }
   }
   return {
     areas: parseExact(source.areas, 'none'),
     definitions: parseExact(source.definitions, 'none'),
-    resourceDefault,
     resources,
   }
+}
+
+/**
+ * What a resource type with no rule of its own resolves to: its own L2 area rung
+ * (`INSTANCE_ACCESS_RESOURCES`), the same fall-through a human's absent
+ * `ResourceAccess` row takes. Client mirror of `resourceTypeAreaLevel` in
+ * `profiles/agent-policy.ts`.
+ *
+ * There is no separate "resource default" to consult — that field is gone, and
+ * with it the second blanket dropdown that answered the same question one level
+ * above the area rung it was then intersected with.
+ */
+export function resourceTypeAreaLevel(
+  policy: NormalizedAgentPolicy,
+  type: string
+): ResourcePermission {
+  const config = INSTANCE_ACCESS_RESOURCES[type as InstanceAccessKey]
+  if (!config) return 'none'
+  return policy.areas.overrides[config.area] ?? policy.areas.default
 }
 
 /**
@@ -92,7 +110,6 @@ export function stableKey(policy: NormalizedAgentPolicy): string {
   return JSON.stringify({
     areas: exact(policy.areas),
     definitions: exact(policy.definitions),
-    resourceDefault: policy.resourceDefault,
     resources: Object.keys(policy.resources)
       .sort()
       .map((type) => ({ type, ...exact(policy.resources[type] as ExactAgentPolicy) })),
@@ -115,7 +132,6 @@ export function countChanges(saved: NormalizedAgentPolicy, draft: NormalizedAgen
   }
   diffExact(saved.areas, draft.areas)
   diffExact(saved.definitions, draft.definitions)
-  if (saved.resourceDefault !== draft.resourceDefault) changes += 1
   for (const type of new Set([...Object.keys(saved.resources), ...Object.keys(draft.resources)])) {
     const a = saved.resources[type]
     const b = draft.resources[type]
@@ -151,19 +167,18 @@ export interface UseAgentPolicyResult {
   setDefinitionsDefault: (level: ResourcePermission) => void
   /** Set (or remove) one definition's override, keyed by `apiSlug` (§3). */
   setDefinitionOverride: (apiSlug: string, level: ResourcePermission | undefined) => void
-  /** Replace the posture for resource types with no rules of their own. */
-  setResourceDefault: (level: ResourcePermission) => void
   /** Give one resource type its own default. */
   setResourceTypeDefault: (type: string, level: ResourcePermission) => void
   /**
-   * Drop a resource type's entry so it follows `resourceDefault` again. Its
-   * instance rules go with it — the shape has nowhere to keep them.
+   * Drop a resource type's entry so it follows its L2 area again. Its instance
+   * rules go with it — the shape has nowhere to keep them.
    */
   clearResourceType: (type: string) => void
   /**
    * Set (or remove) one instance's override. Materializes the type entry at the
-   * current `resourceDefault` when the type had none, so an instance rule can
-   * never exist without the type default that answers for its siblings.
+   * type's current fall-through (its area rung) when the type had none, so an
+   * instance rule can never exist without the type default that answers for its
+   * siblings.
    */
   setInstanceOverride: (
     type: string,
@@ -229,13 +244,12 @@ export function useAgentPolicy(
     [setOverride]
   )
 
-  const setResourceDefault = useCallback((level: ResourcePermission) => {
-    setDraft((prev) => ({ ...prev, resourceDefault: level }))
-  }, [])
-
   const setResourceTypeDefault = useCallback((type: string, level: ResourcePermission) => {
     setDraft((prev) => {
-      const current = prev.resources[type] ?? { default: prev.resourceDefault, overrides: {} }
+      const current = prev.resources[type] ?? {
+        default: resourceTypeAreaLevel(prev, type),
+        overrides: {},
+      }
       return { ...prev, resources: { ...prev.resources, [type]: { ...current, default: level } } }
     })
   }, [])
@@ -251,7 +265,10 @@ export function useAgentPolicy(
   const setInstanceOverride = useCallback(
     (type: string, instanceId: string, level: ResourcePermission | undefined) => {
       setDraft((prev) => {
-        const current = prev.resources[type] ?? { default: prev.resourceDefault, overrides: {} }
+        const current = prev.resources[type] ?? {
+          default: resourceTypeAreaLevel(prev, type),
+          overrides: {},
+        }
         const overrides = { ...current.overrides }
         if (level === undefined) delete overrides[instanceId]
         else overrides[instanceId] = level
@@ -273,7 +290,6 @@ export function useAgentPolicy(
     setAreaOverride,
     setDefinitionsDefault,
     setDefinitionOverride,
-    setResourceDefault,
     setResourceTypeDefault,
     clearResourceType,
     setInstanceOverride,

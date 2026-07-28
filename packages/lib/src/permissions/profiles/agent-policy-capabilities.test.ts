@@ -182,7 +182,7 @@ describe('the four exact levels — RESOURCE INSTANCES (§9.1)', () => {
     expect(full.canAdminInstance('kb', 'kb-1')).toBe(true)
   })
 
-  it('answers an unlisted instance from the type default, and an unlisted type from resourceDefault', () => {
+  it('answers an unlisted instance from the type default, and an unlisted type from its area', () => {
     const caps = view({
       ...legacyFullAgentPolicy(),
       resources: { kb: { default: 'view', overrides: { 'kb-1': 'admin' } } },
@@ -190,8 +190,26 @@ describe('the four exact levels — RESOURCE INSTANCES (§9.1)', () => {
     expect(caps.canAdminInstance('kb', 'kb-1')).toBe(true)
     expect(caps.canViewInstance('kb', 'kb-never-seen')).toBe(true)
     expect(caps.canEditInstance('kb', 'kb-never-seen')).toBe(false)
-    // `dataset` has no entry → resourceDefault ('admin' here).
+    // `dataset` has no entry → the `datasets` area answers ('admin' here).
     expect(caps.canAdminInstance('dataset', 'ds-1')).toBe(true)
+  })
+
+  it('falls a type with no rule through to ITS OWN area, not to a sibling type', () => {
+    const caps = view({
+      ...emptyAgentPolicy(),
+      areas: {
+        default: 'none',
+        overrides: { [Area.datasets]: 'edit', [Area.knowledgeBase]: 'view' },
+      },
+      // Nothing named at all — every type reads through the area map above.
+      resources: {},
+    })
+    expect(caps.canEditInstance('dataset', 'ds-1')).toBe(true)
+    expect(caps.canAdminInstance('dataset', 'ds-1')).toBe(false)
+    expect(caps.canViewInstance('kb', 'kb-1')).toBe(true)
+    expect(caps.canEditInstance('kb', 'kb-1')).toBe(false)
+    // `dashboards` is not in the map → `areas.default`, which is `none`.
+    expect(caps.canViewInstance('dashboard', 'dash-1')).toBe(false)
   })
 
   it('intersects the instance rule with its coarse L2 area gate', () => {

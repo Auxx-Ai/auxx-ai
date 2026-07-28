@@ -73,9 +73,16 @@ export type PublishedAgentPermissionPolicy = {
   areas: ExactAgentPolicy
   /** Exact rule per entity-definition `apiSlug` (slug, not CUID — §3). */
   definitions: ExactAgentPolicy
-  /** Posture for resource types absent from {@link PublishedAgentPermissionPolicy.resources}. */
-  resourceDefault: ResourcePermission
-  /** Exact rule per resource type → per instance id. */
+  /**
+   * Exact rule per resource type → per instance id.
+   *
+   * A resource type absent from this map falls through to its own L2
+   * {@link PublishedAgentPermissionPolicy.areas} rung — see the note on
+   * `AgentPermissionPolicy.resources`. Publishing materializes every *registered*
+   * type here (that is what bounds each one by the publisher's own posture toward
+   * a future instance), so in a snapshot the fall-through only ever answers for a
+   * resource type a later deploy introduced.
+   */
   resources: Partial<Record<string, ExactAgentPolicy>>
 }
 

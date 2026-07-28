@@ -63,9 +63,17 @@ export type AgentPermissionPolicy = {
   areas: ExactAgentPolicy
   /** Exact rule per entity-definition `apiSlug` (slug, not CUID — §3). */
   definitions: ExactAgentPolicy
-  /** Posture for resource types absent from {@link AgentPermissionPolicy.resources}. */
-  resourceDefault: ResourcePermission
-  /** Exact rule per resource type → per instance id. */
+  /**
+   * Exact rule per resource type → per instance id.
+   *
+   * Sparse in BOTH dimensions, and there is deliberately no top-level "resource
+   * default" beside it: a resource type absent from this map falls through to
+   * its own L2 {@link AgentPermissionPolicy.areas} rung, exactly as a human's
+   * absent `ResourceAccess` row falls through to their base area level
+   * (`INSTANCE_ACCESS_RESOURCES`, `baselineAtCreate: false`). One fall-through,
+   * one place to author it — including for a resource type a future deploy adds,
+   * which arrives with a new area whose rung `areas.default` already answers.
+   */
   resources: Partial<Record<string, ExactAgentPolicy>>
 }
 

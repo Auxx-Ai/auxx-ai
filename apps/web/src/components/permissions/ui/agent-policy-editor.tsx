@@ -13,7 +13,7 @@ import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { useAgentPolicy } from '../hooks/use-agent-policy'
+import { resourceTypeAreaLevel, useAgentPolicy } from '../hooks/use-agent-policy'
 import { useAgentPolicyClamp } from '../hooks/use-agent-policy-clamp'
 import { useAgentPolicyDefinitions } from '../hooks/use-agent-policy-definitions'
 import { useAgentPolicySave } from '../hooks/use-agent-policy-save'
@@ -125,11 +125,19 @@ function emptyStateFor(
  *    (§0.5/§2.3) — never through the human per-def rows (`GranteeDefAccessRows`),
  *    which write `ResourceAccess`.
  *  - **Every collection has a default**, so a record type or resource created
- *    tomorrow has a deterministic posture (§0.5/§2.3). Three of them are child
- *    rows ("All record types", "All datasets", …); the two that answer for keys
- *    with no row at all — `areas.default` and `resourceDefault` — are the header
- *    dropdowns (plan 29 §2.2/§4a). Neither offers the human `Member default`
- *    sentinel: an agent's defaults are mandatory and fail closed at `none`.
+ *    tomorrow has a deterministic posture (§0.5/§2.3). They are child rows ("All
+ *    record types", "All datasets", …); the ONE default that answers for keys
+ *    with no row at all — `areas.default` — is the header dropdown (plan 29
+ *    §2.2/§4a). It does not offer the human `Member default` sentinel: an agent's
+ *    default is mandatory and fails closed at `none`.
+ *  - **A resource type with no rule falls through to its own area**, not to a
+ *    second blanket default. The `New resource types fall through to` dropdown is
+ *    gone with the `resourceDefault` field behind it: it answered the same
+ *    question one level above the area rung it was then intersected with, so two
+ *    header dropdowns sat side by side with no statable difference, and an
+ *    `All datasets` row could read *"Default · None"* under a `Datasets: Read`
+ *    parent. This is also the human rule verbatim — `INSTANCE_ACCESS_RESOURCES`
+ *    says an absent instance row resolves to the base L2 area level.
  *  - **Permissions are not tools.** Effective ability is the intersection of the
  *    two (§0.5a/§2.4) — granting Full here enables no tool.
  *  - **Publication semantics.** A save reaches bound drafts only; production
@@ -163,7 +171,6 @@ export function AgentPolicyEditor({
     setAreaOverride,
     setDefinitionsDefault,
     setDefinitionOverride,
-    setResourceDefault,
     setResourceTypeDefault,
     clearResourceType,
     setInstanceOverride,
@@ -212,8 +219,8 @@ export function AgentPolicyEditor({
       const overrideCount = Object.keys(policy.resources[type]?.overrides ?? {}).length
       if (overrideCount > 0) {
         const confirmed = await confirm({
-          title: `Follow the resource default for ${INSTANCE_TYPE_META[type].label.toLowerCase()}?`,
-          description: `This removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} on this type as well. The shape has nowhere to keep them once the type follows the default.`,
+          title: `Follow the area rung for ${INSTANCE_TYPE_META[type].label.toLowerCase()}?`,
+          description: `This removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} on this type as well. The shape has nowhere to keep them once the type follows its area.`,
           confirmText: 'Remove rules',
           cancelText: 'Cancel',
           destructive: true,
@@ -372,15 +379,21 @@ export function AgentPolicyEditor({
         .filter((id) => !knownIds.has(id) && matches(id, filter.query))
         .sort()
       // Unlike the record-type default, a resource TYPE entry is a deliberate
-      // departure from `resourceDefault` — so it is a rule of its own and does
-      // rescue its area under "Set areas only".
+      // departure from the area rung it would otherwise follow — so it is a rule
+      // of its own and does rescue its area under "Set areas only".
       const meta = INSTANCE_TYPE_META[type]
       const allRowCounts =
         (!filter.overridesOnly || entry !== undefined) &&
         matches(allInstancesTitle(meta.label), filter.query)
 
+      /**
+       * The type's fall-through: its own L2 area rung, which is the row directly
+       * above this one in the tree. A child can no longer contradict its parent
+       * the way a global resource default could.
+       */
+      const areaRung = resourceTypeAreaLevel(policy, type)
       /** What an instance with no rule of its own resolves to. */
-      const typeLevel = entry?.default ?? policy.resourceDefault
+      const typeLevel = entry?.default ?? areaRung
       const instanceRows: InstanceAccessRow[] = [
         ...items.map((item) => ({
           key: type,
@@ -419,7 +432,7 @@ export function AgentPolicyEditor({
                 title={allInstancesTitle(meta.label)}
                 description={
                   overrideCount > 0
-                    ? `What a ${noun} with no rule of its own resolves to, including ones created later. Choosing Default follows the resource default (${permissionLabel(policy.resourceDefault)}) and removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} below with it.`
+                    ? `What a ${noun} with no rule of its own resolves to, including ones created later. Choosing Default follows the ${meta.label.toLowerCase()} area above (${permissionLabel(areaRung)}) and removes the ${overrideCount} per-item rule${overrideCount === 1 ? '' : 's'} below with it.`
                     : `What a ${noun} with no rule of its own resolves to, including ones created later.`
                 }
                 actions={
@@ -428,7 +441,7 @@ export function AgentPolicyEditor({
                     includeInherit
                     includeNone
                     inheritLabelText={AGENT_INHERIT_LABEL}
-                    inheritedLevel={policy.resourceDefault}
+                    inheritedLevel={areaRung}
                     onInherit={() => void handleTypeChange(type, undefined)}
                     onChange={(level) => void handleTypeChange(type, level)}
                     disabled={disabled}
@@ -448,9 +461,7 @@ export function AgentPolicyEditor({
       }
     },
     [
-      policy.definitions,
-      policy.resources,
-      policy.resourceDefault,
+      policy,
       definitions,
       definitionSlugs,
       definitionsLoading,
@@ -501,20 +512,12 @@ export function AgentPolicyEditor({
         title='Agent policy'
         description='What the agent may reach, feature by feature. Expand a row to rule on individual record types or resources.'
         action={
-          <div className='flex flex-wrap items-center justify-end gap-3'>
-            <BaseLevelSelect
-              label='Unset areas fall through to'
-              value={LEVEL_OF_PERMISSION[policy.areas.default]}
-              disabled={disabled}
-              onChange={(level) => setAreasDefault(permissionOfLevel(level))}
-            />
-            <BaseLevelSelect
-              label='New resource types fall through to'
-              value={LEVEL_OF_PERMISSION[policy.resourceDefault]}
-              disabled={disabled}
-              onChange={(level) => setResourceDefault(permissionOfLevel(level))}
-            />
-          </div>
+          <BaseLevelSelect
+            label='Unset areas fall through to'
+            value={LEVEL_OF_PERMISSION[policy.areas.default]}
+            disabled={disabled}
+            onChange={(level) => setAreasDefault(permissionOfLevel(level))}
+          />
         }>
         <ProfileAreaGrid
           values={areaValues}

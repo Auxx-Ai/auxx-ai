@@ -854,6 +854,7 @@ describe('savePermissionProfile — the other §6.1.5 gates', () => {
       agentPolicy: {
         areas: { default: 'view', overrides: { records: 'admin', tickets: 'sideways' } },
         definitions: { default: 'none', overrides: { hr: 'edit' } },
+        // A retired field an old client might still send: stripped, never stored.
         resourceDefault: 'none',
         resources: { dataset: { default: 'view', overrides: {} } },
       } as never,
@@ -865,7 +866,6 @@ describe('savePermissionProfile — the other §6.1.5 gates', () => {
       // default rather than being guessed at.
       areas: { default: 'view', overrides: { records: 'admin' } },
       definitions: { default: 'none', overrides: { hr: 'edit' } },
-      resourceDefault: 'none',
       resources: { dataset: { default: 'view', overrides: {} } },
     })
   })

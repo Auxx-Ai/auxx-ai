@@ -6,7 +6,7 @@ import { ForbiddenError } from '../../errors'
 import type { CapabilityView } from '../capabilities/capability-view'
 import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
 import { NON_RECORD_DEF_SLUGS } from '../capabilities/entity-access'
-import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from '../capabilities/instance-access'
+import type { InstanceAccessKey } from '../capabilities/instance-access'
 import {
   type Area,
   buildAreaLevels,
@@ -17,8 +17,6 @@ import {
 } from '../capabilities/registry'
 import { ENTITY_WRITE_KEYS } from '../capabilities/seat-policy'
 import {
-  areaLevelToPermission,
-  minPermission,
   permissionToAreaLevel,
   policyAreaLevel,
   policyDefinitionLevel,
@@ -232,20 +230,22 @@ export class AgentPolicyCapabilities implements CapabilityView {
   }
 
   /**
-   * The effective rung for one shareable resource instance: the instance rule
-   * intersected with its coarse L2 area gate.
+   * The effective rung for one shareable resource instance.
    *
-   * The area intersection mirrors the human resolver, where an area level of
-   * `None` closes the feature regardless of per-instance rows. Without it an
-   * agent policy that says `knowledgeBase: None` but leaves a stale `kb`
-   * instance override at `Full` would route around its own area rule — and
-   * "effective execution is the intersection of every constraint" (§0.5) would
-   * stop being true for exactly the domain where it matters most.
+   * A thin delegate on purpose: {@link policyResourceLevel} owns BOTH halves of
+   * the answer — the instance rule and the intersection with its coarse L2 area
+   * gate — because the same intersection is what supplies the fall-through for a
+   * type the policy names no rule for. Splitting them left two places that had to
+   * agree about the area's authority; there is now one.
+   *
+   * The gate itself is not optional: an agent policy that says
+   * `knowledgeBase: None` but leaves a stale `kb` instance override at `Full`
+   * must not route around its own area rule, or "effective execution is the
+   * intersection of every constraint" (§0.5) stops being true for exactly the
+   * domain where it matters most.
    */
   private instanceLevel(key: InstanceAccessKey, instanceId: string): ResourcePermission {
-    const resourceLevel = policyResourceLevel(this.policy, key, instanceId)
-    const areaGate = areaLevelToPermission(this.areaLevel(INSTANCE_ACCESS_RESOURCES[key].area))
-    return minPermission(resourceLevel, areaGate)
+    return policyResourceLevel(this.policy, key, instanceId)
   }
 
   canViewInstance(key: InstanceAccessKey, instanceId: string): boolean {

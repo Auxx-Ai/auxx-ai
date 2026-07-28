@@ -8,7 +8,11 @@ import type {
 import type { ResourcePermission } from '@auxx/database/enums'
 import type { CapabilityView } from '../capabilities/capability-view'
 import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
-import { INSTANCE_ACCESS_KEYS, type InstanceAccessKey } from '../capabilities/instance-access'
+import {
+  INSTANCE_ACCESS_KEYS,
+  INSTANCE_ACCESS_RESOURCES,
+  type InstanceAccessKey,
+} from '../capabilities/instance-access'
 import { AREA_ORDER } from '../capabilities/registry'
 import { areaLevelToPermission, lookupExactPolicy, minPermission } from './agent-policy'
 
@@ -219,11 +223,22 @@ export function clampAgentPolicyToPublisher(input: {
   // actually names are probed; each type's `default` is bounded by the sentinel
   // probe, which is precisely the publisher's posture toward an instance created
   // after publication.
+  //
+  // EVERY REGISTERED TYPE IS MATERIALIZED, including the ones the profile left to
+  // fall through to their area. That materialization is the clamp, not a
+  // convenience: the publisher's authority over a *future instance* of a type can
+  // sit BELOW their area rung (a dashboard is `baselineAtCreate: true`, so an
+  // admin with the `dashboards` area still holds nothing on a dashboard that does
+  // not exist yet). Leaving the entry absent would let the snapshot fall through
+  // to the area rung at run time and quietly exceed the publisher there.
   const resources: Record<string, ExactAgentPolicy> = {}
-  let resourceDefault = resolved.resourceDefault
+  let weakestInstanceBound: ResourcePermission = 'admin'
   for (const key of INSTANCE_ACCESS_KEYS) {
     const forType = resolved.resources[key]
-    const typeDefaultWant = forType?.default ?? resolved.resourceDefault
+    // The fall-through, read off the ALREADY-CLAMPED areas: using the pre-clamp
+    // rung would re-record a reduction the area domain has already reported.
+    const areaRung = areaOverrides[INSTANCE_ACCESS_RESOURCES[key].area] ?? areasDefault
+    const typeDefaultWant = forType?.default ?? areaRung
     const typeBound = publisherInstanceLevel(publisher, key, FUTURE_TARGET_SENTINEL)
     const typeDefaultGot = minPermission(typeDefaultWant, typeBound)
     if (exceeds(typeDefaultWant, typeDefaultGot)) {
@@ -239,26 +254,23 @@ export function clampAgentPolicyToPublisher(input: {
     }
 
     resources[key] = { default: typeDefaultGot, overrides }
-    // Every registered type is now materialized, so `resourceDefault` only ever
-    // answers for a resource type added by a future deploy. Floor it.
-    resourceDefault = minPermission(resourceDefault, typeBound)
-  }
-  if (exceeds(resolved.resourceDefault, resourceDefault)) {
-    record('resource', null, resolved.resourceDefault, resourceDefault)
+    weakestInstanceBound = minPermission(weakestInstanceBound, typeBound)
   }
 
   // Preserve rules for any resource type the registry does not (yet) know, rather
-  // than silently discarding a snapshot entry — but clamp them by the floored
-  // `resourceDefault`. There is no gate to probe for an unregistered type, and
-  // carrying an UNCLAMPED rule through the clamp would be a hole by omission.
+  // than silently discarding a snapshot entry — but clamp them by the publisher's
+  // WEAKEST instance bound, the same conservative posture `areasDefault` takes for
+  // an area a future deploy adds. There is no gate to probe for an unregistered
+  // type, and carrying an UNCLAMPED rule through the clamp would be a hole by
+  // omission the day that type becomes registered again.
   for (const [type, forType] of Object.entries(resolved.resources)) {
     if (type in resources || !forType) continue
     const overrides: Record<string, ResourcePermission> = {}
     for (const [instanceId, want] of overrideEntries(forType)) {
-      overrides[instanceId] = minPermission(want, resourceDefault)
+      overrides[instanceId] = minPermission(want, weakestInstanceBound)
     }
     resources[type] = {
-      default: minPermission(forType.default, resourceDefault),
+      default: minPermission(forType.default, weakestInstanceBound),
       overrides,
     }
   }
@@ -271,7 +283,6 @@ export function clampAgentPolicyToPublisher(input: {
       clamp: reductions,
       areas: { default: areasDefault, overrides: areaOverrides },
       definitions: { default: definitionsDefault, overrides: definitionOverrides },
-      resourceDefault,
       resources,
     },
     reductions,
