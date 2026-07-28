@@ -68,11 +68,13 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
   return (
     <>
       <ConfirmDialog />
-      <InstanceShareDialog
-        recordId={toRecordId('dataset', dataset.id)}
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-      />
+      {canAdmin && (
+        <InstanceShareDialog
+          recordId={toRecordId('dataset', dataset.id)}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
       <ListCard
         onClick={onClick}
         ariaLabel={dataset.name}
@@ -123,10 +125,12 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
                 Settings
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={wrap(() => setShareOpen(true))}>
-              <Share2 />
-              Share…
-            </DropdownMenuItem>
+            {canAdmin && (
+              <DropdownMenuItem onClick={wrap(() => setShareOpen(true))}>
+                <Share2 />
+                Share…
+              </DropdownMenuItem>
+            )}
             <FavoriteToggleMenuItem targetType='DATASET' targetIds={{ datasetId: dataset.id }} />
             {canAdmin && (
               <>

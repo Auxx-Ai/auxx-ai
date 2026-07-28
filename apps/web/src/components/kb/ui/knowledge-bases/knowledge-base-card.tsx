@@ -88,11 +88,13 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
   return (
     <>
       <ConfirmDialog />
-      <InstanceShareDialog
-        recordId={toRecordId('kb', kb.id)}
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-      />
+      {canAdmin && (
+        <InstanceShareDialog
+          recordId={toRecordId('kb', kb.id)}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
       <ListCard
         href={`/app/kb/${kb.id}/editor`}
         ariaLabel={kb.name}
@@ -133,10 +135,12 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
                 Settings
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => setShareOpen(true)}>
-              <Share2 />
-              Share…
-            </DropdownMenuItem>
+            {canAdmin && (
+              <DropdownMenuItem onClick={() => setShareOpen(true)}>
+                <Share2 />
+                Share…
+              </DropdownMenuItem>
+            )}
             <FavoriteToggleMenuItem
               targetType='KNOWLEDGE_BASE'
               targetIds={{ knowledgeBaseId: kb.id }}

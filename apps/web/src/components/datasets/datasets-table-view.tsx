@@ -3,6 +3,7 @@
 'use client'
 
 import type { DatasetWithRelations } from '@auxx/lib/datasets'
+import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -21,8 +22,11 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { formatBytes, formatRelativeTime } from '@auxx/utils'
-import { Archive, MoreHorizontal, Search, Settings, Trash } from 'lucide-react'
+import { Archive, MoreHorizontal, Search, Settings, Share2, Trash } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDatasets } from './datasets-provider'
 import { useDatasetActions } from './hooks/use-dataset-actions'
 
@@ -39,6 +43,12 @@ function DatasetTableRow({
       datasetName: dataset.name,
       onSuccess: onActionComplete,
     })
+
+  // Same per-instance gating as `dataset-card.tsx`: Browse is the `view` rung,
+  // Settings / Share… / Archive / Delete are `admin`.
+  const { canAdminInstance } = useAccess()
+  const canAdmin = canAdminInstance(toRecordId('dataset', dataset.id))
+  const [shareOpen, setShareOpen] = useState(false)
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -103,24 +113,39 @@ function DatasetTableRow({
                 <Search />
                 Browse
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSettings}>
-                <Settings />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleArchive}>
-                <Archive />
-                Archive
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDelete} variant='destructive'>
-                <Trash />
-                Delete
-              </DropdownMenuItem>
+              {canAdmin && (
+                <>
+                  <DropdownMenuItem onClick={handleSettings}>
+                    <Settings />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShareOpen(true)}>
+                    <Share2 />
+                    Share…
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleArchive}>
+                    <Archive />
+                    Archive
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+                    <Trash />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </TableCell>
       </TableRow>
 
+      {canAdmin && (
+        <InstanceShareDialog
+          recordId={toRecordId('dataset', dataset.id)}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
       <ConfirmDialog />
     </>
   )

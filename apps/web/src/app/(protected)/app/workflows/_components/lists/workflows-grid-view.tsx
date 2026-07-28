@@ -39,10 +39,10 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  // Per-workflow instance access (plan 30 §4). Rename ("Edit"), Enable/Disable
-  // and Delete are the `admin` rung; Duplicate additionally CREATES a workflow,
-  // so it needs the coarse `workflows.manage` key too. Open / Favorite / Share…
-  // stay at `view` — the share dialog is already read-only for non-admins.
+  // Per-workflow instance access (plan 30 §4). Rename ("Edit"), Share…,
+  // Enable/Disable and Delete are the `admin` rung; Duplicate additionally
+  // CREATES a workflow, so it needs the coarse `workflows.manage` key too.
+  // Open / Favorite stay at `view`.
   const { can, canAdminInstance } = useAccess()
   const canAdmin = canAdminInstance(toRecordId('workflow', workflow.id))
   const canCreate = can(PermissionKey.workflowsManage)
@@ -136,10 +136,12 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
               </DropdownMenuItem>
             )}
             <FavoriteToggleMenuItem targetType='WORKFLOW' targetIds={{ workflowId: workflow.id }} />
-            <DropdownMenuItem onClick={() => setShareOpen(true)}>
-              <Share2 />
-              Share…
-            </DropdownMenuItem>
+            {canAdmin && (
+              <DropdownMenuItem onClick={() => setShareOpen(true)}>
+                <Share2 />
+                Share…
+              </DropdownMenuItem>
+            )}
             {canAdmin && (
               <>
                 <DropdownMenuSeparator />
@@ -183,11 +185,13 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
         workflowId={workflow.id}
         workflowName={workflow.name}
       />
-      <InstanceShareDialog
-        recordId={toRecordId('workflow', workflow.id)}
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-      />
+      {canAdmin && (
+        <InstanceShareDialog
+          recordId={toRecordId('workflow', workflow.id)}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
     </>
   )
 }

@@ -51,8 +51,8 @@ function getInitials(name?: string): string {
  * and never site-published), and a plain breadcrumb instead of the KB
  * switcher (the learned KB is excluded from `kb.list`, so the switcher
  * neither names it nor offers it). An Edit-level (non-admin) member gets the
- * same trimmed chrome minus the switcher swap — settings/layout/publish are
- * Full-only (doc 24 §A.2.4); Share stays for everyone.
+ * same trimmed chrome minus the switcher swap — settings/layout/publish AND
+ * Share are Full-only (doc 24 §A.2.4).
  */
 export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeaderProps) {
   const [panel, setPanel] = useQueryState(
@@ -80,16 +80,20 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
       action={
         isLearned ? undefined : (
           <div className='flex items-center gap-2'>
-            <Button variant='outline' size='sm' onClick={() => setShareOpen(true)}>
-              <Share2 />
-              Share
-            </Button>
-            <InstanceShareDialog
-              recordId={toRecordId('kb', knowledgeBaseId)}
-              open={shareOpen}
-              onOpenChange={setShareOpen}
-            />
-            {canAdmin && <KBPublishCluster kbId={knowledgeBaseId} />}
+            {canAdmin && (
+              <>
+                <Button variant='outline' size='sm' onClick={() => setShareOpen(true)}>
+                  <Share2 />
+                  Share
+                </Button>
+                <InstanceShareDialog
+                  recordId={toRecordId('kb', knowledgeBaseId)}
+                  open={shareOpen}
+                  onOpenChange={setShareOpen}
+                />
+                <KBPublishCluster kbId={knowledgeBaseId} />
+              </>
+            )}
           </div>
         )
       }>
