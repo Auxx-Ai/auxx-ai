@@ -21,6 +21,14 @@ export {
   setGranteeLevels,
 } from './grant-service'
 export {
+  type AccessGranteeType,
+  type GranteeAccess,
+  type GranteeBaselineAccess,
+  type GranteeEffectiveAccess,
+  type GranteeOwnAccess,
+  getGranteeAccess,
+} from './grantee-access'
+export {
   INSTANCE_ACCESS_KEYS,
   INSTANCE_ACCESS_READ_KEYS,
   INSTANCE_ACCESS_RESOURCES,

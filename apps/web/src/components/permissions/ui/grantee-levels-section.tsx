@@ -6,6 +6,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SlidersHorizontal } from 'lucide-react'
 import { useCallback } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
+import { useGranteeAccess } from '../hooks/use-grantee-access'
 import { type GranteeKind, useGranteeDefAccess } from '../hooks/use-grantee-def-access'
 import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
@@ -85,6 +86,10 @@ export function GranteeLevelsSection({
     rowsByKey: instanceRowsByKey,
     setGrant: setInstanceGrant,
   } = useInstanceGranteeRows(granteeKind, granteeId)
+  // Same query `useInstanceGranteeRows` already runs — React Query dedupes it,
+  // so reading it here for the area rows costs no extra request. `effective` is
+  // null for a team, which is exactly when the area line must not render.
+  const { effective } = useGranteeAccess(granteeKind, granteeId)
 
   const handleChange = (area: Area, level: Level | undefined) => {
     const next = { ...values }
@@ -169,6 +174,7 @@ export function GranteeLevelsSection({
         rows: (
           <GranteeInstanceRows
             rows={matched}
+            truncated={instanceLists[instanceKey].truncated}
             canEdit={canEdit}
             isUser={granteeKind === 'user'}
             areaLevel={areaLevel}
@@ -213,6 +219,7 @@ export function GranteeLevelsSection({
           onChange={handleChange}
           disabled={!canEdit}
           renderChildren={renderChildren}
+          effectiveLevels={effective?.areas}
         />
       )}
     </SettingsSection>

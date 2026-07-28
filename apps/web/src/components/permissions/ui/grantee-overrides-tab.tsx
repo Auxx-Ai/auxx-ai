@@ -16,6 +16,7 @@ import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useActor, useActors } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
 import { useUser } from '~/hooks/use-user'
+import { useGranteeAccess } from '../hooks/use-grantee-access'
 import { useGranteeDefAccess } from '../hooks/use-grantee-def-access'
 import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
@@ -353,6 +354,10 @@ function GranteeAccessDetail({
     rowsByKey: instanceRowsByKey,
     setGrant: setInstanceGrant,
   } = useInstanceGranteeRows(granteeType, granteeId)
+  // Deduped by React Query with the call inside `useInstanceGranteeRows`, so the
+  // area rows' effective line costs no extra request. Null for a team, which is
+  // exactly when it must not render.
+  const { effective } = useGranteeAccess(granteeType, granteeId)
 
   /**
    * Per-def overrides nested under Records (capability layer v2 Part B.0), and
@@ -431,6 +436,7 @@ function GranteeAccessDetail({
         rows: (
           <GranteeInstanceRows
             rows={matched}
+            truncated={instanceLists[instanceKey].truncated}
             canEdit={!disabled}
             isUser={granteeType === 'user'}
             areaLevel={areaLevel}
@@ -469,6 +475,7 @@ function GranteeAccessDetail({
         onChange={onChange}
         disabled={disabled}
         renderChildren={renderChildren}
+        effectiveLevels={effective?.areas}
       />
     </Section>
   )

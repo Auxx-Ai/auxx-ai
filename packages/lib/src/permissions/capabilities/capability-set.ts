@@ -11,6 +11,7 @@ import {
   canEditRecord,
   canViewRecord,
   type InstanceListScope,
+  instanceFallbackLevel,
   instanceListScope,
   levelToPermission,
   NON_RECORD_DEF_SLUGS,
@@ -361,6 +362,33 @@ export class CapabilitySet implements CapabilityView {
       },
       key
     )
+  }
+
+  /**
+   * {@link effectiveInstanceLevel} as a public read — the composed level itself
+   * rather than a yes/no gate.
+   *
+   * For DISPLAY, and only where the display must agree with enforcement: the
+   * grantee Access grids render "what can this member actually open" beside the
+   * grantee's own grant, and plan 31 finding 4 is what happens when they don't
+   * agree (a user-level `none` LOSES to any group's `view`, so the admin sets
+   * No access, the select changes, and nothing happens). Reading the enforcement
+   * predicate is the whole point — never re-derive this from `instanceAccess`.
+   *
+   * Not a substitute for {@link assertViewInstance} on a request path. Zero I/O.
+   */
+  instanceLevel(key: InstanceAccessKey, instanceId: string): ResourcePermission | undefined {
+    return this.effectiveInstanceLevel(key, instanceId)
+  }
+
+  /**
+   * What {@link instanceLevel} answers for an instance with no `ResourceAccess`
+   * row anywhere in the org — see
+   * {@link import('./entity-access').instanceFallbackLevel}. Lets a bulk read
+   * cover "every other instance of this type" with one value. Zero I/O.
+   */
+  instanceFallbackLevel(key: InstanceAccessKey): ResourcePermission | undefined {
+    return instanceFallbackLevel(this.resolved(), key)
   }
 
   /** Whether the member may VIEW the instance (Read). Zero I/O. */

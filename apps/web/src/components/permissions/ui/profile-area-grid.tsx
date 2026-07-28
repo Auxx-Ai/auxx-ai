@@ -6,7 +6,8 @@ import { type Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
 import { Lock, SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
@@ -222,7 +223,10 @@ export function ProfileAreaGrid({
       ) : (
         <div className='flex flex-col gap-4'>
           {groups.map(({ group, rows }) => (
-            <div key={group} className='flex flex-col gap-0.5'>
+            // `TREE_SECONDARY_NOTRUNCATE` because the `secondary` slot now
+            // carries the fall-through hint, and its default `truncate` would
+            // clip "Not set · no access" as soon as an area label runs long.
+            <div key={group} className={cn('flex flex-col gap-0.5', TREE_SECONDARY_NOTRUNCATE)}>
               <span className='px-1 text-xs font-semibold uppercase text-primary-600'>{group}</span>
               {rows.map(({ area, children, autoOpen }) => {
                 const isOpen = openAreas[area] ?? autoOpen
@@ -296,6 +300,8 @@ function ProfileAreaRow({
   const meta = PERMISSION_AREAS[area]
   const lockReason = lockReasonFor(area, seat)
   const isSeatLocked = lockReason === WORKER_LOCK_REASON
+  /** An explicit level of its own — the hint describes a fall-through, so it goes. */
+  const isExplicit = value !== undefined
 
   // What the area falls through to when nothing is stored. A field-seat-locked row
   // shows the level that actually applies (None, from `SEAT_CEILINGS`) — a base
@@ -315,11 +321,23 @@ function ProfileAreaRow({
       rowClassName='bg-primary-50 hover:bg-primary-100'
       title={meta.label}
       description={meta.description}
+      // The fall-through hint sits HERE, beside the title, rather than in
+      // `LevelControl`'s trailing cluster where it used to render hard against
+      // the ladder. Dropped outright when a level is explicitly stored — the old
+      // slot had to keep it `invisible` instead, purely so the trailing clusters
+      // stayed aligned across rows; on this side nothing depends on its width.
       secondary={
-        lockReason ? (
-          <Tooltip content={lockReason}>
-            <Lock className='size-3 text-muted-foreground' />
-          </Tooltip>
+        lockReason || !isExplicit ? (
+          <span className='flex items-center gap-1.5'>
+            {lockReason ? (
+              <Tooltip content={lockReason}>
+                <Lock className='size-3 text-muted-foreground' />
+              </Tooltip>
+            ) : null}
+            {!isExplicit && (
+              <span className='text-xs text-muted-foreground whitespace-nowrap'>{unsetHint}</span>
+            )}
+          </span>
         ) : undefined
       }
       expandable={childRows !== undefined}
@@ -330,7 +348,6 @@ function ProfileAreaRow({
           area={meta}
           value={value}
           inherited={inherited}
-          unsetHint={unsetHint}
           resetTooltip='Clear (back to the default)'
           onChange={onChange}
           disabled={disabled || lockReason !== null}

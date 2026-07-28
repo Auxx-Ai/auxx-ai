@@ -18,7 +18,11 @@ import { useCanAdminInstance } from '~/providers/capabilities-provider'
 import type { InstanceLevel, WorkspaceBaseline } from '../hooks/use-instance-share'
 import { useInstanceShare } from '../hooks/use-instance-share'
 import { InstanceShareBody, LEVEL_ORDER, levelHelper } from './instance-share-body'
-import { INSTANCE_SHARE_COPY, type InstanceShareCopy } from './instance-share-copy'
+import {
+  INSTANCE_ROW_COPY,
+  INSTANCE_SHARE_COPY,
+  type InstanceShareCopy,
+} from './instance-share-copy'
 import { permissionLabel } from './level-labels'
 
 /** The workspace-baseline picker: the three positive rungs + "No access (Restricted)". */
@@ -166,7 +170,7 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
         />
       </div>
 
-      <InstanceShareBody recordId={recordId} />
+      <InstanceShareBody recordId={recordId} emptyHint={INSTANCE_ROW_COPY.baseline.emptyHint} />
     </div>
   )
 }

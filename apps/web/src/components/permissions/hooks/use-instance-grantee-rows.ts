@@ -7,7 +7,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { deriveInstanceBadge, type InstanceAccessBadge } from '../utils/instance-access-badge'
+import { useGranteeAccess } from './use-grantee-access'
 import type { GranteeKind } from './use-grantee-def-access'
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
 
@@ -27,34 +27,48 @@ export interface InstanceGranteeRow {
   name: string
   /** This grantee's own explicit grant; `undefined` = Inherit (no row). */
   grantLevel: ResourcePermission | undefined
-  /** Collapsed-row badge derived from the org-wide `allInstanceAccess` rows —
-   *  the same fact regardless of which grantee's page this is (§B.2.5). */
-  badge: InstanceAccessBadge
+  /**
+   * What the grantee can ACTUALLY reach here, composed server-side through the
+   * enforcement predicate; `null` = no access, `undefined` = not applicable
+   * (a group/profile has no effective access — see {@link useGranteeAccess}).
+   *
+   * Distinct from {@link grantLevel} on purpose, and the gap between them is the
+   * point: a user-level `none` LOSES to any group's `view`, so an admin can set
+   * No access, watch the select change, and change nothing (plan 31 finding 4).
+   */
+  effectiveLevel: ResourcePermission | null | undefined
 }
 
 /**
  * Data + mutations for the per-instance rows nested under the Datasets /
- * Knowledge base / Dashboards area rows in a **grantee scope** (a member or
- * team's own override grid — capability layer v2 Part B). Unlike the area
- * levels above it, instance grants are NOT raise-only (§B.2.6): this surface
- * writes the grantee's raw instance-access grant through the same
- * `grantInstance`/`revokeInstance` funnel the Share card uses, offering the
- * full Inherit / Read / Write / Full / No Access vocabulary.
+ * Knowledge base / Dashboards / Workflows area rows in a **grantee scope** (a
+ * member, team or profile's own override grid — capability layer v2 Part B).
+ * Unlike the area levels above it, instance grants are NOT raise-only (§B.2.6):
+ * this surface writes the grantee's raw instance-access grant through the same
+ * `grantInstance`/`revokeInstance` funnel the Share card uses, offering the full
+ * Inherit / Read / Write / Full / No Access vocabulary.
  *
- * Reads the same org-wide `resourceAccess.allInstanceAccess` rows as the
- * baseline-scope hook (one query, shared React Query cache across every
- * mounted area) and narrows to this grantee's own row per instance.
+ * **Reads one grantee, not the org** (plan 31 §2.4). It used to pull
+ * `resourceAccess.allInstanceAccess` — every per-instance row for every grantee
+ * — and narrow client-side. That was properly gated, so this is a SHAPE fix, not
+ * an authorization one: having the org's sharing map in a member page's query
+ * cache is what made the §2.1 scope leak buildable, and is what the next row
+ * would have reached for.
  */
 export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: string) {
   const utils = api.useUtils()
   const lists = useInstanceResourceLists(ALWAYS_OPEN)
-
-  const allQuery = api.resourceAccess.allInstanceAccess.useQuery(undefined, { staleTime: 30_000 })
-  const allRows = useMemo(() => allQuery.data ?? [], [allQuery.data])
+  const {
+    isLoading,
+    own,
+    effective,
+    invalidate: refetchAccess,
+  } = useGranteeAccess(granteeType, granteeId)
 
   const invalidate = useCallback(() => {
-    void utils.resourceAccess.allInstanceAccess.invalidate()
-  }, [utils])
+    void utils.permissions.granteeAccess.invalidate({ granteeType, granteeId })
+    void refetchAccess()
+  }, [utils, granteeType, granteeId, refetchAccess])
 
   const grantInstance = api.resourceAccess.grantInstance.useMutation({
     onError: (error) => toastError({ title: 'Error updating access', description: error.message }),
@@ -76,24 +90,22 @@ export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: stri
   const rowsByKey = useMemo(() => {
     const result = {} as Record<InstanceAccessKey, InstanceGranteeRow[]>
     for (const key of INSTANCE_ACCESS_KEYS) {
-      result[key] = lists[key].items.map((item) => {
-        const instanceRows = allRows.filter(
-          (r) => r.entityDefinitionId === key && r.entityInstanceId === item.id
-        )
-        const ownRow = instanceRows.find(
-          (r) => r.granteeType === granteeType && r.granteeId === granteeId
-        )
-        return {
-          key,
-          id: item.id,
-          name: item.name,
-          grantLevel: ownRow?.permission,
-          badge: deriveInstanceBadge(instanceRows),
-        }
-      })
+      result[key] = lists[key].items.map((item) => ({
+        key,
+        id: item.id,
+        name: item.name,
+        grantLevel: own?.instances[item.id],
+        // An instance absent from `effective.instances` has no row anywhere in
+        // the org, so its answer is the per-type row-less fallback. A pure
+        // lookup — §2.5 is explicit that re-deriving this client-side would put
+        // display and enforcement on separate implementations.
+        effectiveLevel: effective
+          ? (effective.instances[item.id] ?? effective.instanceFallback[key])
+          : undefined,
+      }))
     }
     return result
-  }, [lists, allRows, granteeType, granteeId])
+  }, [lists, own, effective])
 
   /** Set (or, `'inherit'`, revoke) this grantee's own row for one instance. */
   const setGrant = useCallback(
@@ -110,7 +122,7 @@ export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: stri
 
   return {
     lists,
-    isLoading: allQuery.isLoading,
+    isLoading,
     rowsByKey,
     setGrant,
   }

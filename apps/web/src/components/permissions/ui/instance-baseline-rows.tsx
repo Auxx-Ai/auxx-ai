@@ -13,6 +13,7 @@ import type { InstanceBaselineRow } from '../hooks/use-instance-baseline-rows'
 import { AccessLevelSelect } from './access-level-select'
 import { InstanceShareBody } from './instance-share-body'
 import { INSTANCE_ROW_COPY, INSTANCE_TYPE_META } from './instance-share-copy'
+import { InstanceTruncationNote } from './instance-truncation-note'
 
 /** Indent of the instance rows under their collection row. */
 const CHILD_DEPTH = 1
@@ -30,16 +31,28 @@ const CHILD_DEPTH = 1
  * Presentational: filtering, loading and persistence are owned by the host
  * (`WorkspaceDefaultsTab` + `useInstanceBaselineRows`), exactly like
  * `DefBaselineRows`.
+ *
+ * **Keeps its expand** where `GranteeInstanceRows` lost it (plan 31 §2.1): this
+ * row's subject IS everyone, so the grantees nested under it are exactly the
+ * exceptions to the level it sets. On a grantee row they would be a different
+ * subject entirely.
  */
 export function InstanceBaselineRows({
   rows,
   isLoading = false,
   disabled = false,
+  truncated = false,
   onChange,
 }: {
   rows: InstanceBaselineRow[]
   isLoading?: boolean
   disabled?: boolean
+  /**
+   * More instances exist than `useInstanceResourceLists` fetched. Says so rather
+   * than implying the list is complete — the grid's search only ever matched
+   * within the first page (plan 31 finding 5).
+   */
+  truncated?: boolean
   onChange: (
     key: InstanceAccessKey,
     instanceId: string,
@@ -57,12 +70,15 @@ export function InstanceBaselineRows({
 
   if (rows.length === 0) {
     return (
-      <EmptySection
-        orientation='horizontal'
-        icon={<Library />}
-        title='No matches'
-        description='No items match your search.'
-      />
+      <>
+        <EmptySection
+          orientation='horizontal'
+          icon={<Library />}
+          title='No matches'
+          description='No items match your search.'
+        />
+        {truncated ? <InstanceTruncationNote /> : null}
+      </>
     )
   }
 
@@ -76,6 +92,7 @@ export function InstanceBaselineRows({
           onChange={(level) => onChange(row.key, row.id, level)}
         />
       ))}
+      {truncated ? <InstanceTruncationNote /> : null}
     </div>
   )
 }
@@ -128,7 +145,13 @@ function InstanceBaselineRowItem({
           />
         </>
       }>
-      {isOpen && <InstanceShareBody recordId={recordId} depth={CHILD_DEPTH + 1} />}
+      {isOpen && (
+        <InstanceShareBody
+          recordId={recordId}
+          depth={CHILD_DEPTH + 1}
+          emptyHint={INSTANCE_ROW_COPY.baseline.emptyHint}
+        />
+      )}
     </TreeRow>
   )
 }

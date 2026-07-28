@@ -72,12 +72,20 @@ export function InstanceLevelSelect({
 /**
  * The generic per-instance grantee list — extracted out of `InstanceShareCard`
  * (capability layer v2 Part B.2.3) so the standalone Share card/dialog AND the
- * nested per-instance rows on the Workspace defaults / grantee-override grids
- * (`instance-baseline-rows.tsx` / `grantee-instance-rows.tsx`) render the exact
- * same grantee list, level picker, revoke button and "add people or
- * groups" trigger. Every mount is driven by its own {@link useInstanceShare},
- * so opening several nested rows at once just runs several small `forInstance`
- * queries (accepted per-open-row cost, §B.2.4) — no new mutation surface.
+ * nested per-instance rows on the Workspace defaults grid
+ * (`instance-baseline-rows.tsx`) render the exact same grantee list, level
+ * picker, revoke button and "add people or groups" trigger. Every mount is
+ * driven by its own {@link useInstanceShare}, so opening several nested rows at
+ * once just runs several small `forInstance` queries (accepted per-open-row
+ * cost, §B.2.4) — no new mutation surface.
+ *
+ * **This list's subject is always *everyone*** (plan 31 §2.1). It belongs under
+ * a row whose own subject is the workspace, because its children are that row's
+ * exceptions. `grantee-instance-rows.tsx` used to mount it too, which put every
+ * OTHER grantee's access — editable and revocable — inside a page about one
+ * member; those rows are leaves now and link out to `InstanceShareDialog`
+ * instead. If this list ever gains a shared primitive, the axis is **subject**,
+ * never a standalone `expandable` boolean.
  *
  * Editability is gated on {@link useCanAdminInstance} exactly as before: an
  * instance-restricted admin sees this list read-only (§B.2.7).
@@ -93,6 +101,7 @@ export function InstanceLevelSelect({
 export function InstanceShareBody({
   recordId,
   depth = 0,
+  emptyHint,
 }: {
   recordId: RecordId
   /**
@@ -101,6 +110,13 @@ export function InstanceShareBody({
    * people belong under the dataset, not level with the area above it.
    */
   depth?: number
+  /**
+   * The empty-state sentence, built from the resource noun this mount resolves.
+   * **Required, and deliberately not defaulted** (plan 31 §2.6): the previous
+   * hardcoded copy pointed at "the workspace default above", which is only true
+   * where such a control exists. Every mount states its own scope.
+   */
+  emptyHint: (noun: string) => string
 }) {
   const { entityDefinitionId: key } = parseRecordId(recordId)
   const isSupported = key in INSTANCE_SHARE_COPY
@@ -160,7 +176,7 @@ export function InstanceShareBody({
       }}
       disabled={!canAdmin}
       unmanageableGrants={unmanageableGrants}
-      emptyHint={`Not shared with anyone specific. Adjust the workspace default above to restrict this ${copy.noun}.`}
+      emptyHint={emptyHint(copy.noun)}
     />
   )
 }
