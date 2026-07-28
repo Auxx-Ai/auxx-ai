@@ -27,7 +27,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
   contact: {
     entityType: 'contact',
     mainTabs: [
-      { value: 'tickets', label: 'Tickets', icon: 'ticket' },
+      { value: 'tickets', label: 'Tickets', icon: 'ticket', recordResource: 'ticket' },
       // Client-notifications plan §4.8/Phase 4 — same communications timeline as the job
       // detail page, over `contact:<id>`.
       { value: 'communications', label: 'Communications', icon: 'mail' },
@@ -79,9 +79,12 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
   part: {
     entityType: 'part',
     mainTabs: [
+      // No `recordResource` on Inventory: it leads with the part's OWN on-hand
+      // quantity/status and only then lists stock movements, so the stock_movement
+      // gate belongs on its Adjust Stock action, not on the whole tab.
       { value: 'inventory', label: 'Inventory', icon: 'package' },
-      { value: 'subparts', label: 'Subparts', icon: 'layers' },
-      { value: 'vendors', label: 'Vendors', icon: 'store' },
+      { value: 'subparts', label: 'Subparts', icon: 'layers', recordResource: 'subpart' },
+      { value: 'vendors', label: 'Vendors', icon: 'store', recordResource: 'vendor_part' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
@@ -127,7 +130,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarCards: [
       { value: 'customer', label: 'Customer' },
       { value: 'origin', label: 'Origin' },
-      { value: 'jobs', label: 'Jobs' },
+      { value: 'jobs', label: 'Jobs', recordResource: 'work_order' },
     ],
   },
 

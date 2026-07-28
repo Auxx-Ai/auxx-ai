@@ -10,6 +10,7 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { getTabCardComponent } from '~/components/drawers/drawer-tab-registry'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
+import { useCanViewRecordResource } from '~/components/resources'
 import { useAccess } from '~/providers/capabilities-provider'
 import { DetailViewCardHeader } from './components/detail-view-card-header'
 import type { DetailViewSidebarProps } from './types'
@@ -33,10 +34,15 @@ export function DetailViewSidebar({
 }: DetailViewSidebarProps) {
   const { entityInstanceId } = parseRecordId(recordId)
   const { can } = useAccess()
+  const canViewRecordResource = useCanViewRecordResource()
   const entityType = config.entityType
   // Layer-2 capability gate — drop cards (header included) the viewer lacks the
   // key for, mirroring the card's router procedure gate (e.g. billing → dispatch).
-  const sidebarCards = config.sidebarCards?.filter((c) => !c.permissionKey || can(c.permissionKey))
+  // Layer-3 `recordResource` gate for cards that are purely another definition's
+  // records — the twin of the drawer's `TabCards` filter.
+  const sidebarCards = config.sidebarCards
+    ?.filter((c) => !c.permissionKey || can(c.permissionKey))
+    .filter((c) => canViewRecordResource(c.recordResource))
 
   const beforeCards = sidebarCards?.filter((c) => c.position === 'before') ?? []
   const afterCards = sidebarCards?.filter((c) => (c.position ?? 'after') === 'after') ?? []

@@ -37,7 +37,7 @@ import { usePropertyContext } from '../property-provider'
 export function RelationshipInputField() {
   const { value, field, commitValue, onBeforeClose, recordId } = usePropertyContext()
   const nav = useFieldNavigationOptional()
-  const { canViewEntity } = useAccess()
+  const { canViewEntity, canEditEntity } = useAccess()
 
   const relationship = field.options?.relationship as RelationshipConfig | undefined
   const isSingleSelect = isSingleRelationship(relationship?.relationshipType)
@@ -105,8 +105,11 @@ export function RelationshipInputField() {
   // Dialog state for inline create
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
-  // Only custom resources support inline create (system resources have dedicated flows)
-  const canInlineCreate = true
+  // Inline create writes a record of the TARGET definition, so it needs write on
+  // that def — not on the record being edited. Picking an existing target only
+  // needs read (the `canViewEntity` gate below), so a `ticket: Read` member keeps
+  // the picker and loses "Create Ticket" inside it.
+  const canInlineCreate = canEditEntity(relatedEntityDefinitionId)
 
   // Convert field value to RecordId[] for RecordPicker
   const currentRecordIds = useMemo<RecordId[]>(() => {

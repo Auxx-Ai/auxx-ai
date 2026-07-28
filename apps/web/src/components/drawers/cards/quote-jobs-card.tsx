@@ -8,8 +8,10 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Tooltip } from '~/components/global/tooltip'
+import { useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { DrawerCardActions } from '../drawer-card-actions'
 import type { DrawerTabProps } from '../drawer-tab-registry'
@@ -38,6 +40,7 @@ const CONVERTIBLE_STATUSES = new Set(['draft', 'sent', 'approved'])
 export function QuoteJobsCard({ recordId }: DrawerTabProps) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
+  const { canEditEntity } = useAccess()
 
   const { values, isLoading } = useSystemValues(recordId, ['quote_work_orders', 'quote_status'], {
     autoFetch: true,
@@ -68,8 +71,16 @@ export function QuoteJobsCard({ recordId }: DrawerTabProps) {
     }
   }
 
+  // "Create job" writes a work_order, so it needs write on THAT def — the card
+  // itself only needs read on it (`recordResource` in the registry).
+  const workOrderDefId = useResourceProperty('work_order', 'id')
+  const canCreateJob = !!workOrderDefId && canEditEntity(workOrderDefId)
+
   const showCreateAction =
-    !isLoading && workOrderRecordIds.length === 0 && CONVERTIBLE_STATUSES.has(status)
+    !isLoading &&
+    canCreateJob &&
+    workOrderRecordIds.length === 0 &&
+    CONVERTIBLE_STATUSES.has(status)
 
   return (
     <>

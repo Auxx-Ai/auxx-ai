@@ -31,6 +31,7 @@ import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -45,6 +46,10 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
 
   // Resolve subpart entity definition ID
   const subpartDefId = useResourceProperty('subpart', 'id')
+  // The tab is gated on READ of subpart (drawer config `recordResource`);
+  // adding one additionally needs WRITE.
+  const { canEditEntity } = useAccess()
+  const canCreate = !!subpartDefId && canEditEntity(subpartDefId)
 
   // Subparts section: children of this part
   const subpartFilters: ConditionGroup[] = useMemo(
@@ -173,10 +178,12 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
         title={`Subparts (${subpartRecords.length})`}
         initialOpen
         actions={
-          <Button variant='ghost' size='xs' onClick={() => setIsSubpartDialogOpen(true)}>
-            <PlusCircle />
-            Add Subpart
-          </Button>
+          canCreate ? (
+            <Button variant='ghost' size='xs' onClick={() => setIsSubpartDialogOpen(true)}>
+              <PlusCircle />
+              Add Subpart
+            </Button>
+          ) : undefined
         }>
         {subpartRecords.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
@@ -284,6 +291,10 @@ function SubpartRow({
   const { values } = useSystemValues(recordId, attributes, {
     autoFetch: true,
   })
+  // Read-only viewers of the subpart definition keep the row (and its column
+  // alignment) but lose the actions menu — edit and remove are both writes.
+  const { canEditEntity } = useAccess()
+  const canEdit = canEditEntity(parseRecordId(recordId).entityDefinitionId)
 
   // Relationship fields return RecordId[] from formatToRawValue — unwrap and extract instance ID
   const rawPartValue = values[relatedPartField]
@@ -310,23 +321,25 @@ function SubpartRow({
             {relatedPartId ? <PartCostCell partId={relatedPartId} /> : '—'}
           </TableCell>
           <TableCell>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant='ghost' size='icon-sm'>
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                <DropdownMenuItem onClick={onEdit}>
-                  <Edit />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem variant='destructive' onClick={onDelete}>
-                  <Trash2 />
-                  Remove
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {canEdit && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='ghost' size='icon-sm'>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem onClick={onEdit}>
+                    <Edit />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant='destructive' onClick={onDelete}>
+                    <Trash2 />
+                    Remove
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </TableCell>
         </>
       )}

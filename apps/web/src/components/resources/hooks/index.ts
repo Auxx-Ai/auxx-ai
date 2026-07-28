@@ -34,6 +34,7 @@ export { useRecordHydration } from './use-record-hydration'
 export { useRecordInvalidation } from './use-record-invalidation'
 // Record store hooks
 export { useRecordList } from './use-record-list'
+export { useCanViewRecordResource } from './use-record-resource-gate'
 export { useRecords } from './use-records'
 export { useRelationship } from './use-relationship'
 // Entity ID resolution hooks
