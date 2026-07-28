@@ -892,6 +892,35 @@ export function expandLevelsToKeys(levels: Partial<Record<Area, Level>>): Permis
 }
 
 /**
+ * The highest rung `area` actually offers at or below `level` — what a level
+ * authored on the generic four-rung ladder composes down to *here*.
+ *
+ * Ladders are per-area and sparse: `auditLog` stops at `Read`, `files` and
+ * `billing` jump `Read → Full` with no `Edit`. {@link expandLevelsToKeys} already
+ * behaves this way (it unions the rungs `≤ level`, so `Full` on `auditLog` yields
+ * exactly `auditLogView`), which means a stored `Full` there is not extra
+ * authority — it is an unrepresentable value that composes to `Read`.
+ *
+ * Anything that COMPARES an authored level against a composed one must normalize
+ * through this first, or it reports a difference the enforcement path does not
+ * have: the author clamp read a `Full` agent policy against an owner's composed
+ * `Read` on `auditLog` and announced a reduction that changes nothing.
+ */
+export function clampLevelToArea(area: Area, level: Level): Level {
+  let clamped = Level.None
+  for (const rung of PERMISSION_AREAS[area].rungs) {
+    if (rung.level <= level) clamped = rung.level
+    else break
+  }
+  return clamped
+}
+
+/** The top rung `area` offers — `Level.None` for an area with no rungs. */
+export function areaCeilingLevel(area: Area): Level {
+  return PERMISSION_AREAS[area].rungs.at(-1)?.level ?? Level.None
+}
+
+/**
  * The inverse of {@link expandLevelsToKeys} for a single area: recover the
  * member's effective {@link Level} for `area` from an already-materialized
  * (seat-clamped, composed) PermissionKey set. Walks the area's rungs in

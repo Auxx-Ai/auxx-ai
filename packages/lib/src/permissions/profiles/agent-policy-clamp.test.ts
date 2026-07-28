@@ -5,7 +5,7 @@ import { ResourcePermission } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
 import type { CapabilityView } from '../capabilities/capability-view'
 import type { InstanceAccessKey } from '../capabilities/instance-access'
-import { Area, Level, type PermissionKey } from '../capabilities/registry'
+import { Area, areaCeilingLevel, Level, type PermissionKey } from '../capabilities/registry'
 import { emptyAgentPolicy, legacyFullAgentPolicy } from './agent-policy'
 import { type ClampDefinition, clampAgentPolicyToPublisher } from './agent-policy-clamp'
 
@@ -69,9 +69,18 @@ function publisher(spec: PublisherSpec): CapabilityView {
   } satisfies CapabilityView
 }
 
-/** An OWNER/ADMIN: every gate open, every area Full. */
+/**
+ * An OWNER/ADMIN: every gate open, every area at its CEILING.
+ *
+ * Not `Level.Full` everywhere — that is not what an owner composes.
+ * `CapabilitySet.areaLevel` recovers the rung from the held keys, so it can never
+ * exceed the area's own ladder: an owner reads `Read` on `auditLog`, whose only
+ * rung is `Read`. The stub used to say `Full` there, which is why the clamp's
+ * ladder mismatch (an all-`admin` policy reading as "reduced" for an owner)
+ * survived this suite.
+ */
 const ADMIN = publisher({
-  areas: Object.fromEntries(Object.values(Area).map((a) => [a, Level.Full])) as Partial<
+  areas: Object.fromEntries(Object.values(Area).map((a) => [a, areaCeilingLevel(a)])) as Partial<
     Record<Area, Level>
   >,
   defDefault: 'admin',
@@ -180,6 +189,68 @@ describe('the §9.1 author-clamp case', () => {
     // The OLD snapshot is untouched — a demotion must not silently break a running
     // automation; drift is bounded by the next publish, which is this one (§2.4a).
     expect(v1.definitions.overrides.deals).toBe('admin')
+  })
+})
+
+describe('an area whose ladder is shorter than the policy vocabulary', () => {
+  /**
+   * `Area.auditLog` offers ONE rung (`Read`). An all-`admin` policy therefore asks
+   * for a rung the area cannot express, and an owner composes `Read` — the
+   * ceiling. Comparing the two raw spellings announced *"Account activity reduced
+   * from Full to Read"* to an OWNER, for a publish that changes no enforcement:
+   * `expandLevelsToKeys` maps both to exactly `auditLogView`.
+   */
+  it('reports no reduction when the publisher sits at the area ceiling', () => {
+    const { policy, reductions } = clampAgentPolicyToPublisher({
+      resolved: allFullResolved(),
+      publisher: ADMIN,
+      publisherUserId: 'u-owner',
+      definitions: DEFS,
+    })
+
+    expect(reductions).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: Area.auditLog })])
+    )
+    // The snapshot states the rung the agent actually composes, not the one the
+    // flat vocabulary let the author type.
+    expect(policy.areas.overrides[Area.auditLog]).toBe('view')
+  })
+
+  it('does not let a short ladder cap the retained default for an owner', () => {
+    // `areas.default` answers for an area a FUTURE deploy adds. An owner who is at
+    // the ceiling everywhere is unbounded, so the §2.4a escape hatch must survive
+    // the existence of one Read-only area.
+    const { policy } = clampAgentPolicyToPublisher({
+      resolved: allFullResolved(),
+      publisher: ADMIN,
+      publisherUserId: 'u-owner',
+      definitions: DEFS,
+    })
+    expect(policy.areas.default).toBe('admin')
+  })
+
+  it('still reports a real reduction on the same area', () => {
+    // Someone who holds NOTHING on `auditLog` is genuinely reduced there.
+    const noAudit = publisher({
+      areas: Object.fromEntries(
+        Object.values(Area).map((a) => [a, a === Area.auditLog ? Level.None : areaCeilingLevel(a)])
+      ) as Partial<Record<Area, Level>>,
+      defDefault: 'admin',
+      instanceDefault: 'admin',
+    })
+    const { policy, reductions } = clampAgentPolicyToPublisher({
+      resolved: allFullResolved(),
+      publisher: noAudit,
+      publisherUserId: 'u-member',
+      definitions: DEFS,
+    })
+    expect(policy.areas.overrides[Area.auditLog]).toBe('none')
+    // Reported at the rung the area can express — `view`, never a phantom `admin`.
+    expect(reductions).toEqual(
+      expect.arrayContaining([{ domain: 'area', key: Area.auditLog, from: 'view', to: 'none' }])
+    )
+    // One area held below its ceiling DOES floor the retained default.
+    expect(policy.areas.default).toBe('none')
   })
 })
 

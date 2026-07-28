@@ -13,8 +13,13 @@ import {
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
 } from '../capabilities/instance-access'
-import { AREA_ORDER } from '../capabilities/registry'
-import { areaLevelToPermission, lookupExactPolicy, minPermission } from './agent-policy'
+import { AREA_ORDER, areaCeilingLevel } from '../capabilities/registry'
+import {
+  areaLevelToPermission,
+  clampPermissionToArea,
+  lookupExactPolicy,
+  minPermission,
+} from './agent-policy'
 
 /**
  * A definition the clamp must bound, in the two keyspaces it needs: the policy is
@@ -172,18 +177,28 @@ export function clampAgentPolicyToPublisher(input: {
   }
 
   // ── Areas ────────────────────────────────────────────────────────────────
-  // Every area is materialized, so each current area's bound is exact. The
-  // retained `default` is clamped to the publisher's WEAKEST area rung, because
-  // it must answer for an area a future deploy adds and no probe can know that
-  // area's posture in advance. Conservative on purpose: a security clamp's
-  // unknown case belongs on the low side, and for an ADMIN publisher (all-Full)
-  // the minimum is `admin`, so the intended escape hatch is unaffected.
+  // Every area is materialized, so each current area's bound is exact. Both sides
+  // are read on the area's OWN ladder: `publisher.areaLevel` already tops out at
+  // the area's ceiling (`areaLevelFromKeys` returns the highest rung the area
+  // offers), so the authored rung must be normalized the same way or an area with
+  // a short ladder reports a reduction that changes no enforcement — an OWNER on
+  // `auditLog` (ceiling `Read`) read as "Full reduced to Read".
+  //
+  // The retained `default` is clamped to the publisher's WEAKEST area rung,
+  // because it must answer for an area a future deploy adds and no probe can know
+  // that area's posture in advance. Conservative on purpose — but an area where
+  // the publisher already sits at the CEILING is not evidence of a limit, so it
+  // contributes `admin` rather than dragging the floor down to its own short
+  // ladder. Without that, one `Read`-max area would cap every OWNER's retained
+  // default at `view` and quietly close the §2.4a escape hatch.
   const areaOverrides: Record<string, ResourcePermission> = {}
   let weakestPublisherArea: ResourcePermission = 'admin'
   for (const area of AREA_ORDER) {
-    const want = lookupExactPolicy(resolved.areas, area)
-    const bound = areaLevelToPermission(publisher.areaLevel(area))
-    weakestPublisherArea = minPermission(weakestPublisherArea, bound)
+    const want = clampPermissionToArea(area, lookupExactPolicy(resolved.areas, area))
+    const level = publisher.areaLevel(area)
+    const bound = areaLevelToPermission(level)
+    const saturated = level >= areaCeilingLevel(area)
+    weakestPublisherArea = minPermission(weakestPublisherArea, saturated ? 'admin' : bound)
     const got = minPermission(want, bound)
     areaOverrides[area] = got
     if (exceeds(want, got)) record('area', area, want, got)
