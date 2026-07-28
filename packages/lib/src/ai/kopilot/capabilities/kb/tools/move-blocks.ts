@@ -12,7 +12,7 @@ export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition 
     permission: {
       target: 'instance',
       keys: ['kb'],
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'enforced',
       note: 'runBlockCrudOp → assertEditInstance("kb", …).',
     },

@@ -13,7 +13,7 @@ import {
   parseAreaLevels,
 } from '../../permissions/capabilities/registry'
 import {
-  areaLevelToAgentLevel,
+  areaLevelToPermission,
   legacyFullAgentPolicy,
 } from '../../permissions/profiles/agent-policy'
 import type { DataMigrationDef } from '../types'
@@ -40,7 +40,7 @@ const CHUNK = 500
  *    that DID restrict an agent through the doc-14 Permissions tab has real area
  *    levels on a `granteeType: 'user'` row keyed by the agent's synthetic
  *    `User.id`. The flat SQL default would silently WIDEN those agents back to
- *    all-`full` — the one way this migration could change behavior rather than
+ *    all-`admin` — the one way this migration could change behavior rather than
  *    preserve it. Any such row is translated onto the exact ladder and written to
  *    every version of that agent.
  * 2. **Recompute `configHash`.** The hash now covers the policy's authorization
@@ -197,7 +197,7 @@ async function loadLegacyAgentAreaLevels(
  * Translate a legacy sparse area-level map into an exact published policy,
  * reproducing the shipped SET branch exactly: `level = userLevels[area] ?? Full`.
  *
- * Definitions and resources keep the all-`full` legacy default — see the migration
+ * Definitions and resources keep the all-`admin` legacy default — see the migration
  * JSDoc for why they are not reconstructed.
  */
 function legacyPolicyFromAreaLevels(
@@ -206,12 +206,12 @@ function legacyPolicyFromAreaLevels(
   const base = legacyFullAgentPolicy()
   const overrides: Record<string, string> = {}
   for (const area of AREA_ORDER) {
-    overrides[area] = areaLevelToAgentLevel(levels[area] ?? Level.Full)
+    overrides[area] = areaLevelToPermission(levels[area] ?? Level.Full)
   }
   return {
     ...base,
     areas: {
-      default: 'full',
+      default: 'admin',
       overrides: overrides as PublishedAgentPermissionPolicy['areas']['overrides'],
     },
   }

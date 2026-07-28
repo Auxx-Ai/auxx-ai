@@ -11,23 +11,24 @@ import { Tooltip } from '~/components/global/tooltip'
 import type { DefBaselineRow } from '../hooks/use-def-baselines'
 import { AccessLevelSelect } from './access-level-select'
 
-/** Indent of the def rows under the Records area row. */
+/** Indent of the def rows under their collection row. */
 const CHILD_DEPTH = 1
 
 /**
- * The nested per-def rows under the Records area on the member-baseline grid:
+ * The per-def rows under the Record types collection on the Workspace
+ * defaults tab:
  * one CRM record type per row with its **workspace baseline** picker (the same
  * "Default for all members" value the def's own Permissions tab writes).
  *
- * "Inherit" means no `role:org_member` row exists — the def falls through to the
- * Records level shown on the parent row, named inline on the option so the two
- * never look out of sync. **No Access** restricts the def for everyone but
+ * "Inherit" means no `role:org_member` row exists — the def falls through to its
+ * base area's level on the Member permission profile, named inline on the option
+ * so the two never look out of sync. **No Access** restricts the def for everyone but
  * admins and explicit grantees, marked with the same lock the grantee-centric
  * Access section uses. The trailing chevron drills into the def's Permissions
  * tab, where per-team / per-member grants live.
  *
  * Presentational: filtering, loading and persistence are owned by the host
- * (`MemberBaselineTab` + `useDefBaselines`).
+ * (`WorkspaceDefaultsTab` + `useDefBaselines`).
  */
 export function DefBaselineRows({
   rows,

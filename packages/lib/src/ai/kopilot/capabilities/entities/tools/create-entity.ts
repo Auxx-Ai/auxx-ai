@@ -21,7 +21,7 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'create_entity',
     permission: {
       target: 'definition',
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'enforced',
       note: 'UnifiedCrudHandler → assertEditEntity.',
     },

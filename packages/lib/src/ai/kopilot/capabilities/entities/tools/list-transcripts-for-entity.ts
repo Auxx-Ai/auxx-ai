@@ -34,7 +34,7 @@ export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentT
     name: 'list_transcripts_for_entity',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'EntityInstance lookup then canViewEntity; silent-empty on denial (19b G3).',
     },

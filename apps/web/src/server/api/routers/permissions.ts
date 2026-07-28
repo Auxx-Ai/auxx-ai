@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/permissions.ts
 
+import { ResourcePermissionValues } from '@auxx/database/enums'
 import {
   type AgentPermissionPolicy,
   type Area,
@@ -59,12 +60,14 @@ const iconInput = z.object({ iconId: z.string(), color: z.string() }).nullable()
  *
  * The rung vocabulary is closed, so it is a `z.enum` rather than a loose string —
  * a typo'd rung must be a 400, not a value silently dropped into "reads as the
- * default". Keys stay free strings (area slugs, entity `apiSlug`s, instance ids);
+ * default". It is `ResourcePermissionValues` itself since plan 26 Phase 2, so a
+ * future rung cannot be added to the ladder without this input following. Keys
+ * stay free strings (area slugs, entity `apiSlug`s, instance ids);
  * `parseAgentPolicy` inside the save is the gate that normalizes them.
  */
 const exactAgentPolicyInput = z.object({
-  default: z.enum(['none', 'read', 'read_write', 'full']),
-  overrides: z.record(z.string(), z.enum(['none', 'read', 'read_write', 'full'])),
+  default: z.enum(ResourcePermissionValues),
+  overrides: z.record(z.string(), z.enum(ResourcePermissionValues)),
 })
 
 /**
@@ -77,7 +80,7 @@ const exactAgentPolicyInput = z.object({
 const agentPolicyInput: z.ZodType<AgentPermissionPolicy> = z.object({
   areas: exactAgentPolicyInput,
   definitions: exactAgentPolicyInput,
-  resourceDefault: z.enum(['none', 'read', 'read_write', 'full']),
+  resourceDefault: z.enum(ResourcePermissionValues),
   resources: z.record(z.string(), exactAgentPolicyInput),
 })
 

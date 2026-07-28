@@ -26,7 +26,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
     permission: {
       target: 'instance',
       keys: ['kb'],
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewKb on the article’s KB. Gates only the AGENT’s caps — no invoker clamp, no visibility/isPublished check (doc 18); safe today only because the tool is not registered on visitor chat.',
     },

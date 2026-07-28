@@ -24,7 +24,7 @@ export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition 
     name: 'create_note',
     permission: {
       target: 'definition',
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'unenforced',
       note: 'KNOWN GAP (19b G3). Deliberate: the human comment routers are ungated too (doc 14 §8.3), so gating only the agent path would diverge from the product. A def published None still accepts notes. Do not "fix" without the matching human-router decision.',
     },

@@ -26,7 +26,7 @@ export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition
     permission: {
       target: 'unmodeled',
       domain: 'directory',
-      level: 'read',
+      level: 'view',
       enforcement: 'unenforced',
       note: 'KNOWN GAP (19b G7) — NARROWED, not gated. The documented `limit` (default 20, max 50) is now honoured on the no-query path too, where it was silently ignored and the whole org roster — name, email, role, every member — came back in one call. The read itself is still unasserted: Area.members is a Full-only ladder about *managing* members, so there is no read rung to bind a directory lookup to; asserting membersManage would demand Full manage authority for a name→actorId lookup, which is a bad mapping, not a fix. The level above is the intent, not an existing rung. A `directory` area is the missing model.',
     },

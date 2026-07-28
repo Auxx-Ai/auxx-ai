@@ -1,6 +1,6 @@
 // packages/lib/src/ai/agent-framework/tool-permission.ts
 
-import type { AgentAccessLevel } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { InstanceAccessKey } from '../../permissions/capabilities/instance-access'
 import type { Area } from '../../permissions/capabilities/registry'
 
@@ -81,10 +81,10 @@ export type AgentToolPermission =
   /**
    * Per entity **definition** — `canViewEntity` / `canEditEntity` /
    * `canAdministerDef` off `ToolDeps.capabilities`. `level` maps to
-   * read → `canViewEntity`, read_write → `canEditEntity`, full →
+   * `view` → `canViewEntity`, `edit` → `canEditEntity`, `admin` →
    * `canAdministerDef` (which has zero tool callers today — 19b G8).
    */
-  | (EnforcementState & { target: 'definition'; level: AgentAccessLevel })
+  | (EnforcementState & { target: 'definition'; level: ResourcePermission })
   /**
    * Per shared resource **instance** — `can*Instance(key, id)`. `keys` is a list
    * because one tool may span several instance-access resource types in a single
@@ -93,14 +93,14 @@ export type AgentToolPermission =
   | (EnforcementState & {
       target: 'instance'
       keys: readonly InstanceAccessKey[]
-      level: AgentAccessLevel
+      level: ResourcePermission
     })
   /**
    * Coarse Layer-2 **area** — a `PermissionKey` read off the caller's own
    * `CapabilityView` (`getCapabilities(...).can(key)`), expressed as the area +
    * rung that key sits on.
    */
-  | (EnforcementState & { target: 'area'; area: AreaSlug; level: AgentAccessLevel })
+  | (EnforcementState & { target: 'area'; area: AreaSlug; level: ResourcePermission })
   /**
    * A real requirement in a domain the leveled model cannot name — see
    * {@link UnmodeledPermissionDomain}. Deliberately NOT `'none'`: these tools
@@ -110,7 +110,7 @@ export type AgentToolPermission =
   | (EnforcementState & {
       target: 'unmodeled'
       domain: UnmodeledPermissionDomain
-      level: AgentAccessLevel
+      level: ResourcePermission
     })
   /**
    * An app- or MCP-backed **bridge** tool. Its effects live inside a third-party

@@ -1,7 +1,6 @@
 // packages/lib/src/permissions/profiles/types.ts
 
 import type {
-  AgentAccessLevel,
   AgentPermissionPolicy,
   AgentPolicyClampEntry,
   PublishedAgentPermissionPolicy,
@@ -9,12 +8,7 @@ import type {
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import type { Area, Level } from '../capabilities/registry'
 
-export type {
-  AgentAccessLevel,
-  AgentPermissionPolicy,
-  AgentPolicyClampEntry,
-  PublishedAgentPermissionPolicy,
-}
+export type { AgentPermissionPolicy, AgentPolicyClampEntry, PublishedAgentPermissionPolicy }
 
 /**
  * The reserved system-profile slugs, seeded per org (§5.1). Never deletable; a

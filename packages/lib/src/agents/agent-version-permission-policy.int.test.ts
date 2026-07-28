@@ -56,8 +56,8 @@ const db = () => getTestDb() as unknown as Database
  * resource list decides which defs exist, so a fixture that named ids would
  * silently stop clamping anything the day the registry changed.
  */
-function stubPublisher(rung: 'none' | 'read' | 'read_write' | 'full'): CapabilityView {
-  const rank = { none: 0, read: 1, read_write: 2, full: 3 }[rung]
+function stubPublisher(rung: 'none' | 'view' | 'edit' | 'admin'): CapabilityView {
+  const rank = { none: 0, view: 1, edit: 2, admin: 3 }[rung]
   const view = {
     can: () => rank >= 3,
     has: () => rank >= 3,
@@ -177,7 +177,7 @@ describe('publish snapshots the resolved permission policy', () => {
     publisherStubs.clear()
     org = await createTestOrganization()
     await ensureSystemProfiles(org.id, db())
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
   })
 
   it('writes a NON-NULL, total policy for an internal agent on the permissive agent profile', async () => {
@@ -193,13 +193,15 @@ describe('publish snapshots the resolved permission policy', () => {
 
     const stored = await readVersion(version.id)
     expect(stored.permissionPolicy).not.toBeNull()
-    expect(stored.permissionPolicy.areas.default).toBe('full')
-    expect(stored.permissionPolicy.definitions.default).toBe('full')
+    expect(stored.permissionPolicy.areas.default).toBe('admin')
+    expect(stored.permissionPolicy.definitions.default).toBe('admin')
     expect(stored.permissionPolicy.sourceProfileId).toBe(await profileId(org.id, 'agent'))
     expect(stored.permissionPolicy.publishedByUserId).toBe(org.ownerId)
     // Total, not sparse: every current record def is materialized as an override
     // so the snapshot stays executable after the profile changes.
-    expect(stored.permissionPolicy.definitions.overrides[await aRecordDefSlug(org.id)]).toBe('full')
+    expect(stored.permissionPolicy.definitions.overrides[await aRecordDefSlug(org.id)]).toBe(
+      'admin'
+    )
   })
 
   it('starts a chat agent on the fail-closed chat_agent profile (§18)', async () => {
@@ -270,7 +272,7 @@ describe('completeAgentSetup publishes v1 (§9.1 chat-agent setup)', () => {
     publisherStubs.clear()
     org = await createTestOrganization()
     await ensureSystemProfiles(org.id, db())
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
   })
 
   it('publishes the chat_agent policy as v1 without binding a profile to the synthetic member', async () => {
@@ -321,13 +323,13 @@ describe('completeAgentSetup publishes v1 (§9.1 chat-agent setup)', () => {
     })
 
     const v1 = await readVersion((await readAgent(agent.id)).activeVersionId!)
-    expect(v1.permissionPolicy.definitions.default).toBe('full')
+    expect(v1.permissionPolicy.definitions.default).toBe('admin')
     expect(v1.permissionPolicy.sourceProfileId).toBe(await profileId(org.id, 'agent'))
   })
 
   it('clamps the auto-published v1 by the human who completed setup (§2.4a)', async () => {
     const reader = await createTestUser({ name: 'Read-only author' })
-    publisherStubs.set(reader.id, stubPublisher('read'))
+    publisherStubs.set(reader.id, stubPublisher('view'))
     const agent = await seedDraftAgent(org.id, org.ownerId, 'internal')
 
     await completeAgentSetup(agent.id, org.id, db(), {
@@ -337,8 +339,8 @@ describe('completeAgentSetup publishes v1 (§9.1 chat-agent setup)', () => {
 
     const v1 = await readVersion((await readAgent(agent.id)).activeVersionId!)
     // The all-Full `agent` profile, reduced to what its author holds.
-    expect(v1.permissionPolicy.definitions.default).toBe('read')
-    expect(v1.permissionPolicy.definitions.overrides[await aRecordDefSlug(org.id)]).toBe('read')
+    expect(v1.permissionPolicy.definitions.default).toBe('view')
+    expect(v1.permissionPolicy.definitions.overrides[await aRecordDefSlug(org.id)]).toBe('view')
     expect(v1.permissionPolicy.publishedByUserId).toBe(reader.id)
     expect(v1.permissionPolicy.clamp.length).toBeGreaterThan(0)
   })
@@ -356,7 +358,7 @@ describe('the author clamp is persisted, not merely computed (§2.4a / §9.1)', 
   })
 
   it('a records:Read publisher on the all-Full agent profile yields a Read-clamped snapshot', async () => {
-    publisherStubs.set(org.ownerId, stubPublisher('read'))
+    publisherStubs.set(org.ownerId, stubPublisher('view'))
     const agent = await seedSetUpAgent(org.id, org.ownerId)
 
     const { version, reductions } = await db().transaction((tx) =>
@@ -368,20 +370,20 @@ describe('the author clamp is persisted, not merely computed (§2.4a / §9.1)', 
     )
 
     const stored = await readVersion(version.id)
-    expect(stored.permissionPolicy.definitions.overrides[defSlug]).toBe('read')
-    expect(stored.permissionPolicy.definitions.default).toBe('read')
+    expect(stored.permissionPolicy.definitions.overrides[defSlug]).toBe('view')
+    expect(stored.permissionPolicy.definitions.default).toBe('view')
     // Every materialized def is clamped, not just the one we sampled.
     expect(
-      Object.values(stored.permissionPolicy.definitions.overrides).filter((l) => l !== 'read')
+      Object.values(stored.permissionPolicy.definitions.overrides).filter((l) => l !== 'view')
     ).toEqual([])
-    expect(stored.permissionPolicy.areas.default).toBe('read')
+    expect(stored.permissionPolicy.areas.default).toBe('view')
     // The reduction record survives the round-trip, so an audit can read it.
     expect(stored.permissionPolicy.clamp.length).toBeGreaterThan(0)
     expect(reductions.length).toBe(stored.permissionPolicy.clamp.length)
   })
 
   it('the SAME publish by an admin yields Full', async () => {
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
     const agent = await seedSetUpAgent(org.id, org.ownerId)
 
     const { version, reductions } = await db().transaction((tx) =>
@@ -393,14 +395,14 @@ describe('the author clamp is persisted, not merely computed (§2.4a / §9.1)', 
     )
 
     const stored = await readVersion(version.id)
-    expect(stored.permissionPolicy.definitions.overrides[defSlug]).toBe('full')
-    expect(stored.permissionPolicy.definitions.default).toBe('full')
+    expect(stored.permissionPolicy.definitions.overrides[defSlug]).toBe('admin')
+    expect(stored.permissionPolicy.definitions.default).toBe('admin')
     expect(reductions).toEqual([])
     expect(stored.permissionPolicy.clamp).toEqual([])
   })
 
   it('republishing after a demotion re-clamps DOWN and mints a new version', async () => {
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
     const agent = await seedSetUpAgent(org.id, org.ownerId)
 
     const first = await db().transaction((tx) =>
@@ -412,10 +414,10 @@ describe('the author clamp is persisted, not merely computed (§2.4a / §9.1)', 
     )
     expect(
       (await readVersion(first.version.id)).permissionPolicy.definitions.overrides[defSlug]
-    ).toBe('full')
+    ).toBe('admin')
 
     // The publisher is demoted, then republishes the same unchanged draft.
-    publisherStubs.set(org.ownerId, stubPublisher('read'))
+    publisherStubs.set(org.ownerId, stubPublisher('view'))
     const second = await db().transaction((tx) =>
       publishAgentTx(tx, {
         organizationId: org.id,
@@ -429,15 +431,15 @@ describe('the author clamp is persisted, not merely computed (§2.4a / §9.1)', 
     expect(second.version.versionNumber).toBe(first.version.versionNumber + 1)
     expect(
       (await readVersion(second.version.id)).permissionPolicy.definitions.overrides[defSlug]
-    ).toBe('read')
+    ).toBe('view')
     // The OLD snapshot is untouched — a demotion must not rewrite history.
     expect(
       (await readVersion(first.version.id)).permissionPolicy.definitions.overrides[defSlug]
-    ).toBe('full')
+    ).toBe('admin')
   })
 
   it('an unchanged republish by the SAME publisher is still a no-op', async () => {
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
     const agent = await seedSetUpAgent(org.id, org.ownerId)
 
     const first = await db().transaction((tx) =>
@@ -467,7 +469,7 @@ describe('the published policy is the ONLY agent authority (§9.1 add-then-remov
     publisherStubs.clear()
     org = await createTestOrganization()
     await ensureSystemProfiles(org.id, db())
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
   })
 
   it('a grant row on the synthetic member does not widen a definition republished as None', async () => {
@@ -484,7 +486,7 @@ describe('the published policy is the ONLY agent authority (§9.1 add-then-remov
     })
     const withV1 = await readAgent(draft.id)
     const v1 = await readVersion(withV1.activeVersionId!)
-    expect(v1.permissionPolicy.definitions.overrides[def.apiSlug]).toBe('full')
+    expect(v1.permissionPolicy.definitions.overrides[def.apiSlug]).toBe('admin')
 
     const asAgent = async (policyRow: typeof v1) =>
       (await resolveAgentRunCapabilities({
@@ -616,7 +618,7 @@ describe('resolveVersionPolicy — the pinned-eval read (§15)', () => {
     publisherStubs.clear()
     org = await createTestOrganization()
     await ensureSystemProfiles(org.id, db())
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
   })
 
   it('returns the PINNED version’s policy, not the agent’s current active one', async () => {
@@ -644,7 +646,7 @@ describe('resolveVersionPolicy — the pinned-eval read (§15)', () => {
     )
 
     expect((await resolveVersionPolicy(org.id, v1.version.id, db()))?.definitions.default).toBe(
-      'full'
+      'admin'
     )
     expect((await resolveVersionPolicy(org.id, v2.version.id, db()))?.definitions.default).toBe(
       'none'
@@ -658,7 +660,7 @@ describe('resolveVersionPolicy — the pinned-eval read (§15)', () => {
     const { resolveVersionPolicy } = await import('./agent-permission-policy')
     const other = await createTestOrganization()
     await ensureSystemProfiles(other.id, db())
-    publisherStubs.set(other.ownerId, stubPublisher('full'))
+    publisherStubs.set(other.ownerId, stubPublisher('admin'))
 
     const foreignAgent = await seedSetUpAgent(other.id, other.ownerId)
     const foreignVersion = await db().transaction((tx) =>
@@ -682,7 +684,7 @@ describe('restore restores that version’s policy binding (§14)', () => {
     publisherStubs.clear()
     org = await createTestOrganization()
     await ensureSystemProfiles(org.id, db())
-    publisherStubs.set(org.ownerId, stubPublisher('full'))
+    publisherStubs.set(org.ownerId, stubPublisher('admin'))
   })
 
   it('repoints the draft binding at the restored version’s source profile, and marks dirty', async () => {
@@ -741,7 +743,7 @@ describe('restore restores that version’s policy binding (§14)', () => {
         publishedByUserId: org.ownerId,
       })
     )
-    expect((await readVersion(v3.version.id)).permissionPolicy.definitions.default).toBe('full')
+    expect((await readVersion(v3.version.id)).permissionPolicy.definitions.default).toBe('admin')
   })
 
   it('leaves both snapshots byte-identical after the restore', async () => {

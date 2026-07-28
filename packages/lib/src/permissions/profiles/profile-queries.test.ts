@@ -59,7 +59,7 @@ const agentProfile = profile({
   appliesTo: 'agent',
   isSystem: true,
   agentPolicy: {
-    areas: { default: 'read', overrides: {} },
+    areas: { default: 'view', overrides: {} },
     definitions: { default: 'none', overrides: {} },
     resourceDefault: 'none',
     resources: {},

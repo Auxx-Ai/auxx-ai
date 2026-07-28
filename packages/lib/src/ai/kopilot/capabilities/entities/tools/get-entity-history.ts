@@ -163,7 +163,7 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'get_entity_history',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the parent instance’s def, plus a per-def filter over linked entities.',
     },

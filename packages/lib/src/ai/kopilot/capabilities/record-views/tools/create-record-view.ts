@@ -18,7 +18,7 @@ export function createCreateRecordViewTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'create_table_view',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewEntity on the page’s def. Read is what is asserted: the write lands on TableView, not on the definition.',
     },

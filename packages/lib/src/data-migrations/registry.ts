@@ -23,6 +23,7 @@ import { migration050AgentVersionPermissionPolicy } from './migrations/050-agent
 import { migration051GoogleAppScopeAlignment } from './migrations/051-google-app-scope-alignment'
 import { migration052MemberBaselineBackfill } from './migrations/052-member-baseline-backfill'
 import { migration053SeedAgentPresetProfiles } from './migrations/053-seed-agent-preset-profiles'
+import { migration054AgentPolicyVocabulary } from './migrations/054-agent-policy-vocabulary'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -62,6 +63,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration051GoogleAppScopeAlignment,
     migration052MemberBaselineBackfill,
     migration053SeedAgentPresetProfiles,
+    migration054AgentPolicyVocabulary,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

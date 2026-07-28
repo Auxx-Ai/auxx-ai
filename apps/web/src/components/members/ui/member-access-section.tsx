@@ -130,6 +130,7 @@ export function MemberAccessSection({ member, viewerRole, viewerId }: MemberAcce
                   value={selectedId}
                   onChange={setPendingProfileId}
                   disabled={!canAssign || isAssigning}
+                  variant='transparent'
                 />
               )
             }

@@ -41,7 +41,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     name: 'search_entities',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'Results post-filtered by canViewEntity; field enrichment re-checks per def.',
     },

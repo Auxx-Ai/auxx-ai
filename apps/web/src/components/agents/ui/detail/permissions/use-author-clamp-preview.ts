@@ -1,11 +1,13 @@
 // apps/web/src/components/agents/ui/detail/permissions/use-author-clamp-preview.ts
 'use client'
 
-import type { AgentAccessLevel, AgentPermissionPolicy } from '@auxx/database'
+import type { AgentPermissionPolicy } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import {
   AREA_ORDER,
   Level,
   PERMISSION_AREAS,
+  PERMISSION_RANK,
   type PermissionKey,
 } from '@auxx/lib/permissions/client'
 import { isAccessManageable } from '@auxx/lib/resources/client'
@@ -13,14 +15,14 @@ import { useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
-import { AGENT_ACCESS_RANK, resolveAgentLevel } from './agent-access-level'
+import { resolveAgentLevel } from './agent-access-level'
 
 /** One rung the author clamp would reduce at publish. */
 export interface ClampPreviewRow {
   domain: 'area' | 'definition'
   label: string
-  from: AgentAccessLevel
-  to: AgentAccessLevel
+  from: ResourcePermission
+  to: ResourcePermission
 }
 
 export interface AuthorClampPreview {
@@ -29,11 +31,11 @@ export interface AuthorClampPreview {
   rows: ClampPreviewRow[]
 }
 
-const LEVEL_TO_AGENT: Record<Level, AgentAccessLevel> = {
+const PERMISSION_OF_LEVEL: Record<Level, ResourcePermission> = {
   [Level.None]: 'none',
-  [Level.Read]: 'read',
-  [Level.Edit]: 'read_write',
-  [Level.Full]: 'full',
+  [Level.Read]: 'view',
+  [Level.Edit]: 'edit',
+  [Level.Full]: 'admin',
 }
 
 /**
@@ -83,8 +85,8 @@ export function useAuthorClampPreview(policy: AgentPermissionPolicy | null): Aut
     for (const area of AREA_ORDER) {
       if (PERMISSION_AREAS[area].workerOnly) continue
       const asked = resolveAgentLevel(policy.areas, area, policy.areas.default)
-      const held = LEVEL_TO_AGENT[areaLevel(keys, area)]
-      if (AGENT_ACCESS_RANK[asked] > AGENT_ACCESS_RANK[held]) {
+      const held = PERMISSION_OF_LEVEL[areaLevel(keys, area)]
+      if (PERMISSION_RANK[asked] > PERMISSION_RANK[held]) {
         rows.push({ domain: 'area', label: PERMISSION_AREAS[area].label, from: asked, to: held })
       }
     }
@@ -96,14 +98,14 @@ export function useAuthorClampPreview(policy: AgentPermissionPolicy | null): Aut
         policy.definitions.default
       )
       const id = resource.entityDefinitionId
-      const held: AgentAccessLevel = canAdministerDef(id)
-        ? 'full'
+      const held: ResourcePermission = canAdministerDef(id)
+        ? 'admin'
         : canEditEntity(id)
-          ? 'read_write'
+          ? 'edit'
           : canViewEntity(id)
-            ? 'read'
+            ? 'view'
             : 'none'
-      if (AGENT_ACCESS_RANK[asked] > AGENT_ACCESS_RANK[held]) {
+      if (PERMISSION_RANK[asked] > PERMISSION_RANK[held]) {
         rows.push({ domain: 'definition', label: resource.plural, from: asked, to: held })
       }
     }

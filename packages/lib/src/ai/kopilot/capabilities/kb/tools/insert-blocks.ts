@@ -17,7 +17,7 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
     permission: {
       target: 'instance',
       keys: ['kb'],
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'enforced',
       note: 'runBlockCrudOp → assertEditInstance("kb", …) — the single choke point for all four block-CRUD writes.',
     },

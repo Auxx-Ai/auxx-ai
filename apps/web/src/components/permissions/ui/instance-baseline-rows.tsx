@@ -14,12 +14,13 @@ import { AccessLevelSelect } from './access-level-select'
 import { InstanceShareBody } from './instance-share-body'
 import { INSTANCE_ROW_COPY, INSTANCE_TYPE_META } from './instance-share-copy'
 
-/** Indent of the instance rows under their Datasets / Knowledge base / Dashboards area row. */
+/** Indent of the instance rows under their collection row. */
 const CHILD_DEPTH = 1
 
 /**
- * The nested per-instance rows under a Datasets / Knowledge base / Dashboards
- * area row on the Member baseline grid (capability layer v2 Part B) — the
+ * The per-instance rows under a Datasets / Knowledge bases / Dashboards /
+ * Workflows collection on the Workspace defaults tab (capability layer v2
+ * Part B) — the
  * instance twin of `DefBaselineRows`. One dataset/KB/dashboard per row with
  * its **workspace baseline** picker (the `role:org_member` row the standalone
  * Share card's own baseline row writes): Inherit (no row) / Read / Read+write /
@@ -27,7 +28,7 @@ const CHILD_DEPTH = 1
  * `InstanceShareBody` — the same grantee list the Share card and dialog show.
  *
  * Presentational: filtering, loading and persistence are owned by the host
- * (`MemberBaselineTab` + `useInstanceBaselineRows`), exactly like
+ * (`WorkspaceDefaultsTab` + `useInstanceBaselineRows`), exactly like
  * `DefBaselineRows`.
  */
 export function InstanceBaselineRows({

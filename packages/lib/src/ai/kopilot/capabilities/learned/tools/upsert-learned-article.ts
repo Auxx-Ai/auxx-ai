@@ -49,7 +49,7 @@ export function createUpsertLearnedArticleTool(getDeps: GetToolDeps): AgentToolD
     permission: {
       target: 'instance',
       keys: ['kb'],
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'enforced',
       note: 'assertEditInstance("kb", …) on the learned KB, plus an approval card.',
     },

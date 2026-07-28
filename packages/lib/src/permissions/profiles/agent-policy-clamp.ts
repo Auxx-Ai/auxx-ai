@@ -1,20 +1,16 @@
 // packages/lib/src/permissions/profiles/agent-policy-clamp.ts
 
 import type {
-  AgentAccessLevel,
   AgentPolicyClampEntry,
   ExactAgentPolicy,
   PublishedAgentPermissionPolicy,
 } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { CapabilityView } from '../capabilities/capability-view'
+import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
 import { INSTANCE_ACCESS_KEYS, type InstanceAccessKey } from '../capabilities/instance-access'
 import { AREA_ORDER } from '../capabilities/registry'
-import {
-  AGENT_LEVEL_RANK,
-  areaLevelToAgentLevel,
-  lookupExactPolicy,
-  minAgentLevel,
-} from './agent-policy'
+import { areaLevelToPermission, lookupExactPolicy, minPermission } from './agent-policy'
 
 /**
  * A definition the clamp must bound, in the two keyspaces it needs: the policy is
@@ -42,19 +38,19 @@ export interface ClampDefinition {
 const FUTURE_TARGET_SENTINEL = '__auxx_unknown_target_for_author_clamp__'
 
 /** Rank comparison — `true` when `candidate` sits strictly above `bound`. */
-function exceeds(candidate: AgentAccessLevel, bound: AgentAccessLevel): boolean {
-  return AGENT_LEVEL_RANK[candidate] > AGENT_LEVEL_RANK[bound]
+function exceeds(candidate: ResourcePermission, bound: ResourcePermission): boolean {
+  return PERMISSION_RANK[candidate] > PERMISSION_RANK[bound]
 }
 
 /**
  * `Object.entries` over a `Partial<Record<…>>`, narrowed to present values.
  * `overrides` is sparse by design, so the raw entries type is
- * `[string, AgentAccessLevel | undefined]` even though an `undefined` value can
+ * `[string, ResourcePermission | undefined]` even though an `undefined` value can
  * never actually appear.
  */
-function overrideEntries(policy: ExactAgentPolicy): Array<[string, AgentAccessLevel]> {
+function overrideEntries(policy: ExactAgentPolicy): Array<[string, ResourcePermission]> {
   return Object.entries(policy.overrides).filter(
-    (entry): entry is [string, AgentAccessLevel] => entry[1] !== undefined
+    (entry): entry is [string, ResourcePermission] => entry[1] !== undefined
   )
 }
 
@@ -71,10 +67,10 @@ function overrideEntries(policy: ExactAgentPolicy): Array<[string, AgentAccessLe
 function publisherDefinitionLevel(
   publisher: CapabilityView,
   entityDefId: string
-): AgentAccessLevel {
-  if (publisher.canAdministerDef(entityDefId)) return 'full'
-  if (publisher.canEditEntity(entityDefId)) return 'read_write'
-  if (publisher.canViewEntity(entityDefId)) return 'read'
+): ResourcePermission {
+  if (publisher.canAdministerDef(entityDefId)) return 'admin'
+  if (publisher.canEditEntity(entityDefId)) return 'edit'
+  if (publisher.canViewEntity(entityDefId)) return 'view'
   return 'none'
 }
 
@@ -83,10 +79,10 @@ function publisherInstanceLevel(
   publisher: CapabilityView,
   key: InstanceAccessKey,
   instanceId: string
-): AgentAccessLevel {
-  if (publisher.canAdminInstance(key, instanceId)) return 'full'
-  if (publisher.canEditInstance(key, instanceId)) return 'read_write'
-  if (publisher.canViewInstance(key, instanceId)) return 'read'
+): ResourcePermission {
+  if (publisher.canAdminInstance(key, instanceId)) return 'admin'
+  if (publisher.canEditInstance(key, instanceId)) return 'edit'
+  if (publisher.canViewInstance(key, instanceId)) return 'view'
   return 'none'
 }
 
@@ -165,8 +161,8 @@ export function clampAgentPolicyToPublisher(input: {
   const record = (
     domain: AgentPolicyClampEntry['domain'],
     key: string | null,
-    from: AgentAccessLevel,
-    to: AgentAccessLevel
+    from: ResourcePermission,
+    to: ResourcePermission
   ) => {
     reductions.push({ domain, key, from, to })
   }
@@ -177,28 +173,28 @@ export function clampAgentPolicyToPublisher(input: {
   // it must answer for an area a future deploy adds and no probe can know that
   // area's posture in advance. Conservative on purpose: a security clamp's
   // unknown case belongs on the low side, and for an ADMIN publisher (all-Full)
-  // the minimum is `full`, so the intended escape hatch is unaffected.
-  const areaOverrides: Record<string, AgentAccessLevel> = {}
-  let weakestPublisherArea: AgentAccessLevel = 'full'
+  // the minimum is `admin`, so the intended escape hatch is unaffected.
+  const areaOverrides: Record<string, ResourcePermission> = {}
+  let weakestPublisherArea: ResourcePermission = 'admin'
   for (const area of AREA_ORDER) {
     const want = lookupExactPolicy(resolved.areas, area)
-    const bound = areaLevelToAgentLevel(publisher.areaLevel(area))
-    weakestPublisherArea = minAgentLevel(weakestPublisherArea, bound)
-    const got = minAgentLevel(want, bound)
+    const bound = areaLevelToPermission(publisher.areaLevel(area))
+    weakestPublisherArea = minPermission(weakestPublisherArea, bound)
+    const got = minPermission(want, bound)
     areaOverrides[area] = got
     if (exceeds(want, got)) record('area', area, want, got)
   }
-  const areasDefault = minAgentLevel(resolved.areas.default, weakestPublisherArea)
+  const areasDefault = minPermission(resolved.areas.default, weakestPublisherArea)
   if (exceeds(resolved.areas.default, areasDefault)) {
     record('area', null, resolved.areas.default, areasDefault)
   }
 
   // ── Definitions ──────────────────────────────────────────────────────────
-  const definitionOverrides: Record<string, AgentAccessLevel> = {}
+  const definitionOverrides: Record<string, ResourcePermission> = {}
   for (const def of definitions) {
     const want = lookupExactPolicy(resolved.definitions, def.apiSlug)
     const bound = publisherDefinitionLevel(publisher, def.entityDefinitionId)
-    const got = minAgentLevel(want, bound)
+    const got = minPermission(want, bound)
     definitionOverrides[def.apiSlug] = got
     if (exceeds(want, got)) record('definition', def.apiSlug, want, got)
   }
@@ -209,11 +205,11 @@ export function clampAgentPolicyToPublisher(input: {
   const definitionSentinelBound = publisherDefinitionLevel(publisher, FUTURE_TARGET_SENTINEL)
   for (const [apiSlug, want] of overrideEntries(resolved.definitions)) {
     if (apiSlug in definitionOverrides) continue
-    const got = minAgentLevel(want, definitionSentinelBound)
+    const got = minPermission(want, definitionSentinelBound)
     definitionOverrides[apiSlug] = got
     if (exceeds(want, got)) record('definition', apiSlug, want, got)
   }
-  const definitionsDefault = minAgentLevel(resolved.definitions.default, definitionSentinelBound)
+  const definitionsDefault = minPermission(resolved.definitions.default, definitionSentinelBound)
   if (exceeds(resolved.definitions.default, definitionsDefault)) {
     record('definition', null, resolved.definitions.default, definitionsDefault)
   }
@@ -229,15 +225,15 @@ export function clampAgentPolicyToPublisher(input: {
     const forType = resolved.resources[key]
     const typeDefaultWant = forType?.default ?? resolved.resourceDefault
     const typeBound = publisherInstanceLevel(publisher, key, FUTURE_TARGET_SENTINEL)
-    const typeDefaultGot = minAgentLevel(typeDefaultWant, typeBound)
+    const typeDefaultGot = minPermission(typeDefaultWant, typeBound)
     if (exceeds(typeDefaultWant, typeDefaultGot)) {
       record('resource', key, typeDefaultWant, typeDefaultGot)
     }
 
-    const overrides: Record<string, AgentAccessLevel> = {}
+    const overrides: Record<string, ResourcePermission> = {}
     for (const [instanceId, want] of forType ? overrideEntries(forType) : []) {
       const bound = publisherInstanceLevel(publisher, key, instanceId)
-      const got = minAgentLevel(want, bound)
+      const got = minPermission(want, bound)
       overrides[instanceId] = got
       if (exceeds(want, got)) record('resource', `${key}:${instanceId}`, want, got)
     }
@@ -245,7 +241,7 @@ export function clampAgentPolicyToPublisher(input: {
     resources[key] = { default: typeDefaultGot, overrides }
     // Every registered type is now materialized, so `resourceDefault` only ever
     // answers for a resource type added by a future deploy. Floor it.
-    resourceDefault = minAgentLevel(resourceDefault, typeBound)
+    resourceDefault = minPermission(resourceDefault, typeBound)
   }
   if (exceeds(resolved.resourceDefault, resourceDefault)) {
     record('resource', null, resolved.resourceDefault, resourceDefault)
@@ -257,12 +253,12 @@ export function clampAgentPolicyToPublisher(input: {
   // carrying an UNCLAMPED rule through the clamp would be a hole by omission.
   for (const [type, forType] of Object.entries(resolved.resources)) {
     if (type in resources || !forType) continue
-    const overrides: Record<string, AgentAccessLevel> = {}
+    const overrides: Record<string, ResourcePermission> = {}
     for (const [instanceId, want] of overrideEntries(forType)) {
-      overrides[instanceId] = minAgentLevel(want, resourceDefault)
+      overrides[instanceId] = minPermission(want, resourceDefault)
     }
     resources[type] = {
-      default: minAgentLevel(forType.default, resourceDefault),
+      default: minPermission(forType.default, resourceDefault),
       overrides,
     }
   }

@@ -84,7 +84,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     permission: {
       target: 'instance',
       keys: ['kb', 'dataset'],
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'filterAccessibleDatasetIds → canViewInstance per kb/dataset, intersected with the agent’s knowledgeScope and clamped to PUBLIC articles on a visitor turn.',
     },

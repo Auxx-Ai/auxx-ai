@@ -61,7 +61,7 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
     permission: {
       target: 'unmodeled',
       domain: 'mail',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'Thread + message services both viewer-scoped; an invisible thread reads as not-found.',
     },

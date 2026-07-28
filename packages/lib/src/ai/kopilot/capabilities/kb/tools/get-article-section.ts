@@ -23,7 +23,7 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
     permission: {
       target: 'instance',
       keys: ['kb'],
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'canViewKb → canViewInstance on the article’s home KB.',
     },

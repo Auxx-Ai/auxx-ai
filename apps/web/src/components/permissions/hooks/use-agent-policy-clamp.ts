@@ -1,16 +1,16 @@
 // apps/web/src/components/permissions/hooks/use-agent-policy-clamp.ts
 'use client'
 
-import type { AgentAccessLevel } from '@auxx/database'
+import type { ResourcePermission } from '@auxx/database/enums'
 import {
   type Area,
   Level,
   PERMISSION_AREAS,
+  PERMISSION_RANK,
   type PermissionKey,
 } from '@auxx/lib/permissions/client'
 import { useMemo } from 'react'
 import { useAccess } from '~/providers/capabilities-provider'
-import { AGENT_LEVEL_RANK } from '../ui/agent-policy-copy'
 import type { NormalizedAgentPolicy } from './use-agent-policy'
 
 /**
@@ -39,9 +39,9 @@ export interface AgentPolicyClampPreviewEntry {
   /** Human label for the sentence. */
   label: string
   /** The rung the profile asks for. */
-  from: AgentAccessLevel
+  from: ResourcePermission
   /** The rung the viewer's own authority permits. */
-  to: AgentAccessLevel
+  to: ResourcePermission
 }
 
 /** One entity definition the preview should check. */
@@ -51,11 +51,11 @@ export interface ClampDefinitionRef {
   label: string
 }
 
-/** `Level` → the agent ladder. The inverse of the §2.3 mapping table. */
-function toAgentLevel(level: Level): AgentAccessLevel {
-  if (level >= Level.Full) return 'full'
-  if (level >= Level.Edit) return 'read_write'
-  if (level >= Level.Read) return 'read'
+/** `Level` → the stored rung. The inverse of the §2.3 mapping table. */
+function toPermission(level: Level): ResourcePermission {
+  if (level >= Level.Full) return 'admin'
+  if (level >= Level.Edit) return 'edit'
+  if (level >= Level.Read) return 'view'
   return 'none'
 }
 
@@ -76,9 +76,9 @@ function areaLevelFromKeys(area: Area, held: ReadonlySet<string>): Level {
 
 /** Look one key up in an exact policy — override wins, else the collection default. */
 function lookup(
-  policy: { default: AgentAccessLevel; overrides: Partial<Record<string, AgentAccessLevel>> },
+  policy: { default: ResourcePermission; overrides: Partial<Record<string, ResourcePermission>> },
   key: string
-): AgentAccessLevel {
+): ResourcePermission {
   return policy.overrides[key] ?? policy.default
 }
 
@@ -103,8 +103,8 @@ export function useAgentPolicyClamp(
 
     for (const area of areas) {
       const asked = lookup(policy.areas, area)
-      const holds = toAgentLevel(areaLevelFromKeys(area, held))
-      if (AGENT_LEVEL_RANK[asked] > AGENT_LEVEL_RANK[holds]) {
+      const holds = toPermission(areaLevelFromKeys(area, held))
+      if (PERMISSION_RANK[asked] > PERMISSION_RANK[holds]) {
         reductions.push({
           domain: 'area',
           key: area,
@@ -117,14 +117,14 @@ export function useAgentPolicyClamp(
 
     for (const def of definitions) {
       const asked = lookup(policy.definitions, def.apiSlug)
-      const holds: AgentAccessLevel = canAdministerDef(def.entityDefinitionId)
-        ? 'full'
+      const holds: ResourcePermission = canAdministerDef(def.entityDefinitionId)
+        ? 'admin'
         : canEditEntity(def.entityDefinitionId)
-          ? 'read_write'
+          ? 'edit'
           : canViewEntity(def.entityDefinitionId)
-            ? 'read'
+            ? 'view'
             : 'none'
-      if (AGENT_LEVEL_RANK[asked] > AGENT_LEVEL_RANK[holds]) {
+      if (PERMISSION_RANK[asked] > PERMISSION_RANK[holds]) {
         reductions.push({
           domain: 'definition',
           key: def.apiSlug,

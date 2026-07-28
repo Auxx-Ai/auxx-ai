@@ -115,7 +115,7 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
     permission: {
       target: 'unmodeled',
       domain: 'mail',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'ThreadQueryService is constructed with getCachedUserMailVisibility — invisible threads never enter the result.',
     },

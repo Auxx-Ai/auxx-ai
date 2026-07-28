@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/agent-policy-copy.ts
 
-import type { AgentAccessLevel } from '@auxx/database'
-import { agentLevelLabel } from './level-labels'
+import type { ResourcePermission } from '@auxx/database/enums'
+import { permissionLabel } from './level-labels'
 
 /**
  * Every user-facing string the agent-profile editor renders, in one place — the
@@ -17,26 +17,19 @@ import { agentLevelLabel } from './level-labels'
  */
 
 /** Ascending ladder order — the segment order of every control on this surface. */
-export const AGENT_LEVEL_ORDER: readonly AgentAccessLevel[] = ['none', 'read', 'read_write', 'full']
-
-/** Numeric rank, so "would this be reduced?" is a comparison and not a lookup table. */
-export const AGENT_LEVEL_RANK: Record<AgentAccessLevel, number> = {
-  none: 0,
-  read: 1,
-  read_write: 2,
-  full: 3,
-}
+export const AGENT_LEVEL_ORDER: readonly ResourcePermission[] = ['none', 'view', 'edit', 'admin']
 
 /**
  * What each rung means, in the agent's own terms. `none` deliberately says
  * "deliberate deny" — the one thing this editor must never let a reader mistake
- * for an absent value.
+ * for an absent value, and the one place agent policy still disagrees with the
+ * identically-spelled `ResourceAccess` marker (plan 19 §0.5).
  */
-export const AGENT_LEVEL_DESCRIPTIONS: Record<AgentAccessLevel, string> = {
+export const AGENT_LEVEL_DESCRIPTIONS: Record<ResourcePermission, string> = {
   none: 'No access. A deliberate deny, not an absent value, and nothing raises it back.',
-  read: 'View, list and search.',
-  read_write: 'Read, plus create, update and delete.',
-  full: 'Read and write, plus administration and settings.',
+  view: 'View, list and search.',
+  edit: 'Read, plus create, update and delete.',
+  admin: 'Read and write, plus administration and settings.',
 }
 
 /** Header explainer for the whole editor. */
@@ -128,10 +121,14 @@ export const NO_POLICY_YET =
  * §2.4a — the author clamp, in the exact shape the plan requires: name the key,
  * both rungs, and the authority that bounded it. Never a silent downgrade.
  *
- * @example clampSentence('Deals', 'full', 'read') // 'Deals reduced from Full to Read (you hold Read)'
+ * @example clampSentence('Deals', 'admin', 'view') // 'Deals reduced from Full to Read (you hold Read)'
  */
-export function clampSentence(label: string, from: AgentAccessLevel, to: AgentAccessLevel): string {
-  return `${label} reduced from ${agentLevelLabel(from)} to ${agentLevelLabel(to)} (you hold ${agentLevelLabel(to)})`
+export function clampSentence(
+  label: string,
+  from: ResourcePermission,
+  to: ResourcePermission
+): string {
+  return `${label} reduced from ${permissionLabel(from)} to ${permissionLabel(to)} (you hold ${permissionLabel(to)})`
 }
 
 /** Heading for the clamp preview block. */
@@ -146,13 +143,13 @@ export const CLAMP_PREVIEW = {
 } as const
 
 /** Tooltip on the "follow the default" reset affordance of an override row. */
-export function followDefaultTooltip(fallback: AgentAccessLevel): string {
-  return `Follow the default (${agentLevelLabel(fallback)})`
+export function followDefaultTooltip(fallback: ResourcePermission): string {
+  return `Follow the default (${permissionLabel(fallback)})`
 }
 
 /** Muted text beside a row that carries no override of its own. */
-export function usesDefaultLabel(fallback: AgentAccessLevel): string {
-  return `Default · ${agentLevelLabel(fallback)}`
+export function usesDefaultLabel(fallback: ResourcePermission): string {
+  return `Default · ${permissionLabel(fallback)}`
 }
 
 /**

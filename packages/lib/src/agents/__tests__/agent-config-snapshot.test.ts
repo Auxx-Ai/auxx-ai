@@ -85,7 +85,7 @@ describe('hashAgentConfig', () => {
 describe('hashAgentConfig — the permission policy (doc 19 §8.1)', () => {
   const policy = (over: Partial<PublishedAgentPermissionPolicy> = {}) => ({
     ...emptyAgentPolicy(),
-    areas: { default: 'read' as const, overrides: {} },
+    areas: { default: 'view' as const, overrides: {} },
     ...over,
   })
 
@@ -93,7 +93,7 @@ describe('hashAgentConfig — the permission policy (doc 19 §8.1)', () => {
     const read = hashAgentConfig({ prompt: {}, permissionPolicy: policy() })
     const full = hashAgentConfig({
       prompt: {},
-      permissionPolicy: policy({ areas: { default: 'full', overrides: {} } }),
+      permissionPolicy: policy({ areas: { default: 'admin', overrides: {} } }),
     })
     expect(full).not.toBe(read)
   })
@@ -101,7 +101,7 @@ describe('hashAgentConfig — the permission policy (doc 19 §8.1)', () => {
   it('changes when a single definition rule changes — the republish-as-None case', () => {
     const withDeals = hashAgentConfig({
       prompt: {},
-      permissionPolicy: policy({ definitions: { default: 'none', overrides: { deals: 'full' } } }),
+      permissionPolicy: policy({ definitions: { default: 'none', overrides: { deals: 'admin' } } }),
     })
     const withoutDeals = hashAgentConfig({
       prompt: {},
@@ -123,7 +123,7 @@ describe('hashAgentConfig — the permission policy (doc 19 §8.1)', () => {
         publishedByUserId: 'u-admin',
         sourceProfileId: 'p-other',
         sourceProfileUpdatedAt: '2026-07-24T00:00:00.000Z',
-        clamp: [{ domain: 'area', key: 'records', from: 'full', to: 'read' }],
+        clamp: [{ domain: 'area', key: 'records', from: 'admin', to: 'view' }],
       }),
     })
     expect(byAdmin).toBe(byMember)
@@ -133,13 +133,13 @@ describe('hashAgentConfig — the permission policy (doc 19 §8.1)', () => {
     const a = hashAgentConfig({
       prompt: {},
       permissionPolicy: policy({
-        definitions: { default: 'read', overrides: { deals: 'full', contacts: 'none' } },
+        definitions: { default: 'view', overrides: { deals: 'admin', contacts: 'none' } },
       }),
     })
     const b = hashAgentConfig({
       prompt: {},
       permissionPolicy: policy({
-        definitions: { default: 'read', overrides: { contacts: 'none', deals: 'full' } },
+        definitions: { default: 'view', overrides: { contacts: 'none', deals: 'admin' } },
       }),
     })
     expect(a).toBe(b)

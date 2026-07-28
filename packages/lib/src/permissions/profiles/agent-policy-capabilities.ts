@@ -1,9 +1,10 @@
 // packages/lib/src/permissions/profiles/agent-policy-capabilities.ts
 
-import type { AgentAccessLevel, PublishedAgentPermissionPolicy } from '@auxx/database'
+import type { PublishedAgentPermissionPolicy } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
 import { ForbiddenError } from '../../errors'
 import type { CapabilityView } from '../capabilities/capability-view'
+import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
 import { NON_RECORD_DEF_SLUGS } from '../capabilities/entity-access'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from '../capabilities/instance-access'
 import {
@@ -16,11 +17,9 @@ import {
 } from '../capabilities/registry'
 import { ENTITY_WRITE_KEYS } from '../capabilities/seat-policy'
 import {
-  AGENT_LEVEL_RANK,
-  agentLevelToAreaLevel,
-  agentLevelToPermission,
-  areaLevelToAgentLevel,
-  minAgentLevel,
+  areaLevelToPermission,
+  minPermission,
+  permissionToAreaLevel,
   policyAreaLevel,
   policyDefinitionLevel,
   policyResourceLevel,
@@ -127,7 +126,7 @@ export class AgentPolicyCapabilities implements CapabilityView {
     // so an agent and a human answer capability questions through one mechanism.
     this.keys = new Set(
       expandLevelsToKeys(
-        buildAreaLevels((area) => agentLevelToAreaLevel(policyAreaLevel(policy, area)))
+        buildAreaLevels((area) => permissionToAreaLevel(policyAreaLevel(policy, area)))
       )
     )
   }
@@ -153,7 +152,7 @@ export class AgentPolicyCapabilities implements CapabilityView {
 
   /** Read straight off the policy — exact, not recovered from the key set. */
   areaLevel(area: Area): Level {
-    return agentLevelToAreaLevel(policyAreaLevel(this.policy, area))
+    return permissionToAreaLevel(policyAreaLevel(this.policy, area))
   }
 
   canWriteEntity(entityDefId: string): boolean {
@@ -168,13 +167,13 @@ export class AgentPolicyCapabilities implements CapabilityView {
    * The exact published rung for a definition. Mail/messaging-infrastructure defs
    * are NOT in this keyspace — see {@link isMailInfraDef}.
    */
-  private definitionLevel(entityDefId: string): AgentAccessLevel {
+  private definitionLevel(entityDefId: string): ResourcePermission {
     return policyDefinitionLevel(this.policy, this.defIdToApiSlug(entityDefId))
   }
 
   canEditEntity(entityDefId: string): boolean {
     if (this.isMailInfraDef(entityDefId)) return this.canWriteEntity(entityDefId)
-    return AGENT_LEVEL_RANK[this.definitionLevel(entityDefId)] >= AGENT_LEVEL_RANK.read_write
+    return PERMISSION_RANK[this.definitionLevel(entityDefId)] >= PERMISSION_RANK.edit
   }
 
   assertEditEntity(entityDefId: string): void {
@@ -188,7 +187,7 @@ export class AgentPolicyCapabilities implements CapabilityView {
 
   canViewEntity(entityDefId: string): boolean {
     if (this.isMailInfraDef(entityDefId)) return true
-    return AGENT_LEVEL_RANK[this.definitionLevel(entityDefId)] >= AGENT_LEVEL_RANK.read
+    return PERMISSION_RANK[this.definitionLevel(entityDefId)] >= PERMISSION_RANK.view
   }
 
   assertViewEntity(entityDefId: string): void {
@@ -201,8 +200,14 @@ export class AgentPolicyCapabilities implements CapabilityView {
   }
 
   /**
-   * The published definition rung in the `ResourcePermission` vocabulary, or
-   * `undefined` for `none`.
+   * The published definition rung, or `undefined` for `none`.
+   *
+   * The policy and this method now speak the same `ResourcePermission` strings
+   * (plan 26 Phase 2), so the only translation left is the bottom rung: `'none'`
+   * becomes `undefined`, because that is the vocabulary every downstream gate
+   * already reads — `satisfiesPermission` treats a stored `'none'` as a *grant
+   * row marker*, not as "denied", so returning it verbatim would read as a live
+   * type-level grant.
    *
    * Unlike the human `CapabilitySet`, where `undefined` means "no explicit
    * type-level grant, fall back to the base records verb", here it means exactly
@@ -212,12 +217,13 @@ export class AgentPolicyCapabilities implements CapabilityView {
    */
   viewAccessFor(entityDefId: string): ResourcePermission | undefined {
     if (this.isMailInfraDef(entityDefId)) return undefined
-    return agentLevelToPermission(this.definitionLevel(entityDefId))
+    const level = this.definitionLevel(entityDefId)
+    return level === 'none' ? undefined : level
   }
 
   canAdministerDef(entityDefId: string): boolean {
     if (this.isMailInfraDef(entityDefId)) return false
-    return this.definitionLevel(entityDefId) === 'full'
+    return this.definitionLevel(entityDefId) === 'admin'
   }
 
   assertAdministerDef(entityDefId: string): void {
@@ -236,22 +242,22 @@ export class AgentPolicyCapabilities implements CapabilityView {
    * "effective execution is the intersection of every constraint" (§0.5) would
    * stop being true for exactly the domain where it matters most.
    */
-  private instanceLevel(key: InstanceAccessKey, instanceId: string): AgentAccessLevel {
+  private instanceLevel(key: InstanceAccessKey, instanceId: string): ResourcePermission {
     const resourceLevel = policyResourceLevel(this.policy, key, instanceId)
-    const areaGate = areaLevelToAgentLevel(this.areaLevel(INSTANCE_ACCESS_RESOURCES[key].area))
-    return minAgentLevel(resourceLevel, areaGate)
+    const areaGate = areaLevelToPermission(this.areaLevel(INSTANCE_ACCESS_RESOURCES[key].area))
+    return minPermission(resourceLevel, areaGate)
   }
 
   canViewInstance(key: InstanceAccessKey, instanceId: string): boolean {
-    return AGENT_LEVEL_RANK[this.instanceLevel(key, instanceId)] >= AGENT_LEVEL_RANK.read
+    return PERMISSION_RANK[this.instanceLevel(key, instanceId)] >= PERMISSION_RANK.view
   }
 
   canEditInstance(key: InstanceAccessKey, instanceId: string): boolean {
-    return AGENT_LEVEL_RANK[this.instanceLevel(key, instanceId)] >= AGENT_LEVEL_RANK.read_write
+    return PERMISSION_RANK[this.instanceLevel(key, instanceId)] >= PERMISSION_RANK.edit
   }
 
   canAdminInstance(key: InstanceAccessKey, instanceId: string): boolean {
-    return this.instanceLevel(key, instanceId) === 'full'
+    return this.instanceLevel(key, instanceId) === 'admin'
   }
 
   assertViewInstance(key: InstanceAccessKey, instanceId: string): void {

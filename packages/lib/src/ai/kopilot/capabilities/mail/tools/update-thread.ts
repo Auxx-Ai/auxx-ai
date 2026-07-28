@@ -26,7 +26,7 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
     permission: {
       target: 'unmodeled',
       domain: 'mail',
-      level: 'read_write',
+      level: 'edit',
       enforcement: 'enforced',
       note: 'ThreadMutationService is constructed with the viewer; its write gate requires a full lens on the thread.',
     },

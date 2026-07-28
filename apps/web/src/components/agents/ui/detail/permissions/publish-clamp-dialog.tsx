@@ -14,7 +14,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { ShieldAlert } from 'lucide-react'
-import { agentLevelLabel } from '~/components/permissions/ui/level-labels'
+import { permissionLabel } from '~/components/permissions/ui/level-labels'
 import { useResources } from '~/components/resources/hooks'
 
 interface PublishClampDialogProps {
@@ -81,8 +81,8 @@ export function PublishClampDialog({
             <li
               key={`${entry.domain}:${entry.key ?? '__default__'}`}
               className='rounded-md bg-primary-50 px-3 py-2'>
-              <strong>{labelFor(entry)}</strong> reduced from {agentLevelLabel(entry.from)} to{' '}
-              {agentLevelLabel(entry.to)} — you hold {agentLevelLabel(entry.to)}.
+              <strong>{labelFor(entry)}</strong> reduced from {permissionLabel(entry.from)} to{' '}
+              {permissionLabel(entry.to)} — you hold {permissionLabel(entry.to)}.
             </li>
           ))}
         </ul>

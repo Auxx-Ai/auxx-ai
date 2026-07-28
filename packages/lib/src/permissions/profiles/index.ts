@@ -1,18 +1,15 @@
 // packages/lib/src/permissions/profiles/index.ts
 
 export {
-  AGENT_LEVEL_RANK,
-  agentLevelToAreaLevel,
-  agentLevelToPermission,
-  areaLevelToAgentLevel,
+  areaLevelToPermission,
   authorizationOnlyPolicy,
   emptyAgentPolicy,
   legacyFullAgentPolicy,
   lookupExactPolicy,
-  minAgentLevel,
-  parseAgentAccessLevel,
+  minPermission,
+  parsePolicyPermission,
   parsePublishedAgentPolicy,
-  permissionToAgentLevel,
+  permissionToAreaLevel,
   policyAreaLevel,
   policyDefinitionLevel,
   policyResourceLevel,
@@ -93,7 +90,6 @@ export {
   systemProfileSeed,
 } from './system-profiles'
 export type {
-  AgentAccessLevel,
   AgentPermissionPolicy,
   AgentPolicyClampEntry,
   CachedPermissionProfile,

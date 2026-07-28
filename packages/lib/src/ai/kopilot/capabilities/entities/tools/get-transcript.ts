@@ -38,7 +38,7 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
     name: 'get_transcript',
     permission: {
       target: 'definition',
-      level: 'read',
+      level: 'view',
       enforcement: 'enforced',
       note: 'Transcript → CallRecording → EntityInstance join then canViewEntity; not-found on denial (19b G3).',
     },

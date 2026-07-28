@@ -19,19 +19,19 @@ interface PublisherSpec {
   /** Per-area rung; absent = None. */
   areas?: Partial<Record<Area, Level>>
   /** Per-def rung as the human gates would answer it; absent = the `defDefault`. */
-  defs?: Record<string, 'none' | 'read' | 'read_write' | 'full'>
+  defs?: Record<string, 'none' | 'view' | 'edit' | 'admin'>
   /**
    * The publisher's posture toward a def they hold no explicit grant on — what an
    * unrestricted def (and any def created after publish) resolves to. This is
    * exactly what the clamp's sentinel probe reads.
    */
-  defDefault?: 'none' | 'read' | 'read_write' | 'full'
+  defDefault?: 'none' | 'view' | 'edit' | 'admin'
   /** Per-instance rung; absent = `instanceDefault`. */
-  instances?: Record<string, 'none' | 'read' | 'read_write' | 'full'>
-  instanceDefault?: 'none' | 'read' | 'read_write' | 'full'
+  instances?: Record<string, 'none' | 'view' | 'edit' | 'admin'>
+  instanceDefault?: 'none' | 'view' | 'edit' | 'admin'
 }
 
-const RANK = { none: 0, read: 1, read_write: 2, full: 3 } as const
+const RANK = { none: 0, view: 1, edit: 2, admin: 3 } as const
 
 /**
  * A stub publisher whose gates answer from a rung table — deliberately shaped like
@@ -51,18 +51,18 @@ function publisher(spec: PublisherSpec): CapabilityView {
     areaLevel: (area) => spec.areas?.[area] ?? Level.None,
     canWriteEntity: notNeeded,
     assertWriteEntity: notNeeded,
-    canEditEntity: (id) => RANK[defRung(id)] >= RANK.read_write,
+    canEditEntity: (id) => RANK[defRung(id)] >= RANK.edit,
     assertEditEntity: notNeeded,
     filterEditableDefIds: notNeeded,
-    canViewEntity: (id) => RANK[defRung(id)] >= RANK.read,
+    canViewEntity: (id) => RANK[defRung(id)] >= RANK.view,
     assertViewEntity: notNeeded,
     filterViewableDefIds: notNeeded,
     viewAccessFor: () => ResourcePermission.view,
-    canAdministerDef: (id) => defRung(id) === 'full',
+    canAdministerDef: (id) => defRung(id) === 'admin',
     assertAdministerDef: notNeeded,
-    canViewInstance: (_k: InstanceAccessKey, id: string) => RANK[instRung(id)] >= RANK.read,
-    canEditInstance: (_k, id) => RANK[instRung(id)] >= RANK.read_write,
-    canAdminInstance: (_k, id) => instRung(id) === 'full',
+    canViewInstance: (_k: InstanceAccessKey, id: string) => RANK[instRung(id)] >= RANK.view,
+    canEditInstance: (_k, id) => RANK[instRung(id)] >= RANK.edit,
+    canAdminInstance: (_k, id) => instRung(id) === 'admin',
     assertViewInstance: notNeeded,
     assertEditInstance: notNeeded,
     assertAdminInstance: notNeeded,
@@ -74,8 +74,8 @@ const ADMIN = publisher({
   areas: Object.fromEntries(Object.values(Area).map((a) => [a, Level.Full])) as Partial<
     Record<Area, Level>
   >,
-  defDefault: 'full',
-  instanceDefault: 'full',
+  defDefault: 'admin',
+  instanceDefault: 'admin',
 })
 
 /**
@@ -84,7 +84,7 @@ const ADMIN = publisher({
  */
 const MEMBER_RECORDS_READ = publisher({
   areas: { [Area.agents]: Level.Full, [Area.records]: Level.Read },
-  defDefault: 'read',
+  defDefault: 'view',
   instanceDefault: 'none',
 })
 
@@ -108,15 +108,15 @@ describe('the §9.1 author-clamp case', () => {
     })
 
     // Areas: only what the member holds.
-    expect(policy.areas.overrides[Area.records]).toBe('read')
+    expect(policy.areas.overrides[Area.records]).toBe('view')
     expect(policy.areas.overrides[Area.billing]).toBe('none')
-    expect(policy.areas.overrides[Area.agents]).toBe('full')
+    expect(policy.areas.overrides[Area.agents]).toBe('admin')
 
     // Definitions: view-only, so record WRITES through this agent are denied.
-    expect(policy.definitions.overrides.deals).toBe('read')
-    expect(policy.definitions.overrides.contacts).toBe('read')
+    expect(policy.definitions.overrides.deals).toBe('view')
+    expect(policy.definitions.overrides.contacts).toBe('view')
     // …and a def created after publication is bounded the same way.
-    expect(policy.definitions.default).toBe('read')
+    expect(policy.definitions.default).toBe('view')
 
     // Resource instances: the member holds nothing, so neither does the agent.
     expect(policy.resources.kb?.default).toBe('none')
@@ -127,8 +127,8 @@ describe('the §9.1 author-clamp case', () => {
     expect(reductions.length).toBeGreaterThan(0)
     expect(reductions).toEqual(
       expect.arrayContaining([
-        { domain: 'definition', key: 'deals', from: 'full', to: 'read' },
-        { domain: 'area', key: Area.records, from: 'full', to: 'read' },
+        { domain: 'definition', key: 'deals', from: 'admin', to: 'view' },
+        { domain: 'area', key: Area.records, from: 'admin', to: 'view' },
       ])
     )
     expect(policy.clamp).toEqual(reductions)
@@ -145,10 +145,10 @@ describe('the §9.1 author-clamp case', () => {
 
     expect(reductions).toEqual([])
     expect(policy.clamp).toEqual([])
-    expect(policy.areas.overrides[Area.records]).toBe('full')
-    expect(policy.definitions.default).toBe('full')
-    expect(policy.definitions.overrides.deals).toBe('full')
-    expect(policy.resourceDefault).toBe('full')
+    expect(policy.areas.overrides[Area.records]).toBe('admin')
+    expect(policy.definitions.default).toBe('admin')
+    expect(policy.definitions.overrides.deals).toBe('admin')
+    expect(policy.resourceDefault).toBe('admin')
     expect(policy.publishedByUserId).toBe('u-admin')
   })
 
@@ -160,7 +160,7 @@ describe('the §9.1 author-clamp case', () => {
       publisherUserId: 'u-author',
       definitions: DEFS,
     }).policy
-    expect(v1.definitions.overrides.deals).toBe('full')
+    expect(v1.definitions.overrides.deals).toBe('admin')
 
     // The author is demoted to records:Read, then republishes the SAME profile.
     const v2 = clampAgentPolicyToPublisher({
@@ -170,11 +170,11 @@ describe('the §9.1 author-clamp case', () => {
       definitions: DEFS,
     }).policy
 
-    expect(v2.definitions.overrides.deals).toBe('read')
-    expect(v2.areas.overrides[Area.records]).toBe('read')
+    expect(v2.definitions.overrides.deals).toBe('view')
+    expect(v2.areas.overrides[Area.records]).toBe('view')
     // The OLD snapshot is untouched — a demotion must not silently break a running
     // automation; drift is bounded by the next publish, which is this one (§2.4a).
-    expect(v1.definitions.overrides.deals).toBe('full')
+    expect(v1.definitions.overrides.deals).toBe('admin')
   })
 })
 
@@ -197,8 +197,8 @@ describe('clamp mechanics', () => {
   it('clamps per definition, so one def can be reduced while another is not', () => {
     const mixed = publisher({
       areas: { [Area.records]: Level.Full },
-      defs: { 'def-deals': 'read', 'def-contacts': 'full' },
-      defDefault: 'read',
+      defs: { 'def-deals': 'view', 'def-contacts': 'admin' },
+      defDefault: 'view',
     })
     const { policy, reductions } = clampAgentPolicyToPublisher({
       resolved: allFullResolved(),
@@ -206,10 +206,10 @@ describe('clamp mechanics', () => {
       publisherUserId: 'u-mixed',
       definitions: DEFS,
     })
-    expect(policy.definitions.overrides.deals).toBe('read')
-    expect(policy.definitions.overrides.contacts).toBe('full')
+    expect(policy.definitions.overrides.deals).toBe('view')
+    expect(policy.definitions.overrides.contacts).toBe('admin')
     expect(reductions).toEqual(
-      expect.arrayContaining([{ domain: 'definition', key: 'deals', from: 'full', to: 'read' }])
+      expect.arrayContaining([{ domain: 'definition', key: 'deals', from: 'admin', to: 'view' }])
     )
     expect(reductions).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'contacts' })])
@@ -219,22 +219,22 @@ describe('clamp mechanics', () => {
   it('clamps a named instance override by that instance, not by the type default', () => {
     const kbHolder = publisher({
       areas: { [Area.knowledgeBase]: Level.Full },
-      instances: { 'kb-mine': 'full', 'kb-theirs': 'read' },
+      instances: { 'kb-mine': 'admin', 'kb-theirs': 'view' },
       instanceDefault: 'none',
     })
     const { policy } = clampAgentPolicyToPublisher({
       resolved: {
         ...allFullResolved(),
         resources: {
-          kb: { default: 'full', overrides: { 'kb-mine': 'full', 'kb-theirs': 'full' } },
+          kb: { default: 'admin', overrides: { 'kb-mine': 'admin', 'kb-theirs': 'admin' } },
         },
       },
       publisher: kbHolder,
       publisherUserId: 'u-kb',
       definitions: DEFS,
     })
-    expect(policy.resources.kb?.overrides['kb-mine']).toBe('full')
-    expect(policy.resources.kb?.overrides['kb-theirs']).toBe('read')
+    expect(policy.resources.kb?.overrides['kb-mine']).toBe('admin')
+    expect(policy.resources.kb?.overrides['kb-theirs']).toBe('view')
     // An instance the publisher has never seen → their unknown-target posture.
     expect(policy.resources.kb?.default).toBe('none')
   })
@@ -249,7 +249,7 @@ describe('clamp mechanics', () => {
     // areas.default answers only for an area a future deploy adds; the member holds
     // None on most areas, so the conservative floor is None.
     expect(policy.areas.default).toBe('none')
-    expect(policy.definitions.default).toBe('read')
+    expect(policy.definitions.default).toBe('view')
     expect(policy.resourceDefault).toBe('none')
   })
 
@@ -257,7 +257,7 @@ describe('clamp mechanics', () => {
     const { policy } = clampAgentPolicyToPublisher({
       resolved: {
         ...allFullResolved(),
-        definitions: { default: 'full', overrides: { 'archived-thing': 'full' } },
+        definitions: { default: 'admin', overrides: { 'archived-thing': 'admin' } },
       },
       publisher: ADMIN,
       publisherUserId: 'u-admin',
@@ -265,7 +265,7 @@ describe('clamp mechanics', () => {
       definitions: DEFS,
     })
     // §3's slug lifecycle: a dangling override must survive archive/restore.
-    expect(policy.definitions.overrides['archived-thing']).toBe('full')
+    expect(policy.definitions.overrides['archived-thing']).toBe('admin')
   })
 
   it('applies no clamp for a system publish, and records no publisher', () => {
@@ -277,7 +277,7 @@ describe('clamp mechanics', () => {
     })
     expect(reductions).toEqual([])
     expect(policy.publishedByUserId).toBeNull()
-    expect(policy.areas.default).toBe('full')
+    expect(policy.areas.default).toBe('admin')
   })
 
   it('preserves the source profile audit metadata through the clamp', () => {
@@ -317,7 +317,7 @@ describe('the clamp reuses the human gates rather than reimplementing them', () 
       definitions: [{ apiSlug: 'deals', entityDefinitionId: 'def-deals' }],
     })
     // Stopped at `edit` — `view` was never consulted for that def.
-    expect(policy.definitions.overrides.deals).toBe('read_write')
+    expect(policy.definitions.overrides.deals).toBe('edit')
     expect(calls).toContain('admin:def-deals')
     expect(calls).toContain('edit:def-deals')
     expect(calls).not.toContain('view:def-deals')
@@ -340,6 +340,6 @@ describe('the clamp reuses the human gates rather than reimplementing them', () 
     })
     expect(seen).toContain(Area.records)
     expect(seen).toContain(Area.billing)
-    expect(policy.areas.overrides[Area.records]).toBe('read')
+    expect(policy.areas.overrides[Area.records]).toBe('view')
   })
 })

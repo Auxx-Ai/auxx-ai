@@ -1,7 +1,7 @@
 // packages/database/src/db/schema/permission-profile.ts
 
 import { createId } from '@paralleldrive/cuid2'
-import type { SeatType } from '../../enums'
+import type { ResourcePermission, SeatType } from '../../enums'
 import {
   type AnyPgColumn,
   boolean,
@@ -16,16 +16,21 @@ import {
 import { Organization } from './organization'
 
 /**
- * The four exact rungs an agent permission policy can express. Unlike the human
- * additive ladder (`Level` in `@auxx/lib`), `'none'` here is LOAD-BEARING — an
- * agent profile must be able to remove authority, not just add it. See
- * plans/permissions/v2/19-permission-profiles.md §0.5.
- */
-export type AgentAccessLevel = 'none' | 'read' | 'read_write' | 'full'
-
-/**
  * A total exact policy over one keyspace: an explicit `default` (so keys created
  * after publication have a deterministic posture) plus sparse `overrides`.
+ *
+ * The rung vocabulary is {@link ResourcePermission} — `none/view/edit/admin`, the
+ * same four strings every share row and every def/instance grant is stored in
+ * (plan 26 Phase 2). It used to be a private `AgentAccessLevel` union spelled
+ * `none/read/read_write/full`, which meant one ladder had two storage spellings
+ * and every boundary between agent policy and the rest of the permission model
+ * needed a bijection to cross. Those conversions are gone.
+ *
+ * What did NOT collapse is the *meaning* of the bottom rung. In the additive
+ * human reducers a stored `'none'` is a grant-row marker that grants nobody; here
+ * it is LOAD-BEARING — an agent profile must be able to remove authority, not
+ * merely fail to add it, which is why agent policy never enters those reducers.
+ * See plans/permissions/v2/19-permission-profiles.md §0.5.
  *
  * `T` is left as bare `string` at the schema layer — the real keyspaces
  * (`AreaSlug`, entity `apiSlug`, resource id) are `@auxx/lib` concepts and
@@ -33,8 +38,8 @@ export type AgentAccessLevel = 'none' | 'read' | 'read_write' | 'full'
  * shape with narrowed key types and casts on read.
  */
 export type ExactAgentPolicy<T extends string = string> = {
-  default: AgentAccessLevel
-  overrides: Partial<Record<T, AgentAccessLevel>>
+  default: ResourcePermission
+  overrides: Partial<Record<T, ResourcePermission>>
 }
 
 /**
@@ -59,7 +64,7 @@ export type AgentPermissionPolicy = {
   /** Exact rule per entity-definition `apiSlug` (slug, not CUID — §3). */
   definitions: ExactAgentPolicy
   /** Posture for resource types absent from {@link AgentPermissionPolicy.resources}. */
-  resourceDefault: AgentAccessLevel
+  resourceDefault: ResourcePermission
   /** Exact rule per resource type → per instance id. */
   resources: Partial<Record<string, ExactAgentPolicy>>
 }

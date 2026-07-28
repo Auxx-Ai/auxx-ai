@@ -24,7 +24,7 @@ const ALWAYS_OPEN: OpenInstanceTypes = {
   workflow: true,
 }
 
-/** One dataset/kb/dashboard row nested under its area on the Member baseline grid. */
+/** One dataset/kb/dashboard/workflow row on the Workspace defaults tab. */
 export interface InstanceBaselineRow {
   key: InstanceAccessKey
   id: string
@@ -39,13 +39,13 @@ export interface InstanceBaselineRow {
 }
 
 /**
- * Data + mutations for the per-instance rows nested under the Datasets /
- * Knowledge base / Dashboards area rows on the Member baseline grid
- * (capability layer v2 Part B) — the instance twin of `useDefBaselines`.
+ * Data + mutations for the per-instance rows on the permissions page's Workspace
+ * defaults tab (capability layer v2 Part B) — the instance twin of
+ * `useDefBaselines`.
  *
  * Reads every listed instance via `useInstanceResourceLists` (always "open":
  * the host's search box has to match instance names to decide whether to
- * auto-expand an area, so there is no lazy gate to defer the listing behind —
+ * auto-expand a collection, so there is no lazy gate to defer the listing behind —
  * unlike the agent-policy grid's own per-row expand toggle) plus the org-wide
  * `resourceAccess.allInstanceAccess` rows, and derives each instance's
  * workspace-baseline level and collapsed-row badge without a per-instance

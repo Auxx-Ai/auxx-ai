@@ -1,6 +1,6 @@
 // packages/lib/src/permissions/profiles/agent-policy-capabilities.test.ts
 
-import type { AgentAccessLevel, PublishedAgentPermissionPolicy } from '@auxx/database'
+import type { PublishedAgentPermissionPolicy } from '@auxx/database'
 import { ResourcePermission } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
 import { ForbiddenError } from '../../errors'
@@ -20,7 +20,7 @@ import {
  * `AgentPolicyCapabilities` — the runtime enforcement face of a published policy.
  *
  * Covers plan 19 §9.1's *"Four exact levels, all domains"* bullet (`None` denies
- * discovery/use, `Read` denies mutation, `Read + Write` denies administration,
+ * discovery/use, `Read` denies mutation, `Edit` denies administration,
  * `Full` reaches administration) plus the *"run-as cannot widen"* property.
  */
 
@@ -39,26 +39,26 @@ function view(policy: PublishedAgentPermissionPolicy): AgentPolicyCapabilities {
 }
 
 /** A policy where `deals` sits at exactly one rung and everything else is none. */
-function dealsAt(level: AgentAccessLevel): PublishedAgentPermissionPolicy {
+function dealsAt(level: ResourcePermission): PublishedAgentPermissionPolicy {
   return {
     ...emptyAgentPolicy(),
-    areas: { default: 'none', overrides: { [Area.records]: 'full' } },
+    areas: { default: 'none', overrides: { [Area.records]: 'admin' } },
     definitions: { default: 'none', overrides: { deals: level } },
   }
 }
 
 /** A policy where one KB instance sits at exactly one rung. */
-function kbAt(level: AgentAccessLevel): PublishedAgentPermissionPolicy {
+function kbAt(level: ResourcePermission): PublishedAgentPermissionPolicy {
   return {
     ...emptyAgentPolicy(),
-    areas: { default: 'none', overrides: { [Area.knowledgeBase]: 'full' } },
+    areas: { default: 'none', overrides: { [Area.knowledgeBase]: 'admin' } },
     resources: { kb: { default: 'none', overrides: { 'kb-1': level } } },
   }
 }
 
 describe('the four exact levels — AREAS (§9.1)', () => {
   it('expands each area rung into the same key set a human at that Level holds', () => {
-    const at = (level: AgentAccessLevel) =>
+    const at = (level: ResourcePermission) =>
       view({
         ...emptyAgentPolicy(),
         areas: { default: 'none', overrides: { [Area.records]: level } },
@@ -69,25 +69,25 @@ describe('the four exact levels — AREAS (§9.1)', () => {
     expect(at('none').areaLevel(Area.records)).toBe(Level.None)
 
     // Read: list/read, no mutation.
-    expect(at('read').can(PermissionKey.recordsView)).toBe(true)
-    expect(at('read').can(PermissionKey.recordsEdit)).toBe(false)
-    expect(at('read').areaLevel(Area.records)).toBe(Level.Read)
+    expect(at('view').can(PermissionKey.recordsView)).toBe(true)
+    expect(at('view').can(PermissionKey.recordsEdit)).toBe(false)
+    expect(at('view').areaLevel(Area.records)).toBe(Level.Read)
 
-    // Read + Write: mutation, no administration rung.
-    expect(at('read_write').can(PermissionKey.recordsEdit)).toBe(true)
-    expect(at('read_write').can(PermissionKey.recordsDelete)).toBe(false)
-    expect(at('read_write').areaLevel(Area.records)).toBe(Level.Edit)
+    // Edit: mutation, no administration rung.
+    expect(at('edit').can(PermissionKey.recordsEdit)).toBe(true)
+    expect(at('edit').can(PermissionKey.recordsDelete)).toBe(false)
+    expect(at('edit').areaLevel(Area.records)).toBe(Level.Edit)
 
     // Full: the whole ladder.
-    expect(at('full').can(PermissionKey.recordsDelete)).toBe(true)
-    expect(at('full').can(PermissionKey.recordsImport)).toBe(true)
-    expect(at('full').areaLevel(Area.records)).toBe(Level.Full)
+    expect(at('admin').can(PermissionKey.recordsDelete)).toBe(true)
+    expect(at('admin').can(PermissionKey.recordsImport)).toBe(true)
+    expect(at('admin').areaLevel(Area.records)).toBe(Level.Full)
   })
 
   it('holds NOTHING on an area the policy sets to none, even at Full elsewhere', () => {
     const caps = view({
       ...emptyAgentPolicy(),
-      areas: { default: 'none', overrides: { [Area.records]: 'full' } },
+      areas: { default: 'none', overrides: { [Area.records]: 'admin' } },
     })
     expect(caps.can(PermissionKey.recordsDelete)).toBe(true)
     expect(caps.can(PermissionKey.billingManage)).toBe(false)
@@ -108,7 +108,7 @@ describe('the four exact levels — ENTITY DEFINITIONS (§9.1)', () => {
   })
 
   it('Read denies mutation', () => {
-    const caps = view(dealsAt('read'))
+    const caps = view(dealsAt('view'))
     expect(caps.canViewEntity('deals')).toBe(true)
     expect(caps.canEditEntity('deals')).toBe(false)
     expect(caps.canAdministerDef('deals')).toBe(false)
@@ -116,8 +116,8 @@ describe('the four exact levels — ENTITY DEFINITIONS (§9.1)', () => {
     expect(() => caps.assertEditEntity('deals')).toThrow(ForbiddenError)
   })
 
-  it('Read + Write denies administration', () => {
-    const caps = view(dealsAt('read_write'))
+  it('Edit denies administration', () => {
+    const caps = view(dealsAt('edit'))
     expect(caps.canEditEntity('deals')).toBe(true)
     expect(caps.canAdministerDef('deals')).toBe(false)
     expect(caps.viewAccessFor('deals')).toBe(ResourcePermission.edit)
@@ -125,13 +125,13 @@ describe('the four exact levels — ENTITY DEFINITIONS (§9.1)', () => {
   })
 
   it('Full reaches administration', () => {
-    const caps = view(dealsAt('full'))
+    const caps = view(dealsAt('admin'))
     expect(caps.canAdministerDef('deals')).toBe(true)
     expect(caps.viewAccessFor('deals')).toBe(ResourcePermission.admin)
   })
 
   it('resolves every def form — apiSlug, resource id, and definition CUID — to one rule', () => {
-    const caps = view(dealsAt('read'))
+    const caps = view(dealsAt('view'))
     for (const form of ['deals', 'r-deals', 'def-deals']) {
       expect(caps.canViewEntity(form)).toBe(true)
       expect(caps.canEditEntity(form)).toBe(false)
@@ -141,8 +141,8 @@ describe('the four exact levels — ENTITY DEFINITIONS (§9.1)', () => {
   it('filters def lists by the exact policy', () => {
     const caps = view({
       ...emptyAgentPolicy(),
-      areas: { default: 'full', overrides: {} },
-      definitions: { default: 'none', overrides: { deals: 'read', contacts: 'read_write' } },
+      areas: { default: 'admin', overrides: {} },
+      definitions: { default: 'none', overrides: { deals: 'view', contacts: 'edit' } },
     })
     expect(caps.filterViewableDefIds(['deals', 'contacts', 'unknown'])).toEqual([
       'deals',
@@ -167,30 +167,30 @@ describe('the four exact levels — ENTITY DEFINITIONS (§9.1)', () => {
 })
 
 describe('the four exact levels — RESOURCE INSTANCES (§9.1)', () => {
-  it('walks None → Read → Read+Write → Full on one KB instance', () => {
+  it('walks None → Read → Edit → Full on one KB instance', () => {
     expect(view(kbAt('none')).canViewInstance('kb', 'kb-1')).toBe(false)
 
-    const read = view(kbAt('read'))
+    const read = view(kbAt('view'))
     expect(read.canViewInstance('kb', 'kb-1')).toBe(true)
     expect(read.canEditInstance('kb', 'kb-1')).toBe(false)
 
-    const write = view(kbAt('read_write'))
+    const write = view(kbAt('edit'))
     expect(write.canEditInstance('kb', 'kb-1')).toBe(true)
     expect(write.canAdminInstance('kb', 'kb-1')).toBe(false)
 
-    const full = view(kbAt('full'))
+    const full = view(kbAt('admin'))
     expect(full.canAdminInstance('kb', 'kb-1')).toBe(true)
   })
 
   it('answers an unlisted instance from the type default, and an unlisted type from resourceDefault', () => {
     const caps = view({
       ...legacyFullAgentPolicy(),
-      resources: { kb: { default: 'read', overrides: { 'kb-1': 'full' } } },
+      resources: { kb: { default: 'view', overrides: { 'kb-1': 'admin' } } },
     })
     expect(caps.canAdminInstance('kb', 'kb-1')).toBe(true)
     expect(caps.canViewInstance('kb', 'kb-never-seen')).toBe(true)
     expect(caps.canEditInstance('kb', 'kb-never-seen')).toBe(false)
-    // `dataset` has no entry → resourceDefault ('full' here).
+    // `dataset` has no entry → resourceDefault ('admin' here).
     expect(caps.canAdminInstance('dataset', 'ds-1')).toBe(true)
   })
 
@@ -199,7 +199,7 @@ describe('the four exact levels — RESOURCE INSTANCES (§9.1)', () => {
       ...emptyAgentPolicy(),
       // Area closed, but a stale instance override says Full.
       areas: { default: 'none', overrides: { [Area.knowledgeBase]: 'none' } },
-      resources: { kb: { default: 'none', overrides: { 'kb-1': 'full' } } },
+      resources: { kb: { default: 'none', overrides: { 'kb-1': 'admin' } } },
     })
     // The area rule wins downward — an agent must not route around its own policy.
     expect(caps.canViewInstance('kb', 'kb-1')).toBe(false)
@@ -247,7 +247,7 @@ describe('run-as is delegation, never replacement (§0.15/§2.3)', () => {
   })
 
   it('an OWNER run-as cannot widen a Read-published definition to write', () => {
-    const effective = intersectCapabilities(view(dealsAt('read')), ownerRunAs)
+    const effective = intersectCapabilities(view(dealsAt('view')), ownerRunAs)
     expect(effective.canViewEntity('deals')).toBe(true)
     expect(effective.canEditEntity('deals')).toBe(false)
     expect(effective.viewAccessFor('deals')).toBe(ResourcePermission.view)
@@ -261,7 +261,7 @@ describe('run-as is delegation, never replacement (§0.15/§2.3)', () => {
 
   it('run-as CAN narrow — the delegate is a real bound too', () => {
     const restrictedDelegate: CapabilityView = { ...ownerRunAs, canEditEntity: () => false }
-    const effective = intersectCapabilities(view(dealsAt('full')), restrictedDelegate)
+    const effective = intersectCapabilities(view(dealsAt('admin')), restrictedDelegate)
     expect(effective.canViewEntity('deals')).toBe(true)
     expect(effective.canEditEntity('deals')).toBe(false)
   })
@@ -270,12 +270,12 @@ describe('run-as is delegation, never replacement (§0.15/§2.3)', () => {
 describe('add-then-remove definition authority (§9.1)', () => {
   const v1 = view({
     ...emptyAgentPolicy(),
-    areas: { default: 'full', overrides: {} },
-    definitions: { default: 'none', overrides: { deals: 'full' } },
+    areas: { default: 'admin', overrides: {} },
+    definitions: { default: 'none', overrides: { deals: 'admin' } },
   })
   const v2 = view({
     ...emptyAgentPolicy(),
-    areas: { default: 'full', overrides: {} },
+    areas: { default: 'admin', overrides: {} },
     definitions: { default: 'none', overrides: { deals: 'none' } },
   })
 

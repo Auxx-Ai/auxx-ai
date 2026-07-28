@@ -5,14 +5,12 @@ import { ResourcePermission } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
 import { Area, Level } from '../capabilities/registry'
 import {
-  agentLevelToAreaLevel,
-  agentLevelToPermission,
-  areaLevelToAgentLevel,
+  areaLevelToPermission,
   authorizationOnlyPolicy,
   emptyAgentPolicy,
-  minAgentLevel,
+  minPermission,
   parsePublishedAgentPolicy,
-  permissionToAgentLevel,
+  permissionToAreaLevel,
   policyAreaLevel,
   policyDefinitionLevel,
   policyResourceLevel,
@@ -46,7 +44,7 @@ function profile(over: Partial<CachedPermissionProfile>): CachedPermissionProfil
   }
 }
 
-function uniform(level: 'none' | 'read' | 'read_write' | 'full'): AgentPermissionPolicy {
+function uniform(level: ResourcePermission): AgentPermissionPolicy {
   return {
     areas: { default: level, overrides: {} },
     definitions: { default: level, overrides: {} },
@@ -55,65 +53,57 @@ function uniform(level: 'none' | 'read' | 'read_write' | 'full'): AgentPermissio
   }
 }
 
-describe('the four exact rungs map onto both existing ladders (§2.3)', () => {
-  it('maps every label to its area Level', () => {
-    expect(agentLevelToAreaLevel('none')).toBe(Level.None)
-    expect(agentLevelToAreaLevel('read')).toBe(Level.Read)
-    expect(agentLevelToAreaLevel('read_write')).toBe(Level.Edit)
-    expect(agentLevelToAreaLevel('full')).toBe(Level.Full)
+describe('the four exact rungs map onto the numeric area ladder (§2.3)', () => {
+  it('maps every rung to its area Level', () => {
+    expect(permissionToAreaLevel(ResourcePermission.none)).toBe(Level.None)
+    expect(permissionToAreaLevel(ResourcePermission.view)).toBe(Level.Read)
+    expect(permissionToAreaLevel(ResourcePermission.edit)).toBe(Level.Edit)
+    expect(permissionToAreaLevel(ResourcePermission.admin)).toBe(Level.Full)
   })
 
-  it('maps every label to its definition/resource ResourcePermission', () => {
-    expect(agentLevelToPermission('none')).toBeUndefined()
-    expect(agentLevelToPermission('read')).toBe(ResourcePermission.view)
-    expect(agentLevelToPermission('read_write')).toBe(ResourcePermission.edit)
-    expect(agentLevelToPermission('full')).toBe(ResourcePermission.admin)
-  })
-
-  it('round-trips both inverses used by the publish-time clamp', () => {
-    for (const level of ['none', 'read', 'read_write', 'full'] as const) {
-      expect(areaLevelToAgentLevel(agentLevelToAreaLevel(level))).toBe(level)
-      expect(permissionToAgentLevel(agentLevelToPermission(level))).toBe(level)
+  it('round-trips the inverse used by the publish-time clamp', () => {
+    for (const level of ['none', 'view', 'edit', 'admin'] as const) {
+      expect(areaLevelToPermission(permissionToAreaLevel(level))).toBe(level)
     }
   })
 
   it('takes the lower rung, with none as the floor', () => {
-    expect(minAgentLevel('full', 'read')).toBe('read')
-    expect(minAgentLevel('read', 'full')).toBe('read')
-    expect(minAgentLevel('read_write', 'none')).toBe('none')
-    expect(minAgentLevel('full', 'full')).toBe('full')
+    expect(minPermission('admin', 'view')).toBe('view')
+    expect(minPermission('view', 'admin')).toBe('view')
+    expect(minPermission('edit', 'none')).toBe('none')
+    expect(minPermission('admin', 'admin')).toBe('admin')
   })
 })
 
 describe('lookups are total — there is no run-time inherit (§2.3)', () => {
   const policy: PublishedAgentPermissionPolicy = {
     ...emptyAgentPolicy(),
-    areas: { default: 'read', overrides: { [Area.records]: 'full' } },
-    definitions: { default: 'read_write', overrides: { deals: 'none' } },
-    resourceDefault: 'read',
-    resources: { kb: { default: 'none', overrides: { 'kb-1': 'full' } } },
+    areas: { default: 'view', overrides: { [Area.records]: 'admin' } },
+    definitions: { default: 'edit', overrides: { deals: 'none' } },
+    resourceDefault: 'view',
+    resources: { kb: { default: 'none', overrides: { 'kb-1': 'admin' } } },
   }
 
   it('answers an unnamed area from the default', () => {
-    expect(policyAreaLevel(policy, Area.records)).toBe('full')
-    expect(policyAreaLevel(policy, Area.files)).toBe('read')
+    expect(policyAreaLevel(policy, Area.records)).toBe('admin')
+    expect(policyAreaLevel(policy, Area.files)).toBe('view')
   })
 
   it('answers a definition created after publication from the default', () => {
     expect(policyDefinitionLevel(policy, 'deals')).toBe('none')
-    expect(policyDefinitionLevel(policy, 'a-def-that-did-not-exist-at-publish')).toBe('read_write')
+    expect(policyDefinitionLevel(policy, 'a-def-that-did-not-exist-at-publish')).toBe('edit')
   })
 
   it('answers an unlisted resource type from resourceDefault, not from another type', () => {
-    expect(policyResourceLevel(policy, 'kb', 'kb-1')).toBe('full')
+    expect(policyResourceLevel(policy, 'kb', 'kb-1')).toBe('admin')
     expect(policyResourceLevel(policy, 'kb', 'kb-2')).toBe('none')
     // `dataset` has no entry at all → the top-level resourceDefault answers.
-    expect(policyResourceLevel(policy, 'dataset', 'ds-1')).toBe('read')
+    expect(policyResourceLevel(policy, 'dataset', 'ds-1')).toBe('view')
   })
 })
 
 describe('parsePublishedAgentPolicy coerces defensively and fails closed', () => {
-  it('reads an unusable policy as none, never as full', () => {
+  it('reads an unusable policy as none, never as admin', () => {
     const parsed = parsePublishedAgentPolicy(null)
     expect(parsed.areas.default).toBe('none')
     expect(parsed.definitions.default).toBe('none')
@@ -122,13 +112,19 @@ describe('parsePublishedAgentPolicy coerces defensively and fails closed', () =>
 
   it('drops override values outside the closed vocabulary rather than guessing', () => {
     const parsed = parsePublishedAgentPolicy({
-      areas: { default: 'read', overrides: { records: 'full', files: 'ADMIN', billing: 7 } },
+      // `'full'` is the RETIRED spelling (plan 26 Phase 2) — after data migration
+      // 054 it must read as an unknown value and be dropped, not silently honored.
+      areas: {
+        default: 'view',
+        overrides: { records: 'admin', files: 'ADMIN', billing: 7, comments: 'full' },
+      },
     })
-    expect(parsed.areas.overrides.records).toBe('full')
+    expect(parsed.areas.overrides.records).toBe('admin')
     expect(parsed.areas.overrides.files).toBeUndefined()
     expect(parsed.areas.overrides.billing).toBeUndefined()
+    expect(parsed.areas.overrides.comments).toBeUndefined()
     // …and a dropped override then reads as the default, so lookups stay total.
-    expect(policyAreaLevel(parsed, Area.files)).toBe('read')
+    expect(policyAreaLevel(parsed, Area.files)).toBe('view')
   })
 })
 
@@ -136,7 +132,7 @@ describe('authorizationOnlyPolicy excludes audit metadata (§8.1)', () => {
   it('keeps authorization content and drops the byline', () => {
     const base: PublishedAgentPermissionPolicy = {
       ...emptyAgentPolicy(),
-      areas: { default: 'read', overrides: {} },
+      areas: { default: 'view', overrides: {} },
     }
     const byMember = { ...base, publishedByUserId: 'u-member', clamp: [] }
     const byAdmin = {
@@ -144,7 +140,7 @@ describe('authorizationOnlyPolicy excludes audit metadata (§8.1)', () => {
       publishedByUserId: 'u-admin',
       sourceProfileUpdatedAt: '2026-01-01T00:00:00.000Z',
       clamp: [
-        { domain: 'area' as const, key: 'records', from: 'full' as const, to: 'read' as const },
+        { domain: 'area' as const, key: 'records', from: 'admin' as const, to: 'view' as const },
       ],
     }
 
@@ -153,13 +149,13 @@ describe('authorizationOnlyPolicy excludes audit metadata (§8.1)', () => {
     expect(authorizationOnlyPolicy(byMember)).toEqual(authorizationOnlyPolicy(byAdmin))
 
     // A genuine authority change DOES show up.
-    const widened = { ...byMember, areas: { default: 'full' as const, overrides: {} } }
+    const widened = { ...byMember, areas: { default: 'admin' as const, overrides: {} } }
     expect(authorizationOnlyPolicy(widened)).not.toEqual(authorizationOnlyPolicy(byMember))
   })
 })
 
 describe('resolveDraftAgentPolicy — the draft binding (§1.3)', () => {
-  const agentProfile = profile({ id: 'p-agent', slug: 'agent', agentPolicy: uniform('full') })
+  const agentProfile = profile({ id: 'p-agent', slug: 'agent', agentPolicy: uniform('admin') })
   const chatProfile = profile({ id: 'p-chat', slug: 'chat_agent', agentPolicy: uniform('none') })
   const base = { organizationId: 'org-1', agentId: 'a-1' }
 
@@ -170,7 +166,7 @@ describe('resolveDraftAgentPolicy — the draft binding (§1.3)', () => {
       permissionProfileId: null,
       profiles: [agentProfile, chatProfile],
     })
-    expect(internal.areas.default).toBe('full')
+    expect(internal.areas.default).toBe('admin')
     expect(internal.sourceProfileId).toBe('p-agent')
 
     const chat = resolveDraftAgentPolicy({
@@ -191,10 +187,10 @@ describe('resolveDraftAgentPolicy — the draft binding (§1.3)', () => {
       permissionProfileId: 'p-agent',
       profiles: [agentProfile],
     })
-    expect(resolved.areas.overrides[Area.records]).toBe('full')
-    expect(resolved.areas.overrides[Area.billing]).toBe('full')
+    expect(resolved.areas.overrides[Area.records]).toBe('admin')
+    expect(resolved.areas.overrides[Area.billing]).toBe('admin')
     // …while the default is retained for an area a future deploy adds.
-    expect(resolved.areas.default).toBe('full')
+    expect(resolved.areas.default).toBe('admin')
   })
 
   it('records the source profile id + updatedAt as audit metadata', () => {

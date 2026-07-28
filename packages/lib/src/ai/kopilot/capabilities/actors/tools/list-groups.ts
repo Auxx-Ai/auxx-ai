@@ -26,7 +26,7 @@ export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition 
     permission: {
       target: 'unmodeled',
       domain: 'directory',
-      level: 'read',
+      level: 'view',
       enforcement: 'unenforced',
       note: 'KNOWN GAP (19b G7) — NARROWED, not gated. The private-group leak is fixed: both the list and the search path now go through ActorService\'s accessible-groups filter (ResourceAccess on the group instance), where before only the no-query path did and any `query` fell through to the raw org group cache, returning every visibility:"private" group. What remains ungated is the directory read itself: Area.members is a Full-only ladder about *managing* members, so there is no read rung to bind a lookup to — the level above is the intent, not an existing rung. A `directory` area (or an instance-access key for groups) is the missing model.',
     },

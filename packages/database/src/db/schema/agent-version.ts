@@ -1,6 +1,7 @@
 // packages/database/src/db/schema/agent-version.ts
 
 import { createId } from '@paralleldrive/cuid2'
+import type { ResourcePermission } from '../../enums'
 import {
   type AnyPgColumn,
   index,
@@ -14,7 +15,7 @@ import {
 } from './_shared'
 import { Agent } from './agent'
 import { Organization } from './organization'
-import type { AgentAccessLevel, ExactAgentPolicy } from './permission-profile'
+import type { ExactAgentPolicy } from './permission-profile'
 import { User } from './user'
 
 /**
@@ -34,9 +35,9 @@ export type AgentPolicyClampEntry = {
    */
   key: string | null
   /** The rung the profile asked for. */
-  from: AgentAccessLevel
+  from: ResourcePermission
   /** The rung the publisher's own authority permitted. */
-  to: AgentAccessLevel
+  to: ResourcePermission
 }
 
 /**
@@ -52,7 +53,7 @@ export type AgentPolicyClampEntry = {
  * **Totality.** Every keyspace carries an explicit `default`, because entity
  * definitions and shareable resources may be created *after* publication. There
  * is therefore no run-time `inherit`: a lookup always returns exactly one of
- * `none | read | read_write | full`. `overrides` stay sparse — the `default` is
+ * `none | view | edit | admin`. `overrides` stay sparse — the `default` is
  * the answer for any key they do not name.
  *
  * Structural/`string`-keyed for the same reason {@link AgentPermissionPolicy} is:
@@ -73,7 +74,7 @@ export type PublishedAgentPermissionPolicy = {
   /** Exact rule per entity-definition `apiSlug` (slug, not CUID — §3). */
   definitions: ExactAgentPolicy
   /** Posture for resource types absent from {@link PublishedAgentPermissionPolicy.resources}. */
-  resourceDefault: AgentAccessLevel
+  resourceDefault: ResourcePermission
   /** Exact rule per resource type → per instance id. */
   resources: Partial<Record<string, ExactAgentPolicy>>
 }
