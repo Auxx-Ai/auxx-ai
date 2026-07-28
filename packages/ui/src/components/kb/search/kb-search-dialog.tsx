@@ -51,7 +51,13 @@ export function KBSearchDialog({
       try {
         const [{ default: MiniSearch }, res] = await Promise.all([
           import('minisearch'),
-          fetch(searchOrigin, { credentials: 'omit' }),
+          // `searchOrigin` is always a same-origin relative path, and an INTERNAL
+          // KB's `search.json` is gated on the caller's capabilities — so the
+          // session cookie has to ride along or the request 404s and the dialog
+          // never populates. `same-origin` rather than `include`: if this ever
+          // takes an absolute URL (custom domains), it must fail closed rather
+          // than start sending the session cookie cross-origin.
+          fetch(searchOrigin, { credentials: 'same-origin' }),
         ])
         if (!res.ok || cancelled) return
         const docs = (await res.json()) as KBSearchDoc[]
