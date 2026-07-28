@@ -71,6 +71,12 @@ const logger = createScopedLogger('workflow-execution-service')
  * Create a workflow run record directly without instantiating WorkflowExecutionService.
  * Accepts optional overrides for status, error, finishedAt, elapsedTime to support
  * creating runs in terminal states (e.g., FAILED polling trigger runs).
+ *
+ * The only writer of `WorkflowRun.createdBy`, which is an FK to `User.id`. `userId`
+ * is therefore deliberately nullable: headless starts (schedulers, pollers, app
+ * triggers) have no acting user and must pass the absence through, so this resolves
+ * the org's system user. Callers must never substitute a placeholder id of their own
+ * — no such `User` row exists and the insert would fail its FK constraint.
  */
 export async function createWorkflowRun(
   db: Database,
@@ -85,7 +91,8 @@ export async function createWorkflowRun(
     organizationId: string
     inputs: Record<string, any>
     mode: 'test' | 'production'
-    userId: string | null
+    /** Acting user, or `null`/`undefined` for a headless run (resolves to the org system user). */
+    userId: string | null | undefined
     status?: WorkflowRunStatus
     error?: string
     finishedAt?: Date
@@ -211,13 +218,17 @@ export class WorkflowExecutionService {
   }
 
   /**
-   * Create a new workflow run without executing it
+   * Create a new workflow run without executing it.
+   *
+   * `userId` is nullable — see {@link createWorkflowRun}, which resolves the org
+   * system user when no acting user is supplied.
    */
   async createRun(params: {
     workflowId: string
     inputs: Record<string, any>
     mode: 'test' | 'production'
-    userId: string
+    /** Acting user, or `null`/`undefined` for a headless run (resolves to the org system user). */
+    userId: string | null | undefined
     organizationId: string
     userEmail?: string
     userName?: string

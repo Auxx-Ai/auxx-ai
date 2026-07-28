@@ -98,10 +98,14 @@ export async function assertWorkflowVersionNotSystemOwned(
  *    row went away,
  *  - the column was never written.
  *
- * Headless runs are NOT `null`: every programmatic start resolves
- * `SystemUserService.getSystemUserForActions(orgId)` and writes that system
- * `User.id`, so an id comparison against the caller already excludes them — no
- * `'system'` sentinel to special-case.
+ * A headless run's `createdBy` is a real `User.id` like any other, so a plain id
+ * comparison against the caller already excludes it. That is a property of the
+ * column, not of the callers: `WorkflowRun.createdBy` FKs `User.id`, so the only
+ * values that can ever be stored are a real user's id or `null`. `createWorkflowRun`
+ * — the sole writer — resolves `SystemUserService.getSystemUserForActions(orgId)`
+ * whenever a caller supplies no user, and a caller that invented a placeholder id
+ * instead would not reach this function at all: its insert would fail the FK. So
+ * there is no sentinel to special-case here, whatever a caller passes.
  */
 export async function getWorkflowRunCreatorId(
   db: Database,
