@@ -7,7 +7,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { useGranteeAccess } from './use-grantee-access'
+import { useGranteeAccess, useInvalidateGranteeAccess } from './use-grantee-access'
 import type { GranteeKind } from './use-grantee-def-access'
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
 
@@ -58,17 +58,8 @@ export interface InstanceGranteeRow {
 export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: string) {
   const utils = api.useUtils()
   const lists = useInstanceResourceLists(ALWAYS_OPEN)
-  const {
-    isLoading,
-    own,
-    effective,
-    invalidate: refetchAccess,
-  } = useGranteeAccess(granteeType, granteeId)
-
-  const invalidate = useCallback(() => {
-    void utils.permissions.granteeAccess.invalidate({ granteeType, granteeId })
-    void refetchAccess()
-  }, [utils, granteeType, granteeId, refetchAccess])
+  const { isLoading, own, effective } = useGranteeAccess(granteeType, granteeId)
+  const invalidate = useInvalidateGranteeAccess()
 
   const grantInstance = api.resourceAccess.grantInstance.useMutation({
     onError: (error) => toastError({ title: 'Error updating access', description: error.message }),

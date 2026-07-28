@@ -5,6 +5,7 @@ import type { Area, GranteeGrant, GrantGranteeType, Level } from '@auxx/lib/perm
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
+import { useInvalidateGranteeAccess } from './use-grantee-access'
 
 /**
  * The fixed `ResourceAccess` grantee id for the org-wide **workspace default** —
@@ -76,6 +77,13 @@ export function usePermissionGrants() {
     [utils]
   )
   const resync = useCallback(() => utils.permissions.listGrants.invalidate(), [utils])
+  /**
+   * `listGrants` stays optimistic-with-no-refetch (the server stores exactly the
+   * sparse map we send), but `granteeAccess.effective` is COMPOSED — this write
+   * changes it and we cannot predict the new value here without re-implementing
+   * composition. So it refetches, on success as well as failure.
+   */
+  const invalidateGranteeAccess = useInvalidateGranteeAccess()
 
   const grant = api.permissions.grant.useMutation({
     onMutate: async (input) => {
@@ -90,6 +98,7 @@ export function usePermissionGrants() {
       toastError({ title: 'Error saving permission', description: error.message })
       void resync()
     },
+    onSettled: invalidateGranteeAccess,
   })
   const revoke = api.permissions.revoke.useMutation({
     onMutate: async (input) => {
@@ -100,6 +109,7 @@ export function usePermissionGrants() {
       toastError({ title: 'Error clearing permission', description: error.message })
       void resync()
     },
+    onSettled: invalidateGranteeAccess,
   })
 
   const grants = useMemo(() => grantsQuery.data?.grants ?? [], [grantsQuery.data])

@@ -22,28 +22,51 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * projection reads exactly like a broken mutation.
  */
 
-const { listGrantsQuery, listProfilesQuery, roleDefaultsQuery, grantMutate, revokeMutate } =
-  vi.hoisted(() => ({
-    listGrantsQuery: vi.fn(),
-    listProfilesQuery: vi.fn(),
-    roleDefaultsQuery: vi.fn(),
-    grantMutate: vi.fn(),
-    revokeMutate: vi.fn(),
-  }))
+const {
+  listGrantsQuery,
+  listProfilesQuery,
+  roleDefaultsQuery,
+  grantMutate,
+  revokeMutate,
+  granteeAccessInvalidate,
+  grantOptions,
+  revokeOptions,
+} = vi.hoisted(() => ({
+  listGrantsQuery: vi.fn(),
+  listProfilesQuery: vi.fn(),
+  roleDefaultsQuery: vi.fn(),
+  grantMutate: vi.fn(),
+  revokeMutate: vi.fn(),
+  granteeAccessInvalidate: vi.fn(),
+  /** The options object each mutation was registered with, so its hooks can be fired. */
+  grantOptions: { current: undefined as undefined | { onSettled?: () => void } },
+  revokeOptions: { current: undefined as undefined | { onSettled?: () => void } },
+}))
 
 vi.mock('~/trpc/react', () => ({
   api: {
     useUtils: () => ({
       permissions: {
         listGrants: { setData: vi.fn(), cancel: vi.fn(), invalidate: vi.fn() },
+        granteeAccess: { invalidate: granteeAccessInvalidate },
       },
     }),
     permissions: {
       listGrants: { useQuery: listGrantsQuery },
       listProfiles: { useQuery: listProfilesQuery },
       roleDefaults: { useQuery: roleDefaultsQuery },
-      grant: { useMutation: () => ({ mutate: grantMutate, isPending: false }) },
-      revoke: { useMutation: () => ({ mutate: revokeMutate, isPending: false }) },
+      grant: {
+        useMutation: (options?: { onSettled?: () => void }) => {
+          grantOptions.current = options
+          return { mutate: grantMutate, isPending: false }
+        },
+      },
+      revoke: {
+        useMutation: (options?: { onSettled?: () => void }) => {
+          revokeOptions.current = options
+          return { mutate: revokeMutate, isPending: false }
+        },
+      },
     },
   },
 }))
@@ -237,5 +260,59 @@ describe('the write surface', () => {
 
     result.current.remove('user', 'usr_1')
     expect(revokeMutate).toHaveBeenCalledWith({ granteeType: 'user', granteeId: 'usr_1' })
+  })
+})
+
+/**
+ * Plan 31 §2.5 — **an area write has to refetch `granteeAccess`.**
+ *
+ * This hook keeps `listGrants` optimistic and deliberately never refetches it on
+ * success: the server stores exactly the sparse map the client sends, so the
+ * local patch is already the truth. `granteeAccess.effective` is not like that.
+ * It is COMPOSED — `min(min(max(profileBase, maxOverGroups, userLevel),
+ * profileCeiling), seatCeiling)` — so this write moves it and no optimistic patch
+ * here could predict the new value without re-implementing composition, which
+ * §2.5 rules out precisely because a display path that drifts from enforcement
+ * fails quietly.
+ *
+ * The bug this pins: raising a member's area level left the effective line
+ * showing the pre-write composition for up to `granteeAccess`'s 30s `staleTime`.
+ * The server was already correct — `setGranteeLevels` awaits
+ * `onCacheEvent('permission-grant.changed', …)` after commit, so the composed
+ * blob is busted before the mutation returns. Only the client refetch was
+ * missing, and the `permission-grant.changed` realtime nudge does not cover it:
+ * that targets the AFFECTED member's own client, not the admin sitting on their
+ * Permissions tab.
+ */
+describe('granteeAccess is refetched after an area-level write', () => {
+  beforeEach(() => {
+    granteeAccessInvalidate.mockClear()
+    // Through `setup`, not a bare `renderHook`: the file's outer `beforeEach`
+    // resets the query mocks, so the hook needs them re-stubbed to render.
+    setup({ grants: [], profiles: [] })
+  })
+
+  it('invalidates on a successful grant, not only on failure', () => {
+    grantOptions.current?.onSettled?.()
+
+    expect(granteeAccessInvalidate).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidates on revoke too', () => {
+    revokeOptions.current?.onSettled?.()
+
+    expect(granteeAccessInvalidate).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * Whole keyspace, no input filter. `own` is per-grantee but `effective` is not:
+   * a GROUP grant changes every member of that group, so scoping the
+   * invalidation to the grantee that was written is the obvious-looking version
+   * and is wrong in exactly the cases the effective line exists to expose.
+   */
+  it('invalidates every granteeAccess query, not just the written grantee', () => {
+    grantOptions.current?.onSettled?.()
+
+    expect(granteeAccessInvalidate).toHaveBeenCalledWith()
   })
 })

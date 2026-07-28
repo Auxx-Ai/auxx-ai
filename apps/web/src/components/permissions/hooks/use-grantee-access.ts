@@ -1,8 +1,42 @@
 // apps/web/src/components/permissions/hooks/use-grantee-access.ts
 'use client'
 
+import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 import type { GranteeKind } from './use-grantee-def-access'
+
+/**
+ * Invalidate every `granteeAccess` query — call after ANY permission write.
+ *
+ * **The whole keyspace, deliberately, not `{granteeType, granteeId}`.** `own` is
+ * per-grantee, but `effective` is COMPOSED, so a write aimed at one grantee moves
+ * another's answer: a group grant changes every member of that group, a profile
+ * save changes every holder, and a `role:org_member` workspace default changes
+ * everyone. Scoping the invalidation to the grantee that was written is the
+ * obvious-looking version and is wrong in exactly the cases the effective line
+ * exists to expose.
+ *
+ * Cheap regardless: only mounted queries refetch, and a grantee page has one.
+ *
+ * The server half is already correct and needs nothing — `setGranteeLevels` and
+ * the `resource-access.*` emitters both `await onCacheEvent(...)` after commit,
+ * so the composed `user:capabilities` blob is busted before the mutation returns
+ * and a refetch here is guaranteed to compose fresh. What was missing was purely
+ * this client-side refetch: `permissions.grant`/`revoke` update `listGrants`
+ * optimistically and deliberately never refetch on success, so nothing told
+ * `granteeAccess` its answer had changed and the effective line kept showing the
+ * pre-write composition for up to its 30s `staleTime`.
+ *
+ * The `permission-grant.changed` realtime nudge does not cover this either: it
+ * targets the AFFECTED member's own client so their `myCapabilities` refreshes,
+ * not the admin's client sitting on that member's Permissions tab.
+ */
+export function useInvalidateGranteeAccess() {
+  const utils = api.useUtils()
+  return useCallback(() => {
+    void utils.permissions.granteeAccess.invalidate()
+  }, [utils])
+}
 
 /**
  * One grantee's access, for one grantee (plan 31 §2.4) — the grantee-scoped
@@ -30,6 +64,5 @@ export function useGranteeAccess(granteeType: GranteeKind, granteeId: string) {
     own: query.data?.own,
     baseline: query.data?.baseline,
     effective: query.data?.effective ?? null,
-    invalidate: query.refetch,
   }
 }
