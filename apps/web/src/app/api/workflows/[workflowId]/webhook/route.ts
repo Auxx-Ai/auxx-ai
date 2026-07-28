@@ -14,6 +14,11 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import type { WebhookTestEvent } from '~/components/workflow/nodes/core/webhook/types'
 import { validateAgainstSchema } from '~/components/workflow/utils/schema-to-variable'
+import {
+  isWebhookTestWindowArmed,
+  WEBHOOK_TEST_WINDOW_TTL_SECONDS,
+  webhookTestEventsKey,
+} from '~/server/lib/webhook-test-window'
 
 const logger = createScopedLogger('api.webhook')
 
@@ -22,7 +27,15 @@ const workflowEngine = new WorkflowEngine()
 const engineInitPromise = workflowEngine.getNodeRegistry().initializeWithDefaults()
 
 /**
- * Common webhook handler for both GET and POST requests
+ * Common webhook handler for both GET and POST requests.
+ *
+ * The PRODUCTION path is intentionally unauthenticated — URL secrecy is the
+ * normal webhook contract and external callers have no session. The `?test=true`
+ * path is different: it resolves the org's **draft** graph, answers from that
+ * unpublished node's response config, and appends the caller's headers/query/body
+ * to the author's live event log. That is only allowed while an editor-armed
+ * listening window is open (see `webhook-test-window.ts` and the
+ * `workflow.armWebhookTest` mutation that opens it).
  */
 async function handleWebhookRequest(
   req: NextRequest,
@@ -58,6 +71,16 @@ async function handleWebhookRequest(
 
   try {
     logger.info(`Webhook ${method} request received`, { workflowId, isTest })
+
+    // Draft execution requires an open listening window. Answering with the
+    // SAME 404 the missing-draft case already returns keeps the endpoint from
+    // becoming an oracle for "this workflow id exists" — and it runs BEFORE the
+    // workflow lookup, so an unarmed caller can neither execute the draft nor
+    // push an entry into the author's event log.
+    if (isTest && !(await isWebhookTestWindowArmed(workflowId))) {
+      logger.warn('Webhook test request rejected — no listening window armed', { workflowId })
+      return NextResponse.json({ error: 'No draft workflow found' }, { status: 404 })
+    }
 
     // Find the workflow app with appropriate workflow (draft for test, published for production)
     const workflowApp = await db.query.WorkflowApp.findFirst({
@@ -110,9 +133,9 @@ async function handleWebhookRequest(
           webhookTestEvent.responseStatus = 500
           webhookTestEvent.responseTime = Date.now() - startTime
 
-          await redis.lpush(`webhook:test:${workflowId}:events`, JSON.stringify(webhookTestEvent))
-          await redis.ltrim(`webhook:test:${workflowId}:events`, 0, 49)
-          await redis.expire(`webhook:test:${workflowId}:events`, 300)
+          await redis.lpush(webhookTestEventsKey(workflowId), JSON.stringify(webhookTestEvent))
+          await redis.ltrim(webhookTestEventsKey(workflowId), 0, 49)
+          await redis.expire(webhookTestEventsKey(workflowId), WEBHOOK_TEST_WINDOW_TTL_SECONDS)
         }
       }
 
@@ -156,9 +179,9 @@ async function handleWebhookRequest(
             webhookTestEvent.responseStatus = 400
             webhookTestEvent.responseTime = Date.now() - startTime
 
-            await redis.lpush(`webhook:test:${workflowId}:events`, JSON.stringify(webhookTestEvent))
-            await redis.ltrim(`webhook:test:${workflowId}:events`, 0, 49)
-            await redis.expire(`webhook:test:${workflowId}:events`, 300)
+            await redis.lpush(webhookTestEventsKey(workflowId), JSON.stringify(webhookTestEvent))
+            await redis.ltrim(webhookTestEventsKey(workflowId), 0, 49)
+            await redis.expire(webhookTestEventsKey(workflowId), WEBHOOK_TEST_WINDOW_TTL_SECONDS)
           }
         }
 
@@ -214,9 +237,9 @@ async function handleWebhookRequest(
         webhookTestEvent.responseStatus = responseStatus
         webhookTestEvent.responseTime = Date.now() - startTime
 
-        await redis.lpush(`webhook:test:${workflowId}:events`, JSON.stringify(webhookTestEvent))
-        await redis.ltrim(`webhook:test:${workflowId}:events`, 0, 49)
-        await redis.expire(`webhook:test:${workflowId}:events`, 300)
+        await redis.lpush(webhookTestEventsKey(workflowId), JSON.stringify(webhookTestEvent))
+        await redis.ltrim(webhookTestEventsKey(workflowId), 0, 49)
+        await redis.expire(webhookTestEventsKey(workflowId), WEBHOOK_TEST_WINDOW_TTL_SECONDS)
       }
 
       return new NextResponse(responseConfig?.body || 'OK', {
@@ -258,12 +281,9 @@ async function handleWebhookRequest(
         webhookTestEvent.responseStatus = 500
         webhookTestEvent.responseTime = Date.now() - startTime
 
-        await redis.lpush(
-          `webhook:test:${params.workflowId}:events`,
-          JSON.stringify(webhookTestEvent)
-        )
-        await redis.ltrim(`webhook:test:${params.workflowId}:events`, 0, 49)
-        await redis.expire(`webhook:test:${params.workflowId}:events`, 300)
+        await redis.lpush(webhookTestEventsKey(workflowId), JSON.stringify(webhookTestEvent))
+        await redis.ltrim(webhookTestEventsKey(workflowId), 0, 49)
+        await redis.expire(webhookTestEventsKey(workflowId), WEBHOOK_TEST_WINDOW_TTL_SECONDS)
       }
     }
 

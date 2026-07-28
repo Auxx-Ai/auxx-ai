@@ -37,6 +37,10 @@ import {
   permissionProcedure,
 } from '~/server/api/trpc'
 import { resolveTemplateById } from '~/server/api/workflow-template-resolver'
+import {
+  armWebhookTestWindow,
+  WEBHOOK_TEST_WINDOW_TTL_SECONDS,
+} from '~/server/lib/webhook-test-window'
 import { mayStopWorkflowRun } from '~/server/lib/workflow-run-stop-access'
 import { workflowTemplatesRouter } from './workflow-templates'
 
@@ -540,6 +544,50 @@ export const workflowRouter = createTRPCRouter({
         }
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to test workflow' })
       }
+    }),
+  /**
+   * Open a TTL'd listening window so `POST /api/workflows/<id>/webhook?test=true`
+   * will resolve the DRAFT graph — answering from the draft webhook node's
+   * configured response and appending the request to the author's captured-event
+   * log.
+   *
+   * That route is anonymous by design (external callers have no session), so
+   * without a window anyone holding a workflow id could read an org's
+   * unpublished response config out of it and inject arbitrary headers, query and
+   * body into the log the editor renders. Arming is the authenticated half of
+   * the pair.
+   */
+  armWebhookTest: permissionProcedure(PermissionKey.workflowsView)
+    .input(z.object({ workflowId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Write — arming delegates draft execution to an unauthenticated caller
+      // for the next TTL, so it carries the same authority as running the draft
+      // yourself: instance `edit`, matching `workflow.test` and the SSE
+      // `/api/workflows/[workflowId]/run` route.
+      ctx.capabilities.assertEditInstance('workflow', input.workflowId)
+      // Instance access alone does NOT prove the workflow is ours: `workflow` is
+      // `baselineAtCreate: false`, so a row-less (i.e. foreign) id falls back to
+      // the caller's AREA level and would sail through. Pin it to the org.
+      const [workflowApp] = await ctx.db
+        .select({ id: schema.WorkflowApp.id })
+        .from(schema.WorkflowApp)
+        .where(
+          and(
+            eq(schema.WorkflowApp.id, input.workflowId),
+            eq(schema.WorkflowApp.organizationId, ctx.session.organizationId)
+          )
+        )
+        .limit(1)
+      if (!workflowApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
+      }
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
+      await armWebhookTestWindow(input.workflowId)
+      return { expiresInSeconds: WEBHOOK_TEST_WINDOW_TTL_SECONDS }
     }),
   /**
    * Get workflow execution statistics

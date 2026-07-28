@@ -13,9 +13,13 @@ interface SsePollRouteOptions {
    * Optional authorization check. Receives session + route params.
    * Return true to allow, false to reject with 403.
    * If omitted, only session presence is checked.
+   *
+   * `user.id` is exposed so a callback can resolve the caller's
+   * `CapabilitySet` — org membership alone is not an authorization answer for
+   * a resource carrying per-instance access (plan 30 / plan 32).
    */
   authorize?: (
-    session: { user: { defaultOrganizationId: string } },
+    session: { user: { id: string; defaultOrganizationId: string } },
     params: Record<string, string>,
     db: typeof database
   ) => Promise<boolean>
