@@ -1,7 +1,7 @@
 // apps/web/src/components/dispatch/ui/workers-settings-page.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { ListCard, type ListCardMenuItem } from '@auxx/ui/components/list-card'
 import { toastError } from '@auxx/ui/components/toast'
 import { CalendarOff, Eye, EyeOff, Lock, Pencil, Trash2, Users, UsersRound } from 'lucide-react'
@@ -9,7 +9,7 @@ import { type ReactNode, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
@@ -39,7 +39,7 @@ function WorkerGrid({ children }: { children: ReactNode }) {
  * Clicking a card opens the three-page `WorkerDialog` (Profile / Time off / Hours).
  */
 export function WorkersSettingsPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.settingsManage)
   const { hasAccess } = useFeatureFlags()
   const dispatchEnabled = hasAccess(FeatureKey.dispatch)
 

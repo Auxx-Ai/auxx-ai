@@ -221,7 +221,7 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     label: 'Manage Settings',
     description: 'Change organization-wide settings.',
     group: 'Organization',
-    adminOnly: true,
+    // NOT adminOnly since plan 39 §7.1 — see `PERMISSION_AREAS[Area.settings]`.
   },
   {
     key: PermissionKey.billingView,
@@ -734,13 +734,29 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     description: 'Change organization-wide settings.',
     group: 'Organization',
     rungs: [{ level: Level.Full, keys: [PermissionKey.settingsManage] }],
-    adminOnly: true,
     // Binary role gate dropped 2026-07-27 (plan 21 §4.2 — a HOLE closure, not a
     // pure migration): `setting.ts` (`updateOrganizationSetting`,
     // `batchUpdateOrganizationSettings`) and `organization.ts:update` now assert
     // `settingsManage` via `requirePermission` instead of `isAdminOrOwner`.
     // Admins keep the key through `ROLE_DEFAULTS.ADMIN`, so default behavior is
     // unchanged; a profile that zeroes `settings` now actually bites.
+    //
+    // `adminOnly` DROPPED 2026-07-28 (plan 39 §7.1), leaving that set empty.
+    // It was the last member, and while it stood the nine settings pages plan 39
+    // moves off role gates would have been capability-EXPRESSED but still
+    // admin-only — one authority instead of two, and zero delegation. Follows
+    // doc 19 §0.25's precedent for `permissions`, under the same rule: dropping
+    // the flag must never flip a default on. It does not — `settings` is
+    // omitted from `MEMBER_BASELINE_LEVELS` (seat-policy.ts), so the Member
+    // baseline stays `None` and a grantee needs an explicit grant.
+    //
+    // The key is COARSE, and knowingly so: it spans the 61 org-scoped settings
+    // in `SETTINGS_CATALOG` (32 of them `DOCUMENTS` — invoicing/tax/business
+    // identity), `organization.ts:update` (name, handle, domains — the handle
+    // changes org URLs), and `entityDefinition.ts:create` (a structural schema
+    // change). Splitting it into per-surface areas is plan 39 §7.2 and wants its
+    // own `user:capabilities:vN` bump; it is cheaper to decide before orgs
+    // configure grants against this one key.
   },
   [Area.billing]: {
     area: Area.billing,

@@ -6,6 +6,7 @@ import {
   getOptionColor,
   type SelectOptionColor,
 } from '@auxx/lib/custom-fields/client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -26,6 +27,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getNextOptionColor } from '~/components/custom-fields/utils/get-next-option-color'
 import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { TagScopeValue } from '../../types'
 import { TagDialog } from '../tag-dialog'
@@ -95,6 +97,19 @@ export function TagPickerContent({
   )
 
   const utils = api.useUtils()
+  const { canEditEntity, can } = useAccess()
+
+  // Tags are records, so the picker's manage affordances must ask what the
+  // server asks: `record.create`/`.update` assert `assertEditEntity` on the tag
+  // def, and `record.delete` additionally asserts `recordsDelete`. This surface
+  // had NO capability check at all — every member saw create/edit/delete for
+  // org-wide tags and found out on the 403. `canCreate` is a caller-supplied
+  // layout prop defaulted to `true`, not an authorization signal.
+  const canManageTags = !!tagEntityDefinitionId && canEditEntity(tagEntityDefinitionId)
+  // A member at records `Edit` holds edit but NOT delete (the delete verb sits on
+  // the `Full` rung), so these two are genuinely separable.
+  const canDeleteTags = canManageTags && can(PermissionKey.recordsDelete)
+
   const [confirm, ConfirmDialog] = useConfirm()
   // Canonical create hook — seeds caches + toasts on error. The tree reads from
   // `record.listAll`, so `refresh()` still pulls the new tag into the list.
@@ -180,6 +195,7 @@ export function TagPickerContent({
 
   const showCreateRow =
     canCreate &&
+    canManageTags &&
     !isManageMode &&
     !!tagEntityDefinitionId &&
     !!search.trim() &&
@@ -375,7 +391,8 @@ export function TagPickerContent({
     ]
   )
 
-  const canShowManageToggle = !!tagEntityDefinitionId && flatTags.length > 0
+  // Manage mode hosts edit and delete, so it needs the edit capability at minimum.
+  const canShowManageToggle = canManageTags && flatTags.length > 0
 
   return (
     <>
@@ -411,6 +428,7 @@ export function TagPickerContent({
                   <span className='text-[10px] text-muted-foreground'>(this folder)</span>
                   <ManageActions
                     alwaysVisible
+                    canDelete={canDeleteTags}
                     onEdit={() => handleEdit(current)}
                     onDelete={() => handleDelete(current)}
                   />
@@ -497,6 +515,7 @@ export function TagPickerContent({
               isManageMode={isManageMode}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              canDelete={canDeleteTags}
             />
           )}
         </CommandList>

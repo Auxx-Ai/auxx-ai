@@ -1,5 +1,5 @@
 // apps/web/src/app/(protected)/app/settings/inbox/[inboxId]/page.tsx
-import { AdminPageGuard } from '~/components/global/admin-page-guard'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import { InboxDetail } from '~/components/inbox'
 
 export default async function InboxDetailPage({
@@ -11,7 +11,7 @@ export default async function InboxDetailPage({
 
   return (
     <>
-      <AdminPageGuard />
+      <CapabilityPageGuard permissionKey='channels.manage' />
       <InboxDetail inboxId={inboxId} />
     </>
   )

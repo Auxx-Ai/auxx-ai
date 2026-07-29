@@ -75,7 +75,7 @@ vi.mock('../profiles/effective-state', () => ({
 import type { OrganizationRole } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
 import { composeUserCapabilities } from './compose-user-capabilities'
-import { setGranteeLevels } from './grant-service'
+import { assertGrantableLevels, setGranteeLevels } from './grant-service'
 import { AREA_ORDER, Area, Level, PermissionKey, parseAreaLevels } from './registry'
 import { MEMBER_BASELINE_LEVELS } from './seat-policy'
 
@@ -322,13 +322,37 @@ describe('setGranteeLevels — Level.None storability (v2 §1)', () => {
 })
 
 /**
+ * Plan 39 §7.1 — `assertGrantableLevels` after `settings` dropped `adminOnly`.
+ *
+ * Worth stating plainly: before this change the guard's REJECTION path had no
+ * test anywhere in the repo — it appeared only in prose. So dropping the flag
+ * removed the one area it could ever fire on without a single test going red.
+ * These cases exist so the delegation is pinned by something executable.
+ */
+describe('assertGrantableLevels — the adminOnly guard (plan 39 §7.1)', () => {
+  it('permits granting `settings`, the area that used to be refused', () => {
+    expect(() => assertGrantableLevels({ [Area.settings]: Level.Full })).not.toThrow()
+  })
+
+  it('permits EVERY area at Full — the adminOnly set is empty', () => {
+    // The consequence of an empty set, asserted directly rather than inferred.
+    // If this throws, some area regained `adminOnly` and a delegation broke.
+    const everyAreaFull = Object.fromEntries(
+      AREA_ORDER.map((area) => [area, Level.Full])
+    ) as Partial<Record<Area, Level>>
+    expect(() => assertGrantableLevels(everyAreaFull)).not.toThrow()
+  })
+})
+
+/**
  * Plan 37 phase 1 — the §6.1 escalation guard on the `user` grantee tier.
  *
  * `permissions.grant` is gated on `permissionsManage` alone and its input places
  * no per-area restriction, so before this guard a holder could name THEMSELVES
  * as the grantee and write `{billing: Full, members: Full, permissions: Full}`.
- * `assertGrantableLevels` never caught it: `adminOnly` is `settings` alone, and
- * all three of those areas are deliberately grantable.
+ * `assertGrantableLevels` never caught it: back then `adminOnly` was `settings`
+ * alone, and all three of those areas are deliberately grantable. Since plan 39
+ * §7.1 that set is empty, so this guard is the ONLY thing standing there.
  */
 describe('setGranteeLevels — the escalation guard (plan 37 §3)', () => {
   /** Register a member with an explicit composed base. */

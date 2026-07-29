@@ -2,7 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Building2, CalendarDays, Lock, Palette } from 'lucide-react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -24,7 +24,7 @@ import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { ColorField } from '~/components/ui/color-field'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 const BREADCRUMBS = [{ title: 'Dispatch Settings' }, { title: 'General' }]
@@ -54,7 +54,7 @@ type GeneralDraft = Record<string, SettingValue>
  * (a file upload is inherently a commit).
  */
 export function DispatchGeneralSettingsPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.settingsManage)
   const { hasAccess } = useFeatureFlags()
 
   if (!hasAccess(FeatureKey.dispatch)) {

@@ -3,6 +3,7 @@
 
 import { OrganizationRole as Role } from '@auxx/database/enums'
 import type { SeatType } from '@auxx/database/types'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -25,9 +26,11 @@ import { EmptyState } from '~/components/global/empty-state'
 import { ListSelectionProvider, useBulkMode, useListSelection } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
+import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { seatLabel, useMemberProfiles } from '../hooks'
 import type { DisplayMember, Member, PendingInvitation } from '../types'
+import { canRemoveMember } from '../utils'
 import { MemberCard } from './member-card'
 import { MemberSeatSelect } from './member-seat-select'
 import { MembersBulkBar } from './members-bulk-bar'
@@ -53,7 +56,10 @@ export function MembersTab() {
 }
 
 function MembersTabInner() {
-  const { userId, role: currentUserRole } = useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  // `currentUserRole` stays — the row actions compare rank (who may act on whom).
+  const { userId, role: currentUserRole } = useUser()
+  const { can } = useAccess()
+  useRequireCapability(PermissionKey.membersManage)
   const utils = api.useUtils()
 
   const { data: membersData, isLoading } = api.member.all.useQuery()
@@ -164,7 +170,11 @@ function MembersTabInner() {
     await updateSeatType.mutateAsync({ memberId: selectedMember.userId, seatType: newSeatType })
   }
 
-  const canManageUsers = currentUserRole === Role.OWNER || currentUserRole === Role.ADMIN
+  // Authority to manage members at all — the capability, not rank. Leaving this
+  // on the role would hand a delegated `membersManage` holder a page with every
+  // row action hidden, which is the same dead lever one level down.
+  // `canManageMember` below still compares RANK (who may act on whom).
+  const canManageUsers = can(PermissionKey.membersManage)
   const fieldSeatCount = members.filter((m) => m.seatType === 'worker').length
 
   // A seat change leaves the bound profile on the wrong side of §0.21, so the
@@ -212,18 +222,13 @@ function MembersTabInner() {
   }, [displayList, search])
 
   /**
-   * §6's `canManageTarget` rank check, mirrored client-side (degrade-only — the
-   * server re-runs it). No actions on self; an Admin cannot manage another Admin
-   * or an Owner.
+   * Authority AND rank, the same pair the server applies: `members.manage` plus
+   * `canManageTarget`. The rank half lives in `canRemoveMember` so this and the
+   * detail page's danger zone cannot drift apart. Degrade-only — the server
+   * re-runs both.
    */
   const canManageMember = useCallback(
-    (member: Member): boolean => {
-      if (!canManageUsers) return false
-      if (member.userId === userId) return false
-      if (member.role === Role.OWNER && currentUserRole !== Role.OWNER) return false
-      if (currentUserRole === Role.ADMIN && member.role === Role.ADMIN) return false
-      return true
-    },
+    (member: Member): boolean => canManageUsers && canRemoveMember(member, currentUserRole, userId),
     [canManageUsers, userId, currentUserRole]
   )
 

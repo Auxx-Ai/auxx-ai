@@ -1,6 +1,7 @@
 // apps/web/src/components/members/ui/member-detail.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { FeatureKey } from '@auxx/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -19,6 +20,7 @@ import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
 import { GranteeLevelsSection } from '~/components/permissions/ui/grantee-levels-section'
 import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useMemberProfiles } from '../hooks'
@@ -41,7 +43,10 @@ const BREADCRUMBS_BASE = [
  * Reads the member from the already-cached `member.all` list (no new endpoint).
  */
 export function MemberDetail({ userId }: { userId: string }) {
-  const { userId: viewerId, role: viewerRole } = useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  // `viewerRole` stays: the rank comparisons below are genuinely rank-shaped
+  // (who may act on whom), unlike reaching the page, which is a capability.
+  const { userId: viewerId, role: viewerRole } = useUser()
+  useRequireCapability(PermissionKey.membersManage)
   const { hasAccess } = useFeatureFlags()
   const canEditPermissions = hasAccess(FeatureKey.granularPermissions)
   const router = useRouter()

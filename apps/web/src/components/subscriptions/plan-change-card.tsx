@@ -1,6 +1,7 @@
 // app/(protected)/app/settings/plans/_components/plan-change-card.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -14,6 +15,7 @@ import { useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useDemo } from '~/hooks/use-demo'
 import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 
 const PlanChangeSummary = dynamic(
@@ -31,10 +33,10 @@ const PlanChangeSummary = dynamic(
  * Opens a dialog to view and select different plans
  */
 export function PlanChangeCard() {
-  useUser({
-    requireOrganization: true,
-    requireRoles: ['ADMIN', 'OWNER'],
-  })
+  useUser({ requireOrganization: true })
+  // Submits a plan change, so `billingManage` — not the `billingView` that gates
+  // the read-only comparison it opens.
+  useRequireCapability(PermissionKey.billingManage)
 
   const { isDemo } = useDemo()
   const [dialogOpen, setDialogOpen] = useState(false)

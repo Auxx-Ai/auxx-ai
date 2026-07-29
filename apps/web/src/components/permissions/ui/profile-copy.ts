@@ -129,6 +129,11 @@ export function areaGroups({
  * would do nothing. (The binary-role-gate lock this list used to also carry for a
  * subset of areas was retired 2026-07-27, plan 21 §8 step 11 — every listed
  * area's lever is real now.)
+ *
+ * `excludeAdminOnly` currently excludes NOTHING: `settings` was the last area
+ * carrying the flag and dropped it in plan 39 §7.1, which is what put the
+ * Settings row in this grid. The filter stays because the flag is still a live
+ * field — a future area that sets it is hidden here automatically.
  */
 export const PROFILE_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = areaGroups({
   excludeAdminOnly: true,
@@ -143,7 +148,9 @@ export const PROFILE_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = area
  * `adminOnly` areas ARE offered. That flag means "not grantable below ADMIN" on
  * the *human* baseline; an agent's authority comes from this policy and nothing
  * else, bounded at publish by the §2.4a author clamp — so the honest treatment is
- * to show the rung and name the clamp, not to hide it.
+ * to show the rung and name the clamp, not to hide it. No area carries the flag
+ * today (plan 39 §7.1), so this currently differs from the human grouping only
+ * by `Area.agents` below — but the divergence is intentional, not incidental.
  *
  * **`Area.agents` is excluded by name** (plan 25 §4.2.DECIDED, decision 4). It
  * became an `INSTANCE_ACCESS_RESOURCES` key in 2026-07-28's agents slice, and

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '~/auth/session'
-import { AdminPageGuard } from '~/components/global/admin-page-guard'
+import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import SettingsPage from '~/components/global/settings-page'
 import InviteForm from '../_components/invite-form'
 
@@ -24,7 +24,7 @@ async function InvitePage({}: Props) {
         { title: 'Members', href: '/app/settings/members' },
         { title: 'Invite' },
       ]}>
-      <AdminPageGuard />
+      <CapabilityPageGuard permissionKey='members.manage' />
       <div className='p-8'>
         <InviteForm organizationId={defaultOrgId} />
       </div>

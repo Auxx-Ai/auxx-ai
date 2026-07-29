@@ -1,10 +1,10 @@
 'use client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { AnimatedCollapsibleContent } from '@auxx/ui/components/collapsible'
 // import { processUnifiedModelData } from './utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { BarChart3, BotIcon, Plus, RefreshCw } from 'lucide-react'
-
 import { AnimatePresence, motion } from 'motion/react'
 import React from 'react'
 import { ModelRow } from '~/components/ai/ui/model-row'
@@ -13,6 +13,7 @@ import { ProviderRow } from '~/components/ai/ui/provider-row'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { AiUsageDialog } from './ai-usage-dialog'
@@ -38,10 +39,8 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
   const [selectedProvider, setSelectedProvider] = React.useState<string | undefined>()
   const [expandedProviders, setExpandedProviders] = React.useState<Set<string>>(new Set())
   const [showArchivedFor, setShowArchivedFor] = React.useState<Set<string>>(new Set())
-  useUser({
-    requireOrganization: true, // Require organization membership
-    requireRoles: ['ADMIN', 'OWNER'], // Ensure user is an admin or owner
-  })
+  useUser({ requireOrganization: true })
+  useRequireCapability(PermissionKey.aiConfigManage)
 
   const utils = api.useUtils()
   // Use new unified model data API

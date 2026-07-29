@@ -6,19 +6,15 @@ import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { render, screen, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  AGENT_POLICY_INSTANCE_KEYS,
-  type AgentPolicyInstanceKey,
-  PROFILE_AREA_GROUPS,
-} from './profile-copy'
+import { AGENT_POLICY_INSTANCE_KEYS, type AgentPolicyInstanceKey } from './profile-copy'
 
 /**
  * Plan 29 §5 verification bars 2–4, on the unified tree.
  *
  * The plan collapses three flat sections into ONE `ProfileAreaGrid`, so the
  * question these tests answer is not "does it look right" but **"is every rule
- * that was authorable before still authorable"** — every area (including the
- * `adminOnly` ones only agents get), all three collection defaults, the per-def
+ * that was authorable before still authorable"** — every area, all three
+ * collection defaults, the per-def
  * and per-instance rules, and both orphan families. Then: the destructive
  * confirm survived the move, and search/filter still reach child rows.
  *
@@ -221,14 +217,14 @@ function renderEditor(policy: AgentPermissionPolicy | null = FULL_POLICY) {
 }
 
 describe('plan 29 §5 bar 2 — every rule reachable before is reachable after', () => {
-  it('renders every agent area, including the adminOnly ones the human grid hides', async () => {
+  it('renders every agent area as a live control', async () => {
     const user = userEvent.setup()
     renderEditor()
 
-    // `Settings` is `adminOnly`. The human grid excludes it; the agent grid must
-    // not, because an agent's authority comes from this policy alone (§2.1).
-    const humanAreas = PROFILE_AREA_GROUPS.flatMap((group) => group.areas)
-    expect(humanAreas).not.toContain('settings')
+    // `Settings` used to be the `adminOnly` area the human grid hid and this one
+    // showed. It dropped the flag in plan 39 §7.1 so both grids carry it now —
+    // but the agent grid must still offer it, because an agent's authority comes
+    // from this policy alone (§2.1) rather than from any role default.
     expect(rowTitles()).toContain('Settings')
 
     // …and it is a live control, not a read-only mention.

@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/settings/permissions/page.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { FeatureKey } from '@auxx/lib/types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Folder, IdCard, Library, ShieldCheck, User } from 'lucide-react'
@@ -10,7 +11,7 @@ import SettingsPage from '~/components/global/settings-page'
 import { GranteeOverridesTab } from '~/components/permissions/ui/grantee-overrides-tab'
 import { ProfilesTab } from '~/components/permissions/ui/profile-tab'
 import { WorkspaceDefaultsTab } from '~/components/permissions/ui/workspace-defaults-tab'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /**
@@ -40,7 +41,10 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
  * base still belongs to the Profiles tab: it moves every holder at once.)
  */
 export default function PermissionsPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  // NOT a role gate: `Area.permissions` left `adminOnly` in doc 19 §0.25
+  // precisely so it could be delegated, and a role gate here made that lever do
+  // nothing — a member granted `permissions: Full` bounced off their own area.
+  useRequireCapability(PermissionKey.permissionsManage)
   const [tab, setTab] = useQueryState('t', { defaultValue: 'profiles' })
   const { hasAccess } = useFeatureFlags()
 

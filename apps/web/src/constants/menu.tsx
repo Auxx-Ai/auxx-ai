@@ -51,7 +51,6 @@ export type SidebarProps = {
   items?: SidebarProps[]
   url?: string
   selectFirst?: boolean
-  access?: 'ADMIN' | 'USER'
   skipParentSlug?: boolean
   preventNavigation?: boolean
   /** Hidden in self-hosted mode */
@@ -363,8 +362,12 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Tags',
         slug: 'tags',
         icon: <Tag />,
-        // TODO(perms v2 doc 09): gets its own area later; deferred, stays admin.
-        access: 'ADMIN',
+        // Tags are RECORDS (the page writes through `record.create`/`.delete`),
+        // so this is the coarse prerequisite for the per-def `canEditEntity(tag)`
+        // the page itself checks. NOT `settingsManage`: nothing on the tag write
+        // path asserts it. The nav filter has no per-def predicate, so the flat
+        // area key is the closest honest approximation here.
+        permissionKey: 'records.edit',
         description: 'Shared labels applied across records and threads',
         keywords: ['labels', 'categories'],
       },
@@ -373,8 +376,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Import & Export',
         slug: 'import-history',
         icon: <Import />,
-        // TODO(perms v2 doc 09): gets its own area later; deferred, stays admin.
-        access: 'ADMIN',
+        permissionKey: 'records.import',
         keywords: ['csv', 'upload', 'migration', 'backup', 'download', 'data transfer'],
       },
       {
@@ -433,7 +435,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Inboxes',
         slug: 'inbox',
         icon: <Inbox />,
-        access: 'ADMIN',
+        permissionKey: 'channels.manage',
         description: 'Shared queues that route those messages to your team',
         keywords: ['shared inbox', 'routing', 'assignment', 'queue'],
       },

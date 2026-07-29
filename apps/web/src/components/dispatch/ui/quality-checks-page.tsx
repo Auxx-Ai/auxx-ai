@@ -3,7 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { SortableList } from '@auxx/ui/components/sortable'
@@ -23,7 +23,7 @@ import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useMedia } from '~/hooks/use-media'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
@@ -69,7 +69,7 @@ function freshQcDraft(draftId: string): QcDraft {
  * network) and only fires `createQcTemplate` on the draft's first real commit.
  */
 export function QualityChecksPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.settingsManage)
   const { hasAccess } = useFeatureFlags()
 
   const utils = api.useUtils()

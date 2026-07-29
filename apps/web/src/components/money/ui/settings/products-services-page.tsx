@@ -1,7 +1,7 @@
 // apps/web/src/components/money/ui/settings/products-services-page.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { generateId } from '@auxx/utils'
@@ -12,7 +12,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import type { CatalogDraftHandle } from './catalog-draft-types'
 import { GroupEditor } from './group-editor'
@@ -38,7 +38,7 @@ const TABS: { value: SettingsTab; label: string; icon: typeof Package }[] = [
  * (docked ≥ lg, a floating `DockableDrawer` below it).
  */
 export function ProductsServicesPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.settingsManage)
   const { hasAccess } = useFeatureFlags()
 
   const [tab, setTab] = useQueryState('s', { defaultValue: 'products' as string })

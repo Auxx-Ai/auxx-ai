@@ -27,18 +27,29 @@ export function RoleIcon({ role }: { role: OrganizationRole | 'PENDING' }) {
   return <UserCircle2 className='size-3' />
 }
 
+/** Authority rank per role — mirrors `ROLE_RANK` in `@auxx/lib/members` guards. */
+const ROLE_RANK: Record<OrganizationRole, number> = { OWNER: 3, ADMIN: 2, USER: 1 }
+
 /**
- * Whether `viewer` may remove `member` from the organization. Single source of
- * truth for the Members-tab menu and the detail-page danger zone: never self;
- * admins can't remove owners or other admins; owners can remove anyone but self.
+ * Whether `viewer` may remove `member` — the RANK half only. The caller must
+ * also hold `members.manage`; this answers "who may act on whom", not "may you
+ * manage members at all".
+ *
+ * A line-for-line mirror of `canManageTarget` in `@auxx/lib/members`' guards
+ * (plus the self check), which is the enforcing copy. Keeping the two in step
+ * matters in both directions: this used to require OWNER/ADMIN outright, which
+ * hid the action from a delegated `members.manage` grantee the SERVER would
+ * have let through — a USER-rank actor may act on other USER-rank members.
+ * There is no client-safe `@auxx/lib/members` subpath, so this stays a mirror.
  */
 export function canRemoveMember(
   member: Member,
   viewerRole: OrganizationRole | null | undefined,
   viewerId: string | null | undefined
 ): boolean {
-  if (!viewerId || member.userId === viewerId) return false
-  if (member.role === Role.OWNER && viewerRole !== Role.OWNER) return false
+  if (!viewerId || !viewerRole || member.userId === viewerId) return false
+  if (viewerRole === Role.OWNER) return true
+  if (member.role === Role.OWNER) return false
   if (viewerRole === Role.ADMIN && member.role === Role.ADMIN) return false
-  return viewerRole === Role.OWNER || (viewerRole === Role.ADMIN && member.role === Role.USER)
+  return ROLE_RANK[member.role] <= ROLE_RANK[viewerRole]
 }

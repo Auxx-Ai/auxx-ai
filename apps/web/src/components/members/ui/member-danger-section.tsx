@@ -2,6 +2,7 @@
 'use client'
 
 import type { OrganizationRole } from '@auxx/database/types'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { TriangleAlert } from 'lucide-react'
@@ -9,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { DangerZone } from '~/components/global/danger-zone'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { Member } from '../types'
 import { canRemoveMember } from '../utils'
@@ -23,6 +25,7 @@ interface MemberDangerSectionProps {
 export function MemberDangerSection({ member, viewerRole, viewerId }: MemberDangerSectionProps) {
   const router = useRouter()
   const utils = api.useUtils()
+  const { can } = useAccess()
   const [confirm, ConfirmDialog] = useConfirm()
 
   const removeUser = api.member.remove.useMutation({
@@ -35,7 +38,9 @@ export function MemberDangerSection({ member, viewerRole, viewerId }: MemberDang
     onError: (error) => toastError({ title: 'Error removing member', description: error.message }),
   })
 
-  // Hidden entirely when the viewer can't remove this member (self, or role-gated).
+  // Both halves of the server's gate: the `members.manage` authority AND the
+  // rank rule (self, owners, admin peers). Either one alone is wrong here.
+  if (!can(PermissionKey.membersManage)) return null
   if (!canRemoveMember(member, viewerRole, viewerId)) return null
 
   const handleRemove = async () => {

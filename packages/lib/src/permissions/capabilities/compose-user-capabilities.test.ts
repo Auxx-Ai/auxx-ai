@@ -74,13 +74,44 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).toContain(PermissionKey.recordsImport)
   })
 
-  it('pins the adminOnly area set EXACTLY — never grantable below ADMIN', () => {
+  it('pins the adminOnly area set EXACTLY — now empty, so EVERY area is grantable', () => {
     // Migrated from the deleted per-area binary-role-gate anti-rot test (that flag
     // was retired 2026-07-27, plan 21 §8 step 11, once the last role gate was
     // deleted). `adminOnly` is a separate, still-live question — "may a USER be
     // granted this?" — and stays pinned so an area can't silently gain or lose it.
+    //
+    // `settings` was the last member and left 2026-07-28 (plan 39 §7.1): while it
+    // held the flag, `assertGrantableLevels` refused to grant it below ADMIN, so
+    // the nine settings pages that moved off role gates would have been
+    // capability-expressed but still admin-only. Deliberately still pinned, and
+    // pinned to EMPTY — re-adding the flag to any area is a delegation
+    // REGRESSION and has to be argued for here first.
     const adminOnlyAreas = AREA_ORDER.filter((area) => PERMISSION_AREAS[area].adminOnly === true)
-    expect(adminOnlyAreas.sort()).toEqual([Area.settings])
+    expect(adminOnlyAreas).toEqual([])
+  })
+
+  it('grants a plain USER the settings area — the point of dropping adminOnly', () => {
+    // The delegation itself: no role, one explicit grant, and the key composes.
+    // If this fails, `settings` is admin-only again by some other route.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.settings]: Level.Full },
+      typeAccessRows: [],
+    })
+    expect(caps.keys).toContain(PermissionKey.settingsManage)
+  })
+
+  it('still withholds settings from the untouched Member baseline', () => {
+    // The safety half: dropping `adminOnly` makes the area GRANTABLE, it must not
+    // make it DEFAULT. `settings` stays omitted from MEMBER_BASELINE_LEVELS.
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: MEMBER_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
+    expect(caps.keys).not.toContain(PermissionKey.settingsManage)
   })
 
   it("a worker seat's effective default is exactly WORKER_SEAT_KEYS", () => {

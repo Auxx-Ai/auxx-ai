@@ -1,9 +1,11 @@
 // app/(protected)/app/settings/plans/_components/plan-comparison.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useEffect, useState } from 'react'
 import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useDehydratedSubscription } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import { BillingCycleToggle } from './billing-cycle-toggle'
@@ -48,10 +50,10 @@ export function PlanComparison({
   variant = 'default',
   onPlanSelect,
 }: PlanComparisonProps) {
-  useUser({
-    requireOrganization: true, // Require organization membership
-    requireRoles: ['ADMIN', 'OWNER'], // Ensure user is an admin or owner
-  })
+  useUser({ requireOrganization: true })
+  // Read-only surface — `billingView`, matching the settings nav's own gate.
+  // Selecting a plan goes through `PlanChangeCard`, which requires `billingManage`.
+  useRequireCapability(PermissionKey.billingView)
 
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY')
 
