@@ -1,9 +1,7 @@
 // apps/web/src/app/api/imports/[importJobId]/events/route.ts
 
 import { database as db, schema } from '@auxx/database'
-import { AuxxError } from '@auxx/lib/errors'
-import { requirePermission } from '@auxx/lib/permissions'
-import { PermissionKey } from '@auxx/lib/permissions/client'
+import { getCapabilities } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { createDedicatedClient } from '@auxx/redis'
 import { and, eq } from 'drizzle-orm'
@@ -23,21 +21,28 @@ const IMPORT_EVENTS_CHANNEL = 'import:events'
  * SSE endpoint for import job events.
  * Clients subscribe to receive real-time updates on import progress.
  *
- * Gated on `records.import`, matching its tRPC sibling: every procedure in
- * `server/api/routers/data-import.ts` runs through
- * `permissionProcedure(recordsImport)`. Before this, the handler authenticated
- * with `getSession` and scoped by org but read no capabilities, so any
- * authenticated member could stream a live import — the `planning:row` events
- * forwarded verbatim below carry the imported record VALUES (`fields`) plus
- * `existingRecordId`, and the terminal replay carries `statistics`.
+ * Gated on the member's import authority for the job's TARGET DEFINITION,
+ * matching its tRPC sibling: every procedure in
+ * `server/api/routers/data-import.ts` runs through `assertImportEntity`. Before
+ * any of this the handler authenticated with `getSession` and scoped by org but
+ * read no capabilities, so any authenticated member could stream a live import —
+ * the `planning:row` events forwarded verbatim below carry the imported record
+ * VALUES (`fields`) plus `existingRecordId`, and the terminal replay carries
+ * `statistics`.
  *
- * The gate deliberately runs **before** the job lookup, so an unauthorized
- * caller cannot probe job existence.
+ * **Order and status code are load-bearing.** The def-aware gate needs the job's
+ * mapping, so it can no longer run before the lookup the way the coarse
+ * `requirePermission(recordsImport)` did. Existence is kept unprobeable by
+ * answering **404 for a denial too**: "no such job in your org" and "not yours to
+ * import into" are indistinguishable to the caller. Do not "improve" the denial
+ * to a 403 — that hands back exactly the existence oracle the original ordering
+ * was there to deny.
  *
- * `recordsImport` carries no `featureKey` in the permission registry, so
- * `requirePermission` here reduces to `getCapabilities(...).assert(key)` — no
- * plan-AND today. It is used rather than a bare `can()` so the Layer-1 gate
- * comes along automatically if the key is ever linked to a feature.
+ * A 404 here also means this route needs no `AuxxError` → status mapping: App
+ * Router handlers have no `auxxErrorMiddleware`, so a thrown `ForbiddenError`
+ * would surface as an unhandled 500 (the reason the previous version wrapped its
+ * assert in a try/catch). Reading the boolean predicate avoids the throw
+ * entirely.
  */
 export async function GET(
   request: NextRequest,
@@ -58,29 +63,30 @@ export async function GET(
     return new Response('Organization not found', { status: 403 })
   }
 
-  try {
-    await requirePermission(session.user.id, organizationId, PermissionKey.recordsImport)
-  } catch (error) {
-    // Returned explicitly so the AuxxError keeps its own status instead of
-    // surfacing as an unhandled 500 — this handler has no tRPC error formatter.
-    if (error instanceof AuxxError) {
-      return new Response(error.message, { status: error.statusCode })
-    }
-    throw error
-  }
-
   // Verify access to the import job
   const [importJob] = await db
-    .select()
+    .select({
+      job: schema.ImportJob,
+      entityDefinitionId: schema.ImportMapping.entityDefinitionId,
+    })
     .from(schema.ImportJob)
+    .innerJoin(schema.ImportMapping, eq(schema.ImportMapping.id, schema.ImportJob.importMappingId))
     .where(
       and(eq(schema.ImportJob.id, importJobId), eq(schema.ImportJob.organizationId, organizationId))
     )
     .limit(1)
 
+  // 404 rather than 403 on the capability denial — see the note above.
   if (!importJob) {
     return new Response('Import job not found', { status: 404 })
   }
+
+  const capabilities = await getCapabilities(session.user.id, organizationId)
+  if (!capabilities.canImportEntity(importJob.entityDefinitionId)) {
+    return new Response('Import job not found', { status: 404 })
+  }
+
+  const job = importJob.job
 
   const encoder = new TextEncoder()
 
@@ -159,27 +165,27 @@ export async function GET(
         // Send initial connection event with current job status
         send('connected', {
           importJobId,
-          status: importJob.status,
-          rowCount: importJob.rowCount,
-          columnCount: importJob.columnCount,
-          receivedChunks: importJob.receivedChunks,
-          totalChunks: importJob.totalChunks,
+          status: job.status,
+          rowCount: job.rowCount,
+          columnCount: job.columnCount,
+          receivedChunks: job.receivedChunks,
+          totalChunks: job.totalChunks,
           timestamp: new Date().toISOString(),
         })
 
         // If job is already completed or failed, send final status
-        if (importJob.status === 'completed' || importJob.status === 'failed') {
+        if (job.status === 'completed' || job.status === 'failed') {
           send('job:status', {
-            status: importJob.status,
-            statistics: importJob.statistics,
-            completedAt: importJob.completedAt?.toISOString(),
+            status: job.status,
+            statistics: job.statistics,
+            completedAt: job.completedAt?.toISOString(),
           })
         }
 
         // If resolution is complete (waiting status with allowPlanGeneration), send status
-        if (importJob.status === 'waiting' && importJob.allowPlanGeneration) {
+        if (job.status === 'waiting' && job.allowPlanGeneration) {
           send('job:status', {
-            status: importJob.status,
+            status: job.status,
           })
         }
 

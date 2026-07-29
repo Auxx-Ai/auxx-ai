@@ -1,7 +1,6 @@
 // apps/web/src/components/tags/ui/record-tag-chip.tsx
 'use client'
 
-import { PermissionKey } from '@auxx/lib/permissions/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import {
   DropdownMenu,
@@ -40,16 +39,16 @@ export function RecordTagChip({ tagId, removeLabel, onRemove, size = 'sm' }: Rec
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
-  const { canEditEntity, can } = useAccess()
+  const { canEditEntity, canDeleteEntity } = useAccess()
 
   // "Edit Tag" / "Delete Tag" mutate the tag ORG-WIDE, so they ask what the
-  // server asks of a record write: `assertEditEntity` on the tag def, plus
-  // `recordsDelete` for the destructive one. "Remove from X" is NOT gated here —
-  // it is a field-value write on the parent record, a different permission that
-  // the host surface owns.
+  // server asks of a record write: `assertEditEntity` on the tag def, and
+  // `assertDeleteEntity` for the destructive one. "Remove from X" is NOT gated
+  // here — it is a field-value write on the parent record, a different
+  // permission that the host surface owns.
   const { entityDefinitionId: tagDefId } = parseRecordId(tagId)
   const canEditTag = canEditEntity(tagDefId)
-  const canDeleteTag = canEditTag && can(PermissionKey.recordsDelete)
+  const canDeleteTag = canDeleteEntity(tagDefId)
 
   const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {

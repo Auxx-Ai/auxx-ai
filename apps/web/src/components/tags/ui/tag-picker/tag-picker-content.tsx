@@ -6,7 +6,6 @@ import {
   getOptionColor,
   type SelectOptionColor,
 } from '@auxx/lib/custom-fields/client'
-import { PermissionKey } from '@auxx/lib/permissions/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -97,18 +96,20 @@ export function TagPickerContent({
   )
 
   const utils = api.useUtils()
-  const { canEditEntity, can } = useAccess()
+  const { canEditEntity, canDeleteEntity } = useAccess()
 
   // Tags are records, so the picker's manage affordances must ask what the
   // server asks: `record.create`/`.update` assert `assertEditEntity` on the tag
-  // def, and `record.delete` additionally asserts `recordsDelete`. This surface
-  // had NO capability check at all — every member saw create/edit/delete for
-  // org-wide tags and found out on the 403. `canCreate` is a caller-supplied
-  // layout prop defaulted to `true`, not an authorization signal.
+  // def, and `record.delete` asserts `assertDeleteEntity`. This surface had NO
+  // capability check at all — every member saw create/edit/delete for org-wide
+  // tags and found out on the 403. `canCreate` is a caller-supplied layout prop
+  // defaulted to `true`, not an authorization signal.
   const canManageTags = !!tagEntityDefinitionId && canEditEntity(tagEntityDefinitionId)
-  // A member at records `Edit` holds edit but NOT delete (the delete verb sits on
-  // the `Full` rung), so these two are genuinely separable.
-  const canDeleteTags = canManageTags && can(PermissionKey.recordsDelete)
+  // Genuinely separable from edit: the delete verb sits on the Records `Full`
+  // rung, so a member at Records `Edit` may rename a tag but not remove it —
+  // unless they hold an explicit `admin` grant on the tag def, which
+  // `canDeleteEntity` accounts for and the old `can(recordsDelete)` did not.
+  const canDeleteTags = !!tagEntityDefinitionId && canDeleteEntity(tagEntityDefinitionId)
 
   const [confirm, ConfirmDialog] = useConfirm()
   // Canonical create hook — seeds caches + toasts on error. The tree reads from

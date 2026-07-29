@@ -5,7 +5,7 @@ import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { BadRequestError, ForbiddenError } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
 import { getRecordIdentityViews } from '@auxx/lib/identity'
-import { isInstanceAccessKey, PermissionKey } from '@auxx/lib/permissions'
+import { type CapabilitySet, isInstanceAccessKey } from '@auxx/lib/permissions'
 import {
   type CreateEntityResult,
   type LookupCandidate,
@@ -124,6 +124,23 @@ function instanceAccessDefError(key: string): ForbiddenError {
 /** The def part of each RecordId, for {@link assertNotInstanceAccessDef}. */
 function recordIdDefParts(recordIds: string[]): string[] {
   return recordIds.map((id) => parseRecordId(id as RecordId).entityDefinitionId)
+}
+
+/**
+ * The def-aware delete gate for a whole RecordId batch — asserted once per
+ * DISTINCT definition, in memory, no extra I/O (same shape as
+ * `fieldValue.setBulk`'s edit gate).
+ *
+ * Replaces the bare `assert(recordsDelete)` these three mutations used to carry.
+ * That coarse verb is still honoured — it is the first branch of
+ * `canDeleteEntity` — but a def the member holds an explicit `admin` grant on now
+ * passes without it, which is what makes delete authority grantable per
+ * definition instead of only org-wide.
+ */
+function assertCanDeleteDefs(capabilities: CapabilitySet, recordIds: string[]): void {
+  for (const defId of new Set(recordIdDefParts(recordIds))) {
+    capabilities.assertDeleteEntity(defId)
+  }
 }
 
 /**
@@ -711,8 +728,9 @@ export const recordRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
       await assertNotInstanceAccessDef(organizationId, recordIdDefParts([input.recordId]))
-      // Layer-2 write guard (§11.4): deleting a record requires the delete verb.
-      ctx.capabilities.assert(PermissionKey.recordsDelete)
+      // Layer-2 × Layer-3 write guard (§11.4): the delete verb, def-aware — the
+      // org-wide `recordsDelete` key OR an explicit per-def `admin` grant.
+      assertCanDeleteDefs(ctx.capabilities, [input.recordId])
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -770,8 +788,10 @@ export const recordRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
       await assertNotInstanceAccessDef(organizationId, recordIdDefParts(input.recordIds))
-      // Layer-2 write guard (§11.4): bulk delete requires the delete verb.
-      ctx.capabilities.assert(PermissionKey.recordsDelete)
+      // Layer-2 × Layer-3 write guard (§11.4): the delete verb, asserted per
+      // DISTINCT def in the batch. A batch spanning a def the member may not
+      // delete fails whole rather than partially — same as the edit gate.
+      assertCanDeleteDefs(ctx.capabilities, input.recordIds)
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -827,9 +847,10 @@ export const recordRouter = createTRPCRouter({
         organizationId,
         recordIdDefParts([input.targetRecordId, ...input.sourceRecordIds])
       )
-      // Layer-2 write guard (§11.4): merge permanently REMOVES the source records, so it gates
-      // on the delete verb (chosen over recordsEdit — the destructive half is the binding one).
-      ctx.capabilities.assert(PermissionKey.recordsDelete)
+      // Layer-2 × Layer-3 write guard (§11.4): merge permanently REMOVES the source records, so
+      // it gates on the delete verb (chosen over recordsEdit — the destructive half is the
+      // binding one), def-aware and asserted for the target and every source def.
+      assertCanDeleteDefs(ctx.capabilities, [input.targetRecordId, ...input.sourceRecordIds])
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
