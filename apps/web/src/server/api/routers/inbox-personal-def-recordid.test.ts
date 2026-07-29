@@ -30,7 +30,7 @@ const PERSONAL_INBOX = 'ibx_personal000000000000000'
 const SHARED_INBOX = 'ibx_shared00000000000000000'
 const CHANNEL = 'int_channel0000000000000000'
 
-const { world, service } = vi.hoisted(() => {
+const { world, service, channels } = vi.hoisted(() => {
   const world = {
     /** RecordId STRINGS, exactly as the ResourceAccess rows are keyed. */
     manage: new Set<string>(),
@@ -46,11 +46,18 @@ const { world, service } = vi.hoisted(() => {
       id: inboxId,
       integrations: [{ id: 'lnk_1', integrationId: CHANNEL }],
     })),
+    deleteInbox: vi.fn(async () => undefined),
     deleteInboxById: vi.fn(async () => undefined),
     removeIntegration: vi.fn(async () => true),
   }
 
-  return { world, service }
+  const channels = {
+    claimPersonalInbox: vi.fn(async () => undefined),
+    deleteOwnPersonalInbox: vi.fn(async () => undefined),
+    deletePersonalInbox: vi.fn(async () => undefined),
+  }
+
+  return { world, service, channels }
 })
 
 vi.mock('@auxx/lib/inboxes', () => ({
@@ -58,6 +65,7 @@ vi.mock('@auxx/lib/inboxes', () => ({
     canManageInboxAccess = service.canManageInboxAccess
     hasUserAccess = service.hasUserAccess
     getInboxWithIntegrationsById = service.getInboxWithIntegrationsById
+    deleteInbox = service.deleteInbox
     deleteInboxById = service.deleteInboxById
     removeIntegration = service.removeIntegration
     // Unused by the three procedures under test, present so the class shape
@@ -77,10 +85,7 @@ vi.mock('@auxx/lib/cache', () => ({
 }))
 
 vi.mock('@auxx/lib/threads', () => ({ ThreadMutationService: class {} }))
-vi.mock('@auxx/lib/channels', () => ({
-  claimPersonalInbox: vi.fn(),
-  deletePersonalInbox: vi.fn(),
-}))
+vi.mock('@auxx/lib/channels', () => channels)
 vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx: vi.fn(async () => undefined) }))
 vi.mock('@auxx/lib/permissions/visibility', () => ({ inboxLensFor: () => 'none' }))
 
@@ -164,8 +169,10 @@ beforeEach(() => {
   // implementation passed to `vi.fn`, so the fixture-backed behaviour survives.
   service.canManageInboxAccess.mockReset()
   service.hasUserAccess.mockReset()
+  service.deleteInbox.mockReset()
   service.deleteInboxById.mockReset()
   service.removeIntegration.mockReset()
+  channels.deleteOwnPersonalInbox.mockReset()
 })
 
 describe('inbox router RecordId minting after migration 060 (plan 40a §5.1 item B)', () => {
@@ -176,14 +183,23 @@ describe('inbox router RecordId minting after migration 060 (plan 40a §5.1 item
       world.view.add(`personal_inbox:${PERSONAL_INBOX}`)
     })
 
-    it('can still DELETE it', async () => {
+    it('can still DELETE it — routed to the owner path, not the inventory one', async () => {
       await expect(caller().delete({ inboxId: PERSONAL_INBOX })).resolves.toEqual({ success: true })
 
-      expect(service.canManageInboxAccess).toHaveBeenCalledWith(
-        `personal_inbox:${PERSONAL_INBOX}`,
-        USER_ID
-      )
-      expect(service.deleteInboxById).toHaveBeenCalledWith(PERSONAL_INBOX)
+      // The def resolved off the org cache picks the BRANCH, so this is the same
+      // minting invariant the rest of the file pins, one level up: a stray
+      // `inbox:` prefix here would send a personal mailbox down the shared path
+      // and 403 its own owner on `channels.manage`.
+      expect(channels.deleteOwnPersonalInbox).toHaveBeenCalledWith({
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        inboxId: PERSONAL_INBOX,
+      })
+      // Authority moved INTO the lib function (ownership of the mailbox, which a
+      // shareable `admin` grant does not confer) — the router must not also run
+      // the Manager gate, or a personal inbox stays undeletable by design.
+      expect(service.canManageInboxAccess).not.toHaveBeenCalled()
+      expect(service.deleteInbox).not.toHaveBeenCalled()
     })
 
     it('can still REMOVE AN INTEGRATION from it', async () => {
@@ -226,19 +242,21 @@ describe('inbox router RecordId minting after migration 060 (plan 40a §5.1 item
       await expect(caller().getIntegrations({ inboxId: SHARED_INBOX })).resolves.toHaveLength(1)
 
       expect(service.canManageInboxAccess).toHaveBeenCalledWith(`inbox:${SHARED_INBOX}`, USER_ID)
+      expect(service.deleteInbox).toHaveBeenCalledWith(`inbox:${SHARED_INBOX}`)
+      expect(channels.deleteOwnPersonalInbox).not.toHaveBeenCalled()
     })
   })
 
   describe('the gates still refuse', () => {
     it('a member with no grant on the personal mailbox', async () => {
-      await expect(caller().delete({ inboxId: PERSONAL_INBOX })).rejects.toMatchObject(
-        FORBIDDEN_INSTANCE
-      )
       await expect(
         caller().removeIntegration({ inboxId: PERSONAL_INBOX, integrationId: CHANNEL })
       ).rejects.toMatchObject(FORBIDDEN_INSTANCE)
-      expect(service.deleteInboxById).not.toHaveBeenCalled()
       expect(service.removeIntegration).not.toHaveBeenCalled()
+      // `delete` is deliberately absent here: since the personal branch landed,
+      // its authority is OWNERSHIP inside `deleteOwnPersonalInbox` rather than a
+      // grant the router can see, and that assert has its own test in
+      // `packages/lib/src/channels/delete-own-personal-inbox.test.ts`.
     })
 
     it('THE FAIL-OPEN CASE: a non-owner is refused the personal mailbox’s channel list', async () => {
@@ -280,9 +298,10 @@ describe('inbox router RecordId minting after migration 060 (plan 40a §5.1 item
       // The pre-060 row, left behind. It must NOT authorize the new keyspace.
       world.manage.add(`inbox:${PERSONAL_INBOX}`)
 
-      await expect(caller().delete({ inboxId: PERSONAL_INBOX })).rejects.toMatchObject(
-        FORBIDDEN_INSTANCE
-      )
+      await expect(
+        caller().removeIntegration({ inboxId: PERSONAL_INBOX, integrationId: CHANNEL })
+      ).rejects.toMatchObject(FORBIDDEN_INSTANCE)
+      expect(service.removeIntegration).not.toHaveBeenCalled()
     })
   })
 
@@ -292,5 +311,10 @@ describe('inbox router RecordId minting after migration 060 (plan 40a §5.1 item
     await expect(caller().delete({ inboxId: 'ibx_unknown0000000000000000' })).resolves.toEqual({
       success: true,
     })
+    // Closed fallback: an unknown id takes the SHARED branch, which still has to
+    // clear `channels.manage` + Manager. Sending it down the personal one would
+    // skip both gates on an id the cache cannot vouch for.
+    expect(channels.deleteOwnPersonalInbox).not.toHaveBeenCalled()
+    expect(service.deleteInbox).toHaveBeenCalledWith('inbox:ibx_unknown0000000000000000')
   })
 })

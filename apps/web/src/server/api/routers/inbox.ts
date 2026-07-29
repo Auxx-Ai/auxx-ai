@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/inbox.ts
 
 import { getCachedUserMailVisibility, getOrgCache } from '@auxx/lib/cache'
-import { claimPersonalInbox, deletePersonalInbox } from '@auxx/lib/channels'
+import { claimPersonalInbox, deleteOwnPersonalInbox, deletePersonalInbox } from '@auxx/lib/channels'
 import {
   inboxDefKeyOf,
   loadInboxDefKeys,
@@ -335,27 +335,56 @@ export const inboxRouter = createTRPCRouter({
     }),
 
   /**
-   * Delete an inbox. Inventory (`channels.manage`, §1.0) AND this inbox's
+   * Delete an inbox — ONE entry point for both definitions, branching on the
+   * one the instance actually lives on.
+   *
+   * **Shared** (`inbox`): inventory (`channels.manage`, §1.0) AND this inbox's
    * Manager — the coarse key says you may shape the org's inbox inventory, the
-   * instance assert says you may shape THIS inbox.
+   * instance assert says you may shape THIS inbox. Refuses while an active
+   * channel is still routed here (`InboxService.deleteInbox`); re-route or
+   * disconnect first.
+   *
+   * **Personal** (`personal_inbox`): neither gate applies and both would deny.
+   * `channels.manage` governs shared inventory, so the owner — an ordinary
+   * member — never holds it; and `personal_inbox` is `baselineAtCreate: true`,
+   * so an admin who does hold it carries no grant row on somebody else's private
+   * mailbox. That is why nothing could delete a live personal inbox at all
+   * before this branch: every caller failed one half or the other, and the
+   * `deletePersonal` procedure below refuses until its owner leaves the org.
+   * Authority here is OWNERSHIP, asserted inside `deleteOwnPersonalInbox`, which
+   * also cascades to the account (a personal mailbox is a one-channel
+   * container — see its doc comment).
+   *
+   * The procedure is therefore `capabilityProcedure` with the coarse assert
+   * moved INTO the shared branch. `permissionProcedure` asserts in middleware,
+   * before the body runs, so it cannot be made def-aware; `channelsManage`
+   * carries no `featureKey` (`permissions/capabilities/registry.ts:396-402`), so
+   * the swap loses no plan gate.
    */
-  delete: permissionProcedure(PermissionKey.channelsManage)
+  delete: capabilityProcedure
     .input(z.object({ inboxId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const userId = ctx.session.user.id
-      const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-      await requireInboxManageAccess(
-        inboxService,
-        await toInboxRecordId(organizationId, input.inboxId),
-        userId
-      )
+      // Resolved from the INSTANCE, never from the caller's def part — the
+      // branch below decides which authority applies, so guessing it wrong
+      // would pick the wrong gate as well as the wrong grant keyspace.
+      const recordId = await toInboxRecordId(organizationId, input.inboxId)
+      const isPersonal = parseRecordId(recordId).entityDefinitionId === 'personal_inbox'
 
-      await inboxService.deleteInboxById(input.inboxId)
+      if (isPersonal) {
+        await deleteOwnPersonalInbox({ organizationId, userId, inboxId: input.inboxId })
+      } else {
+        ctx.capabilities.assert(PermissionKey.channelsManage)
+        const inboxService = new InboxService(ctx.db, organizationId, userId)
+        await requireInboxManageAccess(inboxService, recordId, userId)
+        await inboxService.deleteInbox(recordId)
+      }
+
       await recordAuditFromCtx(ctx, {
         category: 'integrations',
-        action: 'inbox.deleted',
+        action: isPersonal ? 'inbox.personal.deleted' : 'inbox.deleted',
         targetType: 'Inbox',
         targetId: input.inboxId,
       })

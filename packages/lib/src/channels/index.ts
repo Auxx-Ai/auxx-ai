@@ -11,9 +11,15 @@ export { assertSharedConnectInbox } from './connect-inbox'
 export { disconnect } from './disconnect'
 export { type CreateChannelInput, createChannel, linkChannelToInbox } from './lifecycle'
 export { countBillableChannels, getProviderType, list } from './list'
-export { canManageChannel, requireChannelManageAccess } from './manage-access'
+export {
+  type ChannelManageScope,
+  canManageChannel,
+  listManageableChannelIds,
+  requireChannelManageAccess,
+} from './manage-access'
 export {
   claimPersonalInbox,
+  deleteOwnPersonalInbox,
   deletePersonalInbox,
   disconnectPersonalChannelsForUser,
   provisionPersonalInbox,

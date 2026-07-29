@@ -126,6 +126,7 @@ vi.mock('@auxx/lib/threads', () => ({
 }))
 vi.mock('@auxx/lib/channels', () => ({
   claimPersonalInbox: vi.fn(),
+  deleteOwnPersonalInbox: vi.fn(),
   deletePersonalInbox: vi.fn(),
 }))
 vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx }))

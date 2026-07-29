@@ -56,7 +56,7 @@ vi.mock('../providers/outlook/outlook-oauth', () => ({
 }))
 vi.mock('../providers/provider-capabilities', () => ({ PROVIDER_CAPABILITIES: {} }))
 vi.mock('./channel-connection-def', () => ({ CHANNEL_PROVIDER_TO_KEY: {} }))
-vi.mock('./disconnect', () => ({ deleteChannelData: vi.fn() }))
+vi.mock('./disconnect', () => ({ deleteChannelData: vi.fn(), disconnect: vi.fn() }))
 vi.mock('../resource-access/resource-access-service', () => ({
   setInstanceAccess: hoisted.setInstanceAccess,
 }))

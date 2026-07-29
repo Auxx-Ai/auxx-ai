@@ -58,6 +58,11 @@ export function InboxList() {
   const deleteInbox = api.inbox.delete.useMutation({
     onSuccess: () => {
       void utils.inbox.settingsList.invalidate()
+      void utils.inbox.myLenses.invalidate()
+      // Deleting a PERSONAL inbox disconnects its account and destroys its
+      // mail, so the channel inventory and the sidebar counters move with it.
+      void utils.channel.list.invalidate()
+      void utils.thread.getCounts.invalidate()
     },
     onError: (mutationError) => {
       toastError({ title: 'Error deleting inbox', description: mutationError.message })
@@ -81,8 +86,10 @@ export function InboxList() {
   const handleDeleteInbox = async (inbox: SettingsInboxItem) => {
     if (!inbox.canDelete) return
     const confirmed = await confirm({
-      title: 'Delete inbox?',
-      description: `This will permanently delete "${inbox.name}" and all its settings. This action cannot be undone.`,
+      title: inbox.isPersonal ? 'Delete personal inbox?' : 'Delete inbox?',
+      description: inbox.isPersonal
+        ? `This disconnects the connected account and permanently deletes "${inbox.name}" with all of its mail. This action cannot be undone.`
+        : `This will permanently delete "${inbox.name}" and all its settings. This action cannot be undone.`,
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,
