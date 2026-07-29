@@ -4,7 +4,6 @@
 import { useMemo } from 'react'
 import type { SidebarProps } from '~/constants/menu'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
-import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
@@ -17,34 +16,38 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
  * Anything building a settings index MUST go through this hook rather than reading
  * `SETTINGS_MENU` directly, or it will surface pages the member 403s on.
  *
- * Filter order mirrors the original inline chain: self-hosted → feature flag → role
- * → def-admin → Layer-2 capability. ADMIN/OWNER hold every capability key via
- * ROLE_DEFAULTS, so no admin bypass is needed for `permissionKey`.
+ * Filter order: self-hosted → feature flag → def-admin → Layer-2 capability.
+ * ADMIN/OWNER hold every capability key via ROLE_DEFAULTS, so no admin bypass is
+ * needed for `permissionKey`.
+ *
+ * The `role` branch is GONE (plan 39 §1.3). This hook used to decide on both
+ * systems in one expression — a `permissionKey` item was capability-gated while
+ * an `access: 'ADMIN'` item fell back to the org role — so a menu entry could
+ * appear for a key-holder whose page then bounced them, or hide from someone the
+ * page would have admitted. The last three role-gated items (tags, import
+ * history, inboxes) took real keys once `settings` became grantable, leaving
+ * nothing for the role branch to decide.
  */
 export function useSettingsMenu(groups: SidebarProps[]): SidebarProps[] {
   const selfHosted = useIsSelfHosted()
-  const { isAdminOrOwner } = useUser({ requireOrganization: true })
   const { hasAccess: hasFeatureAccess } = useFeatureFlags()
   const { can, administersAnyDef } = useAccess()
 
-  return useMemo(() => {
-    const role: 'ADMIN' | 'USER' = isAdminOrOwner ? 'ADMIN' : 'USER'
+  return useMemo(
+    () =>
+      groups.flatMap((group) => {
+        const items = (group.items ?? []).filter(
+          (item) =>
+            (!selfHosted || !item.cloudOnly) &&
+            (!item.featureKey || hasFeatureAccess(item.featureKey)) &&
+            // Custom Fields is *derived* from def-admin, not its own Layer-2 area
+            // (perms v2 doc 09); the page lists only the defs the member administers.
+            (!item.requiresDefAdmin || administersAnyDef) &&
+            (!item.permissionKey || can(item.permissionKey))
+        )
 
-    return groups.flatMap((group) => {
-      if (group.access && group.access !== role) return []
-
-      const items = (group.items ?? []).filter(
-        (item) =>
-          (!selfHosted || !item.cloudOnly) &&
-          (!item.featureKey || hasFeatureAccess(item.featureKey)) &&
-          (!item.access || item.access === role) &&
-          // Custom Fields is *derived* from def-admin, not its own Layer-2 area
-          // (perms v2 doc 09); the page lists only the defs the member administers.
-          (!item.requiresDefAdmin || administersAnyDef) &&
-          (!item.permissionKey || can(item.permissionKey))
-      )
-
-      return items.length > 0 ? [{ ...group, items }] : []
-    })
-  }, [groups, selfHosted, isAdminOrOwner, hasFeatureAccess, can, administersAnyDef])
+        return items.length > 0 ? [{ ...group, items }] : []
+      }),
+    [groups, selfHosted, hasFeatureAccess, can, administersAnyDef]
+  )
 }

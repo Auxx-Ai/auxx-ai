@@ -112,11 +112,14 @@ describe('plan 29 §5 bar 5 — the profile-editor call path is unchanged', () =
 
     const human = PROFILE_AREA_GROUPS.flatMap((group) => group.areas)
     expect(rowTitles()).toHaveLength(human.length)
-    // `adminOnly` and `workerOnly` areas stay out of the human grid…
-    expect(rowTitles()).not.toContain('Settings')
+    // `Settings` is now IN the human grid — it dropped `adminOnly` in plan 39
+    // §7.1, and this row appearing is the delegation itself. Before that, the
+    // area could be zeroed but never granted, so it read as admin-only either
+    // way and the grid hid it.
+    expect(rowTitles()).toContain('Settings')
+    // `workerOnly` still stays out: a full seat has no use for the linked-records
+    // rung, so the control would be a lever that does nothing.
     expect(rowTitles()).not.toContain('Linked records')
-    // …and the agent grouping, which the agent policy passes, would add one.
-    expect(AGENT_POLICY_AREA_GROUPS.flatMap((g) => g.areas)).toContain(Area.settings)
   })
 
   it('renders identically whether the plan 29 defaults are omitted or passed explicitly', () => {
@@ -228,7 +231,7 @@ describe('plan 29 §5 bar 5 — the seat lock outranks unsetHintFor', () => {
 })
 
 describe('plan 29 §5 bar 5 — areaGroups drives which areas the grid offers', () => {
-  it('renders the adminOnly areas when the agent grouping is passed', () => {
+  it('renders the agent grouping when it is passed', () => {
     renderGrid({
       values: {},
       onChange: vi.fn(),
@@ -254,7 +257,7 @@ describe('plan 29 §5 bar 5 — areaGroups drives which areas the grid offers', 
 
     await user.type(screen.getByPlaceholderText('Search areas...'), 'settings')
     // The query matches labels AND descriptions, so other areas may ride along —
-    // what matters is that the adminOnly row is searchable at all.
+    // what matters is that the row is searchable at all.
     expect(rowTitles()).toContain('Settings')
     expect(rowTitles()).not.toContain('Billing')
 

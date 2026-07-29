@@ -52,15 +52,23 @@ export interface GranteeRef {
  * profile would elevate a non-admin past the seat/role model. Mirrors v1's
  * `assertGrantableKey`.
  *
- * **Today that set is `settings` alone.** `permissions` left it in doc 19 §0.25
- * (it must be grantable to be a delegable area) and `billing`/`members` were
- * never `adminOnly` — they are default-`None`-but-grantable, omitted from
- * `MEMBER_BASELINE_LEVELS` in seat-policy.ts (plan 22). §6.1.5's parenthetical
- * listing all four as blocked here does not match the registry; the §6.1
- * escalation guard, not this check, is what keeps `billing`/`members`/
- * `permissions` from being handed out by someone who does not hold them —
- * and since plan 37 that guard runs on {@link setGranteeLevels}'s own `user`
- * path, not only on the profile save. `group` grants remain unguarded (phase 2).
+ * **That set is now EMPTY.** `settings` was the last member and dropped its flag
+ * in plan 39 §7.1, following `permissions` out in doc 19 §0.25 — both for the
+ * same reason, that an area which cannot be granted below ADMIN renders as a
+ * lever that does nothing. `billing`/`members` were never `adminOnly` — they are
+ * default-`None`-but-grantable, omitted from `MEMBER_BASELINE_LEVELS` in
+ * seat-policy.ts (plan 22). §6.1.5's parenthetical listing all four as blocked
+ * here never matched the registry; the §6.1 escalation guard, not this check, is
+ * what keeps `billing`/`members`/`permissions` from being handed out by someone
+ * who does not hold them — and since plan 37 that guard runs on
+ * {@link setGranteeLevels}'s own `user` path, not only on the profile save.
+ * `group` grants remain unguarded (phase 2).
+ *
+ * This function is therefore a no-op today and is KEPT deliberately: `adminOnly`
+ * is still a live field on the area type, and a future area that sets it gets
+ * this enforcement for free rather than having to rediscover it. Do not read the
+ * empty set as "nothing guards grants" — the escalation guard above is what
+ * carries that weight, and always did.
  *
  * The seeded `owner`/`admin` system profiles express "everything" via
  * `PermissionProfile.baseLevel`, NOT an all-Full grant row, so system seeding

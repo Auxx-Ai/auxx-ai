@@ -8,6 +8,13 @@ import type { CSSProperties } from 'react'
 interface ManageActionsProps {
   onEdit: () => void
   onDelete: () => void
+  /**
+   * Whether the viewer may delete. Tags are records: `record.delete` asserts
+   * `recordsDelete`, which sits on the `Full` rung — so a member at records
+   * `Edit` may rename a tag but not remove it. Defaults to `true` so existing
+   * callers are unchanged; pass `false` to hide the button rather than let it 403.
+   */
+  canDelete?: boolean
   /** When true, render in static (non-hover) mode for the parent-as-current row. */
   alwaysVisible?: boolean
 }
@@ -17,7 +24,12 @@ interface ManageActionsProps {
  * Mirrors the affordance from `file-picker.tsx`. When `alwaysVisible` is true,
  * the cluster is rendered statically (used for the drilled-in "this folder" row).
  */
-export function ManageActions({ onEdit, onDelete, alwaysVisible = false }: ManageActionsProps) {
+export function ManageActions({
+  onEdit,
+  onDelete,
+  canDelete = true,
+  alwaysVisible = false,
+}: ManageActionsProps) {
   if (alwaysVisible) {
     return (
       <div className='ml-auto flex items-center gap-0.5'>
@@ -30,15 +42,17 @@ export function ManageActions({ onEdit, onDelete, alwaysVisible = false }: Manag
           }}>
           <Pencil />
         </Button>
-        <Button
-          variant='destructive-hover'
-          size='icon-xs'
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}>
-          <Trash2 />
-        </Button>
+        {canDelete && (
+          <Button
+            variant='destructive-hover'
+            size='icon-xs'
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}>
+            <Trash2 />
+          </Button>
+        )}
       </div>
     )
   }
@@ -58,15 +72,17 @@ export function ManageActions({ onEdit, onDelete, alwaysVisible = false }: Manag
           }}>
           <Pencil />
         </Button>
-        <Button
-          variant='destructive-hover'
-          size='icon-xs'
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}>
-          <Trash2 />
-        </Button>
+        {canDelete && (
+          <Button
+            variant='destructive-hover'
+            size='icon-xs'
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}>
+            <Trash2 />
+          </Button>
+        )}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 // apps/web/src/components/inbox/inbox-list.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { toastError } from '@auxx/ui/components/toast'
@@ -13,6 +14,7 @@ import { useInboxes } from '~/components/threads/hooks'
 import type { InboxItem } from '~/components/threads/hooks/use-inbox'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { InboxDialog } from './inbox-dialog'
 import { InboxCard } from './ui/inbox-card'
@@ -39,10 +41,8 @@ export function InboxList() {
   // recordId to edit; null opens the dialog in create mode.
   const [editRecordId, setEditRecordId] = useState<InboxItem['recordId'] | null>(null)
 
-  useUser({
-    requireOrganization: true,
-    requireRoles: ['ADMIN', 'OWNER'],
-  })
+  useUser({ requireOrganization: true })
+  useRequireCapability(PermissionKey.channelsManage)
 
   // Read inboxes from the generic record store; field-value mutations flush
   // this automatically, so no manual invalidation is required after edits.

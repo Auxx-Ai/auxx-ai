@@ -1,12 +1,12 @@
 // apps/web/src/components/dispatch/ui/number-formats-page.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Lock } from 'lucide-react'
 import TicketNumberingSettings from '~/app/(protected)/app/tickets/_components/ticket-number-form'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 const BREADCRUMBS = [{ title: 'Dispatch Settings' }, { title: 'Number Formats' }]
@@ -18,7 +18,7 @@ const BREADCRUMBS = [{ title: 'Dispatch Settings' }, { title: 'Number Formats' }
  * at `tickets/settings/format` with `scope='ticket'`.
  */
 export function NumberFormatsPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.settingsManage)
   const { hasAccess } = useFeatureFlags()
 
   if (!hasAccess(FeatureKey.dispatch)) {

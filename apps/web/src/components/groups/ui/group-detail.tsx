@@ -1,6 +1,7 @@
 // apps/web/src/components/groups/ui/group-detail.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { FeatureKey } from '@auxx/lib/types'
 import { Badge } from '@auxx/ui/components/badge'
 import {
@@ -17,7 +18,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
 import { GranteeLevelsSection } from '~/components/permissions/ui/grantee-levels-section'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useGroup, useGroups } from '../hooks'
 import { getGroupMetadata } from '../utils'
@@ -36,7 +37,7 @@ const BREADCRUMBS_BASE = [
  * Reads the group from the already-cached groups list (no new endpoint).
  */
 export function GroupDetail({ groupId }: { groupId: string }) {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.membersManage)
   const { hasAccess } = useFeatureFlags()
   const canEditPermissions = hasAccess(FeatureKey.granularPermissions)
   const router = useRouter()

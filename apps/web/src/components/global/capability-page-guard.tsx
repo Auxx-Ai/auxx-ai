@@ -1,13 +1,13 @@
 // apps/web/src/components/global/capability-page-guard.tsx
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
-import { type ReactNode, useEffect } from 'react'
+import type { PermissionKey } from '@auxx/lib/permissions/client'
+import type { ReactNode } from 'react'
 import { NoAccess } from '~/components/permissions/ui/no-access'
-import { useAccess } from '~/providers/capabilities-provider'
+import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 
 interface CapabilityPageGuardProps {
-  permissionKey: string
+  permissionKey: PermissionKey | string
   /**
    * When provided, the guard owns the protected subtree and prevents it from
    * mounting while denied. Existing marker-style callers without children keep
@@ -25,16 +25,9 @@ interface CapabilityPageGuardProps {
  * `ROLE_DEFAULTS`, while a granted non-admin is let through.
  */
 export function CapabilityPageGuard({ permissionKey, children, area }: CapabilityPageGuardProps) {
-  const router = useRouter()
-  const pathname = usePathname()
   const { can, isLoading } = useAccess()
-
-  useEffect(() => {
-    if (children !== undefined) return
-    // Skip for auth pages (mirrors useUser's role-guard bail-out).
-    if (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password') return
-    if (!isLoading && !can(permissionKey)) router.push('/access-denied')
-  }, [can, children, isLoading, permissionKey, pathname, router])
+  // Wrapper usage renders `NoAccess` in place instead of navigating away.
+  useRequireCapability(permissionKey, children === undefined)
 
   if (children !== undefined) {
     if (isLoading) return null

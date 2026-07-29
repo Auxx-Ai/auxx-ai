@@ -1,7 +1,7 @@
 // apps/web/src/components/dispatch/ui/client-notifications-settings-page.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Switch } from '@auxx/ui/components/switch'
@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation'
 import { useEmailChannels } from '~/components/channels/store/channel-store'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -59,7 +59,7 @@ function summarizeTiming(steps: TemplateStep[]): string {
  * notification system (decision #6/#1).
  */
 export function ClientNotificationsSettingsPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.settingsManage)
   const { hasAccess } = useFeatureFlags()
 
   if (!hasAccess(FeatureKey.dispatch) || !hasAccess(FeatureKey.sequences)) {

@@ -12,8 +12,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * re-composes, and rolls back on any raise the actor does not hold themselves.
  *
  * `setGranteeLevels` ran **no** such guard when these tests were written — only
- * `assertGrantableLevels`, which rejects the single `adminOnly` area (`settings`)
- * and nothing else. Plan 37 phase 1 put the same guard on its `user` tier; its
+ * `assertGrantableLevels`, which back then rejected the single `adminOnly` area
+ * (`settings`) and nothing else; since plan 39 §7.1 that set is empty, so it
+ * rejects nothing at all. Plan 37 phase 1 put the same guard on its `user` tier; its
  * `group` tier is still unguarded. That does not weaken anything below: these
  * tests pin that `'profile'` and `'role'` are off the wire, and the reason is
  * holder enumeration, not the presence of a guard.
@@ -21,7 +22,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Until this change the Member-baseline tab wrote the org's `member` profile
  * through `setGranteeLevels`, addressed as `role:org_member` and redirected onto
  * the profile at the tRPC boundary. That made `permissions.grant` a guard-free
- * side door onto a profile base: `Area.permissions` is grantable and NOT
+ * side door onto a profile base: `Area.permissions` is grantable and was never
  * `adminOnly`, so a non-OWNER/ADMIN `permissionsManage` holder could raise
  * `billing`/`members`/`permissions` for every member in the org — a state
  * `saveProfile` refuses.
@@ -160,8 +161,8 @@ describe('permissions.grant / revoke — the unguarded service is unreachable fo
       caller.grant({
         granteeType: 'role' as never,
         granteeId: 'org_member',
-        // `billing`/`members` are grantable (only `settings` is `adminOnly`), so
-        // `assertGrantableLevels` would have waved this through.
+        // `billing`/`members` are grantable — and since plan 39 §7.1 every area
+        // is — so `assertGrantableLevels` would have waved this through.
         levels: { [Area.billing]: Level.Full, [Area.members]: Level.Full },
       })
     ).rejects.toThrow()

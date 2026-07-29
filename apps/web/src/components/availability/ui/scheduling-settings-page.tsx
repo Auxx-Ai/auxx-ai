@@ -4,7 +4,7 @@
 import { detectTimezone } from '@auxx/config/client'
 import type { WeeklyHours } from '@auxx/lib/availability/client'
 import { weekStartToIndex } from '@auxx/lib/availability/client'
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
@@ -24,7 +24,7 @@ import SettingsPage, { SettingsSection } from '~/components/global/settings-page
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
-import { useUser } from '~/hooks/use-user'
+import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
@@ -97,7 +97,7 @@ const ROUTES_BOARD_DRAFT_KEYS = [
  * dispatch settings — admin/owner role + `FeatureKey.dispatch`.
  */
 export function SchedulingSettingsPage() {
-  useUser({ requireRoles: ['ADMIN', 'OWNER'] })
+  useRequireCapability(PermissionKey.settingsManage)
   const { hasAccess } = useFeatureFlags()
   const { getSetting, batchUpdateOrganizationSettings, isBatchUpdatingOrgSettings } = useSettings({
     scope: 'GENERAL',

@@ -20,6 +20,7 @@ interface TagListRowProps {
   toggleTag: (tag: Tag) => void
   onEdit: (tag: Tag) => void
   onDelete: (tag: Tag) => void
+  canDelete?: boolean
 }
 
 function TagListRow({
@@ -34,6 +35,7 @@ function TagListRow({
   toggleTag,
   onEdit,
   onDelete,
+  canDelete = true,
 }: TagListRowProps) {
   const handleSelect = () => {
     if (isManageMode) {
@@ -80,7 +82,11 @@ function TagListRow({
         </span>
       )}
       {isManageMode && !hasChildren && (
-        <ManageActions onEdit={() => onEdit(tag)} onDelete={() => onDelete(tag)} />
+        <ManageActions
+          onEdit={() => onEdit(tag)}
+          onDelete={() => onDelete(tag)}
+          canDelete={canDelete}
+        />
       )}
     </CommandNavigableItem>
   )
@@ -98,6 +104,8 @@ interface TagListProps {
   isManageMode: boolean
   onEdit: (tag: Tag) => void
   onDelete: (tag: Tag) => void
+  /** Whether the viewer may delete tags — `recordsDelete`, the `Full` records rung. */
+  canDelete?: boolean
 }
 
 /**
@@ -115,6 +123,7 @@ export function TagList({
   isManageMode,
   onEdit,
   onDelete,
+  canDelete = true,
 }: TagListProps) {
   return (
     <CommandGroup>
@@ -140,6 +149,7 @@ export function TagList({
             toggleTag={toggleTag}
             onEdit={onEdit}
             onDelete={onDelete}
+            canDelete={canDelete}
           />
         )
       })}

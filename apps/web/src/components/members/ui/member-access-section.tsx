@@ -13,6 +13,7 @@ import { useGroupsForUser } from '~/components/groups'
 import { ProfilePicker } from '~/components/pickers/profile-picker'
 import { roleLabel, seatLabel, useAssignProfile, useMemberProfiles } from '../hooks'
 import type { Member } from '../types'
+import { canRemoveMember } from '../utils'
 import { ProfileChangeDelta } from './profile-change-delta'
 
 interface MemberAccessSectionProps {
@@ -51,11 +52,11 @@ export function MemberAccessSection({ member, viewerRole, viewerId }: MemberAcce
   const { assign, isPending: isAssigning } = useAssignProfile(() => setPendingProfileId(null))
 
   // §6 mirror of `canManageTarget`, degrade-only — the server re-runs the rank
-  // check plus the escalation guard on every write.
+  // check plus the escalation guard on every write. Shares `canRemoveMember`'s
+  // rank rule so a delegated `members.manage` grantee is not hidden from a
+  // target the server would let them act on.
   const isSelf = member.userId === viewerId
-  const canManageTarget =
-    !isSelf &&
-    (viewerRole === Role.OWNER || (viewerRole === Role.ADMIN && member.role === Role.USER))
+  const canManageTarget = canRemoveMember(member, viewerRole, viewerId)
   const canAssign = canManageTarget && canManageProfiles
 
   const currentProfile = resolveMemberProfile(member)

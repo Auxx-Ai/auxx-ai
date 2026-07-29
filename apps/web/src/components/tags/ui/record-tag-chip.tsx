@@ -1,7 +1,8 @@
 // apps/web/src/components/tags/ui/record-tag-chip.tsx
 'use client'
 
-import type { RecordId } from '@auxx/lib/resources/client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +13,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { TagBadge } from './tag-badge'
 import { TagDialog } from './tag-dialog'
@@ -38,6 +40,16 @@ export function RecordTagChip({ tagId, removeLabel, onRemove, size = 'sm' }: Rec
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
+  const { canEditEntity, can } = useAccess()
+
+  // "Edit Tag" / "Delete Tag" mutate the tag ORG-WIDE, so they ask what the
+  // server asks of a record write: `assertEditEntity` on the tag def, plus
+  // `recordsDelete` for the destructive one. "Remove from X" is NOT gated here —
+  // it is a field-value write on the parent record, a different permission that
+  // the host surface owns.
+  const { entityDefinitionId: tagDefId } = parseRecordId(tagId)
+  const canEditTag = canEditEntity(tagDefId)
+  const canDeleteTag = canEditTag && can(PermissionKey.recordsDelete)
 
   const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
@@ -98,14 +110,18 @@ export function RecordTagChip({ tagId, removeLabel, onRemove, size = 'sm' }: Rec
           <DropdownMenuItem onClick={handleRemoveFromRecord}>
             Remove from {removeLabel}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleEdit}>
-            <Pencil />
-            Edit Tag
-          </DropdownMenuItem>
-          <DropdownMenuItem variant='destructive' onClick={handleDeleteTag}>
-            <Trash2 />
-            Delete Tag
-          </DropdownMenuItem>
+          {canEditTag && (
+            <DropdownMenuItem onClick={handleEdit}>
+              <Pencil />
+              Edit Tag
+            </DropdownMenuItem>
+          )}
+          {canDeleteTag && (
+            <DropdownMenuItem variant='destructive' onClick={handleDeleteTag}>
+              <Trash2 />
+              Delete Tag
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -17,6 +17,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
+import { useRequireEntityEdit } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
 import type { TagNode } from '../types'
@@ -30,10 +31,7 @@ import { TagDialog } from './tag-dialog'
 export function TagTreeView() {
   const [confirm, ConfirmDialog] = useConfirm()
 
-  useUser({
-    requireOrganization: true,
-    requireRoles: ['ADMIN', 'OWNER'],
-  })
+  useUser({ requireOrganization: true })
 
   // Search query from URL (persists across refreshes)
   const [searchQuery, setSearchQuery] = useQueryState('q', { defaultValue: '' })
@@ -45,6 +43,14 @@ export function TagTreeView() {
 
   // Fetch tag hierarchy
   const { hierarchy: tagHierarchy, isLoading, refresh, entityDefinitionId } = useTagHierarchy()
+
+  // Tags are RECORDS, not a settings surface: this page creates and deletes them
+  // through `record.create`/`record.delete`, which assert `assertEditEntity` on
+  // the tag def (plus `recordsDelete` on the delete path). Gating it on
+  // `settingsManage` — as it was — named a key the server never checks here,
+  // while the tag PICKER on every record offered the same create/edit/delete
+  // with no gate at all. This asks the question the server answers.
+  useRequireEntityEdit(entityDefinitionId)
 
   const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {

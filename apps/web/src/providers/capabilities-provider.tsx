@@ -17,8 +17,9 @@ import {
 import type { SubscribeHandlers } from '@auxx/lib/realtime/client'
 import { rooms } from '@auxx/lib/realtime/client'
 import type { RecordId } from '@auxx/types/resource'
+import { usePathname, useRouter } from 'next/navigation'
 import type React from 'react'
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import { useDehydratedOrganization, useDehydratedUser } from './dehydrated-state-provider'
@@ -104,6 +105,12 @@ interface CapabilitiesContextType {
    * this field recover area levels from it. Use `can()` for gating.
    */
   capabilities: PermissionKey[]
+  /**
+   * True while NO capability snapshot has been seeded (no active org, or the org
+   * is missing from dehydrated state). `can()` fails closed throughout, so
+   * hide/disable gates need not check this — but anything that REDIRECTS or
+   * renders a denial surface MUST, or it acts on "unknown" as if it were "denied".
+   */
   isLoading: boolean
 }
 
@@ -127,30 +134,41 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   const { hasAccess } = useFeatureFlags()
 
   const dehydratedCaps = org?.capabilities
-  // Stable signature of the dehydrated seed so the re-seed effect only fires on
-  // an actual org switch (the dehydrated blob is static for a page load).
+  // Stable signature of the dehydrated seed (the blob is static for a page load).
   const seedKey = useMemo(
     () => (dehydratedCaps ? JSON.stringify(dehydratedCaps) : ''),
     [dehydratedCaps]
   )
+  // Identity of the active seed. An org switch changes it, which discards the
+  // realtime refetch below rather than letting the previous org's keys survive.
+  const seedId = `${organizationId ?? ''}:${seedKey}`
+  const seedIdRef = useRef(seedId)
+  seedIdRef.current = seedId
 
-  const [snapshot, setSnapshot] = useState<ClientCapabilities>(() => dehydratedCaps ?? EMPTY_CAPS)
-
-  // Re-seed from dehydrated state when the active org changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: seedKey encodes dehydratedCaps
-  useEffect(() => {
-    setSnapshot(dehydratedCaps ?? EMPTY_CAPS)
-  }, [organizationId, seedKey])
-
-  // Disabled by default — the dehydrated snapshot is the initial source; the
-  // realtime event triggers a manual refetch, and the result swaps into state.
+  // Disabled by default — the dehydrated blob is the source; the realtime event
+  // triggers a manual refetch and the result refines it.
   const myCapabilities = api.permissions.myCapabilities.useQuery(undefined, {
     enabled: false,
   })
 
+  // Refetch result, tagged with the seed it refines. Read during render (not
+  // swapped in by an effect) so an org switch takes effect on the SAME render
+  // the new blob arrives — no frame composes gates from the old org's keys.
+  const [live, setLive] = useState<{ seedId: string; caps: ClientCapabilities } | null>(null)
+
   useEffect(() => {
-    if (myCapabilities.data) setSnapshot(myCapabilities.data)
+    if (myCapabilities.data) setLive({ seedId: seedIdRef.current, caps: myCapabilities.data })
   }, [myCapabilities.data])
+
+  /**
+   * `null` means NOT SEEDED — no active org, or the org is absent from
+   * dehydrated state — which is NOT the same as "seeded and denied". `can()`
+   * still fails closed (via `EMPTY_CAPS`) so nothing renders that shouldn't, but
+   * anything that REDIRECTS must wait for `isLoading` to clear or it ejects a
+   * legitimate admin mid-org-switch.
+   */
+  const liveCaps = live && live.seedId === seedId ? live.caps : null
+  const seededCaps: ClientCapabilities | null = liveCaps ?? dehydratedCaps ?? null
 
   const refetch = myCapabilities.refetch
   const handlers = useMemo<SubscribeHandlers>(
@@ -168,6 +186,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   useRealtimeRoom(organizationId ? rooms.orgEvents(organizationId) : null, handlers)
 
   const value = useMemo<CapabilitiesContextType>(() => {
+    const snapshot = seededCaps ?? EMPTY_CAPS
     // The `can()` gate reads the UNION of resolved-area keys and the Read rungs
     // derived from instance grants, so a member whose only access to a feature is
     // one shared instance still passes the coarse nav / cmd+K / landing-page
@@ -211,9 +230,9 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       // this straight into `areaLevelFromKeys` (the agent-policy / author clamp
       // previews), which must read a true area rung.
       capabilities: snapshot.keys,
-      isLoading: false,
+      isLoading: seededCaps === null,
     }
-  }, [snapshot, hasAccess])
+  }, [seededCaps, hasAccess])
 
   return <CapabilitiesContext.Provider value={value}>{children}</CapabilitiesContext.Provider>
 }
@@ -229,6 +248,74 @@ export function useAccess(): CapabilitiesContextType {
     throw new Error('useAccess must be used within a CapabilitiesProvider')
   }
   return context
+}
+
+/**
+ * Redirect to `/access-denied` unless the viewer holds `key`.
+ *
+ * The capability replacement for `useUser({ requireRoles })` (plan 39 §3.1) —
+ * page-level authorization belongs beside {@link useAccess}, not on the
+ * identity hook. OWNER/ADMIN hold every key via `ROLE_DEFAULTS`, so swapping a
+ * role gate for this widens the surface to key-holders and changes nothing for
+ * anyone who passes today.
+ *
+ * Two properties this MUST keep:
+ * - It does not act while capabilities are unseeded (`isLoading`). With no
+ *   active org `can()` is fail-closed by design, and redirecting there would
+ *   bounce a legitimate admin on an org switch or a refresh.
+ * - {@link useAccess} THROWS outside `CapabilitiesProvider`, so any surface not
+ *   mounted under it (the public workflow viewer) cannot use this hook.
+ *
+ * A client redirect renders first and then navigates — it is a UX affordance,
+ * never a boundary. The server gates independently.
+ *
+ * @param enabled Pass `false` to hold the redirect (a caller that renders its
+ *   own denial surface instead). Keeps the hook unconditional.
+ */
+export function useRequireCapability(key: PermissionKey | string, enabled = true): void {
+  const { can, isLoading } = useAccess()
+  useRedirectUnless(isLoading ? null : can(key), enabled)
+}
+
+/**
+ * Redirect to `/access-denied` unless the viewer may EDIT `entityDefinitionId` —
+ * the per-def (Layer 2 × Layer 3) sibling of {@link useRequireCapability}.
+ *
+ * For surfaces that manage records rather than settings. `UnifiedCrudHandler`
+ * asserts `assertEditEntity(defId)` on every write path, so this is the client
+ * mirror of what the server will actually do — a flat area key would be a
+ * different question than the one being enforced.
+ *
+ * An unresolved `entityDefinitionId` is treated as NOT KNOWN, not as denied:
+ * the resource/def stores hydrate asynchronously, and redirecting on the
+ * pre-hydration render is the same class of bug as ignoring `isLoading`.
+ */
+export function useRequireEntityEdit(
+  entityDefinitionId: string | null | undefined,
+  enabled = true
+): void {
+  const { canEditEntity, isLoading } = useAccess()
+  useRedirectUnless(
+    isLoading || !entityDefinitionId ? null : canEditEntity(entityDefinitionId),
+    enabled
+  )
+}
+
+/**
+ * Shared body for the redirect hooks. `allowed === null` means "not known yet"
+ * and must never navigate — the whole point of the `isLoading` bail-out is that
+ * a capability gate cannot tell "denied" from "unseeded" without it.
+ */
+function useRedirectUnless(allowed: boolean | null, enabled: boolean): void {
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!enabled || allowed === null) return
+    // Auth pages render outside the app shell (mirrors useUser's bail-out).
+    if (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password') return
+    if (!allowed) router.push('/access-denied')
+  }, [allowed, enabled, pathname, router])
 }
 
 /**
