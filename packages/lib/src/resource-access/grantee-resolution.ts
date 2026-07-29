@@ -12,7 +12,7 @@ import type { CachedPermissionProfile } from '../permissions/profiles/types'
  * to a member** (doc 19 §8.2 / 19a findings 1 + 3 + 4).
  *
  * Before this module the grantee union was copy-pasted into four resolvers
- * (`checkAccess`, `checkTypeAccess`, `getUserAccessibleInstances`,
+ * (`checkAccess`, `getUserAccessibleInstances`,
  * `computeUserMailVisibility`) plus a ternary in the reverse mail index — and
  * three of them had drifted. That mattered far more than duplication normally
  * does: `restrictedEntityDefIds` / `governingInstanceIds` build the restricted

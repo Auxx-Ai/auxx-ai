@@ -134,8 +134,6 @@ const { mail, cache, fieldValueService, resourceAccess, isAdminOrOwner, recordAu
       getTypeAccess: vi.fn(async () => []),
       getAllInstanceAccess: vi.fn(async () => []),
       getAllTypeAccess: vi.fn(async () => []),
-      checkAccess: vi.fn(async () => true),
-      checkTypeAccess: vi.fn(async () => true),
       assertCanManageMailSharing: vi.fn(async () => undefined),
       assertCanManageMailTypeAccess: vi.fn(async () => undefined),
       assertMailSharingFeature: vi.fn(async () => undefined),

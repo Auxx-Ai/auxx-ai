@@ -85,7 +85,7 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
     `Unnamed ${getChannelProviderName(channel.provider)}`
 
   const chips: ListCardBadgeChip[] = []
-  if (linkedInbox) chips.push({ label: linkedInbox.name })
+  if (linkedInbox && !linkedInbox.isPersonal) chips.push({ label: linkedInbox.name })
   if (linkedInbox?.isPersonal)
     chips.push({ label: 'P', description: 'Personal', variant: 'magenta' })
 

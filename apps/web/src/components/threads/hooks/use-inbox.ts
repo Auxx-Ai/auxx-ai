@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/hooks/use-inbox.ts
 
 import type { ChannelLens } from '@auxx/lib/realtime/client'
-import type { RecordId } from '@auxx/types'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { useMemo } from 'react'
 import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
@@ -106,6 +106,19 @@ export interface InboxItem {
   isPersonal: boolean
   /** Owner of a personal inbox; null on shared org inboxes. */
   ownerUserId: string | null
+}
+
+/**
+ * Build the canonical capability/access RecordId for an inbox.
+ *
+ * Record-layer inbox ids can carry the EntityDefinition UUID, while instance
+ * capabilities are keyed by the stable `inbox` / `personal_inbox` slug. Always
+ * use the definition discriminator retained on {@link InboxItem}.
+ */
+export function toInboxAccessRecordId(
+  inbox: Pick<InboxItem, 'entityDefinitionKey' | 'id'>
+): RecordId {
+  return toRecordId(inbox.entityDefinitionKey, inbox.id)
 }
 
 /**

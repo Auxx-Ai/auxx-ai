@@ -43,7 +43,6 @@ vi.mock('./grantee-resolution', async (importOriginal) => ({
 import { onCacheEvent } from '../cache'
 import {
   checkAccess,
-  checkTypeAccess,
   grantInstanceAccess,
   grantTypeAccess,
   revokeInstanceAccess,
@@ -260,7 +259,7 @@ function checkDb(role: string | undefined, grants: Array<Record<string, unknown>
   } as any
 }
 
-describe('checkAccess / checkTypeAccess role short-circuit (doc 19 §5.3 piece 2)', () => {
+describe('checkAccess role short-circuit (doc 19 §5.3 piece 2)', () => {
   const ctx = (role: string | undefined, grants?: Array<Record<string, unknown>>) => ({
     db: checkDb(role, grants),
     organizationId: ORG,
@@ -268,25 +267,19 @@ describe('checkAccess / checkTypeAccess role short-circuit (doc 19 §5.3 piece 2
   })
 
   it('OWNER keeps the unconditional bypass (the §0.10 recovery guarantee)', async () => {
-    for (const check of [
-      () => checkAccess(ctx('OWNER'), { recordId: RECORD, userId: 'u_target' }),
-      () => checkTypeAccess(ctx('OWNER'), { entityDefinitionId: 'inbox', userId: 'u_target' }),
-    ]) {
-      await expect(check()).resolves.toEqual({
-        hasAccess: true,
-        permission: ResourcePermission.admin,
-        grantedVia: 'role',
-        accessLevel: 'type',
-      })
-    }
+    await expect(
+      checkAccess(ctx('OWNER'), { recordId: RECORD, userId: 'u_target' })
+    ).resolves.toEqual({
+      hasAccess: true,
+      permission: ResourcePermission.admin,
+      grantedVia: 'role',
+      accessLevel: 'type',
+    })
   })
 
   it('ADMIN no longer bypasses — an ungranted instance is denied', async () => {
     await expect(
       checkAccess(ctx('ADMIN'), { recordId: RECORD, userId: 'u_target' })
-    ).resolves.toEqual({ hasAccess: false, permission: null, grantedVia: null, accessLevel: null })
-    await expect(
-      checkTypeAccess(ctx('ADMIN'), { entityDefinitionId: 'inbox', userId: 'u_target' })
     ).resolves.toEqual({ hasAccess: false, permission: null, grantedVia: null, accessLevel: null })
   })
 

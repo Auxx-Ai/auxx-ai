@@ -35,8 +35,13 @@ vi.mock('~/trpc/react', () => ({
   },
 }))
 
-const { INBOX_DEF_KEYS, invalidateInboxRecordLists, useInboxByInstanceId, useInboxes } =
-  await import('./use-inbox')
+const {
+  INBOX_DEF_KEYS,
+  invalidateInboxRecordLists,
+  toInboxAccessRecordId,
+  useInboxByInstanceId,
+  useInboxes,
+} = await import('./use-inbox')
 const { DYNAMIC_OPTIONS_REGISTRY } = await import(
   '~/components/fields/registries/dynamic-options-registry'
 )
@@ -87,6 +92,26 @@ beforeEach(() => {
   // no inbox carries a `role:org_member` baseline row, i.e. every shared inbox
   // sits at the org-shared `full` default.
   useMyInboxLenses.mockReturnValue({ lenses: {}, floors: {} })
+})
+
+describe('toInboxAccessRecordId', () => {
+  it('uses the stable definition key instead of a record-layer definition UUID', () => {
+    expect(
+      toInboxAccessRecordId({
+        id: PERSONAL_ID,
+        entityDefinitionKey: 'personal_inbox',
+      })
+    ).toBe(`personal_inbox:${PERSONAL_ID}`)
+  })
+
+  it('keeps shared inboxes in the shared access keyspace', () => {
+    expect(
+      toInboxAccessRecordId({
+        id: SHARED_ID,
+        entityDefinitionKey: 'inbox',
+      })
+    ).toBe(`inbox:${SHARED_ID}`)
+  })
 })
 
 describe('useInboxes — fetches and merges BOTH inbox definitions', () => {

@@ -28,7 +28,6 @@ import { isMailSharingDef } from './mail-sharing-defs'
 import type {
   AccessCheckResult,
   CheckAccessInput,
-  CheckTypeAccessInput,
   GrantedVia,
   GrantInstanceAccessInput,
   GrantLens,
@@ -45,13 +44,12 @@ const SHARE_NOTIFICATION_RECIPIENT_CAP = 50
 
 /**
  * Whether the target user is the org OWNER — the one role short-circuit left on
- * the `checkAccess` / `checkTypeAccess` paths (doc 19 §0.10 recovery guarantee).
+ * the `checkAccess` path (doc 19 §0.10 recovery guarantee).
  *
  * ADMIN used to short-circuit here too, as an **independent** copy of the bypass
  * that `capability-set.ts` / `entity-access.ts` carried. Removing only those left
  * this path still handing admins `admin` on every instance, so sharing stayed
- * bypassed (doc 19 §5.3 piece 2, third change). One helper now, so the two
- * copies cannot drift apart again.
+ * bypassed (doc 19 §5.3 piece 2, third change).
  */
 async function isOwner(ctx: ResourceAccessContext, targetUserId: string): Promise<boolean> {
   const member = await ctx.db.query.OrganizationMember.findFirst({
@@ -75,7 +73,7 @@ async function isOwner(ctx: ResourceAccessContext, targetUserId: string): Promis
  * to resolve a grant through it — an org-wide lockout, not a per-grantee no-op.
  *
  * It is gone because every server resolver now goes through
- * `grantee-resolution.ts`: `checkAccess`, `checkTypeAccess`,
+ * `grantee-resolution.ts`: `checkAccess`,
  * `getUserAccessibleInstances`, `computeUserCapabilities`,
  * `computeUserMailVisibility` (forward) and `mailGrantIndexProvider` (reverse),
  * plus `snippet-permissions.ts`'s in-memory equivalent. Do not reintroduce a
@@ -947,67 +945,6 @@ export async function checkAccess(
     permission: highestPermission,
     grantedVia,
     accessLevel,
-  }
-}
-
-/**
- * Check if user has type-level access (access to ALL instances of an entity type).
- */
-export async function checkTypeAccess(
-  ctx: ResourceAccessContext,
-  input: CheckTypeAccessInput
-): Promise<AccessCheckResult> {
-  const { db, organizationId } = ctx
-  const { entityDefinitionId } = input
-  const targetUserId = input.userId
-
-  // OWNER-only short-circuit — see `checkAccess` for why ADMIN was removed.
-  if (await isOwner(ctx, targetUserId)) {
-    return {
-      hasAccess: true,
-      permission: ResourcePermission.admin,
-      grantedVia: 'role',
-      accessLevel: 'type',
-    }
-  }
-
-  // Grantee conditions — same shared builder as `checkAccess`. This was an
-  // independently-maintained second copy that had already drifted (19a #8).
-  const granteeConditions = resourceAccessGranteeConditions(
-    await resolveResourceAccessGrantees(organizationId, targetUserId)
-  )
-
-  // Find type-level grants only (entityInstanceId is null)
-  const grants = await db.query.ResourceAccess.findMany({
-    where: and(
-      eq(schema.ResourceAccess.organizationId, organizationId),
-      eq(schema.ResourceAccess.entityDefinitionId, entityDefinitionId),
-      isNull(schema.ResourceAccess.entityInstanceId),
-      or(...granteeConditions)
-    ),
-  })
-
-  if (grants.length === 0) {
-    return { hasAccess: false, permission: null, grantedVia: null, accessLevel: null }
-  }
-
-  // Find highest permission
-  let highestPermission: ResourcePermission = grants[0]!.permission as ResourcePermission
-  let grantedVia: GrantedVia = 'direct'
-
-  for (const grant of grants) {
-    const perm = grant.permission as ResourcePermission
-    if (satisfiesPermission(perm, highestPermission)) {
-      highestPermission = perm
-      grantedVia = grantedViaFor(grant.granteeType)
-    }
-  }
-
-  return {
-    hasAccess: true,
-    permission: highestPermission,
-    grantedVia,
-    accessLevel: 'type',
   }
 }
 
