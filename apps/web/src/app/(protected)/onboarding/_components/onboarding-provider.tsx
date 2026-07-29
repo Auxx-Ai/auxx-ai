@@ -7,6 +7,10 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from '
 
 /**
  * Team invite interface
+ *
+ * Carries the rank only. The seeded permission profile it binds to is resolved
+ * at submit time from the org's system profiles — see `INVITE_RANKS` in
+ * `onboarding/team/page.tsx`.
  */
 interface TeamInvite {
   email: string
