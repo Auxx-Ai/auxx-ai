@@ -1,7 +1,7 @@
 // ~/app/(protected)/app/settings/channels/_components/integration-routing.tsx
 'use client'
 import type { IntegrationSyncStatus } from '@auxx/database/types'
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -26,13 +26,14 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { AdminGate } from '~/components/global/admin-gate'
 import { DangerZone } from '~/components/global/danger-zone'
 import { SettingsSection } from '~/components/global/settings-page'
 import { InboxPicker } from '~/components/pickers/inbox-picker'
-import { toRecordId, useRecord, useResource } from '~/components/resources'
+import { useInboxByInstanceId } from '~/components/threads/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { CalendarSyncToggle } from './calendar-sync-toggle'
@@ -82,23 +83,20 @@ export default function IntegrationRouting({
     ? ((integration.metadata as any)?.allowedSenders ?? [])
     : []
 
-  // Get inbox resource definition
-  const { resource: inboxResource } = useResource('inboxes')
-
-  // Build recordId for the connected inbox
-  const connectedInboxRecordId = useMemo(() => {
-    if (!inboxResource?.id || !integration.inboxId) return undefined
-    return toRecordId(inboxResource.id, integration.inboxId)
-  }, [inboxResource?.id, integration.inboxId])
-
-  // Get connected inbox via useRecord
-  const { record: connectedInbox, isLoading: isConnectedInboxLoading } = useRecord({
-    recordId: connectedInboxRecordId,
-    enabled: !!connectedInboxRecordId,
-  })
-
-  // Determine if we're loading the connected inbox
-  const isLoadingConnectedInbox = !!connectedInboxRecordId && isConnectedInboxLoading
+  /**
+   * The connected inbox, resolved DEF-AWARE (plan 40a §5.1). This used to mint
+   * `toRecordId(useResource('inboxes').id, integration.inboxId)` — always the
+   * SHARED `inbox` def — which after migration 060 addresses a personal mailbox
+   * under a definition that no longer owns it. `record.getByIds` then returned
+   * nothing (`Some entity instances not found`) and the routing card rendered a
+   * nameless inbox. `useInboxes` fetches both defs and mints each inbox's
+   * RecordId from its own, so this is correct for shared and personal alike.
+   */
+  const { inbox: connectedInbox, isLoading: isConnectedInboxLoading } = useInboxByInstanceId(
+    integration.inboxId
+  )
+  const connectedInboxRecordId = connectedInbox?.recordId
+  const isLoadingConnectedInbox = !!integration.inboxId && isConnectedInboxLoading
 
   const moveThreads = api.inbox.moveIntegrationThreads.useMutation({
     onSuccess: () => {
@@ -322,7 +320,7 @@ export default function IntegrationRouting({
                     {isLoadingConnectedInbox ? (
                       <Skeleton className='h-3 w-24' />
                     ) : (
-                      <span className='text-sm font-medium'>{connectedInbox?.displayName}</span>
+                      <span className='text-sm font-medium'>{connectedInbox?.name}</span>
                     )}
                     <span className='text-xs text-muted-foreground'>
                       {isPersonalChannel
@@ -468,6 +466,9 @@ function AllowedSendersSection({
 }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const hasEntries = allowedSenders.length > 0
+  // `channel.updateAllowedSenders` gates on `channels.manage`, so mirror the
+  // capability rather than the legacy ADMIN/OWNER role.
+  const { can } = useAccess()
 
   return (
     <SettingsSection
@@ -508,8 +509,8 @@ function AllowedSendersSection({
             )}
           </div>
         </div>
-        {/* Forwarding channels are always shared — admin-only regardless of canManage. */}
-        <AdminGate action='edit allowed senders'>
+        {/* Forwarding channels are always shared — `channels.manage` regardless of canManage. */}
+        <AdminGate action='edit allowed senders' allow={can(PermissionKey.channelsManage)}>
           <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
             {hasEntries ? <Edit /> : <Plus />}
             {hasEntries ? 'Edit' : 'Add senders'}

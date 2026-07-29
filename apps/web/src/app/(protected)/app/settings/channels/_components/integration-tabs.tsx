@@ -1,4 +1,5 @@
 'use client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
@@ -7,7 +8,6 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 // ~/app/(protected)/app/settings/channels/_components/integration-tabs.tsx
 import { useState } from 'react'
 import { useChannel, useChannelsLoading } from '~/components/channels/hooks/use-channels'
-import { useAdminGate } from '~/components/global/admin-gate'
 import {
   getIntegrationStatus,
   IntegrationStatusIndicator,
@@ -15,6 +15,8 @@ import {
 import { ReauthBanner } from '~/components/global/reauth-banner'
 import SettingsPage from '~/components/global/settings-page'
 import { useInboxes } from '~/components/threads/hooks'
+import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import IntegrationRouting from './integration-routing'
 import IntegrationSettingsAdvanced from './integration-settings-advanced'
 
@@ -32,14 +34,19 @@ export default function IntegrationTabs() {
   const isIntegrationsLoading = useChannelsLoading()
   const integration = useChannel(integrationId)
 
-  // Admin, or owner of this personal channel (mirrors requireChannelManageAccess).
-  const { isAdminOrOwner, userId } = useAdminGate()
+  // `channels.manage`, or the owner of this personal channel — the client mirror
+  // of `requireChannelManageAccess`. Keyed on the CAPABILITY, not the legacy
+  // ADMIN/OWNER role: the server gate is `channels.manage`, so a member granted
+  // it through a permission profile must not land on a read-only page.
+  const { can } = useAccess()
+  const { userId } = useUser()
+  const canManageAnyChannel = can(PermissionKey.channelsManage)
   const { inboxes } = useInboxes()
   const linkedInbox = integration?.inboxId
     ? inboxes.find((inbox) => inbox.id === integration.inboxId)
     : undefined
   const canManage =
-    isAdminOrOwner || (!!linkedInbox?.isPersonal && linkedInbox.ownerUserId === userId)
+    canManageAnyChannel || (!!linkedInbox?.isPersonal && linkedInbox.ownerUserId === userId)
 
   // Handle tab change
   const handleTabChange = (value: string) => {
@@ -47,9 +54,21 @@ export default function IntegrationTabs() {
     router.push(`/app/settings/channels/${integrationId}?tab=${value}`, { scroll: false })
   }
 
-  // Handle back button click
+  /**
+   * Where "back" goes. The Channels list page is guarded on `channels.manage`
+   * (`settings/channels/page.tsx`), so a personal-channel owner who reached this
+   * page from their inbox would be bounced by the page guard. Send them back to
+   * the inbox they came from instead.
+   */
+  const parentCrumb = canManageAnyChannel
+    ? { title: 'Channels', href: '/app/settings/channels' }
+    : {
+        title: linkedInbox?.name ?? 'Inboxes',
+        href: linkedInbox ? `/app/settings/inbox/${linkedInbox.id}` : '/app/settings/inbox',
+      }
+
   const handleBack = () => {
-    router.push('/app/settings/channels')
+    router.push(parentCrumb.href)
   }
 
   // Loading state
@@ -60,7 +79,7 @@ export default function IntegrationTabs() {
         description={'Manage your integration settings'}
         breadcrumbs={[
           { title: 'Settings', href: '/app/settings' },
-          { title: 'Channels', href: '/app/settings/channels' },
+          parentCrumb,
           { title: 'Loading...' },
         ]}>
         <div className='space-y-6 p-3 sm:p-6'>
@@ -76,7 +95,7 @@ export default function IntegrationTabs() {
       <div className='space-y-6'>
         <Button variant='outline' size='sm' onClick={handleBack}>
           <ArrowLeft className='mr-2 h-4 w-4' />
-          Back to Channels
+          Back to {parentCrumb.title}
         </Button>
         <div className='rounded-md border p-8 text-center'>
           <h2 className='text-xl font-bold'>Integration not found</h2>
@@ -84,7 +103,7 @@ export default function IntegrationTabs() {
             The requested integration could not be found. It may have been removed.
           </p>
           <Button className='mt-4' onClick={handleBack}>
-            Return to Channels
+            Return to {parentCrumb.title}
           </Button>
         </div>
       </div>
@@ -107,11 +126,7 @@ export default function IntegrationTabs() {
       <SettingsPage
         title={title}
         description={integration.identifier || 'Manage your integration settings'}
-        breadcrumbs={[
-          { title: 'Settings', href: '/app/settings' },
-          { title: 'Channels', href: '/app/settings/channels' },
-          { title },
-        ]}
+        breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, parentCrumb, { title }]}
         button={
           <div className='flex items-center gap-3'>
             <IntegrationStatusIndicator

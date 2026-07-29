@@ -1,6 +1,7 @@
 // apps/web/src/components/channels/ui/channel-card.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import {
   ListCard,
   type ListCardBadgeChip,
@@ -12,9 +13,10 @@ import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { ExternalLink, Plug, Power, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useAdminGate } from '~/components/global/admin-gate'
 import type { InboxItem } from '~/components/threads/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useChannelReconnect } from '../hooks/use-channel-reconnect'
 import type { Channel } from '../store/channel-store'
@@ -47,11 +49,16 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
     ? inboxes.find((inbox) => inbox.id === channel.inboxId)
     : undefined
 
-  // Members manage their own personal channels; shared channels are admin-only
-  // (mirrors the server's requireChannelManageAccess).
-  const { isAdminOrOwner, userId } = useAdminGate()
+  // Members manage their own personal channels; shared channels need
+  // `channels.manage` (mirrors the server's requireChannelManageAccess). Keyed on
+  // the capability, not the legacy ADMIN/OWNER role — the server gate is the
+  // capability, so a profile-granted member would otherwise see every action
+  // disabled on a page they are allowed to use.
+  const { can } = useAccess()
+  const { userId } = useUser()
   const canManage =
-    isAdminOrOwner || (!!linkedInbox?.isPersonal && linkedInbox.ownerUserId === userId)
+    can(PermissionKey.channelsManage) ||
+    (!!linkedInbox?.isPersonal && linkedInbox.ownerUserId === userId)
 
   const isForwarding =
     channel.provider === 'email' &&

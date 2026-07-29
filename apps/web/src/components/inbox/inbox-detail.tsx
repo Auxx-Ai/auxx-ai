@@ -14,6 +14,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { OrphanedPersonalInboxBanner } from '~/components/mail-permissions/ui/orphaned-inbox-banner'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { Channel } from '../channels/store/channel-store'
@@ -32,6 +33,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   const router = useRouter()
   const utils = api.useUtils()
   const { can, canAdminInstance, isLoading: isLoadingCapabilities } = useAccess()
+  const { userId } = useUser()
   const [confirm, ConfirmDialog] = useConfirm()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
@@ -48,7 +50,26 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   // The dehydrated instance snapshot is the source of truth for settings
   // authority. Use the stable access key, not the record layer's def UUID.
   const canManageInbox = inbox ? canAdminInstance(toInboxAccessRecordId(inbox)) : false
-  const canManageChannels = canManageInbox && can(PermissionKey.channelsManage)
+
+  /**
+   * Three DIFFERENT server gates, previously collapsed into one flag — which
+   * left a member who owns a personal inbox with no way to reach their own
+   * channel (no `channels.manage`, so the tile lost its link AND its menu):
+   *
+   * - Opening the channel's settings page answers to `requireChannelManageAccess`
+   *   (`manage-access.ts`): `channels.manage` OR the owner of a PERSONAL channel.
+   *   Inbox Manager is not part of it, and the ownership carve-out is the half
+   *   that matters here (§11).
+   * - Unrouting answers to `inbox.removeIntegration`: `channels.manage` AND
+   *   inbox Manager, no carve-out.
+   * - Connecting additionally cannot target a personal inbox at all —
+   *   `addIntegration` and `assertSharedConnectInbox` both reject one — so those
+   *   affordances stay off there instead of offering a guaranteed 400.
+   */
+  const canOpenChannel =
+    can(PermissionKey.channelsManage) || (!!inbox?.isPersonal && inbox.ownerUserId === userId)
+  const canRouteChannels = canManageInbox && can(PermissionKey.channelsManage)
+  const canConnectChannels = canRouteChannels && !inbox?.isPersonal
 
   const isLoading = isLoadingInbox || isLoadingIntegrations || isLoadingCapabilities
 
@@ -85,7 +106,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   /** Connect an already-connected channel to this inbox, offering to move its threads. */
   const handleConnectExisting = async (channel: Channel) => {
     setPickerOpen(false)
-    if (!inbox || !canManageChannels || channel.inboxId === inbox.id) return
+    if (!inbox || !canConnectChannels || channel.inboxId === inbox.id) return
 
     const hasDefault = (integrations ?? []).some((i) => i.isDefault)
     try {
@@ -125,7 +146,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
 
   /** Remove a channel from this inbox after confirmation (unassigns routing). */
   const handleRemove = async (integration: InboxIntegration) => {
-    if (!canManageChannels) return
+    if (!canRouteChannels) return
 
     const confirmed = await confirm({
       title: 'Remove channel?',
@@ -186,10 +207,11 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
                         integration={integration}
                         onRemove={handleRemove}
                         removePending={removeIntegration.isPending}
-                        canManage={canManageChannels}
+                        canOpen={canOpenChannel}
+                        canRemove={canRouteChannels}
                       />
                     ))}
-                    {canManageChannels && (
+                    {canConnectChannels && (
                       <InboxChannelPlaceholderCard
                         onConnectNew={() => setGalleryOpen(true)}
                         onConnectExisting={() => setPickerOpen(true)}
@@ -224,14 +246,14 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
           onOpenChange={setDialogOpen}
           recordId={inbox.recordId}
           inboxSummary={inbox}
-          canDelete={canManageChannels && !inbox.isPersonal}
+          canDelete={canRouteChannels && !inbox.isPersonal}
           onSuccess={() => utils.inbox.getIntegrations.invalidate({ inboxId })}
           onDeleted={() => router.replace('/app/settings/inbox')}
         />
       )}
 
       {/* Connect gallery, pre-scoped to this inbox as the delivery destination */}
-      {inbox && canManageChannels && (
+      {inbox && canConnectChannels && (
         <ChannelGalleryDialog
           open={galleryOpen}
           onOpenChange={setGalleryOpen}
@@ -240,7 +262,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
       )}
 
       {/* Connect an existing channel — reassigns it onto this inbox */}
-      {inbox && canManageChannels && (
+      {inbox && canConnectChannels && (
         <ConnectExistingChannelDialog
           open={pickerOpen}
           onOpenChange={setPickerOpen}
