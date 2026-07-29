@@ -8,7 +8,9 @@ import type { CapabilityView } from './capability-view'
 import {
   type ClientCapabilities,
   canAdministerRecord,
+  canDeleteRecord,
   canEditRecord,
+  canImportRecord,
   canViewRecord,
   type InstanceListScope,
   instanceFallbackLevel,
@@ -219,6 +221,56 @@ export class CapabilitySet implements CapabilityView {
    */
   filterEditableDefIds(entityDefIds: string[]): string[] {
     return entityDefIds.filter((id) => this.canEditEntity(id))
+  }
+
+  /**
+   * Whether the member may DELETE (or merge away) records of the given def —
+   * the `Full` rung, made def-aware. See {@link canDeleteRecord}: the org-wide
+   * `recordsDelete` verb OR an explicit per-def `admin` grant, both floored by
+   * the def's edit gate.
+   *
+   * Replaces the `assert(recordsDelete)` + `assertEditEntity` pair that
+   * `record.delete` / `bulkDelete` / `merge` used to spell out by hand. That pair
+   * is exactly this method's first branch, so the swap takes nothing away.
+   *
+   * Mail-infra defs keep the coarse verb gate, as {@link canEditEntity} does.
+   * Zero I/O.
+   */
+  canDeleteEntity(entityDefId: string): boolean {
+    if (this.isMailInfraDef(entityDefId)) {
+      return this.canWriteEntity(entityDefId) && this.keys.has(PermissionKey.recordsDelete)
+    }
+    return canDeleteRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
+  }
+
+  /** {@link canDeleteEntity} as a throwing guard (403). */
+  assertDeleteEntity(entityDefId: string): void {
+    if (this.canDeleteEntity(entityDefId)) return
+    throw new ForbiddenError("You don't have permission to delete these records.")
+  }
+
+  /**
+   * Whether the member may IMPORT records into the given def — the `Full` rung,
+   * made def-aware. See {@link canImportRecord}.
+   *
+   * Unlike delete, this is not purely additive: `data-import.ts` asserted the
+   * coarse `recordsImport` verb and NO per-def gate, so a member restricted out
+   * of a def could still bulk-write rows into it. Adding the `edit` floor is a
+   * deliberate TIGHTENING of that path.
+   *
+   * Zero I/O.
+   */
+  canImportEntity(entityDefId: string): boolean {
+    if (this.isMailInfraDef(entityDefId)) {
+      return this.canWriteEntity(entityDefId) && this.keys.has(PermissionKey.recordsImport)
+    }
+    return canImportRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
+  }
+
+  /** {@link canImportEntity} as a throwing guard (403). */
+  assertImportEntity(entityDefId: string): void {
+    if (this.canImportEntity(entityDefId)) return
+    throw new ForbiddenError("You don't have permission to import into these records.")
   }
 
   /**

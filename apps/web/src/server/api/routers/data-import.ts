@@ -27,24 +27,55 @@ import {
   updateValueResolution,
 } from '@auxx/lib/import'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
-import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
+import type { CapabilitySet } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure } from '../trpc'
+import { capabilityProcedure, createTRPCRouter } from '../trpc'
+
+/**
+ * The import flow's authorization unit is the TARGET DEFINITION, not the
+ * organization.
+ *
+ * Every procedure here used to be `permissionProcedure(recordsImport)` — the
+ * coarse `Full`-rung verb and nothing else. That was wrong in both directions: a
+ * member holding `recordsImport` could bulk-write rows into a definition they
+ * were explicitly restricted out of, and no per-def grant could ever hand import
+ * out for a single definition. Both halves are now `assertImportEntity`, which
+ * keeps the coarse verb as one of its two branches (see `canImportRecord`) and so
+ * takes nothing away from anyone who could import before.
+ *
+ * `recordsImport` carries no `featureKey` in `PERMISSION_REGISTRY`, so moving off
+ * `permissionProcedure` drops no Layer-1 plan check; `createJob`'s
+ * `importRowsLimit` gate is separate and stays.
+ */
+async function requireImportJob(
+  db: Parameters<typeof getJobWithMapping>[0],
+  capabilities: CapabilitySet,
+  organizationId: string,
+  jobId: string
+) {
+  const job = await getJobWithMapping(db, organizationId, jobId)
+  if (!job) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
+  }
+  capabilities.assertImportEntity(job.importMapping.entityDefinitionId)
+  return job
+}
 
 /**
  * Data import tRPC router.
  * Handles CSV import workflow: upload -> map -> resolve -> plan -> execute.
- * Every procedure requires the `records.import` capability — it is one
- * coherent import flow, not a set of independently-gated actions.
+ * Every procedure gates on the member's import authority for the job's TARGET
+ * definition — see {@link requireImportJob}.
  */
 export const dataImportRouter = createTRPCRouter({
   /**
    * Create a new import job.
    * Called at the start of an import to initialize the job and mapping.
    */
-  createJob: permissionProcedure(PermissionKey.recordsImport)
+  createJob: capabilityProcedure
     .input(
       z.object({
         entityDefinitionId: z.string(),
@@ -56,6 +87,8 @@ export const dataImportRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+      // The door: you cannot start an import into a def you may not import into.
+      ctx.capabilities.assertImportEntity(input.entityDefinitionId)
 
       await new FeaturePermissionService().requireLimit(
         organizationId,
@@ -86,24 +119,17 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get import job details.
    */
-  getJob: permissionProcedure(PermissionKey.recordsImport)
+  getJob: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-
-      const job = await getJobWithMapping(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
-
-      return job
+      return requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
     }),
 
   /**
    * Upload a chunk of CSV rows.
    */
-  uploadChunk: permissionProcedure(PermissionKey.recordsImport)
+  uploadChunk: capabilityProcedure
     .input(
       z.object({
         jobId: z.string(),
@@ -115,12 +141,8 @@ export const dataImportRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      // Verify job exists and belongs to org
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      // Verify job exists, belongs to org, and targets an importable def
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       if (job.status !== 'uploading') {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Job is not in uploading state' })
@@ -142,17 +164,13 @@ export const dataImportRouter = createTRPCRouter({
    * Finalize the upload and transition to ingesting/waiting state.
    * Also runs initial auto-mapping (fallback only) to pre-populate column mappings.
    */
-  finalizeUpload: permissionProcedure(PermissionKey.recordsImport)
+  finalizeUpload: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
       // Get job with mapping (need targetTable for auto-map)
-      const job = await getJobWithMapping(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       // Transition to waiting state (ready for mapping)
       await finalizeUpload(ctx.db, input.jobId)
@@ -187,7 +205,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get importable fields for a target table.
    */
-  getImportableFields: permissionProcedure(PermissionKey.recordsImport)
+  getImportableFields: capabilityProcedure
     .input(
       z.object({
         entityDefinitionId: z.string(),
@@ -197,6 +215,8 @@ export const dataImportRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      // Field schema of a def the member may not import into is not theirs to read.
+      ctx.capabilities.assertImportEntity(input.entityDefinitionId)
       const resource = await findCachedResource(organizationId, input.entityDefinitionId)
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
@@ -211,17 +231,13 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get mappable properties (column headers) for a job with saved mapping data.
    */
-  getMappableProperties: permissionProcedure(PermissionKey.recordsImport)
+  getMappableProperties: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      // Verify job access and get mapping ID
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      // Verify job access, import authority, and get mapping ID
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       return getMappablePropertiesWithSamples(ctx.db, input.jobId, job.importMappingId)
     }),
@@ -229,7 +245,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Save a column mapping.
    */
-  saveColumnMapping: permissionProcedure(PermissionKey.recordsImport)
+  saveColumnMapping: capabilityProcedure
     .input(
       z.object({
         jobId: z.string(),
@@ -257,12 +273,8 @@ export const dataImportRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      // Get job and mapping
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      // Get job and mapping, gated on import authority for its target def
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       await saveMappingProperty(ctx.db, {
         mappingId: job.importMappingId,
@@ -282,7 +294,7 @@ export const dataImportRouter = createTRPCRouter({
    * Auto-map columns to fields based on header names.
    * Uses AI-powered mapping when available, with string-matching fallback.
    */
-  autoMapColumns: permissionProcedure(PermissionKey.recordsImport)
+  autoMapColumns: capabilityProcedure
     .input(
       z.object({
         jobId: z.string(),
@@ -293,11 +305,7 @@ export const dataImportRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
 
       // Get job with mapping
-      const job = await getJobWithMapping(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       // Get resource for target entity from org cache
       const resource = await findCachedResource(
@@ -323,10 +331,13 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get mapped columns with resolution stats.
    */
-  getMappedColumns: permissionProcedure(PermissionKey.recordsImport)
+  getMappedColumns: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      // `getMappedColumnsWithStats` scopes to the org itself, but org scoping is
+      // not import authority — the def gate still has to run.
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       const mappedColumns = await getMappedColumnsWithStats(ctx.db, {
         jobId: input.jobId,
@@ -343,17 +354,13 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get unique values for a column with resolution status.
    */
-  getUniqueValues: permissionProcedure(PermissionKey.recordsImport)
+  getUniqueValues: capabilityProcedure
     .input(z.object({ jobId: z.string(), columnIndex: z.number() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      // Verify job access
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      // Verify job access and import authority for its target def
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       return getUniqueValuesWithResolution(
         ctx.db,
@@ -367,16 +374,12 @@ export const dataImportRouter = createTRPCRouter({
    * Trigger value resolution for all mapped columns.
    * Queues a background job to process resolution.
    */
-  resolveColumnValues: permissionProcedure(PermissionKey.recordsImport)
+  resolveColumnValues: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       // Queue the resolution job
       const queue = getQueue(Queues.dataImportQueue)
@@ -391,7 +394,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Update a single value resolution (user override).
    */
-  updateValueResolution: permissionProcedure(PermissionKey.recordsImport)
+  updateValueResolution: capabilityProcedure
     .input(
       z.object({
         jobId: z.string(),
@@ -412,11 +415,7 @@ export const dataImportRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       try {
         await updateValueResolution(ctx.db, {
@@ -440,16 +439,12 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get resolution progress.
    */
-  getResolutionProgress: permissionProcedure(PermissionKey.recordsImport)
+  getResolutionProgress: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       return getResolutionProgress(ctx.db, input.jobId)
     }),
@@ -458,16 +453,12 @@ export const dataImportRouter = createTRPCRouter({
    * Generate import plan.
    * Queues a background job to analyze rows and create plan records.
    */
-  generatePlan: permissionProcedure(PermissionKey.recordsImport)
+  generatePlan: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       // Update job status to planning
       await markJobPlanning(ctx.db, input.jobId)
@@ -485,16 +476,12 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get import plan with estimates.
    */
-  getPlan: permissionProcedure(PermissionKey.recordsImport)
+  getPlan: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       return getPlanWithEstimates(ctx.db, input.jobId, job.rowCount)
     }),
@@ -502,9 +489,21 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get plan errors.
    */
-  getPlanErrors: permissionProcedure(PermissionKey.recordsImport)
+  getPlanErrors: capabilityProcedure
     .input(z.object({ planId: z.string(), limit: z.number().optional().default(10) }))
     .query(async ({ ctx, input }) => {
+      // The only procedure keyed on a PLAN rather than a job — and, before this
+      // pass, the only one with no org scoping at all: a bare `planId` returned
+      // another organization's import errors. Resolve plan → job, then gate.
+      const plan = await ctx.db.query.ImportPlan.findFirst({
+        where: eq(schema.ImportPlan.id, input.planId),
+        columns: { importJobId: true },
+      })
+      if (!plan) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import plan not found' })
+      }
+      await requireImportJob(ctx.db, ctx.capabilities, ctx.session.organizationId, plan.importJobId)
+
       return getPlanErrors(ctx.db, input.planId, input.limit)
     }),
 
@@ -512,7 +511,7 @@ export const dataImportRouter = createTRPCRouter({
    * Get plan preview rows for displaying in the preview table.
    * Returns paginated rows with resolved field values and strategy.
    */
-  getPlanPreview: permissionProcedure(PermissionKey.recordsImport)
+  getPlanPreview: capabilityProcedure
     .input(
       z.object({
         jobId: z.string(),
@@ -524,11 +523,7 @@ export const dataImportRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       return getPlanPreviewRows(ctx.db, {
         jobId: input.jobId,
@@ -541,16 +536,12 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Confirm and execute the import.
    */
-  confirmImport: permissionProcedure(PermissionKey.recordsImport)
+  confirmImport: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
-      const job = await getJobByOrg(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       if (job.status !== 'ready') {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Job is not ready for execution' })
@@ -584,16 +575,12 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Save mapping as a reusable template.
    */
-  saveMappingTemplate: permissionProcedure(PermissionKey.recordsImport)
+  saveMappingTemplate: capabilityProcedure
     .input(z.object({ jobId: z.string(), title: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const job = await getJobWithMapping(ctx.db, organizationId, input.jobId)
-
-      if (!job) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
-      }
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       // Update mapping title if provided
       if (input.title) {
@@ -609,7 +596,7 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * List all import jobs for the organization.
    */
-  listJobs: permissionProcedure(PermissionKey.recordsImport)
+  listJobs: capabilityProcedure
     .input(
       z.object({
         search: z.string().optional(),
@@ -618,19 +605,31 @@ export const dataImportRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      return listJobsByOrg(ctx.db, {
+      // Filtered rather than gated: the history list spans every def in the org,
+      // so a single assert has nothing to assert on. `listJobsByOrg` already
+      // selects `importMapping.entityDefinitionId`, so this is an in-memory pass
+      // over rows already fetched — no extra query, and it reproduces exactly
+      // what `getJob` would answer per row.
+      const jobs = await listJobsByOrg(ctx.db, {
         organizationId,
         search: input.search,
       })
+
+      return jobs.filter((job) =>
+        ctx.capabilities.canImportEntity(job.importMapping.entityDefinitionId)
+      )
     }),
 
   /**
    * Delete an import job.
    */
-  deleteJob: permissionProcedure(PermissionKey.recordsImport)
+  deleteJob: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      // Gate BEFORE the delete — `deleteJob` is org-scoped only, so without this
+      // a member could discard the import history of a def they cannot touch.
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       const deleted = await deleteJob(ctx.db, {
         jobId: input.jobId,

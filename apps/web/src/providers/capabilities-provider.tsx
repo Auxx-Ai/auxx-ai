@@ -6,8 +6,10 @@ import {
   type ClientCapabilities,
   canAdminInstance,
   canAdministerRecord,
+  canDeleteRecord,
   canEditInstance,
   canEditRecord,
+  canImportRecord,
   canViewInstance,
   canViewRecord,
   PERMISSION_REGISTRY_MAP,
@@ -62,6 +64,24 @@ interface CapabilitiesContextType {
    * orders. Mail-infrastructure defs remain governed by their own feature UI.
    */
   canEditEntity: (entityDefinitionId: string) => boolean
+  /**
+   * Per-def DELETE gate — mirrors the server `canDeleteEntity`, which backs
+   * `record.delete` / `bulkDelete` / `merge`. Satisfied by the org-wide
+   * `records.delete` verb OR an explicit per-def `admin` grant, both floored by
+   * the def's edit gate.
+   *
+   * Use this instead of spelling out `canEditEntity(def) && can(recordsDelete)`
+   * at a call site: that conjunction is only the FIRST branch of the server
+   * predicate, so hand-written copies now under-report for a per-def `admin`
+   * grantee and hide a delete the server would allow.
+   */
+  canDeleteEntity: (entityDefinitionId: string) => boolean
+  /**
+   * Per-def IMPORT gate — mirrors the server `canImportEntity`, which backs every
+   * procedure in `data-import.ts`. Same two branches as {@link canDeleteEntity},
+   * on the `records.import` verb.
+   */
+  canImportEntity: (entityDefinitionId: string) => boolean
   /**
    * Per-def ADMINISTRATION gate — mirrors the server `canAdministerDef` (the
    * `Full`/`admin` rung). Governs def-administration affordances: managing a
@@ -219,6 +239,10 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       deniedBy,
       canViewEntity: (entityDefinitionId: string) => canViewRecord(resolved, entityDefinitionId),
       canEditEntity: (entityDefinitionId: string) => canEditRecord(resolved, entityDefinitionId),
+      canDeleteEntity: (entityDefinitionId: string) =>
+        canDeleteRecord(resolved, entityDefinitionId),
+      canImportEntity: (entityDefinitionId: string) =>
+        canImportRecord(resolved, entityDefinitionId),
       canAdministerDef: (entityDefinitionId: string) =>
         canAdministerRecord(resolved, entityDefinitionId),
       administersAnyDef: administersAnyDef(resolved),

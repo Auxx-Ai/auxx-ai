@@ -24,8 +24,12 @@ export async function listJobsByOrg(db: Database, input: ListJobsInput) {
     where: eq(schema.ImportJob.organizationId, input.organizationId),
     with: {
       importMapping: {
+        // `targetTable` was listed here and is NOT a column on `ImportMapping`
+        // (it is a field on the in-memory mapping types in `import/types`). A
+        // bogus key makes drizzle infer the BARE `ImportJob` row for the whole
+        // query — `importMapping` and `createdBy` vanish from the return type —
+        // so every consumer read them as `any`. Removing it restores inference.
         columns: {
-          targetTable: true,
           entityDefinitionId: true,
         },
       },

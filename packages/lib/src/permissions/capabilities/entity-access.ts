@@ -200,6 +200,69 @@ export function canEditRecord(caps: ResolvedRecordAccess, entityDefinitionId: st
 }
 
 /**
+ * The `Full`-rung record verbs, made def-aware.
+ *
+ * `recordsDelete` and `recordsImport` live on the Records area's `Full` rung, so
+ * until now they could only ever be granted ORG-WIDE: `record.delete` asserted
+ * the bare key beside a per-def `edit` gate, which made per-def access a working
+ * DOWNWARD lever (restrict a def below `edit` and delete dies with it) but never
+ * an upward one — no per-def grant could hand delete out for a single definition.
+ *
+ * This closes that asymmetry without extending the `ResourcePermission`
+ * vocabulary: the per-def `admin` rung, which already means "a scoped delegation
+ * of org-admin for one def", now also carries that def's `Full`-rung verbs. A
+ * grantee who may manage the definition itself may certainly delete its rows —
+ * that is strictly less power than the deletion of the whole definition
+ * {@link canAdministerRecord} already confers.
+ *
+ * Strictly ADDITIVE: the first branch is today's exact rule (`edit` floor + the
+ * org-wide key), so nothing that could delete or import before loses it. What is
+ * new is the second branch — an explicit per-def `admin` grant now suffices even
+ * at Records `Read`/`None`. Base rungs cap at `edit`
+ * ({@link levelToRecordBasePermission}), so `admin` can only come from an
+ * explicit Layer-3 grant or OWNER; the Records area alone can never reach it and
+ * this cannot silently widen an unrestricted def.
+ *
+ * The `edit` floor is checked FIRST and applies to both branches, so a def
+ * restricted below `edit` still denies — the downward lever is untouched.
+ */
+function canFullRungRecordVerb(
+  caps: ResolvedRecordAccess,
+  entityDefinitionId: string,
+  key: PermissionKey
+): boolean {
+  const level = effectiveRecordLevel(caps, entityDefinitionId)
+  if (level === undefined || !satisfiesPermission(level, ResourcePermission.edit)) return false
+  return caps.keys.has(key) || satisfiesPermission(level, ResourcePermission.admin)
+}
+
+/**
+ * Record DELETE gate — `recordsDelete` org-wide, or an explicit per-def `admin`
+ * grant, both floored by the def's edit gate. See {@link canFullRungRecordVerb}.
+ *
+ * Backs `record.delete` / `bulkDelete` / `merge`. Merge gates here rather than on
+ * {@link canEditRecord} because it permanently REMOVES the source records.
+ */
+export function canDeleteRecord(caps: ResolvedRecordAccess, entityDefinitionId: string): boolean {
+  return canFullRungRecordVerb(caps, entityDefinitionId, PermissionKey.recordsDelete)
+}
+
+/**
+ * Record IMPORT gate — `recordsImport` org-wide, or an explicit per-def `admin`
+ * grant, both floored by the def's edit gate. See {@link canFullRungRecordVerb}.
+ *
+ * Backs the def-bearing procedures in `data-import.ts`, which previously asserted
+ * the coarse verb and NO per-def gate at all — so "import into contacts but not
+ * into this restricted def" was inexpressible in either direction, and a member
+ * holding `recordsImport` could bulk-write rows into a def they were explicitly
+ * restricted out of. The `edit` floor closes that half; the `admin` branch opens
+ * the other.
+ */
+export function canImportRecord(caps: ResolvedRecordAccess, entityDefinitionId: string): boolean {
+  return canFullRungRecordVerb(caps, entityDefinitionId, PermissionKey.recordsImport)
+}
+
+/**
  * Def-ADMINISTRATION gate (§9.1) — whether the member may administer the
  * DEFINITION itself: manage its fields, its access (the Access tab), its
  * metadata (name/icon/description), and delete/archive the def. This is the
