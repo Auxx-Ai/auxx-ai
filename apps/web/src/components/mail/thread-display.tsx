@@ -102,7 +102,7 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
           }
           button={
             hasOnlyForwardingChannel ? (
-              <Link href='/app/settings/channels?connect=1'>
+              <Link href='/app/settings/inbox?connect=personal'>
                 <Button variant='outline'>
                   <Plus size={16} />
                   <span>Setup Channel</span>

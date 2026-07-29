@@ -37,7 +37,7 @@ const GOALS: Record<MainGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     iconId: 'mail',
     color: 'blue',
     ctaText: 'Connect inbox',
-    href: '/app/settings/channels',
+    href: '/app/settings/inbox?connect=personal',
     docsPath: '/help/getting-started/connect-inbox',
   },
   'setup-agent': {

@@ -46,6 +46,9 @@ export function useOAuthReturn() {
       // Channel reconnects (Gmail/Outlook) ride the same return path — refresh their list so a
       // cleared `requiresReauth` drops the "Auth required" badge without waiting out the staleTime.
       void utils.channel.list.invalidate()
+      // A personal channel provisions its inbox inside the post-connect hook.
+      void utils.inbox.settingsList.invalidate()
+      void utils.record.listAll.invalidate()
     }
 
     if (oauthError === 'true') {

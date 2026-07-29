@@ -415,8 +415,8 @@ export const SETTINGS_MENU: SidebarProps[] = [
       },
     ],
   },
-  // Channels — member-visible: members connect/manage their own personal email
-  // accounts here; shared-channel actions are gated in-page. Inboxes stays admin.
+  // Inboxes is the member-facing home for owned personal mailboxes and accessible
+  // shared inboxes. Channels is the org-wide plumbing surface.
   {
     id: 'channels',
     label: 'Channels',
@@ -427,6 +427,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Channels',
         slug: 'channels',
         icon: <Waypoints />,
+        permissionKey: 'channels.manage',
         description: 'Connect the accounts messages arrive on',
         keywords: ['gmail', 'outlook', 'imap', 'smtp', 'email account', 'sms', 'whatsapp'],
       },
@@ -435,9 +436,8 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Inboxes',
         slug: 'inbox',
         icon: <Inbox />,
-        permissionKey: 'channels.manage',
-        description: 'Shared queues that route those messages to your team',
-        keywords: ['shared inbox', 'routing', 'assignment', 'queue'],
+        description: 'Manage your personal accounts and accessible shared queues',
+        keywords: ['personal inbox', 'shared inbox', 'routing', 'assignment', 'queue'],
       },
       {
         id: 'settings-signatures',

@@ -2,7 +2,7 @@
 'use client'
 
 import { ListCard } from '@auxx/ui/components/list-card'
-import { Plus } from 'lucide-react'
+import { Lock, Plus } from 'lucide-react'
 
 /**
  * Dashed placeholder/add card matching the ListCard shape — opens the create
@@ -15,9 +15,24 @@ export function InboxPlaceholderCard({ onClick }: { onClick: () => void }) {
       variant='placeholder'
       classNames={{ icon: 'border-dashed' }}
       icon={<Plus className='size-4 text-muted-foreground' />}
-      title='Add an inbox'
-      subtitle='Shared or personal'
-      description='Create a new inbox to organize your messages.'
+      title='Create shared inbox'
+      subtitle='For your team'
+      description='Create a shared queue to organize team messages.'
+      onClick={onClick}
+    />
+  )
+}
+
+/** Personal-account connect tile for the member-facing inbox settings page. */
+export function PersonalInboxPlaceholderCard({ onClick }: { onClick: () => void }) {
+  return (
+    <ListCard
+      variant='placeholder'
+      classNames={{ icon: 'border-dashed' }}
+      icon={<Lock className='size-4 text-muted-foreground' />}
+      title='Connect personal account'
+      subtitle='Gmail or Outlook'
+      description='Create a private inbox connected to your own mailbox.'
       onClick={onClick}
     />
   )

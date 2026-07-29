@@ -137,7 +137,7 @@ export function Mailbox({
         title='No channels found'
         description={<>Link your email account to get started.</>}
         button={
-          <Link href='/app/settings/channels?connect=1'>
+          <Link href='/app/settings/inbox?connect=personal'>
             <Button type='button' size='sm' variant='outline'>
               <Plus />
               Get started
