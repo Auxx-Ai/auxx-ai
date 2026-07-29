@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/agent-detail-view.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -17,6 +18,7 @@ import { Eye, MessageSquare, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { useAgentAccess } from '../../hooks/use-agent-access'
 import type { AgentDetail } from '../../store/agent-store'
@@ -49,6 +51,14 @@ export function AgentDetailView({ agent }: AgentDetailViewProps) {
   const minWidth = useDockStore((state) => state.minWidth)
   const maxWidth = useDockStore((state) => state.maxWidth)
 
+  // The dock is Build + Chat (Kopilot) + Simulations. Without Kopilot only
+  // Simulations survives — and a fresh agent has no Simulations tab at all
+  // (`agent-docked-chat.tsx` hides the tab bar during setup), so the dock would
+  // be an empty shell. Drop it entirely in that one combination; the agent stays
+  // configurable through `AgentSetupMode` in the main content.
+  const kopilotEnabled = useFeatureFlags().hasAccess(FeatureKey.kopilot)
+  const showChatDock = kopilotEnabled || agent.setupCompletedAt != null
+
   const chatContent = <AgentDockedChat agentId={agent.id} />
 
   const { dockedPanels, overlays, isDocked } = useDockedPanels([
@@ -56,7 +66,7 @@ export function AgentDetailView({ agent }: AgentDetailViewProps) {
       key: 'agent-chat',
       // Docked: always visible, matching the pre-hook behavior (no toggle).
       // Overlay: only when the mobile trigger opens it.
-      open: { docked: true, overlay: chatOverlayOpen },
+      open: { docked: showChatDock, overlay: showChatDock && chatOverlayOpen },
       content: chatContent,
       overlay: (
         <DockableDrawer
@@ -84,7 +94,7 @@ export function AgentDetailView({ agent }: AgentDetailViewProps) {
       <MainPageHeader
         action={
           <div className='flex items-center gap-2'>
-            {!isDocked && (
+            {showChatDock && !isDocked && (
               <Button
                 variant='ghost'
                 size='icon-sm'

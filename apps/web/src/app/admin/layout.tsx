@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getSession } from '~/auth/session'
+import { CapabilitiesProvider } from '~/providers/capabilities-provider'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
 import { FeatureFlagProvider, OrganizationIdProvider } from '~/providers/feature-flag-provider'
 import { AdminAppSidebar } from './_components/app-sidebar'
@@ -78,14 +79,22 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <DehydratedStateProvider initialState={dehydratedState}>
         <OrganizationIdProvider>
           <FeatureFlagProvider>
-            <SidebarProvider
-              resizable
-              persistKey='admin_sidebar'
-              defaultOpen={defaultOpen}
-              defaultWidth={defaultWidth}>
-              <AdminAppSidebar user={user} variant='inset' />
-              <SidebarInset className='p-0 m-0!'>{children}</SidebarInset>
-            </SidebarProvider>
+            {/*
+              The admin shell reuses the app's `NavUser`, which reads `useAccess()`
+              to hide capability-gated entries. Without this provider that hook
+              throws here. With no active org it seeds `EMPTY_CAPS`, so every gate
+              in shared chrome fails closed.
+            */}
+            <CapabilitiesProvider>
+              <SidebarProvider
+                resizable
+                persistKey='admin_sidebar'
+                defaultOpen={defaultOpen}
+                defaultWidth={defaultWidth}>
+                <AdminAppSidebar user={user} variant='inset' />
+                <SidebarInset className='p-0 m-0!'>{children}</SidebarInset>
+              </SidebarProvider>
+            </CapabilitiesProvider>
           </FeatureFlagProvider>
         </OrganizationIdProvider>
       </DehydratedStateProvider>

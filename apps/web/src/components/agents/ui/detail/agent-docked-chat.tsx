@@ -2,6 +2,7 @@
 'use client'
 
 import { agentTemplates } from '@auxx/lib/agents/client'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -31,6 +32,7 @@ import { KopilotChatProvider } from '~/components/kopilot/options'
 import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions/kopilot-suggestion'
 import { KopilotChat } from '~/components/kopilot/ui/kopilot-chat'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAgent } from '../../hooks/use-agent'
 import { resolveDockLayout } from '../../utils/dock-layout'
@@ -83,6 +85,10 @@ const INITIAL_FRESH_STATE: FreshChatState = {
  */
 export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
   const { agent, detail } = useAgent(agentId)
+  const { hasAccess } = useFeatureFlags()
+  // Both chat tabs are Kopilot surfaces, and `agents` is a separate FeatureKey
+  // from `kopilot` — see `resolveDockLayout`, which owns the degradation.
+  const kopilotEnabled = hasAccess(FeatureKey.kopilot)
 
   const isFreshAgent = detail?.setupCompletedAt == null
   const defaultPanel: Panel = isFreshAgent ? 'build' : 'chat'
@@ -94,7 +100,7 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
   // Opt-in vertical split (Phase 3): Simulations (top) + Build (bottom) at once.
   // `panel` records which pane the user came from so exiting restores it.
   const [split, setSplit] = useQueryState('split', parseAsBoolean.withDefault(false))
-  const layout = resolveDockLayout({ panel, split, isFreshAgent })
+  const layout = resolveDockLayout({ panel, split, isFreshAgent, kopilotEnabled })
 
   // Tabs are the split's exit, the toggle is its entrance. A tab click always
   // drops the split and selects that panel (covers clicking the already-active
@@ -159,23 +165,40 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
       onSessionEstablished={settleBuild}
     />
   )
-  const simulationsElement = <SimulationsTab agentId={agentId} onFixWithKopilot={handleFix} />
+  // Hoisted so the narrowing survives into the menu's click handler — a
+  // `layout.panel !== 'simulations'` guard in JSX doesn't narrow inside a closure.
+  const activeChatTab: ChatTab | null = layout.panel === 'simulations' ? null : layout.panel
+
+  // "Fix with Kopilot" seeds the builder thread, so it goes away with the
+  // builder. Both consumers gate the affordance on the prop being present.
+  const simulationsElement = (
+    <SimulationsTab
+      agentId={agentId}
+      onFixWithKopilot={layout.chatAvailable ? handleFix : undefined}
+    />
+  )
 
   return (
+    // `layout.panel`, not `panel` — the resolved value is what degrades a
+    // `?panel=build` deep link to Simulations when Kopilot is off.
     <Tabs
-      value={panel}
+      value={layout.panel}
       onValueChange={(v) => exitToPanel(v as Panel)}
       className='flex h-full flex-col'>
       {!isFreshAgent && (
         <TabsList variant='outline'>
-          <TabsTrigger value='build' variant='outline' onClick={() => exitToPanel('build')}>
-            <Settings2 />
-            Build
-          </TabsTrigger>
-          <TabsTrigger value='chat' variant='outline' onClick={() => exitToPanel('chat')}>
-            <MessageSquare />
-            Chat
-          </TabsTrigger>
+          {layout.chatAvailable && (
+            <>
+              <TabsTrigger value='build' variant='outline' onClick={() => exitToPanel('build')}>
+                <Settings2 />
+                Build
+              </TabsTrigger>
+              <TabsTrigger value='chat' variant='outline' onClick={() => exitToPanel('chat')}>
+                <MessageSquare />
+                Chat
+              </TabsTrigger>
+            </>
+          )}
           <TabsTrigger
             value='simulations'
             variant='outline'
@@ -190,7 +213,7 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
             )}
           </TabsTrigger>
           <div className='ml-auto flex items-center'>
-            {layout.panel !== 'chat' && (
+            {layout.chatAvailable && layout.panel !== 'chat' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -208,7 +231,7 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
                 </TooltipContent>
               </Tooltip>
             )}
-            {panel !== 'simulations' && (
+            {activeChatTab && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -221,8 +244,8 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align='end'>
                   <DropdownMenuItem
-                    disabled={panel === 'chat' && !dmEnabled}
-                    onClick={() => startNewChat(panel)}>
+                    disabled={activeChatTab === 'chat' && !dmEnabled}
+                    onClick={() => startNewChat(activeChatTab)}>
                     <SquarePen />
                     Start new chat
                   </DropdownMenuItem>
@@ -247,21 +270,30 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
         </ResizablePanelGroup>
       ) : (
         <>
-          <TabsContent value='build' className='flex-1 overflow-hidden'>
-            {buildPanelElement}
-          </TabsContent>
-          <TabsContent value='chat' className='flex-1 overflow-hidden'>
-            <ChatPanel
-              agentId={agentId}
-              agentName={agent?.name ?? null}
-              agentDescription={detail?.description ?? null}
-              isFreshAgent={isFreshAgent}
-              onJumpToBuild={() => setPanel('build')}
-              fresh={freshChats.chat.pending}
-              epoch={freshChats.chat.epoch}
-              onSessionEstablished={settleChat}
-            />
-          </TabsContent>
+          {/*
+            Neither panel mounts without Kopilot: each fires a `kopilot.listSessions`
+            the router 403s, and each renders a composer that would post to
+            `/api/kopilot/stream` and 403 again on send.
+          */}
+          {layout.chatAvailable && (
+            <>
+              <TabsContent value='build' className='flex-1 overflow-hidden'>
+                {buildPanelElement}
+              </TabsContent>
+              <TabsContent value='chat' className='flex-1 overflow-hidden'>
+                <ChatPanel
+                  agentId={agentId}
+                  agentName={agent?.name ?? null}
+                  agentDescription={detail?.description ?? null}
+                  isFreshAgent={isFreshAgent}
+                  onJumpToBuild={() => setPanel('build')}
+                  fresh={freshChats.chat.pending}
+                  epoch={freshChats.chat.epoch}
+                  onSessionEstablished={settleChat}
+                />
+              </TabsContent>
+            </>
+          )}
           <TabsContent value='simulations' className='flex-1 overflow-hidden'>
             {simulationsElement}
           </TabsContent>

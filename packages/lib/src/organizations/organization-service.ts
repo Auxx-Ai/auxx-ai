@@ -7,7 +7,7 @@ import { OrganizationRole, type OrganizationType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import { flushOrganization } from '../cache'
+import { flushOrganization, onCacheEvent } from '../cache'
 import { DehydrationService } from '../dehydration'
 import type { ForwardingIntegrationMetadata } from '../email/inbound'
 import { MessageService } from '../email/message-service'
@@ -145,6 +145,15 @@ export class OrganizationService {
 
     const inboxService = new InboxService(this.db, params.organizationId, params.userId)
     await inboxService.addIntegrationToSharedInbox(integrationId, true)
+
+    // This method is the only authority on the forwarding integration existing,
+    // so it owns the cache consequence rather than leaving it to each caller.
+    // Two of the four callers happen to `flushOrganization` afterwards, but
+    // `organization.update` (the onboarding handle step) emits only
+    // `org.updated` → ['orgProfile'], and the backfill script emits nothing —
+    // so the new channel stayed absent from `channelProviders` for the key's
+    // full THIRTY_DAYS TTL and every `getProviderType` on it threw NotFound.
+    await onCacheEvent('channel.connected', { orgId: params.organizationId })
 
     logger.info('Ensured forwarding address integration', {
       organizationId: params.organizationId,

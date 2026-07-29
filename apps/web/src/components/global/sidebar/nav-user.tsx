@@ -1,5 +1,6 @@
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import {
   DropdownMenu,
@@ -51,6 +52,7 @@ import { useAnalytics } from '~/hooks/use-analytics'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useOrgPresence } from '~/hooks/use-org-presence'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
@@ -73,6 +75,10 @@ export function NavUser({ user }: Prop) {
   const router = useRouter()
   const posthog = useAnalytics()
   const selfHosted = useIsSelfHosted()
+  const { can } = useAccess()
+  // `/app/settings/plans` is guarded on `billing.view`, so without the key both
+  // billing entries are dead links into `/access-denied`.
+  const canViewBilling = can(PermissionKey.billingView)
   const { hasAccess } = useFeatureFlags()
   const kopilotEnabled = hasAccess('kopilot')
   const toggleKopilot = useKopilotStore((s) => s.togglePanel)
@@ -188,7 +194,7 @@ export function NavUser({ user }: Prop) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {!selfHosted && (
+            {!selfHosted && canViewBilling && (
               <>
                 <DropdownMenuGroup>
                   <DropdownMenuItem asChild>
@@ -279,7 +285,7 @@ export function NavUser({ user }: Prop) {
                   </DropdownMenuItem>
                 </Link>
               )}
-              {!selfHosted && (
+              {!selfHosted && canViewBilling && (
                 <DropdownMenuItem asChild>
                   <Link href='/app/settings/plans'>
                     <CreditCard />

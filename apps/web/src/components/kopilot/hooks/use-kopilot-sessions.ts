@@ -1,7 +1,9 @@
 // apps/web/src/components/kopilot/hooks/use-kopilot-sessions.ts
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { useMemo } from 'react'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import type { ContentPart, KopilotMessage } from '../stores/kopilot-store'
 import { useKopilotStore } from '../stores/kopilot-store'
@@ -14,8 +16,15 @@ import { useKopilotStore } from '../stores/kopilot-store'
 export const KOPILOT_SESSIONS_QUERY_INPUT = { limit: 50 } as const
 
 export function useKopilotSessions() {
+  const { hasAccess } = useFeatureFlags()
+  // Every `kopilot.*` procedure runs `requireKopilotAccess`, so without the
+  // feature this is a guaranteed 403. The gate lives here rather than at the
+  // call sites because `KopilotPageShell` reads this hook ABOVE its own
+  // `canUse` early return — hooks can't be conditional, so its lock screen
+  // cannot suppress the fetch on its own.
   const sessions = api.kopilot.listSessions.useQuery(KOPILOT_SESSIONS_QUERY_INPUT, {
     staleTime: 30_000,
+    enabled: hasAccess(FeatureKey.kopilot),
   })
   const utils = api.useUtils()
 
