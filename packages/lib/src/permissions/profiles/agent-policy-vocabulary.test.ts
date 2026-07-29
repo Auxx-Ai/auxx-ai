@@ -51,6 +51,21 @@ import { SYSTEM_PROFILE_SEEDS } from './system-profiles'
  * at Read. That rung was inert; now it confers `agents.view`. #1345's workflows
  * split had the same effect and it was accepted then for the same reason — the
  * rung meaning something is the point of adding it.
+ *
+ * **AMENDED AGAIN 2026-07-28 — plan 36 (signatures + snippets).** Two effects,
+ * both amended under the same "derive it, don't regenerate it" rule:
+ *   1. `Area.signatures` / `Area.snippets` are new, so every scenario gained two
+ *      `areaLevels` entries plus the keys those levels imply. No scenario names
+ *      either area, so both fall through to `areas.default` and the delta is
+ *      fully derived — re-checked by the signatures/snippets sibling of
+ *      {@link agentsRungsAreTheOnlyAmendment} below.
+ *   2. `snippet` LEFT `NON_RECORD_DEF_SLUGS` (§7.6), so `defs.snippet` stopped
+ *      being the mail-infra bypass's unconditional `view: true / viewAccess:
+ *      null` and now resolves through the definitions keyspace. That one is a
+ *      real authority change, not a rename — it is pinned explicitly rather than
+ *      derived, because it is exactly the hole the slice set out to close.
+ * Every other def, every instance, and every pre-existing `areaLevels` entry is
+ * byte-identical; the amendment script refused to write otherwise.
  */
 
 const RESOURCES: PolicyResourceRef[] = [
@@ -203,6 +218,72 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
       const actual = scenario.composed.keys.filter((key) => key.startsWith('agents.')).sort()
       expect(actual, name).toEqual([...expected].sort())
     }
+  })
+
+  /**
+   * The 2026-07-28 plan 36 amendment, held to the same standard.
+   *
+   * `Area.signatures` and `Area.snippets` did not exist when the fixture was
+   * captured, so every scenario gained two `areaLevels` entries and whatever
+   * keys those levels imply — no scenario NAMES either area, so both fall
+   * through to the policy's `areas.default` and the amendment is fully derived.
+   * Re-deriving it here is what stops a future "just regenerate the fixture"
+   * from laundering a real shift into this file.
+   */
+  it('carries exactly the signatures/snippets keys their recorded area levels imply', () => {
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      for (const [area, rungs] of [
+        [
+          'signatures',
+          [
+            PermissionKey.signaturesView,
+            PermissionKey.signaturesEdit,
+            PermissionKey.signaturesManage,
+          ],
+        ],
+        [
+          'snippets',
+          [PermissionKey.snippetsView, PermissionKey.snippetsEdit, PermissionKey.snippetsManage],
+        ],
+      ] as const) {
+        const level = scenario.composed.areaLevels[area] ?? 0
+        const expected = rungs.slice(0, level)
+        const actual = scenario.composed.keys.filter((key) => key.startsWith(`${area}.`)).sort()
+        expect(actual, `${name}/${area}`).toEqual([...expected].sort())
+      }
+    }
+  })
+
+  /**
+   * The other half of the plan 36 amendment, which is NOT derivable from a rung
+   * ladder: `snippet` left `NON_RECORD_DEF_SLUGS` (§7.6), so the recorded
+   * `defs.snippet` answers stopped coming from the mail-infra bypass — which
+   * returned `view: true` and `viewAccess: null` unconditionally — and started
+   * resolving through the agent policy's DEFINITIONS keyspace like any other def.
+   *
+   * The tell that the bypass is gone: a `definitions: none` policy must now be
+   * able to deny it. Two recorded scenarios do exactly that, and this pins them
+   * so a re-add of `snippet` to the set fails here instead of silently restoring
+   * an org-wide read.
+   */
+  it('resolves snippet through the definitions keyspace, not the mail-infra bypass', () => {
+    const denied = ['empty', 'seed:chat_agent'] as const
+    for (const name of denied) {
+      const scenario = SCENARIOS[name]
+      if (!scenario) throw new Error(`missing baseline scenario ${name}`)
+      expect((scenario.composed.defs.snippet as { view: boolean }).view, name).toBe(false)
+    }
+    // …and a scenario that DOES grant definitions still reaches it, so the
+    // assertion above is a real gate rather than a blanket denial.
+    const legacyFull = SCENARIOS.legacyFull
+    if (!legacyFull) throw new Error('missing baseline scenario legacyFull')
+    expect(legacyFull.composed.defs.snippet).toEqual({
+      view: true,
+      edit: true,
+      admin: true,
+      write: true,
+      viewAccess: 'admin',
+    })
   })
 })
 

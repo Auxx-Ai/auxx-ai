@@ -15,6 +15,8 @@ export const NOTIFICATION_TARGET_TYPES = [
   'DASHBOARD',
   'WORKFLOW',
   'AGENT',
+  'SIGNATURE',
+  'SNIPPET',
   'SETTINGS',
   'NONE',
 ] as const
@@ -36,6 +38,10 @@ export interface NotificationTargetIdsMap {
   WORKFLOW: { workflowAppId: string }
   /** The `Agent.id`. Deep links route by SLUG, so the renderer resolves it. */
   AGENT: { agentId: string }
+  /** The signature's `EntityInstance.id` — signatures are entity instances. */
+  SIGNATURE: { signatureId: string }
+  /** The `Snippet.id`. */
+  SNIPPET: { snippetId: string }
   SETTINGS: { path: string }
   NONE: Record<string, never>
 }
@@ -55,7 +61,7 @@ export type NotificationMetadata =
       resourceName: string
       noun: string
       /** Mirrors `InstanceAccessKey` — kept as a literal union so this module stays client-safe. */
-      resourceKey: 'dataset' | 'kb' | 'dashboard' | 'workflow' | 'agent'
+      resourceKey: 'dataset' | 'kb' | 'dashboard' | 'workflow' | 'agent' | 'signature' | 'snippet'
       level: 'read' | 'write' | 'full'
     }
   | { kind: 'MESSAGE_SHARED'; subject?: string | null; lens: string }

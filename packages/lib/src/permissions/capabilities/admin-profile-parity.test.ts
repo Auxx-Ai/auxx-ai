@@ -301,7 +301,15 @@ describe('ADMIN parity — instance-access resources', () => {
   it('DELIBERATE DIVERGENCE — an explicitly shared instance resolves through grants', () => {
     // A dashboard (`baselineAtCreate: true`) is fully row-described at birth, so
     // an ADMIN now gets the workspace baseline (`view`) rather than `admin`, and
-    // nothing at all on a private one. OWNER remains the recovery path.
+    // nothing at all on a private one.
+    //
+    // **OWNER answers identically since 2026-07-28** (plan 36 §0.6 revised): the
+    // §0.10 bypass is scoped to `baselineAtCreate: false`, so on the private
+    // resources an owner resolves through their own rows like everyone else.
+    // Concretely for dashboards, whose `role:org_member @ view` baseline row IS
+    // in an owner's grantee union: they keep VIEW on an org-shared dashboard but
+    // no longer hold `admin` on one they did not create, and a dashboard with no
+    // row for them is invisible.
     const shared = adminAccess({
       restrictedInstances: ['dash_1'],
       instanceAccessRows: [
@@ -314,12 +322,18 @@ describe('ADMIN parity — instance-access resources', () => {
     })
     expect(effectiveInstanceLevel(shared, 'dashboard', 'dash_1')).toBe(ResourcePermission.view)
     expect(effectiveInstanceLevel({ ...shared, role: 'OWNER' }, 'dashboard', 'dash_1')).toBe(
-      BYPASS_LEVEL
+      ResourcePermission.view
     )
 
     const priv = adminAccess({ restrictedInstances: ['dash_2'] })
     expect(effectiveInstanceLevel(priv, 'dashboard', 'dash_2')).toBeUndefined()
-    expect(effectiveInstanceLevel({ ...priv, role: 'OWNER' }, 'dashboard', 'dash_2')).toBe(
+    expect(
+      effectiveInstanceLevel({ ...priv, role: 'OWNER' }, 'dashboard', 'dash_2')
+    ).toBeUndefined()
+
+    // The org-shared resources are UNCHANGED — the bypass still applies there,
+    // so this file's `BYPASS_LEVEL` still has a subject.
+    expect(effectiveInstanceLevel({ ...priv, role: 'OWNER' }, 'dataset', 'ds_none')).toBe(
       BYPASS_LEVEL
     )
   })

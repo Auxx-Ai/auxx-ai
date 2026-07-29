@@ -742,15 +742,7 @@ export const SettingScopeValues = [
   'SIDEBAR',
 ] as const
 
-export const SignatureSharingTypeValues = [
-  'PRIVATE',
-  'ORGANIZATION_WIDE',
-  'SPECIFIC_INTEGRATIONS',
-] as const
-
 export const SnippetPermissionValues = ['VIEW', 'EDIT'] as const
-
-export const SnippetSharingTypeValues = ['PRIVATE', 'ORGANIZATION', 'GROUPS'] as const
 
 export const StaticRuleTypeValues = [
   'SENDER_DOMAIN',
@@ -1521,21 +1513,9 @@ export const SettingScope = {
   SIDEBAR: 'SIDEBAR',
 } as const
 
-export const SignatureSharingType = {
-  PRIVATE: 'PRIVATE',
-  ORGANIZATION_WIDE: 'ORGANIZATION_WIDE',
-  SPECIFIC_INTEGRATIONS: 'SPECIFIC_INTEGRATIONS',
-} as const
-
 export const SnippetPermission = {
   VIEW: 'VIEW',
   EDIT: 'EDIT',
-} as const
-
-export const SnippetSharingType = {
-  PRIVATE: 'PRIVATE',
-  ORGANIZATION: 'ORGANIZATION',
-  GROUPS: 'GROUPS', // Semantically means "custom" - check ResourceAccess
 } as const
 
 export const StaticRuleType = {

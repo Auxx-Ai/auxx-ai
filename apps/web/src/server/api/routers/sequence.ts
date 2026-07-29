@@ -39,6 +39,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { assertSignatureUsable } from '~/server/lib/signature-instance-access'
 
 /** Protected procedure that requires the organization to have Sequences enabled. */
 const sequenceProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -283,6 +284,18 @@ export const sequenceRouter = createTRPCRouter({
     .input(z.object({ id: z.string(), fields: updateSequenceFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
       await requireSequenceAccess(ctx, input.id, ResourcePermission.edit)
+      // Instance access (plan 36 §5) — pinning a signature to a sequence is a
+      // USER-INITIATED act, so it needs `view` on the signature. Sequence
+      // EXECUTION stays uncapped: `sequence-send-email` runs as the system and
+      // reads no member capabilities, so a signature restricted to its owner
+      // still stamps headlessly. That carve-out is only sound because the id
+      // cannot be pinned here without `view` in the first place.
+      await assertSignatureUsable({
+        db: ctx.db,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        signatureId: input.fields.signatureEntityInstanceId,
+      })
 
       const needsSequenceRead = input.fields.status === 'enabled' || input.fields.triggerType
       const existing = needsSequenceRead

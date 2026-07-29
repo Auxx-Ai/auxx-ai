@@ -1,12 +1,13 @@
 // apps/web/src/components/signatures/ui/signature-list.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
+import type { SignatureItem } from '@auxx/types/signature'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -18,104 +19,67 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { toastError } from '@auxx/ui/components/toast'
 import {
+  EyeIcon,
   Feather,
-  GlobeIcon,
-  Loader2,
-  LockIcon,
   MoreHorizontal,
   PencilIcon,
   Plus,
+  Share2,
   StarIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
-import { type SignatureVisibility, useSignatureMutations, useSignatures } from '../hooks'
+import {
+  useDefaultSignature,
+  useSignatureAccess,
+  useSignatureMutations,
+  useSignatures,
+} from '../hooks'
 
 interface SignatureListProps {
   /** Open the signature dialog in create mode */
   onCreate?: () => void
-  /** Open the signature dialog in edit mode for the given signature id */
+  /** Open the signature dialog for the given signature id (read-only at `view`) */
   onEdit?: (signatureId: string) => void
 }
 
 /**
- * Signature list component for the settings page.
- * Displays all signatures in a table with edit/delete actions.
- * Uses the entity system via useSignatures hook.
+ * The signatures settings table.
+ *
+ * Reads `signature.list`, which already FILTERS to what this member may view —
+ * so every row here is at least viewable, and the per-row affordances only ever
+ * have to distinguish `view` / `edit` / `admin`. That per-row answer comes from
+ * {@link useSignatureAccess}; nothing in this file re-derives it.
+ *
+ * There is no visibility column any more: `signature_visibility` was decorative
+ * (nothing ever filtered on it) and migration 057 deleted it. Sharing state now
+ * lives in `ResourceAccess` and is edited through the shared
+ * {@link InstanceShareDialog}, behind the `admin` rung.
  */
 export function SignatureList({ onCreate, onEdit }: SignatureListProps) {
   const [confirm, ConfirmDialog] = useConfirm()
-  const { signatures, isLoading, refresh } = useSignatures()
-  const { delete: deleteSignature, update, isDeleting, isUpdating } = useSignatureMutations()
+  const { signatures, isLoading } = useSignatures()
+  const { defaultId } = useDefaultSignature()
+  const {
+    delete: deleteSignature,
+    setDefault,
+    isDeleting,
+    isSettingDefault,
+  } = useSignatureMutations()
 
-  /**
-   * Handle delete with confirmation
-   */
-  const handleDelete = async (recordId: string | undefined, name: string) => {
-    if (!recordId) {
-      toastError({ title: 'Error', description: 'Cannot delete signature: missing record ID' })
-      return
-    }
-
+  const handleDelete = async (signature: SignatureItem) => {
     const ok = await confirm({
       title: 'Delete Signature',
-      description: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+      description: `Are you sure you want to delete "${signature.name}"? This action cannot be undone.`,
       confirmText: 'Delete',
       destructive: true,
       cancelText: 'Cancel',
     })
-
-    if (ok) {
-      await deleteSignature(recordId)
-      refresh()
-    }
-  }
-
-  /**
-   * Handle set as default
-   */
-  const handleSetDefault = async (recordId: string | undefined) => {
-    if (!recordId) {
-      toastError({ title: 'Error', description: 'Cannot set default: missing record ID' })
-      return
-    }
-
-    // First, unset any existing default signatures
-    const currentDefault = signatures.find((s) => s.isDefault)
-    if (currentDefault?.recordId) {
-      await update(currentDefault.recordId, { isDefault: false })
-    }
-
-    // Set the new default
-    await update(recordId, { isDefault: true })
-    refresh()
-  }
-
-  /**
-   * Helper function to get visibility display info
-   */
-  const getVisibilityInfo = (visibility: SignatureVisibility) => {
-    switch (visibility) {
-      case 'private':
-        return {
-          label: 'Private',
-          icon: <LockIcon className='mr-1 h-4 w-4' />,
-          color: 'bg-gray-100 text-gray-800',
-          detail: 'Only you',
-        }
-      case 'org_members':
-        return {
-          label: 'Organization',
-          icon: <GlobeIcon className='mr-1 h-4 w-4' />,
-          color: 'bg-blue-100 text-blue-800',
-          detail: 'All members',
-        }
-      default:
-        return { label: 'Unknown', icon: null, color: 'bg-gray-100 text-gray-800', detail: '' }
-    }
+    if (ok) await deleteSignature(signature.id)
   }
 
   if (isLoading) {
@@ -136,15 +100,17 @@ export function SignatureList({ onCreate, onEdit }: SignatureListProps) {
           title='No signatures'
           description={
             <div className='max-w-sm'>
-              Give your teammates access to predefined signatures on email channels by creating
-              shared signatures.
+              Create a signature to sign off your replies, then share it with teammates who should
+              be able to use it.
             </div>
           }
           button={
-            <Button size='sm' variant='outline' onClick={onCreate}>
-              <Plus />
-              Create signature
-            </Button>
+            onCreate ? (
+              <Button size='sm' variant='outline' onClick={onCreate}>
+                <Plus />
+                Create signature
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -152,70 +118,114 @@ export function SignatureList({ onCreate, onEdit }: SignatureListProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Visibility</TableHead>
               <TableHead>Default</TableHead>
               <TableHead className='w-[100px]'>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {signatures.map((signature) => {
-              const visibilityInfo = getVisibilityInfo(signature.visibility)
-              return (
-                <TableRow key={signature.id}>
-                  <TableCell className='font-medium'>{signature.name}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant='outline'
-                      className={`inline-flex items-center ${visibilityInfo.color}`}>
-                      {visibilityInfo.icon}
-                      {visibilityInfo.label}
-                      {visibilityInfo.detail && (
-                        <span className='ml-1 text-xs opacity-70'>({visibilityInfo.detail})</span>
-                      )}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {signature.isDefault ? (
-                      <StarIcon className='h-5 w-5 text-yellow-500' />
-                    ) : (
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        onClick={() => handleSetDefault(signature.recordId)}
-                        disabled={isUpdating}>
-                        {isUpdating ? <Loader2 className='h-4 w-4 animate-spin' /> : 'Set Default'}
-                      </Button>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant='ghost' size='icon-sm'>
-                          <MoreHorizontal />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align='end'>
-                        <DropdownMenuItem onClick={() => onEdit?.(signature.id)}>
-                          <PencilIcon />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant='destructive'
-                          disabled={isDeleting}
-                          onClick={() => handleDelete(signature.recordId, signature.name)}>
-                          <Trash2Icon />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
+            {signatures.map((signature) => (
+              <SignatureRow
+                key={signature.id}
+                signature={signature}
+                isDefault={defaultId === signature.id}
+                isSettingDefault={isSettingDefault}
+                isDeleting={isDeleting}
+                onEdit={onEdit}
+                onSetDefault={() => void setDefault(signature.id)}
+                onDelete={() => void handleDelete(signature)}
+              />
+            ))}
           </TableBody>
         </Table>
       )}
       <ConfirmDialog />
+    </>
+  )
+}
+
+interface SignatureRowProps {
+  signature: SignatureItem
+  isDefault: boolean
+  isSettingDefault: boolean
+  isDeleting: boolean
+  onEdit?: (signatureId: string) => void
+  onSetDefault: () => void
+  onDelete: () => void
+}
+
+/**
+ * One row. Its own component purely so {@link useSignatureAccess} can be called
+ * per signature — instance access is per row, and hooks cannot run inside a map.
+ */
+function SignatureRow({
+  signature,
+  isDefault,
+  isSettingDefault,
+  isDeleting,
+  onEdit,
+  onSetDefault,
+  onDelete,
+}: SignatureRowProps) {
+  const [shareOpen, setShareOpen] = useState(false)
+  const { canEdit, canAdmin } = useSignatureAccess(signature.id)
+
+  return (
+    <>
+      {/* Trigger AND dialog both behind `canAdmin` — a stray `open` prop on an
+          always-mounted dialog is the #1355 bug. */}
+      {canAdmin && (
+        <InstanceShareDialog
+          recordId={signature.recordId}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
+      <TableRow>
+        <TableCell className='font-medium'>{signature.name}</TableCell>
+        <TableCell>
+          {isDefault ? (
+            <StarIcon className='h-5 w-5 fill-yellow-500 text-yellow-500' />
+          ) : (
+            // `view`, not `edit`: setDefault writes only the CALLER's own
+            // `UserSetting` row, so preferring a signature someone shared with
+            // you needs no write rung on the signature itself (plan 36 §12.2).
+            // Every row in this list is viewable, so no extra gate is needed.
+            <Button variant='ghost' size='sm' onClick={onSetDefault} disabled={isSettingDefault}>
+              Set Default
+            </Button>
+          )}
+        </TableCell>
+        <TableCell>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' size='icon-sm'>
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuItem onClick={() => onEdit?.(signature.id)}>
+                {canEdit ? <PencilIcon /> : <EyeIcon />}
+                {canEdit ? 'Edit' : 'View'}
+              </DropdownMenuItem>
+              {canAdmin && (
+                <DropdownMenuItem onClick={() => setShareOpen(true)}>
+                  <Share2 />
+                  Share…
+                </DropdownMenuItem>
+              )}
+              {canAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant='destructive' disabled={isDeleting} onClick={onDelete}>
+                    <Trash2Icon />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
     </>
   )
 }

@@ -5,6 +5,8 @@ import { useMemo } from 'react'
 import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
 import { SYSTEM_CREATE_HOTKEYS } from '~/components/global-create/system-hotkeys'
 import { useViewableResources } from '~/components/resources/hooks/use-viewable-resources'
+import { useSignatureAccess } from '~/components/signatures/hooks'
+import { useSnippetAccess } from '~/components/snippets/hooks/use-snippet-access'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useCommandPaletteStore } from '../store'
 import type { PaletteAction } from '../types'
@@ -42,29 +44,44 @@ export function useCreateActions(): PaletteAction[] {
  * the palette these drill into their embedded `create-signature` / `create-snippet`
  * pages (the form renders as a step); the standalone dialog stores stay mounted for
  * use outside the palette (settings pages).
+ *
+ * Both are gated on the same coarse Manage rung their settings-page "New"
+ * buttons use (`signaturesManage` / `snippetsManage`, plan 36 §2.1) and read it
+ * from the same client authority — {@link useSignatureAccess} /
+ * {@link useSnippetAccess} — so the palette can never offer a create the server
+ * would 403. Creating has no instance to key on, hence the id-less calls.
  */
 export function useNonEntityCreateActions(): PaletteAction[] {
-  return useMemo<PaletteAction[]>(
-    () => [
-      {
+  const { canCreate: canCreateSignature } = useSignatureAccess()
+  const { canManage: canCreateSnippet } = useSnippetAccess()
+
+  return useMemo<PaletteAction[]>(() => {
+    const actions: PaletteAction[] = []
+
+    if (canCreateSignature) {
+      actions.push({
         id: 'create.signature',
         label: 'Create Signature',
         subtitle: 'New email signature',
         icon: 'pen-tool',
         keywords: 'create new signature email',
         perform: () => useCommandPaletteStore.getState().openCreateSignature(),
-      },
-      {
+      })
+    }
+
+    if (canCreateSnippet) {
+      actions.push({
         id: 'create.snippet',
         label: 'Create Snippet',
         subtitle: 'New reusable snippet',
         icon: 'braces',
         keywords: 'create new snippet canned response',
         perform: () => useCommandPaletteStore.getState().openCreateSnippet(),
-      },
-    ],
-    []
-  )
+      })
+    }
+
+    return actions
+  }, [canCreateSignature, canCreateSnippet])
 }
 
 /**

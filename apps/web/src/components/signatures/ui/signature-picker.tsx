@@ -7,7 +7,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { type ComponentProps, useCallback, useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
-import { type SignatureItem, useSignatures } from '../hooks'
+import { type SignatureItem, useSignatureAccess, useSignatures } from '../hooks'
 import { SignatureDialog } from './signature-dialog'
 
 /** Props for SignaturePicker component */
@@ -51,6 +51,10 @@ export function SignaturePicker({
 
   // Fetch signatures if not provided
   const { signatures: fetchedSignatures } = useSignatures()
+  // Creating a signature is the coarse `signatures.manage` rung — instance-less,
+  // so it takes no id. Without it the "Add New Signature" row would open a
+  // dialog whose submit 403s.
+  const { canCreate } = useSignatureAccess()
   const signatures = externalSignatures ?? fetchedSignatures
   const selectedSignature = signatures.find((signature) => signature.id === selected)
 
@@ -126,7 +130,7 @@ export function SignaturePicker({
           canManage={false}
           canAdd={false}
           multi={false}
-          onCreate={handleCreate}
+          onCreate={canCreate ? handleCreate : undefined}
           createLabel='Add New Signature'
           disabled={disabled}
         />

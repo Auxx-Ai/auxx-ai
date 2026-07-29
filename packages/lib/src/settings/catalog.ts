@@ -237,6 +237,25 @@ export const SETTINGS_CATALOG = {
     defaultValue: null,
     description: 'Default sending channel for new compose drafts',
   },
+  // The default signature is PER-USER, not per-org (plan 36 §12.2). It used to be
+  // the org-global `signature_is_default` FieldValue, and switching a default meant
+  // WRITING TO ANOTHER MEMBER'S RECORD to unset theirs — which 403s the moment
+  // signatures are `baselineAtCreate: true`. Worse, an org-global pointer can name a
+  // signature most members cannot see, so the composer would try to stamp an
+  // inaccessible signature onto their draft. Storing it here dissolves the problem
+  // instead of working around it: `UserSetting` is already keyed on
+  // (userId, organizationId, key), so `signature.setDefault` asserts `view` on the
+  // target and writes ONLY the caller's row. `signature.getDefault` re-checks
+  // viewability on read, so a pointer left dangling by a delete or an un-share
+  // degrades to "no default" rather than a 403 mid-compose. `access: 'user'` with no
+  // org twin is deliberate — there is no org-level default to inherit.
+  'signature.defaultId': {
+    scope: 'COMMUNICATION',
+    access: 'user',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description: "This member's default email signature (EntityInstance id)",
+  },
   'email.unsubscribeOn1to1Replies': {
     scope: 'COMMUNICATION',
     access: 'org',

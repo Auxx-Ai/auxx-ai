@@ -1,129 +1,124 @@
 // apps/web/src/components/signatures/hooks/use-signature-mutations.ts
+'use client'
 
-import type { SignatureVisibility } from '@auxx/types/signature'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
-/**
- * Input for creating a signature
- */
+/** Input for creating a signature. Name + body are the whole surface. */
 interface CreateSignatureInput {
   name: string
   body: string
-  isDefault?: boolean
-  visibility?: SignatureVisibility
 }
 
-/**
- * Input for updating a signature
- */
+/** Input for updating a signature. Omitted keys are left untouched. */
 interface UpdateSignatureInput {
   name?: string
   body?: string
-  isDefault?: boolean
-  visibility?: SignatureVisibility
 }
 
 /**
- * Hook for signature mutation operations.
- * Uses the generic record router for CRUD.
+ * Signature CRUD, on the dedicated `signature.*` router (plan 36 §3/§5).
+ *
+ * Three things changed with the router:
+ *  1. Everything is keyed by the signature **`id`** (`EntityInstance.id`), not a
+ *     `recordId` — `record.update`/`record.delete` are closed to instance-access
+ *     defs and would throw `ForbiddenError`.
+ *  2. `visibility` and `isDefault` are gone from the write path. Migration 057
+ *     deleted both fields; sharing goes through `resourceAccess.grantInstance`
+ *     (see `InstanceShareDialog`) and "default" through {@link setDefault}.
+ *  3. `setDefault` writes only the CALLER's `UserSetting` row. The old
+ *     "unset the current default on someone else's record first" dance is gone —
+ *     it was a cross-member write that 403s under instance access.
  *
  * @example
  * ```tsx
- * const { create, update, delete: deleteSignature, isPending } = useSignatureMutations()
- *
- * // Create new signature
+ * const { create, update, delete: remove, setDefault } = useSignatureMutations()
  * await create({ name: 'My Signature', body: '<p>Thanks!</p>' })
- *
- * // Update existing signature
- * await update(recordId, { name: 'Updated Name' })
- *
- * // Delete signature
- * await deleteSignature(recordId)
+ * await update(signature.id, { name: 'Updated Name' })
+ * await setDefault(signature.id)
  * ```
  */
 export function useSignatureMutations() {
   const utils = api.useUtils()
   const posthog = useAnalytics()
 
-  /** Invalidate signature queries after mutations */
+  /** The list is the only signature query that can gain/lose rows. */
   const invalidateSignatures = () => {
-    utils.record.listAll.invalidate({ entityDefinitionId: 'signature' })
+    void utils.signature.list.invalidate()
   }
 
-  // Canonical create hook — seeds record + field-value caches and toasts on
-  // error. The signature list reads from `record.listAll`, so onCreated still
-  // invalidates it (seeding can't add listAll membership); the seed keeps
-  // recordId-keyed consumers instant.
-  const { create: createRecord, isPending: isCreating } = useCreateRecord({
-    entityDefinitionId: 'signature',
-    onCreated: () => {
+  /**
+   * Delete and setDefault both move the caller's `signature.defaultId` pointer
+   * (delete clears it server-side when it named the deleted signature).
+   */
+  const invalidateDefault = () => {
+    void utils.signature.getDefault.invalidate()
+  }
+
+  const createSignature = api.signature.create.useMutation({
+    onSuccess: () => {
       posthog?.capture('signature_created')
       invalidateSignatures()
     },
+    onError: (error) => {
+      toastError({ title: 'Error creating signature', description: error.message })
+    },
   })
 
-  const updateSignature = api.record.update.useMutation({
-    onSuccess: () => {
-      invalidateSignatures()
-    },
+  const updateSignature = api.signature.update.useMutation({
+    onSuccess: invalidateSignatures,
     onError: (error) => {
       toastError({ title: 'Error updating signature', description: error.message })
     },
   })
 
-  const deleteSignature = api.record.delete.useMutation({
+  const deleteSignature = api.signature.delete.useMutation({
     onSuccess: () => {
       invalidateSignatures()
+      invalidateDefault()
     },
     onError: (error) => {
       toastError({ title: 'Error deleting signature', description: error.message })
     },
   })
 
-  return {
-    /**
-     * Create a new signature.
-     * Field keys must match each field's `systemAttribute` (see SIGNATURE_FIELDS) —
-     * the entity-system setFieldValues lookup is keyed by systemAttribute.
-     */
-    create: (input: CreateSignatureInput) =>
-      createRecord({
-        values: {
-          signature_name: input.name,
-          signature_body: input.body,
-          signature_is_default: input.isDefault ?? false,
-          signature_visibility: input.visibility ?? 'private',
-        },
-      }),
-
-    /**
-     * Update an existing signature
-     */
-    update: (recordId: string, input: UpdateSignatureInput) => {
-      const values: Record<string, unknown> = {}
-      if (input.name !== undefined) values.signature_name = input.name
-      if (input.body !== undefined) values.signature_body = input.body
-      if (input.isDefault !== undefined) values.signature_is_default = input.isDefault
-      if (input.visibility !== undefined) values.signature_visibility = input.visibility
-      return updateSignature.mutateAsync({ recordId, values })
+  const setDefaultSignature = api.signature.setDefault.useMutation({
+    onSuccess: invalidateDefault,
+    onError: (error) => {
+      toastError({ title: 'Error setting default signature', description: error.message })
     },
+  })
 
-    /**
-     * Delete a signature
-     */
-    delete: (recordId: string) => deleteSignature.mutateAsync({ recordId }),
+  return {
+    /** Create a signature. The creator gets the owner `admin` grant server-side. */
+    create: (input: CreateSignatureInput) => createSignature.mutateAsync(input),
 
-    /** Raw mutations for custom handling */
+    /** Update a signature by its `EntityInstance.id`. */
+    update: (id: string, input: UpdateSignatureInput) =>
+      updateSignature.mutateAsync({ id, ...input }),
+
+    /** Delete a signature by its `EntityInstance.id`. */
+    delete: (id: string) => deleteSignature.mutateAsync({ id }),
+
+    /** Point the CALLER's default at `id`, or clear it with `null`. */
+    setDefault: (id: string | null) => setDefaultSignature.mutateAsync({ id }),
+
+    /** Raw mutations for custom handling. */
+    createSignature,
     updateSignature,
     deleteSignature,
+    setDefaultSignature,
 
-    /** Loading states */
-    isCreating,
+    /** Loading states. */
+    isCreating: createSignature.isPending,
     isUpdating: updateSignature.isPending,
     isDeleting: deleteSignature.isPending,
-    isPending: isCreating || updateSignature.isPending || deleteSignature.isPending,
+    isSettingDefault: setDefaultSignature.isPending,
+    isPending:
+      createSignature.isPending ||
+      updateSignature.isPending ||
+      deleteSignature.isPending ||
+      setDefaultSignature.isPending,
   }
 }

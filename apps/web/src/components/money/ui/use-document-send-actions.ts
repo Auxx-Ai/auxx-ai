@@ -24,8 +24,10 @@ import { api } from '~/trpc/react'
  */
 export function useDocumentSendActions(recordId: RecordId, documentLabel: string) {
   const { openCompose } = useCompose()
-  // The snippet body carries no sign-off — pre-select the org default signature
-  // so the composer appends it (the composer does NOT auto-apply a default).
+  // The snippet body carries no sign-off — pre-select the sender's own default
+  // signature so the composer appends it (the composer does NOT auto-apply a
+  // default). Per-user since plan 36 §12.2, and `signature.getDefault` re-checks
+  // viewability, so this can never preset a signature the sender cannot use.
   const { signature: defaultSignature } = useDefaultSignature()
 
   const channelsLoading = useChannelsLoading()

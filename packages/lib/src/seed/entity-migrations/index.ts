@@ -51,6 +51,7 @@ import { migration045DefaultEntityDashboards } from './migrations/045-default-en
 import { migration046LayeredDefaultViews } from './migrations/046-layered-default-views'
 import { migration047LineItemSourceLine } from './migrations/047-line-item-source-line'
 import { migration048ScoutingPhotoFields } from './migrations/048-scouting-photo-fields'
+import { migration057RemoveSignatureVisibilityField } from './migrations/057-remove-signature-visibility-field'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -107,6 +108,9 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration046LayeredDefaultViews,
   migration047LineItemSourceLine,
   migration048ScoutingPhotoFields,
+  // 049–056 are pure data migrations (`data-migrations/migrations/`) — the NNN
+  // id space is shared across both directories, so the gap is expected.
+  migration057RemoveSignatureVisibilityField,
 ]
 
 /**

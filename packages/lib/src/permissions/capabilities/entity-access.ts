@@ -37,14 +37,22 @@ import { SEAT_CEILINGS } from './seat-policy'
  *   in `resources/registry/types.ts` consistent (that set hides datasets / KBs /
  *   articles / dashboards / workflows from the entity-def Access grid).
  *
+ * **`signature` and `snippet` were REMOVED 2026-07-28 (plan 36 §7.6).** They used
+ * to sit in the mail-infrastructure half, and membership here is what made
+ * `CapabilitySet.canViewEntity('signature')` return `true` unconditionally via
+ * `isMailInfraDef` — every member could see every "private" signature in the org.
+ * Their authority now lives in `Area.signatures` / `Area.snippets` plus
+ * per-instance `ResourceAccess`, so the def-level pass-through has to go or the
+ * short-circuit survives the slice that was meant to close it. `snippet` is not
+ * an EntityDefinition at all (it is a first-class table), so its removal is inert
+ * either way; `signature` is the one that bites.
+ *
  * Keyed by entity slug; the caller resolves the def to its slug before checking.
  */
 export const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
   'inbox',
-  'signature',
   'thread',
   'message',
-  'snippet',
   'sequence',
   'dataset',
   'kb',
@@ -330,11 +338,41 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  * {@link import('./capability-set').CapabilitySet}'s private
  * `effectiveInstanceLevel`, kept byte-for-byte in sync so client affordances and
  * server enforcement never drift (§1.4):
- *  - OWNER → `admin` (the §0.10 recovery bypass — never self-lock).
+ *  - OWNER → `admin`, but ONLY for `baselineAtCreate: false` resources.
  *  - explicit instance row (incl. workspace baseline / `'none'`) → wins, even
  *    when the L2 area gate is closed.
  *  - L2 area gate closed (`None`) and NO row → `undefined`.
  *  - otherwise fall back to the base L2 area level (`baselineAtCreate: false`).
+ *
+ * **The OWNER bypass is scoped to the org-shared resources** (user decision
+ * 2026-07-28, plan 36 §0.6 revised). `baselineAtCreate: true` marks content that
+ * is PERSONAL — a member's own signature, snippet, or private dashboard — and
+ * §0.10's recovery guarantee does not reach it: an owner locked out of someone
+ * else's snippet cannot thereby lose the ability to repair a mis-shaped profile,
+ * which is the only thing that bypass exists to protect. Reading a member's
+ * private content is a different power, and it is not one org ownership confers.
+ *
+ * An owner keeps everything they actually hold a row on, which is why this is
+ * safe rather than a self-lock: `composeUserCapabilities`'s OWNER branch already
+ * returns `instanceAccess` unchanged, `restrictedInstanceIds` is ORG-wide rather
+ * than per-user, and every `baselineAtCreate: true` resource writes its author an
+ * `admin` row at create. So an owner resolves `admin` on their own instances
+ * through the normal row path, and `undefined` on a private instance nobody
+ * granted them — the same answer any other member gets.
+ *
+ * **Consequence for dashboards, which are also `baselineAtCreate: true`:** every
+ * dashboard writes a `role:org_member @ view` row at create and that row IS in an
+ * owner's grantee union (`compute-user-capabilities.ts`), so owners keep `view`
+ * on org-shared dashboards but no longer hold `admin` on one they did not create
+ * — no rename, delete, or re-share without a grant. A dashboard whose baseline is
+ * restricted is invisible to them entirely. That is the intended reading of
+ * "personal content", applied consistently rather than carved out per resource.
+ *
+ * **The seat ceiling now precedes the bypass for these resources**, where it used
+ * to sit below it. That matches `composeUserCapabilities`, which already clamps
+ * an OWNER's keys by `SEAT_CEILINGS` — so an owner on a worker seat, whose
+ * `signatures`/`snippets` areas are `None` by decision 0.5, is denied here too
+ * rather than being clamped in one composer and waved through in the other.
  *
  * **An explicit instance row beats the area floor** (plan 25 §2, decided
  * 2026-07-27). The row check used to sit BELOW the `areaLevel === Level.None`
@@ -375,8 +413,8 @@ export function effectiveInstanceLevel(
   key: InstanceAccessKey,
   instanceId: string
 ): ResourcePermission | undefined {
-  if (caps.role === 'OWNER') return ResourcePermission.admin
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
+  if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
   if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
   if ((caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET).has(instanceId)) {
     return caps.instanceAccess?.[instanceId]
@@ -397,15 +435,23 @@ export function effectiveInstanceLevel(
  * display path which drifts from enforcement is the same class of bug with a
  * quieter failure.
  *
- * Order matters and mirrors its caller exactly: OWNER first (§0.10), then the
- * seat ceiling (a billing invariant that outranks every row), then the area gate.
+ * Order matters and mirrors its caller exactly: the org-shared OWNER bypass
+ * first (§0.10, scoped to `baselineAtCreate: false` — see
+ * {@link effectiveInstanceLevel}), then the seat ceiling (a billing invariant
+ * that outranks every row), then the area gate.
+ *
+ * For a `baselineAtCreate: true` resource this now returns `undefined` for an
+ * OWNER, as it does for everyone else. That is not merely internal consistency:
+ * the client reads this as `effective.instanceFallback[key]` for every row-less
+ * instance, so leaving the bypass here would render an owner "Effective · Full"
+ * beside content the server denies them.
  */
 export function instanceFallbackLevel(
   caps: ResolvedRecordAccess,
   key: InstanceAccessKey
 ): ResourcePermission | undefined {
-  if (caps.role === 'OWNER') return ResourcePermission.admin
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
+  if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
   if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
   const areaLevel = areaLevelFromKeys(caps.keys, cfg.area)
   if (areaLevel === Level.None) return undefined
@@ -454,6 +500,20 @@ export type InstanceListScope =
   | { kind: 'none'; excludeIds?: undefined; includeIds?: undefined }
   | { kind: 'exclude'; excludeIds: string[]; includeIds?: undefined }
   | { kind: 'include'; includeIds: string[]; excludeIds?: undefined }
+
+/**
+ * What {@link privateInstanceListScope} can actually return — the `'exclude'`
+ * arm removed.
+ *
+ * A `baselineAtCreate: true` resource is visible ONLY through explicit rows, so
+ * its scope is always an allow-list; there is no open-area case to express and,
+ * since §0.6 was revised, no OWNER arm either. Typing that narrowing rather than
+ * merely documenting it makes a caller's leftover `else if (scope.excludeIds…)`
+ * branch a COMPILE ERROR instead of unreachable code with a stale comment above
+ * it — which is exactly what it had degraded into in `signature.ts` after the
+ * OWNER arm was deleted.
+ */
+export type PrivateInstanceListScope = Extract<InstanceListScope, { kind: 'none' | 'include' }>
 
 /**
  * The id filter that reproduces {@link canViewInstance} for an org-shared
@@ -524,6 +584,72 @@ export function instanceListScope(
     }
   }
   return { kind: 'exclude', excludeIds }
+}
+
+/**
+ * The complement of {@link OrgSharedInstanceAccessKey}: instance-access keys
+ * whose absent-row fallback is NO ACCESS (`baselineAtCreate: true` —
+ * `dashboard`, `signature`, `snippet`). Derived the same way, so flipping a
+ * resource's posture moves it between the two unions and turns the wrong
+ * list-scope helper into a COMPILE error rather than a silent leak.
+ */
+export type PrivateInstanceAccessKey = {
+  [K in InstanceAccessKey]: (typeof INSTANCE_ACCESS_RESOURCES)[K]['baselineAtCreate'] extends true
+    ? K
+    : never
+}[InstanceAccessKey]
+
+/**
+ * {@link instanceListScope} for a PRIVATE (`baselineAtCreate: true`) resource —
+ * the id filter that reproduces {@link canViewInstance} for `dashboard` /
+ * `signature` / `snippet`, computed UP FRONT so a list query applies it BEFORE
+ * it paginates (plan 36 §6.1).
+ *
+ * It is a separate function rather than a branch inside `instanceListScope`
+ * because the two resolve to structurally different answers, and the type
+ * narrowing on each is what keeps a caller from reaching for the wrong one:
+ * `instanceListScope`'s `'exclude'` arm is only sound when a row-LESS instance
+ * is visible, which is exactly what `baselineAtCreate: true` denies.
+ *
+ * Here {@link effectiveInstanceLevel} has only two outcomes, so the visible set
+ * is ALWAYS an allow-list — **there is no OWNER arm** (user decision 2026-07-28,
+ * plan 36 §0.6 revised). The bypass is scoped to `baselineAtCreate: false`, and
+ * every key this function accepts is `baselineAtCreate: true` BY TYPE
+ * ({@link PrivateInstanceAccessKey}), so the owner branch is unreachable here by
+ * construction rather than by omission. An owner is filtered exactly like any
+ * other member, and still sees everything they hold a row on — including every
+ * instance they created, whose `admin` row is written at create:
+ *  1. the seat ceiling closes the area → `undefined` for everything, rows
+ *     included → `'none'` (decision 0.5: a worker seat is denied even on an
+ *     instance it owns).
+ *  2. otherwise → the member's own explicit rows that reach `view`. **The AREA
+ *     level is deliberately not consulted**, exactly as `effectiveInstanceLevel`
+ *     does not consult it: an explicit row beats the area floor, and an instance
+ *     with no row is `undefined` however open the area is
+ *     ({@link instanceFallbackLevel} returns `undefined` for these resources by
+ *     construction). Reading `areaLevelFromKeys` here would ADD a denial the
+ *     gate does not make.
+ *
+ * As with `instanceListScope`, `restrictedInstanceIds` is org-wide across all
+ * instance-access resources, so the result may name ids of other types. Harmless:
+ * ids are globally-unique cuid2s, so a foreign id can neither drop nor admit a
+ * row of the type being listed.
+ */
+export function privateInstanceListScope(
+  caps: ResolvedRecordAccess,
+  key: PrivateInstanceAccessKey
+): PrivateInstanceListScope {
+  const area = INSTANCE_ACCESS_RESOURCES[key].area
+  if (SEAT_CEILINGS[caps.seatType][area] === Level.None) return { kind: 'none' }
+
+  const includeIds: string[] = []
+  for (const instanceId of caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET) {
+    const level = caps.instanceAccess?.[instanceId]
+    if (level !== undefined && satisfiesPermission(level, ResourcePermission.view)) {
+      includeIds.push(instanceId)
+    }
+  }
+  return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
 }
 
 /**

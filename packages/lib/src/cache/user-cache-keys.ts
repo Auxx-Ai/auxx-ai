@@ -185,7 +185,25 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // would have read `Full` and handed every member `admin` on every agent
   // (`baselineAtCreate: false` ⇒ the area level IS the absent-row fallback) for
   // the full ONE_DAY TTL, silently voiding every restriction this slice ships.
+  // v13: ONE bump covering TWO owed changes — spend it once, name both:
+  //   1. signatures + snippets instance access (plan 36 §9). Two new areas
+  //      (`signatures`, `snippets`) with three rungs each — six new
+  //      `PermissionKey`s, so a v12 blob's `keys` CONTENT is wrong — and
+  //      `signature` + `snippet` joined `INSTANCE_ACCESS_RESOURCES`, so the
+  //      composed instance shape is wrong too.
+  //   2. handoff item 10 phase 3's source attribution, which changes the
+  //      `UserCapabilities` shape. Item 10 was already owed a v12 → v13 bump;
+  //      this is that bump. Do not spend a second one for it.
+  // Which way (1) fails on a stale blob: a v12 blob was composed before any
+  // signature/snippet `ResourceAccess` row existed, so `restrictedInstanceIds`
+  // lacks every such id → `effectiveInstanceLevel` falls through to
+  // `instanceFallbackLevel` → and because both resources are
+  // `baselineAtCreate: true`, that returns `undefined` → NO access.
+  // Fails CLOSED **by structure, not by luck**: it is the `baselineAtCreate`
+  // branch itself doing the denying (`entity-access.ts:412`), not an ordering
+  // accident in `areaLevelFromKeys` the way v12's was. Nothing about the rung
+  // walk or the order of the checks has to hold for this to stay safe.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v12', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v13', ttlSeconds: ONE_DAY },
 }

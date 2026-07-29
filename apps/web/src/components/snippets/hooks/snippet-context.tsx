@@ -1,3 +1,4 @@
+// apps/web/src/components/snippets/hooks/snippet-context.tsx
 'use client'
 
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -9,7 +10,6 @@ import type {
   CreateFolderInput,
   CreateSnippetInput,
   PanelState,
-  SharingInput,
   Snippet,
   SnippetContextState,
   SnippetFolder,
@@ -25,7 +25,13 @@ import {
 } from './snippet-utils'
 
 /**
- * Context value interface defining all available operations and state
+ * Context value interface defining all available operations and state.
+ *
+ * **There is deliberately no sharing operation here.** Snippets share through
+ * the generic `resourceAccess.grantInstance` surface driven by
+ * `InstanceShareDialog` (plan 36 §8), which owns its own mutations, optimistic
+ * state and share-notification behaviour — a `shareSnippet` passthrough on this
+ * context would only be a second, thinner copy of it.
  */
 interface SnippetContextValue extends SnippetContextState {
   // Snippet Operations
@@ -39,9 +45,6 @@ interface SnippetContextValue extends SnippetContextState {
   createFolder: (data: CreateFolderInput) => Promise<void>
   updateFolder: (id: string, data: UpdateFolderInput) => Promise<void>
   deleteFolder: (id: string, moveSnippetsTo?: string) => Promise<void>
-
-  // Sharing Operations
-  shareSnippet: (snippetId: string, sharing: SharingInput) => Promise<void>
 
   // State Management
   setSelectedFolderId: (folderId: string | null) => void
@@ -108,9 +111,6 @@ export function SnippetProvider({ children }: { children: React.ReactNode }) {
   const createFolderMutation = api.snippet.createFolder.useMutation()
   const updateFolderMutation = api.snippet.updateFolder.useMutation()
   const deleteFolderMutation = api.snippet.deleteFolder.useMutation()
-
-  // Sharing mutation
-  const shareSnippetMutation = api.snippet.share.useMutation()
 
   // Loading states derived from mutations
   const isCreatingSnippet = createSnippetMutation.isPending
@@ -207,14 +207,15 @@ export function SnippetProvider({ children }: { children: React.ReactNode }) {
 
   const copySnippet = useCallback(
     async (snippet: Snippet) => {
+      // A copy is a NEW private snippet: `create` writes the caller's own owner
+      // `admin` row and nothing else. The original's grants are deliberately not
+      // carried over — re-sharing is an explicit act through the share dialog.
       const copyData: CreateSnippetInput = {
         title: `Copy of ${snippet.title}`,
         content: snippet.content,
-        contentHtml: snippet.contentHtml,
-        description: snippet.description,
+        contentHtml: snippet.contentHtml ?? undefined,
+        description: snippet.description ?? undefined,
         folderId: snippet.folderId,
-        sharingType: snippet.sharingType,
-        isFavorite: snippet.isFavorite,
       }
 
       await createSnippet(copyData)
@@ -321,34 +322,6 @@ export function SnippetProvider({ children }: { children: React.ReactNode }) {
     [utils, deleteFolderMutation, selectedFolderId, setSelectedFolderId]
   )
 
-  // Sharing Operations
-  const shareSnippet = useCallback(
-    async (snippetId: string, sharing: SharingInput) => {
-      if (isTempSnippet(snippetId)) {
-        throw new Error('Cannot share temporary snippet')
-      }
-
-      try {
-        await shareSnippetMutation.mutateAsync({ snippetId, ...sharing })
-
-        utils.snippet.all.invalidate()
-        utils.snippet.byId.invalidate({ id: snippetId })
-
-        toastSuccess({
-          title: 'Sharing updated',
-          description: 'Snippet sharing settings have been updated',
-        })
-      } catch (error: any) {
-        toastError({
-          title: 'Error updating sharing',
-          description: error.message || 'Failed to update sharing settings',
-        })
-        throw error
-      }
-    },
-    [utils, shareSnippetMutation]
-  )
-
   // Dialog Management
   const openCreateDialog = useCallback((snippet?: Partial<Snippet>) => {
     setEditingSnippet(snippet ? ({ ...snippet, id: undefined } as any) : null)
@@ -447,9 +420,6 @@ export function SnippetProvider({ children }: { children: React.ReactNode }) {
     createFolder,
     updateFolder,
     deleteFolder,
-
-    // Sharing Operations
-    shareSnippet,
 
     // State Management
     setSelectedFolderId: handleSetSelectedFolderId,

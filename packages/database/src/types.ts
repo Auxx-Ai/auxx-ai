@@ -144,11 +144,7 @@ export type SeatType = (typeof Enums.SeatTypeValues)[number]
 
 export type SettingScope = (typeof Enums.SettingScopeValues)[number]
 
-export type SignatureSharingType = (typeof Enums.SignatureSharingTypeValues)[number]
-
 export type SnippetPermission = (typeof Enums.SnippetPermissionValues)[number]
-
-export type SnippetSharingType = (typeof Enums.SnippetSharingTypeValues)[number]
 
 export type StaticRuleType = (typeof Enums.StaticRuleTypeValues)[number]
 

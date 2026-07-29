@@ -74,7 +74,13 @@ export const Sequence = pgTable(
       onUpdate: 'cascade',
       onDelete: 'restrict',
     }),
-    /** Optional pinned signature (respects `SignatureIntegrationShare` gating). */
+    /**
+     * Optional pinned signature. `SignatureIntegrationShare` — the per-channel
+     * gate this used to name — was dropped by plan 36 §7.4 (dead code since its
+     * only writer was stubbed out). Pinning an id is now gated at the request
+     * edge on per-instance `view` (`sequence.update`); sequence EXECUTION stays
+     * uncapped, since it runs as the system and reads no member capabilities.
+     */
     signatureEntityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',

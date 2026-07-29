@@ -28,8 +28,9 @@ export type OpenInstanceTypes = Partial<Record<InstanceAccessKey, boolean>>
 /**
  * Fetch the instances of every "open" instance-access resource type — one
  * query per shareable type (`api.dataset.list` / `api.kb.list` /
- * `api.dashboard.list` / `api.workflow.list`), each fetched only while its
- * caller marks it `open`.
+ * `api.dashboard.list` / `api.workflow.list` / `api.agent.list` /
+ * `api.signature.list` / `api.snippet.all`), each fetched only while its caller
+ * marks it `open`.
  *
  * Generalized (capability layer v2 Part B.3) out of the agent-policy Resources
  * grid, which fetches lazily per manually-expanded type row (the policy is
@@ -68,6 +69,20 @@ export function useInstanceResourceLists(
     enabled: open.agent === true,
     staleTime: 60_000,
   })
+  // `signature.list` asserts nothing coarse and filters by `canViewInstance`
+  // (plan 36 §5), like the four above. It replaced a `record.listAll` call —
+  // the generic record path now REFUSES instance-access defs outright (§3), so
+  // this must not go back. Unpaginated, so it cannot truncate.
+  const signatures = api.signature.list.useQuery(undefined, {
+    enabled: open.signature === true,
+    staleTime: 60_000,
+  })
+  // `snippet.all` is unpaginated, and `Snippet` names its display column
+  // `title`, not `name`.
+  const snippets = api.snippet.all.useQuery(
+    { includeShared: true },
+    { enabled: open.snippet === true, staleTime: 60_000 }
+  )
 
   return useMemo(
     () => ({
@@ -102,6 +117,16 @@ export function useInstanceResourceLists(
         isLoading: agents.isLoading && open.agent === true,
         truncated: false,
       },
+      signature: {
+        items: (signatures.data ?? []).map((s) => ({ id: s.id, name: s.name })),
+        isLoading: signatures.isLoading && open.signature === true,
+        truncated: false,
+      },
+      snippet: {
+        items: (snippets.data?.snippets ?? []).map((s) => ({ id: s.id, name: s.title })),
+        isLoading: snippets.isLoading && open.snippet === true,
+        truncated: false,
+      },
     }),
     [
       datasets.data,
@@ -114,6 +139,10 @@ export function useInstanceResourceLists(
       workflows.isLoading,
       agents.data,
       agents.isLoading,
+      signatures.data,
+      signatures.isLoading,
+      snippets.data,
+      snippets.isLoading,
       open,
     ]
   )

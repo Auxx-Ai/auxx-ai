@@ -73,11 +73,14 @@ export const migration021SignatureFieldsPrefix: EntityMigration = {
       organizationId,
       'signature',
       signatureDef.id,
+      // `isDefault` / `visibility` were dropped from `SIGNATURE_FIELDS` by plan
+      // 36 and are deleted per-org by migration 057. They stay in `RENAMES`
+      // above — an org that never ran this migration still holds the unprefixed
+      // rows, and 057 matches on the PREFIXED attribute — but they must not be
+      // re-created here, or 021 and 057 would fight on every fresh install.
       {
         name: SIGNATURE_FIELDS.name!,
         body: SIGNATURE_FIELDS.body!,
-        isDefault: SIGNATURE_FIELDS.isDefault!,
-        visibility: SIGNATURE_FIELDS.visibility!,
       },
       refreshed,
       state

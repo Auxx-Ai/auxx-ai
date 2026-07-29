@@ -12,15 +12,11 @@ export {
   createSnippet,
   deleteSnippet,
   incrementSnippetUsage,
-  SNIPPET_SHARE_GRANTEE_TYPES,
-  type SnippetShareGranteeType,
-  type SnippetShareInput,
-  setSnippetSharing,
   type UpdateSnippetInput,
   updateSnippet,
 } from './snippet-mutations'
 export {
-  getSnippetWithAccess,
+  getSnippetWithShares,
   type ListSnippetsFilters,
   listSnippetFoldersWithCounts,
   listSnippetsForUser,

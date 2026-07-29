@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/snippets/_components/folder-form-popover.tsx
+// apps/web/src/components/snippets/ui/folder-form-popover.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -13,7 +13,7 @@ import {
 } from '@auxx/ui/components/select'
 import { X } from 'lucide-react'
 import React from 'react'
-import type { SnippetFolder } from '~/contexts/snippet-types'
+import type { SnippetFolder } from '../hooks/snippet-types'
 
 /** Data submitted by the folder form */
 export interface FolderFormData {

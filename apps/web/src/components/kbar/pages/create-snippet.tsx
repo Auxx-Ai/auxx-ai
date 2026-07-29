@@ -1,7 +1,7 @@
 // apps/web/src/components/kbar/pages/create-snippet.tsx
 'use client'
 
-import { SnippetForm } from '~/app/(protected)/app/settings/snippets/_components/snippet-form'
+import { SnippetForm } from '~/components/snippets/ui/snippet-form'
 import { useCommandPaletteStore } from '../store'
 
 /**

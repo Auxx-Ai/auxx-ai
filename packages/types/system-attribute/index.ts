@@ -385,10 +385,14 @@ export const SYSTEM_ATTRIBUTES = [
   'inbox_settings',
 
   // ─── Signature fields ───────────────────────────────────────────
+  // `signature_is_default` and `signature_visibility` were removed by plan 36
+  // (entity migration 057): visibility is now `ResourceAccess` rows, and the
+  // default signature is a per-user `UserSetting` (`signature.defaultId`).
+  // Migrations 021/056/057 still name those strings, but only as raw
+  // `CustomField.systemAttribute` (a `text` column) literals — not as
+  // `SystemAttribute` values.
   'signature_name',
   'signature_body',
-  'signature_is_default',
-  'signature_visibility',
 ] as const
 
 /** Union type of all valid system attribute identifiers */

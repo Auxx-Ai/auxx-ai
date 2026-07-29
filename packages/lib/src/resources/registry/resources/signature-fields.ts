@@ -75,53 +75,18 @@ export const SIGNATURE_FIELDS: Record<string, ResourceField> = {
     description: 'HTML content of the signature',
   },
 
-  isDefault: {
-    id: toFieldId('isDefault'),
-    key: 'isDefault',
-    label: 'Default',
-    type: BaseType.BOOLEAN,
-    fieldType: FieldType.CHECKBOX,
-    isSystem: true,
-    systemAttribute: 'signature_is_default',
-    systemSortOrder: 'a3',
-    nullable: false,
-    defaultValue: false,
-    capabilities: {
-      filterable: true,
-      sortable: true,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Whether this is the default signature',
-  },
-
-  visibility: {
-    id: toFieldId('visibility'),
-    key: 'visibility',
-    label: 'Visibility',
-    type: BaseType.ENUM,
-    fieldType: FieldType.SINGLE_SELECT,
-    isSystem: true,
-    systemAttribute: 'signature_visibility',
-    systemSortOrder: 'a4',
-    nullable: false,
-    defaultValue: 'private',
-    options: {
-      options: [
-        { value: 'org_members', label: 'All Members' },
-        { value: 'private', label: 'Private' },
-      ],
-    },
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description: 'Signature visibility setting',
-  },
+  // `isDefault` (`signature_is_default`, sort `a3`) and `visibility`
+  // (`signature_visibility`, `a4`) were removed by plan 36:
+  //  - visibility is now `ResourceAccess` rows — `signature` is an
+  //    `INSTANCE_ACCESS_RESOURCES` key with `baselineAtCreate: true`, so
+  //    who-can-see-this lives in grants, not a decorative select (§0.3).
+  //  - "default signature" became per-USER, stored in `UserSetting` under
+  //    `signature.defaultId` (§12.2). An org-global default is incoherent once
+  //    signatures are private by default — it can point at a signature most
+  //    members cannot see.
+  // Existing orgs are reconciled by entity migration
+  // `057-remove-signature-visibility-field`. The sort-order gap is deliberate;
+  // do not renumber, the remaining keys are stable.
 
   createdAt: {
     id: toFieldId('createdAt'),

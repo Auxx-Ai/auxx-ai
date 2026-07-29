@@ -149,6 +149,8 @@ const INSTANCE_SHARE_NOTIFICATION_CONFIG: Record<
       | typeof schema.Dashboard
       | typeof schema.WorkflowApp
       | typeof schema.Agent
+      | typeof schema.EntityInstance
+      | typeof schema.Snippet
     /**
      * Which column names the instance in the notification. Explicit rather than
      * an implicit `table.name`, because `Agent` HAS no `name` column — an
@@ -199,6 +201,33 @@ const INSTANCE_SHARE_NOTIFICATION_CONFIG: Record<
     noun: 'agent',
     targetType: 'AGENT',
     targetIds: (id) => ({ agentId: id }),
+  },
+  signature: {
+    // Signatures are `EntityInstance` rows on the `signature` def, not a table
+    // of their own — so this query is scoped by `id` + `organizationId` only,
+    // exactly like the others, and cannot be narrowed to the def here.
+    table: schema.EntityInstance,
+    // A signature's real name is the `signature_name` FIELD VALUE, which is not
+    // a column and cannot be reached by the single-table select below.
+    // `EntityInstance.displayName` is the entity system's denormalized copy of
+    // the identity field, so it is the honest stand-in — but it is NULLABLE and
+    // is genuinely null for some existing signatures, which the
+    // `?? Untitled ${noun}` fallback below already covers. If the notification
+    // ever needs to be exact, that is a FieldValue join, not another column.
+    nameColumn: schema.EntityInstance.displayName,
+    noun: 'signature',
+    targetType: 'SIGNATURE',
+    targetIds: (id) => ({ signatureId: id }),
+  },
+  snippet: {
+    table: schema.Snippet,
+    // `Snippet` names its display column `title`, not `name` — the second
+    // resource (after `Agent`) to disprove the "every shareable table has a
+    // `name`" assumption this escape hatch exists for.
+    nameColumn: schema.Snippet.title,
+    noun: 'snippet',
+    targetType: 'SNIPPET',
+    targetIds: (id) => ({ snippetId: id }),
   },
 }
 

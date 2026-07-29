@@ -4,7 +4,7 @@ import { SubscriptionService } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
-import { EmailTemplateType, SnippetSharingType } from '@auxx/database/enums'
+import { EmailTemplateType } from '@auxx/database/enums'
 import { isSelfHosted } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
 import { eq, sql } from 'drizzle-orm'
@@ -307,7 +307,6 @@ export class OrganizationSeeder {
           content: template.content,
           contentHtml: template.contentHtml,
           systemType: template.systemType,
-          sharingType: SnippetSharingType.PRIVATE,
           organizationId,
           createdById: systemUserId,
           updatedAt: new Date(),

@@ -33,6 +33,8 @@
         "permissions": 0,
         "integrations": 0,
         "channels": 0,
+        "signatures": 0,
+        "snippets": 0,
         "aiConfig": 0,
         "automationRules": 0,
         "auditLog": 0,
@@ -79,7 +81,7 @@
           "viewAccess": null
         },
         "snippet": {
-          "view": true,
+          "view": false,
           "edit": false,
           "admin": false,
           "write": false,
@@ -176,6 +178,12 @@
         "records.view",
         "records.viewLinked",
         "settings.manage",
+        "signatures.edit",
+        "signatures.manage",
+        "signatures.view",
+        "snippets.edit",
+        "snippets.manage",
+        "snippets.view",
         "workflows.edit",
         "workflows.manage",
         "workflows.view"
@@ -195,6 +203,8 @@
         "permissions": 3,
         "integrations": 3,
         "channels": 3,
+        "signatures": 3,
+        "snippets": 3,
         "aiConfig": 3,
         "automationRules": 3,
         "auditLog": 3,
@@ -243,9 +253,9 @@
         "snippet": {
           "view": true,
           "edit": true,
-          "admin": false,
+          "admin": true,
           "write": true,
-          "viewAccess": null
+          "viewAccess": "admin"
         },
         "never-heard-of-it": {
           "view": true,
@@ -342,6 +352,8 @@
         "knowledgeBase.view",
         "records.edit",
         "records.view",
+        "signatures.view",
+        "snippets.view",
         "workflows.edit",
         "workflows.manage",
         "workflows.view"
@@ -361,6 +373,8 @@
         "permissions": 1,
         "integrations": 1,
         "channels": 1,
+        "signatures": 1,
+        "snippets": 1,
         "aiConfig": 1,
         "automationRules": 1,
         "auditLog": 1,
@@ -408,10 +422,10 @@
         },
         "snippet": {
           "view": true,
-          "edit": true,
+          "edit": false,
           "admin": false,
           "write": true,
-          "viewAccess": null
+          "viewAccess": "view"
         },
         "never-heard-of-it": {
           "view": true,
@@ -523,6 +537,8 @@
         "permissions": 3,
         "integrations": 0,
         "channels": 1,
+        "signatures": 0,
+        "snippets": 0,
         "aiConfig": 2,
         "automationRules": 3,
         "auditLog": 0,
@@ -570,10 +586,10 @@
         },
         "snippet": {
           "view": true,
-          "edit": false,
+          "edit": true,
           "admin": false,
           "write": false,
-          "viewAccess": null
+          "viewAccess": "edit"
         },
         "never-heard-of-it": {
           "view": true,
@@ -666,6 +682,12 @@
         "records.view",
         "records.viewLinked",
         "settings.manage",
+        "signatures.edit",
+        "signatures.manage",
+        "signatures.view",
+        "snippets.edit",
+        "snippets.manage",
+        "snippets.view",
         "workflows.edit",
         "workflows.manage",
         "workflows.view"
@@ -685,6 +707,8 @@
         "permissions": 3,
         "integrations": 3,
         "channels": 3,
+        "signatures": 3,
+        "snippets": 3,
         "aiConfig": 3,
         "automationRules": 3,
         "auditLog": 3,
@@ -733,9 +757,9 @@
         "snippet": {
           "view": true,
           "edit": true,
-          "admin": false,
+          "admin": true,
           "write": true,
-          "viewAccess": null
+          "viewAccess": "admin"
         },
         "never-heard-of-it": {
           "view": true,
@@ -808,6 +832,8 @@
         "permissions": 0,
         "integrations": 0,
         "channels": 0,
+        "signatures": 0,
+        "snippets": 0,
         "aiConfig": 0,
         "automationRules": 0,
         "auditLog": 0,
@@ -854,7 +880,7 @@
           "viewAccess": null
         },
         "snippet": {
-          "view": true,
+          "view": false,
           "edit": false,
           "admin": false,
           "write": false,
@@ -948,6 +974,8 @@
         "permissions": 0,
         "integrations": 0,
         "channels": 0,
+        "signatures": 0,
+        "snippets": 0,
         "aiConfig": 0,
         "automationRules": 0,
         "auditLog": 0,
@@ -998,7 +1026,7 @@
           "edit": true,
           "admin": false,
           "write": true,
-          "viewAccess": null
+          "viewAccess": "edit"
         },
         "never-heard-of-it": {
           "view": true,
@@ -1084,6 +1112,8 @@
         "permissions": 0,
         "integrations": 0,
         "channels": 0,
+        "signatures": 0,
+        "snippets": 0,
         "aiConfig": 0,
         "automationRules": 0,
         "auditLog": 0,
@@ -1134,7 +1164,7 @@
           "edit": false,
           "admin": false,
           "write": false,
-          "viewAccess": null
+          "viewAccess": "view"
         },
         "never-heard-of-it": {
           "view": true,

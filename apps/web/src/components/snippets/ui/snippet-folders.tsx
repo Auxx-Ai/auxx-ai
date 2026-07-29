@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-folders.tsx
+// apps/web/src/components/snippets/ui/snippet-folders.tsx
 'use client'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -13,9 +13,10 @@ import {
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import React, { useEffect } from 'react'
-import { useSnippetContext } from '~/contexts/snippet-context'
-import type { SnippetFolder } from '~/contexts/snippet-types'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useSnippetContext } from '../hooks/snippet-context'
+import type { SnippetFolder } from '../hooks/snippet-types'
+import { useSnippetAccess } from '../hooks/use-snippet-access'
 import { type FolderFormData, FolderFormPopover } from './folder-form-popover'
 
 interface SnippetFoldersProps {
@@ -30,6 +31,14 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
   const { folders, createFolder, updateFolder, deleteFolder, isCreatingFolder, isUpdatingFolder } =
     useSnippetContext()
 
+  // Folders stay FLAT LABELS with no per-folder grants (plan 36 decision 0.4),
+  // so there is no instance to key on — `createFolder`/`updateFolder`/
+  // `deleteFolder` all assert the coarse `snippets.manage` rung server-side.
+  // Members without it still SEE the tree (it is how they file and find their
+  // own snippets); they just get no create/rename/delete affordances, which
+  // would otherwise 403 on click.
+  const { canManage } = useSnippetAccess()
+
   // Use nuqs to persist expanded folders in URL
   const [expandedFoldersStr, setExpandedFoldersStr] = useQueryState('expanded', {
     defaultValue: '',
@@ -40,7 +49,7 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
     if (!expandedFoldersStr) return new Set<string>()
     try {
       return new Set(expandedFoldersStr.split(','))
-    } catch (e) {
+    } catch (_e) {
       return new Set<string>()
     }
   }, [expandedFoldersStr])
@@ -160,7 +169,7 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
       if (selectedFolderId === folder.id) {
         onSelectFolder(null)
       }
-    } catch (error) {
+    } catch (_error) {
       // Error is already handled by the context
     }
   }
@@ -209,32 +218,34 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
               <span className='ml-2 text-xs text-gray-500'>{folder._count?.snippets || 0}</span>
             </div>
 
-            <div className='flex items-center'>
-              <FolderFormPopover
-                folder={folder}
-                allFolders={folders}
-                onSubmit={(data) => handleUpdateFolder(folder.id, data)}
-                isLoading={isUpdatingFolder}
-                trigger={
-                  <Button
-                    variant='ghost'
-                    size='icon-xs'
-                    className='bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100'
-                    onClick={(e) => e.stopPropagation()}
-                    title='Edit folder'>
-                    <PencilIcon className='size-3!' />
-                  </Button>
-                }
-              />
-              <Button
-                variant='destructive-hover'
-                size='icon'
-                className='bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100'
-                onClick={(e) => openDeleteDialog(folder, e)}
-                title='Delete folder'>
-                <TrashIcon className='size-3!' />
-              </Button>
-            </div>
+            {canManage && (
+              <div className='flex items-center'>
+                <FolderFormPopover
+                  folder={folder}
+                  allFolders={folders}
+                  onSubmit={(data) => handleUpdateFolder(folder.id, data)}
+                  isLoading={isUpdatingFolder}
+                  trigger={
+                    <Button
+                      variant='ghost'
+                      size='icon-xs'
+                      className='bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100'
+                      onClick={(e) => e.stopPropagation()}
+                      title='Edit folder'>
+                      <PencilIcon className='size-3!' />
+                    </Button>
+                  }
+                />
+                <Button
+                  variant='destructive-hover'
+                  size='icon'
+                  className='bg-transparent size-5 opacity-0 transition-opacity group-hover:opacity-100'
+                  onClick={(e) => openDeleteDialog(folder, e)}
+                  title='Delete folder'>
+                  <TrashIcon className='size-3!' />
+                </Button>
+              </div>
+            )}
           </div>
 
           {hasSubfolders && isExpanded && folder.subfolders && (
@@ -252,16 +263,18 @@ export function SnippetFolders({ selectedFolderId, onSelectFolder }: SnippetFold
           <h3 className='font-medium'>Folders</h3>
 
           {/* Create Folder Popover */}
-          <FolderFormPopover
-            allFolders={folders}
-            onSubmit={handleCreateFolder}
-            isLoading={isCreatingFolder}
-            trigger={
-              <Button variant='ghost' size='icon-xs' className='rounded-md'>
-                <PlusIcon />
-              </Button>
-            }
-          />
+          {canManage && (
+            <FolderFormPopover
+              allFolders={folders}
+              onSubmit={handleCreateFolder}
+              isLoading={isCreatingFolder}
+              trigger={
+                <Button variant='ghost' size='icon-xs' className='rounded-md'>
+                  <PlusIcon />
+                </Button>
+              }
+            />
+          )}
         </div>
         <InputSearch
           placeholder='Search folders...'

@@ -310,24 +310,26 @@ export class CapabilitySet implements CapabilityView {
   /**
    * Effective per-instance permission for an instance-access resource
    * (most-specific-wins), or `undefined` = no access (§1.4). OWNER bypasses to
-   * `admin` (§0.10); an explicit instance row (incl. the workspace baseline /
-   * `'none'`) wins outright; with no row, the coarse L2 area gate must be open
-   * and supplies the fallback level (for `baselineAtCreate: false` resources).
-   * The SEAT ceiling is checked before any of that — it is a billing invariant
-   * and outranks even an explicit row. Zero I/O.
+   * `admin` for the ORG-SHARED resources only (§0.10); an explicit instance row
+   * (incl. the workspace baseline / `'none'`) wins outright; with no row, the
+   * coarse L2 area gate must be open and supplies the fallback level (for
+   * `baselineAtCreate: false` resources). The SEAT ceiling is checked before any
+   * of that — it is a billing invariant and outranks even an explicit row, and
+   * for the private resources it now precedes the OWNER branch too. Zero I/O.
    *
-   * **An explicit row beats the area floor** (plan 25 §2) and **ADMIN no longer
-   * bypasses** (doc 19 §5.3 piece 2, step 10) — kept byte-for-byte in sync with
-   * the client mirror
+   * **An explicit row beats the area floor** (plan 25 §2), **ADMIN no longer
+   * bypasses** (doc 19 §5.3 piece 2, step 10), and **OWNER no longer bypasses on
+   * `baselineAtCreate: true` resources** (user decision 2026-07-28, plan 36 §0.6
+   * revised) — kept byte-for-byte in sync with the client mirror
    * {@link import('./entity-access').effectiveInstanceLevel}, which carries the
-   * full rationale for both.
+   * full rationale for all three.
    */
   private effectiveInstanceLevel(
     key: InstanceAccessKey,
     instanceId: string
   ): ResourcePermission | undefined {
-    if (this.role === 'OWNER') return ResourcePermission.admin
     const cfg = INSTANCE_ACCESS_RESOURCES[key]
+    if (this.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
     if (SEAT_CEILINGS[this.seatType][cfg.area] === Level.None) return undefined
     if (this.restrictedInstanceIds.has(instanceId)) return this.instanceAccess[instanceId]
     const areaLevel = areaLevelFromKeys(this.keys, cfg.area)

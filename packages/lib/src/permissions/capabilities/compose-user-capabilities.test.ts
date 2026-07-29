@@ -811,6 +811,12 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       [Area.permissions]: Level.None,
       [Area.integrations]: Level.None,
       [Area.channels]: Level.None,
+      // Added by plan 36 §2.3 — members create and own their own signatures and
+      // snippets, so both ship at `Full` in the Member baseline. This is a NEW
+      // area rather than a change to the plan-22 parity claim above: a fresh org
+      // before plan 36 had no such area at all.
+      [Area.signatures]: Level.Full,
+      [Area.snippets]: Level.Full,
       [Area.aiConfig]: Level.None,
       [Area.automationRules]: Level.None,
       [Area.auditLog]: Level.None,

@@ -266,4 +266,6 @@ const NOUNS: Record<InstanceAccessKey, string> = {
   dashboard: 'dashboard',
   workflow: 'workflow',
   agent: 'agent',
+  signature: 'signature',
+  snippet: 'snippet',
 }

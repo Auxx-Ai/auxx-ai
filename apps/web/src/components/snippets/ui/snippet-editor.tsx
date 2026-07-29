@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-editor.tsx
+// apps/web/src/components/snippets/ui/snippet-editor.tsx
 
 'use client'
 
@@ -33,6 +33,12 @@ interface SnippetEditorProps {
   wrapperClassName?: string
   /** Applied to the prose content area. */
   className?: string
+  /**
+   * `false` renders the body read-only — the member holds `view` on this
+   * snippet but not `edit` (plan 36 §8). Also hides the placeholder-insert
+   * trigger, which would otherwise mutate a document the caller cannot save.
+   */
+  editable?: boolean
 }
 
 /**
@@ -46,6 +52,7 @@ export function SnippetEditor({
   placeholder = 'Type { to insert a placeholder...',
   wrapperClassName,
   className,
+  editable = true,
 }: SnippetEditorProps) {
   // Keyboard forwarded from the open `{` chip to the placeholder picker
   // (focus stays in the editor until the picker's own input takes over).
@@ -119,6 +126,12 @@ export function SnippetEditor({
     []
   )
 
+  // `useEditor` is created once (deps `[]`), so `editable` has to be pushed in.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.setEditable(editable)
+  }, [editor, editable])
+
   // Sync external contentHtml changes (e.g. loading an existing snippet).
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
@@ -159,7 +172,7 @@ export function SnippetEditor({
         editor={editor}
         className='w-full h-full flex flex-col bg-transparent px-3 py-2 text-[15px] leading-relaxed text-foreground outline-hidden ring-0 min-h-[160px] *:outline-hidden'
       />
-      <div className='absolute bottom-1 right-1'>
+      <div className={cn('absolute bottom-1 right-1', !editable && 'hidden')}>
         <Tooltip content='Insert placeholder' shortcut='{' allowInteraction>
           <Button
             type='button'

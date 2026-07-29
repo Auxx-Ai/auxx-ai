@@ -7,11 +7,13 @@ import { PlusIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import SettingsPage from '~/components/global/settings-page'
-import { useSnippetDialogStore } from '~/components/snippets/snippet-dialog-store'
-import { SnippetProvider, useSnippetContext } from '~/contexts/snippet-context'
-import { SnippetFolders } from './_components/snippet-folders'
-import { SnippetForm } from './_components/snippet-form'
-import { SnippetTable } from './_components/snippet-table'
+import { SnippetProvider, useSnippetContext } from '~/components/snippets/hooks/snippet-context'
+import { useSnippetDialogStore } from '~/components/snippets/hooks/snippet-dialog-store'
+import type { Snippet } from '~/components/snippets/hooks/snippet-types'
+import { useSnippetAccess } from '~/components/snippets/hooks/use-snippet-access'
+import { SnippetFolders } from '~/components/snippets/ui/snippet-folders'
+import { SnippetForm } from '~/components/snippets/ui/snippet-form'
+import { SnippetTable } from '~/components/snippets/ui/snippet-table'
 
 /**
  * Content component that uses the snippet context
@@ -36,6 +38,14 @@ function SnippetsPageContent() {
   // palette too; edit/copy stay page-local.
   const openCreateSnippet = useSnippetDialogStore((s) => s.openCreate)
 
+  // `snippet.create` asserts the coarse `snippets.manage` rung — there is no
+  // instance to key on yet, so the New Snippet button is the only thing that
+  // can hide it before the 403.
+  const { canManage } = useSnippetAccess()
+  // Per-instance rung for whatever is open in the edit dialog — drives the
+  // dialog's own title; `SnippetForm` gates its inputs off the same hook.
+  const { canEdit: canEditSelected } = useSnippetAccess(editingSnippet?.id)
+
   // Ref to control the resizable panel
   const folderPanelRef = useRef<ImperativePanelHandle>(null)
 
@@ -56,16 +66,16 @@ function SnippetsPageContent() {
   }
 
   // Handle edit snippet
-  const handleEditSnippet = (snippet: any) => {
+  const handleEditSnippet = (snippet: Snippet) => {
     openEditDialog(snippet)
   }
 
   // Handle copy snippet
-  const handleCopySnippet = async (snippet: any) => {
+  const handleCopySnippet = async (snippet: Snippet) => {
     try {
       await copySnippet(snippet)
       // The context will handle the success toast
-    } catch (error) {
+    } catch (_error) {
       // The context will handle the error toast
     }
   }
@@ -76,10 +86,12 @@ function SnippetsPageContent() {
       description='Manage all the fields you need for adding and updating contacts.'
       breadcrumbs={breadcrumbs}
       button={
-        <Button variant='outline' size='sm' onClick={() => openCreateSnippet(selectedFolderId)}>
-          <PlusIcon />
-          New Snippet
-        </Button>
+        canManage ? (
+          <Button variant='outline' size='sm' onClick={() => openCreateSnippet(selectedFolderId)}>
+            <PlusIcon />
+            New Snippet
+          </Button>
+        ) : undefined
       }>
       <div className='flex flex-1 min-h-0 w-full overflow-hidden flex-col'>
         <ResizablePanelGroup
@@ -111,16 +123,22 @@ function SnippetsPageContent() {
         </ResizablePanelGroup>
       </div>
 
-      {/* Edit Dialog */}
+      {/* Edit dialog — read-only for a member holding `view` but not `edit`. */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => !open && closeDialogs()}>
         <DialogContent position='tc' size='xxl' innerClassName='max-h-[90vh] overflow-auto'>
           <DialogHeader className='mb-4'>
-            <DialogTitle>Edit Snippet</DialogTitle>
+            <DialogTitle>{canEditSelected ? 'Edit Snippet' : 'Snippet'}</DialogTitle>
           </DialogHeader>
           {editingSnippet && (
             <SnippetForm
               snippetId={editingSnippet.id}
-              initialValues={editingSnippet}
+              initialValues={{
+                title: editingSnippet.title,
+                content: editingSnippet.content,
+                contentHtml: editingSnippet.contentHtml ?? undefined,
+                description: editingSnippet.description ?? undefined,
+                folderId: editingSnippet.folderId,
+              }}
               onSuccess={closeDialogs}
               onCancel={closeDialogs}
             />

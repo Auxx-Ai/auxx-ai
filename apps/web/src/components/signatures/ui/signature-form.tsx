@@ -1,38 +1,34 @@
 // apps/web/src/components/signatures/ui/signature-form.tsx
 'use client'
 
-import { parseRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent } from '@auxx/ui/components/card'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Form, FormLabel } from '@auxx/ui/components/form'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { TooltipError } from '@auxx/ui/components/tooltip'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { GlobeIcon, LockIcon, StarIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider } from '~/components/editor/editor-context'
-import { type SignatureVisibility, useSignature, useSignatureMutations } from '../hooks'
+import { useSignature, useSignatureAccess, useSignatureMutations } from '../hooks'
 import { SignatureBodyEditor } from './signature-body-editor'
 
-/** Form validation schema for signatures */
+/**
+ * Form validation schema for signatures.
+ *
+ * Name + body are the whole editable surface. `visibility` and `isDefault` are
+ * gone: migration 057 deleted both fields, sharing moved to `ResourceAccess`
+ * (the Share… action on the list row), and "default" is a per-user
+ * `UserSetting` set from the list, not a property of the signature.
+ */
 const formSchema = z.object({
   name: z.string().min(1, 'Signature name is required'),
   body: z.string().min(1, 'Signature content is required'),
-  isDefault: z.boolean().optional(),
-  visibility: z.enum(['private', 'org_members'] as const),
 })
 
 type FormData = z.infer<typeof formSchema>
@@ -61,8 +57,13 @@ export interface SignatureFormProps {
  * Shell-free signature create/edit form: all hooks/state, the field body, and the
  * footer (Cancel / Create). The only host seams are the `header` slot and `onClose`.
  * `signature-dialog.tsx` wraps this in a `Dialog`; the command palette hosts it as a
- * page. Behavior is unchanged from the original dialog (no "create more", no dirty
- * guard).
+ * page.
+ *
+ * At the `view` rung the form renders READ-ONLY — inputs disabled, editor not
+ * editable, no submit button — rather than being unreachable, so a shared
+ * signature can still be inspected before it is stamped on a reply. The list's
+ * menu item flips to "View" for exactly this case. `signature.update` asserts
+ * `edit` regardless; this is degrade-only.
  */
 export function SignatureForm({
   open,
@@ -76,22 +77,23 @@ export function SignatureForm({
   const isEditing = !!signatureId
   const { signature } = useSignature(signatureId)
   const { create, update, isCreating, isUpdating } = useSignatureMutations()
+  const { canEdit } = useSignatureAccess(signatureId)
+  const readOnly = isEditing && !canEdit
 
   const [html, setHtml] = useState(signature?.body || '')
 
   const form = useForm<FormData>({
-    resolver: standardSchemaResolver(formSchema, undefined, { mode: 'sync' }),
+    resolver: standardSchemaResolver(formSchema),
     mode: 'onSubmit',
     reValidateMode: 'onChange',
     defaultValues: {
       name: signature?.name || '',
       body: signature?.body || '',
-      isDefault: signature?.isDefault || false,
-      visibility: signature?.visibility || 'private',
     },
   })
 
-  // Guard: editing an id that resolves to nothing (e.g. deleted) -> close.
+  // Guard: editing an id that resolves to nothing (e.g. deleted, or un-shared)
+  // -> close.
   useEffect(() => {
     if (open && isEditing && !signature) {
       toastError({
@@ -105,12 +107,7 @@ export function SignatureForm({
   // Hydrate the form once the signature resolves (edit mode).
   useEffect(() => {
     if (open && signature) {
-      form.reset({
-        name: signature.name,
-        body: signature.body,
-        isDefault: signature.isDefault,
-        visibility: signature.visibility,
-      })
+      form.reset({ name: signature.name, body: signature.body })
       setHtml(signature.body)
     }
   }, [open, signature, form])
@@ -120,21 +117,11 @@ export function SignatureForm({
 
     let savedId = signatureId ?? ''
 
-    if (signature?.recordId) {
-      await update(signature.recordId, {
-        name: data.name,
-        body: data.body,
-        isDefault: data.isDefault,
-        visibility: data.visibility,
-      })
+    if (signature) {
+      await update(signature.id, { name: data.name, body: data.body })
     } else {
-      const result = await create({
-        name: data.name,
-        body: data.body,
-        isDefault: data.isDefault,
-        visibility: data.visibility,
-      })
-      savedId = parseRecordId(result.recordId).entityInstanceId
+      const result = await create({ name: data.name, body: data.body })
+      savedId = result?.id ?? ''
     }
 
     onSuccess?.(savedId)
@@ -146,12 +133,8 @@ export function SignatureForm({
     form.setValue('body', newHtml, { shouldDirty: true, shouldTouch: true })
   }
 
-  const visibility = form.watch('visibility')
-  const isDefault = form.watch('isDefault')
   const isPending = isCreating || isUpdating
-  const title = isEditing ? 'Edit Signature' : 'Create Signature'
-
-  const VisibilityIcon = visibility === 'org_members' ? GlobeIcon : LockIcon
+  const title = isEditing ? (readOnly ? 'Signature' : 'Edit Signature') : 'Create Signature'
 
   return (
     <>
@@ -165,39 +148,14 @@ export function SignatureForm({
                 id='signature-name'
                 placeholder='e.g., Professional, Casual, Support Team'
                 aria-invalid={!!form.formState.errors.name}
+                disabled={readOnly}
                 {...form.register('name')}
               />
-              <InputGroupAddon align='inline-end'>
-                <button
-                  type='button'
-                  title={isDefault ? 'Default signature' : 'Set as default'}
-                  onClick={() => form.setValue('isDefault', !isDefault, { shouldDirty: true })}
-                  className='flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted'>
-                  <StarIcon
-                    className={isDefault ? 'size-4 fill-yellow-500 text-yellow-500' : 'size-4'}
-                  />
-                </button>
-                <Select
-                  value={visibility}
-                  onValueChange={(v) =>
-                    form.setValue('visibility', v as SignatureVisibility, { shouldDirty: true })
-                  }>
-                  <SelectTrigger
-                    variant='ghost'
-                    size='xs'
-                    className='mr-0.5 gap-1 text-muted-foreground'>
-                    <VisibilityIcon className='size-3.5' />
-                    <SelectValue placeholder='Visibility' />
-                  </SelectTrigger>
-                  <SelectContent align='end'>
-                    <SelectItem value='private'>Private</SelectItem>
-                    <SelectItem value='org_members'>All Members</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.name && (
+              {form.formState.errors.name && (
+                <InputGroupAddon align='inline-end'>
                   <TooltipError text={form.formState.errors.name.message ?? ''} />
-                )}
-              </InputGroupAddon>
+                </InputGroupAddon>
+              )}
             </InputGroup>
           </div>
 
@@ -206,14 +164,17 @@ export function SignatureForm({
               <FormLabel>Signature Content</FormLabel>
               <Card className='overflow-hidden'>
                 <CardContent className='p-0'>
-                  <div className='border-b px-3 py-2'>
-                    <EditorToolbar showSend={false} />
-                  </div>
+                  {!readOnly && (
+                    <div className='border-b px-3 py-2'>
+                      <EditorToolbar showSend={false} />
+                    </div>
+                  )}
                   <SignatureBodyEditor
                     content={html}
                     onChange={handleEditorChange}
                     placeholder='Design your signature here...'
                     className='h-full'
+                    editable={!readOnly}
                   />
                 </CardContent>
               </Card>
@@ -227,17 +188,19 @@ export function SignatureForm({
 
           <DialogFooter>
             <Button type='button' size='sm' variant='ghost' onClick={cancel}>
-              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+              {readOnly ? 'Close' : 'Cancel'} <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
-            <Button
-              type='submit'
-              size='sm'
-              variant='outline'
-              loading={isPending}
-              loadingText={isEditing ? 'Saving...' : 'Creating...'}>
-              {isEditing ? 'Save Changes' : 'Create Signature'}{' '}
-              <KbdSubmit variant='outline' size='sm' />
-            </Button>
+            {!readOnly && (
+              <Button
+                type='submit'
+                size='sm'
+                variant='outline'
+                loading={isPending}
+                loadingText={isEditing ? 'Saving...' : 'Creating...'}>
+                {isEditing ? 'Save Changes' : 'Create Signature'}{' '}
+                <KbdSubmit variant='outline' size='sm' />
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </Form>

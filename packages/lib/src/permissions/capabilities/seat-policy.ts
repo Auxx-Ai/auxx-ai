@@ -43,6 +43,22 @@ const WORKER_AREAS = new Set<Area>([
 ])
 
 /**
+ * `Area.signatures` and `Area.snippets` are DELIBERATELY absent from
+ * {@link WORKER_AREAS} (plan 36 §0.5) — this omission is a decision, not an
+ * oversight, and the consequence is sharper than it looks.
+ *
+ * {@link SEAT_CEILINGS}`.worker` resolves to `Level.None` for every area outside
+ * the set above, and that clamp is checked in `effectiveInstanceLevel`
+ * (`entity-access.ts`) **above** the explicit-instance-row branch. So a field
+ * tech gets nothing here even on a signature or snippet they created and hold an
+ * `admin` row for: the seat ceiling closes the area before any row is consulted.
+ *
+ * That is the intended outcome. Do not "fix" it by adding either area here —
+ * reopening it is a product decision about what a field seat is for, and it
+ * would silently widen every existing worker seat.
+ */
+
+/**
  * The field-seat capability keys (§4.1) — the three worker surfaces expanded.
  * Kept for callers/tests that assert the worker's effective set directly.
  */
@@ -91,6 +107,12 @@ export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
  * - `knowledgeBase: Edit`: KB is collaborative content — everyone reads +
  *   authors articles by default; changing KB *settings* (Full) is a
  *   deliberate grant (doc 12 §0.3).
+ * - `signatures: Full` / `snippets: Full` (plan 36 §2.3): members create and own
+ *   their own. Both are `baselineAtCreate: true`, so `Full` here buys the
+ *   instance-LESS action (create) and nothing else — every existing signature or
+ *   snippet still needs an explicit `ResourceAccess` row to be reachable. Per
+ *   plan 22 §2.5 a new area ships CLOSED unless listed here AND backfilled for
+ *   existing orgs, which plan 36 §4.3 owes.
  */
 export const MEMBER_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   [Area.records]: Level.Full,
@@ -105,6 +127,8 @@ export const MEMBER_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   [Area.datasets]: Level.Read,
   [Area.knowledgeBase]: Level.Edit,
   [Area.dashboards]: Level.Full,
+  [Area.signatures]: Level.Full,
+  [Area.snippets]: Level.Full,
 }
 
 /**

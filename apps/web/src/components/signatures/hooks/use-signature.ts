@@ -1,48 +1,35 @@
 // apps/web/src/components/signatures/hooks/use-signature.ts
+'use client'
 
-import type { SignatureItem, SignatureVisibility } from '@auxx/types/signature'
+import { toRecordId } from '@auxx/types/resource'
+import type { SignatureItem } from '@auxx/types/signature'
 import { useMemo } from 'react'
-import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
-import type { RecordMeta } from '~/components/resources/store/record-store'
+import { api } from '~/trpc/react'
 
-/**
- * Extended RecordMeta with signature-specific field values.
- * Keys come from each field's `systemAttribute` (see SIGNATURE_FIELDS),
- * which is what the entity system emits on the wire — not the registry `key`.
- */
-interface SignatureRecordMeta extends RecordMeta {
-  fieldValues: {
-    signature_name?: string
-    signature_body?: string
-    signature_is_default?: boolean
-    signature_visibility?: SignatureVisibility
-    created_by_id?: string
-  }
-}
-
-/**
- * Result from useSignatures hook
- */
+/** Result from {@link useSignatures}. */
 interface UseSignaturesResult {
-  /** All signatures */
+  /** Every signature the current member may VIEW, oldest first. */
   signatures: SignatureItem[]
-  /** Raw records from store */
-  records: SignatureRecordMeta[]
-  /** Map of id to signature for quick lookups */
+  /** `id` → signature, for the id-keyed consumers (composer, picker, editor). */
   signatureMap: Map<string, SignatureItem>
-  /** Field key to info mapping */
-  fields: Record<string, FieldInfo>
-  /** Loading state */
   isLoading: boolean
-  /** Error if any */
-  error: Error | null
-  /** Refetch signatures */
+  /** Refetch the list. */
   refresh: () => void
 }
 
 /**
- * Hook to fetch all signatures using the entity system.
- * Replaces multiple tRPC calls with a single useAllRecords call.
+ * Every signature the caller may see.
+ *
+ * Reads the DEDICATED `signature.list` router (plan 36 §3, recommendation (a)),
+ * not `useAllRecords({ entityDefinitionId: 'signature' })` — `record.*` now
+ * refuses every instance-access def outright (`assertNotInstanceAccessDef`), so
+ * the old generic path throws `ForbiddenError` at runtime. `signature.list`
+ * FILTERS to the member's own `view` grants in SQL rather than 403-ing, so this
+ * hook simply returns a shorter list for a member with fewer grants.
+ *
+ * The old hook also returned `records` + `fields` (raw `RecordMeta` and the
+ * entity-system field map). Both are gone: nothing consumed them (grep-verified
+ * in plan 36 §12.1), which is exactly why the dedicated router was chosen.
  *
  * @example
  * ```tsx
@@ -50,50 +37,35 @@ interface UseSignaturesResult {
  * ```
  */
 export function useSignatures(): UseSignaturesResult {
-  const { records, fields, isLoading, error, refresh } = useAllRecords<SignatureRecordMeta>({
-    entityDefinitionId: 'signature',
-  })
+  const { data, isLoading, refetch } = api.signature.list.useQuery()
 
   const { signatures, signatureMap } = useMemo(() => {
-    if (!records.length) {
-      return { signatures: [], signatureMap: new Map<string, SignatureItem>() }
+    const items: SignatureItem[] = (data ?? []).map((signature) => ({
+      id: signature.id,
+      // Re-branded rather than passed through: the router emits the same
+      // `signature:<id>` string, but as a plain `string` over the wire.
+      recordId: toRecordId('signature', signature.id),
+      name: signature.name,
+      body: signature.body,
+      createdById: signature.createdById,
+    }))
+    return {
+      signatures: items,
+      signatureMap: new Map<string, SignatureItem>(items.map((item) => [item.id, item])),
     }
+  }, [data])
 
-    const items: SignatureItem[] = records.map((record) => {
-      // Handle visibility being returned as array from entity system
-      const rawVisibility = record.fieldValues?.signature_visibility
-      const visibility: SignatureVisibility = Array.isArray(rawVisibility)
-        ? (rawVisibility[0] ?? 'private')
-        : (rawVisibility ?? 'private')
-
-      return {
-        id: record.id,
-        recordId: record.recordId,
-        name: record.fieldValues?.signature_name ?? record.displayName ?? 'Untitled',
-        body: record.fieldValues?.signature_body ?? '',
-        isDefault: record.fieldValues?.signature_is_default ?? false,
-        visibility,
-        createdById: record.fieldValues?.created_by_id,
-      }
-    })
-
-    const map = new Map<string, SignatureItem>(items.map((item) => [item.id, item]))
-    return { signatures: items, signatureMap: map }
-  }, [records])
-
-  return { signatures, records, signatureMap, fields, isLoading, error, refresh }
+  return { signatures, signatureMap, isLoading, refresh: () => void refetch() }
 }
 
 /**
- * Hook to get a single signature by ID.
+ * One signature by id, resolved out of the list the caller may see.
  *
- * @param signatureId - The signature ID to fetch
- * @returns The signature and loading state
+ * Deliberately NOT `signature.get`: every consumer already mounts the list, and
+ * a miss here means "not visible to you or deleted" — which is what the callers
+ * (the form's not-found guard, the composer panel) want to branch on anyway.
  *
- * @example
- * ```tsx
- * const { signature, isLoading } = useSignature(selectedSignatureId)
- * ```
+ * @param signatureId - the `EntityInstance.id`, or null/undefined for none
  */
 export function useSignature(signatureId: string | null | undefined) {
   const { signatureMap, isLoading } = useSignatures()
@@ -107,21 +79,27 @@ export function useSignature(signatureId: string | null | undefined) {
 }
 
 /**
- * Hook to get the default signature.
+ * The CALLER's default signature (plan 36 §12.2).
  *
- * @returns The default signature and loading state
- *
- * @example
- * ```tsx
- * const { signature: defaultSignature, isLoading } = useDefaultSignature()
- * ```
+ * Per-user, not per-org: the pointer lives in `UserSetting`
+ * (`signature.defaultId`) and `signature.getDefault` re-checks `canViewInstance`
+ * on read, so a signature that was deleted or un-shared after being defaulted
+ * degrades to "no default" instead of handing the composer an id it would 403
+ * on. The old org-global `signature_is_default` FieldValue is gone.
  */
 export function useDefaultSignature() {
-  const { signatures, isLoading } = useSignatures()
+  const { data: defaultId, isLoading: isLoadingDefault } = api.signature.getDefault.useQuery()
+  const { signatureMap, isLoading: isLoadingList } = useSignatures()
 
-  const signature = useMemo(() => {
-    return signatures.find((s) => s.isDefault)
-  }, [signatures])
+  const signature = useMemo(
+    () => (defaultId ? signatureMap.get(defaultId) : undefined),
+    [defaultId, signatureMap]
+  )
 
-  return { signature, isLoading }
+  return {
+    signature,
+    /** The stored pointer, even if it resolves to nothing in this list. */
+    defaultId: defaultId ?? null,
+    isLoading: isLoadingList || isLoadingDefault,
+  }
 }

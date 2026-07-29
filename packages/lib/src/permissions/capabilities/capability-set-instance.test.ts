@@ -5,7 +5,11 @@ import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
-import { effectiveInstanceLevel, toResolvedRecordAccess } from './entity-access'
+import {
+  effectiveInstanceLevel,
+  privateInstanceListScope,
+  toResolvedRecordAccess,
+} from './entity-access'
 import { INSTANCE_ACCESS_READ_KEYS, type InstanceAccessKey } from './instance-access'
 import { Area, areaLevelFromKeys, Level, PermissionKey } from './registry'
 import { MEMBER_BASELINE_LEVELS, SEAT_CEILINGS } from './seat-policy'
@@ -282,9 +286,10 @@ describe('instance-restricted ADMIN (plan 24 §B.2.7)', () => {
 })
 
 describe('OWNER regression (plan 24 §A.4)', () => {
-  it('short-circuits to admin on an instance restricted to none', () => {
-    // The §0.10 recovery guarantee: nothing authored on an instance can lock the
-    // last owner out of the instance that would let them undo it.
+  it('short-circuits to admin on an ORG-SHARED instance restricted to none', () => {
+    // The §0.10 recovery guarantee, on the resources it still covers: nothing
+    // authored on an org-shared instance can lock the last owner out of the
+    // instance that would let them undo it.
     const m = member({
       role: 'OWNER',
       rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
@@ -294,13 +299,34 @@ describe('OWNER regression (plan 24 §A.4)', () => {
     expect(m.server.canViewInstance('kb', 'kb_locked')).toBe(true)
   })
 
-  it('short-circuits ahead of the row lookup entirely (private dashboard, no row)', () => {
-    // `dashboard` is `baselineAtCreate: true`, so "no row" means no access for
-    // everyone else — the branch OWNER must still skip.
+  it('does NOT short-circuit on a private resource (dashboard, no row)', () => {
+    // User decision 2026-07-28 (plan 36 §0.6 revised): the bypass is scoped to
+    // `baselineAtCreate: false`. §0.10 protects an owner's ability to repair a
+    // mis-shaped PROFILE — being locked out of someone else's private content
+    // does not threaten that, so the bypass has nothing to do here.
     const owner = member({ role: 'OWNER', restrictedInstances: ['dash_private'] })
     const other = member({ restrictedInstances: ['dash_private'] })
-    expect(levelFor(owner, 'dashboard', 'dash_private')).toBe(ResourcePermission.admin)
+    expect(levelFor(owner, 'dashboard', 'dash_private')).toBeUndefined()
     expect(levelFor(other, 'dashboard', 'dash_private')).toBeUndefined()
+  })
+
+  it('keeps admin on a private instance it holds a row on — the no-self-lock half', () => {
+    // Why removing the bypass is safe rather than a self-lock: every
+    // `baselineAtCreate: true` resource writes its author an `admin` row at
+    // create, `composeUserCapabilities`'s OWNER branch returns `instanceAccess`
+    // unchanged, and `restrictedInstanceIds` is org-wide. So an owner reaches
+    // their OWN content through the ordinary row path.
+    const owner = member({
+      role: 'OWNER',
+      rows: [
+        { entityDefinitionId: 'dashboard', entityInstanceId: 'dash_mine', permission: 'admin' },
+      ],
+      restrictedInstances: ['dash_mine', 'dash_theirs'],
+    })
+    expect(levelFor(owner, 'dashboard', 'dash_mine')).toBe(ResourcePermission.admin)
+    expect(owner.server.canAdminInstance('dashboard', 'dash_mine')).toBe(true)
+    // ...and only their own.
+    expect(levelFor(owner, 'dashboard', 'dash_theirs')).toBeUndefined()
   })
 })
 
@@ -435,6 +461,28 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
     expect(m.client.keys.has(PermissionKey.datasetsView)).toBe(false)
   })
 
+  it('a `view` grant on a PRIVATE resource derives its Read rung too', () => {
+    // The derivation matters more for `signature`/`snippet` than for anything
+    // else in the registry: `instanceFallbackLevel` returns `undefined` for a
+    // `baselineAtCreate: true` resource, so a member whose entire access is one
+    // share has NO other route to the coarse front door (nav, cmd+K, a landing
+    // guard). Without this they would be shown nothing while holding a real,
+    // enforceable grant.
+    const m = member({
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.snippets]: Level.None },
+      rows: [
+        { entityDefinitionId: 'snippet', entityInstanceId: 'snip_shared', permission: 'view' },
+      ],
+    })
+    expect(m.caps.instanceDerivedKeys).toEqual([PermissionKey.snippetsView])
+    expect(m.server.can(PermissionKey.snippetsView)).toBe(true)
+    // …and it stops at Read. `snippetsManage` fronts snippet CREATION and every
+    // FOLDER mutation (plan 36 §6.3 — the live bug that slice fixed). Deriving
+    // it from one share would hand a share recipient the org-wide folder tree.
+    expect(m.server.can(PermissionKey.snippetsEdit)).toBe(false)
+    expect(m.server.can(PermissionKey.snippetsManage)).toBe(false)
+  })
+
   it('the derived keys are exactly the Read rung of each instance-access area', () => {
     expect(INSTANCE_ACCESS_READ_KEYS).toEqual({
       dataset: [PermissionKey.datasetsView],
@@ -447,6 +495,267 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
       // so an instance-access area with no Read rung would land here as `[]`
       // and fail closed rather than confer a key it has no name for.
       agent: [PermissionKey.agentsView],
+      // `signature` / `snippet` joined in 2026-07-28's plan 36 slice, each with
+      // its own three-rung area. Both are `baselineAtCreate: true`, so the
+      // derived Read key is the ONLY thing that opens their coarse front door
+      // for a member whose access is a single share — the area fallback cannot,
+      // by construction (`instanceFallbackLevel` returns `undefined`).
+      signature: [PermissionKey.signaturesView],
+      snippet: [PermissionKey.snippetsView],
     })
+  })
+})
+
+/**
+ * Plan 36 — the `baselineAtCreate: **true**` arm, for the two resources that
+ * joined `INSTANCE_ACCESS_RESOURCES` with the PRIVATE posture: `signature` and
+ * `snippet`. Everything above this point covers `baselineAtCreate: false`
+ * (`dataset`, `kb`), where an absent row falls back to the member's AREA level;
+ * here an absent row means **no access at all**, and the area level buys only the
+ * instance-LESS action (create).
+ *
+ * That inversion is the whole slice, so each of the four decisions it rests on is
+ * pinned separately rather than as one composite case:
+ *  - §0.2 absent row ⇒ no access, even at the area's `Full` rung;
+ *  - §2.1 an explicit row still beats an area shut to `None`;
+ *  - §0.5 a WORKER seat is denied even on an instance it owns outright;
+ *  - §0.6 an org ADMIN gets no override on another member's private instance.
+ *
+ * Both resources are asserted every time. They are configured identically today,
+ * and a case written for only one would not notice the two drifting apart —
+ * which is exactly what "an org can open snippets while locking signatures down"
+ * (plan 36 §0.1) invites someone to try.
+ */
+describe('private (`baselineAtCreate: true`) resources — signatures + snippets (plan 36)', () => {
+  /** `[instance-access key, its area, an instance id owned by SOMEONE ELSE]`. */
+  const PRIVATE = [
+    ['signature', Area.signatures, 'sig_theirs'],
+    ['snippet', Area.snippets, 'snip_theirs'],
+  ] as const
+
+  it.each(PRIVATE)('%s: an absent row denies even at the area’s Full rung (§0.2)', (key, area) => {
+    // `signatures`/`snippets` are BOTH `Level.Full` on the seeded Member
+    // baseline, so this member has the maximum area level the product offers and
+    // still cannot see an instance nobody granted them.
+    const m = member()
+    expect(MEMBER_BASELINE_LEVELS[area]).toBe(Level.Full)
+    expect(m.server.areaLevel(area)).toBe(Level.Full)
+
+    expect(levelFor(m, key, 'inst_rowless')).toBeUndefined()
+    expect(m.server.canViewInstance(key, 'inst_rowless')).toBe(false)
+    expect(m.server.canEditInstance(key, 'inst_rowless')).toBe(false)
+    expect(m.server.canAdminInstance(key, 'inst_rowless')).toBe(false)
+    expect(() => m.server.assertViewInstance(key, 'inst_rowless')).toThrow()
+
+    // The contrast that proves this is the POSTURE and not a blanket denial: the
+    // very same member, at a LOWER area level (`datasets: Read`), can view a
+    // row-less dataset — because `dataset` is `baselineAtCreate: false`.
+    expect(m.server.areaLevel(Area.datasets)).toBe(Level.Read)
+    expect(m.server.canViewInstance('dataset', 'ds_rowless')).toBe(true)
+  })
+
+  it.each(PRIVATE)('%s: a row that exists for SOMEONE ELSE reads as denial', (key, _area, id) => {
+    // The other branch of `effectiveInstanceLevel`: the instance IS in the
+    // org-wide `restrictedInstanceIds` set (its owner holds an `admin` row), but
+    // this member's grantee union returns nothing for it. `undefined` from the
+    // row lookup must deny, never fall through to the area.
+    const m = member({ rows: [], restrictedInstances: [id] })
+    expect(levelFor(m, key, id)).toBeUndefined()
+    expect(m.server.canViewInstance(key, id)).toBe(false)
+  })
+
+  it.each(PRIVATE)('%s: an explicit row beats an area shut to None (§2.1)', (key, area) => {
+    // Sharing has to work for a member whose profile closes the area entirely —
+    // otherwise the only way to share one signature is to open the whole area,
+    // which under this posture still shows them nothing else, so the grant would
+    // simply be inert.
+    const m = member({
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [area]: Level.None },
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_shared', permission: 'edit' }],
+    })
+    expect(m.server.areaLevel(area)).toBe(Level.None)
+
+    expect(levelFor(m, key, 'inst_shared')).toBe(ResourcePermission.edit)
+    expect(m.server.canViewInstance(key, 'inst_shared')).toBe(true)
+    expect(m.server.canEditInstance(key, 'inst_shared')).toBe(true)
+    // `edit`, not `admin`: delete and re-share stay closed.
+    expect(m.server.canAdminInstance(key, 'inst_shared')).toBe(false)
+    // …and nothing else in that area opened up.
+    expect(levelFor(m, key, 'inst_other')).toBeUndefined()
+  })
+
+  it.each(PRIVATE)('%s: an explicit `none` row denies under an open area too', (key) => {
+    const m = member({
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_locked', permission: 'none' }],
+    })
+    expect(levelFor(m, key, 'inst_locked')).toBe(ResourcePermission.none)
+    expect(m.server.canViewInstance(key, 'inst_locked')).toBe(false)
+  })
+
+  it.each(PRIVATE)('%s: a worker seat is denied on an instance it OWNS (§0.5)', (key, area) => {
+    // The sharpest consequence of leaving both areas out of `WORKER_AREAS`: the
+    // seat ceiling is checked ABOVE the explicit-row branch, so an `admin` row
+    // the field tech holds on content they authored themselves buys nothing.
+    // Stated in `seat-policy.ts` as intended; pinned here so nobody "fixes" it.
+    expect(SEAT_CEILINGS.worker[area]).toBe(Level.None)
+    const m = member({
+      seatType: 'worker',
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' }],
+    })
+    expect(levelFor(m, key, 'inst_mine')).toBeUndefined()
+    expect(m.server.canViewInstance(key, 'inst_mine')).toBe(false)
+    expect(m.server.canAdminInstance(key, 'inst_mine')).toBe(false)
+    // The row really is composed — it is the CEILING doing the denying, not an
+    // empty grant map that would make this test vacuous.
+    expect(m.caps.instanceAccess).toEqual({ inst_mine: 'admin' })
+  })
+
+  it.each(
+    PRIVATE
+  )('%s: neither an org ADMIN nor an OWNER gets an override (§0.6)', (key, area, id) => {
+    // Deliberate, and deliberately the surprising one: on the seeded all-`Full`
+    // admin profile the area reads `Full`, and for `dataset`/`kb` that fallback
+    // would hand them the instance. Under `baselineAtCreate: true` there is no
+    // fallback to ride — so a member's private signature is invisible to their
+    // admin.
+    const admin = member({ role: 'ADMIN', profileLevels: {}, restrictedInstances: [id] })
+    expect(admin.server.areaLevel(area)).toBe(Level.Full)
+    expect(levelFor(admin, key, id)).toBeUndefined()
+    expect(admin.server.canViewInstance(key, id)).toBe(false)
+    expect(admin.server.canAdminInstance(key, id)).toBe(false)
+
+    // And OWNER is no longer the exception (user decision 2026-07-28, §0.6
+    // revised): the §0.10 bypass is scoped to `baselineAtCreate: false`, so
+    // personal content is invisible to org ownership too.
+    const owner = member({ role: 'OWNER', restrictedInstances: [id] })
+    expect(owner.server.areaLevel(area)).toBe(Level.Full)
+    expect(levelFor(owner, key, id)).toBeUndefined()
+    expect(owner.server.canViewInstance(key, id)).toBe(false)
+    expect(owner.server.canAdminInstance(key, id)).toBe(false)
+  })
+
+  it.each(PRIVATE)('%s: an OWNER still reaches content they own', (key) => {
+    // The control for the case above — without it that test would also pass
+    // against a resource nobody can reach at all. The author's `admin` row is
+    // written at create, and it resolves through the ordinary row path.
+    const owner = member({
+      role: 'OWNER',
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' }],
+    })
+    expect(levelFor(owner, key, 'inst_mine')).toBe(ResourcePermission.admin)
+    expect(owner.server.canAdminInstance(key, 'inst_mine')).toBe(true)
+  })
+})
+
+/**
+ * `privateInstanceListScope` — the LIST twin of `canViewInstance` for the
+ * `baselineAtCreate: true` resources (plan 36 §6.1), and the only list helper
+ * their routers may call: `instanceListScope` is narrowed to
+ * `OrgSharedInstanceAccessKey`, so passing `'snippet'` to it is a COMPILE error
+ * by construction.
+ *
+ * The property under test is that it reproduces `effectiveInstanceLevel` at the
+ * `view` rung for every id at once. If the two disagree the member gets an empty
+ * list for an instance whose detail route opens fine, or — the direction that
+ * actually leaks — a listed row the detail route then 403s on.
+ */
+describe('privateInstanceListScope (plan 36 §6.1)', () => {
+  const PRIVATE = ['signature', 'snippet'] as const
+
+  it.each(PRIVATE)('%s: OWNER is filtered like anyone else — no exclusion arm', (key) => {
+    // User decision 2026-07-28 (§0.6 revised). Every key this function accepts
+    // is `baselineAtCreate: true` BY TYPE, so there is no owner branch left to
+    // reach: an owner with no rows lists nothing, and an owner WITH a row lists
+    // exactly that row. The result is always an allow-list.
+    expect(privateInstanceListScope(member({ role: 'OWNER' }).client, key)).toEqual({
+      kind: 'none',
+    })
+
+    const owner = member({
+      role: 'OWNER',
+      rows: [
+        { entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' },
+        // Someone else's private instance — in the ORG-wide restricted set, but
+        // carrying no row for this owner.
+      ],
+      restrictedInstances: ['inst_mine', 'inst_theirs'],
+    })
+    expect(privateInstanceListScope(owner.client, key)).toEqual({
+      kind: 'include',
+      includeIds: ['inst_mine'],
+    })
+  })
+
+  it.each(PRIVATE)('%s: a worker seat gets `none` — no query at all (§0.5)', (key) => {
+    const m = member({
+      seatType: 'worker',
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' }],
+    })
+    expect(privateInstanceListScope(m.client, key)).toEqual({ kind: 'none' })
+  })
+
+  it.each(PRIVATE)('%s: names ONLY the rows that reach `view`', (key) => {
+    const m = member({
+      rows: [
+        { entityDefinitionId: key, entityInstanceId: 'inst_view', permission: 'view' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_admin', permission: 'admin' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_none', permission: 'none' },
+      ],
+    })
+    const scope = privateInstanceListScope(m.client, key)
+    expect(scope.kind).toBe('include')
+    expect([...(scope.includeIds ?? [])].sort()).toEqual(['inst_admin', 'inst_view'])
+  })
+
+  it.each(PRIVATE)('%s: no qualifying row at all collapses to `none`', (key) => {
+    const m = member({
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_none', permission: 'none' }],
+    })
+    expect(privateInstanceListScope(m.client, key)).toEqual({ kind: 'none' })
+  })
+
+  it.each(PRIVATE)('%s: deliberately does NOT consult the area level', (key) => {
+    // Mirrors `effectiveInstanceLevel`, which never reads the area for a
+    // row-bearing instance. Both directions are load-bearing:
+    //  - area at `Full` with no rows must still be `none`, or every private
+    //    instance in the org lands in the list;
+    //  - area at `None` with one row must still name it, or a share to a
+    //    sparse-profile member is inert in the list while the detail route
+    //    honours it.
+    const area = key === 'signature' ? Area.signatures : Area.snippets
+
+    const open = member()
+    expect(open.server.areaLevel(area)).toBe(Level.Full)
+    expect(privateInstanceListScope(open.client, key)).toEqual({ kind: 'none' })
+
+    const shut = member({
+      profileLevels: { ...MEMBER_BASELINE_LEVELS, [area]: Level.None },
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_shared', permission: 'view' }],
+    })
+    expect(shut.server.areaLevel(area)).toBe(Level.None)
+    expect(privateInstanceListScope(shut.client, key)).toEqual({
+      kind: 'include',
+      includeIds: ['inst_shared'],
+    })
+  })
+
+  it.each(PRIVATE)('%s: agrees with canViewInstance id by id', (key) => {
+    // The consistency claim itself, rather than a restatement of either side:
+    // resolve a mixed set both ways and require the same answer for every id,
+    // INCLUDING ids the org holds no row for (which only the id-at-a-time
+    // resolver is asked about, and which the allow-list must therefore omit).
+    const m = member({
+      rows: [
+        { entityDefinitionId: key, entityInstanceId: 'inst_view', permission: 'view' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_none', permission: 'none' },
+      ],
+      restrictedInstances: ['inst_view', 'inst_none', 'inst_theirs'],
+    })
+    const ids = ['inst_view', 'inst_none', 'inst_theirs', 'inst_rowless']
+    const scope = privateInstanceListScope(m.client, key)
+    const listed = new Set(scope.kind === 'include' ? scope.includeIds : [])
+
+    expect(ids.filter((id) => m.server.canViewInstance(key, id))).toEqual(['inst_view'])
+    expect(ids.filter((id) => listed.has(id))).toEqual(['inst_view'])
   })
 })

@@ -73,7 +73,7 @@ export class OrganizationDomain {
     // Seed for each target organization
     for (const org of this.organizations) {
       // Generate and insert Signatures via UnifiedCrudHandler
-      await this.seedSignatures(db, org.id, org.ownerId, users, UnifiedCrudHandler)
+      await this.seedSignatures(db, schema, org.id, org.ownerId, users, UnifiedCrudHandler)
 
       // Generate and insert Snippet Folders first, then Snippets (so snippets can reference folders)
       const folderIds = await this.seedSnippetFolders(db, schema, org.id, users)
@@ -84,6 +84,7 @@ export class OrganizationDomain {
   /**
    * seedSignatures generates and creates signature records via UnifiedCrudHandler.
    * @param db - Drizzle database instance
+   * @param schema - Database schema
    * @param organizationId - Organization ID to associate signatures with
    * @param ownerId - Organization owner user ID
    * @param users - Array of user records
@@ -91,6 +92,7 @@ export class OrganizationDomain {
    */
   private async seedSignatures(
     db: any,
+    schema: any,
     organizationId: string,
     ownerId: string,
     users: Array<{ id: string; email: string }>,
@@ -115,20 +117,32 @@ export class OrganizationDomain {
       const user = users[userIndex]!
 
       for (let sigIndex = 0; sigIndex < signaturesPerUser; sigIndex++) {
-        const isDefault = sigIndex === 0
-        const name = isDefault ? 'Default Signature' : `Signature ${sigIndex + 1}`
+        const isPrimary = sigIndex === 0
+        const name = isPrimary ? 'Default Signature' : `Signature ${sigIndex + 1}`
 
         try {
-          await handler.create(
+          // Field keys are the `systemAttribute`s, which migration 021 prefixed
+          // with `signature_`; the bare `name`/`body` this used to send matched
+          // nothing and silently produced field-less instances. `is_default` and
+          // `visibility` are gone entirely — plan 36 replaced visibility with
+          // `ResourceAccess` rows and made "default" a per-user `UserSetting`.
+          const result = await handler.create(
             'signature',
             {
-              name: name,
-              body: this.generateSignatureContent(user.email, isDefault),
-              is_default: isDefault,
-              visibility: 'private',
+              signature_name: name,
+              signature_body: this.generateSignatureContent(user.email, isPrimary),
             },
             { skipEvents: true }
           )
+          // `signature` is `baselineAtCreate: true`, so a seeded signature with
+          // no owner row is invisible to EVERYONE but the org OWNER. The handler
+          // acts as `ownerId`, so that is the `createdById` this row grants.
+          await this.grantInstanceOwnership(db, schema, {
+            organizationId,
+            entityDefinitionId: 'signature',
+            entityInstanceId: result.instance.id,
+            ownerId,
+          })
           created++
         } catch (error: any) {
           console.log(`⚠️  Failed to create signature: ${error.message}`)
@@ -137,6 +151,43 @@ export class OrganizationDomain {
     }
 
     console.log(`✅ Created ${created} signatures via UnifiedCrudHandler`)
+  }
+
+  /**
+   * Write the owner `admin` `ResourceAccess` row for a seeded instance-access
+   * resource (plan 36).
+   *
+   * `signature` and `snippet` are both `INSTANCE_ACCESS_RESOURCES` entries with
+   * `baselineAtCreate: true`: an instance with NO `ResourceAccess` row is
+   * reachable by nobody but the org OWNER. Migration 056 backfilled the data
+   * that existed when the slice landed, but a re-seed creates fresh rows, so the
+   * seeder has to write its own or every demo signature and snippet is invisible
+   * the moment it is created. Mirrors `api.signature.create` /
+   * `createSnippet` — no realtime/cache emit, because a seed run has no live
+   * sessions to invalidate.
+   */
+  private async grantInstanceOwnership(
+    db: any,
+    schema: any,
+    row: {
+      organizationId: string
+      entityDefinitionId: 'signature' | 'snippet'
+      entityInstanceId: string
+      ownerId: string
+    }
+  ): Promise<void> {
+    await db
+      .insert(schema.ResourceAccess)
+      .values({
+        organizationId: row.organizationId,
+        entityDefinitionId: row.entityDefinitionId,
+        entityInstanceId: row.entityInstanceId,
+        granteeType: 'user',
+        granteeId: row.ownerId,
+        permission: 'admin',
+        grantedById: row.ownerId,
+      })
+      .onConflictDoNothing()
   }
 
   /**
@@ -242,6 +293,18 @@ export class OrganizationDomain {
             updatedAt: sql`excluded."updatedAt"`,
           },
         })
+
+      // Same `baselineAtCreate: true` rule as signatures: without an owner row a
+      // seeded snippet is invisible to everyone but the org OWNER, and with no
+      // admin override (plan 36 §0.6) nobody can repair it.
+      for (const snippet of snippets) {
+        await this.grantInstanceOwnership(db, schema, {
+          organizationId,
+          entityDefinitionId: 'snippet',
+          entityInstanceId: snippet.id,
+          ownerId: snippet.createdById,
+        })
+      }
 
       console.log(`✅ Upserted ${snippets.length} snippets`)
     }
