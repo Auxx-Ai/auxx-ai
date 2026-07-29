@@ -12,6 +12,7 @@ import {
   findMemberByUser,
   getActiveMemberCount,
   getInvitationLink,
+  getInvitationPreview,
   getMyPendingInvitations,
   getPendingInvitations,
   inviteMember,
@@ -24,7 +25,7 @@ import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure, publicProcedure } from '~/server/api/trpc'
 
 /**
  * Member router handles organization member and invitation operations
@@ -499,4 +500,13 @@ export const memberRouter = createTRPCRouter({
       )
       return { link }
     }),
+
+  /**
+   * Resolve the invitation a signup link carries, so the signup form can show
+   * who is inviting and bind the email field. Public because the invitee has no
+   * account yet — the token is the credential.
+   */
+  invitationPreview: publicProcedure
+    .input(z.object({ token: z.string().min(1) }))
+    .query(async ({ ctx, input }) => getInvitationPreview({ token: input.token }, ctx.db)),
 })

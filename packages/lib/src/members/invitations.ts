@@ -1,20 +1,16 @@
 // packages/lib/src/members/invitations.ts
 
-import { WEBAPP_URL } from '@auxx/config/server'
 import { type Database, database, schema } from '@auxx/database'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
-import { and, asc, eq, gt, ilike } from 'drizzle-orm'
+import { and, asc, eq, gt } from 'drizzle-orm'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../errors'
 import { publisher } from '../events'
 import { enqueueEmailJob } from '../jobs/email'
+import { emailEquals, normalizeEmail } from './email-match'
 import { rankOf, requireMemberManage } from './guards'
-import {
-  generateAcceptLink,
-  generateSignupLink,
-  INVITATION_EXPIRATION_HOURS,
-} from './invitation-links'
+import { generateInvitationEntryLink, INVITATION_EXPIRATION_HOURS } from './invitation-links'
 import {
   type InvitableProfile,
   loadInvitableProfile,
@@ -54,14 +50,13 @@ export async function inviteMember(
   },
   db: Database = database
 ): Promise<{ success: true; message: string; existingUser: boolean }> {
-  const {
-    organizationId,
-    inviterUserId,
-    inviterName,
-    organizationName,
-    email,
-    permissionProfileId,
-  } = params
+  const { organizationId, inviterUserId, inviterName, organizationName, permissionProfileId } =
+    params
+
+  // Store and match on the canonical form. Everything downstream — the invite
+  // row, the duplicate check, the signup-time lookup — keys on this address, so
+  // normalizing once here is what keeps them all agreeing.
+  const email = normalizeEmail(params.email)
 
   logger.info('Attempting to invite member', {
     organizationId,
@@ -117,7 +112,7 @@ export async function inviteMember(
     .from(schema.User)
     .where(
       and(
-        eq(schema.User.email, email),
+        emailEquals(schema.User.email, email),
         eq(schema.User.userType, 'USER') // Only regular users can be invited
       )
     )
@@ -140,7 +135,7 @@ export async function inviteMember(
     .where(
       and(
         eq(schema.OrganizationInvitation.organizationId, organizationId),
-        eq(schema.OrganizationInvitation.email, email),
+        emailEquals(schema.OrganizationInvitation.email, email),
         eq(schema.OrganizationInvitation.status, 'PENDING'),
         gt(schema.OrganizationInvitation.expiresAt, new Date())
       )
@@ -224,10 +219,13 @@ export async function inviteMember(
   const senderName = inviterName || 'A team member'
   const orgName = organizationName || 'our organization'
 
+  // One rule for every surface that hands out this invitation: an existing user
+  // accepts directly, a new invitee is sent to signup so the token can bind the
+  // account they create to the invited address.
+  const invitationLink = generateInvitationEntryLink(token, !!existingUser)
+
   try {
     if (existingUser) {
-      const acceptLink = `${WEBAPP_URL}/accept-invitation?token=${token}` // Ensure URL is defined
-
       publisher.publishLater({
         type: 'membership:created',
         data: {
@@ -249,7 +247,7 @@ export async function inviteMember(
         inviterName: senderName,
         organizationName: orgName,
         role: role.toString(),
-        acceptLink,
+        acceptLink: invitationLink,
         invitedUserName: existingUser.name!,
         source: 'member-service',
         organizationId,
@@ -261,8 +259,6 @@ export async function inviteMember(
       return { success: true, message: 'Invitation sent to existing user.', existingUser: true }
     } else {
       // Send email tailored for new users
-      const signupLink = generateSignupLink(token) // Generate signup link for new users
-
       publisher.publishLater({
         type: 'membership:created',
         data: {
@@ -283,7 +279,7 @@ export async function inviteMember(
         inviterName: senderName,
         organizationName: orgName,
         role: role.toString(),
-        acceptLink: signupLink,
+        acceptLink: invitationLink,
         source: 'member-service',
         organizationId,
       })
@@ -304,7 +300,7 @@ export async function inviteMember(
         .where(
           and(
             eq(schema.OrganizationInvitation.organizationId, organizationId),
-            eq(schema.OrganizationInvitation.email, email),
+            emailEquals(schema.OrganizationInvitation.email, email),
             eq(schema.OrganizationInvitation.token, token)
           )
         )
@@ -473,29 +469,31 @@ export async function resendInvitation(
   }
 
   // 6. Send the email using the NEW token
-  const newAcceptLink = generateAcceptLink(newToken)
   const inviterName = invitation.invitedBy?.name || 'A team member' // Use original inviter's name
   const orgName = invitation.organization.name || 'our organization'
 
-  try {
-    // Check if the invited email corresponds to an existing user to send correct template
-    const existingUser = await db.query.User.findFirst({
-      where: and(
-        eq(schema.User.email, invitation.email),
-        eq(schema.User.userType, 'USER') // Only regular users
-      ),
-      columns: {
-        name: true,
-      },
-    })
+  // Check if the invited email corresponds to an existing user. This picks BOTH
+  // the email template and the link — a resend must not downgrade a new invitee
+  // from the signup link to the accept link.
+  const existingUser = await db.query.User.findFirst({
+    where: and(
+      emailEquals(schema.User.email, invitation.email),
+      eq(schema.User.userType, 'USER') // Only regular users
+    ),
+    columns: {
+      name: true,
+    },
+  })
+  const newInvitationLink = generateInvitationEntryLink(newToken, !!existingUser)
 
+  try {
     if (existingUser) {
       await enqueueEmailJob('join-organization', {
         recipient: { email: invitation.email, name: existingUser.name! },
         inviterName,
         organizationName: orgName,
         role: invitation.role.toString(),
-        acceptLink: newAcceptLink,
+        acceptLink: newInvitationLink,
         invitedUserName: existingUser.name!,
         source: 'member-service',
         organizationId: invitation.organizationId,
@@ -510,7 +508,7 @@ export async function resendInvitation(
         inviterName,
         organizationName: orgName,
         role: invitation.role.toString(),
-        acceptLink: newAcceptLink,
+        acceptLink: newInvitationLink,
         source: 'member-service',
         organizationId: invitation.organizationId,
       })
@@ -562,6 +560,7 @@ export async function getInvitationLink(
       id: true,
       status: true,
       token: true, // Need the token to build the link
+      email: true, // Decides whether the link points at signup or accept
       expiresAt: true,
       organizationId: true,
     },
@@ -592,10 +591,64 @@ export async function getInvitationLink(
     throw new BadRequestError('This invitation has expired.')
   }
 
-  // 4. Construct and return the link
-  const link = generateAcceptLink(invitation.token)
-  logger.info('Invitation link retrieved successfully', { invitationId })
+  // 4. Construct and return the link. A copied link is handed to the same person
+  //    the email would have reached, so it must resolve the same way — an
+  //    unconditional accept link drops a brand-new invitee on the login page.
+  const existingUser = await db.query.User.findFirst({
+    where: and(
+      emailEquals(schema.User.email, invitation.email),
+      eq(schema.User.userType, 'USER') // Only regular users
+    ),
+    columns: { id: true },
+  })
+
+  const link = generateInvitationEntryLink(invitation.token, !!existingUser)
+  logger.info('Invitation link retrieved successfully', {
+    invitationId,
+    hasAccount: !!existingUser,
+  })
   return link
+}
+
+/**
+ * What a signup page may learn about the invitation its link carries.
+ *
+ * `email` is the address the account MUST be created under — the invitation
+ * binds to it, and signup is rejected if the two disagree (§ the invited email
+ * is the whole of the grant; letting it drift turns the link into a bearer
+ * token that anyone it is forwarded to could redeem).
+ */
+export type InvitationPreview =
+  | { valid: true; email: string; organizationName: string | null }
+  | { valid: false; reason: 'not_found' | 'used' | 'expired' }
+
+/**
+ * Resolve an invitation token for an UNAUTHENTICATED signup page.
+ *
+ * The token itself is the credential, so this is deliberately public — but it
+ * returns only what the signup form needs to show who is being invited and to
+ * bind the email field. Never widen this to the profile, role, or seat: those
+ * are the grant's contents, and a forwarded link should not disclose them.
+ */
+export async function getInvitationPreview(
+  params: { token: string },
+  db: Database = database
+): Promise<InvitationPreview> {
+  const invitation = await db.query.OrganizationInvitation.findFirst({
+    where: eq(schema.OrganizationInvitation.token, params.token),
+    columns: { email: true, status: true, expiresAt: true },
+    with: { organization: { columns: { name: true } } },
+  })
+
+  if (!invitation) return { valid: false, reason: 'not_found' }
+  if (invitation.status !== 'PENDING') return { valid: false, reason: 'used' }
+  if (invitation.expiresAt < new Date()) return { valid: false, reason: 'expired' }
+
+  return {
+    valid: true,
+    email: normalizeEmail(invitation.email),
+    organizationName: invitation.organization?.name || null,
+  }
 }
 
 /**
@@ -659,7 +712,7 @@ export async function getMyPendingInvitations(userEmail: string | null, db: Data
     .innerJoin(schema.User, eq(schema.OrganizationInvitation.invitedById, schema.User.id))
     .where(
       and(
-        ilike(schema.OrganizationInvitation.email, userEmail),
+        emailEquals(schema.OrganizationInvitation.email, userEmail),
         eq(schema.OrganizationInvitation.status, 'PENDING'),
         gt(schema.OrganizationInvitation.expiresAt, new Date())
       )

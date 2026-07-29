@@ -146,6 +146,43 @@ export const auth = betterAuth({
   trustedOrigins,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // An invited signup must create the account under the invited address.
+      // This runs BEFORE the user row exists, which is the point: once the user
+      // is created, `seedNewUserDatabase` has already committed an organization
+      // and a Stripe trial, and a mismatch can only be cleaned up after the
+      // fact. Enforced server-side because locking the form field is cosmetic —
+      // and because letting the invitee redirect the grant to an address of
+      // their choosing would make the link a bearer token for the organization.
+      // `invitationToken` is not a declared `user.additionalFields` entry, so
+      // better-auth strips it before the insert; it exists only for this check.
+      if (ctx.path === '/sign-up/email') {
+        const body = ctx.body as { email?: unknown; invitationToken?: unknown } | undefined
+        const invitationToken =
+          typeof body?.invitationToken === 'string' ? body.invitationToken : null
+        if (invitationToken) {
+          const { getInvitationPreview, normalizeEmail } = await import('@auxx/lib/members')
+          const preview = await getInvitationPreview({ token: invitationToken })
+          if (!preview.valid) {
+            logger.warn('Rejecting signup: invitation token not usable', {
+              reason: preview.reason,
+            })
+            throw new APIError('BAD_REQUEST', {
+              message:
+                preview.reason === 'expired'
+                  ? 'This invitation has expired. Ask an admin to send a new one.'
+                  : 'This invitation link is no longer valid. Ask an admin to send a new one.',
+            })
+          }
+          const submitted = typeof body?.email === 'string' ? normalizeEmail(body.email) : ''
+          if (submitted !== preview.email) {
+            logger.warn('Rejecting signup: email does not match the invitation')
+            throw new APIError('BAD_REQUEST', {
+              message: `This invitation is for ${preview.email}. Create your account with that address, or ask an admin to invite ${submitted || 'your address'} instead.`,
+            })
+          }
+        }
+      }
+
       // `ctx.request` is only populated for HTTP-driven calls. Server-side
       // `auth.api.*` invocations (e.g. the demo create-session route) pass only
       // `headers`, leaving `ctx.request` undefined — so resolve from `ctx.headers`.
