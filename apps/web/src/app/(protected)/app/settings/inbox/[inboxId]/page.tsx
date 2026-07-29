@@ -11,7 +11,7 @@ export default async function InboxDetailPage({
 
   return (
     <>
-      <CapabilityPageGuard permissionKey='channels.manage' />
+      <CapabilityPageGuard permissionKey='inboxes.view' />
       <InboxDetail inboxId={inboxId} />
     </>
   )

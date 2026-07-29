@@ -14,6 +14,7 @@ import {
 } from '@auxx/types/field'
 import { useResourceStore } from '../store/resource-store'
 import { getNormalizedDefinitionId, getNormalizedRecordId } from './normalize-record-id'
+import { resolveSystemAttributeRef } from './resolve-system-attribute'
 
 /**
  * Canonicalize a single ResourceFieldId — BOTH halves:
@@ -49,9 +50,11 @@ function canonicalizeSegment(segment: ResourceFieldId): ResourceFieldId {
     return field.resourceFieldId
   }
   if (!field) {
-    // Bare systemAttribute as the field half (e.g. `line_item_name`) —
-    // globally unique; only adopt it when it belongs to this definition.
-    const attrRfId = state.systemAttributeMap[fieldHalf]
+    // Bare systemAttribute as the field half (e.g. `line_item_name`). Resolved
+    // against THIS definition — a by-name lookup returns another definition's
+    // field for a shared attribute, which then fails the ownership check below
+    // and silently leaves the ref un-canonicalized.
+    const attrRfId = resolveSystemAttributeRef(state, fieldHalf, canonicalDef)
     if (attrRfId?.startsWith(`${canonicalDef}:`)) return attrRfId
   }
   return candidate

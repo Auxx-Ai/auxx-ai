@@ -1,7 +1,9 @@
 // apps/web/src/components/inbox/inbox-detail.tsx
 'use client'
 
+import { ResourcePermission } from '@auxx/database/enums'
 import type { InboxIntegration } from '@auxx/lib/inboxes'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -13,10 +15,11 @@ import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { OrphanedPersonalInboxBanner } from '~/components/mail-permissions/ui/orphaned-inbox-banner'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { Channel } from '../channels/store/channel-store'
-import { toRecordId, useResource } from '../resources'
-import { useInbox } from '../threads/hooks'
+import { toRecordId } from '../resources'
+import { useInboxByInstanceId } from '../threads/hooks'
 import { InboxDialog } from './inbox-dialog'
 import { ConnectExistingChannelDialog } from './ui/connect-existing-channel-dialog'
 import { InboxChannelCard } from './ui/inbox-channel-card'
@@ -29,27 +32,30 @@ const GRID_CLASS = 'grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'
 export function InboxDetail({ inboxId }: { inboxId: string }) {
   const router = useRouter()
   const utils = api.useUtils()
+  const { can } = useAccess()
   const [confirm, ConfirmDialog] = useConfirm()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  // Build RecordId from resource definition
-  const { resource: inboxResource, isLoading: isLoadingResource } = useResource('inboxes')
-  const recordId = toRecordId(inboxResource?.id, inboxId)
-
-  // Fetch inbox data from entity system
-  const { inbox, isLoading: isLoadingInbox } = useInbox(recordId)
+  // Resolve by the bare route id so personal inboxes retain their own
+  // definition-aware RecordId instead of being forced onto the shared def.
+  const { inbox, isLoading: isLoadingInbox } = useInboxByInstanceId(inboxId)
 
   // Fetch integrations separately (not part of entity system)
   const { data: integrations, isLoading: isLoadingIntegrations } =
     api.inbox.getIntegrations.useQuery({ inboxId }, { enabled: !!inbox })
 
-  // Include the resource-definition load: until it resolves, `recordId` is built
-  // from an undefined entityDefinitionId, so the inbox lookup can't match yet and
-  // `inbox` is transiently undefined. Gating on it prevents an "Inbox not found"
-  // flash on hard refresh when the records query resolves before the resource.
-  const isLoading = isLoadingResource || isLoadingInbox || isLoadingIntegrations
+  // The instance check is the source of truth for settings/access authority:
+  // it admits delegated Managers and does not treat org rank as a bypass.
+  const { data: myAccess, isLoading: isLoadingAccess } = api.resourceAccess.check.useQuery(
+    { recordId: inbox?.recordId ?? '' },
+    { enabled: !!inbox }
+  )
+  const canManageInbox = myAccess?.permission === ResourcePermission.admin
+  const canManageChannels = canManageInbox && can(PermissionKey.channelsManage)
+
+  const isLoading = isLoadingInbox || isLoadingIntegrations || isLoadingAccess
 
   const removeIntegration = api.inbox.removeIntegration.useMutation({
     onSuccess: () => {
@@ -84,12 +90,12 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   /** Connect an already-connected channel to this inbox, offering to move its threads. */
   const handleConnectExisting = async (channel: Channel) => {
     setPickerOpen(false)
-    if (!inbox || channel.inboxId === inbox.id) return
+    if (!inbox || !canManageChannels || channel.inboxId === inbox.id) return
 
     const hasDefault = (integrations ?? []).some((i) => i.isDefault)
     try {
       await addIntegration.mutateAsync({
-        recordId,
+        recordId: inbox.recordId,
         integrationId: channel.id,
         isDefault: !hasDefault,
       })
@@ -100,7 +106,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
     utils.channel.list.invalidate() // keep the channel store's inboxId fresh
 
     if (!channel.inboxId) return // was unassigned → nothing to move
-    const fromInboxRecordId = toRecordId(inboxResource?.id, channel.inboxId)
+    const fromInboxRecordId = toRecordId('inbox', channel.inboxId)
     const { count } = await utils.inbox.countMovableThreads.fetch({
       integrationId: channel.id,
       fromInboxRecordId,
@@ -117,13 +123,15 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
       moveThreads.mutate({
         integrationId: channel.id,
         fromInboxRecordId,
-        toInboxRecordId: recordId,
+        toInboxRecordId: inbox.recordId,
       })
     }
   }
 
   /** Remove a channel from this inbox after confirmation (unassigns routing). */
   const handleRemove = async (integration: InboxIntegration) => {
+    if (!canManageChannels) return
+
     const confirmed = await confirm({
       title: 'Remove channel?',
       description:
@@ -146,10 +154,12 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
           { title: inbox?.name ?? 'Loading...' },
         ]}
         button={
-          <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
-            <PencilIcon />
-            Edit Inbox
-          </Button>
+          canManageInbox ? (
+            <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
+              <PencilIcon />
+              Edit Inbox
+            </Button>
+          ) : undefined
         }>
         <div className='p-3 sm:p-6'>
           {isLoading ? (
@@ -181,12 +191,15 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
                         integration={integration}
                         onRemove={handleRemove}
                         removePending={removeIntegration.isPending}
+                        canManage={canManageChannels}
                       />
                     ))}
-                    <InboxChannelPlaceholderCard
-                      onConnectNew={() => setGalleryOpen(true)}
-                      onConnectExisting={() => setPickerOpen(true)}
-                    />
+                    {canManageChannels && (
+                      <InboxChannelPlaceholderCard
+                        onConnectNew={() => setGalleryOpen(true)}
+                        onConnectExisting={() => setPickerOpen(true)}
+                      />
+                    )}
                   </div>
                 </div>
               </SettingsSection>
@@ -209,18 +222,20 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
         </div>
       </SettingsPage>
 
-      {/* Edit Dialog - pass recordId (already built above) */}
-      {dialogOpen && (
+      {/* Edit Dialog - pass the record layer's definition-aware RecordId. */}
+      {dialogOpen && inbox && (
         <InboxDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          recordId={recordId}
+          recordId={inbox.recordId}
+          inboxSummary={inbox}
+          canDelete={canManageChannels && !inbox.isPersonal}
           onSuccess={() => utils.inbox.getIntegrations.invalidate({ inboxId })}
         />
       )}
 
       {/* Connect gallery, pre-scoped to this inbox as the delivery destination */}
-      {inbox && (
+      {inbox && canManageChannels && (
         <ChannelGalleryDialog
           open={galleryOpen}
           onOpenChange={setGalleryOpen}
@@ -229,7 +244,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
       )}
 
       {/* Connect an existing channel — reassigns it onto this inbox */}
-      {inbox && (
+      {inbox && canManageChannels && (
         <ConnectExistingChannelDialog
           open={pickerOpen}
           onOpenChange={setPickerOpen}

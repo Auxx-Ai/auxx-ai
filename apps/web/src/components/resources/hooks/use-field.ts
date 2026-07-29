@@ -9,6 +9,7 @@ import { type ResourceFieldId, toFieldId, toResourceFieldId } from '@auxx/types/
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useResourceStore } from '../store/resource-store'
+import { resolveSystemAttributeRef } from '../utils/resolve-system-attribute'
 
 /**
  * Extended ResourceField with effectiveFieldType for CALC fields.
@@ -237,19 +238,25 @@ export function useFieldSelectOption(
  * @param systemAttribute - The system attribute (e.g., 'thread_tags', 'thread_created_at')
  * @returns ResourceFieldWithEffective or undefined if not found
  *
+ * Pass `entityDefinitionId` whenever one is in scope. Without it the attribute
+ * is resolved by name alone, which is a coin flip for an attribute owned by two
+ * definitions (`inbox_name` lives on both `inbox` and `personal_inbox`); such a
+ * lookup warns in dev.
+ *
  * @example
- * const tagsField = useSystemField('thread_tags')
+ * const tagsField = useSystemField('thread_tags', threadEntityDefId)
  * const emailField = useSystemField('primary_email')
  * const threadCreatedAt = useSystemField('thread_created_at')
  * const contactId = useSystemField('contact_id')
  */
 export function useSystemField(
-  systemAttribute: string | null | undefined
+  systemAttribute: string | null | undefined,
+  entityDefinitionId?: string | null
 ): ResourceFieldWithEffective | undefined {
-  // Look up the ResourceFieldId from systemAttributeMap
+  // Look up the ResourceFieldId, definition-scoped when one is available
   const resourceFieldId = useResourceStore((state) => {
     if (!systemAttribute) return undefined
-    return state.systemAttributeMap[systemAttribute]
+    return resolveSystemAttributeRef(state, systemAttribute, entityDefinitionId)
   })
 
   // Delegate to useField for actual field retrieval
@@ -277,7 +284,9 @@ export function useFieldByKey(
 ): ResourceFieldWithEffective | undefined {
   const resourceFieldId = useResourceStore((state) => {
     if (!key) return undefined
-    const sysRfId = state.systemAttributeMap[key]
+    // Definition-scoped FIRST: resolving the attribute by name before consulting
+    // `entityDefinitionId` discards the very argument that disambiguates it.
+    const sysRfId = resolveSystemAttributeRef(state, key, entityDefinitionId)
     if (sysRfId) return sysRfId
     if (!entityDefinitionId) return undefined
     // Canonicalize the def prefix — fieldMap is keyed by the canonical

@@ -20,6 +20,7 @@ import {
 } from '~/components/resources/store/field-value-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
+import { resolveSystemAttributeForRecord } from '~/components/resources/utils/resolve-system-attribute'
 import { api } from '~/trpc/react'
 import {
   extractRelatedRecordIds,
@@ -40,9 +41,17 @@ interface SaveOptions {
  * If the identifier is a systemAttribute (e.g. 'vendor_part_vendor_sku'), returns
  * the corresponding ResourceFieldId (e.g. 'defId:vendorSku') so store keys match
  * what useSystemValues subscribes to. Otherwise returns the identifier as-is.
+ *
+ * `recordId` scopes the attribute to its own definition — without it a shared
+ * attribute resolves to whichever definition won the bare map, and the store key
+ * then disagrees with the one `useSystemValues` subscribes to.
  */
-function resolveFieldRef(fieldId: string): FieldReference {
-  const resourceFieldId = useResourceStore.getState().systemAttributeMap[fieldId]
+function resolveFieldRef(fieldId: string, recordId?: RecordId): FieldReference {
+  const resourceFieldId = resolveSystemAttributeForRecord(
+    useResourceStore.getState(),
+    fieldId,
+    recordId
+  )
   return (resourceFieldId ?? fieldId) as FieldReference
 }
 
@@ -78,7 +87,7 @@ function prepareOptimisticUpdate(
   getFieldMetadata?: (fieldId: FieldId) => FieldMetadata | undefined,
   ai?: boolean
 ): OptimisticUpdatePrep {
-  const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
+  const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId, recordId))
   const store = useFieldValueStore.getState()
 
   // Capture old value for relationship sync rollback
@@ -425,7 +434,10 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildFieldValueKey(normalizedRecordId, resolveFieldRef(fieldId))
+        const key = buildFieldValueKey(
+          normalizedRecordId,
+          resolveFieldRef(fieldId, normalizedRecordId)
+        )
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         if (ai) {
@@ -504,10 +516,11 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
       const typedValue = ai || !fieldType ? value : formatToTypedInput(value, fieldType)
 
-      const resolvedRef = resolveFieldRef(fieldId)
       const requestedAt = ai ? new Date().toISOString() : undefined
       for (const recordId of normalizedRecordIds) {
-        const key = buildFieldValueKey(recordId, resolvedRef)
+        // Resolved per record, not hoisted: a bulk set may span definitions, and
+        // a systemAttribute resolves to a different field on each of them.
+        const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId, recordId))
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         if (ai) {
@@ -585,7 +598,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
       for (const recordId of normalizedRecordIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {
-          const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
+          const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId, recordId))
           const version = store.incrementMutationVersion(key)
           keyVersions.push({ key, version })
           if (ai) {

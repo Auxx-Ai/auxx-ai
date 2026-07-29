@@ -12,6 +12,7 @@ import {
 import { type RecordMeta, useRecordStore } from '~/components/resources/store/record-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
+import { resolveSystemAttributeForRecord } from '~/components/resources/utils/resolve-system-attribute'
 
 /** Minimal instance shape needed to seed a `RecordMeta` — the fields carried by
  *  `CreateEntityResult.instance` (`@auxx/lib` `unified-handler-mutations.ts`). */
@@ -79,9 +80,13 @@ export function useSeedCreatedRecord() {
       // `record.listAll` tRPC cache, pushed separately by the caller.
       if (listKey) recordStore.appendCreatedRecord(listKey, instance.id)
 
-      const systemAttributeMap = useResourceStore.getState().systemAttributeMap
+      const resourceState = useResourceStore.getState()
       const entries = values.map(({ fieldId, value, fieldType }) => {
-        const resourceFieldId = (systemAttributeMap[fieldId] ?? fieldId) as FieldReference
+        const resourceFieldId = (resolveSystemAttributeForRecord(
+          resourceState,
+          fieldId,
+          recordId
+        ) ?? fieldId) as FieldReference
         return {
           key: buildFieldValueKey(recordId, resourceFieldId),
           value: fieldType ? formatToTypedInput(value, fieldType) : value,

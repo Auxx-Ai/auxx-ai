@@ -21,6 +21,7 @@ import { useRecord } from '~/components/resources/hooks/use-record'
 import { useResource } from '~/components/resources/hooks/use-resource'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useRecordLink } from '~/components/resources/utils/get-record-link'
+import { resolveSystemAttributeRef } from '~/components/resources/utils/resolve-system-attribute'
 import { RecordHoverCardField } from './record-hover-card-field'
 import { RecordIcon } from './record-icon'
 
@@ -135,6 +136,8 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer, onEdit }: BodyP
   const { resource, isLoading: isLoadingResource } = useResource(entityDefinitionId)
   const href = useRecordLink(recordId)
   const systemAttributeMap = useResourceStore((s) => s.systemAttributeMap)
+  const systemAttributeByDef = useResourceStore((s) => s.systemAttributeByDef)
+  const ambiguousSystemAttributes = useResourceStore((s) => s.ambiguousSystemAttributes)
 
   // Secondary display lives on RecordMeta.secondaryInfo (populated by the batch
   // fetcher from EntityInstance.secondaryDisplayValue). Same path TicketBadge uses.
@@ -152,13 +155,21 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer, onEdit }: BodyP
     if (!resource?.entityType) return []
     const attrs = getHoverCardFieldKeys(resource.entityType)
     if (attrs.length === 0) return []
+    const maps = { systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes }
     const refs: ResourceFieldId[] = []
     for (const attr of attrs) {
-      const ref = systemAttributeMap[attr]
+      const ref = resolveSystemAttributeRef(maps, attr, entityDefinitionId)
       if (ref) refs.push(ref)
     }
     return refs
-  }, [fields, resource?.entityType, systemAttributeMap])
+  }, [
+    fields,
+    resource?.entityType,
+    entityDefinitionId,
+    systemAttributeMap,
+    systemAttributeByDef,
+    ambiguousSystemAttributes,
+  ])
 
   if (isNotFound) {
     return <div className='py-4 text-center text-sm text-muted-foreground'>Record not found</div>

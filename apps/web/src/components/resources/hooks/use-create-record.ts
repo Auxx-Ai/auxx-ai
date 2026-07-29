@@ -7,6 +7,7 @@ import { toResourceFieldId } from '@auxx/types/field'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { resolveSystemAttributeRef } from '~/components/resources/utils/resolve-system-attribute'
 import { api } from '~/trpc/react'
 import {
   type CreatedRecordInstance,
@@ -68,7 +69,7 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
     (values: Record<string, unknown>): SeedFieldValue[] => {
       const store = useResourceStore.getState()
       return Object.entries(values).map(([fieldId, value]) => {
-        const ref = store.systemAttributeMap[fieldId] ?? fieldId
+        const ref = resolveSystemAttributeRef(store, fieldId, entityDefinitionId) ?? fieldId
         const field =
           store.getFieldByRef(ref) ??
           store.getFieldByRef(toResourceFieldId(entityDefinitionId, fieldId))

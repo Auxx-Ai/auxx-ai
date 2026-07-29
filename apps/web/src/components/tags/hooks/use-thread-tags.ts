@@ -29,8 +29,9 @@ export function useThreadTags(threadId: string) {
   const { resource: threadResource } = useResource('thread')
   const threadEntityDefId = threadResource?.entityDefinitionId ?? null
 
-  // Get the tags field ID
-  const tagsField = useSystemField('thread_tags')
+  // Get the tags field ID — scoped to the thread def, since `tagsFieldId` below
+  // is written straight into `fieldValue.set`.
+  const tagsField = useSystemField('thread_tags', threadEntityDefId)
   const tagsFieldId = tagsField?.id ?? null
 
   // Direct tRPC mutation (not useSaveFieldValue)

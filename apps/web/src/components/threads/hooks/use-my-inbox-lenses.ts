@@ -22,8 +22,9 @@ const EMPTY_FLOORS: Record<string, Lens> = {}
  * `resourceAccess.forInstance` query per inbox) would mean one round trip per
  * badge in the inbox list. It rides on this query instead.
  */
-export function useMyInboxLenses() {
+export function useMyInboxLenses(enabled = true) {
   const { data, isLoading } = api.inbox.myLenses.useQuery(undefined, {
+    enabled,
     staleTime: 5 * 60 * 1000,
   })
   return {
@@ -38,6 +39,6 @@ export function useMyInboxLenses() {
     /** Org admins additionally see the residual `none` (triage) channel. */
     isAdmin: data?.isAdmin ?? false,
     /** False until the first fetch lands — don't subscribe to anything yet. */
-    isLoaded: !isLoading && !!data,
+    isLoaded: enabled && !isLoading && !!data,
   }
 }

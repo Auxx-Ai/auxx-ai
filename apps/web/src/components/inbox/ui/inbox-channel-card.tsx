@@ -32,6 +32,8 @@ interface InboxChannelCardProps {
   integration: InboxIntegration
   onRemove: (integration: InboxIntegration) => void
   removePending?: boolean
+  /** Whether channel navigation and routing controls should be available. */
+  canManage: boolean
 }
 
 /**
@@ -40,7 +42,12 @@ interface InboxChannelCardProps {
  * back to "Connected"), and a "Default" chip. The three-dot menu opens the
  * channel detail or removes the channel from this inbox (unassign, not disconnect).
  */
-export function InboxChannelCard({ integration, onRemove, removePending }: InboxChannelCardProps) {
+export function InboxChannelCard({
+  integration,
+  onRemove,
+  removePending,
+  canManage,
+}: InboxChannelCardProps) {
   const router = useRouter()
   const { integrationId } = integration
   const { name, email, provider } = integration.integration
@@ -51,20 +58,22 @@ export function InboxChannelCard({ integration, onRemove, removePending }: Inbox
 
   const providerName = getChannelProviderName(provider)
 
-  const menuItems: ListCardMenuItem[] = [
-    {
-      label: 'Open',
-      icon: <ExternalLink />,
-      onClick: () => router.push(`${DETAIL_BASE}/${integrationId}`),
-    },
-    {
-      label: 'Remove from inbox',
-      icon: <Trash2 />,
-      destructive: true,
-      disabled: removePending,
-      onClick: () => onRemove(integration),
-    },
-  ]
+  const menuItems: ListCardMenuItem[] | undefined = canManage
+    ? [
+        {
+          label: 'Open',
+          icon: <ExternalLink />,
+          onClick: () => router.push(`${DETAIL_BASE}/${integrationId}`),
+        },
+        {
+          label: 'Remove from inbox',
+          icon: <Trash2 />,
+          destructive: true,
+          disabled: removePending,
+          onClick: () => onRemove(integration),
+        },
+      ]
+    : undefined
 
   return (
     <ListCard
@@ -73,7 +82,7 @@ export function InboxChannelCard({ integration, onRemove, removePending }: Inbox
       subtitle={email ? `${providerName} · ${email}` : providerName}
       status={status}
       headerEnd={integration.isDefault ? renderBadgeChips([{ label: 'Default' }]) : undefined}
-      href={`${DETAIL_BASE}/${integrationId}`}
+      href={canManage ? `${DETAIL_BASE}/${integrationId}` : undefined}
       menuItems={menuItems}
       descriptionLines={0}
     />

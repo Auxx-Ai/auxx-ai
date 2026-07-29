@@ -44,7 +44,7 @@ export function RelatedRecordRow({
   const { record } = useRecord({ recordId, enabled: true })
   const { resource } = useResource(getDefinitionId(recordId))
   const { values } = useSystemValues(recordId, [statusAttr], { autoFetch: true })
-  const statusField = useSystemField(statusAttr)
+  const statusField = useSystemField(statusAttr, getDefinitionId(recordId))
   const recordHref = useRecordLink(recordId)
   const href = hrefOverride ?? recordHref
   const openRecord = useOpenRecord()

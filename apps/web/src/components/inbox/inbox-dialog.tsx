@@ -14,6 +14,13 @@ interface InboxDialogProps {
   recordId?: RecordId | null
   /** Called after successful save */
   onSuccess?: (inbox: { id: string; name: string; recordId: RecordId }) => void
+  /** Scoped metadata for edit mode. */
+  inboxSummary?: {
+    isPersonal: boolean
+    ownerUserId: string | null
+  }
+  /** Whether the shared-inbox delete action should be rendered. */
+  canDelete?: boolean
 }
 
 /**
@@ -22,7 +29,14 @@ interface InboxDialogProps {
  * "People & groups" drill). The command palette hosts the same form as a single
  * page (inline grantee list). Public API is unchanged.
  */
-export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDialogProps) {
+export function InboxDialog({
+  open,
+  onOpenChange,
+  recordId,
+  onSuccess,
+  inboxSummary,
+  canDelete,
+}: InboxDialogProps) {
   const isEditing = !!recordId
 
   return (
@@ -32,6 +46,8 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
           open={open}
           recordId={recordId}
           onSuccess={onSuccess}
+          inboxSummary={inboxSummary}
+          canDelete={canDelete}
           onClose={() => onOpenChange(false)}
           enableMembersPage
           header={({ title, page, onBack }) => (

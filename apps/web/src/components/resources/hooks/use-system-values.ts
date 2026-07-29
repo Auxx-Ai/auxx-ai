@@ -2,10 +2,12 @@
 
 import { formatToRawValue, isMultiValueFieldType } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { getDefinitionId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
 import { useResourceStore } from '../store/resource-store'
 import { useNormalizedRecordId } from '../utils/normalize-record-id'
+import { resolveSystemAttributeRef } from '../utils/resolve-system-attribute'
 import { useFieldValues } from './use-field-values'
 
 /**
@@ -32,7 +34,10 @@ interface FieldInfo {
  * Subscribe to system field values by attribute names.
  * Returns formatted values keyed by system attribute.
  *
- * All systemAttributes are globally unique:
+ * Attributes are resolved against the RECORD'S OWN definition, never by name
+ * alone: cloned field sets mean one attribute can belong to two definitions
+ * (`inbox` and `personal_inbox` both own `inbox_name`), and a bare lookup then
+ * reads the wrong definition's field and returns nothing.
  * - Most fields use their natural name: 'name', 'inbox_description', 'visibility'
  * - Universal fields use "{entityType}_{attribute}": 'thread_created_at', 'contact_id'
  *
@@ -49,35 +54,54 @@ interface FieldInfo {
  */
 export function useSystemValues<T extends string>(
   recordId: RecordId | null | undefined,
-  systemAttributes: T[],
+  systemAttributes: readonly T[],
   options: UseSystemValuesOptions = {}
 ): { values: Record<T, unknown>; isLoading: boolean } {
   const { autoFetch = false, enabled = true } = options
 
   // Get maps from store (stable references from zustand)
   const systemAttributeMap = useResourceStore((state) => state.systemAttributeMap)
+  const systemAttributeByDef = useResourceStore((state) => state.systemAttributeByDef)
+  const ambiguousSystemAttributes = useResourceStore((state) => state.ambiguousSystemAttributes)
   const fieldMap = useResourceStore((state) => state.fieldMap)
 
+  // Normalize the definition prefix to the real entityDefinitionId so reads
+  // match the keys used when field values are written — and so attributes
+  // resolve against THIS record's definition.
+  const normalizedRecordId = useNormalizedRecordId(recordId)
+  const entityDefinitionId = normalizedRecordId ? getDefinitionId(normalizedRecordId) : null
+
+  // Callers overwhelmingly pass an inline array literal, which is a new
+  // reference every render. Key the memo on the contents instead, or every
+  // render rebuilds `fieldRefs` and re-triggers the fetch below.
+  const attrsKey = JSON.stringify(systemAttributes)
+
   // Resolve system attributes to field info (memoized based on stable store references)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attrsKey stands in for systemAttributes
   const fieldInfos = useMemo((): FieldInfo[] => {
     if (!enabled) return []
+    const maps = { systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes }
     const result: FieldInfo[] = []
     for (const attr of systemAttributes) {
-      const resourceFieldId = systemAttributeMap[attr]
+      const resourceFieldId = resolveSystemAttributeRef(maps, attr, entityDefinitionId)
       if (!resourceFieldId) continue
       const field = fieldMap[resourceFieldId]
       if (!field?.fieldType) continue
       result.push({ attr, resourceFieldId, fieldType: field.fieldType, options: field.options })
     }
     return result
-  }, [enabled, systemAttributes, systemAttributeMap, fieldMap])
+  }, [
+    enabled,
+    attrsKey,
+    entityDefinitionId,
+    systemAttributeMap,
+    systemAttributeByDef,
+    ambiguousSystemAttributes,
+    fieldMap,
+  ])
 
   // Build fieldRefs array (just the ResourceFieldIds)
   const fieldRefs = useMemo(() => fieldInfos.map((f) => f.resourceFieldId), [fieldInfos])
-
-  // Normalize the definition prefix to the real entityDefinitionId so reads
-  // match the keys used when field values are written.
-  const normalizedRecordId = useNormalizedRecordId(recordId)
 
   // Fetch values using useFieldValues with autoFetch
   const { values: rawValues, isLoading } = useFieldValues(

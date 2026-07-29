@@ -117,8 +117,31 @@ interface ResourceStoreState {
   /** Field-level lookup map with optimistic overlay (O(1) lookups by ResourceFieldId) */
   fieldMap: Record<ResourceFieldId, ResourceField>
 
-  /** Global map for O(1) lookups: systemAttribute -> ResourceFieldId */
+  /**
+   * Global map for O(1) lookups: systemAttribute -> ResourceFieldId.
+   *
+   * Keyed by attribute ALONE, so it cannot distinguish two definitions that
+   * carry the same systemAttribute (`inbox` and `personal_inbox` both own
+   * `inbox_name`). Prefer {@link ResourceState.systemAttributeByDef} whenever a
+   * definition is in scope; consult {@link ResourceState.ambiguousSystemAttributes}
+   * before trusting a bare hit.
+   */
   systemAttributeMap: Record<string, ResourceFieldId>
+
+  /**
+   * Definition-scoped lookups: `${entityDefinitionId}:${systemAttribute}` ->
+   * ResourceFieldId. Registered under every prefix form a caller can arrive
+   * with (canonical def id and `resource.id` when they differ), so a hit here
+   * is always the right definition's field.
+   */
+  systemAttributeByDef: Record<string, ResourceFieldId>
+
+  /**
+   * systemAttributes owned by more than one definition. A bare lookup against
+   * {@link ResourceState.systemAttributeMap} for one of these is a coin flip —
+   * resolve it against a definition instead.
+   */
+  ambiguousSystemAttributes: Set<string>
 
   // ─────────────────────────────────────────────────────────────────
   // ACTIONS
@@ -436,6 +459,8 @@ const initialState = {
   serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
   fieldMap: {} as Record<ResourceFieldId, ResourceField>,
   systemAttributeMap: {} as Record<string, ResourceFieldId>,
+  systemAttributeByDef: {} as Record<string, ResourceFieldId>,
+  ambiguousSystemAttributes: new Set<string>(),
   // Field optimistic state
   pendingFieldUpdates: {} as Record<ResourceFieldId, PendingFieldUpdate>,
   optimisticNewFields: {} as Record<ResourceFieldId, ResourceField>,
@@ -486,29 +511,65 @@ export const useResourceStore = create<ResourceStoreState>()(
       // Filter custom resources
       const customResources = resources.filter(isCustomResource)
 
-      // Build server field map and systemAttribute lookup map
+      // Build server field map and systemAttribute lookup maps
       const serverFieldMap: Record<ResourceFieldId, ResourceField> = {}
       const systemAttributeMap: Record<string, ResourceFieldId> = {}
+      const systemAttributeByDef: Record<string, ResourceFieldId> = {}
+      const ambiguousSystemAttributes = new Set<string>()
+      // Which definition currently owns each bare key, so a second definition
+      // claiming the same attribute is detected rather than silently winning.
+      const bareKeyOwner: Record<string, string> = {}
       const UNIVERSAL_ATTRIBUTES = ['id', 'record_id', 'created_at', 'updated_at']
 
       resources.forEach((resource) => {
         // Get entityType for universal field mapping (e.g., 'thread', 'contact', 'ticket')
         const entityType = resource.entityType || resource.apiSlug
+        // `definitionIdByPrefix` resolves every alias to this id, so it is the
+        // form callers arrive with; `resource.id` is what the VALUE embeds.
+        const canonicalDefId = resource.entityDefinitionId || resource.id
 
         resource.fields.forEach((field) => {
           const resourceFieldId = field.resourceFieldId || toResourceFieldId(resource.id, field.id)
           serverFieldMap[resourceFieldId] = { ...field, resourceFieldId }
 
-          // Build systemAttribute lookup map
-          if (field.systemAttribute && entityType) {
-            if (UNIVERSAL_ATTRIBUTES.includes(field.systemAttribute)) {
-              // Universal fields: map to "{entityType}_{attribute}"
-              // e.g., "thread_created_at", "contact_id"
-              const mappedKey = `${entityType}_${field.systemAttribute}`
-              systemAttributeMap[mappedKey] = resourceFieldId
-            } else {
-              // Unique fields: use systemAttribute directly as key
-              systemAttributeMap[field.systemAttribute] = resourceFieldId
+          if (!field.systemAttribute) return
+
+          // Definition-scoped: always registered, no entityType required, under
+          // both the raw attribute and the entityType-mapped form so either
+          // spelling resolves.
+          const scopedKeys = new Set<string>([field.systemAttribute])
+          if (entityType && UNIVERSAL_ATTRIBUTES.includes(field.systemAttribute)) {
+            scopedKeys.add(`${entityType}_${field.systemAttribute}`)
+          }
+          for (const defPrefix of new Set([canonicalDefId, resource.id])) {
+            if (!defPrefix) continue
+            for (const key of scopedKeys) {
+              systemAttributeByDef[`${defPrefix}:${key}`] = resourceFieldId
+            }
+          }
+
+          // Build systemAttribute lookup map (bare — legacy, def-less callers)
+          if (entityType) {
+            const bareKey = UNIVERSAL_ATTRIBUTES.includes(field.systemAttribute)
+              ? // Universal fields: map to "{entityType}_{attribute}"
+                // e.g., "thread_created_at", "contact_id"
+                `${entityType}_${field.systemAttribute}`
+              : // Unique fields: use systemAttribute directly as key
+                field.systemAttribute
+            const owner = bareKeyOwner[bareKey]
+            if (owner === undefined) {
+              bareKeyOwner[bareKey] = canonicalDefId
+              systemAttributeMap[bareKey] = resourceFieldId
+            } else if (owner !== canonicalDefId) {
+              // Two definitions own this attribute. Break the tie on definition
+              // id rather than on `resources` iteration order, so an ambiguous
+              // attribute resolves the SAME way on every fetch — a stable wrong
+              // answer is debuggable, an intermittent one is not.
+              ambiguousSystemAttributes.add(bareKey)
+              if (canonicalDefId < owner) {
+                bareKeyOwner[bareKey] = canonicalDefId
+                systemAttributeMap[bareKey] = resourceFieldId
+              }
             }
           }
         })
@@ -606,6 +667,8 @@ export const useResourceStore = create<ResourceStoreState>()(
         serverFieldMap,
         fieldMap,
         systemAttributeMap,
+        systemAttributeByDef,
+        ambiguousSystemAttributes,
         // Field optimistic state
         pendingFieldUpdates: newPendingFieldUpdates,
         optimisticNewFields: newOptimisticNewFields,
@@ -1459,6 +1522,8 @@ export const useResourceStore = create<ResourceStoreState>()(
         serverFieldMap: {} as Record<ResourceFieldId, ResourceField>,
         fieldMap: {} as Record<ResourceFieldId, ResourceField>,
         systemAttributeMap: {} as Record<string, ResourceFieldId>,
+        systemAttributeByDef: {} as Record<string, ResourceFieldId>,
+        ambiguousSystemAttributes: new Set<string>(),
         // Field optimistic state
         pendingFieldUpdates: {} as Record<ResourceFieldId, PendingFieldUpdate>,
         optimisticNewFields: {} as Record<ResourceFieldId, ResourceField>,
