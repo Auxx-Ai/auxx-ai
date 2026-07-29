@@ -34,15 +34,23 @@ export interface AssignMemberProfileResult {
   success: true
   permissionProfileId: string | null
   role: OrganizationRole
+  /**
+   * The rank the member held before this assignment. Assignment is the only
+   * path that writes a rank, so this is what makes a promotion or demotion
+   * visible in the audit trail — the caller records it as `previousState`.
+   * Equal to `role` when the binding changed but the declared rank did not.
+   */
+  previousRole: OrganizationRole
 }
 
 /**
  * Bind a permission profile to a member, writing the member's rank from the
  * profile's declared `role` (plan 21 §2.a.3).
  *
- * Assignment is a **role write**, so it inherits every guard `updateMemberRole`
- * owns (§7) — missing one turns the profile picker into a privilege-escalation
- * control. In order:
+ * Assignment is a **role write**, and since the standalone role mutation was
+ * removed it is the ONLY one — so every guard that path owned lives here (§7).
+ * Missing one turns the profile picker into a privilege-escalation control.
+ * In order:
  *
  * 1. `members.manage` **and** `permissions.manage` (a profile is an access shape,
  *    so assigning one is a permissions write as much as a member write).
@@ -56,8 +64,8 @@ export interface AssignMemberProfileResult {
  * 5. No self-service, the Owner-only lever, the admin-peer refusal, and the
  *    `canManageTarget` + `rankOf` rank guard — the last run against the
  *    profile's DECLARED role, not the caller's wish.
- * 6. Last-owner protection, failing with the same error `updateMemberRole`
- *    produces.
+ * 6. Last-owner protection — reassigning the only Owner off Owner rank fails
+ *    with the same message the remove-member path uses.
  * 7. The doc 19 §6.1 escalation guard over the member's **resulting effective
  *    state**, snapshotted before and after the write inside one transaction, so
  *    a refusal rolls the binding back.
@@ -127,9 +135,15 @@ export async function assignMemberProfile(
     )
   }
 
+  // Snapshot the rank BEFORE the write. `targetMembership` may alias the row the
+  // update mutates, so reading it after the transaction can report the new rank
+  // as the old one — which would silently make every audit row claim no rank
+  // change occurred.
+  const previousRole: OrganizationRole = targetMembership.role
+
   // The rank the member will actually hold. Guarding anything else would let a
   // profile-declared rank slip past the guards below (plan 21 §2.a.3).
-  const nextRole: OrganizationRole = profile ? profile.role : targetMembership.role
+  const nextRole: OrganizationRole = profile ? profile.role : previousRole
 
   // 5. §2.A invariant: a field (worker) seat can never hold ADMIN/OWNER
   //    authority. Unreachable from the UI (§3.5 makes such a profile
@@ -141,7 +155,7 @@ export async function assignMemberProfile(
     )
   }
 
-  // 6. Role-relative escalation guards, ported verbatim from `updateMemberRole`.
+  // 6. Role-relative escalation guards (§5.2).
   //    Owner-only lever: only an OWNER may grant OWNER rank or touch an OWNER.
   if (
     actorMembership.role !== 'OWNER' &&
@@ -175,7 +189,7 @@ export async function assignMemberProfile(
   }
 
   // 7. Last-owner protection — reassigning the only Owner off Owner rank must
-  //    fail identically to `updateMemberRole`.
+  //    fail identically to the remove-member path's last-owner check.
   if (targetMembership.role === 'OWNER' && nextRole !== 'OWNER') {
     const [ownerCount] = await db
       .select({ value: count() })
@@ -230,7 +244,7 @@ export async function assignMemberProfile(
   })
 
   // Recompose caches + nudge the client: the binding AND the rank both shift the
-  // member's composed capability set. Same tail as `updateMemberRole`; lazy
+  // member's composed capability set. Same tail as the seat-type path; lazy
   // imports keep members off the cache / dehydration / realtime stacks at load.
   const { onCacheEvent } = await import('../cache')
   await onCacheEvent('member.role.changed', { orgId: organizationId, userId: memberUserId })
@@ -248,5 +262,10 @@ export async function assignMemberProfile(
     actorUserId,
   })
 
-  return { success: true, permissionProfileId, role: nextRole }
+  return {
+    success: true,
+    permissionProfileId,
+    role: nextRole,
+    previousRole,
+  }
 }

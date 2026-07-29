@@ -23,6 +23,8 @@ export const AUDIT_ACTIONS = {
   permissionGranted: 'permission.granted',
   permissionRevoked: 'permission.revoked',
   permissionSet: 'permission.set',
+  permissionProfileCreated: 'permission.profile.created',
+  permissionProfileUpdated: 'permission.profile.updated',
   sessionsInvalidated: 'sessions.invalidated',
   twoFactorEnabled: '2fa.enabled',
   twoFactorDisabled: '2fa.disabled',
@@ -43,7 +45,12 @@ export const AUDIT_ACTIONS = {
   // ── members ─────────────────────────────────────────────────────────────
   memberInvited: 'member.invited',
   memberRemoved: 'member.removed',
-  memberRoleChanged: 'member.role_changed',
+  // NOTE: no `member.role_changed`. Rank is no longer authorable on its own
+  // (plan 21 §2.0.1) — the only path that writes it is profile assignment, which
+  // records `member.profile_assigned` with the role transition in
+  // previous/newState. Filter on that action to find rank changes.
+  memberProfileAssigned: 'member.profile_assigned',
+  memberSeatTypeChanged: 'member.seat_type_changed',
   memberLeft: 'member.left',
   invitationAccepted: 'invitation.accepted',
   invitationCanceled: 'invitation.canceled',

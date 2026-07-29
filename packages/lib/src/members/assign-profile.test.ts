@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * `member.assignProfile`'s guard set (plan 21 §7). Assignment writes the
- * member's rank from the profile's declared role, so it inherits every guard
- * `updateMemberRole` owns — each case below is what keeps the profile picker
- * from becoming a privilege-escalation control.
+ * member's rank from the profile's declared role, and is now the only path that
+ * writes a rank at all — so every guard the removed standalone role mutation
+ * owned lives here. Each case below is what keeps the profile picker from
+ * becoming a privilege-escalation control.
  */
 
 // ── An introspectable `drizzle-orm`: conditions become plain objects the fake
@@ -362,7 +363,8 @@ describe('assignMemberProfile — the §7 guard set', () => {
   it('fires last-owner protection when the only Owner is moved off Owner rank', async () => {
     // The actor is an Owner per the membership lookup (the org cache in
     // production) while the org's live OWNER count is 1 — the drift this guard
-    // is defence in depth against. The error is `updateMemberRole`'s, verbatim.
+    // is defence in depth against. The error matches the remove-member path's
+    // last-owner refusal verbatim.
     membershipOverrides.u_owner2 = {
       id: 'm_owner2',
       userId: 'u_owner2',
@@ -516,6 +518,10 @@ describe('assignMemberProfile — the write', () => {
     )
 
     expect(result).toMatchObject({ success: true, permissionProfileId: 'p_admin', role: 'ADMIN' })
+    // The promotion is legible as a transition, not just a landing state — this
+    // is the audit row's `previousState.role`, and the only record of a rank
+    // change now that `member.role_changed` has no writer.
+    expect(result.previousRole).toBe('USER')
     expect(rowOf('u_target')).toMatchObject({ permissionProfileId: 'p_admin', role: 'ADMIN' })
     expect(patches).toHaveLength(1)
     expect(patches[0]).toMatchObject({ permissionProfileId: 'p_admin', role: 'ADMIN' })
@@ -536,6 +542,8 @@ describe('assignMemberProfile — the write', () => {
     )
 
     expect(result.role).toBe('USER')
+    // The demotion direction of the same audit contract.
+    expect(result.previousRole).toBe('ADMIN')
     expect(rowOf('u_admin')).toMatchObject({ permissionProfileId: 'p_support', role: 'USER' })
   })
 
