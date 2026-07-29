@@ -7,12 +7,13 @@ import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 import IntegrationAiCenterSection from './_components/integration-ai-center-section'
 import IntegrationCenterSection from './_components/integration-center-section'
 import IntegrationHero from './_components/integration-hero'
-import MarketplaceSection from './_components/marketplace-section'
+import IntegrationsMarqueeSection from './_components/integrations-marquee-section'
+import McpSection from './_components/mcp-section'
 
 export const metadata: Metadata = {
   alternates: { canonical: '/platform/integration' },
   title: `Integrations & API | ${config.shortName}`,
-  description: `Connect ${config.shortName} with Shopify, email, and internal tools using prebuilt connectors and a flexible API to automate customer operations end-to-end.`,
+  description: `Connect ${config.shortName} with Shopify, email, Slack, and the rest of your stack using prebuilt apps, MCP servers, and a flexible API to automate customer operations end-to-end.`,
 }
 
 export default function IntegrationPage() {
@@ -29,7 +30,8 @@ export default function IntegrationPage() {
       <main className=''>
         <IntegrationHero />
         <IntegrationCenterSection />
-        <MarketplaceSection />
+        <IntegrationsMarqueeSection />
+        <McpSection />
         <IntegrationAiCenterSection />
         {/* <ApiSection /> */}
         {/* <CustomIntegrationSection /> */}
