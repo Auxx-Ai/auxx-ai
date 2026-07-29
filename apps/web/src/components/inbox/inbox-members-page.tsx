@@ -104,7 +104,12 @@ export function InboxMembersPage({
         )}
       </Section>
 
-      <DialogFooter className='py-2 pe-3'>
+      {/* The bangs are required, not stylistic: `DialogNavPages` gutters nested
+          footers with `[&_[data-slot=dialog-footer]]:px-4 …:pb-4`, and that
+          descendant selector outranks a plain utility. Without them this compact
+          footer silently renders at the standard 4-gutter, misaligned with the
+          Section's `p-3` above it. */}
+      <DialogFooter className='px-3! py-2!'>
         <Button variant='outline' size='sm' type='button' onClick={onBack}>
           Done
         </Button>

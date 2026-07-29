@@ -50,6 +50,7 @@ export {
   parseAreaLevels,
 } from './capabilities/registry'
 export { requirePermission } from './capabilities/require'
+export { buildDefIdToSlug } from './capabilities/resolve-capability-inputs'
 export {
   ALL_KEYS,
   ENTITY_WRITE_KEYS,

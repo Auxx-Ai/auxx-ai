@@ -1,9 +1,11 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { getCachedResources } from '@auxx/lib/cache'
 import { BadRequestError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import {
+  buildDefIdToSlug,
   FeatureKey,
   FeaturePermissionService,
   getCapabilities,
@@ -31,7 +33,7 @@ import {
   setTypeAccess,
 } from '@auxx/lib/resource-access'
 import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
@@ -40,6 +42,30 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /** Visibility lens on mail grants (mail-permissions §2.1). Optional everywhere. */
 const lensSchema = z.enum(['metadata', 'subject', 'full']).nullish()
+
+/**
+ * Mail grants live in the entity-SLUG keyspace (`inbox:<id>`, `contact:<id>`):
+ * `composeUserMailVisibility` buckets rows by `entityDefinitionId === 'inbox'`,
+ * and `isMailSharingDef` gates authorization on the same literal. Record-layer
+ * callers mint RecordIds from the EntityDefinition id instead (the inbox
+ * settings page builds `toRecordId(inboxResource.id, inboxId)`), so their grants
+ * landed under a key mail visibility never reads — a `subject` share silently did
+ * nothing — AND skipped both `assertCanManageMailSharing` and the enterprise gate.
+ *
+ * Resolve the def part through the existing `buildDefIdToSlug` resolver and
+ * rewrite ONLY when it lands on a mail-sharing def. Every other resource keeps
+ * the key it was called with: instance rows for custom defs have no stable slug
+ * (`entityType` is null, so the resolver falls back to the renameable apiSlug).
+ */
+async function canonicalMailRecordId(
+  organizationId: string,
+  recordId: RecordId
+): Promise<RecordId> {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  if (isMailSharingDef(entityDefinitionId)) return recordId
+  const slug = buildDefIdToSlug(await getCachedResources(organizationId))(entityDefinitionId)
+  return isMailSharingDef(slug) ? toRecordId(slug, entityInstanceId) : recordId
+}
 
 /** Convert tRPC context to ResourceAccessContext */
 function toContext(ctx: {
@@ -146,7 +172,10 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const context = toContext(ctx)
-      const recordId = input.recordId as RecordId
+      const recordId = await canonicalMailRecordId(
+        ctx.session.organizationId,
+        input.recordId as RecordId
+      )
       // `none` is the instance-access baseline lockdown marker (§1.4). The enum
       // permits it, but it must never land on a mail-share target — reject it for
       // any non-instance-access recordId (defense in depth; mail pickers never
@@ -177,7 +206,7 @@ export const resourceAccessRouter = createTRPCRouter({
         category: 'security',
         action: 'permission.granted',
         targetType: 'Resource',
-        targetId: input.recordId,
+        targetId: recordId,
         metadata: {
           scope: 'instance',
           granteeType: input.granteeType,
@@ -241,14 +270,18 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const context = toContext(ctx)
-      if (!(await authorizeInstanceTarget(ctx, input.recordId))) {
-        await assertCanManageMailSharing(context, input.recordId as RecordId, {
+      const recordId = await canonicalMailRecordId(
+        ctx.session.organizationId,
+        input.recordId as RecordId
+      )
+      if (!(await authorizeInstanceTarget(ctx, recordId))) {
+        await assertCanManageMailSharing(context, recordId, {
           selfRevokeGranteeId: input.granteeId,
           selfRevokeGranteeType: input.granteeType,
         })
       }
       const revoked = await revokeInstanceAccess(context, {
-        recordId: input.recordId as RecordId,
+        recordId,
         granteeType: input.granteeType,
         granteeId: input.granteeId,
       })
@@ -256,7 +289,7 @@ export const resourceAccessRouter = createTRPCRouter({
         category: 'security',
         action: 'permission.revoked',
         targetType: 'Resource',
-        targetId: input.recordId,
+        targetId: recordId,
         metadata: {
           scope: 'instance',
           granteeType: input.granteeType,
@@ -313,7 +346,10 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const context = toContext(ctx)
-      const recordId = input.recordId as RecordId
+      const recordId = await canonicalMailRecordId(
+        ctx.session.organizationId,
+        input.recordId as RecordId
+      )
       await assertProfileGranteesAuthorable(
         ctx.session.organizationId,
         input.granteeType,
@@ -328,7 +364,7 @@ export const resourceAccessRouter = createTRPCRouter({
         category: 'security',
         action: 'permission.set',
         targetType: 'Resource',
-        targetId: input.recordId,
+        targetId: recordId,
         newState: { granteeType: input.granteeType, grants: input.grants },
         metadata: { scope: 'instance' },
       })
@@ -426,7 +462,10 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .query(
       async ({ ctx, input }): Promise<Array<ResourceAccessInfo & { granteeAreaLevel?: Level }>> => {
-        const recordId = input.recordId as RecordId
+        const recordId = await canonicalMailRecordId(
+          ctx.session.organizationId,
+          input.recordId as RecordId
+        )
         const rows = await getInstanceAccess(toContext(ctx), recordId)
         const { entityDefinitionId } = parseRecordId(recordId)
         if (!isInstanceAccessKey(entityDefinitionId)) return rows
