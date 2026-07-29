@@ -19,7 +19,7 @@ import { PROVIDER_CAPABILITIES } from '../providers/provider-capabilities'
 import { setInstanceAccess } from '../resource-access/resource-access-service'
 import { loadExistingState } from '../seed/entity-migrations/helpers'
 import { CHANNEL_PROVIDER_TO_KEY } from './channel-connection-def'
-import { deleteChannelData } from './disconnect'
+import { deleteChannelData, disconnect } from './disconnect'
 
 const logger = createScopedLogger('personal-connection')
 
@@ -353,4 +353,82 @@ export async function deletePersonalInbox(args: {
   await bumpMailCountsEpoch(organizationId)
 
   logger.info('Personal inbox deleted', { inboxId, adminUserId, channels: links.length })
+}
+
+/**
+ * Delete YOUR OWN personal inbox — the member-facing sibling of
+ * {@link deletePersonalInbox}, which is the ADMIN path and only ever fires once
+ * the owner has left the org.
+ *
+ * **Deleting the mailbox disconnects its account**, deliberately. A personal
+ * inbox is a one-account container: it exists only because a member connected a
+ * personal channel, nothing else may ever route into it
+ * (`assertSharedConnectInbox` and `addIntegration` both reject one as a target),
+ * and no other member can see it. So "delete my inbox" and "disconnect my
+ * account" are the same act — and if they weren't, `deleteInbox`'s
+ * active-channel guard would refuse and leave the member holding a mailbox they
+ * have no way to remove. That was the state before this existed: `disconnect`
+ * destroys the threads and soft-deletes the `Integration` but never touches the
+ * inbox instance, so an empty personal inbox outlived every account it ever had.
+ *
+ * **Authority is OWNERSHIP, not a grant.** `inbox_owner_user_id` is admin-only
+ * data no member can write, whereas a `personal_inbox` `admin` `ResourceAccess`
+ * row is something the owner can hand out by sharing — so `canManageInboxAccess`
+ * would let a Manager grantee destroy the owner's mail. Nor does this open an
+ * admin door: `channels.manage` deletes SHARED inbox inventory, and a current
+ * member's private mailbox is only reachable through the orphan path above.
+ *
+ * Reuses `disconnect` per channel — provider revoke, threads/messages/attachment
+ * assets, `Integration` soft-delete, polling cache, mail-count epoch, S3 cleanup
+ * — rather than {@link deletePersonalInbox}'s open-coded bulk posture, which
+ * exists because offboarding has ALREADY soft-deleted those integrations and
+ * `disconnect`'s `validateChannelOwnership` would no longer find them.
+ */
+export async function deleteOwnPersonalInbox(args: {
+  organizationId: string
+  userId: string
+  inboxId: string
+}): Promise<void> {
+  const { organizationId, userId, inboxId } = args
+  const inboxService = new InboxService(db, organizationId, userId)
+
+  const inbox = await inboxService.getInboxById(inboxId)
+  if (!inbox) throw new NotFoundError('Inbox not found')
+  if (inbox.entityDefinitionKey !== 'personal_inbox') {
+    throw new ForbiddenError('Not a personal inbox')
+  }
+  if (!inbox.ownerUserId || inbox.ownerUserId !== userId) {
+    throw new ForbiddenError('Only the owner of a personal inbox can delete it')
+  }
+
+  const links = await db.query.InboxIntegration.findMany({
+    where: eq(schema.InboxIntegration.inboxId, inboxId),
+  })
+  for (const link of links) {
+    // Already soft-deleted (an offboarding half-run, a prior disconnect) reads
+    // as NotFound — there is nothing left to revoke and the link row dies with
+    // the inbox below, so this must not abort the delete.
+    const result = await disconnect({ db, organizationId, userId }, link.integrationId)
+    if (!result.ok) {
+      logger.warn('Personal channel already gone, continuing inbox delete', {
+        inboxId,
+        integrationId: link.integrationId,
+      })
+    }
+  }
+
+  await inboxService.deleteInbox(inbox.recordId)
+
+  // `deleteInbox` broadcasts `inbox.deleted` + `channel.inbox-link.changed`;
+  // the channel INVENTORY change is this path's own (the disconnect router
+  // fires the same event beside its own `disconnect` call).
+  if (links.length > 0) {
+    await onCacheEvent('channel.disconnected', { orgId: organizationId })
+  }
+
+  logger.info('Personal inbox deleted by its owner', {
+    inboxId,
+    userId,
+    channels: links.length,
+  })
 }

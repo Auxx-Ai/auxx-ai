@@ -63,9 +63,12 @@ export function settingsInboxesForUser(args: {
         isPersonal: inbox.isPersonal,
         ownerUserId: inbox.ownerUserId,
         canManage,
-        // Personal mailbox lifecycle is disconnect/claim/delete, not the
-        // generic shared-inbox inventory delete.
-        canDelete: !inbox.isPersonal && canManage && canManageChannels,
+        // `inbox.delete` branches on the definition, so the affordance mirrors
+        // the two authorities it applies. A personal mailbox answers to its
+        // OWNER (not `channels.manage`, which its owner never holds, and not an
+        // `admin` grant, which they can hand out by sharing) and deleting it
+        // disconnects its account. A shared one is org inventory.
+        canDelete: inbox.isPersonal ? inbox.ownerUserId === userId : canManage && canManageChannels,
       },
     ]
   })

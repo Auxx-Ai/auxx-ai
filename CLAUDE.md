@@ -131,15 +131,6 @@ Before writing an import, check the target package's `package.json` `exports` fi
 
 ## API & Data Handling
 
-### tRPC Procedure Types
-
-| Procedure             | Use for                                                                  |
-| --------------------- | ------------------------------------------------------------------------ |
-| `publicProcedure`     | Unauthenticated routes                                                   |
-| `protectedProcedure`  | Authenticated routes (verifies session + organization)                   |
-| `adminProcedure`      | Admin/owner only (checks via `OrganizationMemberModel.isAdminOrOwner()`) |
-| `superAdminProcedure` | Super admin only (checks `isSuperAdmin` flag)                            |
-
 ### tRPC Context
 
 ```typescript
@@ -183,7 +174,11 @@ called from a worker, seed script, or another lib module. Throw the matching `Au
 router wraps a service call in its own `try/catch`, guard rethrows with `isAuxxError(e)` (exported from
 `~/server/api/trpc`), **not** `e instanceof TRPCError`, or the AuxxError gets flattened into a generic 500.
 
-### Result Pattern (`@auxx/lib/result`)
+### Result Pattern (`@auxx/lib/result`) — LEGACY
+
+New lib code returns `neverthrow` `Result<T, Error>`. See `docs/lib-module-guide.md`.
+`TypedResult` below is only what existing `BaseModel` subclasses still return — don't
+introduce it in new code.
 
 Database models return `TypedResult<V, E>` instead of throwing:
 
@@ -217,9 +212,25 @@ import {
 
 Cached keys (`OrgCacheDataMap`): `entityDefs`, `entityDefSlugs`, `systemUser`, `channelProviders`, `members`, `memberRoleMap`, `features`, `subscription`, `orgProfile`, `resources`, `customFields`, `groups`, `agents`, `inboxes`, `channels`, `overages`, `orgSettings`, `installedApps`, `workflowApps`, `aiProviderConfigs`, `aiCredentials`, `aiDefaultModels`. For anything in this list, prefer `getOrgCache().get(orgId, '<key>')` over a fresh query. Only hit the DB when the data isn't cached or you need a write-after-read consistency guarantee.
 
-## Database Models
+## `packages/lib` Feature Modules
 
-Models extend `BaseModel` with typed CRUD operations and org-scoped queries:
+**Before adding or extending a module in `packages/lib/src/<feature>/`, read
+`docs/lib-module-guide.md`.** `packages/lib` is mixed — newer modules are
+functional Drizzle + `neverthrow`, older ones are service classes with `db` in a
+constructor. The guide names the reference modules to copy (`snippets/` for small,
+`sequences/` for large, `dashboards/`, `signals/`) and the legacy ones not to,
+plus the rules on signatures, file layout, `client.ts`, and why permission checks
+never live in lib.
+
+Short version: exported `async function`s with `db` first (no service classes),
+`Promise<Result<T, Error>>` from `neverthrow`, `AuxxError` subclasses only,
+reads and writes in separate files, explicit named exports, and zero access
+checks in lib — the router asserts and list scopes are applied in SQL.
+
+## Database Models — LEGACY
+
+Existing models extend `BaseModel`. Do NOT add new model classes; put query code
+in `packages/lib` as functions (see above).
 
 ```typescript
 export class ApiKeyModel extends BaseModel<typeof ApiKey, CreateInput, Entity, UpdateInput> {

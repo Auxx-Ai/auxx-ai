@@ -71,6 +71,17 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   const canRouteChannels = canManageInbox && can(PermissionKey.channelsManage)
   const canConnectChannels = canRouteChannels && !inbox?.isPersonal
 
+  /**
+   * Delete mirrors `inbox.delete`'s own branch: a personal mailbox answers to
+   * its OWNER (who holds no `channels.manage`), a shared one to the inventory
+   * key plus Manager. Same shape as the settings list's server-side `canDelete`
+   * (`inbox-settings-access.ts`) — this page has no `settingsList` row to read
+   * it off, so it re-derives it from the capability blob.
+   */
+  const canDeleteInbox = inbox?.isPersonal
+    ? inbox.ownerUserId === userId
+    : !!inbox && canRouteChannels
+
   const isLoading = isLoadingInbox || isLoadingIntegrations || isLoadingCapabilities
 
   const removeIntegration = api.inbox.removeIntegration.useMutation({
@@ -246,7 +257,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
           onOpenChange={setDialogOpen}
           recordId={inbox.recordId}
           inboxSummary={inbox}
-          canDelete={canRouteChannels && !inbox.isPersonal}
+          canDelete={canDeleteInbox}
           onSuccess={() => utils.inbox.getIntegrations.invalidate({ inboxId })}
           onDeleted={() => router.replace('/app/settings/inbox')}
         />

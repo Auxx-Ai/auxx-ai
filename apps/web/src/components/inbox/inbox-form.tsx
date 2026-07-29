@@ -434,6 +434,10 @@ export function InboxForm({
   const deleteInbox = api.inbox.delete.useMutation({
     onSuccess: () => {
       invalidateInboxes()
+      // Deleting a PERSONAL inbox disconnects its account and destroys its
+      // mail, so the channel inventory and the sidebar counters move with it.
+      utils.channel.list.invalidate()
+      utils.thread.getCounts.invalidate()
       onClose()
       onDeleted?.()
     },
@@ -497,10 +501,13 @@ export function InboxForm({
   const handleDelete = async () => {
     if (!inboxId) return
 
+    // A personal mailbox is a one-account container, so deleting it also
+    // disconnects that account and destroys its mail — say so before the click.
     const confirmed = await confirm({
-      title: 'Delete inbox?',
-      description:
-        'This will permanently delete this inbox and all its settings. This action cannot be undone.',
+      title: isPersonalInbox ? 'Delete personal inbox?' : 'Delete inbox?',
+      description: isPersonalInbox
+        ? 'This disconnects the connected account and permanently deletes this inbox with all of its mail. This action cannot be undone.'
+        : 'This will permanently delete this inbox and all its settings. This action cannot be undone.',
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,

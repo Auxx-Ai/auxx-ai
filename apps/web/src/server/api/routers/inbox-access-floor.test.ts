@@ -86,6 +86,7 @@ vi.mock('@auxx/lib/inbox-record-ids', () => recordIds)
 vi.mock('@auxx/lib/threads', () => ({ ThreadMutationService: class {} }))
 vi.mock('@auxx/lib/channels', () => ({
   claimPersonalInbox: vi.fn(),
+  deleteOwnPersonalInbox: vi.fn(),
   deletePersonalInbox: vi.fn(),
 }))
 vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx: vi.fn(async () => undefined) }))

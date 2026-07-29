@@ -101,7 +101,7 @@ const { world, service } = vi.hoisted(() => {
       integrations: [{ id: 'lnk_1', integrationId: SUPPORT_CHANNEL }],
     })),
     createInbox: vi.fn(async () => ({ id: 'ibx_new0000000000000000000' })),
-    deleteInboxById: vi.fn(async () => undefined),
+    deleteInbox: vi.fn(async () => undefined),
     addIntegration: vi.fn(async () => ({ id: 'lnk_new' })),
     removeIntegration: vi.fn(async () => true),
   }
@@ -117,7 +117,7 @@ vi.mock('@auxx/lib/inboxes', () => ({
     getIntegrationInbox = service.getIntegrationInbox
     getInboxWithIntegrationsById = service.getInboxWithIntegrationsById
     createInbox = service.createInbox
-    deleteInboxById = service.deleteInboxById
+    deleteInbox = service.deleteInbox
     addIntegration = service.addIntegration
     removeIntegration = service.removeIntegration
   },
@@ -130,6 +130,7 @@ const { threadMutation, channels, recordAuditFromCtx } = vi.hoisted(() => ({
   },
   channels: {
     claimPersonalInbox: vi.fn(async () => undefined),
+    deleteOwnPersonalInbox: vi.fn(async () => undefined),
     deletePersonalInbox: vi.fn(async () => undefined),
   },
   recordAuditFromCtx: vi.fn(async () => undefined),
@@ -259,7 +260,7 @@ const PLAIN_MEMBER = () => capabilitiesFor({ channels: Level.None })
 type Caller = ReturnType<typeof caller>
 const CHANNEL_KEYED = [
   ['create', (c: Caller) => c.create({ name: 'Mine' }), () => service.createInbox],
-  ['delete', (c: Caller) => c.delete({ inboxId: OWN_INBOX }), () => service.deleteInboxById],
+  ['delete', (c: Caller) => c.delete({ inboxId: OWN_INBOX }), () => service.deleteInbox],
   [
     'addIntegration',
     (c: Caller) =>
@@ -310,7 +311,7 @@ beforeEach(() => {
     integrations: [{ id: 'lnk_1', integrationId: SUPPORT_CHANNEL }],
   }))
   service.createInbox.mockResolvedValue({ id: 'ibx_new0000000000000000000' } as never)
-  service.deleteInboxById.mockResolvedValue(undefined as never)
+  service.deleteInbox.mockResolvedValue(undefined as never)
   service.addIntegration.mockResolvedValue({ id: 'lnk_new' } as never)
   service.removeIntegration.mockResolvedValue(true as never)
 
@@ -545,7 +546,7 @@ describe('delete keeps its instance assert alongside the new key', () => {
     await expect(caller(CHANNEL_ADMIN()).delete({ inboxId: SUPPORT_INBOX })).rejects.toMatchObject(
       FORBIDDEN_INSTANCE
     )
-    expect(service.deleteInboxById).not.toHaveBeenCalled()
+    expect(service.deleteInbox).not.toHaveBeenCalled()
   })
 
   it('and can delete one they do', async () => {
@@ -553,7 +554,8 @@ describe('delete keeps its instance assert alongside the new key', () => {
     await expect(caller(CHANNEL_ADMIN()).delete({ inboxId: OWN_INBOX })).resolves.toEqual({
       success: true,
     })
-    expect(service.deleteInboxById).toHaveBeenCalledWith(OWN_INBOX)
+    // The RecordId the Manager assert ran against — one resolution, one key.
+    expect(service.deleteInbox).toHaveBeenCalledWith(`inbox:${OWN_INBOX}`)
   })
 })
 
@@ -778,7 +780,6 @@ describe('inbox router — structural invariants', () => {
 
   it.each([
     'create',
-    'delete',
     'addIntegration',
     'removeIntegration',
     'moveIntegrationThreads',
@@ -786,6 +787,16 @@ describe('inbox router — structural invariants', () => {
     'deletePersonal',
   ])('%s builds on permissionProcedure(channelsManage)', (name) => {
     expect(src).toContain(`${name}: permissionProcedure(PermissionKey.channelsManage)`)
+  })
+
+  it('delete keeps the same key, asserted in the BODY so it can branch on the def', () => {
+    // `permissionProcedure` asserts in middleware, before the handler runs, so a
+    // def-aware procedure cannot use it: the personal branch has to be reachable
+    // by an owner who holds no `channels.manage` at all. The key is not dropped
+    // — it moves inside the shared branch. `channelsManage` carries no
+    // `featureKey`, so no plan gate is lost in the swap.
+    expect(src).toContain('delete: capabilityProcedure')
+    expect(src).toContain('ctx.capabilities.assert(PermissionKey.channelsManage)')
   })
 
   it('the mail-side procedures build on the inboxes front door', () => {
@@ -804,7 +815,9 @@ describe('inbox router — structural invariants', () => {
 
   it('the procedure list is exhaustive — a NEW procedure must be gated too', () => {
     const declared = [
-      ...src.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): (mailProcedure|permissionProcedure)/gm),
+      ...src.matchAll(
+        /^ {2}([a-zA-Z][a-zA-Z0-9]*): (mailProcedure|permissionProcedure|capabilityProcedure)/gm
+      ),
     ].map((m) => m[1] as string)
     expect(declared.sort()).toEqual(
       [
@@ -812,6 +825,9 @@ describe('inbox router — structural invariants', () => {
         'claimPersonal',
         'countMovableThreads',
         'create',
+        // `capabilityProcedure` — the coarse assert lives in the handler body
+        // (see the delete test above) or, for `settingsList`, in the per-row
+        // scoping it returns.
         'delete',
         'deletePersonal',
         'getIntegrations',
@@ -819,6 +835,7 @@ describe('inbox router — structural invariants', () => {
         'myLenses',
         'removeIntegration',
         'setAccessFloor',
+        'settingsList',
       ].sort()
     )
   })
