@@ -55,8 +55,9 @@ export function useRoleDefaults() {
  * grantee LIST, and the profile surfaces.
  *
  * Reaches the **override** tiers only (`group`, `user`). A profile's base is
- * written by `permissions.saveProfile`, the only path that runs the doc 19 §6.1
- * escalation guard over each holder's resulting effective state.
+ * written by `permissions.saveProfile`, the path that runs the doc 19 §6.1
+ * escalation guard over every PROFILE holder's resulting effective state; since
+ * plan 37 the `user` override tier runs the same guard over its single holder.
  *
  * Two optimistic patches, both predictable-by-construction because the server
  * stores exactly the sparse map we send: the `listGrants` row (for the overrides
@@ -135,8 +136,9 @@ export function useGrantWrites() {
    *
    * Narrowed to the two raise-only tiers, matching `permissions.grant`'s input
    * enum. `'profile'` and the legacy `'role'` are both excluded server-side
-   * because `setGranteeLevels` runs no escalation guard; a profile base is
-   * written through `permissions.saveProfile` instead.
+   * because `setGranteeLevels` cannot enumerate their holders, so the escalation
+   * guard it now runs (plan 37, `user` tier) has nothing to compare for them; a
+   * profile base is written through `permissions.saveProfile` instead.
    */
   const save = useCallback(
     (granteeType: OverrideGranteeType, granteeId: string, levels: Partial<Record<Area, Level>>) => {

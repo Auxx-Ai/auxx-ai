@@ -10,8 +10,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `savePermissionProfile` runs the §6.1 escalation guard: it snapshots every
  * affected holder's effective state inside one transaction, applies the writes,
  * re-composes, and rolls back on any raise the actor does not hold themselves.
- * `setGranteeLevels` runs **no** such guard — only `assertGrantableLevels`, which
- * today rejects the single `adminOnly` area (`settings`) and nothing else.
+ *
+ * `setGranteeLevels` ran **no** such guard when these tests were written — only
+ * `assertGrantableLevels`, which rejects the single `adminOnly` area (`settings`)
+ * and nothing else. Plan 37 phase 1 put the same guard on its `user` tier; its
+ * `group` tier is still unguarded. That does not weaken anything below: these
+ * tests pin that `'profile'` and `'role'` are off the wire, and the reason is
+ * holder enumeration, not the presence of a guard.
  *
  * Until this change the Member-baseline tab wrote the org's `member` profile
  * through `setGranteeLevels`, addressed as `role:org_member` and redirected onto

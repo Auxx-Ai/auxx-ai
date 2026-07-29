@@ -1,7 +1,6 @@
 // packages/lib/src/permissions/profiles/profile-save.ts
 
 import { type Database, database, type PermissionProfileEntity, schema } from '@auxx/database'
-import type { OrganizationRole } from '@auxx/database/types'
 import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
@@ -10,7 +9,7 @@ import { type Area, type Level, parseAreaLevels } from '../capabilities/registry
 import { FeaturePermissionService } from '../feature-permission-service'
 import { FeatureKey } from '../types'
 import { parseAgentPolicy } from './agent-policy'
-import { computeEffectiveStatesUncached, type QueryRunner } from './effective-state'
+import { computeEffectiveStatesUncached, loadActorRole, type QueryRunner } from './effective-state'
 import {
   type ActorAuthority,
   assertNoEscalation,
@@ -268,27 +267,6 @@ async function loadProfile(
 
   if (!row) throw new NotFoundError('Permission profile not found in this organization.')
   return row as ProfileRow
-}
-
-/** The actor's org role — the §6.1.1 OWNER short-circuit and the agent gate. */
-async function loadActorRole(
-  tx: QueryRunner,
-  organizationId: string,
-  actorUserId: string
-): Promise<OrganizationRole> {
-  const [row] = await tx
-    .select({ role: schema.OrganizationMember.role })
-    .from(schema.OrganizationMember)
-    .where(
-      and(
-        eq(schema.OrganizationMember.organizationId, organizationId),
-        eq(schema.OrganizationMember.userId, actorUserId)
-      )
-    )
-    .limit(1)
-
-  if (!row) throw new ForbiddenError('You are not a member of this organization.')
-  return row.role
 }
 
 /** Read the profile's currently stored area levels (for the strict fallback). */

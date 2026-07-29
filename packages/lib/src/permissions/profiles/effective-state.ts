@@ -5,6 +5,7 @@ import { MemberType, type ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType, UserType } from '@auxx/database/types'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getCachedResources } from '../../cache'
+import { ForbiddenError } from '../../errors'
 import type { Resource } from '../../resources/registry/types'
 import { isCustomResourceId } from '../../resources/registry/types'
 import { composeUserCapabilities } from '../capabilities/compose-user-capabilities'
@@ -405,6 +406,41 @@ export async function computeEffectiveStatesUncached(input: {
   const inputs = await readUncachedInputs(organizationId, userIds, tx)
   for (const userId of userIds) out.set(userId, composeState(userId, inputs, organizationId))
   return out
+}
+
+/**
+ * The actor's org role, read transaction-locally — the other half of an
+ * {@link ActorAuthority}, beside the state {@link computeEffectiveStatesUncached}
+ * composes.
+ *
+ * Every escalation-guarded write path needs this and needs it from the SAME
+ * snapshot as the state, so it lives here rather than being re-implemented per
+ * call site: the role drives the OWNER short-circuit
+ * (`escalation-guard.ts`'s early return), which is doc 19 §0.10's recovery
+ * guarantee. A hand-copied second reader is how that guarantee drifts — the
+ * two copies of `effectiveInstanceLevel` had already silently diverged once.
+ *
+ * Throws rather than returning `undefined`: a caller with no membership row has
+ * no authority to compare against, and every branch below the guard assumes one.
+ */
+export async function loadActorRole(
+  tx: QueryRunner,
+  organizationId: string,
+  actorUserId: string
+): Promise<OrganizationRole> {
+  const [row] = await tx
+    .select({ role: schema.OrganizationMember.role })
+    .from(schema.OrganizationMember)
+    .where(
+      and(
+        eq(schema.OrganizationMember.organizationId, organizationId),
+        eq(schema.OrganizationMember.userId, actorUserId)
+      )
+    )
+    .limit(1)
+
+  if (!row) throw new ForbiddenError('You are not a member of this organization.')
+  return row.role
 }
 
 /**

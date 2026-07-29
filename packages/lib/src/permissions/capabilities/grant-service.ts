@@ -7,6 +7,13 @@ import { getOrgCache, onCacheEvent } from '../../cache'
 import { DehydrationCacheService } from '../../dehydration/cache'
 import { ForbiddenError } from '../../errors'
 import { FeaturePermissionService } from '../feature-permission-service'
+import {
+  computeEffectiveStatesUncached,
+  type EffectiveState,
+  loadActorRole,
+  type QueryRunner,
+} from '../profiles/effective-state'
+import { type ActorAuthority, assertNoEscalation } from '../profiles/escalation-guard'
 import { FeatureKey } from '../types'
 import { type Area, Level, PERMISSION_AREAS, parseAreaLevels } from './registry'
 
@@ -51,7 +58,9 @@ export interface GranteeRef {
  * `MEMBER_BASELINE_LEVELS` in seat-policy.ts (plan 22). §6.1.5's parenthetical
  * listing all four as blocked here does not match the registry; the §6.1
  * escalation guard, not this check, is what keeps `billing`/`members`/
- * `permissions` from being handed out by someone who does not hold them.
+ * `permissions` from being handed out by someone who does not hold them —
+ * and since plan 37 that guard runs on {@link setGranteeLevels}'s own `user`
+ * path, not only on the profile save. `group` grants remain unguarded (phase 2).
  *
  * The seeded `owner`/`admin` system profiles express "everything" via
  * `PermissionProfile.baseLevel`, NOT an all-Full grant row, so system seeding
@@ -124,6 +133,81 @@ async function granteeKeepsNoneLevels(grantee: GranteeRef): Promise<boolean> {
   return roleMap[grantee.granteeId]?.userType === 'AGENT'
 }
 
+/**
+ * Every member whose composed capabilities this grant moves — the holder set the
+ * §6.1 escalation guard snapshots either side of the write (plan 37 §3).
+ *
+ * `null` means "this tier's holders are not resolved here", which **skips the
+ * guard**, so every arm returning it owes a reason:
+ *
+ *  - **`group`** — resolvable and free (invert the cached `groupMembers` map,
+ *    plan 37 §2), but the >`HOLDER_GUARD_CAP`-holder fallback is an open
+ *    decision (plan 37 §4). Deliberately phase 2; **this is a known open hole**,
+ *    not an oversight — a `permissionsManage` holder can still raise a group they
+ *    belong to.
+ *  - **`profile`** — a profile base is written by `savePermissionProfile`, which
+ *    runs the guard over the profile's real holder set. Nothing reaches this
+ *    function with a `profile` grantee: #1350 narrowed the router input to
+ *    `['group','user']`.
+ *  - **`role`** — the legacy `role:org_member` row. No composer reads it, so it
+ *    moves nobody's state; it is also off the wire since #1350.
+ *
+ * The `switch` is exhaustive over {@link GrantGranteeType} on purpose: a new
+ * grantee tier is a compile error here rather than a silently unguarded one.
+ */
+function resolveHolderIds(granteeType: GrantGranteeType, granteeId: string): string[] | null {
+  switch (granteeType) {
+    case 'user':
+      return [granteeId]
+    case 'group':
+    case 'profile':
+    case 'role':
+      return null
+    default: {
+      const unreachable: never = granteeType
+      return unreachable
+    }
+  }
+}
+
+/** The pre-write half of the guard: who the actor is, and where the holders stood. */
+interface GuardSnapshot {
+  actor: ActorAuthority
+  before: Map<string, EffectiveState>
+}
+
+/**
+ * Snapshot the actor's authority and every holder's state **inside the
+ * transaction, before the write** (plan 37 §3.1).
+ *
+ * Both properties are load-bearing and neither is obvious from the call site:
+ *
+ *  - The actor's authority is their **PRE-write** state, so a grant can never
+ *    authorize itself by first raising the actor. `permissions.grant` is gated on
+ *    `permissionsManage` alone — nothing stops the actor naming themselves as the
+ *    grantee, which is exactly the escalation this closes.
+ *  - The snapshots come from `computeEffectiveStatesUncached`, which reads
+ *    transaction-locally. Composing through the org cache would return pre-write
+ *    values on BOTH sides, the guard would compare a state to itself, and it
+ *    would pass unconditionally — green tests over a guard that does nothing.
+ */
+async function snapshotBeforeWrite(
+  tx: QueryRunner,
+  organizationId: string,
+  holderIds: string[],
+  actorUserId: string
+): Promise<GuardSnapshot> {
+  const actorRole = await loadActorRole(tx, organizationId, actorUserId)
+  const before = await computeEffectiveStatesUncached({
+    organizationId,
+    userIds: [...holderIds, actorUserId],
+    tx,
+  })
+  const actorState = before.get(actorUserId)
+  if (!actorState) throw new ForbiddenError('You are not a member of this organization.')
+  return { actor: { userId: actorUserId, role: actorRole, state: actorState }, before }
+}
+
 /** Enterprise gate — writing override grants requires the plan feature (§2.H/§8). */
 async function requireGranularPermissions(db: Database, organizationId: string): Promise<void> {
   await new FeaturePermissionService(db).requireAccess(
@@ -194,6 +278,13 @@ async function emitGrantChanged(grantee: GranteeRef): Promise<void> {
  * (human users, groups) and kept for `profile` grantees (the composition base),
  * the legacy `role:org_member` policy, and AGENT user grantees — see
  * {@link stripInertNoneLevels}.
+ *
+ * **The write runs inside a transaction carrying the §6.1 escalation guard**
+ * (plan 37) for every grantee tier {@link resolveHolderIds} can enumerate —
+ * today `user`. `assertGrantableLevels` blocks only the single `adminOnly` area,
+ * so without this a `permissionsManage` holder could grant themselves
+ * `billing`/`members`/`permissions` outright. `group` grants are **not guarded
+ * yet** — see {@link resolveHolderIds}.
  */
 export async function setGranteeLevels(
   input: GranteeRef & {
@@ -207,36 +298,57 @@ export async function setGranteeLevels(
 
   const parsed = parseAreaLevels(input.levels)
   assertGrantableLevels(parsed)
+  // Both of these read Redis. They are resolved BEFORE the transaction opens:
+  // a cache round trip inside one holds the grant row's lock for a network hop.
   const levels = stripInertNoneLevels(
     parsed,
     await granteeKeepsNoneLevels({ organizationId, granteeType, granteeId })
   )
   await requireGranularPermissions(db, organizationId)
+  const holderIds = resolveHolderIds(granteeType, granteeId)
 
-  const [row] = await db
-    .insert(schema.PermissionGrant)
-    .values({
-      id: generateId(),
-      organizationId,
-      granteeType,
-      granteeId,
-      levels,
-      grantedById,
-    })
-    .onConflictDoUpdate({
-      target: [
-        schema.PermissionGrant.organizationId,
-        schema.PermissionGrant.granteeType,
-        schema.PermissionGrant.granteeId,
-      ],
-      set: {
+  const row = await db.transaction(async (tx) => {
+    const guard = holderIds
+      ? await snapshotBeforeWrite(tx, organizationId, holderIds, grantedById)
+      : null
+
+    const [written] = await tx
+      .insert(schema.PermissionGrant)
+      .values({
+        id: generateId(),
+        organizationId,
+        granteeType,
+        granteeId,
         levels,
         grantedById,
-        updatedAt: new Date(),
-      },
-    })
-    .returning()
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.PermissionGrant.organizationId,
+          schema.PermissionGrant.granteeType,
+          schema.PermissionGrant.granteeId,
+        ],
+        set: {
+          levels,
+          grantedById,
+          updatedAt: new Date(),
+        },
+      })
+      .returning()
 
+    if (guard && holderIds) {
+      const after = await computeEffectiveStatesUncached({ organizationId, userIds: holderIds, tx })
+      // The throw IS the rollback — there is no compensating write. A raise the
+      // actor does not hold themselves leaves no row behind.
+      assertNoEscalation({ actor: guard.actor, before: guard.before, after })
+    }
+
+    return written
+  })
+
+  // Outside the transaction on purpose: this fires cache invalidation and
+  // realtime, so running it inside would leave the org's caches busted for a
+  // write the guard rolled back.
   await emitGrantChanged({ organizationId, granteeType, granteeId })
   return row as PermissionGrantEntity
 }
