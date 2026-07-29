@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { type Lens, maxLens } from '../../permissions/visibility/lens'
 import { resolveProfileIdByUser } from '../../resource-access/grantee-resolution'
+import { isInboxDef } from '../../resource-access/mail-sharing-defs'
 import type { CacheProvider } from '../org-cache-provider'
 
 const logger = createScopedLogger('mail-grant-index')
@@ -73,6 +74,37 @@ function expandGrantee(
 }
 
 /**
+ * The bucket one grant row belongs in — EXPLICIT over every def the provider
+ * query admits, returning `undefined` (and saying so) for anything else.
+ *
+ * Until plan 40 this was a nested ternary whose else-branch was `index.contacts`,
+ * so ANY def that was not `thread`/`inbox` silently became a contact grant. That
+ * is the shape of a fail-OPEN bug: data migration 060 re-keys personal mailbox
+ * grants from `'inbox'` to `'personal_inbox'`, and the old router would have
+ * quietly published those inbox audiences as contact audiences — no throw, no
+ * log, wrong fanout. A default branch that guesses is exactly what a def split
+ * must not have, so this one refuses instead.
+ *
+ * Loud-but-not-fatal by design, matching {@link expandGrantee}'s precedent in
+ * this file: this runs inside a cache provider, so throwing would take the whole
+ * org's realtime fanout and count-delta audiences down over one bad row. Skipping
+ * is the fail-CLOSED direction (the row reaches nobody rather than the wrong
+ * body), and the log names the def so the next def split is a one-line fix.
+ */
+function bucketFor(
+  index: MailGrantIndex,
+  entityDefinitionId: string
+): Record<string, MailGrantEntry[]> | undefined {
+  if (entityDefinitionId === 'thread') return index.threads
+  if (entityDefinitionId === 'contact') return index.contacts
+  if (isInboxDef(entityDefinitionId)) return index.inboxes
+  logger.error('Unrecognised mail definition in grant index — row ignored', {
+    entityDefinitionId,
+  })
+  return undefined
+}
+
+/**
  * Pure composition — grant rows + cached membership shapes in, inverted
  * per-user audience maps out. IO lives in the provider below.
  *
@@ -119,17 +151,20 @@ export function composeMailGrantIndex(input: {
   const index: MailGrantIndex = { threads: {}, contacts: {}, inboxes: {} }
 
   for (const row of rows) {
+    // `none` is the v2 restriction marker, not a grant — and it is exactly what
+    // data migration 060 writes as `role:org_member @ none` on a restricted shared
+    // inbox (plan 40 §4.1). The old `!== 'view' ⇒ full` shorthand would have
+    // inverted that row into a FULL-lens entry for every org member, which is the
+    // widest possible reading of a row whose entire purpose is to close the inbox.
+    // Same fix, same reason, as `grantLens` in `compute-user-mail-visibility.ts`.
+    if (row.permission === 'none') continue
     const lens: Lens = row.permission === 'view' ? (row.lens ?? 'full') : 'full'
     const userIds = expandGrantee(row, { memberUserIds, usersByGroup, usersByProfile })
 
     if (userIds.length === 0) continue
 
-    const bucket =
-      row.entityDefinitionId === 'thread'
-        ? index.threads
-        : row.entityDefinitionId === 'inbox'
-          ? index.inboxes
-          : index.contacts
+    const bucket = bucketFor(index, row.entityDefinitionId)
+    if (!bucket) continue
     const existing = bucket[row.entityInstanceId] ?? []
     for (const userId of userIds) {
       const entry = existing.find((e) => e.userId === userId)
@@ -159,7 +194,16 @@ export const mailGrantIndexProvider: CacheProvider<MailGrantIndex> = {
         and(
           eq(schema.ResourceAccess.organizationId, orgId),
           isNotNull(schema.ResourceAccess.entityInstanceId),
-          inArray(schema.ResourceAccess.entityDefinitionId, ['thread', 'contact', 'inbox'])
+          // `personal_inbox` rides along from day one (plan 40 §3 / 40a §4): the
+          // rows migration 060 re-keys are never even FETCHED without it, so the
+          // bucket fix above would have nothing to route. Both halves ship in
+          // the same deploy as the re-key or personal grants evaporate.
+          inArray(schema.ResourceAccess.entityDefinitionId, [
+            'thread',
+            'contact',
+            'inbox',
+            'personal_inbox',
+          ])
         )
       )
 

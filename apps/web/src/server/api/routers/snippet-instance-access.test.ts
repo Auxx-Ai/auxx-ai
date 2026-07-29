@@ -139,6 +139,9 @@ vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx }))
 vi.mock('@auxx/lib/cache', () => ({
   // `grantee-schema.ts` stays real — it decides which grantee kinds are legal.
   getCachedPermissionProfiles: vi.fn(async () => []),
+  // Feeds `canonicalMailRecordId`'s def→slug resolver (plan 40 §5.1). Empty is
+  // right here: no snippet/dataset target ever resolves to a mail def.
+  getCachedResources: vi.fn(async () => []),
 }))
 
 // The `@auxx/lib/permissions` barrel reaches redis/db at import time and hangs
@@ -147,9 +150,11 @@ vi.mock('@auxx/lib/cache', () => ({
 // resolution.
 vi.mock('@auxx/lib/permissions', async () => {
   const instanceAccess = await import('@auxx/lib/permissions/capabilities/instance-access')
+  const resolve = await import('@auxx/lib/permissions/capabilities/resolve-capability-inputs')
   const types = await import('@auxx/lib/permissions/types')
   return {
     ...instanceAccess,
+    buildDefIdToSlug: resolve.buildDefIdToSlug,
     FeatureKey: types.FeatureKey,
     FeaturePermissionService: class {
       requireAccess = vi.fn(async () => undefined)

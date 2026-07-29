@@ -4,11 +4,14 @@ import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { toRecordId } from '@auxx/types/resource'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Only onCacheEvent + getCachedUserGroupIds are pulled from the cache barrel by
-// this module; mocking them keeps the heavy cache/realtime deps out of the test.
+// Only onCacheEvent + getCachedUserGroupIds + getCachedResources are pulled from
+// the cache barrel by this module; mocking them keeps the heavy cache/realtime
+// deps out of the test. `getCachedResources` feeds the mail-keyspace backstop's
+// def→slug resolver (see `mail-keyspace-backstop.test.ts` for its own coverage).
 vi.mock('../cache', () => ({
   onCacheEvent: vi.fn(async () => {}),
   getCachedUserGroupIds: vi.fn(async () => []),
+  getCachedResources: vi.fn(async () => []),
 }))
 
 // A profile grantee routes through the SAME audience sweep `grant-service.ts`
@@ -204,8 +207,41 @@ describe('resource-access cache-event emission', () => {
       ResourceGranteeType.user,
       [{ granteeId: 'u_added', permission: ResourcePermission.view }]
     )
-    const targeted = emit.mock.calls.map((c) => c[1].userId).sort()
+    // Filtered by event name, like the profile-audience case above. `RECORD` is
+    // an INBOX RecordId, and since plan 40 phase 1 `inbox` is an
+    // `INSTANCE_ACCESS_RESOURCES` key — so `setInstanceAccess` now also fires
+    // `resource-access.instance.changed`, and an unfiltered read of
+    // `emit.mock.calls` sees each grantee twice.
+    const targeted = emit.mock.calls
+      .filter((c) => c[0] === 'resource-access.changed')
+      .map((c) => c[1].userId)
+      .sort()
     expect(targeted).toEqual(['u_added', 'u_removed'])
+  })
+
+  it('also emits the INSTANCE cache event for an inbox — it is a shareable instance now', async () => {
+    // Pinned as its own case rather than folded into the filter above, because
+    // the extra emit is the point, not noise: `instanceAccess` /
+    // `governingInstanceIds` are now populated from inbox rows, so an inbox
+    // grant that did not invalidate them would leave every affected member on a
+    // stale capability blob for the full TTL. Break the
+    // `isInstanceAccessKey(entityDefinitionId)` guard in `setInstanceAccess`, or
+    // drop `inbox` from `INSTANCE_ACCESS_RESOURCES`, and this is what fails.
+    await setInstanceAccess(
+      {
+        db: fakeDb({ deleteReturning: [{ granteeId: 'u_removed' }] }),
+        organizationId: ORG,
+        userId: 'g',
+      },
+      RECORD,
+      ResourceGranteeType.user,
+      [{ granteeId: 'u_added', permission: ResourcePermission.view }]
+    )
+    const instanceEvents = emit.mock.calls
+      .filter((c) => c[0] === 'resource-access.instance.changed')
+      .map((c) => c[1].userId)
+      .sort()
+    expect(instanceEvents).toEqual(['u_added', 'u_removed'])
   })
 })
 

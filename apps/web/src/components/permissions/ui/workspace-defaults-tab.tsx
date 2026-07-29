@@ -271,4 +271,9 @@ const NOUNS: Record<InstanceAccessKey, string> = {
   agent: 'agent',
   signature: 'signature',
   snippet: 'snippet',
+  inbox: 'inbox',
+  // Listed for map totality only — the Personal inboxes collection renders
+  // empty by construction (`use-instance-resource-lists.ts`), because a personal
+  // mailbox has no workspace default to set.
+  personal_inbox: 'personal inbox',
 }

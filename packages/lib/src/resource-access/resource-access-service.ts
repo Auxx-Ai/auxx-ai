@@ -7,7 +7,8 @@ import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
-import { onCacheEvent } from '../cache'
+import { getCachedResources, onCacheEvent } from '../cache'
+import { BadRequestError } from '../errors'
 import { NotificationService } from '../notifications'
 import type { NotificationTargetIds, NotificationTargetType } from '../notifications/client'
 import {
@@ -15,6 +16,7 @@ import {
   type InstanceAccessKey,
   isInstanceAccessKey,
 } from '../permissions/capabilities/instance-access'
+import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability-inputs'
 import { satisfiesPermission } from './constants'
 import {
   grantedViaFor,
@@ -22,6 +24,7 @@ import {
   resolveResourceAccessGrantees,
   resourceAccessGranteeConditions,
 } from './grantee-resolution'
+import { isMailSharingDef } from './mail-sharing-defs'
 import type {
   AccessCheckResult,
   CheckAccessInput,
@@ -66,7 +69,7 @@ async function isOwner(ctx: ResourceAccessContext, targetUserId: string): Promis
  *
  * `granteeType: 'profile'` on ResourceAccess writes was refused here until doc
  * 19 step 9 (`assertProfileGranteeSupported`, PR #1332). The guard existed
- * because `restrictedEntityDefIds` / `restrictedInstanceIds` are built
+ * because `restrictedEntityDefIds` / `governingInstanceIds` are built
  * **grantee-agnostically** while the readers were grantee-limited, so one
  * profile row would have flipped a def to restricted org-wide with nobody able
  * to resolve a grant through it — an org-wide lockout, not a per-grantee no-op.
@@ -228,6 +231,32 @@ const INSTANCE_SHARE_NOTIFICATION_CONFIG: Record<
     noun: 'snippet',
     targetType: 'SNIPPET',
     targetIds: (id) => ({ snippetId: id }),
+  },
+  inbox: {
+    // Inboxes are `EntityInstance` rows on the `inbox` def, not a table of their
+    // own — the same shape as `signature` above, so the same caveat applies
+    // verbatim: an inbox's real name is the `inbox_name` FIELD VALUE, which is
+    // not a column and cannot be reached by the single-table select below.
+    // `EntityInstance.displayName` is the entity system's denormalized copy of
+    // the identity field, so it is the honest stand-in — and it is NULLABLE,
+    // which the `?? Untitled ${noun}` fallback below already covers. Making it
+    // exact is a FieldValue join, not another column.
+    table: schema.EntityInstance,
+    nameColumn: schema.EntityInstance.displayName,
+    noun: 'inbox',
+    targetType: 'INBOX',
+    targetIds: (id) => ({ inboxId: id }),
+  },
+  personal_inbox: {
+    // Same table, same `displayName` caveat as `inbox` above. Sharing a personal
+    // mailbox is rare (the owner's `admin` row is the normal state), but the
+    // notification wiring has to be total over `InstanceAccessKey` or the whole
+    // map stops compiling.
+    table: schema.EntityInstance,
+    nameColumn: schema.EntityInstance.displayName,
+    noun: 'inbox',
+    targetType: 'INBOX',
+    targetIds: (id) => ({ inboxId: id }),
   },
 }
 
@@ -451,7 +480,7 @@ async function emitResourceAccessTypeChanged(
 
 /**
  * Emit the narrow instance-level cache event that busts the `userCapabilities`
- * `instanceAccess` map + the org-wide `restrictedInstanceIds` set after an
+ * `instanceAccess` map + the org-wide `governingInstanceIds` set after an
  * INSTANCE-level ResourceAccess mutation whose target is an instance-access
  * resource (datasets etc., §1.5). Same user/broadcast fan-out shape as
  * {@link emitResourceAccessTypeChanged}; kept separate so generic mail-share
@@ -491,6 +520,48 @@ export async function emitResourceAccessInstanceChanged(
 }
 
 /**
+ * Keyspace backstop for the three instance write funnels (plan 40 §5.1).
+ *
+ * `ResourceAccess.entityDefinitionId` is a DUAL keyspace with no FK: mail defs
+ * are keyed by their entity SLUG (`inbox`, `thread`, `contact`) because
+ * `composeUserMailVisibility` and {@link isMailSharingDef} both test the
+ * literal, while generic record defs stay keyed by the def CUID (custom defs
+ * have no stable slug — `entityType` is null and `apiSlug` is renameable).
+ *
+ * A caller that mints a mail RecordId from the def CUID therefore writes a row
+ * that mail visibility never reads AND that skipped `assertCanManageMailSharing`
+ * + the enterprise `mailPermissions` gate, both of which key off the slug. That
+ * shipped for months through `inbox-detail.tsx` and was invisible.
+ *
+ * THROW, not normalize — deliberately:
+ *  - **Normalizing here would be a security downgrade.** The mail authorization
+ *    (`assertCanManageMailSharing` / `assertMailSharingFeature`) runs in the
+ *    ROUTER, above this funnel. Silently re-keying a CUID mail RecordId at the
+ *    write would promote an unauthorized-but-inert row into an unauthorized and
+ *    EFFECTIVE mail grant. Refusing keeps the only way to write a live mail
+ *    grant the one that also authorizes it.
+ *  - It breaks no caller: every in-repo caller of the three funnels already
+ *    passes either a slug mail key (`inbox-service.createInbox`,
+ *    `provisionPersonalInbox`) or a CUID/slug on a NON-mail def (groups,
+ *    sequences, dashboards, snippets), and the `resourceAccess` router
+ *    canonicalizes before it calls in.
+ *
+ * The resolution is scoped strictly to {@link isMailSharingDef} members —
+ * blanket normalization would break the record-capability layer, which reads
+ * these same rows in the CUID keyspace.
+ */
+async function assertCanonicalMailKey(organizationId: string, recordId: RecordId): Promise<void> {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  if (isMailSharingDef(entityDefinitionId)) return
+  const slug = buildDefIdToSlug(await getCachedResources(organizationId))(entityDefinitionId)
+  if (!isMailSharingDef(slug)) return
+  throw new BadRequestError(
+    `Mail access grants must be keyed by the "${slug}" slug, not the entity definition id ` +
+      `("${entityDefinitionId}"). Build the RecordId with toRecordId('${slug}', <id>).`
+  )
+}
+
+/**
  * Grant access to a specific entity instance.
  */
 export async function grantInstanceAccess(
@@ -498,6 +569,7 @@ export async function grantInstanceAccess(
   input: GrantInstanceAccessInput
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
+  await assertCanonicalMailKey(organizationId, input.recordId)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
   const existing = await db.query.ResourceAccess.findFirst({
     where: and(
@@ -603,6 +675,7 @@ export async function revokeInstanceAccess(
   input: RevokeInstanceAccessInput
 ): Promise<boolean> {
   const { db, organizationId } = ctx
+  await assertCanonicalMailKey(organizationId, input.recordId)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
 
   const result = await db
@@ -696,6 +769,7 @@ export async function setInstanceAccess(
   grants: Array<{ granteeId: string; permission: ResourcePermission; lens?: GrantLens | null }>
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
+  await assertCanonicalMailKey(organizationId, recordId)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   const removed = await db.transaction(async (tx: typeof db) => {

@@ -44,8 +44,7 @@ import {
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
-import { guardInboxDefaultLens } from './pre/inbox-lens-guard'
-import { guardInboxPersonalFields } from './pre/inbox-personal-guard'
+import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
 import { guardQuoteConvertedDelete } from './pre/quote-delete-guard'
 import { guardQuoteDraftReturnWithPaidDeposit } from './pre/quote-deposit-guard'
@@ -105,7 +104,15 @@ export function registerAllHooks(): void {
   // (form edits, Kopilot record tools, workflow CRUD) bypasses InboxService
   // and emitted no cache events — any inbox field write now busts
   // `org:inboxes`, and lens changes recompute every member's visibility.
+  //
+  // Registered by apiSlug, so the `personal_inbox` def (plan 40 §3, apiSlug
+  // `personal-inboxes`) needs its own line — personal mailboxes feed the same
+  // `org:inboxes` cache and the same per-member `userMailVisibility`. Only this
+  // POST hook is shared: the `inbox_default_lens` PRE hook below is deliberately
+  // NOT registered for `personal-inboxes`, because the new def has no lens field
+  // (personal inboxes have no floor — 40a §1.2).
   registerEntityFieldChangeHooks('inboxes', [invalidateInboxCacheOnFieldChange])
+  registerEntityFieldChangeHooks('personal-inboxes', [invalidateInboxCacheOnFieldChange])
 
   // Dispatch (plans/dispatch §H.1): auto-create the unscheduled WorkOrderVisit row the
   // instant a work order is created, on every create path. Keyed off the first write of
@@ -193,15 +200,26 @@ export function registerAllHooks(): void {
   // - title / description / emoji / color / parent: reject edits when the
   //   record's is_system_tag is true.
   // - pre-delete: reject deletes of system tags.
-  // Inbox floor wall (mail-permissions §7.1) — only managers may change the
-  // floor, and sub-`full` floors are enterprise-gated. This hook is the
-  // actual enforcement; the inbox form / InboxService are just ergonomics.
-  registerFieldPreHooks('inboxes', 'inbox_default_lens', [guardInboxDefaultLens])
-
-  // Personal-inbox marker wall (§11) — system paths stamp these; user writes
-  // are admin-only (claim/convert).
-  registerFieldPreHooks('inboxes', 'inbox_is_personal', [guardInboxPersonalFields])
-  registerFieldPreHooks('inboxes', 'inbox_owner_user_id', [guardInboxPersonalFields])
+  // Personal-inbox OWNER wall (§11) — system paths stamp it; user writes are
+  // org-admin only. Registered on BOTH defs: `inbox_owner_user_id` survives on
+  // `personal_inbox` (40a §1.2), and the fieldValue router's
+  // `assertAdminInstance` is not a substitute there — the mailbox's owner holds
+  // the `admin` row by construction, so that gate passes for exactly the person
+  // this wall stops.
+  //
+  // Plan 40 phase 4 removed two sibling registrations here:
+  //  - `inbox_is_personal` — the field is gone; personal-ness is `personal_inbox`
+  //    def membership, which no field write can flip.
+  //  - `inbox_default_lens` (`guardInboxDefaultLens`) — the field is gone; the
+  //    floor is a `role:org_member` row and its two gates travelled with the
+  //    write (`inbox.setAccessFloor` → `requireInboxManageAccess`, and
+  //    `assertInboxFloorFeature` for the Enterprise sub-`full` paywall). That
+  //    hook's `hasAnyManager` carve-out existed because `createInbox` wrote the
+  //    floor BEFORE granting the creator their Manager row; `createInbox` now
+  //    writes the floor row AFTER `setInstanceAccess`, so the ordering problem
+  //    is structural rather than papered over by a guard exemption.
+  registerFieldPreHooks('inboxes', 'inbox_owner_user_id', [guardInboxOwnerField])
+  registerFieldPreHooks('personal-inboxes', 'inbox_owner_user_id', [guardInboxOwnerField])
 
   // Return-to-draft wall (money MP2 §B.10) — `rejectManualLifecycleStatus`
   // (`resources/hooks/quote-hooks.ts`) is dead for real client writes to

@@ -38,7 +38,7 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 const BASE_URL = `/app/settings/custom-fields`
 
 /** Entity types that shouldn't appear in the custom fields list */
-const HIDDEN_ENTITY_TYPES = ['signature', 'inbox', 'entity_group', 'tag']
+const HIDDEN_ENTITY_TYPES = ['signature', 'inbox', 'personal_inbox', 'entity_group', 'tag']
 
 export default function CustomFieldsPage() {
   // Reachable by any def-admin (not just OWNER/ADMIN) — the list is filtered to

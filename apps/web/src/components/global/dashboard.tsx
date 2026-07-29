@@ -112,7 +112,16 @@ export const Dashboard = ({
         const droppedThreadIds: string[] = activeData.draggedThreadIds ?? []
         const targetInboxId: string = overData.inboxId
         if (droppedThreadIds.length > 0 && targetInboxId) {
-          // Convert raw inbox ID to RecordId format for tRPC schema validation
+          // Convert raw inbox ID to RecordId format for tRPC schema validation.
+          //
+          // `'inbox'` is correct and verified (plan 40a §5.1): the only
+          // `shared-inbox-target` droppable is `SharedInboxesSection`
+          // (`sidebar/shared-inbox-group.tsx`), which is fed exclusively by
+          // `use-mail-sidebar`'s `processedInboxes` — filtered on `!isPersonal`.
+          // The personal group (`sidebar/personal-mail-group.tsx`) registers no
+          // droppable at all, so a personal mailbox can never be the target and
+          // shared mailboxes always live on the `inbox` definition. If a
+          // personal drop target is ever added, this must resolve the def.
           const inboxRecordId = toRecordId('inbox', targetInboxId)
           // Use optimistic update - store updates immediately
           updateBulk(droppedThreadIds, { inboxId: inboxRecordId })

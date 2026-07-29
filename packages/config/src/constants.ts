@@ -100,6 +100,7 @@ export const RESERVED_API_SLUGS = [
   'dataset',
   'user',
   'inbox',
+  'personal_inbox',
   'participant',
   'file',
   'shopify',
@@ -114,6 +115,9 @@ export const RESERVED_API_SLUGS = [
   'datasets',
   'users',
   'inboxes',
+  // Plan 40 §3 — the seeded `personal_inbox` def owns `personal-inboxes`; a
+  // custom def claiming either form would shadow it in every apiSlug lookup.
+  'personal-inboxes',
   'participants',
   'files',
   'kbs',

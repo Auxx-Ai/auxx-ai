@@ -27,6 +27,10 @@ export async function assertSharedConnectInbox(
   if (!inbox || inbox.organizationId !== organizationId) {
     throw new BadRequestError('Inbox not found in this organization')
   }
+  // SHARED-ONLY. `isPersonal` is def-derived (plan 40 §3.4): `getInboxById`
+  // resolves the instance's actual definition, so this rejects a
+  // `personal_inbox` instance after data migration 060 and the legacy
+  // `inbox_is_personal` marker before it — no def literal needed here.
   if (inbox.isPersonal) {
     throw new BadRequestError('A shared channel cannot be connected to a personal inbox')
   }

@@ -255,6 +255,33 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
   })
 
   /**
+   * The 2026-07-29 plan 40 amendment, held to the same standard as the two
+   * above — and it is the case where the derivation matters most, because
+   * `Area.inboxes` is the first PARTIAL ladder to be added this way.
+   *
+   * The area did not exist when the fixture was captured, and no scenario names
+   * it, so every scenario gained one `areaLevels` entry equal to its policy's
+   * `areas.default` plus whatever keys that level implies. But the ladder has
+   * only Read and Full rungs — there is no `Edit` — so a recorded level of 2
+   * implies `inboxes.view` and NOTHING ELSE. A naive `rungs.slice(0, level)`
+   * amendment would have invented an `inboxes.edit` that does not exist, which
+   * is precisely what this re-derivation catches.
+   */
+  it('carries exactly the inboxes keys its recorded area level implies', () => {
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      const level = scenario.composed.areaLevels.inboxes ?? 0
+      const expected = [
+        // Level.Read (1) and above → the view rung. Level.Edit (2) adds nothing:
+        // the ladder skips it.
+        ...(level >= 1 ? [PermissionKey.inboxesView] : []),
+        ...(level >= 3 ? [PermissionKey.inboxesManage] : []),
+      ]
+      const actual = scenario.composed.keys.filter((key) => key.startsWith('inboxes.')).sort()
+      expect(actual, name).toEqual([...expected].sort())
+    }
+  })
+
+  /**
    * The other half of the plan 36 amendment, which is NOT derivable from a rung
    * ladder: `snippet` left `NON_RECORD_DEF_SLUGS` (§7.6), so the recorded
    * `defs.snippet` answers stopped coming from the mail-infra bypass — which

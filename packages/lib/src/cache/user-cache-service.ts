@@ -190,6 +190,20 @@ export class UserCacheService {
 
   /**
    * Invalidate and recompute specific keys for a user.
+   *
+   * **Two phases, and the split is load-bearing.** EVERY key in the batch is
+   * deleted (local + Redis) before ANY of them recomputes, because user providers
+   * read each other: `userMailVisibility` composes from `userCapabilities` (plan
+   * 40 §4.2/§4.4). Interleaving delete-and-recompute per key — which is what a
+   * single `Promise.all` over "delete then recompute" did — left a window where
+   * the mail provider's read-through could still hit the sibling's not-yet-deleted
+   * Redis entry and pin a STALE capability blob into the fresh mail blob, for the
+   * full ONE_DAY TTL. `Promise.all` gives no ordering, so declaring the keys in
+   * dependency order in `INVALIDATION_GRAPH` would not have fixed it either.
+   *
+   * With the delete phase completed first, a dependency read is guaranteed to miss
+   * and recompute — so read-through, not ordering, is what makes the graph safe,
+   * and a new inter-provider dependency needs no scheduling work.
    */
   async invalidateAndRecompute(
     userId: string,
@@ -198,12 +212,11 @@ export class UserCacheService {
   ): Promise<void> {
     const redis = await this.getRedis()
 
+    // Phase 1 — delete everything in the batch.
     await Promise.all(
       keys.map(async (keyName) => {
         const sid = this.scopeId(userId, keyName, orgId)
-        const lk = this.localKey(keyName, sid)
-
-        this.localCache.delete(lk)
+        this.localCache.delete(this.localKey(keyName, sid))
 
         if (redis) {
           try {
@@ -213,15 +226,20 @@ export class UserCacheService {
             // Ignore
           }
         }
+      })
+    )
 
-        if (this.providers.has(keyName)) {
-          try {
-            await this.recompute(userId, keyName, orgId)
-          } catch (error) {
-            logger.warn(`Recompute failed for ${keyName}:${userId}`, {
-              error: error instanceof Error ? error.message : String(error),
-            })
-          }
+    // Phase 2 — recompute. Any provider that reads a sibling key now read-throughs
+    // to a freshly computed value rather than a surviving stale one.
+    await Promise.all(
+      keys.map(async (keyName) => {
+        if (!this.providers.has(keyName)) return
+        try {
+          await this.recompute(userId, keyName, orgId)
+        } catch (error) {
+          logger.warn(`Recompute failed for ${keyName}:${userId}`, {
+            error: error instanceof Error ? error.message : String(error),
+          })
         }
       })
     )

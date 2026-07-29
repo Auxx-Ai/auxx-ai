@@ -44,6 +44,10 @@ const { granteeAccess, save, defAccess, instanceRows } = vi.hoisted(() => ({
       agent: { items: [], isLoading: false, truncated: false },
       signature: { items: [], isLoading: false, truncated: false },
       snippet: { items: [], isLoading: false, truncated: false },
+      // `inbox` / `personal_inbox` joined in plan 40 phase 1 — see the note
+      // above; the Inboxes area row nests instance rows the same way.
+      inbox: { items: [], isLoading: false, truncated: false },
+      personal_inbox: { items: [], isLoading: false, truncated: false },
     },
     rowsByKey: {
       dataset: [],
@@ -53,6 +57,8 @@ const { granteeAccess, save, defAccess, instanceRows } = vi.hoisted(() => ({
       agent: [],
       signature: [],
       snippet: [],
+      inbox: [],
+      personal_inbox: [],
     },
     setGrant: vi.fn(),
   },

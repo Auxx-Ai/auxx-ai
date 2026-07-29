@@ -103,7 +103,42 @@ export const USER_CACHE_KEY_CONFIG: Record<
   userFavorites: { prefix: 'user:favorites', ttlSeconds: ONE_DAY },
   // v2: inboxLens values normalized to scalar lenses (cached entries built
   // from the pre-v5 `inboxes` shape carried SINGLE_SELECT arrays).
-  userMailVisibility: { prefix: 'user:mail-visibility:v2', ttlSeconds: ONE_DAY },
+  // v3: mail floor switched from a FieldValue to ResourceAccess rows (plan 40
+  // phase 2). BOTH halves of the bump rule are tripped, which is why it is
+  // unconditional rather than a judgement call:
+  //   1. SHAPE — the blob gains `isMailAdmin` (§4.4), the `Area.inboxes === Full`
+  //      mail-operations flag that replaces `isAdmin` as the key for the personal-
+  //      mailbox `metadata` floor.
+  //   2. INPUTS — `inboxLens` is now composed from `role:org_member` /user/group/
+  //      profile rows plus the `Area.inboxes` fallback, and no longer reads
+  //      `inbox_default_lens` at all. A v2 blob was composed from the FieldValue
+  //      and carries no memory of which inboxes the migration's rows govern.
+  // WHICH WAY A STALE BLOB FAILS — VERIFIED, not asserted, by reading the three
+  // consumers rather than reasoning about the writer. A v2 blob deserialized by
+  // v3 code has `isMailAdmin === undefined`, and `inboxLens` populated from the
+  // OLD floor source:
+  //   - `isMailAdmin` is falsy ⇒ `grantScopeParts` omits the null-`inboxId`
+  //     triage branch, and no personal-mailbox `metadata` floor is present
+  //     (it is composed INTO `inboxLens`, so a v2 blob simply lacks the entry).
+  //     Strictly LESS reach. Fail-CLOSED.
+  //   - `inboxLens` from `inbox_default_lens`: for the 32-of-34 dev inboxes at
+  //     `defaultLens: 'full'` it holds `full`, which is exactly what the v3
+  //     fallback computes for an open rung — identical. For a `subject`/`none`
+  //     inbox it holds the same or a LOWER lens than v3 would. It cannot hold a
+  //     HIGHER one, because migration 060 derives the rows FROM that same field.
+  //     Fail-CLOSED.
+  // So the stale direction is lost access, not lost restriction — the safe one.
+  // The genuinely dangerous stale blob is the CAPABILITIES one (`user:capabilities`
+  // below), and that is why `permission-profile.changed` / `permission-grant.changed`
+  // gained a `userMailVisibility` edge in `invalidation-graph.ts` in this same
+  // change: without it a profile downgrade leaves a mail blob composed against the
+  // OLD area level for the full ONE_DAY TTL, and THAT fails OPEN — the member keeps
+  // reading mail their new profile denies. The version bump cannot help there; only
+  // the graph edge can.
+  // Do NOT re-bump `user:capabilities` (already v14 for this slice) or
+  // `org:inboxes` (already v6). `org:mail-grant-index` is deliberately unbumped —
+  // migration 060 invalidates it per org instead.
+  userMailVisibility: { prefix: 'user:mail-visibility:v3', ttlSeconds: ONE_DAY },
   // v2: instance-access slice (#1313) added the `instanceAccess` field + the
   // `datasets` L2 area/keys. Pre-#1313 blobs lack the datasets area entirely, so
   // their expanded key set is missing `datasets.*` (even admins 403 on
@@ -203,7 +238,56 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // branch itself doing the denying (`entity-access.ts:412`), not an ordering
   // accident in `areaLevelFromKeys` the way v12's was. Nothing about the rung
   // walk or the order of the checks has to hold for this to stay safe.
+  // v14: mail instance access (plan 40 §8). ONE bump covering both halves of the
+  // same slice, exactly as v13 did:
+  //   1. `Area.inboxes` with two new `PermissionKey`s (`inboxes.view`,
+  //      `inboxes.manage`), so a v13 blob's `keys` CONTENT is wrong.
+  //   2. `inbox` + `personal_inbox` joined `INSTANCE_ACCESS_RESOURCES`, so the
+  //      composed instance shape is wrong too: a v13 blob's instance query ran
+  //      with both keys absent from `INSTANCE_ACCESS_KEYS`, so it carries no
+  //      inbox rows in `governingInstanceIds` / `instanceAccess` /
+  //      `instanceDerivedKeys` at all and an explicit inbox grant is invisible
+  //      to it.
+  // WHICH WAY A STALE BLOB FAILS — verified against `areaLevelFromKeys`, which
+  // walks an area's rungs in ascending order and `break`s at the FIRST unheld
+  // rung: a v13 blob holds neither `inboxes.view` nor `inboxes.manage`, so the
+  // walk breaks on rung 1 and `Area.inboxes` composes to `None`. With
+  // `inbox` at `baselineAtCreate: false` that makes `instanceFallbackLevel`
+  // return `undefined` for every row-less shared inbox — i.e. every shared inbox
+  // DENIED, and (2) means no explicit row can rescue it either.
+  // Fail-CLOSED, but this is the most VISIBLE possible failure: mail goes dark
+  // org-wide for up to the ONE_DAY TTL. The deploy-time flush
+  // (`packages/lib/scripts/flush-user-capabilities-cache.ts`) is mandatory, not
+  // advisory — and note that a flush alone is NOT a substitute for the bump,
+  // because a draining old instance repopulates the same keyspace during a
+  // rollout, which is the entire reason `vN` exists.
+  // The bump itself is INERT on landing: plan 40 phase 1 adds the registry
+  // entries only — nothing reads `inboxes.*` or the inbox instance rows until
+  // phase 2 switches `composeUserMailVisibility`'s floor source. `user:mail-
+  // visibility` above is deliberately NOT bumped here; that one belongs to
+  // phase 2 and must land WITH the blob's shape change, not ahead of it.
+  // NOT BUMPED for the 2026-07-29 `governingInstanceIds` slice — recorded so the
+  // next reader does not re-litigate it. That change re-semanticized an ORG key
+  // (`org:restricted-instance-ids` → `org:governing-instance-ids`, see
+  // `org-cache-keys.ts`) and renamed the field on the WIRE snapshot
+  // (`ClientCapabilities`), which looks like it should land here — it does not,
+  // and the reason is structural rather than a judgement call:
+  //   - `UserCapabilities` (the shape THIS key caches — see
+  //     `compose-user-capabilities.ts`) is `{ keys, instanceDerivedKeys,
+  //     defAccess, instanceAccess }`. It has never carried the instance-governing
+  //     set; `getCapabilities` reads that from the ORG cache and passes it to the
+  //     `CapabilitySet` constructor separately.
+  //   - Not one of those four fields changes meaning, content, or composition.
+  //     A v14 blob written by the old code and read by the new (or the reverse)
+  //     resolves identically — which is the real bump test, not "did some type
+  //     nearby change?".
+  //   - `ClientCapabilities` is the wire shape, assembled fresh per request
+  //     (`dehydration/service.ts` composes it from `getCapabilities()`; the
+  //     `permissions.myCapabilities` refetch recomputes it). It is never stored
+  //     in Redis, so the field rename cannot strand a blob.
+  // Spending a version here would have cost every user a recompute and bought
+  // nothing.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v13', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v14', ttlSeconds: ONE_DAY },
 }

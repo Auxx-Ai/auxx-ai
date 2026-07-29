@@ -64,7 +64,14 @@ vi.mock('@auxx/types/resource', async (importOriginal) => {
   }
 })
 
-vi.mock('@auxx/logger', () => ({
+// `_registerRunLogWriter` is NOT optional here: `../cache`'s barrel re-exports
+// the workflow-app cache queries, which pull `workflow-engine` in, whose
+// side-effect `@auxx/logger/run-log` import calls it at module scope. A mock
+// without it makes the whole suite fail to collect — "no tests", not a
+// per-test failure. Prefer `importOriginal` over listing exports by hand so the
+// next logger addition doesn't repeat this.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),

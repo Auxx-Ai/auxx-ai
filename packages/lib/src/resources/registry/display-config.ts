@@ -168,6 +168,17 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfi
     orgScopingStrategy: 'direct',
   },
 
+  // Plan 40: a personal mailbox is its own EntityDefinition. Same display shape
+  // as `inbox`, minus the `email` references — neither registry has such a field.
+  personal_inbox: {
+    identifierField: 'id',
+    primaryDisplayFieldId: 'name',
+    searchFields: ['name'],
+    defaultSortField: 'createdAt',
+    defaultSortDirection: 'desc',
+    orgScopingStrategy: 'direct',
+  },
+
   message: {
     identifierField: 'id',
     primaryDisplayFieldId: 'subject',

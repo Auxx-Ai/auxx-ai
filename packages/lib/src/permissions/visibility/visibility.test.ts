@@ -15,6 +15,7 @@ function vis(over: Partial<UserMailVisibility> = {}): UserMailVisibility {
     userId: 'u1',
     role: 'USER',
     isAdmin: false,
+    isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
     threadGrants: {},
@@ -70,40 +71,62 @@ describe('normalizeLens', () => {
   })
 })
 
-describe('effectiveLens — role framing', () => {
-  it('admin sees full on a normal inbox', () => {
-    expect(effectiveLens(vis({ isAdmin: true }), thread())).toBe('full')
+// Plan 40 §4.2 deleted BOTH `isAdmin` short-circuits from the evaluator. Rank is
+// no longer an input: an admin's reach arrives entirely through the composed
+// `inboxLens` (the `Area.inboxes` fallback + their rows + §4.4's mail-admin
+// `metadata` floor on others' personal mailboxes), which is what
+// `composeUserMailVisibility` builds. These tests pin that the evaluator itself
+// stays rank-blind.
+describe('effectiveLens — rank is not an input (plan 40 §4.2)', () => {
+  it('an admin flag alone confers NOTHING on a normal inbox', () => {
+    expect(effectiveLens(vis({ isAdmin: true }), thread())).toBe('none')
   })
 
-  it('admin sees full on a null-inbox thread', () => {
-    expect(effectiveLens(vis({ isAdmin: true }), thread({ inboxId: null }))).toBe('full')
+  it('an admin flag alone confers NOTHING on a null-inbox thread', () => {
+    expect(effectiveLens(vis({ isAdmin: true }), thread({ inboxId: null }))).toBe('none')
   })
 
-  it("admin is capped at metadata on another user's personal inbox", () => {
-    const v = vis({ isAdmin: true, personalInboxIds: { [PERSONAL]: true } })
+  it('an admin reads a shared inbox through the composed floor', () => {
+    // What `composeUserMailVisibility` produces for a default admin: the
+    // `Area.inboxes` fallback on a row-less shared inbox.
+    const v = vis({ isAdmin: true, isMailAdmin: true, inboxLens: { [INBOX]: 'full' } })
+    expect(effectiveLens(v, thread())).toBe('full')
+  })
+
+  it("a mail admin is capped at metadata on another user's personal inbox", () => {
+    // The §4.4 floor is composed INTO `inboxLens`, so the evaluator needs no branch.
+    const v = vis({
+      isAdmin: true,
+      isMailAdmin: true,
+      personalInboxIds: { [PERSONAL]: true },
+      inboxLens: { [PERSONAL]: 'metadata' },
+    })
     expect(effectiveLens(v, thread({ inboxId: PERSONAL }))).toBe('metadata')
   })
 
-  it('admin on a personal inbox is raised by an explicit grant', () => {
+  it('a mail admin on a personal inbox is raised by an explicit thread grant', () => {
     const v = vis({
       isAdmin: true,
+      isMailAdmin: true,
       personalInboxIds: { [PERSONAL]: true },
+      inboxLens: { [PERSONAL]: 'metadata' },
       threadGrants: { t1: 'subject' },
     })
     expect(effectiveLens(v, thread({ inboxId: PERSONAL }))).toBe('subject')
   })
 
-  it('owner of a personal inbox resolves to full via their Manager inbox floor', () => {
-    const v = vis({
-      isAdmin: true,
-      personalInboxIds: { [PERSONAL]: true },
-      inboxLens: { [PERSONAL]: 'full' },
-    })
+  it('the owner of a personal inbox resolves to full via their Manager inbox floor', () => {
+    const v = vis({ inboxLens: { [PERSONAL]: 'full' } })
     expect(effectiveLens(v, thread({ inboxId: PERSONAL }))).toBe('full')
   })
 
-  it('admin assigned to a personal thread gets full', () => {
-    const v = vis({ userId: 'u1', isAdmin: true, personalInboxIds: { [PERSONAL]: true } })
+  it('assignment still beats a metadata personal floor (ungated collaboration)', () => {
+    const v = vis({
+      userId: 'u1',
+      isMailAdmin: true,
+      personalInboxIds: { [PERSONAL]: true },
+      inboxLens: { [PERSONAL]: 'metadata' },
+    })
     expect(effectiveLens(v, thread({ inboxId: PERSONAL, assigneeId: 'u1' }))).toBe('full')
   })
 })
@@ -319,13 +342,21 @@ describe('redactMessagePatch (realtime §6.2)', () => {
 })
 
 describe('inboxLensFor', () => {
-  it('admin short-circuits to full on org inboxes', () => {
-    expect(inboxLensFor(vis({ isAdmin: true }), INBOX)).toBe('full')
+  it('has no admin short-circuit — it is a plain floor read (plan 40 §4.2)', () => {
+    expect(inboxLensFor(vis({ isAdmin: true, isMailAdmin: true }), INBOX)).toBe('none')
   })
 
-  it("admin does NOT short-circuit on another user's personal inbox", () => {
-    const v = vis({ isAdmin: true, personalInboxIds: { [PERSONAL]: true } })
-    expect(inboxLensFor(v, PERSONAL)).toBe('none')
+  it('agrees with effectiveLens on a mail admin’s personal-mailbox cap', () => {
+    // These two used to DISAGREE: `inboxLensFor` returned `none` while
+    // `effectiveLens` returned `metadata`. Both now read the composed floor.
+    const v = vis({
+      isAdmin: true,
+      isMailAdmin: true,
+      personalInboxIds: { [PERSONAL]: true },
+      inboxLens: { [PERSONAL]: 'metadata' },
+    })
+    expect(inboxLensFor(v, PERSONAL)).toBe('metadata')
+    expect(effectiveLens(v, thread({ inboxId: PERSONAL }))).toBe('metadata')
   })
 
   it('member reads the composed inbox floor, none when absent', () => {

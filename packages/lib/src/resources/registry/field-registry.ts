@@ -19,6 +19,7 @@ import { MESSAGE_FIELDS } from './resources/message-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { PAYMENT_FIELDS } from './resources/payment-fields'
+import { PERSONAL_INBOX_FIELDS } from './resources/personal-inbox-fields'
 import { QUOTE_FIELDS } from './resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
@@ -104,6 +105,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   contact: CONTACT_FIELDS,
   user: USER_FIELDS,
   inbox: INBOX_FIELDS,
+  personal_inbox: PERSONAL_INBOX_FIELDS,
   participant: PARTICIPANT_FIELDS,
   thread: THREAD_FIELDS,
   message: MESSAGE_FIELDS,

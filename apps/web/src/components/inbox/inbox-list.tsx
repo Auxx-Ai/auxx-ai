@@ -11,7 +11,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { useResource } from '~/components/resources'
 import { useInboxes } from '~/components/threads/hooks'
-import type { InboxItem } from '~/components/threads/hooks/use-inbox'
+import { type InboxItem, invalidateInboxRecordLists } from '~/components/threads/hooks/use-inbox'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { useRequireCapability } from '~/providers/capabilities-provider'
@@ -51,8 +51,7 @@ export function InboxList() {
 
   const deleteInbox = api.inbox.delete.useMutation({
     onSuccess: () => {
-      utils.inbox.getAll.invalidate()
-      utils.record.listAll.invalidate({ entityDefinitionId: 'inbox' })
+      invalidateInboxRecordLists(utils)
       refresh()
     },
     onError: (error) => {

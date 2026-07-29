@@ -165,7 +165,11 @@ export const PROFILE_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = area
 export const AGENT_POLICY_AREA_GROUPS: Array<{ group: string; areas: Area[] }> = areaGroups({
   excludeAdminOnly: false,
   excludeWorkerOnly: true,
-  exclude: [Area.agents],
+  // `Area.inboxes` is excluded for the reason spelled out on
+  // {@link AgentPolicyInstanceKey}: an agent's mail authority lives in the lens
+  // layer, which reads no capability blob at all, so a rung here would configure
+  // nothing.
+  exclude: [Area.agents, Area.inboxes],
 })
 
 /** Every area the agent policy renders — also the keyspace the clamp preview checks. */
@@ -174,7 +178,19 @@ export const AGENT_POLICY_AREAS: readonly Area[] = AGENT_POLICY_AREA_GROUPS.flat
 /**
  * The instance-access resource types an AGENT policy can express per-instance
  * rules for — every one except `agent` itself, for the reason on
- * {@link AGENT_POLICY_AREA_GROUPS}.
+ * {@link AGENT_POLICY_AREA_GROUPS}, and except the two MAIL keys.
+ *
+ * **`inbox` / `personal_inbox` are excluded by name** (plan 40 phase 1). They
+ * joined `INSTANCE_ACCESS_RESOURCES` 2026-07-29, and because
+ * {@link AREA_TO_INSTANCE_KEY} is derived, admitting them would auto-grow
+ * "which inboxes may this agent reach" rows with no code change and no failing
+ * test — the same phantom-control failure `agent` is excluded for. Nothing reads
+ * them: an agent's mail access is decided entirely in the LENS layer, and plan
+ * 40 §2 is explicit that ingest, automation, sequences and workflows run as the
+ * system and consult no member OR agent capabilities. Unlike `signature` /
+ * `snippet` below, there is no owed sweep that would give these rows a reader.
+ * Re-admitting them means first building the thing they would claim to
+ * configure.
  *
  * This is a TYPE-level exclusion on purpose. Dropping `Area.agents` from the
  * groups above stops the rows rendering today, but nothing would stop a future
@@ -184,7 +200,10 @@ export const AGENT_POLICY_AREAS: readonly Area[] = AGENT_POLICY_AREA_GROUPS.flat
  * error while a genuinely NEW instance-access resource still breaks the build
  * the way an exhaustive map should.
  */
-export type AgentPolicyInstanceKey = Exclude<InstanceAccessKey, 'agent'>
+export type AgentPolicyInstanceKey = Exclude<
+  InstanceAccessKey,
+  'agent' | 'inbox' | 'personal_inbox'
+>
 
 /**
  * The runtime companion of {@link AgentPolicyInstanceKey}, for the surfaces that

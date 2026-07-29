@@ -53,9 +53,17 @@ interface MemberOpts {
     permission: ResourcePermission
   }>
   /**
-   * The org-wide "has ≥1 instance row for anyone" set
-   * (`restrictedInstanceIdsProvider`). Defaults to the instances in `rows`;
-   * pass it explicitly for a member who is not a grantee of a row that exists.
+   * The org-wide ROW-GOVERNED set (`governingInstanceIdsProvider`): instances
+   * carrying a `role:org_member` baseline at any permission, or any `none`
+   * marker. Defaults to the instances in `rows`, which is right for every case
+   * below that authors a baseline or a restriction; pass it explicitly for a
+   * member who is not a grantee of a governing row that exists.
+   *
+   * **It is NOT "has ≥1 row for anyone" any more** (2026-07-29): sharing an
+   * instance no longer restricts it, and a lone creator `user @ admin` row does
+   * not govern. See `instance-sharing-vs-restriction.test.ts`, which builds its
+   * set from real rows through the shared `isGoverningInstanceRow` predicate
+   * rather than naming ids the way this older harness does.
    */
   restrictedInstances?: string[]
 }
@@ -154,8 +162,9 @@ describe('workspace baseline set to Restricted (plan 24 §B.4)', () => {
   })
 
   it('a member who is not a grantee is denied even though the row set is not empty', () => {
-    // The lockdown row exists org-wide (so the instance is in
-    // `restrictedInstanceIds`) but this member's grantee union returns nothing
+    // The lockdown row exists org-wide (a `role:org_member @ none`, so the
+    // instance is in `governingInstanceIds`) but this member's grantee union
+    // returns nothing
     // for it — absent entry must read as denial, never as "unrestricted".
     const m = member({ rows: [], restrictedInstances: ['ds_locked'] })
     expect(levelFor(m, 'dataset', 'ds_locked')).toBeUndefined()
@@ -314,8 +323,8 @@ describe('OWNER regression (plan 24 §A.4)', () => {
     // Why removing the bypass is safe rather than a self-lock: every
     // `baselineAtCreate: true` resource writes its author an `admin` row at
     // create, `composeUserCapabilities`'s OWNER branch returns `instanceAccess`
-    // unchanged, and `restrictedInstanceIds` is org-wide. So an owner reaches
-    // their OWN content through the ordinary row path.
+    // unchanged, and own-row-first reads it before anything else. So an owner
+    // reaches their OWN content through the ordinary row path.
     const owner = member({
       role: 'OWNER',
       rows: [
@@ -502,6 +511,14 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
       // by construction (`instanceFallbackLevel` returns `undefined`).
       signature: [PermissionKey.signaturesView],
       snippet: [PermissionKey.snippetsView],
+      // `inbox` / `personal_inbox` joined in plan 40 phase 1. They are the first
+      // pair of keys to SHARE an area, so both derive the same key — the map is
+      // keyed by RESOURCE, not by area, and that is what keeps an inbox share
+      // from conferring anything a personal-mailbox share would not, and vice
+      // versa. `Area.inboxes` has only Read and Full rungs (no `Edit`), so the
+      // Read rung is `inboxes.view` for both.
+      inbox: [PermissionKey.inboxesView],
+      personal_inbox: [PermissionKey.inboxesView],
     })
   })
 })
@@ -555,13 +572,24 @@ describe('private (`baselineAtCreate: true`) resources — signatures + snippets
   })
 
   it.each(PRIVATE)('%s: a row that exists for SOMEONE ELSE reads as denial', (key, _area, id) => {
-    // The other branch of `effectiveInstanceLevel`: the instance IS in the
-    // org-wide `restrictedInstanceIds` set (its owner holds an `admin` row), but
-    // this member's grantee union returns nothing for it. `undefined` from the
-    // row lookup must deny, never fall through to the area.
-    const m = member({ rows: [], restrictedInstances: [id] })
-    expect(levelFor(m, key, id)).toBeUndefined()
-    expect(m.server.canViewInstance(key, id)).toBe(false)
+    // Both denial paths, because the 2026-07-29 narrowing changed WHICH one runs
+    // and the old fixture claimed a set membership the provider can no longer
+    // produce ("the instance is in the set because its owner holds an `admin`
+    // row" — a lone creator row does not govern).
+    //
+    // Path 1, the reachable governing case: somebody authored a restriction, so
+    // the org-wide set denies a member whose grantee union returns nothing.
+    const governed = member({ rows: [], restrictedInstances: [id] })
+    expect(levelFor(governed, key, id)).toBeUndefined()
+    expect(governed.server.canViewInstance(key, id)).toBe(false)
+
+    // Path 2, what an owner-only `admin` row actually looks like now: NOT in the
+    // governing set, so the denial comes from `baselineAtCreate: true` — no row
+    // of my own ⇒ `instanceFallbackLevel` returns `undefined`. Same answer, and
+    // it must stay the same answer, which is why both are pinned.
+    const unshared = member({ rows: [], restrictedInstances: [] })
+    expect(levelFor(unshared, key, id)).toBeUndefined()
+    expect(unshared.server.canViewInstance(key, id)).toBe(false)
   })
 
   it.each(PRIVATE)('%s: an explicit row beats an area shut to None (§2.1)', (key, area) => {

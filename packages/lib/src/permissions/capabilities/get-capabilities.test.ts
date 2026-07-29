@@ -28,7 +28,7 @@ vi.mock('../../cache', () => ({
   getCachedUserCapabilities: vi.fn(async () => userCapabilities),
   getCachedResources: vi.fn(async () => resources),
   getCachedRestrictedEntityDefIds: vi.fn(async () => restrictedDefIds),
-  getCachedRestrictedInstanceIds: vi.fn(async () => [] as string[]),
+  getCachedGoverningInstanceIds: vi.fn(async () => [] as string[]),
   getOrgCache: () => ({
     get: vi.fn(async () => ({ user_1: { role: 'USER', seatType: 'full' } })),
   }),

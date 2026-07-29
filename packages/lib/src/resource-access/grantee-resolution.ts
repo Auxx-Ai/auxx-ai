@@ -15,7 +15,7 @@ import type { CachedPermissionProfile } from '../permissions/profiles/types'
  * (`checkAccess`, `checkTypeAccess`, `getUserAccessibleInstances`,
  * `computeUserMailVisibility`) plus a ternary in the reverse mail index — and
  * three of them had drifted. That mattered far more than duplication normally
- * does: `restrictedEntityDefIds` / `restrictedInstanceIds` build the restricted
+ * does: `restrictedEntityDefIds` / `governingInstanceIds` build the restricted
  * set **grantee-agnostically**, so a grantee kind a reader cannot resolve does
  * not fail "closed for that grantee" — it flips the definition to restricted for
  * the whole org while granting nobody, i.e. an org-wide lockout.

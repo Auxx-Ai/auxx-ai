@@ -75,6 +75,12 @@ export enum PermissionKey {
   // channels (mail + channel infrastructure — created 2026-07-27, plan 21 §6 Option A)
   channelsManage = 'channels.manage',
 
+  // inboxes (instance-access resource — per-inbox ResourceAccess grants, plan 40
+  // §1.1). TWO rungs only: there is no thread AUTHORITY axis, so there is
+  // nothing to express between "work this inbox" and "manage this inbox".
+  inboxesView = 'inboxes.view',
+  inboxesManage = 'inboxes.manage',
+
   // signatures (instance-access resource — per-signature ResourceAccess grants, plan 36 §2.1)
   signaturesView = 'signatures.view',
   signaturesEdit = 'signatures.edit',
@@ -388,6 +394,20 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Channels',
   },
 
+  // ── Inboxes ──
+  {
+    key: PermissionKey.inboxesView,
+    label: 'Use Mail',
+    description: 'Open the mail surfaces and work the shared inboxes shared with you.',
+    group: 'Channels',
+  },
+  {
+    key: PermissionKey.inboxesManage,
+    label: 'Administer Mail',
+    description: "Manage every shared inbox's access, lens floor, and settings.",
+    group: 'Channels',
+  },
+
   // ── Signatures ──
   {
     key: PermissionKey.signaturesView,
@@ -486,6 +506,12 @@ export enum Area {
   // order (plan 21 §6), so this keeps the new Channels group beside the
   // other integration/mail-adjacent rows instead of trailing at the end.
   channels = 'channels',
+  // inboxes is the mail WORK area (plan 40 §1.0) — `channels` above owns the
+  // plumbing (which pipes and containers exist), this owns who works which mail.
+  // Declared immediately after `channels` so `areaGroups()` — which walks
+  // AREA_ORDER, i.e. this declaration order — renders it as the second row under
+  // the existing Channels heading.
+  inboxes = 'inboxes',
   // signatures + snippets share the `Channels` GROUP with `channels` above
   // (plan 36 §0.1). `areaGroups()` walks AREA_ORDER — i.e. this declaration
   // order — so a group's position comes from its FIRST member and each area's
@@ -829,6 +855,55 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // `None` (`ROLE_DEFAULTS.USER` is the all-`None` floor, plan 22 — omitted
     // from `MEMBER_BASELINE_LEVELS` in seat-policy.ts) — the migrated sites
     // were admin-only, so admins keep access via `ROLE_DEFAULTS.ADMIN`.
+  },
+  [Area.inboxes]: {
+    area: Area.inboxes,
+    label: 'Inboxes',
+    description: 'Use the shared inboxes, and administer who works which mail.',
+    group: 'Channels',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.inboxesView] },
+      { level: Level.Full, keys: [PermissionKey.inboxesManage] },
+    ],
+    // Created 2026-07-29 (plan 40 §1.1). Mail never had a Layer-2 area at all,
+    // so before this NO permission profile could express "this profile has no
+    // mail access" — and `SEAT_CEILINGS` clamps by AREA, so a worker seat read
+    // and replied to every org inbox at `defaultLens: 'full'` with no
+    // configuration that could stop it. This is that front door.
+    //
+    // TWO RUNGS, and deliberately no `Edit` (user decision 2026-07-28). There is
+    // no thread AUTHORITY axis: if you can see a thread at full lens you can
+    // reply, forward, tag, assign, delete and merge it — that is the shipped
+    // semantics (`assertCanActOnThreads` requires `full` for ANY mutation and
+    // then permits all of them), and this area does not change it. So there is
+    // nothing to express between "work this inbox" and "manage this inbox", and
+    // `edit` is dead vocabulary for the `inbox` / `personal_inbox` instance tiers
+    // too (plan 40 §1.3 — the share grid must not offer it, and the fallback
+    // below can never produce it because there is no `Level.Edit` rung).
+    // Partial ladders are established precedent — `Area.channels` directly above
+    // is `Full`-only.
+    //
+    // READ THIS BEFORE TOUCHING A RUNG. Because `inbox` is
+    // `baselineAtCreate: false`, this ladder is NOT merely a coarse front door:
+    // `instanceFallbackLevel` maps the area level straight through to the
+    // per-instance vocabulary for every shared inbox the org holds no explicit
+    // row on. So
+    //   Read → `view`  — the inbox is open and fully workable (§1.3), and
+    //   Full → `admin` — **Manager of EVERY row-less shared inbox**.
+    // `inboxes: Full` therefore means exactly one thing: MAIL ADMINISTRATOR.
+    // That is why inbox create/delete lives on `channelsManage` instead
+    // (plan 40 §1.0): welding creation to this top rung would have meant every
+    // admin who granted it so someone could make a team inbox silently made that
+    // person Manager of every inbox in the org.
+    //
+    // `personal_inbox` shares this area but is `baselineAtCreate: true`, so the
+    // rung supplies it NO fallback — a personal mailbox is reachable only
+    // through an explicit row. That split is the whole reason there are two
+    // instance keys over one area; see `INSTANCE_ACCESS_RESOURCES`.
+    //
+    // MEMBER DEFAULT is `Read` (`MEMBER_BASELINE_LEVELS`), which IS today's
+    // behaviour and is what keeps dispatch-org assignees working. NOT `Full` —
+    // that would make every member Manager of every inbox.
   },
   [Area.signatures]: {
     area: Area.signatures,

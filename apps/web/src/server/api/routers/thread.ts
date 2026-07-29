@@ -18,6 +18,7 @@ import {
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
 import { markInvoiceSent, markQuoteSent, recordDocumentSendSignal } from '@auxx/lib/money'
+import { PermissionKey } from '@auxx/lib/permissions'
 import type { UserMailVisibility } from '@auxx/lib/permissions/visibility'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
@@ -38,10 +39,42 @@ import { getInstanceId, recordIdSchema } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
 import { assertSignatureUsable } from '~/server/lib/signature-instance-access'
 
 const logger = createScopedLogger('thread-router')
+
+/**
+ * The mail front door (plan 40 §5.3): **every** `thread.*` procedure — list,
+ * read, mutate, send, merge, link, handoff — gates on the same coarse
+ * `inboxes.view` rung and nothing finer. Before this slice every one of them was
+ * a bare `protectedProcedure` with no `PermissionKey` anywhere in the file, so
+ * "may this profile use mail at all" was inexpressible (§0.1) and a worker seat
+ * read and replied to every org inbox.
+ *
+ * Deliberately coarse, and deliberately **not** per-inbox:
+ *
+ *  - There is **no thread-authority axis** (§1.1, user decision). If you can see
+ *    a thread at `full` lens you may do everything to it. The first draft's
+ *    per-procedure tier table (triage at Read, send at Edit, drafts split) is
+ *    cancelled — everything finer than this door is question 4's job, and
+ *    `ThreadMutationService.assertCanActOnThreads` already does it.
+ *  - **No inbox-instance filter or assert belongs on any thread procedure**
+ *    (§1.4). In a dispatch org the assignee holds no `ResourceAccess` row on the
+ *    inbox by construction, so an instance gate would deny exactly the people
+ *    the model exists to serve. The lens predicate seeds
+ *    `Thread.assigneeId === userId` (`visibility-scope.ts`), so assigned threads
+ *    survive any inbox exclusion.
+ *  - A member at area `None` holding ONE explicit inbox `view` row still gets
+ *    in: `composeUserCapabilities` synthesizes `inboxes.view` from their instance
+ *    grants (plan 25 §2 / `INSTANCE_ACCESS_READ_KEYS`), and they then see exactly
+ *    that inbox. The derived key is a front door, never an instance answer.
+ *
+ * `inboxes.view` carries no `featureKey`, so `permissionProcedure`'s plan-AND is
+ * a no-op here; the Enterprise `mailPermissions` gate lives on the SHARING path
+ * (`mail-sharing-guard.ts`), not on using mail.
+ */
+const mailProcedure = permissionProcedure(PermissionKey.inboxesView)
 
 /**
  * Route an `isUnread` field peeled off a unified thread update to the
@@ -185,7 +218,7 @@ export const threadRouter = createTRPCRouter({
    *
    * Uses unified condition-based filtering - filter is a ConditionGroup[].
    */
-  listIds: protectedProcedure
+  listIds: mailProcedure
     .input(
       z.object({
         /** Condition-based filter (ConditionGroup[]) */
@@ -230,7 +263,7 @@ export const threadRouter = createTRPCRouter({
    * Batch fetch thread metadata by IDs.
    * Uses mutation to avoid caching issues with variable input.
    */
-  getByIds: protectedProcedure
+  getByIds: mailProcedure
     .input(
       z.object({
         ids: z.array(z.string()).max(100),
@@ -255,7 +288,7 @@ export const threadRouter = createTRPCRouter({
    * Sends an email message, potentially from a draft.
    * Updated to use MessageSenderService directly.
    */
-  sendMessage: protectedProcedure
+  sendMessage: mailProcedure
     .input(SendMessageInputSchema)
     .use(notDemo('send emails'))
     .mutation(async ({ ctx, input }) => {
@@ -549,7 +582,7 @@ export const threadRouter = createTRPCRouter({
    * Cancel a previously scheduled message.
    * Returns the associated draft so the editor can re-open it.
    */
-  cancelScheduledMessage: protectedProcedure
+  cancelScheduledMessage: mailProcedure
     .input(z.object({ scheduledMessageId: z.string() }))
     .use(notDemo('cancel scheduled emails'))
     .mutation(async ({ ctx, input }) => {
@@ -596,7 +629,7 @@ export const threadRouter = createTRPCRouter({
    * Get pending/processing scheduled messages for a thread.
    * Used in the thread detail view to display scheduled message cards.
    */
-  getScheduledMessages: protectedProcedure
+  getScheduledMessages: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -611,7 +644,7 @@ export const threadRouter = createTRPCRouter({
   /**
    * Update a pending scheduled message (reschedule time or update payload).
    */
-  updateScheduledMessage: protectedProcedure
+  updateScheduledMessage: mailProcedure
     .input(
       z.object({
         scheduledMessageId: z.string(),
@@ -667,7 +700,7 @@ export const threadRouter = createTRPCRouter({
    * Tag multiple threads in bulk
    * Updated to use ThreadMutationService.
    */
-  tagBulk: protectedProcedure
+  tagBulk: mailProcedure
     .input(
       z.object({
         recordIds: z.array(recordIdSchema),
@@ -712,7 +745,7 @@ export const threadRouter = createTRPCRouter({
    * Unified update endpoint for a single thread.
    * Accepts RecordId and partial ThreadUpdates.
    */
-  update: protectedProcedure
+  update: mailProcedure
     .input(
       z.object({
         recordId: recordIdSchema,
@@ -769,7 +802,7 @@ export const threadRouter = createTRPCRouter({
    * for the thread, bypassing the resolve-trigger noise gates and the
    * `learnedExtractedAt` dedupe. The proposal lands in Today as usual.
    */
-  rememberThread: protectedProcedure
+  rememberThread: mailProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { threadQuery, organizationId, userId } = await getServiceDependencies(ctx)
@@ -799,7 +832,7 @@ export const threadRouter = createTRPCRouter({
    * Unified bulk update endpoint for multiple threads.
    * Accepts RecordIds and partial ThreadUpdates.
    */
-  updateBulk: protectedProcedure
+  updateBulk: mailProcedure
     .input(
       z.object({
         recordIds: z.array(recordIdSchema).max(50),
@@ -851,7 +884,7 @@ export const threadRouter = createTRPCRouter({
    * Unified remove endpoint for permanent thread deletion.
    * Accepts RecordId.
    */
-  remove: protectedProcedure
+  remove: mailProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
@@ -880,7 +913,7 @@ export const threadRouter = createTRPCRouter({
    * Unified bulk remove endpoint for permanent thread deletion.
    * Accepts RecordIds.
    */
-  removeBulk: protectedProcedure
+  removeBulk: mailProcedure
     .input(z.object({ recordIds: z.array(recordIdSchema) }))
     .mutation(async ({ ctx, input }) => {
       const { threadMutation, organizationId, userId } = await getServiceDependencies(ctx)
@@ -910,7 +943,7 @@ export const threadRouter = createTRPCRouter({
    * action on the target's collapsed merge timeline entry — needs a batchId,
    * which isn't a Thread field, so this stays as its own dedicated procedure.
    */
-  unmergeBatch: protectedProcedure
+  unmergeBatch: mailProcedure
     .input(z.object({ batchId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = await getServiceDependencies(ctx)
@@ -934,7 +967,7 @@ export const threadRouter = createTRPCRouter({
 
   // ═══════════════════════════════════════════════════════════════
 
-  getCounts: protectedProcedure.query(async ({ ctx }) => {
+  getCounts: mailProcedure.query(async ({ ctx }) => {
     const { userId, organizationId } = ctx.session
     return await getMailCounts(organizationId, userId)
   }),
@@ -942,7 +975,7 @@ export const threadRouter = createTRPCRouter({
    * Retry sending a failed message
    * Delegates to MessageSenderService for proper retry handling
    */
-  retrySendMessage: protectedProcedure
+  retrySendMessage: mailProcedure
     .input(z.object({ messageId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { messageSender, organizationId, userId } = await getServiceDependencies(ctx)
@@ -1023,7 +1056,7 @@ export const threadRouter = createTRPCRouter({
   // TICKET LINKING
   // ═══════════════════════════════════════════════════════════════
 
-  linkToTicket: protectedProcedure
+  linkToTicket: mailProcedure
     .input(z.object({ threadId: z.string(), ticketId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
@@ -1071,7 +1104,7 @@ export const threadRouter = createTRPCRouter({
    * `handoffState = 'human'` in one update so the AI gate sees a consistent
    * snapshot. Does NOT publish thread events — that's P4.3.
    */
-  takeOver: protectedProcedure
+  takeOver: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
@@ -1096,7 +1129,7 @@ export const threadRouter = createTRPCRouter({
    * Hand the thread back to the AI agent. Leaves `assigneeId` set so the
    * "last human to touch this" audit trail is preserved.
    */
-  returnToAi: protectedProcedure
+  returnToAi: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
@@ -1115,7 +1148,7 @@ export const threadRouter = createTRPCRouter({
       return result.value
     }),
 
-  unlinkFromTicket: protectedProcedure
+  unlinkFromTicket: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId, viewer } = await getServiceDependencies(ctx)
@@ -1147,7 +1180,7 @@ export const threadRouter = createTRPCRouter({
   // Uses the `Event_threadId_expr_idx` expression index on
   // `(Event.data->>'threadId')` added in #664.
   // ═══════════════════════════════════════════════════════════════
-  listEvents: protectedProcedure
+  listEvents: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = await getServiceDependencies(ctx)

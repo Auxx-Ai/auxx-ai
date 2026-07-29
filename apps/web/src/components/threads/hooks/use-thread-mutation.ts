@@ -1,6 +1,6 @@
 // apps/web/src/components/threads/hooks/use-thread-mutation.ts
 
-import { toRecordId } from '@auxx/types/resource'
+import { getInstanceId, toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hooks'
@@ -146,11 +146,24 @@ export function useThreadMutation() {
 
       // Handle inbox changes
       if (updates.inboxId) {
-        const newInboxId = updates.inboxId.replace('inbox:', '')
+        // Parse the def off, don't string-strip it: a mailbox RecordId is
+        // `inbox:<id>` OR `personal_inbox:<id>` (plan 40 §3 / 40a §5.1), and
+        // `.replace('inbox:', '')` mangles the second into `personal_<id>`
+        // (the substring matches mid-word) rather than yielding the instance
+        // id. The count delta then lands under a key nothing reads, so the
+        // badge silently never moves — and it fails the same way for any
+        // def-CUID-keyed RecordId, where the strip is simply a no-op.
+        const newInboxId = getInstanceId(updates.inboxId)
         for (const context of contexts) {
           if (!context.isUnread || context.status !== 'OPEN') continue
 
-          // Decrement old inbox
+          // Decrement old inbox.
+          // PRE-EXISTING, definition-independent: `context.inboxId` is the
+          // thread's stored RecordId, while `counts.sharedInboxes` is keyed by
+          // the BARE instance id (`mail-counts.ts` `si:{inboxId}`), so this
+          // debit has never matched. `use-count-updates.ts` repeats the shape.
+          // Left alone here — fixing it changes shared-inbox badges too, which
+          // is outside the plan-40 RecordId sweep.
           if (context.inboxId) {
             countUpdates.sharedInboxes![context.inboxId] =
               (countUpdates.sharedInboxes![context.inboxId] ?? 0) - 1

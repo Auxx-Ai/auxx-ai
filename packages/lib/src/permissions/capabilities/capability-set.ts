@@ -68,10 +68,14 @@ export class CapabilitySet implements CapabilityView {
    * @param instanceAccess Highest instance-level ResourceAccess permission per
    *                   `entityInstanceId` (CUID) for the instance-access resources
    *                   (datasets etc., §1.4). Explicit `'none'` rows are kept.
-   * @param restrictedInstanceIds Org-wide set of instance ids carrying ≥1
-   *                   instance-access row for *anyone*. An instance NOT in this
-   *                   set has no explicit row → falls back to its area's base L2
-   *                   level (for `baselineAtCreate: false` resources).
+   * @param governingInstanceIds Org-wide set of instance ids whose access is
+   *                   GOVERNED by rows — a `role:org_member` baseline at any
+   *                   permission, or any `permission = 'none'` marker. **Not**
+   *                   "carries ≥1 row": sharing an instance does not restrict it
+   *                   (see {@link import('./entity-access').effectiveInstanceLevel}).
+   *                   An instance NOT in this set falls back to its area's base
+   *                   L2 level (for `baselineAtCreate: false` resources) unless
+   *                   the member holds a row of their own.
    * @param defBaseOverrides Per-def record base for defs whose base comes from
    *                   another Layer-2 area. Canonical `entityDefinitionId`
    *                   keys; `null` means that area is closed.
@@ -93,7 +97,7 @@ export class CapabilitySet implements CapabilityView {
     private readonly restrictedDefIds: ReadonlySet<string> = new Set(),
     private readonly defIdToDefinitionId: DefIdToSlug = (id) => id,
     private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
-    private readonly restrictedInstanceIds: ReadonlySet<string> = new Set(),
+    private readonly governingInstanceIds: ReadonlySet<string> = new Set(),
     private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {},
     private readonly instanceDerivedKeys: ReadonlySet<PermissionKey> = new Set()
   ) {}
@@ -191,7 +195,7 @@ export class CapabilitySet implements CapabilityView {
       role: this.role,
       seatType: this.seatType,
       instanceAccess: { ...this.instanceAccess },
-      restrictedInstanceIds: [...this.restrictedInstanceIds],
+      governingInstanceIds: [...this.governingInstanceIds],
     }
   }
 
@@ -362,19 +366,22 @@ export class CapabilitySet implements CapabilityView {
   /**
    * Effective per-instance permission for an instance-access resource
    * (most-specific-wins), or `undefined` = no access (§1.4). OWNER bypasses to
-   * `admin` for the ORG-SHARED resources only (§0.10); an explicit instance row
-   * (incl. the workspace baseline / `'none'`) wins outright; with no row, the
-   * coarse L2 area gate must be open and supplies the fallback level (for
-   * `baselineAtCreate: false` resources). The SEAT ceiling is checked before any
-   * of that — it is a billing invariant and outranks even an explicit row, and
-   * for the private resources it now precedes the OWNER branch too. Zero I/O.
+   * `admin` for the ORG-SHARED resources only (§0.10); the member's OWN instance
+   * row (incl. the workspace baseline / `'none'`) wins outright; failing that, a
+   * ROW-GOVERNED instance denies; failing that, the coarse L2 area gate must be
+   * open and supplies the fallback level (for `baselineAtCreate: false`
+   * resources). The SEAT ceiling is checked before any of that — it is a billing
+   * invariant and outranks even an explicit row, and for the private resources it
+   * precedes the OWNER branch too. Zero I/O.
    *
    * **An explicit row beats the area floor** (plan 25 §2), **ADMIN no longer
-   * bypasses** (doc 19 §5.3 piece 2, step 10), and **OWNER no longer bypasses on
+   * bypasses** (doc 19 §5.3 piece 2, step 10), **OWNER no longer bypasses on
    * `baselineAtCreate: true` resources** (user decision 2026-07-28, plan 36 §0.6
-   * revised) — kept byte-for-byte in sync with the client mirror
-   * {@link import('./entity-access').effectiveInstanceLevel}, which carries the
-   * full rationale for all three.
+   * revised), and **sharing an instance no longer restricts it** (2026-07-29:
+   * own-row-first + `governingInstanceIds`) — kept byte-for-byte in sync with the
+   * client mirror {@link import('./entity-access').effectiveInstanceLevel}, which
+   * carries the full rationale for all four. Change one, change the other in the
+   * same edit; `capability-set-instance.test.ts` asserts both on every case.
    */
   private effectiveInstanceLevel(
     key: InstanceAccessKey,
@@ -383,7 +390,9 @@ export class CapabilitySet implements CapabilityView {
     const cfg = INSTANCE_ACCESS_RESOURCES[key]
     if (this.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
     if (SEAT_CEILINGS[this.seatType][cfg.area] === Level.None) return undefined
-    if (this.restrictedInstanceIds.has(instanceId)) return this.instanceAccess[instanceId]
+    const own = this.instanceAccess[instanceId]
+    if (own !== undefined) return own
+    if (this.governingInstanceIds.has(instanceId)) return undefined
     const areaLevel = areaLevelFromKeys(this.keys, cfg.area)
     if (areaLevel === Level.None) return undefined
     return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
@@ -412,7 +421,7 @@ export class CapabilitySet implements CapabilityView {
       {
         ...this.resolved(),
         instanceAccess: this.instanceAccess,
-        restrictedInstanceIds: this.restrictedInstanceIds,
+        governingInstanceIds: this.governingInstanceIds,
       },
       key
     )

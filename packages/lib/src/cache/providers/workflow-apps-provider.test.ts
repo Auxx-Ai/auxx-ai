@@ -191,7 +191,7 @@ describe('list — includeIds narrows to an allow-list, also BEFORE pagination',
   })
 
   it('ignores ids that name no workflow (foreign instance-access ids)', async () => {
-    // `restrictedInstanceIds` is org-wide across datasets/KBs/dashboards, so an
+    // `governingInstanceIds` is org-wide across datasets/KBs/dashboards, so an
     // allow-list built from it can name a dataset id while listing workflows.
     const { workflows, total } = await accessorOver(six()).list({
       includeIds: ['b', 'ds_shared'],

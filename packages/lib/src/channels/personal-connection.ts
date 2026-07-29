@@ -4,16 +4,20 @@ import { database as db, schema } from '@auxx/database'
 import type { IntegrationProviderType } from '@auxx/database/enums'
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache, onCacheEvent } from '../cache'
 import { clearImportCache } from '../email/polling-import-cache'
 import { ForbiddenError, NotFoundError } from '../errors'
+import { buildDefFieldIdMap, moveInboxInstance, rekeyInboxGrants } from '../inboxes/inbox-def-move'
+import { setInboxFloor } from '../inboxes/inbox-floor'
 import { InboxService } from '../inboxes/inbox-service'
 import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
 import { GoogleOAuthService } from '../providers/google/google-oauth'
 import { OutlookOAuthService } from '../providers/outlook/outlook-oauth'
 import { PROVIDER_CAPABILITIES } from '../providers/provider-capabilities'
 import { setInstanceAccess } from '../resource-access/resource-access-service'
+import { loadExistingState } from '../seed/entity-migrations/helpers'
 import { CHANNEL_PROVIDER_TO_KEY } from './channel-connection-def'
 import { deleteChannelData } from './disconnect'
 
@@ -43,9 +47,17 @@ export function supportsPersonalChannelConnection(providerKey: string | null): b
 
 /**
  * Provision the dedicated inbox for a PERSONAL channel connect (§11.1):
- * named after the address, `isPersonal` + owner stamped, floor `none`
- * (the §11.3 carve-out — no enterprise key needed on this system path),
- * owner as Manager. Nothing attaches to the org's Shared Inbox.
+ * named after the address, owner stamped, owner as Manager. Nothing attaches to
+ * the org's Shared Inbox.
+ *
+ * **The mailbox is created on the `personal_inbox` DEFINITION** (plan 40 §3.2 /
+ * 40a §3). That is the whole point of the def split: privacy is now unforgeable
+ * def membership rather than an `inbox_is_personal` FieldValue defended by a
+ * write-wall pre-hook, and `personal_inbox` is the `baselineAtCreate: true`
+ * instance-access key, so "no row ⇒ no access" holds for every member including
+ * the org owner. Consequently neither `isPersonal` nor `defaultLens` is passed:
+ * the def implies both, and neither field even exists on it (40a §1.2). A
+ * personal mailbox never gets a `role:org_member` floor row.
  *
  * Reconnect of the user's own personal channel is a no-op; a mailbox already
  * linked to a shared inbox (or another user's personal inbox) is rejected —
@@ -83,13 +95,17 @@ export async function provisionPersonalInbox(args: {
 
   const inbox = await inboxService.createInbox({
     name: email,
-    defaultLens: 'none',
-    isPersonal: true,
+    entityDefinitionKey: 'personal_inbox',
     ownerUserId,
   })
 
   // Owner becomes the inbox Manager (createInbox only grants when the
   // service carries a user — the system-scoped one doesn't).
+  //
+  // `inbox.recordId` is minted from the definition the instance actually landed
+  // on, so this row is keyed `personal_inbox` without the call site having to
+  // know that — which is what keeps it in the same keyspace
+  // `composeUserMailVisibility` and `hasPermission` read it back from.
   await setInstanceAccess(
     { db, organizationId, userId: ownerUserId },
     inbox.recordId,
@@ -159,7 +175,19 @@ export async function disconnectPersonalChannelsForUser(
   return rows.length
 }
 
-/** Assert the inbox is personal and its owner is no longer an org member. */
+/**
+ * Assert the inbox is personal and its owner is no longer an org member.
+ *
+ * The personal test is **def membership**, not `Inbox.isPersonal` (40a §3). The
+ * derived flag is still `personal_inbox` def OR the legacy `inbox_is_personal`
+ * marker, and the two disagree by design for the whole window between entity
+ * migration 059 and data migration 060 — but neither of the two operations this
+ * guard fronts can act on a marker-only mailbox: `claimPersonalInbox` is a
+ * cross-def MOVE (there is nothing to move a shared-def instance off) and
+ * `deletePersonalInbox` destroys threads on the strength of "this data was never
+ * org-visible", which only def membership proves. Refusing is the fail-closed
+ * answer, and 060 runs in the same deploy as this code.
+ */
 async function loadOrphanedPersonalInbox(
   inboxService: InboxService,
   organizationId: string,
@@ -167,7 +195,9 @@ async function loadOrphanedPersonalInbox(
 ) {
   const inbox = await inboxService.getInboxById(inboxId)
   if (!inbox) throw new NotFoundError('Inbox not found')
-  if (!inbox.isPersonal) throw new ForbiddenError('Not a personal inbox')
+  if (inbox.entityDefinitionKey !== 'personal_inbox') {
+    throw new ForbiddenError('Not a personal inbox')
+  }
 
   const roleMap = await getOrgCache().get(organizationId, 'memberRoleMap')
   if (inbox.ownerUserId && roleMap[inbox.ownerUserId]?.role) {
@@ -179,11 +209,41 @@ async function loadOrphanedPersonalInbox(
 }
 
 /**
- * Offboarding step 2a (§11.4): CLAIM an orphaned personal inbox — clear the
- * personal marker + owner, converting it into a normal restricted org inbox
- * (floor stays `none`; the admin short-circuit applies from then on). The
- * inbox field write runs as the admin, so the field walls stay honest, and
- * `inbox.updated` broadcasts every member's visibility recompute.
+ * Offboarding step 2a (§11.4): CLAIM an orphaned personal inbox — converting it
+ * into a normal RESTRICTED org inbox.
+ *
+ * **Since the def split this is a cross-def MOVE, not a marker flip** (plan 40
+ * §3.2 / 40a §3). Personal-ness is def membership, so "this is no longer a
+ * personal mailbox" can only be said by moving the instance onto the shared
+ * `inbox` definition — which drags three things with it, all of which the
+ * mechanism in `inboxes/inbox-def-move.ts` handles, and all of which are silent
+ * failures if skipped:
+ *
+ *  1. `EntityInstance.entityDefinitionId` — the move itself.
+ *  2. Every `FieldValue`'s `fieldId` **and** `entityDefinitionId`, remapped onto
+ *     the shared def's own `CustomField` rows by `systemAttribute` (defs do not
+ *     share field rows — 40a §6's "CLONE, not repoint"). A value left pointing
+ *     at a `personal_inbox` CustomField reads back as absent, so the inbox would
+ *     silently lose its name and colour. Nothing is dropped in this direction:
+ *     the shared def's attribute set is a superset of the personal one's.
+ *  3. Its `ResourceAccess` rows, re-keyed `personal_inbox` → `inbox`. Mail rows
+ *     are matched by literal slug, so a row left behind is a Manager grant that
+ *     stops being read.
+ *
+ * That mechanism is shared verbatim with data migration 060, which runs the same
+ * move in the other direction in bulk — one implementation, so the collision
+ * rule on `ResourceAccess`'s `nullsNotDistinct` unique index cannot drift.
+ *
+ * This path uses the SERVICE functions rather than the migration's bulk posture
+ * because it is one user-initiated act on one mailbox: `updateInbox` runs the
+ * field walls as the admin and broadcasts `inbox.updated`, and `setInboxFloor`
+ * emits the mail/grant-index invalidations.
+ *
+ * The result is today's behaviour, expressed in v2's vocabulary: the floor stays
+ * `none`, now written as the `role:org_member @ none` RESTRICTION row instead of
+ * an `inbox_default_lens` FieldValue nothing reads. `inbox_owner_user_id` is
+ * NULLED rather than deleted — the field exists on the shared def and an
+ * ownerless inbox is exactly what a claimed one is.
  */
 export async function claimPersonalInbox(args: {
   organizationId: string
@@ -192,11 +252,59 @@ export async function claimPersonalInbox(args: {
 }): Promise<void> {
   const { organizationId, adminUserId, inboxId } = args
   const inboxService = new InboxService(db, organizationId, adminUserId)
-  const inbox = await loadOrphanedPersonalInbox(inboxService, organizationId, inboxId)
+  await loadOrphanedPersonalInbox(inboxService, organizationId, inboxId)
 
-  await inboxService.updateInbox(inbox.recordId, { isPersonal: false, ownerUserId: null })
+  // ONE query for BOTH defs — `ExistingState` is keyed by entityType for defs
+  // and `${entityDefinitionId}:${systemAttribute}` for fields, so the target
+  // def's id and its materialized CustomField ids both fall out of it.
+  const state = await loadExistingState(db, organizationId)
+  const sharedDefId = state.entityDefs.get('inbox')?.id
+  const personalDefId = state.entityDefs.get('personal_inbox')?.id
+  if (!sharedDefId || !personalDefId) {
+    throw new NotFoundError('Inbox definitions are not seeded for this organization')
+  }
 
-  logger.info('Personal inbox claimed', { inboxId, adminUserId })
+  const moved = await moveInboxInstance(db, {
+    instanceId: inboxId,
+    fromDefId: personalDefId,
+    toDefId: sharedDefId,
+    newFieldIdByAttr: buildDefFieldIdMap(state.fields, sharedDefId),
+  })
+  for (const value of moved.unmapped) {
+    logger.warn('FieldValue has no inbox counterpart — left on the personal def', {
+      organizationId,
+      inboxId,
+      fieldValueId: value.id,
+      systemAttribute: value.systemAttribute,
+    })
+  }
+
+  const grants = await rekeyInboxGrants(db, {
+    organizationId,
+    instanceId: inboxId,
+    fromKey: 'personal_inbox',
+    toKey: 'inbox',
+  })
+
+  const claimedRecordId = toRecordId('inbox', inboxId)
+
+  // Floor `none` — a claimed mailbox is a RESTRICTED org inbox, reachable only
+  // by its explicit grantees. Written before the owner is cleared so there is no
+  // window in which the instance is shared-def with no baseline row (which the
+  // area fallback would read as `full` for every member).
+  await setInboxFloor({ db, organizationId, userId: adminUserId }, claimedRecordId, 'none')
+
+  // Nulled, not dropped: the shared def carries `inbox_owner_user_id`, and this
+  // write also broadcasts `inbox.updated` so every member's `userMailVisibility`
+  // and the `org:inboxes` shape recompute off the instance's new definition.
+  await inboxService.updateInbox(claimedRecordId, { ownerUserId: null })
+
+  logger.info('Personal inbox claimed', {
+    inboxId,
+    adminUserId,
+    valuesRemapped: moved.valuesRemapped,
+    ...grants,
+  })
 }
 
 /**

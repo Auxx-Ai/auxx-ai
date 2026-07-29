@@ -148,6 +148,23 @@ async function authorizeInstanceTarget(
   return true
 }
 
+/**
+ * Mail-share targets that {@link authorizeInstanceTarget} now claims — the ones
+ * plan 40 phase 1 moved off {@link assertCanManageMailSharing} by making them
+ * `INSTANCE_ACCESS_RESOURCES` keys. Today exactly `inbox` and `personal_inbox`:
+ * they are the only members of `MAIL_SHARING_DEFS` that are also instance-access
+ * keys, because `thread` and `contact` are deliberately excluded from that
+ * registry (a per-record contact grant would fan a full lens across that
+ * contact's entire conversation history) and must stay excluded.
+ *
+ * Derived from the two predicates rather than re-listing the slugs, so it says
+ * what it means: "this target routes through the instance authorizer instead of
+ * the mail guard, and therefore lost the guard's self-revoke hatch."
+ */
+function isInstanceRoutedMailDef(entityDefinitionId: string): boolean {
+  return isMailSharingDef(entityDefinitionId) && isInstanceAccessKey(entityDefinitionId)
+}
+
 export const resourceAccessRouter = createTRPCRouter({
   /** Grant access to a specific entity instance */
   grantInstance: protectedProcedure
@@ -193,8 +210,15 @@ export const resourceAccessRouter = createTRPCRouter({
       ])
       if (!(await authorizeInstanceTarget(ctx, recordId))) {
         await assertCanManageMailSharing(context, recordId)
-        await assertMailSharingFeature(context, recordId, [input])
       }
+      // The plan gate runs REGARDLESS of which authorizer answered. Since plan 40
+      // phase 1 put `inbox`/`personal_inbox` in `INSTANCE_ACCESS_RESOURCES`, an
+      // inbox target takes the `assertAdminInstance` branch above — which is the
+      // intended replacement for the guard's `inbox` arm (§5.3), but would have
+      // taken the Enterprise `mailPermissions` gate with it. §2 lists that gate
+      // (sub-`full` lenses and NEW Manager rows) as explicitly out of scope, so it
+      // stays on its own line here. No-op for every non-mail def.
+      await assertMailSharingFeature(context, recordId, [input])
       await grantInstanceAccess(context, {
         recordId,
         granteeType: input.granteeType,
@@ -274,7 +298,36 @@ export const resourceAccessRouter = createTRPCRouter({
         ctx.session.organizationId,
         input.recordId as RecordId
       )
-      if (!(await authorizeInstanceTarget(ctx, recordId))) {
+      // SELF-REVOKE — a grantee removing THEIR OWN row (§7's "leave a shared
+      // thread", and the same affordance on an inbox).
+      //
+      // `assertCanManageMailSharing` has always carried this hatch, but plan 40
+      // phase 1 made `inbox`/`personal_inbox` instance-access keys, so those
+      // targets started routing through `authorizeInstanceTarget` →
+      // `assertAdminInstance` and skipped the guard — and with it the hatch —
+      // entirely. Net: a `view` grantee could no longer drop their own inbox
+      // grant. Restored here for exactly the targets phase 1 re-routed; every
+      // other revoke keeps `assertAdminInstance` / the mail guard unchanged.
+      //
+      // Two conditions, both copied from the guard for the same reasons:
+      //  - **`user` grantees ONLY.** A group/profile/role row is shared policy;
+      //    letting one holder delete it would silently revoke everyone else.
+      //  - **The CALLER's own id ONLY.** This is "remove the grant that names
+      //    ME", never "remove someone else's" — and `revokeInstanceAccess`
+      //    deletes by the same `(recordId, granteeType, granteeId)` triple, so
+      //    the row reached is provably the one that passed this test.
+      //
+      // It cannot become a plan-gate bypass: `revokeInstance` runs no
+      // `assertMailSharingFeature` at all (revoking only tightens access, so the
+      // Enterprise `mailPermissions` gate lives on `grantInstance`/`setInstance`,
+      // where phase 3 hoisted it onto its own unconditional line). Nothing here
+      // widens access, so there is no gate to route around.
+      const isSelfRevoke =
+        input.granteeType === ResourceGranteeType.user && input.granteeId === ctx.session.userId
+      const selfRevokingMailGrant =
+        isSelfRevoke && isInstanceRoutedMailDef(parseRecordId(recordId).entityDefinitionId)
+
+      if (!selfRevokingMailGrant && !(await authorizeInstanceTarget(ctx, recordId))) {
         await assertCanManageMailSharing(context, recordId, {
           selfRevokeGranteeId: input.granteeId,
           selfRevokeGranteeType: input.granteeType,
@@ -357,8 +410,9 @@ export const resourceAccessRouter = createTRPCRouter({
       )
       if (!(await authorizeInstanceTarget(ctx, recordId))) {
         await assertCanManageMailSharing(context, recordId)
-        await assertMailSharingFeature(context, recordId, input.grants)
       }
+      // See `grantInstance` — the plan gate is independent of the authorizer.
+      await assertMailSharingFeature(context, recordId, input.grants)
       await setInstanceAccess(context, recordId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',

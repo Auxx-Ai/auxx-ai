@@ -15,6 +15,7 @@ import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-f
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
+import { PERSONAL_INBOX_FIELDS } from '../../resources/registry/resources/personal-inbox-fields'
 import { QUOTE_FIELDS } from '../../resources/registry/resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
@@ -39,6 +40,7 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   ticket: TICKET_FIELDS,
   part: PART_FIELDS,
   inbox: INBOX_FIELDS,
+  personal_inbox: PERSONAL_INBOX_FIELDS,
   tag: TAG_FIELDS,
   thread: THREAD_FIELDS,
   signature: SIGNATURE_FIELDS,

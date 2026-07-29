@@ -18,6 +18,7 @@ import { customFieldsProvider } from './providers/custom-fields-provider'
 import { entityDefSlugsProvider } from './providers/entity-def-slugs-provider'
 import { entityDefsProvider } from './providers/entity-defs-provider'
 import { featuresProvider } from './providers/features-provider'
+import { governingInstanceIdsProvider } from './providers/governing-instance-ids-provider'
 import { groupMembersProvider } from './providers/group-members-provider'
 import { groupsProvider } from './providers/groups-provider'
 import { hasPermissionGrantsProvider } from './providers/has-permission-grants-provider'
@@ -37,7 +38,6 @@ import { publishedAppsProvider } from './providers/published-apps-provider'
 import { recordRulesProvider } from './providers/record-rules-provider'
 import { resourcesProvider } from './providers/resources-provider'
 import { restrictedEntityDefIdsProvider } from './providers/restricted-entity-def-ids-provider'
-import { restrictedInstanceIdsProvider } from './providers/restricted-instance-ids-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
 import { userCapabilitiesProvider } from './providers/user-capabilities-provider'
@@ -71,7 +71,7 @@ export function registerAllProviders(
   orgCache.register('profiles', permissionProfilesProvider)
   orgCache.register('hasPermissionGrants', hasPermissionGrantsProvider)
   orgCache.register('restrictedEntityDefIds', restrictedEntityDefIdsProvider)
-  orgCache.register('restrictedInstanceIds', restrictedInstanceIdsProvider)
+  orgCache.register('governingInstanceIds', governingInstanceIdsProvider)
 
   // Org-scoped: business data
   orgCache.register('features', featuresProvider)

@@ -33,6 +33,10 @@ export async function assertMailTriggerNotPersonal(
 
   if (integrationIds.length === 0) return
 
+  // The merged inbox cache spans BOTH inbox definitions and derives
+  // `isPersonal` from def membership (plan 40 §3.4), so mail-trigger
+  // eligibility keeps excluding personal mailboxes across the def move with no
+  // def literal here. HEADLESS path — no member capabilities are read.
   const inboxes = await getOrgCache().get(organizationId, 'inboxes')
   const personalIds = new Set(inboxes.filter((i) => i.isPersonal).map((i) => i.id))
   if (personalIds.size === 0) return

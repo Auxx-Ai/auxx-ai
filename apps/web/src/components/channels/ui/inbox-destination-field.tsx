@@ -16,6 +16,7 @@ import {
 } from '~/components/mail-permissions/ui/enterprise-gate'
 import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
 import { useInboxes } from '~/components/threads/hooks'
+import { invalidateInboxRecordLists } from '~/components/threads/hooks/use-inbox'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 
@@ -97,9 +98,8 @@ export function useInboxDestination(initialInboxId?: string): InboxDestinationCo
       status: 'ACTIVE',
       defaultLens: targetLens,
     })
-    utils.inbox.getAll.invalidate()
     utils.inbox.myLenses.invalidate()
-    utils.record.listAll.invalidate({ entityDefinitionId: 'inbox' })
+    invalidateInboxRecordLists(utils)
     return created.id
   }, [isCreate, selection, accessType, floorLens, name, createInbox, utils])
 

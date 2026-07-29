@@ -27,6 +27,8 @@ import { migration054AgentPolicyVocabulary } from './migrations/054-agent-policy
 import { migration055AgentPolicyResourceAreaFallthrough } from './migrations/055-agent-policy-resource-area-fallthrough'
 import { migration056SignaturesSnippetsInstanceAccess } from './migrations/056-signatures-snippets-instance-access'
 import { migration058ReopenPersonalOnboarding } from './migrations/058-reopen-personal-onboarding'
+import { migration060PersonalInboxMove } from './migrations/060-personal-inbox-move'
+import { migration061InboxesMemberBaselineBackfill } from './migrations/061-inboxes-member-baseline-backfill'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -70,6 +72,11 @@ function buildRegistry(): DataMigrationDef[] {
     migration055AgentPolicyResourceAreaFallthrough,
     migration056SignaturesSnippetsInstanceAccess,
     migration058ReopenPersonalOnboarding,
+    // 059 is an ENTITY migration (`personal_inbox` def + fields) and arrives via
+    // ALL_ENTITY_MIGRATIONS above — it needs no entry here, but it owns 059 in
+    // the shared id sequence and sorts before 060, which depends on it.
+    migration060PersonalInboxMove,
+    migration061InboxesMemberBaselineBackfill,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

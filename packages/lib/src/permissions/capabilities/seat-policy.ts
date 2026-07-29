@@ -59,6 +59,25 @@ const WORKER_AREAS = new Set<Area>([
  */
 
 /**
+ * `Area.inboxes` is DELIBERATELY absent from {@link WORKER_AREAS} too (plan 40
+ * §7), and here the omission is not merely a decision — it is the FIX.
+ *
+ * Mail had no Layer-2 area at all until 2026-07-29, and {@link SEAT_CEILINGS}
+ * clamps by AREA, so a worker seat read and replied to **every org inbox at
+ * `defaultLens: 'full'`** and no org configuration could stop it (plan 40 §0.1).
+ * Leaving `Area.inboxes` out of this set is what closes that: the ceiling
+ * resolves the area to `Level.None`, which `effectiveInstanceLevel` checks ABOVE
+ * the explicit-row branch, so a field tech gets no shared inbox even if someone
+ * writes them an `admin` row on one.
+ *
+ * CONSEQUENCE, stated because it is a real behavior change and not a no-op on
+ * paper: a field tech LOSES the org mail access they implicitly have today.
+ * Verified 2026-07-29 that dev holds **zero** worker seats, so it costs nothing
+ * now — but any org that buys worker seats later gets the closed posture, which
+ * is the intent. Reopening it means deciding that a field seat is a mail seat.
+ */
+
+/**
  * The field-seat capability keys (§4.1) — the three worker surfaces expanded.
  * Kept for callers/tests that assert the worker's effective set directly.
  */
@@ -113,6 +132,16 @@ export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
  *   snippet still needs an explicit `ResourceAccess` row to be reachable. Per
  *   plan 22 §2.5 a new area ships CLOSED unless listed here AND backfilled for
  *   existing orgs, which plan 36 §4.3 owes.
+ * - `inboxes: Read` (plan 40 §7). With the two-rung ladder `Read` IS full
+ *   working access to org-shared mail (`baselineAtCreate: false` ⇒ the area
+ *   level is also the absent-row tier, and `Read → view`), which is today's
+ *   behaviour, so this entry is what makes phase 1 inert. **Not `Full`**: that
+ *   maps to `admin` on every row-less shared inbox, i.e. it would make every
+ *   member Manager of every inbox. It is also what keeps the dispatch/controller
+ *   pattern working — drop it to `None` and every controller-model org goes dark,
+ *   because a member whose profile closes the area cannot see even threads
+ *   assigned to them. Per plan 22 §2.5 this needs a BACKFILL for existing orgs
+ *   (plan 40 §7), owed the same way plan 36 §4.3 is.
  */
 export const MEMBER_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   [Area.records]: Level.Full,
@@ -129,6 +158,7 @@ export const MEMBER_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   [Area.dashboards]: Level.Full,
   [Area.signatures]: Level.Full,
   [Area.snippets]: Level.Full,
+  [Area.inboxes]: Level.Read,
 }
 
 /**

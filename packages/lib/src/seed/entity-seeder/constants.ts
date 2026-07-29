@@ -49,6 +49,18 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false,
   },
   {
+    // Plan 40: personal-ness is def membership, not an `inbox_is_personal` field.
+    // Never user-creatable — instances arrive only through the personal connect
+    // provisioning flow, and an admin claim moves them onto `inbox`.
+    entityType: 'personal_inbox',
+    apiSlug: 'personal-inboxes',
+    singular: 'Personal Inbox',
+    plural: 'Personal Inboxes',
+    icon: 'inbox',
+    color: 'indigo',
+    isVisible: false,
+  },
+  {
     entityType: 'tag',
     apiSlug: 'tags',
     singular: 'Tag',
@@ -222,6 +234,11 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     avatarField: 'image',
   },
   inbox: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: undefined,
+    avatarField: 'color',
+  },
+  personal_inbox: {
     primaryDisplayField: 'name',
     secondaryDisplayField: undefined,
     avatarField: 'color',

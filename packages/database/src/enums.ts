@@ -104,6 +104,12 @@ export const ModelTypeValues = [
   'thread',
   'user',
   'inbox',
+  // Personal mailboxes (plan 40 §3) — a SEPARATE EntityDefinition from `inbox`, so
+  // personal-ness is unforgeable def membership instead of an `inbox_is_personal`
+  // FieldValue. Not to be confused with `InternalFilterContextType.PERSONAL_INBOX`
+  // (`packages/lib/src/mail-query/types.ts`), which is a mail-URL context meaning
+  // "assigned to me" — different namespace, no runtime intersection.
+  'personal_inbox',
   'message',
   'participant',
   'dataset',
@@ -144,6 +150,7 @@ export const ModelTypes = {
   THREAD: 'thread',
   USER: 'user',
   INBOX: 'inbox',
+  PERSONAL_INBOX: 'personal_inbox',
   MESSAGE: 'message',
   PARTICIPANT: 'participant',
   DATASET: 'dataset',
@@ -231,6 +238,20 @@ export const ModelTypeMeta: Record<
     icon: 'inbox',
     color: 'indigo',
     apiSlug: 'inboxes',
+    dbTable: 'Inbox',
+    hasDetailPage: false,
+  },
+  // Mirrors `inbox` — both are def-backed (`ENTITY_DEFINITION_TYPES`), so
+  // `dbTable` is inert for them: it is only read by `RESOURCE_TABLE_REGISTRY`
+  // (`resources/registry/field-registry.ts`), which excludes every entry in
+  // `ENTITY_DEFINITION_TYPES`. What IS load-bearing here is `apiSlug`, which
+  // feeds the dynamic RecordId-prefix alias set (`resources/static-prefixes.ts`).
+  personal_inbox: {
+    label: 'Personal Inbox',
+    plural: 'Personal Inboxes',
+    icon: 'inbox',
+    color: 'indigo',
+    apiSlug: 'personal-inboxes',
     dbTable: 'Inbox',
     hasDetailPage: false,
   },
@@ -878,6 +899,8 @@ export const EntityTypeValues = [
   'meeting',
   'part',
   'payment',
+  // See the `personal_inbox` note on `ModelTypeValues` above (plan 40 §3).
+  'personal_inbox',
   'quote',
   'service_request',
   'signature',
@@ -1664,6 +1687,7 @@ export const EntityType = {
   MEETING: 'meeting',
   PART: 'part',
   PAYMENT: 'payment',
+  PERSONAL_INBOX: 'personal_inbox',
   QUOTE: 'quote',
   SERVICE_REQUEST: 'service_request',
   SIGNATURE: 'signature',
@@ -1717,6 +1741,12 @@ export const GroupVisibility = {
  */
 export const BuiltInEntityTypeValues = [
   'inbox',
+  // Plan 40 §3 — personal mailboxes are their own EntityDefinition, but their
+  // `ResourceAccess` rows stay SLUG-keyed exactly like `inbox`'s (the sharing
+  // keyspace, not the CUID restriction keyspace — see the `entityDefinitionId`
+  // doc on `db/schema/resource-access.ts`). Missing here, the grant vocabulary
+  // has no name for a personal-inbox share and nothing fails loudly.
+  'personal_inbox',
   'snippet',
   'folder',
   'workflow',
@@ -1726,6 +1756,7 @@ export type BuiltInEntityType = (typeof BuiltInEntityTypeValues)[number]
 
 export const BuiltInEntityType = {
   inbox: 'inbox',
+  personal_inbox: 'personal_inbox',
   snippet: 'snippet',
   folder: 'folder',
   workflow: 'workflow',

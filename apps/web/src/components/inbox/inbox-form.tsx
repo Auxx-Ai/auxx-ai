@@ -8,7 +8,7 @@ import {
   type SharingGranteeType,
 } from '@auxx/database/enums'
 import type { Lens, LensChoice } from '@auxx/lib/permissions/visibility/client'
-import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { type ActorId, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
@@ -39,7 +39,7 @@ import {
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
-import { useInbox } from '~/components/threads/hooks/use-inbox'
+import { invalidateInboxRecordLists, useInbox } from '~/components/threads/hooks/use-inbox'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
@@ -101,18 +101,52 @@ export interface InboxFormProps {
 }
 
 /**
- * The grantee types this form OWNS. The save path is replace-per-type
- * (`setInstance` swaps one `granteeType` at a time), so a kind absent from this
- * list is left untouched on save rather than wiped — which is exactly why the
- * list must stay in lockstep with what the grantee list can render and edit.
- * Kinds outside it (`role` — the org-wide floor, expressed as
- * `inbox_default_lens`; `profile` — plan 19 §8.2) are disclosed to the admin via
- * {@link unmanageableGrantsNote} instead of being silently dropped.
+ * The grantee types this form's PEOPLE & GROUPS list owns. The save path is
+ * replace-per-type (`setInstance` swaps one `granteeType` at a time), so a kind
+ * absent from this list is left untouched on save rather than wiped — which is
+ * exactly why the list must stay in lockstep with what the grantee list can
+ * render and edit.
+ *
+ * **`role` is excluded on purpose, and the reason changed with plan 40 §6.** It
+ * used to be excluded because the org-wide floor was not a row at all (it was
+ * the `inbox_default_lens` FieldValue). The floor IS a row now —
+ * `role:org_member` — but it is edited by the Everyone/Restricted cards above,
+ * not by the grantee list, and it must NOT be in the replace-all set: a save
+ * that touched no people would otherwise wipe the inbox's floor and silently
+ * reopen a Restricted inbox to the whole org. `profile` (plan 19 §8.2) stays
+ * excluded as before and is disclosed via {@link unmanageableGrantsNote}.
  */
 const MANAGED_GRANTEE_TYPES: readonly SharingGranteeType[] = [
   ResourceGranteeType.user,
   ResourceGranteeType.group,
 ]
+
+/**
+ * The org-wide floor an inbox's grant rows encode (plan 40 §6) — the read half
+ * of what `inbox.setAccessFloor` writes.
+ *
+ * `role:org_member @ none` is the v2 RESTRICTION marker (never a grant);
+ * `@ view` carries the tier as its `lens`; **no row at all means `full`**, the
+ * org-shared default supplied by the `Area.inboxes` fallback. Read off the
+ * `resourceAccess.forInstance` rows the form already fetches, so the conversion
+ * costs no extra query.
+ */
+function floorFromRows(
+  rows: ReadonlyArray<{
+    granteeType: string
+    granteeId: string
+    permission: string
+    lens: string | null
+  }>
+): Lens {
+  const baseline = rows.find(
+    (r) => r.granteeType === ResourceGranteeType.role && r.granteeId === 'org_member'
+  )
+  if (!baseline) return 'full'
+  if (baseline.permission === ResourcePermission.none) return 'none'
+  if (baseline.permission === ResourcePermission.view) return (baseline.lens ?? 'full') as Lens
+  return 'full'
+}
 
 /**
  * Map a stored ResourceAccess row to the form's grant shape, or `null` when the
@@ -186,10 +220,15 @@ export function InboxForm({
   const isPersonalInbox = !!inboxItem?.isPersonal
   const ownerActorId = inboxItem?.ownerUserId ? toActorId('user', inboxItem.ownerUserId) : null
 
-  // Fetch system field values for edit mode
+  // Fetch system field values for edit mode.
+  //
+  // `inbox_default_lens` is deliberately NOT among them (plan 40 §6): the floor
+  // moved onto the `role:org_member` `ResourceAccess` row, so it is read out of
+  // `accessRows` below. Reading the field would render the floor the inbox had
+  // before its last edit.
   const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
     recordId,
-    ['inbox_name', 'inbox_description', 'inbox_color', 'inbox_default_lens'],
+    ['inbox_name', 'inbox_description', 'inbox_color'],
     { autoFetch: true, enabled: isEditing && !!recordId }
   )
 
@@ -214,7 +253,7 @@ export function InboxForm({
 
   // Track if form has been initialized this open cycle
   const isInitialized = useRef(false)
-  // The floor as loaded — `inbox_default_lens` is only written when it changed
+  // The floor as loaded — the baseline row is only rewritten when it changed
   // (writing it requires manage rights + the enterprise gate below `full`).
   const initialLensRef = useRef<Lens | null>(null)
   const initialGrantsRef = useRef<string>('')
@@ -289,9 +328,9 @@ export function InboxForm({
         const name = (fieldValues.inbox_name as string) ?? ''
         const description = (fieldValues.inbox_description as string) ?? ''
         const color = (fieldValues.inbox_color as string) ?? 'indigo'
-        // useSystemValues now collapses SINGLE_SELECT to a scalar, so this is a
-        // plain lens string (was an array — the source of the round-trip bug).
-        const storedLens = (fieldValues.inbox_default_lens as Lens | undefined) ?? 'full'
+        // The floor comes from the `role:org_member` baseline ROW, not from a
+        // field value (plan 40 §6) — same rows the grantee list is built from.
+        const storedLens = floorFromRows(accessRows)
         const accessType = storedLens === 'none' ? 'restricted' : 'anyone'
         const floorLens = (storedLens === 'none' ? 'full' : storedLens) as Exclude<Lens, 'none'>
         const grants = accessRows.flatMap((row) => rowToGrant(row) ?? [])
@@ -330,9 +369,8 @@ export function InboxForm({
 
   /** Invalidate inbox query caches + the viewer's lens map + grant rows. */
   const invalidateInboxes = () => {
-    utils.inbox.getAll.invalidate()
     utils.inbox.myLenses.invalidate()
-    utils.record.listAll.invalidate({ entityDefinitionId: 'inbox' })
+    invalidateInboxRecordLists(utils)
     if (recordId) utils.resourceAccess.forInstance.invalidate({ recordId })
   }
 
@@ -340,6 +378,20 @@ export function InboxForm({
   const createInbox = api.inbox.create.useMutation({
     onError: (error) => {
       toastError({ title: 'Error creating inbox', description: error.message })
+    },
+  })
+
+  /**
+   * The org-wide floor write (plan 40 §6) — a `role:org_member` baseline row,
+   * NOT the `inbox_default_lens` field the form used to save. Its own procedure
+   * rather than `resourceAccess.grantInstance` because the Restricted floor is
+   * `permission: 'none'` with a null lens, which slips past
+   * `assertMailSharingFeature`'s `lens !== 'full'` test — `inbox.setAccessFloor`
+   * carries the Enterprise gate the retired field wall used to.
+   */
+  const setAccessFloor = api.inbox.setAccessFloor.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Error saving access', description: error.message })
     },
   })
 
@@ -371,7 +423,8 @@ export function InboxForm({
     isSavingValues ||
     deleteInbox.isPending ||
     grantInstance.isPending ||
-    setInstance.isPending
+    setInstance.isPending ||
+    setAccessFloor.isPending
 
   // Form validation
   const isValid = values.name.trim().length > 0
@@ -449,12 +502,22 @@ export function InboxForm({
         inbox_description: values.description,
         inbox_color: values.color,
       }
-      // Only write the floor when it changed — the write is guarded server-side
-      // (managers only; sub-full floors are enterprise).
-      if (targetLens !== initialLensRef.current) systemValues.inbox_default_lens = targetLens
 
       const success = await saveSystemValues(systemValues)
       if (!success) return
+
+      // Only write the floor when it changed — the write is guarded server-side
+      // (managers only; sub-full floors are enterprise). This is a
+      // `role:org_member` `ResourceAccess` row, not a field: writing
+      // `inbox_default_lens` here made every access-level change a no-op, since
+      // nothing has read that field since plan 40 phase 2.
+      if (canManageAccess && !isPersonalInbox && targetLens !== initialLensRef.current && inboxId) {
+        try {
+          await setAccessFloor.mutateAsync({ inboxId, floorLens: targetLens })
+        } catch {
+          return // toast shown by the mutation; keep the form open
+        }
+      }
 
       if (canManageAccess && grantsKey(values.grants) !== initialGrantsRef.current) {
         try {
@@ -484,10 +547,21 @@ export function InboxForm({
           description: values.description,
           color: values.color,
           status: 'ACTIVE',
+          // Still a `defaultLens` INPUT, but `InboxService.createInbox` now
+          // lands it as the `role:org_member` baseline row rather than the
+          // `inbox_default_lens` field — and `full` writes no row at all, since
+          // the absent baseline IS the org-shared default (plan 40 §6).
           defaultLens: targetLens,
         })
         // Additive grants — the server already added the creator's Manager row.
-        const createdRecordId = toRecordId('inbox', created.id)
+        //
+        // Take the RecordId the server MINTED rather than re-deriving it: it
+        // carries the definition the instance actually landed on (plan 40 §3 /
+        // 40a §5.1). `inbox.create` is shared-only by contract — personal
+        // mailboxes come from the provisioning path alone — so this is
+        // `inbox:<id>` today, but a hard-coded prefix here is exactly the shape
+        // that silently mis-keys grant rows if that ever stops being true.
+        const createdRecordId = created.recordId
         for (const grant of values.grants) {
           const grantee: ShareGrantee | null = actorIdToGrantee(grant.actorId)
           if (!grantee) {

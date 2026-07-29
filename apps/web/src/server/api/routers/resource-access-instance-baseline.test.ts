@@ -57,6 +57,9 @@ vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx }))
 vi.mock('@auxx/lib/cache', () => ({
   // `grantee-schema.ts` (kept real — it decides which grantee kinds are legal)
   getCachedPermissionProfiles: vi.fn(async () => []),
+  // Feeds `canonicalMailRecordId`'s def→slug resolver (plan 40 §5.1). Empty is
+  // right here: these targets are already slug- or CUID-canonical.
+  getCachedResources: vi.fn(async () => []),
 }))
 
 // The permissions barrel reaches redis/db at import time and hangs under vitest.
@@ -64,9 +67,11 @@ vi.mock('@auxx/lib/cache', () => ({
 // for a target) and stub only the capability resolution.
 vi.mock('@auxx/lib/permissions', async () => {
   const instanceAccess = await import('@auxx/lib/permissions/capabilities/instance-access')
+  const resolve = await import('@auxx/lib/permissions/capabilities/resolve-capability-inputs')
   const types = await import('@auxx/lib/permissions/types')
   return {
     ...instanceAccess,
+    buildDefIdToSlug: resolve.buildDefIdToSlug,
     FeatureKey: types.FeatureKey,
     FeaturePermissionService: class {
       requireAccess = vi.fn(async () => undefined)
@@ -241,8 +246,18 @@ describe('grantInstance — authorizeInstanceTarget gates on THIS instance (§B.
       granteeId: 'grp_sales',
       permission: ResourcePermission.view,
     })
+    // The AUTHORIZER is skipped — that is the claim. The Enterprise plan gate is
+    // NOT part of it: since plan 40 phase 3 `assertMailSharingFeature` runs on its
+    // own line regardless of which authorizer answered, because `inbox` joining
+    // `INSTANCE_ACCESS_RESOURCES` would otherwise have taken the mail plan gate
+    // down with the guard's `inbox` arm (plan 40 §2/§5.3). It is a documented
+    // no-op for every non-mail def, so a dataset target is unaffected.
     expect(resourceAccess.assertCanManageMailSharing).not.toHaveBeenCalled()
-    expect(resourceAccess.assertMailSharingFeature).not.toHaveBeenCalled()
+    expect(resourceAccess.assertMailSharingFeature).toHaveBeenCalledWith(
+      expect.anything(),
+      DATASET_RECORD_ID,
+      [expect.objectContaining({ permission: ResourcePermission.view })]
+    )
   })
 
   it('a mail target still goes through the mail authorizer, not the capability gate', async () => {

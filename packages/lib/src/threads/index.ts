@@ -20,6 +20,7 @@ export {
   getMailCounts,
   markMailCountsStale,
 } from './mail-counts'
+export { assertCanActOnThreads } from './thread-action-access'
 export type {
   MergeThreadsInput,
   MergeThreadsResult,

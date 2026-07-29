@@ -46,7 +46,7 @@ export interface OrgCacheAccessorMap {
   systemUser: ScalarAccessor<string>
   hasPermissionGrants: ScalarAccessor<boolean>
   restrictedEntityDefIds: ScalarAccessor<string[]>
-  restrictedInstanceIds: ScalarAccessor<string[]>
+  governingInstanceIds: ScalarAccessor<string[]>
   subscription: ScalarAccessor<CachedSubscription | null>
   orgProfile: ScalarAccessor<DehydratedOrgProfile>
 

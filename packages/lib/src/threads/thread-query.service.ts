@@ -21,9 +21,10 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm'
-import { requireCachedEntityDefId } from '../cache'
+import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { resolveConditionContext } from '../conditions/resolve-context'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
+import { inboxDefKeyOf, loadInboxDefKeys } from '../inbox-record-ids'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import {
   buildDraftConditions,
@@ -821,6 +822,29 @@ export class ThreadQueryService {
     const inboxEntityDefId = await requireCachedEntityDefId(this.organizationId, 'inbox')
     const ticketEntityDefId = await requireCachedEntityDefId(this.organizationId, 'ticket')
 
+    // A mailbox lives on `inbox` or `personal_inbox` (plan 40 §3 / 40a §5.1),
+    // so the def is a PER-THREAD decision, not a batch constant — the majority
+    // of threads in a typical org sit in someone's personal mailbox.
+    //
+    // This surface is keyed by `EntityDefinition.id`, NOT by the def slug: the
+    // FE resolves `ThreadMeta.inboxId` through `useInbox` → `inboxMap`, whose
+    // keys come from `record.listAll` (`toRecordId(entityDefId, …)`). Minting a
+    // slug here would silently stop matching for EVERY thread, shared ones
+    // included. The def-slug keyspace is the ResourceAccess/realtime one
+    // (`toInboxRecordId`); the two are deliberately different here.
+    //
+    // `personal_inbox` is only present once entity migration 059 has run for
+    // this org, so its id is optional and the resolver degrades to the shared
+    // def — the same answer this line gave before the split.
+    const [personalInboxEntityDefId, inboxDefKeys] = await Promise.all([
+      getCachedEntityDefId(this.organizationId, 'personal_inbox'),
+      loadInboxDefKeys(this.organizationId),
+    ])
+    const inboxDefIdFor = (inboxId: string): string =>
+      personalInboxEntityDefId && inboxDefKeyOf(inboxDefKeys, inboxId) === 'personal_inbox'
+        ? personalInboxEntityDefId
+        : inboxEntityDefId
+
     // Fetch read status for all threads for this user
     const readStatuses = await this.db
       .select({
@@ -945,7 +969,7 @@ export class ThreadQueryService {
           participants: t.latestMessageId
             ? (participantsByMessage.get(t.latestMessageId) ?? [])
             : [],
-          inboxId: t.inboxId ? toRecordId(inboxEntityDefId, t.inboxId) : null,
+          inboxId: t.inboxId ? toRecordId(inboxDefIdFor(t.inboxId), t.inboxId) : null,
           // Backwards-compat shim for the frontend: if the primary entity is a
           // Ticket, surface its instance id under the legacy `ticketId` key.
           // Non-ticket primaries (deals, leads, …) leave `ticketId` null —

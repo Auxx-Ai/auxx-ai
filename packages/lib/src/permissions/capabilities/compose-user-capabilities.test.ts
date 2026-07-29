@@ -848,6 +848,12 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       // before plan 36 had no such area at all.
       [Area.signatures]: Level.Full,
       [Area.snippets]: Level.Full,
+      // Added by plan 40 §7, and a NEW area for the same reason as the two
+      // above: mail had no Layer-2 area at all before 2026-07-29, so this is not
+      // a change to the plan-22 parity claim. `Read` is the whole of today's
+      // org-shared mail access under the two-rung ladder (`Read → view` on every
+      // row-less shared inbox); `Full` would mean Manager of every inbox.
+      [Area.inboxes]: Level.Read,
       [Area.aiConfig]: Level.None,
       [Area.automationRules]: Level.None,
       [Area.auditLog]: Level.None,
@@ -964,7 +970,7 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
  *
  * These drive the REAL composition (`composeUserCapabilities`) into the REAL
  * resolver (`effectiveInstanceLevel`), so they pin the whole path a share
- * travels: rows compose into `instanceAccess`, `restrictedInstanceIds` marks the
+ * travels: rows compose into `instanceAccess`, `governingInstanceIds` marks the
  * instance as explicitly managed, and the resolver reads the row BEFORE the area
  * gate.
  *
@@ -1007,7 +1013,7 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       instanceAccess: caps.instanceAccess,
       // Grantee-agnostic by construction (see `computeUserCapabilities`): any row
       // on an instance puts it under explicit management, grant or restriction.
-      restrictedInstanceIds: new Set(opts.rows.map((r) => r.entityInstanceId)),
+      governingInstanceIds: new Set(opts.rows.map((r) => r.entityInstanceId)),
     }
     return { caps, level: effectiveInstanceLevel(access, opts.key, opts.instanceId) }
   }

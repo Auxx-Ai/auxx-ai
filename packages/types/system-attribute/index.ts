@@ -379,6 +379,17 @@ export const SYSTEM_ATTRIBUTES = [
   'inbox_description',
   'inbox_color',
   'inbox_status',
+  // RETIRED as live fields by plan 40 phase 4 (entity migration 062 drops the
+  // `CustomField` rows), but they MUST stay in this union: entity migrations
+  // 025 and 026 carry frozen `satisfies ResourceField` specs for them, and
+  // `ResourceField.systemAttribute` is typed as `SystemAttribute`. Removing
+  // these two breaks those migrations at compile time — and they still have to
+  // materialize the fields for an org that has not reached 060/062 yet.
+  //
+  // This is the OPPOSITE of the `signature_*` precedent below, where 021 edited
+  // the retired fields out of history so no `ResourceField` named them any more.
+  // That was not available here: 060 READS both attributes to decide what to
+  // move and which floors to project onto rows.
   'inbox_default_lens',
   'inbox_is_personal',
   'inbox_owner_user_id',
