@@ -20,6 +20,10 @@ const links = [
         href: '/platform/dispatch',
       },
       {
+        title: 'Sequences',
+        href: '/platform/sequences',
+      },
+      {
         title: 'Getting started',
         href: urls.signup,
       },

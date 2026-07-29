@@ -2,7 +2,8 @@
 
 import { getHomepageUrl } from '@auxx/config/client'
 import type { MetadataRoute } from 'next'
-import { getAllPosts } from '~/lib/blog'
+import { getAllCategories, getAllPosts } from '~/lib/blog'
+import { VERTICALS } from './industries/_data/verticals'
 
 // Re-render hourly so future-dated posts appear on their release date.
 export const revalidate = 3600
@@ -18,6 +19,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
+    ...getAllCategories().map((category) => ({
+      url: `${baseUrl}/blog/category/${category.slug}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly' as const,
+      priority: 0.5,
+    })),
     ...posts.map((post) => ({
       url: `${baseUrl}/blog/${post.slug}`,
       lastModified: new Date(post.date),
@@ -25,6 +32,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.6,
     })),
   ]
+
+  // Derived from the same data `industries/[vertical]/page.tsx` builds from, so a new
+  // vertical can never ship without its sitemap entry.
+  const industryEntries: MetadataRoute.Sitemap = Object.values(VERTICALS).map((vertical) => ({
+    url: `${baseUrl}/industries/${vertical.slug}`,
+    lastModified: new Date(),
+    changeFrequency: 'monthly' as const,
+    priority: 0.7,
+  }))
 
   return [
     {
@@ -87,24 +103,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.6,
     },
-    {
-      url: `${baseUrl}/industries/hvac`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/industries/plumbing`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/industries/pest-control`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
+    ...industryEntries,
     {
       url: `${baseUrl}/platform/live-chat`,
       lastModified: new Date(),
@@ -131,6 +130,30 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${baseUrl}/platform/workflow`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/platform/sequences`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/platform/reporting`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/platform/knowledge-base`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/startups`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.7,
