@@ -1066,6 +1066,12 @@
       "import": "./dist/snippets/index.mjs",
       "default": "./src/snippets/index.ts"
     },
+    "./snippets/snippet-mutations": {
+      "types": "./src/snippets/snippet-mutations.ts",
+      "source": "./src/snippets/snippet-mutations.ts",
+      "import": "./dist/snippets/snippet-mutations.mjs",
+      "default": "./src/snippets/snippet-mutations.ts"
+    },
     "./tags": {
       "types": "./src/tags/index.ts",
       "source": "./src/tags/index.ts",
