@@ -32,6 +32,7 @@ import { useOverages } from '~/hooks/use-overages'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
+  useDehydratedUser,
 } from '~/providers/dehydrated-state-provider'
 
 type Props = {
@@ -53,10 +54,16 @@ export const Dashboard = ({
   const pathname = usePathname()
   const router = useRouter()
 
-  // Get organization's onboarding status from dehydrated state
+  // Get onboarding status from dehydrated state. Two INDEPENDENT gates: the org
+  // gate covers workspace setup, the user gate covers the personal step (name +
+  // avatar). An invited member joins an already-onboarded org, so only the user
+  // gate ever catches them — without it they land in the app with no name.
   const organizationId = useDehydratedOrganizationId()
   const currentOrg = useDehydratedOrganization(organizationId)
+  const dehydratedUser = useDehydratedUser()
   const orgCompletedOnboarding = currentOrg?.completedOnboarding ?? false
+  const userCompletedOnboarding = dehydratedUser?.completedOnboarding ?? false
+  const needsOnboarding = !orgCompletedOnboarding || !userCompletedOnboarding
   const overages = useOverages(organizationId)
 
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
@@ -72,16 +79,17 @@ export const Dashboard = ({
     setActiveDndItem(event.active)
   }, [])
 
-  // Redirect to onboarding if org hasn't completed it.
+  // Redirect to onboarding if either gate is open. `/onboarding` is the single
+  // place that decides WHICH step is missing.
   // Uses full navigation since onboarding is in a separate route group.
   React.useEffect(() => {
-    if (!orgCompletedOnboarding) {
+    if (needsOnboarding) {
       window.location.href = '/onboarding'
     }
-  }, [orgCompletedOnboarding])
+  }, [needsOnboarding])
 
   // Show nothing while redirecting to onboarding
-  if (!orgCompletedOnboarding) {
+  if (needsOnboarding) {
     return null
   }
 

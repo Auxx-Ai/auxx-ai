@@ -1,6 +1,7 @@
 // apps/web/src/app/api/demo/create-session/route.ts
 
 import { database as db, schema } from '@auxx/database'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { DEMO_SESSION_DURATION_MS, generateDemoEmail, isDemoEnabled } from '@auxx/lib/demo'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter/redis-rate-limiter'
@@ -126,6 +127,15 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       })
       .where(eq(schema.Organization.id, organizationId))
+
+    // 6b. Both onboarding flags above were written with direct Drizzle updates, which
+    // bypass the cache. `seedNewUserDatabase` ran in the auth hook first and set the
+    // user flag to `false`, so any warm `userProfile`/`orgProfile` entry now disagrees
+    // with the row — and both flags gate `/app` (dashboard.tsx), which reads them out
+    // of the cached dehydrated state. Without these, a demo user loops into
+    // `/onboarding` forever.
+    await onCacheEvent('user.updated', { orgId: organizationId, userId })
+    await onCacheEvent('org.updated', { orgId: organizationId })
 
     // 7. The auth hook (seedNewUserDatabase) already called OrganizationSeeder.seedNewOrganization,
     // but it used the default (non-demo) path which creates a trial subscription.

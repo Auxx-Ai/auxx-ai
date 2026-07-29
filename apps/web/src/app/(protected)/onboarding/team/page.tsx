@@ -17,7 +17,6 @@ import { Copy, Plus, Trash2, Users } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { updateUser } from '~/auth/auth-client'
 import { useAnalytics } from '~/hooks/use-analytics'
 import {
   useDehydratedOrganization,
@@ -48,7 +47,6 @@ export default function TeamOnboardingPage() {
   )
   // API mutations
   const updateOrganization = api.organization.update.useMutation()
-  const updateUserProfile = api.user.updateProfile.useMutation()
   const inviteBatch = api.member.inviteBatch.useMutation()
   // Add new invite row
   const addInvite = () => {
@@ -85,14 +83,10 @@ export default function TeamOnboardingPage() {
   const completeOnboarding = async (skipInvites: boolean = false) => {
     setIsSubmitting(true)
     try {
-      // 1. Update user profile with firstName/lastName
-      if (state.personal.firstName || state.personal.lastName) {
-        await updateUserProfile.mutateAsync({
-          firstName: state.personal.firstName,
-          lastName: state.personal.lastName,
-        })
-      }
-      // 2. Update organization with handle and mark onboarding complete
+      // 1. Update organization with handle and mark onboarding complete.
+      //    The user's own profile (firstName/lastName + completedOnboarding) is
+      //    persisted by step 1 now — it is a gate of its own, so it can't wait
+      //    until here.
       // Use dehydrated state as fallback for values not in sessionStorage
       await updateOrganization.mutateAsync({
         name: state.organization.name || currentOrg?.name || undefined,
@@ -100,7 +94,7 @@ export default function TeamOnboardingPage() {
         website: state.organization.website || currentOrg?.website || undefined,
         completedOnboarding: true,
       })
-      // 3. Send team invites if any (skip if no valid emails or skipped)
+      // 2. Send team invites if any (skip if no valid emails or skipped)
       if (!skipInvites && invites.length > 0) {
         const validInvites = invites.filter((i) => i.email)
         if (validInvites.length > 0) {
@@ -120,17 +114,21 @@ export default function TeamOnboardingPage() {
           }
         }
       }
-      // 4. Track completion
+      // 3. Track completion
       posthog?.capture('onboarding_step_completed', { step: 'team' })
       posthog?.capture('onboarding_completed')
 
-      // 5. Clear sessionStorage
+      // 4. Clear sessionStorage
       resetState()
-      // 6. Update auth session to reflect completedOnboarding
-      await updateUser({ completedOnboarding: true })
-      // 7. Redirect through /onboarding so the entry-point routes to /app or to
+      // 5. Redirect through /onboarding so the entry-point routes to /app or to
       //    /shopify/claim (App-Store-initiated installs) in one place.
       //    Full reload to get fresh dehydrated state.
+      //
+      //    No `updateUser({ completedOnboarding: true })` here: step 1 already set
+      //    the user flag through `user.updateProfile`, which is the only write that
+      //    invalidates the cached `userProfile` the /app gate reads. better-auth's
+      //    `updateUser` has no `user.update` databaseHook, so it would write the row
+      //    and leave that cache stale.
       window.location.href = '/onboarding'
     } catch (error) {
       console.error('Failed to complete onboarding:', error)

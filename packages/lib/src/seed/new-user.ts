@@ -129,11 +129,17 @@ export async function seedNewUserDatabase(user: {
         db
       )
 
+      // `false`, not `true`: an invitee joins an org that is already onboarded, so
+      // the org-level gate never fires for them and nobody ever asks for their name.
+      // Signup sends `name: ''` (signup-form.tsx), so marking them done here is what
+      // landed invited members in the app as a blank. The user-level gate
+      // (dashboard.tsx + onboarding/page.tsx) now walks them through the personal
+      // step alone.
       const [updatedUser] = await db
         .update(schema.User)
         .set({
           defaultOrganizationId: organizationId,
-          completedOnboarding: true,
+          completedOnboarding: false,
           ...(shouldAutoPromote && { isSuperAdmin: true, emailVerified: true }),
         })
         .where(eq(schema.User.id, user.id))
@@ -144,6 +150,12 @@ export async function seedNewUserDatabase(user: {
       await userSeeder.seedNewUser()
       return updatedUser
     } else {
+      // Stays `true`, unlike the invite branch above. This branch leaves
+      // `defaultOrganizationId` null, and `protectedProcedure` hard-requires it
+      // (trpc.ts) — so gating these users on the personal step would strand them:
+      // they'd be redirected to a screen whose `user.updateProfile` submit can only
+      // ever 401. Fixing that means giving this branch a default org, which is a
+      // separate question about a path that shouldn't normally be reachable.
       const [updatedUser] = await db
         .update(schema.User)
         .set({
