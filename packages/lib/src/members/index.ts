@@ -28,7 +28,7 @@ export {
   inviteMember,
   resendInvitation,
 } from './invitations'
-export { removeMember, updateMemberRole, updateMemberSeatType } from './member-mutations'
+export { removeMember, updateMemberSeatType } from './member-mutations'
 export {
   findMemberByUser,
   getActiveMemberCount,

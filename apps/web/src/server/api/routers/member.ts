@@ -3,7 +3,7 @@
 import { schema } from '@auxx/database'
 import { MemberType, OrganizationRole, SeatType } from '@auxx/database/enums'
 import { getCachedMembers, onCacheEvent } from '@auxx/lib/cache'
-import { DehydrationCacheService, DehydrationService } from '@auxx/lib/dehydration'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import {
   acceptInvitation,
   acceptInvitationById,
@@ -18,7 +18,6 @@ import {
   inviteMember,
   removeMember,
   resendInvitation,
-  updateMemberRole,
   updateMemberSeatType,
 } from '@auxx/lib/members'
 import { TRPCError } from '@trpc/server'
@@ -180,46 +179,6 @@ export const memberRouter = createTRPCRouter({
       return result
     }),
 
-  /** Update a member's role */
-  updateRole: protectedProcedure
-    .input(
-      z.object({
-        memberId: z.string(),
-        role: z.enum(OrganizationRole),
-      })
-    )
-    .use(notDemo('change member roles'))
-    .mutation(async ({ ctx, input }) => {
-      const result = await updateMemberRole(
-        {
-          organizationId: ctx.session.organizationId,
-          updaterUserId: ctx.session.user.id,
-          memberToUpdateId: input.memberId,
-          newRole: input.role,
-        },
-        ctx.db
-      )
-
-      await onCacheEvent('member.role.changed', {
-        orgId: ctx.session.organizationId,
-        userId: input.memberId,
-      })
-      // The composed capability set rides in dehydrated state — bust it so the
-      // member's caps recompose on their next page load (graph now busts
-      // userCapabilities on role change too).
-      await new DehydrationCacheService().invalidateUser(input.memberId)
-
-      await recordAuditFromCtx(ctx, {
-        category: 'members',
-        action: 'member.role_changed',
-        targetType: 'OrganizationMember',
-        targetId: input.memberId,
-        newState: { role: input.role },
-      })
-
-      return result
-    }),
-
   /** Change a member's seat type (full ⇄ field seat) */
   updateSeatType: protectedProcedure
     .input(
@@ -284,11 +243,16 @@ export const memberRouter = createTRPCRouter({
         ctx.db
       )
 
+      // Assignment is the only path that writes a rank, so this row is also the
+      // rank-change record (there is no `member.role_changed` action — see
+      // AUDIT_ACTIONS). `previousState.role` is what makes a promotion or
+      // demotion visible rather than just the landing state.
       await recordAuditFromCtx(ctx, {
         category: 'members',
         action: 'member.profile_assigned',
         targetType: 'OrganizationMember',
         targetId: input.memberId,
+        previousState: { role: result.previousRole },
         newState: { permissionProfileId: result.permissionProfileId, role: result.role },
       })
 
