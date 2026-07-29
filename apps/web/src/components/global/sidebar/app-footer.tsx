@@ -1,4 +1,5 @@
 'use client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { BorderBeam } from '@auxx/ui/components/border-beam'
 import {
   DropdownMenu,
@@ -46,6 +47,7 @@ import { client } from '~/auth/auth-client'
 import { useDemo } from '~/hooks/use-demo'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import { NotificationTrigger } from '../notifications/notification-trigger'
 
@@ -316,9 +318,16 @@ function UpgradeButton() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const selfHosted = useIsSelfHosted()
   const subscription = useSubscription()
+  const { can } = useAccess()
 
   // Self-hosted deployments don't have trials
   if (selfHosted) return null
+
+  // The button's only action is opening the plan-change dialog, whose four
+  // queries all sit behind `billing.view` and whose submit needs
+  // `billing.manage`. Without the key the dialog is a wall of 403s, so hide the
+  // entry point rather than let a member click into it. Server enforces.
+  if (!can(PermissionKey.billingManage)) return null
 
   // Don't render if not in trial or trial has ended
   if (
