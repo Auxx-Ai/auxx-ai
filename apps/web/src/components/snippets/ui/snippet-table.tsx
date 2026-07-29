@@ -21,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { cn } from '@auxx/ui/lib/utils'
 import { keepPreviousData } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
@@ -32,14 +31,13 @@ import {
   MoreHorizontalIcon,
   PanelLeft,
   Share2,
-  StarIcon,
   Tag,
   Trash2Icon,
   UserIcon,
   UsersIcon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
+import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { EmptyState } from '~/components/global/empty-state'
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
@@ -67,7 +65,6 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
     setSearchTerm,
     currentFolderName,
     deleteSnippet,
-    updateSnippet,
     toggleFolderPanel,
   } = useSnippetContext()
   // Use confirm hook for delete confirmation
@@ -112,14 +109,6 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
       } catch (_error) {
         // Error handling is done in the context
       }
-    }
-  }
-  // Handle toggle favorite
-  const handleToggleFavorite = async (snippet: Snippet) => {
-    try {
-      await updateSnippet(snippet.id, { isFavorite: !snippet.isFavorite })
-    } catch (_error) {
-      // Error handling is done in the context
     }
   }
   return (
@@ -205,7 +194,6 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                   onEdit={onEdit}
                   onCopy={onCopy}
                   onDelete={handleDeleteSnippet}
-                  onToggleFavorite={handleToggleFavorite}
                 />
               ))}
             </TableBody>
@@ -225,21 +213,26 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
  * access — {@link useSnippetAccess} is a hook and cannot be called inside a
  * `.map()` callback. Every row here is at least viewable (`snippet.all` already
  * filtered to the visible set), so the row gates only the write affordances:
- * favourite at `edit`, Share… and Delete at `admin`, Duplicate at
- * `snippets.manage` (it creates a new snippet).
+ * Share… and Delete at `admin`, Duplicate at `snippets.manage` (it creates a new
+ * snippet).
+ *
+ * The star is deliberately UNGATED. It used to write `Snippet.isFavorite`, a
+ * boolean on the shared row reachable only through `updateSnippet` — so it was
+ * `edit`-gated (a `view` member could not star at all) and org-global (anyone
+ * with `edit` starred it for everyone). It now goes through the same per-user
+ * `Favorite` rows every other favouritable resource uses, which are the caller's
+ * own and carry no write access to the snippet itself.
  */
 function SnippetRow({
   snippet,
   onEdit,
   onCopy,
   onDelete,
-  onToggleFavorite,
 }: {
   snippet: Snippet
   onEdit: (snippet: Snippet) => void
   onCopy: (snippet: Snippet) => void
   onDelete: (snippet: Snippet) => void
-  onToggleFavorite: (snippet: Snippet) => void
 }) {
   const { canEdit, canAdmin, canManage } = useSnippetAccess(snippet.id)
   const [shareOpen, setShareOpen] = useState(false)
@@ -259,22 +252,7 @@ function SnippetRow({
       )}
       <TableRow>
         <TableCell className='p-2'>
-          <Button
-            variant='ghost'
-            size='icon'
-            disabled={!canEdit}
-            onClick={() => onToggleFavorite(snippet)}
-            className='h-8 w-8'>
-            <StarIcon
-              size={16}
-              className={cn(
-                'transition-colors',
-                snippet.isFavorite
-                  ? 'fill-yellow-400 text-yellow-400'
-                  : 'text-gray-300 hover:text-gray-400'
-              )}
-            />
-          </Button>
+          <FavoriteStarButton targetType='SNIPPET' targetIds={{ snippetId: snippet.id }} />
         </TableCell>
         <TableCell className='font-medium'>
           <div className='flex flex-col items-start'>
@@ -347,7 +325,6 @@ function SnippetRow({
                   Duplicate
                 </DropdownMenuItem>
               )}
-              <FavoriteToggleMenuItem targetType='SNIPPET' targetIds={{ snippetId: snippet.id }} />
               {canAdmin && (
                 <>
                   <DropdownMenuSeparator />

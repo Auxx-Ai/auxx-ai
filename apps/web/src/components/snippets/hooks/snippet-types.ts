@@ -29,7 +29,6 @@ export interface UpdateSnippetInput {
   contentHtml?: string
   description?: string
   folderId?: string | null
-  isFavorite?: boolean
 }
 /**
  * Input types for folder operations

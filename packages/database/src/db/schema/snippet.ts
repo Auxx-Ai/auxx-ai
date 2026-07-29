@@ -44,7 +44,12 @@ export const Snippet = pgTable(
     // rows and nothing else (§0.3). The legacy column's `GROUPS` value already
     // meant "check ResourceAccess"; the other two are converted by the inline
     // backfill in this column's own drop migration plus DataMigration 056.
-    isFavorite: boolean().default(false).notNull(),
+    // `isFavorite` dropped: it was one boolean on the SHARED row, writable only
+    // through `updateSnippet` (`edit`), so a `view` member could not star at all
+    // and anyone with `edit` starred it for the whole org. Favouriting is
+    // per-user `Favorite` rows (`targetType: 'SNIPPET'`) like every other
+    // favouritable resource — the same move plan 36 §12.2 made for a signature's
+    // "default".
     usageCount: integer().default(0).notNull(),
     /** System-seeded snippet marker (e.g. 'quote_email' | 'invoice_email' —
      *  `SnippetSystemType` in `@auxx/database/enums`). NULL for user-created
