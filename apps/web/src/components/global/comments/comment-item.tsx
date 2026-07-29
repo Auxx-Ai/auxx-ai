@@ -14,9 +14,11 @@ import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
 import { useActor } from '~/components/resources/hooks/use-actor'
 import { type Comment as CommentType, useComments } from '~/hooks/use-comments'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
 import { Tooltip } from '../tooltip'
 import CommentComposer from './comment-composer'
 import { CommentContent } from './comment-content'
+import { useCommentAccess } from './use-comment-access'
 
 /** Helper to convert userId to ActorId format */
 const toUserActorId = (userId: string): ActorId => `user:${userId}` as ActorId
@@ -62,6 +64,8 @@ export function CommentItem({
 }: CommentItemProps) {
   // Use our custom hook
   const [confirm, ConfirmDialog] = useConfirm()
+  const user = useDehydratedUser()
+  const access = useCommentAccess(recordId ?? (initialComment?.recordId as RecordId | undefined))
   const {
     isFetchingComments,
     editingCommentId,
@@ -121,6 +125,9 @@ export function CommentItem({
   }
   const isEditing = editingCommentId === comment.id
   const isReplying = replyingToId === comment.id
+  const isAuthor = comment.actorId === `user:${user?.id}`
+  const canEditOrDelete = access.canCompose && (isAuthor || access.canModerateOthers)
+  const canShowActions = access.canReact || access.canPin || access.canCompose || canEditOrDelete
   return (
     <>
       <div
@@ -177,7 +184,7 @@ export function CommentItem({
           row-start-2: Positions this element to start at the second row in the
           grid */}
           <div className='col-start-2 row-span-2 row-start-2 grid w-full break-words'>
-            {isEditing && (
+            {isEditing && canEditOrDelete && (
               <div className='mb-4 w-[400px]'>
                 <CommentComposer
                   recordId={recordId!}
@@ -196,7 +203,7 @@ export function CommentItem({
                 />
               </div>
             )}
-            {!isEditing && (
+            {(!isEditing || !canEditOrDelete) && (
               <div className='block h-full w-fit max-w-full rounded-[15px] bg-primary-200 text-sm font-normal text-foreground'>
                 <div className='cursor-text select-text px-3 py-1 leading-[22px]'>
                   <CommentContent doc={comment.contentJson} />
@@ -222,8 +229,16 @@ export function CommentItem({
                       <Badge
                         key={emoji}
                         variant='outline'
-                        className='flex cursor-pointer gap-1 rounded-lg bg-primary-300 border-0 hover:bg-info/80 hover:text-info-foreground'
-                        onClick={() => handleToggleEmoji(comment.id, emoji, data.userReacted)}>
+                        className={cn(
+                          'flex gap-1 rounded-lg bg-primary-300 border-0',
+                          access.canReact &&
+                            'cursor-pointer hover:bg-info/80 hover:text-info-foreground'
+                        )}
+                        onClick={
+                          access.canReact
+                            ? () => handleToggleEmoji(comment.id, emoji, data.userReacted)
+                            : undefined
+                        }>
                         <span>{emoji}</span>
                         {data.count > 0 && <span>{data.count}</span>}
                       </Badge>
@@ -235,7 +250,7 @@ export function CommentItem({
           </div>
 
           <div className='col-start-3 row-start-2 ml-px flex w-full min-w-0'>
-            {!isEditing && (
+            {!isEditing && canShowActions && (
               <div
                 className={cn(
                   'flex items-center',
@@ -243,62 +258,72 @@ export function CommentItem({
                   // Keep visible when any action is in progress for this comment or when replying
                   (isUpdating(comment.id) || isReplying) && 'visible'
                 )}>
-                <div className='min-w-0'>
-                  <EmojiPicker onChange={(emoji) => handleAddEmoji(comment.id, emoji)}>
+                {access.canReact && (
+                  <div className='min-w-0'>
+                    <EmojiPicker onChange={(emoji) => handleAddEmoji(comment.id, emoji)}>
+                      <Button
+                        variant={'ghost'}
+                        size='icon'
+                        className='size-7 rounded-full p-0 hover:bg-foreground/10'
+                        loading={addingEmojiToCommentId === comment.id}
+                        disabled={addingEmojiToCommentId === comment.id}>
+                        <SmilePlus />
+                      </Button>
+                    </EmojiPicker>
+                  </div>
+                )}
+
+                {access.canPin && (
+                  <div className='min-w-0'>
                     <Button
                       variant={'ghost'}
                       size='icon'
                       className='size-7 rounded-full p-0 hover:bg-foreground/10'
-                      loading={addingEmojiToCommentId === comment.id}
-                      disabled={addingEmojiToCommentId === comment.id}>
-                      <SmilePlus />
+                      onClick={() => handleTogglePin(comment.id, comment.isPinned)}
+                      loading={pinningCommentId === comment.id}
+                      disabled={pinningCommentId === comment.id}>
+                      {comment.isPinned ? <PinOff /> : <Pin />}
                     </Button>
-                  </EmojiPicker>
-                </div>
-
-                <div className='min-w-0'>
-                  <Button
-                    variant={'ghost'}
-                    size='icon'
-                    className='size-7 rounded-full p-0 hover:bg-foreground/10'
-                    onClick={() => handleTogglePin(comment.id, comment.isPinned)}
-                    loading={pinningCommentId === comment.id}
-                    disabled={pinningCommentId === comment.id}>
-                    {comment.isPinned ? <PinOff /> : <Pin />}
-                  </Button>
-                </div>
-                <div className='min-w-0'>
-                  <Button
-                    variant={'ghost'}
-                    size='icon'
-                    className={cn(
-                      'size-7 rounded-full p-0 hover:bg-foreground/10',
-                      isReplying && 'bg-bad-100 hover:bg-bad-200 text-bad-500 hover:text-bad-600'
-                    )}
-                    onClick={() => setReplyingToId(isReplying ? null : comment.id)}>
-                    {isReplying ? <X /> : <Reply />}
-                  </Button>
-                </div>
-                <div className='min-w-0'>
-                  <Button
-                    variant={'ghost'}
-                    size='icon'
-                    className='size-7 rounded-full p-0 hover:bg-foreground/10'
-                    onClick={() => setEditingCommentId(comment.id)}>
-                    <Pencil />
-                  </Button>
-                </div>
-                <div className='min-w-0'>
-                  <Button
-                    variant={'ghost'}
-                    size='icon'
-                    className='size-7 rounded-full p-0 hover:bg-foreground/10'
-                    onClick={handleDeleteWithConfirmation}
-                    loading={deletingCommentId === comment.id}
-                    disabled={deletingCommentId === comment.id}>
-                    <Trash />
-                  </Button>
-                </div>
+                  </div>
+                )}
+                {access.canCompose && (
+                  <div className='min-w-0'>
+                    <Button
+                      variant={'ghost'}
+                      size='icon'
+                      className={cn(
+                        'size-7 rounded-full p-0 hover:bg-foreground/10',
+                        isReplying && 'bg-bad-100 hover:bg-bad-200 text-bad-500 hover:text-bad-600'
+                      )}
+                      onClick={() => setReplyingToId(isReplying ? null : comment.id)}>
+                      {isReplying ? <X /> : <Reply />}
+                    </Button>
+                  </div>
+                )}
+                {canEditOrDelete && (
+                  <>
+                    <div className='min-w-0'>
+                      <Button
+                        variant={'ghost'}
+                        size='icon'
+                        className='size-7 rounded-full p-0 hover:bg-foreground/10'
+                        onClick={() => setEditingCommentId(comment.id)}>
+                        <Pencil />
+                      </Button>
+                    </div>
+                    <div className='min-w-0'>
+                      <Button
+                        variant={'ghost'}
+                        size='icon'
+                        className='size-7 rounded-full p-0 hover:bg-foreground/10'
+                        onClick={handleDeleteWithConfirmation}
+                        loading={deletingCommentId === comment.id}
+                        disabled={deletingCommentId === comment.id}>
+                        <Trash />
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <div className='flex flex-1 justify-end overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[30px]  opacity-100'>
@@ -319,7 +344,7 @@ export function CommentItem({
       </div>
 
       {/* Reply composer - appears below comment when replying */}
-      {isReplying && !disableReplies && (
+      {isReplying && !disableReplies && access.canCompose && (
         <div className='ms-8 mt-2 mb-2 max-w-[400px]'>
           <CommentComposer
             recordId={recordId!}

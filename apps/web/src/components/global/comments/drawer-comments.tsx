@@ -8,6 +8,7 @@ import CommentComposer from '~/components/global/comments/comment-composer'
 import { CommentList } from '~/components/global/comments/comment-list'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
+import { useCommentAccess } from './use-comment-access'
 
 /**
  * Props for the DrawerComments wrapper component.
@@ -27,7 +28,15 @@ interface DrawerCommentsProps {
  * with the ability to add new comments via CommentComposer.
  * Supports Contact, Ticket, Thread, and custom entity types.
  */
-const DrawerComments = ({
+const DrawerComments = ({ recordId, ...props }: DrawerCommentsProps) => {
+  const { canViewComments } = useCommentAccess(recordId)
+
+  if (!canViewComments) return null
+
+  return <AccessibleDrawerComments recordId={recordId} {...props} />
+}
+
+const AccessibleDrawerComments = ({
   recordId,
   emptyTitle,
   emptyDescription,
@@ -35,6 +44,7 @@ const DrawerComments = ({
   composerPlaceholder,
   focusComposerTrigger,
 }: DrawerCommentsProps) => {
+  const { canCompose } = useCommentAccess(recordId)
   const defaultEmptyTitle = emptyTitle || 'No comments yet'
   const defaultEmptyDescription = emptyDescription || 'Start a conversation about this record'
   const defaultHeaderTitle = headerTitle || 'Comments'
@@ -84,20 +94,21 @@ const DrawerComments = ({
         </div>
       )}
 
-      {/* Comment Composer - always visible at bottom */}
-      <div className='px-4 pb-4 pt-2'>
-        <CommentComposer
-          recordId={recordId}
-          expanded
-          expandHeight='100px'
-          focusTrigger={focusComposerTrigger}
-          placeholder={defaultPlaceholder}
-          onSubmitted={() => {
-            // Refetch comments after submission
-            // tRPC will handle this automatically with cache invalidation
-          }}
-        />
-      </div>
+      {canCompose && (
+        <div className='px-4 pb-4 pt-2'>
+          <CommentComposer
+            recordId={recordId}
+            expanded
+            expandHeight='100px'
+            focusTrigger={focusComposerTrigger}
+            placeholder={defaultPlaceholder}
+            onSubmitted={() => {
+              // Refetch comments after submission
+              // tRPC will handle this automatically with cache invalidation
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }

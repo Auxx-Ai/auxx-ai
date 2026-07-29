@@ -712,7 +712,7 @@ export async function deleteEntity(
   }
 
   // Delete comments using RecordId
-  const commentService = new CommentService(ctx.organizationId, ctx.userId, ctx.db)
+  const commentService = new CommentService(ctx.organizationId, ctx.userId, ctx.db, null)
   await commentService.deleteCommentsByRecordId(recordId)
 
   const deleteResult = await deleteEntityInstance({

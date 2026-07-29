@@ -9,7 +9,7 @@ import { type ActorId, toActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, isAuxxError, permissionProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('comment-router')
 
@@ -76,7 +76,7 @@ export const commentRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       try {
         const { userId, organizationId } = ctx.session
-        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
         const { contentJson, recordId, parentId, fileAttachments } = input
 
         // Create the comment
@@ -93,7 +93,7 @@ export const commentRouter = createTRPCRouter({
         const message = error instanceof Error ? error.message : 'Failed to create comment'
         logger.error('Error creating comment', { error, input })
 
-        if (error instanceof TRPCError) {
+        if (error instanceof TRPCError || isAuxxError(error)) {
           throw error
         }
 
@@ -110,7 +110,7 @@ export const commentRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       try {
         const { userId, organizationId } = ctx.session
-        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
         const { id, contentJson, fileAttachments } = input
 
         // Update the comment
@@ -125,7 +125,7 @@ export const commentRouter = createTRPCRouter({
         logger.error('Error updating comment', { error, input })
         // const message = error instanceof Error ? error.message : 'Failed to update comment'
 
-        if (error instanceof TRPCError) {
+        if (error instanceof TRPCError || isAuxxError(error)) {
           throw error
         }
 
@@ -144,14 +144,14 @@ export const commentRouter = createTRPCRouter({
         const { userId, organizationId } = ctx.session
         const { id } = input
 
-        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
         await commentService.deleteComment(id)
 
         return { success: true }
       } catch (error: unknown) {
         logger.error('Error deleting comment', { error, input })
 
-        if (error instanceof TRPCError) {
+        if (error instanceof TRPCError || isAuxxError(error)) {
           throw error
         }
 
@@ -161,36 +161,38 @@ export const commentRouter = createTRPCRouter({
         })
       }
     }),
-  getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    try {
-      const { userId, organizationId } = ctx.session
-      const commentService = new CommentService(organizationId, userId, ctx.db)
+  getById: permissionProcedure(PermissionKey.commentsView)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const { userId, organizationId } = ctx.session
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
 
-      const comment = await commentService.getById(input.id)
+        const comment = await commentService.getById(input.id)
 
-      if (!comment) {
+        if (!comment) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Comment not found',
+          })
+        }
+
+        return { comment: transformCommentResponse(comment) }
+      } catch (error: unknown) {
+        logger.error('Error fetching comment', { error, input })
+
+        if (error instanceof TRPCError || isAuxxError(error)) {
+          throw error
+        }
+
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Comment not found',
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch comment',
         })
       }
-
-      return { comment: transformCommentResponse(comment) }
-    } catch (error: unknown) {
-      logger.error('Error fetching comment', { error, input })
-
-      if (error instanceof TRPCError) {
-        throw error
-      }
-
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Failed to fetch comment',
-      })
-    }
-  }),
+    }),
   // Get comments for an entity
-  getByRecordId: protectedProcedure
+  getByRecordId: permissionProcedure(PermissionKey.commentsView)
     .input(
       z.object({
         recordId: recordIdSchema,
@@ -201,7 +203,7 @@ export const commentRouter = createTRPCRouter({
         const { userId, organizationId } = ctx.session
         const { recordId } = input
 
-        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
 
         // Use efficient single query from CommentService
         const comments = await commentService.getCommentsByRecordId(recordId)
@@ -210,7 +212,7 @@ export const commentRouter = createTRPCRouter({
       } catch (error: unknown) {
         logger.error('Error fetching comments', { error, input })
 
-        if (error instanceof TRPCError) {
+        if (error instanceof TRPCError || isAuxxError(error)) {
           throw error
         }
 
@@ -222,21 +224,21 @@ export const commentRouter = createTRPCRouter({
     }),
 
   // Pin/unpin a comment
-  togglePin: protectedProcedure
+  togglePin: permissionProcedure(PermissionKey.commentsManage)
     .input(z.object({ id: z.string(), pin: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       try {
         const { userId, organizationId } = ctx.session
         const { id, pin } = input
 
-        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
         const comment = await commentService.pinComment(id, userId, pin)
 
         return comment
       } catch (error: unknown) {
         logger.error('Error toggling pin status', { error, input })
 
-        if (error instanceof TRPCError) {
+        if (error instanceof TRPCError || isAuxxError(error)) {
           throw error
         }
 
@@ -248,7 +250,7 @@ export const commentRouter = createTRPCRouter({
     }),
 
   // Add a reaction to a comment
-  addReaction: protectedProcedure
+  addReaction: permissionProcedure(PermissionKey.commentsView)
     .input(
       z.object({
         commentId: z.string(),
@@ -260,7 +262,7 @@ export const commentRouter = createTRPCRouter({
       try {
         const { userId, organizationId } = ctx.session
 
-        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
         const reaction = await commentService.addReaction({
           commentId: input.commentId,
           userId,
@@ -272,7 +274,7 @@ export const commentRouter = createTRPCRouter({
       } catch (error: unknown) {
         logger.error('Error adding reaction', { error, input })
 
-        if (error instanceof TRPCError) {
+        if (error instanceof TRPCError || isAuxxError(error)) {
           throw error
         }
 
@@ -284,7 +286,7 @@ export const commentRouter = createTRPCRouter({
     }),
 
   // Remove a reaction from a comment
-  removeReaction: protectedProcedure
+  removeReaction: permissionProcedure(PermissionKey.commentsView)
     .input(
       z.object({
         commentId: z.string(),
@@ -296,14 +298,14 @@ export const commentRouter = createTRPCRouter({
       try {
         const { userId, organizationId } = ctx.session
 
-        const commentService = new CommentService(organizationId, userId, ctx.db)
+        const commentService = new CommentService(organizationId, userId, ctx.db, ctx.capabilities)
         await commentService.removeReaction(input.commentId, userId, input.type, input.emoji)
 
         return { success: true }
       } catch (error: unknown) {
         logger.error('Error removing reaction', { error, input })
 
-        if (error instanceof TRPCError) {
+        if (error instanceof TRPCError || isAuxxError(error)) {
           throw error
         }
 

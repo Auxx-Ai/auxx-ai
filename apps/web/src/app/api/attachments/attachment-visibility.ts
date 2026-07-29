@@ -1,10 +1,14 @@
 // apps/web/src/app/api/attachments/attachment-visibility.ts
 
 import { database, schema } from '@auxx/database'
-import { getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedResources, getCachedUserMailVisibility } from '@auxx/lib/cache'
 import { getCapabilities, PermissionKey } from '@auxx/lib/permissions'
+import {
+  buildDefIdToDefinitionId,
+  buildDefIdToSlug,
+} from '@auxx/lib/permissions/capabilities/resolve-capability-inputs'
 import { getThreadLens } from '@auxx/lib/permissions/visibility'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 /**
  * Authorization gate for the attachment content routes (`download`, `thumbnail`).
@@ -69,21 +73,56 @@ export async function canViewAttachment(
     }
 
     // `Comment.entityDefinitionId` is a denormalized column, so the comment's own row
-    // resolves the gate's subject without joining `EntityInstance`.
+    // resolves the gate's subject. Comment attachments inherit both the comments-area
+    // front door and the canonical host gate used for the comment body.
     case 'COMMENT': {
+      const commentCaps = await capabilities()
+      if (!commentCaps.can(PermissionKey.commentsView)) return false
+
       const [comment] = await database
-        .select({ entityDefinitionId: schema.Comment.entityDefinitionId })
+        .select({
+          entityDefinitionId: schema.Comment.entityDefinitionId,
+          entityId: schema.Comment.entityId,
+        })
         .from(schema.Comment)
         .where(
           and(
             eq(schema.Comment.id, attachment.entityId),
-            eq(schema.Comment.organizationId, organizationId)
+            eq(schema.Comment.organizationId, organizationId),
+            isNull(schema.Comment.deletedAt)
           )
         )
         .limit(1)
       if (!comment) return false
 
-      return (await capabilities()).canViewEntity(comment.entityDefinitionId)
+      const resources = await getCachedResources(organizationId)
+      const toSlug = buildDefIdToSlug(resources)
+      const hostSlug = toSlug(comment.entityDefinitionId)
+
+      if (hostSlug === 'inbox' || hostSlug === 'personal_inbox') return false
+
+      if (hostSlug === 'thread') {
+        if (!commentCaps.can(PermissionKey.inboxesView)) return false
+
+        const viewer = await getCachedUserMailVisibility(userId, organizationId)
+        return (await getThreadLens(database, organizationId, viewer, comment.entityId)) !== 'none'
+      }
+
+      const canonicalDefinitionId = buildDefIdToDefinitionId(resources)(comment.entityDefinitionId)
+      if (!commentCaps.canViewEntity(canonicalDefinitionId)) return false
+
+      const [record] = await database
+        .select({ id: schema.EntityInstance.id })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            eq(schema.EntityInstance.id, comment.entityId),
+            eq(schema.EntityInstance.entityDefinitionId, canonicalDefinitionId),
+            eq(schema.EntityInstance.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+      return Boolean(record)
     }
 
     // Same shape as COMMENT — `FieldValue.entityDefinitionId` is likewise a column.

@@ -10,6 +10,7 @@ import { Expand, Mail, MessagesSquare, Trash, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
+import { useCommentAccess } from '~/components/global/comments/use-comment-access'
 import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
@@ -55,6 +56,7 @@ export function ContactDrawer({
     () => (contactId ? toRecordId('contact', contactId) : null),
     [contactId]
   )
+  const { canCompose } = useCommentAccess(recordId)
 
   // Get record data for contact-specific UI
   const { record: contact } = useRecord({
@@ -140,11 +142,13 @@ export function ContactDrawer({
               <Mail />
               Compose
             </Button>
-            <Tooltip content='Create note'>
-              <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
-                <MessagesSquare />
-              </Button>
-            </Tooltip>
+            {canCompose && (
+              <Tooltip content='Create note'>
+                <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
+                  <MessagesSquare />
+                </Button>
+              </Tooltip>
+            )}
             <Tooltip content='View full page'>
               <Button
                 variant='ghost'

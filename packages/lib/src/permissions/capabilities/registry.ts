@@ -31,6 +31,7 @@ export enum PermissionKey {
   agentsManage = 'agents.manage',
 
   // collaboration
+  commentsView = 'comments.view',
   commentsManage = 'comments.manage',
 
   // dispatch
@@ -184,6 +185,12 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
   },
 
   // ── Collaboration ──
+  {
+    key: PermissionKey.commentsView,
+    label: 'View Comments',
+    description: 'Read comments on records.',
+    group: 'Collaboration',
+  },
   {
     key: PermissionKey.commentsManage,
     label: 'Manage Comments',
@@ -713,9 +720,12 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.comments]: {
     area: Area.comments,
     label: 'Comments',
-    description: 'Write, edit, and delete comments on records.',
+    description: 'Read, write, edit, and delete comments on records.',
     group: 'Collaboration',
-    rungs: [{ level: Level.Full, keys: [PermissionKey.commentsManage] }],
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.commentsView] },
+      { level: Level.Full, keys: [PermissionKey.commentsManage] },
+    ],
   },
   [Area.dispatchBoard]: {
     area: Area.dispatchBoard,

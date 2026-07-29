@@ -6,6 +6,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { useEffect, useMemo, useRef } from 'react'
+import { useCommentAccess } from '~/components/global/comments/use-comment-access'
 import { useMessageParticipants, useMessages, useThread } from '~/components/threads/hooks'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
@@ -40,6 +41,8 @@ export default function ThreadDetails({
   const { threadId, replyBox, handlers, emailActions } = useThreadContext()
   const isNested = useIsNestedThread()
   const { thread, isLoading, isNotFound } = useThread({ threadId })
+  const commentRecordId = toRecordId('thread', threadId)
+  const { canViewComments } = useCommentAccess(commentRecordId)
   const { openInline, close: closeCompose } = useCompose()
   const instanceIdRef = useRef<string | null>(null)
   const justCreatedRef = useRef(false)
@@ -239,9 +242,11 @@ export default function ThreadDetails({
           <div className='flex-1'>
             <ThreadMessages />
 
-            <div className='px-4 pb-6 pt-4 md:px-6 md:pb-10'>
-              <CommentList recordId={toRecordId('thread', thread.id)} />
-            </div>
+            {canViewComments && (
+              <div className='px-4 pb-6 pt-4 md:px-6 md:pb-10'>
+                <CommentList recordId={commentRecordId} />
+              </div>
+            )}
 
             <div className='grow'></div>
           </div>

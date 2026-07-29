@@ -127,6 +127,37 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(sorted(caps.keys)).toEqual(sorted(WORKER_SEAT_KEYS))
   })
 
+  it('splits comments into Read and Full without changing the Member baseline', () => {
+    const readOnly = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: { [Area.comments]: Level.Read },
+      typeAccessRows: [],
+    })
+    expect(readOnly.keys).toContain(PermissionKey.commentsView)
+    expect(readOnly.keys).not.toContain(PermissionKey.commentsManage)
+
+    const member = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'full',
+      profileLevels: MEMBER_BASELINE_LEVELS,
+      typeAccessRows: [],
+    })
+    expect(member.keys).toContain(PermissionKey.commentsView)
+    expect(member.keys).toContain(PermissionKey.commentsManage)
+  })
+
+  it('keeps comments unliftably disabled for worker seats', () => {
+    const caps = composeUserCapabilities({
+      role: 'USER',
+      seatType: 'worker',
+      profileLevels: { [Area.comments]: Level.Full },
+      typeAccessRows: [],
+    })
+    expect(caps.keys).not.toContain(PermissionKey.commentsView)
+    expect(caps.keys).not.toContain(PermissionKey.commentsManage)
+  })
+
   it('the profile base falls through PER AREA: sets records=Read, workflows unset now composes None (plan 22 §2.5)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',

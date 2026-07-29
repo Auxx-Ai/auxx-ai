@@ -5,11 +5,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
-import { getOrgCache } from '../cache'
+import { getCachedResources, getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { publisher } from '../events/publisher'
 import { FieldValueService } from '../field-values'
 import { toInboxRecordId } from '../inbox-record-ids'
+import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability-inputs'
 import type { MailViewer } from '../permissions/visibility/context'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
@@ -116,6 +117,21 @@ export class ThreadMutationService {
    */
   private async assertCanActOnThreads(threadIds: string[]): Promise<void> {
     await assertCanActOnThreads(this.db, this.organizationId, this.viewer, threadIds)
+  }
+
+  /** Comment host spellings that canonicalize to the thread definition. */
+  private async threadCommentDefinitionKeys(): Promise<string[]> {
+    const resources = await getCachedResources(this.organizationId)
+    const toSlug = buildDefIdToSlug(resources)
+    const keys = new Set<string>(['thread'])
+    for (const resource of resources) {
+      if (toSlug(resource.entityDefinitionId) !== 'thread') continue
+      keys.add(resource.id)
+      keys.add(resource.apiSlug)
+      keys.add(resource.entityDefinitionId)
+      if (resource.entityType) keys.add(resource.entityType)
+    }
+    return [...keys]
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1081,29 +1097,48 @@ export class ThreadMutationService {
     })
 
     try {
-      const result = await this.db
-        .delete(schema.Thread)
-        .where(
-          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
-        )
-        .returning({
-          id: schema.Thread.id,
-          inboxId: schema.Thread.inboxId,
-          assigneeId: schema.Thread.assigneeId,
-        })
+      const threadDefinitionKeys = await this.threadCommentDefinitionKeys()
+      const result = await this.db.transaction(async (tx) => {
+        const deletedThreads = await tx
+          .delete(schema.Thread)
+          .where(
+            and(
+              eq(schema.Thread.id, threadId),
+              eq(schema.Thread.organizationId, this.organizationId)
+            )
+          )
+          .returning({
+            id: schema.Thread.id,
+            inboxId: schema.Thread.inboxId,
+            assigneeId: schema.Thread.assigneeId,
+          })
 
-      if (result.length === 0) {
-        logger.error('Thread not found for permanent deletion.', { threadId })
-        throw new Error(`Thread ${threadId} not found for deletion.`)
-      }
+        if (deletedThreads.length === 0) {
+          throw new Error(`Thread ${threadId} not found for deletion.`)
+        }
+
+        await tx
+          .delete(schema.Comment)
+          .where(
+            and(
+              eq(schema.Comment.entityId, deletedThreads[0]!.id),
+              inArray(schema.Comment.entityDefinitionId, threadDefinitionKeys),
+              eq(schema.Comment.organizationId, this.organizationId)
+            )
+          )
+
+        return deletedThreads
+      })
+
+      const deletedThread = result[0]!
 
       await publishThreadDeleted(
         getRealtimeService(),
         this.organizationId,
         {
           threadId,
-          inboxId: result[0].inboxId ?? null,
-          assigneeId: result[0].assigneeId ?? null,
+          inboxId: deletedThread.inboxId ?? null,
+          assigneeId: deletedThread.assigneeId ?? null,
         },
         { excludeSocketId: this.socketId }
       )
@@ -1135,19 +1170,37 @@ export class ThreadMutationService {
     })
 
     try {
-      const result = await this.db
-        .delete(schema.Thread)
-        .where(
-          and(
-            inArray(schema.Thread.id, threadIds),
-            eq(schema.Thread.organizationId, this.organizationId)
+      const threadDefinitionKeys = await this.threadCommentDefinitionKeys()
+      const result = await this.db.transaction(async (tx) => {
+        const deletedThreads = await tx
+          .delete(schema.Thread)
+          .where(
+            and(
+              inArray(schema.Thread.id, threadIds),
+              eq(schema.Thread.organizationId, this.organizationId)
+            )
           )
-        )
-        .returning({
-          id: schema.Thread.id,
-          inboxId: schema.Thread.inboxId,
-          assigneeId: schema.Thread.assigneeId,
-        })
+          .returning({
+            id: schema.Thread.id,
+            inboxId: schema.Thread.inboxId,
+            assigneeId: schema.Thread.assigneeId,
+          })
+
+        if (deletedThreads.length > 0) {
+          await tx.delete(schema.Comment).where(
+            and(
+              inArray(
+                schema.Comment.entityId,
+                deletedThreads.map((thread) => thread.id)
+              ),
+              inArray(schema.Comment.entityDefinitionId, threadDefinitionKeys),
+              eq(schema.Comment.organizationId, this.organizationId)
+            )
+          )
+        }
+
+        return deletedThreads
+      })
 
       logger.info('Threads permanently deleted in bulk', {
         requestedCount: threadIds.length,

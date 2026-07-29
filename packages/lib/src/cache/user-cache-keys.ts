@@ -289,5 +289,9 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // nothing.
   // NOTE: bump this whenever the registry's area/key set or the UserCapabilities
   // shape changes, so a rollout can't leave members on a stale key set.
-  userCapabilities: { prefix: 'user:capabilities:v14', ttlSeconds: ONE_DAY },
+  // v15 (plan 41): Area.comments gained a Read rung / comments.view key.
+  // A stale v14 blob for a Full member holds comments.manage without the new
+  // prerequisite key, so direct reads fail closed while writes may still pass.
+  // Bump to keep the ladder coherent across a rolling deploy.
+  userCapabilities: { prefix: 'user:capabilities:v15', ttlSeconds: ONE_DAY },
 }
