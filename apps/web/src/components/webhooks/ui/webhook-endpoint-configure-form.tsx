@@ -184,125 +184,134 @@ export function WebhookEndpointConfigureForm({
         e.preventDefault()
         handleSubmit()
       }}
-      className='flex flex-col gap-4 p-4'>
-      {isEdit && endpoint && <CopyRow label='Webhook URL' value={endpoint.url} icon={<Link />} />}
+      className='flex flex-col'>
+      {/* The gutter lives on the body, not the `<form>`: `DialogNavPages` re-gutters a
+          nested `[data-slot=dialog-footer]` on the assumption that the footer is an
+          unpadded sibling of the padded body. Padding the form instead stacks both
+          gutters and indents the buttons past the fields. The bottom edge is left to
+          the footer's own `pt-4`; only the footer-less host pads it here. */}
+      <div className={showFooter ? 'flex flex-col gap-4 px-4 pt-4' : 'flex flex-col gap-4 p-4'}>
+        {isEdit && endpoint && <CopyRow label='Webhook URL' value={endpoint.url} icon={<Link />} />}
 
-      <div className='flex flex-col gap-2'>
-        <div className='text-xs font-medium text-muted-foreground'>Configuration</div>
-        <FieldPanel
-          orientation='responsive'
-          breakpoint='md'
-          resizeId='webhook-endpoint'
-          defaultLabelWidth={200}
-          className='p-0'>
-          <ConnectionVariableFields
-            variables={endpointVars(values.topicSourceKind, {
-              includeStripeSecret: mode === 'create',
-            })}
-            values={values}
-            onValueChange={setValue}
-            errors={errors}
-            disabled={pending}
-          />
-        </FieldPanel>
-      </div>
-
-      {values.verification === 'none' && (
-        <div className='flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800'>
-          <TriangleAlert className='size-4 shrink-0 text-amber-600' />
-          <span>
-            Anyone with the URL can trigger this endpoint. Use a token or HMAC in production.
-          </span>
+        <div className='flex flex-col gap-2'>
+          <div className='text-xs font-medium text-muted-foreground'>Configuration</div>
+          <FieldPanel
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='webhook-endpoint'
+            defaultLabelWidth={200}
+            className='p-0'>
+            <ConnectionVariableFields
+              variables={endpointVars(values.topicSourceKind, {
+                includeStripeSecret: mode === 'create',
+              })}
+              values={values}
+              onValueChange={setValue}
+              errors={errors}
+              disabled={pending}
+            />
+          </FieldPanel>
         </div>
-      )}
 
-      {isEdit && endpoint?.hasSecret && (
-        <FieldPanel
-          orientation='responsive'
-          breakpoint='md'
-          resizeId='webhook-endpoint'
-          defaultLabelWidth={200}
-          className='p-0'>
-          <FieldPanelRow title='Signing secret' icon={<KeyRound />} showIcon>
-            {isStripeEdit && replacingSecret ? (
-              <div className='flex min-h-8 items-center gap-2 pe-1'>
-                <Input
-                  type='password'
-                  value={newSecret}
-                  onChange={(e) => setNewSecret(e.target.value)}
-                  placeholder='whsec_…'
-                  className='h-8 font-mono text-xs'
-                  autoFocus
-                />
-                <Button
-                  variant='outline'
-                  size='xs'
-                  type='button'
-                  onClick={handleRotate}
-                  disabled={!newSecret.trim()}
-                  loading={rotateSecret.isPending}
-                  loadingText='Saving...'>
-                  Save
-                </Button>
-                <Button
-                  variant='ghost'
-                  size='xs'
-                  type='button'
-                  onClick={() => {
-                    setReplacingSecret(false)
-                    setNewSecret('')
-                  }}>
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              <div className='flex min-h-8 items-center justify-between gap-2 pe-1'>
-                <span className='font-mono text-xs text-muted-foreground'>••••••••••••</span>
-                <Button
-                  variant='ghost'
-                  size='xs'
-                  type='button'
-                  onClick={() => (isStripeEdit ? setReplacingSecret(true) : handleRotate())}
-                  loading={rotateSecret.isPending && !isStripeEdit}
-                  loadingText='Rotating...'>
-                  {isStripeEdit ? 'Replace' : 'Rotate'}
-                </Button>
-              </div>
-            )}
-          </FieldPanelRow>
-        </FieldPanel>
-      )}
-
-      {isEdit &&
-        (endpoint?.topicSource ? (
-          <div className='flex flex-col gap-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              type='button'
-              className='w-full justify-between'
-              onClick={onOpenTopics}>
-              <span className='flex items-center gap-2'>
-                <Tags />
-                {endpoint.topics.length > 0 ? `Topics (${endpoint.topics.length})` : 'Setup topics'}
-              </span>
-              <ChevronRight />
-            </Button>
-            {endpoint.topics.length > 0 && (
-              <div className='flex flex-wrap gap-1'>
-                {endpoint.topics.map((topic) => (
-                  <Badge key={topic.id} variant='outline' className='font-mono text-[11px]'>
-                    {topic.key}
-                  </Badge>
-                ))}
-              </div>
-            )}
+        {values.verification === 'none' && (
+          <div className='flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800'>
+            <TriangleAlert className='size-4 shrink-0 text-amber-600' />
+            <span>
+              Anyone with the URL can trigger this endpoint. Use a token or HMAC in production.
+            </span>
           </div>
-        ) : (
-          <p className='text-xs text-muted-foreground'>
-            Set a topic source above to define topics and capture their schemas.
-          </p>
-        ))}
+        )}
+
+        {isEdit && endpoint?.hasSecret && (
+          <FieldPanel
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='webhook-endpoint'
+            defaultLabelWidth={200}
+            className='p-0'>
+            <FieldPanelRow title='Signing secret' icon={<KeyRound />} showIcon>
+              {isStripeEdit && replacingSecret ? (
+                <div className='flex min-h-8 items-center gap-2 pe-1'>
+                  <Input
+                    type='password'
+                    value={newSecret}
+                    onChange={(e) => setNewSecret(e.target.value)}
+                    placeholder='whsec_…'
+                    className='h-8 font-mono text-xs'
+                    autoFocus
+                  />
+                  <Button
+                    variant='outline'
+                    size='xs'
+                    type='button'
+                    onClick={handleRotate}
+                    disabled={!newSecret.trim()}
+                    loading={rotateSecret.isPending}
+                    loadingText='Saving...'>
+                    Save
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='xs'
+                    type='button'
+                    onClick={() => {
+                      setReplacingSecret(false)
+                      setNewSecret('')
+                    }}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div className='flex min-h-8 items-center justify-between gap-2 pe-1'>
+                  <span className='font-mono text-xs text-muted-foreground'>••••••••••••</span>
+                  <Button
+                    variant='ghost'
+                    size='xs'
+                    type='button'
+                    onClick={() => (isStripeEdit ? setReplacingSecret(true) : handleRotate())}
+                    loading={rotateSecret.isPending && !isStripeEdit}
+                    loadingText='Rotating...'>
+                    {isStripeEdit ? 'Replace' : 'Rotate'}
+                  </Button>
+                </div>
+              )}
+            </FieldPanelRow>
+          </FieldPanel>
+        )}
+
+        {isEdit &&
+          (endpoint?.topicSource ? (
+            <div className='flex flex-col gap-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                type='button'
+                className='w-full justify-between'
+                onClick={onOpenTopics}>
+                <span className='flex items-center gap-2'>
+                  <Tags />
+                  {endpoint.topics.length > 0
+                    ? `Topics (${endpoint.topics.length})`
+                    : 'Setup topics'}
+                </span>
+                <ChevronRight />
+              </Button>
+              {endpoint.topics.length > 0 && (
+                <div className='flex flex-wrap gap-1'>
+                  {endpoint.topics.map((topic) => (
+                    <Badge key={topic.id} variant='outline' className='font-mono text-[11px]'>
+                      {topic.key}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className='text-xs text-muted-foreground'>
+              Set a topic source above to define topics and capture their schemas.
+            </p>
+          ))}
+      </div>
 
       {showFooter && (
         <DialogFooter>

@@ -530,159 +530,167 @@ export function InboxForm({
   // (not part of the FieldPanel look) keeps native keyboard-submit working in the
   // palette host, which has no Dialog shell to run the Cmd+Enter handler. In the
   // dialog host plain Enter is suppressed by DialogContent and Cmd+Enter clicks the
-  // `data-dialog-submit` button. When the members drill is on, the form pads itself
-  // inside the flush `p-0` DialogNav shell; the palette host supplies its own padding.
+  // `data-dialog-submit` button. When the members drill is on, the BODY pads itself
+  // inside the flush `p-0` DialogNav shell — the padding must stay off the `<form>`
+  // so the footer remains an unpadded sibling of the body, which is what
+  // `DialogNavPages` re-gutters via its `[data-slot=dialog-footer]` rule. Padding the
+  // form instead stacks both gutters and indents the buttons past the fields.
+  // The palette host supplies its own padding.
   const configurePage = (
     <form
       onSubmit={(e) => {
         e.preventDefault()
         void handleSubmit()
       }}
-      className={enableMembersPage ? 'flex flex-col gap-4 p-4' : 'flex flex-col gap-4'}>
-      <FieldPanel
-        orientation='responsive'
-        breakpoint='md'
-        resizeId='inbox-form'
-        defaultLabelWidth={200}
-        className='p-0'>
-        {/* Name */}
-        <FieldPanelRow
-          title='Name'
-          type={BaseType.STRING}
-          showIcon
-          isRequired
-          validationError={errors.name}
-          validationType='error'>
-          <FieldInputAdapter
-            fieldType={FieldType.TEXT}
-            value={values.name}
-            onChange={(val) => handleChange('name', (val as string) ?? '')}
-            placeholder='Enter inbox name'
-            disabled={isPending}
-          />
-        </FieldPanelRow>
-
-        {/* Description */}
-        <FieldPanelRow title='Description' type={BaseType.STRING} showIcon>
-          <FieldInputAdapter
-            fieldType={FieldType.TEXT}
-            value={values.description}
-            onChange={(val) => handleChange('description', (val as string) ?? '')}
-            placeholder='Optional description'
-            disabled={isPending}
-            fieldOptions={{ multiline: true }}
-          />
-        </FieldPanelRow>
-
-        {/* Color */}
-        <FieldPanelRow title='Color' type={BaseType.ENUM} showIcon>
-          <div className='py-2'>
-            <FormColorTagPicker
-              value={values.color}
-              onChange={(color) => handleChange('color', color)}
+      className='flex flex-col'>
+      {/* `pt-4` not `p-4` on the bottom edge: the footer supplies its own `pt-4`,
+          so padding the body bottom too would double the gap above the buttons. */}
+      <div className={enableMembersPage ? 'flex flex-col gap-4 px-4 pt-4' : 'flex flex-col gap-4'}>
+        <FieldPanel
+          orientation='responsive'
+          breakpoint='md'
+          resizeId='inbox-form'
+          defaultLabelWidth={200}
+          className='p-0'>
+          {/* Name */}
+          <FieldPanelRow
+            title='Name'
+            type={BaseType.STRING}
+            showIcon
+            isRequired
+            validationError={errors.name}
+            validationType='error'>
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
+              value={values.name}
+              onChange={(val) => handleChange('name', (val as string) ?? '')}
+              placeholder='Enter inbox name'
+              disabled={isPending}
             />
-          </div>
-        </FieldPanelRow>
+          </FieldPanelRow>
 
-        {/* Access section — org admins and inbox Managers only */}
-        {canManageAccess &&
-          (isPersonalInbox ? (
-            <FieldPanelRow title='Access' showIcon icon={<Shield />} className='@md:flex-col!'>
-              <div className='space-y-2 rounded-[13px] border p-3 mb-1 me-1 -ms-1'>
-                {ownerActorId && (
-                  <div className='flex items-center justify-between'>
-                    <ActorBadge actorId={ownerActorId} />
-                    <span className='text-muted-foreground text-xs'>Owner</span>
-                  </div>
-                )}
-                <p className='text-muted-foreground text-xs'>
-                  Personal account: mail here is private to its owner. Admins can see activity only;
-                  assignment and shares grant access per thread.
-                </p>
-              </div>
-            </FieldPanelRow>
-          ) : (
-            <>
-              <FieldPanelRow title='Access' showIcon icon={<Shield />} className='@md:flex-col!'>
-                <RadioGroup
-                  value={values.accessType}
-                  onValueChange={handleAccessTypeChange}
-                  className='grid gap-2 py-2 pe-2 sm:grid-cols-2'>
-                  <RadioGroupItemCard
-                    value='anyone'
-                    label='Everyone'
-                    icon={<UsersIcon />}
-                    description='Everyone in the organization, at a chosen level'
-                  />
-                  <RadioGroupItemCard
-                    value='restricted'
-                    label='Restricted'
-                    icon={<Lock />}
-                    description='Only people and groups you add below'
-                  />
-                </RadioGroup>
-              </FieldPanelRow>
+          {/* Description */}
+          <FieldPanelRow title='Description' type={BaseType.STRING} showIcon>
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
+              value={values.description}
+              onChange={(val) => handleChange('description', (val as string) ?? '')}
+              placeholder='Optional description'
+              disabled={isPending}
+              fieldOptions={{ multiline: true }}
+            />
+          </FieldPanelRow>
 
-              {values.accessType === 'anyone' && (
-                <FieldPanelRow title='Everyone can see' showIcon icon={<Eye />}>
-                  <LensSelect
-                    value={values.floorLens}
-                    onChange={(choice) =>
-                      choice !== 'manager' &&
-                      handleChange('floorLens', choice as Exclude<Lens, 'none'>)
-                    }
-                    size='default'
-                    variant='transparent'
-                    className='w-full'
-                  />
-                </FieldPanelRow>
-              )}
-            </>
-          ))}
-      </FieldPanel>
-
-      {/* People & groups — a standalone section below the panel (like the webhook
-          Topics drill), not a FieldPanelRow. */}
-      {canManageAccess && (
-        <div className='flex flex-col gap-2'>
-          <div className='flex items-center gap-1.5 px-1 text-muted-foreground text-xs font-medium'>
-            <UsersIcon className='size-3.5' />
-            People &amp; groups
-          </div>
-          {enableMembersPage ? (
-            // Drill into the members page (webhook-topics style).
-            <button
-              type='button'
-              onClick={() => setPage('members')}
-              className='flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted/50'>
-              <span className='flex items-center gap-2 text-muted-foreground'>
-                {membersSummary}
-              </span>
-              <ChevronRight className='size-4 text-muted-foreground' />
-            </button>
-          ) : (
-            <>
-              <MailGranteeList
-                grants={values.grants}
-                onGrant={updateGrant}
-                onChangeLens={updateGrant}
-                onRevoke={removeGrant}
-                includeManager
-                disabled={isPending}
-                lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
-                unmanageableGrants={unmanageableGrants}
-                emptyHint={membersEmptyHint}
+          {/* Color */}
+          <FieldPanelRow title='Color' type={BaseType.ENUM} showIcon>
+            <div className='py-2'>
+              <FormColorTagPicker
+                value={values.color}
+                onChange={(color) => handleChange('color', color)}
               />
+            </div>
+          </FieldPanelRow>
+
+          {/* Access section — org admins and inbox Managers only */}
+          {canManageAccess &&
+            (isPersonalInbox ? (
+              <FieldPanelRow title='Access' showIcon icon={<Shield />} className='@md:flex-col!'>
+                <div className='space-y-2 rounded-[13px] border p-3 mb-1 me-1 -ms-1'>
+                  {ownerActorId && (
+                    <div className='flex items-center justify-between'>
+                      <ActorBadge actorId={ownerActorId} />
+                      <span className='text-muted-foreground text-xs'>Owner</span>
+                    </div>
+                  )}
+                  <p className='text-muted-foreground text-xs'>
+                    Personal account: mail here is private to its owner. Admins can see activity
+                    only; assignment and shares grant access per thread.
+                  </p>
+                </div>
+              </FieldPanelRow>
+            ) : (
+              <>
+                <FieldPanelRow title='Access' showIcon icon={<Shield />} className='@md:flex-col!'>
+                  <RadioGroup
+                    value={values.accessType}
+                    onValueChange={handleAccessTypeChange}
+                    className='grid gap-2 py-2 pe-2 sm:grid-cols-2'>
+                    <RadioGroupItemCard
+                      value='anyone'
+                      label='Everyone'
+                      icon={<UsersIcon />}
+                      description='Everyone in the organization, at a chosen level'
+                    />
+                    <RadioGroupItemCard
+                      value='restricted'
+                      label='Restricted'
+                      icon={<Lock />}
+                      description='Only people and groups you add below'
+                    />
+                  </RadioGroup>
+                </FieldPanelRow>
+
+                {values.accessType === 'anyone' && (
+                  <FieldPanelRow title='Everyone can see' showIcon icon={<Eye />}>
+                    <LensSelect
+                      value={values.floorLens}
+                      onChange={(choice) =>
+                        choice !== 'manager' &&
+                        handleChange('floorLens', choice as Exclude<Lens, 'none'>)
+                      }
+                      size='default'
+                      variant='transparent'
+                      className='w-full'
+                    />
+                  </FieldPanelRow>
+                )}
+              </>
+            ))}
+        </FieldPanel>
+
+        {/* People & groups — a standalone section below the panel (like the webhook
+          Topics drill), not a FieldPanelRow. */}
+        {canManageAccess && (
+          <div className='flex flex-col gap-2'>
+            <div className='flex items-center gap-1.5 px-1 text-muted-foreground text-xs font-medium'>
+              <UsersIcon className='size-3.5' />
+              People &amp; groups
+            </div>
+            {enableMembersPage ? (
+              // Drill into the members page (webhook-topics style).
               <button
                 type='button'
-                className='mt-1 self-start text-muted-foreground text-xs underline-offset-2 hover:underline'
-                onClick={() => setGuideOpen(true)}>
-                Learn about access levels
+                onClick={() => setPage('members')}
+                className='flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted/50'>
+                <span className='flex items-center gap-2 text-muted-foreground'>
+                  {membersSummary}
+                </span>
+                <ChevronRight className='size-4 text-muted-foreground' />
               </button>
-            </>
-          )}
-        </div>
-      )}
+            ) : (
+              <>
+                <MailGranteeList
+                  grants={values.grants}
+                  onGrant={updateGrant}
+                  onChangeLens={updateGrant}
+                  onRevoke={removeGrant}
+                  includeManager
+                  disabled={isPending}
+                  lockedActorIds={isPersonalInbox && ownerActorId ? [ownerActorId] : []}
+                  unmanageableGrants={unmanageableGrants}
+                  emptyHint={membersEmptyHint}
+                />
+                <button
+                  type='button'
+                  className='mt-1 self-start text-muted-foreground text-xs underline-offset-2 hover:underline'
+                  onClick={() => setGuideOpen(true)}>
+                  Learn about access levels
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       <DialogFooter className='flex sm:justify-between!'>
         {isEditing ? (
