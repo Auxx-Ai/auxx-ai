@@ -90,8 +90,15 @@ vi.mock('../unread-service', () => ({
 
 // Mock only what mail-counts pulls from the cache barrel — importing the real
 // barrel drags in the agents module and its queue imports.
-// The admin viewer keeps every inbox countable (§10.1 scoping is exercised in
-// the visibility suite; here we assert the seeding mechanics).
+// The viewer holds a `full` floor on both inboxes, which keeps every inbox
+// countable (§10.1 scoping is exercised in the visibility suite; here we assert
+// the seeding mechanics).
+//
+// It used to lean on `isAdmin: true` with an EMPTY `inboxLens`. Plan 40 §4.2
+// deleted that arm from `computeAndSeedMailCounts` — an admin's reach now arrives
+// through the composed floor like everyone else's — so the floors have to be
+// spelled out here, exactly as `composeUserMailVisibility` would produce them for
+// a default admin (the `Area.inboxes` fallback on two row-less shared inboxes).
 vi.mock('../../cache', () => ({
   getOrgCache: vi.fn(() => ({
     get: vi.fn(async () => [{ id: 'ibx1' }, { id: 'ibx2' }]),
@@ -101,7 +108,8 @@ vi.mock('../../cache', () => ({
     userId: 'u1',
     role: 'ADMIN',
     isAdmin: true,
-    inboxLens: {},
+    isMailAdmin: true,
+    inboxLens: { ibx1: 'full', ibx2: 'full' },
     personalInboxIds: {},
     threadGrants: {},
     contactGrants: {},

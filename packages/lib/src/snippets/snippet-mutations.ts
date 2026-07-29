@@ -63,7 +63,7 @@ export interface CreateSnippetInput {
  * the opt-in (plan 36 §0.2).
  *
  * The cache bust runs AFTER the transaction commits, for the same reason
- * dashboards does it there: `restrictedInstanceIds` / `userCapabilities` must
+ * dashboards does it there: `governingInstanceIds` / `userCapabilities` must
  * not be repopulated from a snapshot taken mid-transaction.
  */
 export async function createSnippet(

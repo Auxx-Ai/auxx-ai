@@ -8,6 +8,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
 import { publisher } from '../events/publisher'
 import type { MessageReceivedEvent } from '../events/types'
+import { toInboxRecordId } from '../inbox-record-ids'
 import {
   getRealtimeService,
   publishMessageCreated,
@@ -620,7 +621,6 @@ export async function storeMessage(
     // `inbox:syncCompleted` per touched inbox at the end so the FE refreshes
     // `thread.listIds` once instead of fetching every id.
     const inboxIdForChannel = thread.inboxId ?? null
-    const inboxRecordId = inboxIdForChannel ? toRecordId('inbox', inboxIdForChannel) : null
     if (ctx.inSyncBatch) {
       ctx.touchedInboxIds.add(inboxIdForChannel)
     } else {
@@ -659,6 +659,16 @@ export async function storeMessage(
       }
       const realtime = getRealtimeService()
       if (isNewThread) {
+        // A message can land in a personal mailbox, which lives on the
+        // `personal_inbox` definition (plan 40 §3 / 40a §5.1) — hard-coding
+        // `'inbox'` here would ship every new personal thread to the FE with a
+        // RecordId whose def no longer owns the instance. Resolved from the
+        // merged `inboxes` org cache (no DB hop), and computed HERE rather than
+        // beside `inboxIdForChannel` so the sync-batch path — the hot one, it
+        // publishes nothing — pays nothing for it.
+        const inboxRecordId = inboxIdForChannel
+          ? await toInboxRecordId(messageData.organizationId, inboxIdForChannel)
+          : null
         await publishThreadCreated(
           realtime,
           messageData.organizationId,

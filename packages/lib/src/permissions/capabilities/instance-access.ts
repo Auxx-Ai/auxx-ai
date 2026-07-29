@@ -77,6 +77,47 @@ export const INSTANCE_ACCESS_RESOURCES = {
   // instance the field tech owns.
   signature: { baselineAtCreate: true, area: Area.signatures },
   snippet: { baselineAtCreate: true, area: Area.snippets },
+  // ── Mail: TWO keys over ONE area (plan 40 §0.2), and the split is the point ──
+  //
+  // `Area.inboxes` is a single row in the profile editor because "may this
+  // member use mail" is one question. But a KEY carries exactly one
+  // `baselineAtCreate`, and the two inbox kinds want OPPOSITE postures, so one
+  // key cannot serve both:
+  //
+  //  - A single `false` key would let the org OWNER read every member's personal
+  //    mailbox at full lens. `effectiveInstanceLevel` short-circuits
+  //    `role === 'OWNER' → admin` **but only for `baselineAtCreate: false`**
+  //    (`entity-access.ts`), and that branch runs FIRST — so an explicit
+  //    `role:org_member @ none` row would not stop it either. Today an admin is
+  //    capped at `metadata` on a personal mailbox (`effective-lens.ts`), so that
+  //    is a privacy regression, and the OWNER-bypass docstring is verbatim about
+  //    this case ("reading a member's private content is a different power, and
+  //    it is not one org ownership confers"). A personal mailbox is its
+  //    archetype.
+  //  - A single `true` key would give admins `inboxes: Full` and still no shared
+  //    inbox without an explicit row — forcing the `vis.isAdmin` bypass back in,
+  //    i.e. re-importing role-as-authority into the exact place plan 39 removed
+  //    it from.
+  //
+  // SAFETY PROPERTY THAT MUST KEEP HOLDING: `OrgSharedInstanceAccessKey`
+  // (`entity-access.ts`) is derived as "`baselineAtCreate: false` only", so
+  // `personal_inbox` is a COMPILE ERROR at every `instanceListScope` call site.
+  // A list query cannot start leaking other people's mailboxes silently — it has
+  // to fail the build first.
+  //
+  // Instance access gates USER-INITIATED work only, the same carve-out
+  // `workflow` / `agent` / `signature` document above: ingest, automation,
+  // sequences and workflows write and read mail as the system and consult no
+  // member capabilities, so a restricted inbox still receives and still sends.
+  //
+  // org-shared; absent instance row → base L2 `inboxes` level, i.e.
+  // `Read → view` / `Full → admin` (plan 40 §1.2 — read that note in
+  // `registry.ts` before changing either rung).
+  inbox: { baselineAtCreate: false, area: Area.inboxes },
+  // private; absent instance row → NO access. Dashboards'/signatures' posture,
+  // for a stronger reason than either: a personal mailbox is not "content that
+  // starts private", it is content nobody else has a claim on by rank.
+  personal_inbox: { baselineAtCreate: true, area: Area.inboxes },
 } as const satisfies Record<string, InstanceAccessResourceConfig>
 
 /** The set of resource keys backed by instance-level access. */

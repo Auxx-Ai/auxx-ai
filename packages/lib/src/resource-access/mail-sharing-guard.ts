@@ -5,31 +5,60 @@ import { ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { getCachedUserMailVisibility } from '../cache'
+import { getCachedUserMailVisibility, getOrgCache } from '../cache'
 import { ForbiddenError } from '../errors'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
 import { FeatureKey } from '../permissions/types'
 import { getThreadLens } from '../permissions/visibility'
+import { isInboxDef, isMailSharingDef } from './mail-sharing-defs'
 import { hasPermission } from './resource-access-service'
 import type { GrantLens, ResourceAccessContext } from './types'
 
 /**
- * The ResourceAccess entityDefinitionId slugs whose grants feed the mail
- * visibility evaluator (mail-permissions §2/§7). Mutations on these go
- * through the sharing authorization + enterprise feature gate below; every
- * other definition keeps its existing surface-level checks.
+ * `MAIL_SHARING_DEFS` / {@link isMailSharingDef} live in `./mail-sharing-defs`
+ * (a dependency-free leaf) so the `resource-access-service` write funnels can
+ * reuse the predicate for their keyspace backstop without an import cycle back
+ * through this module's `hasPermission` dependency. Re-exported here so the
+ * barrel and every existing consumer keep the same import path.
  */
-const MAIL_SHARING_DEFS = new Set(['inbox', 'thread', 'contact'])
+export { isMailSharingDef } from './mail-sharing-defs'
 
-/** True when grants on this definition affect mail visibility. */
-export function isMailSharingDef(entityDefinitionId: string): boolean {
-  return MAIL_SHARING_DEFS.has(entityDefinitionId)
+/**
+ * The RecordId a mailbox instance's grant rows are keyed by, taken from the
+ * instance's ACTUAL definition (plan 40 §3 / 40a §4).
+ *
+ * A mailbox lives on `inbox` or, after data migration 060, on `personal_inbox` —
+ * and 060 re-keys its `ResourceAccess` rows in the same transaction. Reading the
+ * def off the instance is what keeps this lookup in lockstep with the rows: the
+ * two move together, so the answer is right before, during and after the split.
+ *
+ * Deliberately NOT derived from the `inbox_is_personal` marker or the cached
+ * `Inbox.isPersonal` flag. Those say "this is a personal mailbox", which is true
+ * of today's mailboxes while their rows are still keyed `'inbox'` — a
+ * marker-derived lookup would start missing the owner's own Manager row the
+ * moment it shipped, before 060 ever ran. `entityDefinitionKey` is the merged
+ * `inboxes` org-cache list's def discriminator, added for exactly this
+ * (`inboxes/types.ts`).
+ *
+ * Falls back to `'inbox'` when the inbox is not in the cache, which is the
+ * pre-split behaviour for every input and fails CLOSED for a personal mailbox
+ * (its slug-keyed rows simply don't match).
+ */
+async function inboxAccessRecordId(organizationId: string, inboxId: string): Promise<RecordId> {
+  const inboxes = await getOrgCache().get(organizationId, 'inboxes')
+  const defKey = inboxes.find((i) => i.id === inboxId)?.entityDefinitionKey
+  return toRecordId(defKey && isInboxDef(defKey) ? defKey : 'inbox', inboxId)
 }
 
 /**
  * Authorization for mutating mail-visibility grants (§7):
- * - org admins may manage sharing anywhere;
- * - `inbox`: inbox Managers (instance `admin` grant) may manage their inbox;
+ * - `inbox` / `personal_inbox`: inbox Managers (instance `admin` grant) may
+ *   manage their inbox — **and nobody else, not even an org admin** (plan 40
+ *   §4.2 deletes the rank short-circuit for this branch ONLY). An OWNER still
+ *   passes, through `checkAccess`'s owner→`admin` short-circuit inside
+ *   `hasPermission`, so the org is never locked out;
+ * - org admins may manage thread/contact sharing anywhere (plan 40 §2 keeps
+ *   those two branches exactly as they are — they are question 4's, not v2's);
  * - `thread`: viewers with `full` on the thread who are also a Manager of the
  *   thread's inbox (admins short-circuit above) — a sub-full viewer must never
  *   self-raise, and full-lens members don't get to re-share by default;
@@ -62,13 +91,20 @@ export async function assertCanManageMailSharing(
     return
   }
 
-  const vis = await getCachedUserMailVisibility(userId, organizationId)
-  if (vis.isAdmin) return
-
-  if (entityDefinitionId === 'inbox') {
+  // Both mailbox defs (plan 40 §3): a personal mailbox's owner holds the same
+  // instance `admin` row, keyed `personal_inbox` after migration 060.
+  //
+  // FIRST, above the rank read below, and that ordering is the whole edit: an
+  // inbox is now managed through rows only. Phase 3 replaces this branch with
+  // `assertAdminInstance` (§5.3), which resolves the same rows through the v2
+  // capability layer.
+  if (isInboxDef(entityDefinitionId)) {
     if (await hasPermission(ctx, recordId, ResourcePermission.admin)) return
     throw new ForbiddenError('Only inbox managers can change inbox access')
   }
+
+  const vis = await getCachedUserMailVisibility(userId, organizationId)
+  if (vis.isAdmin) return
 
   if (entityDefinitionId === 'thread') {
     const lens = await getThreadLens(database, organizationId, vis, entityInstanceId)
@@ -85,7 +121,13 @@ export async function assertCanManageMailSharing(
         .limit(1)
       if (
         thread?.inboxId &&
-        (await hasPermission(ctx, toRecordId('inbox', thread.inboxId), ResourcePermission.admin))
+        (await hasPermission(
+          ctx,
+          // The thread's inbox may be a personal mailbox — resolve its def
+          // rather than assuming `'inbox'`.
+          await inboxAccessRecordId(organizationId, thread.inboxId),
+          ResourcePermission.admin
+        ))
       ) {
         return
       }
@@ -135,7 +177,9 @@ export async function assertMailSharingFeature(
 
   let gated = grants.some((g) => g.lens != null && g.lens !== 'full')
 
-  if (!gated && entityDefinitionId === 'inbox') {
+  // Both mailbox defs (plan 40 §3) — delegation on a personal mailbox is the
+  // same Enterprise-gated new-Manager write, just keyed `personal_inbox`.
+  if (!gated && isInboxDef(entityDefinitionId)) {
     const newManagers = grants.filter((g) => g.permission === ResourcePermission.admin)
     if (newManagers.length > 0) {
       const existing = await ctx.db

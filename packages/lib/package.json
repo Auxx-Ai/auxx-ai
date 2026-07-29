@@ -190,6 +190,12 @@
       "import": "./dist/cache/index.mjs",
       "default": "./src/cache/index.ts"
     },
+    "./cache/providers/governing-instance-ids-provider": {
+      "types": "./src/cache/providers/governing-instance-ids-provider.ts",
+      "source": "./src/cache/providers/governing-instance-ids-provider.ts",
+      "import": "./dist/cache/providers/governing-instance-ids-provider.mjs",
+      "default": "./src/cache/providers/governing-instance-ids-provider.ts"
+    },
     "./channels": {
       "types": "./src/channels/index.ts",
       "source": "./src/channels/index.ts",
@@ -592,6 +598,12 @@
       "import": "./dist/import/client.mjs",
       "default": "./src/import/client.ts"
     },
+    "./inbox-record-ids": {
+      "types": "./src/inbox-record-ids/index.ts",
+      "source": "./src/inbox-record-ids/index.ts",
+      "import": "./dist/inbox-record-ids/index.mjs",
+      "default": "./src/inbox-record-ids/index.ts"
+    },
     "./inboxes": {
       "types": "./src/inboxes/index.ts",
       "source": "./src/inboxes/index.ts",
@@ -808,6 +820,12 @@
       "import": "./dist/permissions/capabilities/registry.mjs",
       "default": "./src/permissions/capabilities/registry.ts"
     },
+    "./permissions/capabilities/resolve-capability-inputs": {
+      "types": "./src/permissions/capabilities/resolve-capability-inputs.ts",
+      "source": "./src/permissions/capabilities/resolve-capability-inputs.ts",
+      "import": "./dist/permissions/capabilities/resolve-capability-inputs.mjs",
+      "default": "./src/permissions/capabilities/resolve-capability-inputs.ts"
+    },
     "./permissions/capabilities/seat-policy": {
       "types": "./src/permissions/capabilities/seat-policy.ts",
       "source": "./src/permissions/capabilities/seat-policy.ts",
@@ -964,6 +982,12 @@
       "import": "./dist/resource-access/index.mjs",
       "default": "./src/resource-access/index.ts"
     },
+    "./resource-access/mail-sharing-defs": {
+      "types": "./src/resource-access/mail-sharing-defs.ts",
+      "source": "./src/resource-access/mail-sharing-defs.ts",
+      "import": "./dist/resource-access/mail-sharing-defs.mjs",
+      "default": "./src/resource-access/mail-sharing-defs.ts"
+    },
     "./resources": {
       "types": "./src/resources/index.ts",
       "source": "./src/resources/index.ts",
@@ -1095,6 +1119,12 @@
       "source": "./src/threads/index.ts",
       "import": "./dist/threads/index.mjs",
       "default": "./src/threads/index.ts"
+    },
+    "./threads/thread-action-access": {
+      "types": "./src/threads/thread-action-access.ts",
+      "source": "./src/threads/thread-action-access.ts",
+      "import": "./dist/threads/thread-action-access.mjs",
+      "default": "./src/threads/thread-action-access.ts"
     },
     "./threads/types": {
       "types": "./src/threads/types.ts",

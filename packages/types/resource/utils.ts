@@ -129,6 +129,15 @@ export const ENTITY_DEFINITION_TYPES = [
   'contact',
   'entity_group',
   'inbox',
+  // Plan 40 §3. Membership here is what lets a `personal_inbox:<id>` relationship
+  // RecordId be canonicalized to the org's EntityDefinition CUID
+  // (`isEntityDefinitionType` gates `canonicalizeRelationshipRecordId`,
+  // `lib/field-values/field-value-helpers.ts`). Absent, such a value would be
+  // persisted with the literal slug as its def prefix and never resolve.
+  // It also keeps `personal_inbox` OUT of `RESOURCE_TABLE_REGISTRY`
+  // (`lib/resources/registry/field-registry.ts` excludes every type listed here),
+  // which is required now that it is also a `ModelTypeValues` entry.
+  'personal_inbox',
   'part',
   'signature',
   'subpart',

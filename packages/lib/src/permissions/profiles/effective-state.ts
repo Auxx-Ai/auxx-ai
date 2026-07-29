@@ -5,6 +5,7 @@ import { MemberType, type ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType, UserType } from '@auxx/database/types'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getCachedResources } from '../../cache'
+import { isGoverningInstanceRow } from '../../cache/providers/governing-instance-ids-provider'
 import { ForbiddenError } from '../../errors'
 import type { Resource } from '../../resources/registry/types'
 import { isCustomResourceId } from '../../resources/registry/types'
@@ -91,6 +92,15 @@ interface UncachedInputs {
   restrictedEntityDefIds: Set<string>
   /** Instance CUID → its instance-access resource key (`dataset` | `kb` | …). */
   instanceKeyById: Map<string, InstanceAccessKey>
+  /**
+   * Org-wide instances whose access is GOVERNED by rows — the transaction-local
+   * projection of the `governingInstanceIds` org-cache key. Kept SEPARATE from
+   * {@link instanceKeyById}, which stays "every instance carrying any row"
+   * because it is the ENUMERATION set the comparison loops walk: narrowing it
+   * would stop the guard measuring the instances an escalation is most likely to
+   * be authored on.
+   */
+  governingInstanceIds: Set<string>
 }
 
 /**
@@ -233,9 +243,15 @@ async function readUncachedInputs(
   }
 
   const instanceKeyById = new Map<string, InstanceAccessKey>()
+  const governingInstanceIds = new Set<string>()
   for (const row of instanceRows as AccessRow[]) {
     if (row.entityInstanceId && isInstanceAccessKey(row.entityDefinitionId)) {
       instanceKeyById.set(row.entityInstanceId, row.entityDefinitionId)
+      // The SHARED predicate the cached provider uses — not a re-derivation.
+      // Sharing is not restricting, so a bare `user @ edit` row must NOT land
+      // here: the guard has to measure exactly what `effectiveInstanceLevel`
+      // enforces, or it compares a state enforcement never produces.
+      if (isGoverningInstanceRow(row)) governingInstanceIds.add(row.entityInstanceId)
     }
   }
 
@@ -249,6 +265,7 @@ async function readUncachedInputs(
     resources,
     restrictedEntityDefIds,
     instanceKeyById,
+    governingInstanceIds,
   }
 }
 
@@ -361,9 +378,12 @@ function composeState(
     restrictedEntityDefIds: inputs.restrictedEntityDefIds,
     defBaseOverrides: resolved.defBaseOverrides,
     instanceAccess: caps.instanceAccess,
-    // The instance query is deliberately grantee-agnostic, so its id set IS the
-    // org-wide `restrictedInstanceIds` projection, recomputed from the txn.
-    restrictedInstanceIds: new Set(inputs.instanceKeyById.keys()),
+    // The instance query is deliberately grantee-agnostic, so the governing
+    // subset of its rows IS the org-wide `governingInstanceIds` projection,
+    // recomputed from the txn. NOT `instanceKeyById.keys()` — that is every
+    // instance with any row, which would re-introduce "sharing restricts" inside
+    // the guard and make it measure a state enforcement never produces.
+    governingInstanceIds: inputs.governingInstanceIds,
   }
 
   const areas = {} as Record<Area, Level>

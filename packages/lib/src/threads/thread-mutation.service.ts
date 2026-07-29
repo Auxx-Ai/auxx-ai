@@ -6,14 +6,14 @@ import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
-import { BadRequestError, ForbiddenError } from '../errors'
+import { BadRequestError } from '../errors'
 import { publisher } from '../events/publisher'
 import { FieldValueService } from '../field-values'
+import { toInboxRecordId } from '../inbox-record-ids'
 import type { MailViewer } from '../permissions/visibility/context'
-import { isSystemViewer } from '../permissions/visibility/context'
-import { getThreadLensBatch } from '../permissions/visibility/thread-lens'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
+import { assertCanActOnThreads } from './thread-action-access'
 import { ThreadMergeService } from './thread-merge.service'
 import type { ChatThreadMetadata } from './types'
 
@@ -109,21 +109,13 @@ export class ThreadMutationService {
 
   /**
    * §7 write gate: every target thread must be at `full` lens for the viewer.
-   * Bulk ops reject partial-visibility sets outright (no silent partial
-   * apply). Invisible ids fail the same way — indistinguishable from
-   * nonexistent. SYSTEM skips.
+   *
+   * Delegates to the shared {@link assertCanActOnThreads} so the generic
+   * field-value write path enforces the identical predicate on a thread host
+   * (plan 40 §5.5) — the two can never drift because there is only one.
    */
   private async assertCanActOnThreads(threadIds: string[]): Promise<void> {
-    if (threadIds.length === 0 || isSystemViewer(this.viewer)) return
-    const lenses = await getThreadLensBatch(this.db, this.organizationId, this.viewer, threadIds)
-    const blocked = threadIds.filter((id) => lenses.get(id) !== 'full')
-    if (blocked.length > 0) {
-      throw new ForbiddenError(
-        threadIds.length === 1
-          ? 'You do not have full access to this thread.'
-          : `You do not have full access to ${blocked.length} of the selected threads.`
-      )
-    }
+    await assertCanActOnThreads(this.db, this.organizationId, this.viewer, threadIds)
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -283,7 +275,12 @@ export class ThreadMutationService {
       if ('subject' in dbUpdates) patch.subject = dbUpdates.subject
       if ('assigneeId' in dbUpdates) patch.assigneeId = dbUpdates.assigneeId
       if ('inboxId' in dbUpdates) {
-        patch.inboxId = dbUpdates.inboxId ? toRecordId('inbox', dbUpdates.inboxId) : null
+        // The destination may be a personal mailbox, which lives on the
+        // `personal_inbox` definition (plan 40 §3 / 40a §5.1) — resolve the def
+        // instead of hard-coding `'inbox'`. One org-cache read, no DB hop.
+        patch.inboxId = dbUpdates.inboxId
+          ? await toInboxRecordId(this.organizationId, dbUpdates.inboxId)
+          : null
       }
       if ('primaryEntityInstanceId' in dbUpdates) {
         patch.ticketId = dbUpdates.primaryEntityInstanceId
@@ -659,7 +656,11 @@ export class ThreadMutationService {
       if ('status' in dbUpdates) patch.status = dbUpdates.status
       if ('assigneeId' in dbUpdates) patch.assigneeId = dbUpdates.assigneeId
       if ('inboxId' in dbUpdates) {
-        patch.inboxId = dbUpdates.inboxId ? toRecordId('inbox', dbUpdates.inboxId) : null
+        // Def-resolved, same as the single-thread patch above (40a §5.1). The
+        // whole batch moves to ONE destination inbox, so this is one lookup.
+        patch.inboxId = dbUpdates.inboxId
+          ? await toInboxRecordId(this.organizationId, dbUpdates.inboxId)
+          : null
       }
       if ('primaryEntityInstanceId' in dbUpdates) {
         patch.ticketId = dbUpdates.primaryEntityInstanceId

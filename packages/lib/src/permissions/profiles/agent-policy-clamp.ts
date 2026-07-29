@@ -39,7 +39,7 @@ export interface ClampDefinition {
  * `default` has to answer for definitions and resources created *after*
  * publication, so there is no real key to test — but the publisher's own resolver
  * already computes exactly that answer for an unknown id: it is not in
- * `restrictedEntityDefIds` / `restrictedInstanceIds`, so it falls through to their
+ * `restrictedEntityDefIds` / `governingInstanceIds`, so it falls through to their
  * base area posture. Probing with a sentinel therefore reads the publisher's
  * "authority over a thing I've never seen" straight out of the human composer,
  * instead of us re-deriving it (and drifting from it).

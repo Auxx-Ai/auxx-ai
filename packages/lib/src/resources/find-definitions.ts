@@ -77,6 +77,7 @@ export const FIND_RESOURCE_CONFIGS: Record<TableId, ResourceFindConfig> = {
   ticket: buildFindConfig('ticket'),
   user: buildFindConfig('user'),
   inbox: buildFindConfig('inbox'),
+  personal_inbox: buildFindConfig('personal_inbox'),
   participant: buildFindConfig('participant'),
   thread: buildFindConfig('thread'),
   message: buildFindConfig('message'),

@@ -114,9 +114,19 @@ interface CapabilitiesContextType {
    */
   canAdminInstance: (recordId: RecordId) => boolean
   /**
-   * Whether an instance carries ≥1 explicit instance-access row (the org-wide
-   * `restrictedInstanceIds` signal, §1.3) — drives the "Shared"/🔒 badge. Pass
-   * the bare `entityInstanceId` (CUID), NOT a `RecordId`.
+   * Whether an instance's access is GOVERNED by rows — a `role:org_member`
+   * baseline at any permission, or any `permission = 'none'` marker (the org-wide
+   * `governingInstanceIds` signal, §1.3). Pass the bare `entityInstanceId`
+   * (CUID), NOT a `RecordId`.
+   *
+   * **Narrowed 2026-07-29** together with `effectiveInstanceLevel`: it used to
+   * mean "carries ≥1 row for anyone", which conflated sharing with restricting.
+   * Consumers are the "Shared"/🔒 badge on the dataset/KB cards and the
+   * "People with access" section on the workflow settings panel, and both shift
+   * accordingly — an instance shared to one grantee with no authored baseline no
+   * longer lights them up, because it is no longer restricted for anybody. The
+   * badge now marks instances whose access really has been shaped, which is what
+   * its "Shared with specific access" copy claims.
    */
   isRestrictedInstance: (instanceId: string) => boolean
   /**
@@ -216,7 +226,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
     // row-less instance in the org.
     const capKeys = new Set<string>([...snapshot.keys, ...(snapshot.instanceDerivedKeys ?? [])])
     const resolved = toResolvedRecordAccess(snapshot)
-    const restrictedInstances = new Set<string>(snapshot.restrictedInstanceIds ?? [])
+    const governedInstances = new Set<string>(snapshot.governingInstanceIds ?? [])
 
     const can = (key: PermissionKey | string): boolean => {
       const meta = PERMISSION_REGISTRY_MAP.get(key as PermissionKey)
@@ -249,7 +259,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       canViewInstance: (recordId: RecordId) => canViewInstance(resolved, recordId),
       canEditInstance: (recordId: RecordId) => canEditInstance(resolved, recordId),
       canAdminInstance: (recordId: RecordId) => canAdminInstance(resolved, recordId),
-      isRestrictedInstance: (instanceId: string) => restrictedInstances.has(instanceId),
+      isRestrictedInstance: (instanceId: string) => governedInstances.has(instanceId),
       // Pure area-derived keys, NOT the `can()` union: the only consumers feed
       // this straight into `areaLevelFromKeys` (the agent-policy / author clamp
       // previews), which must read a true area rung.

@@ -52,6 +52,8 @@ import { migration046LayeredDefaultViews } from './migrations/046-layered-defaul
 import { migration047LineItemSourceLine } from './migrations/047-line-item-source-line'
 import { migration048ScoutingPhotoFields } from './migrations/048-scouting-photo-fields'
 import { migration057RemoveSignatureVisibilityField } from './migrations/057-remove-signature-visibility-field'
+import { migration059PersonalInboxDef } from './migrations/059-personal-inbox-def'
+import { migration062RemoveInboxLensPersonalFields } from './migrations/062-remove-inbox-lens-personal-fields'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -111,6 +113,12 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // 049–056 are pure data migrations (`data-migrations/migrations/`) — the NNN
   // id space is shared across both directories, so the gap is expected.
   migration057RemoveSignatureVisibilityField,
+  // 058 is a pure data migration (`data-migrations/migrations/`).
+  migration059PersonalInboxDef,
+  // 060 (personal-inbox move) and 061 (inboxes member-baseline backfill) are
+  // pure data migrations. 062 MUST sort after 060 — it drops the two fields 060
+  // reads. See the ordering note in the migration itself.
+  migration062RemoveInboxLensPersonalFields,
 ]
 
 /**

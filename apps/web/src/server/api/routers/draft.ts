@@ -3,14 +3,51 @@
 import { IdentifierType } from '@auxx/database/enums'
 import { getCachedUserMailVisibility } from '@auxx/lib/cache'
 import { DraftService } from '@auxx/lib/drafts'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import type { DraftAttachment, DraftContent, DraftParticipant } from '@auxx/types/draft'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, isAuxxError, permissionProcedure } from '~/server/api/trpc'
 import { assertSignatureUsable } from '~/server/lib/signature-instance-access'
 
 const logger = createScopedLogger('draft-router')
+
+/**
+ * The mail front door (plan 40 §5.3), the same one `thread.ts` builds on.
+ *
+ * §5.3's table lists "drafts" under the thread router, but drafts have lived in
+ * their own router since well before that table was written — so phase 3 gated
+ * `thread.*` and left this entire surface bare. A member at `inboxes: None`
+ * could still compose, autosave, list and delete drafts, which is most of the
+ * mail write experience: `inboxes: None` is supposed to mean **none** (§1.4).
+ *
+ * Coarse and wholesale, exactly like `thread.ts`:
+ *
+ *  - **No tiering.** There is no thread-authority axis (§1.1) — seeing a thread
+ *    at `full` lens IS the permission to draft a reply on it — so the first
+ *    draft's "drafts split" is cancelled along with the rest of it.
+ *  - **Every procedure, not most of them.** `permissionProcedure` asserts in
+ *    MIDDLEWARE, before the handler body, so one procedure left on
+ *    `protectedProcedure` leaves the surface open; mixing builders inside one
+ *    router is how this repo has lost gates before.
+ *  - **No inbox-instance assert** (§1.4). A dispatch-org assignee holds no
+ *    `ResourceAccess` row on the inbox by construction; assignment confers the
+ *    `full` lens, and drafting a reply on an assigned thread is exactly what the
+ *    dispatch model exists to allow.
+ *
+ * **No per-thread lens gate belongs here either — the service already runs it.**
+ * `DraftService.assertCanDraftOnThread` requires `full` lens on `threadId`
+ * before a draft is attached to a thread, and every read/update/delete path in
+ * the service is additionally scoped to `createdById = <caller>`, so a draft is
+ * only ever reachable by the person who made it. Re-asserting in the router
+ * would be a second copy of the same predicate — precisely the drift §5.5 exists
+ * to remove — for a gate that is already in the right place.
+ *
+ * `inboxes.view` carries no `featureKey` (`registry.ts`), so `permissionProcedure`'s
+ * plan-AND is a no-op here.
+ */
+const mailProcedure = permissionProcedure(PermissionKey.inboxesView)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Input Schemas
@@ -113,7 +150,7 @@ export const draftRouter = createTRPCRouter({
    * Creates or updates a draft.
    * Maps frontend payload format to new DraftContent structure.
    */
-  upsert: protectedProcedure.input(UpsertDraftInputSchema).mutation(async ({ ctx, input }) => {
+  upsert: mailProcedure.input(UpsertDraftInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
     // Instance access (plan 36 §5) — a draft's `signatureId` is echoed back on
     // read and handed to `MessageSenderService` on send, so an unvalidated id
@@ -172,6 +209,13 @@ export const draftRouter = createTRPCRouter({
       // Return in format compatible with frontend expectations
       return transformDraftForFrontend(draft)
     } catch (error) {
+      // The §7 draft-on-thread gate (`DraftService.assertCanDraftOnThread`)
+      // throws a `ForbiddenError` from inside this try, so a blanket
+      // `INTERNAL_SERVER_ERROR` turned every lens denial into a 500 with
+      // "Failed to save draft." Guard on `isAuxxError`, never
+      // `instanceof TRPCError` — service code throws `AuxxError`, and
+      // `auxxErrorMiddleware` + `errorFormatter` map it to the right status.
+      if (isAuxxError(error)) throw error
       logger.error('Failed to upsert draft', { error })
       throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save draft.' })
     }
@@ -180,7 +224,7 @@ export const draftRouter = createTRPCRouter({
   /**
    * Deletes a draft.
    */
-  delete: protectedProcedure
+  delete: mailProcedure
     .input(z.object({ draftId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -196,6 +240,7 @@ export const draftRouter = createTRPCRouter({
       try {
         return await draftService.delete(input.draftId)
       } catch (error) {
+        if (isAuxxError(error)) throw error
         logger.error('Failed to delete draft', { error })
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete draft.' })
       }
@@ -204,28 +249,26 @@ export const draftRouter = createTRPCRouter({
   /**
    * Gets a draft by ID.
    */
-  getById: protectedProcedure
-    .input(z.object({ draftId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const draftService = new DraftService(
-        ctx.db,
-        organizationId,
-        userId,
-        await getCachedUserMailVisibility(userId, organizationId)
-      )
+  getById: mailProcedure.input(z.object({ draftId: z.string() })).query(async ({ ctx, input }) => {
+    const { organizationId, userId } = ctx.session
+    const draftService = new DraftService(
+      ctx.db,
+      organizationId,
+      userId,
+      await getCachedUserMailVisibility(userId, organizationId)
+    )
 
-      const draft = await draftService.getById(input.draftId)
-      if (!draft) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Draft not found.' })
-      }
-      return transformDraftForFrontend(draft)
-    }),
+    const draft = await draftService.getById(input.draftId)
+    if (!draft) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Draft not found.' })
+    }
+    return transformDraftForFrontend(draft)
+  }),
 
   /**
    * Gets the draft for a specific thread (current user).
    */
-  getByThreadId: protectedProcedure
+  getByThreadId: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -242,7 +285,7 @@ export const draftRouter = createTRPCRouter({
   /**
    * Checks if a thread has a draft (current user).
    */
-  hasDraft: protectedProcedure
+  hasDraft: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -258,7 +301,7 @@ export const draftRouter = createTRPCRouter({
   /**
    * Gets draft ID for a thread (current user).
    */
-  getDraftId: protectedProcedure
+  getDraftId: mailProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -274,7 +317,7 @@ export const draftRouter = createTRPCRouter({
   /**
    * Lists all drafts for the current user.
    */
-  list: protectedProcedure
+  list: mailProcedure
     .input(z.object({ limit: z.number().min(1).max(100).optional() }).optional())
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -293,7 +336,7 @@ export const draftRouter = createTRPCRouter({
    * Used for displaying standalone drafts in the thread list.
    * Uses mutation to avoid caching issues with variable input.
    */
-  getByIds: protectedProcedure
+  getByIds: mailProcedure
     .input(z.object({ ids: z.array(z.string()).max(100) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
@@ -309,6 +352,7 @@ export const draftRouter = createTRPCRouter({
       try {
         return await draftService.getStandaloneDraftMetas(input.ids)
       } catch (error) {
+        if (isAuxxError(error)) throw error
         logger.error('Failed to fetch standalone draft metas', { error })
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',

@@ -47,10 +47,42 @@ import { SEAT_CEILINGS } from './seat-policy'
  * an EntityDefinition at all (it is a first-class table), so its removal is inert
  * either way; `signature` is the one that bites.
  *
+ * **`inbox` and `personal_inbox` deliberately DIVERGE from that precedent (plan 40
+ * §11 item 2, answered 2026-07-29).** They are the first defs meant to sit in this
+ * set *and* in `INSTANCE_ACCESS_RESOURCES`, which the plan-36 convention says are
+ * mutually exclusive. `thread` already stands on the same reasoning (plan 40 §5.4),
+ * and inboxes reach it through a live caller trace:
+ *
+ * - The FE's ONLY inbox list is `useAllRecords({ entityDefinitionId: 'inbox' })`
+ *   (`components/threads/hooks/use-inbox.ts`, `components/fields/registries/
+ *   dynamic-options-registry.ts`) → `record.listAll` → `UnifiedCrudHandler.listAll`,
+ *   which gates on `canViewEntity(defKey)` and **returns an empty list on denial
+ *   rather than throwing**. The same gate guards `getById` / `getByIds` /
+ *   `listFiltered` / `search` on the same handler.
+ * - Removing `inbox` here routes that gate through `canViewRecord`, i.e. the
+ *   Records area. Inbox `ResourceAccess` rows are SLUG-keyed, so the inbox def is
+ *   never in `restrictedEntityDefIds` and the resolved level is just the base
+ *   records rung — which is `undefined` for every WORKER seat (`Area.records` is
+ *   not in `WORKER_AREAS`, so `SEAT_CEILINGS.worker` clamps it to `None`) and for
+ *   any member on a profile at `Records: None`. Those members would silently lose
+ *   the mail sidebar, the inbox pickers and the thread inbox column — no error,
+ *   just an empty list.
+ * - Unlike `signature`, there is no replacement door: plan 36 could remove
+ *   `signature` only because `assertNotInstanceAccessDef` had already moved it off
+ *   the record path onto `signature.ts`. Plan 40's settled answer for inboxes is
+ *   the OPPOSITE — the mail keys stay exempt on the record path's READ arm — so
+ *   the unconditional `canViewEntity` pass-through is exactly what keeps that arm
+ *   working, and it must survive.
+ *
+ * This is safe because the pass-through only exposes inbox METADATA (name, colour,
+ * status). Mail content is governed by `userMailVisibility` / the per-thread lens,
+ * a separate authority these gates never consult in either direction.
+ *
  * Keyed by entity slug; the caller resolves the def to its slug before checking.
  */
 export const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
   'inbox',
+  'personal_inbox',
   'thread',
   'message',
   'sequence',
@@ -89,8 +121,13 @@ export interface ResolvedRecordAccess {
    * resolver reads it, always via {@link toResolvedRecordAccess}).
    */
   instanceAccess?: Readonly<Record<string, ResourcePermission>>
-  /** Org-wide set of instance ids carrying ≥1 instance-access row. Optional (see above). */
-  restrictedInstanceIds?: ReadonlySet<string>
+  /**
+   * Org-wide set of instance ids whose access is GOVERNED by rows — a
+   * `role:org_member` baseline row at any permission, or any `permission =
+   * 'none'` marker. **Not** "carries ≥1 row"; see
+   * {@link effectiveInstanceLevel}. Optional (see above).
+   */
+  governingInstanceIds?: ReadonlySet<string>
 }
 
 /**
@@ -358,8 +395,12 @@ export interface ClientCapabilities {
    * snapshot have it; absent = treat as `{}`.
    */
   instanceAccess?: Record<string, ResourcePermission>
-  /** Org-wide set of instance ids carrying ≥1 instance-access row. Optional (see above). */
-  restrictedInstanceIds?: string[]
+  /**
+   * Org-wide set of instance ids whose access is GOVERNED by rows (a
+   * `role:org_member` baseline at any permission, or any `none` marker).
+   * Optional (see above).
+   */
+  governingInstanceIds?: string[]
 }
 
 /**
@@ -380,7 +421,7 @@ export function toResolvedRecordAccess(caps: ClientCapabilities): ResolvedRecord
     restrictedEntityDefIds: new Set(caps.restrictedEntityDefIds),
     defBaseOverrides: caps.defBaseOverrides ?? {},
     instanceAccess: caps.instanceAccess ?? {},
-    restrictedInstanceIds: new Set(caps.restrictedInstanceIds ?? []),
+    governingInstanceIds: new Set(caps.governingInstanceIds ?? []),
   }
 }
 
@@ -402,9 +443,10 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  * `effectiveInstanceLevel`, kept byte-for-byte in sync so client affordances and
  * server enforcement never drift (§1.4):
  *  - OWNER → `admin`, but ONLY for `baselineAtCreate: false` resources.
- *  - explicit instance row (incl. workspace baseline / `'none'`) → wins, even
- *    when the L2 area gate is closed.
- *  - L2 area gate closed (`None`) and NO row → `undefined`.
+ *  - the member's OWN instance row (incl. workspace baseline / `'none'`) → wins
+ *    outright, even when the L2 area gate is closed.
+ *  - no own row, but the instance is ROW-GOVERNED → `undefined`.
+ *  - L2 area gate closed (`None`) and no own row → `undefined`.
  *  - otherwise fall back to the base L2 area level (`baselineAtCreate: false`).
  *
  * **The OWNER bypass is scoped to the org-shared resources** (user decision
@@ -417,11 +459,11 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  *
  * An owner keeps everything they actually hold a row on, which is why this is
  * safe rather than a self-lock: `composeUserCapabilities`'s OWNER branch already
- * returns `instanceAccess` unchanged, `restrictedInstanceIds` is ORG-wide rather
- * than per-user, and every `baselineAtCreate: true` resource writes its author an
- * `admin` row at create. So an owner resolves `admin` on their own instances
- * through the normal row path, and `undefined` on a private instance nobody
- * granted them — the same answer any other member gets.
+ * returns `instanceAccess` unchanged, and every `baselineAtCreate: true` resource
+ * writes its author an `admin` row at create — which the own-row-first branch
+ * below returns. So an owner resolves `admin` on their own instances through the
+ * normal row path, and `undefined` on a private instance nobody granted them —
+ * the same answer any other member gets.
  *
  * **Consequence for dashboards, which are also `baselineAtCreate: true`:** every
  * dashboard writes a `role:org_member @ view` row at create and that row IS in an
@@ -447,10 +489,50 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  * {@link effectiveRecordLevel}, where an explicit per-def grant has always
  * REPLACED the base rather than being clamped by it.
  *
- * Fail-closed is preserved by `restrictedInstanceIds`: the unshared majority
- * have no row at all, so they fall through to the area gate and are denied. Only
- * an instance someone deliberately authored a row for can escape the floor, and
- * an explicit `'none'` row still denies (it is the per-instance downward marker).
+ * **SHARING IS NOT RESTRICTING** (2026-07-29). The row check used to be gated on
+ * `restrictedInstanceIds.has(instanceId)` — a set built grantee-agnostically as
+ * "this instance carries ≥1 row for ANYONE" — and then returned that member's own
+ * row, `undefined` included. So the FIRST explicit row written on an instance
+ * (a share to one colleague, an author's own creator row) silently converted it to
+ * grantees-only for the entire org, while every other layer meant "has a
+ * RESTRICTION":
+ *  - mail's `rowGoverned` (`compute-user-mail-visibility.ts`) counts a
+ *    `role:org_member` row at any permission, or any `none` row — never a
+ *    creator's `user @ admin` row;
+ *  - the permissions page's Workspace-defaults tab models exactly three states
+ *    (`use-instance-baseline-rows.ts`): **Inherit** = no `role:org_member` row,
+ *    **Restricted** = `role:org_member @ none`, else that row's permission — and
+ *    it rendered "Inherit → «area level»" for an instance the resolver had already
+ *    privatized, i.e. the tab was lying;
+ *  - a compensating hack in ONE React hook (`use-instance-share.ts`) materialized
+ *    a workspace baseline at Read on the first grant so the org would not lose
+ *    access. It is deleted with this change; it was a symptom.
+ * The live damage was mail-only, because `inbox` is the only
+ * `baselineAtCreate: false` key that writes a create-time row
+ * (`InboxService.createInbox`): a default org ADMIN at `inboxes: Full` who did not
+ * create an inbox resolved `undefined` and 403'd on its Access section. But the
+ * mechanism was fully general — the first grantee row on any dataset / KB /
+ * workflow / agent would have done the same.
+ *
+ * So `governingInstanceIds` now carries mail's predicate exactly (a
+ * `role:org_member` row at any permission, or any `none` row), the two layers
+ * agree by construction, and **the member's OWN row is consulted BEFORE the set**.
+ *
+ * That ordering is load-bearing, not cosmetic: narrowing the set alone would break
+ * every `baselineAtCreate: true` resource, because a signature/snippet/dashboard/
+ * personal inbox carrying only its creator's `user @ admin` row drops OUT of the
+ * narrowed set, falls through to {@link instanceFallbackLevel}, which returns
+ * `undefined` for those keys — and the creator would lose their own content.
+ *
+ * The set is still required and is NOT redundant with `instanceAccess`: a
+ * restriction row of a grantee kind the resolver cannot expand (a `profile`
+ * grantee today) never reaches `instanceAccess`, so only the org-wide signal can
+ * make it deny.
+ *
+ * Fail-closed is preserved: the unshared majority have no row at all, so they
+ * fall through to the area gate; an explicit `'none'` row still denies whether it
+ * is the member's own (own-row-first returns it, and `none` satisfies nothing) or
+ * somebody else's (it puts the instance in the governing set).
  *
  * **The SEAT ceiling still dominates, and is now checked explicitly.** It used
  * to be enforced implicitly: `areaLevelFromKeys` reads an already seat-clamped
@@ -479,9 +561,13 @@ export function effectiveInstanceLevel(
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
   if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
   if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
-  if ((caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET).has(instanceId)) {
-    return caps.instanceAccess?.[instanceId]
-  }
+  // Most-specific-wins, all the way down: the member's OWN row beats both the
+  // governing set and the area floor. Checked FIRST so a creator never loses
+  // their own `baselineAtCreate: true` content (see the docblock).
+  const own = caps.instanceAccess?.[instanceId]
+  if (own !== undefined) return own
+  // Row-governed with nothing of my own → denied, whatever the area says.
+  if ((caps.governingInstanceIds ?? EMPTY_INSTANCE_SET).has(instanceId)) return undefined
   return instanceFallbackLevel(caps, key)
 }
 
@@ -522,6 +608,7 @@ export function instanceFallbackLevel(
 }
 
 const EMPTY_INSTANCE_SET: ReadonlySet<string> = new Set()
+const EMPTY_INSTANCE_ACCESS: Readonly<Record<string, ResourcePermission>> = {}
 
 /**
  * Instance-access keys whose absent-row fallback is the member's AREA level
@@ -588,31 +675,41 @@ export type PrivateInstanceListScope = Extract<InstanceListScope, { kind: 'none'
  * Enumerating either side is only sound for `baselineAtCreate: false` resources,
  * which is why the `key` parameter is narrowed to
  * {@link OrgSharedInstanceAccessKey}. There, {@link effectiveInstanceLevel} has
- * exactly four outcomes:
+ * exactly five outcomes:
  *  1. `role === 'OWNER'` → `admin`. Never denies → `exclude` with nothing.
  *  1b. seat ceiling closes the area → `undefined` for everything, rows included
  *     → `'none'`.
- *  2. instance in `restrictedInstanceIds` → that member's own row, which denies
- *     when it is absent or below `view`. **Enumerable both ways** — the set is
- *     exactly the org's explicitly-managed instances.
- *  3. no row + area level `None` → `undefined`. Denies every row-LESS instance,
- *     which no exclusion list can enumerate — so this case inverts to `include`,
- *     naming the explicitly-granted instances instead. When none of the member's
- *     rows reach `view`, the answer is `'none'`.
- *  4. no row + open area → `levelToPermission(areaLevel)`, always ≥ `view`.
- *     Never denies.
- * So an instance is denied either by an explicit `ResourceAccess` row or by the
- * area floor with no row — there is no third denial path. With
- * `baselineAtCreate: true` (dashboards) branch 4 flips to `undefined` and every
- * row-less instance is denied even on an open area, so that resource would need
- * the `include` form unconditionally; the type narrowing makes flipping a
+ *  2. the member holds their OWN row → that row, which denies when it is below
+ *     `view`. **Enumerable** — `instanceAccess` is exactly those instances.
+ *  3. no own row + instance in `governingInstanceIds` → `undefined`.
+ *     **Enumerable** — the set is exactly the org's row-governed instances.
+ *  4. no own row + not governed + area level `None` → `undefined`. Denies every
+ *     row-LESS instance, which no exclusion list can enumerate — so this case
+ *     inverts to `include`, naming the member's own ≥`view` rows instead. When
+ *     none of them reach `view`, the answer is `'none'`.
+ *  5. no own row + not governed + open area → `levelToPermission(areaLevel)`,
+ *     always ≥ `view`. Never denies.
+ * So an instance is denied by the member's own sub-`view` row, by the governing
+ * set with no row of their own, or by the area floor — there is no fourth denial
+ * path. With `baselineAtCreate: true` (dashboards) branch 5 flips to `undefined`
+ * and every row-less instance is denied even on an open area, so that resource
+ * needs the `include` form unconditionally; the type narrowing makes flipping a
  * resource a COMPILE error at the call sites rather than a silent leak.
  *
- * `restrictedInstanceIds` is org-wide across ALL instance-access resources, so
- * the result may name ids of other types (a restricted dataset while listing
- * workflows). Harmless in both directions: ids are globally-unique cuid2s, so a
- * foreign id can neither drop a row of the type being listed (`exclude`) nor
- * admit one (`include`).
+ * **The own-row half must be enumerated from `instanceAccess`, not from the
+ * governing set.** Before 2026-07-29 the set meant "carries ≥1 row for anyone",
+ * so it was a superset of `instanceAccess`'s keys and iterating it covered both
+ * halves. It no longer is: an instance shared to this member alone is in
+ * `instanceAccess` and NOT in `governingInstanceIds`, and a loop over the set
+ * would drop it from the closed-area allow-list — the member would see an empty
+ * page for an instance they can demonstrably open, which is the exact divergence
+ * this function exists to prevent.
+ *
+ * Both inputs are org-wide across ALL instance-access resources, so the result
+ * may name ids of other types (a restricted dataset while listing workflows).
+ * Harmless in both directions: ids are globally-unique cuid2s, so a foreign id
+ * can neither drop a row of the type being listed (`exclude`) nor admit one
+ * (`include`).
  */
 export function instanceListScope(
   caps: ResolvedRecordAccess,
@@ -623,28 +720,29 @@ export function instanceListScope(
   // The seat ceiling dominates every row (see `effectiveInstanceLevel`), so a
   // seat that excludes the area sees nothing regardless of grants.
   if (SEAT_CEILINGS[caps.seatType][area] === Level.None) return { kind: 'none' }
-  const managed = caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET
+  const own = caps.instanceAccess ?? EMPTY_INSTANCE_ACCESS
+  const governed = caps.governingInstanceIds ?? EMPTY_INSTANCE_SET
 
   if (areaLevelFromKeys(caps.keys, area) === Level.None) {
     // Area closed: the visible set is exactly the member's own ≥`view` rows
     // (plan 25 §2). An allow-list, not a deny-list — every row-less instance is
     // invisible and there is no bound on how many of those there are.
     const includeIds: string[] = []
-    for (const instanceId of managed) {
-      const level = caps.instanceAccess?.[instanceId]
-      if (level !== undefined && satisfiesPermission(level, ResourcePermission.view)) {
-        includeIds.push(instanceId)
-      }
+    for (const [instanceId, level] of Object.entries(own)) {
+      if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
     }
     return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
   }
 
+  // Area open: two disjoint denial sources, so no id can be pushed twice — the
+  // first loop only visits instances WITHOUT an own row, the second only those
+  // with one.
   const excludeIds: string[] = []
-  for (const instanceId of managed) {
-    const level = caps.instanceAccess?.[instanceId]
-    if (level === undefined || !satisfiesPermission(level, ResourcePermission.view)) {
-      excludeIds.push(instanceId)
-    }
+  for (const instanceId of governed) {
+    if (own[instanceId] === undefined) excludeIds.push(instanceId)
+  }
+  for (const [instanceId, level] of Object.entries(own)) {
+    if (!satisfiesPermission(level, ResourcePermission.view)) excludeIds.push(instanceId)
   }
   return { kind: 'exclude', excludeIds }
 }
@@ -691,9 +789,21 @@ export type PrivateInstanceAccessKey = {
  *     with no row is `undefined` however open the area is
  *     ({@link instanceFallbackLevel} returns `undefined` for these resources by
  *     construction). Reading `areaLevelFromKeys` here would ADD a denial the
- *     gate does not make.
+ *     gate does not make. `governingInstanceIds` is not consulted either, and for
+ *     the same reason: it can only ever DENY, and every instance it would deny
+ *     already fails the "hold an own row ≥ view" test.
  *
- * As with `instanceListScope`, `restrictedInstanceIds` is org-wide across all
+ * **Enumerated from `instanceAccess`, not from the governing set** (changed
+ * 2026-07-29 together with `effectiveInstanceLevel`'s own-row-first ordering).
+ * The old loop walked the org-wide "carries ≥1 row" set and looked each id up in
+ * `instanceAccess`; that was equivalent only because the set was a SUPERSET of
+ * this member's rows. Now that it means "row-GOVERNED", a signature or snippet
+ * carrying nothing but its author's create-time `user @ admin` row is no longer
+ * in it — so the old loop would have dropped every member's own private content
+ * out of their own list. That is the list-side face of exactly the bug
+ * own-row-first fixes on the point-check side.
+ *
+ * As with `instanceListScope`, `instanceAccess` is org-wide across all
  * instance-access resources, so the result may name ids of other types. Harmless:
  * ids are globally-unique cuid2s, so a foreign id can neither drop nor admit a
  * row of the type being listed.
@@ -706,11 +816,8 @@ export function privateInstanceListScope(
   if (SEAT_CEILINGS[caps.seatType][area] === Level.None) return { kind: 'none' }
 
   const includeIds: string[] = []
-  for (const instanceId of caps.restrictedInstanceIds ?? EMPTY_INSTANCE_SET) {
-    const level = caps.instanceAccess?.[instanceId]
-    if (level !== undefined && satisfiesPermission(level, ResourcePermission.view)) {
-      includeIds.push(instanceId)
-    }
+  for (const [instanceId, level] of Object.entries(caps.instanceAccess ?? EMPTY_INSTANCE_ACCESS)) {
+    if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
   }
   return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
 }

@@ -269,6 +269,23 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
+      // Only the LEFT half of this ref is load-bearing, and it must stay the
+      // literal `'inbox'` slug (plan 40 §3 / 40a §8.3).
+      //
+      // `inbox_threads` is not a key in `INBOX_FIELDS` — there is no inverse
+      // field on either inbox definition — so `resolveInverseReferences`
+      // (`cache/providers/resources-provider.ts`) finds nothing and leaves the
+      // static form untouched. That is fine, because this field is `dbColumn`-
+      // backed: `system-relationship-resolver` reads `Thread.inboxId` straight
+      // off the table and never consults `FieldValue`, using the ref ONLY to
+      // decide the target definition.
+      //
+      // Which is why the slug matters: the resolver tests it with `isInboxDef`
+      // to switch on the DUAL-DEF path, where the per-row def comes from the
+      // merged `inboxes` org cache (a mailbox lives on `inbox` or
+      // `personal_inbox`). Resolving this ref to a CUID pair — i.e. actually
+      // creating an `inbox_threads` field — would silently turn that check off
+      // and send every personal mailbox's threads back to a wrong-def RecordId.
       inverseResourceFieldId: 'inbox:inbox_threads' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,

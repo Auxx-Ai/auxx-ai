@@ -4,6 +4,8 @@ import { schema } from '@auxx/database'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
+import { inboxDefKeyOf, loadInboxDefKeys } from '../../inbox-record-ids'
+import { isInboxDef } from '../../resource-access/mail-sharing-defs'
 import { RESOURCE_DISPLAY_CONFIG } from '../../resources/registry/display-config'
 import { RESOURCE_TABLE_MAP, type TableId } from '../../resources/registry/field-registry'
 import type { ResourceField } from '../../resources/registry/field-types'
@@ -15,6 +17,10 @@ import type { FieldValueContext } from '../field-value-helpers'
  *
  * For fields like thread.inbox (dbColumn: 'inboxId'), reads the FK
  * directly from the Thread table and builds target RecordIds.
+ *
+ * The target definition is normally a batch constant taken from the field's
+ * `inverseResourceFieldId`. Inbox targets are the exception — see the dual-def
+ * block below.
  *
  * @param cachedField - The merged ResourceField with dbColumn and relationship
  * @param entityDefId - Source entity type (e.g., 'thread')
@@ -40,6 +46,26 @@ export async function batchFetchSystemRelationships(
     cachedField.relationship.inverseResourceFieldId as ResourceFieldId
   ).entityDefinitionId
 
+  // ── Dual-def targets (plan 40 §3 / 40a §8.3) ──────────────────────────────
+  // `inverseResourceFieldId` names ONE definition, so the def it yields is a
+  // constant for the whole batch. That is wrong for `thread.inbox`: a mailbox
+  // lives on `inbox` OR `personal_inbox`, and `Thread.inboxId` is a bare FK
+  // that says nothing about which. A batch constant renders every thread in a
+  // personal mailbox with a RecordId whose def no longer owns the instance.
+  //
+  // Resolved by JOINING the merged `inboxes` org cache per row rather than by
+  // widening `relationship` with a second inverse ref. The ref's RIGHT half is
+  // already dead here (`inbox_threads` is not a key in `INBOX_FIELDS`) — this
+  // path reads `Thread.inboxId` straight off the table and never consults
+  // `FieldValue` — so adding an `alternate…ResourceFieldId` would be inventing
+  // a second dangling ref to carry one bit. Keeping the ref as the SELECTOR and
+  // the cache as the per-row authority costs one cached read, no schema change,
+  // and no new vocabulary; the ref's left half still decides which resolver
+  // runs. Non-inbox targets are untouched and pay nothing.
+  const inboxDefKeys = isInboxDef(targetEntityDefId)
+    ? await loadInboxDefKeys(ctx.organizationId)
+    : null
+
   const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
 
   // Build instanceId → RecordId lookup
@@ -60,7 +86,10 @@ export async function batchFetchSystemRelationships(
     const sourceRecordId = instanceToRecordId.get(row.id)
     if (!sourceRecordId || !row.fkValue) continue
 
-    const targetRecordId = toRecordId(targetEntityDefId, row.fkValue) as RecordId
+    const rowTargetDefId = inboxDefKeys
+      ? inboxDefKeyOf(inboxDefKeys, row.fkValue)
+      : targetEntityDefId
+    const targetRecordId = toRecordId(rowTargetDefId, row.fkValue) as RecordId
     result.set(sourceRecordId, [targetRecordId])
   }
 

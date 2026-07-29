@@ -325,7 +325,7 @@ export const signatureRouter = createTRPCRouter({
 
       // `ResourceAccess` rows are keyed by the slug + instance id, so they are
       // not FK-cascaded by the instance delete — clear them explicitly or the
-      // ids linger in every member's `restrictedInstanceIds`.
+      // ids linger in every member's `governingInstanceIds`.
       await ctx.db
         .delete(schema.ResourceAccess)
         .where(

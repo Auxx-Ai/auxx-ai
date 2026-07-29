@@ -173,12 +173,12 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   },
   // Instance-level grant changes on an instance-access resource (datasets etc.)
   // feed `instanceAccess` in the capability blob (per-user) AND the org-wide
-  // `restrictedInstanceIds` set (§1.5). Emitted ONLY when the target's def id ∈
+  // `governingInstanceIds` set (§1.5). Emitted ONLY when the target's def id ∈
   // INSTANCE_ACCESS_RESOURCES, so generic mail-share instance traffic (which
   // fires the noisy `resource-access.changed`) never churns these caches.
   'resource-access.instance.changed': {
     user: ['userCapabilities'],
-    org: ['restrictedInstanceIds'],
+    org: ['governingInstanceIds'],
   },
 
   // ── Capability grants (permissions plan §5.3) ──
@@ -187,7 +187,17 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // site, same pattern as `resource-access.changed`). A `profile` grantee uses the
   // doc-19 §8.3 audience instead (bound holders + the (role, seatType) sweep for
   // system profiles), because its levels are the composition BASE.
-  'permission-grant.changed': { user: ['userCapabilities'], org: ['hasPermissionGrants'] },
+  //
+  // `userMailVisibility` rides along since plan 40 §4.5: `composeUserMailVisibility`
+  // now READS the capability blob (the `Area.inboxes` fallback §4.2 + `isMailAdmin`
+  // §4.4), so a grant that lowers `inboxes` must reshape the mail blob in the same
+  // breath. Without this edge the downgrade would land in `userCapabilities` while
+  // the member kept reading mail off a stale mail blob for the full ONE_DAY TTL —
+  // the one stale-blob direction in this slice that fails OPEN.
+  'permission-grant.changed': {
+    user: ['userCapabilities', 'userMailVisibility'],
+    org: ['hasPermissionGrants'],
+  },
 
   // ── Permission profiles (doc 19 §8.3) ──
   // Emitted by every PermissionProfile create/update/delete. Busts the org's
@@ -195,7 +205,14 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // and recomputes the affected members' capability blobs. The emit site resolves
   // the audience — crucially including NULL-BOUND holders for a system profile,
   // who are the majority and are invisible to an index sweep.
-  'permission-profile.changed': { user: ['userCapabilities'], org: ['profiles'] },
+  //
+  // `userMailVisibility` for the same reason as `permission-grant.changed` above
+  // (plan 40 §4.5) — a profile IS the composition base, so editing one moves the
+  // `Area.inboxes` level for every holder at once.
+  'permission-profile.changed': {
+    user: ['userCapabilities', 'userMailVisibility'],
+    org: ['profiles'],
+  },
 
   // ── Settings events ──
   'org.settings.changed': { org: ['orgSettings'], user: ['userSettings'] },

@@ -555,7 +555,7 @@ export interface OrgCacheDataMap {
   profiles: CachedPermissionProfile[] // all PermissionProfile rows (system + custom) — resolves profileId → base/ceiling at compose time
   hasPermissionGrants: boolean // whether the org has ANY PermissionGrant rows (composition fast path)
   restrictedEntityDefIds: string[] // entity defs with ≥1 type-level ResourceAccess grant (read-path enforcement §0)
-  restrictedInstanceIds: string[] // instance ids with ≥1 instance-access ResourceAccess row (§1.3)
+  governingInstanceIds: string[] // instance ids whose access is GOVERNED by rows — a `role:org_member` row (any permission) or any `none` row (§1.3)
 
   // Business data
   features: FeatureMapObject
@@ -633,7 +633,38 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   profiles: { prefix: 'org:permission-profiles:v4', ttlSeconds: ONE_DAY },
   hasPermissionGrants: { prefix: 'org:has-permission-grants', ttlSeconds: ONE_DAY },
   restrictedEntityDefIds: { prefix: 'org:restricted-entity-def-ids', ttlSeconds: ONE_DAY },
-  restrictedInstanceIds: { prefix: 'org:restricted-instance-ids', ttlSeconds: ONE_DAY },
+  // RENAMED + RE-SEMANTICIZED 2026-07-29 (`org:restricted-instance-ids` → this).
+  // The TypeScript shape is unchanged — still `string[]` — and that is exactly
+  // why the keyspace had to move: this is the "a value-vocabulary change needs a
+  // bump too" case from the handoff's standing gotchas. The right test is not
+  // "did the shape change?" but "would the current reader still be correct on a
+  // blob the old writer produced?", and here it would not be.
+  //
+  // OLD contract: every instance carrying ≥1 instance-level row for ANYONE.
+  // NEW contract: only instances carrying a GOVERNING row — a `role:org_member`
+  // baseline at any permission, or any `permission = 'none'` marker.
+  //
+  // WHICH WAY EACH DIRECTION FAILS — worked out from the reader
+  // (`effectiveInstanceLevel`), not asserted:
+  //  - **Stale OLD blob read by NEW code** — the set is a SUPERSET of the correct
+  //    one. New code checks the member's own row FIRST, so every grantee and every
+  //    creator still resolves their real level; only a member with NO row of their
+  //    own on an over-included instance is affected, and for them the set means
+  //    `undefined` instead of the area fallback. **Fail-CLOSED** (lost access:
+  //    exactly today's live inbox-403 regression, persisting for up to the ONE_DAY
+  //    TTL).
+  //  - **Stale NEW blob read by OLD code** (a draining instance during rollout) —
+  //    the set is a SUBSET. Old code has no own-row-first branch, so an instance
+  //    dropped from the set falls through to `instanceFallbackLevel`; for a
+  //    `baselineAtCreate: false` resource that returns the member's AREA level,
+  //    which means a `user @ edit`-only share would read as org-wide access.
+  //    **Fail-OPEN.** That direction is the reason this is a keyspace MOVE rather
+  //    than a value bump: the two contracts never share a Redis key, so a draining
+  //    old instance cannot read a new blob at all — it repopulates
+  //    `org:restricted-instance-ids`, which no new instance reads.
+  // A flush alone would NOT have covered that second direction, which is the
+  // entire reason `vN`/renames exist.
+  governingInstanceIds: { prefix: 'org:governing-instance-ids', ttlSeconds: ONE_DAY },
 
   // Business data (24h TTL, all invalidated via cache events)
   features: { prefix: 'org:features', ttlSeconds: THIRTY_DAYS },
@@ -656,11 +687,29 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // `profiles` v3 → v4 above. A v3 blob's retired rungs are dropped by
   // `parsePublishedAgentPolicy`, so the version composes to all-`none`.
   agents: { prefix: 'org:agents:v4', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  // v7: `defaultLens` is DERIVED FROM `ResourceAccess` ROWS (plan 40 §6) — the
+  // `role:org_member` baseline row, with an absent row meaning `full` and a
+  // `personal_inbox` entry always reporting `none`. The SHAPE is unchanged, which
+  // is exactly why the bump is needed: a v6 blob is still parseable, so nothing
+  // would fail — the old field-derived value would just keep being served for up
+  // to the ONE_DAY TTL, and the surfaces that read it (the count-delta/realtime
+  // audience, the inbox access badges, the share popover's inherited-access
+  // footer) would keep showing the floor the org had before its last edit. Ask
+  // "can the current parser still read a blob the old code wrote", not "did the
+  // shape change".
+  // v6: ONE merged list across BOTH inbox definitions (plan 40 §3.4) — entries
+  // gained `entityDefinitionKey` ('inbox' | 'personal_inbox'), `isPersonal`
+  // became DERIVED from it (OR'd with the legacy marker until data migration
+  // 060 lands), and `recordId` is now always slug-keyed rather than reusing
+  // `listAll`'s def-CUID form. The bump is load-bearing in BOTH directions: a
+  // v5 blob read by v6 code has no `entityDefinitionKey`, so every RecordId
+  // minted off it would carry `undefined` as its def, and a v6 blob read by a
+  // draining v5 instance would carry personal mailboxes it has no branch for.
   // v5: defaultLens/status normalized to scalars (were SINGLE_SELECT arrays —
   // poisoned strict lens comparisons). v4: + ownerUserId (§11 personal
   // accounts). v3: + isPersonal. v2: + defaultLens (mail-permissions §2.2).
   // Bump on shape changes.
-  inboxes: { prefix: 'org:inboxes:v5', ttlSeconds: ONE_DAY },
+  inboxes: { prefix: 'org:inboxes:v7', ttlSeconds: ONE_DAY },
   // Reverse thread/contact/inbox grant index for realtime publish fanout
   // (§3.1) + ingest count-delta audiences (§10.1). v2: + inboxes bucket.
   mailGrantIndex: { prefix: 'org:mail-grant-index:v2', ttlSeconds: ONE_DAY },

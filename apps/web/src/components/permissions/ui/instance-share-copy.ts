@@ -10,8 +10,10 @@ import {
   BookOpen,
   Bot,
   Database,
+  Inbox,
   LayoutDashboard,
   type LucideIcon,
+  Mailbox,
   MessageSquareText,
   PenTool,
   Workflow,
@@ -130,6 +132,46 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
       full: 'Share & delete',
     },
   },
+  // ── Mail (plan 40 §1.3) ──
+  //
+  // `levels.write` is DEAD COPY for both mail keys and is written to say so.
+  // There is no thread authority axis, so there is nothing between "work this
+  // inbox" and "manage this inbox": the tiers are `view` and `admin` only, and
+  // `Area.inboxes` has no `Level.Edit` rung, so the absent-row fallback can
+  // never produce `edit` either. The picker (`LEVEL_ORDER` in
+  // `instance-share-body.tsx`) is a flat module const with NO per-key subset
+  // support, so it still OFFERS the middle tier — that is tracked as phase-3
+  // work with the share-grid fold-in (plan 40 §6). Until it is narrowed, this
+  // string is what a user would see if they picked it, so it must not promise a
+  // capability that does not exist.
+  inbox: {
+    noun: 'inbox',
+    baselineHint:
+      'Everyone in the workspace can work this inbox by default. Restrict it to lock it down.',
+    levels: {
+      read: 'Read & reply to its mail',
+      write: 'Read & reply to its mail',
+      full: 'Manage access, floor & settings',
+    },
+    // Plan 40 §2 — the same headless carve-out workflows and signatures carry,
+    // and the one people restricting an inbox most often misread.
+    scopeNote:
+      'This controls people, not automation. Ingest, sequences, workflows and automated replies ' +
+      'run as the system, so a restricted inbox still receives and still sends. It also does not ' +
+      'control how much of a thread someone sees — that is the inbox lens, alongside this.',
+  },
+  personal_inbox: {
+    noun: 'personal inbox',
+    baselineHint: 'Private to its owner. Nobody else reaches it without an explicit share.',
+    levels: {
+      read: 'Read & reply to its mail',
+      write: 'Read & reply to its mail',
+      full: 'Manage access & settings',
+    },
+    scopeNote:
+      'A personal mailbox has no workspace default and no owner override — not even the ' +
+      'organization owner, who is capped at metadata. Only the rows here open it.',
+  },
 }
 
 /**
@@ -186,6 +228,16 @@ export const INSTANCE_TYPE_META: Record<
     icon: MessageSquareText,
     description: 'Reply snippets and their content.',
   },
+  inbox: {
+    label: 'Inboxes',
+    icon: Inbox,
+    description: 'Shared inboxes and the mail that lands in them.',
+  },
+  personal_inbox: {
+    label: 'Personal inboxes',
+    icon: Mailbox,
+    description: "Members' own connected mailboxes.",
+  },
 }
 
 /**
@@ -194,10 +246,30 @@ export const INSTANCE_TYPE_META: Record<
  * `renderChildren` host that nests `InstanceBaselineRows` / `GranteeInstanceRows`
  * under an area row (`grantee-overrides-tab.tsx`, `grantee-levels-section.tsx`)
  * so the mapping is defined once.
+ *
+ * **The reverse is no longer 1:1.** `Area.inboxes` carries TWO keys (plan 40
+ * §0.2: `inbox` org-shared, `personal_inbox` private), which is the first time
+ * that has happened — and the old `Object.fromEntries` form silently resolved
+ * the area to whichever key was declared LAST, i.e. `personal_inbox`. That would
+ * have pointed the Inboxes area row at other people's private mailboxes instead
+ * of the org's shared ones.
+ *
+ * The tie-break is by POSTURE, not declaration order: an area row expands into
+ * the rows an admin can set a WORKSPACE DEFAULT on, and a `baselineAtCreate:
+ * true` resource has no workspace default by construction (no row ⇒ no access,
+ * whatever the area says). So the org-shared key wins whenever an area has both.
  */
-export const AREA_TO_INSTANCE_KEY: Partial<Record<Area, InstanceAccessKey>> = Object.fromEntries(
-  INSTANCE_ACCESS_KEYS.map((key) => [INSTANCE_ACCESS_RESOURCES[key].area, key])
-)
+export const AREA_TO_INSTANCE_KEY: Partial<Record<Area, InstanceAccessKey>> =
+  INSTANCE_ACCESS_KEYS.reduce<Partial<Record<Area, InstanceAccessKey>>>((acc, key) => {
+    const { area, baselineAtCreate } = INSTANCE_ACCESS_RESOURCES[key]
+    const held = acc[area]
+    if (
+      held === undefined ||
+      (!baselineAtCreate && INSTANCE_ACCESS_RESOURCES[held].baselineAtCreate)
+    )
+      acc[area] = key
+    return acc
+  }, {})
 
 /**
  * Row copy for the two per-instance row scopes (capability layer v2 §B.2.6):

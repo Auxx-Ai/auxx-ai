@@ -10,20 +10,25 @@ import { type Lens, maxLens } from './lens'
  * so this is 0 queries in the common case.
  *
  * Framing:
- * - Admins get `full` everywhere EXCEPT others' personal inboxes, where they
- *   start at `metadata` and are raised only by explicit grants / assignment
- *   like anyone else (owners hold a Manager grant, so their own personal inbox
- *   resolves to `full` via `inboxLens`).
- * - Assignment ⇒ `full` on that thread.
- * - Otherwise fold the derivation-rule registry with `maxLens`.
+ * - Assignment ⇒ `full` on that thread. Ungated core collaboration on every
+ *   plan (`plans/mail-permissions/02-architecture.md` §11.3, plan 40 §2) — it
+ *   must never acquire a v2 gate, and it is what makes the dispatch/controller
+ *   pattern work against a floor-`none` inbox.
+ * - Otherwise fold the derivation-rule registry with `maxLens`, starting at
+ *   `none`.
+ *
+ * **No rank branch (plan 40 §4.2).** The two `isAdmin` short-circuits that used
+ * to sit here — `full` everywhere, and `metadata` on others' personal inboxes —
+ * are gone. Both answers now arrive through `inboxLens`, which
+ * `composeUserMailVisibility` builds from `ResourceAccess` rows plus the
+ * `Area.inboxes` fallback (and, for a mail admin, the §4.4 personal `metadata`
+ * floor). A default admin's numbers are unchanged; a downgraded one really loses
+ * mail, which is the point.
  */
 export function effectiveLens(vis: UserMailVisibility, t: ThreadVisibilityInput): Lens {
-  const personal = t.inboxId ? (vis.personalInboxIds[t.inboxId] ?? false) : false
-  if (vis.isAdmin && !personal) return 'full'
   if (t.assigneeId && t.assigneeId === vis.userId) return 'full'
 
-  // Admins on a personal inbox start at metadata; everyone else at none.
-  let lens: Lens = vis.isAdmin && personal ? 'metadata' : 'none'
+  let lens: Lens = 'none'
   for (const rule of DERIVATION_RULES) {
     lens = maxLens(lens, rule.lens(vis, t))
     if (lens === 'full') break
@@ -33,12 +38,16 @@ export function effectiveLens(vis: UserMailVisibility, t: ThreadVisibilityInput)
 
 /**
  * The viewer's lens on an INBOX (not a thread) — the floor every thread in it
- * inherits before per-thread derivations. Mirrors the admin short-circuit in
- * {@link effectiveLens}: admins are `full` everywhere except others' personal
- * inboxes. Used by realtime subscribe auth and the FE `myLenses` read.
+ * inherits before per-thread derivations. Used by realtime subscribe auth and
+ * the FE `myLenses` read.
+ *
+ * A plain map read since plan 40 §4.2: the composed floor already carries the
+ * area fallback and the mail-admin personal cap, so this and {@link effectiveLens}
+ * can no longer disagree about an inbox (they did before — this function returned
+ * `none` to an admin on a personal mailbox while the evaluator returned
+ * `metadata`).
  */
 export function inboxLensFor(vis: UserMailVisibility, inboxId: string): Lens {
-  if (vis.isAdmin && !vis.personalInboxIds[inboxId]) return 'full'
   return vis.inboxLens[inboxId] ?? 'none'
 }
 

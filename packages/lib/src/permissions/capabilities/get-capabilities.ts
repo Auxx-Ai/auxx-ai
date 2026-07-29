@@ -1,9 +1,9 @@
 // packages/lib/src/permissions/capabilities/get-capabilities.ts
 
 import {
+  getCachedGoverningInstanceIds,
   getCachedResources,
   getCachedRestrictedEntityDefIds,
-  getCachedRestrictedInstanceIds,
   getCachedUserCapabilities,
   getOrgCache,
 } from '../../cache'
@@ -29,12 +29,12 @@ export async function getCapabilities(
   orgId: string,
   _db?: unknown
 ): Promise<CapabilitySet> {
-  const [caps, roleMap, resources, restrictedDefIds, restrictedInstanceIds] = await Promise.all([
+  const [caps, roleMap, resources, restrictedDefIds, governingInstanceIds] = await Promise.all([
     getCachedUserCapabilities(userId, orgId),
     getOrgCache().get(orgId, 'memberRoleMap'),
     getCachedResources(orgId),
     getCachedRestrictedEntityDefIds(orgId),
-    getCachedRestrictedInstanceIds(orgId),
+    getCachedGoverningInstanceIds(orgId),
   ])
 
   const entry = roleMap[userId]
@@ -53,7 +53,7 @@ export async function getCapabilities(
     new Set(restrictedDefIds.map(resolved.toDefinitionId)),
     resolved.toDefinitionId,
     caps.instanceAccess ?? {},
-    new Set(restrictedInstanceIds),
+    new Set(governingInstanceIds),
     resolved.defBaseOverrides,
     // Composed, not recomputed here: `instanceDerivedKeys` is type-aware, and the
     // type lives on the ResourceAccess row that only the composer reads. `?? []`

@@ -65,24 +65,27 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
 
   // Inboxes (for thread inbox field) — backed by record.listAll so field-value
   // mutations (color / name edits) invalidate the dropdown automatically.
+  //
+  // Unions BOTH inbox definitions (plan 40 §3.4): a thread's inbox may live on
+  // `personal_inbox` after data migration 060, and a one-def list would render
+  // those threads' inbox field as an unresolvable id. The option VALUE stays
+  // the bare instance id (no def prefix) — the write path decides the def.
   inboxes: {
     useOptions: (enabled) => {
-      const { records, isLoading } = useAllRecords({
-        entityDefinitionId: 'inbox',
-        enabled,
-      })
+      const shared = useAllRecords({ entityDefinitionId: 'inbox', enabled })
+      const personal = useAllRecords({ entityDefinitionId: 'personal_inbox', enabled })
       const data = useMemo(
         () =>
-          records.map((r) => ({
+          [...shared.records, ...personal.records].map((r) => ({
             value: r.id,
             label:
               (r.fieldValues as { inbox_name?: string } | undefined)?.inbox_name ??
               r.displayName ??
               'Untitled',
           })),
-        [records]
+        [shared.records, personal.records]
       )
-      return { data, isLoading }
+      return { data, isLoading: shared.isLoading || personal.isLoading }
     },
   },
 

@@ -464,12 +464,17 @@ export class OrganizationSeeder {
     logger.info('Creating default inboxes for organization', { organizationId })
     const inboxService = new InboxService(this.db, organizationId, this.userId)
     // Create a default shared inbox
+    // No `defaultLens`: the org-shared default IS the absence of a
+    // `role:org_member` baseline row (plan 40 §6 — `baselineAtCreate: false`
+    // plus no row ⇒ the member's `Area.inboxes` level). Passing `'full'` was
+    // the same statement written into `inbox_default_lens`, a field nothing has
+    // read since phase 2; seeding the row would be strictly wrong here, because
+    // "everyone at full" has no row form.
     const defaultInbox = await inboxService.createInbox({
       name: 'Shared Inbox',
       description: 'Default shared inbox for all team members',
       color: 'blue',
       status: 'ACTIVE',
-      defaultLens: 'full', // All members have access by default
     })
     logger.info('Created default shared inbox', { organizationId, inboxId: defaultInbox.id })
     // You can create additional default inboxes here if needed
@@ -700,12 +705,13 @@ export class OrganizationSeeder {
     // If no inboxes exist, create the default one
     if (existingInboxes.length === 0) {
       logger.info('No inboxes found, creating default inbox', { organizationId })
+      // No `defaultLens` — see `seedInboxes`: "everyone at full" is the ABSENT
+      // baseline row, not a row that says `full`.
       await inboxService.createInbox({
         name: 'Shared Inbox',
         description: 'Default shared inbox for all team members',
         color: 'blue',
         status: 'ACTIVE',
-        defaultLens: 'full',
       })
       logger.info('Created default inbox for existing organization', { organizationId })
     }

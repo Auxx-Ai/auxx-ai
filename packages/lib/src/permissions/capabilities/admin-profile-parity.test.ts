@@ -141,7 +141,7 @@ function adminAccess(
     restrictedEntityDefIds: new Set(opts.restricted ?? []),
     defBaseOverrides: {},
     instanceAccess: caps.instanceAccess,
-    restrictedInstanceIds: new Set(opts.restrictedInstances ?? []),
+    governingInstanceIds: new Set(opts.restrictedInstances ?? []),
   }
 }
 

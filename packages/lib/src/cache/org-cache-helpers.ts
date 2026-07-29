@@ -209,13 +209,17 @@ export async function getCachedRestrictedEntityDefIds(orgId: string): Promise<st
 }
 
 /**
- * The org-wide set of instance ids carrying ≥1 instance-access `ResourceAccess`
- * row (cached, §1.3). The "does this instance have an explicit row?" signal for
- * the instance-access resolver — an instance NOT in this set falls back to its
- * area's base L2 level.
+ * The org-wide set of instance ids whose access is GOVERNED by `ResourceAccess`
+ * rows (cached, §1.3) — a `role:org_member` baseline at any permission, or any
+ * `permission = 'none'` marker. See
+ * {@link import('./providers/governing-instance-ids-provider').governingInstanceIdsProvider}
+ * for why this is NOT "carries ≥1 row for anyone".
+ *
+ * An instance NOT in this set is unrestricted: the member's own row wins if they
+ * hold one, otherwise the area's base L2 level applies.
  */
-export async function getCachedRestrictedInstanceIds(orgId: string): Promise<string[]> {
-  return getOrgCache().get(orgId, 'restrictedInstanceIds')
+export async function getCachedGoverningInstanceIds(orgId: string): Promise<string[]> {
+  return getOrgCache().get(orgId, 'governingInstanceIds')
 }
 
 // ── Permission profile cache helpers ──

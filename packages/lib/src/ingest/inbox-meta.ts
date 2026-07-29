@@ -13,6 +13,15 @@ export interface InboxMeta {
  * (hydrated per-org — no DB round-trip). Returns null for unknown/missing
  * inbox ids. Used at ingest time to give personal Gmail channels label-derived
  * thread status while shared inboxes keep everything-open helpdesk semantics.
+ *
+ * Def-agnostic on purpose (plan 40 §3.4): the `inboxes` cache is ONE merged
+ * list across `inbox` + `personal_inbox` with `isPersonal` derived from def
+ * membership, so this module — and everything it feeds (`store-message`'s
+ * label-derived status, participant owner-naming, the Gmail archive-vs-delete
+ * parity in `sync-messages` and `thread-provider-status-sync-job`) — keeps
+ * working across the def move with no change. Do NOT reintroduce a
+ * `inbox_is_personal` FieldValue read here; the cache is the only place that
+ * derivation is allowed to live.
  */
 export async function getInboxMeta(
   ctx: IngestContext,

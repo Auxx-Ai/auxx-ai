@@ -103,7 +103,7 @@ export async function computeUserCapabilities(
   // different mechanism from the deleted PermissionGrant policy tier.
   //
   // `profile` is included because `restrictedEntityDefIds` /
-  // `restrictedInstanceIds` are built GRANTEE-AGNOSTICALLY: one profile-grantee
+  // `governingInstanceIds` are built GRANTEE-AGNOSTICALLY: one profile-grantee
   // type row flips the def to "restricted" org-wide, and `effectiveRecordLevel`
   // then replaces base with the member's own grant. Without reading profile rows
   // here, the def would go dark for every non-admin. (Writes of profile-grantee

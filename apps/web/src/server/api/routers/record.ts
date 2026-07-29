@@ -5,7 +5,11 @@ import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { BadRequestError, ForbiddenError } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
 import { getRecordIdentityViews } from '@auxx/lib/identity'
-import { type CapabilitySet, isInstanceAccessKey } from '@auxx/lib/permissions'
+import {
+  type CapabilitySet,
+  type InstanceAccessKey,
+  isInstanceAccessKey,
+} from '@auxx/lib/permissions'
 import {
   type CreateEntityResult,
   type LookupCandidate,
@@ -74,15 +78,43 @@ function rethrowIfInvoicePaymentFkViolation(error: unknown): void {
  * enumerate, read, mutate and delete every signature in the org here. So this
  * path stops resolving them at all, and `signature.ts` becomes the only door.
  *
- * **Audit of what else this touches — nothing (re-verified 2026-07-28).** Of the
- * six `INSTANCE_ACCESS_RESOURCES` keys, only `signature` is an
- * `EntityDefinition`: `dataset`, `kb`, `dashboard` and `workflow` have no entry in
- * `seed/entity-seeder/constants.ts` (they are first-class tables served by their
- * own routers) and `snippet` is a first-class table too. `article` IS a seeded def
- * but is not an instance-access key — it inherits its KB's grants, and its data
- * lives in the `Article` table. So this guard has exactly ONE live subject and
- * zero collateral; for everything else it is a tripwire, so the next
- * instance-access def added on the record path fails loudly instead of leaking.
+ * **Audit of what else this touches (re-verified 2026-07-29).** `dataset`, `kb`,
+ * `dashboard`, `workflow` and `snippet` are first-class tables served by their
+ * own routers and have no entry in `seed/entity-seeder/constants.ts` at all;
+ * `article` IS a seeded def but is not an instance-access key (it inherits its
+ * KB's grants, and its data lives in the `Article` table). The
+ * `EntityDefinition`-backed keys are `signature` — the subject this guard was
+ * built for — and, since plan 40 phase 1, the two MAIL keys, which are the
+ * reason this function now has two arms.
+ *
+ * **THE MAIL EXEMPTION (plan 40 §8.1 / 40a §8.1, decision (a)).** `inbox` and
+ * `personal_inbox` joined `INSTANCE_ACCESS_RESOURCES` in phase 1, and a blanket
+ * refusal would have broken the mail sidebar, the inbox pickers and the thread
+ * inbox column in the phase that is supposed to be INERT. So:
+ *
+ *  - {@link assertNotInstanceAccessDefForWrite} — every MUTATION on this router.
+ *    Unchanged behaviour: the mail keys are refused here like every other one.
+ *    That also satisfies 40a §8.4 for free — the generic create path must not
+ *    accept `personal_inbox`, because personal inboxes are created ONLY through
+ *    provisioning.
+ *  - {@link assertNotInstanceAccessDefForRead} — every QUERY. The mail keys pass.
+ *
+ * **Why the read exemption is safe, and why it is not the leak it looks like:**
+ * the records capability layer was never the access authority for an inbox.
+ * Mail visibility is — `userMailVisibility` (the per-inbox lens floor, composed
+ * from `ResourceAccess` rows — the `role:org_member` baseline plus the
+ * `Area.inboxes` fallback) and the mail-grant index —
+ * and `UnifiedCrudHandler`'s def-level `canViewEntity('inbox')` short-circuits
+ * to `true` via `isMailInfraDef` regardless of what this guard does. Refusing
+ * the read arm would therefore have closed nothing that was open; it would only
+ * have broken the readers. Contrast `signature`, which this guard genuinely
+ * closes: `signature.ts` IS its only door, and it left `NON_RECORD_DEF_SLUGS`
+ * precisely so no def-level pass-through survives.
+ *
+ * The mutation arm keeps its teeth for the same reason it has them elsewhere:
+ * inbox WRITES answer to `channels.manage` + `assertAdminInstance` in
+ * `inbox.ts`, and a second door into `EntityInstance` updates would route around
+ * both.
  *
  * `ForbiddenError` rather than `BadRequestError` because it fails closed and
  * reads correctly to anything probing for data. It denies OWNER too — that is
@@ -91,7 +123,8 @@ function rethrowIfInvoicePaymentFkViolation(error: unknown): void {
  */
 async function assertNotInstanceAccessDef(
   organizationId: string,
-  identifiers: Array<string | null | undefined>
+  identifiers: Array<string | null | undefined>,
+  exempt: ReadonlySet<InstanceAccessKey>
 ): Promise<void> {
   const candidates = identifiers.filter((v): v is string => typeof v === 'string' && v.length > 0)
   if (candidates.length === 0) return
@@ -101,7 +134,10 @@ async function assertNotInstanceAccessDef(
   // the def UUID or the apiSlug.
   const unresolved: string[] = []
   for (const candidate of candidates) {
-    if (isInstanceAccessKey(candidate)) throw instanceAccessDefError(candidate)
+    if (isInstanceAccessKey(candidate)) {
+      if (!exempt.has(candidate)) throw instanceAccessDefError(candidate)
+      continue
+    }
     unresolved.push(candidate)
   }
 
@@ -111,8 +147,40 @@ async function assertNotInstanceAccessDef(
       (r) => r.id === candidate || r.entityDefinitionId === candidate || r.apiSlug === candidate
     )
     const entityType = resource?.entityType
-    if (entityType && isInstanceAccessKey(entityType)) throw instanceAccessDefError(entityType)
+    if (entityType && isInstanceAccessKey(entityType) && !exempt.has(entityType)) {
+      throw instanceAccessDefError(entityType)
+    }
   }
+}
+
+/**
+ * The mail keys, exempted on the READ arm only — see
+ * {@link assertNotInstanceAccessDef}. Explicit rather than derived from
+ * `baselineAtCreate` or an area: this is a ROUTING carve-out for two named defs,
+ * and a derived form would silently widen the moment another resource happened
+ * to share the shape.
+ */
+const MAIL_READ_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAccessKey>([
+  'inbox',
+  'personal_inbox',
+])
+
+const NO_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAccessKey>()
+
+/** Refuse EVERY instance-access def — the mutation arm. */
+function assertNotInstanceAccessDefForWrite(
+  organizationId: string,
+  identifiers: Array<string | null | undefined>
+): Promise<void> {
+  return assertNotInstanceAccessDef(organizationId, identifiers, NO_EXEMPT_KEYS)
+}
+
+/** Refuse every instance-access def EXCEPT the mail keys — the query arm. */
+function assertNotInstanceAccessDefForRead(
+  organizationId: string,
+  identifiers: Array<string | null | undefined>
+): Promise<void> {
+  return assertNotInstanceAccessDef(organizationId, identifiers, MAIL_READ_EXEMPT_KEYS)
 }
 
 function instanceAccessDefError(key: string): ForbiddenError {
@@ -283,7 +351,7 @@ export const recordRouter = createTRPCRouter({
       const recordId: RecordId =
         'recordId' in input ? input.recordId : toRecordId(input.entityDefinitionId, input.id)
       // §3 — outside the try: the catch below flattens everything to a 500.
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts([recordId]))
+      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts([recordId]))
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -318,7 +386,7 @@ export const recordRouter = createTRPCRouter({
     .input(z.object({ recordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts([input.recordId]))
+      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts([input.recordId]))
       try {
         return await getRecordIdentityViews(organizationId, input.recordId as RecordId)
       } catch (error: unknown) {
@@ -342,7 +410,7 @@ export const recordRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts(input.items))
+      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts(input.items))
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -364,7 +432,7 @@ export const recordRouter = createTRPCRouter({
   search: capabilityProcedure.input(globalSearchInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
     const { apiSlug, entityDefinitionId, query, limit, cursor, entityDefinitionIds } = input
-    await assertNotInstanceAccessDef(organizationId, [
+    await assertNotInstanceAccessDefForRead(organizationId, [
       apiSlug,
       entityDefinitionId,
       ...(entityDefinitionIds ?? []),
@@ -394,10 +462,22 @@ export const recordRouter = createTRPCRouter({
       // page is acceptable only because the union is unpaginated (`cursor` is
       // ignored in that mode) and the excluded defs are settings-only, so this
       // can neither short a page nor desync a cursor.
+      //
+      // This filter is DERIVED from `isInstanceAccessKey`, so plan 40 phase 1
+      // would have silently dropped inboxes out of cmd+K the moment `inbox`
+      // joined the registry — a behavior change in the phase that must be inert.
+      // It takes the same `MAIL_READ_EXEMPT_KEYS` carve-out as the read-arm
+      // assert above, and for the same reason: inboxes are searchable today,
+      // this router is not their access authority, and `userMailVisibility` is.
       if (!entityDefinitionId && !apiSlug && !entityDefinitionIds?.length) {
         const blocked = new Set(
           (await getCachedResources(organizationId))
-            .filter((r) => r.entityType && isInstanceAccessKey(r.entityType))
+            .filter(
+              (r) =>
+                r.entityType &&
+                isInstanceAccessKey(r.entityType) &&
+                !MAIL_READ_EXEMPT_KEYS.has(r.entityType)
+            )
             .map((r) => r.entityDefinitionId)
         )
         if (blocked.size > 0) {
@@ -441,7 +521,7 @@ export const recordRouter = createTRPCRouter({
     .input(lookupByFieldInputSchema)
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, [input.entityDefinitionId])
+      await assertNotInstanceAccessDefForRead(organizationId, [input.entityDefinitionId])
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
@@ -505,7 +585,7 @@ export const recordRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, [input.entityDefinitionId])
+      await assertNotInstanceAccessDefForRead(organizationId, [input.entityDefinitionId])
 
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
         capabilities: ctx.capabilities,
@@ -542,7 +622,10 @@ export const recordRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, [input.entityDefinitionId, input.apiSlug])
+      await assertNotInstanceAccessDefForRead(organizationId, [
+        input.entityDefinitionId,
+        input.apiSlug,
+      ])
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -573,7 +656,7 @@ export const recordRouter = createTRPCRouter({
    */
   create: capabilityProcedure.input(createInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
-    await assertNotInstanceAccessDef(organizationId, [input.entityDefinitionId])
+    await assertNotInstanceAccessDefForWrite(organizationId, [input.entityDefinitionId])
 
     try {
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -604,7 +687,7 @@ export const recordRouter = createTRPCRouter({
    */
   createMany: capabilityProcedure.input(createManyInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
-    await assertNotInstanceAccessDef(organizationId, [input.entityDefinitionId])
+    await assertNotInstanceAccessDefForWrite(organizationId, [input.entityDefinitionId])
     const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
       capabilities: ctx.capabilities,
     })
@@ -640,7 +723,7 @@ export const recordRouter = createTRPCRouter({
    */
   update: capabilityProcedure.input(updateInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
-    await assertNotInstanceAccessDef(organizationId, recordIdDefParts([input.recordId]))
+    await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts([input.recordId]))
 
     try {
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -669,7 +752,7 @@ export const recordRouter = createTRPCRouter({
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts([input.recordId]))
+      await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts([input.recordId]))
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -698,7 +781,7 @@ export const recordRouter = createTRPCRouter({
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts([input.recordId]))
+      await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts([input.recordId]))
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -727,7 +810,7 @@ export const recordRouter = createTRPCRouter({
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts([input.recordId]))
+      await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts([input.recordId]))
       // Layer-2 × Layer-3 write guard (§11.4): the delete verb, def-aware — the
       // org-wide `recordsDelete` key OR an explicit per-def `admin` grant.
       assertCanDeleteDefs(ctx.capabilities, [input.recordId])
@@ -764,7 +847,7 @@ export const recordRouter = createTRPCRouter({
     .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts(input.recordIds))
+      await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts(input.recordIds))
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
@@ -787,7 +870,7 @@ export const recordRouter = createTRPCRouter({
     .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts(input.recordIds))
+      await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts(input.recordIds))
       // Layer-2 × Layer-3 write guard (§11.4): the delete verb, asserted per
       // DISTINCT def in the batch. A batch spanning a def the member may not
       // delete fails whole rather than partially — same as the edit gate.
@@ -843,7 +926,7 @@ export const recordRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(
+      await assertNotInstanceAccessDefForWrite(
         organizationId,
         recordIdDefParts([input.targetRecordId, ...input.sourceRecordIds])
       )
@@ -879,7 +962,7 @@ export const recordRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, [input.entityDefinitionId])
+      await assertNotInstanceAccessDefForRead(organizationId, [input.entityDefinitionId])
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
@@ -907,7 +990,7 @@ export const recordRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await assertNotInstanceAccessDef(organizationId, recordIdDefParts([input.recordId]))
+      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts([input.recordId]))
 
       try {
         // Parse composite IDs to get raw values for DB query

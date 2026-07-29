@@ -92,7 +92,24 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     fieldType: FieldType.RELATIONSHIP,
     options: {
       relationship: {
-        inverseResourceFieldId: 'inbox:threads',
+        // Named to match the thread resource's own `inbox` relation
+        // (`resources/registry/resources/thread-fields.ts`) — `'inbox:threads'`
+        // pointed at a third, differently-spelled inverse that never existed.
+        // Neither half resolves (there is no inverse field on either inbox
+        // definition) and this array is not part of the resource registry, so
+        // only the LEFT half is ever read: `getRelatedEntityDefinitionId` uses
+        // it to scope this filter's record picker.
+        //
+        // The SAVED-FILTER QUERY is definition-agnostic and stays that way:
+        // `mail-query/condition-query-builder.ts` `buildInboxQuery` strips any
+        // RecordId prefix and matches bare `Thread.inboxId` values, so threads
+        // in a `personal_inbox` mailbox never drop out of a saved view.
+        // Known gap (phase-3 UI sweep, plan 40a §7): the PICKER above is scoped
+        // to this one slug, so personal mailboxes stop being *selectable* here
+        // once data migration 060 moves them — `MailViewFieldDefinition` has no
+        // `dynamicOptionsKey`, which is how the thread field's picker unions
+        // both definitions.
+        inverseResourceFieldId: 'inbox:inbox_threads',
         relationshipType: 'has_many',
         isInverse: false,
       },

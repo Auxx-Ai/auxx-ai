@@ -1,6 +1,20 @@
 // packages/lib/src/cache/providers/mail-grant-index-provider.test.ts
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// The bucket router logs (rather than throws) on an unrecognised mail def — it
+// runs inside a cache provider, so one bad row must not take the org's whole
+// realtime fanout down. Capture the log so "loud" is actually asserted.
+const logError = vi.hoisted(() => vi.fn())
+vi.mock('@auxx/logger', () => ({
+  createScopedLogger: () => ({
+    error: logError,
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
+}))
+
 import { composeMailGrantIndex } from './mail-grant-index-provider'
 
 const row = (over: Partial<Parameters<typeof composeMailGrantIndex>[0]['rows'][number]>) => ({
@@ -25,6 +39,48 @@ describe('composeMailGrantIndex', () => {
     })
     expect(index.threads).toEqual({ t_1: [{ userId: 'u_1', lens: 'metadata' }] })
     expect(index.contacts).toEqual({ c_1: [{ userId: 'u_2', lens: 'full' }] })
+  })
+
+  // Plan 40 §4.1/§4.2 — migration 060 writes `role:org_member @ none` on a
+  // restricted shared inbox. The old `permission !== 'view' ⇒ full` shorthand
+  // inverted that row into a FULL-lens entry for EVERY member, i.e. the widest
+  // possible reading of a row whose entire job is to close the inbox — and this
+  // index is what the ingest count-delta audience reads.
+  it('drops `none` rows entirely — the restriction marker is not a grant', () => {
+    const index = composeMailGrantIndex({
+      rows: [
+        row({
+          entityDefinitionId: 'inbox',
+          entityInstanceId: 'ibx_1',
+          granteeType: 'role',
+          granteeId: 'org_member',
+          permission: 'none',
+          lens: null as never,
+        }),
+      ],
+      memberUserIds: ['u_1', 'u_2'],
+      groupIdsByUser: {},
+    })
+    expect(index.inboxes).toEqual({})
+  })
+
+  it('still indexes a real grant on the same restricted inbox (positive control)', () => {
+    const index = composeMailGrantIndex({
+      rows: [
+        row({
+          entityDefinitionId: 'inbox',
+          entityInstanceId: 'ibx_1',
+          granteeType: 'role',
+          granteeId: 'org_member',
+          permission: 'none',
+          lens: null as never,
+        }),
+        row({ entityDefinitionId: 'inbox', entityInstanceId: 'ibx_1', granteeId: 'u_2' }),
+      ],
+      memberUserIds: ['u_1', 'u_2'],
+      groupIdsByUser: {},
+    })
+    expect(index.inboxes).toEqual({ ibx_1: [{ userId: 'u_2', lens: 'full' }] })
   })
 
   it('expands group grants to member user ids', () => {
@@ -135,5 +191,66 @@ describe('composeMailGrantIndex', () => {
       { userId: 'u_2', lens: 'metadata' },
     ])
     expect(index.threads).toEqual({})
+  })
+
+  // Plan 40 §3 / 40a §0 risk 2 — the bucket router's else-branch used to be
+  // `index.contacts`, so a grant re-keyed to `'personal_inbox'` by migration 060
+  // would have been published as a CONTACT audience: wrong fanout, no throw, no
+  // log. This is the mutation the plan names by file:line.
+  describe('personal_inbox bucketing (the 060 lockstep)', () => {
+    beforeEach(() => logError.mockReset())
+
+    it('routes a personal_inbox grant into the INBOX bucket', () => {
+      const index = composeMailGrantIndex({
+        rows: [
+          row({
+            entityDefinitionId: 'personal_inbox',
+            entityInstanceId: 'pi_1',
+            granteeId: 'u_owner',
+            permission: 'admin',
+            lens: null,
+          }),
+        ],
+        memberUserIds: ['u_owner'],
+        groupIdsByUser: {},
+      })
+      expect(index.inboxes).toEqual({ pi_1: [{ userId: 'u_owner', lens: 'full' }] })
+      expect(index.contacts).toEqual({})
+      expect(index.threads).toEqual({})
+      expect(logError).not.toHaveBeenCalled()
+    })
+
+    it('indexes both keyspaces identically — the re-key is invisible downstream', () => {
+      const build = (entityDefinitionId: string) =>
+        composeMailGrantIndex({
+          rows: [row({ entityDefinitionId, entityInstanceId: 'pi_1', lens: 'metadata' })],
+          memberUserIds: ['u_1'],
+          groupIdsByUser: {},
+        })
+      expect(build('personal_inbox')).toEqual(build('inbox'))
+    })
+
+    it('drops an unrecognised mail def loudly instead of defaulting it into contacts', () => {
+      const index = composeMailGrantIndex({
+        rows: [row({ entityDefinitionId: 'future_mailbox', entityInstanceId: 'x_1' })],
+        memberUserIds: ['u_1'],
+        groupIdsByUser: {},
+      })
+      expect(index).toEqual({ threads: {}, contacts: {}, inboxes: {} })
+      expect(logError).toHaveBeenCalledWith(
+        expect.stringContaining('Unrecognised mail definition'),
+        expect.objectContaining({ entityDefinitionId: 'future_mailbox' })
+      )
+    })
+
+    it('still buckets a real contact grant into contacts (negative control)', () => {
+      const index = composeMailGrantIndex({
+        rows: [row({ entityDefinitionId: 'contact', entityInstanceId: 'c_1' })],
+        memberUserIds: ['u_1'],
+        groupIdsByUser: {},
+      })
+      expect(index.contacts).toEqual({ c_1: [{ userId: 'u_1', lens: 'full' }] })
+      expect(logError).not.toHaveBeenCalled()
+    })
   })
 })

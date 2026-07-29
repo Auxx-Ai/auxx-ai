@@ -17,9 +17,46 @@ export interface UserMailVisibility {
   userId: string
   /** From the cached memberRoleMap. */
   role: OrganizationRole
-  /** OWNER/ADMIN → `full` everywhere except others' personal inboxes (§11). */
+  /**
+   * Org rank (OWNER/ADMIN). **NOT AN AUTHORITY IN THE MAIL PATH** since plan 40
+   * phase 2: every `isAdmin` short-circuit in `effective-lens`, `visibility-scope`,
+   * `InboxService` and the `inbox` branch of `mail-sharing-guard` was deleted, and
+   * admins now read mail through `ResourceAccess` rows + the `Area.inboxes` fallback
+   * like everyone else (plan 40 §4.2 — profile is THE control).
+   *
+   * Retained only as descriptive metadata for surfaces that report rank
+   * (`inbox.myLenses`) and for the thread/contact branches of
+   * `assertCanManageMailSharing`, which plan 40 §2 keeps out of scope. **Do not
+   * reintroduce it as a gate** — use {@link isMailAdmin} if you mean "runs the mail
+   * operation", or the inbox floor if you mean "may read this mailbox".
+   */
   isAdmin: boolean
-  /** Effective lens floor per inbox: max(inbox.defaultLens, grants on it). Only entries > `none`. */
+  /**
+   * `Area.inboxes === Level.Full` — the MAIL-OPERATIONS rung (plan 40 §1.2/§4.4),
+   * composed from the member's capability blob, not from their rank.
+   *
+   * It confers exactly two things and nothing else:
+   *  1. a `metadata` floor on OTHERS' personal mailboxes (the "why is nobody
+   *     answering this" view, §4.4) — already folded into {@link inboxLens} by
+   *     `composeUserMailVisibility`, so no reader needs a branch for it;
+   *  2. the residual null-`inboxId` triage threads, which belong to no inbox and
+   *     therefore inherit no floor (`visibility-scope.ts`).
+   *
+   * A default admin holds it (`ROLE_DEFAULTS.ADMIN` is `ALL_FULL`), so §4.4 is
+   * behaviour-neutral for them; a member granted `inboxes: Full` gains it, which is
+   * correct — that rung IS the mail-operations role.
+   */
+  isMailAdmin: boolean
+  /**
+   * Effective lens floor per inbox — max over: the member's positive
+   * `ResourceAccess` rows on that inbox, the `Area.inboxes` fallback for a
+   * row-less SHARED inbox, and (for a mail admin) `metadata` on others' personal
+   * mailboxes. Only entries > `none`.
+   *
+   * Since plan 40 phase 2 the `inbox_default_lens` FieldValue is NOT an input:
+   * migration 060 projected every non-`full` floor onto a `role:org_member` row
+   * and the rows are now the sole source (§4.2).
+   */
   inboxLens: Record<string, Lens>
   /** Personal inboxes (§11) — cap the admin short-circuit at `metadata`. JSON-serializable set. */
   personalInboxIds: Record<string, true>

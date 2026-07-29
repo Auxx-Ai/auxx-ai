@@ -139,6 +139,12 @@ export function isCustomResource(resource: Resource): resource is CustomResource
  */
 export const NON_RECORD_ENTITY_SLUGS: ReadonlySet<string> = new Set([
   'inbox',
+  // Plan 40 §3 — same mail-infrastructure reasoning as `inbox`: its
+  // `ResourceAccess` rows carry mail-sharing semantics, so a def-access grid row
+  // would be the phantom control this doc comment warns about. Matched on
+  // `resource.entityType` by `isAccessManageable`, so the `personal-inboxes`
+  // apiSlug needs no separate entry (neither does `inboxes`).
+  'personal_inbox',
   'thread',
   'message',
   'sequence',

@@ -46,7 +46,7 @@ function caps(over: Partial<ResolvedRecordAccess> = {}): ResolvedRecordAccess {
     defAccess: {},
     restrictedEntityDefIds: new Set(),
     instanceAccess: {},
-    restrictedInstanceIds: new Set(),
+    governingInstanceIds: new Set(),
     ...over,
   }
 }
@@ -61,7 +61,7 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
   it('names ONLY the rows that reach `view`', () => {
     const scope = privateInstanceListScope(
       caps({
-        restrictedInstanceIds: new Set(['s_view', 's_admin', 's_none']),
+        governingInstanceIds: new Set(['s_view', 's_admin', 's_none']),
         instanceAccess: {
           s_view: ResourcePermission.view,
           s_admin: ResourcePermission.admin,
@@ -81,7 +81,7 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
     const scope = privateInstanceListScope(
       caps({
         keys: new Set(),
-        restrictedInstanceIds: new Set(['s1']),
+        governingInstanceIds: new Set(['s1']),
         instanceAccess: { s1: ResourcePermission.view },
       }),
       'snippet'
@@ -103,7 +103,7 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
       privateInstanceListScope(
         caps({
           role: 'OWNER',
-          restrictedInstanceIds: new Set(['s_mine', 's_theirs']),
+          governingInstanceIds: new Set(['s_mine', 's_theirs']),
           instanceAccess: { s_mine: ResourcePermission.admin },
         }),
         'snippet'
@@ -117,7 +117,7 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
     const scope = privateInstanceListScope(
       caps({
         seatType: 'worker',
-        restrictedInstanceIds: new Set(['s1']),
+        governingInstanceIds: new Set(['s1']),
         instanceAccess: { s1: ResourcePermission.admin },
       }),
       'snippet'
@@ -295,7 +295,7 @@ describe('createSnippet — the owner admin row is part of the create', () => {
 
   it('busts the capability caches for the author AFTER the transaction commits', async () => {
     // Without this the author cannot see the snippet they just made: `snippet`
-    // is `baselineAtCreate: true`, so a stale `restrictedInstanceIds` blob has
+    // is `baselineAtCreate: true`, so a stale `governingInstanceIds` blob has
     // no row for the new id and `effectiveInstanceLevel` returns undefined.
     const { db } = makeCreateDb([])
     await createSnippet(db, 'org1', 'u1', { title: 'T', content: 'C' })

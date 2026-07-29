@@ -134,6 +134,15 @@ export async function updateChatWidget(
         new BadRequestError('Selected inbox not found or does not belong to this organization')
       )
     }
+    // SHARED-ONLY (plan 40a §2). A chat widget is a public front door: every
+    // visitor conversation it opens lands in this inbox, so routing one into a
+    // member's personal mailbox would publish a private mailbox to the
+    // internet. `isPersonal` is def-derived (plan 40 §3.4), so this reads
+    // `personal_inbox` membership once data migration 060 lands and the legacy
+    // marker until then.
+    if (inbox.isPersonal) {
+      return Result.error(new BadRequestError('A chat widget cannot be routed to a personal inbox'))
+    }
   }
 
   // v1 of the in-widget KB reader only supports PUBLIC KBs — INTERNAL KBs

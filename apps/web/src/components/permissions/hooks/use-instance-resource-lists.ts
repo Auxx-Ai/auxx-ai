@@ -29,8 +29,9 @@ export type OpenInstanceTypes = Partial<Record<InstanceAccessKey, boolean>>
  * Fetch the instances of every "open" instance-access resource type — one
  * query per shareable type (`api.dataset.list` / `api.kb.list` /
  * `api.dashboard.list` / `api.workflow.list` / `api.agent.list` /
- * `api.signature.list` / `api.snippet.all`), each fetched only while its caller
- * marks it `open`.
+ * `api.signature.list` / `api.snippet.all` / `api.record.listAll` for inboxes),
+ * each fetched only while its caller marks it `open`. `personal_inbox` is the
+ * one key with no query at all — see its entry below.
  *
  * Generalized (capability layer v2 Part B.3) out of the agent-policy Resources
  * grid, which fetches lazily per manually-expanded type row (the policy is
@@ -83,6 +84,23 @@ export function useInstanceResourceLists(
     { includeShared: true },
     { enabled: open.snippet === true, staleTime: 60_000 }
   )
+  // Inboxes are the one instance-access resource with NO list router of its own
+  // — `inbox.ts` has `myLenses` (ids + lenses, no names) and nothing else — so
+  // this reads the generic record path, exactly as the mail sidebar
+  // (`use-inbox.ts`) and the inbox picker already do. That is deliberate and NOT
+  // a regression of the `signature` note above: the record path refuses instance-
+  // access defs on its MUTATION arm only, and the mail keys are explicitly
+  // exempted on its READ arm (`record.ts` `MAIL_READ_EXEMPT_KEYS`) because the
+  // records capability layer was never an inbox's access authority —
+  // `userMailVisibility` is. Adding an `inbox.list` procedure would not have
+  // closed anything either, since `record.getByIds` is an intentionally
+  // MIXED-def batch and cannot move.
+  // `fieldKeys` rather than the full fan-out: this list needs the NAME and
+  // nothing else, and `listAll` otherwise loads every FieldValue for every row.
+  const inboxes = api.record.listAll.useQuery(
+    { entityDefinitionId: 'inbox', fieldKeys: ['inbox_name'] },
+    { enabled: open.inbox === true, staleTime: 60_000 }
+  )
 
   return useMemo(
     () => ({
@@ -127,6 +145,40 @@ export function useInstanceResourceLists(
         isLoading: snippets.isLoading && open.snippet === true,
         truncated: false,
       },
+      inbox: {
+        // An inbox's real name is the `inbox_name` FieldValue;
+        // `EntityInstance.displayName` is the entity system's denormalized copy
+        // and is nullable, so it is the fallback rather than the source.
+        items: (inboxes.data?.items ?? []).map((i) => ({
+          id: i.id,
+          name:
+            (typeof i.fieldValues.inbox_name === 'string' ? i.fieldValues.inbox_name : null) ??
+            i.displayName ??
+            'Untitled inbox',
+        })),
+        isLoading: inboxes.isLoading && open.inbox === true,
+        // `listAll` is unpaginated by contract ("small datasets like tags,
+        // inboxes"), so it cannot truncate.
+        truncated: false,
+      },
+      personal_inbox: {
+        // DELIBERATELY EMPTY, and it is not an oversight of the #1361 kind.
+        //
+        // A personal inbox is one member's own mailbox. There is no workspace
+        // default to set on it (`baselineAtCreate: true` ⇒ no row means no
+        // access, whatever the area says), and enumerating every member's
+        // mailbox into an admin grid would be the leak the two-key split exists
+        // to prevent. `AREA_TO_INSTANCE_KEY` resolves `Area.inboxes` to `inbox`
+        // for exactly this reason, so no area row ever asks for this list.
+        //
+        // It is also empty by necessity today: the `personal_inbox`
+        // EntityDefinition does not exist yet (plan 40a's 059/060 seed it), so
+        // there is nothing to query. If per-personal-inbox rows ever get a real
+        // surface, they belong on the mailbox owner's own page, not here.
+        items: [],
+        isLoading: false,
+        truncated: false,
+      },
     }),
     [
       datasets.data,
@@ -143,6 +195,8 @@ export function useInstanceResourceLists(
       signatures.isLoading,
       snippets.data,
       snippets.isLoading,
+      inboxes.data,
+      inboxes.isLoading,
       open,
     ]
   )

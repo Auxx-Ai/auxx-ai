@@ -122,8 +122,17 @@ export function useMailShare({
    * Rows this surface can neither render as an actor nor revoke — a `profile`
    * grantee today (plan 19 §8.2). Disclosed rather than dropped, so an admin is
    * never shown an empty share list while a live grant exists server-side.
-   * The `role:org_member` floor is excluded: mail expresses it as the inbox's
-   * `inbox_default_lens`, not as a row in this list.
+   *
+   * The `role:org_member` row is excluded because it is the inbox's ORG-WIDE
+   * FLOOR, not a share — it IS a row since plan 40 §6 (it used to be the
+   * `inbox_default_lens` FieldValue), but it is authored by the inbox form's
+   * Everyone/Restricted control via `inbox.setAccessFloor`, and surfacing it
+   * here as an unmanageable grant would tell every thread-popover viewer their
+   * inbox has a mystery grantee they cannot remove.
+   *
+   * This hook itself keeps serving the THREAD popover and the contact card; the
+   * inbox Access section owns its own rows (it needs the create-mode staging
+   * the optimistic mutations here cannot express).
    */
   const unmanageableGrants = useMemo<UnmanageableGrant[]>(
     () =>

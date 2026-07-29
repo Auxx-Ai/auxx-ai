@@ -166,7 +166,7 @@ describe('`baselineAtCreate: false` — the deliberate opposite of dashboards', 
 
   it('a member who is not a grantee of an EXISTING row is denied that workflow', () => {
     // Once any row exists for a workflow, the instance is in
-    // `restrictedInstanceIds` and the fallback is skipped — absent entry reads
+    // `governingInstanceIds` and the fallback is skipped — absent entry reads
     // as denial, never as "unrestricted". This is what makes Restricted work at
     // all under `baselineAtCreate: false`.
     const m = member({ rows: [], restrictedInstances: ['wf_locked'] })
@@ -339,7 +339,7 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
     // The `baselineAtCreate: false` denial that has no row of the member's own:
     // once ANY row exists the instance is restricted, and an absent entry reads
     // as denial. Still a restriction — still enumerable from
-    // `restrictedInstanceIds`.
+    // `governingInstanceIds`.
     const m = member({ rows: [], restrictedInstances: ['wf_locked'] })
     expect(m.server.instanceListScope('workflow').excludeIds).toEqual(['wf_locked'])
     expect(viewableByScope(m)).toEqual(viewableByGate(m))
@@ -422,7 +422,7 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
   })
 
   it('carries ids of OTHER instance-access types, which is harmless', () => {
-    // `restrictedInstanceIds` is org-wide across datasets/KBs/dashboards/
+    // `governingInstanceIds` is org-wide across datasets/KBs/dashboards/
     // workflows, so a restricted dataset lands in the workflow exclusion too.
     // Ids are globally-unique cuid2s, so an over-broad exclusion can never drop
     // a workflow the member may see — documented here so nobody "fixes" it by

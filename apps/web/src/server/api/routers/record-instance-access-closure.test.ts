@@ -53,6 +53,17 @@ const SIGNATURE_ID = 'sig_cuid0000000000000000000'
 const CONTACT_DEF_UUID = 'edf_contact00000000000000000'
 const CONTACT_ID = 'cnt_cuid0000000000000000000'
 
+/**
+ * The two MAIL instance-access defs (plan 40 phase 1). Unlike `signature`, these
+ * are exempted on the READ arm and refused only on the MUTATION arm — see the
+ * dedicated describes at the bottom of this file for why.
+ */
+const INBOX_DEF_UUID = 'edf_inbox0000000000000000000'
+const INBOX_API_SLUG = 'inboxes'
+const INBOX_ID = 'ibx_cuid0000000000000000000'
+const PERSONAL_INBOX_DEF_UUID = 'edf_pinbox000000000000000000'
+const PERSONAL_INBOX_ID = 'pib_cuid0000000000000000000'
+
 const { handler, cache, identity, fieldValues } = vi.hoisted(() => ({
   handler: {
     getById: vi.fn(async () => ({ recordId: 'x' })),
@@ -163,6 +174,18 @@ const RESOURCES = [
     entityDefinitionId: CONTACT_DEF_UUID,
     apiSlug: 'contacts',
     entityType: 'contact',
+  },
+  {
+    id: INBOX_DEF_UUID,
+    entityDefinitionId: INBOX_DEF_UUID,
+    apiSlug: INBOX_API_SLUG,
+    entityType: 'inbox',
+  },
+  {
+    id: PERSONAL_INBOX_DEF_UUID,
+    entityDefinitionId: PERSONAL_INBOX_DEF_UUID,
+    apiSlug: 'personal-inboxes',
+    entityType: 'personal_inbox',
   },
 ]
 
@@ -473,5 +496,190 @@ describe('record router — NEGATIVE CONTROL: ordinary defs still work', () => {
       caller().listFiltered({ entityDefinitionId: 'edf_unknown00000000000000000' })
     ).resolves.toBeDefined()
     expect(handler.listFiltered).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * Plan 40 phase 1 / 40a §8.1 — the MAIL exemption, and the reason this file
+ * grew a second shape.
+ *
+ * `inbox` and `personal_inbox` joined `INSTANCE_ACCESS_RESOURCES`, so without a
+ * carve-out the guard above would have refused them everywhere and taken the
+ * mail sidebar, the inbox pickers and the thread inbox column down with it — in
+ * the phase that is supposed to be behavior-inert. The split is by ARM:
+ *
+ *  - READS pass. The records capability layer was never an inbox's access
+ *    authority; `userMailVisibility` is, and `canViewEntity('inbox')`
+ *    short-circuits to `true` via `isMailInfraDef` regardless, so refusing here
+ *    would close nothing and break the readers.
+ *  - MUTATIONS are still refused. Inbox writes answer to `channels.manage` +
+ *    `assertAdminInstance` in `inbox.ts`; a second door into `EntityInstance`
+ *    updates would route around both. It also satisfies 40a §8.4 for free:
+ *    `personal_inbox` is not user-creatable, only provisionable.
+ *
+ * Every case below runs against BOTH identifier forms the client actually sends
+ * (bare slug and def UUID) — the slug short-circuits and the UUID resolves
+ * through the resources cache, and an exemption applied to only one of those two
+ * paths would still pass a slug-only test.
+ */
+
+const MAIL_READS: [string, (c: Caller, def: string, id: string) => Promise<unknown>][] = [
+  ['getById', (c, d, id) => c.getById({ recordId: `${d}:${id}` })],
+  ['getByIds', (c, d, id) => c.getByIds({ items: [`${d}:${id}`] })],
+  ['getIdentities', (c, d, id) => c.getIdentities({ recordId: `${d}:${id}` })],
+  ['search (scoped)', (c, d) => c.search({ entityDefinitionId: d, query: 'a' })],
+  [
+    'lookupByField',
+    (c, d) =>
+      c.lookupByField({
+        entityDefinitionId: d,
+        candidates: [{ systemAttribute: 'inbox_name', value: 'Support' }],
+      }),
+  ],
+  ['listFiltered', (c, d) => c.listFiltered({ entityDefinitionId: d })],
+  ['listAll', (c, d) => c.listAll({ entityDefinitionId: d })],
+  ['invalidateCache', (c, d) => c.invalidateCache({ entityDefinitionId: d })],
+  [
+    'getDescendantRecordIds',
+    (c, d, id) =>
+      c.getDescendantRecordIds({ recordId: `${d}:${id}`, resourceFieldId: `${d}:parent` }),
+  ],
+]
+
+const MAIL_WRITES: [string, (c: Caller, def: string, id: string) => Promise<unknown>][] = [
+  ['create', (c, d) => c.create({ entityDefinitionId: d, values: {} })],
+  ['createMany', (c, d) => c.createMany({ entityDefinitionId: d, records: [{}] })],
+  ['update', (c, d, id) => c.update({ recordId: `${d}:${id}`, values: { a: 1 } })],
+  ['archive', (c, d, id) => c.archive({ recordId: `${d}:${id}` })],
+  ['restore', (c, d, id) => c.restore({ recordId: `${d}:${id}` })],
+  ['delete', (c, d, id) => c.delete({ recordId: `${d}:${id}` })],
+  ['bulkArchive', (c, d, id) => c.bulkArchive({ recordIds: [`${d}:${id}`] })],
+  ['bulkDelete', (c, d, id) => c.bulkDelete({ recordIds: [`${d}:${id}`] })],
+  [
+    'merge',
+    (c, d, id) =>
+      c.merge({
+        targetRecordId: `${d}:${id}`,
+        sourceRecordIds: [`${d}:ibx_other0000000000000000`],
+      }),
+  ],
+]
+
+describe('record router — the MAIL READ arm lets inbox defs through', () => {
+  it.each(MAIL_READS)('%s resolves an inbox by its bare slug', async (_name, call) => {
+    await expect(call(caller(), 'inbox', INBOX_ID)).resolves.toBeDefined()
+  })
+
+  it.each(MAIL_READS)('%s resolves an inbox by its def UUID', async (_name, call) => {
+    await expect(call(caller(), INBOX_DEF_UUID, INBOX_ID)).resolves.toBeDefined()
+  })
+
+  it.each(MAIL_READS)('%s resolves a personal inbox by its bare slug', async (_name, call) => {
+    await expect(call(caller(), 'personal_inbox', PERSONAL_INBOX_ID)).resolves.toBeDefined()
+  })
+
+  it('…and by apiSlug, on the two procedures that accept one', async () => {
+    // The mail sidebar and pickers reach `listAll` by def slug today, but the
+    // apiSlug form resolves through the same cache lookup and must not diverge.
+    await expect(caller().listAll({ apiSlug: INBOX_API_SLUG })).resolves.toBeDefined()
+    await expect(caller().search({ apiSlug: INBOX_API_SLUG, query: 'a' })).resolves.toBeDefined()
+  })
+
+  it('a MIXED getByIds batch with one inbox no longer 403s the whole batch', async () => {
+    // THE regression this exemption exists for. `record.getByIds` is
+    // intentionally mixed-def (`use-record-batch-fetcher.ts`,
+    // `resource-provider.tsx`) and the guard throws on the FIRST offending
+    // element — so one inbox RecordId would have taken every unrelated contact,
+    // company and ticket in the batch down with it. This is also why a dedicated
+    // `inbox.getByIds` would not have closed the hole.
+    await expect(
+      caller().getByIds({
+        items: [
+          `${CONTACT_DEF_UUID}:${CONTACT_ID}`,
+          `inbox:${INBOX_ID}`,
+          `personal_inbox:${PERSONAL_INBOX_ID}`,
+        ],
+      })
+    ).resolves.toBeDefined()
+    expect(handler.getByIds).toHaveBeenCalledTimes(1)
+  })
+
+  it('a signature in that same mixed batch still poisons it', async () => {
+    // The exemption is TWO NAMED DEFS, not "instance-access defs are fine on
+    // reads now". If this ever passes, the carve-out has been widened.
+    await expect(
+      caller().getByIds({
+        items: [`inbox:${INBOX_ID}`, `signature:${SIGNATURE_ID}`],
+      })
+    ).rejects.toMatchObject(FORBIDDEN)
+    expect(handler.getByIds).not.toHaveBeenCalled()
+  })
+})
+
+describe('record router — the MAIL MUTATION arm still refuses inbox defs', () => {
+  it.each(MAIL_WRITES)('%s refuses an inbox by its bare slug with 403', async (_name, call) => {
+    await expect(call(caller(), 'inbox', INBOX_ID)).rejects.toMatchObject(FORBIDDEN)
+  })
+
+  it.each(MAIL_WRITES)('%s refuses an inbox by its def UUID with 403', async (_name, call) => {
+    await expect(call(caller(), INBOX_DEF_UUID, INBOX_ID)).rejects.toMatchObject(FORBIDDEN)
+  })
+
+  it.each(MAIL_WRITES)('%s refuses a personal inbox with 403', async (_name, call) => {
+    await expect(call(caller(), 'personal_inbox', PERSONAL_INBOX_ID)).rejects.toMatchObject(
+      FORBIDDEN
+    )
+  })
+
+  it('an OWNER is refused just the same — routing invariant, not a permission', async () => {
+    await expect(
+      caller('OWNER').update({ recordId: `inbox:${INBOX_ID}`, values: { a: 1 } })
+    ).rejects.toMatchObject(FORBIDDEN)
+    expect(handler.update).not.toHaveBeenCalled()
+  })
+
+  it('40a §8.4: the generic CREATE path does not accept `personal_inbox`', async () => {
+    // Personal inboxes are created ONLY through provisioning. This is the whole
+    // of that requirement, satisfied by the mutation arm rather than by a
+    // separate check.
+    await expect(
+      caller().create({ entityDefinitionId: 'personal_inbox', values: {} })
+    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(
+      caller().create({ entityDefinitionId: PERSONAL_INBOX_DEF_UUID, values: {} })
+    ).rejects.toMatchObject(FORBIDDEN)
+    expect(handler.create).not.toHaveBeenCalled()
+  })
+
+  it('one inbox id inside a mixed bulk payload still poisons the whole call', async () => {
+    await expect(
+      caller().bulkDelete({
+        recordIds: [`${CONTACT_DEF_UUID}:${CONTACT_ID}`, `inbox:${INBOX_ID}`],
+      })
+    ).rejects.toMatchObject(FORBIDDEN)
+    expect(handler.bulkDelete).not.toHaveBeenCalled()
+  })
+})
+
+describe('record router — inboxes stay in the UNSCOPED global-search union', () => {
+  const INBOX_ITEM = { recordId: `${INBOX_DEF_UUID}:${INBOX_ID}`, title: 'Support' }
+  const SIGNATURE_ITEM = {
+    recordId: `${SIGNATURE_DEF_UUID}:${SIGNATURE_ID}`,
+    title: 'Markus — Support',
+  }
+  const CONTACT_ITEM = { recordId: `${CONTACT_DEF_UUID}:${CONTACT_ID}`, title: 'Jane' }
+
+  it('an inbox still reaches cmd+K, while a signature still does not', async () => {
+    // The union post-filter is DERIVED from `isInstanceAccessKey`, so phase 1
+    // would have silently dropped inboxes out of global search the moment the
+    // registry changed — a behavior change in the phase that must be inert. It
+    // takes the same two-def carve-out; drop `inbox` from `MAIL_READ_EXEMPT_KEYS`
+    // and this is what fails.
+    handler.search.mockResolvedValue({
+      items: [INBOX_ITEM, SIGNATURE_ITEM, CONTACT_ITEM],
+      nextCursor: null,
+    })
+    const result = await caller().search({ query: 'support' })
+    expect((result as { items: { recordId: string }[] }).items).toEqual([INBOX_ITEM, CONTACT_ITEM])
   })
 })

@@ -181,7 +181,7 @@ export type InsertPublishedDashboardInput = {
  * — all in one transaction. The ONE place this v1-publish invariant is written,
  * shared by `createDashboard` (starter doc, user-facing) and the default-dashboard
  * seeder (resolved template doc — `entity-seeder/create-default-dashboards.ts`).
- * Busts `restrictedInstanceIds`/`userCapabilities` AFTER the transaction commits —
+ * Busts `governingInstanceIds`/`userCapabilities` AFTER the transaction commits —
  * without this, `dashboard` being `baselineAtCreate: true` means the creator can't
  * see the dashboard they just made (doc 13 §4 caveat).
  *

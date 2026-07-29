@@ -84,10 +84,13 @@ export async function computeAndSeedMailCounts(
   ])
 
   // Unread state is `full`-tier: only inboxes the user sees at `full` carry a
-  // badge (admins: everywhere except others' personal inboxes, §11).
-  const countableInboxes = inboxes.filter((ib) =>
-    viewer.isAdmin ? !viewer.personalInboxIds[ib.id] : viewer.inboxLens[ib.id] === 'full'
-  )
+  // badge. One rule for everyone since plan 40 §4.2 — the `viewer.isAdmin ?
+  // !personalInboxIds[id]` arm is gone because the composed floor now answers it:
+  // a default admin is `full` on every shared inbox through the area fallback and
+  // `metadata` (never `full`) on others' personal mailboxes, so this filter
+  // returns the identical set for them, and the correct — smaller — one for an
+  // admin whose profile was downgraded.
+  const countableInboxes = inboxes.filter((ib) => viewer.inboxLens[ib.id] === 'full')
 
   const [inbox, drafts, views, perInbox] = await Promise.all([
     unreadService.getPersonalInboxCount(),

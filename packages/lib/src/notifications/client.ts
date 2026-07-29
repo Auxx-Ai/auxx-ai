@@ -17,6 +17,7 @@ export const NOTIFICATION_TARGET_TYPES = [
   'AGENT',
   'SIGNATURE',
   'SNIPPET',
+  'INBOX',
   'SETTINGS',
   'NONE',
 ] as const
@@ -42,6 +43,14 @@ export interface NotificationTargetIdsMap {
   SIGNATURE: { signatureId: string }
   /** The `Snippet.id`. */
   SNIPPET: { snippetId: string }
+  /**
+   * The inbox's `EntityInstance.id` — inboxes are entity instances, like
+   * signatures. ONE target type for BOTH mail instance-access keys (`inbox` and
+   * `personal_inbox`): the def is an authorization distinction, not a routing
+   * one — every inbox deep-links the same way — and `resourceKey` on the
+   * `RESOURCE_SHARED` metadata below already carries which kind it was.
+   */
+  INBOX: { inboxId: string }
   SETTINGS: { path: string }
   NONE: Record<string, never>
 }
@@ -61,7 +70,16 @@ export type NotificationMetadata =
       resourceName: string
       noun: string
       /** Mirrors `InstanceAccessKey` — kept as a literal union so this module stays client-safe. */
-      resourceKey: 'dataset' | 'kb' | 'dashboard' | 'workflow' | 'agent' | 'signature' | 'snippet'
+      resourceKey:
+        | 'dataset'
+        | 'kb'
+        | 'dashboard'
+        | 'workflow'
+        | 'agent'
+        | 'signature'
+        | 'snippet'
+        | 'inbox'
+        | 'personal_inbox'
       level: 'read' | 'write' | 'full'
     }
   | { kind: 'MESSAGE_SHARED'; subject?: string | null; lens: string }

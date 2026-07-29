@@ -24,7 +24,7 @@ import { and, eq } from 'drizzle-orm'
  * `draft.upsert`, `sequence.update`) call it too.
  *
  * **Resolution before the assert is load-bearing here, unlike snippets.**
- * `restrictedInstanceIds` / `instanceAccess` are org-wide across ALL
+ * `governingInstanceIds` / `instanceAccess` are org-wide across ALL
  * instance-access resources and keyed by a globally-unique cuid2, so
  * `assertEditInstance('signature', <a dashboard id I own>)` would PASS on the
  * dashboard's row and then let the caller mutate a non-signature

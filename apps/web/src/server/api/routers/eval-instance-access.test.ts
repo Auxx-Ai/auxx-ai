@@ -672,7 +672,7 @@ describe('eval router — an `agents: None` member with one explicit grant', () 
 })
 
 describe('eval router — `baselineAtCreate: false`: no row falls back to the AREA', () => {
-  /** A member with NO instance rows at all — nothing is in `restrictedInstanceIds`. */
+  /** A member with NO instance rows at all — nothing is in `governingInstanceIds`. */
   const noRows = (areaPermission: ResourcePermission) =>
     capabilitiesFor(areaPermission, { areaPermission, instances: {} })
 

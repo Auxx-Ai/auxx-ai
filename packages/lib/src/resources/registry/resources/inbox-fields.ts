@@ -110,7 +110,10 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     options: {
       options: [
         { value: 'ACTIVE', label: 'Active', color: 'green' },
-        { value: 'PAUSED', label: 'Paused', color: 'yellow' },
+        // `amber`, not `yellow` — the latter is not in the option-colour union
+        // (`packages/types/custom-field`), so it was a live tsc error here while
+        // `personal-inbox-fields.ts` already carried the correct value.
+        { value: 'PAUSED', label: 'Paused', color: 'amber' },
         { value: 'ARCHIVED', label: 'Archived', color: 'gray' },
       ],
     },
@@ -124,59 +127,28 @@ export const INBOX_FIELDS: Record<string, ResourceField> = {
     description: 'Inbox status',
   },
 
-  defaultLens: {
-    id: toFieldId('defaultLens'),
-    key: 'defaultLens',
-    label: 'Default Access',
-    type: BaseType.ENUM,
-    fieldType: FieldType.SINGLE_SELECT,
-    isSystem: true,
-    systemAttribute: 'inbox_default_lens',
-    systemSortOrder: 'a5a',
-    nullable: false,
-    defaultValue: 'full',
-    options: {
-      options: [
-        { value: 'none', label: 'No access' },
-        { value: 'metadata', label: 'Activity only' },
-        { value: 'subject', label: 'Subject only' },
-        { value: 'full', label: 'Full access' },
-      ],
-    },
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'Org-wide visibility floor: the lens every org member gets on this inbox. Explicit grants can only raise it (mail-permissions §2.2).',
-  },
-
-  isPersonal: {
-    id: toFieldId('isPersonal'),
-    key: 'isPersonal',
-    label: 'Personal',
-    type: BaseType.BOOLEAN,
-    fieldType: FieldType.CHECKBOX,
-    isSystem: true,
-    systemAttribute: 'inbox_is_personal',
-    systemSortOrder: 'a5b',
-    nullable: false,
-    defaultValue: false,
-    showInPanel: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'Personal-account inbox (mail-permissions §11): owned by one user, admins capped at activity-only, invisible to automation. Set by the personal connect flow; cleared by an admin claim.',
-  },
-
+  // ── RETIRED by plan 40 phase 4 — entity migration 062 drops the rows ───────
+  //
+  // `defaultLens` (`inbox_default_lens`, sortOrder `a5a`) and `isPersonal`
+  // (`inbox_is_personal`, `a5b`) used to sit here. The two `systemSortOrder`
+  // gaps are left unfilled deliberately, mirroring `PERSONAL_INBOX_FIELDS`, so
+  // the surviving fields keep their positions and nothing re-sorts.
+  //
+  //  - The org-wide floor is a `role:org_member` `ResourceAccess` row now
+  //    (`inboxes/inbox-floor.ts`, plan 40 §6). It stopped being read in phase 2,
+  //    which made writing the field a silent no-op; §6 moved the WRITE too.
+  //    `Inbox.defaultLens` / `InboxItem.defaultLens` still exist and are still
+  //    the floor — they are derived FROM THE ROWS, not from this field.
+  //  - Personal-ness is membership of the `personal_inbox` EntityDefinition
+  //    (40a §3). A def cannot be flipped by a field write, which is the whole
+  //    point: the marker was forgeable through the generic records path and
+  //    needed `guardInboxPersonalFields` to stand in front of it.
+  //
+  // `inbox_owner_user_id` deliberately SURVIVES on both defs — see below.
+  //
+  // Historical migrations 025 and 026 carry FROZEN local copies of these two
+  // specs; they must keep materializing the fields for an org that has not
+  // reached 060/062 yet. Do not "clean them up".
   ownerUserId: {
     id: toFieldId('ownerUserId'),
     key: 'ownerUserId',

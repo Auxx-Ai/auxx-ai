@@ -5,7 +5,33 @@ import type { RecordId } from '@auxx/types'
 import { useMemo } from 'react'
 import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-all-records'
 import type { RecordMeta } from '~/components/resources/store/record-store'
+import type { api } from '~/trpc/react'
 import { useMyInboxLenses } from './use-my-inbox-lenses'
+
+/**
+ * The two definitions a mailbox can live on (plan 40 §3/§3.4): `inbox` is the
+ * org-shared one, `personal_inbox` a member's connected account. Both are
+ * exempt from `assertNotInstanceAccessDef`'s READ arm (plan 40 §8.1), which is
+ * what keeps the generic `record.listAll` path open for them.
+ */
+export const INBOX_DEF_KEYS = ['inbox', 'personal_inbox'] as const
+
+/** Which of the two inbox definitions a record lives on. */
+export type InboxDefKey = (typeof INBOX_DEF_KEYS)[number]
+
+/**
+ * Invalidate the inbox record lists — BOTH definitions.
+ *
+ * `utils.record.listAll.invalidate({ entityDefinitionId })` matches on the
+ * query input, so a single `'inbox'` call leaves the `personal_inbox` list
+ * stale: personal mailboxes would keep their pre-mutation name/colour/status
+ * in the sidebar and every picker until the 30 s staleTime expired.
+ */
+export function invalidateInboxRecordLists(utils: ReturnType<typeof api.useUtils>): void {
+  for (const entityDefinitionId of INBOX_DEF_KEYS) {
+    utils.record.listAll.invalidate({ entityDefinitionId })
+  }
+}
 
 /**
  * Inbox record type from useAllRecords.
@@ -17,7 +43,12 @@ export interface InboxRecord extends RecordMeta {
     inbox_description?: string
     inbox_color?: string
     inbox_status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
-    inbox_default_lens?: 'none' | 'metadata' | 'subject' | 'full'
+    /**
+     * Legacy marker, deleted from the registry by plan 40 phase 4 but still
+     * present on records in an org whose data migrations (060/062) have not run
+     * yet — they are enqueued at worker boot, not before the deploy. Read only
+     * by the `isPersonal` OR below; see `InboxItem.isPersonal`.
+     */
     inbox_is_personal?: boolean
     inbox_owner_user_id?: string
   }
@@ -34,8 +65,14 @@ export interface InboxItem {
   color?: string | null
   status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
   /**
-   * The org-wide floor (`inbox_default_lens`). Drives the share popover's
-   * inherited-access footer and the sidebar's restricted affordance.
+   * The org-wide floor. Drives the access badges on the inbox cards, the
+   * detail page's info card, and the share popover's inherited-access footer.
+   *
+   * Sourced from `inbox.myLenses`' `floors` map (plan 40 §6), NOT from the
+   * `inbox_default_lens` field value on the record: the floor is a
+   * `role:org_member` `ResourceAccess` row now, and nothing has read that field
+   * since phase 2 — rendering it would show the org the floor it had before its
+   * last edit. `full` while the query is in flight, matching `myLens`.
    */
   defaultLens: 'none' | 'metadata' | 'subject' | 'full'
   /**
@@ -45,7 +82,26 @@ export interface InboxItem {
    * simply never load.
    */
   myLens?: ChannelLens
-  /** Personal-account inbox (§11) — one user's connected mailbox. */
+  /**
+   * Which of the two inbox definitions this record lives on (plan 40 §3.4).
+   * THE def discriminator — `toRecordId(entityDefinitionKey, id)` is how to
+   * mint a correct RecordId for this inbox.
+   */
+  entityDefinitionKey: InboxDefKey
+  /**
+   * Personal-account inbox (§11) — one user's connected mailbox.
+   *
+   * DERIVED: `personal_inbox` def membership OR the legacy
+   * `inbox_is_personal` FieldValue.
+   *
+   * **The marker half survives phase 4's field deletion** — mirroring
+   * `InboxService.derivePersonal`, which carries the full rationale. Short
+   * version: data migrations are enqueued at worker boot rather than gating the
+   * deploy, so until 060 has run an org's personal mailboxes are still on the
+   * shared def with only the marker to identify them, and reading the def alone
+   * would render them as ordinary shared inboxes in the sidebar. After 062 the
+   * value is simply absent and the OR short-circuits on the def.
+   */
   isPersonal: boolean
   /** Owner of a personal inbox; null on shared org inboxes. */
   ownerUserId: string | null
@@ -81,46 +137,78 @@ function scalarValue<T>(value: T | T[] | undefined): T | undefined {
 
 /**
  * Hook to fetch all inboxes using the entity system.
- * Uses useAllRecords internally for data fetching.
+ *
+ * Fetches BOTH inbox definitions and returns ONE merged list, mirroring the
+ * server-side `inboxes` org cache (plan 40 §3.4): the 18 UI consumers read
+ * `InboxItem.isPersonal` and need no def awareness. Sites that must exclude
+ * personal mailboxes (routing pickers, chat-widget destinations) keep filtering
+ * on `isPersonal`, as they do today.
  */
 export function useInboxes(): UseInboxesResult {
-  const { records, fields, isLoading, error, refresh } = useAllRecords<InboxRecord>({
-    entityDefinitionId: 'inbox',
-  })
-  const { lenses } = useMyInboxLenses()
+  const shared = useAllRecords<InboxRecord>({ entityDefinitionId: 'inbox' })
+  // The personal def only exists once entity migration 059 has run — it runs
+  // for every org in one deploy-time pass, so the gap is a deploy race, not a
+  // steady state. In that gap `record.listAll` rejects the key, and this arm's
+  // error is deliberately NOT merged into `error` below: a not-yet-migrated org
+  // degrades to shared-only (`records` = [], exactly the pre-plan-40 result)
+  // instead of taking the mail sidebar down. Not gated on a client-side "does
+  // the def exist" probe on purpose — a wrong probe would make personal
+  // mailboxes silently absent, which is the failure mode this whole plan is
+  // about; a failing query is at least loud.
+  const personal = useAllRecords<InboxRecord>({ entityDefinitionId: 'personal_inbox' })
+  const { lenses, floors } = useMyInboxLenses()
+
+  const records = useMemo(
+    () => [...shared.records, ...personal.records],
+    [shared.records, personal.records]
+  )
 
   // Transform records to simplified inbox items
   const { inboxes, inboxMap } = useMemo(() => {
-    if (!records.length) {
-      return { inboxes: [], inboxMap: new Map<RecordId, InboxItem>() }
-    }
+    const build = (list: InboxRecord[], defKey: InboxDefKey): InboxItem[] =>
+      list.map((record) => ({
+        id: record.id,
+        recordId: record.recordId,
+        entityDefinitionKey: defKey,
+        name: record.fieldValues?.inbox_name ?? record.displayName ?? 'Untitled',
+        description: record.fieldValues?.inbox_description ?? null,
+        color: record.fieldValues?.inbox_color ?? null,
+        status: scalarValue(record.fieldValues?.inbox_status),
+        // Row-derived (see `InboxItem.defaultLens`). `inbox_default_lens` is
+        // gone entirely now — registry, CustomField rows and all.
+        defaultLens: floors[record.id] ?? (defKey === 'personal_inbox' ? 'none' : 'full'),
+        myLens: lenses[record.id],
+        // Def membership OR the legacy marker — see `InboxItem.isPersonal`.
+        isPersonal: defKey === 'personal_inbox' || (record.fieldValues?.inbox_is_personal ?? false),
+        ownerUserId: record.fieldValues?.inbox_owner_user_id ?? null,
+      }))
 
-    const items: InboxItem[] = records.map((record) => ({
-      id: record.id,
-      recordId: record.recordId,
-      name: record.fieldValues?.inbox_name ?? record.displayName ?? 'Untitled',
-      description: record.fieldValues?.inbox_description ?? null,
-      color: record.fieldValues?.inbox_color ?? null,
-      status: scalarValue(record.fieldValues?.inbox_status),
-      defaultLens: scalarValue(record.fieldValues?.inbox_default_lens) ?? 'full',
-      myLens: lenses[record.id],
-      isPersonal: record.fieldValues?.inbox_is_personal ?? false,
-      ownerUserId: record.fieldValues?.inbox_owner_user_id ?? null,
-    }))
+    const items = [...build(shared.records, 'inbox'), ...build(personal.records, 'personal_inbox')]
 
     // Key map by recordId for direct lookup (thread.inboxId is now RecordId)
     const map = new Map<RecordId, InboxItem>(items.map((item) => [item.recordId, item]))
 
     return { inboxes: items, inboxMap: map }
-  }, [records, lenses])
+  }, [shared.records, personal.records, lenses, floors])
+
+  const refresh = useMemo(
+    () => () => {
+      shared.refresh()
+      personal.refresh()
+    },
+    [shared.refresh, personal.refresh]
+  )
 
   return {
     inboxes,
     records,
     inboxMap,
-    fields,
-    isLoading,
-    error,
+    // Shared def's field map only — the two defs share systemAttribute KEYS
+    // (`inbox_name`, …) but have their own CustomField UUIDs, so merging them
+    // would collide on every key and hand out the wrong id for saves.
+    fields: shared.fields,
+    isLoading: shared.isLoading || personal.isLoading,
+    error: shared.error,
     refresh,
   }
 }

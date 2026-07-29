@@ -358,13 +358,16 @@ export function AgentPolicyEditor({
       }
 
       const type = AREA_TO_INSTANCE_KEY[area]
-      // `agent` is an instance-access key but NOT an agent-policy one — an agent
-      // policy has nothing to say about which agents an agent may reach (see
-      // `AgentPolicyInstanceKey`). `Area.agents` is already excluded from
-      // `AGENT_POLICY_AREA_GROUPS`, so this branch is unreachable in practice;
-      // narrowing here is what makes that exclusion checkable rather than
-      // assumed, since `AREA_TO_INSTANCE_KEY` is derived from the full registry.
-      if (!type || type === 'agent') return undefined
+      // `agent`, `inbox` and `personal_inbox` are instance-access keys but NOT
+      // agent-policy ones — an agent policy has nothing to say about which
+      // agents an agent may reach, nor about mail, whose authority is the lens
+      // layer (see `AgentPolicyInstanceKey`). `Area.agents` and `Area.inboxes`
+      // are already excluded from `AGENT_POLICY_AREA_GROUPS`, so these branches
+      // are unreachable in practice; narrowing here is what makes that exclusion
+      // checkable rather than assumed, since `AREA_TO_INSTANCE_KEY` is derived
+      // from the full registry.
+      if (!type || type === 'agent' || type === 'inbox' || type === 'personal_inbox')
+        return undefined
 
       const entry = policy.resources[type]
       const overrides = entry?.overrides ?? {}

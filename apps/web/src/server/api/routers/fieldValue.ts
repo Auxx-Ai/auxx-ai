@@ -5,9 +5,10 @@ import { FieldValueService } from '@auxx/lib/field-values'
 import type { FieldReference } from '@auxx/types/field'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
+import { recordIdSchema } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { assertFieldValueHostsWritable } from '~/server/lib/field-value-host-access'
 import { capabilityProcedure, createTRPCRouter } from '../trpc'
 
 /** Schema for FieldReference - either ResourceFieldId or FieldPath */
@@ -56,10 +57,16 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Write enforcement (phase 4 §3.2): def-aware edit gate (Layer 2 × Layer 3,
-      // most-specific-wins) — in-memory, no extra I/O. Throws ForbiddenError (403).
-      const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
-      ctx.capabilities.assertEditEntity(entityDefinitionId)
+      // Write enforcement, per host def (phase 4 §3.2 + plan 40 §5.5): the
+      // def-aware edit gate for records, question 4's `full`-lens gate for
+      // threads, `assertAdminInstance` for mailboxes. Throws ForbiddenError (403).
+      await assertFieldValueHostsWritable({
+        db: ctx.db,
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        hosts: [input.recordId as RecordId],
+      })
 
       const service = new FieldValueService(
         ctx.session.organizationId,
@@ -125,12 +132,18 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Write enforcement (phase 4 §3.2): assert the def-aware edit gate per DISTINCT
-      // entity def in the batch — in-memory Set lookups only, no extra I/O.
-      const distinctDefIds = new Set(
-        input.recordIds.map((id) => parseRecordId(id as RecordId).entityDefinitionId)
-      )
-      for (const defId of distinctDefIds) ctx.capabilities.assertEditEntity(defId)
+      // Write enforcement (phase 4 §3.2 + plan 40 §5.5). Record hosts resolve
+      // per DISTINCT def (in-memory Set lookups); thread hosts resolve per
+      // INSTANCE, because the lens is per thread — one `getThreadLensBatch` for
+      // the whole batch, and a partial-visibility set is rejected outright
+      // rather than partially applied.
+      await assertFieldValueHostsWritable({
+        db: ctx.db,
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        hosts: input.recordIds as RecordId[],
+      })
 
       const service = new FieldValueService(
         ctx.session.organizationId,
@@ -160,9 +173,15 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Write enforcement (phase 4 §3.2): clearing a field value is an edit to that def.
-      const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
-      ctx.capabilities.assertEditEntity(entityDefinitionId)
+      // Write enforcement (phase 4 §3.2 + plan 40 §5.5): clearing a field value
+      // is a write to the host — same three-way branch as `set`.
+      await assertFieldValueHostsWritable({
+        db: ctx.db,
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        hosts: [input.recordId as RecordId],
+      })
 
       const service = new FieldValueService(
         ctx.session.organizationId,
@@ -226,9 +245,15 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Write enforcement (phase 4 §3.2): appending a multi-value is an edit.
-      const { entityDefinitionId } = parseRecordId(input.recordId as RecordId)
-      ctx.capabilities.assertEditEntity(entityDefinitionId)
+      // Write enforcement (phase 4 §3.2 + plan 40 §5.5): appending a multi-value
+      // is a write to the host — same three-way branch as `set`.
+      await assertFieldValueHostsWritable({
+        db: ctx.db,
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        hosts: [input.recordId as RecordId],
+      })
 
       const service = new FieldValueService(
         ctx.session.organizationId,
@@ -251,10 +276,15 @@ export const fieldValueRouter = createTRPCRouter({
   remove: capabilityProcedure
     .input(z.object({ valueId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      // `remove` carries only the value's id, so resolve its def to enforce the
-      // write gate (phase 4 §3.2). A missing row is a no-op removal — skip the gate.
+      // `remove` carries only the value's id, so resolve its HOST (def + instance)
+      // to enforce the write gate (phase 4 §3.2 + plan 40 §5.5). The instance is
+      // load-bearing now: a thread host is gated per thread, not per def. A
+      // missing row is a no-op removal — skip the gate.
       const [row] = await ctx.db
-        .select({ entityDefinitionId: schema.FieldValue.entityDefinitionId })
+        .select({
+          entityDefinitionId: schema.FieldValue.entityDefinitionId,
+          entityId: schema.FieldValue.entityId,
+        })
         .from(schema.FieldValue)
         .where(
           and(
@@ -262,7 +292,15 @@ export const fieldValueRouter = createTRPCRouter({
             eq(schema.FieldValue.organizationId, ctx.session.organizationId)
           )
         )
-      if (row) ctx.capabilities.assertEditEntity(row.entityDefinitionId)
+      if (row) {
+        await assertFieldValueHostsWritable({
+          db: ctx.db,
+          capabilities: ctx.capabilities,
+          organizationId: ctx.session.organizationId,
+          userId: ctx.session.user.id,
+          hosts: [{ entityDefinitionId: row.entityDefinitionId, entityInstanceId: row.entityId }],
+        })
+      }
 
       const service = new FieldValueService(
         ctx.session.organizationId,

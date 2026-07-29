@@ -197,6 +197,23 @@ vi.mock('~/server/api/trpc', async () => {
     createTRPCRouter: t.router,
     protectedProcedure: t.procedure,
     capabilityProcedure: t.procedure,
+    // `thread.*` moved onto `permissionProcedure(inboxesView)` in plan 40 phase 3.
+    // Mirrors the real builder — resolve the set, assert the key — so the mail
+    // front door is genuinely in front of `sendMessage` here too, and the
+    // signature gate below it is reached only by a caller who may use mail.
+    permissionProcedure: (key: string) =>
+      t.procedure.use(async ({ ctx, next }) => {
+        const { getCapabilities } = await import(
+          '@auxx/lib/permissions/capabilities/get-capabilities'
+        )
+        const session = (ctx as { session: { userId: string; organizationId: string } }).session
+        const capabilities = (await getCapabilities(
+          session.userId,
+          session.organizationId
+        )) as unknown as { assert: (k: string) => void }
+        capabilities.assert(key)
+        return next({ ctx: { capabilities } })
+      }),
     // The real one blocks demo orgs; irrelevant here and deliberately inert, so
     // a gate deleted from `sendMessage` cannot hide behind a demo refusal.
     notDemo:
@@ -266,7 +283,15 @@ function fakeDb() {
 function capabilitiesFor(permission?: ResourcePermission) {
   const instances = permission === undefined ? {} : { [SHARED]: permission }
   return new CapabilitySet(
-    new Set(expandLevelsToKeys({ [Area.signatures]: Level.Full, [Area.records]: Level.Full })),
+    // `Area.inboxes` is present so the mail front door (plan 40 §5.3) is open —
+    // this file is about the SIGNATURE gate behind it, not about mail gating.
+    new Set(
+      expandLevelsToKeys({
+        [Area.signatures]: Level.Full,
+        [Area.records]: Level.Full,
+        [Area.inboxes]: Level.Full,
+      })
+    ),
     {},
     'USER',
     'full',

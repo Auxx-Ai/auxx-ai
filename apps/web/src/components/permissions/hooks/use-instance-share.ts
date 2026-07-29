@@ -66,12 +66,13 @@ const WORKSPACE_GRANTEE = {
  * (Read/Write/Full) over `resourceAccess.forInstance` (read) +
  * `grantInstance`/`revokeInstance` (write).
  *
- * Workspace-baseline preservation (§4, "workspace-baseline preservation"):
- * datasets are `baselineAtCreate: false`, so the moment an instance gains ANY
- * explicit row every member WITHOUT their own row loses the org-wide base-Read.
- * To avoid silently privatizing a dataset when it's first shared to one person,
- * {@link grant} materializes a workspace baseline at Read on the first grant
- * (unless the admin has already set an explicit baseline — incl. Restricted).
+ * **No workspace-baseline preservation any more, and none is needed** (2026-07-29).
+ * `grant` used to write a `role:org_member @ view` row alongside the first
+ * explicit grant, because `effectiveInstanceLevel` read "carries ≥1 row" as
+ * "restricted" and a single share therefore privatized the whole instance. That
+ * conflation is fixed in the resolver (`governingInstanceIds`): a
+ * `baselineAtCreate: false` instance stays at its area level for everyone who has
+ * no row, until somebody authors a real restriction. See {@link grant}.
  */
 export function useInstanceShare({
   recordId,
@@ -202,9 +203,19 @@ export function useInstanceShare({
     : undefined
 
   /**
-   * Grant or change a user/group's level (upsert). On the FIRST explicit row for
-   * a still-unshared instance, also materialize the workspace baseline at Read so
-   * the rest of the org keeps its base-level access instead of silently losing it.
+   * Grant or change a user/group's level (upsert) — ONE row, exactly the one the
+   * admin asked for.
+   *
+   * It used to also write a `role:org_member @ view` baseline on the first
+   * explicit row, "so the rest of the org keeps its base-level access instead of
+   * silently losing it". That was a compensation for a defect one layer down:
+   * `effectiveInstanceLevel` treated "carries ≥1 row for anyone" as "restricted",
+   * so the first share genuinely did privatize the instance. The resolver now
+   * distinguishes SHARING from RESTRICTING (`governingInstanceIds` — a
+   * `role:org_member` row or a `none` marker), so there is nothing left to
+   * compensate for, and writing an unrequested baseline row would now be a real
+   * side effect: it would move the instance INTO the governing set and pin it to
+   * Read for members whose area level is higher.
    *
    * An ActorId with no grantee representation is REFUSED, not coerced: the old
    * `type === 'group' ? group : user` fall-through turned an `agent:`/`worker:`
@@ -219,14 +230,6 @@ export function useInstanceShare({
         description: GRANTEE_UNSUPPORTED_MESSAGE,
       })
       return
-    }
-    if (rows.length === 0 && !baselineRow) {
-      grantInstance.mutate({
-        recordId,
-        granteeType: WORKSPACE_GRANTEE.granteeType,
-        granteeId: WORKSPACE_GRANTEE.granteeId,
-        permission: ResourcePermission.view,
-      })
     }
     grantInstance.mutate({ recordId, ...grantee, permission: choice })
   }

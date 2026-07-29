@@ -135,7 +135,7 @@ export class OrganizationCacheService {
       'features',
       'hasPermissionGrants',
       'restrictedEntityDefIds',
-      'restrictedInstanceIds',
+      'governingInstanceIds',
     ]
 
     if (ARRAY_KEYS.includes(key)) {

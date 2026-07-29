@@ -13,6 +13,7 @@ function userVisibility(threadGrants: UserMailVisibility['threadGrants']): UserM
     userId: 'user-1',
     role: 'USER',
     isAdmin: false,
+    isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
     threadGrants,
