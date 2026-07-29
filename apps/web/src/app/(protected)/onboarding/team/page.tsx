@@ -17,6 +17,7 @@ import { Copy, Plus, Trash2, Users } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useInvitableProfiles } from '~/app/(protected)/app/settings/members/_components/invite-profile-select'
 import { useAnalytics } from '~/hooks/use-analytics'
 import {
   useDehydratedOrganization,
@@ -30,6 +31,22 @@ interface TeamInvite {
   email: string
   role: OrganizationRole
 }
+
+/**
+ * The two ranks onboarding offers, each mapped to the system permission profile
+ * it binds to. Both slugs are seeded into every org by `ensureSystemProfiles`,
+ * inside the same transaction that creates the org at signup — so they always
+ * exist by the time this step renders.
+ *
+ * Onboarding deliberately offers only these two rather than the full profile
+ * select the members settings page uses: a brand-new org has no custom profiles
+ * yet, so the picker would show nothing but these anyway. Field seats and custom
+ * profiles are invited from settings once onboarding is done.
+ */
+const INVITE_RANKS = [
+  { role: OrganizationRoleEnum.USER, slug: 'member', label: 'Member' },
+  { role: OrganizationRoleEnum.ADMIN, slug: 'admin', label: 'Admin' },
+] as const
 export default function TeamOnboardingPage() {
   const router = useRouter()
   const posthog = useAnalytics()
@@ -48,6 +65,14 @@ export default function TeamOnboardingPage() {
   // API mutations
   const updateOrganization = api.organization.update.useMutation()
   const inviteBatch = api.member.inviteBatch.useMutation()
+
+  // The org's seeded system profiles, so each invited rank binds to a real
+  // profile instead of relying on the null-binding fallback.
+  const { profiles } = useInvitableProfiles()
+  const profileIdForRole = (role: OrganizationRole): string | undefined => {
+    const slug = INVITE_RANKS.find((rank) => rank.role === role)?.slug
+    return profiles.find((profile) => profile.slug === slug)?.id
+  }
   // Add new invite row
   const addInvite = () => {
     setInvites([...invites, { email: '', role: OrganizationRoleEnum.USER }])
@@ -98,7 +123,17 @@ export default function TeamOnboardingPage() {
       if (!skipInvites && invites.length > 0) {
         const validInvites = invites.filter((i) => i.email)
         if (validInvites.length > 0) {
-          const results = await inviteBatch.mutateAsync({ invites: validInvites })
+          // Bind each invite to the seeded profile for its rank. `role` rides
+          // along as the fallback: `inviteMember` lets a bound profile's declared
+          // seat and role supersede it, and uses it only when no profile resolved
+          // (i.e. the profile list failed to load), so onboarding can never be
+          // blocked by this lookup.
+          const results = await inviteBatch.mutateAsync({
+            invites: validInvites.map((invite) => ({
+              ...invite,
+              permissionProfileId: profileIdForRole(invite.role),
+            })),
+          })
           // Check for any failed invites
           const failedInvites = results.filter((r) => !r.success)
           if (failedInvites.length > 0) {
@@ -221,8 +256,11 @@ export default function TeamOnboardingPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={OrganizationRoleEnum.USER}>Member</SelectItem>
-                            <SelectItem value={OrganizationRoleEnum.ADMIN}>Admin</SelectItem>
+                            {INVITE_RANKS.map((rank) => (
+                              <SelectItem key={rank.role} value={rank.role}>
+                                {rank.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </InputGroupAddon>
