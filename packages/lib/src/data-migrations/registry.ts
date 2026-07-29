@@ -26,6 +26,7 @@ import { migration053SeedAgentPresetProfiles } from './migrations/053-seed-agent
 import { migration054AgentPolicyVocabulary } from './migrations/054-agent-policy-vocabulary'
 import { migration055AgentPolicyResourceAreaFallthrough } from './migrations/055-agent-policy-resource-area-fallthrough'
 import { migration056SignaturesSnippetsInstanceAccess } from './migrations/056-signatures-snippets-instance-access'
+import { migration058ReopenPersonalOnboarding } from './migrations/058-reopen-personal-onboarding'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -68,6 +69,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration054AgentPolicyVocabulary,
     migration055AgentPolicyResourceAreaFallthrough,
     migration056SignaturesSnippetsInstanceAccess,
+    migration058ReopenPersonalOnboarding,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

@@ -23,6 +23,15 @@ export const userRouter = createTRPCRouter({
         name: z.string().min(1).optional(),
         firstName: z.string().min(1).optional(),
         lastName: z.string().min(1).optional(),
+        /**
+         * Set by the onboarding personal step. It belongs on THIS mutation rather
+         * than better-auth's `updateUser` because only this path fires
+         * `onCacheEvent('user.updated')` below — and `completedOnboarding` is read
+         * back out of the cached `userProfile` to build the dehydrated state that
+         * gates `/app`. Writing it anywhere else leaves that cache stale and loops
+         * the user between `/app` and `/onboarding`.
+         */
+        completedOnboarding: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -34,6 +43,8 @@ export const userRouter = createTRPCRouter({
       // Update separate fields
       if (input.firstName !== undefined) updates.firstName = input.firstName
       if (input.lastName !== undefined) updates.lastName = input.lastName
+      if (input.completedOnboarding !== undefined)
+        updates.completedOnboarding = input.completedOnboarding
 
       // Update full name field as well for display purposes (only if name wasn't directly set)
       if (

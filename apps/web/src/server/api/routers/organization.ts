@@ -159,13 +159,13 @@ export const organizationRouter = createTRPCRouter({
         })
       }
 
-      // Also update user onboarding status if marking org as complete
-      if (completedOnboarding) {
-        await ctx.db
-          .update(schema.User)
-          .set({ completedOnboarding: true, updatedAt: new Date() })
-          .where(eq(schema.User.id, userId))
-      }
+      // Deliberately does NOT touch `User.completedOnboarding`. The user-level flag
+      // is owned by the onboarding personal step (`user.updateProfile`), which is
+      // the only write that fires `onCacheEvent('user.updated')`. This handler emits
+      // `org.updated` → ['orgProfile'] only, so writing the user flag here updated
+      // the row while leaving the cached `userProfile` stale — which loops the user
+      // between `/app` (reads the cache) and `/onboarding` (reads the DB).
+      // Organization onboarding and personal onboarding are independent gates.
 
       // Invalidate dehydration cache for all org members (org data visible to all)
       await onCacheEvent('org.updated', { orgId: organizationId })

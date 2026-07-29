@@ -58,8 +58,19 @@ export default async function OnboardingPage() {
     userCompletedOnboarding,
   })
 
+  // The personal step is a USER-level gate and is checked first, deliberately above
+  // the org short-circuit below. An invited member joins an org that is already
+  // onboarded, so any check that starts with the org can never express "the org is
+  // done but this person isn't" — it bounces them straight to /app with no name.
+  if (!userCompletedOnboarding) {
+    console.log('[Onboarding] User has not completed personal step, redirecting to /personal')
+    redirect('/onboarding/personal')
+  }
+
   // If organization onboarding is complete, route to /app — unless this user landed
   // here mid-Shopify-App-Store install, in which case finish the claim flow first.
+  // Must stay BELOW the user check: an App Store install by a user who hasn't done
+  // the personal step goes personal → back here → claim, never straight to /app.
   if (org?.completedOnboarding) {
     const cookieStore = await cookies()
     const claimToken = cookieStore.get('shopify_claim_token')?.value
@@ -71,17 +82,14 @@ export default async function OnboardingPage() {
     redirect('/app')
   }
 
-  if (!userCompletedOnboarding) {
-    // User hasn't completed personal info - start at step 1
-    console.log('[Onboarding] Redirecting to /onboarding/personal')
-    redirect('/onboarding/personal')
-  } else if (!org?.handle) {
-    // User completed personal but org needs handle - start at step 2
+  // Personal step is done by here. Remaining routing is purely org-shaped.
+  if (!org?.handle) {
+    // Org needs a handle - step 2
     console.log('[Onboarding] Redirecting to /onboarding/organization')
     redirect('/onboarding/organization')
-  } else {
-    // Both user personal and org handle done - skip to connections (step 3)
-    console.log('[Onboarding] Redirecting to /onboarding/connections')
-    redirect('/onboarding/connections')
   }
+
+  // Handle already set (create-org dialog, Shopify claim) - skip to connections (step 3)
+  console.log('[Onboarding] Redirecting to /onboarding/connections')
+  redirect('/onboarding/connections')
 }
