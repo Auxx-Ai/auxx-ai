@@ -33,6 +33,7 @@ import {
   useComments,
 } from '~/hooks/use-comments'
 import { CommentFile } from './comment-file'
+import { useCommentAccess } from './use-comment-access'
 
 // Frontend file type distinction
 interface FileAttachment {
@@ -158,7 +159,15 @@ export const SubmitOnEnter = Extension.create<SubmitOnEnterOptions>({
 /**
  * CommentComposer renders the shared rich text composer used in drawers.
  */
-const CommentComposer = ({
+const CommentComposer = ({ recordId, ...props }: CommentComposerProps) => {
+  const { canCompose } = useCommentAccess(recordId)
+
+  if (!canCompose) return null
+
+  return <CommentComposerEditor recordId={recordId} {...props} />
+}
+
+const CommentComposerEditor = ({
   recordId,
   parentId,
   commentId,

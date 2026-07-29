@@ -44,7 +44,10 @@ export { isMailSharingDef } from './mail-sharing-defs'
  * pre-split behaviour for every input and fails CLOSED for a personal mailbox
  * (its slug-keyed rows simply don't match).
  */
-async function inboxAccessRecordId(organizationId: string, inboxId: string): Promise<RecordId> {
+export async function inboxAccessRecordId(
+  organizationId: string,
+  inboxId: string
+): Promise<RecordId> {
   const inboxes = await getOrgCache().get(organizationId, 'inboxes')
   const defKey = inboxes.find((i) => i.id === inboxId)?.entityDefinitionKey
   return toRecordId(defKey && isInboxDef(defKey) ? defKey : 'inbox', inboxId)

@@ -1,13 +1,15 @@
 // packages/lib/src/comments/comment-service.ts
-import { type Database, database, schema, type Transaction } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type {
   CommentEntity as Comment,
   CommentReactionEntity as CommentReaction,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { TRPCError } from '@trpc/server'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { getCachedResources } from '../cache/org-cache-helpers'
+import { getCachedUserMailVisibility } from '../cache/user-cache-helpers'
 import { touchActivityForThreadLinks, touchEntityActivity } from '../entity-instances/activity'
+import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { publisher } from '../events'
 import type {
   CommentCreatedEvent,
@@ -18,10 +20,18 @@ import type {
 } from '../events/types'
 import { AttachmentService, type GroupedAttachmentInfo } from '../files/core/attachment-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
-import { isAdminOrOwner } from '../members/member-queries'
 import { NotificationService } from '../notifications/notification-service'
+import type { CapabilityView } from '../permissions/capabilities/capability-view'
+import { PermissionKey } from '../permissions/capabilities/registry'
+import {
+  buildDefIdToDefinitionId,
+  buildDefIdToSlug,
+} from '../permissions/capabilities/resolve-capability-inputs'
+import { getThreadLens } from '../permissions/visibility/thread-lens'
 import { collectReferenceIds } from '../references'
+import { inboxAccessRecordId } from '../resource-access/mail-sharing-guard'
 import { parseRecordId, type RecordId, toRecordId } from '../resources/resource-id'
+import { assertCanActOnThreads } from '../threads/thread-action-access'
 import { docToText } from '../tiptap'
 
 // Define reaction types
@@ -80,6 +90,14 @@ export interface AggregatedReactions {
 const logger = createScopedLogger('comment-service')
 // Define storage location selector
 
+type ResolvedCommentParent = {
+  entityDefinitionId: string
+  entityInstanceId: string
+  canonicalDefinitionId: string
+  slug: string
+  inboxId: string | null
+}
+
 export class CommentService {
   private db: Database
   private userId: string
@@ -87,14 +105,50 @@ export class CommentService {
   private notificationService: NotificationService
   private mediaAssetService: MediaAssetService
   private attachmentService: AttachmentService
-  constructor(organizationId: string, userId: string, db: Database = database) {
+  private readonly capabilities: CapabilityView | null
+
+  /**
+   * @param capabilities Required nullable authorization view. Pass `null` only for
+   * parent-delete cascades and explicitly reviewed headless callers.
+   */
+  constructor(
+    organizationId: string,
+    userId: string,
+    db: Database,
+    capabilities: CapabilityView | null
+  ) {
     this.organizationId = organizationId
     this.userId = userId
     this.db = db
+    this.capabilities = capabilities
 
     this.notificationService = new NotificationService(db)
     this.mediaAssetService = new MediaAssetService(organizationId, userId, db)
     this.attachmentService = new AttachmentService(organizationId, userId, db)
+  }
+
+  /** All RecordId definition spellings that resolve to the same canonical host. */
+  private async equivalentDefinitionKeys(entityDefinitionId: string): Promise<string[]> {
+    const resources = await getCachedResources(this.organizationId)
+    const toSlug = buildDefIdToSlug(resources)
+    const toDefinitionId = buildDefIdToDefinitionId(resources)
+    const slug = toSlug(entityDefinitionId)
+    const canonicalDefinitionId = toDefinitionId(entityDefinitionId)
+    const keys = new Set<string>([entityDefinitionId, canonicalDefinitionId, slug])
+
+    for (const resource of resources) {
+      const sameHost =
+        slug === 'thread'
+          ? toSlug(resource.entityDefinitionId) === 'thread'
+          : toDefinitionId(resource.entityDefinitionId) === canonicalDefinitionId
+      if (!sameHost) continue
+      keys.add(resource.id)
+      keys.add(resource.apiSlug)
+      keys.add(resource.entityDefinitionId)
+      if (resource.entityType) keys.add(resource.entityType)
+    }
+
+    return [...keys]
   }
 
   /** Resolve stable fallback copy for a comment notification. */
@@ -103,12 +157,13 @@ export class CommentService {
     recordName: string
   }> {
     const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+    const toSlug = buildDefIdToSlug(await getCachedResources(this.organizationId))
     const [actor, recordName] = await Promise.all([
       this.db.query.User.findFirst({
         where: eq(schema.User.id, this.userId),
         columns: { name: true },
       }),
-      entityDefinitionId === 'thread'
+      toSlug(entityDefinitionId) === 'thread'
         ? this.db.query.Thread.findFirst({
             where: eq(schema.Thread.id, entityInstanceId),
             columns: { subject: true },
@@ -125,57 +180,133 @@ export class CommentService {
     }
   }
 
-  /**
-   * Verify the host record (Thread or EntityInstance) belongs to this user's org.
-   * `protectedProcedure` already binds the user to one org per session, so this is the
-   * only access check needed for now. When ResourceAccess grants are wired across all
-   * commentable entity types, swap for `hasPermission(ctx, recordId, view)`.
-   */
-  private async assertCanAccessRecord(recordId: RecordId, message: string): Promise<void> {
+  /** Resolve a comment host and prove organization ownership plus parent visibility. */
+  private async assertCanAccessRecord(
+    recordId: RecordId,
+    message: string,
+    options: { allowUnsupportedParent?: boolean } = {}
+  ): Promise<ResolvedCommentParent> {
     const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+    const resources = await getCachedResources(this.organizationId)
+    const toSlug = buildDefIdToSlug(resources)
+    const toDefinitionId = buildDefIdToDefinitionId(resources)
+    const slug = toSlug(entityDefinitionId)
+    const canonicalDefinitionId = toDefinitionId(entityDefinitionId)
+
+    if ((slug === 'inbox' || slug === 'personal_inbox') && !options.allowUnsupportedParent) {
+      throw new BadRequestError('Comments are not supported on inboxes.')
+    }
+
+    if (this.capabilities) {
+      if (slug === 'thread') {
+        // The mail front door answers before any thread row is read.
+        this.capabilities.assert(PermissionKey.inboxesView)
+      } else if (!this.capabilities.canViewEntity(canonicalDefinitionId)) {
+        throw new ForbiddenError(message)
+      }
+    }
 
     let recordOrgId: string | undefined
-    if (entityDefinitionId === 'thread') {
+    let recordDefinitionId: string | undefined
+    let inboxId: string | null = null
+    if (slug === 'thread') {
       const t = await this.db.query.Thread.findFirst({
         where: eq(schema.Thread.id, entityInstanceId),
-        columns: { organizationId: true },
+        columns: { organizationId: true, inboxId: true },
       })
       recordOrgId = t?.organizationId
+      inboxId = t?.inboxId ?? null
     } else {
       const i = await this.db.query.EntityInstance.findFirst({
         where: eq(schema.EntityInstance.id, entityInstanceId),
-        columns: { organizationId: true },
+        columns: { organizationId: true, entityDefinitionId: true },
       })
       recordOrgId = i?.organizationId
+      recordDefinitionId = i?.entityDefinitionId
     }
 
     if (!recordOrgId) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Record not found' })
+      throw new NotFoundError('Record not found')
     }
     if (recordOrgId !== this.organizationId) {
-      throw new TRPCError({ code: 'FORBIDDEN', message })
+      throw new ForbiddenError(message)
+    }
+    if (slug !== 'thread' && toDefinitionId(recordDefinitionId ?? '') !== canonicalDefinitionId) {
+      throw new NotFoundError('Record not found')
+    }
+
+    if (this.capabilities) {
+      if (slug === 'thread') {
+        const viewer = await getCachedUserMailVisibility(this.userId, this.organizationId)
+        const lens = await getThreadLens(this.db, this.organizationId, viewer, entityInstanceId)
+        if (lens === 'none') throw new ForbiddenError(message)
+      }
+    }
+
+    return {
+      entityDefinitionId,
+      entityInstanceId,
+      canonicalDefinitionId,
+      slug,
+      inboxId,
     }
   }
 
   /**
-   * Verify the user can modify (update / delete) a comment: they're either the author
-   * or an org OWNER/ADMIN.
+   * Verify update/delete authority after the area and parent gates.
    */
-  private async assertCanModifyComment(commentId: string, message: string): Promise<void> {
+  private async assertCanModifyComment(
+    commentId: string,
+    message: string
+  ): Promise<{
+    createdById: string
+    entityId: string
+    entityDefinitionId: string
+    organizationId: string
+  }> {
+    this.capabilities?.assert(PermissionKey.commentsManage)
     const comment = await this.db.query.Comment.findFirst({
       where: eq(schema.Comment.id, commentId),
-      columns: { createdById: true, organizationId: true },
+      columns: {
+        createdById: true,
+        entityId: true,
+        entityDefinitionId: true,
+        organizationId: true,
+      },
     })
     if (!comment) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
+      throw new NotFoundError('Comment not found')
     }
     if (comment.organizationId !== this.organizationId) {
-      throw new TRPCError({ code: 'FORBIDDEN', message })
+      throw new ForbiddenError(message)
     }
-    if (comment.createdById === this.userId) return
-    // Author || admin ownership carve-out, not a gate (plan 21 §5.2).
-    if (await isAdminOrOwner(this.organizationId, this.userId, this.db)) return
-    throw new TRPCError({ code: 'FORBIDDEN', message })
+
+    const parent = await this.assertCanAccessRecord(
+      toRecordId(comment.entityDefinitionId, comment.entityId),
+      message
+    )
+    if (!this.capabilities || comment.createdById === this.userId) return comment
+
+    if (parent.slug === 'thread') {
+      const viewer = await getCachedUserMailVisibility(this.userId, this.organizationId)
+      await assertCanActOnThreads(this.db, this.organizationId, viewer, [parent.entityInstanceId])
+      if (viewer.isAdmin) return comment
+      if (parent.inboxId) {
+        const { entityDefinitionId, entityInstanceId } = parseRecordId(
+          await inboxAccessRecordId(this.organizationId, parent.inboxId)
+        )
+        if (
+          (entityDefinitionId === 'inbox' || entityDefinitionId === 'personal_inbox') &&
+          this.capabilities.canAdminInstance(entityDefinitionId, entityInstanceId)
+        ) {
+          return comment
+        }
+      }
+      throw new ForbiddenError('Only admins or inbox managers can moderate this note.')
+    }
+
+    if (this.capabilities.canAdministerDef(parent.canonicalDefinitionId)) return comment
+    throw new ForbiddenError(message)
   }
 
   /**
@@ -183,6 +314,7 @@ export class CommentService {
    */
   async createComment(data: CreateCommentInput): Promise<Comment> {
     try {
+      this.capabilities?.assert(PermissionKey.commentsManage)
       data.organizationId = this.organizationId
 
       // Parse recordId to get components
@@ -190,7 +322,49 @@ export class CommentService {
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
 
-      await this.assertCanAccessRecord(data.recordId, `You don't have access to this record`)
+      const resolvedParent = await this.assertCanAccessRecord(
+        data.recordId,
+        `You don't have access to this record`
+      )
+
+      let replyParent:
+        | {
+            createdById: string
+            entityId: string
+            entityDefinitionId: string
+          }
+        | undefined
+      if (data.parentId) {
+        replyParent = await this.db.query.Comment.findFirst({
+          where: and(
+            eq(schema.Comment.id, data.parentId),
+            eq(schema.Comment.organizationId, this.organizationId),
+            isNull(schema.Comment.deletedAt)
+          ),
+          columns: {
+            createdById: true,
+            entityId: true,
+            entityDefinitionId: true,
+          },
+        })
+
+        if (replyParent) {
+          const resources = await getCachedResources(this.organizationId)
+          const toSlug = buildDefIdToSlug(resources)
+          const toDefinitionId = buildDefIdToDefinitionId(resources)
+          const replySlug = toSlug(replyParent.entityDefinitionId)
+          const sameDefinition =
+            resolvedParent.slug === 'thread'
+              ? replySlug === 'thread'
+              : toDefinitionId(replyParent.entityDefinitionId) ===
+                resolvedParent.canonicalDefinitionId
+          if (replyParent.entityId !== entityId || !sameDefinition) replyParent = undefined
+        }
+
+        if (!replyParent) {
+          throw new NotFoundError('Parent comment not found')
+        }
+      }
 
       // Verify file access if provided
       if (data.fileAttachments && data.fileAttachments.length > 0) {
@@ -238,7 +412,7 @@ export class CommentService {
         }
 
         // Update Thread.latestCommentId if this is a thread comment
-        if (entityType === 'thread') {
+        if (resolvedParent.slug === 'thread') {
           await tx
             .update(schema.Thread)
             .set({ latestCommentId: comment!.id })
@@ -261,15 +435,11 @@ export class CommentService {
       const { actorName, recordName } = await this.getNotificationCopy(data.recordId)
 
       // Trigger reply notification outside the transaction
-      if (data.parentId) {
-        const parentComment = await this.db.query.Comment.findFirst({
-          where: eq(schema.Comment.id, data.parentId),
-          columns: { createdById: true },
-        })
-        if (parentComment && parentComment.createdById !== this.userId) {
+      if (data.parentId && replyParent) {
+        if (replyParent.createdById !== this.userId) {
           await this.notificationService.sendNotification({
             type: 'COMMENT_REPLY',
-            userId: parentComment.createdById,
+            userId: replyParent.createdById,
             organizationId: this.organizationId,
             targetType: 'COMMENT',
             targetIds: { commentId: result.id, recordId: data.recordId },
@@ -481,7 +651,7 @@ export class CommentService {
   /**
    * Delete all comments for an entity (hard delete)
    * Used when deleting parent entities like Contact, EntityInstance, etc.
-   * Note: Ticket/Thread comments are handled via FK cascade in the database
+   * This is a parent-delete cascade and intentionally skips per-comment moderation.
    */
   async deleteCommentsByRecordId(recordId: RecordId): Promise<void> {
     try {
@@ -490,18 +660,25 @@ export class CommentService {
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
 
+      await this.assertCanAccessRecord(recordId, `You don't have access to this record`, {
+        // Parent deletion must not be blocked by unreachable historical inbox comments.
+        // The explicit null mode still proves organization and exact host identity.
+        allowUnsupportedParent: this.capabilities === null,
+      })
+      const equivalentDefinitionKeys = await this.equivalentDefinitionKeys(entityType)
+
       await this.db
         .delete(schema.Comment)
         .where(
           and(
             eq(schema.Comment.entityId, entityId),
-            eq(schema.Comment.entityDefinitionId, entityType),
+            inArray(schema.Comment.entityDefinitionId, equivalentDefinitionKeys),
             eq(schema.Comment.organizationId, this.organizationId)
           )
         )
 
       // Set Thread.latestCommentId to null if deleting all thread comments
-      if (entityType === 'thread') {
+      if (equivalentDefinitionKeys.includes('thread')) {
         await this.db
           .update(schema.Thread)
           .set({ latestCommentId: null })
@@ -520,12 +697,10 @@ export class CommentService {
    */
   async deleteComment(id: string): Promise<void> {
     try {
-      await this.assertCanModifyComment(id, `You don't have permission to delete this comment`)
-
-      // Get the comment to recalculate Thread.latestCommentId if needed.
-      const comment = await this.db.query.Comment.findFirst({
-        where: eq(schema.Comment.id, id),
-      })
+      const comment = await this.assertCanModifyComment(
+        id,
+        `You don't have permission to delete this comment`
+      )
 
       // Soft delete by setting deletedAt
       await this.db
@@ -534,7 +709,8 @@ export class CommentService {
         .where(eq(schema.Comment.id, id))
 
       // Recalculate Thread.latestCommentId if this was a thread comment
-      if (comment && comment.entityDefinitionId === 'thread') {
+      const toSlug = buildDefIdToSlug(await getCachedResources(this.organizationId))
+      if (comment && toSlug(comment.entityDefinitionId) === 'thread') {
         await this.recalculateLatestCommentId(comment.entityId)
       }
 
@@ -566,11 +742,13 @@ export class CommentService {
     } = {}
   ): Promise<Comment[]> {
     try {
+      this.capabilities?.assert(PermissionKey.commentsView)
       await this.assertCanAccessRecord(recordId, `You don't have access to this record`)
 
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
+      const equivalentDefinitionKeys = await this.equivalentDefinitionKeys(entityType)
 
       const { includeReplies = true, page = 1, limit = 20 } = options
       // Calculate skip value for pagination
@@ -580,7 +758,8 @@ export class CommentService {
       const comments = await this.db.query.Comment.findMany({
         where: and(
           eq(schema.Comment.entityId, entityId),
-          eq(schema.Comment.entityDefinitionId, entityType),
+          inArray(schema.Comment.entityDefinitionId, equivalentDefinitionKeys),
+          eq(schema.Comment.organizationId, this.organizationId),
           isNull(schema.Comment.parentId), // Only get top-level comments (replies are nested)
           isNull(schema.Comment.deletedAt) // Exclude soft-deleted comments
         ),
@@ -590,7 +769,10 @@ export class CommentService {
           ...(includeReplies
             ? {
                 replies: {
-                  where: isNull(schema.Comment.deletedAt), // Exclude soft-deleted replies
+                  where: and(
+                    eq(schema.Comment.organizationId, this.organizationId),
+                    isNull(schema.Comment.deletedAt)
+                  ),
                   with: {
                     references: true,
                     reactions: true, // Include all reactions for processing
@@ -635,18 +817,23 @@ export class CommentService {
   }
   async getCommentById(id: string): Promise<Comment> {
     try {
+      this.capabilities?.assert(PermissionKey.commentsView)
       // Get the comment with all related data
       // Note: createdBy/pinnedBy removed - frontend uses useActor hook to resolve user info
       const comment = await this.db.query.Comment.findFirst({
         where: and(
           eq(schema.Comment.id, id),
+          eq(schema.Comment.organizationId, this.organizationId),
           isNull(schema.Comment.deletedAt) // Exclude soft-deleted comments
         ),
         with: {
           references: true,
           reactions: true, // Include all reactions for processing
           replies: {
-            where: isNull(schema.Comment.deletedAt), // Exclude soft-deleted replies
+            where: and(
+              eq(schema.Comment.organizationId, this.organizationId),
+              isNull(schema.Comment.deletedAt)
+            ),
             with: {
               references: true,
               reactions: true, // Include all reactions for processing
@@ -655,7 +842,7 @@ export class CommentService {
         },
       })
       if (!comment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
+        throw new NotFoundError('Comment not found')
       }
       await this.assertCanAccessRecord(
         toRecordId(comment.entityDefinitionId, comment.entityId),
@@ -696,17 +883,25 @@ export class CommentService {
    */
   async pinComment(commentId: string, userId: string, pin: boolean) {
     try {
+      this.capabilities?.assert(PermissionKey.commentsManage)
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, commentId),
         columns: { entityId: true, entityDefinitionId: true, organizationId: true },
       })
       if (!comment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
+        throw new NotFoundError('Comment not found')
       }
-      await this.assertCanAccessRecord(
+      if (comment.organizationId !== this.organizationId) {
+        throw new ForbiddenError(`You don't have permission to pin this comment`)
+      }
+      const parent = await this.assertCanAccessRecord(
         toRecordId(comment.entityDefinitionId, comment.entityId),
         `You don't have permission to pin this comment`
       )
+      if (this.capabilities && parent.slug === 'thread') {
+        const viewer = await getCachedUserMailVisibility(this.userId, this.organizationId)
+        await assertCanActOnThreads(this.db, this.organizationId, viewer, [parent.entityInstanceId])
+      }
       const [updatedComment] = await this.db
         .update(schema.Comment)
         .set({
@@ -729,13 +924,22 @@ export class CommentService {
    */
   async addReaction(data: AddReactionInput) {
     try {
+      this.capabilities?.assert(PermissionKey.commentsView)
       const { commentId, userId, type, emoji } = data
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, commentId),
-        columns: { entityId: true, entityDefinitionId: true, createdById: true },
+        columns: {
+          entityId: true,
+          entityDefinitionId: true,
+          createdById: true,
+          organizationId: true,
+        },
       })
       if (!comment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
+        throw new NotFoundError('Comment not found')
+      }
+      if (comment.organizationId !== this.organizationId) {
+        throw new ForbiddenError(`You don't have access to this comment`)
       }
       await this.assertCanAccessRecord(
         toRecordId(comment.entityDefinitionId, comment.entityId),
@@ -792,12 +996,16 @@ export class CommentService {
     emoji?: string | null
   ): Promise<void> {
     try {
+      this.capabilities?.assert(PermissionKey.commentsView)
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, commentId),
-        columns: { entityId: true, entityDefinitionId: true },
+        columns: { entityId: true, entityDefinitionId: true, organizationId: true },
       })
       if (!comment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
+        throw new NotFoundError('Comment not found')
+      }
+      if (comment.organizationId !== this.organizationId) {
+        throw new ForbiddenError(`You don't have access to this comment`)
       }
       await this.assertCanAccessRecord(
         toRecordId(comment.entityDefinitionId, comment.entityId),
@@ -914,54 +1122,41 @@ export class CommentService {
    * Get single comment by ID with attachments
    */
   async getById(commentId: string): Promise<CommentWithAttachments | null> {
-    try {
-      logger.info('Fetching comment with attachments', {
-        commentId,
-        organizationId: this.organizationId,
-      })
-      // Get the comment with all related data including reactions and mentions
-      // Note: createdBy/pinnedBy removed - frontend uses useActor hook to resolve user info
-      const comment = await this.db.query.Comment.findFirst({
-        where: and(
-          eq(schema.Comment.id, commentId),
-          eq(schema.Comment.organizationId, this.organizationId),
-          isNull(schema.Comment.deletedAt)
-        ),
-        with: {
-          mentions: {
-            with: {
-              user: {
-                columns: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          reactions: true, // Include all reactions for processing
-        },
-      })
-      if (!comment) {
-        return null
-      }
-      await this.assertCanAccessRecord(
-        toRecordId(comment.entityDefinitionId, comment.entityId),
-        `You don't have access to this comment`
-      )
-      // Fetch attachments for this single comment
-      const attachmentMap = await this.fetchAttachmentsForComments([commentId])
-      // Process and optimize the reaction data
-      const processedReactions = this.aggregateReactions(comment.reactions, this.userId)
-      // Convert to CommentWithAttachments format
-      return {
-        ...comment,
-        reactions: processedReactions,
-        attachments: attachmentMap.get(commentId) || [],
-      } as CommentWithAttachments
-    } catch (error) {
-      logger.error('Error in getById', { error, commentId, organizationId: this.organizationId })
+    logger.info('Fetching comment with attachments', {
+      commentId,
+      organizationId: this.organizationId,
+    })
+    this.capabilities?.assert(PermissionKey.commentsView)
+    // Get the comment with all related data including reactions and references.
+    // Note: createdBy/pinnedBy removed - frontend uses useActor hook to resolve user info
+    const comment = await this.db.query.Comment.findFirst({
+      where: and(
+        eq(schema.Comment.id, commentId),
+        eq(schema.Comment.organizationId, this.organizationId),
+        isNull(schema.Comment.deletedAt)
+      ),
+      with: {
+        references: true,
+        reactions: true, // Include all reactions for processing
+      },
+    })
+    if (!comment) {
       return null
     }
+    await this.assertCanAccessRecord(
+      toRecordId(comment.entityDefinitionId, comment.entityId),
+      `You don't have access to this comment`
+    )
+    // Fetch attachments for this single comment
+    const attachmentMap = await this.fetchAttachmentsForComments([commentId])
+    // Process and optimize the reaction data
+    const processedReactions = this.aggregateReactions(comment.reactions, this.userId)
+    // Convert to CommentWithAttachments format
+    return {
+      ...comment,
+      reactions: processedReactions,
+      attachments: attachmentMap.get(commentId) || [],
+    } as CommentWithAttachments
   }
   /**
    * Verify access to file attachments
@@ -977,10 +1172,7 @@ export class CommentService {
           columns: { id: true },
         })
         if (!asset) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: `MediaAsset not found or you don't have access to it`,
-          })
+          throw new ForbiddenError(`MediaAsset not found or you don't have access to it`)
         }
       } else if (attachment.type === 'file') {
         const folderFile = await this.db.query.FolderFile.findFirst({
@@ -991,10 +1183,7 @@ export class CommentService {
           columns: { id: true },
         })
         if (!folderFile) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: `FolderFile not found or access denied: ${attachment.id}`,
-          })
+          throw new ForbiddenError(`FolderFile not found or access denied: ${attachment.id}`)
         }
       }
     }
@@ -1053,10 +1242,11 @@ export class CommentService {
    */
   private async recalculateLatestCommentId(threadId: string): Promise<void> {
     try {
+      const threadDefinitionKeys = await this.equivalentDefinitionKeys('thread')
       const latest = await this.db.query.Comment.findFirst({
         where: and(
           eq(schema.Comment.entityId, threadId),
-          eq(schema.Comment.entityDefinitionId, 'thread'),
+          inArray(schema.Comment.entityDefinitionId, threadDefinitionKeys),
           isNull(schema.Comment.deletedAt)
         ),
         columns: { id: true },

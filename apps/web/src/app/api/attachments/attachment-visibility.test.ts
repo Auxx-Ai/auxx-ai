@@ -31,21 +31,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   select,
   getCapabilities,
+  getCachedResources,
   getCachedUserMailVisibility,
   getThreadLens,
   assertWorkflowRunNotSystemOwned,
   loadOwnVisit,
   and,
   eq,
+  isNull,
 } = vi.hoisted(() => ({
   select: vi.fn(),
   getCapabilities: vi.fn(),
+  getCachedResources: vi.fn(),
   getCachedUserMailVisibility: vi.fn(),
   getThreadLens: vi.fn(),
   assertWorkflowRunNotSystemOwned: vi.fn(),
   loadOwnVisit: vi.fn(),
   and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
   eq: vi.fn((a: unknown, b: unknown) => ({ op: 'eq', a, b })),
+  isNull: vi.fn((value: unknown) => ({ op: 'isNull', value })),
 }))
 
 vi.mock('@auxx/database', () => ({
@@ -66,7 +70,9 @@ vi.mock('@auxx/database', () => ({
     Comment: {
       id: 'Comment.id',
       entityDefinitionId: 'Comment.entityDefinitionId',
+      entityId: 'Comment.entityId',
       organizationId: 'Comment.organizationId',
+      deletedAt: 'Comment.deletedAt',
     },
     FieldValue: {
       id: 'FieldValue.id',
@@ -93,17 +99,20 @@ vi.mock('@auxx/database', () => ({
   },
 }))
 
-vi.mock('drizzle-orm', () => ({ and, eq }))
+vi.mock('drizzle-orm', () => ({ and, eq, isNull }))
 
 // The `@auxx/lib/permissions` barrel HANGS under vitest (get-capabilities,
 // record-view-scope, overage-*) — stub it, but keep `PermissionKey` REAL via the
 // deep registry path, because the `visit_qc_item` arm reads a key off it.
 vi.mock('@auxx/lib/permissions', async () => {
   const { PermissionKey } = await import('@auxx/lib/permissions/capabilities/registry')
-  return { PermissionKey, getCapabilities }
+  const { buildDefIdToDefinitionId, buildDefIdToSlug } = await import(
+    '@auxx/lib/permissions/capabilities/resolve-capability-inputs'
+  )
+  return { buildDefIdToDefinitionId, buildDefIdToSlug, PermissionKey, getCapabilities }
 })
 
-vi.mock('@auxx/lib/cache', () => ({ getCachedUserMailVisibility }))
+vi.mock('@auxx/lib/cache', () => ({ getCachedResources, getCachedUserMailVisibility }))
 vi.mock('@auxx/lib/permissions/visibility', () => ({ getThreadLens }))
 // Both of these are `await import(...)`ed INSIDE their arm — `vi.mock`
 // intercepts dynamic imports the same as static ones.
@@ -134,6 +143,36 @@ const QC_ITEM_ID = 'qci_cuid000000000000000000000'
 const VISIT_ID = 'vis_cuid000000000000000000000'
 /** The `entityDefinitionId` the COMMENT / FIELD_VALUE / TICKET arms gate on. */
 const DEF_ID = 'edf_cuid000000000000000000000'
+const THREAD_DEF_ID = 'edf_thread00000000000000000000'
+const INBOX_DEF_ID = 'edf_inbox000000000000000000000'
+const PERSONAL_INBOX_DEF_ID = 'edf_personal000000000000000000'
+
+const RESOURCES = [
+  {
+    id: 'res_record',
+    apiSlug: 'work-orders',
+    entityDefinitionId: DEF_ID,
+    entityType: 'work_order',
+  },
+  {
+    id: 'res_thread',
+    apiSlug: 'threads',
+    entityDefinitionId: THREAD_DEF_ID,
+    entityType: 'thread',
+  },
+  {
+    id: 'res_inbox',
+    apiSlug: 'inboxes',
+    entityDefinitionId: INBOX_DEF_ID,
+    entityType: 'inbox',
+  },
+  {
+    id: 'res_personal_inbox',
+    apiSlug: 'personal-inboxes',
+    entityDefinitionId: PERSONAL_INBOX_DEF_ID,
+    entityType: 'personal_inbox',
+  },
+]
 
 /**
  * Rows handed to successive `.limit(1)` calls, IN ORDER. Most arms issue TWO
@@ -197,6 +236,7 @@ beforeEach(() => {
   fromTables.length = 0
   eq.mockClear()
   and.mockClear()
+  isNull.mockClear()
   select.mockReset().mockImplementation(() => ({
     from: (table: { id: string }) => {
       fromTables.push(table.id)
@@ -205,6 +245,7 @@ beforeEach(() => {
   }))
   // Default to a member with nothing — every grant test opts in explicitly.
   getCapabilities.mockReset().mockResolvedValue(capabilitiesWith({}))
+  getCachedResources.mockReset().mockResolvedValue(RESOURCES)
   getCachedUserMailVisibility.mockReset().mockResolvedValue({ userId: USER_ID })
   getThreadLens.mockReset().mockResolvedValue('none')
   assertWorkflowRunNotSystemOwned.mockReset().mockResolvedValue(WORKFLOW_APP_ID)
@@ -282,7 +323,7 @@ describe('canViewAttachment — MESSAGE (unchanged; must not regress)', () => {
 })
 
 describe('canViewAttachment — COMMENT', () => {
-  it('denies a member composing `records: None` / `comments: None` — Finding A', async () => {
+  it('denies `comments: None` before reading the comment row', async () => {
     // THE leak this rewrite closes. `COMMENT` fell into the old
     // `entityType !== 'MESSAGE' → true` branch, so ANY authenticated org member
     // got the bytes of any comment attachment they could name — including a
@@ -291,29 +332,135 @@ describe('canViewAttachment — COMMENT', () => {
     queueRows(attachmentRow('COMMENT', COMMENT_ID), [{ entityDefinitionId: DEF_ID }])
     memberHolding({ [Area.records]: Level.None, [Area.comments]: Level.None })
     await expect(canView()).resolves.toBe(false)
+    expect(fromTables).toEqual(['Attachment.id'])
   })
 
-  it('grants a member who can view the commented-on definition', async () => {
-    queueRows(attachmentRow('COMMENT', COMMENT_ID), [{ entityDefinitionId: DEF_ID }])
-    memberHolding({ [Area.records]: Level.Read })
+  it('grants a member with comments read and a visible, existing record parent', async () => {
+    queueRows(
+      attachmentRow('COMMENT', COMMENT_ID),
+      [{ entityDefinitionId: DEF_ID, entityId: INSTANCE_ID }],
+      [{ id: INSTANCE_ID }]
+    )
+    memberHolding({ [Area.comments]: Level.Read, [Area.records]: Level.Read })
     await expect(canView()).resolves.toBe(true)
+    expect(fromTables).toEqual(['Attachment.id', 'Comment.id', 'EntityInstance.id'])
   })
 
-  it('denies a comment that does not resolve in this org, before any capability read', async () => {
-    // The parent lookup — not just the attachment lookup — is what fails closed.
-    queueRows(attachmentRow('COMMENT', COMMENT_ID), [])
-    memberHolding({ [Area.records]: Level.Full })
+  it('canonicalizes an apiSlug comment host before checking the parent definition', async () => {
+    queueRows(
+      attachmentRow('COMMENT', COMMENT_ID),
+      [{ entityDefinitionId: 'work-orders', entityId: INSTANCE_ID }],
+      [{ id: INSTANCE_ID }]
+    )
+    memberHolding({ [Area.comments]: Level.Read, [Area.records]: Level.Read })
+
+    await expect(canView()).resolves.toBe(true)
+    expect(eq).toHaveBeenCalledWith('EntityInstance.entityDefinitionId', DEF_ID)
+  })
+
+  it('denies a record parent hidden by the definition gate before reading that record', async () => {
+    queueRows(attachmentRow('COMMENT', COMMENT_ID), [
+      { entityDefinitionId: DEF_ID, entityId: INSTANCE_ID },
+    ])
+    memberHolding({ [Area.comments]: Level.Read, [Area.records]: Level.None })
     await expect(canView()).resolves.toBe(false)
     expect(fromTables).toEqual(['Attachment.id', 'Comment.id'])
-    expect(getCapabilities).not.toHaveBeenCalled()
+  })
+
+  it('denies an orphaned record comment even when its definition is visible', async () => {
+    queueRows(
+      attachmentRow('COMMENT', COMMENT_ID),
+      [{ entityDefinitionId: DEF_ID, entityId: INSTANCE_ID }],
+      []
+    )
+    memberHolding({ [Area.comments]: Level.Read, [Area.records]: Level.Read })
+    await expect(canView()).resolves.toBe(false)
+  })
+
+  it('denies a comment that does not resolve in this org after the area front door', async () => {
+    // The parent lookup — not just the attachment lookup — is what fails closed.
+    queueRows(attachmentRow('COMMENT', COMMENT_ID), [])
+    memberHolding({ [Area.comments]: Level.Read, [Area.records]: Level.Full })
+    await expect(canView()).resolves.toBe(false)
+    expect(fromTables).toEqual(['Attachment.id', 'Comment.id'])
+    expect(getCapabilities).toHaveBeenCalledOnce()
   })
 
   it('scopes the comment lookup by organization', async () => {
-    queueRows(attachmentRow('COMMENT', COMMENT_ID), [{ entityDefinitionId: DEF_ID }])
-    memberHolding({ [Area.records]: Level.Read })
+    queueRows(
+      attachmentRow('COMMENT', COMMENT_ID),
+      [{ entityDefinitionId: DEF_ID, entityId: INSTANCE_ID }],
+      [{ id: INSTANCE_ID }]
+    )
+    memberHolding({ [Area.comments]: Level.Read, [Area.records]: Level.Read })
     await canView()
     expect(eq).toHaveBeenCalledWith('Comment.id', COMMENT_ID)
     expect(eq).toHaveBeenCalledWith('Comment.organizationId', ORG_ID)
+  })
+
+  it('excludes soft-deleted comments from attachment visibility', async () => {
+    queueRows(
+      attachmentRow('COMMENT', COMMENT_ID),
+      [{ entityDefinitionId: DEF_ID, entityId: INSTANCE_ID }],
+      [{ id: INSTANCE_ID }]
+    )
+    memberHolding({ [Area.comments]: Level.Read, [Area.records]: Level.Read })
+
+    await expect(canView()).resolves.toBe(true)
+    expect(isNull).toHaveBeenCalledWith('Comment.deletedAt')
+  })
+
+  it('grants a comment on a thread definition CUID at any visible lens', async () => {
+    queueRows(attachmentRow('COMMENT', COMMENT_ID), [
+      { entityDefinitionId: THREAD_DEF_ID, entityId: THREAD_ID },
+    ])
+    memberHolding({ [Area.comments]: Level.Read, [Area.inboxes]: Level.Read })
+    getThreadLens.mockResolvedValue('metadata')
+
+    await expect(canView()).resolves.toBe(true)
+    expect(getThreadLens).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG_ID,
+      { userId: USER_ID },
+      THREAD_ID
+    )
+  })
+
+  it('denies a thread comment at the `none` lens', async () => {
+    queueRows(attachmentRow('COMMENT', COMMENT_ID), [
+      { entityDefinitionId: THREAD_DEF_ID, entityId: THREAD_ID },
+    ])
+    memberHolding({ [Area.comments]: Level.Read, [Area.inboxes]: Level.Read })
+    getThreadLens.mockResolvedValue('none')
+
+    await expect(canView()).resolves.toBe(false)
+  })
+
+  it('denies a thread comment at `inboxes: None` before reading the lens', async () => {
+    queueRows(attachmentRow('COMMENT', COMMENT_ID), [
+      { entityDefinitionId: THREAD_DEF_ID, entityId: THREAD_ID },
+    ])
+    memberHolding({ [Area.comments]: Level.Read, [Area.inboxes]: Level.None })
+
+    await expect(canView()).resolves.toBe(false)
+    expect(getCachedUserMailVisibility).not.toHaveBeenCalled()
+    expect(getThreadLens).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    INBOX_DEF_ID,
+    PERSONAL_INBOX_DEF_ID,
+  ])('denies unsupported inbox comment host %s', async (entityDefinitionId) => {
+    queueRows(attachmentRow('COMMENT', COMMENT_ID), [{ entityDefinitionId, entityId: INSTANCE_ID }])
+    memberHolding({
+      [Area.comments]: Level.Read,
+      [Area.inboxes]: Level.Full,
+      [Area.records]: Level.Full,
+    })
+
+    await expect(canView()).resolves.toBe(false)
+    expect(getThreadLens).not.toHaveBeenCalled()
+    expect(fromTables).toEqual(['Attachment.id', 'Comment.id'])
   })
 })
 

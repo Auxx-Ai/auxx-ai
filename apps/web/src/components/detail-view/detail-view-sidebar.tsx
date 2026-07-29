@@ -10,6 +10,7 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { getTabCardComponent } from '~/components/drawers/drawer-tab-registry'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
+import { useCommentAccess } from '~/components/global/comments/use-comment-access'
 import { useCanViewRecordResource } from '~/components/resources'
 import { useAccess } from '~/providers/capabilities-provider'
 import { DetailViewCardHeader } from './components/detail-view-card-header'
@@ -34,6 +35,7 @@ export function DetailViewSidebar({
 }: DetailViewSidebarProps) {
   const { entityInstanceId } = parseRecordId(recordId)
   const { can } = useAccess()
+  const { canViewComments } = useCommentAccess(recordId)
   const canViewRecordResource = useCanViewRecordResource()
   const entityType = config.entityType
   // Layer-2 capability gate — drop cards (header included) the viewer lacks the
@@ -46,6 +48,12 @@ export function DetailViewSidebar({
 
   const beforeCards = sidebarCards?.filter((c) => c.position === 'before') ?? []
   const afterCards = sidebarCards?.filter((c) => (c.position ?? 'after') === 'after') ?? []
+  const visibleSidebarTabs = config.sidebarTabs.filter(
+    (tab) => tab.value !== 'comments' || canViewComments
+  )
+  const visibleActiveTab = visibleSidebarTabs.some((tab) => tab.value === activeTab)
+    ? activeTab
+    : (visibleSidebarTabs[0]?.value ?? activeTab)
 
   return (
     <div className='h-full flex flex-col'>
@@ -53,11 +61,14 @@ export function DetailViewSidebar({
       <DetailViewCardHeader icon={icon} color={color} displayName={displayName} record={record} />
 
       {/* Sidebar tabs */}
-      <Tabs value={activeTab} onValueChange={onTabChange} className='flex-1 flex flex-col min-h-0'>
+      <Tabs
+        value={visibleActiveTab}
+        onValueChange={onTabChange}
+        className='flex-1 flex flex-col min-h-0'>
         <TabsList
           className='border-b w-full justify-start rounded-b-none bg-primary-100'
           variant='outline'>
-          {config.sidebarTabs.map((tab) => (
+          {visibleSidebarTabs.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} variant='outline'>
               {tab.label}
             </TabsTrigger>
@@ -86,9 +97,11 @@ export function DetailViewSidebar({
           />
         </TabsContent>
 
-        <TabsContent value='comments' className='flex-1 overflow-y-auto'>
-          <DrawerComments recordId={recordId} />
-        </TabsContent>
+        {canViewComments && (
+          <TabsContent value='comments' className='flex-1 overflow-y-auto'>
+            <DrawerComments recordId={recordId} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

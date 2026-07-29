@@ -3,6 +3,7 @@ import type { RecordId } from '@auxx/lib/field-values/client'
 import { getGroupPosition, groupConsecutiveComments } from '@auxx/utils'
 import { type Comment, useComments } from '~/hooks/use-comments'
 import { CommentItem, CommentSkeleton } from './comment-item'
+import { useCommentAccess } from './use-comment-access'
 
 interface CommentListProps {
   // Required props
@@ -14,14 +15,26 @@ interface CommentListProps {
   className?: string
 }
 
-export function CommentList({
+export function CommentList({ recordId, ...props }: CommentListProps) {
+  const { canViewComments } = useCommentAccess(recordId)
+
+  if (!canViewComments) return null
+
+  return <AccessibleCommentList recordId={recordId} {...props} />
+}
+
+function AccessibleCommentList({
   recordId,
   initialComments,
   onCommentAdded,
   className,
 }: CommentListProps) {
   // Use the hook directly
-  const { comments, isFetchingComments } = useComments({ recordId, onCommentAdded })
+  const { comments, isFetchingComments } = useComments({
+    recordId,
+    initialComments,
+    onCommentAdded,
+  })
 
   if (isFetchingComments) {
     return (
@@ -49,7 +62,7 @@ export function CommentList({
             return (
               <CommentItem
                 key={comment.id}
-                comment={comment as Comment}
+                comment={comment as unknown as Comment}
                 recordId={recordId}
                 isReply={false}
                 disableReplies={false}

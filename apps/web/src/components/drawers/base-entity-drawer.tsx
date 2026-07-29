@@ -38,6 +38,7 @@ import * as React from 'react'
 import { AppRecordActions } from '~/components/detail-view/components/app-record-actions'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
+import { useCommentAccess } from '~/components/global/comments/use-comment-access'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import {
@@ -179,6 +180,7 @@ function DrawerRecordFrame({
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const { hasAccess } = useFeatureFlags()
   const { can } = useAccess()
+  const { canViewComments } = useCommentAccess(recordId)
   const canViewRecordResource = useCanViewRecordResource()
   const organizationId = useDehydratedOrganizationId()
   const user = useDehydratedUser()
@@ -269,6 +271,7 @@ function DrawerRecordFrame({
     ]
       // Restricted mode drops the communication/comment tabs (§11.4).
       .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
+      .filter((tab) => tab.value !== 'comments' || canViewComments)
 
     const additionalTabs = visibleAdditionalTabs.map((tab) => ({
       value: tab.value,
@@ -278,7 +281,7 @@ function DrawerRecordFrame({
 
     // Overview first, then entity-specific tabs, then the shared timeline/comments/tasks tabs
     return [overviewTab, ...additionalTabs, ...trailingTabs]
-  }, [drawerConfig, visibleAdditionalTabs, readOnly, entityType])
+  }, [drawerConfig, visibleAdditionalTabs, readOnly, entityType, canViewComments])
 
   // Tab order persistence
   const tabOrderStorageKey = React.useMemo(() => {
@@ -426,7 +429,7 @@ function DrawerRecordFrame({
             {/* Comments tab is dropped from the tab bar in restricted mode; keep
                 its content unmounted too so a stale `?tab=comments` deep link
                 can't surface it. */}
-            {!readOnly && (
+            {!readOnly && canViewComments && (
               <TabsContent value='comments' className='w-full h-full mt-0'>
                 <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
                   <DrawerComments recordId={recordId} focusComposerTrigger={focusComposerTrigger} />

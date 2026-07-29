@@ -20,6 +20,7 @@ export {
   assertCanManageMailSharing,
   assertCanManageMailTypeAccess,
   assertMailSharingFeature,
+  inboxAccessRecordId,
   isMailSharingDef,
 } from './mail-sharing-guard'
 // Service functions
