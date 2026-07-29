@@ -32,8 +32,14 @@ interface InboxChannelCardProps {
   integration: InboxIntegration
   onRemove: (integration: InboxIntegration) => void
   removePending?: boolean
-  /** Whether channel navigation and routing controls should be available. */
-  canManage: boolean
+  /**
+   * Whether the viewer may open the channel's own settings page — the client
+   * mirror of `requireChannelManageAccess`, which carves out the owner of a
+   * personal channel. NOT the same gate as {@link canRemove}.
+   */
+  canOpen: boolean
+  /** Whether the viewer may unroute the channel from this inbox. */
+  canRemove: boolean
 }
 
 /**
@@ -41,12 +47,18 @@ interface InboxChannelCardProps {
  * provider/email subtitle, a live status dot (from the channel store, falling
  * back to "Connected"), and a "Default" chip. The three-dot menu opens the
  * channel detail or removes the channel from this inbox (unassign, not disconnect).
+ *
+ * The two affordances answer to two different server gates, so they take two
+ * props: opening follows `requireChannelManageAccess` (`channels.manage` OR
+ * personal-channel owner), while removal follows `inbox.removeIntegration`
+ * (`channels.manage` AND inbox Manager, with no ownership carve-out).
  */
 export function InboxChannelCard({
   integration,
   onRemove,
   removePending,
-  canManage,
+  canOpen,
+  canRemove,
 }: InboxChannelCardProps) {
   const router = useRouter()
   const { integrationId } = integration
@@ -58,22 +70,23 @@ export function InboxChannelCard({
 
   const providerName = getChannelProviderName(provider)
 
-  const menuItems: ListCardMenuItem[] | undefined = canManage
-    ? [
-        {
-          label: 'Open',
-          icon: <ExternalLink />,
-          onClick: () => router.push(`${DETAIL_BASE}/${integrationId}`),
-        },
-        {
-          label: 'Remove from inbox',
-          icon: <Trash2 />,
-          destructive: true,
-          disabled: removePending,
-          onClick: () => onRemove(integration),
-        },
-      ]
-    : undefined
+  const menuItems: ListCardMenuItem[] = []
+  if (canOpen) {
+    menuItems.push({
+      label: 'Open',
+      icon: <ExternalLink />,
+      onClick: () => router.push(`${DETAIL_BASE}/${integrationId}`),
+    })
+  }
+  if (canRemove) {
+    menuItems.push({
+      label: 'Remove from inbox',
+      icon: <Trash2 />,
+      destructive: true,
+      disabled: removePending,
+      onClick: () => onRemove(integration),
+    })
+  }
 
   return (
     <ListCard
@@ -82,8 +95,8 @@ export function InboxChannelCard({
       subtitle={email ? `${providerName} · ${email}` : providerName}
       status={status}
       headerEnd={integration.isDefault ? renderBadgeChips([{ label: 'Default' }]) : undefined}
-      href={canManage ? `${DETAIL_BASE}/${integrationId}` : undefined}
-      menuItems={menuItems}
+      href={canOpen ? `${DETAIL_BASE}/${integrationId}` : undefined}
+      menuItems={menuItems.length > 0 ? menuItems : undefined}
       descriptionLines={0}
     />
   )

@@ -1,19 +1,19 @@
 // server/api/routers/labels.ts
 
 import { database as db, schema } from '@auxx/database'
+import { requireChannelManageAccess } from '@auxx/lib/channels'
 import {
   FolderDiscoveryService,
   getUserOrganizationId,
   LabelService,
   ReauthenticationRequiredError,
 } from '@auxx/lib/email'
-import { PermissionKey } from '@auxx/lib/permissions'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('labels-router')
 
@@ -308,11 +308,22 @@ export const labelRouter = createTRPCRouter({
       }
     }),
 
-  // Get labels for an integration (reads DB directly, bypasses LabelProviderFactory)
-  getIntegrationLabels: permissionProcedure(PermissionKey.channelsManage)
+  /**
+   * Get labels for an integration (reads DB directly, bypasses LabelProviderFactory).
+   *
+   * Per-CHANNEL authority, so it takes `requireChannelManageAccess` rather than a
+   * bare `channels.manage` assert: a member who owns a personal channel manages
+   * its label/folder sync scope (§11), and the coarse key alone 403'd them out of
+   * their own channel's settings page.
+   */
+  getIntegrationLabels: protectedProcedure
     .input(z.object({ integrationId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
+      await requireChannelManageAccess(
+        { db: ctx.db, organizationId, userId: ctx.session.userId },
+        input.integrationId
+      )
       const labels = await db
         .select()
         .from(schema.Label)
@@ -326,11 +337,30 @@ export const labelRouter = createTRPCRouter({
       return { labels }
     }),
 
-  // Toggle Label.enabled (channelsManage — changes sync scope)
-  toggleLabelEnabled: permissionProcedure(PermissionKey.channelsManage)
+  /**
+   * Toggle `Label.enabled` — changes what the channel syncs, so it is authorized
+   * on the CHANNEL the label belongs to (same carve-out as
+   * {@link getIntegrationLabels}). The label is resolved org-scoped first, so an
+   * id from another org is a 404 before any authorization decision is made.
+   */
+  toggleLabelEnabled: protectedProcedure
     .input(z.object({ labelId: z.string(), enabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
+      const [label] = await db
+        .select({ integrationId: schema.Label.integrationId })
+        .from(schema.Label)
+        .where(
+          and(eq(schema.Label.id, input.labelId), eq(schema.Label.organizationId, organizationId))
+        )
+        .limit(1)
+      if (!label?.integrationId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Label not found' })
+      }
+      await requireChannelManageAccess(
+        { db: ctx.db, organizationId, userId: ctx.session.userId },
+        label.integrationId
+      )
       const [updated] = await db
         .update(schema.Label)
         .set({ enabled: input.enabled, updatedAt: new Date() })
@@ -341,11 +371,16 @@ export const labelRouter = createTRPCRouter({
       return updated
     }),
 
-  // Discover folders from provider and upsert into Label table (channelsManage)
-  discoverFolders: permissionProcedure(PermissionKey.channelsManage)
+  // Discover folders from provider and upsert into Label table. Per-channel
+  // authority, same carve-out as `getIntegrationLabels`.
+  discoverFolders: protectedProcedure
     .input(z.object({ integrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
+      await requireChannelManageAccess(
+        { db: ctx.db, organizationId, userId: ctx.session.userId },
+        input.integrationId
+      )
 
       // Get integration to find provider type
       const [integration] = await db

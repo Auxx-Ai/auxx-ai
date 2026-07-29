@@ -2,6 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
@@ -18,10 +19,10 @@ import {
 } from '~/components/apps/hooks/use-connect-flow'
 import { platformScope, platformTarget } from '~/components/connections/ui/connection-targets'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { useAdminGate } from '~/components/global/admin-gate'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { TemplateGalleryDialog } from '~/components/templates/ui'
 import { BaseType } from '~/components/workflow/types'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { CHANNEL_CATALOG, CHANNEL_CATEGORIES, type ChannelCatalogItem } from '../catalog'
 import { getIntegrationProviderIcon } from './channel-icon'
@@ -56,7 +57,11 @@ export function ChannelGalleryDialog({
 }: ChannelGalleryDialogProps) {
   const router = useRouter()
   const utils = api.useUtils()
-  const { isAdminOrOwner } = useAdminGate()
+  // `channel.prepareConnect` requires `channels.manage` for a SHARED connect and
+  // is open to every member for a personal one, so gate the catalog on that same
+  // capability rather than the legacy ADMIN/OWNER role.
+  const { can } = useAccess()
+  const canConnectShared = can(PermissionKey.channelsManage)
 
   // Members can only connect personal email accounts — everything else in the
   // catalog is a shared (admin-only) channel.
@@ -64,12 +69,12 @@ export function ChannelGalleryDialog({
     () =>
       personalOnly
         ? CHANNEL_CATALOG.filter((item) => item.kind === 'oauth-email')
-        : isAdminOrOwner
+        : canConnectShared
           ? CHANNEL_CATALOG
           : CHANNEL_CATALOG.map((item) =>
               item.kind === 'oauth-email' ? item : { ...item, disabled: true }
             ),
-    [isAdminOrOwner, personalOnly]
+    [canConnectShared, personalOnly]
   )
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -81,7 +86,7 @@ export function ChannelGalleryDialog({
   // Shared detail state, reset on detail exit. Non-admins start on (and are
   // effectively limited to) the personal scope.
   const defaultScope: 'shared' | 'personal' =
-    personalOnly || !isAdminOrOwner ? 'personal' : 'shared'
+    personalOnly || !canConnectShared ? 'personal' : 'shared'
   const inbox = useInboxDestination(initialInboxId, { enabled: !personalOnly })
   const [scope, setScope] = useState<'shared' | 'personal'>(defaultScope)
   const [clientId, setClientId] = useState('')

@@ -48,8 +48,15 @@ beforeEach(() => {
 })
 
 describe('InboxChannelCard channel-management affordances', () => {
-  it('is read-only for an inbox Manager without channels.manage', () => {
-    render(<InboxChannelCard integration={integration} onRemove={vi.fn()} canManage={false} />)
+  it('is fully read-only when the viewer may neither open nor unroute', () => {
+    render(
+      <InboxChannelCard
+        integration={integration}
+        onRemove={vi.fn()}
+        canOpen={false}
+        canRemove={false}
+      />
+    )
 
     expect(listCard).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -61,7 +68,7 @@ describe('InboxChannelCard channel-management affordances', () => {
 
   it('keeps channel navigation and removal for a channel manager', () => {
     const onRemove = vi.fn()
-    render(<InboxChannelCard integration={integration} onRemove={onRemove} canManage />)
+    render(<InboxChannelCard integration={integration} onRemove={onRemove} canOpen canRemove />)
 
     const props = listCard.mock.calls[0]?.[0]
     expect(props.href).toBe('/app/settings/channels/channel_1')
@@ -69,5 +76,30 @@ describe('InboxChannelCard channel-management affordances', () => {
 
     props.menuItems[1].onClick()
     expect(onRemove).toHaveBeenCalledWith(integration)
+  })
+
+  // The personal-inbox owner case: `requireChannelManageAccess` lets them manage
+  // their own channel, but `inbox.removeIntegration` still wants `channels.manage`.
+  // Collapsing both into one flag left them with no link and no menu at all.
+  it('keeps the channel reachable when the viewer may open but not unroute', () => {
+    render(
+      <InboxChannelCard integration={integration} onRemove={vi.fn()} canOpen canRemove={false} />
+    )
+
+    const props = listCard.mock.calls[0]?.[0]
+    expect(props.href).toBe('/app/settings/channels/channel_1')
+    expect(props.menuItems).toHaveLength(1)
+    expect(props.menuItems[0].label).toBe('Open')
+  })
+
+  it('offers only removal when the viewer may unroute but not open', () => {
+    render(
+      <InboxChannelCard integration={integration} onRemove={vi.fn()} canOpen={false} canRemove />
+    )
+
+    const props = listCard.mock.calls[0]?.[0]
+    expect(props.href).toBeUndefined()
+    expect(props.menuItems).toHaveLength(1)
+    expect(props.menuItems[0].label).toBe('Remove from inbox')
   })
 })
