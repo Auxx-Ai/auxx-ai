@@ -5,6 +5,7 @@ export { useFocusedThreadShortcuts } from './use-focused-thread-shortcuts'
 export {
   type InboxItem,
   type InboxRecord,
+  toInboxAccessRecordId,
   useInbox,
   useInboxByInstanceId,
   useInboxes,

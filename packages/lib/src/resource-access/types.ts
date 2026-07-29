@@ -61,13 +61,6 @@ export interface CheckAccessInput {
   userId: string
 }
 
-/** Input for checking type-level access */
-export interface CheckTypeAccessInput {
-  /** Just the entityDefinitionId (no instance) */
-  entityDefinitionId: string
-  userId: string
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // RESULTS
 // ─────────────────────────────────────────────────────────────────────────────

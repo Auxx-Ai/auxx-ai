@@ -18,8 +18,6 @@ import {
   assertCanManageMailSharing,
   assertCanManageMailTypeAccess,
   assertMailSharingFeature,
-  checkAccess,
-  checkTypeAccess,
   getAllInstanceAccess,
   getAllTypeAccess,
   getInstanceAccess,
@@ -461,34 +459,6 @@ export const resourceAccessRouter = createTRPCRouter({
         metadata: { scope: 'type' },
       })
       return { success: true }
-    }),
-
-  /** Check current user's access to a specific entity instance */
-  check: protectedProcedure
-    .input(
-      z.object({
-        recordId: z.string(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      return checkAccess(toContext(ctx), {
-        recordId: input.recordId as RecordId,
-        userId: ctx.session.userId,
-      })
-    }),
-
-  /** Check current user's type-level access (access to ALL instances) */
-  checkType: protectedProcedure
-    .input(
-      z.object({
-        entityDefinitionId: z.string(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      return checkTypeAccess(toContext(ctx), {
-        entityDefinitionId: input.entityDefinitionId,
-        userId: ctx.session.userId,
-      })
     }),
 
   /**

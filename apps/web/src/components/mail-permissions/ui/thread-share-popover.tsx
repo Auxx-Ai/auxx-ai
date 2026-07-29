@@ -1,7 +1,6 @@
 // apps/web/src/components/mail-permissions/ui/thread-share-popover.tsx
 'use client'
 
-import { ResourcePermission } from '@auxx/database/enums'
 import { LENS_LABELS } from '@auxx/lib/permissions/visibility/client'
 import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
@@ -12,9 +11,9 @@ import { Info, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { useMailShare } from '~/components/mail-permissions/hooks/use-mail-share'
 import { useActor } from '~/components/resources/hooks'
-import { useInbox, useThread } from '~/components/threads/hooks'
+import { toInboxAccessRecordId, useInbox, useThread } from '~/components/threads/hooks'
 import { useUser } from '~/hooks/use-user'
-import { api } from '~/trpc/react'
+import { useAccess } from '~/providers/capabilities-provider'
 import { Tooltip } from '../../global/tooltip'
 import { AccessLevelsGuide } from './access-levels-guide'
 import { EnterpriseGate, useMailPermissionsGated } from './enterprise-gate'
@@ -53,17 +52,14 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
   const { thread } = useThread({ threadId })
   const { inbox } = useInbox(thread?.inboxId)
   const { isAdminOrOwner } = useUser()
+  const { canAdminInstance } = useAccess()
   const gated = useMailPermissionsGated()
 
   const recordId = toRecordId('thread', threadId)
   const { grants, unmanageableGrants, grant, changeLens, revoke } = useMailShare({ recordId })
 
   // Inbox Managers may share without being org admins (delegation).
-  const { data: inboxAccess } = api.resourceAccess.check.useQuery(
-    { recordId: thread?.inboxId ?? '' },
-    { enabled: !!thread?.inboxId && !isAdminOrOwner }
-  )
-  const canShare = isAdminOrOwner || inboxAccess?.permission === ResourcePermission.admin
+  const canShare = isAdminOrOwner || (!!inbox && canAdminInstance(toInboxAccessRecordId(inbox)))
 
   const { actor: assignee } = useActor({ actorId: thread?.assigneeId ?? undefined })
 

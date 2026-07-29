@@ -26,7 +26,6 @@ export {
 // Service functions
 export {
   checkAccess,
-  checkTypeAccess,
   emitResourceAccessInstanceChanged,
   getAllInstanceAccess,
   getAllTypeAccess,
@@ -45,7 +44,6 @@ export {
 export type {
   AccessCheckResult,
   CheckAccessInput,
-  CheckTypeAccessInput,
   GrantedVia,
   GrantInstanceAccessInput,
   GrantLens,

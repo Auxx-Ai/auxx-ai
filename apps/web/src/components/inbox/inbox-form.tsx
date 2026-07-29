@@ -39,12 +39,17 @@ import {
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
-import { invalidateInboxRecordLists, useInbox } from '~/components/threads/hooks/use-inbox'
+import {
+  type InboxItem,
+  invalidateInboxRecordLists,
+  toInboxAccessRecordId,
+  useInbox,
+} from '~/components/threads/hooks/use-inbox'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
-import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { InboxMembersPage } from './inbox-members-page'
 
@@ -91,6 +96,8 @@ export interface InboxFormProps {
   recordId?: RecordId | null
   /** Called after successful save */
   onSuccess?: (inbox: { id: string; name: string; recordId: RecordId }) => void
+  /** Called after a successful deletion. */
+  onDeleted?: () => void
   /** Dismiss after a successful save / unrecoverable state (dialog closes; palette
    *  closes). */
   onClose: () => void
@@ -107,10 +114,7 @@ export interface InboxFormProps {
    *  members page); the palette omits it (the breadcrumb supplies the title). */
   header?: (ctx: { title: string; page: 'main' | 'members'; onBack: () => void }) => ReactNode
   /** Scoped metadata supplied by the settings list to avoid loading every inbox. */
-  inboxSummary?: {
-    isPersonal: boolean
-    ownerUserId: string | null
-  }
+  inboxSummary?: Pick<InboxItem, 'id' | 'entityDefinitionKey' | 'isPersonal' | 'ownerUserId'>
   /** Whether the generic shared-inbox delete action is available. */
   canDelete?: boolean
 }
@@ -208,6 +212,7 @@ export function InboxForm({
   open,
   recordId,
   onSuccess,
+  onDeleted,
   onClose,
   onCancel,
   enableMembersPage = false,
@@ -226,7 +231,7 @@ export function InboxForm({
   // Extract inboxId from recordId for mutations
   const inboxId = recordId ? parseRecordId(recordId).entityInstanceId : null
 
-  const { isAdminOrOwner } = useUser()
+  const { canAdminInstance } = useAccess()
   const gated = useMailPermissionsGated()
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
@@ -239,6 +244,7 @@ export function InboxForm({
   const isPersonalInbox = inboxSummary?.isPersonal ?? !!inboxItem?.isPersonal
   const ownerUserId = inboxSummary?.ownerUserId ?? inboxItem?.ownerUserId
   const ownerActorId = ownerUserId ? toActorId('user', ownerUserId) : null
+  const accessInbox = inboxSummary ?? inboxItem
 
   // Fetch system field values for edit mode.
   //
@@ -259,14 +265,10 @@ export function InboxForm({
     { enabled: isEditing && !!recordId }
   )
 
-  // Managers (inbox `admin` grantees) may manage access without being org
-  // admins (delegation). Everyone else sees the form without the Access section.
-  const { data: myAccess } = api.resourceAccess.check.useQuery(
-    { recordId: recordId ?? '' },
-    { enabled: isEditing && !!recordId && !isAdminOrOwner }
-  )
+  // Managers may manage access without an org-role shortcut. This is especially
+  // important for personal inboxes, where rank alone never opens the mailbox.
   const canManageAccess =
-    !isEditing || isAdminOrOwner || myAccess?.permission === ResourcePermission.admin
+    !isEditing || (!!accessInbox && canAdminInstance(toInboxAccessRecordId(accessInbox)))
 
   // Save system values with optimistic updates
   const { save: saveSystemValues, isPending: isSavingValues } = useSaveSystemValues(recordId)
@@ -433,6 +435,7 @@ export function InboxForm({
     onSuccess: () => {
       invalidateInboxes()
       onClose()
+      onDeleted?.()
     },
     onError: (error) => {
       toastError({ title: 'Error deleting inbox', description: error.message })

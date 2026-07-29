@@ -38,7 +38,7 @@ import { ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
  *   2. `entity-access.ts#effectiveRecordLevel` returned `admin` for ADMIN.
  *   3. `capability-set.ts#effectiveInstanceLevel` + its client mirror
  *      `entity-access.ts#effectiveInstanceLevel` returned `admin` for ADMIN.
- *   4. `resource-access-service.ts#checkAccess`/`#checkTypeAccess` returned
+ *   4. `resource-access-service.ts#checkAccess` returned
  *      `admin` for ADMIN, on a completely independent code path.
  *
  * All four are now OWNER-only, so ADMIN capability flows from

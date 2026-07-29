@@ -1,7 +1,6 @@
 // apps/web/src/components/inbox/inbox-detail.tsx
 'use client'
 
-import { ResourcePermission } from '@auxx/database/enums'
 import type { InboxIntegration } from '@auxx/lib/inboxes'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
@@ -19,7 +18,7 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { Channel } from '../channels/store/channel-store'
 import { toRecordId } from '../resources'
-import { useInboxByInstanceId } from '../threads/hooks'
+import { toInboxAccessRecordId, useInboxByInstanceId } from '../threads/hooks'
 import { InboxDialog } from './inbox-dialog'
 import { ConnectExistingChannelDialog } from './ui/connect-existing-channel-dialog'
 import { InboxChannelCard } from './ui/inbox-channel-card'
@@ -32,7 +31,7 @@ const GRID_CLASS = 'grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'
 export function InboxDetail({ inboxId }: { inboxId: string }) {
   const router = useRouter()
   const utils = api.useUtils()
-  const { can } = useAccess()
+  const { can, canAdminInstance, isLoading: isLoadingCapabilities } = useAccess()
   const [confirm, ConfirmDialog] = useConfirm()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
@@ -46,16 +45,12 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   const { data: integrations, isLoading: isLoadingIntegrations } =
     api.inbox.getIntegrations.useQuery({ inboxId }, { enabled: !!inbox })
 
-  // The instance check is the source of truth for settings/access authority:
-  // it admits delegated Managers and does not treat org rank as a bypass.
-  const { data: myAccess, isLoading: isLoadingAccess } = api.resourceAccess.check.useQuery(
-    { recordId: inbox?.recordId ?? '' },
-    { enabled: !!inbox }
-  )
-  const canManageInbox = myAccess?.permission === ResourcePermission.admin
+  // The dehydrated instance snapshot is the source of truth for settings
+  // authority. Use the stable access key, not the record layer's def UUID.
+  const canManageInbox = inbox ? canAdminInstance(toInboxAccessRecordId(inbox)) : false
   const canManageChannels = canManageInbox && can(PermissionKey.channelsManage)
 
-  const isLoading = isLoadingInbox || isLoadingIntegrations || isLoadingAccess
+  const isLoading = isLoadingInbox || isLoadingIntegrations || isLoadingCapabilities
 
   const removeIntegration = api.inbox.removeIntegration.useMutation({
     onSuccess: () => {
@@ -231,6 +226,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
           inboxSummary={inbox}
           canDelete={canManageChannels && !inbox.isPersonal}
           onSuccess={() => utils.inbox.getIntegrations.invalidate({ inboxId })}
+          onDeleted={() => router.replace('/app/settings/inbox')}
         />
       )}
 
