@@ -14,6 +14,7 @@ import { google } from 'googleapis'
 import { onCacheEvent } from '../cache'
 import type { PostConnectHook, PostConnectHookContext } from '../connections/post-connect-hooks'
 import { resolveConnectionForRuntime } from '../connections/resolve-connection-for-runtime'
+import { ConflictError } from '../errors'
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { GoogleOAuthService } from '../providers/google/google-oauth'
@@ -98,6 +99,80 @@ function mergeMetadata(existing: unknown, patch: Record<string, unknown>): Recor
       ? (existing as Record<string, unknown>)
       : {}
   return { ...base, ...patch }
+}
+
+/**
+ * Reject a scope-mismatched connect BEFORE `upsertIntegration` writes anything.
+ *
+ * `upsertIntegration` relinks the live Integration row for `(org, provider, email)` onto the
+ * incoming credential and clears its sync breaker. Discovering the conflict only afterwards — via
+ * `provisionPersonalInbox` throwing on a mailbox that is already a shared channel — fails the
+ * connect for the user but leaves the org's channel running on the connector's PERSONAL token,
+ * which `disconnectPersonalChannelsForUser` (it matches on `Credential.userId`) would then
+ * soft-delete when that member is offboarded. Any member allowed to personal-connect could take
+ * over a shared channel's credential just by picking its address and dismissing the error. So the
+ * destination is validated first, against whatever inbox the mailbox is already linked to.
+ *
+ * Fail closed in both directions: the only personal connect that may proceed against a live row is
+ * a reconnect of the connector's OWN personal mailbox, and a shared connect may not re-credential a
+ * mailbox someone holds as a personal account.
+ */
+async function assertConnectScope(args: {
+  organizationId: string
+  provider: 'google' | 'outlook'
+  email: string
+  personal: boolean
+  userId: string
+}): Promise<void> {
+  const { organizationId, provider, email, personal, userId } = args
+
+  // Live rows only, matching `upsertIntegration`'s lookup — a soft-deleted row is a
+  // disconnected channel and conflicts with nothing.
+  const [existing] = await db
+    .select({ id: schema.Integration.id })
+    .from(schema.Integration)
+    .where(
+      and(
+        eq(schema.Integration.organizationId, organizationId),
+        eq(schema.Integration.provider, provider),
+        eq(schema.Integration.email, email),
+        isNull(schema.Integration.deletedAt)
+      )
+    )
+    .limit(1)
+  if (!existing) return
+
+  const link = await db.query.InboxIntegration.findFirst({
+    where: eq(schema.InboxIntegration.integrationId, existing.id),
+  })
+  // `isPersonal` is def-derived (plan 40 §3.4) — `getInboxById` resolves the instance's
+  // actual definition, so this reads the same authority the mail read path does.
+  const inbox = link ? await new InboxService(db, organizationId).getInboxById(link.inboxId) : null
+
+  if (personal) {
+    if (inbox?.isPersonal && inbox.ownerUserId === userId) return
+    if (inbox?.isPersonal) {
+      throw new ConflictError(
+        "This mailbox is connected as another member's personal account. They must disconnect it first."
+      )
+    }
+    if (!inbox) {
+      // A live row with no inbox link: nothing proves its mail was never org-visible, so it
+      // cannot be claimed into a private inbox.
+      throw new ConflictError(
+        'This mailbox is already connected to this organization. Disconnect it first to connect it as a personal account.'
+      )
+    }
+    throw new ConflictError(
+      'This mailbox is already connected as a shared channel. Disconnect it first to connect it as a personal account.'
+    )
+  }
+
+  if (inbox?.isPersonal) {
+    throw new ConflictError(
+      'This mailbox is connected as a personal account. Its owner must disconnect it first.'
+    )
+  }
 }
 
 /**
@@ -291,6 +366,16 @@ export const channelProvisioningHook: PostConnectHook = {
 
     const metadataPatch: Record<string, unknown> = { email: identity.email }
     if (identity.emailAliases?.length) metadataPatch.emailAliases = identity.emailAliases
+
+    // Scope check BEFORE the first write — see `assertConnectScope`. The destination guards in
+    // `provisionPersonalInbox` / `assertSharedConnectInbox` stay as defense in depth.
+    await assertConnectScope({
+      organizationId: ctx.organizationId,
+      provider,
+      email: identity.email,
+      personal: !!ctx.personal,
+      userId: ctx.userId,
+    })
 
     const integration = await upsertIntegration({
       organizationId: ctx.organizationId,

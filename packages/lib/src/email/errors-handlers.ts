@@ -1,9 +1,23 @@
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import { AuxxError } from '../errors'
 
 const logger = createScopedLogger('auth-errors')
 
-export class ReauthenticationRequiredError extends Error {
+/**
+ * A provider's stored credentials are no longer usable and the user has to
+ * reconnect the channel.
+ *
+ * Extends {@link AuxxError} with a 401 so `apps/web`'s `auxxErrorMiddleware` maps
+ * it automatically. As a plain `Error` it fell through as a generic 500 unless a
+ * router caught it by hand — which exactly one of nine label catch blocks did, so
+ * an expired token surfaced as "Failed to sync labels" everywhere else. Being an
+ * `AuxxError` also means the lib `guard()` wrappers pass it through untouched
+ * instead of flattening it into an internal error.
+ */
+export class ReauthenticationRequiredError extends AuxxError {
+  public statusCode = 401
+
   constructor(
     message = 'User re-authentication required',
     public provider = 'unknown'

@@ -388,6 +388,12 @@
       "import": "./dist/email/index.mjs",
       "default": "./src/email/index.ts"
     },
+    "./email/labels": {
+      "types": "./src/email/labels/index.ts",
+      "source": "./src/email/labels/index.ts",
+      "import": "./dist/email/labels/index.mjs",
+      "default": "./src/email/labels/index.ts"
+    },
     "./email/polling-import-cache": {
       "types": "./src/email/polling-import-cache.ts",
       "source": "./src/email/polling-import-cache.ts",

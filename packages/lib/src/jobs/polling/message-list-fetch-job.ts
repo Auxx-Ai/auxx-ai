@@ -4,7 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
-import { FolderDiscoveryService } from '../../email/labels/folder-discovery-service'
+import { discoverAndUpsertFolders } from '../../email/labels/folder-discovery'
 import {
   addToImportCache,
   getImportCacheSize,
@@ -68,13 +68,24 @@ export const messageListFetchJob = async (ctx: JobContext<MessageListFetchJobDat
       // --- Label sync (skip on windowed scan continuations — folders already discovered) ---
       if (!job.data.isWindowedScanContinuation && providerInstance.discoverLabels) {
         const discoveredLabels = await providerInstance.discoverLabels()
-        const folderDiscovery = new FolderDiscoveryService()
-        await folderDiscovery.discoverAndUpsert({
+        const discovery = await discoverAndUpsertFolders(db, organizationId, {
           integrationId,
-          organizationId,
           provider,
           discoveredFolders: discoveredLabels,
         })
+
+        // Log and continue rather than abort the sync: folder discovery is a
+        // refinement of an existing label set, so a failure here means we import
+        // against yesterday's folders — strictly better than failing the run and
+        // importing nothing.
+        if (discovery.isErr()) {
+          logger.error('Folder discovery failed, continuing with existing labels', {
+            integrationId,
+            organizationId,
+            provider,
+            error: discovery.error.message,
+          })
+        }
       }
 
       // --- IMAP windowed full sync ---
