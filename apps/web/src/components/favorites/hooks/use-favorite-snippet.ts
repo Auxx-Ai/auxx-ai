@@ -12,5 +12,8 @@ export function useFavoriteSnippet(snippetId: string | null | undefined) {
   )
   const code = error?.data?.code
   const isNotFound = code === 'NOT_FOUND' || code === 'FORBIDDEN' || (!isLoading && !data)
-  return { snippet: data, isLoading, isNotFound }
+  // `snippet.byId` returns `{ snippet, canEdit }` — unwrap it. Handing the
+  // envelope back as `snippet` made every field read (`.title`, `.id`) resolve
+  // to `undefined` at runtime and red at typecheck.
+  return { snippet: data?.snippet, isLoading, isNotFound }
 }

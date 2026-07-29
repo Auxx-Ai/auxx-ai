@@ -1,7 +1,7 @@
 // packages/lib/src/snippets/system-snippets.ts
 
 import { type Database, schema } from '@auxx/database'
-import { SnippetSharingType, type SnippetSystemType } from '@auxx/database/enums'
+import type { SnippetSystemType } from '@auxx/database/enums'
 import { and, eq, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { NotFoundError } from '../errors'
@@ -190,7 +190,6 @@ export async function getSystemSnippet(
       content: template.content,
       contentHtml: template.contentHtml,
       systemType: template.systemType,
-      sharingType: SnippetSharingType.PRIVATE,
       organizationId,
       createdById: systemUserId,
       updatedAt: new Date(),

@@ -66,7 +66,6 @@ import {
   RecordSequence,
   RecurrenceRule,
   SearchHistory,
-  SignatureIntegrationShare,
   Snippet,
   SnippetFolder,
   SyncJob,

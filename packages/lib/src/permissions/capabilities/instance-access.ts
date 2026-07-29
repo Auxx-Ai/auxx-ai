@@ -62,6 +62,21 @@ export const INSTANCE_ACCESS_RESOURCES = {
   // `invokerUserId` by design, so a restricted agent still runs headlessly —
   // the same carve-out `workflow` documents above.
   agent: { baselineAtCreate: false, area: Area.agents },
+  // private by default (owner `admin` row at create); absent instance row → NO
+  // access (plan 36 §0.2). Deliberately DASHBOARDS' posture, not
+  // workflows'/agents': a signature is a personal sign-off and a snippet starts
+  // as personal scratch content, so SHARING is the opt-in, not restriction.
+  //
+  // Instance access gates USER-INITIATED work only. A sequence, workflow, or
+  // automated send that stamps a signature runs as the system and reads no
+  // member capabilities — the same carve-out `workflow` and `agent` document
+  // above. A signature nobody can see still lands on the outgoing mail.
+  //
+  // WORKER SEATS get neither, by decision (plan 36 §0.5) — see the
+  // `WORKER_AREAS` note in `seat-policy.ts` for why that bites even on an
+  // instance the field tech owns.
+  signature: { baselineAtCreate: true, area: Area.signatures },
+  snippet: { baselineAtCreate: true, area: Area.snippets },
 } as const satisfies Record<string, InstanceAccessResourceConfig>
 
 /** The set of resource keys backed by instance-level access. */

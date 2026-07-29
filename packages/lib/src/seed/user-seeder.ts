@@ -142,20 +142,24 @@ export class UserSeeder {
       const handler = new UnifiedCrudHandler(this.organizationId, this.user.id, this.db)
 
       const displayName = this.user.name || this.user.email || 'User'
+      // `signature_is_default` / `signature_visibility` were removed from
+      // `SIGNATURE_FIELDS` by plan 36 — visibility is `ResourceAccess` rows now,
+      // and "default" is a per-user `UserSetting`.
       const result = await handler.create('signature', {
         signature_name: `${displayName} - Default`,
         signature_body: `<p>Best regards,<br>${displayName}</p>`,
-        signature_is_default: true,
-        signature_visibility: 'private',
       })
+      const signatureId = result.instance.id
+
+      await this.grantSignatureOwnership(signatureId)
 
       logger.info('Created default signature', {
         userId: this.user.id,
         organizationId: this.organizationId,
-        signatureId: result.id,
+        signatureId,
       })
 
-      return { created: true, signatureId: result.id }
+      return { created: true, signatureId }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       logger.error('Failed to create default signature', {
@@ -165,6 +169,47 @@ export class UserSeeder {
       })
       return { created: false, signatureId: null, error: `Signature creation failed: ${errorMsg}` }
     }
+  }
+  /**
+   * Write the owner `admin` `ResourceAccess` row for a freshly seeded signature.
+   *
+   * NOT optional bookkeeping. Plan 36 made `signature` an
+   * `INSTANCE_ACCESS_RESOURCES` entry with `baselineAtCreate: true`, so an
+   * instance with NO `ResourceAccess` row is reachable by nobody but the org
+   * OWNER — this seeder would otherwise hand every newly provisioned member a
+   * default signature they cannot see, edit or delete. Migration 056 backfilled
+   * the rows that existed when the slice landed; every signature born after it
+   * has to write its own.
+   *
+   * This is the exact row `api.signature.create` writes, including the
+   * `emitResourceAccessInstanceChanged` invalidation — without that the user's
+   * composed capabilities blob still predates the row and their own signature
+   * stays invisible until the TTL expires.
+   *
+   * Deliberately no `role:org_member` row: private is the posture (plan 36
+   * §0.2); sharing goes through `resourceAccess.grantInstance`.
+   */
+  private async grantSignatureOwnership(signatureId: string): Promise<void> {
+    const { schema } = await import('@auxx/database')
+    const { ResourceGranteeType, ResourcePermission } = await import('@auxx/database/enums')
+    const { emitResourceAccessInstanceChanged } = await import('../resource-access')
+
+    await this.db
+      .insert(schema.ResourceAccess)
+      .values({
+        organizationId: this.organizationId,
+        entityDefinitionId: 'signature',
+        entityInstanceId: signatureId,
+        granteeType: ResourceGranteeType.user,
+        granteeId: this.user.id,
+        permission: ResourcePermission.admin,
+        grantedById: this.user.id,
+      })
+      .onConflictDoNothing()
+
+    await emitResourceAccessInstanceChanged(this.organizationId, [
+      { granteeType: ResourceGranteeType.user, granteeId: this.user.id },
+    ])
   }
   // Future methods can be added here:
   /**

@@ -2192,6 +2192,20 @@
       "when": 1785176248297,
       "tag": "0312_permission_profile_role",
       "breakpoints": true
+    },
+    {
+      "idx": 313,
+      "version": "7",
+      "when": 1785281370641,
+      "tag": "0313_drop_snippet_sharing_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1785282437612,
+      "tag": "0314_drop_signature_sharing_type",
+      "breakpoints": true
     }
   ]
 }

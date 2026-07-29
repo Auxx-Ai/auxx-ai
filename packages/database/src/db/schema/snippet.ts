@@ -8,7 +8,6 @@ import {
   index,
   integer,
   pgTable,
-  snippetSharingType,
   sql,
   text,
   timestamp,
@@ -40,7 +39,11 @@ export const Snippet = pgTable(
     createdById: text()
       .notNull()
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
-    sharingType: snippetSharingType().default('PRIVATE').notNull(),
+    // `sharingType` dropped (plan 36 §7.2) — `snippet` is an
+    // `INSTANCE_ACCESS_RESOURCES` key now, so who-can-see-this is `ResourceAccess`
+    // rows and nothing else (§0.3). The legacy column's `GROUPS` value already
+    // meant "check ResourceAccess"; the other two are converted by the inline
+    // backfill in this column's own drop migration plus DataMigration 056.
     isFavorite: boolean().default(false).notNull(),
     usageCount: integer().default(0).notNull(),
     /** System-seeded snippet marker (e.g. 'quote_email' | 'invoice_email' —
@@ -52,7 +55,6 @@ export const Snippet = pgTable(
     index('Snippet_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
     index('Snippet_folderId_idx').using('btree', table.folderId.asc().nullsLast()),
     index('Snippet_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
-    index('Snippet_sharingType_idx').using('btree', table.sharingType.asc().nullsLast()),
     index('Snippet_systemType_idx').using('btree', table.systemType.asc().nullsLast()),
     // One system snippet per (systemType, organizationId) — partial + NULL-safe so
     // regular user snippets (systemType NULL) are unconstrained. Mirrors

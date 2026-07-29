@@ -1,35 +1,51 @@
-// server/api/routers/snippets.ts
+// apps/web/src/server/api/routers/snippet.ts
 
-import { ResourceGranteeType, SnippetSharingType } from '@auxx/database/enums'
+import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import {
   createSnippet,
   createSnippetFolder,
   deleteSnippet,
   deleteSnippetFolderWithCascade,
-  getSnippetWithAccess,
+  getSnippetWithShares,
   incrementSnippetUsage,
   listSnippetFoldersWithCounts,
   listSnippetsForUser,
-  SNIPPET_SHARE_GRANTEE_TYPES,
-  setSnippetSharing,
   updateSnippet,
   updateSnippetFolder,
 } from '@auxx/lib/snippets'
 import { z } from 'zod'
-import { assertProfileGranteesAuthorable } from '../grantee-schema'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { assertSnippetAccess, snippetListScope } from '~/server/lib/snippet-instance-access'
+import { capabilityProcedure, createTRPCRouter } from '../trpc'
 
 /**
- * TRPC router for snippets management operations.
+ * TRPC router for snippets.
  *
- * Thin glue: validate input (zod) → call a `@auxx/lib/snippets` helper → return.
- * All business logic, queries, and transactions live in `@auxx/lib/snippets`.
- * Helpers return neverthrow `Result<T, AuxxError>`; thrown `AuxxError`s are
- * mapped to the right tRPC code by `auxxErrorMiddleware`.
+ * Thin glue: validate input (zod) → assert access → call a `@auxx/lib/snippets`
+ * helper → return. All business logic, queries, and transactions live in
+ * `@auxx/lib/snippets`; helpers return neverthrow `Result<T, AuxxError>` and
+ * thrown `AuxxError`s are mapped to the right tRPC code by `auxxErrorMiddleware`.
+ *
+ * **Access authority is `~/server/lib/snippet-instance-access.ts`** (plan 36 §6).
+ * Every procedure below used to be a bare `protectedProcedure` reading zero
+ * capabilities; snippets are now an `INSTANCE_ACCESS_RESOURCES` entry with
+ * `baselineAtCreate: true`, so:
+ *  - id-bearing procedures assert per instance (`view` / `edit` / `admin`);
+ *  - `all` / `getFolders` FILTER rather than 403, on a scope computed before the
+ *    query (the five `*.list` precedents — a server-warmed page call must not
+ *    403);
+ *  - `create` and the folder mutations have no instance to key on, so they gate
+ *    on the area's Full rung, `PermissionKey.snippetsManage`.
+ *
+ * **Sharing is deliberately absent.** The old `share` procedure +
+ * `setSnippetSharing` are gone; snippets share through
+ * `resourceAccess.grantInstance` like every other shareable resource, which
+ * authorizes on `assertAdminInstance('snippet', id)` and carries the share
+ * notification/audit behavior a bespoke writer would have to re-implement.
  */
 export const snippetsRouter = createTRPCRouter({
-  // Get all snippets for the organization
-  all: protectedProcedure
+  // Read — every snippet the caller may view. No coarse assert: the scope is the
+  // gate, and it is applied in SQL before the rows are read.
+  all: capabilityProcedure
     .input(
       z.object({
         folderId: z.string().optional(),
@@ -39,21 +55,36 @@ export const snippetsRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const result = await listSnippetsForUser(ctx.db, organizationId, userId, input)
+      const result = await listSnippetsForUser(
+        ctx.db,
+        organizationId,
+        userId,
+        snippetListScope(ctx.capabilities),
+        input
+      )
       if (result.isErr()) throw result.error
       return { snippets: result.value }
     }),
 
-  // Get a snippet by ID
-  byId: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const { organizationId, userId } = ctx.session
-    const result = await getSnippetWithAccess(ctx.db, organizationId, userId, input.id)
+  // Read — one snippet plus its grants. `canEdit` drives the client's read-only
+  // affordances and is the SAME predicate `update` asserts on.
+  byId: capabilityProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+    assertSnippetAccess(ctx.capabilities, input.id, 'view')
+    const result = await getSnippetWithShares(
+      ctx.db,
+      ctx.session.organizationId,
+      ctx.session.userId,
+      input.id
+    )
     if (result.isErr()) throw result.error
-    return result.value
+    return {
+      ...result.value,
+      canEdit: ctx.capabilities.canEditInstance('snippet', input.id),
+    }
   }),
 
-  // Create a new snippet
-  create: protectedProcedure
+  // Full — creating a snippet (no instance exists yet to key on).
+  create: capabilityProcedure
     .input(
       z.object({
         title: z.string().min(1, 'Title is required'),
@@ -61,18 +92,19 @@ export const snippetsRouter = createTRPCRouter({
         contentHtml: z.string().optional(),
         description: z.string().optional(),
         folderId: z.string().optional().nullable(),
-        sharingType: z.enum(SnippetSharingType).default(SnippetSharingType.PRIVATE),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assert(PermissionKey.snippetsManage)
       const { organizationId, userId } = ctx.session
       const result = await createSnippet(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return { success: true, snippet: result.value }
     }),
 
-  // Update an existing snippet
-  update: protectedProcedure
+  // Edit — the whole patch is snippet CONTENT (title/body/description/folder/
+  // favorite). Sharing is not reachable from here any more.
+  update: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -81,89 +113,57 @@ export const snippetsRouter = createTRPCRouter({
         contentHtml: z.string().optional(),
         description: z.string().optional(),
         folderId: z.string().nullable().optional(),
-        sharingType: z.enum(SnippetSharingType).optional(),
         isFavorite: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
       const { id, ...updates } = input
-      const result = await updateSnippet(ctx.db, organizationId, userId, id, updates)
+      assertSnippetAccess(ctx.capabilities, id, 'edit')
+      const result = await updateSnippet(ctx.db, ctx.session.organizationId, id, updates)
       if (result.isErr()) throw result.error
       return { success: true, snippet: result.value }
     }),
 
-  // Delete a snippet (soft delete)
-  delete: protectedProcedure
+  // Full — destroying the snippet. No admin override (plan 36 decision 0.6):
+  // only its owner, an explicit `admin` grantee, or the org OWNER.
+  delete: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const result = await deleteSnippet(ctx.db, organizationId, userId, input.id)
+      assertSnippetAccess(ctx.capabilities, input.id, 'admin')
+      const result = await deleteSnippet(ctx.db, ctx.session.organizationId, input.id)
       if (result.isErr()) throw result.error
       return { success: true }
     }),
 
-  // Share a snippet with groups or members via ResourceAccess
-  share: protectedProcedure
-    .input(
-      z.object({
-        snippetId: z.string(),
-        sharingType: z.enum(SnippetSharingType),
-        // For GROUPS sharing — the kinds the lib helper can actually store, which
-        // is the same list its per-type replace loop iterates (doc 19 §8.2 / 19a
-        // site 18). Derived from `SNIPPET_SHARE_GRANTEE_TYPES` so the schema can
-        // never drift from the writer again.
-        shares: z
-          .array(
-            z.object({
-              granteeType: z.enum(SNIPPET_SHARE_GRANTEE_TYPES),
-              granteeId: z.string(),
-              permission: z.enum(['VIEW', 'EDIT']).default('VIEW'),
-            })
-          )
-          .optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      await assertProfileGranteesAuthorable(
-        organizationId,
-        ResourceGranteeType.profile,
-        (input.shares ?? [])
-          .filter((s) => s.granteeType === ResourceGranteeType.profile)
-          .map((s) => s.granteeId)
-      )
-      const result = await setSnippetSharing(
-        ctx.db,
-        organizationId,
-        userId,
-        input.snippetId,
-        input.sharingType,
-        input.shares
-      )
-      if (result.isErr()) throw result.error
-      return { success: true }
-    }),
-
-  // Increment usage count
-  incrementUsage: protectedProcedure
+  // Read — usage tracking follows insertion, so it is gated like a read.
+  // Best-effort: never fail the caller on a usage-tracking error, but DO fail
+  // them on the access check (a 403 here is a real answer, not a tracking blip).
+  incrementUsage: capabilityProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      // Best-effort: never fail the caller on usage-tracking errors
-      const result = await incrementSnippetUsage(ctx.db, organizationId, input.id)
+      assertSnippetAccess(ctx.capabilities, input.id, 'view')
+      const result = await incrementSnippetUsage(ctx.db, ctx.session.organizationId, input.id)
       return { success: result.isOk() }
     }),
 
-  // Get all snippet folders
-  getFolders: protectedProcedure.query(async ({ ctx }) => {
-    const result = await listSnippetFoldersWithCounts(ctx.db, ctx.session.organizationId)
+  // Read — folders are flat LABELS with no per-folder grants (decision 0.4), so
+  // the rows are unfiltered; the per-folder COUNTS are scoped to the snippets the
+  // caller may view, or they leak the volume of other members' private snippets.
+  getFolders: capabilityProcedure.query(async ({ ctx }) => {
+    const result = await listSnippetFoldersWithCounts(
+      ctx.db,
+      ctx.session.organizationId,
+      snippetListScope(ctx.capabilities)
+    )
     if (result.isErr()) throw result.error
     return { folders: result.value }
   }),
 
-  // Create a new folder
-  createFolder: protectedProcedure
+  // Full — folder mutations are org-wide by construction (a folder is shared by
+  // everyone who files a snippet in it) and there is no per-folder grant to key
+  // on. Before plan 36 these were bare `protectedProcedure`s: ANY member could
+  // rename or cascade-delete any folder in the org.
+  createFolder: capabilityProcedure
     .input(
       z.object({
         name: z.string().min(1, 'Folder name is required'),
@@ -172,14 +172,14 @@ export const snippetsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assert(PermissionKey.snippetsManage)
       const { organizationId, userId } = ctx.session
       const result = await createSnippetFolder(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return { success: true, folder: result.value }
     }),
 
-  // Update a folder
-  updateFolder: protectedProcedure
+  updateFolder: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -189,14 +189,14 @@ export const snippetsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assert(PermissionKey.snippetsManage)
       const { id, ...updates } = input
       const result = await updateSnippetFolder(ctx.db, ctx.session.organizationId, id, updates)
       if (result.isErr()) throw result.error
       return { success: true, folder: result.value }
     }),
 
-  // Delete a folder
-  deleteFolder: protectedProcedure
+  deleteFolder: capabilityProcedure
     .input(
       z.object({
         id: z.string(),
@@ -204,6 +204,7 @@ export const snippetsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assert(PermissionKey.snippetsManage)
       const result = await deleteSnippetFolderWithCascade(
         ctx.db,
         ctx.session.organizationId,

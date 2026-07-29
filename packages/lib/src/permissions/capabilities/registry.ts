@@ -74,6 +74,16 @@ export enum PermissionKey {
 
   // channels (mail + channel infrastructure — created 2026-07-27, plan 21 §6 Option A)
   channelsManage = 'channels.manage',
+
+  // signatures (instance-access resource — per-signature ResourceAccess grants, plan 36 §2.1)
+  signaturesView = 'signatures.view',
+  signaturesEdit = 'signatures.edit',
+  signaturesManage = 'signatures.manage',
+
+  // snippets (instance-access resource — per-snippet ResourceAccess grants, plan 36 §2.1)
+  snippetsView = 'snippets.view',
+  snippetsEdit = 'snippets.edit',
+  snippetsManage = 'snippets.manage',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -377,6 +387,46 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
       'Administer mail domains, inboxes, labels, suppression, chat duty, and recordings.',
     group: 'Channels',
   },
+
+  // ── Signatures ──
+  {
+    key: PermissionKey.signaturesView,
+    label: 'Use Signatures',
+    description: 'See and insert the email signatures shared with you.',
+    group: 'Channels',
+  },
+  {
+    key: PermissionKey.signaturesEdit,
+    label: 'Edit Signatures',
+    description: 'Edit the name and content of signatures shared with you.',
+    group: 'Channels',
+  },
+  {
+    key: PermissionKey.signaturesManage,
+    label: 'Manage Signatures',
+    description: 'Create, delete, and share email signatures.',
+    group: 'Channels',
+  },
+
+  // ── Snippets ──
+  {
+    key: PermissionKey.snippetsView,
+    label: 'Use Snippets',
+    description: 'See and insert the reply snippets shared with you.',
+    group: 'Channels',
+  },
+  {
+    key: PermissionKey.snippetsEdit,
+    label: 'Edit Snippets',
+    description: 'Edit the title and content of snippets shared with you.',
+    group: 'Channels',
+  },
+  {
+    key: PermissionKey.snippetsManage,
+    label: 'Manage Snippets',
+    description: 'Create, delete, and share reply snippets, and manage snippet folders.',
+    group: 'Channels',
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -436,6 +486,15 @@ export enum Area {
   // order (plan 21 §6), so this keeps the new Channels group beside the
   // other integration/mail-adjacent rows instead of trailing at the end.
   channels = 'channels',
+  // signatures + snippets share the `Channels` GROUP with `channels` above
+  // (plan 36 §0.1). `areaGroups()` walks AREA_ORDER — i.e. this declaration
+  // order — so a group's position comes from its FIRST member and each area's
+  // position within the group comes from where it sits here. Declared next to
+  // `channels` they render as the second and third rows under the existing
+  // Channels heading; declared at the end of the enum they would still land
+  // under that heading, but only after every unrelated area had been walked.
+  signatures = 'signatures',
+  snippets = 'snippets',
   aiConfig = 'aiConfig',
   automationRules = 'automationRules',
   auditLog = 'auditLog',
@@ -754,6 +813,56 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // `None` (`ROLE_DEFAULTS.USER` is the all-`None` floor, plan 22 — omitted
     // from `MEMBER_BASELINE_LEVELS` in seat-policy.ts) — the migrated sites
     // were admin-only, so admins keep access via `ROLE_DEFAULTS.ADMIN`.
+  },
+  [Area.signatures]: {
+    area: Area.signatures,
+    label: 'Signatures',
+    description: 'Use, create, and share email signatures.',
+    group: 'Channels',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.signaturesView] },
+      { level: Level.Edit, keys: [PermissionKey.signaturesEdit] },
+      { level: Level.Full, keys: [PermissionKey.signaturesManage] },
+    ],
+    // Created 2026-07-28 (plan 36 §2.1). Signatures are an
+    // `INSTANCE_ACCESS_RESOURCES` entry with `baselineAtCreate: true`.
+    //
+    // BE HONEST ABOUT WHAT THE LOWER RUNGS DO. For a `baselineAtCreate: true`
+    // resource the AREA level never reaches instance access:
+    // `effectiveInstanceLevel` returns the explicit row, and
+    // `instanceFallbackLevel` returns `undefined` for these resources by
+    // construction — no-row means NO access, whatever this ladder says.
+    // Dashboards is the precedent and shows the consequence: `dashboardsView`
+    // and `dashboardsEdit` are asserted NOWHERE on the server; only
+    // `dashboardsManage` is, and only where there is no instance to assert on.
+    //   Read  = tier vocabulary + client gating (RUNG_LABELS, levelToPermission,
+    //           read-only affordances). NOT a server assert.
+    //   Edit  = the same — the per-instance `assertEditInstance` is the real gate.
+    //   Full  = the ONE rung fronting a real instance-LESS action: CREATE.
+    // Three rungs ship for ladder parity with the other shareable resources.
+    // Do NOT invent server asserts for Read/Edit that have nothing to guard —
+    // that is the mistake the dashboards slice had to unpick.
+    //
+    // MEMBER DEFAULT is `Full` (`MEMBER_BASELINE_LEVELS`): every member creates
+    // and owns their own signatures. Restriction happens per-instance, not here.
+  },
+  [Area.snippets]: {
+    area: Area.snippets,
+    label: 'Snippets',
+    description: 'Use, create, and share reply snippets.',
+    group: 'Channels',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.snippetsView] },
+      { level: Level.Edit, keys: [PermissionKey.snippetsEdit] },
+      { level: Level.Full, keys: [PermissionKey.snippetsManage] },
+    ],
+    // Created 2026-07-28 (plan 36 §2.1). Same shape and the same honesty note
+    // as `Area.signatures` directly above: `baselineAtCreate: true` means the
+    // area level never supplies an absent-row fallback, so Read/Edit are tier
+    // vocabulary + client gating rather than server asserts. `Full` is the only
+    // rung fronting instance-less actions — creating a snippet, and (plan 36
+    // §0.4 / §6.3) creating, renaming, and deleting snippet FOLDERS, which stay
+    // flat labels with no grants of their own.
   },
   [Area.aiConfig]: {
     area: Area.aiConfig,

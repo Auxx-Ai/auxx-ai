@@ -513,18 +513,7 @@ export const settingScope = pgEnum('SettingScope', [
   'INVENTORY_BRIDGE',
   'DOCUMENTS',
 ])
-export const signatureSharingType = pgEnum('SignatureSharingType', [
-  'PRIVATE',
-  'ORGANIZATION_WIDE',
-  'SPECIFIC_INTEGRATIONS',
-])
 export const snippetPermission = pgEnum('SnippetPermission', ['VIEW', 'EDIT'])
-export const snippetSharingType = pgEnum('SnippetSharingType', [
-  'PRIVATE',
-  'ORGANIZATION',
-  'GROUPS',
-  'MEMBERS',
-])
 export const staticRuleType = pgEnum('StaticRuleType', [
   'SENDER_DOMAIN',
   'SENDER_ADDRESS',

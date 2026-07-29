@@ -194,6 +194,16 @@ const AGENT_POLICY_INSTANCE_KEY_SET: Record<AgentPolicyInstanceKey, true> = {
   kb: true,
   dashboard: true,
   workflow: true,
+  // `signature` / `snippet` joined the registry in the 2026-07-28 plan 36 slice
+  // and are ADMITTED rather than excluded: unlike agent-vs-agent access there is
+  // a real thing behind them — plan 36 §12.6 owes the Kopilot/agent tool layer
+  // the same per-instance guard the routers get, and these rows are how "this
+  // agent may use the Refunds snippet" is authored. Until that sweep lands the
+  // rows are authored-but-unread; if it is cut, exclude them from
+  // {@link AgentPolicyInstanceKey} the way `agent` is rather than leaving a
+  // control wired to nothing.
+  signature: true,
+  snippet: true,
 }
 
 export const AGENT_POLICY_INSTANCE_KEYS = Object.keys(

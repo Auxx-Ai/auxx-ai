@@ -8,6 +8,7 @@ import type { DraftAttachment, DraftContent, DraftParticipant } from '@auxx/type
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { assertSignatureUsable } from '~/server/lib/signature-instance-access'
 
 const logger = createScopedLogger('draft-router')
 
@@ -114,6 +115,15 @@ export const draftRouter = createTRPCRouter({
    */
   upsert: protectedProcedure.input(UpsertDraftInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
+    // Instance access (plan 36 §5) — a draft's `signatureId` is echoed back on
+    // read and handed to `MessageSenderService` on send, so an unvalidated id
+    // here is the same private-signature read as `thread.sendMessage`'s.
+    await assertSignatureUsable({
+      db: ctx.db,
+      organizationId,
+      userId,
+      signatureId: input.signatureId,
+    })
     const draftService = new DraftService(
       ctx.db,
       organizationId,

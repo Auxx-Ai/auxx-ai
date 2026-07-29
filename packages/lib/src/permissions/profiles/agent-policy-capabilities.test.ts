@@ -159,10 +159,26 @@ describe('the four exact levels — ENTITY DEFINITIONS (§9.1)', () => {
     })
     // Visibility of mail infrastructure is the mail visibility system's job, not
     // the record-def keyspace — a `definitions: none` policy must not break it.
-    expect(caps.canViewEntity('snippet')).toBe(true)
+    // (`snippet` used to stand in here; it left `NON_RECORD_DEF_SLUGS` in plan
+    // 36 §7.6 when it became an instance-access resource, so `thread` — which
+    // is genuinely mail infrastructure — carries the case now.)
+    expect(caps.canViewEntity('thread')).toBe(true)
     // Writing it still needs the mail-area verb, which this policy does not grant.
-    expect(caps.canEditEntity('snippet')).toBe(false)
-    expect(caps.canAdministerDef('snippet')).toBe(false)
+    expect(caps.canEditEntity('thread')).toBe(false)
+    expect(caps.canAdministerDef('thread')).toBe(false)
+  })
+
+  it('snippet/signature no longer take the mail-infra bypass (plan 36 §7.6)', () => {
+    const caps = view({
+      ...emptyAgentPolicy(),
+      definitions: { default: 'none', overrides: {} },
+      areas: { default: 'none', overrides: {} },
+    })
+    // They are instance-access resources now: a `definitions: none` agent policy
+    // no longer waves them through the def keyspace, and per-instance rules are
+    // the only thing that can open them.
+    expect(caps.canViewEntity('snippet')).toBe(false)
+    expect(caps.canViewEntity('signature')).toBe(false)
   })
 })
 

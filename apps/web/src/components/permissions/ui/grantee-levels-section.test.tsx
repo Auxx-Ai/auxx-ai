@@ -42,8 +42,18 @@ const { granteeAccess, save, defAccess, instanceRows } = vi.hoisted(() => ({
       dashboard: { items: [], isLoading: false, truncated: false },
       workflow: { items: [], isLoading: false, truncated: false },
       agent: { items: [], isLoading: false, truncated: false },
+      signature: { items: [], isLoading: false, truncated: false },
+      snippet: { items: [], isLoading: false, truncated: false },
     },
-    rowsByKey: { dataset: [], kb: [], dashboard: [], workflow: [], agent: [] },
+    rowsByKey: {
+      dataset: [],
+      kb: [],
+      dashboard: [],
+      workflow: [],
+      agent: [],
+      signature: [],
+      snippet: [],
+    },
     setGrant: vi.fn(),
   },
 }))
@@ -73,7 +83,6 @@ const { GranteeLevelsSection } = await import('./grantee-levels-section')
 
 const GRANTEE = 'usr_alice'
 const FILES_LABEL = PERMISSION_AREAS[Area.files].label
-const WORKFLOWS_LABEL = PERMISSION_AREAS[Area.workflows].label
 
 function setup(payload: {
   own?: Partial<Record<Area, Level>>

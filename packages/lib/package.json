@@ -784,6 +784,12 @@
       "import": "./dist/permissions/capabilities/capability-set.mjs",
       "default": "./src/permissions/capabilities/capability-set.ts"
     },
+    "./permissions/capabilities/entity-access": {
+      "types": "./src/permissions/capabilities/entity-access.ts",
+      "source": "./src/permissions/capabilities/entity-access.ts",
+      "import": "./dist/permissions/capabilities/entity-access.mjs",
+      "default": "./src/permissions/capabilities/entity-access.ts"
+    },
     "./permissions/capabilities/get-capabilities": {
       "types": "./src/permissions/capabilities/get-capabilities.ts",
       "source": "./src/permissions/capabilities/get-capabilities.ts",
@@ -1053,12 +1059,6 @@
       "source": "./src/signals/unsubscribe.ts",
       "import": "./dist/signals/unsubscribe.mjs",
       "default": "./src/signals/unsubscribe.ts"
-    },
-    "./signatures": {
-      "types": "./src/signatures/index.ts",
-      "source": "./src/signatures/index.ts",
-      "import": "./dist/signatures/index.mjs",
-      "default": "./src/signatures/index.ts"
     },
     "./snippets": {
       "types": "./src/snippets/index.ts",

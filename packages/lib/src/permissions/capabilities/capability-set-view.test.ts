@@ -163,14 +163,27 @@ describe('CapabilitySet.canViewEntity (absent = unrestricted)', () => {
   })
 
   it('mail-infrastructure defs bypass both layers (visibility governed by mail system)', () => {
-    // No records verb at all — inbox/signature reads must still pass.
+    // No records verb at all — inbox/thread/message reads must still pass.
     const noVerb = build({ hasView: false })
     expect(noVerb.canViewEntity('inbox')).toBe(true)
-    expect(noVerb.canViewEntity('signature')).toBe(true)
     expect(noVerb.canViewEntity('thread')).toBe(true)
+    expect(noVerb.canViewEntity('message')).toBe(true)
     // Even listed as restricted (sharing rows must never restrict).
     const restricted = build({ hasView: false, restricted: ['inbox'] })
     expect(restricted.canViewEntity('inbox')).toBe(true)
+  })
+
+  it('signature is NOT a mail-infra def any more (plan 36 §7.6)', () => {
+    // It used to be, and membership in `NON_RECORD_DEF_SLUGS` made this return
+    // `true` unconditionally — which is precisely how every member could see
+    // every "private" signature in the org. Its authority now lives in
+    // `Area.signatures` + per-instance `ResourceAccess`, so the def-level
+    // short-circuit must be gone: with no records verb it resolves like any
+    // other def and denies.
+    expect(build({ hasView: false }).canViewEntity('signature')).toBe(false)
+    // `snippet` was in the same set; it is not an EntityDefinition at all, so
+    // the removal is inert for it — pinned only so a re-add is caught here too.
+    expect(build({ hasView: false }).canViewEntity('snippet')).toBe(false)
   })
 
   it("baseline 'none' + group grant: grantee sees the def, non-grantee is denied", () => {

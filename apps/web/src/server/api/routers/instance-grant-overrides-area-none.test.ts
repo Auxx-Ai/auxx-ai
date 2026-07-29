@@ -1,7 +1,13 @@
 // apps/web/src/server/api/routers/instance-grant-overrides-area-none.test.ts
 
 import { ResourcePermission } from '@auxx/database/enums'
-import { Area, expandLevelsToKeys, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import {
+  Area,
+  expandLevelsToKeys,
+  INSTANCE_ACCESS_RESOURCES,
+  Level,
+  PERMISSION_AREAS,
+} from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -23,7 +29,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *  2. area `None` + NO row ⇒ still denied, and `list` is empty (fail-closed —
  *     the load-bearing regression risk);
  *  3. area `None` + an explicit `'none'` restriction ⇒ denied, absent from list;
- *  4. OWNER unaffected.
+ *  4. OWNER unaffected — on the ORG-SHARED families only. Since 2026-07-28 (plan
+ *     36 §0.6 revised) the §0.10 bypass is scoped to `baselineAtCreate: false`,
+ *     so `dashboard` resolves through its rows like any other member. Property 4
+ *     branches on the registry rather than on the family name.
  *
  * Plus the hole the derived Read rung must not open (handoff item 5b, which
  * replaced the type-blind front-door waiver this file was written against): a
@@ -357,10 +366,20 @@ beforeEach(() => {
 })
 
 describe.each(FAMILIES)('$name — an explicit grant overrides the area-None floor (plan 25 §2)', ({
+  name,
   area,
   read,
   list,
 }) => {
+  /**
+   * Whether the OWNER bypass reaches this family. Scoped to
+   * `baselineAtCreate: false` since 2026-07-28 (plan 36 §0.6 revised), so
+   * `dashboard` — the one private family here — answers through its rows like
+   * any other member. Derived from the registry rather than listed, so flipping
+   * a resource's posture moves this test with it.
+   */
+  const ownerBypasses = !INSTANCE_ACCESS_RESOURCES[name].baselineAtCreate
+
   it('THE REPRO: area None + an explicit `view` grant can read the instance', async () => {
     const c = caps({ area, rows: { [SHARED]: ResourcePermission.view } })
     await expect(read(c, SHARED)).resolves.toBeDefined()
@@ -393,7 +412,7 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
     expect(await list(c)).toEqual([])
   })
 
-  it('OWNER is unaffected — reads and lists everything despite a `none` row', async () => {
+  it('OWNER: bypasses on an org-shared family, answers through rows on a private one', async () => {
     // `areaLevel: Full` because `composeUserCapabilities` short-circuits OWNER
     // to every key (§0.10) — a key-less OWNER is not a state the composition
     // can produce, and `permissionProcedure`'s coarse assert is key-based with
@@ -404,8 +423,33 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
       rows: { [SHARED]: ResourcePermission.none },
       role: 'OWNER',
     })
+
+    if (ownerBypasses) {
+      // §0.10 recovery: nothing authored on an org-shared instance locks the
+      // last owner out of the instance that would let them undo it.
+      await expect(read(c, SHARED)).resolves.toBeDefined()
+      expect(ids(await list(c))).toEqual([SHARED, OTHER])
+      return
+    }
+
+    // Private family (`baselineAtCreate: true`) — §0.6 revised. The explicit
+    // `none` row now denies the owner exactly as it denies anyone else, and
+    // `OTHER`, which carries no row for them, is not theirs to see either.
+    await expect(read(c, SHARED)).rejects.toMatchObject(FORBIDDEN)
+    expect(await list(c)).toEqual([])
+  })
+
+  it('OWNER reaches a private instance they hold a row on', async () => {
+    // The control for the branch above — without it, that assertion would also
+    // pass against a resource nobody can reach at all.
+    const c = caps({
+      area,
+      areaLevel: Level.Full,
+      rows: { [SHARED]: ResourcePermission.admin },
+      role: 'OWNER',
+    })
     await expect(read(c, SHARED)).resolves.toBeDefined()
-    expect(ids(await list(c))).toEqual([SHARED, OTHER])
+    expect(ids(await list(c))).toContain(SHARED)
   })
 })
 

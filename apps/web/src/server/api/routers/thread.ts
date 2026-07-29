@@ -39,6 +39,7 @@ import { TRPCError } from '@trpc/server'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { assertSignatureUsable } from '~/server/lib/signature-instance-access'
 
 const logger = createScopedLogger('thread-router')
 
@@ -258,6 +259,17 @@ export const threadRouter = createTRPCRouter({
     .input(SendMessageInputSchema)
     .use(notDemo('send emails'))
     .mutation(async ({ ctx, input }) => {
+      // Instance access (plan 36 §5) — BEFORE the try, which flattens to a 500.
+      // `signatureId` arrives as an arbitrary client string and is forwarded to
+      // `appendSignature`, whose only scope is the org; without this a member can
+      // read any other member's private signature body by sending with its id.
+      await assertSignatureUsable({
+        db: ctx.db,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        signatureId: input.signatureId,
+      })
+
       try {
         const { messageSender, organizationId, userId } = await getServiceDependencies(ctx)
         const {

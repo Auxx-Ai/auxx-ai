@@ -1,4 +1,4 @@
-// apps/web/src/components/snippets/snippet-dialog-store.ts
+// apps/web/src/components/snippets/hooks/snippet-dialog-store.ts
 'use client'
 
 import { create } from 'zustand'

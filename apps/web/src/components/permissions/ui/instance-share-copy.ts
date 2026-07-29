@@ -6,7 +6,16 @@ import {
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
 } from '@auxx/lib/permissions/client'
-import { BookOpen, Bot, Database, LayoutDashboard, type LucideIcon, Workflow } from 'lucide-react'
+import {
+  BookOpen,
+  Bot,
+  Database,
+  LayoutDashboard,
+  type LucideIcon,
+  MessageSquareText,
+  PenTool,
+  Workflow,
+} from 'lucide-react'
 
 /**
  * Per-resource UI copy for the generic {@link import('./instance-share-card').InstanceShareCard}
@@ -98,6 +107,29 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
       'unaffected: schedules, record events, and app triggers run as the system and keep going ' +
       'even when nobody here can see the agent.',
   },
+  signature: {
+    noun: 'signature',
+    baselineHint: 'Private to you by default. Share it to let teammates use it.',
+    levels: {
+      read: 'Use in replies',
+      write: 'Edit name & content',
+      full: 'Share & delete',
+    },
+    // Plan 36 §2.2 — the headless carve-out, stated where someone locking a
+    // signature down will read it.
+    scopeNote:
+      'This controls people, not automation. Sequences, workflows, and automated sends stamp ' +
+      'this signature as the system and keep doing so even when nobody here can see it.',
+  },
+  snippet: {
+    noun: 'snippet',
+    baselineHint: 'Private to you by default. Share it to let teammates use it.',
+    levels: {
+      read: 'Use in replies',
+      write: 'Edit title & content',
+      full: 'Share & delete',
+    },
+  },
 }
 
 /**
@@ -143,6 +175,16 @@ export const INSTANCE_TYPE_META: Record<
     label: 'Agents',
     icon: Bot,
     description: 'Agents, their prompts and their tools.',
+  },
+  signature: {
+    label: 'Signatures',
+    icon: PenTool,
+    description: 'Email signatures and their content.',
+  },
+  snippet: {
+    label: 'Snippets',
+    icon: MessageSquareText,
+    description: 'Reply snippets and their content.',
   },
 }
 

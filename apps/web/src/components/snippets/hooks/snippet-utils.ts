@@ -1,58 +1,6 @@
-import type { Snippet, SnippetFolder } from './snippet-types'
+// apps/web/src/components/snippets/hooks/snippet-utils.ts
 
-/**
- * Generate a temporary ID for optimistic updates
- */
-export function generateTempId(): string {
-  return `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-}
-
-/**
- * Create an optimistic snippet for immediate UI updates
- */
-export function createOptimisticSnippet(
-  data: Partial<Snippet> & { title: string; content: string }
-): Snippet {
-  return {
-    id: generateTempId(),
-    title: data.title,
-    content: data.content,
-    contentHtml: data.contentHtml || '',
-    description: data.description || '',
-    folderId: data.folderId || null,
-    sharingType: data.sharingType || ('PRIVATE' as any),
-    isFavorite: data.isFavorite || false,
-    isDeleted: false,
-    usageCount: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    createdById: '', // Will be set by server
-    organizationId: '', // Will be set by server
-    ...data,
-  }
-}
-
-/**
- * Create an optimistic folder for immediate UI updates
- */
-export function createOptimisticFolder(data: {
-  name: string
-  description?: string
-  parentId?: string | null
-}): SnippetFolder {
-  return {
-    id: generateTempId(),
-    name: data.name,
-    description: data.description || '',
-    parentId: data.parentId || null,
-    organizationId: '', // Will be set by server
-    createdById: '', // Will be set by server
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    _count: { snippets: 0 },
-    subfolders: [],
-  }
-}
+import type { SnippetFolder } from './snippet-types'
 
 /**
  * Build breadcrumb trail from folder hierarchy
@@ -115,13 +63,6 @@ export function isTempFolder(folderId: string): boolean {
  */
 export function isTempSnippet(snippetId: string): boolean {
   return snippetId.startsWith('temp-')
-}
-
-/**
- * Validate panel size constraints
- */
-export function validatePanelSize(size: number, minSize: number, maxSize: number): number {
-  return Math.max(minSize, Math.min(maxSize, size))
 }
 
 /**

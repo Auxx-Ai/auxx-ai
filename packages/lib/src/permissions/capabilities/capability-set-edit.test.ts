@@ -127,12 +127,21 @@ describe('CapabilitySet.canEditEntity (most-specific-wins, edit floor)', () => {
   })
 
   it('mail-infra def bypasses to the verb gate (canWriteEntity)', () => {
-    // Has records.edit → can write signatures (mail-infra) even when restricted.
-    const withVerb = build({ keys: READ_WRITE, restricted: ['signature'] })
-    expect(withVerb.canEditEntity('signature')).toBe(true)
+    // Has records.edit → can write threads (mail-infra) even when restricted.
+    const withVerb = build({ keys: READ_WRITE, restricted: ['thread'] })
+    expect(withVerb.canEditEntity('thread')).toBe(true)
     // No records.edit → the verb gate denies it.
     const noVerb = build({ keys: READ_ONLY })
-    expect(noVerb.canEditEntity('signature')).toBe(false)
+    expect(noVerb.canEditEntity('thread')).toBe(false)
+  })
+
+  it('signature no longer takes the mail-infra bypass (plan 36 §7.6)', () => {
+    // `signature` left `NON_RECORD_DEF_SLUGS` when it became an instance-access
+    // resource, so a RESTRICTED signature def no longer sails through on the
+    // coarse `records.edit` verb — it resolves most-specific-wins like any other
+    // def, and with no def grant that means denied.
+    const restricted = build({ keys: READ_WRITE, restricted: ['signature'] })
+    expect(restricted.canEditEntity('signature')).toBe(false)
   })
 
   it('feature-backed defs use their derived base for def-aware editing', () => {

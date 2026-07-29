@@ -6,7 +6,11 @@ import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { render, screen, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PROFILE_AREA_GROUPS } from './profile-copy'
+import {
+  AGENT_POLICY_INSTANCE_KEYS,
+  type AgentPolicyInstanceKey,
+  PROFILE_AREA_GROUPS,
+} from './profile-copy'
 
 /**
  * Plan 29 §5 verification bars 2–4, on the unified tree.
@@ -92,12 +96,15 @@ vi.mock('../hooks/use-instance-resource-lists', () => ({
       isLoading: false,
       truncated: false,
     })
-    return {
-      dataset: list('dataset'),
-      kb: list('kb'),
-      dashboard: list('dashboard'),
-      workflow: list('workflow'),
-    }
+    // DERIVED from the registry, not hand-listed. The hand-listed version
+    // crashed (`Cannot read properties of undefined (reading 'items')`) the
+    // moment `signature`/`snippet` joined `AGENT_POLICY_INSTANCE_KEYS` in plan
+    // 36 — the editor indexes this map by every key the registry offers, so a
+    // missing entry is a crash, not a gap in coverage. `h.items` still names
+    // only the types a test actually populates; everything else lists empty.
+    return Object.fromEntries(
+      AGENT_POLICY_INSTANCE_KEYS.map((type) => [type, list(type)])
+    ) as Record<AgentPolicyInstanceKey, ReturnType<typeof list>>
   },
 }))
 vi.mock('~/hooks/use-confirm', () => ({

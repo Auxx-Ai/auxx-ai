@@ -1,9 +1,9 @@
-// apps/web/src/components/snippets/snippet-dialog-root.tsx
+// apps/web/src/components/snippets/ui/snippet-dialog-root.tsx
 'use client'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
-import { SnippetForm } from '~/app/(protected)/app/settings/snippets/_components/snippet-form'
-import { useSnippetDialogStore } from './snippet-dialog-store'
+import { useSnippetDialogStore } from '../hooks/snippet-dialog-store'
+import { SnippetForm } from './snippet-form'
 
 /**
  * Root-level renderer for the global "Create Snippet" dialog. Mount once at the

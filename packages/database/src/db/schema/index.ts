@@ -162,7 +162,8 @@ export * from './scheduled-message'
 export * from './search-history'
 export * from './sequence'
 export * from './session'
-export * from './signature-integration-share'
+// SignatureIntegrationShare dropped (plan 36 §7.4) — dead in code since the
+// Signature table was retired; its only writer was the stubbed SignatureService.
 export * from './snippet'
 export * from './snippet-folder'
 export * from './storage-location'

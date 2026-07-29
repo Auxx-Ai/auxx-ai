@@ -117,21 +117,38 @@ export function isCustomResource(resource: Resource): resource is CustomResource
  *   per-article grants). A def-access grid row for any of these would be a
  *   phantom control that writes rows nothing reads.
  *
- * Client-safe mirror of the server-side `NON_RECORD_DEF_SLUGS` in
- * `permissions/capabilities/entity-access.ts` — kept in sync by hand.
+ * **This set DELIBERATELY DIVERGES from the server set as of 2026-07-28.** Plan 36
+ * §7.6 says to drop `signature`/`snippet` from both; that is right for the server
+ * and wrong here, because the two sets do different jobs under one name:
+ * - `NON_RECORD_DEF_SLUGS` (server) drives `isMailInfraDef`, whose pass-through is
+ *   what made `canViewEntity('signature')` unconditionally `true`. `signature` had
+ *   to leave it or plan 36 would not close the hole it exists to close.
+ * - this set drives `isAccessManageable`, which HIDES a def from the type-level
+ *   Access grid. Every instance-access resource is listed here for that reason —
+ *   so `signature` must STAY, exactly like `dataset`/`kb`/`dashboard`/`workflow`.
+ *   Removing it grows a def-access grid row that writes `ResourceAccess` rows the
+ *   per-instance path never reads: the phantom control this doc comment warns
+ *   about two paragraphs up.
+ *
+ * `snippet` is listed for symmetry only — it is a first-class table, not an
+ * EntityDefinition, so it never reaches a `Resource` and the entry is inert.
+ *
+ * Client-safe near-mirror of the server-side `NON_RECORD_DEF_SLUGS` in
+ * `permissions/capabilities/entity-access.ts` — kept in sync by hand, minus the
+ * two entries above.
  */
 export const NON_RECORD_ENTITY_SLUGS: ReadonlySet<string> = new Set([
   'inbox',
-  'signature',
   'thread',
   'message',
-  'snippet',
   'sequence',
   'dataset',
   'kb',
   'article',
   'dashboard',
   'workflow',
+  'signature',
+  'snippet',
 ])
 
 /**
