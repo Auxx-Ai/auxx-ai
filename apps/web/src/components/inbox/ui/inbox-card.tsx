@@ -5,12 +5,15 @@ import { Badge } from '@auxx/ui/components/badge'
 import { ListCard, type ListCardMenuItem, type ListCardStatus } from '@auxx/ui/components/list-card'
 import { PencilIcon, Trash2Icon } from 'lucide-react'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
-import type { InboxItem, InboxRecord } from '~/components/threads/hooks/use-inbox'
+import type { RouterOutputs } from '~/trpc/react'
 
 const DETAIL_BASE = '/app/settings/inbox'
 
+/** Scoped inbox row returned by `inbox.settingsList`. */
+export type SettingsInboxItem = RouterOutputs['inbox']['settingsList'][number]
+
 /** Corner status dot (tone + tooltip) from the inbox status field. */
-function inboxStatus(status: InboxItem['status']): ListCardStatus {
+function inboxStatus(status: SettingsInboxItem['status']): ListCardStatus {
   switch (status) {
     case 'ACTIVE':
       return { tone: 'good', label: 'Active' }
@@ -24,7 +27,7 @@ function inboxStatus(status: InboxItem['status']): ListCardStatus {
 }
 
 /** Access label from the org-wide floor lens. */
-function getAccessDisplay(defaultLens: InboxItem['defaultLens']): string {
+function getAccessDisplay(defaultLens: SettingsInboxItem['defaultLens']): string {
   switch (defaultLens) {
     case 'none':
       return 'Restricted'
@@ -38,14 +41,12 @@ function getAccessDisplay(defaultLens: InboxItem['defaultLens']): string {
 }
 
 interface InboxCardProps {
-  inbox: InboxItem
-  /** Raw record for the avatar (falls back to the entity-def icon/color). */
-  record?: InboxRecord
+  inbox: SettingsInboxItem
   /** Entity-def icon/color fallbacks from `useResource('inbox')`. */
   resourceIcon?: string
   resourceColor?: string
-  onEdit: (inbox: InboxItem) => void
-  onDelete: (inbox: InboxItem) => void
+  onEdit: (inbox: SettingsInboxItem) => void
+  onDelete: (inbox: SettingsInboxItem) => void
   deletePending?: boolean
 }
 
@@ -56,37 +57,34 @@ interface InboxCardProps {
  */
 export function InboxCard({
   inbox,
-  record,
   resourceIcon,
   resourceColor,
   onEdit,
   onDelete,
   deletePending,
 }: InboxCardProps) {
-  const menuItems: ListCardMenuItem[] = [
-    {
+  const menuItems: ListCardMenuItem[] = []
+  if (inbox.canManage) {
+    menuItems.push({
       label: 'Edit',
       icon: <PencilIcon />,
       onClick: () => onEdit(inbox),
-    },
-    {
+    })
+  }
+  if (inbox.canDelete) {
+    menuItems.push({
       label: 'Delete',
       icon: <Trash2Icon />,
       destructive: true,
       disabled: deletePending,
       onClick: () => onDelete(inbox),
-    },
-  ]
+    })
+  }
 
   return (
     <ListCard
       media={
-        <RecordIcon
-          avatarUrl={record?.avatarUrl}
-          iconId={resourceIcon ?? 'inbox'}
-          color={resourceColor ?? 'gray'}
-          size='lg'
-        />
+        <RecordIcon iconId={resourceIcon ?? 'inbox'} color={resourceColor ?? 'gray'} size='lg' />
       }
       title={inbox.name}
       subtitle={inbox.isPersonal ? 'Personal inbox' : 'Shared inbox'}
@@ -99,7 +97,7 @@ export function InboxCard({
         </Badge>
       }
       href={`${DETAIL_BASE}/${inbox.id}`}
-      menuItems={menuItems}
+      menuItems={menuItems.length > 0 ? menuItems : undefined}
     />
   )
 }

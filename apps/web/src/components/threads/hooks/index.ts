@@ -2,7 +2,13 @@
 
 export { appendOptimisticMessage } from './append-optimistic-message'
 export { useFocusedThreadShortcuts } from './use-focused-thread-shortcuts'
-export { type InboxItem, type InboxRecord, useInbox, useInboxes } from './use-inbox'
+export {
+  type InboxItem,
+  type InboxRecord,
+  useInbox,
+  useInboxByInstanceId,
+  useInboxes,
+} from './use-inbox'
 export { useMessage } from './use-message'
 export { useMessageParticipants } from './use-message-participants'
 export { useMessages } from './use-messages'

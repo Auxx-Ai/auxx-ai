@@ -35,7 +35,8 @@ vi.mock('~/trpc/react', () => ({
   },
 }))
 
-const { INBOX_DEF_KEYS, invalidateInboxRecordLists, useInboxes } = await import('./use-inbox')
+const { INBOX_DEF_KEYS, invalidateInboxRecordLists, useInboxByInstanceId, useInboxes } =
+  await import('./use-inbox')
 const { DYNAMIC_OPTIONS_REGISTRY } = await import(
   '~/components/fields/registries/dynamic-options-registry'
 )
@@ -121,6 +122,29 @@ describe('useInboxes — fetches and merges BOTH inbox definitions', () => {
     expect(result.current.inboxMap.get(`personal_inbox:${PERSONAL_ID}` as never)?.name).toBe(
       'me@example.com'
     )
+  })
+})
+
+describe('useInboxByInstanceId — route lookup across both definitions', () => {
+  it('returns a personal inbox with its definition-aware RecordId', () => {
+    mockArms({
+      inbox: arm([rec(SHARED_ID, 'inbox')]),
+      personal_inbox: arm([
+        rec(PERSONAL_ID, 'personal_inbox', {
+          inbox_name: 'me@example.com',
+          inbox_owner_user_id: OWNER,
+        }),
+      ]),
+    })
+
+    const { result } = renderHook(() => useInboxByInstanceId(PERSONAL_ID))
+
+    expect(result.current.inbox).toMatchObject({
+      id: PERSONAL_ID,
+      recordId: `personal_inbox:${PERSONAL_ID}`,
+      entityDefinitionKey: 'personal_inbox',
+      isPersonal: true,
+    })
   })
 })
 

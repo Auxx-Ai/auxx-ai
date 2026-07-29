@@ -16,7 +16,8 @@ import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
-import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
+import { settingsInboxesForUser } from '~/server/lib/inbox-settings-access'
 
 /**
  * The mail front door (plan 40 §5.3) — `Area.inboxes` at `Read`.
@@ -63,16 +64,15 @@ async function requireInboxManageAccess(
  * INSTANCE actually lives on (plan 40 §3 / 40a §5.1) — the funnel half of the
  * same invariant `canonicalMailRecordId` enforces in `resourceAccess.ts`.
  *
- * **The def part of an incoming inbox RecordId is not evidence.** The FE mints
- * it from `useResource('inboxes').id` (`inbox-detail.tsx`,
- * `settings/channels/_components/integration-routing.tsx`) and from the record
- * layer's `record.recordId` (`use-inbox.ts` → the inbox picker) — both the def
- * **CUID**, never the `'inbox'` slug. `canManageInboxAccess` → `hasPermission`
- * matches `ResourceAccess.entityDefinitionId` **literally**, so a CUID-keyed
- * RecordId matches no grant row at all. Until plan 40 phase 2 that was masked by
- * the `vis.isAdmin` short-circuit inside `canManageInboxAccess` and only bit a
- * non-admin inbox Manager; phase 2 deleted that short-circuit (§4.2), which
- * makes it deny **everyone**, admins included.
+ * **The def part of an incoming inbox RecordId is not evidence.** Some FE paths
+ * still mint it from `useResource('inboxes').id`
+ * (`settings/channels/_components/integration-routing.tsx`), while record-layer
+ * callers carry the owning definition's CUID. `canManageInboxAccess` →
+ * `hasPermission` matches `ResourceAccess.entityDefinitionId` **literally**, so
+ * either CUID keyspace matches no slug-keyed grant row at all. Until plan 40
+ * phase 2 that was masked by the `vis.isAdmin` short-circuit inside
+ * `canManageInboxAccess` and only bit a non-admin inbox Manager; phase 2 deleted
+ * that short-circuit (§4.2), which makes it deny **everyone**, admins included.
  *
  * Resolution is by INSTANCE, not by translating the caller's def part:
  * `buildDefIdToSlug` would faithfully resolve the shared def's CUID to
@@ -82,12 +82,10 @@ async function requireInboxManageAccess(
  * it is right for both defs and across the whole 059 → 060 window, and falls
  * back to `'inbox'` (closed) for an id the cache does not know.
  *
- * Fixed at the router rather than in the two components deliberately: the
- * components need the CUID-keyed RecordId anyway — it is what `useInbox` /
- * `useRecord` read the inbox's fields with — so a client-side fix would mean
- * carrying two RecordIds per inbox and would still leave the next caller free to
- * repeat the bug. Normalizing at the funnel covers the picker, both components
- * and anything added later.
+ * The detail page now resolves its route id through the merged inbox list and
+ * carries the owning definition's RecordId for record reads. Router
+ * normalization remains the authorization funnel: it covers every caller and
+ * prevents a future client from reintroducing a mismatched grant keyspace.
  *
  */
 async function canonicalInboxRecordId(
@@ -134,6 +132,27 @@ const integrationSchema = z.object({
 })
 
 export const inboxRouter = createTRPCRouter({
+  /**
+   * Scoped inventory for the combined Settings → Inboxes page.
+   *
+   * This procedure is intentionally open to every organization member so a
+   * profile at `Inboxes: None` can still start the ungated personal-account
+   * connect flow. The response itself is instance-filtered: shared inboxes
+   * require effective view access, and personal inboxes require their private
+   * instance row (normally the owner's Manager grant).
+   */
+  settingsList: capabilityProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const inboxes = await getOrgCache().get(organizationId, 'inboxes')
+
+    return settingsInboxesForUser({
+      inboxes,
+      userId: ctx.session.user.id,
+      canManageChannels: ctx.capabilities.can(PermissionKey.channelsManage),
+      access: ctx.capabilities,
+    })
+  }),
+
   /**
    * The caller's effective lens per inbox (mail-permissions §6.4) — drives
    * the FE's per-lens realtime channel subscriptions and, later, redacted
@@ -473,8 +492,8 @@ export const inboxRouter = createTRPCRouter({
    *
    * No canonicalization here, deliberately: `countIntegrationThreadsInInbox`
    * reads `getInstanceId(fromInboxRecordId)` and never looks at the definition,
-   * so the client's CUID-keyed RecordId has always resolved correctly. Adding a
-   * re-key would be inert ceremony.
+   * so CUID- and slug-keyed RecordIds resolve identically. Adding a re-key would
+   * be inert ceremony.
    */
   countMovableThreads: mailProcedure
     .input(z.object({ integrationId: z.string(), fromInboxRecordId: recordIdSchema }))

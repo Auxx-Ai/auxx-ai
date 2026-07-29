@@ -28,7 +28,7 @@ import { getIntegrationProviderIcon } from './channel-icon'
 import ImapConnectForm from './imap-connect-form'
 import { InboxDestinationField, useInboxDestination } from './inbox-destination-field'
 
-const RETURN_TO = '/app/settings/channels'
+const DEFAULT_RETURN_TO = '/app/settings/channels'
 const RESIZE_ID = 'channel-connect'
 
 interface ChannelGalleryDialogProps {
@@ -36,6 +36,10 @@ interface ChannelGalleryDialogProps {
   onOpenChange: (open: boolean) => void
   /** Preselect the delivery inbox (e.g. opened from an inbox's detail page). */
   initialInboxId?: string
+  /** Restrict the gallery to personal Gmail/Outlook connections. */
+  personalOnly?: boolean
+  /** OAuth return destination. */
+  returnTo?: string
 }
 
 /**
@@ -47,6 +51,8 @@ export function ChannelGalleryDialog({
   open,
   onOpenChange,
   initialInboxId,
+  personalOnly = false,
+  returnTo = DEFAULT_RETURN_TO,
 }: ChannelGalleryDialogProps) {
   const router = useRouter()
   const utils = api.useUtils()
@@ -56,12 +62,14 @@ export function ChannelGalleryDialog({
   // catalog is a shared (admin-only) channel.
   const items = useMemo(
     () =>
-      isAdminOrOwner
-        ? CHANNEL_CATALOG
-        : CHANNEL_CATALOG.map((item) =>
-            item.kind === 'oauth-email' ? item : { ...item, disabled: true }
-          ),
-    [isAdminOrOwner]
+      personalOnly
+        ? CHANNEL_CATALOG.filter((item) => item.kind === 'oauth-email')
+        : isAdminOrOwner
+          ? CHANNEL_CATALOG
+          : CHANNEL_CATALOG.map((item) =>
+              item.kind === 'oauth-email' ? item : { ...item, disabled: true }
+            ),
+    [isAdminOrOwner, personalOnly]
   )
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -72,8 +80,9 @@ export function ChannelGalleryDialog({
 
   // Shared detail state, reset on detail exit. Non-admins start on (and are
   // effectively limited to) the personal scope.
-  const defaultScope: 'shared' | 'personal' = isAdminOrOwner ? 'shared' : 'personal'
-  const inbox = useInboxDestination(initialInboxId)
+  const defaultScope: 'shared' | 'personal' =
+    personalOnly || !isAdminOrOwner ? 'personal' : 'shared'
+  const inbox = useInboxDestination(initialInboxId, { enabled: !personalOnly })
   const [scope, setScope] = useState<'shared' | 'personal'>(defaultScope)
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
@@ -92,12 +101,14 @@ export function ChannelGalleryDialog({
 
   // Quo (secret connection) rides the shared connect flow, carrying `{ inboxId }` as post-connect.
   const { data: providers = [] } = api.connections.listProviders.useQuery(undefined, {
-    enabled: open,
+    enabled: open && !personalOnly,
   })
   const flow = useConnectFlow({
     showName: true,
     onConnected: () => {
-      utils.channel.list.invalidate()
+      void utils.channel.list.invalidate()
+      void utils.inbox.settingsList.invalidate()
+      void utils.record.listAll.invalidate()
       onOpenChange(false)
     },
   })
@@ -155,7 +166,7 @@ export function ChannelGalleryDialog({
           scope: isPersonal ? 'user' : 'organization',
           personal: isPersonal,
           postConnect,
-          returnTo: RETURN_TO,
+          returnTo,
         },
         {
           // Submit BYO client id/secret only when the user is actually using their own
@@ -184,7 +195,7 @@ export function ChannelGalleryDialog({
       })
       utils.channel.list.invalidate()
       onOpenChange(false)
-      router.push(`${RETURN_TO}/${channelId}`)
+      router.push(`${returnTo}/${channelId}`)
     } catch (error) {
       toastError({
         title: 'Failed to create chat widget',
@@ -293,7 +304,7 @@ export function ChannelGalleryDialog({
           <p className='text-sm text-muted-foreground'>Loading…</p>
         ) : (
           <>
-            {personalEligible && (
+            {personalEligible && !personalOnly && (
               <RadioGroup
                 value={scope}
                 onValueChange={(v) => setScope(v as 'shared' | 'personal')}
@@ -423,9 +434,13 @@ export function ChannelGalleryDialog({
       <TemplateGalleryDialog<ChannelCatalogItem>
         open={open}
         onOpenChange={onOpenChange}
-        title='Add a channel'
-        description='Connect email, chat, social, and phone channels'
-        crumbLabel='Channels'
+        title={personalOnly ? 'Connect personal account' : 'Add a channel'}
+        description={
+          personalOnly
+            ? 'Connect Gmail or Outlook to create your private inbox'
+            : 'Connect email, chat, social, and phone channels'
+        }
+        crumbLabel={personalOnly ? 'Personal inboxes' : 'Channels'}
         crumbIcon={<Waypoints />}
         itemNoun='channel'
         items={items}

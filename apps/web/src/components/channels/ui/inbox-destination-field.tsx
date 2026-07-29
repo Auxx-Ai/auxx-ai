@@ -59,8 +59,11 @@ export interface InboxDestinationController {
  * inbox or create one inline. State is reactive (the caller reads `isValid` for its Connect
  * button and calls `resolve()` on click). Pair with {@link InboxDestinationField} for the view.
  */
-export function useInboxDestination(initialInboxId?: string): InboxDestinationController {
-  const { inboxes } = useInboxes()
+export function useInboxDestination(
+  initialInboxId?: string,
+  options: { enabled?: boolean } = {}
+): InboxDestinationController {
+  const { inboxes } = useInboxes({ enabled: options.enabled })
   const shared = useMemo(() => inboxes.filter((i) => !i.isPersonal), [inboxes])
   const gated = useMailPermissionsGated()
 

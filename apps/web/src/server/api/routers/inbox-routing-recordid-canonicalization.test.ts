@@ -10,13 +10,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Plan 40 §5.1 / 40a §5.1 — the CLIENT-MINTED half of the inbox RecordId bug,
  * on the three channel-routing procedures whose RecordId arrives over the wire.
  *
- * `inbox-detail.tsx` and `settings/channels/_components/integration-routing.tsx`
- * build their inbox RecordId as `toRecordId(useResource('inboxes').id, inboxId)`
- * — the entity DEFINITION's **CUID**, never the `'inbox'` slug — and the inbox
- * picker hands back `record.recordId` from the record layer, which is CUID-keyed
- * too. `InboxService.canManageInboxAccess` forwards straight to `hasPermission`,
- * which matches `ResourceAccess.entityDefinitionId` **literally**, so a
- * CUID-keyed RecordId matches no grant row at all.
+ * `settings/channels/_components/integration-routing.tsx` builds its inbox
+ * RecordId as `toRecordId(useResource('inboxes').id, inboxId)` — the entity
+ * definition's **CUID**, never the `'inbox'` slug — and record-layer callers
+ * carry their owning definition's CUID too. `InboxService.canManageInboxAccess`
+ * forwards straight to `hasPermission`, which matches
+ * `ResourceAccess.entityDefinitionId` **literally**, so a CUID-keyed RecordId
+ * matches no grant row at all.
  *
  * **Why it was invisible, and why it is not any more.** Until plan 40 phase 2
  * the `vis.isAdmin` short-circuit inside `canManageInboxAccess` answered first,

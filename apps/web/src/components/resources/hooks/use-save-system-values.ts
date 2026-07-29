@@ -5,6 +5,7 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import { parseResourceFieldId } from '@auxx/types/field'
 import { useCallback } from 'react'
 import { useResourceStore } from '../store/resource-store'
+import { resolveSystemAttributeForRecord } from '../utils/resolve-system-attribute'
 import { useSaveFieldValue } from './use-save-field-value'
 
 /**
@@ -23,6 +24,8 @@ import { useSaveFieldValue } from './use-save-field-value'
 export function useSaveSystemValues(recordId: RecordId | null | undefined) {
   // Get maps from store
   const systemAttributeMap = useResourceStore((state) => state.systemAttributeMap)
+  const systemAttributeByDef = useResourceStore((state) => state.systemAttributeByDef)
+  const ambiguousSystemAttributes = useResourceStore((state) => state.ambiguousSystemAttributes)
   const fieldMap = useResourceStore((state) => state.fieldMap)
 
   // Use existing save field value hook
@@ -40,8 +43,13 @@ export function useSaveSystemValues(recordId: RecordId | null | undefined) {
       // Resolve system attributes to field info
       const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }> = []
 
+      // Resolve against the record's own definition — a bare lookup can return
+      // a different definition's field, and writing THAT id lands a field value
+      // bound to the wrong definition.
+      const maps = { systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes }
+
       for (const [attr, value] of Object.entries(values)) {
-        const resourceFieldId = systemAttributeMap[attr]
+        const resourceFieldId = resolveSystemAttributeForRecord(maps, attr, recordId)
         if (!resourceFieldId) {
           console.warn(`[useSaveSystemValues] Unknown system attribute: ${attr}`)
           continue
@@ -67,7 +75,14 @@ export function useSaveSystemValues(recordId: RecordId | null | undefined) {
 
       return saveMultipleAsync(recordId, fieldValues)
     },
-    [recordId, systemAttributeMap, fieldMap, saveMultipleAsync]
+    [
+      recordId,
+      systemAttributeMap,
+      systemAttributeByDef,
+      ambiguousSystemAttributes,
+      fieldMap,
+      saveMultipleAsync,
+    ]
   )
 
   return { save, isPending }

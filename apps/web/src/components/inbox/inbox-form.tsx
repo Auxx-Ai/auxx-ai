@@ -74,6 +74,14 @@ const DEFAULT_VALUES: InboxFormValues = {
   grants: [],
 }
 
+/**
+ * Hoisted so the reference is stable across renders — an inline literal makes
+ * `useSystemValues` rebuild its field refs every render and refetch.
+ *
+ * `inbox_default_lens` is deliberately absent: see the fetch site below.
+ */
+const INBOX_SYSTEM_ATTRS = ['inbox_name', 'inbox_description', 'inbox_color'] as const
+
 /** Props for the shell-free inbox form core. */
 export interface InboxFormProps {
   /** Whether the form is "open" — drives the init/reset cycle. In a dialog this is
@@ -98,6 +106,13 @@ export interface InboxFormProps {
   /** Host-specific header. Dialogs render a `DialogNav` (with a Back button on the
    *  members page); the palette omits it (the breadcrumb supplies the title). */
   header?: (ctx: { title: string; page: 'main' | 'members'; onBack: () => void }) => ReactNode
+  /** Scoped metadata supplied by the settings list to avoid loading every inbox. */
+  inboxSummary?: {
+    isPersonal: boolean
+    ownerUserId: string | null
+  }
+  /** Whether the generic shared-inbox delete action is available. */
+  canDelete?: boolean
 }
 
 /**
@@ -197,6 +212,8 @@ export function InboxForm({
   onCancel,
   enableMembersPage = false,
   header,
+  inboxSummary,
+  canDelete = false,
 }: InboxFormProps) {
   const cancel = onCancel ?? onClose
 
@@ -216,9 +233,12 @@ export function InboxForm({
 
   // Personal-account inbox (§11): the Access section swaps the floor controls
   // for an owner row + activity-only note; the owner's Manager row is locked.
-  const { inbox: inboxItem } = useInbox(recordId ?? undefined)
-  const isPersonalInbox = !!inboxItem?.isPersonal
-  const ownerActorId = inboxItem?.ownerUserId ? toActorId('user', inboxItem.ownerUserId) : null
+  const { inbox: inboxItem } = useInbox(recordId ?? undefined, {
+    enabled: isEditing && !inboxSummary,
+  })
+  const isPersonalInbox = inboxSummary?.isPersonal ?? !!inboxItem?.isPersonal
+  const ownerUserId = inboxSummary?.ownerUserId ?? inboxItem?.ownerUserId
+  const ownerActorId = ownerUserId ? toActorId('user', ownerUserId) : null
 
   // Fetch system field values for edit mode.
   //
@@ -228,7 +248,7 @@ export function InboxForm({
   // before its last edit.
   const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
     recordId,
-    ['inbox_name', 'inbox_description', 'inbox_color'],
+    INBOX_SYSTEM_ATTRS,
     { autoFetch: true, enabled: isEditing && !!recordId }
   )
 
@@ -370,6 +390,7 @@ export function InboxForm({
   /** Invalidate inbox query caches + the viewer's lens map + grant rows. */
   const invalidateInboxes = () => {
     utils.inbox.myLenses.invalidate()
+    utils.inbox.settingsList.invalidate()
     invalidateInboxRecordLists(utils)
     if (recordId) utils.resourceAccess.forInstance.invalidate({ recordId })
   }
@@ -767,7 +788,7 @@ export function InboxForm({
       </div>
 
       <DialogFooter className='flex sm:justify-between!'>
-        {isEditing ? (
+        {isEditing && canDelete ? (
           <Button
             type='button'
             size='sm'

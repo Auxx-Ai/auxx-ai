@@ -38,6 +38,7 @@ export function invalidateInboxRecordLists(utils: ReturnType<typeof api.useUtils
  * Field keys use inbox_ prefix (e.g., inbox_name, inbox_color).
  */
 export interface InboxRecord extends RecordMeta {
+  recordId: RecordId
   fieldValues: {
     inbox_name?: string
     inbox_description?: string
@@ -144,8 +145,9 @@ function scalarValue<T>(value: T | T[] | undefined): T | undefined {
  * personal mailboxes (routing pickers, chat-widget destinations) keep filtering
  * on `isPersonal`, as they do today.
  */
-export function useInboxes(): UseInboxesResult {
-  const shared = useAllRecords<InboxRecord>({ entityDefinitionId: 'inbox' })
+export function useInboxes(options: { enabled?: boolean } = {}): UseInboxesResult {
+  const enabled = options.enabled ?? true
+  const shared = useAllRecords<InboxRecord>({ entityDefinitionId: 'inbox', enabled })
   // The personal def only exists once entity migration 059 has run — it runs
   // for every org in one deploy-time pass, so the gap is a deploy race, not a
   // steady state. In that gap `record.listAll` rejects the key, and this arm's
@@ -155,8 +157,11 @@ export function useInboxes(): UseInboxesResult {
   // the def exist" probe on purpose — a wrong probe would make personal
   // mailboxes silently absent, which is the failure mode this whole plan is
   // about; a failing query is at least loud.
-  const personal = useAllRecords<InboxRecord>({ entityDefinitionId: 'personal_inbox' })
-  const { lenses, floors } = useMyInboxLenses()
+  const personal = useAllRecords<InboxRecord>({
+    entityDefinitionId: 'personal_inbox',
+    enabled,
+  })
+  const { lenses, floors } = useMyInboxLenses(enabled)
 
   const records = useMemo(
     () => [...shared.records, ...personal.records],
@@ -207,7 +212,7 @@ export function useInboxes(): UseInboxesResult {
     // (`inbox_name`, …) but have their own CustomField UUIDs, so merging them
     // would collide on every key and hand out the wrong id for saves.
     fields: shared.fields,
-    isLoading: shared.isLoading || personal.isLoading,
+    isLoading: enabled && (shared.isLoading || personal.isLoading),
     error: shared.error,
     refresh,
   }
@@ -225,13 +230,36 @@ interface UseInboxResult {
  * Hook to get a single inbox by RecordId.
  * Since thread.inboxId is now RecordId, lookup is direct.
  */
-export function useInbox(inboxId: RecordId | null | undefined): UseInboxResult {
-  const { inboxMap, isLoading } = useInboxes()
+export function useInbox(
+  inboxId: RecordId | null | undefined,
+  options: { enabled?: boolean } = {}
+): UseInboxResult {
+  const enabled = (options.enabled ?? true) && !!inboxId
+  const { inboxMap, isLoading } = useInboxes({ enabled })
 
   const inbox = useMemo(() => {
     if (!inboxId) return undefined
     return inboxMap.get(inboxId) // Direct lookup by recordId
   }, [inboxId, inboxMap])
+
+  return { inbox, isLoading }
+}
+
+/**
+ * Resolve an inbox from a route or API instance id while preserving the
+ * definition-aware RecordId returned by the record layer.
+ */
+export function useInboxByInstanceId(
+  inboxId: string | null | undefined,
+  options: { enabled?: boolean } = {}
+): UseInboxResult {
+  const enabled = (options.enabled ?? true) && !!inboxId
+  const { inboxes, isLoading } = useInboxes({ enabled })
+
+  const inbox = useMemo(() => {
+    if (!inboxId) return undefined
+    return inboxes.find((item) => item.id === inboxId)
+  }, [inboxId, inboxes])
 
   return { inbox, isLoading }
 }

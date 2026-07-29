@@ -471,9 +471,9 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
   })
 
   it('it survives a CUID-keyed inbox RecordId (canonicalization runs first)', async () => {
-    // `inbox-detail.tsx` mints the RecordId from the def CUID. `canonicalMailRecordId`
-    // rewrites it to the slug BEFORE authorization, so the self-revoke test must
-    // see the canonical key — testing the raw input would miss this shape.
+    // Record-layer callers carry the def CUID. `canonicalMailRecordId` rewrites
+    // it to the slug BEFORE authorization, so the self-revoke test must see the
+    // canonical key — testing the raw input would miss this shape.
     getCapabilities.mockResolvedValue(capabilitiesFor())
     await expect(revoke(`${INBOX_DEF_ID}:${INBOX_ID}`, USER_ID)).resolves.toEqual({ revoked: true })
     expect(resourceAccess.revokeInstanceAccess).toHaveBeenCalledWith(
