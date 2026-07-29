@@ -102,8 +102,11 @@ export const snippetsRouter = createTRPCRouter({
       return { success: true, snippet: result.value }
     }),
 
-  // Edit — the whole patch is snippet CONTENT (title/body/description/folder/
-  // favorite). Sharing is not reachable from here any more.
+  // Edit — the whole patch is snippet CONTENT (title/body/description/folder).
+  // Sharing is not reachable from here any more, and neither is favouriting:
+  // that was `Snippet.isFavorite`, one boolean on the shared row, so it was
+  // `edit`-gated and org-global. It now lives in the per-user `Favorite` table
+  // like every other favouritable resource.
   update: capabilityProcedure
     .input(
       z.object({
@@ -113,7 +116,6 @@ export const snippetsRouter = createTRPCRouter({
         contentHtml: z.string().optional(),
         description: z.string().optional(),
         folderId: z.string().nullable().optional(),
-        isFavorite: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

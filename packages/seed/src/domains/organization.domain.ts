@@ -77,7 +77,7 @@ export class OrganizationDomain {
 
       // Generate and insert Snippet Folders first, then Snippets (so snippets can reference folders)
       const folderIds = await this.seedSnippetFolders(db, schema, org.id, users)
-      await this.seedSnippets(db, schema, org.id, users, folderIds)
+      await this.seedSnippets(db, schema, org.id, org.ownerId, folderIds)
     }
   }
 
@@ -154,17 +154,29 @@ export class OrganizationDomain {
   }
 
   /**
-   * Write the owner `admin` `ResourceAccess` row for a seeded instance-access
-   * resource (plan 36).
+   * Write the create-time `ResourceAccess` rows for a seeded instance-access
+   * resource (plan 36): the owner's `admin` grant, plus an optional
+   * `role:org_member` workspace baseline.
    *
    * `signature` and `snippet` are both `INSTANCE_ACCESS_RESOURCES` entries with
    * `baselineAtCreate: true`: an instance with NO `ResourceAccess` row is
-   * reachable by nobody but the org OWNER. Migration 056 backfilled the data
-   * that existed when the slice landed, but a re-seed creates fresh rows, so the
-   * seeder has to write its own or every demo signature and snippet is invisible
-   * the moment it is created. Mirrors `api.signature.create` /
-   * `createSnippet` — no realtime/cache emit, because a seed run has no live
-   * sessions to invalidate.
+   * reachable by NOBODY — not even the org owner, since plan 36 §0.6 (as revised
+   * 2026-07-28) scopes `effectiveInstanceLevel`'s OWNER short-circuit to
+   * `!baselineAtCreate`. Migration 056 backfilled the data that existed when the
+   * slice landed, but a re-seed creates fresh rows, so the seeder has to write
+   * its own or every demo signature and snippet is invisible the moment it is
+   * created, with no admin override left to repair it.
+   *
+   * No realtime/cache emit, because a seed run has no live sessions to
+   * invalidate — that is the one way this diverges from `api.signature.create` /
+   * `createSnippet`.
+   *
+   * `baseline` is the seeder's own call and does NOT mirror the runtime create
+   * paths, which are private-by-default with sharing as the opt-in (§0.2):
+   *  - signatures omit it — a signature is a personal artifact.
+   *  - demo snippets pass `'view'`, so the workspace reads the canned-response
+   *    library its owner controls. Same shape migration 0313 writes for the
+   *    legacy `sharingType = 'ORGANIZATION'` rows.
    */
   private async grantInstanceOwnership(
     db: any,
@@ -174,11 +186,11 @@ export class OrganizationDomain {
       entityDefinitionId: 'signature' | 'snippet'
       entityInstanceId: string
       ownerId: string
+      baseline?: 'view' | 'edit'
     }
   ): Promise<void> {
-    await db
-      .insert(schema.ResourceAccess)
-      .values({
+    const rows: Array<Record<string, unknown>> = [
+      {
         organizationId: row.organizationId,
         entityDefinitionId: row.entityDefinitionId,
         entityInstanceId: row.entityInstanceId,
@@ -186,22 +198,44 @@ export class OrganizationDomain {
         granteeId: row.ownerId,
         permission: 'admin',
         grantedById: row.ownerId,
+      },
+    ]
+
+    if (row.baseline) {
+      rows.push({
+        organizationId: row.organizationId,
+        entityDefinitionId: row.entityDefinitionId,
+        entityInstanceId: row.entityInstanceId,
+        granteeType: 'role',
+        granteeId: 'org_member',
+        permission: row.baseline,
+        grantedById: row.ownerId,
       })
-      .onConflictDoNothing()
+    }
+
+    await db.insert(schema.ResourceAccess).values(rows).onConflictDoNothing()
   }
 
   /**
    * seedSnippets generates and inserts snippet records.
+   *
+   * All ten are owned by the org owner rather than round-robined across seeded
+   * users: under plan 36 a snippet is private to its author, so a round-robin
+   * produced ten canned responses each locked to a different member with nobody
+   * — not even an admin — able to see the set as a whole. Owner-owned plus the
+   * `role:org_member` baseline written below is what makes this read as a shared
+   * canned-response library.
+   *
    * @param db - Drizzle database instance
    * @param schema - Database schema
    * @param organizationId - Organization ID to associate snippets with
-   * @param users - Array of user records
+   * @param ownerId - Organization owner user ID; author and `admin` grantee
    */
   private async seedSnippets(
     db: any,
     schema: any,
     organizationId: string,
-    users: Array<{ id: string }>,
+    ownerId: string,
     folderIds: { general: string; sales: string; support: string }
   ): Promise<void> {
     console.log('📝 Generating snippets...')
@@ -274,7 +308,7 @@ export class OrganizationDomain {
         content: template.content,
         organizationId: organizationId,
         folderId: folderIds[template.folder],
-        createdById: users[i % users.length]!.id,
+        createdById: ownerId,
         createdAt: new Date(Date.now() - (snippetTemplates.length - i) * 3600000),
         updatedAt: new Date(),
       })
@@ -295,14 +329,17 @@ export class OrganizationDomain {
         })
 
       // Same `baselineAtCreate: true` rule as signatures: without an owner row a
-      // seeded snippet is invisible to everyone but the org OWNER, and with no
-      // admin override (plan 36 §0.6) nobody can repair it.
+      // seeded snippet is invisible to EVERYONE, and with no admin override
+      // (plan 36 §0.6) nobody can repair it. Unlike signatures these also carry
+      // the `role:org_member @ view` baseline — demo snippets are the workspace's
+      // shared canned-response library, not personal scratch content.
       for (const snippet of snippets) {
         await this.grantInstanceOwnership(db, schema, {
           organizationId,
           entityDefinitionId: 'snippet',
           entityInstanceId: snippet.id,
           ownerId: snippet.createdById,
+          baseline: 'view',
         })
       }
 

@@ -2206,6 +2206,13 @@
       "when": 1785282437612,
       "tag": "0314_drop_signature_sharing_type",
       "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1785287363533,
+      "tag": "0315_drop_snippet_is_favorite",
+      "breakpoints": true
     }
   ]
 }

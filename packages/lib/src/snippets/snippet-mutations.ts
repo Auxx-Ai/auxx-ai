@@ -126,7 +126,6 @@ export interface UpdateSnippetInput {
   contentHtml?: string
   description?: string
   folderId?: string | null
-  isFavorite?: boolean
 }
 
 /** Update a snippet's content. Access is the caller's to assert (`edit`). */
@@ -164,7 +163,6 @@ export async function updateSnippet(
       if (input.contentHtml !== undefined) updateData.contentHtml = input.contentHtml
       if (input.description !== undefined) updateData.description = input.description
       if (input.folderId !== undefined) updateData.folderId = input.folderId
-      if (input.isFavorite !== undefined) updateData.isFavorite = input.isFavorite
 
       await db.update(schema.Snippet).set(updateData).where(eq(schema.Snippet.id, snippetId))
 

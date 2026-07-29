@@ -1,0 +1,16 @@
+-- Drop `Snippet.isFavorite` — favouriting moves to the per-user `Favorite` table.
+--
+-- The column was one boolean on the SHARED snippet row, writable only through
+-- `updateSnippet`, which asserts `edit`. Two consequences, both bugs: a member
+-- holding only `view` could not star a snippet at all, and anyone holding `edit`
+-- starred it for the entire org. The snippet library table was the last surface
+-- in the app still using it — every other favouritable resource (dashboards,
+-- records, workflows, datasets, articles, KBs, files) already goes through
+-- `Favorite`, which is keyed on `userId` + `organizationMemberId`, and `SNIPPET`
+-- was already a first-class `targetType` there.
+--
+-- NO BACKFILL, deliberately. A global star has no rightful owner to convert to,
+-- and `Favorite` requires an `organizationMemberId` and a `sortOrder` this
+-- statement could not sensibly synthesise. Existing stars are dropped; users
+-- re-star from the library table, which now writes their own `Favorite` row.
+ALTER TABLE "Snippet" DROP COLUMN "isFavorite";
