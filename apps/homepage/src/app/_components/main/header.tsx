@@ -15,6 +15,7 @@ import {
   MessagesSquare,
   Newspaper,
   Plug,
+  Send,
   Shield,
   ShoppingBag,
   Sparkles,
@@ -102,6 +103,12 @@ const platformGroups: PlatformGroup[] = [
         name: 'Workflow',
         description: 'Automate your processes',
         icon: <GitBranch className='stroke-foreground fill-purple-500/15' />,
+      },
+      {
+        href: '/platform/sequences',
+        name: 'Sequences',
+        description: 'Reminders & follow-ups on autopilot',
+        icon: <Send className='stroke-foreground fill-blue-500/15' />,
       },
       {
         href: '/platform/integration',

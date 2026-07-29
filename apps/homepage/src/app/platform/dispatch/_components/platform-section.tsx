@@ -1,6 +1,6 @@
 // apps/homepage/src/app/platform/dispatch/_components/platform-section.tsx
 
-import { Bot, GitBranch, LineChart, Users } from 'lucide-react'
+import { Bot, GitBranch, LineChart, Send, Users } from 'lucide-react'
 import Link from 'next/link'
 
 const links = [
@@ -10,6 +10,13 @@ const links = [
     description: 'Ask AI about any job, customer, or invoice.',
     href: '/platform/ai/kopilot',
     tone: 'text-violet-600 dark:text-violet-400',
+  },
+  {
+    icon: Send,
+    name: 'Sequences',
+    description: 'Visit reminders and invoice chasers that send themselves.',
+    href: '/platform/sequences',
+    tone: 'text-blue-600 dark:text-blue-400',
   },
   {
     icon: GitBranch,
