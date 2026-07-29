@@ -17,7 +17,7 @@ export {
 export { EmailTemplateService } from './email-templates'
 export { ReauthenticationRequiredError } from './errors-handlers'
 export * from './inbound'
-export { FolderDiscoveryService } from './labels/folder-discovery-service'
-export { LabelRepo } from './labels/label-repo'
-export { LabelService } from './labels/label-service'
+// Labels live behind their own subpath, `@auxx/lib/email/labels` — see
+// `labels/index.ts`. `FolderDiscoveryService`, `LabelRepo` and `LabelService`
+// were re-exported here and are gone.
 export { getUserOrganizationId } from './permissions'
