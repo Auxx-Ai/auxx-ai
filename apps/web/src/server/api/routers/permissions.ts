@@ -27,12 +27,18 @@ import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
  *
  * `'profile'` is absent because a profile is the composition BASE, not a raise
  * above it, and every base write must go through {@link
- * permissionsRouter.saveProfile}: that is the only path running the §6.1
- * escalation guard over each holder's resulting effective state.
- * `setGranteeLevels` runs `assertGrantableLevels` alone, which today blocks only
- * the single `adminOnly` area (`settings`) — so a `profile` grantee here would
- * let a non-admin `permissionsManage` holder write `billing`/`members`/
- * `permissions` into a profile's base with no authority check at all.
+ * permissionsRouter.saveProfile}: that is the path running the §6.1 escalation
+ * guard over each PROFILE holder's resulting effective state. `setGranteeLevels`
+ * resolves holders per grantee tier, and a profile's holder set is not among them
+ * — so a `profile` grantee here would skip the guard entirely and let a non-admin
+ * `permissionsManage` holder write `billing`/`members`/`permissions` into a
+ * profile's base with no authority check at all.
+ *
+ * Since plan 37 phase 1 the `user` tier of this very mutation runs that same
+ * guard over its single holder, which is what stops the actor naming themselves
+ * as the grantee. **The `group` tier is still unguarded** (plan 37 §4 — the
+ * >`HOLDER_GUARD_CAP` fallback is an open decision), so a `permissionsManage`
+ * holder can still raise a group they belong to.
  *
  * `'role'` is absent for the same reason, one step removed: plan 19 §0.8 deleted
  * the `role:org_member` `PermissionGrant` tier (no composer reads it — see

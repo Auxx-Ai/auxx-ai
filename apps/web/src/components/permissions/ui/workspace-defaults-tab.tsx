@@ -43,9 +43,12 @@ const RECORDS_ID = 'records'
  * This tab deliberately carries **no area-level grid**. Member area levels are
  * the `member` permission profile's `PermissionGrant` row, edited in exactly one
  * place — Profiles → Member — because that save is the only path that runs the
- * doc 19 §6.1 escalation guard over the resulting state of every holder. The
- * grid that used to live here wrote per-area through `setGranteeLevels`, which
- * runs no such guard, so it could reach a state the profile editor refuses.
+ * doc 19 §6.1 escalation guard over the resulting state of every PROFILE holder.
+ * The grid that used to live here wrote per-area through `setGranteeLevels`,
+ * which at the time ran no guard at all, so it could reach a state the profile
+ * editor refuses. Plan 37 has since put the same guard on `setGranteeLevels`'
+ * `user` tier, but that does not reopen this grid: a profile base moves every
+ * holder at once, which is the comparison `savePermissionProfile` owns.
  *
  * Each row's **Inherit** option still names what it falls through to (the Member
  * profile's level for that area, or No Access for resources born private), so

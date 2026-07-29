@@ -34,8 +34,10 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
  *
  * Until this change "Member baseline" was a fifth surface that ALSO wrote the
  * `member` profile's area levels, through a `role:org_member` bridge and
- * `setGranteeLevels` — a path with no escalation guard. Its grid is gone; the
- * tab kept only the `ResourceAccess` rows it was the sole host of.
+ * `setGranteeLevels` — which ran no escalation guard at the time. Its grid is
+ * gone; the tab kept only the `ResourceAccess` rows it was the sole host of.
+ * (`setGranteeLevels` is guarded on its `user` tier since plan 37, but a profile
+ * base still belongs to the Profiles tab: it moves every holder at once.)
  */
 export default function PermissionsPage() {
   useUser({ requireRoles: ['ADMIN', 'OWNER'] })
