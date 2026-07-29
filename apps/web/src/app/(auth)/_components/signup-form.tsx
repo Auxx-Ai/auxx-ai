@@ -20,7 +20,7 @@ import { Turnstile } from '@marsidev/react-turnstile'
 import { Mail, Smartphone } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -31,6 +31,7 @@ import { GithubIcon, GoogleIcon } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useTurnstile } from '~/hooks/use-turnstile'
 import { useEnv } from '~/providers/dehydrated-state-provider'
+import { api } from '~/trpc/react'
 import { GeneralSubmitButton } from './submit-button'
 
 // Schema for email-based signup validation
@@ -80,6 +81,17 @@ export function SignUpForm() {
     defaultValues: { phone: '' },
   })
 
+  // An invite link carries its token here (`/signup?invitationToken=...`). When
+  // it resolves, the account being created is bound to the invited address:
+  // prefilled, locked, and re-checked server-side on submit.
+  const searchParams = useSearchParams()
+  const invitationToken = searchParams.get('invitationToken')
+  const { data: invitation } = api.member.invitationPreview.useQuery(
+    { token: invitationToken ?? '' },
+    { enabled: !!invitationToken, staleTime: 5 * 60 * 1000, retry: false }
+  )
+  const invitedEmail = invitation?.valid ? invitation.email : null
+
   const [step, setStep] = useState<'initial' | 'email' | 'phone' | 'otp'>('initial')
   const [contact, setContact] = useState('') // Email or phone number
   const [password, setPassword] = useState('')
@@ -89,6 +101,16 @@ export function SignUpForm() {
   const [resendTimeout, setResendTimeout] = useState(0)
   const [contentHeight, setContentHeight] = useState<number | undefined>(undefined)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // Once the invitation resolves, jump straight to the email step with the
+  // invited address in place — phone signup is skipped entirely, since an
+  // account created without an email can never satisfy an email-bound invite.
+  useEffect(() => {
+    if (!invitedEmail) return
+    emailForm.setValue('email', invitedEmail)
+    setContact(invitedEmail)
+    setStep((current) => (current === 'initial' ? 'email' : current))
+  }, [invitedEmail, emailForm])
 
   useEffect(() => {
     if (!contentRef.current) return
@@ -210,11 +232,20 @@ export function SignUpForm() {
 
     try {
       const { data: _data, error } = await client.signUp.email({
-        email: values.email,
+        // The invited address wins over anything in the field — the server
+        // rejects a mismatch, so sending the invited value keeps a stale form
+        // state from producing a confusing error instead of a signup.
+        email: invitedEmail ?? values.email,
         password: values.password,
         name: '',
-        callbackURL: callbackUrl || '/app',
+        // Land an invited signup back on the invitation so it completes, rather
+        // than on an empty /app they have no organization for yet.
+        callbackURL:
+          callbackUrl || (invitationToken ? `/accept-invitation?token=${invitationToken}` : '/app'),
         signupSource,
+        // Not persisted on the user — read by the auth before-hook to bind this
+        // account to the invitation. See auth/server.ts.
+        ...(invitationToken ? { invitationToken } : {}),
         fetchOptions: {
           headers: turnstileToken ? { 'x-captcha-response': turnstileToken } : {},
         },
@@ -260,6 +291,19 @@ export function SignUpForm() {
         <Card variant='translucent' className='border-transparent px-4 py-6'>
           <CardContent className='flex flex-col gap-4 overflow-hidden '>
             {error && <div className='text-sm font-medium text-destructive'>{error}</div>}
+
+            {/* A dead invite link must say so. Falling through to a plain signup
+                looks like it worked, and lands them in their own new org. */}
+            {invitation && !invitation.valid && (
+              <div className='text-sm text-destructive'>
+                {invitation.reason === 'expired'
+                  ? 'This invitation has expired.'
+                  : invitation.reason === 'used'
+                    ? 'This invitation has already been used.'
+                    : 'This invitation link is not valid.'}{' '}
+                Ask an admin to send you a new one.
+              </div>
+            )}
 
             <motion.div
               animate={{ height: contentHeight }}
@@ -346,9 +390,21 @@ export function SignUpForm() {
                       variants={variants}
                       transition={{ duration: 0.3 }}>
                       <div className='pb-4'>
-                        <div className='font-semibold leading-none tracking-tight pb-6 text-xl text-center'>
+                        <div className='font-semibold leading-none tracking-tight pb-2 text-xl text-center'>
                           Create your account
                         </div>
+                        {invitedEmail ? (
+                          <p className='pb-6 text-center text-sm text-white/60'>
+                            You've been invited to join{' '}
+                            <span className='text-white'>
+                              {(invitation?.valid && invitation.organizationName) || 'a team'}
+                            </span>{' '}
+                            as <span className='text-white'>{invitedEmail}</span>. Your account must
+                            use this address.
+                          </p>
+                        ) : (
+                          <div className='pb-4' />
+                        )}
 
                         <Form {...emailForm}>
                           <form
@@ -365,8 +421,9 @@ export function SignUpForm() {
                                       size='lg'
                                       type='email'
                                       placeholder='your@email.com'
-                                      autoFocus
+                                      autoFocus={!invitedEmail}
                                       {...field}
+                                      readOnly={!!invitedEmail}
                                       disabled={isLoading}
                                       onChange={(e) => {
                                         field.onChange(e)
@@ -432,14 +489,18 @@ export function SignUpForm() {
                         .
                       </p>
 
-                      <div className='text-right flex items-center mt-4'>
-                        <Button
-                          variant='link'
-                          className='h-auto p-0 font-normal text-white'
-                          onClick={() => setStep('initial')}>
-                          Back
-                        </Button>
-                      </div>
+                      {/* An invited signup has nowhere to go back TO — the other
+                          methods can't be bound to the invited address. */}
+                      {!invitedEmail && (
+                        <div className='text-right flex items-center mt-4'>
+                          <Button
+                            variant='link'
+                            className='h-auto p-0 font-normal text-white'
+                            onClick={() => setStep('initial')}>
+                            Back
+                          </Button>
+                        </div>
+                      )}
                     </motion.div>
                   )}
 

@@ -10,7 +10,7 @@ import {
 import type { UserEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gt, ne } from 'drizzle-orm'
-import { acceptInvitationById } from '../members'
+import { acceptInvitationById, emailEquals } from '../members'
 import { ensureSystemProfiles } from '../permissions/profiles'
 import { SystemUserService } from '../users/system-user-service'
 import { OrganizationSeeder } from './organization-seeder'
@@ -208,7 +208,10 @@ async function getPendingInvite(email: string): Promise<PendingInvite | null> {
     .from(schema.OrganizationInvitation)
     .where(
       and(
-        eq(schema.OrganizationInvitation.email, email.toLowerCase()),
+        // Case-insensitive on BOTH sides: lowercasing only the incoming address
+        // still missed an invitation stored with the casing the admin typed,
+        // which drops the invitee into a throwaway org instead of their team.
+        emailEquals(schema.OrganizationInvitation.email, email),
         eq(schema.OrganizationInvitation.status, InvitationStatus.PENDING),
         gt(schema.OrganizationInvitation.expiresAt, new Date())
       )

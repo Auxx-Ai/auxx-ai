@@ -85,12 +85,15 @@ export function NotificationRow({
     onOpen?.()
   }
 
+  // Both lines are `div`, not `p`: they host `NotificationRecord` / `NotificationActor`
+  // chips, which bottom out in `EntityIcon` — a `div`, so not phrasing content. A `p`
+  // cannot contain one, and React fails hydration on it.
   const body = (
     <>
       {/* leading-6 keeps a wrapped message clear of the h-5 chips it may contain. */}
-      <p className='text-sm leading-6'>{children}</p>
+      <div className='text-sm leading-6'>{children}</div>
       {subtitle ? (
-        <p className='mt-0.5 line-clamp-2 text-muted-foreground text-xs'>{subtitle}</p>
+        <div className='mt-0.5 line-clamp-2 text-muted-foreground text-xs'>{subtitle}</div>
       ) : null}
     </>
   )

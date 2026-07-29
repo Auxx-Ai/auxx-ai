@@ -21,6 +21,10 @@ vi.mock('./invitation-links', () => ({
   INVITATION_EXPIRATION_HOURS: 72,
   generateAcceptLink: () => 'http://localhost:3000/accept-invitation?token=t',
   generateSignupLink: () => 'http://localhost:3000/signup?token=t',
+  generateInvitationEntryLink: (_token: string, hasAccount: boolean) =>
+    hasAccount
+      ? 'http://localhost:3000/accept-invitation?token=t'
+      : 'http://localhost:3000/signup?token=t',
 }))
 vi.mock('./guards', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./guards')>()),

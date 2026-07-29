@@ -8,6 +8,7 @@ export {
   type AssignMemberProfileResult,
   assignMemberProfile,
 } from './assign-profile'
+export { emailEquals, normalizeEmail } from './email-match'
 export {
   INVITATION_PROFILE_BOUND_ACTION,
   INVITATION_PROFILE_MISSING_ACTION,
@@ -20,8 +21,10 @@ export {
 export {
   cancelInvitation,
   getInvitationLink,
+  getInvitationPreview,
   getMyPendingInvitations,
   getPendingInvitations,
+  type InvitationPreview,
   inviteMember,
   resendInvitation,
 } from './invitations'
