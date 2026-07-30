@@ -19,7 +19,7 @@
 // of its 63 cases passes even when the per-instance assert is replaced with an
 // unconditional throw — verified before writing this.
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { Rung } from '@auxx/database/enums'
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ForbiddenError } from '../../../../../../errors'
@@ -38,7 +38,20 @@ type ToolExecContext = Parameters<AgentToolDefinition['execute']>[1]
 const ORG = 'org-1'
 const AGENT_ID = 'a1'
 
-/** Tool name → the per-agent tier it must require. */
+/**
+ * Tool name → the per-agent tier it must require.
+ *
+ * ⚠ Two vocabularies meet in this file and they are NOT the same axis. A tier is
+ * an `AgentAuthoringTier` label (`view`/`edit`/`admin`) naming which assert runs
+ * — `view` maps to `assertViewInstance`. What goes INTO `CapabilitySet` is a
+ * `Rung` (`none < metadata < identity < read < edit < admin`), where the read
+ * tier is spelled **`read`**, not `view`. This file used to pass
+ * `ResourcePermission.view` as the stored grant; permissions v3 (#1406) renamed
+ * that rung `view`→`read` and left the stub behind, so `rungRank('view')` came
+ * back `undefined`, every ordinal comparison went false, and the `view` case
+ * failed CLOSED. Only that case: `edit`/`admin` are spelled identically in both
+ * vocabularies, which is exactly why the breakage looked so narrow.
+ */
 const TIERS: Record<string, 'view' | 'edit' | 'admin'> = {
   // Reads
   get_eval_case: 'view',
@@ -114,10 +127,7 @@ const agentDeps = { organizationId: ORG, userId: 'member-1', sessionId: 's-1' } 
  * per-instance row. A test that lowered the area level too would pass even if
  * the instance check were deleted.
  */
-function capsWithInstance(
-  permission: ResourcePermission,
-  areaLevel: Level = Level.Full
-): CapabilitySet {
+function capsWithInstance(rung: Rung, areaLevel: Level = Level.Full): CapabilitySet {
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.agents]: areaLevel }) as PermissionKey[]),
     {},
@@ -126,7 +136,7 @@ function capsWithInstance(
     (id) => id,
     new Set(),
     (id) => id,
-    { [AGENT_ID]: permission },
+    { [AGENT_ID]: rung },
     new Set([AGENT_ID])
   )
 }
@@ -147,13 +157,13 @@ async function deniedByGuard(tool: AgentToolDefinition): Promise<boolean> {
 }
 
 beforeEach(() => {
-  capsRef.caps = capsWithInstance(ResourcePermission.admin)
+  capsRef.caps = capsWithInstance('admin')
   getCachedAgentById.mockClear()
 })
 
 describe('agents.builder tools — every tool declares a per-agent tier', () => {
   it('TIERS covers the registry exactly, so a new tool cannot ship without one', async () => {
-    capsRef.caps = capsWithInstance(ResourcePermission.admin)
+    capsRef.caps = capsWithInstance('admin')
     const names = (await builderTools()).map((t) => t.name).sort()
     expect(names).toEqual(Object.keys(TIERS).sort())
   })
@@ -161,11 +171,11 @@ describe('agents.builder tools — every tool declares a per-agent tier', () => 
 
 describe('agents.builder tools — an explicit `none` row beats the whole area', () => {
   it('denies EVERY tool for a member holding agents: Full but restricted on this agent', async () => {
-    capsRef.caps = capsWithInstance(ResourcePermission.admin)
+    capsRef.caps = capsWithInstance('admin')
     const tools = await builderTools()
     expect(tools.length).toBeGreaterThan(0)
 
-    capsRef.caps = capsWithInstance(ResourcePermission.none)
+    capsRef.caps = capsWithInstance('none')
     for (const tool of tools) {
       expect(await deniedByGuard(tool), tool.name).toBe(true)
     }
@@ -174,12 +184,12 @@ describe('agents.builder tools — an explicit `none` row beats the whole area',
 
 describe('agents.builder tools — each tier admits exactly its own rung and above', () => {
   for (const [grant, granted] of [
-    [ResourcePermission.view, 'view'],
-    [ResourcePermission.edit, 'edit'],
-    [ResourcePermission.admin, 'admin'],
+    ['read', 'view'],
+    ['edit', 'edit'],
+    ['admin', 'admin'],
   ] as const) {
     it(`an instance \`${granted}\` holder reaches the ${granted}-and-below tools and no others`, async () => {
-      capsRef.caps = capsWithInstance(ResourcePermission.admin)
+      capsRef.caps = capsWithInstance('admin')
       const tools = await builderTools()
 
       capsRef.caps = capsWithInstance(grant)
@@ -201,12 +211,12 @@ describe('agents.builder tools — the Kopilot path is no cheaper than the tRPC 
     // `assertAdminInstance` on the router because they make the agent act
     // autonomously on its own credentials, so an instance-`edit` holder must not
     // reach them through chat instead.
-    capsRef.caps = capsWithInstance(ResourcePermission.admin)
+    capsRef.caps = capsWithInstance('admin')
     const tools = await builderTools()
     const triggers = tools.find((t) => t.name === 'set_agent_triggers')
     if (!triggers) throw new Error('set_agent_triggers is not registered')
 
-    capsRef.caps = capsWithInstance(ResourcePermission.edit)
+    capsRef.caps = capsWithInstance('edit')
     expect(await deniedByGuard(triggers)).toBe(true)
   })
 
@@ -217,26 +227,26 @@ describe('agents.builder tools — the Kopilot path is no cheaper than the tRPC 
     // `agentsManage` there survives. This is the case that kills it: a member
     // whose AREA level is only Read must still reach the read tools, exactly as
     // `agentToolset.listTools` moved to `agentsView` on the router side.
-    capsRef.caps = capsWithInstance(ResourcePermission.admin)
+    capsRef.caps = capsWithInstance('admin')
     const tools = await builderTools()
     const read = tools.find((t) => t.name === 'get_eval_case')
     const write = tools.find((t) => t.name === 'set_agent_prompt')
     if (!read || !write) throw new Error('expected tools are not registered')
 
-    capsRef.caps = capsWithInstance(ResourcePermission.admin, Level.Read)
+    capsRef.caps = capsWithInstance('admin', Level.Read)
     expect(await deniedByGuard(read)).toBe(false)
     // …and the area rung still binds upward: Read is not enough to author.
     expect(await deniedByGuard(write)).toBe(true)
   })
 
   it('lets an instance `view` holder read an eval case but not create one', async () => {
-    capsRef.caps = capsWithInstance(ResourcePermission.admin)
+    capsRef.caps = capsWithInstance('admin')
     const tools = await builderTools()
     const read = tools.find((t) => t.name === 'get_eval_case')
     const write = tools.find((t) => t.name === 'create_eval_case')
     if (!read || !write) throw new Error('eval tools are not registered')
 
-    capsRef.caps = capsWithInstance(ResourcePermission.view)
+    capsRef.caps = capsWithInstance('read')
     expect(await deniedByGuard(read)).toBe(false)
     expect(await deniedByGuard(write)).toBe(true)
   })

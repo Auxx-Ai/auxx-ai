@@ -3,6 +3,11 @@
 import { z } from 'zod'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { FieldValueService } from '../../../../../field-values/field-value-service'
+// Deep subpath, NOT the `resources` barrel — the barrel reaches the picker →
+// the files service → `@auxx/database`'s `database` export. This module imports
+// only `errors`, the RecordId parser and types; the picker sits behind a lazy
+// `import()` inside it and is only paid for on the def-denied path.
+import { assertRecordRowsEditableWithDb } from '../../../../../resources/crud/record-row-access'
 import { getDefinitionId, type RecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArrayArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -30,7 +35,7 @@ export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefin
       target: 'definition',
       level: 'edit',
       enforcement: 'enforced',
-      note: 'Own per-def assertEditEntity before any DB work (bypasses UnifiedCrudHandler by design).',
+      note: 'Own copy of the per-row edit gate — canEditEntity fast path, then an `_access` stamp read of the def-denied remainder (bypasses UnifiedCrudHandler by design).',
     },
     displayName: 'Bulk update records',
     toolsetSlug: 'auxx:entities:write',
@@ -141,32 +146,40 @@ Example (ids match list_entity_fields output):
         }
       }
 
-      // Write enforcement (permissions v2 §3.3). This tool bypasses
-      // `UnifiedCrudHandler` and writes straight through `FieldValueService`,
-      // so it carries its own copy of the handler's write gate: one
-      // `assertEditEntity` per DISTINCT def among the recordIds, in-memory,
-      // before any DB work. Absent capabilities ⇒ unrestricted, as before.
+      // Write enforcement (plan v3/03 §5.3). This tool bypasses
+      // `UnifiedCrudHandler` and writes straight through `FieldValueService`, so
+      // it carries its own copy of the handler's write gate — and that copy is
+      // now the SAME per-ROW gate the handler calls, not the def-only loop it
+      // used to be (P5 skipped this one site; this is the catch-up).
       //
-      // ⚠ **Still DEF-only — plan v3/03 P5 did NOT convert this one.** The
-      // handler's gate moved to a per-row `_access` judgement
-      // (`assertRecordRowsEditableWithDb`); this copy did not follow. For a pure
-      // AGENT principal that is behaviour-identical, because
-      // `AgentPolicyCapabilities.hasRecordGrantsOn` is unconditionally `false`
-      // and an agent therefore has no per-record grants for a row gate to find.
-      // The gap is a Kopilot run clamped against a HUMAN capability set: a row
-      // that member holds an `edit` share on is refused here. Converting it
-      // needs this file's capability tests rewritten around a stamped read
-      // (they assert `assertEditEntity` call ORDER today), which is why it was
-      // left rather than half-done.
-      if (capabilities) {
-        const seenDefIds = new Set<string>()
-        for (const recordId of recordIds) {
-          const entityDefinitionId = getDefinitionId(recordId as RecordId)
-          if (seenDefIds.has(entityDefinitionId)) continue
-          seenDefIds.add(entityDefinitionId)
-          capabilities.assertEditEntity(entityDefinitionId)
-        }
-      }
+      // The shape is inherited wholesale, so it costs nothing on the ordinary
+      // path: the def gate runs FIRST and short-circuits, memoized per
+      // definition, so a 50-row single-def batch asks `canEditEntity` once and
+      // never reads a row. Only def-DENIED ids are read back with their
+      // `_access` stamp and re-judged against the row-effective `edit` floor. A
+      // missing row or a missing stamp DENIES, and the batch fails WHOLE — a
+      // partial bulk write is not something a user can reason about.
+      //
+      // Absent capabilities ⇒ unrestricted, as before (the gate returns early).
+      //
+      // For a pure AGENT principal this is outcome-identical to the old def
+      // loop, and the reason is `AgentPolicyCapabilities.recordAccessAt`, which
+      // DISCARDS `grantRank` (see its `_grantRank` parameter): an agent's stamp
+      // is always its own published def rung, so a `ResourceAccess` row sitting
+      // on the agent's synthetic user cannot lift it. Note the gate judges via
+      // `canEditRecordAt` and never consults `hasRecordGrantsOn` — that flag
+      // being `false` for agents is true but NOT what closes this hole.
+      //
+      // What changes is the case the old loop got wrong: a run clamped against
+      // a HUMAN capability set may now write a row that member holds an `edit`
+      // share on.
+      await assertRecordRowsEditableWithDb({
+        db,
+        organizationId: agentDeps.organizationId,
+        userId: agentDeps.userId,
+        capabilities,
+        recordIds: recordIds as RecordId[],
+      })
 
       const firstRecordId = recordIds[0] as string
       const resource = await findCachedResource(

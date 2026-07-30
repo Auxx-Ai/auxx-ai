@@ -56,6 +56,7 @@ export {
   recordScopeArm,
   recordScopeArmFor,
   recordSearchVisibilitySql,
+  recordUnionVisibilitySql,
   recordVisibilityScope,
   resolveRecordVisibilityScope,
   rungsAtOrAbove,

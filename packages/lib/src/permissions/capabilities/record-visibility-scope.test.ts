@@ -16,7 +16,13 @@ import {
   deriveThreadRungFromRecordGrant,
   recordThreadDerivationCap,
 } from './record-thread-derivation'
-import { recordScopeArm, recordScopeArmFor, rungsAtOrAbove } from './record-visibility-scope'
+import {
+  recordScopeArm,
+  recordScopeArmFor,
+  recordSearchVisibilitySql,
+  recordUnionVisibilitySql,
+  rungsAtOrAbove,
+} from './record-visibility-scope'
 import { PermissionKey } from './registry'
 import { foldRecordAccess, RUNG_ORDER, rankToRung } from './rung'
 
@@ -100,6 +106,73 @@ describe('rungsAtOrAbove — the threshold constants', () => {
     }
     // ≤ 6 constants, always — the predicate can never grow with the data.
     expect(rungsAtOrAbove('none').length).toBeLessThanOrEqual(6)
+  })
+})
+
+describe('§5.1 — the two multi-def search shapes', () => {
+  // Only the ABSENT/PRESENT decision is asserted, not the built predicate: the
+  // `schema` Proxy makes a rendered Drizzle condition vacuous here (see the file
+  // header). The predicate's effect is covered end-to-end by
+  // `resources/picker/global-union-record-grants.test.ts`.
+  const grantees = { userId: 'user_1', groupIds: [], profileId: null } as never
+  const columns = { instanceIdColumn: 'ei.id', defIdColumn: 'ei.def' }
+
+  it('def-list arm: nothing reachable ⇒ null (the caller must not query)', () => {
+    expect(
+      recordSearchVisibilitySql({
+        organizationId: 'org_1',
+        grantees,
+        fullyViewableDefIds: [],
+        grantOnlyDefIds: [],
+        ...columns,
+      })
+    ).toBeNull()
+  })
+
+  it('def-list arm: every def fully viewable ⇒ undefined (no narrowing, no cost)', () => {
+    expect(
+      recordSearchVisibilitySql({
+        organizationId: 'org_1',
+        grantees,
+        fullyViewableDefIds: [DEF],
+        grantOnlyDefIds: [],
+        ...columns,
+      })
+    ).toBeUndefined()
+  })
+
+  it('def-list arm: a grant-only def in the list ⇒ a predicate', () => {
+    expect(
+      recordSearchVisibilitySql({
+        organizationId: 'org_1',
+        grantees,
+        fullyViewableDefIds: [DEF],
+        grantOnlyDefIds: ['edf_other'],
+        ...columns,
+      })
+    ).toBeDefined()
+  })
+
+  it('union arm: no grant-only def ⇒ undefined — the common member pays NOTHING', () => {
+    expect(
+      recordUnionVisibilitySql({
+        organizationId: 'org_1',
+        grantees,
+        grantOnlyDefIds: [],
+        ...columns,
+      })
+    ).toBeUndefined()
+  })
+
+  it('union arm: a grant-only def ⇒ a predicate (additive, so no viewable list)', () => {
+    expect(
+      recordUnionVisibilitySql({
+        organizationId: 'org_1',
+        grantees,
+        grantOnlyDefIds: [DEF],
+        ...columns,
+      })
+    ).toBeDefined()
   })
 })
 

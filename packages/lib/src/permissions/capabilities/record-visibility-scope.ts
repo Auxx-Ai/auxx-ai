@@ -265,6 +265,36 @@ export function recordVisibilityScope(
 }
 
 /**
+ * `EXISTS (… a `read`-or-better grant addressed to this member on the correlated
+ * row …)`, **def-agnostic** — it correlates on org, instance id and the grantee
+ * union, but not on `entityDefinitionId`.
+ *
+ * That is sound for the same reason `instanceListScope` states for its own id
+ * lists: instance ids are globally-unique cuid2s, so a grant row belonging to a
+ * different def can never match another def's instance. Making it def-aware
+ * would need one `EXISTS` per def, i.e. SQL whose size grows with the org's
+ * schema — which is exactly what a multi-def search cannot afford.
+ *
+ * The def-SCOPED twin is {@link grantExistsSql}; both search shapes below share
+ * this one so the two cannot drift.
+ */
+function anyDefGrantExistsSql(input: {
+  organizationId: string
+  grantees: ResourceAccessGrantees
+  instanceIdColumn: SQL | unknown
+}): SQL {
+  const grantee = or(...resourceAccessGranteeConditions(input.grantees))
+  const rungs = rungsAtOrAbove(RECORD_READ_FLOOR)
+  return sql`EXISTS (
+    SELECT 1 FROM "ResourceAccess"
+    WHERE "ResourceAccess"."organizationId" = ${input.organizationId}
+      AND "ResourceAccess"."entityInstanceId" = ${input.instanceIdColumn}
+      AND "ResourceAccess"."rung" IN ${rungs}
+      AND ${grantee}
+  )`
+}
+
+/**
  * The MULTI-DEF form of the scope, for a search that spans several definitions
  * at once (§5.1: *"`search` — all three arms; the def-list arm additionally
  * unions grant-only defs"*).
@@ -275,13 +305,6 @@ export function recordVisibilityScope(
  *   ei."entityDefinitionId" = ANY(<grant-only>) AND EXISTS(<my grant ≥ read on ei.id>)
  * )
  * ```
- *
- * The inner `EXISTS` is **def-agnostic** — it correlates on org, instance id and
- * the grantee union, but not on `entityDefinitionId`. That is sound for the same
- * reason `instanceListScope` states for its own id lists: instance ids are
- * globally-unique cuid2s, so a grant row belonging to a different def can never
- * match another def's instance. Making it def-aware would need one `EXISTS` per
- * def, i.e. SQL whose size grows with the org's schema.
  *
  * Returns `undefined` when every def in scope is fully viewable (nothing to
  * narrow) and `null` when NOTHING is reachable (the caller must return empty
@@ -300,23 +323,66 @@ export function recordSearchVisibilitySql(input: {
   if (input.fullyViewableDefIds.length === 0 && input.grantOnlyDefIds.length === 0) return null
   if (input.grantOnlyDefIds.length === 0) return undefined
 
-  const grantee = or(...resourceAccessGranteeConditions(input.grantees))
-  const rungs = rungsAtOrAbove(RECORD_READ_FLOOR)
   const grantOnly = `{${input.grantOnlyDefIds.join(',')}}`
   const grantOnlyArm = sql`(
     ${input.defIdColumn} = ANY(${grantOnly}::text[])
-    AND EXISTS (
-      SELECT 1 FROM "ResourceAccess"
-      WHERE "ResourceAccess"."organizationId" = ${input.organizationId}
-        AND "ResourceAccess"."entityInstanceId" = ${input.instanceIdColumn}
-        AND "ResourceAccess"."rung" IN ${rungs}
-        AND ${grantee}
-    )
+    AND ${anyDefGrantExistsSql(input)}
   )`
 
   if (input.fullyViewableDefIds.length === 0) return grantOnlyArm
   const viewable = `{${input.fullyViewableDefIds.join(',')}}`
   return sql`(${input.defIdColumn} = ANY(${viewable}::text[]) OR ${grantOnlyArm})`
+}
+
+/**
+ * The **UNSCOPED-UNION** form of the scope, for the global search that takes no
+ * def scope at all (`record.search` with neither `entityDefinitionId` nor
+ * `entityDefinitionIds` — the cross-type union of the system tables and
+ * `EntityInstance`).
+ *
+ * ```
+ *   NOT (ei."entityDefinitionId" = ANY(<grant-only>))   -- unchanged rows
+ * OR EXISTS(<my grant ≥ read on ei.id>)                 -- the newly admitted ones
+ * ```
+ *
+ * ## Why this is the complement of {@link recordSearchVisibilitySql}, not a copy
+ *
+ * The def-list arm knows its whole universe — the caller named every def — so it
+ * can enumerate the fully-viewable half and write `= ANY(<viewable>)`. The union
+ * arm has no such list: it reads EVERY `EntityInstance` row in the org and hands
+ * the result to a `canViewEntity` post-filter. Enumerating "every def I may view"
+ * to feed the positive form would replace that post-filter with a list built from
+ * the org cache, so a def missing from the cache would silently stop appearing —
+ * a fail-closed regression, but a regression.
+ *
+ * So this predicate is **purely additive**: it names only the grant-only defs and
+ * leaves every other row exactly as reachable as it was, for the post-filter to
+ * judge as before. The caller must therefore keep that post-filter and widen it
+ * to `canViewEntity(def) || grantOnlyDefIds.has(def)` — rows of a grant-only def
+ * have already been narrowed here, and `canViewEntity` is `false` for them by
+ * construction.
+ *
+ * `NOT (x = ANY(…))` rather than `x <> ALL(…)`: identical semantics for a
+ * NOT NULL column and a NULL-free array, and it reads as the negation it is.
+ *
+ * Returns `undefined` when the member has no grant-only def — the overwhelmingly
+ * common case, which must cost nothing.
+ */
+export function recordUnionVisibilitySql(input: {
+  organizationId: string
+  grantees: ResourceAccessGrantees
+  grantOnlyDefIds: string[]
+  /** The outer instance-id column, e.g. `sql.raw('ei."id"')`. */
+  instanceIdColumn: SQL | unknown
+  /** The outer def column, e.g. `sql.raw('ei."entityDefinitionId"')`. */
+  defIdColumn: SQL | unknown
+}): SQL | undefined {
+  if (input.grantOnlyDefIds.length === 0) return undefined
+  const grantOnly = `{${input.grantOnlyDefIds.join(',')}}`
+  return sql`(
+    NOT (${input.defIdColumn} = ANY(${grantOnly}::text[]))
+    OR ${anyDefGrantExistsSql(input)}
+  )`
 }
 
 /**
