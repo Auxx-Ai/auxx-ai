@@ -2,6 +2,7 @@
 import {
   BarChart3,
   BookOpen,
+  Bot,
   Bug,
   Cloud,
   Code,
@@ -80,6 +81,12 @@ const platformGroups: PlatformGroup[] = [
         name: 'Kopilot',
         description: 'AI grounded in your data',
         icon: <Sparkles className='stroke-foreground fill-amber-500/15' />,
+      },
+      {
+        href: '/platform/ai/agents',
+        name: 'Agents',
+        description: 'AI workers that follow your playbook',
+        icon: <Bot className='stroke-foreground fill-violet-500/15' />,
       },
       {
         href: '/platform/data-model',

@@ -1,6 +1,6 @@
 // apps/homepage/src/app/platform/sequences/_components/platform-cross-links.tsx
 
-import { BarChart3, GitBranch, MessagesSquare, Truck, Users } from 'lucide-react'
+import { BarChart3, Bot, GitBranch, MessagesSquare, Truck, Users } from 'lucide-react'
 import Link from 'next/link'
 
 const links = [
@@ -31,6 +31,13 @@ const links = [
     description: 'Sends from a connected mailbox — and their reply lands in your shared inbox.',
     href: '/platform/messaging',
     tone: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    icon: Bot,
+    name: 'Agents',
+    description: 'When a reminder needs a decision instead of a timer, an agent takes it.',
+    href: '/platform/ai/agents',
+    tone: 'text-violet-600 dark:text-violet-400',
   },
   {
     icon: BarChart3,

@@ -10,7 +10,7 @@ import IntegrationSection from './_components/sections/integration-section'
 import KopilotHomeSection from './_components/sections/kopilot-home-section'
 import StatsSection from './_components/sections/stats-section'
 import TestimonialsSection from './_components/sections/testimonials-section'
-import WorkflowAnimationSection from './_components/sections/workflow-animation/workflow-animation-section'
+import AgentRunSection from './platform/ai/agents/_components/agent-run-section'
 import KopilotAgentsCta from './platform/ai/kopilot/_components/kopilot-agents-cta'
 import AccessSection from './platform/crm/_components/access-section'
 import CrmHero from './platform/crm/_components/crm-hero'
@@ -18,7 +18,6 @@ import DataConnectorsSection from './platform/data-model/_components/data-connec
 import DataModelWallHero from './platform/data-model/_components/data-model-wall-hero'
 import IngestionFlowSection from './platform/data-model/_components/ingestion-flow-section'
 import BuildDashboardsSection from './platform/reporting/_components/build-dashboards-section'
-import WorkflowContent from './platform/workflow/_components/workflow-content'
 
 export const metadata: Metadata = {
   alternates: { canonical: '/' },
@@ -69,13 +68,14 @@ export default function MainPage() {
       <SoftwareApplicationJsonLd />
       <Header />
       <HeroSection />
-      <LogoCloudTwo />
-      <WorkflowAnimationSection />
-      <WorkflowContent />
+      {/* <LogoCloudTwo /> */}
+      {/* The h1 promises an agent, so the agent runs before anything else. */}
+      <AgentRunSection bordered />
+      <CrmHero as='h2' />
 
       <DataModelWallHero as='h2' />
       <IngestionFlowSection />
-      <CrmHero as='h2' />
+
       <DataConnectorsSection />
       <KopilotHomeSection />
       {/* <ProblemSolutionSection /> */}

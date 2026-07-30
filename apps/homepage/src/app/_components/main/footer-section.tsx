@@ -24,6 +24,10 @@ const links = [
         href: '/platform/sequences',
       },
       {
+        title: 'Agents',
+        href: '/platform/ai/agents',
+      },
+      {
         title: 'Getting started',
         href: urls.signup,
       },

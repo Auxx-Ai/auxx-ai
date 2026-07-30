@@ -3,10 +3,18 @@
 import { Database } from 'lucide-react'
 import Link from 'next/link'
 import { SectionBottomFade } from '~/app/_components/main/section-bottom-fade'
+import { SectionTopFade } from '~/app/_components/main/section-top-fade'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
 import { cn } from '~/lib/utils'
 import { CrmBrowserDemo, EntityCanvas, EntityCardsGrid } from '../_mocks'
+
+/**
+ * `HeroSection`'s `bg-muted/30`, resolved to a flat colour so the fade has a
+ * real RGB triple to interpolate from. Same expression `CrmCenterSection` uses
+ * for the same neighbour.
+ */
+const HOME_HERO_COLOR = 'color-mix(in oklab, var(--color-muted) 30%, var(--color-background))'
 
 interface CrmHeroProps {
   as?: 'h1' | 'h2'
@@ -15,6 +23,13 @@ interface CrmHeroProps {
    * into the next section's color. Drops the hard `border-b` when active.
    */
   bottomFadeColor?: string
+  /**
+   * Colour of the section above. Only used when this renders as an `h2` (i.e.
+   * stacked under another page's hero) — as an `h1` it *is* the top of the
+   * page and has nothing to blend from. Defaults to the main homepage hero's
+   * colour, which is the only place it currently sits second.
+   */
+  topFadeColor?: string
 }
 
 /**
@@ -22,7 +37,12 @@ interface CrmHeroProps {
  * connected with dotted SVG relationship lines, flowing down into a mock
  * app browser showing a contacts records view.
  */
-export default function CrmHero({ as: Heading = 'h1', bottomFadeColor }: CrmHeroProps) {
+export default function CrmHero({
+  as: Heading = 'h1',
+  bottomFadeColor,
+  topFadeColor = HOME_HERO_COLOR,
+}: CrmHeroProps) {
+  const showTopFade = Heading === 'h2'
   return (
     <section className={cn('relative overflow-hidden', !bottomFadeColor && 'border-b')}>
       {/* Dot-grid background, faded toward the edges. */}
@@ -34,6 +54,7 @@ export default function CrmHero({ as: Heading = 'h1', bottomFadeColor }: CrmHero
         aria-hidden
         className='pointer-events-none absolute inset-x-0 top-0 h-[600px] bg-[radial-gradient(ellipse_at_top,_var(--color-primary)/8,_transparent_60%)]'
       />
+      {showTopFade && <SectionTopFade fromColor={topFadeColor} />}
       {bottomFadeColor && <SectionBottomFade toColor={bottomFadeColor} />}
 
       <div className='relative mx-auto max-w-6xl px-6 pb-20 pt-24 md:pt-32 lg:pt-36'>
