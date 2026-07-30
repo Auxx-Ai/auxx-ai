@@ -2,7 +2,11 @@
 
 import type { ResourcePermission } from '@auxx/database/enums'
 import type { BadgeProps } from '@auxx/ui/components/badge'
-import { permissionLabel } from '~/components/permissions/ui/level-labels'
+import {
+  LEVEL_OF_PERMISSION,
+  permissionLabel,
+  RUNG_BADGE_VARIANT,
+} from '~/components/permissions/ui/level-labels'
 
 /**
  * The four exact rungs an agent policy can express, ascending
@@ -23,22 +27,30 @@ interface AgentRungMeta {
 }
 
 /**
- * Rung names come from the shared ladder vocabulary; only the helper line and
- * badge colour are agent-specific. What plan 19 §0.5/§7 actually forbids is
- * showing `None` as "Inherit" (the doc 16 §10 bug, one screen over) — an agent
- * never inherits, so a deny must never read as an unset default.
+ * Rung names AND badge colours come from the shared ladder vocabulary; only the
+ * helper line is agent-specific — it is the one thing here that describes what
+ * an AGENT may do with the rung rather than where the rung sits on the ladder.
+ * The colours used to be spelled out again below, which is how the same rung
+ * could have drifted to a different colour here than on the permissions page.
+ * What plan 19 §0.5/§7 actually forbids is showing `None` as "Inherit" (the doc
+ * 16 §10 bug, one screen over) — an agent never inherits, so a deny must never
+ * read as an unset default.
  */
 export const AGENT_ACCESS_LEVEL_META: Record<ResourcePermission, AgentRungMeta> = {
   none: {
     label: permissionLabel('none'),
     helper: 'Denied — cannot discover or use',
-    variant: 'outline',
+    variant: RUNG_BADGE_VARIANT[LEVEL_OF_PERMISSION.none],
   },
-  view: { label: permissionLabel('view'), helper: 'List, read, and search', variant: 'sky' },
+  view: {
+    label: permissionLabel('view'),
+    helper: 'List, read, and search',
+    variant: RUNG_BADGE_VARIANT[LEVEL_OF_PERMISSION.view],
+  },
   edit: {
     label: permissionLabel('edit'),
     helper: 'Read plus create, update, and delete',
-    variant: 'amber',
+    variant: RUNG_BADGE_VARIANT[LEVEL_OF_PERMISSION.edit],
   },
   admin: {
     // Schema administration rides on this rung but has no native tool yet, so the
@@ -46,7 +58,7 @@ export const AGENT_ACCESS_LEVEL_META: Record<ResourcePermission, AgentRungMeta> 
     label: permissionLabel('admin'),
     helper:
       'Read and write, plus administration and settings — schema administration has no tool yet',
-    variant: 'green',
+    variant: RUNG_BADGE_VARIANT[LEVEL_OF_PERMISSION.admin],
   },
 }
 

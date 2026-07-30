@@ -2,6 +2,7 @@
 
 import { ResourcePermission, type Rung } from '@auxx/database/enums'
 import { Level, rungToPermission } from '@auxx/lib/permissions/client'
+import type { BadgeProps } from '@auxx/ui/components/badge'
 
 /**
  * The single display vocabulary for the four-rung access ladder (plan 26 §2.1).
@@ -43,6 +44,27 @@ export const RUNG_LABELS_LONG: Record<Level, string> = {
 
 /** Which form of the label a caller wants. */
 export type LabelForm = 'short' | 'long'
+
+/**
+ * Badge colour per rung — the ladder's one palette, ascending from a neutral
+ * outline through sky and amber to green.
+ *
+ * It is here for the same reason the label maps are: this exact mapping was
+ * already written out twice (the agent policy's rung meta and
+ * `ResolvedAccessDialog`'s fallback meta), and a rung that is amber on one
+ * permissions surface and yellow on the next teaches the reader nothing. Both
+ * of those maps now read their `variant` from here and keep only what is
+ * genuinely theirs — the helper sentence describing what the rung authorizes.
+ *
+ * `None` is `outline` rather than a red: it is the bottom of a ladder, not a
+ * failure, and it renders beside rungs an admin deliberately chose.
+ */
+export const RUNG_BADGE_VARIANT: Record<Level, NonNullable<BadgeProps['variant']>> = {
+  [Level.None]: 'outline',
+  [Level.Read]: 'sky',
+  [Level.Edit]: 'amber',
+  [Level.Full]: 'green',
+}
 
 /**
  * The rung as it appears in an **effective-access line** (plan 31 §2.5) — what a

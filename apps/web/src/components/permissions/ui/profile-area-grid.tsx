@@ -13,7 +13,6 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { AreaAccessRow, hasAreaAccessRow } from './area-access-row'
 import { clampToArea, LevelControl } from './level-control'
-import { effectiveLevelLabel } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import {
   PROFILE_AREA_GROUPS,
@@ -21,6 +20,7 @@ import {
   WORKER_LOCK_REASON,
   WORKER_SEAT_AREAS,
 } from './profile-copy'
+import { RungBadge } from './rung-badge'
 
 interface ProfileAreaGridProps {
   /**
@@ -418,15 +418,11 @@ function ProfileAreaRow({
       // §2.1b — a collapsed header must still be scannable. Nine of ~15 rows now
       // hide their control inside a child block, so without this an admin cannot
       // read a profile without expanding everything: 0.7 would trade one
-      // legibility problem for another. `effectiveLevelLabel` spells the bottom
-      // rung "No access" rather than "None", so it never reads as a missing value.
+      // legibility problem for another. `RungBadge` spells the bottom rung
+      // "No access" rather than "None", so it never reads as a missing value.
       actions={
         hasAccessRow ? (
-          <span className='text-xs text-muted-foreground whitespace-nowrap'>
-            {effectiveLevelLabel(
-              clampToArea(meta, isSeatLocked ? Level.None : (value ?? inherited))
-            )}
-          </span>
+          <RungBadge level={clampToArea(meta, isSeatLocked ? Level.None : (value ?? inherited))} />
         ) : undefined
       }
       trailing={
