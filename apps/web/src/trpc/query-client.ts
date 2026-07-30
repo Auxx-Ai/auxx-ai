@@ -13,6 +13,38 @@ import SuperJSON from 'superjson'
  */
 export const ORG_STATIC_STALE_TIME = 5 * 60 * 1000
 
+/**
+ * tRPC error code → HTTP status, for the fallback path only. `data.httpStatus`
+ * is present on anything that came back over the HTTP link; this covers the
+ * shapes that didn't (a server-side caller, a hand-thrown `TRPCError`), where
+ * `httpStatus` is absent and the code is all we have.
+ */
+const CODE_STATUS: Record<string, number> = {
+  BAD_REQUEST: 400,
+  PARSE_ERROR: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  METHOD_NOT_SUPPORTED: 405,
+  TIMEOUT: 408,
+  CONFLICT: 409,
+  PRECONDITION_FAILED: 412,
+  PAYLOAD_TOO_LARGE: 413,
+  UNPROCESSABLE_CONTENT: 422,
+  TOO_MANY_REQUESTS: 429,
+}
+
+/**
+ * Resolve a tRPC client error to an HTTP status, or `undefined` when it isn't
+ * one (a network failure, an aborted fetch) — those keep retrying.
+ */
+export function errorStatus(error: unknown): number | undefined {
+  const data = (error as { data?: { httpStatus?: unknown; code?: unknown } } | undefined)?.data
+  if (typeof data?.httpStatus === 'number') return data.httpStatus
+  if (typeof data?.code === 'string') return CODE_STATUS[data.code]
+  return undefined
+}
+
 export const createQueryClient = () =>
   new QueryClient({
     mutationCache: new MutationCache({
@@ -36,11 +68,17 @@ export const createQueryClient = () =>
         // above 0 to avoid refetching immediately on the client
         staleTime: 30 * 1000,
         retry: (failureCount, error) => {
-          const data = (error as any)?.data
-          const status =
-            data?.httpStatus ??
-            (data?.code === 'FORBIDDEN' ? 403 : data?.code === 'UNAUTHORIZED' ? 401 : undefined)
-          if (status === 401 || status === 403) return false
+          const status = errorStatus(error)
+          // Every 4xx is the server's considered answer, not a blip — asking a
+          // fourth time produces the same refusal. This used to exempt 401/403
+          // only, which meant a NOT_FOUND cost 4 round trips per trigger: mail
+          // answers a lens denial with 404 (it hides existence rather than
+          // admitting a thread it won't show), so a revoked thread left open
+          // hammered `message.listByThread` on every focus and reconnect.
+          // 408 and 429 are the two that genuinely mean "try again".
+          if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+            return false
+          }
           return failureCount < 3
         },
       },

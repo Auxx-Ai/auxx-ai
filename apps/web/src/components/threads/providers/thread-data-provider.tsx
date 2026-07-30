@@ -33,6 +33,7 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
     startBatch: () => useThreadStore.getState().startBatch(),
     completeBatch: (items, notFoundIds) =>
       useThreadStore.getState().completeBatch(items, notFoundIds),
+    failBatch: (ids) => useThreadStore.getState().failBatch(ids),
     fetcher: (ids) => fetchThreads({ ids }),
     label: 'Thread',
   })
