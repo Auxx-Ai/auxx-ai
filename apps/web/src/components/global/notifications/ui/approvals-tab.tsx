@@ -11,7 +11,6 @@ import {
   EmptyTitle,
 } from '@auxx/ui/components/empty'
 import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
-import { cn } from '@auxx/ui/lib/utils'
 import { CircleCheck, TriangleAlert } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useEffect, useMemo, useState } from 'react'
@@ -117,7 +116,7 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
       return
     }
     const element = document.querySelector(
-      `[data-approval-id="${CSS.escape(highlightApprovalId)}"]`
+      `[data-notification-id="${CSS.escape(highlightApprovalId)}"]`
     )
     element?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     setFlashedId(highlightApprovalId)
@@ -190,25 +189,29 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
       {confirmationItems.length ? (
         <section>
           <SectionHeader label='Needs a decision' count={confirmationItems.length} />
-          {confirmationItems.map((request) => (
-            <div
-              key={request.id}
-              data-approval-id={request.id}
-              className={cn(
-                'scroll-mt-2 rounded-md transition-shadow',
-                flashedId === request.id && 'ring-2 ring-info ring-inset'
-              )}>
-              {/* Both kinds live in one section, ordered by deadline together
-                  (plan 28 H1 is what makes access rows appear here at all). They
-                  get different rows because the payload and the cost of Deny are
-                  different — see `AccessRequestRow`. */}
-              {request.kind === 'access' ? (
-                <AccessRequestRow request={request} onResolved={onResolved} />
-              ) : (
-                <ConfirmationRow request={request} onResolved={onResolved} />
-              )}
-            </div>
-          ))}
+          {/* Both kinds live in one section, ordered by deadline together (plan 28
+              H1 is what makes access rows appear here at all). They get different
+              rows because the payload and the cost of Deny are different — see
+              `AccessRequestRow`. No wrapper element: the flash ring and the scroll
+              anchor both belong on the card `NotificationRow` draws, which is inset
+              from the section by its own margins. */}
+          {confirmationItems.map((request) =>
+            request.kind === 'access' ? (
+              <AccessRequestRow
+                key={request.id}
+                request={request}
+                onResolved={onResolved}
+                highlighted={flashedId === request.id}
+              />
+            ) : (
+              <ConfirmationRow
+                key={request.id}
+                request={request}
+                onResolved={onResolved}
+                highlighted={flashedId === request.id}
+              />
+            )
+          )}
         </section>
       ) : null}
 
