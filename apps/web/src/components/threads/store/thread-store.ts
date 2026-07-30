@@ -10,6 +10,10 @@ import type { RecordId } from '@auxx/types/resource'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+// Direct module import, NOT the `../store` barrel — the barrel re-exports this
+// file, so going through it would close an import cycle. `message-list-store`
+// imports nothing from here, so this direction is safe.
+import { useMessageListStore as messageListStore } from './message-list-store'
 
 /** Re-export filter type for convenience */
 export type { ThreadClientFilter as ThreadFilter }
@@ -265,6 +269,13 @@ interface ThreadStoreState {
   forceRequestThread: (id: string) => void
   startBatch: () => string[]
   completeBatch: (threads: ThreadMeta[], notFoundIds: string[]) => void
+  /**
+   * The batch fetch threw. Releases the ids so a later request can retry, and
+   * deliberately does NOT tombstone: `completeBatch`'s not-found arm evicts, and
+   * a dropped connection is not the server telling us the viewer may not see
+   * these threads.
+   */
+  failBatch: (ids: string[]) => void
 
   // Scheduled message CRUD
   setScheduledMessages: (messages: ScheduledMessageMeta[]) => void
@@ -607,7 +618,32 @@ export const useThreadStore = create<ThreadStoreState>()(
             state.loadingIds.delete(id)
             if (state.deletedIds.has(id)) continue
             state.notFoundIds.add(id)
+
+            // EVICT. `forceRequestThread`'s no-eviction rule covers the window
+            // BEFORE the answer lands (don't blank the pane mid-read); once the
+            // answer is "you may not see this", the entry it was protecting is
+            // the leak. A revoke re-requests through `visibility:changed` and
+            // comes back here, so without this delete the stale row lives
+            // forever: `thread-details` renders its "Thread not found" branch
+            // only on `!thread`, so the revoked viewer kept seeing the header,
+            // subject and participants — and `useMessages`' `enabled: !!thread`
+            // stayed true, refetching a 404 on every focus and reconnect.
+            // Re-granting is unaffected: `forceRequestThread` clears
+            // `notFoundIds` and re-fetches, which repopulates the map.
+            state.threads.delete(id)
+
+            // The id list is what makes the message bodies reachable. Bodies
+            // themselves are handled by `clearHtmlBodyCache()` on
+            // `visibility:changed` (plan 45 §1.6); this is the metadata twin.
+            // Dropping it also re-arms `useMessages`' `!cachedList` gate, which
+            // is safe only because that hook now also checks `notFoundIds`.
+            messageListStore.getState().invalidate(id)
           }
+        }),
+
+      failBatch: (ids) =>
+        set((state) => {
+          for (const id of ids) state.loadingIds.delete(id)
         }),
 
       // ═══════════════════════════════════════════════════════════════

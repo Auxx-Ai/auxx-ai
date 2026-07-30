@@ -9,6 +9,7 @@ import {
   useMessageListStore,
   useMessageStore,
   useParticipantStore,
+  useThreadStore,
 } from '../store'
 
 interface UseMessagesOptions {
@@ -45,6 +46,20 @@ export function useMessages({ threadId, enabled = true }: UseMessagesOptions): U
 
   const messageIds = cachedList?.messageIds ?? []
 
+  // The thread lane's tombstone, honoured here too. `listByThread` answers a
+  // lens denial with NOT_FOUND (deliberately — mail hides existence rather than
+  // admitting a thread it won't show), and a 404 is not a state this query can
+  // recover from by asking again. Without this the query stays armed forever:
+  // `!cachedList` is true precisely because the fetch failed, so every window
+  // focus, remount and realtime reconnect fires another round.
+  //
+  // Read from the store rather than the query's own error, because the three
+  // other `useMessages` callers pass no `enabled` gate at all — the tombstone
+  // has to disarm them too, not just `thread-details`.
+  const isThreadNotFound = useThreadStore(
+    useCallback((state) => (threadId ? state.notFoundIds.has(threadId) : false), [threadId])
+  )
+
   // Get all messages from store (useShallow prevents infinite loops)
   const messages = useMessageStore(
     useShallow((s) =>
@@ -61,7 +76,7 @@ export function useMessages({ threadId, enabled = true }: UseMessagesOptions): U
   const { data, isLoading, refetch } = api.message.listByThread.useQuery(
     { threadId: threadId! },
     {
-      enabled: enabled && !!threadId && !cachedList,
+      enabled: enabled && !!threadId && !cachedList && !isThreadNotFound,
       staleTime: 30_000,
     }
   )

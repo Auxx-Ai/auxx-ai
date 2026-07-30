@@ -10,6 +10,14 @@ export interface BatchDrainOpts<T extends { id: string }> {
   getPendingSize: () => number
   startBatch: () => string[]
   completeBatch: (items: T[], notFoundIds: string[]) => void
+  /**
+   * The batch fetch itself threw (network down, 500, rate limit) — which is NOT
+   * the same answer as "the server looked and these do not exist", even though
+   * the default below conflates them for back-compat. Supply this wherever the
+   * store does something irreversible with a not-found id: the thread store
+   * EVICTS on not-found, and a dropped connection must not empty the mailbox.
+   */
+  failBatch?: (ids: string[]) => void
   fetcher: (ids: string[]) => Promise<T[]>
   label: string
 }
@@ -50,7 +58,9 @@ export function useBatchDrain<T extends { id: string }>(opts: BatchDrainOpts<T>)
             optsRef.current.completeBatch(items, notFoundIds)
           } catch (error) {
             console.error(`${optsRef.current.label} batch fetch failed:`, error)
-            optsRef.current.completeBatch([], batch)
+            const { failBatch, completeBatch } = optsRef.current
+            if (failBatch) failBatch(batch)
+            else completeBatch([], batch)
           }
         }
       } finally {
