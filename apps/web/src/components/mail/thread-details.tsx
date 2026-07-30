@@ -190,7 +190,7 @@ export default function ThreadDetails({
 
   // Below `full` lens the viewer may not act — reply/forward affordances are
   // hidden (the server rejects the sends anyway; the UI just doesn't offer).
-  const canReply = (thread?.myLens ?? 'full') === 'full'
+  const canReply = (thread?.myLens ?? 'read') === 'read'
 
   // Keyboard shortcuts: R to reply, F to forward the last message
   useHotkey(

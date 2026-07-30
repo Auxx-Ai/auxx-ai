@@ -56,7 +56,7 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
   // the MESSAGE_SHARED deep link, the pane renders from the URL id before the
   // batched meta fetch returns, and firing here earns a rejection toast on
   // open (plan 44 §1.2). This is UX; the server check stays authoritative.
-  const canMarkRead = !!thread && (thread.myLens ?? 'full') === 'full'
+  const canMarkRead = !!thread && (thread.myLens ?? 'read') === 'read'
 
   // Mark thread as read when displayed. Skip in edit mode — the thread isn't
   // rendered, the user is just multi-selecting.

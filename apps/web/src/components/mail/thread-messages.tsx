@@ -176,18 +176,23 @@ export function ThreadMessages() {
 
   if (!thread) return null
 
-  // Redacted rendering (mail-permissions): below `full`, message content is
-  // blanked server-side. `subject` shows envelope rows under a locked-body
+  // Redacted rendering (mail-permissions): below `read`, message content is
+  // blanked server-side. `identity` shows envelope rows under a locked-body
   // notice; `metadata` has no messages at all — the notice is the whole pane.
-  const myLens = thread.myLens ?? 'full'
-  if (myLens !== 'full') {
+  //
+  // ⚠ The tiers here are `Rung` names. Permissions v3 (#1406) renamed
+  // `full`→`read` and `subject`→`identity`; this file predates that PR and was
+  // missed, so it compared a v3 `myLens` ('read') against 'full', took the
+  // redacted branch for EVERY full-access viewer, and blanked the reading pane.
+  const myLens = thread.myLens ?? 'read'
+  if (myLens !== 'read') {
     const notice = (
       <div className='px-4 pt-2'>
         <Alert className='flex items-center gap-2'>
           <Lock className='size-4 shrink-0' />
           <AlertDescription>
             Message content is hidden — you have{' '}
-            {myLens === 'subject' ? 'subject-only' : 'activity-only'} access to this conversation.
+            {myLens === 'identity' ? 'subject-only' : 'activity-only'} access to this conversation.
           </AlertDescription>
           {/* Plan 42 §6.1 mount 1 — the request trigger belongs beside the copy
               that already explains the problem. It renders itself away for anyone
