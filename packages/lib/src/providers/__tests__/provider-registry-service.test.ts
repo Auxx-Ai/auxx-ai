@@ -90,7 +90,10 @@ import { ProviderRegistryService } from '../provider-registry-service'
 // ---------------------------------------------------------------------------
 
 // Mock logger
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks collection.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -112,28 +115,31 @@ function setupSelectChain(terminalValue: unknown[]) {
   mockSelect.mockReturnValue({ from: mockFrom })
 }
 
-vi.mock('@auxx/database', () => ({
+vi.mock('@auxx/database', async () => ({
   database: {
     select: (...args: unknown[]) => mockSelect(...args),
   },
-  schema: {
+  schema: (await import('../../test/database-mock')).createSchemaMock({
     Integration: mockIntegrationSchema,
     Credential: { id: 'Credential.id', requiresReauth: 'Credential.requiresReauth' },
     User: { id: 'User.id' },
     Organization: { id: 'Organization.id' },
-  },
+  }),
 }))
 
 // Mock drizzle-orm operators — these are called by the source but we don't
 // need them to do anything meaningful in tests.
-vi.mock('drizzle-orm', () => ({
+// Partial mock: modules reached transitively build SQL fragments at import time
+// (`record-visibility-scope.ts` calls `sql.raw`), so a full replacement of
+// drizzle-orm kills collection.
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
   eq: vi.fn((...args: unknown[]) => args),
   and: vi.fn((...args: unknown[]) => args),
   desc: vi.fn((col: unknown) => col),
   isNull: vi.fn(),
   isNotNull: vi.fn(),
   inArray: vi.fn(),
-  sql: vi.fn(),
 }))
 
 vi.mock('../google/google-provider', () => {

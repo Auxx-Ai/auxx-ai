@@ -6,8 +6,10 @@ import type { WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { ScheduledTriggerProcessor } from './scheduled'
 
-// Mock the logger
-vi.mock('@auxx/logger', () => ({
+// Silence the logger. Partial mock: `@auxx/logger/run-log` imports sink-registration
+// helpers from this barrel at module load, so a full replacement breaks collection.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

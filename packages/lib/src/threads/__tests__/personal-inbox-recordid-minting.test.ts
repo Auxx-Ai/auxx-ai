@@ -29,7 +29,11 @@ const h = vi.hoisted(() => ({
   updateReturning: [] as Array<Record<string, unknown>>,
 }))
 
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks whichever test file happens
+// to load it first.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
 }))
 

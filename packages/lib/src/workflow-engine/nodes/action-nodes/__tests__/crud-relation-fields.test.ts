@@ -2,8 +2,43 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowNode } from '../../../core/types'
-import { WorkflowNodeType } from '../../../core/types'
+import { BaseType, WorkflowNodeType } from '../../../core/types'
 import { CrudNodeProcessor } from '../crud'
+
+/**
+ * `preprocessNode` reads the resource's field list from the org cache to decide
+ * which keys are relations. Without this the cache falls through to a live
+ * `EntityDefinition.findMany`, which the suite has no database for.
+ *
+ * `contact` is RELATION with `dbColumn: 'contactId'` (so it is renamed) and
+ * `assignee` is ACTOR (so it is NOT) — the distinction these tests exist for.
+ */
+vi.mock('../../../../cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../cache')>()),
+  findCachedResource: vi.fn(async (_organizationId: string, resourceType: string) =>
+    resourceType === 'ticket'
+      ? {
+          id: 'ticket',
+          fields: [
+            { id: 'ticket:title', key: 'title', type: BaseType.STRING },
+            {
+              id: 'ticket:contact',
+              key: 'contact',
+              type: BaseType.RELATION,
+              dbColumn: 'contactId',
+              relationship: { relationshipType: 'MANY_TO_ONE' },
+            },
+            {
+              id: 'ticket:assignee',
+              key: 'assignee',
+              type: BaseType.ACTOR,
+              dbColumn: 'assignedToId',
+            },
+          ],
+        }
+      : null
+  ),
+}))
 
 /**
  * Test suite for CRUD node relation field handling
@@ -25,6 +60,13 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
         if (path === 'sys.organizationId') return 'org_test_123'
         if (path === 'sys.userId') return 'user_test_123'
         // Mock workflow variables
+        if (path === 'webhook.contact') return 'contact_abc123'
+        if (path === 'webhook.assignee') return 'user_def456'
+        return undefined
+      }),
+      // An exact `{{path}}` reference resolves through this, NOT through string
+      // interpolation — a relation field needs the raw id, not a display name.
+      resolveVariablePath: vi.fn(async (path: string) => {
         if (path === 'webhook.contact') return 'contact_abc123'
         if (path === 'webhook.assignee') return 'user_def456'
         return undefined

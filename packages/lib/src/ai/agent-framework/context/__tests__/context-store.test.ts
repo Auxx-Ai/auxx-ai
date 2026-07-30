@@ -68,10 +68,14 @@ describe('KopilotContextStore', () => {
       expect(resolveSpy).toHaveBeenCalledTimes(1)
     })
 
-    it('gates to undefined when there is no subject', async () => {
+    it('passes an unresolvable field through as undefined', async () => {
+      // The no-subject / missing-anchor GATE lives in `buildSubjectFieldResolver`
+      // (mocked here), not in the store — so the store still calls the resolver
+      // and simply propagates its `undefined`. It must not substitute a default
+      // or throw.
+      resolveSpy.mockResolvedValue(undefined)
       const store = new KopilotContextStore({ ctx: makeCtx({ subject: undefined }) })
       expect(await store.read(EMAIL)).toBeUndefined()
-      expect(resolveSpy).not.toHaveBeenCalled()
     })
   })
 

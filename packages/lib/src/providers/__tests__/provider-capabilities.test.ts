@@ -16,19 +16,30 @@ function createChain(): any {
   })
 }
 
-vi.mock('@auxx/database', () => ({
+vi.mock('@auxx/database', async () => ({
   database: createChain(),
-  schema: { Integration: {}, User: {}, Organization: {} },
+  schema: (await import('../../test/database-mock')).createSchemaMock({
+    Integration: {},
+    User: {},
+    Organization: {},
+  }),
 }))
 
-vi.mock('drizzle-orm', () => ({
+// Partial mock: modules reached transitively build SQL fragments at import time
+// (`record-visibility-scope.ts` calls `sql.raw`), so a full replacement of
+// drizzle-orm kills collection.
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
   eq: vi.fn(),
   and: vi.fn(),
   desc: vi.fn(),
 }))
 
 // Mock logger
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks collection.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),

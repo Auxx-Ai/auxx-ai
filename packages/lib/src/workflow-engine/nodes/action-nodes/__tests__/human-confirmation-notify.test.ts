@@ -6,21 +6,30 @@ import type { WorkflowNode } from '../../../core/types'
 const mocks = vi.hoisted(() => ({
   publishApprovalPing: vi.fn(async () => undefined),
   enqueueEmailJob: vi.fn(async () => undefined),
-  getUserSetting: vi.fn(async () => true as unknown),
   sendNotification: vi.fn(async () => ({ id: 'n1' })),
+  getApprovalAssigneeUserIds: vi.fn(async () => ['u1']),
+  approvalEmailEnabledFor: vi.fn(async () => new Set(['u1'])),
+  getCachedMembersByUserIds: vi.fn(async () => [
+    { userId: 'u1', user: { email: 'approver@example.com', name: 'Approver' } },
+  ]),
 }))
 
 vi.mock('@auxx/config/server', () => ({ WEBAPP_URL: 'http://localhost:3000' }))
-vi.mock('@auxx/database', () => ({
-  database: {},
-  schema: {
-    ApprovalRequest: {},
-    WorkflowRun: {},
-    User: { id: {}, email: {}, name: {}, userType: {} },
-    OrganizationMember: { userId: {}, organizationId: {} },
-    EntityGroupMember: { groupInstanceId: {}, memberType: {}, memberRefId: {} },
-  },
-}))
+vi.mock('@auxx/database', async () => {
+  const { createSchemaMock, createChainableDatabaseMock } = await import(
+    '../../../../test/database-mock'
+  )
+  return {
+    database: createChainableDatabaseMock(),
+    schema: createSchemaMock({
+      ApprovalRequest: {},
+      WorkflowRun: {},
+      User: { id: {}, email: {}, name: {}, userType: {} },
+      OrganizationMember: { userId: {}, organizationId: {} },
+      EntityGroupMember: { groupInstanceId: {}, memberType: {}, memberRefId: {} },
+    }),
+  }
+})
 vi.mock('../../../../cache/workflow-app-queries', () => ({
   getCachedWorkflowApp: vi.fn(async () => ({ name: 'Human in the loop' })),
 }))
@@ -37,17 +46,24 @@ vi.mock('../../../../realtime', () => ({
   publishApprovalPing: mocks.publishApprovalPing,
   publishApprovalResolved: vi.fn(async () => undefined),
 }))
-vi.mock('../../../../settings', () => ({ getUserSetting: mocks.getUserSetting }))
 vi.mock('../../../../notifications/notification-service', () => ({
   NotificationService: class {
     sendNotification = mocks.sendNotification
   },
 }))
 // The approval spine moved out of `workflow-engine/services` into the functional
-// `approval-requests` module (the two service classes are gone).
+// `approval-requests` module (the two service classes are gone), and the
+// per-recipient work was batched: assignee expansion, the email-preference gate
+// and token minting are each ONE call for the whole list now.
 vi.mock('../../../../approval-requests', () => ({
-  generateApprovalToken: vi.fn(async () => 'tok'),
-  approvalEmailEnabled: vi.fn(async () => true),
+  generateApprovalTokens: vi.fn(async () => ({ u1: 'tok' })),
+}))
+vi.mock('../../../../approval-requests/approval-recipients', () => ({
+  getApprovalAssigneeUserIds: mocks.getApprovalAssigneeUserIds,
+  approvalEmailEnabledFor: mocks.approvalEmailEnabledFor,
+}))
+vi.mock('../../../../cache', () => ({
+  getCachedMembersByUserIds: mocks.getCachedMembersByUserIds,
 }))
 
 const { HumanConfirmationProcessor } = await import('../human-confirmation')
@@ -131,7 +147,11 @@ const run = (methods: { in_app: boolean; email: boolean }) =>
 describe('HumanConfirmationProcessor assignee notification', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.getUserSetting.mockResolvedValue(true)
+    mocks.getApprovalAssigneeUserIds.mockResolvedValue(['u1'])
+    mocks.approvalEmailEnabledFor.mockResolvedValue(new Set(['u1']))
+    mocks.getCachedMembersByUserIds.mockResolvedValue([
+      { userId: 'u1', user: { email: 'approver@example.com', name: 'Approver' } },
+    ])
   })
 
   it('pings assignees over realtime and mints NO notification row', async () => {
@@ -163,16 +183,23 @@ describe('HumanConfirmationProcessor assignee notification', () => {
     )
   })
 
-  it('skips the email when the recipient turned notification.approval.email off', async () => {
-    mocks.getUserSetting.mockResolvedValue(false)
+  it('skips a recipient the batched email-preference gate excluded', async () => {
+    // The per-recipient `approvalEmailEnabled` lookup became one batched
+    // `approvalEmailEnabledFor` call returning the ALLOWED set; a user missing
+    // from it is a user who turned `notification.approval.email` off.
+    mocks.approvalEmailEnabledFor.mockResolvedValue(new Set())
     await run({ in_app: false, email: true })
     expect(mocks.enqueueEmailJob).not.toHaveBeenCalled()
   })
 
-  it('still emails when the preference was never set', async () => {
-    // `value !== false`, not `value === true` — an untouched preference sends.
-    mocks.getUserSetting.mockResolvedValue(null)
+  it('asks the preference gate about exactly the resolved assignees', async () => {
+    mocks.getApprovalAssigneeUserIds.mockResolvedValue(['u1', 'u2'])
     await run({ in_app: false, email: true })
+    expect(mocks.approvalEmailEnabledFor).toHaveBeenCalledWith(expect.anything(), 'org1', [
+      'u1',
+      'u2',
+    ])
+    // `u2` is not in the allowed set, so only `u1` is mailed.
     expect(mocks.enqueueEmailJob).toHaveBeenCalledTimes(1)
   })
 })

@@ -2,7 +2,10 @@
 
 import { describe, expect, it } from 'vitest'
 import type { RecordId } from '../../resources/client'
-import { collectReferenceIds, preresolveReferences } from '../preresolve'
+// `collectReferenceIds` moved to the tiptap module; `preresolve` imports it but
+// no longer re-exports it.
+import { collectReferenceIds } from '../../tiptap'
+import { preresolveReferences } from '../preresolve'
 
 const docWith = (...refs: string[]) => ({
   type: 'doc',

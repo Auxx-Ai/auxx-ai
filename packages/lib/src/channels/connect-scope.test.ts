@@ -30,6 +30,7 @@ const hoisted = vi.hoisted(() => ({
   provisionPersonalInbox: vi.fn(async () => undefined),
   addIntegration: vi.fn(async () => undefined),
   assertSharedConnectInbox: vi.fn(async () => 'inbox:ibx_1'),
+  enqueue: vi.fn(async () => undefined),
 }))
 
 const selectChain = () => ({
@@ -110,6 +111,14 @@ vi.mock('./connect-inbox', () => ({
 vi.mock('./personal-connection', () => ({
   provisionPersonalInbox: hoisted.provisionPersonalInbox,
 }))
+// Only the brand-new-integration path reaches `seedSync`'s backfill kick, which
+// enqueues on BullMQ. Unmocked, that opens a real Redis connection: it happens to
+// resolve on a dev box with a local Redis and a `.env`, and HANGS to the 10s test
+// timeout anywhere else (CI, a clean worktree).
+vi.mock('../jobs/queues', () => ({
+  Queues: { pollingSyncQueue: 'pollingSyncQueue' },
+  getQueue: vi.fn(() => ({ add: hoisted.enqueue })),
+}))
 
 const { channelProvisioningHook } = await import('./provisioning-hook')
 
@@ -138,6 +147,7 @@ beforeEach(() => {
   hoisted.inserts = []
   hoisted.provisionPersonalInbox.mockReset()
   hoisted.addIntegration.mockReset()
+  hoisted.enqueue.mockReset()
 })
 
 describe('personal connect', () => {
@@ -182,6 +192,8 @@ describe('personal connect', () => {
 
     expect(hoisted.inserts).toHaveLength(1)
     expect(hoisted.provisionPersonalInbox).toHaveBeenCalledOnce()
+    // A new integration also kicks the initial polling backfill; a reconnect does not.
+    expect(hoisted.enqueue).toHaveBeenCalledOnce()
   })
 })
 

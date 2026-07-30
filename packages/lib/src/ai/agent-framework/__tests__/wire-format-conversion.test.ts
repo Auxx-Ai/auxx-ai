@@ -213,7 +213,10 @@ describe('partsToWireFormat — in-flight / awaiting / errored tools', () => {
     expect(toolMsg).toBeDefined()
     const parsed =
       typeof toolMsg?.content === 'string' ? JSON.parse(toolMsg.content) : toolMsg?.content
-    expect(parsed).toMatchObject({ rejected: true })
+    // Non-`completed` statuses share one envelope: `{ error, output }`. A
+    // rejection carries no `error` of its own, so it falls back to the generic
+    // string — the rejection itself is only legible from `output`.
+    expect(parsed).toMatchObject({ output: { rejected: true } })
   })
 })
 

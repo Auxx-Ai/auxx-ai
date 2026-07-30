@@ -58,7 +58,7 @@ const queryStubs = {
   connectionDefinition: undefined as undefined | { connectionType: string } | null,
 }
 
-vi.mock('@auxx/database', () => ({
+vi.mock('@auxx/database', async () => ({
   database: {
     query: {
       ConnectionDefinition: {
@@ -66,6 +66,8 @@ vi.mock('@auxx/database', () => ({
       },
     },
   },
+  // `saveMcpConnection` builds its `where` from `schema.ConnectionDefinition`.
+  schema: (await import('../../../../test/database-mock')).createSchemaMock(),
 }))
 
 import { resolveMcpConnectionForRuntime } from '../resolve-mcp-connection-for-runtime'

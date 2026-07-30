@@ -19,7 +19,9 @@ import {
   NodeRunningStatus,
   WorkflowPausedException,
 } from '../workflow-engine/core/types'
-import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
+// Type-only — the VALUE is loaded dynamically in `initializeEngine()` to break
+// an import cycle. See the comment there before making this a static import.
+import type { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { WorkflowGraphBuilder } from '../workflow-engine/core/workflow-graph-builder'
 import { RedisWorkflowExecutionReporter } from '../workflow-engine/execution-reporter'
 import { buildWorkflowResumeJobId } from '../workflow-engine/nodes/wait/resume-job-id'
@@ -183,7 +185,7 @@ export interface WorkflowExecutionServiceOptions {
 }
 
 export class WorkflowExecutionService {
-  private workflowEngine: WorkflowEngine
+  private workflowEngine?: WorkflowEngine
   private executingWorkflows = new Map<
     string,
     { startTime: Date; timeout?: NodeJS.Timeout; executionId?: string }
@@ -196,9 +198,8 @@ export class WorkflowExecutionService {
     options: WorkflowExecutionServiceOptions = {}
   ) {
     this.errorHandler = options.errorHandler
-    this.workflowEngine = new WorkflowEngine()
 
-    // Initialize workflow engine with default processors
+    // Construct AND initialize the engine off the constructor — see `engine()`.
     this.initPromise = this.initializeEngine()
   }
 
@@ -212,8 +213,37 @@ export class WorkflowExecutionService {
     throw new Error(error.message)
   }
 
+  /**
+   * Build the engine and register its default processors.
+   *
+   * The `WorkflowEngine` import is DYNAMIC, and deliberately so: this module is
+   * the only edge back into `workflow-engine/` from the rest of lib, and it
+   * closes a cycle —
+   * `workflow-engine/nodes/base-ai-node` → cache/field-hooks/sequences →
+   * here → `workflow-engine/core/workflow-engine` →
+   * `node-processor-registry` → `action-nodes/ai-v2` → back to
+   * `base-ai-node`. Whichever module in that ring is imported FIRST wins;
+   * entering at `base-ai-node` leaves `BaseAiNodeProcessor` undefined and
+   * `ai-v2.ts` dies with `Class extends value undefined`. Production happens to
+   * enter at the engine, so it works; anything importing a node module
+   * directly does not.
+   */
   private async initializeEngine() {
+    const { WorkflowEngine } = await import('../workflow-engine/core/workflow-engine')
+    this.workflowEngine = new WorkflowEngine()
     await this.workflowEngine.getNodeRegistry().initializeWithDefaults()
+  }
+
+  /**
+   * The initialized engine. Every caller goes through here, which also closes a
+   * pre-existing race: only two of the six former `this.workflowEngine` uses
+   * awaited `initPromise`, so the rest could reach a registry that had not
+   * finished `initializeWithDefaults()`.
+   */
+  private async engine(): Promise<WorkflowEngine> {
+    await this.initPromise
+    if (!this.workflowEngine) throw new Error('Workflow engine failed to initialize')
+    return this.workflowEngine
   }
 
   /**
@@ -320,7 +350,7 @@ export class WorkflowExecutionService {
       }
 
       // Execute workflow with optional reporter
-      const result = await this.workflowEngine.executeWorkflow(workflow, triggerEvent, {
+      const result = await (await this.engine()).executeWorkflow(workflow, triggerEvent, {
         debug: workflowRun.triggeredFrom === WorkflowTriggerSource.DEBUGGING,
         organizationId: workflowRun.organizationId,
         workflowRunId: workflowRun.id,
@@ -488,7 +518,7 @@ export class WorkflowExecutionService {
         .returning()
 
       // Get node processor (registry already initialized in constructor)
-      const nodeRegistry = this.workflowEngine.getNodeRegistry()
+      const nodeRegistry = (await this.engine()).getNodeRegistry()
       const processor = nodeRegistry.getProcessor(node.type)
 
       if (!processor) {
@@ -513,7 +543,7 @@ export class WorkflowExecutionService {
             organizationName: params.organizationName ?? organization?.name,
             organizationHandle: params.organizationHandle ?? organization?.handle,
           },
-          this.workflowEngine.getNodeRegistry(),
+          nodeRegistry,
           workflow,
           this.db
         )
@@ -832,7 +862,7 @@ export class WorkflowExecutionService {
       })
 
       // Resume execution using the workflow engine
-      const result = await this.workflowEngine.resumeExecution(executionState, resumeOptions)
+      const result = await (await this.engine()).resumeExecution(executionState, resumeOptions)
       const isTerminal =
         result.status === WorkflowExecutionStatus.COMPLETED ||
         result.status === WorkflowExecutionStatus.FAILED
@@ -1241,7 +1271,7 @@ export class WorkflowExecutionService {
     try {
       // Cancel the execution in the workflow engine
       logger.info('Cancelling workflow execution in engine', { runId })
-      this.workflowEngine.cancelWorkflowRun(runId)
+      ;(await this.engine()).cancelWorkflowRun(runId)
     } catch (error) {
       logger.error('Failed to signal workflow engine stop', { runId, error })
       // Don't throw - continue with other stopping mechanisms

@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // runs inside a cache provider, so one bad row must not take the org's whole
 // realtime fanout down. Capture the log so "loud" is actually asserted.
 const logError = vi.hoisted(() => vi.fn())
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks whichever test file happens
+// to load it first.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({
     error: logError,
     warn: vi.fn(),

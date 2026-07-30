@@ -99,9 +99,10 @@ describe('query-loop validation-error branch — sibling tool_call orphan regres
 
     const state = engine.getState()
 
-    // The persisted assistant message from the validation-error branch must
-    // carry exactly one `tool_call` part (the approval tool, with its
-    // synthetic error output) — the sibling auto-tool was dropped.
+    // BOTH emitted calls survive into state, each with a resolved status. The
+    // branch used to drop the sibling instead; keeping it and marking it
+    // skipped is what makes the wire format well-formed AND tells the model
+    // why the sibling never ran.
     const allToolCallParts: ToolCallPart[] = []
     for (const msg of state.messages) {
       if (msg.role !== 'assistant') continue
@@ -110,16 +111,24 @@ describe('query-loop validation-error branch — sibling tool_call orphan regres
         if (p.type === 'tool_call') allToolCallParts.push(p)
       }
     }
-    expect(allToolCallParts).toHaveLength(1)
-    expect(allToolCallParts[0]?.toolCallId).toBe('call_appr')
-    expect(allToolCallParts[0]?.name).toBe('risky_tool')
-    expect(allToolCallParts[0]?.status).toBe('error')
-    expect(allToolCallParts[0]?.error).toMatch(/Missing required parameters: target/)
+    expect(allToolCallParts).toHaveLength(2)
 
-    // Critically: NO tool_call part references the dropped sibling
-    // `call_auto`. The wire-format converter would otherwise emit a
-    // dangling tool_call_id on the next LLM call.
-    const orphanRefs = allToolCallParts.filter((p) => p.toolCallId === 'call_auto')
-    expect(orphanRefs).toHaveLength(0)
+    const approvalPart = allToolCallParts.find((p) => p.toolCallId === 'call_appr')
+    expect(approvalPart?.name).toBe('risky_tool')
+    expect(approvalPart?.status).toBe('error')
+    expect(approvalPart?.error).toMatch(/Missing required parameters: target/)
+
+    const siblingPart = allToolCallParts.find((p) => p.toolCallId === 'call_auto')
+    expect(siblingPart?.name).toBe('auto_tool')
+    expect(siblingPart?.status).toBe('error')
+    expect(siblingPart?.error).toMatch(/Skipped/)
+
+    // The actual invariant: every emitted tool_call resolves to a terminal
+    // status, so `partsToWireFormat` emits a tool message for each and no
+    // tool_call_id is left dangling on the next LLM call.
+    const unresolved = allToolCallParts.filter(
+      (p) => p.status !== 'completed' && p.status !== 'error' && p.status !== 'rejected'
+    )
+    expect(unresolved).toHaveLength(0)
   })
 })

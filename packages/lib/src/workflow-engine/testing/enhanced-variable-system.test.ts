@@ -164,8 +164,11 @@ describe('Enhanced Variable System', () => {
     it('should handle missing variables gracefully', async () => {
       const template = 'Value: {{nonexistent.variable}}'
       const result = await testProcessor.testResolveVariableValue(template, contextManager)
-      // Should return original template when variable not found
-      expect(result).toBe('Value: {{nonexistent.variable}}')
+      // An unresolved reference is BLANKED, not left in place — see
+      // `ExecutionContextManager.interpolateVariables`, which logs a WARN and
+      // substitutes ''. Leaking a raw `{{...}}` into a rendered email body or an
+      // HTTP payload is worse than an empty slot.
+      expect(result).toBe('Value: ')
     })
 
     it('should handle non-string values', async () => {
