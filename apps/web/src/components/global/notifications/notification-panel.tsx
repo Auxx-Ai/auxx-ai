@@ -228,9 +228,6 @@ export function NotificationPanel() {
           size='sm'
           className='w-full border border-primary-200'
           radioGroupClassName='w-full'>
-          <RadioTabItem value='all' size='sm' className='gap-1 px-2'>
-            All
-          </RadioTabItem>
           <RadioTabItem value='unread' size='sm' className='gap-1 px-2'>
             Unread
             {unreadData?.count ? (
@@ -238,6 +235,9 @@ export function NotificationPanel() {
                 {unreadData.count}
               </Badge>
             ) : null}
+          </RadioTabItem>
+          <RadioTabItem value='all' size='sm' className='gap-1 px-2'>
+            All
           </RadioTabItem>
           <RadioTabItem value='approvals' size='sm' className='gap-1 px-2'>
             Approvals
