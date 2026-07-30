@@ -31,6 +31,10 @@ export function useRealtimeLifecycle() {
       key: config.key,
       cluster: config.cluster,
       authEndpoint: '/api/pusher/auth',
+      // Coalesces the subscribe burst into one signed request (plan v3/05).
+      // `authEndpoint` above stays as the fallback seam — dropping this line
+      // restores one request per channel with no other change.
+      batchAuthEndpoint: '/api/pusher/auth/batch',
       wsHost: config.wsHost,
       wsPort: config.wsPort,
       forceTLS: config.forceTLS,

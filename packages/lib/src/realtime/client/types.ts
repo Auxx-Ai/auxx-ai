@@ -49,6 +49,12 @@ export interface RealtimeAdapter {
     key: string
     cluster: string
     authEndpoint: string
+    /**
+     * Batch channel-auth endpoint (plan v3/05). When set, every channel
+     * authorization is coalesced into one request against this URL and
+     * `authEndpoint` goes unused. Absent → one request per channel.
+     */
+    batchAuthEndpoint?: string
     /** Self-hosted Sockudo host. Absent → hosted Pusher cloud (cluster). */
     wsHost?: string
     wsPort?: number

@@ -9,6 +9,7 @@ import type {
   SubscribeHandlers,
   Subscription,
 } from '../types'
+import { createBatchChannelAuthorizer } from './batch-channel-authorizer'
 
 interface RoomEntry {
   channel: Pusher.Channel
@@ -62,12 +63,27 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     key: string
     cluster: string
     authEndpoint: string
+    batchAuthEndpoint?: string
     wsHost?: string
     wsPort?: number
     forceTLS?: boolean
   }) {
     if (this.pusher) return
     this.authEndpoint = config.authEndpoint
+    // One HTTP round-trip for the whole subscribe burst (plan v3/05). Absent
+    // `batchAuthEndpoint` ⇒ the plain per-channel `authEndpoint`, which is what
+    // the widget's own client keeps using.
+    const auth = config.batchAuthEndpoint
+      ? {
+          channelAuthorization: {
+            // `transport` and `endpoint` are required by pusher-js's option
+            // type even though `customHandler` replaces both.
+            transport: 'ajax' as const,
+            endpoint: config.batchAuthEndpoint,
+            customHandler: createBatchChannelAuthorizer({ endpoint: config.batchAuthEndpoint }),
+          },
+        }
+      : { authEndpoint: config.authEndpoint }
     this.pusher = new Pusher(
       config.key,
       config.wsHost
@@ -82,13 +98,13 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
             enabledTransports: config.forceTLS === false ? ['ws'] : ['ws', 'wss'],
             disableStats: true,
             cluster: '',
-            authEndpoint: config.authEndpoint,
+            ...auth,
           }
         : {
             // Hosted Pusher cloud (kept fallback seam).
             cluster: config.cluster,
             forceTLS: true,
-            authEndpoint: config.authEndpoint,
+            ...auth,
           }
     )
     this.pusher.connection.bind('connected', () => {
