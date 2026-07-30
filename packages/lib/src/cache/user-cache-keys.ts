@@ -293,5 +293,46 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // A stale v14 blob for a Full member holds comments.manage without the new
   // prerequisite key, so direct reads fail closed while writes may still pass.
   // Bump to keep the ladder coherent across a rolling deploy.
-  userCapabilities: { prefix: 'user:capabilities:v15', ttlSeconds: ONE_DAY },
+  // v16 (plan 43 §6): the blob changes TWICE OVER, and the two halves fail in
+  // OPPOSITE directions — which is the whole reason this entry is long.
+  //   1. §3.1 changes `keys` CONTENT. `Area.signatures` / `.snippets` /
+  //      `.dashboards` dropped their `Level.Edit` rung, so a stored `Level.Full`
+  //      expands to `{view, manage}` where it used to expand to
+  //      `{view, edit, manage}`.
+  //   2. §4.1 changes the SHAPE. `UserCapabilities` gained a second instance map,
+  //      `baselineInstanceAccess`, and `instanceAccess` NARROWED underneath it —
+  //      it now carries `user`/`group`/`profile` rows only, where a v15 blob's
+  //      carries the max-merged union of those AND `role:org_member`.
+  //
+  // WHICH WAY EACH FAILS ON A STALE BLOB — the required direction analysis, and
+  // the answer differs per cause:
+  //
+  //   (1) fails SAFE. A stale v15 blob carries the orphan `signaturesEdit` key;
+  //   `areaLevelFromKeys` walks the NEW two-rung ladder, finds `signaturesView` +
+  //   `signaturesManage`, and composes `Full`. Correct, and the orphan key is
+  //   read by nothing. On its own this would be a hygiene bump.
+  //
+  //   (2) fails **OPEN**, and that is why the bump CANNOT BE DEFERRED. A stale
+  //   v15 blob has no `baselineInstanceAccess` at all, so
+  //   `caps.baselineInstanceAccess?.[instanceId]` is `undefined` for every
+  //   instance — but its `instanceAccess` still holds the merged union of both
+  //   lanes. Step 1 of `effectiveInstanceLevel` therefore returns the
+  //   `role:org_member` permission AS IF IT WERE AN INDIVIDUAL GRANT, and step
+  //   2's area gate never runs. Every member at area `None` keeps every
+  //   org-shared dashboard (89 baseline rows in dev) and snippet (28) for the
+  //   full ONE_DAY TTL, silently voiding the lever plan 43 exists to ship.
+  //
+  // The generalizable lesson, recorded because v12's entry below records the
+  // opposite mistake: **"the new field is absent so it reads as empty" is
+  // FAIL-OPEN whenever the OLD field's meaning also changed underneath it.**
+  // An absent field is only safe when the fields around it still mean what they
+  // meant; here `instanceAccess` narrowed in the same change, so the absence is
+  // not a gap, it is a wrong answer. Same class of accident as v12, whose
+  // fail-closed direction was luck rather than structure.
+  //
+  // Deploy-time flush is mandatory and is NOT a substitute for the bump
+  // (`packages/lib/scripts/flush-user-capabilities-cache.ts`): a draining old
+  // instance repopulates the same keyspace during a rollout, which is the entire
+  // reason `vN` exists.
+  userCapabilities: { prefix: 'user:capabilities:v16', ttlSeconds: ONE_DAY },
 }

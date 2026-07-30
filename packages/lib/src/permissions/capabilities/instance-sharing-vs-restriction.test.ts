@@ -129,6 +129,9 @@ function member(opts: MemberOpts = {}) {
       entityDefinitionId: row.key,
       entityInstanceId: row.instanceId,
       permission: row.permission,
+      // Real grantee kind, straight off the row — this harness has always built
+      // from `OrgRow`, so plan 43 §4.1's lane split needs nothing invented here.
+      granteeType: row.granteeType,
     })),
   })
 
@@ -145,7 +148,8 @@ function member(opts: MemberOpts = {}) {
     caps.instanceAccess,
     governing,
     {},
-    new Set(caps.instanceDerivedKeys)
+    new Set(caps.instanceDerivedKeys),
+    caps.baselineInstanceAccess
   )
   return { server, client: toResolvedRecordAccess(server.toClientCapabilities()), governing }
 }

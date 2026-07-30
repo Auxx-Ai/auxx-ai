@@ -43,6 +43,12 @@ interface MemberOpts {
     entityDefinitionId?: string
     entityInstanceId: string
     permission: ResourcePermission
+    /**
+     * Grantee kind (plan 43 §4.1). Defaults to `'user'` — the individual lane —
+     * which reproduces this harness's pre-plan-43 behaviour exactly. Pass
+     * `'role'` to model the workspace baseline.
+     */
+    granteeType?: string
   }>
   restrictedInstances?: string[]
 }
@@ -57,6 +63,7 @@ function member(opts: MemberOpts = {}) {
     typeAccessRows: [],
     instanceAccessRows: (opts.rows ?? []).map((row) => ({
       entityDefinitionId: 'workflow',
+      granteeType: 'user',
       ...row,
     })),
   })
@@ -74,7 +81,8 @@ function member(opts: MemberOpts = {}) {
     caps.instanceAccess,
     restricted,
     {},
-    new Set(caps.instanceDerivedKeys)
+    new Set(caps.instanceDerivedKeys),
+    caps.baselineInstanceAccess
   )
   return { caps, server, client: toResolvedRecordAccess(server.toClientCapabilities()) }
 }

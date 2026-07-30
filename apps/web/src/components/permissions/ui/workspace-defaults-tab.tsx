@@ -11,7 +11,9 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { Shapes, SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { useDefBaselines } from '../hooks/use-def-baselines'
+import type { InstanceAreaAccess } from '../hooks/use-instance-baseline-rows'
 import { useInstanceBaselineRows } from '../hooks/use-instance-baseline-rows'
+import { AreaAccessRow, hasAreaAccessRow } from './area-access-row'
 import { DefBaselineRows } from './def-baseline-rows'
 import { InstanceBaselineRows } from './instance-baseline-rows'
 import { INSTANCE_TYPE_META } from './instance-share-copy'
@@ -53,6 +55,11 @@ const RECORDS_ID = 'records'
  * Each row's **Inherit** option still names what it falls through to (the Member
  * profile's level for that area, or No Access for resources born private), so
  * removing the parent level control costs no information at the row.
+ *
+ * Plan 43 §5.2 puts that fall-through ON the screen: each instance collection is
+ * headed by a **read-only** {@link AreaAccessRow} showing the Member profile's
+ * rung for the area — see {@link areaAccessLeadingRow} for why read-only is the
+ * only shape that does not reopen the hole this tab's missing grid closed.
  */
 export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean }) {
   const { isLoading: defsLoading, rows: defRows, setBaseline: setDefBaseline } = useDefBaselines()
@@ -60,6 +67,7 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
     isLoading: instanceRowsLoadingAll,
     lists: instanceLists,
     rowsByKey: instanceRowsByKey,
+    areaAccessByKey,
     setBaseline: setInstanceBaseline,
   } = useInstanceBaselineRows()
 
@@ -109,6 +117,7 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
     for (const key of INSTANCE_ACCESS_KEYS) {
       const meta = INSTANCE_TYPE_META[key]
       const Icon = meta.icon
+      const accessRow = areaAccessLeadingRow(key, areaAccessByKey[key])
       const loading = instanceRowsLoadingAll || instanceLists[key].isLoading
       if (loading) {
         out.push({
@@ -118,7 +127,14 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
           description: instanceDescription(key),
           matchCount: 0,
           configuredCount: 0,
-          rows: <InstanceBaselineRows rows={[]} isLoading onChange={setInstanceBaseline} />,
+          rows: (
+            <InstanceBaselineRows
+              rows={[]}
+              isLoading
+              leadingRow={accessRow}
+              onChange={setInstanceBaseline}
+            />
+          ),
         })
         continue
       }
@@ -142,6 +158,7 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
             rows={matched}
             truncated={instanceLists[key].truncated}
             disabled={disabled}
+            leadingRow={accessRow}
             onChange={setInstanceBaseline}
           />
         ),
@@ -159,6 +176,7 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
     instanceRowsLoadingAll,
     instanceLists,
     instanceRowsByKey,
+    areaAccessByKey,
     setInstanceBaseline,
   ])
 
@@ -251,6 +269,45 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
         </div>
       )}
     </div>
+  )
+}
+
+/** Where the area rung is authored — this tab shows it, Profiles → Member sets it. */
+const AREA_ACCESS_READ_ONLY_NOTE =
+  'Set on Profiles → Member: an area level moves every holder of that profile at once, so it saves through the one path that runs the escalation guard.'
+
+/**
+ * Plan 43's access row as this tab renders it: **read-only** (§5.2, fourth grid).
+ *
+ * Why it is here at all: every `Inherit · <level>` in the collection below points
+ * at the area rung, and before this the rung was not on the screen. That is the
+ * exact defect decision 0.7 exists to fix — the reader had to know the
+ * containment rule to follow the label.
+ *
+ * Why it is READ-ONLY, and this is not a hedge: this tab deliberately carries no
+ * area-level grid, because the grid that used to live here wrote per-area through
+ * `setGranteeLevels` and could reach a state `savePermissionProfile` refuses (see
+ * {@link WorkspaceDefaultsTab}). A writable access row would reintroduce that path
+ * one row lower, and its `values[area]` write has no profile to guard. Showing the
+ * value and naming where it is set keeps §8 item 19's promise — the same profile
+ * reads the same on all four grids — without reopening the hole.
+ *
+ * `personal_inbox` is skipped. Its collection is empty by construction (a personal
+ * mailbox has no workspace default), and `Area.inboxes`' own copy says in so many
+ * words that personal mailboxes are never covered by the rung — so an "Inbox
+ * access" row heading that collection would contradict itself.
+ */
+function areaAccessLeadingRow(key: InstanceAccessKey, access: InstanceAreaAccess | undefined) {
+  if (key === 'personal_inbox' || !access || !hasAreaAccessRow(access.area)) return undefined
+  return (
+    <AreaAccessRow
+      area={access.area}
+      value={access.value}
+      inheritedLevel={access.inherited}
+      descriptionNote={AREA_ACCESS_READ_ONLY_NOTE}
+      disabled
+      onChange={() => {}}
+    />
   )
 }
 

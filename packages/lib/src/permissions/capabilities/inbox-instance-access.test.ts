@@ -44,6 +44,12 @@ interface MemberOpts {
     entityDefinitionId?: InstanceAccessKey
     entityInstanceId: string
     permission: ResourcePermission
+    /**
+     * Grantee kind (plan 43 §4.1). Defaults to `'user'` — the individual lane —
+     * which reproduces this harness's pre-plan-43 behaviour exactly. Pass
+     * `'role'` to model the workspace baseline.
+     */
+    granteeType?: string
   }>
   restrictedInstances?: string[]
 }
@@ -56,7 +62,11 @@ function member(opts: MemberOpts = {}) {
     seatType,
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     typeAccessRows: [],
-    instanceAccessRows: (opts.rows ?? []).map((row) => ({ entityDefinitionId: 'inbox', ...row })),
+    instanceAccessRows: (opts.rows ?? []).map((row) => ({
+      entityDefinitionId: 'inbox',
+      granteeType: 'user',
+      ...row,
+    })),
   })
   const restricted = new Set(
     opts.restrictedInstances ?? (opts.rows ?? []).map((r) => r.entityInstanceId)
@@ -72,7 +82,8 @@ function member(opts: MemberOpts = {}) {
     caps.instanceAccess,
     restricted,
     {},
-    new Set(caps.instanceDerivedKeys)
+    new Set(caps.instanceDerivedKeys),
+    caps.baselineInstanceAccess
   )
   // The client only ever sees the wire snapshot — build its view from that, so a
   // field dropped in serialization shows up here.

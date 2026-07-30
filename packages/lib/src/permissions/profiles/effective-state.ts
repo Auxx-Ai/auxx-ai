@@ -354,6 +354,12 @@ function composeState(
       entityDefinitionId: row.entityDefinitionId,
       entityInstanceId: row.entityInstanceId ?? '',
       permission: row.permission,
+      // Carried through so the composer can sort the row into the INDIVIDUAL or
+      // BASELINE lane (plan 43 §4.1). The guard must measure the state
+      // enforcement produces, and after §4.2 that state depends on which lane a
+      // row lands in — dropping this here would make a `role:org_member @ view`
+      // row read as an ungated individual grant inside the guard alone.
+      granteeType: row.granteeType,
     }))
 
   const caps = composeUserCapabilities({
@@ -378,6 +384,7 @@ function composeState(
     restrictedEntityDefIds: inputs.restrictedEntityDefIds,
     defBaseOverrides: resolved.defBaseOverrides,
     instanceAccess: caps.instanceAccess,
+    baselineInstanceAccess: caps.baselineInstanceAccess,
     // The instance query is deliberately grantee-agnostic, so the governing
     // subset of its rows IS the org-wide `governingInstanceIds` projection,
     // recomputed from the txn. NOT `instanceKeyById.keys()` — that is every

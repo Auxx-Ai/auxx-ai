@@ -8,7 +8,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { Library } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import type { InstanceBaselineRow } from '../hooks/use-instance-baseline-rows'
 import { ACCESS_ROW_DEPTH, AccessRowSelect } from './access-tree-row'
 import { InstanceShareBody } from './instance-share-body'
@@ -47,6 +47,7 @@ export function InstanceBaselineRows({
   isLoading = false,
   disabled = false,
   truncated = false,
+  leadingRow,
   onChange,
 }: {
   rows: InstanceBaselineRow[]
@@ -58,6 +59,13 @@ export function InstanceBaselineRows({
    * within the first page (plan 31 finding 5).
    */
   truncated?: boolean
+  /**
+   * Rendered above the list and OUTSIDE the loading/empty branches — plan 43's
+   * access row, which states the area rung every `Inherit · …` below it points
+   * at, and so is needed most when the list is empty. Same contract as
+   * `GranteeInstanceRows.leadingRow`.
+   */
+  leadingRow?: ReactNode
   onChange: (
     key: InstanceAccessKey,
     instanceId: string,
@@ -67,6 +75,7 @@ export function InstanceBaselineRows({
   if (isLoading) {
     return (
       <div className='flex flex-col gap-0.5'>
+        {leadingRow}
         <TreeRowSkeleton depth={CHILD_DEPTH} />
         <TreeRowSkeleton depth={CHILD_DEPTH} />
       </div>
@@ -75,7 +84,8 @@ export function InstanceBaselineRows({
 
   if (rows.length === 0) {
     return (
-      <>
+      <div className='flex flex-col gap-0.5'>
+        {leadingRow}
         <EmptySection
           orientation='horizontal'
           icon={<Library />}
@@ -83,12 +93,13 @@ export function InstanceBaselineRows({
           description='No items match your search.'
         />
         {truncated ? <InstanceTruncationNote /> : null}
-      </>
+      </div>
     )
   }
 
   return (
     <div className='flex flex-col gap-0.5'>
+      {leadingRow}
       {rows.map((row) => (
         <InstanceBaselineRowItem
           key={`${row.key}:${row.id}`}
@@ -140,7 +151,14 @@ function InstanceBaselineRowItem({
             value={row.baselineLevel}
             includeInherit
             includeNone
+            // `Private` where the hook says nothing is inherited (plan 43 §5.3).
+            // No `area` prop: the per-area option copy is written for the
+            // workspace-default LANE ("every unrestricted dataset") and would be
+            // a more confidently wrong sentence on one named item than the
+            // generic default it replaced (§5.4's neighbouring caution).
             inheritedLevel={row.inheritedLevel}
+            inheritLabelText={row.inheritLabelText}
+            inheritHelperText={row.inheritHelperText}
             onInherit={() => onChange('inherit')}
             onChange={(level) => onChange(level)}
             disabled={disabled}

@@ -11,7 +11,9 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Lock, SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { LevelControl } from './level-control'
+import { AreaAccessRow, hasAreaAccessRow } from './area-access-row'
+import { clampToArea, LevelControl } from './level-control'
+import { effectiveLevelLabel } from './level-labels'
 import type { AreaChildFilter, AreaChildren } from './leveled-area-grid'
 import {
   PROFILE_AREA_GROUPS,
@@ -89,6 +91,17 @@ interface ProfileAreaGridProps {
    */
   unsetHintFor?: (area: Area) => string
   /**
+   * Name for the fall-through option on the **access child row** (plan 43 §5.2).
+   * The agent policy passes `'Default'` for the same reason its instance rows do:
+   * an agent policy composes by SET over a mandatory `areas.default`, so there is
+   * no baseline to inherit FROM and "Inherit" would misdescribe the state.
+   *
+   * Only the access row reads it. The remaining `LevelControl` rows (Records and
+   * the non-instance areas) keep naming their fall-through in the `Not set · …`
+   * hint, which {@link unsetHintFor} already overrides.
+   */
+  accessInheritLabel?: string
+  /**
    * Fired when the viewer expands or collapses one area's child block — the
    * grid's internal `openAreas` state, reported outward.
    *
@@ -137,12 +150,21 @@ function lockReasonFor(area: Area, seat: SeatType | undefined): string | null {
  *    editor refuses to author a contradiction with `SEAT_CEILINGS`). Locked rows
  *    render disabled at the level that actually applies, with the reason on hover.
  *
+ * **The three states above describe the LADDER rows only.** The eight
+ * instance-access areas render a controlless header instead (plan 43 decision
+ * 0.7) whose control lives in an {@link AreaAccessRow} nested beneath it — see
+ * {@link ProfileAreaRow} for the split and why absence needs no bespoke
+ * mechanism there.
+ *
  * An area may also nest child rows via `renderChildren` — Records → this
  * profile's per-def overrides, Datasets / Knowledge base / Dashboards → this
  * profile's per-instance grants (capability layer v2 Part B, extended here so
  * "expand Records, set Companies" lives in this same grid rather than a
  * separate section). Children are collapsed by default and participate in the
- * search, exactly like `LeveledAreaGrid`'s area rows.
+ * search, exactly like `LeveledAreaGrid`'s area rows. The access row is
+ * STRUCTURAL and sits ahead of them: it always renders, and it never
+ * contributes to `matchCount` (its value is `values[area]`, which the grid's own
+ * "Set areas only" filter already reads).
  */
 export function ProfileAreaGrid({
   values,
@@ -155,6 +177,7 @@ export function ProfileAreaGrid({
   renderChildren,
   areaGroups = PROFILE_AREA_GROUPS,
   unsetHintFor,
+  accessInheritLabel,
   onAreaOpenChange,
 }: ProfileAreaGridProps) {
   const [search, setSearch] = useState('')
@@ -243,18 +266,20 @@ export function ProfileAreaGrid({
                     seat={seat}
                     profileRole={profileRole}
                     unsetHint={unsetHintFor?.(area)}
+                    accessInheritLabel={accessInheritLabel}
                     disabled={disabled}
                     onChange={(level) => onChange(area, level)}
                     childRows={children?.rows}
                     isOpen={isOpen}
-                    onToggleOpen={
-                      children !== undefined
-                        ? () => {
-                            setOpenAreas((prev) => ({ ...prev, [area]: !isOpen }))
-                            onAreaOpenChange?.(area, !isOpen)
-                          }
-                        : undefined
-                    }
+                    // Unconditional: the ROW decides whether it is expandable,
+                    // because an instance-access area has a child (its access
+                    // row) even when the host supplies no instance rows. Gating
+                    // this on `children` would leave the area's only remaining
+                    // control behind a chevron that never renders.
+                    onToggleOpen={() => {
+                      setOpenAreas((prev) => ({ ...prev, [area]: !isOpen }))
+                      onAreaOpenChange?.(area, !isOpen)
+                    }}
                   />
                 )
               })}
@@ -266,7 +291,29 @@ export function ProfileAreaGrid({
   )
 }
 
-/** One area row: label + description, the lock flag, and the three-state control. */
+/**
+ * One area row. **Two shapes, and which one it takes is decided by the registry**
+ * (plan 43 decision 0.7, `hasAreaAccessRow`):
+ *
+ * - **Ladder** — Records and every non-instance area. Label, description, the
+ *   three-state {@link LevelControl}, and the `Not set · <source>` hint that
+ *   renders absence on a control with no absent position. Unchanged.
+ * - **Controlless header** — the eight instance-access areas. Label, description,
+ *   chevron, and the resolved level as READ-ONLY TEXT (§2.1b). The control moved
+ *   into an {@link AreaAccessRow} nested one level down, where "Inherit" points at
+ *   the row above it instead of at a visual sibling (§5.2).
+ *
+ * The three-state mechanism does not MOVE into the access row — it does not apply
+ * there. `AccessLevelSelect`'s `includeInherit` + `inheritedLevel` already model
+ * absence as a first-class option with the resolved value inline, so the
+ * controlless shape reads `isExplicit` / `unsetHint` / `inherited` for nothing but
+ * the seat lock. They stay for the rows that still render a ladder, which is what
+ * keeps {@link UNSET_HINT_BY_ROLE} alive.
+ *
+ * **The seat lock applies to the parent in both shapes.** A field seat is locked
+ * out of the whole area, not just create, so the lock icon and the `Seat ceiling`
+ * hint sit on the header and the access row below it is disabled with them.
+ */
 function ProfileAreaRow({
   area,
   value,
@@ -275,6 +322,7 @@ function ProfileAreaRow({
   seat,
   profileRole,
   unsetHint: unsetHintOverride,
+  accessInheritLabel,
   disabled,
   onChange,
   childRows,
@@ -289,6 +337,8 @@ function ProfileAreaRow({
   profileRole: OrganizationRole
   /** Caller-supplied "Not set" hint — the seat lock still outranks it. */
   unsetHint?: string
+  /** Name for the access row's fall-through option (the agent policy: `Default`). */
+  accessInheritLabel?: string
   disabled: boolean
   onChange: (level: Level | undefined) => void
   /** Nested rows from `renderChildren` (Records → per-def, Datasets / Knowledge
@@ -302,6 +352,7 @@ function ProfileAreaRow({
   const isSeatLocked = lockReason === WORKER_LOCK_REASON
   /** An explicit level of its own — the hint describes a fall-through, so it goes. */
   const isExplicit = value !== undefined
+  const hasAccessRow = hasAreaAccessRow(area)
 
   // What the area falls through to when nothing is stored. A field-seat-locked row
   // shows the level that actually applies (None, from `SEAT_CEILINGS`) — a base
@@ -316,6 +367,22 @@ function ProfileAreaRow({
     : (unsetHintOverride ??
       (baseLevel !== null ? 'Not set · profile default' : UNSET_HINT_BY_ROLE[profileRole]))
 
+  const accessRow = hasAccessRow ? (
+    <AreaAccessRow
+      area={area}
+      value={value}
+      inheritedLevel={inherited}
+      inheritLabelText={accessInheritLabel}
+      disabled={disabled || lockReason !== null}
+      onChange={onChange}
+    />
+  ) : null
+
+  // The access row is a child, so an instance-access area is expandable even
+  // before its host supplies any instance rows — otherwise the one control the
+  // area still has would be unreachable behind a chevron that never appeared.
+  const expandable = accessRow !== null || childRows !== undefined
+
   return (
     <TreeRow
       rowClassName='bg-primary-50 hover:bg-primary-100'
@@ -326,33 +393,55 @@ function ProfileAreaRow({
       // the ladder. Dropped outright when a level is explicitly stored — the old
       // slot had to keep it `invisible` instead, purely so the trailing clusters
       // stayed aligned across rows; on this side nothing depends on its width.
+      //
+      // On a controlless header the hint is dropped whatever the state: the
+      // access row's own `Inherit · <resolved>` trigger says the same thing, in
+      // the control, one row down. Only the seat ceiling survives, because that
+      // is a fact about the AREA and no child row states it.
       secondary={
-        lockReason || !isExplicit ? (
+        lockReason || (!hasAccessRow && !isExplicit) ? (
           <span className='flex items-center gap-1.5'>
             {lockReason ? (
               <Tooltip content={lockReason}>
                 <Lock className='size-3 text-muted-foreground' />
               </Tooltip>
             ) : null}
-            {!isExplicit && (
+            {(isSeatLocked || !hasAccessRow) && !isExplicit && (
               <span className='text-xs text-muted-foreground whitespace-nowrap'>{unsetHint}</span>
             )}
           </span>
         ) : undefined
       }
-      expandable={childRows !== undefined}
-      isOpen={childRows !== undefined ? isOpen : undefined}
-      onToggleOpen={childRows !== undefined ? onToggleOpen : undefined}
+      expandable={expandable}
+      isOpen={expandable ? isOpen : undefined}
+      onToggleOpen={expandable ? onToggleOpen : undefined}
+      // §2.1b — a collapsed header must still be scannable. Nine of ~15 rows now
+      // hide their control inside a child block, so without this an admin cannot
+      // read a profile without expanding everything: 0.7 would trade one
+      // legibility problem for another. `effectiveLevelLabel` spells the bottom
+      // rung "No access" rather than "None", so it never reads as a missing value.
+      actions={
+        hasAccessRow ? (
+          <span className='text-xs text-muted-foreground whitespace-nowrap'>
+            {effectiveLevelLabel(
+              clampToArea(meta, isSeatLocked ? Level.None : (value ?? inherited))
+            )}
+          </span>
+        ) : undefined
+      }
       trailing={
-        <LevelControl
-          area={meta}
-          value={value}
-          inherited={inherited}
-          resetTooltip='Clear (back to the default)'
-          onChange={onChange}
-          disabled={disabled || lockReason !== null}
-        />
+        hasAccessRow ? undefined : (
+          <LevelControl
+            area={meta}
+            value={value}
+            inherited={inherited}
+            resetTooltip='Clear (back to the default)'
+            onChange={onChange}
+            disabled={disabled || lockReason !== null}
+          />
+        )
       }>
+      {accessRow}
       {childRows}
     </TreeRow>
   )

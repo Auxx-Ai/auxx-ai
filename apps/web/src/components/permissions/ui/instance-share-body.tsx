@@ -26,6 +26,16 @@ import {
 } from './instance-share-copy'
 import { permissionLabel } from './level-labels'
 
+/**
+ * The per-INSTANCE tiers offered by every share picker. A flat module const with
+ * no per-key subset, deliberately left that way by plan 43 §5.4.
+ *
+ * **Plan 43 §3.1 does not disturb this.** Dropping the *area* `Edit` rung from
+ * `signatures` / `snippets` / `dashboards` says nothing about the per-instance
+ * `edit` tier, which stays real and asserted (`assertEditInstance`). An instance
+ * row must keep offering `Read and write` even where its area's ladder no longer
+ * has that rung — pinned by §8 test 23.
+ */
 export const LEVEL_ORDER: InstanceLevel[] = [
   ResourcePermission.view,
   ResourcePermission.edit,

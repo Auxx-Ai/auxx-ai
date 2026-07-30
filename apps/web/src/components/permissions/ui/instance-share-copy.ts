@@ -28,8 +28,31 @@ import {
 export interface InstanceShareCopy {
   /** The resource noun, e.g. `'dataset'`. Used in inline copy. */
   noun: string
-  /** The "everyone can use it by default" baseline line. */
+  /**
+   * The "who this is shared with by default" line.
+   *
+   * **It may not say "everyone in the workspace"** (plan 43 §5.5.1). Under §0.2a
+   * the workspace default reaches only members whose area rung admits it, so all
+   * six org-shared resources carry the *"whose profile allows …"* qualifier. The
+   * three private keys need no qualifier — *"Private to you by default"* is
+   * unconditionally true.
+   */
   baselineHint: string
+  /**
+   * The mirror-image warning, rendered directly beneath the workspace-baseline
+   * row (plan 43 §5.5.2). The area row's failure mode is *"I set None and they
+   * can still see one"*; the dialog's is the reverse — **an admin sets a
+   * workspace default and it does not reach everyone**, and nothing on the card
+   * said so.
+   *
+   * **Set for the six org-shared keys ONLY.** On `signature` / `snippet` /
+   * `personal_inbox` it would be false: those have no workspace default for a
+   * profile to be shut out of, so there is nothing for an area rung to gate.
+   * `dashboard` is org-shared for this purpose despite `baselineAtCreate: true` —
+   * every dashboard is born with a `role:org_member @ view` row, which is exactly
+   * the baseline lane the area level gates.
+   */
+  baselineReachNote?: string
   /** What Read / Write / Full mean for this resource. */
   levels: { read: string; write: string; full: string }
   /**
@@ -47,7 +70,10 @@ export interface InstanceShareCopy {
 export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> = {
   dataset: {
     noun: 'dataset',
-    baselineHint: 'Everyone in the workspace can use it in search and agents by default.',
+    baselineHint:
+      'Everyone whose profile allows datasets can use it in search and agents by default.',
+    baselineReachNote:
+      'Members whose profile closes datasets are not reached by this. Share with them directly to override it.',
     levels: {
       read: 'Use in search & agents',
       write: 'Add & manage files',
@@ -56,7 +82,10 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
   },
   kb: {
     noun: 'knowledge base',
-    baselineHint: 'Everyone in the workspace can read and write its articles by default.',
+    baselineHint:
+      'Everyone whose profile allows knowledge bases can read and write its articles by default.',
+    baselineReachNote:
+      'Members whose profile closes knowledge bases are not reached by this. Share with them directly to override it.',
     levels: {
       read: 'Read articles',
       write: 'Write & publish articles',
@@ -65,7 +94,10 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
   },
   dashboard: {
     noun: 'dashboard',
-    baselineHint: 'Shared with the workspace by default. Restrict it to make it private.',
+    baselineHint:
+      'Shared by default with everyone whose profile allows dashboards. Restrict it to make it private.',
+    baselineReachNote:
+      'Members whose profile closes dashboards are not reached by this. Share with them directly to override it.',
     levels: {
       read: 'View',
       write: 'Edit widgets & layout',
@@ -74,7 +106,10 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
   },
   workflow: {
     noun: 'workflow',
-    baselineHint: 'Shared with the workspace by default. Restrict it to lock it down.',
+    baselineHint:
+      'Shared by default with everyone whose profile allows workflows. Restrict it to lock it down.',
+    baselineReachNote:
+      'Members whose profile closes workflows are not reached by this. Share with them directly to override it.',
     levels: {
       read: 'View & run manually',
       write: 'Edit, publish & test',
@@ -89,7 +124,10 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
   },
   agent: {
     noun: 'agent',
-    baselineHint: 'Shared with the workspace by default. Restrict it to lock it down.',
+    baselineHint:
+      'Shared by default with everyone whose profile allows agents. Restrict it to lock it down.',
+    baselineReachNote:
+      'Members whose profile closes agents are not reached by this. Share with them directly to override it.',
     levels: {
       read: 'Chat, mention & assign work',
       write: 'Edit prompt, tools & knowledge',
@@ -147,7 +185,9 @@ export const INSTANCE_SHARE_COPY: Record<InstanceAccessKey, InstanceShareCopy> =
   inbox: {
     noun: 'inbox',
     baselineHint:
-      'Everyone in the workspace can work this inbox by default. Restrict it to lock it down.',
+      'Everyone whose profile allows inboxes can work it by default. Restrict it to lock it down.',
+    baselineReachNote:
+      'Members whose profile closes inboxes are not reached by this. Share with them directly to override it.',
     levels: {
       read: 'Read & reply to its mail',
       write: 'Read & reply to its mail',
@@ -273,16 +313,19 @@ export const AREA_TO_INSTANCE_KEY: Partial<Record<Area, InstanceAccessKey>> =
 
 /**
  * Row copy for the two per-instance row scopes (capability layer v2 §B.2.6):
- * the **baseline** scope ("everyone in the workspace") and a **grantee**
- * scope (a specific member/team's own access), which must never borrow the
- * area grid's raise-only framing — instance grants can restrict as well as
- * raise.
+ * the **baseline** scope (the org-wide default) and a **grantee** scope (a
+ * specific member/team's own access), which must never borrow the area grid's
+ * raise-only framing — instance grants can restrict as well as raise.
+ *
+ * The baseline description used to say *"every member"* (plan 43 §5.5.4). Under
+ * §0.2a the workspace default is gated by the member's area rung, so it reaches
+ * every member **whose profile allows the area** and no further.
  */
 export const INSTANCE_ROW_COPY = {
   baseline: {
     description:
-      'The default access every member starts with for each item. Expand an item to see or ' +
-      'change who else can reach it.',
+      'The default access members start with for each item, where their profile allows it. ' +
+      'Expand an item to see or change who else can reach it.',
     /**
      * `InstanceShareBody`'s empty state. Names the workspace-default control
      * sitting directly above the list — true under `InstanceBaselineRows` and
@@ -311,6 +354,13 @@ export const INSTANCE_ROW_COPY = {
  * What remains genuinely dead is the opposite row: an explicit `none`
  * RESTRICTION on a member who already composes the area to `None`. It takes away
  * something they never had.
+ *
+ * **Plan 43 §0.2a's decision C preserves that exactly** — an individual grant
+ * still overrules the area level, so a positive `user` / `group` / `profile` row
+ * is never inert. C does add one newly-inert shape, and it is deliberately NOT
+ * warned about here: a positive `role:org_member` baseline row does nothing for a
+ * member whose area is `None`. That has no grantee, so it cannot be a per-row
+ * warning — {@link InstanceShareCopy.baselineReachNote} is what says it instead.
  */
 export function deadGrantWarning(areaLabel: string): string {
   return `No effect — their profile already has no ${areaLabel} access to take away.`

@@ -59,6 +59,14 @@ export async function getCapabilities(
     // type lives on the ResourceAccess row that only the composer reads. `?? []`
     // covers a blob composed before the field existed — a missing derived key
     // fails CLOSED (the member simply sees the coarse gate they saw before).
-    new Set(caps.instanceDerivedKeys ?? [])
+    new Set(caps.instanceDerivedKeys ?? []),
+    // The BASELINE lane (plan 43 §4.1). `?? {}` covers a pre-`v16` blob — and
+    // UNLIKE `instanceDerivedKeys` above, that default fails **OPEN**: such a
+    // blob's `instanceAccess` still holds the merged union of both lanes, so
+    // step 1 of `effectiveInstanceLevel` hands back the workspace baseline as if
+    // it were an individual grant and the area gate never runs. That is why the
+    // `v15 → v16` bump is mandatory rather than hygienic; see the reason recorded
+    // at the key in `cache/user-cache-keys.ts`.
+    caps.baselineInstanceAccess ?? {}
   )
 }

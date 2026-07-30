@@ -67,7 +67,15 @@ export class CapabilitySet implements CapabilityView {
    *                   which resolves to the write-key slug.
    * @param instanceAccess Highest instance-level ResourceAccess permission per
    *                   `entityInstanceId` (CUID) for the instance-access resources
-   *                   (datasets etc., §1.4). Explicit `'none'` rows are kept.
+   *                   (datasets etc., §1.4), from INDIVIDUAL grantee rows only
+   *                   (`user` / `group` / `profile`). Explicit `'none'` rows are
+   *                   kept. Never gated by the area level (#1346, plan 43 §0.2a).
+   * @param baselineInstanceAccess The same map for `role:org_member` rows — the
+   *                   workspace default, split out by plan 43 §4.1 and GATED by
+   *                   the member's area level in {@link effectiveInstanceLevel}.
+   *                   Defaults to `{}`; that default is also what a pre-`v16`
+   *                   cache blob produces, which fails OPEN — see the ledger
+   *                   entry at `user:capabilities:v16`.
    * @param governingInstanceIds Org-wide set of instance ids whose access is
    *                   GOVERNED by rows — a `role:org_member` baseline at any
    *                   permission, or any `permission = 'none'` marker. **Not**
@@ -99,7 +107,11 @@ export class CapabilitySet implements CapabilityView {
     private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
     private readonly governingInstanceIds: ReadonlySet<string> = new Set(),
     private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {},
-    private readonly instanceDerivedKeys: ReadonlySet<PermissionKey> = new Set()
+    private readonly instanceDerivedKeys: ReadonlySet<PermissionKey> = new Set(),
+    // Appended rather than slotted beside `instanceAccess` (plan 43 §4.1): these
+    // are positional parameters with ~15 construction sites, and re-ordering them
+    // would silently re-bind every one that passes the tail arguments.
+    private readonly baselineInstanceAccess: Readonly<Record<string, ResourcePermission>> = {}
   ) {}
 
   /**
@@ -195,6 +207,7 @@ export class CapabilitySet implements CapabilityView {
       role: this.role,
       seatType: this.seatType,
       instanceAccess: { ...this.instanceAccess },
+      baselineInstanceAccess: { ...this.baselineInstanceAccess },
       governingInstanceIds: [...this.governingInstanceIds],
     }
   }
@@ -366,22 +379,32 @@ export class CapabilitySet implements CapabilityView {
   /**
    * Effective per-instance permission for an instance-access resource
    * (most-specific-wins), or `undefined` = no access (§1.4). OWNER bypasses to
-   * `admin` for the ORG-SHARED resources only (§0.10); the member's OWN instance
-   * row (incl. the workspace baseline / `'none'`) wins outright; failing that, a
-   * ROW-GOVERNED instance denies; failing that, the coarse L2 area gate must be
-   * open and supplies the fallback level (for `baselineAtCreate: false`
-   * resources). The SEAT ceiling is checked before any of that — it is a billing
-   * invariant and outranks even an explicit row, and for the private resources it
-   * precedes the OWNER branch too. Zero I/O.
+   * `admin` for the ORG-SHARED resources only (§0.10); the member's own
+   * INDIVIDUAL row (incl. `'none'`) wins outright; failing that the coarse L2
+   * area gate must be open, and then an explicit workspace-BASELINE row is the
+   * answer, a ROW-GOVERNED instance denies, and everything else takes the area
+   * fallback (for `baselineAtCreate: false` resources). The SEAT ceiling is
+   * checked before any of that — it is a billing invariant and outranks even an
+   * explicit row, and for the private resources it precedes the OWNER branch too.
+   * Zero I/O.
    *
-   * **An explicit row beats the area floor** (plan 25 §2), **ADMIN no longer
-   * bypasses** (doc 19 §5.3 piece 2, step 10), **OWNER no longer bypasses on
-   * `baselineAtCreate: true` resources** (user decision 2026-07-28, plan 36 §0.6
-   * revised), and **sharing an instance no longer restricts it** (2026-07-29:
-   * own-row-first + `governingInstanceIds`) — kept byte-for-byte in sync with the
-   * client mirror {@link import('./entity-access').effectiveInstanceLevel}, which
-   * carries the full rationale for all four. Change one, change the other in the
-   * same edit; `capability-set-instance.test.ts` asserts both on every case.
+   * **THE RULE, in one sentence** (plan 43 §0.2a decision C): *the area level
+   * gates the BASELINE path; an individual grant always overrules it.* Step 1
+   * above step 2 is #1346; step 2 above step 3 is what makes `Dashboards: None`
+   * mean no dashboards. **The ordering is the design** — swap either and one of
+   * those two breaks silently.
+   *
+   * **An explicit individual row beats the area floor** (plan 25 §2 / #1346),
+   * **ADMIN no longer bypasses** (doc 19 §5.3 piece 2, step 10), **OWNER no
+   * longer bypasses on `baselineAtCreate: true` resources** (user decision
+   * 2026-07-28, plan 36 §0.6 revised), **sharing an instance no longer restricts
+   * it** (2026-07-29: own-row-first + `governingInstanceIds`), and **the
+   * workspace default is gated while an individual grant is not** (2026-07-29,
+   * plan 43) — kept byte-for-byte in sync with the client mirror
+   * {@link import('./entity-access').effectiveInstanceLevel}, which carries the
+   * full rationale for all five. Change one, change the other in the same edit;
+   * `capability-set-instance.test.ts` and `area-baseline-gate.test.ts` assert
+   * both on every case.
    */
   private effectiveInstanceLevel(
     key: InstanceAccessKey,
@@ -390,11 +413,21 @@ export class CapabilitySet implements CapabilityView {
     const cfg = INSTANCE_ACCESS_RESOURCES[key]
     if (this.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
     if (SEAT_CEILINGS[this.seatType][cfg.area] === Level.None) return undefined
+
+    // 1. An individual grant (user / group / profile) ALWAYS wins — #1346, and it is
+    //    what keeps a creator's own `user @ admin` row reachable at any area level.
     const own = this.instanceAccess[instanceId]
     if (own !== undefined) return own
-    if (this.governingInstanceIds.has(instanceId)) return undefined
+
+    // 2. Everything below here is the BASELINE path, which the area level gates (§0.2a).
+    //    One rule for all nine resources — do NOT branch on `cfg.baselineAtCreate`.
     const areaLevel = areaLevelFromKeys(this.keys, cfg.area)
     if (areaLevel === Level.None) return undefined
+
+    // 3. An explicit workspace-baseline row, then the governing set, then the fallback.
+    const baseline = this.baselineInstanceAccess[instanceId]
+    if (baseline !== undefined) return baseline
+    if (this.governingInstanceIds.has(instanceId)) return undefined
     return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
   }
 
@@ -421,6 +454,7 @@ export class CapabilitySet implements CapabilityView {
       {
         ...this.resolved(),
         instanceAccess: this.instanceAccess,
+        baselineInstanceAccess: this.baselineInstanceAccess,
         governingInstanceIds: this.governingInstanceIds,
       },
       key

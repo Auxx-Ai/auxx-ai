@@ -183,11 +183,18 @@ export async function computeUserCapabilities(
   // column — the WHERE clause already filters on it) because
   // `UserCapabilities.instanceDerivedKeys` must know WHICH resource a grant is
   // for, or a dashboard grant would open the workflows front door.
+  //
+  // `granteeType` rides along for the same reason and at the same cost — one
+  // more column on a query the WHERE clause already filters by grantee (plan 43
+  // §4.1, "the plumbing is one column"). It sorts each row into the INDIVIDUAL
+  // lane or the BASELINE lane, and only the latter is gated by the area level.
+  // No new query, no new round trip.
   const instanceAccessPromise = db
     .select({
       entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
       entityInstanceId: schema.ResourceAccess.entityInstanceId,
       permission: schema.ResourceAccess.permission,
+      granteeType: schema.ResourceAccess.granteeType,
     })
     .from(schema.ResourceAccess)
     .where(
@@ -242,6 +249,7 @@ export async function computeUserCapabilities(
       entityDefinitionId: string
       entityInstanceId: string
       permission: ResourcePermission
+      granteeType: string
     }>,
   })
 }

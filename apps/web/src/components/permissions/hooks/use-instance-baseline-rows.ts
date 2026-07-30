@@ -3,9 +3,11 @@
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import {
+  type Area,
   INSTANCE_ACCESS_KEYS,
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
+  Level,
   levelToPermission,
 } from '@auxx/lib/permissions/client'
 import { toRecordId } from '@auxx/types/resource'
@@ -27,6 +29,32 @@ const ALWAYS_OPEN: OpenInstanceTypes = Object.fromEntries(
   INSTANCE_ACCESS_KEYS.map((key) => [key, true])
 )
 
+/**
+ * Resources where the fall-through option is renamed **`Private`** (plan 43
+ * §5.3).
+ *
+ * `inheritedLevel` is a CONSTANT `none` for every `baselineAtCreate: true`
+ * resource, so on these three "Inherit" and "Restricted" were the same state
+ * wearing two labels. The census settles which three: `signature`, `snippet` and
+ * `personal_inbox` have **zero** `role:org_member` rows in existence, so Inherit
+ * is unreachable as anything else.
+ *
+ * `dashboard` is deliberately NOT here despite sharing `baselineAtCreate: true` —
+ * it has 89 real baseline rows, so its Inherit resolves to something. And
+ * `snippet` IS here despite having 28: those are instances that *have* a
+ * baseline, and they display their own permission rather than "Inherit". The
+ * rename only reaches rows with **no** baseline row, where the label is a
+ * constant either way.
+ */
+export const PRIVATE_INHERIT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAccessKey>([
+  'signature',
+  'snippet',
+  'personal_inbox',
+])
+
+export const PRIVATE_INHERIT_LABEL = 'Private'
+export const PRIVATE_INHERIT_HELPER = 'Only people granted below'
+
 /** One dataset/kb/dashboard/workflow row on the Workspace defaults tab. */
 export interface InstanceBaselineRow {
   key: InstanceAccessKey
@@ -34,11 +62,33 @@ export interface InstanceBaselineRow {
   name: string
   /** The `role:org_member` row's permission; `undefined` = Inherit (no row). */
   baselineLevel: ResourcePermission | undefined
-  /** What "Inherit" resolves to — the area's base level, or No Access when the
-   *  resource is born with no baseline (`baselineAtCreate: true`, dashboards). */
-  inheritedLevel: ResourcePermission
+  /**
+   * What the fall-through option resolves to, rendered inline on it
+   * (`Inherit · Read only`). **`undefined` on the {@link PRIVATE_INHERIT_KEYS}**,
+   * which drops the suffix — `Private · No access` states the same fact twice.
+   */
+  inheritedLevel: ResourcePermission | undefined
+  /** Name for the fall-through option — `Private` where nothing is inherited. */
+  inheritLabelText?: string
+  /** Helper line under that option. */
+  inheritHelperText?: string
   /** Collapsed-row badge derived from the org-wide `allInstanceAccess` rows. */
   badge: InstanceAccessBadge
+}
+
+/**
+ * The Member profile's area level for one instance-access resource type — what
+ * the tab's **read-only** access row (plan 43 §5.2) displays above each
+ * collection.
+ *
+ * `value` is the Member profile's own stored rung and `inherited` the USER-rank
+ * floor it falls through to: exactly the pair the profile editor's access row is
+ * fed, so the same profile reads the same on both screens (§8 item 19).
+ */
+export interface InstanceAreaAccess {
+  area: Area
+  value: Level | undefined
+  inherited: Level
 }
 
 /**
@@ -86,15 +136,39 @@ export function useInstanceBaselineRows() {
     },
   })
 
+  /**
+   * The Member profile's area rung per resource type — the subject of the tab's
+   * read-only access row. Kept beside `rowsByKey` rather than derived in the host
+   * so both read the same `baseline` / `roleDefaults` pair.
+   */
+  const areaAccessByKey = useMemo(() => {
+    const result = {} as Record<InstanceAccessKey, InstanceAreaAccess>
+    for (const key of INSTANCE_ACCESS_KEYS) {
+      const { area } = INSTANCE_ACCESS_RESOURCES[key]
+      result[key] = {
+        area,
+        value: baseline[area],
+        inherited: roleDefaults?.[area] ?? Level.None,
+      }
+    }
+    return result
+  }, [baseline, roleDefaults])
+
   const rowsByKey = useMemo(() => {
     const result = {} as Record<InstanceAccessKey, InstanceBaselineRow[]>
     for (const key of INSTANCE_ACCESS_KEYS) {
       const cfg = INSTANCE_ACCESS_RESOURCES[key]
       const areaLevel = baseline[cfg.area] ?? roleDefaults?.[cfg.area]
-      const inheritedLevel = cfg.baselineAtCreate
-        ? ResourcePermission.none
-        : ((areaLevel !== undefined ? levelToPermission(areaLevel) : undefined) ??
-          ResourcePermission.none)
+      const isPrivate = PRIVATE_INHERIT_KEYS.has(key)
+      // Plan 43 §5.3 — `undefined` is what suppresses the `· <resolved>` suffix,
+      // so the private three read a bare `Private` rather than a resolution that
+      // is `No access` by construction and says nothing.
+      const inheritedLevel = isPrivate
+        ? undefined
+        : cfg.baselineAtCreate
+          ? ResourcePermission.none
+          : ((areaLevel !== undefined ? levelToPermission(areaLevel) : undefined) ??
+            ResourcePermission.none)
 
       result[key] = lists[key].items.map((item) => {
         const instanceRows = allRows.filter(
@@ -110,6 +184,8 @@ export function useInstanceBaselineRows() {
           name: item.name,
           baselineLevel: baselineRow?.permission,
           inheritedLevel,
+          inheritLabelText: isPrivate ? PRIVATE_INHERIT_LABEL : undefined,
+          inheritHelperText: isPrivate ? PRIVATE_INHERIT_HELPER : undefined,
           badge: deriveInstanceBadge(instanceRows),
         }
       })
@@ -143,6 +219,7 @@ export function useInstanceBaselineRows() {
     lists,
     isLoading: allQuery.isLoading,
     rowsByKey,
+    areaAccessByKey,
     setBaseline,
   }
 }

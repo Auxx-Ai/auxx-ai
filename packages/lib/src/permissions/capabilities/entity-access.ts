@@ -115,12 +115,24 @@ export interface ResolvedRecordAccess {
   defBaseOverrides?: Readonly<Record<string, ResourcePermission | null>>
   /**
    * Highest instance-level grant per `entityInstanceId` (CUID) for the
-   * instance-access resources (datasets etc., §1.4). Explicit `'none'` rows are
-   * KEPT (the per-instance downward marker). Optional — absent = `{}` (the
-   * server `CapabilitySet.resolved()` view omits it; only the client instance
-   * resolver reads it, always via {@link toResolvedRecordAccess}).
+   * instance-access resources (datasets etc., §1.4), from **INDIVIDUAL** grantee
+   * rows only (`user` / `group` / `profile`). Explicit `'none'` rows are KEPT
+   * (the per-instance downward marker). Optional — absent = `{}` (the server
+   * `CapabilitySet.resolved()` view omits it; only the client instance resolver
+   * reads it, always via {@link toResolvedRecordAccess}).
+   *
+   * A grant addressed to this member — **never gated by the area level**
+   * (plan 43 §0.2a / #1346). See {@link baselineInstanceAccess} for its twin.
    */
   instanceAccess?: Readonly<Record<string, ResourcePermission>>
+  /**
+   * The same map for `role` grantee rows (`role:org_member`) — the workspace
+   * default, split out by plan 43 §4.1. **GATED by the member's area level**
+   * in {@link effectiveInstanceLevel}. `'none'` kept, max-wins within the lane.
+   * Optional — absent = `{}`, which is also what a pre-`v16` cache blob yields
+   * (that staleness fails OPEN; see the ledger entry at `user:capabilities:v16`).
+   */
+  baselineInstanceAccess?: Readonly<Record<string, ResourcePermission>>
   /**
    * Org-wide set of instance ids whose access is GOVERNED by rows — a
    * `role:org_member` baseline row at any permission, or any `permission =
@@ -390,11 +402,18 @@ export interface ClientCapabilities {
   seatType: SeatType
   /**
    * Highest instance-level permission per `entityInstanceId` (instance-access
-   * resources — datasets etc., §1.4). Optional: carried in the dehydration seed
-   * so the client instance-access resolver (a later slice) and any server-built
-   * snapshot have it; absent = treat as `{}`.
+   * resources — datasets etc., §1.4) from INDIVIDUAL grantee rows. Optional:
+   * carried in the dehydration seed so the client instance-access resolver and
+   * any server-built snapshot have it; absent = treat as `{}`.
    */
   instanceAccess?: Record<string, ResourcePermission>
+  /**
+   * The BASELINE lane (`role:org_member` rows) — plan 43 §4.1. Gated by the area
+   * level in {@link effectiveInstanceLevel}; kept separate on the wire for the
+   * same reason it is separate in the blob, so a client affordance and the server
+   * gate cannot disagree about which lane a row is in. Optional; absent = `{}`.
+   */
+  baselineInstanceAccess?: Record<string, ResourcePermission>
   /**
    * Org-wide set of instance ids whose access is GOVERNED by rows (a
    * `role:org_member` baseline at any permission, or any `none` marker).
@@ -421,6 +440,7 @@ export function toResolvedRecordAccess(caps: ClientCapabilities): ResolvedRecord
     restrictedEntityDefIds: new Set(caps.restrictedEntityDefIds),
     defBaseOverrides: caps.defBaseOverrides ?? {},
     instanceAccess: caps.instanceAccess ?? {},
+    baselineInstanceAccess: caps.baselineInstanceAccess ?? {},
     governingInstanceIds: new Set(caps.governingInstanceIds ?? []),
   }
 }
@@ -443,11 +463,44 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  * `effectiveInstanceLevel`, kept byte-for-byte in sync so client affordances and
  * server enforcement never drift (§1.4):
  *  - OWNER → `admin`, but ONLY for `baselineAtCreate: false` resources.
- *  - the member's OWN instance row (incl. workspace baseline / `'none'`) → wins
+ *  - the seat ceiling closes the area → `undefined`, rows included.
+ *  - an INDIVIDUAL row (`user`/`group`/`profile`, incl. `'none'`) → wins
  *    outright, even when the L2 area gate is closed.
- *  - no own row, but the instance is ROW-GOVERNED → `undefined`.
- *  - L2 area gate closed (`None`) and no own row → `undefined`.
+ *  - L2 area gate closed (`None`) and no individual row → `undefined`.
+ *  - an explicit workspace-BASELINE row (`role:org_member`) → that row.
+ *  - no row of either kind, but the instance is ROW-GOVERNED → `undefined`.
  *  - otherwise fall back to the base L2 area level (`baselineAtCreate: false`).
+ *
+ * **THE ONE-SENTENCE RULE, and the ORDERING that implements it** (plan 43
+ * §0.2a decision C, 2026-07-29): *the area level gates the BASELINE path; an
+ * individual grant always overrules it.*
+ *
+ * Two wants collide here and C is what satisfies both. *"Dashboards: None means
+ * this profile sees no dashboards"* is a lever admins asked for and did not have
+ * — `dashboardsView` is asserted nowhere, and every dashboard writes a
+ * `role:org_member @ view` row at create, so practically every member was
+ * derived into the area whatever their profile said. *"An explicit instance
+ * grant overrides area None"* is **#1346** (plan 25 §2), shipped, and it is what
+ * makes a single-instance share work at all. Splitting `instanceAccess` into
+ * an individual lane and a baseline lane (§4.1) is what lets both be true.
+ *
+ * So the step order in the body is the design, not an accident of writing:
+ *  - **Step 1 above step 2** is what makes an individual grant overrule the area
+ *    (#1346), and is also why a creator never loses content they made — the
+ *    `user @ admin` row every `baselineAtCreate: true` resource writes at create
+ *    is an individual grant by construction.
+ *  - **Step 2 above step 3** is what makes `Dashboards: None` mean no dashboards.
+ * Swap either and one of the two wants breaks silently. Both are pinned by the
+ * §8 truth table in `area-baseline-gate.test.ts`, which is commented with this
+ * plan number so a "simplify the conditionals" pass has to delete a failing test
+ * to happen.
+ *
+ * **NO `cfg.baselineAtCreate` BRANCH in step 2.** An earlier draft of the plan
+ * scoped the gate to `baselineAtCreate: true` and had to spend a section
+ * defending the asymmetry that created. C removes it: there is ONE rule for all
+ * nine resources, and `baselineAtCreate` now affects only step 3's fall-through,
+ * which is all it ever meant (*is there a fall-through when no row exists*). If
+ * you find yourself adding `cfg.baselineAtCreate &&` to step 2, re-read §0.2a.
  *
  * **The OWNER bypass is scoped to the org-shared resources** (user decision
  * 2026-07-28, plan 36 §0.6 revised). `baselineAtCreate: true` marks content that
@@ -561,12 +614,19 @@ export function effectiveInstanceLevel(
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
   if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
   if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
-  // Most-specific-wins, all the way down: the member's OWN row beats both the
-  // governing set and the area floor. Checked FIRST so a creator never loses
-  // their own `baselineAtCreate: true` content (see the docblock).
+
+  // 1. An individual grant (user / group / profile) ALWAYS wins — #1346, and it is
+  //    what keeps a creator's own `user @ admin` row reachable at any area level.
   const own = caps.instanceAccess?.[instanceId]
   if (own !== undefined) return own
-  // Row-governed with nothing of my own → denied, whatever the area says.
+
+  // 2. Everything below here is the BASELINE path, which the area level gates (§0.2a).
+  //    One rule for all nine resources — do NOT branch on `cfg.baselineAtCreate`.
+  if (areaLevelFromKeys(caps.keys, cfg.area) === Level.None) return undefined
+
+  // 3. An explicit workspace-baseline row, then the governing set, then the fallback.
+  const baseline = caps.baselineInstanceAccess?.[instanceId]
+  if (baseline !== undefined) return baseline
   if ((caps.governingInstanceIds ?? EMPTY_INSTANCE_SET).has(instanceId)) return undefined
   return instanceFallbackLevel(caps, key)
 }
@@ -675,26 +735,35 @@ export type PrivateInstanceListScope = Extract<InstanceListScope, { kind: 'none'
  * Enumerating either side is only sound for `baselineAtCreate: false` resources,
  * which is why the `key` parameter is narrowed to
  * {@link OrgSharedInstanceAccessKey}. There, {@link effectiveInstanceLevel} has
- * exactly five outcomes:
+ * exactly six outcomes (six since plan 43 §4.1 split the instance map into an
+ * INDIVIDUAL lane and a BASELINE lane — outcome 4 is the new one):
  *  1. `role === 'OWNER'` → `admin`. Never denies → `exclude` with nothing.
  *  1b. seat ceiling closes the area → `undefined` for everything, rows included
  *     → `'none'`.
- *  2. the member holds their OWN row → that row, which denies when it is below
- *     `view`. **Enumerable** — `instanceAccess` is exactly those instances.
- *  3. no own row + instance in `governingInstanceIds` → `undefined`.
- *     **Enumerable** — the set is exactly the org's row-governed instances.
- *  4. no own row + not governed + area level `None` → `undefined`. Denies every
- *     row-LESS instance, which no exclusion list can enumerate — so this case
- *     inverts to `include`, naming the member's own ≥`view` rows instead. When
- *     none of them reach `view`, the answer is `'none'`.
- *  5. no own row + not governed + open area → `levelToPermission(areaLevel)`,
+ *  2. the member holds their own INDIVIDUAL row → that row, which denies when it
+ *     is below `view`. **Enumerable** — `instanceAccess` is exactly those.
+ *  3. no individual row + area level `None` → `undefined`. Denies every row-LESS
+ *     instance AND every baseline-only one, which no exclusion list can
+ *     enumerate — so this case inverts to `include`, naming the member's
+ *     individual ≥`view` rows alone. When none reach `view`, the answer is
+ *     `'none'`.
+ *  4. no individual row + open area + an explicit BASELINE row → that row, which
+ *     denies only at `none`. **Enumerable** — `baselineInstanceAccess`, and every
+ *     id in it is also in `governingInstanceIds` (a `role:org_member` row governs
+ *     at any permission, see `isGoverningInstanceRow`), so the governed loop
+ *     visits all of them and consulting the lane there is exhaustive.
+ *  5. no row of either kind + instance in `governingInstanceIds` → `undefined`
+ *     (somebody else holds a `none` marker on it). **Enumerable** — the set is
+ *     exactly the org's row-governed instances.
+ *  6. no row of either kind + not governed + open area → `levelToPermission(areaLevel)`,
  *     always ≥ `view`. Never denies.
- * So an instance is denied by the member's own sub-`view` row, by the governing
- * set with no row of their own, or by the area floor — there is no fourth denial
- * path. With `baselineAtCreate: true` (dashboards) branch 5 flips to `undefined`
- * and every row-less instance is denied even on an open area, so that resource
- * needs the `include` form unconditionally; the type narrowing makes flipping a
- * resource a COMPILE error at the call sites rather than a silent leak.
+ * So an instance is denied by the member's own sub-`view` individual row, by a
+ * sub-`view` baseline row, by the governing set with no row at all, or by the
+ * area floor — there is no fifth denial path. With `baselineAtCreate: true`
+ * (dashboards) branch 6 flips to `undefined` and every row-less instance is
+ * denied even on an open area, so that resource needs the `include` form
+ * unconditionally; the type narrowing makes flipping a resource a COMPILE error
+ * at the call sites rather than a silent leak.
  *
  * **The own-row half must be enumerated from `instanceAccess`, not from the
  * governing set.** Before 2026-07-29 the set meant "carries ≥1 row for anyone",
@@ -721,12 +790,19 @@ export function instanceListScope(
   // seat that excludes the area sees nothing regardless of grants.
   if (SEAT_CEILINGS[caps.seatType][area] === Level.None) return { kind: 'none' }
   const own = caps.instanceAccess ?? EMPTY_INSTANCE_ACCESS
+  const baseline = caps.baselineInstanceAccess ?? EMPTY_INSTANCE_ACCESS
   const governed = caps.governingInstanceIds ?? EMPTY_INSTANCE_SET
 
   if (areaLevelFromKeys(caps.keys, area) === Level.None) {
-    // Area closed: the visible set is exactly the member's own ≥`view` rows
-    // (plan 25 §2). An allow-list, not a deny-list — every row-less instance is
-    // invisible and there is no bound on how many of those there are.
+    // Area closed: the visible set is exactly the member's own INDIVIDUAL ≥`view`
+    // rows (plan 25 §2 / #1346). An allow-list, not a deny-list — every row-less
+    // instance is invisible and there is no bound on how many of those there are.
+    //
+    // `baseline` is deliberately NOT unioned in here (plan 43 §4.3). This arm IS
+    // step 2 of `effectiveInstanceLevel` expressed as a list filter: a closed area
+    // cuts off the workspace default, so a `role:org_member @ view` row must not
+    // put a row into this allow-list. Before the lane split it did, because the
+    // two lanes were one map — that is precisely the leak the split closes.
     const includeIds: string[] = []
     for (const [instanceId, level] of Object.entries(own)) {
       if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
@@ -735,11 +811,21 @@ export function instanceListScope(
   }
 
   // Area open: two disjoint denial sources, so no id can be pushed twice — the
-  // first loop only visits instances WITHOUT an own row, the second only those
-  // with one.
+  // first loop only visits instances WITHOUT an individual row, the second only
+  // those with one.
   const excludeIds: string[] = []
   for (const instanceId of governed) {
-    if (own[instanceId] === undefined) excludeIds.push(instanceId)
+    if (own[instanceId] !== undefined) continue
+    // No individual row, so the resolver's step 3 decides: an explicit workspace
+    // baseline row is the answer (denying only when it is below `view` — i.e. the
+    // `role:org_member @ none` restriction marker); with no baseline row the
+    // instance is in this set only because SOMEBODY ELSE holds a `none` marker on
+    // it, and that denies. Reading `baseline` here is what plan 43 §4.1's lane
+    // split makes necessary: these permissions used to arrive inside `own`.
+    const workspace = baseline[instanceId]
+    if (workspace === undefined || !satisfiesPermission(workspace, ResourcePermission.view)) {
+      excludeIds.push(instanceId)
+    }
   }
   for (const [instanceId, level] of Object.entries(own)) {
     if (!satisfiesPermission(level, ResourcePermission.view)) excludeIds.push(instanceId)
@@ -772,26 +858,42 @@ export type PrivateInstanceAccessKey = {
  * `instanceListScope`'s `'exclude'` arm is only sound when a row-LESS instance
  * is visible, which is exactly what `baselineAtCreate: true` denies.
  *
- * Here {@link effectiveInstanceLevel} has only two outcomes, so the visible set
- * is ALWAYS an allow-list — **there is no OWNER arm** (user decision 2026-07-28,
- * plan 36 §0.6 revised). The bypass is scoped to `baselineAtCreate: false`, and
- * every key this function accepts is `baselineAtCreate: true` BY TYPE
- * ({@link PrivateInstanceAccessKey}), so the owner branch is unreachable here by
- * construction rather than by omission. An owner is filtered exactly like any
- * other member, and still sees everything they hold a row on — including every
- * instance they created, whose `admin` row is written at create:
+ * The visible set is ALWAYS an allow-list — **there is no OWNER arm** (user
+ * decision 2026-07-28, plan 36 §0.6 revised). The bypass is scoped to
+ * `baselineAtCreate: false`, and every key this function accepts is
+ * `baselineAtCreate: true` BY TYPE ({@link PrivateInstanceAccessKey}), so the
+ * owner branch is unreachable here by construction rather than by omission. An
+ * owner is filtered exactly like any other member, and still sees everything they
+ * hold a row on — including every instance they created, whose `admin` row is
+ * written at create:
  *  1. the seat ceiling closes the area → `undefined` for everything, rows
  *     included → `'none'` (decision 0.5: a worker seat is denied even on an
  *     instance it owns).
- *  2. otherwise → the member's own explicit rows that reach `view`. **The AREA
- *     level is deliberately not consulted**, exactly as `effectiveInstanceLevel`
- *     does not consult it: an explicit row beats the area floor, and an instance
- *     with no row is `undefined` however open the area is
- *     ({@link instanceFallbackLevel} returns `undefined` for these resources by
- *     construction). Reading `areaLevelFromKeys` here would ADD a denial the
- *     gate does not make. `governingInstanceIds` is not consulted either, and for
- *     the same reason: it can only ever DENY, and every instance it would deny
- *     already fails the "hold an own row ≥ view" test.
+ *  2. every INDIVIDUAL row (`instanceAccess`) that reaches `view`. The area level
+ *     is deliberately not consulted for this half — an individual grant beats the
+ *     area floor (#1346), so reading it here would ADD a denial the gate does not
+ *     make.
+ *  3. **plus, when the area is above `None`, every BASELINE row
+ *     (`baselineInstanceAccess`) that reaches `view` and has no individual row
+ *     shadowing it** — added by plan 43 §4.3.
+ *
+ * Item 3 is why this function now reads the area level at all, having previously
+ * been documented as deliberately never doing so. Both halves of that change are
+ * plan 43's:
+ *  - a `role:org_member` row on a private resource is now REACHABLE (§4.2 step 3
+ *    returns it), where before the lane split it arrived inside `instanceAccess`
+ *    and was covered by item 2. Dev holds **89** such rows on `dashboard` and
+ *    **28** on `snippet` — this is the common case, not an edge one.
+ *  - and it is reachable ONLY above `None`, because §0.2a gates the baseline path.
+ * Dropping either condition breaks the list against the gate in one direction or
+ * the other: without item 3 a member loses every org-shared dashboard from their
+ * list while still being able to open one by URL; without the area check the
+ * `Dashboards: None` lever stops working for lists while still working for
+ * point checks.
+ *
+ * `governingInstanceIds` is still not consulted, and for the original reason: it
+ * can only ever DENY, and every instance it would deny already fails the
+ * "hold a row ≥ view in the lane that applies" test.
  *
  * **Enumerated from `instanceAccess`, not from the governing set** (changed
  * 2026-07-29 together with `effectiveInstanceLevel`'s own-row-first ordering).
@@ -815,9 +917,23 @@ export function privateInstanceListScope(
   const area = INSTANCE_ACCESS_RESOURCES[key].area
   if (SEAT_CEILINGS[caps.seatType][area] === Level.None) return { kind: 'none' }
 
+  const own = caps.instanceAccess ?? EMPTY_INSTANCE_ACCESS
   const includeIds: string[] = []
-  for (const [instanceId, level] of Object.entries(caps.instanceAccess ?? EMPTY_INSTANCE_ACCESS)) {
+  // Lane 1 — individual grants. Never gated (§4.2 step 1).
+  for (const [instanceId, level] of Object.entries(own)) {
     if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
+  }
+  // Lane 2 — the workspace baseline, admitted only above `None` (§4.2 steps 2-3).
+  if (areaLevelFromKeys(caps.keys, area) !== Level.None) {
+    for (const [instanceId, level] of Object.entries(
+      caps.baselineInstanceAccess ?? EMPTY_INSTANCE_ACCESS
+    )) {
+      // An individual row on the same instance already decided it at step 1,
+      // including when it decided DENY — skip, or a `user @ none` restriction
+      // would be undone by the very baseline row it exists to override.
+      if (own[instanceId] !== undefined) continue
+      if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
+    }
   }
   return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
 }
