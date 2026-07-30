@@ -20,7 +20,15 @@ const textareaVariants = cva(
 
 export interface TextareaProps
   extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'size'>,
-    VariantProps<typeof textareaVariants> {}
+    VariantProps<typeof textareaVariants> {
+  /**
+   * React 19 passes `ref` to function components as an ordinary prop, but
+   * `TextareaHTMLAttributes` does not declare it — so a caller that needs to focus
+   * the field (a progressively-disclosed note, say) got a type error on a prop that
+   * works at runtime. Declared here rather than reached around with `getElementById`.
+   */
+  ref?: React.Ref<HTMLTextAreaElement>
+}
 
 function Textarea({ className, variant, ...props }: TextareaProps) {
   return <textarea className={cn(textareaVariants({ variant, className }))} {...props} />

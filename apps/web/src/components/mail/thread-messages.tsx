@@ -7,6 +7,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Ban, Lock } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useChannel } from '~/components/channels/hooks/use-channels'
+import { RequestAccessPopover } from '~/components/mail-permissions/ui/request-access-popover'
 import {
   useMessage,
   useMessageParticipants,
@@ -188,6 +189,12 @@ export function ThreadMessages() {
             Message content is hidden — you have{' '}
             {myLens === 'subject' ? 'subject-only' : 'activity-only'} access to this conversation.
           </AlertDescription>
+          {/* Plan 42 §6.1 mount 1 — the request trigger belongs beside the copy
+              that already explains the problem. It renders itself away for anyone
+              who can simply grant themselves access instead. */}
+          <div className='ml-auto shrink-0'>
+            <RequestAccessPopover threadId={thread.id} />
+          </div>
         </Alert>
       </div>
     )

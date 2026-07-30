@@ -10,14 +10,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { Info, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { useMailShare } from '~/components/mail-permissions/hooks/use-mail-share'
+import { useRequestAccess } from '~/components/mail-permissions/hooks/use-request-access'
 import { useActor } from '~/components/resources/hooks'
-import { toInboxAccessRecordId, useInbox, useThread } from '~/components/threads/hooks'
-import { useUser } from '~/hooks/use-user'
-import { useAccess } from '~/providers/capabilities-provider'
+import { useInbox, useThread } from '~/components/threads/hooks'
 import { Tooltip } from '../../global/tooltip'
 import { AccessLevelsGuide } from './access-levels-guide'
 import { EnterpriseGate, useMailPermissionsGated } from './enterprise-gate'
 import { MailGranteeList } from './mail-grantee-list'
+import { RequestAccessPopover } from './request-access-popover'
 
 /** A tiny stacked avatar for the share button's grantee cluster. */
 function MiniActorAvatar({ actorId }: { actorId: ActorId }) {
@@ -51,21 +51,26 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
 
   const { thread } = useThread({ threadId })
   const { inbox } = useInbox(thread?.inboxId)
-  const { isAdminOrOwner } = useUser()
-  const { canAdminInstance } = useAccess()
   const gated = useMailPermissionsGated()
 
   const recordId = toRecordId('thread', threadId)
   const { grants, unmanageableGrants, grant, changeLens, revoke } = useMailShare({ recordId })
 
-  // Inbox Managers may share without being org admins (delegation).
-  const canShare = isAdminOrOwner || (!!inbox && canAdminInstance(toInboxAccessRecordId(inbox)))
+  // `canShare` (org admin/owner, or Manager of this thread's inbox) lives in
+  // `useRequestAccess` — it is half of the requester condition too, so plan 42 §6.1
+  // moved the expression there rather than leaving a copy at each mount.
+  const { canShare, myLens } = useRequestAccess({ threadId })
 
   const { actor: assignee } = useActor({ actorId: thread?.assigneeId ?? undefined })
 
   if (!thread) return null
-  // Non-sharers only get the read-only list once the thread has explicit grants.
-  if (!canShare && grants.length === 0) return null
+  // Non-sharers only get the read-only list once the thread has explicit grants —
+  // but plan 42 §6.1 mount 2 makes this the SECONDARY request slot rather than an
+  // empty header: being unable to administer sharing is not the same as lacking read
+  // access, so only a sub-`full` viewer gets the trigger here.
+  if (!canShare && grants.length === 0) {
+    return myLens !== 'full' ? <RequestAccessPopover threadId={threadId} variant='icon' /> : null
+  }
 
   const floor = inbox?.defaultLens ?? 'full'
 
