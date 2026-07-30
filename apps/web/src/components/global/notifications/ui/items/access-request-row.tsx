@@ -84,7 +84,7 @@ export function AccessRequestRow({
 
   const requesterName = request.requester?.name ?? 'A teammate'
   const levelLabel = (
-    LENS_LABELS[(request.requestedLens ?? 'full') as keyof typeof LENS_LABELS]?.label ??
+    LENS_LABELS[(request.requestedLens ?? 'read') as keyof typeof LENS_LABELS]?.label ??
     'Full access'
   ).toLowerCase()
   const trimmedComment = comment.trim()

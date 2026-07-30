@@ -76,9 +76,9 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
   // Redacted rendering (mail-permissions): below `full` the row never looks
   // unread (isUnread is full-tier); at `metadata` the subject is absent.
-  const myLens = thread?.myLens ?? 'full'
+  const myLens = thread?.myLens ?? 'read'
   // Not-yet-loaded rows render bold; see the note in `mail-thread-item`.
-  const isUnread = myLens === 'full' && (readStatusUnread ?? true)
+  const isUnread = myLens === 'read' && (readStatusUnread ?? true)
 
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
   const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
