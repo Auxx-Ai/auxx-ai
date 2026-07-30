@@ -46,7 +46,7 @@ export async function assertCanActOnThreads(
 ): Promise<void> {
   if (threadIds.length === 0 || isSystemViewer(viewer)) return
   const lenses = await getThreadLensBatch(db, organizationId, viewer, threadIds)
-  const blocked = threadIds.filter((id) => lenses.get(id) !== 'full')
+  const blocked = threadIds.filter((id) => lenses.get(id) !== 'read')
   if (blocked.length > 0) {
     throw new ForbiddenError(
       threadIds.length === 1

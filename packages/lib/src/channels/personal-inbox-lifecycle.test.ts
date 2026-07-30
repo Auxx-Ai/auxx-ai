@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *
  *  - **Provisioning** creates on `personal_inbox` and writes ONE owner `admin`
  *    row. Until this landed it created on the SHARED def with `isPersonal: true`
- *    — private only because `composeUserMailVisibility` happened to branch on
+ *    — private only because `composeUserInstanceGrants` happened to branch on
  *    the marker, which is exactly the dependency phase 4 cannot delete.
  *  - **Claim** is therefore a cross-def MOVE rather than a marker flip, and it
  *    must leave the instance, its FieldValues and its grant rows all on the
@@ -171,7 +171,7 @@ describe('provisionPersonalInbox', () => {
       expect.objectContaining({ organizationId: ORG, userId: OWNER }),
       `personal_inbox:${INBOX}`,
       'user',
-      [{ granteeId: OWNER, permission: 'admin' }]
+      [{ granteeId: OWNER, rung: 'admin' }]
     )
   })
 

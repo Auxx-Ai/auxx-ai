@@ -101,7 +101,7 @@ function relationshipValue(recordId: string) {
 
 /** Default single-line invoice fixture: one $120 line, no catalog item. */
 function setupSingleLineFixture() {
-  listFiltered.mockResolvedValue({ ids: [LINE_ID_1], total: 1, hasMore: false, snapshotId: '' })
+  listFiltered.mockResolvedValue({ ids: [LINE_ID_1], total: 1, hasMore: false })
 
   getFieldValues.mockImplementation(async (recordId: string) => {
     if (recordId === `invoice:${INVOICE_ID}`) {
@@ -306,7 +306,6 @@ describe('syncInvoiceToQuickbooks', () => {
       ids: [LINE_ID_1, LINE_ID_2],
       total: 2,
       hasMore: false,
-      snapshotId: '',
     })
     getFieldValues.mockImplementation(async (recordId: string) => {
       if (recordId === `invoice:${INVOICE_ID}`) {
@@ -369,7 +368,7 @@ describe('syncInvoiceToQuickbooks', () => {
   })
 
   it('errors when the invoice has no contact', async () => {
-    listFiltered.mockResolvedValue({ ids: [], total: 0, hasMore: false, snapshotId: '' })
+    listFiltered.mockResolvedValue({ ids: [], total: 0, hasMore: false })
     getFieldValues.mockImplementation(async (recordId: string) => {
       if (recordId === `invoice:${INVOICE_ID}`) return new Map()
       return new Map()
@@ -385,7 +384,7 @@ describe('syncInvoiceToQuickbooks', () => {
   })
 
   it('errors when every line is $0 (no billable lines to sync)', async () => {
-    listFiltered.mockResolvedValue({ ids: [LINE_ID_1], total: 1, hasMore: false, snapshotId: '' })
+    listFiltered.mockResolvedValue({ ids: [LINE_ID_1], total: 1, hasMore: false })
     getFieldValues.mockImplementation(async (recordId: string) => {
       if (recordId === `invoice:${INVOICE_ID}`) {
         return new Map([[FIELD_IDS.invoice_contact!, relationshipValue(`contact:${CONTACT_ID}`)]])

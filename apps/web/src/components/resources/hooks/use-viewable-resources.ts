@@ -31,17 +31,30 @@ export function useViewableResources(): UseViewableResourcesResult {
   const customResources = useResourceStore((s) => s.customResources)
   const isQueryLoading = useResourceStore((s) => s.isLoading)
   const hasLoadedOnce = useResourceStore((s) => s.hasLoadedOnce)
-  const { canViewEntity } = useAccess()
+  const { hasDefPresence } = useAccess()
 
-  // Per-def read gate. Phase 8 (§6.5): OR in a nonempty per-record instance-grant
-  // set for the def once per-record CRM access ships — always empty today.
+  // **The front door** (plan v3/03 §6.1, P5) — this is the OR the seam comment
+  // that stood here promised. The filter is `hasDefPresence`, i.e.
+  // `canViewEntity(def) || grantedDefIds[def]`, so a member who was shared a
+  // single record keeps the definition's nav entry and can reach the row.
+  //
+  // Clicking through lands on a table scoped by §5.1 arm 3 — one shared contact
+  // means a one-row table with `total: 1`. The def-scoped affordances on that
+  // page (New, import, export-all, bulk, view management) key off the DEF level,
+  // which is honestly `none` for such a member, so they hide with zero new code;
+  // row-scoped affordances key off the `_access` stamp.
+  //
+  // This reverses plan 08 §4.7 ("deep-link only, no nav re-entry"), deliberately:
+  // the support ticket that lock generates ("I shared it and they say they can't
+  // find it") costs more than this one-line widening at a seam that was already
+  // waiting for it.
   const viewableResources = useMemo(
-    () => resources.filter((r) => canViewEntity(r.entityDefinitionId)),
-    [resources, canViewEntity]
+    () => resources.filter((r) => hasDefPresence(r.entityDefinitionId)),
+    [resources, hasDefPresence]
   )
   const viewableCustomResources = useMemo(
-    () => customResources.filter((r) => canViewEntity(r.entityDefinitionId)),
-    [customResources, canViewEntity]
+    () => customResources.filter((r) => hasDefPresence(r.entityDefinitionId)),
+    [customResources, hasDefPresence]
   )
 
   const isLoading = !hasLoadedOnce || isQueryLoading

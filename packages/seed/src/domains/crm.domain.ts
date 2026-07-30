@@ -877,7 +877,7 @@ export class CrmDomain {
       await handler.update(
         `${contactDefId}:${row.entityId}` as never,
         { contact_employer: `${companyDefId}:${companyId}` },
-        { skipEvents: true, skipSnapshotInvalidation: true }
+        { skipEvents: true }
       )
       linkedEmployers++
 
@@ -891,7 +891,7 @@ export class CrmDomain {
       await handler.update(
         `${companyDefId}:${companyId}` as never,
         { company_primary_contact: `${contactDefId}:${contactId}` },
-        { skipEvents: true, skipSnapshotInvalidation: true }
+        { skipEvents: true }
       )
       primaryContactsSet++
     }

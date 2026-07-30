@@ -158,7 +158,6 @@ async function recomputeQuoteTotals(params: {
       },
     ],
     limit: 1000,
-    mode: 'oneshot',
   })
 
   const lines: LineForTotals[] = []
@@ -281,7 +280,6 @@ async function recomputeInvoiceTotals(params: {
       },
     ],
     limit: 1000,
-    mode: 'oneshot',
   })
 
   const lines: LineForTotals[] = []

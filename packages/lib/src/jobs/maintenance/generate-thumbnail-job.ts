@@ -507,7 +507,7 @@ async function publishAvatarResolved(params: {
       instances.map(({ entityInstanceId, entityDefinitionId }) =>
         realtime
           .publish(
-            rooms.orgPresence(orgId),
+            rooms.orgRecords(orgId, entityDefinitionId),
             'record:updated',
             {
               entityDefinitionId,

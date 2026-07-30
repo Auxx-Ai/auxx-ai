@@ -114,7 +114,7 @@ export {
   getUserCache,
 } from './singletons'
 export { TokenCacheService } from './token-cache-service'
-export { getCachedUserCapabilities, getCachedUserMailVisibility } from './user-cache-helpers'
+export { getCachedUserCapabilities, getCachedUserInstanceGrants } from './user-cache-helpers'
 export type {
   CachedFavorite,
   CachedTableView,

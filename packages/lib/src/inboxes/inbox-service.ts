@@ -1,7 +1,7 @@
 // packages/lib/src/inboxes/inbox-service.ts
 
 import { type Database, database as defaultDb, schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -170,7 +170,7 @@ export class InboxService {
     floors: Record<string, Lens>
   ): Lens {
     if (defKey === 'personal_inbox') return 'none'
-    return floors[instanceId] ?? 'full'
+    return floors[instanceId] ?? 'read'
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -200,7 +200,7 @@ export class InboxService {
     // `personal_inbox` case and NOT the same as a floor of `none`: there is
     // nothing to author, nothing to gate, and nothing a caller can pass that
     // would change it (`baselineAtCreate: true` — no row ⇒ no access).
-    const floor: Lens | null = defKey === 'personal_inbox' ? null : (input.defaultLens ?? 'full')
+    const floor: Lens | null = defKey === 'personal_inbox' ? null : (input.defaultLens ?? 'read')
 
     // Before any write: the same Enterprise gate `guardInboxDefaultLens` ran on
     // the field, so a gated org cannot create its way past the paywall.
@@ -225,13 +225,13 @@ export class InboxService {
     // Creator becomes the inbox Manager (admin grant — may manage access).
     if (this.userId) {
       await setInstanceAccess(this.ctx, recordId, ResourceGranteeType.user, [
-        { granteeId: this.userId, permission: ResourcePermission.admin },
+        { granteeId: this.userId, rung: 'admin' },
       ])
     }
 
     // `full` writes no row at all — the absent baseline IS the org-shared
     // default — so the common create takes no extra write.
-    if (floor && floor !== 'full') {
+    if (floor && floor !== 'read') {
       await setInboxFloor(
         { db: this.db, organizationId: this.organizationId, userId: this.userId },
         recordId,
@@ -430,7 +430,7 @@ export class InboxService {
 
   /**
    * Get all inboxes visible to a user (effective lens above `none`) — a filter
-   * over the cached `userMailVisibility` context, no per-inbox ACL queries.
+   * over the cached `userInstanceGrants` context, no per-inbox ACL queries.
    *
    * No rank bypass (plan 40 §4.2): a default admin still sees every shared inbox,
    * because their `inboxes: Full` resolves to a `full` floor on every row-less
@@ -440,7 +440,7 @@ export class InboxService {
    * granted them.
    */
   async getInboxesForUser(userId: string): Promise<Inbox[]> {
-    const vis = await getUserCache().get(userId, 'userMailVisibility', this.organizationId)
+    const vis = await getUserCache().get(userId, 'userInstanceGrants', this.organizationId)
     const inboxes = await this.getInboxes()
     return inboxes.filter((inbox) => (vis.inboxLens[inbox.id] ?? 'none') !== 'none')
   }
@@ -452,7 +452,7 @@ export class InboxService {
    * Rank-free since plan 40 §4.2, same reasoning as {@link getInboxesForUser}.
    */
   async hasUserAccess(recordId: RecordId, userId: string): Promise<boolean> {
-    const vis = await getUserCache().get(userId, 'userMailVisibility', this.organizationId)
+    const vis = await getUserCache().get(userId, 'userInstanceGrants', this.organizationId)
     return (vis.inboxLens[getInstanceId(recordId)] ?? 'none') !== 'none'
   }
 
@@ -484,7 +484,7 @@ export class InboxService {
    *    that rather than inheriting "all admins" from today's reading.
    */
   async canManageInboxAccess(recordId: RecordId, userId: string): Promise<boolean> {
-    return hasPermission({ ...this.ctx, userId }, recordId, ResourcePermission.admin)
+    return hasPermission({ ...this.ctx, userId }, recordId, 'admin')
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -718,7 +718,7 @@ export class InboxService {
    * step, so this code serves requests while 060 (move the instances) and 062
    * (drop the fields) are still queued. For an org in that window every personal
    * mailbox is still on the SHARED def carrying the marker — def-only would
-   * report `false`, `composeUserMailVisibility` would skip its personal branch,
+   * report `false`, `composeUserInstanceGrants` would skip its personal branch,
    * and the `Area.inboxes` fallback would hand every org member `full` on
    * someone's private mailbox. That is the exact regression this whole plan
    * exists to prevent, so the two lines stay.

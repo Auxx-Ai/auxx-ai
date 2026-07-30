@@ -8,7 +8,6 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { touchEntityActivity } from '../../entity-instances/activity'
 import { formatToRawValue } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
-import { invalidateSnapshots } from '../../snapshot'
 import { parseRecordId, type RecordId } from '../resource-id'
 import { mergeFieldValue } from './merge'
 import type { MergeEntitiesInput, MergeEntitiesResult } from './types'
@@ -131,13 +130,6 @@ export class EntityMergeService {
         relationshipsRedirected,
         identitiesRedirected,
       }
-    })
-
-    // 8. Invalidate snapshot cache after successful merge
-    // This ensures list views refresh and don't show archived entities
-    await invalidateSnapshots({
-      organizationId: this.organizationId,
-      resourceType: entityDefinitionId,
     })
 
     return result

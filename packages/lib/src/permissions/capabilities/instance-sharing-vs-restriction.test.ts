@@ -1,9 +1,11 @@
 // packages/lib/src/permissions/capabilities/instance-sharing-vs-restriction.test.ts
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
 import { isGoverningInstanceRow } from '../../cache/providers/governing-instance-ids-provider'
+import { ORG_MEMBER_GRANTEE_ID } from '../../resource-access/grantee-resolution'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import {
@@ -15,11 +17,13 @@ import {
   toResolvedRecordAccess,
 } from './entity-access'
 import {
+  INSTANCE_ACCESS_KEYS,
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
   isInstanceAccessKey,
 } from './instance-access'
 import { type Area, Level } from './registry'
+import { ALL_RUNGS } from './rung'
 import { MEMBER_BASELINE_LEVELS } from './seat-policy'
 
 /**
@@ -41,7 +45,7 @@ import { MEMBER_BASELINE_LEVELS } from './seat-policy'
  *
  * Two properties are load-bearing and are asserted separately, because getting
  * either alone would be a regression:
- *  1. the set is narrowed to GOVERNING rows (`role:org_member` at any permission,
+ *  1. the set is narrowed to GOVERNING rows (`role:org_member` at any rung,
  *     or any `none` marker) — otherwise the inbox 403 survives;
  *  2. the member's OWN row is read BEFORE the set — otherwise every
  *     `baselineAtCreate: true` creator loses their own signature / snippet /
@@ -59,39 +63,34 @@ interface OrgRow {
   instanceId: string
   granteeType: ResourceGranteeType
   granteeId: string
-  permission: ResourcePermission
+  rung: Rung
 }
 
-const baseline = (key: InstanceAccessKey, instanceId: string, permission: ResourcePermission) =>
+const baseline = (key: InstanceAccessKey, instanceId: string, rung: Rung) =>
   ({
     key,
     instanceId,
     granteeType: ResourceGranteeType.role,
-    granteeId: 'org_member',
-    permission,
+    granteeId: ORG_MEMBER_GRANTEE_ID,
+    rung,
   }) satisfies OrgRow
 
-const userRow = (
-  key: InstanceAccessKey,
-  instanceId: string,
-  granteeId: string,
-  permission: ResourcePermission
-) =>
+const userRow = (key: InstanceAccessKey, instanceId: string, granteeId: string, rung: Rung) =>
   ({
     key,
     instanceId,
     granteeType: ResourceGranteeType.user,
     granteeId,
-    permission,
+    rung,
   }) satisfies OrgRow
 
-const profileRow = (key: InstanceAccessKey, instanceId: string, permission: ResourcePermission) =>
+const profileRow = (key: InstanceAccessKey, instanceId: string, rung: Rung) =>
   ({
     key,
     instanceId,
     granteeType: ResourceGranteeType.profile,
     granteeId: 'prof_1',
-    permission,
+    rung,
   }) satisfies OrgRow
 
 interface MemberOpts {
@@ -125,14 +124,17 @@ function member(opts: MemberOpts = {}) {
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     profileBaseLevel: opts.profileBaseLevel ?? null,
     typeAccessRows: [],
-    instanceAccessRows: orgRows.filter(mine).map((row) => ({
-      entityDefinitionId: row.key,
-      entityInstanceId: row.instanceId,
-      permission: row.permission,
-      // Real grantee kind, straight off the row — this harness has always built
-      // from `OrgRow`, so plan 43 §4.1's lane split needs nothing invented here.
-      granteeType: row.granteeType,
-    })),
+    instanceGrants: bucketInstanceGrantRows(
+      orgRows.filter(mine).map((row) => ({
+        entityDefinitionId: row.key,
+        entityInstanceId: row.instanceId,
+        rung: row.rung,
+        // Real grantee kind, straight off the row — this harness has always built
+        // from `OrgRow`, so plan 43 §4.1's lane split needs nothing invented here.
+        granteeType: row.granteeType,
+        granteeId: row.granteeId,
+      }))
+    ),
   })
 
   const governing = new Set(orgRows.filter(isGoverningInstanceRow).map((row) => row.instanceId))
@@ -186,11 +188,15 @@ function assertListAgrees(m: Member, key: InstanceAccessKey, ids: string[]) {
   return scope
 }
 
-const ORG_SHARED_KEYS = (Object.keys(INSTANCE_ACCESS_RESOURCES) as InstanceAccessKey[]).filter(
+// `INSTANCE_ACCESS_KEYS`, not `Object.keys(INSTANCE_ACCESS_RESOURCES)`: the
+// registry also declares QUERY-LANE domains (thread, sequence) which carry no
+// `baselineAtCreate` at all, so enumerating the raw object would sort them into
+// ORG_SHARED_KEYS on an `undefined` read.
+const ORG_SHARED_KEYS = INSTANCE_ACCESS_KEYS.filter(
   (key) => !INSTANCE_ACCESS_RESOURCES[key].baselineAtCreate
 ) as OrgSharedInstanceAccessKey[]
 
-const PRIVATE_KEYS = (Object.keys(INSTANCE_ACCESS_RESOURCES) as InstanceAccessKey[]).filter(
+const PRIVATE_KEYS = INSTANCE_ACCESS_KEYS.filter(
   (key) => INSTANCE_ACCESS_RESOURCES[key].baselineAtCreate
 ) as PrivateInstanceAccessKey[]
 
@@ -200,7 +206,7 @@ const PRIVATE_KEYS = (Object.keys(INSTANCE_ACCESS_RESOURCES) as InstanceAccessKe
 
 describe('the inbox regression — a creator row is not a restriction', () => {
   /** Exactly what `InboxService.createInbox` writes: one `user @ admin` row. */
-  const CREATOR_ROW = userRow('inbox', 'ibx_1', 'usr_creator', ResourcePermission.admin)
+  const CREATOR_ROW = userRow('inbox', 'ibx_1', 'usr_creator', 'admin')
 
   it('a default org ADMIN at inboxes: Full manages an inbox someone else created', () => {
     // `ROLE_DEFAULTS.ADMIN` is ALL_FULL and the seeded admin profile carries
@@ -218,7 +224,7 @@ describe('the inbox regression — a creator row is not a restriction', () => {
     expect(admin.governing.has('ibx_1')).toBe(false)
     // ...so the area fallback stands: Full → admin. This returned `undefined`
     // before the fix, which is the 403 on the inbox Access section.
-    expect(levelFor(admin, 'inbox', 'ibx_1')).toBe(ResourcePermission.admin)
+    expect(levelFor(admin, 'inbox', 'ibx_1')).toBe('admin')
     expect(admin.server.canAdminInstance('inbox', 'ibx_1')).toBe(true)
     expect(() => admin.server.assertAdminInstance('inbox', 'ibx_1')).not.toThrow()
     assertListAgrees(admin, 'inbox', ['ibx_1'])
@@ -229,7 +235,7 @@ describe('the inbox regression — a creator row is not a restriction', () => {
       orgRows: [CREATOR_ROW],
       isMine: (row) => row.granteeId === 'usr_creator',
     })
-    expect(levelFor(creator, 'inbox', 'ibx_1')).toBe(ResourcePermission.admin)
+    expect(levelFor(creator, 'inbox', 'ibx_1')).toBe('admin')
   })
 
   it('a member at inboxes: None is still denied that same inbox', () => {
@@ -248,7 +254,7 @@ describe('the inbox regression — a creator row is not a restriction', () => {
 
   it('an ordinary member at the seeded inboxes: Read baseline works it at `view`', () => {
     const m = member({ orgRows: [CREATOR_ROW], isMine: () => false })
-    expect(levelFor(m, 'inbox', 'ibx_1')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'inbox', 'ibx_1')).toBe('read')
     expect(m.server.canAdminInstance('inbox', 'ibx_1')).toBe(false)
   })
 })
@@ -266,14 +272,14 @@ describe('creator preservation on every `baselineAtCreate: true` key', () => {
     // own-row branch the resolver would fall through to `instanceFallbackLevel`,
     // which returns `undefined` for these keys — and the author would lose their
     // own content.
-    const rows = [userRow(key, 'inst_1', 'usr_me', ResourcePermission.admin)]
+    const rows = [userRow(key, 'inst_1', 'usr_me', 'admin')]
     const me = member({
       orgRows: rows,
       isMine: (row) => row.granteeId === 'usr_me',
     })
 
     expect(me.governing.has('inst_1')).toBe(false)
-    expect(levelFor(me, key, 'inst_1')).toBe(ResourcePermission.admin)
+    expect(levelFor(me, key, 'inst_1')).toBe('admin')
     expect(me.server.canAdminInstance(key, 'inst_1')).toBe(true)
     expect(assertListAgrees(me, key, ['inst_1'])).toEqual({
       kind: 'include',
@@ -294,15 +300,15 @@ describe('creator preservation on every `baselineAtCreate: true` key', () => {
     // The §0.6-revised bypass is scoped to `baselineAtCreate: false`, so an owner
     // reaches their own signature only through the own-row branch.
     const rows = [
-      userRow('signature', 'sig_mine', 'usr_owner', ResourcePermission.admin),
-      userRow('signature', 'sig_theirs', 'usr_other', ResourcePermission.admin),
+      userRow('signature', 'sig_mine', 'usr_owner', 'admin'),
+      userRow('signature', 'sig_theirs', 'usr_other', 'admin'),
     ]
     const owner = member({
       role: 'OWNER',
       orgRows: rows,
       isMine: (row) => row.granteeId === 'usr_owner',
     })
-    expect(levelFor(owner, 'signature', 'sig_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(owner, 'signature', 'sig_mine')).toBe('admin')
     expect(levelFor(owner, 'signature', 'sig_theirs')).toBeUndefined()
     assertListAgrees(owner, 'signature', ['sig_mine', 'sig_theirs'])
   })
@@ -312,7 +318,7 @@ describe('creator preservation on every `baselineAtCreate: true` key', () => {
     // own-row branch, exactly as before.
     const tech = member({
       seatType: 'worker',
-      orgRows: [userRow('signature', 'sig_1', 'usr_me', ResourcePermission.admin)],
+      orgRows: [userRow('signature', 'sig_1', 'usr_me', 'admin')],
       isMine: () => true,
     })
     expect(levelFor(tech, 'signature', 'sig_1')).toBeUndefined()
@@ -324,10 +330,10 @@ describe('creator preservation on every `baselineAtCreate: true` key', () => {
     // therefore keep returning `'none'` — which satisfies nothing.
     const m = member({
       profileBaseLevel: Level.Full,
-      orgRows: [userRow('dataset', 'ds_1', 'usr_me', ResourcePermission.none)],
+      orgRows: [userRow('dataset', 'ds_1', 'usr_me', 'none')],
       isMine: () => true,
     })
-    expect(levelFor(m, 'dataset', 'ds_1')).toBe(ResourcePermission.none)
+    expect(levelFor(m, 'dataset', 'ds_1')).toBe('none')
     expect(m.server.canViewInstance('dataset', 'ds_1')).toBe(false)
     assertListAgrees(m, 'dataset', ['ds_1'])
   })
@@ -341,13 +347,13 @@ describe('restriction still restricts', () => {
   it.each(
     ORG_SHARED_KEYS
   )('a `role:org_member @ none` baseline on a %s denies a non-grantee at area Full', (key) => {
-    const rows = [baseline(key, 'inst_locked', ResourcePermission.none)]
+    const rows = [baseline(key, 'inst_locked', 'none')]
     // The baseline row DOES reach every member through the grantee union — but
     // `composeUserCapabilities` keeps `none` in `instanceAccess`, so this member
     // is denied by their own row. Assert the org-wide arm too, below.
     const m = member({ profileBaseLevel: Level.Full, orgRows: rows })
     expect(m.governing.has('inst_locked')).toBe(true)
-    expect(levelFor(m, key, 'inst_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, key, 'inst_locked')).toBe('none')
     expect(m.server.canViewInstance(key, 'inst_locked')).toBe(false)
     assertListAgrees(m, key, ['inst_locked'])
   })
@@ -359,7 +365,7 @@ describe('restriction still restricts', () => {
     // can deny. This is the case the set exists for.
     const m = member({
       profileBaseLevel: Level.Full,
-      orgRows: [baseline(key, 'inst_locked', ResourcePermission.none)],
+      orgRows: [baseline(key, 'inst_locked', 'none')],
       isMine: () => false,
     })
     expect(levelFor(m, key, 'inst_locked')).toBeUndefined()
@@ -372,7 +378,7 @@ describe('restriction still restricts', () => {
     // nothing and only the governing set can produce the denial.
     const m = member({
       profileBaseLevel: Level.Full,
-      orgRows: [profileRow('workflow', 'wf_1', ResourcePermission.none)],
+      orgRows: [profileRow('workflow', 'wf_1', 'none')],
       isMine: () => false,
     })
     expect(m.client.instanceAccess?.wf_1).toBeUndefined()
@@ -388,21 +394,21 @@ describe('restriction still restricts', () => {
       role: 'ADMIN',
       profileLevels: {},
       profileBaseLevel: Level.Full,
-      orgRows: [baseline('dataset', 'ds_1', ResourcePermission.view)],
+      orgRows: [baseline('dataset', 'ds_1', 'read')],
     })
-    expect(levelFor(m, 'dataset', 'ds_1')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'dataset', 'ds_1')).toBe('read')
     expect(m.server.canAdminInstance('dataset', 'ds_1')).toBe(false)
     assertListAgrees(m, 'dataset', ['ds_1'])
   })
 
   it('an explicit `user @ none` restricts that member alone, at area Full', () => {
-    const rows = [userRow('kb', 'kb_1', 'usr_shut', ResourcePermission.none)]
+    const rows = [userRow('kb', 'kb_1', 'usr_shut', 'none')]
     const shut = member({
       profileBaseLevel: Level.Full,
       orgRows: rows,
       isMine: () => true,
     })
-    expect(levelFor(shut, 'kb', 'kb_1')).toBe(ResourcePermission.none)
+    expect(levelFor(shut, 'kb', 'kb_1')).toBe('none')
 
     // The `none` row governs the instance org-wide, so a colleague with no row of
     // their own is denied too — the deliberate, documented asymmetry (19a
@@ -425,13 +431,13 @@ describe('sharing an org-shared instance leaves everyone else at their area leve
     // THE DELIBERATE DELTA. Pinned so it is a decision, not an accident: before
     // 2026-07-29 this row alone denied every member without one of their own,
     // and one React hook papered over it by writing an unrequested baseline.
-    const rows = [userRow(key, 'inst_1', 'usr_grantee', ResourcePermission.edit)]
+    const rows = [userRow(key, 'inst_1', 'usr_grantee', 'edit')]
 
     const grantee = member({
       orgRows: rows,
       isMine: (row) => row.granteeId === 'usr_grantee',
     })
-    expect(levelFor(grantee, key, 'inst_1')).toBe(ResourcePermission.edit)
+    expect(levelFor(grantee, key, 'inst_1')).toBe('edit')
 
     const bystander = member({
       profileLevels: {},
@@ -440,7 +446,7 @@ describe('sharing an org-shared instance leaves everyone else at their area leve
       isMine: () => false,
     })
     expect(bystander.governing.has('inst_1')).toBe(false)
-    expect(levelFor(bystander, key, 'inst_1')).toBe(ResourcePermission.view)
+    expect(levelFor(bystander, key, 'inst_1')).toBe('read')
     expect(assertListAgrees(bystander, key, ['inst_1'])).toEqual({
       kind: 'exclude',
       excludeIds: [],
@@ -451,8 +457,8 @@ describe('sharing an org-shared instance leaves everyone else at their area leve
     // The lever still exists; it is now explicit rather than a side effect of the
     // first share. This is the pair of assertions the delta is safe because of.
     const rows = [
-      userRow('dataset', 'ds_1', 'usr_grantee', ResourcePermission.edit),
-      baseline('dataset', 'ds_1', ResourcePermission.none),
+      userRow('dataset', 'ds_1', 'usr_grantee', 'edit'),
+      baseline('dataset', 'ds_1', 'none'),
     ]
     const bystander = member({
       profileLevels: {},
@@ -469,7 +475,7 @@ describe('sharing an org-shared instance leaves everyone else at their area leve
       orgRows: rows,
       isMine: (row) => row.granteeId === 'usr_grantee',
     })
-    expect(levelFor(grantee, 'dataset', 'ds_1')).toBe(ResourcePermission.edit)
+    expect(levelFor(grantee, 'dataset', 'ds_1')).toBe('edit')
   })
 })
 
@@ -479,10 +485,10 @@ describe('sharing an org-shared instance leaves everyone else at their area leve
 
 describe('list filtering agrees with the gate', () => {
   const MIXED: OrgRow[] = [
-    baseline('workflow', 'wf_locked', ResourcePermission.none),
-    userRow('workflow', 'wf_shared', 'usr_me', ResourcePermission.edit),
-    userRow('workflow', 'wf_theirs', 'usr_other', ResourcePermission.admin),
-    userRow('workflow', 'wf_mine_none', 'usr_me', ResourcePermission.none),
+    baseline('workflow', 'wf_locked', 'none'),
+    userRow('workflow', 'wf_shared', 'usr_me', 'edit'),
+    userRow('workflow', 'wf_theirs', 'usr_other', 'admin'),
+    userRow('workflow', 'wf_mine_none', 'usr_me', 'none'),
     // `wf_open` deliberately carries no row at all.
   ]
   const ALL_IDS = ['wf_locked', 'wf_shared', 'wf_theirs', 'wf_mine_none', 'wf_open']
@@ -530,7 +536,7 @@ describe('list filtering agrees with the gate', () => {
 
     const priv = member({
       seatType: 'worker',
-      orgRows: [userRow('snippet', 'sn_1', 'usr_me', ResourcePermission.admin)],
+      orgRows: [userRow('snippet', 'sn_1', 'usr_me', 'admin')],
       isMine: () => true,
     })
     expect(assertListAgrees(priv, 'snippet', ['sn_1'])).toEqual({ kind: 'none' })
@@ -550,9 +556,9 @@ describe('list filtering agrees with the gate', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('isGoverningInstanceRow — one definition, two readers', () => {
-  it('counts the workspace baseline at EVERY permission', () => {
-    for (const permission of Object.values(ResourcePermission)) {
-      expect(isGoverningInstanceRow(baseline('dataset', 'x', permission))).toBe(true)
+  it('counts the workspace baseline at EVERY rung', () => {
+    for (const rung of ALL_RUNGS) {
+      expect(isGoverningInstanceRow(baseline('dataset', 'x', rung))).toBe(true)
     }
   })
 
@@ -562,7 +568,7 @@ describe('isGoverningInstanceRow — one definition, two readers', () => {
         isGoverningInstanceRow({
           granteeType,
           granteeId: 'whoever',
-          permission: ResourcePermission.none,
+          rung: 'none',
         })
       ).toBe(true)
     }
@@ -571,14 +577,8 @@ describe('isGoverningInstanceRow — one definition, two readers', () => {
   it('does NOT count a positive grant to a user, group, team or profile', () => {
     for (const granteeType of Object.values(ResourceGranteeType)) {
       if (granteeType === ResourceGranteeType.role) continue
-      for (const permission of [
-        ResourcePermission.view,
-        ResourcePermission.edit,
-        ResourcePermission.admin,
-      ]) {
-        expect(isGoverningInstanceRow({ granteeType, granteeId: 'whoever', permission })).toBe(
-          false
-        )
+      for (const rung of ['metadata', 'identity', 'read', 'edit', 'admin'] as const) {
+        expect(isGoverningInstanceRow({ granteeType, granteeId: 'whoever', rung })).toBe(false)
       }
     }
   })
@@ -588,7 +588,7 @@ describe('isGoverningInstanceRow — one definition, two readers', () => {
       isGoverningInstanceRow({
         granteeType: ResourceGranteeType.role,
         granteeId: 'some_other_role',
-        permission: ResourcePermission.admin,
+        rung: 'admin',
       })
     ).toBe(false)
   })

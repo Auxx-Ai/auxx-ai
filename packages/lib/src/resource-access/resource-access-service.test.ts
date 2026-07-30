@@ -60,6 +60,7 @@ vi.mock('./grantee-resolution', async (importOriginal) => ({
 import { onCacheEvent } from '../cache'
 import {
   checkAccess,
+  emitResourceAccessInstanceChanged,
   grantInstanceAccess,
   grantTypeAccess,
   revokeInstanceAccess,
@@ -112,7 +113,7 @@ describe('resource-access cache-event emission', () => {
         recordId: RECORD,
         granteeType: ResourceGranteeType.user,
         granteeId: 'u_target',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
     // `userIds`, not `userId`: ONE cache event per audience (plan 45 §1.3). The
@@ -131,7 +132,7 @@ describe('resource-access cache-event emission', () => {
         entityDefinitionId: 'inbox',
         granteeType: ResourceGranteeType.role,
         granteeId: 'org_member',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
     expect(emit).toHaveBeenCalledWith('resource-access.changed', {
@@ -158,7 +159,7 @@ describe('resource-access cache-event emission', () => {
         recordId: RECORD,
         granteeType: ResourceGranteeType.group,
         granteeId: 'grp_support',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
 
@@ -183,7 +184,7 @@ describe('resource-access cache-event emission', () => {
         recordId: RECORD,
         granteeType: ResourceGranteeType.team,
         granteeId: 'team_legacy',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
 
@@ -204,7 +205,7 @@ describe('resource-access cache-event emission', () => {
         // by someone who never reads this file.
         granteeType: 'future_kind' as ResourceGranteeType,
         granteeId: 'x_1',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
 
@@ -224,7 +225,7 @@ describe('resource-access cache-event emission', () => {
       { db: fakeDb({ deleteReturning: [] }), organizationId: ORG, userId: 'g' },
       RECORD,
       ResourceGranteeType.group,
-      [{ granteeId: 'grp_a', permission: ResourcePermission.view }]
+      [{ granteeId: 'grp_a', rung: 'read' }]
     )
     emit.mockClear()
 
@@ -232,7 +233,7 @@ describe('resource-access cache-event emission', () => {
       { db: fakeDb({ deleteReturning: [] }), organizationId: ORG, userId: 'g' },
       RECORD,
       'future_kind' as ResourceGranteeType,
-      [{ granteeId: 'x_1', permission: ResourcePermission.view }]
+      [{ granteeId: 'x_1', rung: 'read' }]
     )
 
     const changed = emit.mock.calls.filter((c) => c[0] === 'resource-access.changed')
@@ -256,7 +257,7 @@ describe('resource-access cache-event emission', () => {
           entityDefinitionId: 'def_deals',
           granteeType: ResourceGranteeType.profile,
           granteeId: 'prof_field',
-          permission: ResourcePermission.view,
+          rung: 'read',
         }
       )
     ).resolves.toBeUndefined()
@@ -269,7 +270,7 @@ describe('resource-access cache-event emission', () => {
         entityDefinitionId: 'def_deals',
         granteeType: ResourceGranteeType.profile,
         granteeId: 'prof_field',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
     expect(resolveProfileAudience).toHaveBeenCalledWith({
@@ -295,7 +296,7 @@ describe('resource-access cache-event emission', () => {
         entityDefinitionId: 'def_deals',
         granteeType: ResourceGranteeType.profile,
         granteeId: 'prof_field',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
     expect(emit).toHaveBeenCalledWith('resource-access.changed', {
@@ -312,7 +313,7 @@ describe('resource-access cache-event emission', () => {
         recordId: toRecordId('dashboard', 'dash_1'),
         granteeType: ResourceGranteeType.profile,
         granteeId: 'prof_field',
-        permission: ResourcePermission.view,
+        rung: 'read',
       }
     )
     // The share notification is fire-and-forget; let the microtask queue drain.
@@ -342,7 +343,7 @@ describe('resource-access cache-event emission', () => {
         recordId: toRecordId('dashboard', 'dash_1'),
         granteeType: ResourceGranteeType.user,
         granteeId: 'u_existing',
-        permission: ResourcePermission.edit,
+        rung: 'edit',
       }
     )
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -357,8 +358,7 @@ describe('resource-access cache-event emission', () => {
         recordId: toRecordId('thread', 'thread_1'),
         granteeType: ResourceGranteeType.user,
         granteeId: 'u_requester',
-        permission: ResourcePermission.view,
-        lens: 'full',
+        rung: 'read',
         origin: 'approval',
       }
     )
@@ -376,8 +376,7 @@ describe('resource-access cache-event emission', () => {
         recordId: toRecordId('thread', 'thread_1'),
         granteeType: ResourceGranteeType.user,
         granteeId: 'u_requester',
-        permission: ResourcePermission.view,
-        lens: 'full',
+        rung: 'read',
       }
     )
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -393,7 +392,7 @@ describe('resource-access cache-event emission', () => {
       },
       RECORD,
       ResourceGranteeType.user,
-      [{ granteeId: 'u_added', permission: ResourcePermission.view }]
+      [{ granteeId: 'u_added', rung: 'read' }]
     )
     // Filtered by event name, like the profile-audience case above. `RECORD` is
     // an INBOX RecordId, and since plan 40 phase 1 `inbox` is an
@@ -412,9 +411,9 @@ describe('resource-access cache-event emission', () => {
     // the extra emit is the point, not noise: `instanceAccess` /
     // `governingInstanceIds` are now populated from inbox rows, so an inbox
     // grant that did not invalidate them would leave every affected member on a
-    // stale capability blob for the full TTL. Break the
-    // `isInstanceAccessKey(entityDefinitionId)` guard in `setInstanceAccess`, or
-    // drop `inbox` from `INSTANCE_ACCESS_RESOURCES`, and this is what fails.
+    // stale capability blob for the full TTL. Drop the
+    // `emitResourceAccessInstanceChanged` call from `setInstanceAccess`, or drop
+    // `inbox` from `INSTANCE_ACCESS_RESOURCES`, and this is what fails.
     await setInstanceAccess(
       {
         db: fakeDb({ deleteReturning: [{ granteeId: 'u_removed' }] }),
@@ -423,13 +422,192 @@ describe('resource-access cache-event emission', () => {
       },
       RECORD,
       ResourceGranteeType.user,
-      [{ granteeId: 'u_added', permission: ResourcePermission.view }]
+      [{ granteeId: 'u_added', rung: 'read' }]
     )
     const instanceEvents = emit.mock.calls
       .filter((c) => c[0] === 'resource-access.instance.changed')
       .flatMap((c) => c[1].userIds ?? [])
       .sort()
     expect(instanceEvents).toEqual(['u_added', 'u_removed'])
+  })
+})
+
+/**
+ * Plan v3/03 §9 (P2) — the emit-site half of the def-agnostic split.
+ *
+ * The three instance write funnels used to gate `emitResourceAccessInstanceChanged`
+ * on `isInstanceAccessKey(entityDefinitionId)`, which a record-def CUID can never
+ * satisfy — so a record share fired the mail invalidation alone and the capability
+ * blob (where §4's `grantedDefIds` front door lives) stayed stale for the full
+ * ONE_DAY TTL on the very first share.
+ *
+ * The org-wide `governingInstanceIds` half keeps the keyspace gate, as its own
+ * event: `governing-instance-ids-provider` selects
+ * `entityDefinitionId IN INSTANCE_ACCESS_KEYS` in SQL and re-filters through
+ * `isGoverningInstanceRow`, so a record CUID provably cannot enter the set.
+ *
+ * The graph-mapping half lives in `../cache/instance-grant-invalidation.test.ts`.
+ */
+describe('§9 — instance-grant invalidation is def-agnostic', () => {
+  /** A generic record def: a CUID keyspace id, not an INSTANCE_ACCESS_RESOURCES key. */
+  const RECORD_DEF = toRecordId('def_deals_cuid', 'inst_1')
+
+  const eventsFor = (name: string) => emit.mock.calls.filter((c) => c[0] === name)
+
+  beforeEach(() => {
+    emit.mockClear()
+  })
+
+  for (const [label, run] of [
+    [
+      'grantInstanceAccess',
+      () =>
+        grantInstanceAccess(
+          { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+          {
+            recordId: RECORD_DEF,
+            granteeType: ResourceGranteeType.user,
+            granteeId: 'u_target',
+            rung: 'read',
+          }
+        ),
+    ],
+    [
+      'revokeInstanceAccess',
+      () =>
+        revokeInstanceAccess(
+          {
+            db: fakeDb({ deleteReturning: [{ granteeId: 'u_target' }] }),
+            organizationId: ORG,
+            userId: 'granter',
+          },
+          { recordId: RECORD_DEF, granteeType: ResourceGranteeType.user, granteeId: 'u_target' }
+        ),
+    ],
+    [
+      'setInstanceAccess',
+      () =>
+        setInstanceAccess(
+          { db: fakeDb({ deleteReturning: [] }), organizationId: ORG, userId: 'g' },
+          RECORD_DEF,
+          ResourceGranteeType.user,
+          [{ granteeId: 'u_target', rung: 'read' }]
+        ),
+    ],
+  ] as const) {
+    it(`${label} on a record-def CUID busts userCapabilities`, async () => {
+      await run()
+
+      // Restore the `isInstanceAccessKey` gate at this funnel and this is the
+      // assertion that fails — nothing else in the suite notices.
+      expect(eventsFor('resource-access.instance.changed').map((c) => c[1])).toEqual([
+        { orgId: ORG, userIds: ['u_target'] },
+      ])
+    })
+
+    it(`${label} on a record-def CUID does NOT recompute governingInstanceIds`, async () => {
+      await run()
+
+      expect(eventsFor('resource-access.governing-instance.changed')).toEqual([])
+    })
+
+    it(`${label} on a record-def CUID leaves the mail lane exactly as it was`, async () => {
+      await run()
+
+      expect(eventsFor('resource-access.changed').map((c) => c[1])).toEqual([
+        { orgId: ORG, userIds: ['u_target'] },
+      ])
+    })
+  }
+
+  it('an instance-access def still fires BOTH events, org key first', async () => {
+    await grantInstanceAccess(
+      { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: RECORD, // `inbox` — an INSTANCE_ACCESS_RESOURCES key
+        granteeType: ResourceGranteeType.user,
+        granteeId: 'u_target',
+        rung: 'read',
+      }
+    )
+
+    // Order matters: the capability publish that follows sends clients back to
+    // read `governingInstanceIds`, so the org key must already be fresh.
+    const order = emit.mock.calls
+      .map((c) => c[0])
+      .filter((name) => name.startsWith('resource-access.'))
+    expect(order).toEqual([
+      'resource-access.changed',
+      'resource-access.governing-instance.changed',
+      'resource-access.instance.changed',
+    ])
+    expect(eventsFor('resource-access.governing-instance.changed').map((c) => c[1])).toEqual([
+      { orgId: ORG },
+    ])
+  })
+
+  it('an external caller naming an instance-access def recomputes the governing set', async () => {
+    // The shape every caller outside the three funnels uses (dashboards, snippets,
+    // signatures, inbox floors, the seeder, migrations 040/056): they all write rows
+    // on instance-access resources and now name the def explicitly. The def id was
+    // briefly OPTIONAL with `undefined` meaning "recompute" — but an optional
+    // fail-safe is indistinguishable from a forgotten argument, so it is required
+    // and this asserts the arm those callers actually take.
+    await emitResourceAccessInstanceChanged(
+      ORG,
+      [{ granteeType: ResourceGranteeType.user, granteeId: 'u_target' }],
+      'dashboard'
+    )
+
+    expect(eventsFor('resource-access.governing-instance.changed').map((c) => c[1])).toEqual([
+      { orgId: ORG },
+    ])
+    expect(eventsFor('resource-access.instance.changed').map((c) => c[1])).toEqual([
+      { orgId: ORG, userIds: ['u_target'] },
+    ])
+  })
+
+  it('a restriction against an EMPTY grantee still recomputes the governing set', async () => {
+    // The fail-open this guards: `governingInstanceIds` is what makes a
+    // restriction bite — `effectiveInstanceLevel` treats ABSENCE from the set as
+    // "unrestricted" and falls through to `instanceFallbackLevel`. A `none` row
+    // written against a group with no members (or a profile nobody holds)
+    // expands to zero user ids, and the per-user bail below used to sit ABOVE
+    // this emit — so the row landed in the database, governed by
+    // `isGoverningInstanceRow`, and the cached set never learned about it. The
+    // instance stayed org-visible for the full ONE_DAY TTL, silently.
+    expandGranteeToUserIds.mockResolvedValueOnce({ userIds: [], capped: false })
+
+    await emitResourceAccessInstanceChanged(
+      ORG,
+      [{ granteeType: ResourceGranteeType.group, granteeId: 'g_nobody' }],
+      'dashboard'
+    )
+
+    expect(eventsFor('resource-access.governing-instance.changed').map((c) => c[1])).toEqual([
+      { orgId: ORG },
+    ])
+    // Still nothing per-user to bust — that half of the bail is correct.
+    expect(eventsFor('resource-access.instance.changed')).toEqual([])
+  })
+
+  it('a broadcast audience keeps the org key at org scope, not a user fan-out', async () => {
+    await grantInstanceAccess(
+      { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: RECORD,
+        granteeType: ResourceGranteeType.role,
+        granteeId: 'org_member',
+        rung: 'read',
+      }
+    )
+
+    expect(eventsFor('resource-access.governing-instance.changed').map((c) => c[1])).toEqual([
+      { orgId: ORG },
+    ])
+    expect(eventsFor('resource-access.instance.changed').map((c) => c[1])).toEqual([
+      { orgId: ORG, broadcastUserKeys: true },
+    ])
   })
 })
 
@@ -460,7 +638,7 @@ describe('checkAccess role short-circuit (doc 19 §5.3 piece 2)', () => {
       checkAccess(ctx('OWNER'), { recordId: RECORD, userId: 'u_target' })
     ).resolves.toEqual({
       hasAccess: true,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
       grantedVia: 'role',
       accessLevel: 'type',
     })
@@ -469,18 +647,16 @@ describe('checkAccess role short-circuit (doc 19 §5.3 piece 2)', () => {
   it('ADMIN no longer bypasses — an ungranted instance is denied', async () => {
     await expect(
       checkAccess(ctx('ADMIN'), { recordId: RECORD, userId: 'u_target' })
-    ).resolves.toEqual({ hasAccess: false, permission: null, grantedVia: null, accessLevel: null })
+    ).resolves.toEqual({ hasAccess: false, rung: null, grantedVia: null, accessLevel: null })
   })
 
   it('ADMIN resolves through their own grantee union like anyone else', async () => {
-    const granted = [
-      { permission: ResourcePermission.edit, entityInstanceId: 'inbox_1', granteeType: 'user' },
-    ]
+    const granted = [{ rung: 'edit', entityInstanceId: 'inbox_1', granteeType: 'user' }]
     await expect(
       checkAccess(ctx('ADMIN', granted), { recordId: RECORD, userId: 'u_target' })
     ).resolves.toMatchObject({
       hasAccess: true,
-      permission: ResourcePermission.edit,
+      rung: 'edit',
       accessLevel: 'instance',
     })
   })
@@ -488,6 +664,6 @@ describe('checkAccess role short-circuit (doc 19 §5.3 piece 2)', () => {
   it('a plain USER is unaffected by the narrowing', async () => {
     await expect(
       checkAccess(ctx('USER'), { recordId: RECORD, userId: 'u_target' })
-    ).resolves.toEqual({ hasAccess: false, permission: null, grantedVia: null, accessLevel: null })
+    ).resolves.toEqual({ hasAccess: false, rung: null, grantedVia: null, accessLevel: null })
   })
 })

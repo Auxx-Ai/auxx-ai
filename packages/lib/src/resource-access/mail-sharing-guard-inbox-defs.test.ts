@@ -4,6 +4,7 @@ import { ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FeatureKey } from '../permissions/types'
 
 /**
  * Plan 40 §3 / 40a §4 — the three `mail-sharing-guard` sites that hard-coded the
@@ -19,13 +20,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *    denial message is what proves the branch is taken;
  * 2. the thread re-share lookup, which resolves the thread's inbox — now
  *    possibly a personal mailbox — to a Manager check;
- * 3. the Enterprise `mailPermissions` gate on a NEW Manager row.
+ * 3. the `granularPermissions` plan gate on a NEW Manager row.
  */
 
 const h = vi.hoisted(() => ({
   hasPermission: vi.fn<(...a: unknown[]) => Promise<boolean>>(async () => false),
-  getThreadLens: vi.fn<(...a: unknown[]) => Promise<string>>(async () => 'full'),
-  getCachedUserMailVisibility: vi.fn(async () => ({ isAdmin: false })),
+  getThreadLens: vi.fn<(...a: unknown[]) => Promise<string>>(async () => 'read'),
+  getCachedUserInstanceGrants: vi.fn(async () => ({ isAdmin: false })),
   requireAccess: vi.fn(async () => {}),
   /** table name → rows the fake `database` returns for a `.limit()` query. */
   rowsByTable: {} as Record<string, unknown[]>,
@@ -58,7 +59,7 @@ vi.mock('drizzle-orm', async (importOriginal) => ({
 }))
 
 vi.mock('../cache', () => ({
-  getCachedUserMailVisibility: (...a: unknown[]) => h.getCachedUserMailVisibility(...(a as [])),
+  getCachedUserInstanceGrants: (...a: unknown[]) => h.getCachedUserInstanceGrants(...(a as [])),
   getOrgCache: () => ({ get: async () => h.cachedInboxes }),
 }))
 
@@ -115,9 +116,9 @@ beforeEach(() => {
   h.hasPermission.mockReset()
   h.hasPermission.mockResolvedValue(false)
   h.getThreadLens.mockReset()
-  h.getThreadLens.mockResolvedValue('full')
-  h.getCachedUserMailVisibility.mockReset()
-  h.getCachedUserMailVisibility.mockResolvedValue({ isAdmin: false })
+  h.getThreadLens.mockResolvedValue('read')
+  h.getCachedUserInstanceGrants.mockReset()
+  h.getCachedUserInstanceGrants.mockResolvedValue({ isAdmin: false })
   h.requireAccess.mockReset()
   h.requireAccess.mockResolvedValue(undefined)
   h.rowsByTable = {}
@@ -165,7 +166,7 @@ describe('assertCanManageMailSharing — personal_inbox is an inbox def', () => 
  * again.
  */
 describe('assertCanManageMailSharing — inboxes are managed through rows, not rank', () => {
-  const asAdmin = () => h.getCachedUserMailVisibility.mockResolvedValue({ isAdmin: true } as never)
+  const asAdmin = () => h.getCachedUserInstanceGrants.mockResolvedValue({ isAdmin: true } as never)
 
   it('refuses an ADMIN who holds no Manager row on the inbox', async () => {
     asAdmin()
@@ -187,7 +188,7 @@ describe('assertCanManageMailSharing — inboxes are managed through rows, not r
   })
 
   it('POSITIVE CONTROL: an inbox Manager who is NOT an admin still manages access', async () => {
-    h.getCachedUserMailVisibility.mockResolvedValue({ isAdmin: false } as never)
+    h.getCachedUserInstanceGrants.mockResolvedValue({ isAdmin: false } as never)
     h.hasPermission.mockResolvedValue(true)
     await expect(
       assertCanManageMailSharing(ctx(), toRecordId('inbox', 'i_1'))
@@ -211,7 +212,7 @@ describe('assertCanManageMailSharing — inboxes are managed through rows, not r
   })
 
   it('self-revoke still exits before either branch', async () => {
-    h.getCachedUserMailVisibility.mockResolvedValue({ isAdmin: false } as never)
+    h.getCachedUserInstanceGrants.mockResolvedValue({ isAdmin: false } as never)
     h.hasPermission.mockResolvedValue(false)
     await expect(
       assertCanManageMailSharing(ctx(), toRecordId('inbox', 'i_1'), {
@@ -250,7 +251,7 @@ describe('assertCanManageMailSharing — thread re-share resolves the inbox’s 
   })
 
   it('denies a sub-full viewer before any inbox lookup happens', async () => {
-    h.getThreadLens.mockResolvedValue('subject')
+    h.getThreadLens.mockResolvedValue('identity')
     h.rowsByTable = { Thread: [{ inboxId: 'pi_1' }] }
     await expect(shareThread()).rejects.toThrow(
       'Only admins or inbox managers can share this conversation'
@@ -295,8 +296,8 @@ describe('assertCanManageMailSharing — thread re-share resolves the inbox’s 
   })
 })
 
-describe('assertMailSharingFeature — the Enterprise gate covers both inbox defs', () => {
-  const newManager = [{ granteeId: 'u_new', permission: ResourcePermission.admin }]
+describe('assertMailSharingFeature — the plan gate covers both inbox defs', () => {
+  const newManager = [{ granteeId: 'u_new', rung: 'admin' }]
 
   it('gates a new Manager on a personal mailbox', async () => {
     await assertMailSharingFeature(ctx(), toRecordId('personal_inbox', 'pi_1'), newManager)
@@ -321,8 +322,22 @@ describe('assertMailSharingFeature — the Enterprise gate covers both inbox def
 
   it('still gates any sub-full lens on a personal mailbox', async () => {
     await assertMailSharingFeature(ctx(), toRecordId('personal_inbox', 'pi_1'), [
-      { granteeId: 'u_new', permission: ResourcePermission.view, lens: 'metadata' },
+      { granteeId: 'u_new', rung: 'metadata' },
     ])
     expect(h.requireAccess).toHaveBeenCalled()
+  })
+
+  /**
+   * Plan v3/03 §7.6 (D9): `FeatureKey.mailPermissions` is DELETED and mail sharing
+   * rides `granularPermissions`, so one key gates the whole permission layer and
+   * record sharing inherits it with no new plumbing. Asserting the KEY, not just
+   * "the gate ran" — pointing this at a key no plan seeds would deny every share
+   * on every plan, and pointing it at a retired key would allow every share on
+   * every plan. Both failures look identical to a `toHaveBeenCalled()` test.
+   */
+  it('asks for granularPermissions — the ONE permission-layer key (§7.6)', async () => {
+    await assertMailSharingFeature(ctx(), toRecordId('inbox', 'i_1'), newManager)
+    expect(h.requireAccess).toHaveBeenCalledWith('org_1', FeatureKey.granularPermissions)
+    expect(FeatureKey).not.toHaveProperty('mailPermissions')
   })
 })

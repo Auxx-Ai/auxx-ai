@@ -1,7 +1,7 @@
 // apps/web/src/app/api/attachments/attachment-visibility.ts
 
 import { database, schema } from '@auxx/database'
-import { getCachedResources, getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedResources, getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import {
   buildDefIdToDefinitionId,
@@ -68,8 +68,8 @@ export async function canViewAttachment(
         .limit(1)
       if (!message) return false
 
-      const viewer = await getCachedUserMailVisibility(userId, organizationId)
-      return (await getThreadLens(database, organizationId, viewer, message.threadId)) === 'full'
+      const viewer = await getCachedUserInstanceGrants(userId, organizationId)
+      return (await getThreadLens(database, organizationId, viewer, message.threadId)) === 'read'
     }
 
     // `Comment.entityDefinitionId` is a denormalized column, so the comment's own row
@@ -104,7 +104,7 @@ export async function canViewAttachment(
       if (hostSlug === 'thread') {
         if (!commentCaps.can(PermissionKey.inboxesView)) return false
 
-        const viewer = await getCachedUserMailVisibility(userId, organizationId)
+        const viewer = await getCachedUserInstanceGrants(userId, organizationId)
         return (await getThreadLens(database, organizationId, viewer, comment.entityId)) !== 'none'
       }
 

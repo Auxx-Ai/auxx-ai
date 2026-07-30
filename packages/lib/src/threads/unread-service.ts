@@ -94,7 +94,7 @@ export class UnreadService {
     // on every target (there is no visible unread state below `full` to clear).
     if (!isSystemViewer(this.viewer)) {
       const lenses = await getThreadLensBatch(db, this.organizationId, this.viewer, threadIds)
-      const blocked = threadIds.filter((id) => lenses.get(id) !== 'full')
+      const blocked = threadIds.filter((id) => lenses.get(id) !== 'read')
       if (blocked.length > 0) {
         throw new ForbiddenError('You do not have full access to the selected threads.')
       }

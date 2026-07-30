@@ -111,7 +111,7 @@ export interface ThreadMeta {
    * placeholders and never look unread. Optional: absent on patches and
    * pre-lens cached payloads (treat as `full`).
    */
-  myLens?: 'metadata' | 'subject' | 'full'
+  myLens?: 'metadata' | 'identity' | 'read'
 
   /** True when the thread has explicit shares (drives the share indicator). */
   hasShares?: boolean

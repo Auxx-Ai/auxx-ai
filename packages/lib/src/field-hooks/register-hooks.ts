@@ -107,7 +107,7 @@ export function registerAllHooks(): void {
   //
   // Registered by apiSlug, so the `personal_inbox` def (plan 40 §3, apiSlug
   // `personal-inboxes`) needs its own line — personal mailboxes feed the same
-  // `org:inboxes` cache and the same per-member `userMailVisibility`. Only this
+  // `org:inboxes` cache and the same per-member `userInstanceGrants`. Only this
   // POST hook is shared: the `inbox_default_lens` PRE hook below is deliberately
   // NOT registered for `personal-inboxes`, because the new def has no lens field
   // (personal inboxes have no floor — 40a §1.2).

@@ -11,9 +11,9 @@ import { useCallback, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import {
-  MailPermissionsUpgradeDialog,
-  useMailPermissionsGated,
-} from '~/components/mail-permissions/ui/enterprise-gate'
+  GranularPermissionsUpgradeDialog,
+  useGranularPermissionsGated,
+} from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
 import { useInboxes } from '~/components/threads/hooks'
 import { invalidateInboxRecordLists } from '~/components/threads/hooks/use-inbox'
@@ -65,14 +65,14 @@ export function useInboxDestination(
 ): InboxDestinationController {
   const { inboxes } = useInboxes({ enabled: options.enabled })
   const shared = useMemo(() => inboxes.filter((i) => !i.isPersonal), [inboxes])
-  const gated = useMailPermissionsGated()
+  const gated = useGranularPermissionsGated()
 
   // Optional preselect (e.g. connecting from an inbox's detail page). If the id
   // isn't a shared inbox it simply won't match an option and the user picks one.
   const [selection, setSelection] = useState<string>(initialInboxId ?? '')
   const [name, setName] = useState('')
   const [accessType, setAccessType] = useState<'anyone' | 'restricted'>('anyone')
-  const [floorLens, setFloorLens] = useState<Exclude<Lens, 'none'>>('full')
+  const [floorLens, setFloorLens] = useState<Exclude<Lens, 'none'>>('read')
   const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   const createInbox = api.inbox.create.useMutation()
@@ -110,7 +110,7 @@ export function useInboxDestination(
     setSelection('')
     setName('')
     setAccessType('anyone')
-    setFloorLens('full')
+    setFloorLens('read')
     setUpgradeOpen(false)
   }, [])
 
@@ -138,7 +138,7 @@ export function useInboxDestination(
 /**
  * The "Deliver to inbox" picker for a shared channel connect: a select of the org's shared
  * inboxes plus a "Create new inbox" choice that expands a minimal inline create (name +
- * Everyone/Restricted + floor level, enterprise-gated). Render inside a `FieldPanel`.
+ * Everyone/Restricted + floor level, plan-gated). Render inside a `FieldPanel`.
  */
 export function InboxDestinationField({
   controller,
@@ -213,7 +213,7 @@ export function InboxDestinationField({
               <RadioGroupItemCard
                 value='restricted'
                 label='Restricted'
-                sublabel={gated ? 'Enterprise' : undefined}
+                sublabel={gated ? 'Upgrade' : undefined}
                 icon={<Lock />}
                 description='Only people you add later in inbox settings'
               />
@@ -234,7 +234,7 @@ export function InboxDestinationField({
         </>
       )}
 
-      <MailPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+      <GranularPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </>
   )
 }

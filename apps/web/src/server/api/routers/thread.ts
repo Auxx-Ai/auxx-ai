@@ -2,7 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { IdentifierType } from '@auxx/database/enums'
-import { getCachedEntityDefId, getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedEntityDefId, getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { DraftService } from '@auxx/lib/drafts'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
@@ -19,7 +19,7 @@ import {
 import { MessageSenderService } from '@auxx/lib/messages'
 import { markInvoiceSent, markQuoteSent, recordDocumentSendSignal } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
-import type { UserMailVisibility } from '@auxx/lib/permissions/visibility'
+import type { UserInstanceGrants } from '@auxx/lib/permissions/visibility'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import {
@@ -71,7 +71,7 @@ const logger = createScopedLogger('thread-router')
  *    that inbox. The derived key is a front door, never an instance answer.
  *
  * `inboxes.view` carries no `featureKey`, so `permissionProcedure`'s plan-AND is
- * a no-op here; the Enterprise `mailPermissions` gate lives on the SHARING path
+ * a no-op here; the `granularPermissions` plan gate lives on the SHARING path
  * (`mail-sharing-guard.ts`), not on using mail.
  */
 const mailProcedure = permissionProcedure(PermissionKey.inboxesView)
@@ -93,7 +93,7 @@ async function setThreadsReadFromUpdates(
 ): Promise<void> {
   const { userId, organizationId } = ctx.session
   const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
-  const viewer = await getCachedUserMailVisibility(userId, organizationId)
+  const viewer = await getCachedUserInstanceGrants(userId, organizationId)
   const unreadService = new UnreadService(organizationId, userId, viewer, socketId)
   await unreadService.setReadStatus(threadIds, !isUnread)
 }
@@ -146,7 +146,7 @@ const getServiceDependencies = async (
   threadQuery: ThreadQueryService
   threadMutation: ThreadMutationService
   messageSender: MessageSenderService
-  viewer: UserMailVisibility
+  viewer: UserInstanceGrants
   organizationId: string
   userId: string
   socketId: string | undefined
@@ -159,7 +159,7 @@ const getServiceDependencies = async (
   }
   // Realtime self-echo suppression — see plans/realtime/mail/plan.md §2.4.
   const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
-  const viewer = await getCachedUserMailVisibility(userId, organizationId)
+  const viewer = await getCachedUserInstanceGrants(userId, organizationId)
   // Instantiate new modular services
   const providerRegistry = new ProviderRegistryService(organizationId)
   const messageSender = new MessageSenderService(

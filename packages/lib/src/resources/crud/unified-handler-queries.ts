@@ -21,6 +21,7 @@ import {
 } from '../../cache'
 import type { ConditionGroup } from '../../conditions'
 import { FieldValueService, formatToRawValue } from '../../field-values'
+import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { BaseType } from '../../workflow-engine/core/types'
 import {
   type EntityQueryContext,
@@ -54,34 +55,31 @@ export interface ListFilteredInput {
   sorting?: Array<{ id: string; desc: boolean }>
   /** Limit per request (default: 100) */
   limit?: number
-  /** Offset for pagination — only honored in oneshot mode */
+  /** Offset for pagination */
   offset?: number
-  /** Cursor for pagination */
-  cursor?: { snapshotId: string; offset: number }
+  /** Cursor for pagination (what tRPC's infinite query threads through) */
+  cursor?: { offset: number }
   /**
-   * Query mode:
-   * - 'snapshot' (default): cache the full filtered id list and slice. Best for stable
-   *   infinite-scroll UIs where the user pages through a frozen view.
-   * - 'oneshot': run a single paged `SELECT id ... LIMIT n OFFSET m` plus a parallel
-   *   `COUNT(*)`. No Redis. Best for one-shot callers (agents) that don't re-page.
+   * Force the `COUNT(*)`. Defaults to `offset === 0` — the first page pays for the
+   * total, later pages don't. Pass `true` when a caller needs the full count on a
+   * deep page (paginating agent tools).
    */
-  mode?: 'snapshot' | 'oneshot'
+  includeTotal?: boolean
 }
 
 /**
  * Result from listFiltered query
  */
 export interface ListFilteredResult {
-  /** Snapshot ID for cache */
-  snapshotId: string
   /** Array of record IDs */
   ids: string[]
-  /** Total count matching filters */
-  total: number
-  /** Whether more results exist */
+  /**
+   * Total count matching filters. Present only when the COUNT ran (first page, or
+   * an explicit `includeTotal`). Display data — {@link hasMore} is pagination truth.
+   */
+  total?: number
+  /** Whether more results exist, derived from a `limit + 1` probe row */
   hasMore: boolean
-  /** Whether result came from cache */
-  fromCache?: boolean
 }
 
 /**
@@ -143,8 +141,8 @@ export function extractRequiredRelatedEntities(
 
 /**
  * Internal: build the context, WHERE clause, and ORDER BY clauses for an entity-instance
- * query. Shared between the snapshot path (all-ids fetch) and the oneshot paged/count
- * helpers so we don't duplicate field resolution + related-entity lookups.
+ * query. Shared between the paged and count-only helpers so we don't duplicate field
+ * resolution + related-entity lookups.
  */
 async function buildEntityInstanceQueryParts(params: {
   organizationId: string
@@ -228,181 +226,19 @@ async function buildEntityInstanceQueryParts(params: {
   return { whereClause, orderByClauses }
 }
 
-/**
- * Query entity instance IDs using EntityConditionBuilder
- *
- * @param params - Query parameters
- */
-export async function queryEntityInstanceIds(params: {
-  db: Database
-  entityDefinitionId: string
-  organizationId: string
-  filters: ConditionGroup[]
-  sorting: Array<{ id: string; desc: boolean }>
-}): Promise<string[]> {
-  const { db, entityDefinitionId, organizationId, filters, sorting } = params
-
-  logger.debug(
-    `Querying entity instances for entityDefinitionId: ${entityDefinitionId}, filters: ${JSON.stringify(filters)}`
-  )
-
-  // Get fields for this entity from org cache
-  const fields = await getCachedResourceFields(organizationId, entityDefinitionId)
-
-  // Inject displayName as a virtual field for free-text search.
-  // EntityInstance.displayName is a denormalized column (maintained by DisplayFieldService)
-  // but not exposed as a ResourceField to avoid polluting field pickers/UIs.
-  const fieldsWithDisplayName = fields.some((f) => f.key === 'displayName')
-    ? fields
-    : [
-        ...fields,
-        {
-          id: toFieldId('displayName'),
-          key: 'displayName',
-          label: 'Display Name',
-          name: 'Display Name',
-          type: BaseType.STRING,
-          fieldType: 'TEXT' as FieldType,
-          isSystem: true,
-          dbColumn: 'displayName',
-          nullable: true,
-          showInPanel: false,
-          capabilities: {
-            filterable: true,
-            sortable: true,
-            creatable: false,
-            updatable: false,
-            configurable: false,
-          },
-        } satisfies ResourceField,
-      ]
-
-  // Detect required related entities from filters
-  const requiredRelatedEntities = extractRequiredRelatedEntities(filters, fieldsWithDisplayName)
-  logger.debug(
-    `Detected ${requiredRelatedEntities.size} required related entities: ${Array.from(requiredRelatedEntities).join(', ')}`
-  )
-
-  // Build relatedEntityFields map from org cache
-  const relatedEntityFields: Record<string, ResourceField[]> = {}
-  for (const relatedEntityId of requiredRelatedEntities) {
-    logger.debug(`Fetching fields for related entity: ${relatedEntityId}`)
-    const relatedFields = await getCachedResourceFields(organizationId, relatedEntityId)
-    relatedEntityFields[relatedEntityId] = relatedFields
-    logger.debug(`Loaded ${relatedFields.length} fields for entity '${relatedEntityId}'`)
-  }
-
-  // Build WHERE clause using existing EntityConditionBuilder
-  const context: EntityQueryContext = {
-    fields: fieldsWithDisplayName,
-    outerTable: schema.EntityInstance,
-    relatedEntityFields,
-  }
-
-  const whereClause = entityConditionBuilder.buildGroupedQuery(filters, context)
-
-  if (entityConditionBuilder.droppedConditions.length > 0) {
-    logger.warn(
-      `Dropped ${entityConditionBuilder.droppedConditions.length} filter condition(s): ${JSON.stringify(entityConditionBuilder.droppedConditions)}`
-    )
-    if (process.env.NODE_ENV === 'development') {
-      console.error(
-        `[entity-query] Filter conditions dropped:`,
-        entityConditionBuilder.droppedConditions
-      )
-    }
-  }
-
-  // Build ORDER BY
-  const orderByClauses =
-    sorting.length > 0
-      ? entityConditionBuilder.buildOrderBySql(
-          sorting[0].id,
-          sorting[0].desc ? 'desc' : 'asc',
-          context
-        )
-      : undefined
-
-  // Execute query
-  let query = db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        isNull(schema.EntityInstance.archivedAt),
-        whereClause
-      )
-    )
-    .$dynamic()
-
-  if (orderByClauses) {
-    query = query.orderBy(...orderByClauses)
-  }
-
-  const results = await query
-  return results.map((r) => r.id)
-}
-
-/**
- * Query system resource IDs using SystemConditionBuilder
- *
- * @param params - Query parameters
- */
-export async function querySystemResourceIds(params: {
-  db: Database
-  tableId: TableId
-  organizationId: string
-  filters: ConditionGroup[]
-  sorting: Array<{ id: string; desc: boolean }>
-}): Promise<string[]> {
-  const { db, tableId, organizationId, filters, sorting } = params
-
-  // Build WHERE clause using existing SystemConditionBuilder
-  const whereClause = systemConditionBuilder.buildGroupedQuery(filters, tableId)
-
-  // Build ORDER BY
-  const orderByClauses =
-    sorting.length > 0
-      ? systemConditionBuilder.buildOrderBySql(
-          sorting[0].id,
-          sorting[0].desc ? 'desc' : 'asc',
-          tableId
-        )
-      : undefined
-
-  // Get the table schema
-  const tableSchema = getTableSchema(tableId)
-  if (!tableSchema) {
-    throw new Error(`Unknown table: ${tableId}`)
-  }
-
-  // Execute query
-  let query = db
-    .select({ id: tableSchema.id })
-    .from(tableSchema)
-    .where(and(eq(tableSchema.organizationId, organizationId), whereClause))
-    .$dynamic()
-
-  if (orderByClauses) {
-    query = query.orderBy(...orderByClauses)
-  }
-
-  const results = await query
-  return results.map((r) => r.id)
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGED + COUNT HELPERS (oneshot mode)
+// PAGED + COUNT HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Paged variant of {@link queryEntityInstanceIds}: runs `SELECT id ... LIMIT n OFFSET m`
- * in parallel with `COUNT(*)` using the same WHERE clause. Adds `EntityInstance.id ASC`
- * as a deterministic tie-break so OFFSET paging is stable when the sort column has ties.
+ * Paged id query: `SELECT id ... LIMIT n + 1 OFFSET m`, optionally in parallel with
+ * `COUNT(*)` over the same WHERE clause. Adds `EntityInstance.id ASC` as a deterministic
+ * tie-break so OFFSET paging is stable when the sort column has ties.
  *
- * @returns `ids` (length ≤ limit) and `total` (full match count, independent of limit).
+ * `hasMore` comes from the `limit + 1` probe row, never from `offset + ids.length < total`
+ * — the probe stays honest under concurrent inserts/deletes, a stored total drifts.
+ *
+ * @returns `ids` (length ≤ limit), `hasMore`, and `total` only when `includeTotal`.
  */
 export async function queryEntityInstanceIdsPaged(params: {
   db: Database
@@ -412,7 +248,19 @@ export async function queryEntityInstanceIdsPaged(params: {
   sorting: Array<{ id: string; desc: boolean }>
   limit: number
   offset: number
-}): Promise<{ ids: string[]; total: number }> {
+  /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
+  includeTotal?: boolean
+  /**
+   * The §5.1 per-record visibility predicate, from
+   * {@link import('../../permissions/capabilities/record-visibility-scope').recordVisibilityScope}.
+   *
+   * Joined into `baseWhere`, which the page query AND the `COUNT(*)` both read —
+   * so `total` stays honest over the VISIBLE set rather than describing rows the
+   * member cannot open. `undefined` = arm 1 (the member sees every row): no
+   * predicate is added and the query is byte-identical to the pre-P5 one.
+   */
+  visibilityWhere?: SQL
+}): Promise<{ ids: string[]; total?: number; hasMore: boolean }> {
   const { db, entityDefinitionId, organizationId, filters, sorting, limit, offset } = params
 
   const { whereClause, orderByClauses } = await buildEntityInstanceQueryParts({
@@ -426,34 +274,35 @@ export async function queryEntityInstanceIdsPaged(params: {
     eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
     eq(schema.EntityInstance.organizationId, organizationId),
     isNull(schema.EntityInstance.archivedAt),
-    whereClause
+    whereClause,
+    params.visibilityWhere
   )
 
   // Deterministic tie-break: append id ASC so OFFSET paging is stable when the
-  // user-chosen sort column has ties. Snapshot path doesn't need this because
-  // the id list is frozen at snapshot-create time.
+  // user-chosen sort column has ties.
   const finalOrderBy = orderByClauses
     ? [...orderByClauses, asc(schema.EntityInstance.id)]
     : [asc(schema.EntityInstance.id)]
 
+  // limit + 1: the extra row is a probe, never returned — its presence IS `hasMore`.
   const idsQuery = db
     .select({ id: schema.EntityInstance.id })
     .from(schema.EntityInstance)
     .where(baseWhere)
     .orderBy(...finalOrderBy)
-    .limit(limit)
+    .limit(limit + 1)
     .offset(offset)
 
-  const countQuery = db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(schema.EntityInstance)
-    .where(baseWhere)
+  const countQuery = params.includeTotal
+    ? db.select({ count: sql<number>`count(*)::int` }).from(schema.EntityInstance).where(baseWhere)
+    : undefined
 
   const [idsResult, countResult] = await Promise.all([idsQuery, countQuery])
 
   return {
-    ids: idsResult.map((r) => r.id),
-    total: Number(countResult[0]?.count ?? 0),
+    ids: idsResult.slice(0, limit).map((r) => r.id),
+    ...(countResult ? { total: Number(countResult[0]?.count ?? 0) } : {}),
+    hasMore: idsResult.length > limit,
   }
 }
 
@@ -491,8 +340,8 @@ export async function countEntityInstances(params: {
 }
 
 /**
- * Paged variant of {@link querySystemResourceIds}: runs `SELECT id ... LIMIT n OFFSET m`
- * in parallel with `COUNT(*)`. Adds `id ASC` as a deterministic tie-break.
+ * System-resource twin of {@link queryEntityInstanceIdsPaged}: `SELECT id ... LIMIT n + 1
+ * OFFSET m`, optional parallel `COUNT(*)`, `id ASC` as a deterministic tie-break.
  */
 export async function querySystemResourceIdsPaged(params: {
   db: Database
@@ -502,7 +351,9 @@ export async function querySystemResourceIdsPaged(params: {
   sorting: Array<{ id: string; desc: boolean }>
   limit: number
   offset: number
-}): Promise<{ ids: string[]; total: number }> {
+  /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
+  includeTotal?: boolean
+}): Promise<{ ids: string[]; total?: number; hasMore: boolean }> {
   const { db, tableId, organizationId, filters, sorting, limit, offset } = params
 
   const tableSchema = getTableSchema(tableId)
@@ -526,24 +377,25 @@ export async function querySystemResourceIdsPaged(params: {
     ? [...orderByClauses, asc(tableSchema.id)]
     : [asc(tableSchema.id)]
 
+  // limit + 1: the extra row is a probe, never returned — its presence IS `hasMore`.
   const idsQuery = db
     .select({ id: tableSchema.id })
     .from(tableSchema)
     .where(baseWhere)
     .orderBy(...finalOrderBy)
-    .limit(limit)
+    .limit(limit + 1)
     .offset(offset)
 
-  const countQuery = db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(tableSchema)
-    .where(baseWhere)
+  const countQuery = params.includeTotal
+    ? db.select({ count: sql<number>`count(*)::int` }).from(tableSchema).where(baseWhere)
+    : undefined
 
   const [idsResult, countResult] = await Promise.all([idsQuery, countQuery])
 
   return {
-    ids: idsResult.map((r: { id: string }) => r.id),
-    total: Number(countResult[0]?.count ?? 0),
+    ids: idsResult.slice(0, limit).map((r: { id: string }) => r.id),
+    ...(countResult ? { total: Number(countResult[0]?.count ?? 0) } : {}),
+    hasMore: idsResult.length > limit,
   }
 }
 
@@ -743,13 +595,29 @@ export async function listAll(
     db: Database
     organizationId: string
     userId: string
+    /**
+     * Request-scoped read enforcement. Absent ⇒ no enforcement (internal/system
+     * callers). Added by plan v3/03 §5.4: this ctx had no `capabilities` field at
+     * all, so the `FieldValueService` below was constructed unenforced even when
+     * the caller had a resolved capability set — dropping relationship redaction
+     * from every `listAll` payload.
+     */
+    capabilities?: CapabilityView
+    /**
+     * The §5.1 per-record visibility predicate for THIS def. `undefined` = arm 1
+     * (see {@link queryEntityInstanceIdsPaged.visibilityWhere}); the caller must
+     * not call at all on arm 4.
+     */
+    visibilityWhere?: SQL
   },
   params: ListAllInput
 ): Promise<ListAllResult> {
   const { db, organizationId, userId } = ctx
 
   // Create services
-  const fieldValueService = new FieldValueService(organizationId, userId, db)
+  const fieldValueService = new FieldValueService(organizationId, userId, db, undefined, {
+    capabilities: ctx.capabilities,
+  })
 
   // Resolve to actual entityDefinitionId UUID
   const entityDefId = await resolveEntityIdFromCache(organizationId, {
@@ -767,6 +635,10 @@ export async function listAll(
       if (!params.includeArchived) {
         conditions.push(isNull(ei.archivedAt))
       }
+      // Per-record visibility (§5.1) rides the SAME where clause as the rest of
+      // the filter, so a grant-only member's `listAll` is one scoped query
+      // rather than a full read plus a post-filter.
+      if (ctx.visibilityWhere) conditions.push(ctx.visibilityWhere)
       return and(...conditions)
     },
     orderBy: (ei, { desc }) => [desc(ei.updatedAt)],

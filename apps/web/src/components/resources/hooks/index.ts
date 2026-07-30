@@ -28,6 +28,9 @@ export {
 // Field value hooks (extracted from store)
 export { useFieldCellState, useFieldValue, useFieldValues } from './use-field-values'
 export { useIsRecordLoading, useIsRecordPending, useRecord } from './use-record'
+// Per-ROW record affordances, from the `_access` stamp (plan v3/03 §5.2)
+export type { RecordRowAccess } from './use-record-access'
+export { useRecordAccess, useRecordAccessAt, useRecordAccessFor } from './use-record-access'
 export { useRecordBatchFetcher } from './use-record-batch-fetcher'
 // Record hydration hook
 export { useRecordHydration } from './use-record-hydration'

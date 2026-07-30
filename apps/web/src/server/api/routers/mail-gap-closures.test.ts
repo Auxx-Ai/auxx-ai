@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { isGoverningInstanceRow } from '@auxx/lib/cache/providers/governing-instance-ids-provider'
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
@@ -69,7 +69,7 @@ const { draftService, cache, resourceAccess, isAdminOrOwner, recordAuditFromCtx,
       getStandaloneDraftMetas: vi.fn(async () => []),
     },
     cache: {
-      getCachedUserMailVisibility: vi.fn(),
+      getCachedUserInstanceGrants: vi.fn(),
       getCachedResources: vi.fn(),
     },
     resourceAccess: {
@@ -260,7 +260,7 @@ const CREATOR_ROW = {
   instanceId: INBOX_ID,
   granteeType: ResourceGranteeType.user,
   granteeId: 'usr_creator',
-  permission: ResourcePermission.admin,
+  rung: 'admin',
 }
 
 type Caps = InstanceType<typeof CapabilitySet>
@@ -288,9 +288,7 @@ const VIEWER = {
   isMailAdmin: false,
   inboxLens: {},
   personalInboxIds: {},
-  threadGrants: {},
-  contactGrants: {},
-  entityGrants: {},
+  grants: {},
 }
 
 beforeEach(() => {
@@ -300,8 +298,8 @@ beforeEach(() => {
   for (const fn of Object.values(draftService)) fn.mockClear()
   for (const fn of Object.values(resourceAccess)) fn.mockClear()
 
-  cache.getCachedUserMailVisibility.mockReset()
-  cache.getCachedUserMailVisibility.mockResolvedValue(VIEWER as never)
+  cache.getCachedUserInstanceGrants.mockReset()
+  cache.getCachedUserInstanceGrants.mockResolvedValue(VIEWER as never)
   cache.getCachedResources.mockReset()
   cache.getCachedResources.mockResolvedValue(RESOURCES as never)
 
@@ -338,7 +336,7 @@ describe('draft router — the mail front door (§5.3, the surface phase 3 misse
       FORBIDDEN
     )
     // The middleware answered — no service was constructed, no visibility read.
-    expect(cache.getCachedUserMailVisibility).not.toHaveBeenCalled()
+    expect(cache.getCachedUserInstanceGrants).not.toHaveBeenCalled()
     for (const fn of Object.values(draftService)) expect(fn).not.toHaveBeenCalled()
   })
 
@@ -400,7 +398,7 @@ describe('positive control — the dispatch-org assignee must still be able to d
     const assignee = capabilitiesFor({
       inboxes: Level.Read,
       records: Level.None,
-      instances: { [INBOX_ID]: ResourcePermission.none },
+      instances: { [INBOX_ID]: 'none' },
     })
     expect(assignee.canViewInstance('inbox', INBOX_ID)).toBe(false)
 
@@ -418,7 +416,7 @@ describe('positive control — the dispatch-org assignee must still be able to d
     const single = capabilitiesFor({
       inboxes: Level.None,
       records: Level.None,
-      instances: { [INBOX_ID]: ResourcePermission.view },
+      instances: { [INBOX_ID]: 'read' },
       derivedKeys: [PermissionKey.inboxesView],
     })
     expect(single.areaLevel(Area.inboxes)).toBe(Level.None)
@@ -441,9 +439,7 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
     // The regression: phase 1 made `inbox` an instance-access key, so this call
     // started routing through `assertAdminInstance` — which a `view` grantee
     // fails — and never reached the guard's self-revoke hatch.
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.view } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'read' } }))
     await expect(revoke(INBOX_RECORD_ID, USER_ID)).resolves.toEqual({ revoked: true })
     expect(resourceAccess.revokeInstanceAccess).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG_ID }),
@@ -483,9 +479,7 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
   // ── the negatives ────────────────────────────────────────────────────────
 
   it('CANNOT revoke someone ELSE’s inbox row', async () => {
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.view } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'read' } }))
     await expect(revoke(INBOX_RECORD_ID, OTHER_USER_ID)).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.revokeInstanceAccess).not.toHaveBeenCalled()
     // It fell through to the instance authorizer, exactly as before.
@@ -495,9 +489,7 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
   it('CANNOT self-revoke a group/profile/role row — shared policy is not one holder’s', async () => {
     // Deleting a `group` row that happens to carry the caller's id would
     // silently revoke everyone else in the group. `user` grantees only.
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.view } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'read' } }))
     for (const granteeType of [
       ResourceGranteeType.group,
       ResourceGranteeType.role,
@@ -512,9 +504,7 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
     // Datasets never had the hatch — `assertCanManageMailSharing` no-ops on a
     // non-mail def — so widening the restoration to every instance-access key
     // would be a new capability, not a restoration.
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [DATASET_ID]: ResourcePermission.view } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [DATASET_ID]: 'read' } }))
     await expect(revoke(`dataset:${DATASET_ID}`, USER_ID)).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.revokeInstanceAccess).not.toHaveBeenCalled()
   })
@@ -538,16 +528,13 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
     // WIDENING procedures. A caller naming themselves as grantee on
     // `grantInstance`/`setInstance` gets no hatch: both still take the instance
     // authorizer AND the plan gate on its own unconditional line (§2).
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.view } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'read' } }))
     await expect(
       sharing(capabilitiesFor()).grantInstance({
         recordId: INBOX_RECORD_ID,
         granteeType: ResourceGranteeType.user,
         granteeId: USER_ID,
-        permission: ResourcePermission.admin,
-        lens: 'subject',
+        rung: 'admin',
       })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
@@ -556,7 +543,7 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
       sharing(capabilitiesFor()).setInstance({
         recordId: INBOX_RECORD_ID,
         granteeType: ResourceGranteeType.user,
-        grants: [{ granteeId: USER_ID, permission: ResourcePermission.admin, lens: 'subject' }],
+        grants: [{ granteeId: USER_ID, rung: 'admin' }],
       })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.setInstanceAccess).not.toHaveBeenCalled()
@@ -566,22 +553,19 @@ describe('resourceAccess.revokeInstance — self-revoke on an inbox (restored)',
     // Phase 3 hoisted `assertMailSharingFeature` out of the
     // `if (!authorizeInstanceTarget)` block. Pin it: an inbox Manager granting a
     // sub-`full` lens must still hit the gate.
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.admin } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'admin' } }))
     await expect(
       sharing(capabilitiesFor()).grantInstance({
         recordId: INBOX_RECORD_ID,
         granteeType: ResourceGranteeType.user,
         granteeId: OTHER_USER_ID,
-        permission: ResourcePermission.view,
-        lens: 'subject',
+        rung: 'identity',
       })
     ).resolves.toEqual({ success: true })
     expect(resourceAccess.assertMailSharingFeature).toHaveBeenCalledWith(
       expect.anything(),
       INBOX_RECORD_ID,
-      [expect.objectContaining({ lens: 'subject' })]
+      [expect.objectContaining({ rung: 'identity' })]
     )
   })
 })
@@ -623,7 +607,7 @@ describe('gap 3 — `assertViewInstance` and mail visibility now AGREE on the ma
   it('a baseline member can open an ordinary shared inbox they can fully read', () => {
     // Was `false` — the live 403. The creator's row governs nothing, so the
     // `Area.inboxes` fallback supplies `view`, matching the `full` lens
-    // `composeUserMailVisibility` computes from the same absence.
+    // `composeUserInstanceGrants` computes from the same absence.
     expect(withCreatorRow().canViewInstance('inbox', INBOX_ID)).toBe(true)
   })
 
@@ -652,15 +636,12 @@ describe('gap 3 — `assertViewInstance` and mail visibility now AGREE on the ma
 
   it('an explicit grantee is served, on either inbox def', () => {
     expect(
-      withCreatorRow({ instances: { [INBOX_ID]: ResourcePermission.view } }).canViewInstance(
-        'inbox',
-        INBOX_ID
-      )
+      withCreatorRow({ instances: { [INBOX_ID]: 'read' } }).canViewInstance('inbox', INBOX_ID)
     ).toBe(true)
     // A personal mailbox's owner holds the `admin` row, keyed by the def the
     // instance actually lives on — never derived from `isPersonal`.
     expect(
-      withCreatorRow({ instances: { [INBOX_ID]: ResourcePermission.admin } }).canViewInstance(
+      withCreatorRow({ instances: { [INBOX_ID]: 'admin' } }).canViewInstance(
         'personal_inbox',
         INBOX_ID
       )

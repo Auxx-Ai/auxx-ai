@@ -69,7 +69,6 @@ export async function convertRequestToWorkOrder(input: ConvertRequestToWorkOrder
       },
     ],
     limit: 1,
-    mode: 'oneshot',
   })
   if (approvedQuotes.ids.length > 0) {
     return convertQuoteToWorkOrder({

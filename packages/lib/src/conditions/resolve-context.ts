@@ -17,8 +17,8 @@ export interface ConditionContext {
  * Walk condition groups and substitute `valueSource` placeholders with concrete
  * values from the request context.
  *
- * Must be called BEFORE passing filters to `getOrCreateSnapshot` so the
- * snapshot cache key differs per viewer.
+ * Must be called BEFORE the filters reach the WHERE clause so each viewer's
+ * placeholders resolve to their own id.
  */
 export function resolveConditionContext(
   groups: ConditionGroup[],

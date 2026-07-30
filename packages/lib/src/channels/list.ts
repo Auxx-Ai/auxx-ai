@@ -3,7 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import type { IntegrationProviderType } from '@auxx/database/types'
 import { and, count, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { getCachedUserMailVisibility, getOrgCache } from '../cache'
+import { getCachedUserInstanceGrants, getOrgCache } from '../cache'
 import { getImportCacheSize } from '../email/polling-import-cache'
 import { NotFoundError } from '../errors'
 import { getProviderCapabilities } from '../providers/provider-capabilities'
@@ -34,7 +34,7 @@ export async function list(ctx: ChannelCtx) {
   let cached = await getOrgCache().get(ctx.organizationId, 'channels')
 
   if (ctx.userId) {
-    const vis = await getCachedUserMailVisibility(ctx.userId, ctx.organizationId)
+    const vis = await getCachedUserInstanceGrants(ctx.userId, ctx.organizationId)
     if (!vis.isAdmin) {
       const inboxes = await getOrgCache().get(ctx.organizationId, 'inboxes')
       const othersPersonal = new Set(

@@ -13,6 +13,7 @@ export default defineConfig({
     'file-ref/index.ts',
     'groups/index.ts',
     'pagination/index.ts',
+    'permissions/index.ts',
     'resource/index.ts',
     'task/index.ts',
     'draft/index.ts',

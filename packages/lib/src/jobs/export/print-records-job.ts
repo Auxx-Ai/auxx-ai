@@ -187,7 +187,7 @@ interface CollectedRows {
 }
 
 /**
- * Page the run's records (same `listFiltered` snapshot as CSV for `'view'`/`'all'`, or the
+ * Page the run's records (same `listFiltered` paging as CSV for `'view'`/`'all'`, or the
  * job's frozen `recordIds` array in `PAGE_SIZE` chunks for `'selection'`) and format cells
  * exactly like the CSV job (`buildRow`/`formatCell` — zero new formatting logic), bumping
  * progress/realtime per page. Shared by `renderListPrint` and `renderDetailPrint` — the two
@@ -256,9 +256,8 @@ async function collectRows(
       filters,
       sorting,
       limit: PAGE_SIZE,
-      mode: 'snapshot',
     })
-    total = page.total
+    total = page.total ?? 0
     assertUnderCap(total, job.exportType, opts.cap, opts.styleLabel)
     await updateExportJob(db, exportJobId, { totalRecords: total })
 
@@ -272,7 +271,7 @@ async function collectRows(
         filters,
         sorting,
         limit: PAGE_SIZE,
-        cursor: { snapshotId: page.snapshotId, offset: processed },
+        cursor: { offset: processed },
       })
     }
   }
@@ -419,7 +418,7 @@ function resolveCopyKinds(copies: Array<'customer' | 'office'>): Array<'customer
 /**
  * Gather record ids for the `document` print style, in run order — ids ONLY, no field-value
  * fetch (`columns` is `[]` for document mode, unlike {@link collectRows}). `'selection'` keeps
- * the frozen `recordIds` order; `'view'`/`'all'` page the same `listFiltered` snapshot
+ * the frozen `recordIds` order; `'view'`/`'all'` page the same `listFiltered` query
  * list/detail use.
  */
 async function collectDocumentRecordIds(
@@ -445,10 +444,10 @@ async function collectDocumentRecordIds(
     filters,
     sorting,
     limit: PAGE_SIZE,
-    mode: 'snapshot',
   })
-  assertUnderCap(page.total, job.exportType, MAX_PRINT_RECORDS_DOCUMENT, 'document')
-  await updateExportJob(db, exportJobId, { totalRecords: page.total })
+  const total = page.total ?? 0
+  assertUnderCap(total, job.exportType, MAX_PRINT_RECORDS_DOCUMENT, 'document')
+  await updateExportJob(db, exportJobId, { totalRecords: total })
 
   while (true) {
     ctx.throwIfCancelled()
@@ -459,7 +458,7 @@ async function collectDocumentRecordIds(
       filters,
       sorting,
       limit: PAGE_SIZE,
-      cursor: { snapshotId: page.snapshotId, offset: ids.length },
+      cursor: { offset: ids.length },
     })
   }
 

@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * The methods are exercised through `InboxService.prototype` rather than a
  * constructed service: the constructor wires a `UnifiedCrudHandler` and the whole
  * CRUD dependency graph, none of which these three predicates touch. What they DO
- * touch — the cached `userMailVisibility` floor and `hasPermission` — is
+ * touch — the cached `userInstanceGrants` floor and `hasPermission` — is
  * substituted, so each case is a statement about the predicate itself.
  */
 
@@ -67,13 +67,13 @@ beforeEach(() => {
 
 describe('InboxService.getInboxesForUser', () => {
   it('lists exactly the inboxes the composed floor names — rank buys nothing', async () => {
-    h.vis = { isAdmin: true, inboxLens: { [A]: 'full' } }
+    h.vis = { isAdmin: true, inboxLens: { [A]: 'read' } }
     expect(await call('getInboxesForUser', USER)).toEqual([{ id: A }])
   })
 
   it('POSITIVE CONTROL: a default admin still gets everything, via the floor', async () => {
-    // What `composeUserMailVisibility` produces for `inboxes: Full`.
-    h.vis = { isAdmin: true, inboxLens: { [A]: 'full', [B]: 'full' } }
+    // What `composeUserInstanceGrants` produces for `inboxes: Full`.
+    h.vis = { isAdmin: true, inboxLens: { [A]: 'read', [B]: 'read' } }
     expect(await call('getInboxesForUser', USER)).toEqual([{ id: A }, { id: B }])
   })
 
@@ -97,7 +97,7 @@ describe('InboxService.canManageInboxAccess', () => {
   const rid = toRecordId('inbox', A) as RecordId
 
   it('refuses an ADMIN with no Manager row, and really consults the rows', async () => {
-    h.vis = { isAdmin: true, inboxLens: { [A]: 'full' } }
+    h.vis = { isAdmin: true, inboxLens: { [A]: 'read' } }
     expect(await call('canManageInboxAccess', rid, USER)).toBe(false)
     expect(h.hasPermission).toHaveBeenCalledTimes(1)
   })

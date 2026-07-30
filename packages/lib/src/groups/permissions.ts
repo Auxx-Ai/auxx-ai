@@ -5,6 +5,7 @@ import type { GroupContext } from '@auxx/types/groups'
 import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import { ForbiddenError } from '../errors'
+import { permissionToRung, rungToPermission } from '../permissions/capabilities/rung'
 import { checkAccess, hasPermission as resourceHasPermission } from '../resource-access'
 
 /**
@@ -65,7 +66,10 @@ export async function getGroupPermission(
     }
   )
 
-  return result.permission
+  // `null` means NO ROW at all — distinct from a `'none'` restriction row, which
+  // is a real answer. Collapsing the two would tell the caller "restricted"
+  // where the truth is "never granted".
+  return result.rung === null ? null : (rungToPermission(result.rung) ?? null)
 }
 
 /**
@@ -90,7 +94,7 @@ export async function hasGroupPermission(
   return resourceHasPermission(
     { db, organizationId, userId },
     toRecordId(entityDefinitionId, groupId),
-    required
+    permissionToRung(required)
   )
 }
 

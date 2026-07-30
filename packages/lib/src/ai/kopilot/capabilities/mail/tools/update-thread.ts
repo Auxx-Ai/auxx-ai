@@ -2,7 +2,7 @@
 
 import { toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
-import { getCachedUserMailVisibility, requireCachedEntityDefId } from '../../../../../cache'
+import { getCachedUserInstanceGrants, requireCachedEntityDefId } from '../../../../../cache'
 import { ThreadMutationService } from '../../../../../threads'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -125,7 +125,7 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
 
       // Kopilot acts as the invoking user (§8.1): mutations require `full`
       // lens on the thread — the service's write gate enforces it.
-      const viewer = await getCachedUserMailVisibility(agentDeps.userId, agentDeps.organizationId)
+      const viewer = await getCachedUserInstanceGrants(agentDeps.userId, agentDeps.organizationId)
       const service = new ThreadMutationService(
         agentDeps.organizationId,
         db,

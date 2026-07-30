@@ -496,7 +496,7 @@ async function createDefaultPermissions(
     recordId,
     granteeType: ResourceGranteeType.user,
     granteeId: userId,
-    permission: ResourcePermission.admin,
+    rung: 'admin',
   })
 
   // Public groups: all org members get view
@@ -505,7 +505,7 @@ async function createDefaultPermissions(
       recordId,
       granteeType: ResourceGranteeType.role,
       granteeId: 'org_member',
-      permission: ResourcePermission.view,
+      rung: 'read',
     })
   }
 }

@@ -1,7 +1,7 @@
 // packages/lib/src/dashboards/dashboard-mutations.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { generateId } from '@auxx/utils'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
@@ -12,7 +12,7 @@ import { createStarterLayoutDoc, type DashboardLayoutDoc, type DashboardWithLayo
 import { hashLayoutDoc } from './config-hash'
 import {
   getDashboard,
-  getWorkspaceBaselinePermission,
+  getWorkspaceBaselineRung,
   loadDashboardRow,
   parseLayoutDoc,
 } from './dashboard-queries'
@@ -83,7 +83,7 @@ async function insertInstanceAccessBaseline(
       entityInstanceId: dashboardId,
       granteeType: ResourceGranteeType.role,
       granteeId: WORKSPACE_BASELINE_GRANTEE,
-      permission: opts.isPrivate ? ResourcePermission.none : ResourcePermission.view,
+      rung: opts.isPrivate ? 'none' : 'read',
       grantedById: opts.ownerId,
     },
   ]
@@ -94,7 +94,7 @@ async function insertInstanceAccessBaseline(
       entityInstanceId: dashboardId,
       granteeType: ResourceGranteeType.user,
       granteeId: opts.ownerId,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
       grantedById: opts.ownerId,
     })
   }
@@ -214,7 +214,7 @@ export async function insertPublishedDashboard(
       ownerId: input.createdById,
     })
   })
-  await emitResourceAccessInstanceChanged(orgId, baselineGrantees(input.createdById))
+  await emitResourceAccessInstanceChanged(orgId, baselineGrantees(input.createdById), DASHBOARD_KEY)
   return dashboardId
 }
 
@@ -313,7 +313,7 @@ export async function updateDashboard(
             entityInstanceId: dashboardId,
             granteeType: ResourceGranteeType.role,
             granteeId: WORKSPACE_BASELINE_GRANTEE,
-            permission: ResourcePermission.view,
+            rung: 'read',
             grantedById: userId,
           })
           .onConflictDoUpdate({
@@ -325,7 +325,7 @@ export async function updateDashboard(
               schema.ResourceAccess.granteeId,
             ],
             set: {
-              permission: ResourcePermission.view,
+              rung: 'read',
               grantedById: userId,
               updatedAt: new Date(),
             },
@@ -340,9 +340,11 @@ export async function updateDashboard(
   }
 
   if (linking) {
-    await emitResourceAccessInstanceChanged(orgId, [
-      { granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE },
-    ])
+    await emitResourceAccessInstanceChanged(
+      orgId,
+      [{ granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE }],
+      DASHBOARD_KEY
+    )
   }
 
   return getDashboard(db, orgId, { id: dashboardId })
@@ -392,8 +394,8 @@ export async function duplicateDashboard(
   if (docResult.isErr()) return err(docResult.error)
   const doc = docResult.value
 
-  const sourceBaseline = await getWorkspaceBaselinePermission(db, orgId, dashboardId)
-  const isPrivate = sourceBaseline === undefined || sourceBaseline === ResourcePermission.none
+  const sourceBaseline = await getWorkspaceBaselineRung(db, orgId, dashboardId)
+  const isPrivate = sourceBaseline === undefined || sourceBaseline === 'none'
 
   const newId = generateId()
   await db.transaction(async (tx) => {
@@ -412,7 +414,7 @@ export async function duplicateDashboard(
     await insertInitialVersion(tx, orgId, newId, userId, doc)
     await insertInstanceAccessBaseline(tx, orgId, newId, { isPrivate, ownerId: userId })
   })
-  await emitResourceAccessInstanceChanged(orgId, baselineGrantees(userId))
+  await emitResourceAccessInstanceChanged(orgId, baselineGrantees(userId), DASHBOARD_KEY)
 
   return getDashboard(db, orgId, { id: newId })
 }

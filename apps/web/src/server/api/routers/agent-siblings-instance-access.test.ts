@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/agent-siblings-instance-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -270,10 +270,10 @@ const RECORD_ID = 'kb:kb_cuid0000000000000000000'
 const FORBIDDEN = { cause: { name: 'ForbiddenError', statusCode: 403 } }
 
 const AREA_LEVEL_OF: Record<ResourcePermission, Level> = {
-  [ResourcePermission.none]: Level.None,
-  [ResourcePermission.view]: Level.Read,
-  [ResourcePermission.edit]: Level.Edit,
-  [ResourcePermission.admin]: Level.Full,
+  ['none']: Level.None,
+  ['read']: Level.Read,
+  ['edit']: Level.Edit,
+  ['admin']: Level.Full,
 }
 
 /**
@@ -298,7 +298,7 @@ function capabilitiesFor(
   // Reproduce `composeUserCapabilities`' derived Read rung: any ≥`view` agent row
   // synthesizes `agentsView`, so an `agents: None` grantee doesn't 403 at the
   // coarse front door before the instance assert gets a say.
-  const derived = Object.values(instances).some((p) => p !== ResourcePermission.none)
+  const derived = Object.values(instances).some((p) => p !== 'none')
     ? [PermissionKey.agentsView]
     : []
   return new CapabilitySet(
@@ -320,9 +320,9 @@ function capabilitiesFor(
 
 /** Area `Full` everywhere EXCEPT {@link AGENT_ID}, which is restricted to `none`. */
 const restricted = () =>
-  capabilitiesFor(ResourcePermission.none, {
-    areaPermission: ResourcePermission.admin,
-    instances: { [AGENT_ID]: ResourcePermission.none },
+  capabilitiesFor('none', {
+    areaPermission: 'admin',
+    instances: { [AGENT_ID]: 'none' },
   })
 
 /**
@@ -489,7 +489,7 @@ describe('the three formerly-bare `protectedProcedure` reads', () => {
   })
 
   it.each(FORMERLY_OPEN_READS)('%s succeeds at instance view', async (_name, call, mock) => {
-    await expect(call(capabilitiesFor(ResourcePermission.view))).resolves.toBeDefined()
+    await expect(call(capabilitiesFor('read'))).resolves.toBeDefined()
     if (mock) expect(mock()).toHaveBeenCalledTimes(1)
   })
 
@@ -498,9 +498,7 @@ describe('the three formerly-bare `protectedProcedure` reads', () => {
   )('%s denies a member at agents: None with no grants', async (_n, call, mock) => {
     // No instance row anywhere ⇒ the `baselineAtCreate: false` fallback IS the
     // area level, and the coarse `agentsView` gate is shut too.
-    await expect(
-      call(capabilitiesFor(ResourcePermission.none, { instances: {} }))
-    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(call(capabilitiesFor('none', { instances: {} }))).rejects.toMatchObject(FORBIDDEN)
     if (mock) expect(mock()).not.toHaveBeenCalled()
   })
 })
@@ -513,17 +511,17 @@ describe('agent triggers are the ADMIN rung (user decision 2026-07-28)', () => {
     // credentials, so authoring one is publishing-grade, not authoring-grade.
     // If this ever relaxes to `edit`, it must be a deliberate user decision —
     // not a refactor that made four procedures look like their neighbours.
-    await expect(call(capabilitiesFor(ResourcePermission.edit))).rejects.toMatchObject(FORBIDDEN)
+    await expect(call(capabilitiesFor('edit'))).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
 
   it.each(TRIGGER_WRITES)('%s is denied at instance view', async (_name, call, mock) => {
-    await expect(call(capabilitiesFor(ResourcePermission.view))).rejects.toMatchObject(FORBIDDEN)
+    await expect(call(capabilitiesFor('read'))).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
 
   it.each(TRIGGER_WRITES)('%s succeeds at instance admin', async (_name, call, mock) => {
-    await expect(call(capabilitiesFor(ResourcePermission.admin))).resolves.toBeDefined()
+    await expect(call(capabilitiesFor('admin'))).resolves.toBeDefined()
     expect(mock()).toHaveBeenCalledTimes(1)
   })
 
@@ -536,7 +534,7 @@ describe('agent triggers are the ADMIN rung (user decision 2026-07-28)', () => {
 
   it('runNow never reaches the agent lookup, let alone the queue, at instance edit', async () => {
     await expect(
-      triggerCaller(capabilitiesFor(ResourcePermission.edit)).runNow({ id: TRIGGER_ID })
+      triggerCaller(capabilitiesFor('edit')).runNow({ id: TRIGGER_ID })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(getCachedAgentById).not.toHaveBeenCalled()
     expect(createSession).not.toHaveBeenCalled()
@@ -546,12 +544,12 @@ describe('agent triggers are the ADMIN rung (user decision 2026-07-28)', () => {
 
 describe('procedures / toolsets / knowledge scope are the EDIT rung', () => {
   it.each(EDIT_WRITES)('%s succeeds at instance edit', async (_name, call, mock) => {
-    await call(capabilitiesFor(ResourcePermission.edit))
+    await call(capabilitiesFor('edit'))
     expect(mock()).toHaveBeenCalledTimes(1)
   })
 
   it.each(EDIT_WRITES)('%s is denied at instance view', async (_name, call, mock) => {
-    await expect(call(capabilitiesFor(ResourcePermission.view))).rejects.toMatchObject(FORBIDDEN)
+    await expect(call(capabilitiesFor('read'))).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
 
@@ -571,11 +569,11 @@ describe('procedures / toolsets / knowledge scope are the EDIT rung', () => {
 describe('procedures that resolve the agent INDIRECTLY', () => {
   /** admin on AGENT_ID, restricted from OTHER_AGENT_ID. */
   const adminHereRestrictedThere = () =>
-    capabilitiesFor(ResourcePermission.admin, {
-      areaPermission: ResourcePermission.admin,
+    capabilitiesFor('admin', {
+      areaPermission: 'admin',
       instances: {
-        [AGENT_ID]: ResourcePermission.admin,
-        [OTHER_AGENT_ID]: ResourcePermission.none,
+        [AGENT_ID]: 'admin',
+        [OTHER_AGENT_ID]: 'none',
       },
     })
 
@@ -606,7 +604,7 @@ describe('procedures that resolve the agent INDIRECTLY', () => {
     TRIGGER_KEYED
   )('agentTrigger.%s 404s an unknown trigger before any capability decision', async (_n, call, mock) => {
     agentsFixture.agentId = null
-    await expect(call(capabilitiesFor(ResourcePermission.admin))).rejects.toMatchObject({
+    await expect(call(capabilitiesFor('admin'))).rejects.toMatchObject({
       cause: undefined,
       code: 'NOT_FOUND',
     })
@@ -634,7 +632,7 @@ describe('procedures that resolve the agent INDIRECTLY', () => {
 
   it.each(LINK_KEYED)('agentProcedure.%s 404s an unknown link', async (_n, call, mock) => {
     linkFixture.agentId = null
-    await expect(call(capabilitiesFor(ResourcePermission.admin))).rejects.toMatchObject({
+    await expect(call(capabilitiesFor('admin'))).rejects.toMatchObject({
       cause: undefined,
       code: 'NOT_FOUND',
     })
@@ -664,7 +662,7 @@ describe('the assert keys on the resolved `Agent.id`, never the slug', () => {
   })
 
   it('a slug for an agent the member CAN view resolves to the id downstream', async () => {
-    await triggerCaller(capabilitiesFor(ResourcePermission.view)).list({ agentId: AGENT_SLUG })
+    await triggerCaller(capabilitiesFor('read')).list({ agentId: AGENT_SLUG })
     expect(triggerService.listForAgent).toHaveBeenCalledWith(AGENT_ID, ORG_ID)
   })
 
@@ -674,7 +672,7 @@ describe('the assert keys on the resolved `Agent.id`, never the slug', () => {
     // harness (the `~/server/api/trpc` stand-in replaces it), so the assertion
     // is on the AuxxError carried as `cause` — same shape as {@link FORBIDDEN}.
     await expect(
-      triggerCaller(capabilitiesFor(ResourcePermission.admin)).list({
+      triggerCaller(capabilitiesFor('admin')).list({
         agentId: 'agt_foreign000000',
       })
     ).rejects.toMatchObject({ cause: { name: 'NotFoundError', statusCode: 404 } })
@@ -689,14 +687,14 @@ describe('agentToolset.listTools is coarse, on `agentsView`', () => {
     // enabled tools, so `agentsManage` was the #1346 bug: a read gated on the
     // authoring rung.
     await expect(
-      toolsetCaller(capabilitiesFor(ResourcePermission.view, { instances: {} })).listTools()
+      toolsetCaller(capabilitiesFor('read', { instances: {} })).listTools()
     ).resolves.toBeDefined()
     expect(getOrgToolCatalog).toHaveBeenCalledTimes(1)
   })
 
   it('is refused for a member at agents: None', async () => {
     await expect(
-      toolsetCaller(capabilitiesFor(ResourcePermission.none, { instances: {} })).listTools()
+      toolsetCaller(capabilitiesFor('none', { instances: {} })).listTools()
     ).rejects.toMatchObject(FORBIDDEN)
     expect(getOrgToolCatalog).not.toHaveBeenCalled()
   })
@@ -707,11 +705,9 @@ describe('`baselineAtCreate: false` — no row falls back to the AREA level', ()
     capabilitiesFor(areaPermission, { areaPermission, instances: {} })
 
   it('area Read ⇒ the triggers tab renders, but nothing writes', async () => {
+    await expect(triggerCaller(noRows('read')).list({ agentId: AGENT_ID })).resolves.toBeDefined()
     await expect(
-      triggerCaller(noRows(ResourcePermission.view)).list({ agentId: AGENT_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      scopeCaller(noRows(ResourcePermission.view)).removeRow({
+      scopeCaller(noRows('read')).removeRow({
         agentId: AGENT_ID,
         recordId: RECORD_ID,
       })
@@ -719,22 +715,20 @@ describe('`baselineAtCreate: false` — no row falls back to the AREA level', ()
   })
 
   it('area Edit ⇒ toolsets/scope/procedures save, triggers still do not', async () => {
-    await toolsetCaller(noRows(ResourcePermission.edit)).update({
+    await toolsetCaller(noRows('edit')).update({
       agentId: AGENT_ID,
       slug: 'auxx',
       enabled: true,
     })
     expect(updateAgentToolset).toHaveBeenCalledTimes(1)
-    await expect(
-      triggerCaller(noRows(ResourcePermission.edit)).delete({ id: TRIGGER_ID })
-    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(triggerCaller(noRows('edit')).delete({ id: TRIGGER_ID })).rejects.toMatchObject(
+      FORBIDDEN
+    )
     expect(triggerService.deleteTrigger).not.toHaveBeenCalled()
   })
 
   it('area Full ⇒ triggers too, with no ResourceAccess row anywhere', async () => {
-    await expect(
-      triggerCaller(noRows(ResourcePermission.admin)).delete({ id: TRIGGER_ID })
-    ).resolves.toBeDefined()
+    await expect(triggerCaller(noRows('admin')).delete({ id: TRIGGER_ID })).resolves.toBeDefined()
     expect(triggerService.deleteTrigger).toHaveBeenCalledTimes(1)
   })
 })
@@ -743,9 +737,9 @@ describe('OWNER regression', () => {
   it('an owner short-circuits to admin on an agent restricted to `none`', async () => {
     // Nothing authored on an agent may lock the last owner out of the agent that
     // would let them undo it.
-    const owner = capabilitiesFor(ResourcePermission.admin, {
+    const owner = capabilitiesFor('admin', {
       role: 'OWNER',
-      instances: { [AGENT_ID]: ResourcePermission.none },
+      instances: { [AGENT_ID]: 'none' },
     })
     await expect(
       triggerCaller(owner).create({ agentId: AGENT_ID, trigger: { kind: 'dm' } })

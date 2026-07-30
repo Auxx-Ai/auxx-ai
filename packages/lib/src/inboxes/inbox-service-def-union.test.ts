@@ -103,7 +103,7 @@ function withoutPersonalDef() {
  */
 function makeDb(
   instances: Array<{ id: string; entityDefinitionId: string }>,
-  floorRows: Array<{ entityInstanceId: string; permission: string; lens: string | null }> = []
+  floorRows: Array<{ entityInstanceId: string; rung: string }> = []
 ) {
   return {
     query: {
@@ -199,7 +199,7 @@ describe('isPersonal is DERIVED — def membership OR the legacy marker', () => 
   it('an ordinary shared inbox is not personal', async () => {
     listAll.mockImplementation(async (_ctx: unknown, params: { entityDefinitionId: string }) =>
       params.entityDefinitionId === 'inbox'
-        ? { items: [item(SHARED_INBOX, SHARED_DEF_ID, { inbox_default_lens: 'full' })] }
+        ? { items: [item(SHARED_INBOX, SHARED_DEF_ID, { inbox_default_lens: 'read' })] }
         : { items: [] }
     )
 
@@ -220,8 +220,8 @@ describe('`defaultLens` is the ROW-derived floor (plan 40 §6)', () => {
     const db = makeDb(
       [],
       [
-        { entityInstanceId: 'ibx_closed', permission: 'none', lens: null },
-        { entityInstanceId: 'ibx_peek', permission: 'view', lens: 'subject' },
+        { entityInstanceId: 'ibx_closed', rung: 'none' },
+        { entityInstanceId: 'ibx_peek', rung: 'identity' },
       ]
     )
     listAll.mockImplementation(async (_ctx: unknown, params: { entityDefinitionId: string }) =>
@@ -229,8 +229,8 @@ describe('`defaultLens` is the ROW-derived floor (plan 40 §6)', () => {
         ? {
             items: [
               // A STALE field value on every one of them — it must not be read.
-              item('ibx_closed', SHARED_DEF_ID, { inbox_default_lens: 'full' }),
-              item('ibx_peek', SHARED_DEF_ID, { inbox_default_lens: 'full' }),
+              item('ibx_closed', SHARED_DEF_ID, { inbox_default_lens: 'read' }),
+              item('ibx_peek', SHARED_DEF_ID, { inbox_default_lens: 'read' }),
               item('ibx_open', SHARED_DEF_ID, { inbox_default_lens: 'none' }),
             ],
           }
@@ -240,8 +240,8 @@ describe('`defaultLens` is the ROW-derived floor (plan 40 §6)', () => {
     const inboxes = await service(db).getInboxes()
     expect(inboxes.map((i) => [i.id, i.defaultLens])).toEqual([
       ['ibx_closed', 'none'],
-      ['ibx_peek', 'subject'],
-      ['ibx_open', 'full'],
+      ['ibx_peek', 'identity'],
+      ['ibx_open', 'read'],
     ])
   })
 
@@ -259,7 +259,7 @@ describe('`defaultLens` is the ROW-derived floor (plan 40 §6)', () => {
   it('resolveInbox agrees with getInboxes on a single instance', async () => {
     const db = makeDb(
       [{ id: SHARED_INBOX, entityDefinitionId: SHARED_DEF_ID }],
-      [{ entityInstanceId: SHARED_INBOX, permission: 'view', lens: 'metadata' }]
+      [{ entityInstanceId: SHARED_INBOX, rung: 'metadata' }]
     )
     crud.getById.mockResolvedValue({ id: SHARED_INBOX })
     crud.getFieldValues.mockResolvedValue(new Map())
@@ -372,7 +372,7 @@ describe('createInbox is shared-only unless the caller says otherwise', () => {
     // Writing the field made creating an inbox with a non-default floor produce
     // an org-visible one: nothing has read `inbox_default_lens` since phase 2.
     const db = makeDb([{ id: SHARED_INBOX, entityDefinitionId: SHARED_DEF_ID }])
-    await service(db).createInbox({ name: 'Support', defaultLens: 'full' })
+    await service(db).createInbox({ name: 'Support', defaultLens: 'read' })
     expect(crud.create.mock.calls[0]?.[1]).not.toHaveProperty('inbox_default_lens')
   })
 

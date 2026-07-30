@@ -408,7 +408,7 @@ function makeStore(fixture: Fixture = {}): Store {
       granteeId: 'g_1',
       entityDefinitionId: HR_DEF,
       entityInstanceId: null,
-      permission: 'admin',
+      rung: 'admin',
     },
     // The profile's OWN type row — no FK on `granteeId`, so the delete must
     // remove it explicitly or it outlives the profile.
@@ -418,7 +418,7 @@ function makeStore(fixture: Fixture = {}): Store {
       granteeId: 'p_support',
       entityDefinitionId: CONTACTS_DEF,
       entityInstanceId: null,
-      permission: 'view',
+      rung: 'read',
     },
     // The actor administers Contacts, so losing the profile's Contacts row is a
     // pure LOSS for the holder and never the reason a test denies. It also keeps
@@ -429,7 +429,7 @@ function makeStore(fixture: Fixture = {}): Store {
       granteeId: 'u_actor',
       entityDefinitionId: CONTACTS_DEF,
       entityInstanceId: null,
-      permission: 'admin',
+      rung: 'admin',
     },
     // …and its own INSTANCE row. `dashboard` is row-described at birth, so
     // removing this row is a clean loss rather than a fallthrough.
@@ -439,7 +439,7 @@ function makeStore(fixture: Fixture = {}): Store {
       granteeId: 'p_support',
       entityDefinitionId: 'dashboard',
       entityInstanceId: 'dash_1',
-      permission: 'view',
+      rung: 'read',
     },
   ]
   if (fixture.actorHoldsHr) {
@@ -449,7 +449,7 @@ function makeStore(fixture: Fixture = {}): Store {
       granteeId: 'u_actor',
       entityDefinitionId: HR_DEF,
       entityInstanceId: null,
-      permission: 'admin',
+      rung: 'admin',
     })
   }
 
@@ -760,7 +760,7 @@ describe('deletePermissionProfile — §0.24 fallback semantics', () => {
     expect(summary.areaDeltas[0]?.direction).toBe('gain')
     // Losing the profile's own instance row is a LOSS on the dashboard.
     expect(summary.instanceDeltas).toEqual([
-      { id: 'dash_1', from: 'view', to: null, direction: 'loss', holderCount: 1 },
+      { id: 'dash_1', from: 'read', to: null, direction: 'loss', holderCount: 1 },
     ])
   })
 

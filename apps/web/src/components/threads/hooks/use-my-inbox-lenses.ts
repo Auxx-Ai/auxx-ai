@@ -11,7 +11,7 @@ const EMPTY_FLOORS: Record<string, Lens> = {}
 
 /**
  * The caller's effective lens per inbox (mail-permissions §6.4) — the
- * server-computed `inbox.myLenses` read over the cached `userMailVisibility`.
+ * server-computed `inbox.myLenses` read over the cached `userInstanceGrants`.
  * Drives the per-lens realtime channel subscriptions in `useMailSync` and the
  * `myLens` field on `useInboxes` items. Refetched on `visibility:changed`.
  *

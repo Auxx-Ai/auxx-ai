@@ -1295,7 +1295,7 @@ export async function deleteConnector(
     if (created.length > 0) {
       // Route through the UnifiedCrudHandler (NOT a raw db.delete) so each record
       // archive/delete fires the same side-effects as a UI delete: FieldValue cleanup,
-      // comment removal, pre-delete hooks, snapshot invalidation, and the domain +
+      // comment removal, pre-delete hooks, and the domain +
       // realtime (`record:archived` / `record:deleted`) events. Lazy-imported so the
       // pure-helper exports of this module stay loadable without the crud chain.
       const { UnifiedCrudHandler } = await import('../resources/crud/unified-handler')

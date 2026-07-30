@@ -1,7 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/reply-to-thread.ts
 
 import { z } from 'zod'
-import { getCachedUserMailVisibility } from '../../../../../cache'
+import { getCachedUserInstanceGrants } from '../../../../../cache'
 import { getCachedIntegrationCatalog } from '../../../../../cache/integration-catalog'
 import { DraftService } from '../../../../../drafts'
 import { MessageQueryService, MessageSenderService } from '../../../../../messages'
@@ -166,7 +166,7 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
 
       // Kopilot acts as the invoking user (§8.1): replying/drafting requires
       // `full` lens on the thread (§7) — sub-full viewers get a typed error.
-      const viewer = await getCachedUserMailVisibility(agentDeps.userId, agentDeps.organizationId)
+      const viewer = await getCachedUserInstanceGrants(agentDeps.userId, agentDeps.organizationId)
       const lens = await getThreadLens(db, agentDeps.organizationId, viewer, threadId)
       if (lens === 'none') {
         return { success: false, output: null, error: `Thread ${threadId} not found` }

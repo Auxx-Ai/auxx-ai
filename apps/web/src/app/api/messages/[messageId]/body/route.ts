@@ -34,7 +34,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     // Body content is `full`-tier (mail-permissions §7): resolve the parent
     // thread and require full lens — sub-full viewers get the same 404 as a
     // missing message.
-    const [{ database, schema }, { getCachedUserMailVisibility }, { getThreadLens }] =
+    const [{ database, schema }, { getCachedUserInstanceGrants }, { getThreadLens }] =
       await Promise.all([
         import('@auxx/database'),
         import('@auxx/lib/cache'),
@@ -51,9 +51,9 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     if (!message) {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }
-    const viewer = await getCachedUserMailVisibility(session.user.id, organizationId)
+    const viewer = await getCachedUserInstanceGrants(session.user.id, organizationId)
     const lens = await getThreadLens(database, organizationId, viewer, message.threadId)
-    if (lens !== 'full') {
+    if (lens !== 'read') {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }
 

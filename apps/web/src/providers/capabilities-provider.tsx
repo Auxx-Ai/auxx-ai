@@ -1,19 +1,23 @@
 // apps/web/src/providers/capabilities-provider.tsx
 'use client'
 
+import type { Rung } from '@auxx/database/enums'
 import {
   administersAnyDef,
   type ClientCapabilities,
   canAdminInstance,
   canAdministerRecord,
   canDeleteRecord,
+  canDeleteRecordAtRung,
   canEditInstance,
   canEditRecord,
   canImportRecord,
   canViewInstance,
   canViewRecord,
+  hasDefPresence,
   PERMISSION_REGISTRY_MAP,
   type PermissionKey,
+  recordDefRung,
   toResolvedRecordAccess,
 } from '@auxx/lib/permissions/client'
 import type { SubscribeHandlers } from '@auxx/lib/realtime/client'
@@ -59,6 +63,21 @@ interface CapabilitiesContextType {
    */
   canViewEntity: (entityDefinitionId: string) => boolean
   /**
+   * **The front door** (plan v3/03 §6.1) — `canViewEntity(def) ||
+   * grantedDefIds[def]`. True when the member can reach ANY row of the def,
+   * whether because they can see the whole definition or because individual
+   * records were shared with them.
+   *
+   * Gates ONLY: the sidebar/nav entry, the route gate
+   * (`use-record-resource-gate.ts`), def metadata surfaces and column metadata.
+   * Everything else keys off `canViewEntity` (def-scoped: saved views, def
+   * admin, field config) or off the per-row `_access` stamp (row edit / delete /
+   * share). Def-scoped AFFORDANCES — New, import, export-all, bulk, view
+   * management — key off the def level and therefore hide themselves with no
+   * new code, because a grant-only member's def level is honestly `none`.
+   */
+  hasDefPresence: (entityDefinitionId: string) => boolean
+  /**
    * Per-def WRITE gate — mirrors the server `canEditEntity`, including
    * server-computed base overrides for feature-backed definitions such as work
    * orders. Mail-infrastructure defs remain governed by their own feature UI.
@@ -76,6 +95,20 @@ interface CapabilitiesContextType {
    * grantee and hide a delete the server would allow.
    */
   canDeleteEntity: (entityDefinitionId: string) => boolean
+  /**
+   * The member's DEF-level record rung on the shared {@link Rung} ladder — the
+   * def half of the `_access` stamp (plan v3/03 §5.2), and the honest fallback
+   * for a row that has not been stamped yet: a row with no grants on it resolves
+   * to exactly this.
+   */
+  recordDefRung: (entityDefinitionId: string) => Rung | undefined
+  /**
+   * **Row-effective DELETE gate** — the server's `canDeleteRecordAt` rule read
+   * at a row's `_access` stamp instead of at the def level. Same predicate the
+   * server applies in `assertCanDeleteRows`, so the affordance and the mutation
+   * cannot disagree.
+   */
+  canDeleteRecordAt: (access: Rung) => boolean
   /**
    * Per-def IMPORT gate — mirrors the server `canImportEntity`, which backs every
    * procedure in `data-import.ts`. Same two branches as {@link canDeleteEntity},
@@ -248,9 +281,17 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       can,
       deniedBy,
       canViewEntity: (entityDefinitionId: string) => canViewRecord(resolved, entityDefinitionId),
+      // Plan v3/03 §6.1 — the FRONT DOOR, a second predicate and never a wider
+      // `canViewEntity`. Gates the nav entry, the route gate, def metadata and
+      // column metadata ONLY; `canViewEntity` keeps meaning "may see ALL rows"
+      // and keeps guarding realtime def-channel ACLs, saved table views, def
+      // administration and field config.
+      hasDefPresence: (entityDefinitionId: string) => hasDefPresence(resolved, entityDefinitionId),
       canEditEntity: (entityDefinitionId: string) => canEditRecord(resolved, entityDefinitionId),
       canDeleteEntity: (entityDefinitionId: string) =>
         canDeleteRecord(resolved, entityDefinitionId),
+      recordDefRung: (entityDefinitionId: string) => recordDefRung(resolved, entityDefinitionId),
+      canDeleteRecordAt: (access: Rung) => canDeleteRecordAtRung(resolved, access),
       canImportEntity: (entityDefinitionId: string) =>
         canImportRecord(resolved, entityDefinitionId),
       canAdministerDef: (entityDefinitionId: string) =>

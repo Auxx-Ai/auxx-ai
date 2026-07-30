@@ -64,3 +64,44 @@ describe('resourceAccess type-level plan gate (plan 23 §2.1)', () => {
     }
   })
 })
+
+/**
+ * Plan v3/03 §7.6 / D9 (P5) — **per-RECORD instance sharing is plan-gated**.
+ *
+ * The handoff's owed follow-up #4: `assertMailSharingFeature` returns early for
+ * every non-mail def and `assertTypeAccessEditFeature` only guards the TYPE
+ * axis, so a record-def INSTANCE grant took no plan gate at all. Inert while no
+ * record share UI existed; P5 mounts one on the drawer and the table row, so
+ * the gate lands with it.
+ *
+ * A client-side `GranularPermissionsGate` around the trigger is not a gate —
+ * these assertions are what make the claim true.
+ */
+describe('resourceAccess RECORD-instance plan gate (plan v3/03 §7.6, D9)', () => {
+  it('the helper exempts instance-access resources and mail defs, and gates the rest', () => {
+    const helper = between('async function assertRecordSharingFeature', 'Authorize sharing ONE')
+    // Datasets / KB / dashboards / inboxes: core product on every plan.
+    expect(helper).toContain('isInstanceAccessKey(entityDefinitionId)')
+    // Mail keeps its own narrower gate (sub-`read` rungs, NEW Manager rows).
+    expect(helper).toContain('isMailSharingDef(entityDefinitionId)')
+    expect(helper).toContain('FeatureKey.granularPermissions')
+  })
+
+  it('grantInstance and setInstance run it BEFORE the write', () => {
+    for (const [proc, libCall] of [
+      ['grantInstance:', 'grantInstanceAccess('],
+      ['setInstance:', 'setInstanceAccess('],
+    ] as const) {
+      const body = between(proc, libCall)
+      expect(body, `${proc} must plan-gate record sharing before ${libCall}`).toContain(
+        'assertRecordSharingFeature(ctx, recordId)'
+      )
+    }
+  })
+
+  it('revokeInstance stays ungated — revoking only tightens access', () => {
+    expect(between('revokeInstance:', 'revokeInstanceAccess(')).not.toContain(
+      'assertRecordSharingFeature'
+    )
+  })
+})

@@ -40,7 +40,14 @@ export interface FieldValueUpdateEntry {
   aiMetadata?: AiValueMetadata | null
 }
 
-/** All resource sync events sent over the org channel. */
+/**
+ * All resource sync events. The record family (`record:*`,
+ * `fieldValues:updated`, `records:invalidated`) rides the per-def record
+ * channel `rooms.orgRecords(orgId, defId)`, ACL'd on `canViewEntity(defId)`
+ * (plan v3/03 §8.1). The def-catalog and job-progress events
+ * (`resource:*`, `dataConnector:sync`, `dataExport:job`) stay org-wide — they
+ * are invalidation/progress signals carrying no record data.
+ */
 export type ResourceSyncEvent =
   | FieldValuesUpdatedEvent
   | RecordCreatedEvent

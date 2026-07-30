@@ -1,8 +1,9 @@
 // packages/lib/src/permissions/capabilities/capability-set-instance.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import {
@@ -50,7 +51,7 @@ interface MemberOpts {
     /** The instance-access resource the row is for; defaults to `'dataset'`. */
     entityDefinitionId?: InstanceAccessKey
     entityInstanceId: string
-    permission: ResourcePermission
+    rung: Rung
     /**
      * The grantee kind, which plan 43 §4.1 made load-bearing: `'role'` sorts the
      * row into the GATED baseline lane, anything else into the ungated individual
@@ -64,7 +65,7 @@ interface MemberOpts {
   }>
   /**
    * The org-wide ROW-GOVERNED set (`governingInstanceIdsProvider`): instances
-   * carrying a `role:org_member` baseline at any permission, or any `none`
+   * carrying a `role:org_member` baseline at any rung, or any `none`
    * marker. Defaults to the instances in `rows`, which is right for every case
    * below that authors a baseline or a restriction; pass it explicitly for a
    * member who is not a grantee of a governing row that exists.
@@ -86,11 +87,14 @@ function member(opts: MemberOpts = {}) {
     seatType,
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     typeAccessRows: [],
-    instanceAccessRows: (opts.rows ?? []).map((row) => ({
-      entityDefinitionId: 'dataset',
-      granteeType: 'user',
-      ...row,
-    })),
+    instanceGrants: bucketInstanceGrantRows(
+      (opts.rows ?? []).map((row) => ({
+        entityDefinitionId: 'dataset',
+        granteeType: 'user',
+        granteeId: 'usr_x',
+        ...row,
+      }))
+    ),
   })
   const restricted = new Set(
     opts.restrictedInstances ?? (opts.rows ?? []).map((r) => r.entityInstanceId)
@@ -119,11 +123,9 @@ function levelFor(
   m: ReturnType<typeof member>,
   key: InstanceAccessKey,
   instanceId: string
-): ResourcePermission | undefined {
+): Rung | undefined {
   const client = effectiveInstanceLevel(m.client, key, instanceId)
-  expect(m.server.canViewInstance(key, instanceId)).toBe(
-    client !== undefined && client !== ResourcePermission.none
-  )
+  expect(m.server.canViewInstance(key, instanceId)).toBe(client !== undefined && client !== 'none')
   return client
 }
 
@@ -135,14 +137,14 @@ describe('workspace baseline set to Restricted (plan 24 §B.4)', () => {
     // "Restricted" writes ONE row: `role:org_member @ none`. It reaches every
     // member through the ResourceAccess grantee union, so this IS what the
     // affected member composes.
-    const m = member({ rows: [{ entityInstanceId: 'inst_locked', permission: 'none' }] })
+    const m = member({ rows: [{ entityInstanceId: 'inst_locked', rung: 'none' }] })
 
     // The member's Layer-2 area level is untouched and open — the instance row
     // alone is what denies. (kb sits at Edit on the seeded baseline, so this
     // also proves a row beats a HIGHER area level, not just an equal one.)
     expect(m.server.areaLevel(area)).toBe(area === Area.datasets ? Level.Read : Level.Edit)
 
-    expect(levelFor(m, key, 'inst_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, key, 'inst_locked')).toBe('none')
     expect(m.server.canViewInstance(key, 'inst_locked')).toBe(false)
     expect(m.server.canEditInstance(key, 'inst_locked')).toBe(false)
     expect(m.server.canAdminInstance(key, 'inst_locked')).toBe(false)
@@ -153,7 +155,7 @@ describe('workspace baseline set to Restricted (plan 24 §B.4)', () => {
     // `dataset.list` / `kb.list` filter with the SAME predicate the detail route
     // asserts with, so "gone from the list" and "403 on the direct URL" are one
     // claim — this pins the list half against the exact filter the router runs.
-    const m = member({ rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }] })
+    const m = member({ rows: [{ entityInstanceId: 'ds_locked', rung: 'none' }] })
     const listed = ['ds_open', 'ds_locked', 'ds_other'].filter((id) =>
       m.server.canViewInstance('dataset', id)
     )
@@ -165,11 +167,11 @@ describe('workspace baseline set to Restricted (plan 24 §B.4)', () => {
     // grant outranks the marker, and nothing else about their access moves.
     const m = member({
       rows: [
-        { entityInstanceId: 'ds_locked', permission: 'none' },
-        { entityInstanceId: 'ds_locked', permission: 'edit' },
+        { entityInstanceId: 'ds_locked', rung: 'none' },
+        { entityInstanceId: 'ds_locked', rung: 'edit' },
       ],
     })
-    expect(levelFor(m, 'dataset', 'ds_locked')).toBe(ResourcePermission.edit)
+    expect(levelFor(m, 'dataset', 'ds_locked')).toBe('edit')
     expect(m.server.canViewInstance('dataset', 'ds_locked')).toBe(true)
     expect(m.server.canEditInstance('dataset', 'ds_locked')).toBe(true)
     // `edit`, not `admin`: settings/delete stay closed (plan 24 §A.4's edit row).
@@ -194,13 +196,13 @@ describe('grantee-scoped instance grants (plan 24 §B.4)', () => {
     // Datasets sits at Read on the seeded Member baseline. An `admin` grant on
     // one dataset must carry that member all the way to the settings/delete rung
     // for it, and change nothing for the datasets they were not granted.
-    const m = member({ rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }] })
+    const m = member({ rows: [{ entityInstanceId: 'ds_shared', rung: 'admin' }] })
     expect(m.caps.instanceAccess).toEqual({ ds_shared: 'admin' })
 
-    expect(levelFor(m, 'dataset', 'ds_shared')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'dataset', 'ds_shared')).toBe('admin')
     expect(m.server.canAdminInstance('dataset', 'ds_shared')).toBe(true)
 
-    expect(levelFor(m, 'dataset', 'ds_other')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'dataset', 'ds_other')).toBe('read')
     expect(m.server.canEditInstance('dataset', 'ds_other')).toBe(false)
   })
 
@@ -208,9 +210,9 @@ describe('grantee-scoped instance grants (plan 24 §B.4)', () => {
     // Area-level grantee overrides are Camp-1 raise-only; instance grants are
     // deliberately not (plan 24 §B.2.6). A `view` row under a `knowledgeBase:
     // Edit` baseline must actually take the write affordances away.
-    const m = member({ rows: [{ entityInstanceId: 'kb_readonly', permission: 'view' }] })
+    const m = member({ rows: [{ entityInstanceId: 'kb_readonly', rung: 'read' }] })
     expect(m.server.areaLevel(Area.knowledgeBase)).toBe(Level.Edit)
-    expect(levelFor(m, 'kb', 'kb_readonly')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'kb', 'kb_readonly')).toBe('read')
     expect(m.server.canViewInstance('kb', 'kb_readonly')).toBe(true)
     expect(m.server.canEditInstance('kb', 'kb_readonly')).toBe(false)
     // An untouched KB keeps the area's Edit rung.
@@ -227,9 +229,9 @@ describe('an instance grant under a closed area (plan 24 §B.2.8, flipped by pla
     // dataset. Plan 25 §2 inverted it: most-specific-wins runs all the way down.
     const m = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.None },
-      rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'ds_shared', rung: 'admin' }],
     })
-    expect(levelFor(m, 'dataset', 'ds_shared')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'dataset', 'ds_shared')).toBe('admin')
     expect(m.server.canViewInstance('dataset', 'ds_shared')).toBe(true)
 
     // The grant is genuinely stored and the area is genuinely shut — the two
@@ -245,7 +247,7 @@ describe('an instance grant under a closed area (plan 24 §B.2.8, flipped by pla
     // one. Only instances someone deliberately authored a row for escape.
     const m = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.None },
-      rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'ds_shared', rung: 'admin' }],
     })
     expect(levelFor(m, 'dataset', 'ds_untouched')).toBeUndefined()
     expect(m.server.canViewInstance('dataset', 'ds_untouched')).toBe(false)
@@ -254,18 +256,18 @@ describe('an instance grant under a closed area (plan 24 §B.2.8, flipped by pla
   it('an explicit `none` row on a closed area still denies', () => {
     const m = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.None },
-      rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
+      rows: [{ entityInstanceId: 'ds_locked', rung: 'none' }],
     })
-    expect(levelFor(m, 'dataset', 'ds_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, 'dataset', 'ds_locked')).toBe('none')
     expect(m.server.canViewInstance('dataset', 'ds_locked')).toBe(false)
   })
 
   it('the same grant takes effect with the area open too', () => {
     // The other half of the lifecycle — without this the test above would pass
     // for a grant that never works at all.
-    const m = member({ rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }] })
+    const m = member({ rows: [{ entityInstanceId: 'ds_shared', rung: 'admin' }] })
     expect(m.server.areaLevel(Area.datasets)).toBe(Level.Read)
-    expect(levelFor(m, 'dataset', 'ds_shared')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'dataset', 'ds_shared')).toBe('admin')
   })
 
   it('an area closed only by the SEAT ceiling kills the grant too', () => {
@@ -277,7 +279,7 @@ describe('an instance grant under a closed area (plan 24 §B.2.8, flipped by pla
     const m = member({
       seatType: 'worker',
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.datasets]: Level.Full },
-      rows: [{ entityInstanceId: 'ds_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'ds_shared', rung: 'admin' }],
     })
     expect(m.server.areaLevel(Area.datasets)).toBe(Level.None)
     expect(levelFor(m, 'dataset', 'ds_shared')).toBeUndefined()
@@ -290,9 +292,9 @@ describe('instance-restricted ADMIN (plan 24 §B.2.7)', () => {
     member({ ...opts, role: 'ADMIN', profileLevels: {} })
 
   it('loses an instance restricted to none, keeping every other instance', () => {
-    const m = admin({ rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }] })
+    const m = admin({ rows: [{ entityInstanceId: 'ds_locked', rung: 'none' }] })
     expect(m.server.areaLevel(Area.datasets)).toBe(Level.Full)
-    expect(levelFor(m, 'dataset', 'ds_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, 'dataset', 'ds_locked')).toBe('none')
     expect(m.server.canViewInstance('dataset', 'ds_locked')).toBe(false)
     // The share rows for that instance are therefore read-only: the editability
     // gate is `canAdminInstance` on the exact instance, not the area level.
@@ -301,8 +303,8 @@ describe('instance-restricted ADMIN (plan 24 §B.2.7)', () => {
   })
 
   it('is held to a read-only instance grant instead of bypassing to admin', () => {
-    const m = admin({ rows: [{ entityInstanceId: 'ds_readonly', permission: 'view' }] })
-    expect(levelFor(m, 'dataset', 'ds_readonly')).toBe(ResourcePermission.view)
+    const m = admin({ rows: [{ entityInstanceId: 'ds_readonly', rung: 'read' }] })
+    expect(levelFor(m, 'dataset', 'ds_readonly')).toBe('read')
     expect(m.server.canViewInstance('dataset', 'ds_readonly')).toBe(true)
     expect(m.server.canEditInstance('dataset', 'ds_readonly')).toBe(false)
     expect(m.server.canAdminInstance('dataset', 'ds_readonly')).toBe(false)
@@ -316,9 +318,9 @@ describe('OWNER regression (plan 24 §A.4)', () => {
     // instance that would let them undo it.
     const m = member({
       role: 'OWNER',
-      rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }],
+      rows: [{ entityInstanceId: 'ds_locked', rung: 'none' }],
     })
-    expect(levelFor(m, 'dataset', 'ds_locked')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'dataset', 'ds_locked')).toBe('admin')
     expect(m.server.canAdminInstance('dataset', 'ds_locked')).toBe(true)
     expect(m.server.canViewInstance('kb', 'kb_locked')).toBe(true)
   })
@@ -342,12 +344,10 @@ describe('OWNER regression (plan 24 §A.4)', () => {
     // reaches their OWN content through the ordinary row path.
     const owner = member({
       role: 'OWNER',
-      rows: [
-        { entityDefinitionId: 'dashboard', entityInstanceId: 'dash_mine', permission: 'admin' },
-      ],
+      rows: [{ entityDefinitionId: 'dashboard', entityInstanceId: 'dash_mine', rung: 'admin' }],
       restrictedInstances: ['dash_mine', 'dash_theirs'],
     })
-    expect(levelFor(owner, 'dashboard', 'dash_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(owner, 'dashboard', 'dash_mine')).toBe('admin')
     expect(owner.server.canAdminInstance('dashboard', 'dash_mine')).toBe(true)
     // ...and only their own.
     expect(levelFor(owner, 'dashboard', 'dash_theirs')).toBeUndefined()
@@ -382,11 +382,11 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
     })
 
   it.each([
-    'view',
+    'read',
     'edit',
     'admin',
-  ] as const)('a `%s` grant on ONE dataset makes can(datasets.view) true with the area shut', (permission) => {
-    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission }])
+  ] as const)('a `%s` grant on ONE dataset makes can(datasets.view) true with the area shut', (rung) => {
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', rung }])
     expect(m.server.can(PermissionKey.datasetsView)).toBe(true)
     expect(m.caps.instanceDerivedKeys).toEqual([PermissionKey.datasetsView])
     // The grant is real, not just a front door.
@@ -396,14 +396,14 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
   it('an `admin` grant derives the Read rung ONLY — never edit/manage', () => {
     // `datasetsManage` fronts dataset CREATION, which has no instance to assert
     // on. Deriving it from one shared instance would hand out org-wide authoring.
-    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'admin' }])
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', rung: 'admin' }])
     expect(m.server.can(PermissionKey.datasetsView)).toBe(true)
     expect(m.server.can(PermissionKey.datasetsEdit)).toBe(false)
     expect(m.server.can(PermissionKey.datasetsManage)).toBe(false)
   })
 
   it('an explicit `none` restriction derives NOTHING (a restriction is not a grant)', () => {
-    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_locked', permission: 'none' }])
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_locked', rung: 'none' }])
     expect(m.caps.instanceDerivedKeys).toEqual([])
     expect(m.server.can(PermissionKey.datasetsView)).toBe(false)
   })
@@ -425,7 +425,7 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
         [Area.datasets]: Level.None,
         [Area.knowledgeBase]: Level.None,
       },
-      rows: [{ entityDefinitionId: 'dashboard', entityInstanceId: 'dash_x', permission: 'view' }],
+      rows: [{ entityDefinitionId: 'dashboard', entityInstanceId: 'dash_x', rung: 'read' }],
     })
     expect(m.caps.instanceDerivedKeys).toEqual([PermissionKey.dashboardsView])
     expect(m.server.can(PermissionKey.workflowsView)).toBe(false)
@@ -438,14 +438,14 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
     // regardless of any grant. Without this check the member would hold a front
     // door key into an area every enforcement point then denies — a 403 maze.
     expect(SEAT_CEILINGS.worker[Area.datasets]).toBe(Level.None)
-    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'admin' }], 'worker')
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', rung: 'admin' }], 'worker')
     expect(m.caps.instanceDerivedKeys).toEqual([])
     expect(m.server.can(PermissionKey.datasetsView)).toBe(false)
     expect(m.server.canViewInstance('dataset', 'ds_x')).toBe(false)
   })
 
   it('OWNER is unaffected — holds everything, derives nothing', () => {
-    const m = member({ role: 'OWNER', rows: [{ entityInstanceId: 'ds_x', permission: 'view' }] })
+    const m = member({ role: 'OWNER', rows: [{ entityInstanceId: 'ds_x', rung: 'read' }] })
     expect(m.caps.instanceDerivedKeys).toEqual([])
     expect(m.server.can(PermissionKey.datasetsView)).toBe(true)
     expect(m.server.can(PermissionKey.datasetsManage)).toBe(true)
@@ -458,7 +458,7 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
     // `baselineAtCreate: false` — EVERY dataset in the org with no explicit row
     // would resolve to `view`. "Shared one dataset" would silently mean "can see
     // them all". This is the assertion that keeps the two key sets apart.
-    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'admin' }])
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', rung: 'admin' }])
     expect(m.server.areaLevel(Area.datasets)).toBe(Level.None)
     expect(areaLevelFromKeys(new Set(m.caps.keys), Area.datasets)).toBe(Level.None)
     expect(m.caps.keys).not.toContain(PermissionKey.datasetsView)
@@ -471,7 +471,7 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
   })
 
   it('survives the wire round-trip and the client `can()` union rebuilds it', () => {
-    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', permission: 'view' }])
+    const m = closed(Area.datasets, [{ entityInstanceId: 'ds_x', rung: 'read' }])
     const snapshot = m.server.toClientCapabilities()
     expect(snapshot.instanceDerivedKeys).toEqual([PermissionKey.datasetsView])
     // The client `can()` reads the union (capabilities-provider.tsx)…
@@ -494,9 +494,7 @@ describe('the area Read rung derived from instance grants (item 5b)', () => {
     // enforceable grant.
     const m = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.snippets]: Level.None },
-      rows: [
-        { entityDefinitionId: 'snippet', entityInstanceId: 'snip_shared', permission: 'view' },
-      ],
+      rows: [{ entityDefinitionId: 'snippet', entityInstanceId: 'snip_shared', rung: 'read' }],
     })
     expect(m.caps.instanceDerivedKeys).toEqual([PermissionKey.snippetsView])
     expect(m.server.can(PermissionKey.snippetsView)).toBe(true)
@@ -614,11 +612,11 @@ describe('private (`baselineAtCreate: true`) resources — signatures + snippets
     // simply be inert.
     const m = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [area]: Level.None },
-      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_shared', permission: 'edit' }],
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_shared', rung: 'edit' }],
     })
     expect(m.server.areaLevel(area)).toBe(Level.None)
 
-    expect(levelFor(m, key, 'inst_shared')).toBe(ResourcePermission.edit)
+    expect(levelFor(m, key, 'inst_shared')).toBe('edit')
     expect(m.server.canViewInstance(key, 'inst_shared')).toBe(true)
     expect(m.server.canEditInstance(key, 'inst_shared')).toBe(true)
     // `edit`, not `admin`: delete and re-share stay closed.
@@ -629,9 +627,9 @@ describe('private (`baselineAtCreate: true`) resources — signatures + snippets
 
   it.each(PRIVATE)('%s: an explicit `none` row denies under an open area too', (key) => {
     const m = member({
-      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_locked', permission: 'none' }],
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_locked', rung: 'none' }],
     })
-    expect(levelFor(m, key, 'inst_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, key, 'inst_locked')).toBe('none')
     expect(m.server.canViewInstance(key, 'inst_locked')).toBe(false)
   })
 
@@ -643,7 +641,7 @@ describe('private (`baselineAtCreate: true`) resources — signatures + snippets
     expect(SEAT_CEILINGS.worker[area]).toBe(Level.None)
     const m = member({
       seatType: 'worker',
-      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' }],
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', rung: 'admin' }],
     })
     expect(levelFor(m, key, 'inst_mine')).toBeUndefined()
     expect(m.server.canViewInstance(key, 'inst_mine')).toBe(false)
@@ -683,9 +681,9 @@ describe('private (`baselineAtCreate: true`) resources — signatures + snippets
     // written at create, and it resolves through the ordinary row path.
     const owner = member({
       role: 'OWNER',
-      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' }],
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', rung: 'admin' }],
     })
-    expect(levelFor(owner, key, 'inst_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(owner, key, 'inst_mine')).toBe('admin')
     expect(owner.server.canAdminInstance(key, 'inst_mine')).toBe(true)
   })
 })
@@ -717,7 +715,7 @@ describe('privateInstanceListScope (plan 36 §6.1)', () => {
     const owner = member({
       role: 'OWNER',
       rows: [
-        { entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_mine', rung: 'admin' },
         // Someone else's private instance — in the ORG-wide restricted set, but
         // carrying no row for this owner.
       ],
@@ -732,7 +730,7 @@ describe('privateInstanceListScope (plan 36 §6.1)', () => {
   it.each(PRIVATE)('%s: a worker seat gets `none` — no query at all (§0.5)', (key) => {
     const m = member({
       seatType: 'worker',
-      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', permission: 'admin' }],
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_mine', rung: 'admin' }],
     })
     expect(privateInstanceListScope(m.client, key)).toEqual({ kind: 'none' })
   })
@@ -740,9 +738,9 @@ describe('privateInstanceListScope (plan 36 §6.1)', () => {
   it.each(PRIVATE)('%s: names ONLY the rows that reach `view`', (key) => {
     const m = member({
       rows: [
-        { entityDefinitionId: key, entityInstanceId: 'inst_view', permission: 'view' },
-        { entityDefinitionId: key, entityInstanceId: 'inst_admin', permission: 'admin' },
-        { entityDefinitionId: key, entityInstanceId: 'inst_none', permission: 'none' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_view', rung: 'read' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_admin', rung: 'admin' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_none', rung: 'none' },
       ],
     })
     const scope = privateInstanceListScope(m.client, key)
@@ -752,7 +750,7 @@ describe('privateInstanceListScope (plan 36 §6.1)', () => {
 
   it.each(PRIVATE)('%s: no qualifying row at all collapses to `none`', (key) => {
     const m = member({
-      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_none', permission: 'none' }],
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_none', rung: 'none' }],
     })
     expect(privateInstanceListScope(m.client, key)).toEqual({ kind: 'none' })
   })
@@ -773,7 +771,7 @@ describe('privateInstanceListScope (plan 36 §6.1)', () => {
 
     const shut = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [area]: Level.None },
-      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_shared', permission: 'view' }],
+      rows: [{ entityDefinitionId: key, entityInstanceId: 'inst_shared', rung: 'read' }],
     })
     expect(shut.server.areaLevel(area)).toBe(Level.None)
     expect(privateInstanceListScope(shut.client, key)).toEqual({
@@ -789,8 +787,8 @@ describe('privateInstanceListScope (plan 36 §6.1)', () => {
     // resolver is asked about, and which the allow-list must therefore omit).
     const m = member({
       rows: [
-        { entityDefinitionId: key, entityInstanceId: 'inst_view', permission: 'view' },
-        { entityDefinitionId: key, entityInstanceId: 'inst_none', permission: 'none' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_view', rung: 'read' },
+        { entityDefinitionId: key, entityInstanceId: 'inst_none', rung: 'none' },
       ],
       restrictedInstances: ['inst_view', 'inst_none', 'inst_theirs'],
     })

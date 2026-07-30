@@ -23,7 +23,7 @@ import {
 import { api } from '~/trpc/react'
 import type { CalendarViewConfig } from '../../types'
 
-/** `record.listFiltered` caps `limit` at 500 (router); this bounds the oneshot drain
+/** `record.listFiltered` caps `limit` at 500 (router); this bounds the drain
  * loop itself — a month denser than 5000 records goes unfetched past the cap rather
  * than looping forever. */
 const PAGE_LIMIT = 500
@@ -54,9 +54,8 @@ function buildRangeFilterGroup(dateFieldId: string, range: DateRange): Condition
  * config, range, viewFilters) → { ids, isLoading }` — extractable per plan §5 (a records-view
  * "source" for the personal calendar would reuse this shape unchanged).
  *
- * `record.listFiltered`'s snapshot-cursor mode doesn't fit a range query (no stable cursor to
- * page from as the range itself changes), so this drains `mode:'oneshot'` pages directly
- * instead of reusing `useRecordList`.
+ * A range query doesn't fit `useRecordList`'s infinite-query shape (the range itself changes
+ * under the cursor), so this drains `record.listFiltered` offset pages directly.
  */
 export function useCalendarRecordIds(
   entityDefinitionId: string | undefined,
@@ -91,7 +90,6 @@ export function useCalendarRecordIds(
           filters,
           limit: PAGE_LIMIT,
           offset,
-          mode: 'oneshot',
         })
         ids.push(...result.ids)
         if (!result.hasMore) break

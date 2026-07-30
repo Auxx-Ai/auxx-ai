@@ -53,7 +53,7 @@ export function MailGranteeList({
       onGrant={onGrant}
       onChange={onChangeLens}
       onRevoke={onRevoke}
-      defaultChoice='full'
+      defaultChoice='read'
       renderLockedLabel={(choice) => LENS_LABELS[choice].label}
       renderPicker={({ value, onChange, disabled: rowDisabled }) => (
         <LensSelect
@@ -102,7 +102,7 @@ export function MailGranteeAddButton({
     <GranteeAddButton<LensChoice>
       grants={grants}
       onGrant={onGrant}
-      defaultChoice='full'
+      defaultChoice='read'
       disabled={disabled}>
       {children}
     </GranteeAddButton>

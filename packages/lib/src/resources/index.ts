@@ -35,6 +35,14 @@ export {
   trackChanges,
   UnifiedCrudHandler,
 } from './crud'
+// The per-row record write gate (plan v3/03 §5.3)
+export type { StampedRow } from './crud/record-row-access'
+export {
+  assertRecordRowsEditable,
+  assertRecordRowsEditableWithDb,
+  assertRowsEditableFromStamps,
+  defDeniedRecordIds,
+} from './crud/record-row-access'
 export { listAll } from './crud/unified-handler-queries'
 export type { MergeEntitiesInput, MergeEntitiesResult } from './merge'
 // Merge service (server-side)

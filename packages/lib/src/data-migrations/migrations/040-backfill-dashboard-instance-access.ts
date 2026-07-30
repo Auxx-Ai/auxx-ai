@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { isNull } from 'drizzle-orm'
 import { emitResourceAccessInstanceChanged } from '../../resource-access'
@@ -62,7 +62,7 @@ export const migration040BackfillDashboardInstanceAccess: DataMigrationDef = {
         entityInstanceId: d.id,
         granteeType: ResourceGranteeType.role,
         granteeId: WORKSPACE_BASELINE_GRANTEE,
-        permission: ResourcePermission.view,
+        rung: 'read',
         grantedById: d.createdById,
       })
       if (d.createdById) {
@@ -72,7 +72,7 @@ export const migration040BackfillDashboardInstanceAccess: DataMigrationDef = {
           entityInstanceId: d.id,
           granteeType: ResourceGranteeType.user,
           granteeId: d.createdById,
-          permission: ResourcePermission.admin,
+          rung: 'admin',
           grantedById: d.createdById,
         })
       }
@@ -89,9 +89,11 @@ export const migration040BackfillDashboardInstanceAccess: DataMigrationDef = {
     // every affected org — without this, backfilled dashboards stay invisible
     // until each org's caches naturally expire (doc 13 §4 caveat).
     for (const orgId of affectedOrgIds) {
-      await emitResourceAccessInstanceChanged(orgId, [
-        { granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE },
-      ])
+      await emitResourceAccessInstanceChanged(
+        orgId,
+        [{ granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE }],
+        DASHBOARD_KEY
+      )
     }
 
     logger.info('Backfilled dashboard instance access', {

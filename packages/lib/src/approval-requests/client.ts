@@ -16,11 +16,15 @@ export const ACCESS_TARGET_KINDS = ['area', 'def', 'instance'] as const
 export type AccessTargetKind = (typeof ACCESS_TARGET_KINDS)[number]
 
 /**
- * Mail visibility lens carried on a thread access request. Mirrors
- * `resource-access`'s `GrantLens` as a literal union so this module stays
- * client-safe (that type lives beside server-only Drizzle imports).
+ * Mail visibility lens carried on a thread access request — the grantable
+ * subset of the shared rung ladder (`Exclude<Lens, 'none'>`), spelled as a
+ * literal union so this module stays client-safe and dependency-free.
+ *
+ * Renamed with the ladder in plan v3/03 P3b (`subject`→`identity`,
+ * `full`→`read`); migration 0319 rewrites the stored `ApprovalRequest`
+ * values alongside `ResourceAccess`'s.
  */
-export type AccessLens = 'metadata' | 'subject' | 'full'
+export type AccessLens = 'metadata' | 'identity' | 'read'
 
 /**
  * Lifetime of an access request. Required by plan 28 H2 — `cleanupExpiredApprovals`

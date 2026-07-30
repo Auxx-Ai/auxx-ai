@@ -2,12 +2,14 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { Rung } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import type { ResourceAccessGrantees } from '../../resource-access/grantee-resolution'
+import { resourceAccessGranteeConditions } from '../../resource-access/grantee-resolution'
+import { loadUserInstanceGrants } from '../../resource-access/instance-grants'
 import { resolveBaseProfile } from '../profiles/profile-resolution'
 import { composeUserCapabilities, type UserCapabilities } from './compose-user-capabilities'
-import { INSTANCE_ACCESS_KEYS } from './instance-access'
 import { type Area, type Level, parseAreaLevels } from './registry'
 
 const logger = createScopedLogger('user-capabilities')
@@ -57,7 +59,6 @@ export async function computeUserCapabilities(
       seatType,
       userType,
       typeAccessRows: [],
-      instanceAccessRows: [],
     })
 
   // The ONE bound human base profile (§1.3): explicit binding, else the system
@@ -98,9 +99,17 @@ export async function computeUserCapabilities(
     )
   }
 
-  // ResourceAccess grantee union. `role:org_member` STAYS here — on this table it
-  // is the def/instance baseline marker (lockdown + workspace baseline), a
-  // different mechanism from the deleted PermissionGrant policy tier.
+  // **THE shared ResourceAccess grantee union** (plan v3/03 §11, P4). This used
+  // to be an inline copy of `granteeMatchers` — the fourth one — and it had
+  // already drifted: it omitted the legacy `team` grantee kind that the mail
+  // evaluator matches, so a `team`-granted instance was visible to mail and
+  // invisible to capabilities. Routing both queries below through
+  // `resourceAccessGranteeConditions` makes "every reader enumerates every
+  // grantee kind" a structural property instead of a review item.
+  //
+  // `role:org_member` STAYS in the union — on this table it is the def/instance
+  // baseline marker (lockdown + workspace baseline), a different mechanism from
+  // the deleted PermissionGrant policy tier.
   //
   // `profile` is included because `restrictedEntityDefIds` /
   // `governingInstanceIds` are built GRANTEE-AGNOSTICALLY: one profile-grantee
@@ -109,29 +118,17 @@ export async function computeUserCapabilities(
   // here, the def would go dark for every non-admin. (Writes of profile-grantee
   // ResourceAccess rows are refused until doc 19 step 9 updates the other three
   // resolvers — see `assertProfileGranteeSupported`.)
-  const accessConditions = [
-    and(eq(schema.ResourceAccess.granteeType, 'user'), eq(schema.ResourceAccess.granteeId, userId)),
-    and(
-      eq(schema.ResourceAccess.granteeType, 'role'),
-      eq(schema.ResourceAccess.granteeId, 'org_member')
-    ),
-  ]
-  if (baseProfile.profileId) {
-    accessConditions.push(
-      and(
-        eq(schema.ResourceAccess.granteeType, 'profile'),
-        eq(schema.ResourceAccess.granteeId, baseProfile.profileId)
-      )
-    )
+  //
+  // Built locally rather than through `resolveResourceAccessGrantees` because the
+  // two inputs it would re-resolve from cache — the group ids and the ONE bound
+  // base profile — are already in hand above, resolved by the same
+  // `resolveBaseProfile`. Same value, two fewer cache reads.
+  const grantees: ResourceAccessGrantees = {
+    userId,
+    groupIds,
+    profileId: baseProfile.profileId,
   }
-  if (groupIds.length > 0) {
-    accessConditions.push(
-      and(
-        eq(schema.ResourceAccess.granteeType, 'group'),
-        inArray(schema.ResourceAccess.granteeId, groupIds)
-      )
-    )
-  }
+  const accessConditions = resourceAccessGranteeConditions(grantees, { treatTeamAsGroup: true })
 
   // PermissionGrant query for every principal EXCEPT OWNER, in orgs that
   // actually customized. One sparse-jsonb row per grantee (profile / group / user).
@@ -165,7 +162,7 @@ export async function computeUserCapabilities(
   const typeAccessPromise = db
     .select({
       entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
-      permission: schema.ResourceAccess.permission,
+      rung: schema.ResourceAccess.rung,
     })
     .from(schema.ResourceAccess)
     .where(
@@ -176,40 +173,22 @@ export async function computeUserCapabilities(
       )
     )
 
-  // Second ResourceAccess query: INSTANCE-level rows (entityInstanceId IS NOT
-  // NULL) for the instance-access resources (datasets etc., §1.2), reusing the
-  // same grantee union. `instanceAccess` itself is keyed on the globally-unique
-  // instance CUID alone; `entityDefinitionId` rides along (same query, one more
-  // column — the WHERE clause already filters on it) because
-  // `UserCapabilities.instanceDerivedKeys` must know WHICH resource a grant is
-  // for, or a dashboard grant would open the workflows front door.
+  // The INSTANCE-level read is no longer written here (plan v3/03 §11, P4). It
+  // is `loadUserInstanceGrants` — ONE query and ONE bucketing pass, shared with
+  // `computeUserInstanceGrants`, whose near-identical query this deletes.
   //
-  // `granteeType` rides along for the same reason and at the same cost — one
-  // more column on a query the WHERE clause already filters by grantee (plan 43
-  // §4.1, "the plumbing is one column"). It sorts each row into the INDIVIDUAL
-  // lane or the BASELINE lane, and only the latter is gated by the area level.
-  // No new query, no new round trip.
-  const instanceAccessPromise = db
-    .select({
-      entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
-      entityInstanceId: schema.ResourceAccess.entityInstanceId,
-      permission: schema.ResourceAccess.permission,
-      granteeType: schema.ResourceAccess.granteeType,
-    })
-    .from(schema.ResourceAccess)
-    .where(
-      and(
-        eq(schema.ResourceAccess.organizationId, organizationId),
-        inArray(schema.ResourceAccess.entityDefinitionId, INSTANCE_ACCESS_KEYS),
-        isNotNull(schema.ResourceAccess.entityInstanceId),
-        or(...accessConditions)
-      )
-    )
+  // Two consequences of unifying on the WIDER of the two shapes:
+  //  - the `entityDefinitionId IN (INSTANCE_ACCESS_KEYS)` filter is gone from
+  //    SQL, so record-def and mail rows arrive here too. They are dropped in
+  //    `flattenBlobLane` / `deriveInstanceReadKeys` by `isInstanceAccessKey`,
+  //    which is where §4's "records get no forward cache" invariant now lives;
+  //  - `team` rows now reach this composer (see the union note above).
+  const instanceGrantsPromise = loadUserInstanceGrants(db, organizationId, grantees)
 
-  const [grantRows, typeAccessRows, instanceAccessRows] = await Promise.all([
+  const [grantRows, typeAccessRows, instanceGrants] = await Promise.all([
     grantRowsPromise,
     typeAccessPromise,
-    instanceAccessPromise,
+    instanceGrantsPromise,
   ])
 
   // Split the sparse-jsonb rows into the composition tiers (§2.1).
@@ -243,13 +222,8 @@ export async function computeUserCapabilities(
     userLevels,
     typeAccessRows: typeAccessRows as Array<{
       entityDefinitionId: string
-      permission: ResourcePermission
+      rung: Rung
     }>,
-    instanceAccessRows: instanceAccessRows as Array<{
-      entityDefinitionId: string
-      entityInstanceId: string
-      permission: ResourcePermission
-      granteeType: string
-    }>,
+    instanceGrants,
   })
 }

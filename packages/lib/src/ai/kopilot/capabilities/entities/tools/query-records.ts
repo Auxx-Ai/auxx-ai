@@ -312,15 +312,16 @@ Examples:
       // Build sorting
       const sorting = sort ? [{ id: sort.field, desc: sort.direction === 'desc' }] : []
 
-      // Query filtered IDs — oneshot mode: paged SQL + parallel COUNT(*), no Redis snapshot
-      // (kopilot doesn't benefit from snapshot reuse since each tool call is independent).
+      // `includeTotal` is forced: this tool exposes `offset` for paging and its output
+      // schema requires `total_matching`, so it needs the COUNT on deep pages too — the
+      // default (first page only) would report `undefined` from page 2 on.
       const filtered = await handler.listFiltered({
         entityDefinitionId: entityDefId,
         filters: conditionGroups,
         sorting,
         limit,
         offset,
-        mode: 'oneshot',
+        includeTotal: true,
       })
 
       // Hydrate results with display data
@@ -345,7 +346,7 @@ Examples:
           entityType: resource.label,
           items,
           returned_count: items.length,
-          total_matching: filtered.total,
+          total_matching: filtered.total ?? items.length,
           hasMore: filtered.hasMore,
           warnings: warnings.length > 0 ? warnings : undefined,
         },

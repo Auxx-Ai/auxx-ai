@@ -256,6 +256,14 @@ describe('run-as is delegation, never replacement (§0.15/§2.3)', () => {
     canViewEntity: () => true,
     assertViewEntity: () => {},
     filterViewableDefIds: (ids) => ids,
+    // Plan v3/03 P5 — an all-open delegate: presence everywhere, `admin` on
+    // every def, so the intersection is decided purely by the agent's policy.
+    hasDefPresence: () => true,
+    hasRecordGrantsOn: () => true,
+    recordDefRung: () => 'admin' as const,
+    recordAccessAt: () => 'admin' as const,
+    canDeleteRecordAt: () => true,
+    canEditRecordAt: () => true,
     viewAccessFor: () => ResourcePermission.admin,
     canAdministerDef: () => true,
     assertAdministerDef: () => {},
@@ -350,6 +358,14 @@ function ownerRunAsFixture(): CapabilityView {
     canViewEntity: () => true,
     assertViewEntity: () => {},
     filterViewableDefIds: (ids) => ids,
+    // Plan v3/03 P5 — an all-open delegate: presence everywhere, `admin` on
+    // every def, so the intersection is decided purely by the agent's policy.
+    hasDefPresence: () => true,
+    hasRecordGrantsOn: () => true,
+    recordDefRung: () => 'admin' as const,
+    recordAccessAt: () => 'admin' as const,
+    canDeleteRecordAt: () => true,
+    canEditRecordAt: () => true,
     viewAccessFor: () => ResourcePermission.admin,
     canAdministerDef: () => true,
     assertAdministerDef: () => {},

@@ -1,12 +1,13 @@
 // packages/lib/src/permissions/visibility/effective-lens.ts
 
-import type { AutomationVisibility, ThreadVisibilityInput, UserMailVisibility } from './context'
+import { maxRung } from '../capabilities/rung'
+import type { AutomationVisibility, ThreadVisibilityInput, UserInstanceGrants } from './context'
 import { DERIVATION_RULES } from './derivation-rules'
-import { type Lens, maxLens } from './lens'
+import type { Lens } from './lens'
 
 /**
  * The evaluator (§4) — pure and synchronous. All IO happened when the
- * `UserMailVisibility` was cached and when the caller loaded the thread rows,
+ * `UserInstanceGrants` was cached and when the caller loaded the thread rows,
  * so this is 0 queries in the common case.
  *
  * Framing:
@@ -14,24 +15,24 @@ import { type Lens, maxLens } from './lens'
  *   plan (`plans/mail-permissions/02-architecture.md` §11.3, plan 40 §2) — it
  *   must never acquire a v2 gate, and it is what makes the dispatch/controller
  *   pattern work against a floor-`none` inbox.
- * - Otherwise fold the derivation-rule registry with `maxLens`, starting at
+ * - Otherwise fold the derivation-rule registry with `maxRung`, starting at
  *   `none`.
  *
  * **No rank branch (plan 40 §4.2).** The two `isAdmin` short-circuits that used
  * to sit here — `full` everywhere, and `metadata` on others' personal inboxes —
  * are gone. Both answers now arrive through `inboxLens`, which
- * `composeUserMailVisibility` builds from `ResourceAccess` rows plus the
+ * `composeUserInstanceGrants` builds from `ResourceAccess` rows plus the
  * `Area.inboxes` fallback (and, for a mail admin, the §4.4 personal `metadata`
  * floor). A default admin's numbers are unchanged; a downgraded one really loses
  * mail, which is the point.
  */
-export function effectiveLens(vis: UserMailVisibility, t: ThreadVisibilityInput): Lens {
-  if (t.assigneeId && t.assigneeId === vis.userId) return 'full'
+export function effectiveLens(vis: UserInstanceGrants, t: ThreadVisibilityInput): Lens {
+  if (t.assigneeId && t.assigneeId === vis.userId) return 'read'
 
   let lens: Lens = 'none'
   for (const rule of DERIVATION_RULES) {
-    lens = maxLens(lens, rule.lens(vis, t))
-    if (lens === 'full') break
+    lens = maxRung(lens, rule.lens(vis, t))
+    if (lens === 'read') break
   }
   return lens
 }
@@ -47,7 +48,7 @@ export function effectiveLens(vis: UserMailVisibility, t: ThreadVisibilityInput)
  * `none` to an admin on a personal mailbox while the evaluator returned
  * `metadata`).
  */
-export function inboxLensFor(vis: UserMailVisibility, inboxId: string): Lens {
+export function inboxLensFor(vis: UserInstanceGrants, inboxId: string): Lens {
   return vis.inboxLens[inboxId] ?? 'none'
 }
 
@@ -56,12 +57,12 @@ export function inboxLensFor(vis: UserMailVisibility, inboxId: string): Lens {
  * (§11), where automation has zero access. Null-inbox threads read as org data.
  */
 export function automationLens(vis: AutomationVisibility, t: ThreadVisibilityInput): Lens {
-  return t.inboxId && vis.personalInboxIds[t.inboxId] ? 'none' : 'full'
+  return t.inboxId && vis.personalInboxIds[t.inboxId] ? 'none' : 'read'
 }
 
 /** Batch form — a loop over {@link effectiveLens}, keyed by thread id. */
 export function effectiveLensBatch(
-  vis: UserMailVisibility,
+  vis: UserInstanceGrants,
   threads: readonly ThreadVisibilityInput[]
 ): Map<string, Lens> {
   const out = new Map<string, Lens>()

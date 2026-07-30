@@ -40,7 +40,6 @@ export const guardQuoteConvertedDelete: EntityPreDeleteHandler = async (event) =
       },
     ],
     limit: 1,
-    mode: 'oneshot',
   })
   if (activeJobs.ids.length > 0) {
     throw new BadRequestError(

@@ -42,8 +42,8 @@ import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
 import { userCapabilitiesProvider } from './providers/user-capabilities-provider'
 import { userFavoritesProvider } from './providers/user-favorites-provider'
+import { userInstanceGrantsProvider } from './providers/user-instance-grants-provider'
 import { userMailViewsProvider } from './providers/user-mail-views-provider'
-import { userMailVisibilityProvider } from './providers/user-mail-visibility-provider'
 import { userMembershipsProvider } from './providers/user-memberships-provider'
 import { userProfileProvider } from './providers/user-profile-provider'
 import { userSettingsProvider } from './providers/user-settings-provider'
@@ -105,7 +105,7 @@ export function registerAllProviders(
   userCache.register('userMailViews', userMailViewsProvider)
   userCache.register('userTableViews', userTableViewsProvider)
   userCache.register('userFavorites', userFavoritesProvider)
-  userCache.register('userMailVisibility', userMailVisibilityProvider)
+  userCache.register('userInstanceGrants', userInstanceGrantsProvider)
   userCache.register('userCapabilities', userCapabilitiesProvider)
 
   // App-scoped (global)

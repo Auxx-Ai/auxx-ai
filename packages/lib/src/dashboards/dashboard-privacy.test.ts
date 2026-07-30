@@ -19,21 +19,21 @@ describe('isPrivateFromBaseline', () => {
   })
 
   it('is private with an explicit none baseline', () => {
-    expect(isPrivateFromBaseline(ResourcePermission.none, [], OWNER)).toBe(true)
+    expect(isPrivateFromBaseline('none', [], OWNER)).toBe(true)
   })
 
   it('is not private once the workspace baseline opens it', () => {
-    expect(isPrivateFromBaseline(ResourcePermission.view, [], OWNER)).toBe(false)
+    expect(isPrivateFromBaseline('read', [], OWNER)).toBe(false)
   })
 
   it('stays private when the only grant is the owner’s own admin row', () => {
     const owned = [share({ granteeType: ResourceGranteeType.user, granteeId: OWNER })]
-    expect(isPrivateFromBaseline(ResourcePermission.none, owned, OWNER)).toBe(true)
+    expect(isPrivateFromBaseline('none', owned, OWNER)).toBe(true)
   })
 
   it('is NOT private when shared with a permission profile (19a #14)', () => {
     const shared = [share({ granteeType: ResourceGranteeType.profile, granteeId: 'prof_field' })]
-    expect(isPrivateFromBaseline(ResourcePermission.none, shared, OWNER)).toBe(false)
+    expect(isPrivateFromBaseline('none', shared, OWNER)).toBe(false)
   })
 
   it('is NOT private when shared with a group or another user', () => {

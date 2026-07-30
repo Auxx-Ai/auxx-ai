@@ -1,8 +1,8 @@
 // apps/web/src/components/mail-permissions/hooks/use-mail-share.ts
 'use client'
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import type { LensChoice } from '@auxx/lib/permissions/visibility/client'
+import { ResourceGranteeType } from '@auxx/database/enums'
+import { type LensChoice, normalizeLens } from '@auxx/lib/permissions/visibility/client'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
 import type { ActorId } from '@auxx/types/actor'
 import { toastError } from '@auxx/ui/components/toast'
@@ -63,8 +63,7 @@ export function useMailShare({
             entityInstanceId: recordId.split(':')[1] ?? null,
             granteeType: input.granteeType,
             granteeId: input.granteeId,
-            permission: input.permission,
-            lens: input.lens ?? null,
+            rung: input.rung,
             createdAt: new Date(),
           },
           ...rest,
@@ -97,7 +96,7 @@ export function useMailShare({
     onSettled: invalidate,
   })
 
-  /** Grants as actor-keyed lens choices (admin permission renders as Manager). */
+  /** Grants as actor-keyed lens choices (the `admin` rung renders as Manager). */
   const grants = useMemo<MailShareGrant[]>(
     () =>
       rows.flatMap((r) => {
@@ -106,12 +105,13 @@ export function useMailShare({
         return [
           {
             actorId,
+            // `admin` on an inbox IS the Manager entry; `edit` is dead vocabulary
+            // for the mail defs (plan 40 §1.3) and reads as full mail access,
+            // which `normalizeLens`'s fallback supplies.
             choice:
-              r.permission === ResourcePermission.admin || r.permission === ResourcePermission.edit
-                ? r.permission === ResourcePermission.admin
-                  ? ('manager' as const)
-                  : ('full' as const)
-                : ((r.lens ?? 'full') as LensChoice),
+              r.rung === 'admin'
+                ? ('manager' as const)
+                : (normalizeLens(r.rung, 'read') as LensChoice),
           },
         ]
       }),
@@ -162,8 +162,7 @@ export function useMailShare({
     grantInstance.mutate({
       recordId,
       ...grantee,
-      permission: choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
-      lens: choice === 'manager' ? undefined : choice,
+      rung: choice === 'manager' ? ('admin' as const) : choice,
     })
   }
 

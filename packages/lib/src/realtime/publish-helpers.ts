@@ -1,8 +1,10 @@
 // @auxx/lib/realtime/publish-helpers.ts
 
 import { database, schema } from '@auxx/database'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, isNotNull } from 'drizzle-orm'
-import { type Lens, maxLens } from '../permissions/visibility/lens'
+import { maxRung } from '../permissions/capabilities/rung'
+import type { Lens } from '../permissions/visibility/lens'
 import type {
   ApprovalPingEvent,
   ApprovalResolvedEvent,
@@ -22,8 +24,36 @@ import { CHANNEL_LENSES, rooms } from './rooms'
 const CHUNK_SIZE = 50
 
 /**
- * Publish field value updates to the org channel, chunking if needed (Pusher 10KB limit).
+ * Bucket field-value entries by the entity def they belong to.
+ *
+ * A `FieldValueKey` is `` `${RecordId}:${fieldRefKey}` `` and a `RecordId` is
+ * `` `${entityDefinitionId}:${entityInstanceId}` ``, so the def is the segment
+ * before the FIRST colon. Entries whose def can't be derived are DROPPED: they
+ * have no channel to ride, and the alternative (an org-wide fallback) is the
+ * leak this routing exists to close.
+ */
+function groupEntriesByDef(entries: FieldValueUpdateEntry[]): Map<string, FieldValueUpdateEntry[]> {
+  const byDef = new Map<string, FieldValueUpdateEntry[]>()
+  for (const entry of entries) {
+    const { entityDefinitionId } = parseRecordId(entry.key as string as RecordId)
+    if (!entityDefinitionId) continue
+    const bucket = byDef.get(entityDefinitionId)
+    if (bucket) bucket.push(entry)
+    else byDef.set(entityDefinitionId, [entry])
+  }
+  return byDef
+}
+
+/**
+ * Publish field value updates on the per-def record channels
+ * (`rooms.orgRecords`), chunking if needed (Pusher 10KB limit).
  * Fire-and-forget — errors are logged by the provider, not thrown.
+ *
+ * One call routinely spans several defs (a relationship write touches both
+ * sides), so entries are bucketed by def and published one message per def:
+ * `FieldValueUpdateEntry.value` is the RAW stored value, and every record
+ * channel is ACL'd on `canViewEntity` for its own def — a mixed frame would
+ * put def A's values on def B's channel. Chunking is applied per def bucket.
  *
  * Each entry can carry any combination of `value`, `aiStatus`, and
  * `aiMetadata`. Omit `value` to publish a pure AI-state transition (e.g. the
@@ -38,37 +68,45 @@ export async function publishFieldValueUpdates(
 ) {
   if (entries.length === 0) return
 
-  const roomKey = rooms.orgPresence(organizationId)
-
-  if (entries.length <= CHUNK_SIZE) {
-    await realtimeService.publish(roomKey, 'fieldValues:updated', { entries }, options)
-    return
-  }
-
-  // Chunk into multiple messages
-  const totalChunks = Math.ceil(entries.length / CHUNK_SIZE)
   const promises: Promise<boolean>[] = []
 
-  for (let i = 0; i < totalChunks; i++) {
-    const chunk = entries.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-    promises.push(
-      realtimeService.publish(
-        roomKey,
-        'fieldValues:updated',
-        { entries: chunk, chunk: { index: i, total: totalChunks } },
-        options
+  for (const [entityDefinitionId, defEntries] of groupEntriesByDef(entries)) {
+    const roomKey = rooms.orgRecords(organizationId, entityDefinitionId)
+
+    if (defEntries.length <= CHUNK_SIZE) {
+      promises.push(
+        realtimeService.publish(roomKey, 'fieldValues:updated', { entries: defEntries }, options)
       )
-    )
+      continue
+    }
+
+    // Chunk into multiple messages, per def bucket.
+    const totalChunks = Math.ceil(defEntries.length / CHUNK_SIZE)
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = defEntries.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+      promises.push(
+        realtimeService.publish(
+          roomKey,
+          'fieldValues:updated',
+          { entries: chunk, chunk: { index: i, total: totalChunks } },
+          options
+        )
+      )
+    }
   }
 
   await Promise.allSettled(promises)
 }
 
 /**
- * Publish `records:invalidated` on the org channel — one frame per touched
- * entity def. Used by bulk-write paths (data-connector slice sync) that suppress
- * per-record realtime to keep an open grid live with a single coarse refetch per
- * def per slice instead of thousands of per-record events.
+ * Publish `records:invalidated` — one frame per touched entity def, each on
+ * that def's own record channel (`rooms.orgRecords`). Used by bulk-write paths
+ * (data-connector slice sync) that suppress per-record realtime to keep an open
+ * grid live with a single coarse refetch per def per slice instead of thousands
+ * of per-record events.
+ *
+ * The arg list already spans defs, so the per-def frame it always emitted is
+ * now simply addressed to the matching channel.
  *
  * Fire-and-forget: errors are swallowed so a Pusher hiccup never blocks the sync.
  */
@@ -80,10 +118,14 @@ export async function publishRecordsInvalidated(
 ) {
   if (args.entityDefinitionIds.length === 0) return
 
-  const roomKey = rooms.orgPresence(organizationId)
   await Promise.allSettled(
     args.entityDefinitionIds.map((entityDefinitionId) =>
-      realtimeService.publish(roomKey, 'records:invalidated', { entityDefinitionId }, options)
+      realtimeService.publish(
+        rooms.orgRecords(organizationId, entityDefinitionId),
+        'records:invalidated',
+        { entityDefinitionId },
+        options
+      )
     )
   )
 }
@@ -186,7 +228,7 @@ async function resolveThreadGrantAudience(
     const { getOrgCache } = await import('../cache')
     const index = await getOrgCache().get(organizationId, 'mailGrantIndex')
     for (const entry of index.threads[threadId] ?? []) {
-      audience.set(entry.userId, maxLens(audience.get(entry.userId) ?? 'none', entry.lens))
+      audience.set(entry.userId, maxRung(audience.get(entry.userId) ?? 'none', entry.lens))
     }
     if (Object.keys(index.contacts).length > 0) {
       const rows = await database
@@ -200,7 +242,7 @@ async function resolveThreadGrantAudience(
         )
       for (const row of rows) {
         for (const entry of index.contacts[row.entityInstanceId as string] ?? []) {
-          audience.set(entry.userId, maxLens(audience.get(entry.userId) ?? 'none', entry.lens))
+          audience.set(entry.userId, maxRung(audience.get(entry.userId) ?? 'none', entry.lens))
         }
       }
     }
@@ -236,7 +278,7 @@ async function publishMailThreadEvent(
     inboxIds.add(target.previousInboxId ?? null)
   }
   for (const inboxId of inboxIds) {
-    const lenses = inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+    const lenses = inboxId === null ? (['read'] as const) : CHANNEL_LENSES
     for (const lens of lenses) {
       const shaped = shapeMailEventForLens(event, lens)
       if (!shaped) continue
@@ -252,7 +294,7 @@ async function publishMailThreadEvent(
   }
 
   const audience = await resolveThreadGrantAudience(organizationId, target.threadId)
-  if (target.assigneeId) audience.set(target.assigneeId, 'full')
+  if (target.assigneeId) audience.set(target.assigneeId, 'read')
   for (const [userId, lens] of audience) {
     const shaped = shapeMailEventForLens(event, lens)
     if (!shaped) continue
@@ -460,7 +502,7 @@ export async function publishParticipantUpdated(
     patch: { id: args.participantId, ...args.patch },
   }
   const inboxId = args.inboxId ?? null
-  const lenses = inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+  const lenses = inboxId === null ? (['read'] as const) : CHANNEL_LENSES
   await Promise.allSettled(
     lenses.map((lens) =>
       realtimeService.publish(
@@ -486,7 +528,7 @@ export async function publishInboxSyncCompleted(
   args: { inboxId: string | null },
   options?: MailPublishOptions
 ) {
-  const lenses = args.inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+  const lenses = args.inboxId === null ? (['read'] as const) : CHANNEL_LENSES
   await Promise.allSettled(
     lenses.map((lens) =>
       realtimeService.publish(
@@ -528,7 +570,7 @@ export async function flushMailBatch(
 
   const promises: Promise<boolean>[] = []
   for (const [inboxId, list] of buckets) {
-    const lenses = inboxId === null ? (['full'] as const) : CHANNEL_LENSES
+    const lenses = inboxId === null ? (['read'] as const) : CHANNEL_LENSES
     for (const lens of lenses) {
       const shaped = list
         .map((event) => shapeMailEventForLens(event, lens))

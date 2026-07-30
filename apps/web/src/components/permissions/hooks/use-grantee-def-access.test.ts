@@ -217,7 +217,7 @@ describe('writes patch own/baseline optimistically and never effective', () => {
       entityDefinitionId: TICKET,
       granteeType: ResourceGranteeType.user,
       granteeId: USER,
-      permission: ResourcePermission.edit,
+      rung: 'edit',
     })
   })
 
@@ -262,13 +262,13 @@ describe('writes patch own/baseline optimistically and never effective', () => {
       entityDefinitionId: CONTACT,
       granteeType: ResourceGranteeType.role,
       granteeId: 'org_member',
-      permission: ResourcePermission.none,
+      rung: 'none',
     })
     expect(grantTypeMutate).toHaveBeenNthCalledWith(2, {
       entityDefinitionId: CONTACT,
       granteeType: ResourceGranteeType.user,
       granteeId: USER,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
     })
 
     // Both patches ran against the same key, baseline before own.

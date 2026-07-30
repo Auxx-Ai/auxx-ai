@@ -1,8 +1,9 @@
 // packages/lib/src/permissions/capabilities/compose-user-capabilities.test.ts
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import type { SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import { effectiveInstanceLevel, type ResolvedRecordAccess } from './entity-access'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
@@ -314,11 +315,11 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       role: 'USER',
       seatType: 'full',
       typeAccessRows: [
-        { entityDefinitionId: 'def_a', permission: 'view' },
-        { entityDefinitionId: 'def_a', permission: 'admin' },
-        { entityDefinitionId: 'def_a', permission: 'edit' },
-        { entityDefinitionId: 'def_b', permission: 'edit' },
-        { entityDefinitionId: 'def_b', permission: 'view' },
+        { entityDefinitionId: 'def_a', rung: 'read' },
+        { entityDefinitionId: 'def_a', rung: 'admin' },
+        { entityDefinitionId: 'def_a', rung: 'edit' },
+        { entityDefinitionId: 'def_b', rung: 'edit' },
+        { entityDefinitionId: 'def_b', rung: 'read' },
       ],
     })
     expect(caps.defAccess).toEqual({ def_a: 'admin', def_b: 'edit' })
@@ -330,7 +331,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const nonGrantee = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      typeAccessRows: [{ entityDefinitionId: 'def_locked', permission: 'none' }],
+      typeAccessRows: [{ entityDefinitionId: 'def_locked', rung: 'none' }],
     })
     expect(nonGrantee.defAccess).toEqual({})
 
@@ -340,8 +341,8 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       role: 'USER',
       seatType: 'full',
       typeAccessRows: [
-        { entityDefinitionId: 'def_locked', permission: 'none' },
-        { entityDefinitionId: 'def_locked', permission: 'view' },
+        { entityDefinitionId: 'def_locked', rung: 'none' },
+        { entityDefinitionId: 'def_locked', rung: 'read' },
       ],
     })
     expect(grantee.defAccess).toEqual({ def_locked: 'view' })
@@ -356,14 +357,15 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       role: 'USER',
       seatType: 'full',
       typeAccessRows: [],
-      instanceAccessRows: [
+      instanceGrants: bucketInstanceGrantRows([
         {
           entityDefinitionId: 'dataset',
           entityInstanceId: 'ds_locked',
-          permission: 'none',
+          rung: 'none',
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
-      ],
+      ]),
     })
     expect(caps.instanceAccess).toEqual({ ds_locked: 'none' })
   })
@@ -377,22 +379,24 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       {
         entityDefinitionId: 'dataset',
         entityInstanceId: 'ds_locked',
-        permission: 'none' as const,
+        rung: 'none' as const,
         granteeType: 'user',
+        granteeId: 'usr_x',
       },
       {
         entityDefinitionId: 'dataset',
         entityInstanceId: 'ds_locked',
-        permission: 'edit' as const,
+        rung: 'edit' as const,
         granteeType: 'user',
+        granteeId: 'usr_x',
       },
     ]
-    for (const instanceAccessRows of [rows, [...rows].reverse()]) {
+    for (const ordering of [rows, [...rows].reverse()]) {
       const caps = composeUserCapabilities({
         role: 'USER',
         seatType: 'full',
         typeAccessRows: [],
-        instanceAccessRows,
+        instanceGrants: bucketInstanceGrantRows(ordering),
       })
       expect(caps.instanceAccess).toEqual({ ds_locked: 'edit' })
     }
@@ -402,7 +406,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'full',
-      typeAccessRows: [{ entityDefinitionId: 'def_open', permission: 'view' }],
+      typeAccessRows: [{ entityDefinitionId: 'def_open', rung: 'read' }],
     })
     expect(caps.defAccess).toEqual({ def_open: 'view' })
   })
@@ -425,15 +429,16 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       profileLevels: { [Area.records]: Level.Read },
       groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
       userLevels: { [Area.knowledgeBase]: Level.Full },
-      typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
-      instanceAccessRows: [
+      typeAccessRows: [{ entityDefinitionId: 'def_a', rung: 'edit' }],
+      instanceGrants: bucketInstanceGrantRows([
         {
           entityDefinitionId: 'dataset',
           entityInstanceId: 'inst_a',
-          permission: 'none',
+          rung: 'none',
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
-      ],
+      ]),
     })
     for (const userType of ['USER', 'SYSTEM'] as const) {
       const withType = composeUserCapabilities({
@@ -443,15 +448,16 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
         profileLevels: { [Area.records]: Level.Read },
         groupLevels: [{ [Area.records]: Level.Full, [Area.workflows]: Level.None }],
         userLevels: { [Area.knowledgeBase]: Level.Full },
-        typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
-        instanceAccessRows: [
+        typeAccessRows: [{ entityDefinitionId: 'def_a', rung: 'edit' }],
+        instanceGrants: bucketInstanceGrantRows([
           {
             entityDefinitionId: 'dataset',
             entityInstanceId: 'inst_a',
-            permission: 'none',
+            rung: 'none',
             granteeType: 'user',
+            granteeId: 'usr_x',
           },
-        ],
+        ]),
       })
       expect(withType).toEqual(legacy)
     }
@@ -461,7 +467,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     const caps = composeUserCapabilities({
       role: 'ADMIN',
       seatType: 'full',
-      typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
+      typeAccessRows: [{ entityDefinitionId: 'def_a', rung: 'edit' }],
     })
     expect(JSON.parse(JSON.stringify(caps))).toEqual(caps)
   })
@@ -754,24 +760,26 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
         profileBaseLevel: null,
         profileCeiling: null,
         typeAccessRows: [
-          { entityDefinitionId: 'def_a', permission: 'view' },
-          { entityDefinitionId: 'def_a', permission: 'admin' },
-          { entityDefinitionId: 'def_locked', permission: 'none' },
+          { entityDefinitionId: 'def_a', rung: 'read' },
+          { entityDefinitionId: 'def_a', rung: 'admin' },
+          { entityDefinitionId: 'def_locked', rung: 'none' },
         ],
-        instanceAccessRows: [
+        instanceGrants: bucketInstanceGrantRows([
           {
             entityDefinitionId: 'dataset',
             entityInstanceId: 'inst_a',
-            permission: 'none',
+            rung: 'none',
             granteeType: 'user',
+            granteeId: 'usr_x',
           },
           {
             entityDefinitionId: 'dataset',
             entityInstanceId: 'inst_b',
-            permission: 'edit',
+            rung: 'edit',
             granteeType: 'user',
+            granteeId: 'usr_x',
           },
-        ],
+        ]),
       })
       // `baselineInstanceAccess` joined the shape in plan 43 §4.1 — the SECOND
       // instance lane, gated by the area level while `instanceAccess` is not.
@@ -779,6 +787,7 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       expect(Object.keys(caps).sort()).toEqual([
         'baselineInstanceAccess',
         'defAccess',
+        'grantedDefIds',
         'instanceAccess',
         'instanceDerivedKeys',
         'keys',
@@ -792,6 +801,13 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
         instanceDerivedKeys: role === 'OWNER' ? [] : [PermissionKey.datasetsView],
         defAccess: { def_a: 'admin' },
         instanceAccess: { inst_a: 'none', inst_b: 'edit' },
+        // EMPTY, and that is the assertion: both grant rows above are on
+        // `dataset`, a declared instance-access domain, so neither reaches the
+        // RECORD front door. `grantedDefIds` admits only defs declared in
+        // neither `INSTANCE_ACCESS_RESOURCES` nor `MAIL_SHARING_DEFS` — swap
+        // `isDeclaredInstanceDomain` for `isInstanceAccessKey` in
+        // `computeGrantedDefIds` and `thread`/`sequence` start leaking in here.
+        grantedDefIds: {},
       })
       expect(sorted(caps.keys)).toEqual(sorted(legacyEffectiveDefault(role, seatType)))
     }
@@ -811,24 +827,26 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
         profileBaseLevel: null,
         profileCeiling: null,
         typeAccessRows: [
-          { entityDefinitionId: 'def_a', permission: 'view' },
-          { entityDefinitionId: 'def_a', permission: 'admin' },
-          { entityDefinitionId: 'def_locked', permission: 'none' },
+          { entityDefinitionId: 'def_a', rung: 'read' },
+          { entityDefinitionId: 'def_a', rung: 'admin' },
+          { entityDefinitionId: 'def_locked', rung: 'none' },
         ],
-        instanceAccessRows: [
+        instanceGrants: bucketInstanceGrantRows([
           {
             entityDefinitionId: 'dataset',
             entityInstanceId: 'inst_a',
-            permission: 'none',
+            rung: 'none',
             granteeType: 'user',
+            granteeId: 'usr_x',
           },
           {
             entityDefinitionId: 'dataset',
             entityInstanceId: 'inst_b',
-            permission: 'edit',
+            rung: 'edit',
             granteeType: 'user',
+            granteeId: 'usr_x',
           },
-        ],
+        ]),
       })
       expect(sorted(caps.keys)).toEqual(seatType === 'worker' ? [] : sorted(USER_FLOOR_KEYS))
       expect(caps.defAccess).toEqual({ def_a: 'admin' })
@@ -845,7 +863,7 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       profileLevels: { [Area.records]: Level.Read },
       groupLevels: [{ [Area.records]: Level.Full, [Area.files]: Level.Full }],
       userLevels: { [Area.auditLog]: Level.Read },
-      typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' as const }],
+      typeAccessRows: [{ entityDefinitionId: 'def_a', rung: 'edit' as const }],
     }
     expect(composeUserCapabilities({ ...shape, profileCeiling: null })).toEqual(
       composeUserCapabilities(shape)
@@ -895,17 +913,18 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
       seatType: 'full',
       userType: 'AGENT',
       typeAccessRows: [
-        { entityDefinitionId: 'def_deals', permission: 'admin' as const },
-        { entityDefinitionId: 'def_a', permission: 'view' as const },
+        { entityDefinitionId: 'def_deals', rung: 'admin' as const },
+        { entityDefinitionId: 'def_a', rung: 'read' as const },
       ],
-      instanceAccessRows: [
+      instanceGrants: bucketInstanceGrantRows([
         {
           entityDefinitionId: 'kb',
           entityInstanceId: 'kb_1',
-          permission: 'edit' as const,
+          rung: 'edit' as const,
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
-      ],
+      ]),
     })
     expect(caps.defAccess).toEqual({})
     expect(caps.instanceAccess).toEqual({})
@@ -914,24 +933,26 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
   it('does NOT change how a human composes the same rows', () => {
     const rows = {
       typeAccessRows: [
-        { entityDefinitionId: 'def_a', permission: 'view' as const },
-        { entityDefinitionId: 'def_a', permission: 'admin' as const },
-        { entityDefinitionId: 'def_locked', permission: 'none' as const },
+        { entityDefinitionId: 'def_a', rung: 'read' as const },
+        { entityDefinitionId: 'def_a', rung: 'admin' as const },
+        { entityDefinitionId: 'def_locked', rung: 'none' as const },
       ],
-      instanceAccessRows: [
+      instanceGrants: bucketInstanceGrantRows([
         {
           entityDefinitionId: 'dataset',
           entityInstanceId: 'inst_a',
-          permission: 'none' as const,
+          rung: 'none' as const,
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
         {
           entityDefinitionId: 'dataset',
           entityInstanceId: 'inst_b',
-          permission: 'edit' as const,
+          rung: 'edit' as const,
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
-      ],
+      ]),
     }
     const human = composeUserCapabilities({
       role: 'USER',
@@ -1137,7 +1158,7 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
     area: Area
     rows: Array<{
       entityInstanceId: string
-      permission: ResourcePermission
+      rung: Rung
       /**
        * Grantee kind (plan 43 §4.1). Defaults to `'user'`, and that is the RIGHT
        * default for this whole describe block: #1346 is a claim about INDIVIDUAL
@@ -1159,11 +1180,14 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       typeAccessRows: [],
       // Every row belongs to the resource under test — the composer needs the
       // type to decide WHICH area's Read rung (if any) it derives.
-      instanceAccessRows: opts.rows.map((row) => ({
-        entityDefinitionId: opts.key,
-        granteeType: 'user',
-        ...row,
-      })),
+      instanceGrants: bucketInstanceGrantRows(
+        opts.rows.map((row) => ({
+          entityDefinitionId: opts.key,
+          granteeType: 'user',
+          granteeId: 'usr_x',
+          ...row,
+        }))
+      ),
     })
     const access: ResolvedRecordAccess = {
       role,
@@ -1182,17 +1206,17 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
 
   const KEYS: InstanceAccessKey[] = ['workflow', 'dataset', 'kb', 'dashboard']
 
-  it.each(KEYS)('%s: area None + an explicit `view` grant resolves to view', (key) => {
+  it.each(KEYS)('%s: area None + an explicit `read` grant resolves to read', (key) => {
     const area = INSTANCE_ACCESS_RESOURCES[key].area
     const { caps, level } = resolve({
       area,
       key,
       instanceId: 'inst_shared',
-      rows: [{ entityInstanceId: 'inst_shared', permission: 'view' }],
+      rows: [{ entityInstanceId: 'inst_shared', rung: 'read' }],
     })
     // The area really is shut — otherwise this test proves nothing.
     expect(areaLevelFromKeys(new Set(caps.keys), area)).toBe(Level.None)
-    expect(level).toBe('view')
+    expect(level).toBe('read')
   })
 
   it.each(KEYS)('%s: area None + NO row is still denied (fail-closed)', (key) => {
@@ -1200,7 +1224,7 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       area: INSTANCE_ACCESS_RESOURCES[key].area,
       key,
       instanceId: 'inst_untouched',
-      rows: [{ entityInstanceId: 'inst_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'inst_shared', rung: 'admin' }],
     })
     expect(level).toBeUndefined()
   })
@@ -1210,23 +1234,23 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       area: INSTANCE_ACCESS_RESOURCES[key].area,
       key,
       instanceId: 'inst_locked',
-      rows: [{ entityInstanceId: 'inst_locked', permission: 'none' }],
+      rows: [{ entityInstanceId: 'inst_locked', rung: 'none' }],
     })
     expect(level).toBe('none')
   })
 
-  it.each(KEYS)('%s: the grant carries its own rung, not a flattened view', (key) => {
+  it.each(KEYS)('%s: the grant carries its own rung, not a flattened read', (key) => {
     // A share is not silently downgraded to Read by the closed area: `edit` and
     // `admin` grants survive intact, which is what makes "you may manage exactly
     // this one" expressible.
-    for (const permission of ['edit', 'admin'] as const) {
+    for (const rung of ['edit', 'admin'] as const) {
       const { level } = resolve({
         area: INSTANCE_ACCESS_RESOURCES[key].area,
         key,
         instanceId: 'inst_shared',
-        rows: [{ entityInstanceId: 'inst_shared', permission }],
+        rows: [{ entityInstanceId: 'inst_shared', rung }],
       })
-      expect(level).toBe(permission)
+      expect(level).toBe(rung)
     }
   })
 
@@ -1236,7 +1260,7 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       key: 'workflow',
       role: 'OWNER',
       instanceId: 'inst_locked',
-      rows: [{ entityInstanceId: 'inst_locked', permission: 'none' }],
+      rows: [{ entityInstanceId: 'inst_locked', rung: 'none' }],
     })
     expect(level).toBe('admin')
   })
@@ -1251,9 +1275,136 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       key: 'workflow',
       seatType: 'worker',
       instanceId: 'inst_shared',
-      rows: [{ entityInstanceId: 'inst_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'inst_shared', rung: 'admin' }],
     })
     expect(SEAT_CEILINGS.worker[Area.workflows]).toBe(Level.None)
     expect(level).toBeUndefined()
+  })
+})
+
+/**
+ * `grantedDefIds` — the record-lane FRONT DOOR (plan v3/03 §4.2 / §6.1).
+ *
+ * Bounded by def count, never an instance-id set: the per-row answer is SQL's
+ * job (`recordVisibilityScope`), because record access is row-local. What is
+ * cached is only "which record defs does this member hold any grant on".
+ */
+describe('composeUserCapabilities — grantedDefIds (the record front door)', () => {
+  const RECORD_DEF = 'def_deals_cuid'
+
+  function compose(
+    rows: Array<{
+      entityDefinitionId: string
+      entityInstanceId: string
+      rung: Rung
+      granteeType: 'user' | 'group' | 'profile' | 'role'
+      granteeId: string
+    }>,
+    overrides: { role?: 'ADMIN' | 'USER' | 'OWNER' | undefined; seatType?: SeatType } = {}
+  ) {
+    return composeUserCapabilities({
+      role: 'role' in overrides ? overrides.role : 'USER',
+      seatType: overrides.seatType ?? 'full',
+      profileLevels: undefined,
+      profileBaseLevel: null,
+      profileCeiling: null,
+      typeAccessRows: [],
+      instanceGrants: bucketInstanceGrantRows(rows),
+    })
+  }
+
+  const userRow = (defId: string, rung: Rung, instanceId = 'inst_1') =>
+    ({
+      entityDefinitionId: defId,
+      entityInstanceId: instanceId,
+      rung,
+      granteeType: 'user' as const,
+      granteeId: 'usr_x',
+    }) as const
+
+  it('admits a record def held at read, edit or admin', () => {
+    for (const rung of ['read', 'edit', 'admin'] as const) {
+      expect(compose([userRow(RECORD_DEF, rung)]).grantedDefIds).toEqual({ [RECORD_DEF]: true })
+    }
+  })
+
+  it('does NOT admit a def held only below read', () => {
+    // `metadata`/`identity` are real rungs on the mail ladder but confer no
+    // record read, so they must not open a nav entry onto rows the list
+    // predicate (`rung IN ('read','edit','admin')`) will then hide.
+    for (const rung of ['metadata', 'identity'] as const) {
+      expect(compose([userRow(RECORD_DEF, rung)]).grantedDefIds).toEqual({})
+    }
+  })
+
+  it('does NOT admit a def whose only row is the `none` RESTRICTION marker', () => {
+    // `none` is a restriction, never a grant — the single most repeated
+    // fail-open shape in this codebase's history.
+    expect(compose([userRow(RECORD_DEF, 'none')]).grantedDefIds).toEqual({})
+  })
+
+  it('admits a def reached ONLY through a group — the union is the point', () => {
+    // The plan calls this out explicitly: computed from the full grantee union,
+    // so a member whose only grant arrived via a group still gets the door.
+    // `bucketInstanceGrantRows` has already resolved membership upstream.
+    const caps = compose([
+      {
+        entityDefinitionId: RECORD_DEF,
+        entityInstanceId: 'inst_1',
+        rung: 'read',
+        granteeType: 'group',
+        granteeId: 'grp_support',
+      },
+    ])
+    expect(caps.grantedDefIds).toEqual({ [RECORD_DEF]: true })
+  })
+
+  it('admits a def reached only through the workspace baseline lane', () => {
+    const caps = compose([
+      {
+        entityDefinitionId: RECORD_DEF,
+        entityInstanceId: 'inst_1',
+        rung: 'read',
+        granteeType: 'role',
+        granteeId: 'org_member',
+      },
+    ])
+    expect(caps.grantedDefIds).toEqual({ [RECORD_DEF]: true })
+  })
+
+  it('excludes BOTH registry lanes and the mail keyspace — neither test alone suffices', () => {
+    // `dataset` is blob-lane, `thread`/`sequence` are query-lane, `contact` is
+    // mail-only. `isInstanceAccessKey` answers FALSE for thread and sequence, so
+    // using it alone would fan mail threads into the record front door; the
+    // registry alone would miss `contact`, whose grants fan a full lens across
+    // that contact's whole conversation history (§10.1).
+    const caps = compose([
+      userRow('dataset', 'admin', 'i1'),
+      userRow('thread', 'read', 'i2'),
+      userRow('sequence', 'admin', 'i3'),
+      userRow('contact', 'read', 'i4'),
+      userRow('inbox', 'admin', 'i5'),
+      userRow(RECORD_DEF, 'read', 'i6'),
+    ])
+    expect(caps.grantedDefIds).toEqual({ [RECORD_DEF]: true })
+  })
+
+  it('is keyed by DEF, so many grants on one def stay one entry', () => {
+    // The size bound that justifies caching this at all.
+    const rows = Array.from({ length: 50 }, (_, i) => userRow(RECORD_DEF, 'read', `inst_${i}`))
+    expect(compose(rows).grantedDefIds).toEqual({ [RECORD_DEF]: true })
+  })
+
+  it('is EMPTY for a non-member — a grant row outlives the membership', () => {
+    expect(compose([userRow(RECORD_DEF, 'admin')], { role: undefined }).grantedDefIds).toEqual({})
+  })
+
+  it('is populated for an OWNER, unlike instanceDerivedKeys', () => {
+    // Deliberately not empty: it reports grants actually held rather than
+    // synthesizing a rung, and it is the only way in when a worker-seat ceiling
+    // closes `Area.records` and `canViewEntity` is false.
+    expect(compose([userRow(RECORD_DEF, 'read')], { role: 'OWNER' }).grantedDefIds).toEqual({
+      [RECORD_DEF]: true,
+    })
   })
 })

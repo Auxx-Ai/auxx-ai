@@ -174,7 +174,7 @@ export class OrganizationDomain {
    * `baseline` is the seeder's own call and does NOT mirror the runtime create
    * paths, which are private-by-default with sharing as the opt-in (§0.2):
    *  - signatures omit it — a signature is a personal artifact.
-   *  - demo snippets pass `'view'`, so the workspace reads the canned-response
+   *  - demo snippets pass `'read'`, so the workspace reads the canned-response
    *    library its owner controls. Same shape migration 0313 writes for the
    *    legacy `sharingType = 'ORGANIZATION'` rows.
    */
@@ -186,7 +186,7 @@ export class OrganizationDomain {
       entityDefinitionId: 'signature' | 'snippet'
       entityInstanceId: string
       ownerId: string
-      baseline?: 'view' | 'edit'
+      baseline?: 'read' | 'edit'
     }
   ): Promise<void> {
     const rows: Array<Record<string, unknown>> = [
@@ -196,7 +196,7 @@ export class OrganizationDomain {
         entityInstanceId: row.entityInstanceId,
         granteeType: 'user',
         granteeId: row.ownerId,
-        permission: 'admin',
+        rung: 'admin',
         grantedById: row.ownerId,
       },
     ]
@@ -208,7 +208,7 @@ export class OrganizationDomain {
         entityInstanceId: row.entityInstanceId,
         granteeType: 'role',
         granteeId: 'org_member',
-        permission: row.baseline,
+        rung: row.baseline,
         grantedById: row.ownerId,
       })
     }
@@ -339,7 +339,7 @@ export class OrganizationDomain {
           entityDefinitionId: 'snippet',
           entityInstanceId: snippet.id,
           ownerId: snippet.createdById,
-          baseline: 'view',
+          baseline: 'read',
         })
       }
 

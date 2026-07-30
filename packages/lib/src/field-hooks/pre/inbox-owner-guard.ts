@@ -1,6 +1,6 @@
 // packages/lib/src/field-hooks/pre/inbox-owner-guard.ts
 
-import { getCachedUserMailVisibility } from '../../cache'
+import { getCachedUserInstanceGrants } from '../../cache'
 import { ForbiddenError } from '../../errors'
 import type { FieldPreHookHandler } from '../types'
 
@@ -35,7 +35,7 @@ import type { FieldPreHookHandler } from '../types'
 export const guardInboxOwnerField: FieldPreHookHandler = async (event) => {
   if (!event.userId) return event.newValue
 
-  const vis = await getCachedUserMailVisibility(event.userId, event.organizationId)
+  const vis = await getCachedUserInstanceGrants(event.userId, event.organizationId)
   if (!vis.isAdmin) {
     throw new ForbiddenError('Only org admins can change personal-inbox ownership')
   }

@@ -1,7 +1,8 @@
 // packages/lib/src/permissions/capabilities/grantee-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import { ResourcePermission, type Rung } from '@auxx/database/enums'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import { Area, Level } from './registry'
@@ -68,7 +69,7 @@ interface AccessRow {
   entityInstanceId: string | null
   granteeType: string
   granteeId: string
-  permission: ResourcePermission
+  rung: Rung
 }
 
 /** A `PermissionGrant` row as the first select projects it. */
@@ -153,7 +154,7 @@ describe('getGranteeAccess — own / baseline / effective are split cleanly', ()
         entityInstanceId: WF,
         granteeType: 'user',
         granteeId: USER,
-        permission: ResourcePermission.none,
+        rung: 'none',
       },
       // Bob's row on the SAME workflow — org-scope data that must not surface
       // as Alice's, which is the §2.1 leak restated at the data layer.
@@ -162,7 +163,7 @@ describe('getGranteeAccess — own / baseline / effective are split cleanly', ()
         entityInstanceId: WF,
         granteeType: 'user',
         granteeId: 'user_bob',
-        permission: ResourcePermission.admin,
+        rung: 'admin',
       },
       // The workspace default — one row per instance, no grantee in it.
       {
@@ -170,7 +171,7 @@ describe('getGranteeAccess — own / baseline / effective are split cleanly', ()
         entityInstanceId: WF,
         granteeType: 'role',
         granteeId: 'org_member',
-        permission: ResourcePermission.view,
+        rung: 'read',
       },
     ]
 
@@ -179,14 +180,15 @@ describe('getGranteeAccess — own / baseline / effective are split cleanly', ()
       seatType: 'full',
       profileLevels: { [Area.workflows]: Level.Read },
       typeAccessRows: [],
-      instanceAccessRows: [
+      instanceGrants: bucketInstanceGrantRows([
         {
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
-          permission: ResourcePermission.none,
+          rung: 'none',
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
-      ],
+      ]),
     })
 
     const result = await getGranteeAccess(
@@ -194,8 +196,8 @@ describe('getGranteeAccess — own / baseline / effective are split cleanly', ()
       fakeDb({ [Area.workflows]: Level.Read }, rows)
     )
 
-    expect(result.own.instances).toEqual({ [WF]: ResourcePermission.none })
-    expect(result.baseline.instances).toEqual({ [WF]: ResourcePermission.view })
+    expect(result.own.instances).toEqual({ [WF]: 'none' })
+    expect(result.baseline.instances).toEqual({ [WF]: 'read' })
     // Bob's `admin` appears NOWHERE in the payload.
     expect(JSON.stringify(result)).not.toContain('user_bob')
   })
@@ -239,14 +241,14 @@ describe('getGranteeAccess — each instance is resolved against its OWN resourc
         entityInstanceId: WF,
         granteeType: 'role',
         granteeId: 'org_member',
-        permission: ResourcePermission.view,
+        rung: 'read',
       },
       {
         entityDefinitionId: 'dashboard',
         entityInstanceId: DASH,
         granteeType: 'user',
         granteeId: USER,
-        permission: ResourcePermission.edit,
+        rung: 'edit',
       },
     ]
 
@@ -255,20 +257,22 @@ describe('getGranteeAccess — each instance is resolved against its OWN resourc
       seatType: 'full',
       profileLevels: { [Area.workflows]: Level.Read, [Area.dashboards]: Level.Read },
       typeAccessRows: [],
-      instanceAccessRows: [
+      instanceGrants: bucketInstanceGrantRows([
         {
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
-          permission: ResourcePermission.view,
+          rung: 'read',
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
         {
           entityDefinitionId: 'dashboard',
           entityInstanceId: DASH,
-          permission: ResourcePermission.edit,
+          rung: 'edit',
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
-      ],
+      ]),
     })
     h.caps = caps
 
@@ -298,7 +302,7 @@ describe('getGranteeAccess — each instance is resolved against its OWN resourc
 
     // `workflow` is baselineAtCreate:false → the open area supplies a level.
     expect(result.effective?.instanceFallback.workflow).toBe(caps.instanceFallbackLevel('workflow'))
-    expect(result.effective?.instanceFallback.workflow).toBe(ResourcePermission.view)
+    expect(result.effective?.instanceFallback.workflow).toBe('read')
     // `dashboard` is baselineAtCreate:true → a row-less dashboard is private
     // even on a wide-open area. Same value, opposite meaning.
     // `?? null` because "no access" is normalized to `null` on the wire — an
@@ -324,7 +328,7 @@ describe('getGranteeAccess — finding 4: a user-level "none" loses to a group g
         entityInstanceId: WF,
         granteeType: 'user',
         granteeId: USER,
-        permission: ResourcePermission.none,
+        rung: 'none',
       },
     ]
 
@@ -334,20 +338,22 @@ describe('getGranteeAccess — finding 4: a user-level "none" loses to a group g
       profileLevels: { [Area.workflows]: Level.Read },
       typeAccessRows: [],
       // Both rows reach composition: Alice's `none` and her team's `view`.
-      instanceAccessRows: [
+      instanceGrants: bucketInstanceGrantRows([
         {
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
-          permission: ResourcePermission.none,
+          rung: 'none',
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
         {
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
-          permission: ResourcePermission.view,
+          rung: 'read',
           granteeType: 'user',
+          granteeId: 'usr_x',
         },
-      ],
+      ]),
     })
 
     const result = await getGranteeAccess(
@@ -355,9 +361,9 @@ describe('getGranteeAccess — finding 4: a user-level "none" loses to a group g
       fakeDb({}, rows)
     )
 
-    expect(result.own.instances[WF]).toBe(ResourcePermission.none)
+    expect(result.own.instances[WF]).toBe('none')
     // Both true, and the screen can now say so.
-    expect(result.effective?.instances[WF]).toBe(ResourcePermission.view)
+    expect(result.effective?.instances[WF]).toBe('read')
   })
 })
 
@@ -375,14 +381,14 @@ describe('getGranteeAccess — a group/profile is a level SOURCE, not a subject'
             entityInstanceId: WF,
             granteeType: 'group',
             granteeId: 'grp_support',
-            permission: ResourcePermission.view,
+            rung: 'read',
           },
         ],
         { granteeType: 'group', granteeId: 'grp_support' }
       )
     )
 
-    expect(result.own.instances).toEqual({ [WF]: ResourcePermission.view })
+    expect(result.own.instances).toEqual({ [WF]: 'read' })
     expect(result.effective).toBeNull()
   })
 
@@ -513,14 +519,15 @@ describe('getGranteeAccess — the seat ceiling still dominates', () => {
         seatType: 'worker',
         profileLevels: { [Area.workflows]: Level.Full },
         typeAccessRows: [],
-        instanceAccessRows: [
+        instanceGrants: bucketInstanceGrantRows([
           {
             entityDefinitionId: 'workflow',
             entityInstanceId: WF,
-            permission: ResourcePermission.admin,
+            rung: 'admin',
             granteeType: 'user',
+            granteeId: 'usr_x',
           },
-        ],
+        ]),
       },
       'worker'
     )
@@ -534,7 +541,7 @@ describe('getGranteeAccess — the seat ceiling still dominates', () => {
           entityInstanceId: WF,
           granteeType: 'user',
           granteeId: USER,
-          permission: ResourcePermission.admin,
+          rung: 'admin',
         },
       ])
     )

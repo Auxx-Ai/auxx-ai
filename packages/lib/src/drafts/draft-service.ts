@@ -44,7 +44,7 @@ export class DraftService {
   private async assertCanDraftOnThread(threadId: string | null | undefined): Promise<void> {
     if (!threadId || !this.viewer || isSystemViewer(this.viewer)) return
     const lens = await getThreadLens(this.db, this.organizationId, this.viewer, threadId)
-    if (lens !== 'full') {
+    if (lens !== 'read') {
       throw new ForbiddenError(
         lens === 'none'
           ? 'Thread not found.'

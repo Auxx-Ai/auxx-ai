@@ -210,7 +210,6 @@ export async function syncInvoiceToQuickbooks(
         },
       ],
       limit: 1000,
-      mode: 'oneshot',
     })
 
     const qboLines: QuickbooksInvoiceLine[] = []

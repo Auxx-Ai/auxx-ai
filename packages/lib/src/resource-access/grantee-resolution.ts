@@ -16,7 +16,7 @@ const logger = createScopedLogger('grantee-resolution')
  *
  * Before this module the grantee union was copy-pasted into four resolvers
  * (`checkAccess`, `getUserAccessibleInstances`,
- * `computeUserMailVisibility`) plus a ternary in the reverse mail index — and
+ * `computeUserInstanceGrants`) plus a ternary in the reverse mail index — and
  * three of them had drifted. That mattered far more than duplication normally
  * does: `restrictedEntityDefIds` / `governingInstanceIds` build the restricted
  * set **grantee-agnostically**, so a grantee kind a reader cannot resolve does

@@ -10,7 +10,7 @@
 // cannot repopulate the new keyspace. A flush cannot promise that mid-deploy; it is the
 // dev-loop shortcut, not a replacement.
 //
-// `userMailVisibility` goes with it (plan 40 §4.2/§4.5): `computeUserMailVisibility`
+// `userInstanceGrants` goes with it (plan 40 §4.2/§4.5): `computeUserInstanceGrants`
 // READS the capability blob for its `Area.inboxes` fallback and `isMailAdmin` flag, so
 // flushing capabilities alone would leave every member's mail floors composed against
 // the levels you just discarded — for the full ONE_DAY TTL. Same dependency the
@@ -22,9 +22,9 @@
 import { getUserCache } from '../src/cache'
 
 async function main() {
-  await getUserCache().flushKeyForAllUsers(['userCapabilities', 'userMailVisibility'])
+  await getUserCache().flushKeyForAllUsers(['userCapabilities', 'userInstanceGrants'])
   console.log(
-    'Flushed `userCapabilities` + `userMailVisibility` for all users — next read recomputes.'
+    'Flushed `userCapabilities` + `userInstanceGrants` for all users — next read recomputes.'
   )
   process.exit(0)
 }

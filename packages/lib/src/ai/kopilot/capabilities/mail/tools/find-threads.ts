@@ -3,7 +3,7 @@
 import { parseRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
 import { z } from 'zod'
-import { getCachedUserMailVisibility } from '../../../../../cache'
+import { getCachedUserInstanceGrants } from '../../../../../cache'
 import type { Condition, ConditionGroup } from '../../../../../conditions'
 import { TagService } from '../../../../../tags'
 import { ThreadQueryService } from '../../../../../threads'
@@ -117,7 +117,7 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
       domain: 'mail',
       level: 'view',
       enforcement: 'enforced',
-      note: 'ThreadQueryService is constructed with getCachedUserMailVisibility — invisible threads never enter the result.',
+      note: 'ThreadQueryService is constructed with getCachedUserInstanceGrants — invisible threads never enter the result.',
     },
     displayName: 'Find threads',
     toolsetSlug: 'auxx:mail:threads',
@@ -211,7 +211,7 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       // Kopilot reads mail as the invoking user (§8.1) — never SYSTEM.
-      const viewer = await getCachedUserMailVisibility(agentDeps.userId, agentDeps.organizationId)
+      const viewer = await getCachedUserInstanceGrants(agentDeps.userId, agentDeps.organizationId)
       const service = new ThreadQueryService(agentDeps.organizationId, db, viewer)
 
       const conditionGroups = buildThreadConditions(args)

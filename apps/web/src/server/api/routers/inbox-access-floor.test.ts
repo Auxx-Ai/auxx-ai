@@ -19,9 +19,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *    inbox INVENTORY (create/delete/route) rather than any one inbox's audience
  *    (§1.0). A non-admin inbox Manager must be able to do this; a
  *    `channels.manage` holder who manages nothing must not.
- *  - **Enterprise `mailPermissions`** for any sub-`full` floor. Notably NOT
+ *  - **The `granularPermissions` plan gate** for any sub-`full` floor. Notably NOT
  *    covered by `assertMailSharingFeature` on the generic sharing router: that
- *    gate keys on a non-`full` `lens`, and Restricted is `permission: 'none'`
+ *    gate keys on a non-`full` `lens`, and Restricted is `rung: 'none'`
  *    with a NULL lens.
  *
  * Both this and `myLenses` additionally sit behind the coarse mail front door
@@ -62,7 +62,7 @@ const { world, service, floor, recordIds } = vi.hoisted(() => {
     floor: {
       setInboxFloor: vi.fn(async () => undefined),
       assertInboxFloorFeature: vi.fn(async (_db, _org, _user, lens: string) => {
-        if (world.gated && lens !== 'full') throw new Error('mailPermissions required')
+        if (world.gated && lens !== 'read') throw new Error('granularPermissions required')
       }),
     },
     recordIds: {
@@ -91,7 +91,7 @@ vi.mock('@auxx/lib/channels', () => ({
 }))
 vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx: vi.fn(async () => undefined) }))
 vi.mock('@auxx/lib/cache', () => ({
-  getCachedUserMailVisibility: vi.fn(async () => ({ isAdmin: false, inboxLens: {} })),
+  getCachedUserInstanceGrants: vi.fn(async () => ({ isAdmin: false, inboxLens: {} })),
   getOrgCache: () => ({ get: async () => world.inboxes }),
 }))
 vi.mock('@auxx/lib/permissions/visibility', () => ({ inboxLensFor: () => 'none' }))
@@ -174,7 +174,7 @@ beforeEach(() => {
   floor.setInboxFloor.mockResolvedValue(undefined as never)
   floor.assertInboxFloorFeature.mockReset()
   floor.assertInboxFloorFeature.mockImplementation(async (_db, _org, _user, lens: string) => {
-    if (world.gated && lens !== 'full') throw new Error('mailPermissions required')
+    if (world.gated && lens !== 'read') throw new Error('granularPermissions required')
   })
   recordIds.toInboxRecordId.mockClear()
   world.manage = new Set([OWN_INBOX])
@@ -192,21 +192,21 @@ describe('inbox.myLenses — the client’s only source for the row-derived floo
     // edit, with nothing thrown.
     world.inboxes = [
       { id: OWN_INBOX, defaultLens: 'none' },
-      { id: OTHER_INBOX, defaultLens: 'subject' },
+      { id: OTHER_INBOX, defaultLens: 'identity' },
       { id: PERSONAL_INBOX, defaultLens: 'none' },
     ]
     const result = await caller().myLenses()
     expect(result.floors).toEqual({
       [OWN_INBOX]: 'none',
-      [OTHER_INBOX]: 'subject',
+      [OTHER_INBOX]: 'identity',
       [PERSONAL_INBOX]: 'none',
     })
   })
 
   it('reports `full` for an inbox with no authored baseline row', async () => {
-    world.inboxes = [{ id: OWN_INBOX, defaultLens: 'full' }]
+    world.inboxes = [{ id: OWN_INBOX, defaultLens: 'read' }]
     await expect(caller().myLenses()).resolves.toMatchObject({
-      floors: { [OWN_INBOX]: 'full' },
+      floors: { [OWN_INBOX]: 'read' },
     })
   })
 })
@@ -220,11 +220,11 @@ describe('inbox.setAccessFloor — who may author the floor', () => {
   })
 
   it('writes the `role:org_member` row on the instance’s OWN definition', async () => {
-    await caller().setAccessFloor({ inboxId: OWN_INBOX, floorLens: 'subject' })
+    await caller().setAccessFloor({ inboxId: OWN_INBOX, floorLens: 'identity' })
     expect(floor.setInboxFloor).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG_ID, userId: USER_ID }),
       `inbox:${OWN_INBOX}`,
-      'subject'
+      'identity'
     )
     // Canonicalized BEFORE the assert: the client mints inbox RecordIds from the
     // def CUID, and a wrong def matches no grant row — so the assert would deny
@@ -243,7 +243,7 @@ describe('inbox.setAccessFloor — who may author the floor', () => {
     // Inventory ≠ audience (§1.0). Holding the coarse key must not confer the
     // ability to reopen or restrict an inbox somebody else runs.
     await expect(
-      caller({ channels: Level.Full }).setAccessFloor({ inboxId: OTHER_INBOX, floorLens: 'full' })
+      caller({ channels: Level.Full }).setAccessFloor({ inboxId: OTHER_INBOX, floorLens: 'read' })
     ).rejects.toMatchObject(FORBIDDEN_INSTANCE)
     expect(floor.setInboxFloor).not.toHaveBeenCalled()
   })
@@ -251,7 +251,7 @@ describe('inbox.setAccessFloor — who may author the floor', () => {
   it('REFUSES a personal mailbox — it has no org-wide floor to author', async () => {
     world.manage.add(PERSONAL_INBOX)
     await expect(
-      caller().setAccessFloor({ inboxId: PERSONAL_INBOX, floorLens: 'full' })
+      caller().setAccessFloor({ inboxId: PERSONAL_INBOX, floorLens: 'read' })
     ).rejects.toMatchObject(BAD_REQUEST)
     expect(floor.setInboxFloor).not.toHaveBeenCalled()
   })
@@ -298,30 +298,30 @@ describe('the coarse mail front door does not shadow the manage assert (§5.3)',
     expect(floor.setInboxFloor).not.toHaveBeenCalled()
   })
 
-  it('and the Enterprise gate still fires below both', async () => {
+  it('and the plan gate still fires below both', async () => {
     // `assertInboxFloorFeature` sits after the manage assert and before the write;
     // adding a middleware above must not reorder or skip it.
     world.gated = true
     await expect(
-      caller({ inboxes: Level.Full }).setAccessFloor({ inboxId: OWN_INBOX, floorLens: 'subject' })
-    ).rejects.toThrow(/mailPermissions/)
+      caller({ inboxes: Level.Full }).setAccessFloor({ inboxId: OWN_INBOX, floorLens: 'identity' })
+    ).rejects.toThrow(/granularPermissions/)
     expect(floor.assertInboxFloorFeature).toHaveBeenCalledWith(
       expect.anything(),
       ORG_ID,
       USER_ID,
-      'subject'
+      'identity'
     )
     expect(floor.setInboxFloor).not.toHaveBeenCalled()
   })
 })
 
-describe('inbox.setAccessFloor — the Enterprise gate travels with the write', () => {
+describe('inbox.setAccessFloor — the plan gate travels with the write', () => {
   it('gates every sub-`full` floor, INCLUDING Restricted (`none`, null lens)', async () => {
     world.gated = true
-    for (const floorLens of ['none', 'metadata', 'subject'] as const) {
+    for (const floorLens of ['none', 'metadata', 'identity'] as const) {
       floor.setInboxFloor.mockClear()
       await expect(caller().setAccessFloor({ inboxId: OWN_INBOX, floorLens })).rejects.toThrow(
-        /mailPermissions/
+        /granularPermissions/
       )
       expect(floor.setInboxFloor).not.toHaveBeenCalled()
     }
@@ -332,17 +332,17 @@ describe('inbox.setAccessFloor — the Enterprise gate travels with the write', 
     // org must always be able to undo a restriction it can no longer author.
     world.gated = true
     await expect(
-      caller().setAccessFloor({ inboxId: OWN_INBOX, floorLens: 'full' })
+      caller().setAccessFloor({ inboxId: OWN_INBOX, floorLens: 'read' })
     ).resolves.toEqual({ success: true })
     expect(floor.setInboxFloor).toHaveBeenCalledWith(
       expect.anything(),
       `inbox:${OWN_INBOX}`,
-      'full'
+      'read'
     )
   })
 
   it('OVER-DENIAL CONTROL: an ungated org may author every tier', async () => {
-    for (const floorLens of ['none', 'metadata', 'subject', 'full'] as const) {
+    for (const floorLens of ['none', 'metadata', 'identity', 'read'] as const) {
       await expect(caller().setAccessFloor({ inboxId: OWN_INBOX, floorLens })).resolves.toEqual({
         success: true,
       })

@@ -34,7 +34,7 @@ export class MessageQueryService {
    * Creates an instance of MessageQueryService.
    * @param organizationId - The ID of the organization this service operates for.
    * @param db - The Drizzle database instance.
-   * @param viewer - The mail-visibility principal reads evaluate against (§5.2).
+   * @param viewer - The instance-grant principal reads evaluate against (§5.2).
    */
   constructor(organizationId: string, db: Database, viewer: MailViewer) {
     this.organizationId = organizationId
@@ -200,7 +200,7 @@ export class MessageQueryService {
     // threads are dropped, sub-`full` ones lose content fields below.
     const lensByThread = await this.getThreadLenses([...new Set(messages.map((m) => m.threadId))])
     const visibleMessages = messages.filter((m) =>
-      ['subject', 'full'].includes(lensByThread.get(m.threadId) ?? 'none')
+      ['identity', 'read'].includes(lensByThread.get(m.threadId) ?? 'none')
     )
 
     // Batch fetch participant IDs for recipients (to, cc, bcc)

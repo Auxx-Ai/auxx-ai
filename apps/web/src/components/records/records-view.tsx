@@ -1,10 +1,11 @@
 // apps/web/src/components/records/records-view.tsx
 'use client'
 
+import type { Rung } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { isAiEligible } from '@auxx/lib/custom-fields/client'
 import { converters } from '@auxx/lib/field-values/client'
-import { FeatureKey } from '@auxx/lib/permissions/client'
+import { canEditRecordAtRung, FeatureKey, satisfiesRung } from '@auxx/lib/permissions/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import type { AiOptions } from '@auxx/types/custom-field'
@@ -23,6 +24,7 @@ import {
   Plus,
   Printer,
   Send,
+  Share2,
   SquarePen,
   Trash2,
 } from 'lucide-react'
@@ -47,11 +49,14 @@ import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { KopilotContext } from '~/components/kopilot/context'
+import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { MergeDialog } from '~/components/merge'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { PrintWizardDialog } from '~/components/print/ui/print-wizard-dialog'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import {
   getRecordLink,
+  getRecordStoreState,
   type RecordMeta,
   resourceHasDetailPage,
   toRecordId,
@@ -123,8 +128,32 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   // who can view but not edit this def (Read-only grantee / field seat). The
   // server enforces regardless; this just avoids a click-then-403. Keyed by
   // `entityDefinitionId` (the defAccess keyspace), not `resource.id`.
-  const { canEditEntity, canAdministerDef } = useAccess()
+  const { canEditEntity, canAdministerDef, recordDefRung, canDeleteRecordAt } = useAccess()
   const canEdit = resource ? canEditEntity(resource.entityDefinitionId) : false
+  // The DEF rung — the fallback for a row that carries no `_access` stamp yet.
+  // It is exactly what the server's fold computes for a row with no grants on
+  // it, so the fallback is the honest one rather than a guess.
+  const defRung = resource ? recordDefRung(resource.entityDefinitionId) : undefined
+  /**
+   * **The per-ROW affordance rung** (plan v3/03 §5.2/§6.2). `canEdit` above is
+   * the DEF question and stays where it belongs — New, bulk, view management.
+   * Row edit / archive / delete / share read THIS instead, because a member can
+   * hold `edit` on one row of a definition they otherwise cannot see, and only
+   * `read` on a row whose siblings they edit freely.
+   */
+  const rowRung = useCallback(
+    (row: { _access?: Rung }): Rung => row._access ?? defRung ?? 'none',
+    [defRung]
+  )
+  /** The same fold from a bare row id — the inline-editor entry points. */
+  const isRowReadOnly = useCallback(
+    (rowId: string) => {
+      if (!entityDefinitionId) return true
+      const stamp = getRecordStoreState().records[entityDefinitionId]?.get(rowId)?._access
+      return !canEditRecordAtRung(stamp ?? defRung ?? 'none')
+    },
+    [entityDefinitionId, defRung]
+  )
   // Per-def ADMINISTRATION gate (the `Full`/`admin` rung) — managing the def's
   // FIELDS is def administration, not a record write. Hides the "Create field"
   // command-palette action for non-def-admins; the server (`customField.create`)
@@ -173,6 +202,9 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [isAddToSequenceDialogOpen, setIsAddToSequenceDialogOpen] = useState(false)
+  // The row whose sharing dialog is open (plan v3/03 §6.2) — one hoisted dialog
+  // for the whole table rather than one per row.
+  const [shareRecordId, setShareRecordId] = useState<RecordId | null>(null)
 
   // Print wizard (bulk-action entry — scope pinned to the frozen selection) + its progress
   // dialog, wired exactly like the CSV export flow (`table-toolbar.tsx`'s toolbar entry).
@@ -285,7 +317,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           resourceFieldId={primaryResourceFieldId}
           rowId={row.id}
           onTitleClick={() => handleOpenDrawer(row)}>
-          {canEdit && (
+          {canEditRecordAtRung(rowRung(row)) && (
             <DropdownMenuItem onClick={() => handleOpenEditDialog(row)}>
               <SquarePen />
               Edit
@@ -308,24 +340,38 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
               entityInstanceId: row.id,
             }}
           />
-          {canEdit && (
+          {satisfiesRung(rowRung(row), 'admin') && (
+            <GranularPermissionsGate>
+              <DropdownMenuItem
+                onClick={() => setShareRecordId(toRecordId(entityDefinitionId, row.id))}>
+                <Share2 />
+                Share
+              </DropdownMenuItem>
+            </GranularPermissionsGate>
+          )}
+          {canEditRecordAtRung(rowRung(row)) && (
             <>
               <DropdownMenuItem onClick={() => handleArchive(row.id)}>
                 <Archive />
                 Archive
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.id)}>
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
+              {canDeleteRecordAt(rowRung(row)) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.id)}>
+                    <Trash2 />
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </>
           )}
         </PrimaryFieldCell>
       )
     },
     [
-      canEdit,
+      rowRung,
+      canDeleteRecordAt,
       entityDefinitionId,
       primaryResourceFieldId,
       resource,
@@ -461,6 +507,10 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       // Read-only degrade for members below Edit on this def — keeps selection +
       // copy, disables every inline write path (server enforces regardless).
       readOnly: !canEdit,
+      // …narrowed PER ROW by the `_access` stamp (§6.2). The def flag above is
+      // the cheap short-circuit; this is what makes a shared-at-`edit` row
+      // writable inside a def the member cannot otherwise edit.
+      isRowReadOnly,
       getFieldDefinition: resolveField,
       getCellValue: (rowId: string, columnId: string) => {
         if (columnId.startsWith('_')) return undefined
@@ -725,7 +775,14 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
         return { skipped }
       },
     }
-  }, [entityDefinitionId, fieldMap, saveBulkMultipleFields, runAiBulkGenerate, canEdit])
+  }, [
+    entityDefinitionId,
+    fieldMap,
+    saveBulkMultipleFields,
+    runAiBulkGenerate,
+    canEdit,
+    isRowReadOnly,
+  ])
 
   const renderSearchBar = useCallback(
     () =>
@@ -1009,6 +1066,18 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           onMergeComplete={() => {
             setSelectedRowIds(new Set())
             refresh()
+          }}
+        />
+      )}
+
+      {/* Per-record sharing (plan v3/03 §6.2). Only ever opened from a row whose
+          `_access` stamp is `admin`; the server re-asserts on the grant write. */}
+      {shareRecordId && (
+        <InstanceShareDialog
+          recordId={shareRecordId}
+          open={!!shareRecordId}
+          onOpenChange={(open) => {
+            if (!open) setShareRecordId(null)
           }}
         />
       )}

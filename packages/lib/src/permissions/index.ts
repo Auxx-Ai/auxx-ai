@@ -33,7 +33,28 @@ export {
   type InstanceAccessResourceConfig,
   isInstanceAccessKey,
 } from './capabilities/instance-access'
+// ── The instance-grant ladder (plan v3/03 §2). The type itself lives in
+//    `@auxx/database/enums` (tier 1 — the Drizzle column needs it); everything
+//    ordinal lives in `capabilities/rung.ts` and is re-exported here.
+export {
+  deriveThreadRungFromRecordGrant,
+  recordThreadDerivationCap,
+  TICKET_LIKE_ENTITY_TYPES,
+} from './capabilities/record-thread-derivation'
 export { resolveLinkedRecordIds } from './capabilities/record-view-scope'
+export {
+  assertRequestScoped,
+  type RecordScopeArm,
+  type RecordVisibilityScope,
+  type ResolvedRecordScope,
+  recordAccessRankSql,
+  recordScopeArm,
+  recordScopeArmFor,
+  recordSearchVisibilitySql,
+  recordVisibilityScope,
+  resolveRecordVisibilityScope,
+  rungsAtOrAbove,
+} from './capabilities/record-visibility-scope'
 export {
   AREA_ORDER,
   Area,
@@ -51,6 +72,18 @@ export {
 } from './capabilities/registry'
 export { requirePermission } from './capabilities/require'
 export { buildDefIdToSlug } from './capabilities/resolve-capability-inputs'
+export {
+  ALL_RUNGS,
+  foldRecordAccess,
+  maxRung,
+  permissionToRung,
+  RUNG_ORDER,
+  type Rung,
+  rankToRung,
+  rungRank,
+  rungToPermission,
+  satisfiesRung,
+} from './capabilities/rung'
 export {
   ALL_KEYS,
   ENTITY_WRITE_KEYS,

@@ -453,7 +453,7 @@ function makeStore(fixture: Fixture = {}): Store {
         granteeId: 'g_1',
         entityDefinitionId: HR_DEF,
         entityInstanceId: null,
-        permission: 'admin',
+        rung: 'admin',
       },
     ],
   }
@@ -908,7 +908,7 @@ describe('savePermissionProfile — the other §6.1.5 gates', () => {
         organizationId: ORG,
         actorUserId: 'u_actor',
         profileId: 'p_support',
-        defAccess: [{ entityDefinitionId: HR_DEF, permission: 'view' }],
+        defAccess: [{ entityDefinitionId: HR_DEF, rung: 'read' }],
         db: fakeRunner(store) as never,
       })
     ).rejects.toThrow(/step 9/)

@@ -114,7 +114,7 @@ export function buildInstanceAccessRows(
       entityInstanceId: seed.instanceId,
       granteeType: ResourceGranteeType.user,
       granteeId: seed.ownerId,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
       grantedById: seed.ownerId,
     })
     if (seed.shareWithOrg) {
@@ -124,7 +124,7 @@ export function buildInstanceAccessRows(
         entityInstanceId: seed.instanceId,
         granteeType: ResourceGranteeType.role,
         granteeId: WORKSPACE_BASELINE_GRANTEE,
-        permission: ResourcePermission.view,
+        rung: 'read',
         grantedById: seed.ownerId,
       })
     }
@@ -436,12 +436,12 @@ export const migration056SignaturesSnippetsInstanceAccess: DataMigrationDef = {
             schema.ResourceAccess.granteeType,
             schema.ResourceAccess.granteeId,
           ],
-          set: { permission: ResourcePermission.admin, lens: null, updatedAt: new Date() },
+          set: { rung: 'admin', updatedAt: new Date() },
         })
     }
 
     // Never stomp an existing workspace-baseline row: anything already there is
-    // at least `view`, so a write could only downgrade a deliberate grant.
+    // at least `read`, so a write could only downgrade a deliberate grant.
     for (let i = 0; i < orgRows.length; i += CHUNK) {
       await db
         .insert(schema.ResourceAccess)
@@ -456,10 +456,19 @@ export const migration056SignaturesSnippetsInstanceAccess: DataMigrationDef = {
     // each org's caches naturally expire. Broadcast covers BOTH row families:
     // the workspace-baseline role grant fans out to everyone anyway.
     const affectedOrgIds = new Set(rows.map((r) => r.organizationId))
+    // Emitted once per DEF, not once per org: this migration writes rows on two
+    // instance-access resources, and the emitter's def id decides whether the
+    // org-level `governingInstanceIds` key is recomputed. Both keys are blob-lane
+    // so either would trigger it, but naming only one would make the call lie
+    // about what it wrote.
     for (const orgId of affectedOrgIds) {
-      await emitResourceAccessInstanceChanged(orgId, [
-        { granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE },
-      ])
+      for (const defKey of [SIGNATURE_KEY, SNIPPET_KEY]) {
+        await emitResourceAccessInstanceChanged(
+          orgId,
+          [{ granteeType: ResourceGranteeType.role, granteeId: WORKSPACE_BASELINE_GRANTEE }],
+          defKey
+        )
+      }
     }
 
     logger.info('Backfilled signature/snippet instance access', {

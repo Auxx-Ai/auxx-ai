@@ -40,7 +40,7 @@ type EnforcementState =
  * A tool in one of these is not plumbing and must not be declared `'none'`.
  *
  * - `'mail'` — threads, drafts, tags and outbound sending. There is no `mail`
- *   `Area`; visibility is a parallel system (`getCachedUserMailVisibility` +
+ *   `Area`; visibility is a parallel system (`getCachedUserInstanceGrants` +
  *   `getThreadLens`, plans/permissions/v2/05-readside-visibility.md). Note that
  *   every mail tool keys on `agentDeps.userId`, which per doc 14 §0.1 is always
  *   the agent's own engine identity — so run-as substitution and the invoker

@@ -3,8 +3,7 @@
 // the DataConnectorItem binding (else a match-flag bootstrap), skips
 // unchanged records by a sorted-key content hash, applies per-field merge
 // strategy, and writes via UnifiedCrudHandler reusing the importer's bulk-upsert
-// shape (warmCache once, skipSnapshotInvalidation per record, single
-// invalidateSnapshots at the end). Owned mode stamps provenance + may archive;
+// shape (warmCache once). Owned mode stamps provenance + may archive;
 // contributing mode narrows to managedFields and never archives. Unlike the
 // importer, events are NOT skipped — workflows/agents react.
 
@@ -662,14 +661,12 @@ export const entitySink: EntitySink = {
           ? await captureSubscribedChanges(ctx, mapping.entityDefinitionId, instanceId, writeSet)
           : null
         await handler.update(recordId, writeSet, undefined, {
-          skipSnapshotInvalidation: true,
           skipEvents: true,
         })
         ctx.counters.updated += 1
         if (captured) ctx.manifest.recordChange(recordId, captured)
       } else {
         const created = await handler.create(mapping.entityDefinitionId, writeSet, {
-          skipSnapshotInvalidation: true,
           skipEvents: true,
         })
         instanceId = created.instance.id
@@ -776,7 +773,6 @@ export const entitySink: EntitySink = {
       const recordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
       try {
         await ctx.ownedCrud.archive(recordId, {
-          skipSnapshotInvalidation: true,
           skipEvents: true,
         })
         ctx.touchedDefs.add(item.entityDefinitionId)

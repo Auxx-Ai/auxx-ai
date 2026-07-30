@@ -191,7 +191,7 @@ export class UserSeeder {
    */
   private async grantSignatureOwnership(signatureId: string): Promise<void> {
     const { schema } = await import('@auxx/database')
-    const { ResourceGranteeType, ResourcePermission } = await import('@auxx/database/enums')
+    const { ResourceGranteeType } = await import('@auxx/database/enums')
     const { emitResourceAccessInstanceChanged } = await import('../resource-access')
 
     await this.db
@@ -202,14 +202,16 @@ export class UserSeeder {
         entityInstanceId: signatureId,
         granteeType: ResourceGranteeType.user,
         granteeId: this.user.id,
-        permission: ResourcePermission.admin,
+        rung: 'admin',
         grantedById: this.user.id,
       })
       .onConflictDoNothing()
 
-    await emitResourceAccessInstanceChanged(this.organizationId, [
-      { granteeType: ResourceGranteeType.user, granteeId: this.user.id },
-    ])
+    await emitResourceAccessInstanceChanged(
+      this.organizationId,
+      [{ granteeType: ResourceGranteeType.user, granteeId: this.user.id }],
+      'signature'
+    )
   }
   // Future methods can be added here:
   /**

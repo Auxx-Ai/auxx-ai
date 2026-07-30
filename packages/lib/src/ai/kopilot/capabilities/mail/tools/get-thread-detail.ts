@@ -2,7 +2,7 @@
 
 import { parseRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
-import { getCachedUserMailVisibility } from '../../../../../cache'
+import { getCachedUserInstanceGrants } from '../../../../../cache'
 import { NotFoundError } from '../../../../../errors'
 import { MessageQueryService } from '../../../../../messages'
 import { TagService } from '../../../../../tags'
@@ -151,7 +151,7 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
       const threadId = args.threadId as string
 
       // Kopilot reads mail as the invoking user (§8.1) — never SYSTEM.
-      const viewer = await getCachedUserMailVisibility(agentDeps.userId, agentDeps.organizationId)
+      const viewer = await getCachedUserInstanceGrants(agentDeps.userId, agentDeps.organizationId)
       const threadService = new ThreadQueryService(agentDeps.organizationId, db, viewer)
       const messageService = new MessageQueryService(agentDeps.organizationId, db, viewer)
 

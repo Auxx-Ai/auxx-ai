@@ -1,17 +1,26 @@
 // apps/web/src/components/permissions/hooks/use-instance-grantee-rows.ts
 'use client'
 
-import type { ResourcePermission } from '@auxx/database/enums'
-import { INSTANCE_ACCESS_KEYS, type InstanceAccessKey } from '@auxx/lib/permissions/client'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
+import {
+  INSTANCE_ACCESS_KEYS,
+  type InstanceAccessKey,
+  permissionToRung,
+} from '@auxx/lib/permissions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import type { InstanceAccessRow } from '../ui/grantee-instance-rows'
 import { INSTANCE_ROW_COPY, INSTANCE_SHARE_COPY } from '../ui/instance-share-copy'
+import { displayPermissionOfRung } from '../ui/level-labels'
 import { useGranteeAccess, useInvalidateGranteeAccess } from './use-grantee-access'
 import type { GranteeKind } from './use-grantee-def-access'
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
+
+/** {@link displayPermissionOfRung}, pass-through on `undefined`. */
+const optionalDisplay = (rung: Rung | undefined): ResourcePermission | undefined =>
+  rung === undefined ? undefined : displayPermissionOfRung(rung)
 
 /**
  * Every instance-access key is always "open" here — same rationale as the
@@ -94,13 +103,17 @@ export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: stri
         // component four surfaces share — the agent policy's rows say something
         // else entirely about the same instance.
         description: INSTANCE_ROW_COPY.grantee.description(INSTANCE_SHARE_COPY[key].noun),
-        grantLevel: own?.instances[item.id],
+        // Stored rung → this grid's def-axis DISPLAY vocabulary; see
+        // `displayPermissionOfRung`.
+        grantLevel: own ? optionalDisplay(own.instances[item.id]) : undefined,
         // An instance absent from `effective.instances` has no row anywhere in
         // the org, so its answer is the per-type row-less fallback. A pure
         // lookup — §2.5 is explicit that re-deriving this client-side would put
         // display and enforcement on separate implementations.
         effectiveLevel: effective
-          ? (effective.instances[item.id] ?? effective.instanceFallback[key])
+          ? (optionalDisplay(effective.instances[item.id] ?? undefined) ??
+            optionalDisplay(effective.instanceFallback[key] ?? undefined) ??
+            null)
           : undefined,
       }))
     }
@@ -115,7 +128,7 @@ export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: stri
         revokeInstance.mutate({ recordId, granteeType, granteeId })
         return
       }
-      grantInstance.mutate({ recordId, granteeType, granteeId, permission: level })
+      grantInstance.mutate({ recordId, granteeType, granteeId, rung: permissionToRung(level) })
     },
     [grantInstance, revokeInstance, granteeType, granteeId]
   )

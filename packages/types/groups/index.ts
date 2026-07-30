@@ -103,25 +103,6 @@ export interface GroupPermissionInfo {
 // Permission Constants
 // ============================================================================
 
-/**
- * Permission hierarchy for level comparison. `none` is the baseline lockdown
- * marker (capability layer v2 phase 3) and ranks below every positive level, so
- * a `none` actual satisfies nothing — group sharing never writes it, but it must
- * be present for the exhaustive `Record<ResourcePermission, number>` type.
- */
-export const PERMISSION_HIERARCHY: Record<ResourcePermission, number> = {
-  none: 0,
-  view: 1,
-  edit: 2,
-  admin: 3,
-}
-
-/**
- * Check if a permission level satisfies a required level
- */
-export function satisfiesPermission(
-  actual: ResourcePermission,
-  required: ResourcePermission
-): boolean {
-  return PERMISSION_HIERARCHY[actual] >= PERMISSION_HIERARCHY[required]
-}
+// `PERMISSION_HIERARCHY` + `satisfiesPermission` used to be defined here. They
+// are now `PERMISSION_RANK` + `satisfiesPermission` in `@auxx/types/permissions`
+// — the same table, one copy (plan v3/03 P3a §3).

@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { getOrgCache, onCacheEvent } from '../../cache'
@@ -134,15 +134,14 @@ export interface FloorSeed {
  * whole point of `baselineAtCreate: true` (no row ⇒ no access).
  */
 export function buildFloorRow(seed: FloorSeed): typeof schema.ResourceAccess.$inferInsert | null {
-  if (seed.lens === 'full') return null
+  if (seed.lens === 'read') return null
   return {
     organizationId: seed.organizationId,
     entityDefinitionId: INBOX_KEY,
     entityInstanceId: seed.instanceId,
     granteeType: ResourceGranteeType.role,
     granteeId: WORKSPACE_BASELINE_GRANTEE,
-    permission: seed.lens === 'none' ? ResourcePermission.none : ResourcePermission.view,
-    lens: seed.lens === 'none' ? null : seed.lens,
+    rung: seed.lens,
     grantedById: null,
   }
 }
@@ -298,7 +297,7 @@ async function loadInboxCensus(db: Database, pairs: InboxDefPair[]): Promise<Inb
       // (`project_use_system_values_single_select_arrays`).
       lensByInstance.set(
         row.entityId,
-        normalizeLens(row.optionId ?? row.valueText ?? row.valueJson, 'full')
+        normalizeLens(row.optionId ?? row.valueText ?? row.valueJson, 'read')
       )
     } else if (row.systemAttribute === OWNER_ATTR) {
       if (row.valueText) ownerByInstance.set(row.entityId, row.valueText)
@@ -314,7 +313,7 @@ async function loadInboxCensus(db: Database, pairs: InboxDefPair[]): Promise<Inb
     isPersonal: personalDefIds.has(instance.entityDefinitionId) || personalMarker.has(instance.id),
     // An inbox with no stored floor predates 033's backfill; `full` is what that
     // migration defaulted an unset visibility to.
-    lens: lensByInstance.get(instance.id) ?? 'full',
+    lens: lensByInstance.get(instance.id) ?? 'read',
     ownerUserId: ownerByInstance.get(instance.id) ?? null,
   }))
 }
@@ -403,7 +402,7 @@ async function ensureOwnerAdminRow(db: Database, row: InboxCensusRow): Promise<b
   }
 
   const [existing] = await db
-    .select({ id: schema.ResourceAccess.id, permission: schema.ResourceAccess.permission })
+    .select({ id: schema.ResourceAccess.id, rung: schema.ResourceAccess.rung })
     .from(schema.ResourceAccess)
     .where(
       and(
@@ -417,7 +416,7 @@ async function ensureOwnerAdminRow(db: Database, row: InboxCensusRow): Promise<b
     .limit(1)
 
   if (existing) {
-    if (existing.permission !== ResourcePermission.admin) {
+    if (existing.rung !== 'admin') {
       // Plan §4.1 says "write one if none exists", so this is left ALONE rather
       // than raised — but an owner who is not Manager of their own mailbox is
       // worth a line in the log, not a silent pass.
@@ -425,7 +424,7 @@ async function ensureOwnerAdminRow(db: Database, row: InboxCensusRow): Promise<b
         organizationId: row.organizationId,
         instanceId: row.instanceId,
         ownerUserId: row.ownerUserId,
-        permission: existing.permission,
+        rung: existing.rung,
       })
     }
     return false
@@ -439,7 +438,7 @@ async function ensureOwnerAdminRow(db: Database, row: InboxCensusRow): Promise<b
       entityInstanceId: row.instanceId,
       granteeType: ResourceGranteeType.user,
       granteeId: row.ownerUserId,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
       grantedById: row.ownerUserId,
     })
     .onConflictDoNothing()
@@ -655,11 +654,11 @@ export const migration060PersonalInboxMove: DataMigrationDef = {
     // ── 3. The §4.1 count check ────────────────────────────────────────────
     // Fail-open direction: `baselineAtCreate: false` means a restricted shared
     // inbox whose row was missed becomes org-visible. Per org, the number of
-    // non-`full` shared inboxes must equal the number of `role:org_member` rows
+    // non-`read` shared inboxes must equal the number of `role:org_member` rows
     // that now exist on them.
     const expectedFloorByOrg = new Map<string, number>()
     for (const row of shared) {
-      if (row.lens === 'full') continue
+      if (row.lens === 'read') continue
       expectedFloorByOrg.set(
         row.organizationId,
         (expectedFloorByOrg.get(row.organizationId) ?? 0) + 1
@@ -723,7 +722,7 @@ export const migration060PersonalInboxMove: DataMigrationDef = {
         'inboxes',
         'mailGrantIndex',
       ])
-      // Member-broadcast semantics: `userMailVisibility` is per USER, so every
+      // Member-broadcast semantics: `userInstanceGrants` is per USER, so every
       // member has to recompute, not just the mailbox owner.
       await onCacheEvent('inbox.updated', { orgId: organizationId, broadcastUserKeys: true })
     }

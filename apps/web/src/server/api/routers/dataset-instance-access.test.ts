@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/dataset-instance-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -123,10 +123,10 @@ function capabilitiesFor(
   instances: Record<string, ResourcePermission> = { [DATASET_ID]: permission }
 ) {
   const areaLevel = {
-    [ResourcePermission.none]: Level.None,
-    [ResourcePermission.view]: Level.Read,
-    [ResourcePermission.edit]: Level.Edit,
-    [ResourcePermission.admin]: Level.Full,
+    ['none']: Level.None,
+    ['read']: Level.Read,
+    ['edit']: Level.Edit,
+    ['admin']: Level.Full,
   }[permission]
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.datasets]: areaLevel })),
@@ -171,27 +171,23 @@ beforeEach(() => {
 
 describe('dataset router — `edit` does not reach settings/archive/delete (plan 24 §A.4)', () => {
   it.each(ADMIN_ONLY)('%s is refused at instance edit', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('edit')))).rejects.toMatchObject(FORBIDDEN)
     expect(datasetService[serviceFn]).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_ONLY)('%s is refused at instance view', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(datasetService[serviceFn]).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_ONLY)('%s succeeds at instance admin', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.admin)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('admin')))).resolves.toBeDefined()
     expect(datasetService[serviceFn]).toHaveBeenCalledTimes(1)
   })
 
   it('creating a dataset needs the coarse datasets Full rung, not instance edit', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).create({
+      caller(capabilitiesFor('edit')).create({
         name: 'New',
         vectorDbType: 'POSTGRESQL',
       })
@@ -203,14 +199,14 @@ describe('dataset router — `edit` does not reach settings/archive/delete (plan
 describe('dataset router — the edit rung', () => {
   it('updateMetrics (content churn, not settings) succeeds at instance edit', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).updateMetrics({ id: DATASET_ID })
+      caller(capabilitiesFor('edit')).updateMetrics({ id: DATASET_ID })
     ).resolves.toEqual({ success: true })
     expect(datasetService.updateMetrics).toHaveBeenCalledTimes(1)
   })
 
   it('updateMetrics is refused at instance view', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).updateMetrics({ id: DATASET_ID })
+      caller(capabilitiesFor('read')).updateMetrics({ id: DATASET_ID })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(datasetService.updateMetrics).not.toHaveBeenCalled()
   })
@@ -218,14 +214,14 @@ describe('dataset router — the edit rung', () => {
 
 describe('dataset router — reads stay open at instance view', () => {
   it('getById and getStats succeed at view', async () => {
-    const c = caller(capabilitiesFor(ResourcePermission.view))
+    const c = caller(capabilitiesFor('read'))
     await expect(c.getById({ id: DATASET_ID })).resolves.toBeDefined()
     await expect(c.getStats({ id: DATASET_ID })).resolves.toBeDefined()
   })
 
   it('testSearchConfig is a READ (§A.2.2 downgrade) — reachable at instance view', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).testSearchConfig({
+      caller(capabilitiesFor('read')).testSearchConfig({
         datasetId: DATASET_ID,
         testQuery: 'hello',
         searchConfig: {},
@@ -236,18 +232,18 @@ describe('dataset router — reads stay open at instance view', () => {
 
   it('testSearchConfig is still refused with the instance restricted to none', async () => {
     await expect(
-      caller(
-        capabilitiesFor(ResourcePermission.view, { [DATASET_ID]: ResourcePermission.none })
-      ).testSearchConfig({ datasetId: DATASET_ID, testQuery: 'hello', searchConfig: {} })
+      caller(capabilitiesFor('read', { [DATASET_ID]: 'none' })).testSearchConfig({
+        datasetId: DATASET_ID,
+        testQuery: 'hello',
+        searchConfig: {},
+      })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(searchService.search).not.toHaveBeenCalled()
   })
 
   it('getById is refused with the instance restricted to none', async () => {
     await expect(
-      caller(
-        capabilitiesFor(ResourcePermission.view, { [DATASET_ID]: ResourcePermission.none })
-      ).getById({ id: DATASET_ID })
+      caller(capabilitiesFor('read', { [DATASET_ID]: 'none' })).getById({ id: DATASET_ID })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(datasetService.getById).not.toHaveBeenCalled()
   })
@@ -263,9 +259,9 @@ describe('dataset router — list excludes instances the member may not view', (
 
   /** A member at datasets Read who may view everything except `ids`. */
   const restrictedFrom = (...ids: string[]) =>
-    capabilitiesFor(ResourcePermission.view, {
-      [DATASET_ID]: ResourcePermission.view,
-      ...Object.fromEntries(ids.map((id) => [id, ResourcePermission.none])),
+    capabilitiesFor('read', {
+      [DATASET_ID]: 'read',
+      ...Object.fromEntries(ids.map((id) => [id, 'none'])),
     })
 
   it('drops a restricted dataset instead of 403ing the whole list', async () => {
@@ -317,7 +313,7 @@ describe('dataset router — list excludes instances the member may not view', (
 
   it('returns an empty result for a member with datasets: None, without querying', async () => {
     listFixture.ids = [DATASET_ID, RESTRICTED]
-    const result = await caller(capabilitiesFor(ResourcePermission.none, {})).list({})
+    const result = await caller(capabilitiesFor('none', {})).list({})
     expect(result).toEqual({ datasets: [], totalCount: 0, hasMore: false })
     // The area gate being shut denies every dataset, INCLUDING row-less ones —
     // the one denial an id exclusion cannot express. So the router must
@@ -327,7 +323,7 @@ describe('dataset router — list excludes instances the member may not view', (
 
   it('an unrestricted org pays nothing — the exclusion is empty', async () => {
     listFixture.ids = [DATASET_ID, DSET_C]
-    const result = await caller(capabilitiesFor(ResourcePermission.admin, {})).list({})
+    const result = await caller(capabilitiesFor('admin', {})).list({})
     expect(result).toEqual({
       datasets: [{ id: DATASET_ID }, { id: DSET_C }],
       totalCount: 2,

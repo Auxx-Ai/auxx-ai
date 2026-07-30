@@ -1,7 +1,7 @@
 // packages/lib/src/dashboards/dashboard-queries.ts
 
 import { type DashboardEntity, type Database, schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type Rung } from '@auxx/database/enums'
 import { and, asc, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
@@ -34,11 +34,11 @@ const WORKSPACE_BASELINE_GRANTEE = 'org_member'
  * `baselineAtCreate: true` (doc 13 §0.1), so every dashboard SHOULD carry one
  * after create/migration; a missing row is still treated as private (§3).
  */
-export async function getWorkspaceBaselinePermission(
+export async function getWorkspaceBaselineRung(
   db: Database,
   orgId: string,
   dashboardId: string
-): Promise<ResourcePermission | undefined> {
+): Promise<Rung | undefined> {
   const row = await db.query.ResourceAccess.findFirst({
     where: and(
       eq(schema.ResourceAccess.organizationId, orgId),
@@ -47,9 +47,9 @@ export async function getWorkspaceBaselinePermission(
       eq(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
       eq(schema.ResourceAccess.granteeId, WORKSPACE_BASELINE_GRANTEE)
     ),
-    columns: { permission: true },
+    columns: { rung: true },
   })
-  return row?.permission as ResourcePermission | undefined
+  return row?.rung as Rung | undefined
 }
 
 /** One non-baseline grant row on a dashboard instance. */
@@ -65,8 +65,8 @@ export type DashboardShareRow = {
  * scoped to a single dashboard when `dashboardId` is given.
  *
  * `role` rows are excluded because that is the workspace baseline itself, which
- * {@link getWorkspaceBaselinePermission} already reads, and `permission: 'none'`
- * rows grant nobody (see `PERMISSION_HIERARCHY`).
+ * {@link getWorkspaceBaselineRung} already reads, and `rung: 'none'`
+ * rows grant nobody (see `RUNG_ORDER`).
  */
 async function loadDashboardShares(
   db: Database,
@@ -88,7 +88,7 @@ async function loadDashboardShares(
           ? eq(schema.ResourceAccess.entityInstanceId, dashboardId)
           : isNotNull(schema.ResourceAccess.entityInstanceId),
         ne(schema.ResourceAccess.granteeType, ResourceGranteeType.role),
-        ne(schema.ResourceAccess.permission, ResourcePermission.none)
+        ne(schema.ResourceAccess.rung, 'none')
       )
     )
   return rows
@@ -112,11 +112,11 @@ async function loadDashboardShares(
  * creator can reach is still private.
  */
 export function isPrivateFromBaseline(
-  permission: ResourcePermission | undefined,
+  rung: Rung | undefined,
   shares: DashboardShareRow[] = [],
   ownerId: string | null = null
 ): boolean {
-  if (permission !== undefined && permission !== ResourcePermission.none) return false
+  if (rung !== undefined && rung !== 'none') return false
   return !shares.some(
     (s) => !(s.granteeType === ResourceGranteeType.user && s.granteeId === ownerId)
   )
@@ -198,7 +198,7 @@ export async function listDashboards(
       dashboard: schema.Dashboard,
       tabCount,
       widgetCount,
-      baselinePermission: schema.ResourceAccess.permission,
+      baselineRung: schema.ResourceAccess.rung,
     })
     .from(schema.Dashboard)
     .leftJoin(
@@ -232,7 +232,7 @@ export async function listDashboards(
         Number(r.tabCount),
         Number(r.widgetCount),
         isPrivateFromBaseline(
-          r.baselinePermission as ResourcePermission | undefined,
+          r.baselineRung as Rung | undefined,
           sharesByDashboard.get(r.dashboard.id) ?? [],
           r.dashboard.createdById
         )
@@ -277,8 +277,8 @@ async function loadDashboardWithLayout(
   const draftResult = parseDraftLayoutDoc(row.draftLayout)
   if (draftResult.isErr()) return err(draftResult.error)
 
-  const [baselinePermission, shares] = await Promise.all([
-    getWorkspaceBaselinePermission(db, orgId, row.id),
+  const [baselineRung, shares] = await Promise.all([
+    getWorkspaceBaselineRung(db, orgId, row.id),
     loadDashboardShares(db, orgId, row.id),
   ])
 
@@ -287,7 +287,7 @@ async function loadDashboardWithLayout(
     name: row.name,
     description: row.description,
     icon: row.icon ?? null,
-    isPrivate: isPrivateFromBaseline(baselinePermission, shares, row.createdById),
+    isPrivate: isPrivateFromBaseline(baselineRung, shares, row.createdById),
     position: row.position,
     createdById: row.createdById,
     activeVersionId: row.activeVersionId,

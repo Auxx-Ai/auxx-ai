@@ -161,6 +161,12 @@ export const tableViewRouter = createTRPCRouter({
       'userTableViews',
       ctx.session.organizationId
     )
+    // **Saved views stay on `canViewEntity`, deliberately** (plan v3/03 §6.2).
+    // An org-authored saved view embeds a filter CONFIG and field references —
+    // def-level information about a definition a grant-only member cannot see —
+    // so widening this to `hasDefPresence` would hand them the definition's
+    // schema through its views. Their default-view fallback is the preference
+    // loop below, which is what P5 widens instead.
     const views = cachedViews
       .filter(
         (view) =>
@@ -197,13 +203,19 @@ export const tableViewRouter = createTRPCRouter({
       if (preference.tableViewId) {
         if (!accessibleViewIds.has(preference.tableViewId)) continue
       } else {
+        // `tableViewId: null` is the DEFAULT TABLE — the member's own column
+        // widths / order / visibility for the def's built-in grid, carrying no
+        // org-authored filter config and no reference to anything but the def's
+        // own fields. So this half gates on {@link hasDefPresence}: a grant-only
+        // member gets the def's DEFAULT view and columns (plan v3/03 §6.2), and
+        // the rows inside it are scoped per row in SQL by `recordVisibilityScope`.
         let allowed = defaultPreferenceAccess.get(preference.tableId)
         if (allowed === undefined) {
           const entityDefinitionId = await resolveDefId(
             preference.tableId,
             ctx.session.organizationId
           )
-          allowed = !entityDefinitionId || ctx.capabilities.canViewEntity(entityDefinitionId)
+          allowed = !entityDefinitionId || ctx.capabilities.hasDefPresence(entityDefinitionId)
           defaultPreferenceAccess.set(preference.tableId, allowed)
         }
         if (!allowed) continue

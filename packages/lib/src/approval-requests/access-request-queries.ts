@@ -9,13 +9,12 @@
 // `access-request-mutations.ts`'s decision handler and in the router.
 
 import { type Database, schema } from '@auxx/database'
-import { ResourcePermission } from '@auxx/database/enums'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, desc, eq } from 'drizzle-orm'
-import { getCachedMembersByUserIds, getCachedUserMailVisibility, getOrgCache } from '../cache'
+import { getCachedMembersByUserIds, getCachedUserInstanceGrants, getOrgCache } from '../cache'
 import { getCapabilities } from '../permissions/capabilities/get-capabilities'
 import { PermissionKey } from '../permissions/capabilities/registry'
-import type { UserMailVisibility } from '../permissions/visibility/context'
+import type { UserInstanceGrants } from '../permissions/visibility/context'
 import type { Lens } from '../permissions/visibility/lens'
 import { redactThreadMeta } from '../permissions/visibility/redact'
 import { getLoadedThreadLens } from '../permissions/visibility/thread-lens'
@@ -96,7 +95,7 @@ export async function loadThreadAuthorityContext(
  */
 export async function threadLensFromContext(
   db: Database,
-  vis: UserMailVisibility,
+  vis: UserInstanceGrants,
   ctx: ThreadAuthorityContext
 ): Promise<Lens> {
   return getLoadedThreadLens(db, vis, ctx)
@@ -106,7 +105,7 @@ export async function threadLensFromContext(
  * Who may decide a thread access request (plan 42 §3).
  *
  * Threads essentially never carry `admin` rows — thread sharing writes
- * `permission: view` + a lens — so resolving against the THREAD returns an empty
+ * `rung: read` — so resolving against the THREAD returns an empty
  * set and trips the non-empty assertion on every request. The real authority is
  * what `assertCanManageMailSharing` enforces, resolved from the thread's INBOX:
  *
@@ -135,9 +134,9 @@ export async function threadLensFromContext(
  * unable to decide anything.
  *
  * Deliberately NOT `getFullLensAudienceForInbox` — that is labelled a non-enforcement
- * OVER-APPROXIMATION and returns every org member on a `defaultLens: 'full'` inbox.
+ * OVER-APPROXIMATION and returns every org member on a `defaultLens: 'read'` inbox.
  * Deliberately NOT `mailGrantIndex` either: it keeps `{ userId, lens }` and drops
- * `permission`, so it cannot tell a Manager (`admin`) from a `view` holder.
+ * the rung, so it cannot tell a Manager (`admin`) from a `read` holder.
  */
 export async function resolveThreadApprovers(
   db: Database,
@@ -167,7 +166,7 @@ export async function resolveThreadApprovers(
           eq(schema.ResourceAccess.organizationId, organizationId),
           eq(schema.ResourceAccess.entityDefinitionId, entityDefinitionId),
           eq(schema.ResourceAccess.entityInstanceId, entityInstanceId),
-          eq(schema.ResourceAccess.permission, ResourcePermission.admin)
+          eq(schema.ResourceAccess.rung, 'admin')
         )
       )
     // The expansion is cache-only (see `expandGranteeToUserIds`), so this loop
@@ -391,7 +390,7 @@ export async function preflightThreadAccessRequest(
     return { eligible: false, currentLens: 'none', refusalReason: 'target_unavailable', ...empty }
   }
 
-  const vis = await getCachedUserMailVisibility(userId, organizationId)
+  const vis = await getCachedUserInstanceGrants(userId, organizationId)
   const currentLens = await threadLensFromContext(db, vis, ctx)
 
   // Composed with the REQUESTER's own lens, through the same builder the durable
@@ -407,7 +406,7 @@ export async function preflightThreadAccessRequest(
     refusalReason,
   })
 
-  if (currentLens === 'full') return refuseEarly('already_full')
+  if (currentLens === 'read') return refuseEarly('already_full')
 
   const frontDoor = await resolveThreadFrontDoor(organizationId, userId)
   if (!frontDoor.open) return refuseEarly(frontDoor.reason)
@@ -511,12 +510,12 @@ export async function getThreadAccessRequestApproverView(
     }
   }
 
-  const approverVis = await getCachedUserMailVisibility(approverUserId, organizationId)
+  const approverVis = await getCachedUserInstanceGrants(approverUserId, organizationId)
   const approverLens = await threadLensFromContext(db, approverVis, ctx)
-  const requesterVis = await getCachedUserMailVisibility(request.requesterId, organizationId)
+  const requesterVis = await getCachedUserInstanceGrants(request.requesterId, organizationId)
   const requesterLens = await threadLensFromContext(db, requesterVis, ctx)
 
-  const hydrated = approverLens === 'subject' || approverLens === 'full'
+  const hydrated = approverLens === 'identity' || approverLens === 'read'
   return {
     requester,
     label: hydrated

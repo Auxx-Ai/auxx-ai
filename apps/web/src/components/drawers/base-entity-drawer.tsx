@@ -536,8 +536,11 @@ export function BaseEntityDrawer({
   // (contact, dispatch board) are restricted for field seats / Read-only grantees
   // too (§11.4). Derived from the BASE record's def: one flag for the whole frame
   // stack, so a drilled record inherits the parent's read-only state.
-  const baseDefId = recordId ? parseRecordId(recordId).entityDefinitionId : undefined
-  const derivedReadOnly = useRecordDrawerReadOnly(baseDefId)
+  const baseParsed = recordId ? parseRecordId(recordId) : undefined
+  const derivedReadOnly = useRecordDrawerReadOnly(
+    baseParsed?.entityDefinitionId,
+    baseParsed?.entityInstanceId
+  )
   const readOnly = readOnlyProp ?? derivedReadOnly
 
   // Cross-record peek stack — `frames = [recordId, ...peek]`. Called

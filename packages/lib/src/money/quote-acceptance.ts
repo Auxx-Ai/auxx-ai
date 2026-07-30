@@ -197,7 +197,6 @@ async function applyOptionalLineSelections(params: {
       },
     ],
     limit: 1000,
-    mode: 'oneshot',
   })
 
   // Zero-optional quote: skip entirely, no matter what the caller submitted.

@@ -14,14 +14,22 @@
 import { database, Thread } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { findMemberByUser } from '../members'
-import { getThreadLens, inboxLensFor, satisfiesLens } from '../permissions/visibility'
-import { fromPusherChannel, parseInboxRoomKey, type RoomKind, toPusherChannel } from './room-keys'
+import { satisfiesRung } from '../permissions/capabilities/rung'
+import { getThreadLens, inboxLensFor } from '../permissions/visibility'
+import {
+  fromPusherChannel,
+  parseInboxRoomKey,
+  parseRecordRoomKey,
+  type RoomKind,
+  toPusherChannel,
+} from './room-keys'
 
-export type { ChannelLens, RoomKind } from './room-keys'
+export type { ChannelLens, RecordRoomKey, RoomKind } from './room-keys'
 export {
   CHANNEL_LENSES,
   fromPusherChannel,
   parseInboxRoomKey,
+  parseRecordRoomKey,
   roomKindFor,
   rooms,
   toPusherChannel,
@@ -81,12 +89,13 @@ async function getThreadOrgId(threadId: string): Promise<string | null> {
 
 /**
  * Registry order matters — `match` is greedy, so the more-specific patterns
- * (`-inbox-`, `-events`) must come before the generic `org-` presence room.
+ * (`-inbox-`, `-records-`, `-events`) must come before the generic `org-`
+ * presence room.
  */
 const REGISTRY: RoomDef[] = [
   // Per-inbox per-lens channel: `org-{orgId}-inbox-{inboxSlug}-{lens}`
   //
-  // Auth reads the cached `userMailVisibility` (mail-permissions §6.1): allow
+  // Auth reads the cached `userInstanceGrants` (mail-permissions §6.1): allow
   // iff the caller's lens on that inbox satisfies the channel's lens. Fails
   // CLOSED on every error — no dev bypass; a mis-scoped subscription would
   // stream redacted-tier data to the wrong viewer.
@@ -100,17 +109,52 @@ const REGISTRY: RoomDef[] = [
       if (!parsed) return false
       const { organizationId: orgId, inboxSlug, lens } = parsed
       try {
-        const { getCachedUserMailVisibility, getOrgCache } = await import('../cache')
+        const { getCachedUserInstanceGrants, getOrgCache } = await import('../cache')
         const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
         if (!roleMap[ctx.session.userId]?.role) return false
-        const viewer = await getCachedUserMailVisibility(ctx.session.userId, orgId)
+        const viewer = await getCachedUserInstanceGrants(ctx.session.userId, orgId)
         // `none` (residual null-inbox threads) is admin-only — the read path
         // treats those threads as admin+assignee only (decision #2), so
         // broadcasting their subjects org-wide would leak. Published at
-        // `full` only.
+        // `read` only.
         if (inboxSlug === 'none') return viewer.isAdmin
         const myLens = inboxLensFor(viewer, inboxSlug)
-        return myLens !== 'none' && satisfiesLens(myLens, lens)
+        return myLens !== 'none' && satisfiesRung(myLens, lens)
+      } catch {
+        return false
+      }
+    },
+  },
+  // Per-def record channel: `org-{orgId}-records-{entityDefinitionId}`
+  //
+  // ACL = `canViewEntity(defId)` on the caller's composed CapabilitySet
+  // (plan v3/03 §8.1). Record-family events used to broadcast org-wide on the
+  // presence room with no shaping — `fieldValues:updated` carries the RAW
+  // stored value — and the publish path does NOT re-authorize, so this ACL is
+  // the entire enforcement. Fails CLOSED on every path and has deliberately
+  // NO dev bypass (unlike `isOrgMember` below): a dev-mode open channel is
+  // still a shipped code path that streams other defs' field values.
+  //
+  // `getCapabilities` is lazy-imported for the same reason the inbox entry
+  // lazy-imports the cache barrel — the realtime barrel participates in an
+  // import cycle with it (and `vi.mock` breaks on the static form).
+  {
+    kind: 'plain',
+    match: (k) => /^org-.+-records-.+$/.test(k),
+    authorize: async (key, ctx) => {
+      if (!ctx.session) return false
+      const parsed = parseRecordRoomKey(key)
+      if (!parsed) return false
+      const { organizationId: orgId, entityDefinitionId } = parsed
+      try {
+        const [{ getOrgCache }, { getCapabilities }] = await Promise.all([
+          import('../cache'),
+          import('../permissions/capabilities/get-capabilities'),
+        ])
+        const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
+        if (!roleMap[ctx.session.userId]?.role) return false
+        const caps = await getCapabilities(ctx.session.userId, orgId)
+        return caps.canViewEntity(entityDefinitionId)
       } catch {
         return false
       }
@@ -125,10 +169,16 @@ const REGISTRY: RoomDef[] = [
       return isOrgMember(orgId, ctx)
     },
   },
-  // Org presence: `org-{orgId}` (must run after `-inbox-` and `-events` entries).
+  // Org presence: `org-{orgId}` (must run after the `-inbox-`, `-records-` and
+  // `-events` entries — the exclusions below are belt-and-braces on top of
+  // registry order).
   {
     kind: 'presence',
-    match: (k) => k.startsWith('org-') && !k.includes('-inbox-') && !k.endsWith('-events'),
+    match: (k) =>
+      k.startsWith('org-') &&
+      !k.includes('-inbox-') &&
+      !k.includes('-records-') &&
+      !k.endsWith('-events'),
     authorize: async (key, ctx) => {
       const orgId = key.replace(/^org-/, '')
       return isOrgMember(orgId, ctx)
@@ -159,12 +209,12 @@ const REGISTRY: RoomDef[] = [
       try {
         const orgId = await getThreadOrgId(threadId)
         if (!orgId) return false
-        const { getCachedUserMailVisibility, getOrgCache } = await import('../cache')
+        const { getCachedUserInstanceGrants, getOrgCache } = await import('../cache')
         const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
         if (!roleMap[ctx.session.userId]?.role) return false
-        const viewer = await getCachedUserMailVisibility(ctx.session.userId, orgId)
+        const viewer = await getCachedUserInstanceGrants(ctx.session.userId, orgId)
         const lens = await getThreadLens(database, orgId, viewer, threadId)
-        return satisfiesLens(lens, 'metadata')
+        return satisfiesRung(lens, 'metadata')
       } catch {
         return false
       }

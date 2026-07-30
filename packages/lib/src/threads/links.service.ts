@@ -22,7 +22,7 @@ export async function canLinkThread(
   viewer: MailViewer,
   threadId: string
 ): Promise<boolean> {
-  return (await getThreadLens(db, organizationId, viewer, threadId)) === 'full'
+  return (await getThreadLens(db, organizationId, viewer, threadId)) === 'read'
 }
 
 export type LinkRole = 'primary' | 'secondary'

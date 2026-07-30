@@ -509,7 +509,7 @@ describe('record router — NEGATIVE CONTROL: ordinary defs still work', () => {
  * the phase that is supposed to be behavior-inert. The split is by ARM:
  *
  *  - READS pass. The records capability layer was never an inbox's access
- *    authority; `userMailVisibility` is, and `canViewEntity('inbox')`
+ *    authority; `userInstanceGrants` is, and `canViewEntity('inbox')`
  *    short-circuits to `true` via `isMailInfraDef` regardless, so refusing here
  *    would close nothing and break the readers.
  *  - MUTATIONS are still refused. Inbox writes answer to `channels.manage` +

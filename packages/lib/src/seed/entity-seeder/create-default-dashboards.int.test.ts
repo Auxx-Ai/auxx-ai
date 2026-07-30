@@ -153,7 +153,7 @@ describe('create-default-dashboards (plan 03)', () => {
           eq(schema.ResourceAccess.granteeId, 'org_member')
         ),
       })
-      expect(baseline?.permission).toBe(ResourcePermission.view)
+      expect(baseline?.rung).toBe('read')
     }
   })
 

@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/kb-instance-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -114,10 +114,10 @@ function capabilitiesFor(
   instances: Record<string, ResourcePermission> = { [KB_ID]: permission }
 ) {
   const areaLevel = {
-    [ResourcePermission.none]: Level.None,
-    [ResourcePermission.view]: Level.Read,
-    [ResourcePermission.edit]: Level.Edit,
-    [ResourcePermission.admin]: Level.Full,
+    ['none']: Level.None,
+    ['read']: Level.Read,
+    ['edit']: Level.Edit,
+    ['admin']: Level.Full,
   }[permission]
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.knowledgeBase]: areaLevel })),
@@ -208,27 +208,23 @@ beforeEach(() => {
 
 describe('kb router — `edit` does not reach settings/publish/delete (plan 24 §A.4)', () => {
   it.each(ADMIN_ONLY)('%s is refused at instance edit', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('edit')))).rejects.toMatchObject(FORBIDDEN)
     expect(kbService[serviceFn]).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_ONLY)('%s is refused at instance view', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(kbService[serviceFn]).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_ONLY)('%s succeeds at instance admin', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.admin)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('admin')))).resolves.toBeDefined()
     expect(kbService[serviceFn]).toHaveBeenCalledTimes(1)
   })
 
   it('creating a KB needs the coarse knowledgeBase Full rung, not instance edit', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).create({ name: 'Help', slug: 'help' })
+      caller(capabilitiesFor('edit')).create({ name: 'Help', slug: 'help' })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(kbService.createKnowledgeBase).not.toHaveBeenCalled()
   })
@@ -236,28 +232,26 @@ describe('kb router — `edit` does not reach settings/publish/delete (plan 24 �
 
 describe('kb router — article authoring is the edit rung', () => {
   it.each(EDIT_LEVEL)('%s succeeds at instance edit', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('edit')))).resolves.toBeDefined()
     expect(kbService[serviceFn]).toHaveBeenCalledTimes(1)
   })
 
   it.each(EDIT_LEVEL)('%s is refused at instance view', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(kbService[serviceFn]).not.toHaveBeenCalled()
   })
 })
 
 describe('kb router — reads stay open at instance view', () => {
   it('byId and getArticles succeed at view', async () => {
-    const c = caller(capabilitiesFor(ResourcePermission.view))
+    const c = caller(capabilitiesFor('read'))
     await expect(c.byId({ id: KB_ID })).resolves.toBeDefined()
     await expect(c.getArticles({ knowledgeBaseId: KB_ID })).resolves.toBeDefined()
   })
 
   it('byId is refused with the instance restricted to none', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view, { [KB_ID]: ResourcePermission.none })).byId({
+      caller(capabilitiesFor('read', { [KB_ID]: 'none' })).byId({
         id: KB_ID,
       })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -272,9 +266,9 @@ describe('kb router — list drops instances the member may not view', () => {
 
     await expect(
       caller(
-        capabilitiesFor(ResourcePermission.view, {
-          [KB_ID]: ResourcePermission.view,
-          [RESTRICTED]: ResourcePermission.none,
+        capabilitiesFor('read', {
+          [KB_ID]: 'read',
+          [RESTRICTED]: 'none',
         })
       ).list()
     ).resolves.toEqual([{ id: KB_ID }])

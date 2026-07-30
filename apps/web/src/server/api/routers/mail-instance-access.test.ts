@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { isGoverningInstanceRow } from '@auxx/lib/cache/providers/governing-instance-ids-provider'
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
@@ -28,7 +28,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *     now agree in BOTH directions — allowed together, denied together.
  *  3. **`resourceAccess.grantInstance` on an inbox routes to
  *     `assertAdminInstance`** (§5.3) *without* losing the Enterprise
- *     `mailPermissions` plan gate, which §2 lists as out of scope.
+ *     `granularPermissions` plan gate, which §2 lists as out of scope.
  *
  * **The positive controls are the point** (§12): the repo's discipline is
  * denial-shaped and structurally blind to OVER-denial, and the single most
@@ -75,7 +75,7 @@ const CREATOR_ROW = {
   instanceId: INBOX_ID,
   granteeType: ResourceGranteeType.user,
   granteeId: 'usr_creator',
-  permission: ResourcePermission.admin,
+  rung: 'admin',
 }
 
 const { lensFixture, getThreadLensBatch } = vi.hoisted(() => {
@@ -109,7 +109,7 @@ const { mail, cache, fieldValueService, resourceAccess, isAdminOrOwner, recordAu
       findScheduledMessagesByThreadId: vi.fn(async () => []),
     },
     cache: {
-      getCachedUserMailVisibility: vi.fn(),
+      getCachedUserInstanceGrants: vi.fn(),
       getCachedResources: vi.fn(),
       getCachedEntityDefId: vi.fn(async () => null),
       getCachedPermissionProfiles: vi.fn(async () => []),
@@ -302,6 +302,20 @@ vi.mock('@auxx/lib/permissions', async () => {
  * coarse rung on the BUILDER is under test — deleting
  * `permissionProcedure(inboxesView)` from `thread.ts` fails the whole first block.
  */
+// Plan v3/03 §5.3 — the record-host branch now gets a SECOND chance after the
+// def gate refuses: the row is stamped through the read path and re-judged
+// against `_access`. These tests exercise the DENIAL, so the stamped read
+// returns nothing, which is the non-enumeration contract's strongest denial
+// ("an id the read path hid must not pass the write path"). Mocked at the
+// picker rather than at the gate so the gate's own logic still runs.
+vi.mock('@auxx/lib/resources/picker/record-picker-service', () => ({
+  RecordPickerService: class {
+    async getResourcesByIds() {
+      return {}
+    }
+  },
+}))
+
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')
   const { AuxxError } = await import('@auxx/lib/errors')
@@ -362,7 +376,7 @@ interface CapsOpts {
   /** `Area.records` level. Defaults to `Level.Edit` — the seeded Member baseline. */
   records?: Level
   /** Explicit `ResourceAccess` instance rows reaching this member. */
-  instances?: Record<string, ResourcePermission>
+  instances?: Record<string, Rung>
   /** Read-rung keys the composer SYNTHESIZES from instance grants (front door only). */
   derivedKeys?: PermissionKey[]
   /**
@@ -381,7 +395,7 @@ interface CapsOpts {
     instanceId: string
     granteeType: ResourceGranteeType
     granteeId: string
-    permission: ResourcePermission
+    rung: Rung
   }>
 }
 
@@ -440,9 +454,7 @@ const VIEWER = {
   isMailAdmin: false,
   inboxLens: {},
   personalInboxIds: {},
-  threadGrants: {},
-  contactGrants: {},
-  entityGrants: {},
+  grants: {},
 }
 
 /**
@@ -489,14 +501,14 @@ beforeEach(() => {
     for (const id of ids) map.set(id, lensFixture.lenses[id] ?? 'none')
     return map
   })
-  lensFixture.lenses = { [THREAD_ID]: 'full', [OTHER_THREAD_ID]: 'full' }
+  lensFixture.lenses = { [THREAD_ID]: 'read', [OTHER_THREAD_ID]: 'read' }
 
   for (const fn of Object.values(mail)) fn.mockClear()
   for (const fn of Object.values(fieldValueService)) fn.mockClear()
   for (const fn of Object.values(resourceAccess)) fn.mockClear()
 
-  cache.getCachedUserMailVisibility.mockReset()
-  cache.getCachedUserMailVisibility.mockResolvedValue(VIEWER as never)
+  cache.getCachedUserInstanceGrants.mockReset()
+  cache.getCachedUserInstanceGrants.mockResolvedValue(VIEWER as never)
   cache.getCachedResources.mockReset()
   cache.getCachedResources.mockResolvedValue(RESOURCES as never)
   cache.getCachedEntityDefId.mockResolvedValue(null as never)
@@ -522,7 +534,7 @@ describe('thread router — the mail front door (§5.3)', () => {
     )
     // The middleware answered — no service was constructed, no lens was read.
     expect(getThreadLensBatch).not.toHaveBeenCalled()
-    expect(cache.getCachedUserMailVisibility).not.toHaveBeenCalled()
+    expect(cache.getCachedUserInstanceGrants).not.toHaveBeenCalled()
   })
 
   it.each(THREAD_CALLS)('%s is permitted at the Member baseline (Read)', async (_n, call) => {
@@ -536,7 +548,7 @@ describe('thread router — the mail front door (§5.3)', () => {
   it('a WORKER seat holds no mail key at all — `inboxes` is outside WORKER_AREAS (§7)', async () => {
     // The §0.1 consequence being fixed: with no area, `SEAT_CEILINGS` had nothing
     // to clamp, so a field tech read and replied to every org inbox at
-    // `defaultLens: 'full'`. `expandLevelsToKeys` is fed an unclamped level here
+    // `defaultLens: 'read'`. `expandLevelsToKeys` is fed an unclamped level here
     // on purpose — the ceiling is what must produce the denial.
     const caps = capabilitiesFor({ seatType: 'worker', inboxes: Level.Full })
     // The key set itself is composed upstream; what this file can pin is that a
@@ -554,7 +566,7 @@ describe('thread router — the mail front door (§5.3)', () => {
     // The structural half of the dispatch guarantee: a member whose ONLY inbox
     // row is an explicit `none` still reaches every thread surface, because no
     // thread procedure asks `canViewInstance('inbox', …)` at all.
-    const caps = capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.none } })
+    const caps = capabilitiesFor({ instances: { [INBOX_ID]: 'none' } })
     expect(caps.canViewInstance('inbox', INBOX_ID)).toBe(false)
     for (const [, call] of THREAD_CALLS) {
       await expect(call(threads(caps))).resolves.toBeDefined()
@@ -600,7 +612,7 @@ describe('§5.5 — the Tags field and the bulk toolbar must AGREE', () => {
     expect(mail.tagThreadsBulk).not.toHaveBeenCalled()
   })
 
-  it.each(['metadata', 'subject', 'none'])('both DENIED at a `%s` lens', async (lens) => {
+  it.each(['metadata', 'identity', 'none'])('both DENIED at a `%s` lens', async (lens) => {
     lensFixture.lenses = { [THREAD_ID]: lens }
     const caps = capabilitiesFor({ records: Level.Full })
     await expect(TAG_FROM_FIELD(caps)).rejects.toMatchObject(FORBIDDEN)
@@ -675,8 +687,8 @@ describe('§5.5 — every fieldValue write procedure is branched', () => {
     ['remove', (c: Caps) => fields(c, db).remove({ valueId: 'fv_1' })],
   ] as const
 
-  it.each(WRITES)('%s is refused on a thread host at a sub-`full` lens', async (_n, call) => {
-    lensFixture.lenses = { [THREAD_ID]: 'subject' }
+  it.each(WRITES)('%s is refused on a thread host at a sub-`read` lens', async (_n, call) => {
+    lensFixture.lenses = { [THREAD_ID]: 'identity' }
     await expect(call(capabilitiesFor({ records: Level.Full }))).rejects.toMatchObject(FORBIDDEN)
   })
 
@@ -718,7 +730,7 @@ describe('§5.5 — the other two host kinds are untouched / newly gated', () =>
 
   it('an INBOX host takes assertAdminInstance — settings are the Manager’s (§5.3)', async () => {
     const manager = capabilitiesFor({
-      instances: { [INBOX_ID]: ResourcePermission.admin },
+      instances: { [INBOX_ID]: 'admin' },
       records: Level.None,
     })
     await expect(
@@ -750,7 +762,7 @@ describe('§5.5 — the other two host kinds are untouched / newly gated', () =>
 
     // A `view` grantee works the inbox but does not own its settings.
     const worker = capabilitiesFor({
-      instances: { [INBOX_ID]: ResourcePermission.view },
+      instances: { [INBOX_ID]: 'read' },
       records: Level.Full,
     })
     await expect(
@@ -768,19 +780,16 @@ describe('§5.5 — the other two host kinds are untouched / newly gated', () =>
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('resourceAccess.grantInstance on an inbox (§5.3)', () => {
-  const share = (permission: ResourcePermission = ResourcePermission.view, lens?: string) =>
+  const share = (rung: Rung = 'read') =>
     sharing(capabilitiesFor()).grantInstance({
       recordId: INBOX_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission,
-      lens: lens as never,
+      rung,
     })
 
   it('routes to assertAdminInstance, NOT to assertCanManageMailSharing', async () => {
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.admin } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'admin' } }))
     await expect(share()).resolves.toEqual({ success: true })
     expect(resourceAccess.assertCanManageMailSharing).not.toHaveBeenCalled()
     expect(resourceAccess.grantInstanceAccess).toHaveBeenCalledWith(
@@ -838,7 +847,7 @@ describe('resourceAccess.grantInstance on an inbox (§5.3)', () => {
           instanceId: INBOX_ID,
           granteeType: ResourceGranteeType.role,
           granteeId: 'org_member',
-          permission: ResourcePermission.none,
+          rung: 'none',
         },
       ],
     })
@@ -860,7 +869,7 @@ describe('resourceAccess.grantInstance on an inbox (§5.3)', () => {
           instanceId: INBOX_ID,
           granteeType: ResourceGranteeType.profile,
           granteeId: 'prof_support',
-          permission: ResourcePermission.none,
+          rung: 'none',
         },
       ],
     })
@@ -876,7 +885,7 @@ describe('resourceAccess.grantInstance on an inbox (§5.3)', () => {
     const shared = capabilitiesFor({
       inboxes: Level.None,
       records: Level.None,
-      instances: { [INBOX_ID]: ResourcePermission.view },
+      instances: { [INBOX_ID]: 'read' },
       derivedKeys: [PermissionKey.inboxesView],
       orgRows: [
         CREATOR_ROW,
@@ -884,7 +893,7 @@ describe('resourceAccess.grantInstance on an inbox (§5.3)', () => {
           instanceId: INBOX_ID,
           granteeType: ResourceGranteeType.user,
           granteeId: 'usr_me',
-          permission: ResourcePermission.view,
+          rung: 'read',
         },
       ],
     })
@@ -895,9 +904,7 @@ describe('resourceAccess.grantInstance on an inbox (§5.3)', () => {
   })
 
   it('a member with inboxes: Read but no admin row on a RESTRICTED inbox is refused', async () => {
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.view } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'read' } }))
     await expect(share()).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
   })
@@ -908,30 +915,26 @@ describe('resourceAccess.grantInstance on an inbox (§5.3)', () => {
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
   })
 
-  it('the Enterprise mailPermissions gate SURVIVES the reroute (§2)', async () => {
+  it('the granularPermissions plan gate SURVIVES the reroute (§2)', async () => {
     // `authorizeInstanceTarget` answering `true` used to skip the plan gate along
     // with the authorizer, which would have handed free-plan orgs sub-`full` lens
     // shares and new Managers. §2 lists that gate as out of scope, so it runs on
     // its own line regardless of which authorizer answered.
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.admin } })
-    )
-    await share(ResourcePermission.view, 'subject')
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'admin' } }))
+    await share('identity')
     expect(resourceAccess.assertMailSharingFeature).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG_ID }),
       INBOX_RECORD_ID,
-      [expect.objectContaining({ permission: ResourcePermission.view, lens: 'subject' })]
+      [expect.objectContaining({ rung: 'identity' })]
     )
   })
 
   it('a denied plan gate blocks the write even for a Manager', async () => {
-    getCapabilities.mockResolvedValue(
-      capabilitiesFor({ instances: { [INBOX_ID]: ResourcePermission.admin } })
-    )
+    getCapabilities.mockResolvedValue(capabilitiesFor({ instances: { [INBOX_ID]: 'admin' } }))
     resourceAccess.assertMailSharingFeature.mockRejectedValueOnce(
       Object.assign(new Error('upgrade'), { name: 'ForbiddenError', statusCode: 403 })
     )
-    await expect(share(ResourcePermission.admin)).rejects.toMatchObject(FORBIDDEN)
+    await expect(share('admin')).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
   })
 })
@@ -953,11 +956,11 @@ describe('positive controls — over-denial is the failure mode this slice risks
     const assignee = capabilitiesFor({
       inboxes: Level.Read, // the seeded Member baseline (§7)
       records: Level.None, // and no records authority whatsoever
-      instances: { [INBOX_ID]: ResourcePermission.none },
+      instances: { [INBOX_ID]: 'none' },
     })
     expect(assignee.canViewInstance('inbox', INBOX_ID)).toBe(false)
 
-    lensFixture.lenses = { [THREAD_ID]: 'full' } // assignment ⇒ full
+    lensFixture.lenses = { [THREAD_ID]: 'read' } // assignment ⇒ read
 
     await expect(threads(assignee).listIds({ filter: [], limit: 50 })).resolves.toBeDefined()
     await expect(threads(assignee).getByIds({ ids: [THREAD_ID] })).resolves.toBeDefined()
@@ -983,7 +986,7 @@ describe('positive controls — over-denial is the failure mode this slice risks
     const single = capabilitiesFor({
       inboxes: Level.None,
       records: Level.None,
-      instances: { [INBOX_ID]: ResourcePermission.view },
+      instances: { [INBOX_ID]: 'read' },
       derivedKeys: [PermissionKey.inboxesView],
     })
     expect(single.areaLevel(Area.inboxes)).toBe(Level.None)
@@ -1003,7 +1006,7 @@ describe('positive controls — over-denial is the failure mode this slice risks
     // instance row (what `createInbox` writes its creator). `isAdminOrOwner` is
     // false throughout, so nothing here rides on rank.
     const manager = capabilitiesFor({
-      instances: { [INBOX_ID]: ResourcePermission.admin },
+      instances: { [INBOX_ID]: 'admin' },
       records: Level.None,
     })
     expect(manager.role).toBe('MEMBER')
@@ -1014,7 +1017,7 @@ describe('positive controls — over-denial is the failure mode this slice risks
         recordId: INBOX_RECORD_ID,
         granteeType: ResourceGranteeType.user,
         granteeId: 'usr_teammate',
-        permission: ResourcePermission.view,
+        rung: 'read',
       })
     ).resolves.toEqual({ success: true })
 
@@ -1024,7 +1027,7 @@ describe('positive controls — over-denial is the failure mode this slice risks
         recordId: `inbox:${OTHER_INBOX_ID}`,
         granteeType: ResourceGranteeType.user,
         granteeId: 'usr_teammate',
-        permission: ResourcePermission.view,
+        rung: 'read',
       })
     ).rejects.toMatchObject(FORBIDDEN)
   })

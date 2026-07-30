@@ -3,7 +3,7 @@
 // org-reset generation guard, no timer polling, linear batch growth.
 
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { FieldReference } from '@auxx/types/field'
+import type { FieldReference, FieldValueKey } from '@auxx/types/field'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fieldValueFetchQueue } from './field-value-fetch-queue'
 import { useFieldValueStore } from './field-value-store'
@@ -233,5 +233,92 @@ describe('batch scaling (Part 0 benchmark, operation-shape assertions)', () => {
     }
     const queued = fieldValueFetchQueue.queueFetchBatch(requests)
     expect(queued).toHaveLength(200) // 600 inputs → 200 unique canonical keys
+  })
+})
+
+describe('refetch (realtime catch-up)', () => {
+  it('refreshes a key the store already holds — which queueFetch deliberately will not', async () => {
+    getResourceStoreState().setResources([workOrderResource])
+    const calls: FetchCall[] = []
+    fieldValueFetchQueue.setFetchFn(makeFetchFn(calls))
+    const key = `${WORK_ORDER_DEF}:r1:${WORK_ORDER_DEF}:f1` as FieldValueKey
+    useFieldValueStore.getState().setValues([{ key, value: 'stale' }])
+
+    // The normal path is a no-op for a cached key…
+    fieldValueFetchQueue.queueFetch(
+      `${WORK_ORDER_DEF}:r1`,
+      `${WORK_ORDER_DEF}:f1` as FieldReference
+    )
+    await vi.runAllTimersAsync()
+    expect(calls).toHaveLength(0)
+
+    // …the catch-up path is not.
+    await fieldValueFetchQueue.refetch([
+      { recordId: `${WORK_ORDER_DEF}:r1`, fieldRef: `${WORK_ORDER_DEF}:f1` as FieldReference },
+    ])
+    await vi.runAllTimersAsync()
+
+    expect(calls).toHaveLength(1)
+    expect(useFieldValueStore.getState().values[key]).toBe(`v:${WORK_ORDER_DEF}:r1`)
+  })
+
+  it('never blanks a cell: no fetching/loading markers while the refresh is in flight', async () => {
+    getResourceStoreState().setResources([workOrderResource])
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    fieldValueFetchQueue.setFetchFn(async (params) => {
+      await gate
+      return {
+        values: params.recordIds.map((recordId) => ({
+          recordId,
+          fieldRef: params.fieldReferences[0]!,
+          value: 'fresh',
+        })),
+      }
+    })
+    const key = `${WORK_ORDER_DEF}:r1:${WORK_ORDER_DEF}:f1` as FieldValueKey
+    useFieldValueStore.getState().setValues([{ key, value: 'stale' }])
+
+    const pending = fieldValueFetchQueue.refetch([
+      { recordId: `${WORK_ORDER_DEF}:r1`, fieldRef: `${WORK_ORDER_DEF}:f1` as FieldReference },
+    ])
+    await vi.advanceTimersByTimeAsync(1)
+
+    // In flight: the old value is still rendered, no skeleton.
+    const inFlight = useFieldValueStore.getState()
+    expect(inFlight.values[key]).toBe('stale')
+    expect(inFlight.isKeyFetching(key)).toBe(false)
+    expect(inFlight.isKeyLoading(key)).toBe(false)
+
+    release()
+    await pending
+    expect(useFieldValueStore.getState().values[key]).toBe('fresh')
+    expect(Object.keys(useFieldValueStore.getState().loadingBatches)).toHaveLength(0)
+  })
+
+  it('clears a cell the server no longer has a value for (the missed clear)', async () => {
+    getResourceStoreState().setResources([workOrderResource])
+    fieldValueFetchQueue.setFetchFn(async () => ({ values: [] }))
+    const key = `${WORK_ORDER_DEF}:r1:${WORK_ORDER_DEF}:f1` as FieldValueKey
+    useFieldValueStore.getState().setValues([{ key, value: 'stale' }])
+
+    await fieldValueFetchQueue.refetch([
+      { recordId: `${WORK_ORDER_DEF}:r1`, fieldRef: `${WORK_ORDER_DEF}:f1` as FieldReference },
+    ])
+
+    expect(useFieldValueStore.getState().values[key]).toBeNull()
+  })
+
+  it('skips ids whose prefix is not resolvable yet', async () => {
+    const calls: FetchCall[] = []
+    fieldValueFetchQueue.setFetchFn(makeFetchFn(calls))
+
+    await fieldValueFetchQueue.refetch([
+      { recordId: 'work_order:r1', fieldRef: 'work_order:f1' as FieldReference },
+    ])
+
+    expect(calls).toHaveLength(0)
   })
 })

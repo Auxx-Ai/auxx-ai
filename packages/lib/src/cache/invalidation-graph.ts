@@ -70,7 +70,7 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // stop resolving for its members, so both visibility caches recompute.
   'group.deleted': {
     org: ['groups', 'groupMembers', 'mailGrantIndex'],
-    user: ['userMailVisibility', 'userCapabilities'],
+    user: ['userInstanceGrants', 'userCapabilities'],
   },
   // Emit sites pass the affected `userIds` (or broadcast for non-user member
   // edits) so the per-user visibility contexts recompute. `groupMembers` is the
@@ -78,7 +78,7 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // capability set — recompute userCapabilities too.
   'group.members.changed': {
     org: ['groups', 'groupMembers', 'mailGrantIndex'],
-    user: ['userMailVisibility', 'userCapabilities'],
+    user: ['userInstanceGrants', 'userCapabilities'],
   },
 
   'agent.created': ['agents'],
@@ -92,9 +92,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   // Inbox floors (defaultLens) feed every member's visibility context — emit
   // sites broadcast user keys (org-wide fan-out).
-  'inbox.created': { org: ['inboxes'], user: ['userMailVisibility'] },
-  'inbox.updated': { org: ['inboxes'], user: ['userMailVisibility'] },
-  'inbox.deleted': { org: ['inboxes'], user: ['userMailVisibility'] },
+  'inbox.created': { org: ['inboxes'], user: ['userInstanceGrants'] },
+  'inbox.updated': { org: ['inboxes'], user: ['userInstanceGrants'] },
+  'inbox.deleted': { org: ['inboxes'], user: ['userInstanceGrants'] },
 
   // Record-rule lifecycle events
   'record-rule.changed': ['recordRules'],
@@ -137,15 +137,15 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   // ── Mixed events (org + user keys) ──
   'member.added': {
-    user: ['userMemberships', 'userMailVisibility', 'userCapabilities'],
+    user: ['userMemberships', 'userInstanceGrants', 'userCapabilities'],
     org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.removed': {
-    user: ['userMemberships', 'userMailVisibility', 'userCapabilities'],
+    user: ['userMemberships', 'userInstanceGrants', 'userCapabilities'],
     org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.role.changed': {
-    user: ['userMemberships', 'userMailVisibility', 'userCapabilities'],
+    user: ['userMemberships', 'userInstanceGrants', 'userCapabilities'],
     org: ['members', 'memberRoleMap'],
   },
   // Seat-type change (full ⇄ worker) — the role map carries seatType, so the
@@ -162,7 +162,7 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // Emitted by every ResourceAccess grant/revoke/set mutation. User grants
   // target a single user; group/role/team grants fan out org-wide
   // (`broadcastUserKeys` at the emit site).
-  'resource-access.changed': { user: ['userMailVisibility'], org: ['mailGrantIndex'] },
+  'resource-access.changed': { user: ['userInstanceGrants'], org: ['mailGrantIndex'] },
   // Type-level (entityInstanceId IS NULL) grant changes feed `defAccess` in the
   // capability blob (per-user) AND the org-wide `restrictedEntityDefIds` set
   // (read-path enforcement §0). A narrow event so the noisy instance-level
@@ -171,13 +171,25 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
     user: ['userCapabilities'],
     org: ['restrictedEntityDefIds'],
   },
-  // Instance-level grant changes on an instance-access resource (datasets etc.)
-  // feed `instanceAccess` in the capability blob (per-user) AND the org-wide
-  // `governingInstanceIds` set (§1.5). Emitted ONLY when the target's def id ∈
-  // INSTANCE_ACCESS_RESOURCES, so generic mail-share instance traffic (which
-  // fires the noisy `resource-access.changed`) never churns these caches.
+  // Instance-level grant changes feed the capability blob, so this event is
+  // DEF-AGNOSTIC (v3/03 §9): every instance grant/revoke/set fires it, whatever
+  // keyspace `entityDefinitionId` is in. It used to be gated on
+  // `isInstanceAccessKey`, which can never be true for a record-def CUID — so a
+  // record share invalidated only the mail keys and left the capability blob
+  // (where §4's `grantedDefIds` front door lives) stale for the full ONE_DAY TTL
+  // on the very first share.
   'resource-access.instance.changed': {
     user: ['userCapabilities'],
+  },
+  // The org-wide `governingInstanceIds` set (§1.5) stays keyspace-gated, and is
+  // therefore its own event: the provider selects
+  // `entityDefinitionId IN INSTANCE_ACCESS_KEYS` in SQL and re-filters through
+  // `isGoverningInstanceRow` in JS, so a row on any other def provably cannot
+  // enter the set. Recomputing it for record/thread instance traffic would be an
+  // org-wide query with a guaranteed-unchanged answer. Emitted only when the
+  // target's def id ∈ INSTANCE_ACCESS_RESOURCES, and BEFORE the def-agnostic
+  // event above so the org key is fresh when clients refetch capabilities.
+  'resource-access.governing-instance.changed': {
     org: ['governingInstanceIds'],
   },
 
@@ -188,14 +200,14 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // doc-19 §8.3 audience instead (bound holders + the (role, seatType) sweep for
   // system profiles), because its levels are the composition BASE.
   //
-  // `userMailVisibility` rides along since plan 40 §4.5: `composeUserMailVisibility`
+  // `userInstanceGrants` rides along since plan 40 §4.5: `composeUserInstanceGrants`
   // now READS the capability blob (the `Area.inboxes` fallback §4.2 + `isMailAdmin`
   // §4.4), so a grant that lowers `inboxes` must reshape the mail blob in the same
   // breath. Without this edge the downgrade would land in `userCapabilities` while
   // the member kept reading mail off a stale mail blob for the full ONE_DAY TTL —
   // the one stale-blob direction in this slice that fails OPEN.
   'permission-grant.changed': {
-    user: ['userCapabilities', 'userMailVisibility'],
+    user: ['userCapabilities', 'userInstanceGrants'],
     org: ['hasPermissionGrants'],
   },
 
@@ -206,11 +218,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // the audience — crucially including NULL-BOUND holders for a system profile,
   // who are the majority and are invisible to an index sweep.
   //
-  // `userMailVisibility` for the same reason as `permission-grant.changed` above
+  // `userInstanceGrants` for the same reason as `permission-grant.changed` above
   // (plan 40 §4.5) — a profile IS the composition base, so editing one moves the
   // `Area.inboxes` level for every holder at once.
   'permission-profile.changed': {
-    user: ['userCapabilities', 'userMailVisibility'],
+    user: ['userCapabilities', 'userInstanceGrants'],
     org: ['profiles'],
   },
 

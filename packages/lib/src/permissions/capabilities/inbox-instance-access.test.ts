@@ -1,8 +1,9 @@
 // packages/lib/src/permissions/capabilities/inbox-instance-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import {
@@ -43,7 +44,7 @@ interface MemberOpts {
   rows?: Array<{
     entityDefinitionId?: InstanceAccessKey
     entityInstanceId: string
-    permission: ResourcePermission
+    rung: Rung
     /**
      * Grantee kind (plan 43 §4.1). Defaults to `'user'` — the individual lane —
      * which reproduces this harness's pre-plan-43 behaviour exactly. Pass
@@ -62,11 +63,14 @@ function member(opts: MemberOpts = {}) {
     seatType,
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     typeAccessRows: [],
-    instanceAccessRows: (opts.rows ?? []).map((row) => ({
-      entityDefinitionId: 'inbox',
-      granteeType: 'user',
-      ...row,
-    })),
+    instanceGrants: bucketInstanceGrantRows(
+      (opts.rows ?? []).map((row) => ({
+        entityDefinitionId: 'inbox',
+        granteeType: 'user',
+        granteeId: 'usr_x',
+        ...row,
+      }))
+    ),
   })
   const restricted = new Set(
     opts.restrictedInstances ?? (opts.rows ?? []).map((r) => r.entityInstanceId)
@@ -95,11 +99,9 @@ function levelFor(
   m: ReturnType<typeof member>,
   key: InstanceAccessKey,
   instanceId: string
-): ResourcePermission | undefined {
+): Rung | undefined {
   const client = effectiveInstanceLevel(m.client, key, instanceId)
-  expect(m.server.canViewInstance(key, instanceId)).toBe(
-    client !== undefined && client !== ResourcePermission.none
-  )
+  expect(m.server.canViewInstance(key, instanceId)).toBe(client !== undefined && client !== 'none')
   return client
 }
 
@@ -127,13 +129,18 @@ describe('the registry shape itself (plan 40 §1.1)', () => {
   })
 
   it('both mail keys hang off ONE area with OPPOSITE postures', () => {
+    const rungs = ['none', 'metadata', 'identity', 'read', 'admin']
     expect(INSTANCE_ACCESS_RESOURCES.inbox).toEqual({
+      lane: 'blob',
       baselineAtCreate: false,
       area: Area.inboxes,
+      rungs,
     })
     expect(INSTANCE_ACCESS_RESOURCES.personal_inbox).toEqual({
+      lane: 'blob',
       baselineAtCreate: true,
       area: Area.inboxes,
+      rungs,
     })
   })
 
@@ -168,33 +175,33 @@ describe('org-shared inboxes — the area rung IS the row-less tier (§1.2)', ()
   it('a member at `inboxes: Read` resolves `view` on a row-less shared inbox', () => {
     const m = member()
     expect(m.server.areaLevel(Area.inboxes)).toBe(Level.Read)
-    expect(levelFor(m, 'inbox', 'ib_support')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'inbox', 'ib_support')).toBe('read')
   })
 
   it('a member at `inboxes: Full` resolves `admin` — Manager of EVERY row-less inbox', () => {
     // This is the surprising consequence the area's comment exists to state:
     // `Full` is not "a bigger front door", it is mail administrator.
     const m = member({ profileLevels: MAIL_ADMIN })
-    expect(levelFor(m, 'inbox', 'ib_support')).toBe(ResourcePermission.admin)
-    expect(levelFor(m, 'inbox', 'ib_any_other_one')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'inbox', 'ib_support')).toBe('admin')
+    expect(levelFor(m, 'inbox', 'ib_any_other_one')).toBe('admin')
   })
 
   it('an explicit `role:org_member @ none` row beats the area fallback', () => {
     const m = member({
-      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_locked', permission: 'none' }],
+      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_locked', rung: 'none' }],
     })
     // The area is open and untouched — the row alone is what denies.
     expect(m.server.areaLevel(Area.inboxes)).toBe(Level.Read)
-    expect(levelFor(m, 'inbox', 'ib_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, 'inbox', 'ib_locked')).toBe('none')
     // ...and only that one inbox: the fallback still opens the rest.
-    expect(levelFor(m, 'inbox', 'ib_support')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'inbox', 'ib_support')).toBe('read')
   })
 
   it('an OWNER resolves `admin` on a row-less shared inbox (the `false` posture)', () => {
     // The positive control for the personal-mailbox case below: the OWNER
     // short-circuit is not gone, it is SCOPED.
     const m = member({ role: 'OWNER', profileLevels: MAIL_CLOSED })
-    expect(levelFor(m, 'inbox', 'ib_support')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'inbox', 'ib_support')).toBe('admin')
   })
 })
 
@@ -220,11 +227,9 @@ describe('personal mailboxes — the whole reason there are two keys (§0.2)', (
   it('an explicit row IS how a personal mailbox opens — the owner keeps their own', () => {
     const m = member({
       profileLevels: MAIL_CLOSED,
-      rows: [
-        { entityDefinitionId: 'personal_inbox', entityInstanceId: 'pib_mine', permission: 'admin' },
-      ],
+      rows: [{ entityDefinitionId: 'personal_inbox', entityInstanceId: 'pib_mine', rung: 'admin' }],
     })
-    expect(levelFor(m, 'personal_inbox', 'pib_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'personal_inbox', 'pib_mine')).toBe('admin')
     // Somebody else's mailbox stays shut, area level notwithstanding.
     expect(levelFor(m, 'personal_inbox', 'pib_theirs')).toBeUndefined()
   })
@@ -237,9 +242,9 @@ describe('positive controls — the derived-key front door (plan 25 §2)', () =>
     // inbox somebody was explicitly granted.
     const m = member({
       profileLevels: MAIL_CLOSED,
-      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_only', permission: 'view' }],
+      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_only', rung: 'read' }],
     })
-    expect(levelFor(m, 'inbox', 'ib_only')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'inbox', 'ib_only')).toBe('read')
     // ...and exactly that one.
     expect(levelFor(m, 'inbox', 'ib_other')).toBeUndefined()
   })
@@ -249,7 +254,7 @@ describe('positive controls — the derived-key front door (plan 25 §2)', () =>
     // adds) would fire against a member who genuinely has mail access.
     const m = member({
       profileLevels: MAIL_CLOSED,
-      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_only', permission: 'view' }],
+      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_only', rung: 'read' }],
     })
     expect(m.caps.instanceDerivedKeys).toContain(PermissionKey.inboxesView)
     expect(m.server.can(PermissionKey.inboxesView)).toBe(true)
@@ -260,9 +265,7 @@ describe('positive controls — the derived-key front door (plan 25 §2)', () =>
   it('a personal-mailbox `view` row opens the same front door', () => {
     const m = member({
       profileLevels: MAIL_CLOSED,
-      rows: [
-        { entityDefinitionId: 'personal_inbox', entityInstanceId: 'pib_mine', permission: 'view' },
-      ],
+      rows: [{ entityDefinitionId: 'personal_inbox', entityInstanceId: 'pib_mine', rung: 'read' }],
     })
     expect(m.server.can(PermissionKey.inboxesView)).toBe(true)
   })
@@ -281,7 +284,7 @@ describe('seats and baselines (plan 40 §7)', () => {
     const m = member({
       seatType: 'worker',
       profileLevels: MAIL_ADMIN,
-      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_support', permission: 'admin' }],
+      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_support', rung: 'admin' }],
     })
     expect(levelFor(m, 'inbox', 'ib_support')).toBeUndefined()
     expect(levelFor(m, 'inbox', 'ib_other')).toBeUndefined()
@@ -293,8 +296,8 @@ describe('seats and baselines (plan 40 §7)', () => {
     const m = member({
       seatType: 'full',
       profileLevels: MAIL_ADMIN,
-      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_support', permission: 'admin' }],
+      rows: [{ entityDefinitionId: 'inbox', entityInstanceId: 'ib_support', rung: 'admin' }],
     })
-    expect(levelFor(m, 'inbox', 'ib_support')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'inbox', 'ib_support')).toBe('admin')
   })
 })

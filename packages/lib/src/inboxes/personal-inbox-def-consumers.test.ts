@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Deep import — the `@auxx/lib/permissions` barrel hangs under vitest.
 import { Level } from '../permissions/capabilities/registry'
+import { bucketInstanceGrantRows } from '../resource-access/instance-grants'
 
 /**
  * Plan 40 phase 1, seams 4 + 5 and the 40a §9 union-completeness bar.
@@ -35,7 +36,7 @@ vi.mock('../cache', () => ({
   onCacheEvent: vi.fn(async () => undefined),
   getUserCache: () => ({ get: async () => ({ isAdmin: false, inboxLens: {} }) }),
   getCachedEntityDefId: vi.fn(async () => undefined),
-  getCachedUserMailVisibility: vi.fn(),
+  getCachedUserInstanceGrants: vi.fn(),
   getCachedMembers: vi.fn(async () => []),
 }))
 // The shared-only guards below read one inbox through the service; the service
@@ -48,8 +49,8 @@ vi.mock('./inbox-service', () => ({
 
 const { getAutomationVisibility } = await import('../permissions/visibility/automation-visibility')
 const { getFullLensAudienceForInbox } = await import('../permissions/visibility/audience')
-const { composeUserMailVisibility } = await import(
-  '../permissions/visibility/compute-user-mail-visibility'
+const { composeUserInstanceGrants } = await import(
+  '../permissions/visibility/compute-user-instance-grants'
 )
 const { getInboxMeta, isPersonalInbox } = await import('../ingest/inbox-meta')
 const { assertMailTriggerNotPersonal } = await import('../workflows/mail-trigger-guard')
@@ -64,7 +65,7 @@ const PERSONAL_ID = 'ibx_personal'
 type CachedInbox = {
   id: string
   entityDefinitionKey: 'inbox' | 'personal_inbox'
-  defaultLens: 'none' | 'metadata' | 'subject' | 'full'
+  defaultLens: 'none' | 'metadata' | 'identity' | 'read'
   isPersonal: boolean
   ownerUserId: string | null
 }
@@ -72,7 +73,7 @@ type CachedInbox = {
 const sharedInbox: CachedInbox = {
   id: SHARED_ID,
   entityDefinitionKey: 'inbox',
-  defaultLens: 'full',
+  defaultLens: 'read',
   isPersonal: false,
   ownerUserId: null,
 }
@@ -169,24 +170,24 @@ describe('PRESENT — the full-lens audience still caps a personal mailbox', () 
 
 describe('PRESENT — personalInboxIds, both producers', () => {
   for (const [era, personal] of BOTH_ERAS) {
-    it(`composeUserMailVisibility caps OTHERS' personal mailbox ${era}`, async () => {
-      const viewer = composeUserMailVisibility({
+    it(`composeUserInstanceGrants caps OTHERS' personal mailbox ${era}`, async () => {
+      const viewer = composeUserInstanceGrants({
         userId: OTHER,
         role: 'ADMIN',
         inboxesAreaLevel: Level.Full,
         inboxes: [sharedInbox, personal],
-        grants: [],
+        instanceGrants: bucketInstanceGrantRows([]),
       })
       expect(viewer.personalInboxIds).toEqual({ [PERSONAL_ID]: true })
     })
 
-    it(`composeUserMailVisibility never caps the viewer's OWN mailbox ${era}`, async () => {
-      const viewer = composeUserMailVisibility({
+    it(`composeUserInstanceGrants never caps the viewer's OWN mailbox ${era}`, async () => {
+      const viewer = composeUserInstanceGrants({
         userId: OWNER,
         role: 'USER',
         inboxesAreaLevel: Level.Read,
         inboxes: [sharedInbox, personal],
-        grants: [],
+        instanceGrants: bucketInstanceGrantRows([]),
       })
       expect(viewer.personalInboxIds).toEqual({})
     })

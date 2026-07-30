@@ -244,8 +244,7 @@ describe('rekeyInboxGrants — the claim re-keys personal_inbox → inbox', () =
     id: 'ra_1',
     granteeType: 'user',
     granteeId: 'u_owner',
-    permission: 'admin',
-    lens: null,
+    rung: 'admin',
     ...over,
   })
 
@@ -267,19 +266,18 @@ describe('rekeyInboxGrants — the claim re-keys personal_inbox → inbox', () =
     // The collision rule is explicit, never the unique arbiter's: letting
     // ON CONFLICT pick downgraded a creator-Manager from `admin` to `view`.
     const plan = planGrantRekey({
-      legacy: [row({ id: 'legacy', entityDefinitionId: 'personal_inbox', permission: 'admin' })],
+      legacy: [row({ id: 'legacy', entityDefinitionId: 'personal_inbox', rung: 'admin' })],
       existing: [
         row({
           id: 'existing',
           entityDefinitionId: 'inbox',
-          permission: 'view',
-          lens: 'subject',
+          rung: 'identity',
         }),
       ],
     })
     expect(plan).toEqual({
       recode: [],
-      raise: [{ id: 'existing', permission: 'admin', lens: null }],
+      raise: [{ id: 'existing', rung: 'admin' }],
       drop: ['legacy'],
     })
   })
@@ -290,11 +288,10 @@ describe('rekeyInboxGrants — the claim re-keys personal_inbox → inbox', () =
         row({
           id: 'legacy',
           entityDefinitionId: 'personal_inbox',
-          permission: 'view',
-          lens: 'metadata',
+          rung: 'metadata',
         }),
       ],
-      existing: [row({ id: 'existing', entityDefinitionId: 'inbox', permission: 'admin' })],
+      existing: [row({ id: 'existing', entityDefinitionId: 'inbox', rung: 'admin' })],
     })
     expect(plan).toEqual({ recode: [], raise: [], drop: ['legacy'] })
   })

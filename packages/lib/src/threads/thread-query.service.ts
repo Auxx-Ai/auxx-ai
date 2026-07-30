@@ -37,9 +37,13 @@ import { getParticipantIdsByMessage } from '../messages/participant-ids'
 import type {
   MailViewer,
   ThreadVisibilityInput,
-  UserMailVisibility,
+  UserInstanceGrants,
 } from '../permissions/visibility/context'
-import { isAutomationViewer, isSystemViewer } from '../permissions/visibility/context'
+import {
+  hasContactGrants,
+  isAutomationViewer,
+  isSystemViewer,
+} from '../permissions/visibility/context'
 import { automationLens, effectiveLensBatch } from '../permissions/visibility/effective-lens'
 import type { Lens } from '../permissions/visibility/lens'
 import { redactThreadMeta } from '../permissions/visibility/redact'
@@ -932,7 +936,7 @@ export class ThreadQueryService {
         if (!t) return null
 
         // Invisible to this viewer — indistinguishable from nonexistent.
-        const lens = lensByThread ? (lensByThread.get(id) ?? 'none') : 'full'
+        const lens = lensByThread ? (lensByThread.get(id) ?? 'none') : 'read'
         if (lens === 'none') return null
 
         // Determine isUnread status
@@ -1009,10 +1013,10 @@ export class ThreadQueryService {
    */
   private async getParticipantContactIds(
     threadIds: string[],
-    viewer: UserMailVisibility
+    viewer: UserInstanceGrants
   ): Promise<Map<string, string[]>> {
     const map = new Map<string, string[]>()
-    if (threadIds.length === 0 || Object.keys(viewer.contactGrants).length === 0) return map
+    if (threadIds.length === 0 || !hasContactGrants(viewer)) return map
 
     const rows = await this.db
       .select({

@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/ui/level-labels.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
-import { Level } from '@auxx/lib/permissions/client'
+import { ResourcePermission, type Rung } from '@auxx/database/enums'
+import { Level, rungToPermission } from '@auxx/lib/permissions/client'
 
 /**
  * The single display vocabulary for the four-rung access ladder (plan 26 §2.1).
@@ -86,7 +86,41 @@ export function permissionOfLevel(level: Level): ResourcePermission {
   return PERMISSION_OF_LEVEL[level]
 }
 
+/**
+ * The `ResourcePermission` this grid DISPLAYS a stored {@link Rung} as.
+ *
+ * The permissions page's instance grid renders through `AccessRowSelect`, which
+ * is the AREA/DEF-axis picker (`none / view / edit / admin` + an INHERIT
+ * sentinel). Plan v3/03 §2.2 is explicit that the area ladder and the instance
+ * rung ladder must NOT be merged, so this is a one-way DISPLAY clamp, not a
+ * conversion: mail's sub-`read` tiers (`metadata`, `identity`) floor at `view`.
+ *
+ * That reproduces today's behaviour exactly rather than changing it — before the
+ * single-column migration this grid read `permission` and ignored `lens`, so a
+ * `subject`-floored inbox already rendered as "Read only". Using
+ * `rungToPermission` here instead would map those tiers to `undefined`, i.e.
+ * "Inherit", which is a WORSE lie: it claims no row exists.
+ *
+ * The honest fix is the `RungSelect` convergence (plan v3/03 §6.3), which renders
+ * the domain's declared `rungs` from `INSTANCE_ACCESS_RESOURCES`. Until then this
+ * clamp is the single place the gap lives.
+ */
+export function displayPermissionOfRung(rung: Rung): ResourcePermission {
+  return rung === 'metadata' || rung === 'identity'
+    ? ResourcePermission.view
+    : (rungToPermission(rung) ?? ResourcePermission.none)
+}
+
 /** Display label for a `ResourcePermission`, on the shared rung vocabulary. */
 export function permissionLabel(permission: ResourcePermission, form: LabelForm = 'short'): string {
   return labelOf(LEVEL_OF_PERMISSION[permission], form)
+}
+
+/**
+ * Display label for a stored {@link Rung}. Goes through
+ * {@link displayPermissionOfRung}, so mail's sub-`read` tiers show as "Read
+ * only" here — the same clamp, and the same reason.
+ */
+export function rungLabel(rung: Rung, form: LabelForm = 'short'): string {
+  return permissionLabel(displayPermissionOfRung(rung), form)
 }

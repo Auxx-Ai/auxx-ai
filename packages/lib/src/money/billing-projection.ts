@@ -176,7 +176,6 @@ async function listWorkOrderSourceLines(input: {
       },
     ],
     limit: 1000,
-    mode: 'oneshot',
   })
   const valuesById = await batchReadSystemValues({
     service: new FieldValueService(input.organizationId, undefined, input.db),
@@ -282,7 +281,6 @@ export async function computeWorkOrderBillingProjection(input: {
         },
       ],
       limit: 1000,
-      mode: 'oneshot',
     }),
     // Recurring/per-visit custom-schedule visibility (plan §4.1/§5.3): the `invoice_drafts`
     // RecurrenceRule is the schedule cursor's home, not a source-line/installment table.
@@ -718,7 +716,6 @@ export async function syncContactBillingProjection(input: {
         },
       ],
       limit: 1000,
-      mode: 'oneshot',
     }),
     handler.listFiltered({
       entityDefinitionId: 'invoice',
@@ -737,7 +734,6 @@ export async function syncContactBillingProjection(input: {
         },
       ],
       limit: 1000,
-      mode: 'oneshot',
     }),
   ])
   let uninvoicedAmount = 0

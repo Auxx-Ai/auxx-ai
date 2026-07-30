@@ -29,14 +29,37 @@ export {
   getGranteeAccess,
 } from './grantee-access'
 export {
+  type BlobLaneConfig,
   INSTANCE_ACCESS_KEYS,
   INSTANCE_ACCESS_READ_KEYS,
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
   type InstanceAccessResourceConfig,
   isInstanceAccessKey,
+  type QueryLaneConfig,
+  RECORD_DEF_RUNGS,
 } from './instance-access'
+// Plan v3/03 P5 — the record lane's cascade cap (§13.1) and its ONE scope
+// authoring point (§5.1).
+export {
+  deriveThreadRungFromRecordGrant,
+  recordThreadDerivationCap,
+  TICKET_LIKE_ENTITY_TYPES,
+} from './record-thread-derivation'
 export { resolveLinkedRecordIds } from './record-view-scope'
+export {
+  assertRequestScoped,
+  type RecordScopeArm,
+  type RecordVisibilityScope,
+  type ResolvedRecordScope,
+  recordAccessRankSql,
+  recordScopeArm,
+  recordScopeArmFor,
+  recordSearchVisibilitySql,
+  recordVisibilityScope,
+  resolveRecordVisibilityScope,
+  rungsAtOrAbove,
+} from './record-visibility-scope'
 export {
   AREA_ORDER,
   Area,
@@ -59,6 +82,16 @@ export {
   type ResolvedCapabilityInputs,
   resolveCapabilityInputs,
 } from './resolve-capability-inputs'
+export {
+  ALL_RUNGS,
+  foldRecordAccess,
+  maxRung,
+  RUNG_ORDER,
+  type Rung,
+  rankToRung,
+  rungRank,
+  satisfiesRung,
+} from './rung'
 export {
   ALL_KEYS,
   ENTITY_BASE_AREAS,

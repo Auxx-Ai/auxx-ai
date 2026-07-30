@@ -154,7 +154,7 @@ export const approvalRouter = createTRPCRouter({
 
   /**
    * Server-authoritative eligibility + approver display for the request trigger
-   * (plan 42 §6.2). The client's `myLens !== 'full' && !canShare` check is
+   * (plan 42 §6.2). The client's `myLens !== 'read' && !canShare` check is
    * presentation only; this is the answer that decides whether Send does anything.
    *
    * Approver display names come from the org member CACHE, never a `User` join.

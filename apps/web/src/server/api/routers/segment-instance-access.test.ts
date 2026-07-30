@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { schema } from '@auxx/database'
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -85,11 +85,11 @@ function capabilitiesFor(
   overrides: { role?: 'MEMBER' | 'OWNER'; instances?: Record<string, ResourcePermission> } = {}
 ) {
   const areaLevel =
-    permission === undefined || permission === ResourcePermission.none
+    permission === undefined || permission === 'none'
       ? Level.None
-      : permission === ResourcePermission.view
+      : permission === 'read'
         ? Level.Read
-        : permission === ResourcePermission.edit
+        : permission === 'edit'
           ? Level.Edit
           : Level.Full
   const instances =
@@ -204,14 +204,12 @@ beforeEach(() => {
 
 describe('segment router — instance `view` cannot mutate (plan 24 §A.4, "the actual hole")', () => {
   it.each(MUTATIONS)('%s is refused for a view-only member', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(segmentService[serviceFn]).not.toHaveBeenCalled()
   })
 
   it.each(MUTATIONS)('%s succeeds at instance edit', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('edit')))).resolves.toBeDefined()
     expect(segmentService[serviceFn]).toHaveBeenCalledTimes(1)
   })
 
@@ -224,9 +222,7 @@ describe('segment router — instance `view` cannot mutate (plan 24 §A.4, "the 
     MUTATIONS
   )('%s is refused for an explicit `none` restriction row', async (_n, call, fn) => {
     await expect(
-      call(
-        caller(capabilitiesFor(undefined, { instances: { [DATASET_ID]: ResourcePermission.none } }))
-      )
+      call(caller(capabilitiesFor(undefined, { instances: { [DATASET_ID]: 'none' } })))
     ).rejects.toMatchObject(FORBIDDEN)
     expect(segmentService[fn]).not.toHaveBeenCalled()
   })
@@ -234,7 +230,7 @@ describe('segment router — instance `view` cannot mutate (plan 24 §A.4, "the 
 
 describe('segment router — reads are open at instance `view`', () => {
   it.each(READS)('%s succeeds at instance view', async (_name, call, serviceFn) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('read')))).resolves.toBeDefined()
     expect(segmentService[serviceFn]).toHaveBeenCalledTimes(1)
   })
 
@@ -245,9 +241,7 @@ describe('segment router — reads are open at instance `view`', () => {
 
   it.each(READS)('%s is refused for an explicit `none` restriction row', async (_n, call, fn) => {
     await expect(
-      call(
-        caller(capabilitiesFor(undefined, { instances: { [DATASET_ID]: ResourcePermission.none } }))
-      )
+      call(caller(capabilitiesFor(undefined, { instances: { [DATASET_ID]: 'none' } })))
     ).rejects.toMatchObject(FORBIDDEN)
     expect(segmentService[fn]).not.toHaveBeenCalled()
   })
@@ -263,8 +257,8 @@ describe('segment router — how the dataset is resolved', () => {
       // only checked the first id would let the second dataset's segments be
       // deleted by a viewer.
       instances: {
-        [DATASET_ID]: ResourcePermission.edit,
-        [OTHER_DATASET_ID]: ResourcePermission.view,
+        [DATASET_ID]: 'edit',
+        [OTHER_DATASET_ID]: 'read',
       },
     })
 
@@ -287,8 +281,8 @@ describe('segment router — how the dataset is resolved', () => {
     })
     const capabilities = capabilitiesFor(undefined, {
       instances: {
-        [DATASET_ID]: ResourcePermission.admin,
-        [OTHER_DATASET_ID]: ResourcePermission.none,
+        [DATASET_ID]: 'admin',
+        [OTHER_DATASET_ID]: 'none',
       },
     })
 
@@ -301,7 +295,7 @@ describe('segment router — how the dataset is resolved', () => {
   it('an unknown segment 404s before any capability decision leaks its existence', async () => {
     const db = fakeDb({ segments: [], documents: [] })
     await expect(
-      caller(capabilitiesFor(ResourcePermission.admin), db).updateContent({
+      caller(capabilitiesFor('admin'), db).updateContent({
         segmentId: 'seg_missing',
         content: 'x',
       })

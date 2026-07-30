@@ -9,20 +9,20 @@ import { toRecordId } from '../resources/resource-id'
 const {
   assertCanActOnThreads,
   getCachedResources,
-  getCachedUserMailVisibility,
+  getCachedUserInstanceGrants,
   getThreadLens,
   inboxAccessRecordId,
 } = vi.hoisted(() => ({
   assertCanActOnThreads: vi.fn(),
   getCachedResources: vi.fn(),
-  getCachedUserMailVisibility: vi.fn(),
+  getCachedUserInstanceGrants: vi.fn(),
   getThreadLens: vi.fn(),
   inboxAccessRecordId: vi.fn(),
 }))
 
 vi.mock('../cache/org-cache-helpers', () => ({ getCachedResources }))
 vi.mock('../cache/user-cache-helpers', () => ({
-  getCachedUserMailVisibility,
+  getCachedUserInstanceGrants,
 }))
 vi.mock('../events', () => ({
   publisher: { publishLater: vi.fn() },
@@ -76,7 +76,7 @@ function structuralCapabilities(overrides: Partial<CapabilityView> = {}): Capabi
 
 beforeEach(() => {
   vi.clearAllMocks()
-  getCachedUserMailVisibility.mockResolvedValue({
+  getCachedUserInstanceGrants.mockResolvedValue({
     userId,
     isAdmin: false,
   })

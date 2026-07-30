@@ -24,7 +24,7 @@
  * settled). Two approximations remain, both upward (an audience that is too
  * wide, never too narrow):
  *
- *  1. **`defaultLens === 'full'` ⇒ every member.** The real floor for a
+ *  1. **`defaultLens === 'read'` ⇒ every member.** The real floor for a
  *     baseline-row-less inbox is the member's own `Area.inboxes` level, so a
  *     member whose profile closes the area is included here but sees nothing. A
  *     faithful answer needs one capability-blob read per member per ingested
@@ -67,14 +67,14 @@ export async function getFullLensAudienceForInbox(
   if (inbox?.isPersonal) {
     if (inbox.ownerUserId) audience.add(inbox.ownerUserId)
     for (const entry of grantIndex.inboxes[inboxId] ?? []) {
-      if (entry.lens === 'full') audience.add(entry.userId)
+      if (entry.lens === 'read') audience.add(entry.userId)
     }
     return [...audience]
   }
 
   // Row-derived floor (see the header): `full` means "no authored baseline row",
   // i.e. the org-shared default via the `Area.inboxes` fallback. Approximation 1.
-  if (inbox?.defaultLens === 'full') {
+  if (inbox?.defaultLens === 'read') {
     for (const m of members) audience.add(m.userId)
     return [...audience]
   }
@@ -84,7 +84,7 @@ export async function getFullLensAudienceForInbox(
     if (role === 'OWNER' || role === 'ADMIN') audience.add(m.userId)
   }
   for (const entry of grantIndex.inboxes[inboxId] ?? []) {
-    if (entry.lens === 'full') audience.add(entry.userId)
+    if (entry.lens === 'read') audience.add(entry.userId)
   }
   return [...audience]
 }

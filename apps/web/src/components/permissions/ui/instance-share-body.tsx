@@ -1,8 +1,12 @@
 // apps/web/src/components/permissions/ui/instance-share-body.tsx
 'use client'
 
-import { ResourcePermission } from '@auxx/database/enums'
-import { INSTANCE_ACCESS_RESOURCES, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import {
+  INSTANCE_ACCESS_RESOURCES,
+  type InstanceAccessKey,
+  Level,
+  PERMISSION_AREAS,
+} from '@auxx/lib/permissions/client'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId } from '@auxx/types/resource'
 import {
@@ -15,16 +19,12 @@ import {
 import { AlertTriangle } from 'lucide-react'
 import { useMemo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { useCanAdminInstance } from '~/providers/capabilities-provider'
 import type { InstanceLevel } from '../hooks/use-instance-share'
 import { useInstanceShare } from '../hooks/use-instance-share'
+import { useCanManageInstanceSharing, useInstanceShareCopy } from '../hooks/use-instance-share-copy'
 import { GranteeList } from './grantee-list'
-import {
-  deadGrantWarning,
-  INSTANCE_SHARE_COPY,
-  type InstanceShareCopy,
-} from './instance-share-copy'
-import { permissionLabel } from './level-labels'
+import { deadGrantWarning, type InstanceShareCopy } from './instance-share-copy'
+import { rungLabel } from './level-labels'
 
 /**
  * The per-INSTANCE tiers offered by every share picker. A flat module const with
@@ -36,15 +36,11 @@ import { permissionLabel } from './level-labels'
  * row must keep offering `Read and write` even where its area's ladder no longer
  * has that rung — pinned by §8 test 23.
  */
-export const LEVEL_ORDER: InstanceLevel[] = [
-  ResourcePermission.view,
-  ResourcePermission.edit,
-  ResourcePermission.admin,
-]
+export const LEVEL_ORDER: InstanceLevel[] = ['read', 'edit', 'admin']
 
 export function levelHelper(copy: InstanceShareCopy, level: InstanceLevel): string {
-  if (level === ResourcePermission.edit) return copy.levels.write
-  if (level === ResourcePermission.admin) return copy.levels.full
+  if (level === 'edit') return copy.levels.write
+  if (level === 'admin') return copy.levels.full
   return copy.levels.read
 }
 
@@ -63,13 +59,13 @@ export function InstanceLevelSelect({
   return (
     <Select value={value} onValueChange={(v) => onChange(v as InstanceLevel)} disabled={disabled}>
       <SelectTrigger size='sm' variant='transparent' className='h-7 w-36'>
-        <SelectValue>{permissionLabel(value, 'long')}</SelectValue>
+        <SelectValue>{rungLabel(value, 'long')}</SelectValue>
       </SelectTrigger>
       <SelectContent align='end' className='min-w-56'>
         {LEVEL_ORDER.map((level) => (
-          <SelectItem key={level} value={level} textValue={permissionLabel(level, 'long')}>
+          <SelectItem key={level} value={level} textValue={rungLabel(level, 'long')}>
             <div className='flex flex-col items-start'>
-              <span>{permissionLabel(level, 'long')}</span>
+              <span>{rungLabel(level, 'long')}</span>
               <span className='text-muted-foreground text-xs'>{levelHelper(copy, level)}</span>
             </div>
           </SelectItem>
@@ -97,7 +93,7 @@ export function InstanceLevelSelect({
  * instead. If this list ever gains a shared primitive, the axis is **subject**,
  * never a standalone `expandable` boolean.
  *
- * Editability is gated on {@link useCanAdminInstance} exactly as before: an
+ * Editability is gated on {@link useCanManageInstanceSharing}: an
  * instance-restricted admin sees this list read-only (§B.2.7).
  *
  * Dead-row warning (§B.2.8, re-aimed by plan 25 §2): an explicit instance row
@@ -129,17 +125,28 @@ export function InstanceShareBody({
   emptyHint: (noun: string) => string
 }) {
   const { entityDefinitionId: key } = parseRecordId(recordId)
-  const isSupported = key in INSTANCE_SHARE_COPY
-  const canAdmin = useCanAdminInstance(recordId)
+  // Copy resolution is the ONE seam that decides whether this target is
+  // shareable at all — the registry entry for a config-scale resource, or the
+  // record-definition fallback built from the def's singular name (§6.3). The
+  // old `key in INSTANCE_SHARE_COPY` test could never be true for a record CUID,
+  // which is why records rendered nothing here.
+  const copy = useInstanceShareCopy(recordId)
+  const isSupported = copy !== null
+  const canAdmin = useCanManageInstanceSharing(recordId)
   const { grants, unmanageableGrants, grant, changeLevel, revoke } = useInstanceShare({
     recordId,
     enabled: isSupported,
   })
 
   const areaLabel = useMemo(() => {
-    if (!isSupported) return undefined
-    const area = INSTANCE_ACCESS_RESOURCES[key as keyof typeof INSTANCE_ACCESS_RESOURCES].area
-    return PERMISSION_AREAS[area].label
+    // Only the BLOB lane has an area whose level can strand a grant. A record
+    // def's governing level is its own, not an instance-access area's, so the
+    // dead-grant warning does not apply to it.
+    if (!isSupported || !(key in INSTANCE_ACCESS_RESOURCES)) return undefined
+    // `InstanceAccessKey` (blob lane), not `keyof typeof INSTANCE_ACCESS_RESOURCES`:
+    // the registry also declares query-lane domains, which carry no `area`.
+    const area = INSTANCE_ACCESS_RESOURCES[key as InstanceAccessKey].area
+    return PERMISSION_AREAS[area]?.label
   }, [isSupported, key])
 
   // An explicit `'none'` restriction on a member who already composes the area
@@ -147,15 +154,14 @@ export function InstanceShareBody({
   const deadRowActorIds = useMemo(() => {
     const ids = new Set<string>()
     for (const g of grants) {
-      if (g.granteeAreaLevel === Level.None && g.permission === ResourcePermission.none) {
+      if (g.granteeAreaLevel === Level.None && g.rung === 'none') {
         ids.add(g.actorId)
       }
     }
     return ids
   }, [grants])
 
-  if (!isSupported) return null
-  const copy = INSTANCE_SHARE_COPY[key as keyof typeof INSTANCE_SHARE_COPY]
+  if (!copy) return null
 
   return (
     <GranteeList<InstanceLevel>
@@ -163,9 +169,9 @@ export function InstanceShareBody({
       onGrant={grant}
       onChange={changeLevel}
       onRevoke={revoke}
-      defaultChoice={ResourcePermission.view}
+      defaultChoice={'read'}
       depth={depth}
-      renderLockedLabel={(choice) => permissionLabel(choice, 'long')}
+      renderLockedLabel={(choice) => rungLabel(choice, 'long')}
       renderPicker={({ value, onChange, disabled, actorId }) => {
         const isDeadRow = deadRowActorIds.has(actorId)
         return (

@@ -112,79 +112,66 @@ export function useOrgChannel(handlers?: SubscribeHandlers): boolean {
   return useRealtimeRoom(roomKey, handlers ?? {})
 }
 
-/** One per-lens inbox channel subscription request (mail-permissions §6.4). */
-export interface InboxChannelEntry {
-  /** Raw inbox UUID, or `'none'` for the residual triage channel. */
-  slug: string
-  /** The caller's lens on that inbox — subscribe to exactly this variant. */
-  lens: ChannelLens
-}
-
 /**
- * Subscribe to a single per-lens inbox channel. The hook refcounts
- * subscriptions so multiple components can call it safely.
+ * Handlers for a multi-room subscription. Extends the adapter's
+ * {@link SubscribeHandlers} with a room-identified subscribe callback — the
+ * plain `onSubscribed` fires once per room but says nothing about *which*
+ * room, which a per-key catch-up needs.
  */
-export function useInboxChannel(
-  entry: InboxChannelEntry | null | undefined,
-  handlers?: SubscribeHandlers
-): boolean {
-  const { organizationId } = useUser()
-  const roomKey =
-    organizationId && entry ? rooms.orgInbox(organizationId, entry.slug, entry.lens) : null
-  return useRealtimeRoom(roomKey, handlers ?? {})
+export interface RoomsHandlers extends SubscribeHandlers {
+  /**
+   * Fired for each room as it completes its subscribe handshake — and again
+   * on every resubscribe (Pusher refires `pusher:subscription_succeeded`
+   * after a reconnect). Use it to catch up on events published while that
+   * specific room was unsubscribed.
+   */
+  onRoomSubscribed?(roomKey: string): void
 }
 
 /**
- * Subscribe to many per-lens inbox channels at once. Manages add/remove based
- * on the given entries. Returns the set of currently-subscribed room keys for
- * the requested entries only (filtered from the adapter's global room map).
+ * Subscribe to many rooms at once by key. Manages add/remove as the requested
+ * set changes and refcounts through the adapter, so overlapping callers are
+ * safe. Returns the set of currently-subscribed room keys for the requested
+ * keys only (filtered from the adapter's global room map).
  *
- * The returned set is referentially stable until either the requested entry
- * set changes or the adapter's subscribed-room contents change for those
- * entries — required by the `useSyncExternalStore` snapshot contract.
+ * The returned set is referentially stable until either the requested key set
+ * changes or the adapter's subscribed-room contents change for those keys —
+ * required by the `useSyncExternalStore` snapshot contract.
+ *
+ * Room keys never contain a comma, so the requested set is tracked as one
+ * sorted comma-joined string; a caller may therefore rebuild its key array on
+ * every render without re-subscribing.
  */
-export function useInboxChannels(
-  entries: readonly InboxChannelEntry[],
-  handlers?: SubscribeHandlers
+export function useRealtimeRooms(
+  roomKeys: readonly string[],
+  handlers?: RoomsHandlers
 ): ReadonlySet<string> {
-  const { organizationId } = useUser()
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
 
-  // Stable comma-joined key so the effect only re-runs when the entry set changes.
-  const entryKey = useMemo(
-    () =>
-      entries
-        .map((e) => `${e.slug}:${e.lens}`)
-        .sort()
-        .join(','),
-    [entries]
-  )
+  const roomsKey = useMemo(() => [...roomKeys].sort().join(','), [roomKeys])
 
   useEffect(() => {
-    if (!organizationId || !entryKey) return
-    const subs = entryKey.split(',').map((pair) => {
-      const [slug, lens] = pair.split(':')
-      return realtimeAdapter.subscribe(rooms.orgInbox(organizationId, slug, lens as ChannelLens), {
+    if (!roomsKey) return
+    const subs = roomsKey.split(',').map((roomKey) =>
+      realtimeAdapter.subscribe(roomKey, {
         onEvent: (event, payload) => handlersRef.current?.onEvent?.(event, payload),
-        onSubscribed: () => handlersRef.current?.onSubscribed?.(),
+        onSubscribed: () => {
+          handlersRef.current?.onSubscribed?.()
+          handlersRef.current?.onRoomSubscribed?.(roomKey)
+        },
       })
-    })
+    )
     return () => {
       for (const s of subs) s.unsubscribe()
     }
-  }, [organizationId, entryKey])
+  }, [roomsKey])
 
   // Set of room keys we care about for this hook instance.
-  const requestedKeys = useMemo<ReadonlySet<string>>(() => {
-    if (!organizationId || !entryKey) return EMPTY_ROOM_SET
-    return new Set(
-      entryKey.split(',').map((pair) => {
-        const [slug, lens] = pair.split(':')
-        return rooms.orgInbox(organizationId, slug, lens as ChannelLens)
-      })
-    )
-  }, [organizationId, entryKey])
+  const requestedKeys = useMemo<ReadonlySet<string>>(
+    () => (roomsKey ? new Set(roomsKey.split(',')) : EMPTY_ROOM_SET),
+    [roomsKey]
+  )
 
   // Cache the last returned snapshot so identity stays stable until the
   // filtered membership actually changes. `useSyncExternalStore` requires the
@@ -215,6 +202,95 @@ export function useInboxChannels(
   const getServerSnapshot = useCallback((): ReadonlySet<string> => EMPTY_ROOM_SET, [])
 
   return useSyncExternalStore(realtimeAdapter.subscribeToRooms, getSnapshot, getServerSnapshot)
+}
+
+/** Handlers for the per-def record channels. */
+export interface RecordChannelHandlers extends SubscribeHandlers {
+  /**
+   * Fired with the entity-definition id of each record channel as it finishes
+   * subscribing — and again after a reconnect resubscribes it. The window
+   * between mount and this callback is one in which Pusher delivers nothing,
+   * so a consumer holding data for that def must reconcile it here.
+   */
+  onDefSubscribed?(entityDefinitionId: string): void
+}
+
+/**
+ * Subscribe to the per-def record channels for a set of entity definitions
+ * (plan v3/03 §8.1). Record-family events (`record:*`, `fieldValues:updated`,
+ * `records:invalidated`) are published per def and each channel is ACL'd on
+ * `canViewEntity`, so a def the member cannot view simply fails auth.
+ */
+export function useRecordChannels(
+  entityDefinitionIds: readonly string[],
+  handlers?: RecordChannelHandlers
+): ReadonlySet<string> {
+  const { organizationId } = useUser()
+  // Room keys plus the reverse map, derived together so `onRoomSubscribed`
+  // can name the def without re-parsing the key format.
+  const { roomKeys, defByRoomKey } = useMemo(() => {
+    const keys: string[] = []
+    const byKey = new Map<string, string>()
+    if (organizationId) {
+      for (const defId of new Set(entityDefinitionIds)) {
+        const key = rooms.orgRecords(organizationId, defId)
+        keys.push(key)
+        byKey.set(key, defId)
+      }
+    }
+    return { roomKeys: keys, defByRoomKey: byKey }
+  }, [organizationId, entityDefinitionIds])
+
+  return useRealtimeRooms(roomKeys, {
+    onEvent: handlers?.onEvent,
+    onSubscribed: handlers?.onSubscribed,
+    onRoomSubscribed: (roomKey) => {
+      const defId = defByRoomKey.get(roomKey)
+      if (defId) handlers?.onDefSubscribed?.(defId)
+    },
+  })
+}
+
+/** One per-lens inbox channel subscription request (mail-permissions §6.4). */
+export interface InboxChannelEntry {
+  /** Raw inbox UUID, or `'none'` for the residual triage channel. */
+  slug: string
+  /** The caller's lens on that inbox — subscribe to exactly this variant. */
+  lens: ChannelLens
+}
+
+/**
+ * Subscribe to a single per-lens inbox channel. The hook refcounts
+ * subscriptions so multiple components can call it safely.
+ */
+export function useInboxChannel(
+  entry: InboxChannelEntry | null | undefined,
+  handlers?: SubscribeHandlers
+): boolean {
+  const { organizationId } = useUser()
+  const roomKey =
+    organizationId && entry ? rooms.orgInbox(organizationId, entry.slug, entry.lens) : null
+  return useRealtimeRoom(roomKey, handlers ?? {})
+}
+
+/**
+ * Subscribe to many per-lens inbox channels at once — a thin mapping over
+ * {@link useRealtimeRooms}, which owns the add/remove + snapshot machinery.
+ * Returns the set of currently-subscribed room keys for the requested entries.
+ */
+export function useInboxChannels(
+  entries: readonly InboxChannelEntry[],
+  handlers?: SubscribeHandlers
+): ReadonlySet<string> {
+  const { organizationId } = useUser()
+  const roomKeys = useMemo(
+    () =>
+      organizationId
+        ? entries.map((e) => rooms.orgInbox(organizationId, e.slug, e.lens))
+        : ([] as string[]),
+    [organizationId, entries]
+  )
+  return useRealtimeRooms(roomKeys, handlers)
 }
 
 const EMPTY_ROOM_SET: ReadonlySet<string> = new Set()

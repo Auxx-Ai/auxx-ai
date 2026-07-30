@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/actor-agent-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
 import type { Actor } from '@auxx/types/actor'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -136,7 +136,7 @@ function capabilitiesFor(
   const instances = opts.instances ?? {}
   const seatType = opts.seatType ?? 'full'
   const derived =
-    seatType !== 'worker' && Object.values(instances).some((p) => p !== ResourcePermission.none)
+    seatType !== 'worker' && Object.values(instances).some((p) => p !== 'none')
       ? [PermissionKey.agentsView]
       : []
   return new CapabilitySet(
@@ -180,7 +180,7 @@ beforeEach(() => {
 
 /** Area open (`exclude` arm) with ONE agent explicitly restricted to `none`. */
 const restrictedFromOne = () =>
-  capabilitiesFor(Level.Full, { instances: { [RESTRICTED_AGENT]: ResourcePermission.none } })
+  capabilitiesFor(Level.Full, { instances: { [RESTRICTED_AGENT]: 'none' } })
 
 describe('actor router — a restricted agent never reaches the picker', () => {
   it('list drops it', async () => {
@@ -241,7 +241,7 @@ describe('actor router — all three instanceListScope arms', () => {
     // (plan 25 §2), and it is an ALLOW-list — every row-less agent stays hidden,
     // which is the arm a deny-list cannot express.
     const result = await caller(
-      capabilitiesFor(Level.None, { instances: { [OPEN_AGENT]: ResourcePermission.view } })
+      capabilitiesFor(Level.None, { instances: { [OPEN_AGENT]: 'read' } })
     ).list({ target: 'all' })
     expect(idsOf(result)).toEqual([HUMAN.actorId, OPEN.actorId, GROUP.actorId])
   })
@@ -250,8 +250,8 @@ describe('actor router — all three instanceListScope arms', () => {
     const result = await caller(
       capabilitiesFor(Level.None, {
         instances: {
-          [OPEN_AGENT]: ResourcePermission.view,
-          [RESTRICTED_AGENT]: ResourcePermission.none,
+          [OPEN_AGENT]: 'read',
+          [RESTRICTED_AGENT]: 'none',
         },
       })
     ).list({ target: 'all' })
@@ -269,7 +269,7 @@ describe('actor router — all three instanceListScope arms', () => {
     const result = await caller(
       capabilitiesFor(Level.Full, {
         seatType: 'worker',
-        instances: { [OPEN_AGENT]: ResourcePermission.admin },
+        instances: { [OPEN_AGENT]: 'admin' },
       })
     ).list({ target: 'all' })
     expect(idsOf(result)).toEqual([HUMAN.actorId, GROUP.actorId])
@@ -281,7 +281,7 @@ describe('actor router — all three instanceListScope arms', () => {
     const result = await caller(
       capabilitiesFor(Level.Full, {
         role: 'OWNER',
-        instances: { [RESTRICTED_AGENT]: ResourcePermission.none },
+        instances: { [RESTRICTED_AGENT]: 'none' },
       })
     ).list({ target: 'all' })
     expect(idsOf(result)).toEqual(idsOf(ALL_ACTORS))

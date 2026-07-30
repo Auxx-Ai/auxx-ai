@@ -101,7 +101,7 @@ function rethrowIfInvoicePaymentFkViolation(error: unknown): void {
  *
  * **Why the read exemption is safe, and why it is not the leak it looks like:**
  * the records capability layer was never the access authority for an inbox.
- * Mail visibility is — `userMailVisibility` (the per-inbox lens floor, composed
+ * Mail visibility is — `userInstanceGrants` (the per-inbox lens floor, composed
  * from `ResourceAccess` rows — the `role:org_member` baseline plus the
  * `Area.inboxes` fallback) and the mail-grant index —
  * and `UnifiedCrudHandler`'s def-level `canViewEntity('inbox')` short-circuits
@@ -208,6 +208,57 @@ function recordIdDefParts(recordIds: string[]): string[] {
 function assertCanDeleteDefs(capabilities: CapabilitySet, recordIds: string[]): void {
   for (const defId of new Set(recordIdDefParts(recordIds))) {
     capabilities.assertDeleteEntity(defId)
+  }
+}
+
+/**
+ * **The PER-ROW delete gate** (plan v3/03 §5.3) — the honest replacement for
+ * {@link assertCanDeleteDefs} on the three batch mutations.
+ *
+ * The def-batch form above asks one question per DISTINCT definition. Once rows
+ * of the same def can be reachable by two different routes — "mine because I can
+ * see the whole def" and "mine because this row was shared with me" — that
+ * question has no single right answer for the batch: a member who cannot delete
+ * the def at all may hold `admin` on one row of it, and a member who CAN delete
+ * the def is judged by the def gate on a row they only hold `read` on.
+ *
+ * So this reads the `_access` stamp per row instead. The stamp is
+ * `max(effectiveRecordLevel(def), max rung across my grant rows)`, resolved in
+ * the SAME query that fetches the rows (`getByIds` → `recordAccessRankSql`), and
+ * the gate applied to it is the SHIPPED delete rule — `canDeleteRecordAt`, i.e.
+ * the `edit` floor plus (`records.delete` OR rung ≥ `admin`). No new verb
+ * vocabulary is introduced.
+ *
+ * **A row that comes back without a stamp, or does not come back at all, DENIES.**
+ * A missing row means the read path's own scope excluded it, which is the
+ * strongest possible signal; treating it as "no opinion" would let exactly the
+ * ids the read path hid through the write path.
+ *
+ * Fails the batch WHOLE, like the def gate it replaces — a partial delete whose
+ * failures are per-row strings is not something a user can reason about.
+ */
+async function assertCanDeleteRows(
+  handler: UnifiedCrudHandler,
+  capabilities: CapabilitySet,
+  recordIds: RecordId[]
+): Promise<void> {
+  // The coarse def gate still runs first: it is the cheap, in-memory answer for
+  // the overwhelmingly common all-def-visible batch, and it also keeps the
+  // `NON_RECORD_DEF_SLUGS` / mail-infra branch of `canDeleteEntity` reachable.
+  // Rows it denies get a second chance below, per row, through their stamp.
+  const denied: RecordId[] = []
+  for (const recordId of recordIds) {
+    const { entityDefinitionId } = parseRecordId(recordId)
+    if (!capabilities.canDeleteEntity(entityDefinitionId)) denied.push(recordId)
+  }
+  if (denied.length === 0) return
+
+  const stamped = await handler.getByIds(denied)
+  for (const recordId of denied) {
+    const access = stamped[recordId]?._access
+    if (!access || !capabilities.canDeleteRecordAt(access)) {
+      throw new ForbiddenError("You don't have permission to delete these records.")
+    }
   }
 }
 
@@ -356,6 +407,7 @@ export const recordRouter = createTRPCRouter({
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
+          requestPath: true,
         })
 
         const result = await handler.getById(recordId)
@@ -415,6 +467,7 @@ export const recordRouter = createTRPCRouter({
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
+          requestPath: true,
         })
         return await handler.getByIds(input.items as RecordId[])
       } catch (error: unknown) {
@@ -441,6 +494,7 @@ export const recordRouter = createTRPCRouter({
     try {
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
         capabilities: ctx.capabilities,
+        requestPath: true,
       })
 
       // Handler handles all resolution internally (apiSlug -> entityDefinitionId, system names -> UUIDs)
@@ -468,7 +522,7 @@ export const recordRouter = createTRPCRouter({
       // joined the registry — a behavior change in the phase that must be inert.
       // It takes the same `MAIL_READ_EXEMPT_KEYS` carve-out as the read-arm
       // assert above, and for the same reason: inboxes are searchable today,
-      // this router is not their access authority, and `userMailVisibility` is.
+      // this router is not their access authority, and `userInstanceGrants` is.
       if (!entityDefinitionId && !apiSlug && !entityDefinitionIds?.length) {
         const blocked = new Set(
           (await getCachedResources(organizationId))
@@ -525,6 +579,7 @@ export const recordRouter = createTRPCRouter({
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
+          requestPath: true,
         })
         return await handler.lookupByField({
           entityDefinitionId: input.entityDefinitionId,
@@ -545,8 +600,10 @@ export const recordRouter = createTRPCRouter({
     }),
 
   /**
-   * List record IDs with server-side filtering (Query Snapshot pattern)
-   * Returns cached snapshot IDs for efficient pagination
+   * List record IDs with server-side filtering, paged straight from SQL.
+   *
+   * One call = one page (`LIMIT n + 1 OFFSET m`); `hasMore` is the probe row.
+   * `total` comes back on the first page only — the client keeps it.
    */
   listFiltered: capabilityProcedure
     .input(
@@ -567,20 +624,9 @@ export const recordRouter = createTRPCRouter({
         /** Limit per request */
         limit: z.number().min(1).max(500).default(100),
         /** Cursor for infinite query pagination (typed object) */
-        cursor: z
-          .object({
-            snapshotId: z.string(),
-            offset: z.number(),
-          })
-          .optional(),
-        /** Pagination offset — honored in oneshot mode. */
+        cursor: z.object({ offset: z.number() }).optional(),
+        /** Pagination offset. `cursor.offset` wins when both are given. */
         offset: z.number().min(0).optional(),
-        /**
-         * Query mode: 'snapshot' (default, Redis-cached id list) or 'oneshot'
-         * (paged SQL + COUNT, no snapshot) for one-shot callers like dashboard
-         * widgets that don't benefit from a stable cursor.
-         */
-        mode: z.enum(['snapshot', 'oneshot']).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -589,6 +635,7 @@ export const recordRouter = createTRPCRouter({
 
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
         capabilities: ctx.capabilities,
+        requestPath: true,
       })
       return handler.listFiltered({
         entityDefinitionId: input.entityDefinitionId,
@@ -597,7 +644,6 @@ export const recordRouter = createTRPCRouter({
         limit: input.limit,
         cursor: input.cursor,
         offset: input.offset,
-        mode: input.mode,
       })
     }),
 
@@ -630,6 +676,7 @@ export const recordRouter = createTRPCRouter({
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
+          requestPath: true,
         })
         return await handler.listAll(input)
       } catch (error: unknown) {
@@ -661,6 +708,7 @@ export const recordRouter = createTRPCRouter({
     try {
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
         capabilities: ctx.capabilities,
+        requestPath: true,
       })
       return await handler.create(input.entityDefinitionId, input.values ?? {})
     } catch (error: any) {
@@ -728,6 +776,7 @@ export const recordRouter = createTRPCRouter({
     try {
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
         capabilities: ctx.capabilities,
+        requestPath: true,
       })
       return await handler.update(input.recordId, input.values, input.modes)
     } catch (error: any) {
@@ -757,6 +806,7 @@ export const recordRouter = createTRPCRouter({
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
+          requestPath: true,
         })
         return await handler.archive(input.recordId)
       } catch (error: any) {
@@ -786,6 +836,7 @@ export const recordRouter = createTRPCRouter({
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
+          requestPath: true,
         })
         return await handler.restore(input.recordId)
       } catch (error: any) {
@@ -811,14 +862,15 @@ export const recordRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
       await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts([input.recordId]))
-      // Layer-2 × Layer-3 write guard (§11.4): the delete verb, def-aware — the
-      // org-wide `recordsDelete` key OR an explicit per-def `admin` grant.
-      assertCanDeleteDefs(ctx.capabilities, [input.recordId])
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+        requestPath: true,
+      })
+      // Layer-2 × Layer-3 write guard (§11.4 / plan v3/03 §5.3): the delete verb,
+      // asserted PER ROW against the `_access` stamp.
+      await assertCanDeleteRows(handler, ctx.capabilities, [input.recordId])
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
-          capabilities: ctx.capabilities,
-        })
         await handler.delete(input.recordId)
         return { success: true }
       } catch (error: any) {
@@ -852,6 +904,7 @@ export const recordRouter = createTRPCRouter({
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
+          requestPath: true,
         })
         return await handler.bulkArchive(input.recordIds)
       } catch (error: any) {
@@ -871,15 +924,17 @@ export const recordRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
       await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts(input.recordIds))
-      // Layer-2 × Layer-3 write guard (§11.4): the delete verb, asserted per
-      // DISTINCT def in the batch. A batch spanning a def the member may not
-      // delete fails whole rather than partially — same as the edit gate.
-      assertCanDeleteDefs(ctx.capabilities, input.recordIds)
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+        requestPath: true,
+      })
+      // Layer-2 × Layer-3 write guard (§11.4 / plan v3/03 §5.3): the delete verb,
+      // asserted PER ROW against the `_access` stamp. A batch containing one row
+      // the member may not delete fails WHOLE rather than partially — same as the
+      // edit gate, and the only outcome a user can reason about.
+      await assertCanDeleteRows(handler, ctx.capabilities, input.recordIds)
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
-          capabilities: ctx.capabilities,
-        })
         // NOTE on friendly messages here: the invoice pre-delete hook's admin-gate /
         // succeeded-charges guard throws `BadRequestError` with an already-friendly message
         // (e.g. "Remove recorded payments before deleting this invoice") — `bulkDeleteEntities`
@@ -930,15 +985,20 @@ export const recordRouter = createTRPCRouter({
         organizationId,
         recordIdDefParts([input.targetRecordId, ...input.sourceRecordIds])
       )
-      // Layer-2 × Layer-3 write guard (§11.4): merge permanently REMOVES the source records, so
-      // it gates on the delete verb (chosen over recordsEdit — the destructive half is the
-      // binding one), def-aware and asserted for the target and every source def.
-      assertCanDeleteDefs(ctx.capabilities, [input.targetRecordId, ...input.sourceRecordIds])
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+        requestPath: true,
+      })
+      // Layer-2 × Layer-3 write guard (§11.4 / plan v3/03 §5.3): merge permanently
+      // REMOVES the source records, so it gates on the delete verb (chosen over
+      // recordsEdit — the destructive half is the binding one), asserted PER ROW
+      // for the target and every source.
+      await assertCanDeleteRows(handler, ctx.capabilities, [
+        input.targetRecordId,
+        ...input.sourceRecordIds,
+      ])
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
-          capabilities: ctx.capabilities,
-        })
         return await handler.merge(input.targetRecordId, input.sourceRecordIds)
       } catch (error: any) {
         if (error instanceof TRPCError) throw error

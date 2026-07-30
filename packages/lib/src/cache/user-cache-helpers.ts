@@ -1,19 +1,19 @@
 // packages/lib/src/cache/user-cache-helpers.ts
 
 import type { UserCapabilities } from '../permissions/capabilities/compose-user-capabilities'
-import type { UserMailVisibility } from '../permissions/visibility/context'
+import type { UserInstanceGrants } from '../permissions/visibility/context'
 import { getUserCache } from './singletons'
 
 /**
- * Get a user's cached mail-visibility context for an org (mail-permissions §3)
+ * Get a user's cached instance-grant context for an org (plan v3/03 §4)
  * — the single input every mail read path evaluates against. Recomputed only
  * on grant / member / group / inbox changes.
  */
-export async function getCachedUserMailVisibility(
+export async function getCachedUserInstanceGrants(
   userId: string,
   orgId: string
-): Promise<UserMailVisibility> {
-  return getUserCache().get(userId, 'userMailVisibility', orgId)
+): Promise<UserInstanceGrants> {
+  return getUserCache().get(userId, 'userInstanceGrants', orgId)
 }
 
 /**

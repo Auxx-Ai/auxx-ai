@@ -110,12 +110,12 @@ const grant = (recordId: string) =>
     recordId: recordId as RecordId,
     granteeType: ResourceGranteeType.user,
     granteeId: 'u_owner',
-    permission: ResourcePermission.admin,
+    rung: 'admin',
   })
 
 const set = (recordId: string) =>
   setInstanceAccess(ctx(), recordId as RecordId, ResourceGranteeType.user, [
-    { granteeId: 'u_owner', permission: ResourcePermission.admin },
+    { granteeId: 'u_owner', rung: 'admin' },
   ])
 
 beforeEach(() => {

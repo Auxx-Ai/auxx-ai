@@ -112,6 +112,21 @@ export interface CellSelectionConfig {
    * it adds no per-cell render cost. The server enforces regardless.
    */
   readOnly?: boolean
+  /**
+   * **Per-ROW** read-only override (plan v3/03 §6.2). `readOnly` above is the
+   * def-level degrade; this narrows it to the row.
+   *
+   * Since P5 a member can hold `edit` on one row of a definition and only `read`
+   * on another, so "edit mode decided once per table" is wrong in both
+   * directions. Callers supply the row's `_access` stamp folded through
+   * `canEditRecordAtRung`. Returning `true` disables the same write entry points
+   * `readOnly` does, for that row alone.
+   *
+   * Absent ⇒ the def-level `readOnly` alone decides, which is the pre-P5
+   * behaviour every other table keeps. Read at write *entry points* only (all
+   * event-driven), so it costs nothing per render.
+   */
+  isRowReadOnly?: (rowId: string) => boolean
   /** Get field definition for a column (for FieldInput) */
   getFieldDefinition?: (columnId: string) => ResourceField | null
   /** Get cell value for editing */

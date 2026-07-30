@@ -1,11 +1,15 @@
 // packages/lib/src/permissions/capabilities/compose-user-capabilities.ts
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType, UserType } from '@auxx/database/types'
+import { PERMISSION_RANK } from '@auxx/types/permissions'
+import type { BucketedInstanceGrants, DefKeyedRungs } from '../../resource-access/instance-grants'
+import { isMailSharingDef } from '../../resource-access/mail-sharing-defs'
 import type { ProfileCeiling } from '../profiles/types'
 import {
   INSTANCE_ACCESS_READ_KEYS,
   INSTANCE_ACCESS_RESOURCES,
+  isDeclaredInstanceDomain,
   isInstanceAccessKey,
 } from './instance-access'
 import {
@@ -15,6 +19,7 @@ import {
   Level,
   type PermissionKey,
 } from './registry'
+import { RUNG_ORDER, rungToPermission, satisfiesRung } from './rung'
 import { ALL_KEYS, ROLE_DEFAULTS, SEAT_CEILINGS } from './seat-policy'
 
 /**
@@ -48,19 +53,25 @@ export interface UserCapabilities {
   instanceDerivedKeys: PermissionKey[]
   defAccess: Record<string, ResourcePermission>
   /**
-   * Highest instance-level ResourceAccess permission per `entityInstanceId`
-   * (CUID) for the instance-access resources (datasets etc., §1.2), from
-   * **INDIVIDUAL** grantee rows only — `user`, `group` and `profile`. Keys are
-   * globally-unique instance ids, so no `resourceKey` disambiguation is needed.
-   * Unlike `defAccess`, explicit `'none'` rows are KEPT — they are the per-
-   * instance downward marker (a real grant outranks them via {@link PERMISSION_RANK}).
+   * Highest instance-level {@link Rung} per `entityInstanceId` (CUID) for the
+   * instance-access resources (datasets etc., §1.2), from **INDIVIDUAL** grantee
+   * rows only — `user`, `group` and `profile`. Keys are globally-unique instance
+   * ids, so no `resourceKey` disambiguation is needed. Unlike `defAccess`,
+   * explicit `'none'` rows are KEPT — they are the per-instance downward marker
+   * (a real grant outranks them via {@link RUNG_ORDER}).
+   *
+   * **`Rung`, not `ResourcePermission`, since plan v3/03 P3b.** These values are
+   * the stored `ResourceAccess.rung` verbatim; the def axis (`defAccess` below)
+   * is the one that keeps the older vocabulary. A blob written before the switch
+   * carries `'view'` here, which is not a key in `RUNG_ORDER` — see the
+   * `user:capabilities:v17` ledger entry for why that makes the bump mandatory.
    *
    * **A grant addressed to THIS member. Never gated by the area level** (plan 43
    * §0.2a decision C, preserving #1346 / plan 25 §2). It is also what keeps a
    * creator's own `user @ admin` row reachable at any area level, so nobody can
    * lose content they made by having their profile closed.
    */
-  instanceAccess: Record<string, ResourcePermission>
+  instanceAccess: Record<string, Rung>
   /**
    * The same map for `role` grantee rows (`role:org_member`) — the ORG-WIDE
    * WORKSPACE DEFAULT, split out of {@link instanceAccess} by plan 43 §4.1.
@@ -82,44 +93,64 @@ export interface UserCapabilities {
    * That staleness FAILS OPEN — see the `user:capabilities:v16` ledger entry in
    * `cache/user-cache-keys.ts` for why the bump is mandatory, not hygienic.
    */
-  baselineInstanceAccess: Record<string, ResourcePermission>
+  baselineInstanceAccess: Record<string, Rung>
+  /**
+   * **The record-lane front door** (plan v3/03 §4.2 / §6.1): record defs the
+   * member holds ≥1 instance grant on at `rung >= read`.
+   *
+   * Bounded by DEF count, not grant count — that bound is why this is the only
+   * record-lane artifact allowed in the blob. No record-grant INSTANCE id set is
+   * ever cached or shipped; per-row access is evaluated in SQL by
+   * `recordVisibilityScope`, because it is row-local (§4's locality rule).
+   *
+   * Consumed by `hasDefPresence`, which is a SECOND predicate and never a wider
+   * `canViewEntity` — `canViewEntity` keeps meaning "may see ALL rows" and keeps
+   * guarding realtime def-channel ACLs, def admin and field config. This gates
+   * only nav entry, the route gate, def metadata and column metadata.
+   *
+   * See {@link computeGrantedDefIds} for why a record def is defined by two
+   * exclusions rather than one.
+   */
+  grantedDefIds: Record<string, true>
 }
 
 /**
  * Hierarchy rank for picking the highest ResourceAccess permission. `none` is
  * the baseline lockdown marker (grants nobody) and ranks below every positive
  * level; it is skipped entirely when building `defAccess` (see below).
+ *
+ * Re-exported, not defined: the table lives in `@auxx/types/permissions` so the
+ * group helpers, the resource-access service and the client gate hooks share
+ * one copy (plan v3/03 P3a §3). Kept on this module's surface because ~11 files
+ * already import it from here.
  */
-export const PERMISSION_RANK: Record<ResourcePermission, number> = {
-  none: 0,
-  view: 1,
-  edit: 2,
-  admin: 3,
-}
+export { PERMISSION_RANK }
 
 /**
- * The grantee kinds whose `ResourceAccess` rows are a grant addressed to THIS
- * member, rather than the org-wide default (plan 43 §0.2a). Only these bypass
- * the area gate in `effectiveInstanceLevel`.
+ * Flatten ONE lane of the bucketed grants onto `instanceId → rung`, restricted
+ * to the BLOB-LANE resource keys.
  *
- * **An ALLOWLIST, not `!== 'role'`, and that is the whole point.** Two readers
- * sort these rows — the lane split in {@link composeUserCapabilities} and the
- * `instanceDerivedKeys` filter (§4.4) — and both must agree about a grantee kind
- * neither was written for. A denylist sorts an unrecognized kind into the
- * INDIVIDUAL lane, which is the UNGATED one, so adding a grantee kind to the
- * storage vocabulary would silently wave it past the area level. With an
- * allowlist the unknown kind is gated instead: it still resolves through the
- * baseline path, which is the failure direction we can live with.
+ * **This is where "records never enter the capability blob" is enforced** (plan
+ * v3/03 §4). Before P4 the filter was a `WHERE entityDefinitionId IN (…)` in the
+ * capability composer's own query; with one shared query it moves here, into
+ * code, beside the invariant it protects and where a test can reach it.
+ * `isInstanceAccessKey` is the blob-lane predicate, so `thread` and `sequence`
+ * are excluded for the same reason record CUIDs are.
  *
- * This is the same hazard `governingInstanceIdsProvider` records — *"Adding a
- * grantee kind to the storage vocabulary still means adding it to every reader
- * in the same change."* Adding one here means adding it to this constant.
+ * The def is dropped in the result because `entityInstanceId` is globally unique
+ * and every downstream reader keys on it alone; the def survives where it is
+ * needed, in {@link deriveInstanceReadKeys}.
  */
-const INDIVIDUAL_GRANTEE_TYPES: ReadonlySet<string> = new Set(['user', 'group', 'profile'])
-
-/** Whether a `ResourceAccess` row is an individual grant — see {@link INDIVIDUAL_GRANTEE_TYPES}. */
-function isIndividualGranteeType(granteeType: string): boolean {
-  return INDIVIDUAL_GRANTEE_TYPES.has(granteeType)
+function flattenBlobLane(lane: DefKeyedRungs): Record<string, Rung> {
+  const out: Record<string, Rung> = {}
+  for (const [defId, byInstance] of Object.entries(lane)) {
+    if (!isInstanceAccessKey(defId)) continue
+    for (const [instanceId, rung] of Object.entries(byInstance)) {
+      const existing = out[instanceId]
+      if (!existing || RUNG_ORDER[rung] > RUNG_ORDER[existing]) out[instanceId] = rung
+    }
+  }
+  return out
 }
 
 /**
@@ -220,29 +251,20 @@ export function composeUserCapabilities(input: {
   groupLevels?: Array<Partial<Record<Area, Level>>>
   /** Sparse levels on the member's direct user grant (raise-only). */
   userLevels?: Partial<Record<Area, Level>>
-  typeAccessRows: Array<{ entityDefinitionId: string; permission: ResourcePermission }>
+  typeAccessRows: Array<{ entityDefinitionId: string; rung: Rung }>
   /**
-   * Instance-level rows (entityInstanceId IS NOT NULL) for the instance-access
-   * resources. `entityDefinitionId` is the resource KEY (`dataset` | `kb` |
-   * `dashboard` | `workflow`) and is REQUIRED — it is what makes
-   * {@link UserCapabilities.instanceDerivedKeys} type-aware, so a dashboard
-   * grant cannot open the workflows front door.
+   * The member's instance-level grants, already bucketed by
+   * `bucketInstanceGrantRows` — **the same value
+   * {@link import('../visibility/compute-user-instance-grants').composeUserInstanceGrants}
+   * composes from** (plan v3/03 §12, P4).
    *
-   * `granteeType` is REQUIRED for the same class of reason (plan 43 §4.1): it is
-   * what sorts a row into the INDIVIDUAL lane ({@link UserCapabilities.instanceAccess})
-   * or the BASELINE lane ({@link UserCapabilities.baselineInstanceAccess}), and
-   * only the second is gated by the area level. Left optional with a default,
-   * either default would be silently wrong for half the callers — a `'user'`
-   * default fails OPEN (every `role:org_member` row becomes an ungated individual
-   * grant), a `'role'` default fails closed but strips real shares. Making it
-   * required turns that into a compile error at every construction site.
+   * It replaced a raw `instanceAccessRows` array, and the change is not cosmetic:
+   * the array carried `granteeType` per row precisely so THIS composer could sort
+   * it into the two lanes, while the mail composer did the same sort with its own
+   * loop and its own conventions. One bucketing pass makes the lane split a
+   * property of the value rather than of whichever reader happens to walk it.
    */
-  instanceAccessRows?: Array<{
-    entityDefinitionId: string
-    entityInstanceId: string
-    permission: ResourcePermission
-    granteeType: string
-  }>
+  instanceGrants?: BucketedInstanceGrants
 }): UserCapabilities {
   const {
     role,
@@ -254,47 +276,54 @@ export function composeUserCapabilities(input: {
     groupLevels,
     userLevels,
     typeAccessRows,
-    instanceAccessRows = [],
+    instanceGrants = { individual: {}, baseline: {}, governing: {} },
   } = input
 
-  // TWO lanes, split by grantee kind (plan 43 §4.1). Highest permission wins
+  // TWO lanes, split by grantee kind upstream (plan 43 §4.1). Highest RUNG wins
   // WITHIN each lane; `'none'` is KEPT in both (unlike defAccess) — it is the
   // per-instance downward marker, personal in one lane and workspace-wide in the
-  // other, and a real grant outranks it via PERMISSION_RANK.
+  // other, and a real grant outranks it via RUNG_ORDER.
   //
   // The lanes are never merged here, and that is the whole point: only the
   // baseline lane is gated by the area level (§0.2a). Merging them would restore
   // exactly the fail-open state a stale v15 blob has.
-  const instanceAccess: Record<string, ResourcePermission> = {}
-  const baselineInstanceAccess: Record<string, ResourcePermission> = {}
-  for (const row of instanceAccessRows) {
-    // `role` (i.e. `role:org_member`) is the workspace default; `user` / `group`
-    // / `profile` are grants addressed to this member.
-    const lane = isIndividualGranteeType(row.granteeType) ? instanceAccess : baselineInstanceAccess
-    const existing = lane[row.entityInstanceId]
-    if (!existing || PERMISSION_RANK[row.permission] > PERMISSION_RANK[existing]) {
-      lane[row.entityInstanceId] = row.permission
-    }
-  }
+  const instanceAccess = flattenBlobLane(instanceGrants.individual)
+  const baselineInstanceAccess = flattenBlobLane(instanceGrants.baseline)
 
   // defAccess: highest permission wins per definition. Computed regardless of
   // role so admins carry it too (they simply also hold every capability key).
+  //
+  // **The ONE type-row crossing** from the storage vocabulary to the DEF axis
+  // (see `rungToPermission`). `metadata`/`identity` have no def-axis tier and
+  // convert to `undefined`, which is skipped here — a record def declares
+  // `RECORD_DEF_RUNGS`, so such a type row is a data bug, and skipping keeps it
+  // inert rather than rounding it up into a `view` grant.
   const defAccess: Record<string, ResourcePermission> = {}
   for (const row of typeAccessRows) {
     // `none` is the baseline lockdown marker: it flags the def restricted (via
     // `restrictedEntityDefIds`) but grants nobody, so it must NOT seed a
     // `defAccess` entry — otherwise the `role:org_member @ none` row would make
     // every member a grantee, defeating the lockdown.
-    if (row.permission === 'none') continue
+    const permission = rungToPermission(row.rung)
+    if (permission === undefined || permission === 'none') continue
     const existing = defAccess[row.entityDefinitionId]
-    if (!existing || PERMISSION_RANK[row.permission] > PERMISSION_RANK[existing]) {
-      defAccess[row.entityDefinitionId] = row.permission
+    if (!existing || PERMISSION_RANK[permission] > PERMISSION_RANK[existing]) {
+      defAccess[row.entityDefinitionId] = permission
     }
   }
 
-  // Fail closed: a non-member holds no capabilities.
+  // Fail closed: a non-member holds no capabilities — and no front door either.
+  // A grant row can outlive the membership that motivated it, so this must be an
+  // empty map rather than the computed one.
   if (!role)
-    return { keys: [], instanceDerivedKeys: [], defAccess, instanceAccess, baselineInstanceAccess }
+    return {
+      keys: [],
+      instanceDerivedKeys: [],
+      defAccess,
+      instanceAccess,
+      baselineInstanceAccess,
+      grantedDefIds: {},
+    }
 
   // AGENT principals hold NO composed capability (doc 19 §0.16/§2.3). Their
   // authority lives exclusively in `AgentVersion.permissionPolicy`, resolved by
@@ -306,6 +335,10 @@ export function composeUserCapabilities(input: {
       defAccess: {},
       instanceAccess: {},
       baselineInstanceAccess: {},
+      // Empty like everything else here: an agent's authority is its published
+      // version policy alone, so a stray share written onto its synthetic user
+      // must not open a door the policy never granted.
+      grantedDefIds: {},
     }
   }
 
@@ -326,6 +359,14 @@ export function composeUserCapabilities(input: {
       defAccess,
       instanceAccess,
       baselineInstanceAccess,
+      // The REAL map, unlike `instanceDerivedKeys` above. That one is empty
+      // because synthesizing a Read rung for an owner is either a no-op or hands
+      // back an area the ceiling closed; this one is not synthesized — it
+      // reports grants the owner actually holds. It matters exactly when the
+      // SEAT ceiling closes `Area.records` (a worker-seat owner), where
+      // `canViewEntity` is false and the front door is the only way in. The
+      // ceiling still binds the row rung downstream in `recordAccessAt`.
+      grantedDefIds: computeGrantedDefIds(instanceGrants),
     }
   }
 
@@ -363,18 +404,63 @@ export function composeUserCapabilities(input: {
 
   return {
     keys: expandLevelsToKeys(resolved),
-    // INDIVIDUAL rows only (plan 43 §4.4) — see `deriveInstanceReadKeys`. Uses
-    // the SAME predicate as the lane split above, deliberately: two readers of
-    // one rule that disagree about an unknown grantee kind is the defect this
-    // helper exists to prevent.
-    instanceDerivedKeys: deriveInstanceReadKeys(
-      instanceAccessRows.filter((row) => isIndividualGranteeType(row.granteeType)),
-      ceiling
-    ),
+    // INDIVIDUAL lane only (plan 43 §4.4) — see `deriveInstanceReadKeys`. The
+    // lane split now happens ONCE, upstream in `bucketInstanceGrantRows`, so the
+    // two readers of that rule cannot disagree about an unknown grantee kind:
+    // there is one reader.
+    instanceDerivedKeys: deriveInstanceReadKeys(instanceGrants.individual, ceiling),
     defAccess,
     instanceAccess,
     baselineInstanceAccess,
+    grantedDefIds: computeGrantedDefIds(instanceGrants),
   }
+}
+
+/**
+ * **The front door** (plan v3/03 §4.2 / §6.1) — the record defs a member holds
+ * at least one instance grant on, at `rung >= read`.
+ *
+ * `Record<defId, true>` and never an instance-id set: it is bounded by DEF
+ * COUNT, not grant count, which is the entire reason it is allowed in the blob
+ * at all. The per-row answer is evaluated in SQL by `recordVisibilityScope`,
+ * because record access is row-local; only this bounded summary is cached.
+ *
+ * Computed from BOTH lanes, so a member whose only grant arrived through a group
+ * or the workspace baseline still gets the front door — the plan calls that out
+ * explicitly, and it is why this reads the bucketed grants rather than the
+ * individual lane alone. (`deriveInstanceReadKeys` above deliberately does the
+ * opposite; the two are not interchangeable.)
+ *
+ * ### Why both exclusions are required
+ *
+ * A record def is one declared in NEITHER `INSTANCE_ACCESS_RESOURCES` (either
+ * lane) NOR `MAIL_SHARING_DEFS`. Neither test alone is sufficient:
+ *  - `isInstanceAccessKey` is blob-lane only, so it answers `false` for `thread`
+ *    and `sequence` — using it would put mail threads into the RECORD front
+ *    door, and a thread's rung means something different there.
+ *  - the registry alone does not know `contact`, whose grants canonicalize into
+ *    the mail keyspace and fan a full lens across that contact's entire
+ *    conversation history (§10.1). Contacts stay excluded from the record lane
+ *    until the `MAIL_SHARING_DEFS` keyspace split.
+ *
+ * `none` rows are skipped by the threshold, not merely by value: `none` is a
+ * RESTRICTION marker and must never open a door.
+ */
+function computeGrantedDefIds(grants: BucketedInstanceGrants): Record<string, true> {
+  const granted: Record<string, true> = {}
+  for (const lane of [grants.individual, grants.baseline]) {
+    for (const [defId, instances] of Object.entries(lane)) {
+      if (granted[defId]) continue
+      if (isDeclaredInstanceDomain(defId) || isMailSharingDef(defId)) continue
+      for (const rung of Object.values(instances)) {
+        if (satisfiesRung(rung, 'read')) {
+          granted[defId] = true
+          break
+        }
+      }
+    }
+  }
+  return granted
 }
 
 /**
@@ -385,11 +471,12 @@ export function composeUserCapabilities(input: {
  *
  * Four properties, each deliberate:
  *
- * - **INDIVIDUAL rows only** (plan 43 §4.4). The caller filters `granteeType ===
- *   'role'` out before calling; passing baseline rows in would defeat the §0.2a
- *   lever outright, because every dashboard writes a `role:org_member @ view`
- *   row at create — so every member would derive `dashboards.view` and the front
- *   door would stand open for exactly the profile an admin just set to `None`.
+ * - **INDIVIDUAL lane only** (plan 43 §4.4). The caller passes
+ *   `instanceGrants.individual`; passing the baseline lane in would defeat the
+ *   §0.2a lever outright, because every dashboard writes a `role:org_member @
+ *   view` row at create — so every member would derive `dashboards.view` and the
+ *   front door would stand open for exactly the profile an admin just set to
+ *   `None`.
  *   It also finally fixes the problem the "Per-resource, not a flat union" note
  *   in `INSTANCE_ACCESS_READ_KEYS` describes: *"holds SOME instance grant" was
  *   effectively always true*. Keying by resource narrowed it; dropping the
@@ -405,21 +492,22 @@ export function composeUserCapabilities(input: {
  *   billing packaging excludes — and the enforcement path would then deny it
  *   anyway, which is a 403 maze rather than a hidden nav entry.
  *
- * Rows whose `entityDefinitionId` is not a registered instance-access key are
- * skipped (fail closed); `'none'` rows never reach `view` and so never derive.
- * Ordered by {@link ALL_KEYS} so the cached blob is byte-stable across recomputes
+ * Defs that are not a registered BLOB-LANE instance-access key are skipped (fail
+ * closed) — that is the guard keeping RECORD defs, `thread` and `sequence` out;
+ * `'none'` grants never reach `read` and so never derive. Ordered by
+ * {@link ALL_KEYS} so the cached blob is byte-stable across recomputes
  * regardless of row order.
  */
 function deriveInstanceReadKeys(
-  rows: Array<{ entityDefinitionId: string; permission: ResourcePermission }>,
+  individual: DefKeyedRungs,
   ceiling: Record<Area, Level>
 ): PermissionKey[] {
   const held = new Set<PermissionKey>()
-  for (const row of rows) {
-    if (PERMISSION_RANK[row.permission] < PERMISSION_RANK.view) continue
-    if (!isInstanceAccessKey(row.entityDefinitionId)) continue
-    if (ceiling[INSTANCE_ACCESS_RESOURCES[row.entityDefinitionId].area] === Level.None) continue
-    for (const key of INSTANCE_ACCESS_READ_KEYS[row.entityDefinitionId]) held.add(key)
+  for (const [defId, byInstance] of Object.entries(individual)) {
+    if (!isInstanceAccessKey(defId)) continue
+    if (ceiling[INSTANCE_ACCESS_RESOURCES[defId].area] === Level.None) continue
+    if (!Object.values(byInstance).some((rung) => satisfiesRung(rung, 'read'))) continue
+    for (const key of INSTANCE_ACCESS_READ_KEYS[defId]) held.add(key)
   }
   return held.size === 0 ? [] : ALL_KEYS.filter((key) => held.has(key))
 }

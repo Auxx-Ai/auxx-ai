@@ -1,6 +1,6 @@
 // packages/lib/src/groups/permissions.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { GroupContext } from '@auxx/types/groups'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -24,7 +24,7 @@ vi.mock('../cache', () => ({
 
 const checkAccess = vi.fn(async () => ({
   hasAccess: false,
-  permission: null as ResourcePermission | null,
+  rung: null as ResourcePermission | null,
   grantedVia: null,
   accessLevel: null,
 }))
@@ -47,12 +47,8 @@ describe('group permission gates — role short-circuit (doc 19 step 10)', () =>
   })
 
   it('OWNER short-circuits to admin without consulting ResourceAccess (§0.10)', async () => {
-    await expect(getGroupPermission(ctxFor('u_owner'), 'g_1')).resolves.toBe(
-      ResourcePermission.admin
-    )
-    await expect(
-      hasGroupPermission(ctxFor('u_owner'), 'g_1', ResourcePermission.admin)
-    ).resolves.toBe(true)
+    await expect(getGroupPermission(ctxFor('u_owner'), 'g_1')).resolves.toBe('admin')
+    await expect(hasGroupPermission(ctxFor('u_owner'), 'g_1', 'admin')).resolves.toBe(true)
     expect(checkAccess).not.toHaveBeenCalled()
     expect(hasPermission).not.toHaveBeenCalled()
   })
@@ -62,9 +58,7 @@ describe('group permission gates — role short-circuit (doc 19 step 10)', () =>
   // ADMIN still short-circuited here.
   it('ADMIN does NOT short-circuit — it resolves through ResourceAccess', async () => {
     await expect(getGroupPermission(ctxFor('u_admin'), 'g_1')).resolves.toBeNull()
-    await expect(
-      hasGroupPermission(ctxFor('u_admin'), 'g_1', ResourcePermission.admin)
-    ).resolves.toBe(false)
+    await expect(hasGroupPermission(ctxFor('u_admin'), 'g_1', 'admin')).resolves.toBe(false)
     expect(checkAccess).toHaveBeenCalledTimes(1)
     expect(hasPermission).toHaveBeenCalledTimes(1)
   })
@@ -72,17 +66,13 @@ describe('group permission gates — role short-circuit (doc 19 step 10)', () =>
   it('an ADMIN with a grant (e.g. a profile grantee row) still passes', async () => {
     checkAccess.mockResolvedValueOnce({
       hasAccess: true,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
       grantedVia: 'profile',
       accessLevel: 'type',
     } as never)
     hasPermission.mockResolvedValueOnce(true)
-    await expect(getGroupPermission(ctxFor('u_admin'), 'g_1')).resolves.toBe(
-      ResourcePermission.admin
-    )
-    await expect(
-      hasGroupPermission(ctxFor('u_admin'), 'g_1', ResourcePermission.admin)
-    ).resolves.toBe(true)
+    await expect(getGroupPermission(ctxFor('u_admin'), 'g_1')).resolves.toBe('admin')
+    await expect(hasGroupPermission(ctxFor('u_admin'), 'g_1', 'admin')).resolves.toBe(true)
   })
 
   it('an ordinary member is unchanged', async () => {

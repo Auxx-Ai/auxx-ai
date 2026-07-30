@@ -18,7 +18,7 @@ const logger = createScopedLogger('migration-033')
  *
  * Also deletes the `role/org_member` ResourceAccess rows on inboxes — they
  * were how `org_members` visibility was encoded; the default-lens field IS the
- * floor now. Readers switched to the cached `userMailVisibility` context in
+ * floor now. Readers switched to the cached `userInstanceGrants` context in
  * the same PR (Phase 1.6), so removing the rows is behavior-neutral.
  *
  * Requires entity migration `025-inbox-default-lens` (sorts before this id) to

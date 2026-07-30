@@ -67,6 +67,16 @@ export async function getCapabilities(
     // it were an individual grant and the area gate never runs. That is why the
     // `v15 → v16` bump is mandatory rather than hygienic; see the reason recorded
     // at the key in `cache/user-cache-keys.ts`.
-    caps.baselineInstanceAccess ?? {}
+    caps.baselineInstanceAccess ?? {},
+    // THE FRONT DOOR (plan v3/03 §6.1). Populated by `computeGrantedDefIds` in
+    // `compose-user-capabilities.ts` and consumed by `hasDefPresence` /
+    // `hasRecordGrantsOn`.
+    //
+    // Still read with `?? {}` rather than required: a `user:capabilities` blob
+    // written before this field existed lacks it, and that staleness must fail
+    // CLOSED — a member shared one record sees no nav entry, rather than a nav
+    // entry onto rows they cannot read. `v17` is what actually retires those
+    // blobs; this is the belt.
+    caps.grantedDefIds ?? {}
   )
 }

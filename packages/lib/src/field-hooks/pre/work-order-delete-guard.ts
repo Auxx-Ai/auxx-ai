@@ -44,7 +44,6 @@ export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
       },
     ],
     limit: 1,
-    mode: 'oneshot',
   })
   if (linkedInvoices.ids.length > 0) {
     throw new BadRequestError("Delete or void this job's invoices first")
@@ -81,7 +80,6 @@ export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
       },
     ],
     limit: 1000,
-    mode: 'oneshot',
   })
   for (const lineInstanceId of ownLineIds) {
     // Suppress the line-level billing post-delete hook — it would re-project the very work

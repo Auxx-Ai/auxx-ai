@@ -61,15 +61,15 @@ export async function exportRecordsJob(ctx: JobContext<ExportRecordsJobData>): P
     const rows: string[][] = []
     let processed = 0
 
-    // First page (snapshot mode) → frozen id list + total.
+    // First page carries the COUNT; later pages omit it, so hold onto it.
     let page = await handler.listFiltered({
       entityDefinitionId: job.entityDefinitionId,
       filters,
       sorting,
       limit: PAGE_SIZE,
-      mode: 'snapshot',
     })
-    await updateExportJob(db, exportJobId, { totalRecords: page.total })
+    const total = page.total ?? 0
+    await updateExportJob(db, exportJobId, { totalRecords: total })
 
     while (true) {
       ctx.throwIfCancelled()
@@ -86,12 +86,12 @@ export async function exportRecordsJob(ctx: JobContext<ExportRecordsJobData>): P
 
         processed += ids.length
         await updateExportJob(db, exportJobId, { processedRecords: processed })
-        if (page.total > 0) await ctx.updateProgress(Math.round((processed / page.total) * 100))
+        if (total > 0) await ctx.updateProgress(Math.round((processed / total) * 100))
         await publishExportJob(organizationId, {
           exportJobId,
           kind: 'progress',
           processed,
-          total: page.total,
+          total,
         })
       }
 
@@ -101,7 +101,7 @@ export async function exportRecordsJob(ctx: JobContext<ExportRecordsJobData>): P
         filters,
         sorting,
         limit: PAGE_SIZE,
-        cursor: { snapshotId: page.snapshotId, offset: processed },
+        cursor: { offset: processed },
       })
     }
 

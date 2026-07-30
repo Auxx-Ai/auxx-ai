@@ -1,9 +1,10 @@
 // packages/lib/src/permissions/capabilities/capability-view.ts
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import { PERMISSION_RANK } from './compose-user-capabilities'
 import type { InstanceAccessKey } from './instance-access'
 import type { Area, Level, PermissionKey } from './registry'
+import { RUNG_ORDER } from './rung'
 
 /**
  * The public **gate surface** of a resolved capability set (capability layer
@@ -53,6 +54,75 @@ export interface CapabilityView {
 
   /** Whether the principal may read records of the def. */
   canViewEntity(entityDefId: string): boolean
+
+  /**
+   * **The front door** (plan v3/03 §6.1) — `canViewEntity(def) ||
+   * grantedDefIds[def]`. A SECOND predicate, deliberately not a wider
+   * `canViewEntity`.
+   *
+   * Gates ONLY: the sidebar/nav entry, the route gate, def metadata surfaces and
+   * column metadata. `canViewEntity` keeps meaning "may see ALL rows" and keeps
+   * guarding realtime def-channel ACLs, tableView listing, def admin and field
+   * config — widening THAT would open whole defs off one grant and let records
+   * into `instanceDerivedKeys`.
+   */
+  hasDefPresence(entityDefId: string): boolean
+
+  /**
+   * Whether the principal holds ≥1 per-record `ResourceAccess` grant on the def
+   * — the raw {@link import('./entity-access').GrantedDefIds} lookup.
+   *
+   * Distinct from {@link hasDefPresence} on purpose: arm 3 of
+   * {@link import('./record-visibility-scope').recordScopeArm} needs
+   * `!defViewable && grantedDef`, and the OR'd front door cannot express that.
+   */
+  hasRecordGrantsOn(entityDefId: string): boolean
+
+  /**
+   * The principal's DEF-level record authority on the {@link Rung} ladder — the
+   * def half of the `_access` stamp (§5.2). `undefined` = no def-level access.
+   */
+  recordDefRung(entityDefId: string): Rung | undefined
+
+  /**
+   * The **row-effective** rung: the def level folded with a row's aggregated
+   * grant rank (§5.2).
+   *
+   * ```
+   * _access = max(effectiveRecordLevel(def), max rung across matching grant rows)
+   * ```
+   *
+   * `grantRank` comes from
+   * {@link import('./record-visibility-scope').recordAccessRankSql} — resolved
+   * in the SAME query as the row, never a second roundtrip and never a cached id
+   * set. The seat ceiling is applied here so a clamped seat can never reach a
+   * positive rung through a row grant.
+   */
+  recordAccessAt(entityDefId: string, grantRank: number | null): Rung
+
+  /**
+   * Row-effective DELETE gate (§5.3) — the shipped `canDeleteRecord` rule
+   * evaluated at the `_access` stamp. No new `deleteAt` vocabulary: this IS the
+   * existing gate, reading a row-effective level instead of a def-level one.
+   */
+  canDeleteRecordAt(access: Rung): boolean
+
+  /**
+   * Row-effective EDIT gate (§5.3) — the `edit` floor read at the `_access`
+   * stamp instead of at the def level.
+   *
+   * The twin of {@link CapabilityView.canDeleteRecordAt}, and it exists for the
+   * same reason: once a row of a def is reachable by two routes ("mine because I
+   * see the whole def" and "mine because this row was shared with me"), the
+   * def-level `canEditEntity` has no right answer for it. Without this the
+   * per-record `edit` grant is readable and inert — the member opens the row and
+   * cannot change it.
+   *
+   * No new vocabulary: the stamp value IS the row-effective level, so this is
+   * `satisfiesRung(access, 'edit')` — exactly what `canEditRecord` asks of the
+   * def level.
+   */
+  canEditRecordAt(access: Rung): boolean
   /** Throwing form of {@link CapabilityView.canViewEntity} (403). */
   assertViewEntity(entityDefId: string): void
   /** Filter RecordId-def forms down to the viewable ones. */
@@ -168,6 +238,42 @@ export class MinCapabilitySet implements CapabilityView {
 
   filterViewableDefIds(entityDefIds: string[]): string[] {
     return entityDefIds.filter((id) => this.canViewEntity(id))
+  }
+
+  hasDefPresence(entityDefId: string): boolean {
+    return this.a.hasDefPresence(entityDefId) && this.b.hasDefPresence(entityDefId)
+  }
+
+  hasRecordGrantsOn(entityDefId: string): boolean {
+    return this.a.hasRecordGrantsOn(entityDefId) && this.b.hasRecordGrantsOn(entityDefId)
+  }
+
+  /**
+   * The LOWER of the two def rungs. `undefined` (no def-level access at all) is
+   * the absorbing value, matching {@link viewAccessFor}: if either side has
+   * none, the intersection has none.
+   */
+  recordDefRung(entityDefId: string): Rung | undefined {
+    const left = this.a.recordDefRung(entityDefId)
+    if (left === undefined) return undefined
+    const right = this.b.recordDefRung(entityDefId)
+    if (right === undefined) return undefined
+    return RUNG_ORDER[left] <= RUNG_ORDER[right] ? left : right
+  }
+
+  /** The LOWER of the two row-effective stamps — `min`, like every other member. */
+  recordAccessAt(entityDefId: string, grantRank: number | null): Rung {
+    const left = this.a.recordAccessAt(entityDefId, grantRank)
+    const right = this.b.recordAccessAt(entityDefId, grantRank)
+    return RUNG_ORDER[left] <= RUNG_ORDER[right] ? left : right
+  }
+
+  canDeleteRecordAt(access: Rung): boolean {
+    return this.a.canDeleteRecordAt(access) && this.b.canDeleteRecordAt(access)
+  }
+
+  canEditRecordAt(access: Rung): boolean {
+    return this.a.canEditRecordAt(access) && this.b.canEditRecordAt(access)
   }
 
   /**

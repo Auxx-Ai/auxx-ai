@@ -1,22 +1,38 @@
 // packages/lib/src/mail-query/visibility-scope.ts
 
 import { database as db, schema } from '@auxx/database'
+import type { Rung } from '@auxx/database/enums'
 import { and, eq, exists, inArray, isNull, not, or, type SQL, sql } from 'drizzle-orm'
+import { satisfiesRung } from '../permissions/capabilities/rung'
 import type {
   AutomationVisibility,
   MailViewer,
-  UserMailVisibility,
+  UserInstanceGrants,
 } from '../permissions/visibility/context'
-import { isAutomationViewer, isSystemViewer } from '../permissions/visibility/context'
-import { type Lens, satisfiesLens } from '../permissions/visibility/lens'
+import {
+  contactGrants,
+  isAutomationViewer,
+  isSystemViewer,
+  primaryEntityThreadIdsAtOrAbove,
+  threadGrants,
+} from '../permissions/visibility/context'
+import type { Lens } from '../permissions/visibility/lens'
 
 const { Thread, ThreadParticipant } = schema
 
-/** Ids whose lens in `map` is at or above `need`. */
-function idsAtOrAbove(map: Record<string, Lens>, need: Lens): string[] {
+/**
+ * Ids whose rung in `map` is at or above `need`.
+ *
+ * Generic over {@link Rung} rather than {@link Lens}: since plan v3/03 P4 the
+ * grant maps carry the STORED rung, so a `edit` grant on a thread's primary
+ * entity is a legal value here. No clamp is needed — `need` is never above
+ * `read`, and `satisfiesRung` is monotone, so an above-`read` rung includes the
+ * id exactly as a clamped `read` would.
+ */
+function idsAtOrAbove(map: Readonly<Record<string, Rung>>, need: Lens): string[] {
   const ids: string[] = []
-  for (const [id, lens] of Object.entries(map)) {
-    if (satisfiesLens(lens, need)) ids.push(id)
+  for (const [id, rung] of Object.entries(map)) {
+    if (satisfiesRung(rung, need)) ids.push(id)
   }
   return ids
 }
@@ -27,15 +43,15 @@ function idsAtOrAbove(map: Record<string, Lens>, need: Lens): string[] {
  */
 export function sharedThreadIds(viewer: MailViewer): string[] {
   if (isSystemViewer(viewer) || isAutomationViewer(viewer)) return []
-  return idsAtOrAbove(viewer.threadGrants, 'metadata')
+  return idsAtOrAbove(threadGrants(viewer), 'metadata')
 }
 
 /**
  * The grant-derived OR-branches of a visibility scope at tier `need`:
- * assignment (always `full`), per-thread grants, primary-entity grants, and
+ * assignment (always `read`), per-thread grants, primary-entity grants, and
  * contact grants derived via ThreadParticipant. Empty sets are omitted.
  */
-function grantScopeParts(vis: UserMailVisibility, need: Lens): SQL<unknown>[] {
+function grantScopeParts(vis: UserInstanceGrants, need: Lens): SQL<unknown>[] {
   const parts: SQL<unknown>[] = [eq(Thread.assigneeId, vis.userId)]
 
   // Residual null-`inboxId` threads belong to no inbox and so inherit no floor.
@@ -47,13 +63,15 @@ function grantScopeParts(vis: UserMailVisibility, need: Lens): SQL<unknown>[] {
   // shared inbox (§1.2).
   if (vis.isMailAdmin) parts.push(isNull(Thread.inboxId))
 
-  const threadIds = idsAtOrAbove(vis.threadGrants, need)
+  const threadIds = idsAtOrAbove(threadGrants(vis), need)
   if (threadIds.length > 0) parts.push(inArray(Thread.id, threadIds))
 
-  const entityIds = idsAtOrAbove(vis.entityGrants, need)
+  // CAPPED per def (plan v3/03 §13.1) — a generic record def contributes no ids
+  // at all, so a deal share no longer lists that deal's whole email history.
+  const entityIds = primaryEntityThreadIdsAtOrAbove(vis, need)
   if (entityIds.length > 0) parts.push(inArray(Thread.primaryEntityInstanceId, entityIds))
 
-  const contactIds = idsAtOrAbove(vis.contactGrants, need)
+  const contactIds = idsAtOrAbove(contactGrants(vis), need)
   if (contactIds.length > 0) {
     parts.push(
       exists(
@@ -112,7 +130,7 @@ export function buildMailVisibilityPredicate(viewer: MailViewer): SQL<unknown> |
 
 /**
  * The §5.3 search scope for content-bearing conditions. Subject predicates
- * require `need='subject'`, body/content predicates `need='full'`. Grant sets
+ * require `need='identity'`, body/content predicates `need='read'`. Grant sets
  * are included at exactly `need` (conservative — a `metadata` thread grant
  * never widens a subject search). `undefined` means unscoped.
  *
@@ -121,12 +139,12 @@ export function buildMailVisibilityPredicate(viewer: MailViewer): SQL<unknown> |
  * {@link buildMailVisibilityPredicate}. The §11 promise it used to implement by
  * subtraction — never search subjects/bodies in others' personal mailboxes —
  * now holds by construction: a mail admin's composed floor on such a mailbox is
- * `metadata`, which satisfies neither `subject` nor `full`, so the id never
+ * `metadata`, which satisfies neither `identity` nor `read`, so the id never
  * enters the set in the first place.
  */
 export function buildSearchScope(
   viewer: MailViewer,
-  need: 'subject' | 'full'
+  need: 'identity' | 'read'
 ): SQL<unknown> | undefined {
   if (isSystemViewer(viewer)) return undefined
   // Automation (§8.2): personal inboxes are zero-access at every tier.
@@ -149,8 +167,8 @@ export interface MailSearchScopes {
 
 export function buildSearchScopes(viewer: MailViewer): MailSearchScopes {
   return {
-    subject: buildSearchScope(viewer, 'subject'),
-    body: buildSearchScope(viewer, 'full'),
+    subject: buildSearchScope(viewer, 'identity'),
+    body: buildSearchScope(viewer, 'read'),
     sharedThreadIds: sharedThreadIds(viewer),
   }
 }

@@ -1,7 +1,7 @@
 // packages/lib/src/permissions/capabilities/grantee-access.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import { and, eq, or } from 'drizzle-orm'
 import { getCachedPermissionProfiles } from '../../cache'
 import { getCapabilities } from './get-capabilities'
@@ -11,6 +11,7 @@ import {
   isInstanceAccessKey,
 } from './instance-access'
 import { AREA_ORDER, type Area, type Level, parseAreaLevels } from './registry'
+import { rungToPermission } from './rung'
 
 /** Who a grantee page is about. Mirrors the `ResourceAccess`/`PermissionGrant` grantee axis. */
 export type AccessGranteeType = 'user' | 'group' | 'profile'
@@ -37,10 +38,14 @@ const MEMBER_PROFILE_SLUG = 'member'
 export interface GranteeOwnAccess {
   /** The grantee's own `PermissionGrant.levels`, per L2 area. */
   areas: Partial<Record<Area, Level>>
-  /** Their type-level `ResourceAccess` rows, keyed by `entityDefinitionId`. */
+  /**
+   * Their type-level `ResourceAccess` rows, keyed by `entityDefinitionId`, on
+   * the DEF axis — the stored rung crossed through `rungToPermission` (a type
+   * row below `read` has no def-axis tier and is dropped).
+   */
   defs: Record<string, ResourcePermission>
-  /** Their instance-level `ResourceAccess` rows, keyed by instance id. */
-  instances: Record<string, ResourcePermission>
+  /** Their instance-level `ResourceAccess` rows, keyed by instance id, as stored. */
+  instances: Record<string, Rung>
 }
 
 /**
@@ -62,9 +67,9 @@ export interface GranteeEffectiveAccess {
    * {@link instanceFallback} for its resource type — the client's lookup is
    * `instances[id] ?? instanceFallback[key]`, a pure lookup with no math.
    */
-  instances: Record<string, ResourcePermission | null>
+  instances: Record<string, Rung | null>
   /** The answer for a row-less instance, per resource type. */
-  instanceFallback: Record<InstanceAccessKey, ResourcePermission | null>
+  instanceFallback: Record<InstanceAccessKey, Rung | null>
 }
 
 /**
@@ -103,7 +108,7 @@ export interface GranteeBaselineAccess {
    */
   areas: Partial<Record<Area, Level>>
   defs: Record<string, ResourcePermission>
-  instances: Record<string, ResourcePermission>
+  instances: Record<string, Rung>
 }
 
 export interface GranteeAccess {
@@ -195,7 +200,7 @@ export async function getGranteeAccess(
         entityInstanceId: schema.ResourceAccess.entityInstanceId,
         granteeType: schema.ResourceAccess.granteeType,
         granteeId: schema.ResourceAccess.granteeId,
-        permission: schema.ResourceAccess.permission,
+        rung: schema.ResourceAccess.rung,
       })
       .from(schema.ResourceAccess)
       .where(eq(schema.ResourceAccess.organizationId, organizationId)),
@@ -230,13 +235,17 @@ export async function getGranteeAccess(
     const isBaselineRow =
       row.granteeType === WORKSPACE_BASELINE_GRANTEE_TYPE &&
       row.granteeId === WORKSPACE_BASELINE_GRANTEE_ID
+    // Instance rows are stored rungs; TYPE rows cross to the def axis here (see
+    // `rungToPermission`). A type row below `read` has no def-axis tier — it is
+    // dropped rather than rounded up, which is the fail-closed direction.
+    const defPermission = row.entityInstanceId ? undefined : rungToPermission(row.rung)
     if (isBaselineRow) {
-      if (row.entityInstanceId) baseline.instances[row.entityInstanceId] = row.permission
-      else baseline.defs[row.entityDefinitionId] = row.permission
+      if (row.entityInstanceId) baseline.instances[row.entityInstanceId] = row.rung
+      else if (defPermission !== undefined) baseline.defs[row.entityDefinitionId] = defPermission
     }
     if (row.granteeType !== granteeType || row.granteeId !== granteeId) continue
-    if (row.entityInstanceId) own.instances[row.entityInstanceId] = row.permission
-    else own.defs[row.entityDefinitionId] = row.permission
+    if (row.entityInstanceId) own.instances[row.entityInstanceId] = row.rung
+    else if (defPermission !== undefined) own.defs[row.entityDefinitionId] = defPermission
   }
 
   // A group/profile has no composed capability set of its own — see `effective`.
@@ -253,12 +262,12 @@ export async function getGranteeAccess(
     defs[row.entityDefinitionId] ??= caps.viewAccessFor(row.entityDefinitionId) ?? null
   }
 
-  const instances: Record<string, ResourcePermission | null> = {}
+  const instances: Record<string, Rung | null> = {}
   for (const [instanceId, key] of keyOfInstance) {
     instances[instanceId] = caps.instanceLevel(key, instanceId) ?? null
   }
 
-  const instanceFallback = {} as Record<InstanceAccessKey, ResourcePermission | null>
+  const instanceFallback = {} as Record<InstanceAccessKey, Rung | null>
   for (const key of INSTANCE_ACCESS_KEYS) {
     instanceFallback[key] = caps.instanceFallbackLevel(key) ?? null
   }

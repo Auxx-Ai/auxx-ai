@@ -42,9 +42,7 @@ export async function resolveRelationships(ctx: SyncCtx): Promise<void> {
       // is one we previously set.
       if (rel.targetExternalId === null) {
         try {
-          await ctx.crud.update(parentRecordId, { [rel.fieldKey]: null }, undefined, {
-            skipSnapshotInvalidation: true,
-          })
+          await ctx.crud.update(parentRecordId, { [rel.fieldKey]: null }, undefined, {})
           ctx.touchedDefs.add(item.entityDefinitionId)
           if (linked.delete(rel.fieldKey)) linkedChanged = true
         } catch (error) {
@@ -77,9 +75,7 @@ export async function resolveRelationships(ctx: SyncCtx): Promise<void> {
         // Write the RELATIONSHIP value by addressing the parent's relationship
         // field (by its systemAttribute/key) with the target RecordId. The
         // FieldValueService converter accepts a RecordId; the inverse syncs.
-        await ctx.crud.update(parentRecordId, { [rel.fieldKey]: targetRecordId }, undefined, {
-          skipSnapshotInvalidation: true,
-        })
+        await ctx.crud.update(parentRecordId, { [rel.fieldKey]: targetRecordId }, undefined, {})
         ctx.touchedDefs.add(item.entityDefinitionId)
         if (!linked.has(rel.fieldKey)) {
           linked.add(rel.fieldKey)

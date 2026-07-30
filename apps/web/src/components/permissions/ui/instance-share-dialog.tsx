@@ -2,7 +2,6 @@
 'use client'
 
 import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId } from '@auxx/types/resource'
 import {
   Dialog,
   DialogContent,
@@ -10,14 +9,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { useInstanceShareCopy } from '../hooks/use-instance-share-copy'
 import { InstanceShareCard } from './instance-share-card'
-import { INSTANCE_SHARE_COPY } from './instance-share-copy'
 
 /**
  * The modal host for {@link InstanceShareCard} — the shared dialog every
- * instance-access consumer (datasets now; KB / dashboards later) opens from its
- * own trigger. Title/description derive from the resource's copy entry, so the
- * dialog is generic over `recordId`.
+ * instance-access consumer opens from its own trigger — and, since plan v3/03
+ * P5, the record drawer and records table row menu too. Title/description derive
+ * from {@link useInstanceShareCopy}, so the dialog is genuinely generic over
+ * `recordId` rather than only over the nine registry keys.
  */
 export function InstanceShareDialog({
   recordId,
@@ -28,8 +28,9 @@ export function InstanceShareDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { entityDefinitionId: key } = parseRecordId(recordId)
-  const copy = INSTANCE_SHARE_COPY[key as keyof typeof INSTANCE_SHARE_COPY]
+  // Resolves BOTH lanes (plan v3/03 §6.3): a registry entry for a config-scale
+  // resource, or the def's own singular name for a record row.
+  const copy = useInstanceShareCopy(recordId)
   const noun = copy?.noun ?? 'item'
 
   return (

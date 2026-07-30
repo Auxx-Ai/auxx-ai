@@ -290,7 +290,6 @@ class FieldValueFetchQueue {
   private async flush() {
     if (!this.fetchFn || this.pendingByKey.size === 0) return
 
-    const generation = this.generation
     const store = useFieldValueStore.getState()
 
     // Drain resolvable entries, re-keying pre-hydration aliases. Duplicates
@@ -332,12 +331,73 @@ class FieldValueFetchQueue {
 
     if (toFetch.size === 0) return
 
-    const entriesToFetch = [...toFetch.values()]
+    await this.fetchEntries([...toFetch.values()])
+  }
+
+  /**
+   * Force-refresh cells the store ALREADY holds — the realtime catch-up path.
+   *
+   * `queueFetch*` deliberately skips keys that are already cached, and the
+   * subscriber hooks dedupe per key for the lifetime of the mount
+   * (`requestedRef` in `useFieldCellState`, `queuedKeyRef` in `useFieldValues`),
+   * so simply dropping values from the store does NOT get them re-fetched.
+   * This bypasses both skips and overwrites in place via `setValues` — no
+   * clearing, so no cell ever blanks to a skeleton while the refresh is in
+   * flight.
+   *
+   * Computed refs (CALC/NAME) are decomposed into their source fields: the
+   * server has no value for them, and the null-backfill below would otherwise
+   * wipe a locally-computed value.
+   */
+  async refetch(requests: Array<{ recordId: RecordId; fieldRef: FieldReference }>): Promise<void> {
+    if (!this.fetchFn || requests.length === 0) return
+
+    const entries = new Map<FieldValueKey, QueueEntry>()
+
+    for (const request of requests) {
+      const { recordId, fieldRef, key } = buildCanonicalFieldValueKey(
+        request.recordId,
+        request.fieldRef
+      )
+      if (!tryNormalizeRecordId(recordId)) continue // unresolvable prefix — nothing to refresh
+      if (
+        typeof fieldRef === 'string' &&
+        computedFieldRegistry.isComputed(fieldRef as ResourceFieldId)
+      ) {
+        const config = computedFieldRegistry.getConfig(fieldRef as ResourceFieldId)
+        if (!config) continue
+        for (const sourceFieldId of Object.values(config.sourceFields)) {
+          const sourceRef = normalizeFieldRef(recordId, sourceFieldId as ResourceFieldId)
+          const sourceKey = `${recordId}:${fieldRefToKey(sourceRef)}` as FieldValueKey
+          entries.set(sourceKey, { recordId, fieldRef: sourceRef, key: sourceKey })
+        }
+        continue
+      }
+      entries.set(key, { recordId, fieldRef, key })
+    }
+    if (entries.size === 0) return
+
+    await this.fetchEntries([...entries.values()], { silent: true })
+  }
+
+  /**
+   * Run the network half for a resolved set of entries and merge the result.
+   *
+   * `silent` is the catch-up mode: no loading/fetching markers (the store
+   * already has displayable values, so cells must not fall back to skeletons),
+   * and the null-backfill applies even to keys that currently hold a value —
+   * a cell cleared server-side while we were unsubscribed has to clear here too.
+   */
+  private async fetchEntries(
+    entriesToFetch: QueueEntry[],
+    { silent = false }: { silent?: boolean } = {}
+  ) {
+    const generation = this.generation
     const keys = entriesToFetch.map((e) => e.key)
     const batchId = generateId('batch')
 
     // Mark as loading
-    useFieldValueStore.getState().startLoading(batchId, keys)
+    if (!silent) useFieldValueStore.getState().startLoading(batchId, keys)
 
     // Group by unique recordIds and fieldRefs (stable keys, no JSON round-trip)
     const recordIds = [...new Set(entriesToFetch.map((e) => e.recordId))]
@@ -408,10 +468,12 @@ class FieldValueFetchQueue {
         const apiValue = entriesMap.get(key)
         if (apiValue !== undefined) {
           entries.push({ key, value: apiValue })
-        } else if (!(key in currentValues) || currentValues[key] === undefined) {
+        } else if (silent || !(key in currentValues) || currentValues[key] === undefined) {
+          // Silent (catch-up) mode nulls a key the server no longer has a value
+          // for — that IS the missed clear. The normal path skips keys that
+          // already hold a value.
           entries.push({ key, value: null })
         }
-        // Skip keys that already have values in store
       }
 
       useFieldValueStore.getState().setValues(entries)
@@ -431,7 +493,7 @@ class FieldValueFetchQueue {
     } catch (error) {
       console.error('[FieldValueFetchQueue] Fetch failed:', error)
     } finally {
-      if (generation === this.generation) {
+      if (!silent && generation === this.generation) {
         useFieldValueStore.getState().finishLoading(batchId)
       }
     }

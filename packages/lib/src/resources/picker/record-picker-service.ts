@@ -8,6 +8,14 @@ import { getCachedEntityDefId, getCachedResource, getOrgCache } from '../../cach
 import { getRecordIdentitiesForRecords } from '../../identity'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import {
+  type RecordVisibilityScope,
+  recordAccessRankSql,
+  recordScopeArmFor,
+  recordSearchVisibilitySql,
+  resolveRecordVisibilityScope,
+} from '../../permissions/capabilities/record-visibility-scope'
+import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
+import {
   type CustomResource,
   isCustomResource,
   isCustomResourceId,
@@ -61,6 +69,8 @@ export class RecordPickerService {
   private cache: RecordPickerCacheService
   /** Request-scoped read enforcement (§2.2); undefined for internal callers. */
   private capabilities?: CapabilityView
+  /** Per-service memo of {@link recordScope}, keyed by canonical def id. */
+  private scopeCache = new Map<string, Promise<RecordVisibilityScope>>()
 
   constructor(
     organizationId: string,
@@ -656,11 +666,20 @@ export class RecordPickerService {
       grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }
 
-    // Read enforcement (§2.2): drop groups whose def the member can't view —
-    // filter the def set, never per-row queries.
+    // Read enforcement (plan v3/03 §5.1/§5.2): drop groups the member cannot
+    // reach AT ALL (arm 4 — no def view and no grants), and remember the scope
+    // for the ones that survive so the per-row predicate + `_access` stamp ride
+    // the fetch below. Unauthorized ids DROP SILENTLY from the batch — the
+    // caller's map simply has no entry — matching `getById`'s non-enumeration.
+    const scopes = new Map<string, RecordVisibilityScope>()
     if (this.capabilities) {
       for (const defId of [...grouped.keys()]) {
-        if (!this.capabilities.canViewEntity(defId)) grouped.delete(defId)
+        const scope = await this.recordScope(defId)
+        if (scope.arm === 'none') {
+          grouped.delete(defId)
+          continue
+        }
+        scopes.set(defId, scope)
       }
     }
 
@@ -714,7 +733,7 @@ export class RecordPickerService {
             })
             return
           }
-          const fetched = await this.fetchEntityInstancesByIds(resource, ids)
+          const fetched = await this.fetchEntityInstancesByIds(resource, ids, originalKey)
           if (fetched.length < ids.length) {
             const fetchedIds = new Set(fetched.map((f) => f.id))
             const missingIds = ids.filter((id) => !fetchedIds.has(id))
@@ -802,17 +821,86 @@ export class RecordPickerService {
    */
   private async fetchEntityInstancesByIds(
     resource: CustomResource,
-    ids: string[]
+    ids: string[],
+    /** The caller's def key — the keyspace `_access` and the scope are resolved in. */
+    defKey?: string
   ): Promise<RecordPickerItem[]> {
-    const instances = await this.db.query.EntityInstance.findMany({
-      where: and(
-        eq(schema.EntityInstance.organizationId, this.organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, resource.entityDefinitionId),
-        inArray(schema.EntityInstance.id, ids)
-      ),
-    })
+    // Plan v3/03 §5.1 + §5.2 in ONE query: the visibility predicate narrows the
+    // batch (unauthorized ids simply do not come back), and the grantee-union
+    // `max(rung)` aggregate rides the same projection as the row so the picker
+    // item carries its own row-effective level with no second roundtrip.
+    const caps = this.capabilities
+    const scopeKey = defKey ?? resource.entityDefinitionId
+    const scope = caps ? await this.recordScope(scopeKey) : { arm: 'all' as const }
+    if (scope.arm === 'none') return []
 
-    return instances.map((inst) => this.transformEntityInstanceToPickerItem(resource, inst))
+    const rank = caps ? await this.recordAccessRank(scopeKey) : null
+    const rows = await this.db
+      .select({
+        instance: schema.EntityInstance,
+        ...(rank ? { grantRank: rank } : {}),
+      })
+      .from(schema.EntityInstance)
+      .where(
+        and(
+          eq(schema.EntityInstance.organizationId, this.organizationId),
+          eq(schema.EntityInstance.entityDefinitionId, resource.entityDefinitionId),
+          inArray(schema.EntityInstance.id, ids),
+          scope.where
+        )
+      )
+
+    return rows.map((row) => {
+      const item = this.transformEntityInstanceToPickerItem(resource, row.instance)
+      if (!caps) return item
+      const grantRank = (row as { grantRank?: number | null }).grantRank ?? null
+      return { ...item, _access: caps.recordAccessAt(scopeKey, grantRank) }
+    })
+  }
+
+  /**
+   * The §5.1 per-record visibility scope for one def, memoized per service.
+   * Mirrors `UnifiedCrudHandler.recordScope` — the picker is a second entry
+   * point into the same read lane, not a second policy.
+   */
+  private async recordScope(entityDefinitionId: string): Promise<RecordVisibilityScope> {
+    // No member ⇒ no grantee union to resolve ⇒ internal caller semantics, the
+    // same answer `capabilities: undefined` gets.
+    if (!this.userId) return { arm: 'all' }
+    if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) return { arm: 'all' }
+    // Arms 1 and 4 are decided in memory, before any def normalization or
+    // grantee resolution — see `UnifiedCrudHandler.recordScope` for why.
+    const arm = recordScopeArmFor(this.capabilities, entityDefinitionId)
+    if (arm === 'all' || arm === 'none') return { arm }
+    const defId = await this.canonicalDefId(entityDefinitionId)
+    const cached = this.scopeCache.get(defId)
+    if (cached) return cached
+    const pending = resolveRecordVisibilityScope({
+      organizationId: this.organizationId,
+      userId: this.userId,
+      entityDefinitionId: defId,
+      capabilities: this.capabilities,
+    })
+    this.scopeCache.set(defId, pending)
+    return pending
+  }
+
+  /** The grantee-union `max(rung)` subquery for one def — the `_access` grant half. */
+  private async recordAccessRank(entityDefinitionId: string): Promise<SQL<number | null> | null> {
+    if (!this.userId) return null
+    const defId = await this.canonicalDefId(entityDefinitionId)
+    const grantees = await resolveResourceAccessGrantees(this.organizationId, this.userId)
+    return recordAccessRankSql({
+      organizationId: this.organizationId,
+      entityDefinitionId: defId,
+      grantees,
+    })
+  }
+
+  /** Any def form → the canonical `EntityDefinition.id` (the ResourceAccess keyspace). */
+  private async canonicalDefId(entityDefinitionId: string): Promise<string> {
+    const resource = await getCachedResource(this.organizationId, entityDefinitionId)
+    return resource?.entityDefinitionId ?? resource?.id ?? entityDefinitionId
   }
 
   /**
@@ -860,21 +948,57 @@ export class RecordPickerService {
 
     const trimmedQuery = query.trim()
 
-    // Read enforcement (§2.2): filter the def scope, never per-row queries.
-    // - Scoped single def the member can't view → empty result.
-    // - Multi-def list → keep only viewable defs (empty list → empty result).
-    // - Global union (no scope) → post-filter the merged items below.
+    // Read enforcement (plan v3/03 §5.1) — all three live arms:
+    //  - Scoped single def → the def's own scope; arm 4 returns empty with no
+    //    query, arms 2/3 contribute `scopedVisibility` to the WHERE below.
+    //  - Multi-def list → keep every def the member has PRESENCE on (viewable
+    //    OR grant-only), then narrow the grant-only half per row.
+    //  - Global union (no scope) → still the `canViewEntity` post-filter. See
+    //    the note at that branch for why grant-only defs are excluded there.
+    let scopedVisibility: SQL | undefined
+    let listVisibility: SQL | undefined
     if (this.capabilities) {
-      if (entityDefinitionId && !this.capabilities.canViewEntity(entityDefinitionId)) {
-        return this.emptySearchResult(trimmedQuery, startTime)
+      if (entityDefinitionId) {
+        // Built against the `ei` alias this query uses — the scope module takes
+        // the correlation column, so there is still exactly one predicate shape.
+        const scope = await resolveRecordVisibilityScope({
+          organizationId: this.organizationId,
+          userId: this.userId ?? '',
+          entityDefinitionId: await this.canonicalDefId(entityDefinitionId),
+          capabilities: this.capabilities,
+          instanceIdColumn: sql.raw('ei."id"'),
+        })
+        if (scope.arm === 'none') return this.emptySearchResult(trimmedQuery, startTime)
+        scopedVisibility = scope.where
       }
       if (entityDefinitionIds && entityDefinitionIds.length > 0) {
-        entityDefinitionIds = this.capabilities.filterViewableDefIds(entityDefinitionIds)
+        const viewable: string[] = []
+        const grantOnly: string[] = []
+        for (const defId of entityDefinitionIds) {
+          if (this.capabilities.canViewEntity(defId)) viewable.push(defId)
+          else if (this.capabilities.hasRecordGrantsOn(defId)) grantOnly.push(defId)
+        }
+        entityDefinitionIds = [...viewable, ...grantOnly]
         if (entityDefinitionIds.length === 0) {
           return this.emptySearchResult(trimmedQuery, startTime)
         }
+        const predicate = recordSearchVisibilitySql({
+          organizationId: this.organizationId,
+          grantees: await resolveResourceAccessGrantees(this.organizationId, this.userId ?? ''),
+          fullyViewableDefIds: viewable,
+          grantOnlyDefIds: grantOnly,
+          instanceIdColumn: sql.raw('ei."id"'),
+          defIdColumn: sql.raw('ei."entityDefinitionId"'),
+        })
+        if (predicate === null) return this.emptySearchResult(trimmedQuery, startTime)
+        listVisibility = predicate
       }
     }
+    const visibilityFilter = scopedVisibility
+      ? sql`AND ${scopedVisibility}`
+      : listVisibility
+        ? sql`AND ${listVisibility}`
+        : sql``
 
     // Global union mode: no scope passed → union system tables + EntityInstance.
     // Unpaginated in v1; each kind contributes up to perKindCap items merge-sorted
@@ -883,6 +1007,17 @@ export class RecordPickerService {
       const union = await this.searchGlobalUnion(trimmedQuery, limit, startTime)
       if (!this.capabilities) return union
       // Post-filter cross-type union rows by per-user def visibility.
+      //
+      // ⚠ KNOWN GAP (plan v3/03 P5): this arm still keys on `canViewEntity`
+      // alone, so a def a member reaches ONLY through per-record grants
+      // contributes nothing to the unscoped global search. That is fail-CLOSED —
+      // a shared record is missing from ⌘K, never wrongly present — and it is a
+      // deliberate scope line: `searchGlobalUnion` merges several system tables
+      // with EntityInstance under a per-kind cap, so a correct grant-only arm
+      // means pushing the predicate into that union's EntityInstance leg and
+      // re-reasoning about the cap's fairness across kinds. Every SCOPED search
+      // (single def and def-list, i.e. every record surface's own search box)
+      // is fully scoped above.
       return {
         ...union,
         items: union.items.filter((item) =>
@@ -910,6 +1045,7 @@ export class RecordPickerService {
         entityDefinitionIds,
         limit,
         cursor,
+        visibilityFilter,
       })
     }
 
@@ -982,6 +1118,7 @@ export class RecordPickerService {
             OR ei."secondaryDisplayValue" ILIKE ${`%${trimmedQuery}%`}
           )
           ${entityDefFilter}
+          ${visibilityFilter}
           ${cursorFilter}
         ORDER BY
           -- Combine scores: prefer exact displayName matches, then text relevance
@@ -1068,6 +1205,13 @@ export class RecordPickerService {
     entityDefinitionIds?: string[]
     limit: number
     cursor?: string
+    /**
+     * The §5.1 per-record predicate, already built against the `ei` alias by
+     * {@link search}. Threaded rather than rebuilt so the empty-query arm and
+     * the full-text arm are narrowed by the SAME predicate — a query box that
+     * reveals rows when you clear it is the classic shape of this bug.
+     */
+    visibilityFilter?: SQL
   }): Promise<GlobalSearchResult> {
     const startTime = performance.now()
     const { entityDefinitionId, entityDefinitionIds, limit, cursor } = params
@@ -1112,6 +1256,7 @@ export class RecordPickerService {
           ei."organizationId" = ${this.organizationId}
           AND ei."archivedAt" IS NULL
           ${entityDefFilter}
+          ${params.visibilityFilter ?? sql``}
           ${cursorFilter}
         ORDER BY ei."updatedAt" DESC, ei.id DESC
         LIMIT ${limit + 1}

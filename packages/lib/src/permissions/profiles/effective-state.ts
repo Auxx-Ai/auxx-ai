@@ -1,12 +1,13 @@
 // packages/lib/src/permissions/profiles/effective-state.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { MemberType, type ResourcePermission } from '@auxx/database/enums'
+import { MemberType, type ResourcePermission, type Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType, UserType } from '@auxx/database/types'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getCachedResources } from '../../cache'
 import { isGoverningInstanceRow } from '../../cache/providers/governing-instance-ids-provider'
 import { ForbiddenError } from '../../errors'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import type { Resource } from '../../resources/registry/types'
 import { isCustomResourceId } from '../../resources/registry/types'
 import { composeUserCapabilities } from '../capabilities/compose-user-capabilities'
@@ -46,8 +47,8 @@ export interface EffectiveState {
   areas: Record<Area, Level>
   /** `effectiveRecordLevel` per canonical `entityDefinitionId`; absent = no access. */
   defs: Record<string, ResourcePermission>
-  /** `effectiveInstanceLevel` per instance CUID; absent = no access. */
-  instances: Record<string, ResourcePermission>
+  /** `effectiveInstanceLevel` per instance CUID (a {@link Rung}); absent = no access. */
+  instances: Record<string, Rung>
 }
 
 /** One raw grant row (sparse jsonb levels) keyed by its grantee. */
@@ -63,7 +64,7 @@ interface AccessRow {
   granteeId: string
   entityDefinitionId: string
   entityInstanceId: string | null
-  permission: ResourcePermission
+  rung: Rung
 }
 
 interface MemberRow {
@@ -206,7 +207,7 @@ async function readUncachedInputs(
         granteeId: schema.ResourceAccess.granteeId,
         entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
         entityInstanceId: schema.ResourceAccess.entityInstanceId,
-        permission: schema.ResourceAccess.permission,
+        rung: schema.ResourceAccess.rung,
       })
       .from(schema.ResourceAccess)
       .where(
@@ -224,7 +225,7 @@ async function readUncachedInputs(
         granteeId: schema.ResourceAccess.granteeId,
         entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
         entityInstanceId: schema.ResourceAccess.entityInstanceId,
-        permission: schema.ResourceAccess.permission,
+        rung: schema.ResourceAccess.rung,
       })
       .from(schema.ResourceAccess)
       .where(
@@ -347,20 +348,28 @@ function composeState(
 
   const typeAccessRows = inputs.typeRows
     .filter((row) => matchesGrantee(row, userId, profileId, groupIds))
-    .map((row) => ({ entityDefinitionId: row.entityDefinitionId, permission: row.permission }))
-  const instanceAccessRows = inputs.instanceRows
-    .filter((row) => matchesGrantee(row, userId, profileId, groupIds))
-    .map((row) => ({
-      entityDefinitionId: row.entityDefinitionId,
-      entityInstanceId: row.entityInstanceId ?? '',
-      permission: row.permission,
-      // Carried through so the composer can sort the row into the INDIVIDUAL or
-      // BASELINE lane (plan 43 §4.1). The guard must measure the state
-      // enforcement produces, and after §4.2 that state depends on which lane a
-      // row lands in — dropping this here would make a `role:org_member @ view`
-      // row read as an ungated individual grant inside the guard alone.
-      granteeType: row.granteeType,
-    }))
+    .map((row) => ({ entityDefinitionId: row.entityDefinitionId, rung: row.rung }))
+  // The guard runs the SAME bucketing pass the cached composers run (plan v3/03
+  // §12, P4) rather than hand-shaping rows for `composeUserCapabilities`. It must
+  // measure the state enforcement produces, and since plan 43 §4.2 that state
+  // depends on which LANE a row lands in — a hand-rolled projection here would be
+  // a second sorter that can disagree with the one the read path uses, which is
+  // precisely the class of drift this phase deletes.
+  //
+  // `granteeType`/`granteeId` are carried into the pass unchanged: they are what
+  // sort a `role:org_member @ read` row into the baseline lane instead of reading
+  // as an ungated individual grant inside the guard alone.
+  const instanceGrants = bucketInstanceGrantRows(
+    inputs.instanceRows
+      .filter((row) => matchesGrantee(row, userId, profileId, groupIds))
+      .map((row) => ({
+        entityDefinitionId: row.entityDefinitionId,
+        entityInstanceId: row.entityInstanceId ?? '',
+        rung: row.rung,
+        granteeType: row.granteeType,
+        granteeId: row.granteeId,
+      }))
+  )
 
   const caps = composeUserCapabilities({
     role,
@@ -372,7 +381,7 @@ function composeState(
     groupLevels,
     userLevels,
     typeAccessRows,
-    instanceAccessRows,
+    instanceGrants,
   })
 
   const resolved = resolveCapabilityInputs(caps, inputs.resources)
@@ -402,7 +411,7 @@ function composeState(
     if (level !== undefined) defs[resource.entityDefinitionId] = level
   }
 
-  const instances: Record<string, ResourcePermission> = {}
+  const instances: Record<string, Rung> = {}
   for (const [instanceId, key] of inputs.instanceKeyById) {
     const level = effectiveInstanceLevel(access, key, instanceId)
     if (level !== undefined) instances[instanceId] = level

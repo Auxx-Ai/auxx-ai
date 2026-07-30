@@ -21,6 +21,7 @@ import {
   Link as LinkIcon,
   Merge,
   MoreHorizontal,
+  Share2,
   TextCursorInput,
   Trash,
   Trash2,
@@ -35,9 +36,16 @@ import { Tooltip } from '~/components/global/tooltip'
 import { CommandContext, RecordCommandActions } from '~/components/kbar/contextual'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
+import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { MergeDialog } from '~/components/merge'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
-import { resourceHasDetailPage, useRecord, useResource } from '~/components/resources'
+import {
+  resourceHasDetailPage,
+  useRecord,
+  useRecordAccess,
+  useResource,
+} from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
@@ -85,9 +93,13 @@ export const RecordDrawer = React.memo(function RecordDrawer({
 
   // Restricted (read-only) mode — computed once here (the drawer root) and
   // threaded into BaseEntityDrawer + used to gate every write affordance in this
-  // header. Per-def (`!canEditEntity`), so a Read-only grantee on this def is
-  // read-only while an Edit grantee is not; full members are unaffected (§11.4).
-  const readOnly = useRecordDrawerReadOnly(entityDefinitionId || undefined)
+  // header. **Per ROW** since plan v3/03 P5: it reads this record's `_access`
+  // stamp, so a row shared at `edit` on an otherwise-invisible def is editable
+  // and a row shared at `read` is not, even where sibling rows are editable.
+  const readOnly = useRecordDrawerReadOnly(
+    entityDefinitionId || undefined,
+    entityInstanceId || undefined
+  )
 
   // Get resource with fields
   const { resource } = useResource(entityDefinitionId ?? null)
@@ -191,6 +203,14 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   // Merge dialog state
   const [mergeDialogOpen, setMergeDialogOpen] = React.useState(false)
 
+  // Per-record sharing (plan v3/03 §6.2). Keyed off the row's `_access` stamp,
+  // NOT off `readOnly`: a member may hold `admin` on a row and still be looking
+  // at it read-only is impossible (admin implies edit), but the reverse — an
+  // editable row that is NOT re-shareable — is the common case, so the two gates
+  // are genuinely different questions.
+  const [shareDialogOpen, setShareDialogOpen] = React.useState(false)
+  const { canShare } = useRecordAccess(recordId)
+
   // Confirm dialog for delete
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -261,7 +281,11 @@ export const RecordDrawer = React.memo(function RecordDrawer({
     actions?.enableRename ||
     actions?.enableArchive ||
     actions?.enableLink ||
-    actions?.enableMerge
+    actions?.enableMerge ||
+    // Sharing is not a WRITE on the record, so it survives `readOnly` (which
+    // forces every `enable*` above to false). Without this term a row shared at
+    // `admin` on an otherwise-uneditable def would have no dropdown to host it.
+    canShare
 
   if (!open || !recordId) return null
 
@@ -350,6 +374,15 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                       targetType='ENTITY_INSTANCE'
                       targetIds={{ entityDefinitionId, entityInstanceId }}
                     />
+                  )}
+
+                  {canShare && (
+                    <GranularPermissionsGate>
+                      <DropdownMenuItem onClick={() => setShareDialogOpen(true)}>
+                        <Share2 />
+                        Share
+                      </DropdownMenuItem>
+                    </GranularPermissionsGate>
                   )}
 
                   {actions?.enableRename && (
@@ -509,6 +542,16 @@ export const RecordDrawer = React.memo(function RecordDrawer({
             setMergeDialogOpen(false)
             onMutationSuccess?.()
           }}
+        />
+      )}
+
+      {/* Per-record sharing (plan v3/03 §6.2). The server re-asserts
+          `_access >= admin` on every grant write; this only decides the UI. */}
+      {shareDialogOpen && recordId && (
+        <InstanceShareDialog
+          recordId={recordId}
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
         />
       )}
 

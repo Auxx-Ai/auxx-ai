@@ -1,10 +1,11 @@
 // packages/lib/src/permissions/profiles/escalation-guard.ts
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
 import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
 import { AREA_ORDER, type Area, Level, PERMISSION_AREAS } from '../capabilities/registry'
+import { RUNG_ORDER } from '../capabilities/rung'
 import type { EffectiveState } from './effective-state'
 import type { ProfileCeiling } from './types'
 
@@ -30,6 +31,11 @@ const LEVEL_NAMES: Record<Level, string> = {
 /** `undefined` (no access) ranks below every real permission. */
 function rank(permission: ResourcePermission | undefined): number {
   return permission === undefined ? 0 : PERMISSION_RANK[permission]
+}
+
+/** {@link rank}'s twin for the INSTANCE lane, which is {@link Rung}-valued. */
+function rungRank(rung: Rung | undefined): number {
+  return rung === undefined ? 0 : RUNG_ORDER[rung]
 }
 
 /**
@@ -127,7 +133,15 @@ export function assertNoEscalation(input: {
     ])) {
       const next = afterState.instances[instanceId]
       const prev = beforeState?.instances[instanceId]
-      if (rank(next) > rank(prev) && rank(next) > rank(actor.state.instances[instanceId])) {
+      // The INSTANCE lane is `Rung`-valued (plan v3/03 §3), so it ranks on
+      // `RUNG_ORDER`; the def lane above stays `ResourcePermission`/
+      // `PERMISSION_RANK`. Two ladders, two rank functions — comparing a rung
+      // against `PERMISSION_RANK` would read `undefined`, i.e. rank 0, and every
+      // instance escalation would pass the guard silently.
+      if (
+        rungRank(next) > rungRank(prev) &&
+        rungRank(next) > rungRank(actor.state.instances[instanceId])
+      ) {
         deny(
           `This change raises access to one shared resource for at least one member ` +
             `above your own access to it.`

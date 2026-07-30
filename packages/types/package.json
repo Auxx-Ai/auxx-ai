@@ -58,6 +58,12 @@
       "import": "./dist/groups/index.mjs",
       "default": "./groups/index.ts"
     },
+    "./permissions": {
+      "types": "./permissions/index.ts",
+      "source": "./permissions/index.ts",
+      "import": "./dist/permissions/index.mjs",
+      "default": "./permissions/index.ts"
+    },
     "./pagination": {
       "types": "./pagination/index.ts",
       "source": "./pagination/index.ts",

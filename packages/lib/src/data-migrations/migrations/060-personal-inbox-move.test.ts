@@ -25,8 +25,7 @@ const grant = (over: Partial<GrantRow> = {}): GrantRow => ({
   id: 'g1',
   granteeType: 'user',
   granteeId: 'u1',
-  permission: 'admin',
-  lens: null,
+  rung: 'admin',
   ...over,
 })
 
@@ -163,7 +162,7 @@ describe('planGrantRekey', () => {
   })
 
   it('re-keys dev’s single personal-inbox owner row', () => {
-    const owner = grant({ id: 'ra_owner', granteeId: 'JR28eYz', permission: 'admin' })
+    const owner = grant({ id: 'ra_owner', granteeId: 'JR28eYz', rung: 'admin' })
     expect(planGrantRekey({ legacy: [owner], existing: [] }).recode).toEqual(['ra_owner'])
   })
 
@@ -173,18 +172,18 @@ describe('planGrantRekey', () => {
   // dropped so no ordering of partial failures can lose the permission.
   it('raises a weaker counterpart to the legacy row’s strength, then drops the legacy row', () => {
     const plan = planGrantRekey({
-      legacy: [grant({ id: 'legacy', permission: 'admin', lens: null })],
-      existing: [grant({ id: 'kept', permission: 'view', lens: 'subject' })],
+      legacy: [grant({ id: 'legacy', rung: 'admin' })],
+      existing: [grant({ id: 'kept', rung: 'identity' })],
     })
-    expect(plan.raise).toEqual([{ id: 'kept', permission: 'admin', lens: null }])
+    expect(plan.raise).toEqual([{ id: 'kept', rung: 'admin' }])
     expect(plan.drop).toEqual(['legacy'])
     expect(plan.recode).toEqual([])
   })
 
   it('never downgrades a stronger counterpart', () => {
     const plan = planGrantRekey({
-      legacy: [grant({ id: 'legacy', permission: 'view', lens: 'metadata' })],
-      existing: [grant({ id: 'kept', permission: 'admin', lens: null })],
+      legacy: [grant({ id: 'legacy', rung: 'metadata' })],
+      existing: [grant({ id: 'kept', rung: 'admin' })],
     })
     expect(plan.raise).toEqual([])
     expect(plan.drop).toEqual(['legacy'])
@@ -192,24 +191,24 @@ describe('planGrantRekey', () => {
 
   it('compares lens, not just permission, between two view rows', () => {
     const stronger = planGrantRekey({
-      legacy: [grant({ id: 'legacy', permission: 'view', lens: 'full' })],
-      existing: [grant({ id: 'kept', permission: 'view', lens: 'metadata' })],
+      legacy: [grant({ id: 'legacy', rung: 'read' })],
+      existing: [grant({ id: 'kept', rung: 'metadata' })],
     })
-    expect(stronger.raise).toEqual([{ id: 'kept', permission: 'view', lens: 'full' }])
+    expect(stronger.raise).toEqual([{ id: 'kept', rung: 'read' }])
 
     const weaker = planGrantRekey({
-      legacy: [grant({ id: 'legacy', permission: 'view', lens: 'metadata' })],
-      existing: [grant({ id: 'kept', permission: 'view', lens: 'full' })],
+      legacy: [grant({ id: 'legacy', rung: 'metadata' })],
+      existing: [grant({ id: 'kept', rung: 'read' })],
     })
     expect(weaker.raise).toEqual([])
   })
 
   it('treats a lens-less view row as full, matching grantLens', () => {
     const plan = planGrantRekey({
-      legacy: [grant({ id: 'legacy', permission: 'view', lens: null })],
-      existing: [grant({ id: 'kept', permission: 'view', lens: 'subject' })],
+      legacy: [grant({ id: 'legacy', rung: 'read' })],
+      existing: [grant({ id: 'kept', rung: 'identity' })],
     })
-    expect(plan.raise).toEqual([{ id: 'kept', permission: 'view', lens: null }])
+    expect(plan.raise).toEqual([{ id: 'kept', rung: 'read' }])
   })
 
   it('matches counterparts per grantee, not per instance', () => {
@@ -247,43 +246,41 @@ describe('buildFloorRow', () => {
   // which IS the org-shared default. Writing a row here would be redundant at
   // best and a downgrade vector at worst.
   it('writes nothing for a full-lens inbox', () => {
-    expect(floor('full')).toBeNull()
+    expect(floor('read')).toBeNull()
   })
 
   it('preserves the lens on a subject-floor inbox', () => {
-    expect(floor('subject')).toMatchObject({
+    expect(floor('identity')).toMatchObject({
       entityDefinitionId: 'inbox',
       entityInstanceId: 'ib_1',
       granteeType: 'role',
       granteeId: 'org_member',
-      permission: 'view',
-      lens: 'subject',
+      rung: 'identity',
     })
   })
 
   it('preserves the lens on a metadata-floor inbox', () => {
-    expect(floor('metadata')).toMatchObject({ permission: 'view', lens: 'metadata' })
+    expect(floor('metadata')).toMatchObject({ rung: 'metadata' })
   })
 
   // The v2 restriction marker. `lens` stays null: it only discriminates `view`
-  // rows, and `compute-user-mail-visibility.grantLens` reads `none` as `none`.
+  // rows, and `compute-user-instance-grants.grantLens` reads `none` as `none`.
   it('writes the restriction marker for a none-floor inbox', () => {
     expect(floor('none')).toMatchObject({
       granteeType: 'role',
       granteeId: 'org_member',
-      permission: 'none',
-      lens: null,
+      rung: 'none',
     })
   })
 
   // `grantedById` is a real FK to `User` and a migration has no user actor.
   it('leaves grantedById null rather than inventing a granter', () => {
     expect(floor('none')?.grantedById).toBeNull()
-    expect(floor('subject')?.grantedById).toBeNull()
+    expect(floor('identity')?.grantedById).toBeNull()
   })
 
   it('always keys the shared slug, never the new personal one', () => {
-    for (const lens of ['metadata', 'subject', 'none'] as const) {
+    for (const lens of ['metadata', 'identity', 'none'] as const) {
       expect(floor(lens)?.entityDefinitionId).toBe('inbox')
     }
   })
@@ -299,18 +296,18 @@ describe('buildFloorRow', () => {
 describe('floor-row count parity', () => {
   const devSharedInboxes: { instanceId: string; lens: Lens }[] = [
     { instanceId: 'ib_chat_support', lens: 'none' },
-    { instanceId: 'ib_restricted', lens: 'subject' },
-    { instanceId: 'ib_open_a', lens: 'full' },
-    { instanceId: 'ib_open_b', lens: 'full' },
+    { instanceId: 'ib_restricted', lens: 'identity' },
+    { instanceId: 'ib_open_a', lens: 'read' },
+    { instanceId: 'ib_open_b', lens: 'read' },
   ]
 
-  it('writes one row per non-full inbox and none for the rest', () => {
+  it('writes one row per non-`read` inbox and none for the rest', () => {
     const rows = devSharedInboxes
       .map((i) => buildFloorRow({ organizationId: 'org1', ...i }))
       .filter((r) => r !== null)
-    expect(rows).toHaveLength(devSharedInboxes.filter((i) => i.lens !== 'full').length)
+    expect(rows).toHaveLength(devSharedInboxes.filter((i) => i.lens !== 'read').length)
     expect(rows).toHaveLength(2)
-    expect(rows.map((r) => r?.permission).sort()).toEqual(['none', 'view'])
+    expect(rows.map((r) => r?.rung).sort()).toEqual(['identity', 'none'])
   })
 
   // Idempotency at the level the DB actually arbitrates on: a second apply adds

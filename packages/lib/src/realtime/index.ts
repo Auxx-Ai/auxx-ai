@@ -83,6 +83,8 @@ export {
   findRoomByChannel,
   fromPusherChannel,
   parseInboxRoomKey,
+  parseRecordRoomKey,
+  type RecordRoomKey,
   type RoomDef,
   type RoomKind,
   roomKindFor,

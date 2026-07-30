@@ -1,7 +1,7 @@
 // packages/lib/src/permissions/profiles/agent-policy-capabilities.ts
 
 import type { PublishedAgentPermissionPolicy } from '@auxx/database'
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import { ForbiddenError } from '../../errors'
 import type { CapabilityView } from '../capabilities/capability-view'
 import { PERMISSION_RANK } from '../capabilities/compose-user-capabilities'
@@ -15,6 +15,7 @@ import {
   PERMISSION_REGISTRY_MAP,
   PermissionKey,
 } from '../capabilities/registry'
+import { permissionToRung, satisfiesRung } from '../capabilities/rung'
 import { ENTITY_WRITE_KEYS } from '../capabilities/seat-policy'
 import {
   permissionToAreaLevel,
@@ -195,6 +196,71 @@ export class AgentPolicyCapabilities implements CapabilityView {
 
   filterViewableDefIds(entityDefIds: string[]): string[] {
     return entityDefIds.filter((id) => this.canViewEntity(id))
+  }
+
+  /**
+   * **An agent has no front door beyond its published policy** (plan v3/03 §6.1).
+   *
+   * `hasDefPresence` is `canViewEntity || grantedDefIds[def]`, and the second
+   * term is a *human* member's per-record shares. An agent's authority is the
+   * immutable `AgentVersion.permissionPolicy` snapshot and nothing else —
+   * `composeUserCapabilities` returns an EMPTY set for `userType: 'AGENT'`
+   * precisely so a leftover `ResourceAccess` row on the agent's synthetic user
+   * cannot grant anything. Deriving a front door from such rows would reopen
+   * that door.
+   *
+   * So the policy answer IS the presence answer, and
+   * {@link hasRecordGrantsOn} is unconditionally `false`.
+   */
+  hasDefPresence(entityDefId: string): boolean {
+    return this.canViewEntity(entityDefId)
+  }
+
+  /** Always `false` — see {@link hasDefPresence}. */
+  hasRecordGrantsOn(_entityDefId: string): boolean {
+    return false
+  }
+
+  /**
+   * The published definition rung on the {@link Rung} ladder. `none` → the
+   * `'none'` rung rather than `undefined`: unlike the human set, the policy is
+   * TOTAL, so "the policy says none" is a decision, not an absent tier.
+   */
+  recordDefRung(entityDefId: string): Rung | undefined {
+    if (this.isMailInfraDef(entityDefId)) return undefined
+    return permissionToRung(this.definitionLevel(entityDefId))
+  }
+
+  /**
+   * The row-effective stamp for an agent is its DEF level, full stop — the
+   * `grantRank` half is ignored on purpose.
+   *
+   * A grant rank is computed from `ResourceAccess` rows addressed to the running
+   * principal's grantee union. For an agent that union resolves against its
+   * synthetic `User` row, and honouring it here would let a stray share on that
+   * user raise the agent above its published policy — the exact escalation the
+   * empty-capability branch in `composeUserCapabilities` exists to prevent.
+   */
+  recordAccessAt(entityDefId: string, _grantRank: number | null): Rung {
+    return this.recordDefRung(entityDefId) ?? 'none'
+  }
+
+  /** Row-effective DELETE gate — the `edit` floor plus the policy's delete key. */
+  canDeleteRecordAt(access: Rung): boolean {
+    if (!satisfiesRung(access, 'edit')) return false
+    return this.keys.has(PermissionKey.recordsDelete) || satisfiesRung(access, 'admin')
+  }
+
+  /**
+   * Row-effective EDIT gate — the `edit` floor on the stamp.
+   *
+   * Safe despite an agent having no shares of its own, because
+   * {@link recordAccessAt} discards `grantRank` entirely: the stamp an agent is
+   * ever judged at is its own published definition rung, so this can only ever
+   * re-ask the policy question at row granularity.
+   */
+  canEditRecordAt(access: Rung): boolean {
+    return satisfiesRung(access, 'edit')
   }
 
   /**
