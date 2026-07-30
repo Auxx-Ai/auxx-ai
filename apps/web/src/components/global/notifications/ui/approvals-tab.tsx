@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useNotificationPanelStore } from '../notification-panel-store'
+import { AccessRequestRow } from './items/access-request-row'
 import { ConfirmationRow } from './items/confirmation-row'
 import { SuggestionRow } from './items/suggestion-row'
 import { NotificationRowSkeleton } from './notification-row'
@@ -197,7 +198,15 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
                 'scroll-mt-2 rounded-md transition-shadow',
                 flashedId === request.id && 'ring-2 ring-info ring-inset'
               )}>
-              <ConfirmationRow request={request} onResolved={onResolved} />
+              {/* Both kinds live in one section, ordered by deadline together
+                  (plan 28 H1 is what makes access rows appear here at all). They
+                  get different rows because the payload and the cost of Deny are
+                  different — see `AccessRequestRow`. */}
+              {request.kind === 'access' ? (
+                <AccessRequestRow request={request} onResolved={onResolved} />
+              ) : (
+                <ConfirmationRow request={request} onResolved={onResolved} />
+              )}
             </div>
           ))}
         </section>

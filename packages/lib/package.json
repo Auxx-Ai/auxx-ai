@@ -154,6 +154,12 @@
       "import": "./dist/approval-requests/index.mjs",
       "default": "./src/approval-requests/index.ts"
     },
+    "./approval-requests/client": {
+      "types": "./src/approval-requests/client.ts",
+      "source": "./src/approval-requests/client.ts",
+      "import": "./dist/approval-requests/client.mjs",
+      "default": "./src/approval-requests/client.ts"
+    },
     "./approvals": {
       "types": "./src/approvals/index.ts",
       "source": "./src/approvals/index.ts",

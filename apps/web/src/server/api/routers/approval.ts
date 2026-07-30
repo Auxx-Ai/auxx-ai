@@ -9,6 +9,7 @@ import {
   getApprovalRequestWithContext,
   getPendingApprovalsForUser,
   getPendingCount,
+  getThreadAccessRequestApproverView,
   preflightThreadAccessRequest,
   resolveApprovalByToken,
   resolveApprovalRequest,
@@ -194,6 +195,35 @@ export const approvalRouter = createTRPCRouter({
         if (isAuxxError(error)) throw error
         throw error
       }
+    }),
+
+  /**
+   * The approver-side detail for one thread access request (plan 42 §7).
+   *
+   * Separate from `getApprovalDetails` rather than folded into it: the hydration
+   * decision needs the acting approver's own mail lens on the target, and paying for
+   * two visibility reads plus a thread load on every WORKFLOW drawer open would be
+   * the wrong trade. Returns `null` for a non-thread-access request, so the row
+   * falls back to the generic details instead of rendering mail copy over it.
+   *
+   * Gated by `canUserViewApproval` — the same audience read the generic details use,
+   * for the same reason: an approver may read a request they already decided.
+   */
+  accessRequestDetails: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      if (!(await canUserViewApproval(ctx.db, ctx.session.userId, input.id))) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not authorized to view this access request',
+        })
+      }
+      return await getThreadAccessRequestApproverView(
+        ctx.db,
+        ctx.session.organizationId,
+        ctx.session.userId,
+        input.id
+      )
     }),
 
   /** The requester withdraws their own pending request. */
