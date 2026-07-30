@@ -687,6 +687,22 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // `profiles` v3 → v4 above. A v3 blob's retired rungs are dropped by
   // `parsePublishedAgentPolicy`, so the version composes to all-`none`.
   agents: { prefix: 'org:agents:v4', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  // v8: the LENS VOCABULARY changed under this blob (plan v3/03, PR #1406):
+  // `full`→`read` and `subject`→`identity`. `defaultLens` is stored VERBATIM
+  // here, and #1406 bumped the two USER caches (`user:capabilities:v17`,
+  // `user:instance-grants:v1`) while missing this ORG one — so a blob written
+  // before migration 0319 still says `full`, and every reader that keys off it
+  // gets `undefined`. `LENS_LABELS['full']` is `undefined` and the share
+  // popover's inherited-access footer threw
+  // `Cannot read properties of undefined (reading 'label')` on it; the lens
+  // evaluator is worse, because `rungRank('full')` is `undefined` and every
+  // `>=` comparison against it is FALSE, so a stale floor silently reads as no
+  // floor at all. The recompute is already correct (`InboxService.floorFor`
+  // reads the migrated `rung` column) — only the cached copy was wrong, which
+  // is why it presents intermittently: the ONE_DAY TTL heals it within a day of
+  // the org's last inbox write.
+  // ⚠ The v7 note below still says "an absent row meaning `full`" — read that
+  // as `read`. It is left in place as the record of what the old blobs contain.
   // v7: `defaultLens` is DERIVED FROM `ResourceAccess` ROWS (plan 40 §6) — the
   // `role:org_member` baseline row, with an absent row meaning `full` and a
   // `personal_inbox` entry always reporting `none`. The SHAPE is unchanged, which
@@ -709,7 +725,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // poisoned strict lens comparisons). v4: + ownerUserId (§11 personal
   // accounts). v3: + isPersonal. v2: + defaultLens (mail-permissions §2.2).
   // Bump on shape changes.
-  inboxes: { prefix: 'org:inboxes:v7', ttlSeconds: ONE_DAY },
+  inboxes: { prefix: 'org:inboxes:v8', ttlSeconds: ONE_DAY },
   // Reverse thread/contact/inbox grant index for realtime publish fanout
   // (§3.1) + ingest count-delta audiences (§10.1). v2: + inboxes bucket.
   mailGrantIndex: { prefix: 'org:mail-grant-index:v2', ttlSeconds: ONE_DAY },

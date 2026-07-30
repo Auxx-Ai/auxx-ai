@@ -72,7 +72,13 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
     return myLens !== 'read' ? <RequestAccessPopover threadId={threadId} variant='icon' /> : null
   }
 
-  const floor = inbox?.defaultLens ?? 'read'
+  // `?? 'read'` covers an ABSENT floor; `LENS_LABELS[...]` covers an UNKNOWN one.
+  // Both are needed: the floor is served from the `org:inboxes` cache verbatim, so
+  // a blob written before a vocabulary rename holds a retired value (`full`,
+  // `subject`) that is a string — non-null, so `??` sails past it — with no entry
+  // in `LENS_LABELS`. That threw here. Same defence as `LensSelect`'s `safeValue`.
+  const rawFloor = inbox?.defaultLens ?? 'read'
+  const floor = LENS_LABELS[rawFloor] ? rawFloor : 'read'
 
   const button = (
     <Button variant='ghost' size='icon' className='rounded-full hover:bg-foreground/10'>
