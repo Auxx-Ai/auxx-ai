@@ -918,52 +918,72 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.signatures]: {
     area: Area.signatures,
     label: 'Signatures',
-    description: 'Use, create, and share email signatures.',
+    // Plan 43 §2.2 — a NOUN PHRASE naming the feature, not a verb list of rights
+    // the rung does not grant. The rung's meaning now lives one row down, on the
+    // access child row (§2.1); this header carries no control. The old wording
+    // ("Use, create, and share…") promised sharing, which is the per-instance
+    // `admin` rung and is reachable from no position on this ladder.
+    description: 'Email signatures members can add to their replies.',
     group: 'Channels',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.signaturesView] },
-      { level: Level.Edit, keys: [PermissionKey.signaturesEdit] },
       { level: Level.Full, keys: [PermissionKey.signaturesManage] },
     ],
     // Created 2026-07-28 (plan 36 §2.1). Signatures are an
     // `INSTANCE_ACCESS_RESOURCES` entry with `baselineAtCreate: true`.
     //
-    // BE HONEST ABOUT WHAT THE LOWER RUNGS DO. For a `baselineAtCreate: true`
-    // resource the AREA level never reaches instance access:
-    // `effectiveInstanceLevel` returns the explicit row, and
-    // `instanceFallbackLevel` returns `undefined` for these resources by
-    // construction — no-row means NO access, whatever this ladder says.
-    // Dashboards is the precedent and shows the consequence: `dashboardsView`
-    // and `dashboardsEdit` are asserted NOWHERE on the server; only
-    // `dashboardsManage` is, and only where there is no instance to assert on.
-    //   Read  = tier vocabulary + client gating (RUNG_LABELS, levelToPermission,
-    //           read-only affordances). NOT a server assert.
-    //   Edit  = the same — the per-instance `assertEditInstance` is the real gate.
+    // TWO RUNGS, NOT THREE — the `Level.Edit` rung was DROPPED 2026-07-29
+    // (plan 43 §3.1). It was never asserted anywhere: `signaturesEdit` had zero
+    // assertion sites, and the area level cannot reach an instance decision for a
+    // `baselineAtCreate: true` resource, so the rung guarded nothing in either
+    // direction. `Level` is ordinal, so nothing renumbers, and a dev-data check
+    // found zero `PermissionGrant` rows storing `signatures: 2` — nobody silently
+    // gained or lost a rung. Precedent for a partial ladder: `Area.inboxes`
+    // (Read/Full) and `Area.channels` (Full-only).
+    //
+    // **`PermissionKey.signaturesEdit` deliberately STAYS in the enum.** It is
+    // per-instance ladder vocabulary (`RUNG_LABELS`, `levelToPermission`,
+    // `ResourcePermission.edit`) and backs the real `Read+write` instance tier
+    // that `assertEditInstance` enforces. Deleting the key would break that tier;
+    // only the AREA rung went.
+    //
+    // What the two remaining rungs mean:
+    //   Read  = the member may receive the WORKSPACE DEFAULT for signatures
+    //           (plan 43 §0.2a). It gates the baseline path only — an individual
+    //           grant (`user`/`group`/`profile`) overrules it, so a member at
+    //           `None` still keeps signatures they created or that were shared
+    //           with them directly. Rendered as "Use", not "Read only" (§2.1a).
     //   Full  = the ONE rung fronting a real instance-LESS action: CREATE.
-    // Three rungs ship for ladder parity with the other shareable resources.
-    // Do NOT invent server asserts for Read/Edit that have nothing to guard —
-    // that is the mistake the dashboards slice had to unpick.
+    //           Rendered as "Create" (§2.1a).
+    // Do NOT invent server asserts for Read that have nothing to guard — that is
+    // the mistake the dashboards slice had to unpick. Its effect arrives through
+    // `effectiveInstanceLevel`'s baseline gate, not through an `assert`.
     //
     // MEMBER DEFAULT is `Full` (`MEMBER_BASELINE_LEVELS`): every member creates
     // and owns their own signatures. Restriction happens per-instance, not here.
+    // The USER-RANK FLOOR is `Read` (`ROLE_DEFAULTS.USER`, plan 43 §3.2) — a
+    // custom profile silent on this area still receives the workspace default.
   },
   [Area.snippets]: {
     area: Area.snippets,
     label: 'Snippets',
-    description: 'Use, create, and share reply snippets.',
+    // Plan 43 §2.2 — noun phrase; see `Area.signatures` above for why.
+    description: 'Saved reply snippets members can insert.',
     group: 'Channels',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.snippetsView] },
-      { level: Level.Edit, keys: [PermissionKey.snippetsEdit] },
       { level: Level.Full, keys: [PermissionKey.snippetsManage] },
     ],
-    // Created 2026-07-28 (plan 36 §2.1). Same shape and the same honesty note
-    // as `Area.signatures` directly above: `baselineAtCreate: true` means the
-    // area level never supplies an absent-row fallback, so Read/Edit are tier
-    // vocabulary + client gating rather than server asserts. `Full` is the only
-    // rung fronting instance-less actions — creating a snippet, and (plan 36
-    // §0.4 / §6.3) creating, renaming, and deleting snippet FOLDERS, which stay
-    // flat labels with no grants of their own.
+    // Created 2026-07-28 (plan 36 §2.1). Same shape and the same rationale as
+    // `Area.signatures` directly above, including why the `Level.Edit` rung was
+    // dropped 2026-07-29 (plan 43 §3.1 — `snippetsEdit` had zero assertion
+    // sites) and why `PermissionKey.snippetsEdit` nonetheless STAYS in the enum
+    // as per-instance ladder vocabulary. `Full` is the only rung fronting
+    // instance-less actions — creating a snippet, and (plan 36 §0.4 / §6.3)
+    // creating, renaming, and deleting snippet FOLDERS, which stay flat labels
+    // with no grants of their own. `Read` gates the WORKSPACE DEFAULT only
+    // (plan 43 §0.2a); snippets shared with a member directly always reach them.
+    // The USER-rank floor is `Read` (plan 43 §3.2).
   },
   [Area.aiConfig]: {
     area: Area.aiConfig,
@@ -1035,20 +1055,36 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
   [Area.dashboards]: {
     area: Area.dashboards,
     label: 'Dashboards',
-    description:
-      'View dashboards, edit their widgets and layout, or create, rename, and delete them.',
+    // Plan 43 §2.2 — noun phrase; see `Area.signatures` for why. The old wording
+    // enumerated three tiers of rights, two of which this ladder no longer has.
+    description: 'Dashboards and the widgets on them.',
     group: 'Analytics',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.dashboardsView] },
-      { level: Level.Edit, keys: [PermissionKey.dashboardsEdit] },
       { level: Level.Full, keys: [PermissionKey.dashboardsManage] },
     ],
-    // `Edit` rung added 2026-07-27: dashboards were the only instance-access
-    // area on a 2-rung ladder even though the share dialog and `dashboard.ts`
-    // already spoke three per-instance tiers (view / edit widgets / manage).
-    // Read = see the dashboard and its widgets; Edit = add/remove/edit widgets
-    // and layout (draft, publish, versions); Full = rename, delete, create.
-    // Purely a SPLIT of the old Full rung — no path got more permissive.
+    // History, in order, because the second entry reverses the first:
+    //
+    // `Edit` rung added 2026-07-27 (#1344): dashboards were the only
+    // instance-access area on a 2-rung ladder even though the share dialog and
+    // `dashboard.ts` already spoke three per-instance tiers.
+    //
+    // `Edit` rung DROPPED again 2026-07-29 (plan 43 §3.1). The three per-instance
+    // tiers are real and unaffected — they live on the `ResourceAccess` row and
+    // are enforced by `assertEditInstance` — but the AREA rung mirroring them
+    // asserted nothing: `dashboardsView` and `dashboardsEdit` have zero assertion
+    // sites, and for a `baselineAtCreate: true` resource the area level cannot
+    // reach an instance decision. `PermissionKey.dashboardsEdit` STAYS in the
+    // enum as per-instance ladder vocabulary; only the rung went. Zero
+    // `PermissionGrant` rows stored `dashboards: 2`, so nothing renumbered and
+    // nobody silently changed tier.
+    //
+    // Read = the member may receive the WORKSPACE DEFAULT for dashboards
+    // (plan 43 §0.2a) — the 89 `role:org_member @ view` rows in dev reach them
+    // only at this rung or above. An individual grant overrules it, so `None`
+    // never costs a member a dashboard they created or that was shared with them
+    // directly. Full = create and duplicate (the instance-less actions).
+    // The USER-rank floor is `Read` (plan 43 §3.2).
     featureKey: FeatureKey.dashboards,
   },
 }

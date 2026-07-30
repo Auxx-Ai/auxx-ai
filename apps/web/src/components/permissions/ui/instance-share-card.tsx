@@ -60,7 +60,15 @@ function WorkspaceBaselineSelect({
         <SelectItem value='restricted' textValue='No access'>
           <div className='flex flex-col items-start'>
             <span>No access (Restricted)</span>
-            <span className='text-muted-foreground text-xs'>Only people below and admins</span>
+            {/* NOT "and admins" (plan 43 §5.5.3). There is no admin bypass:
+                `effectiveInstanceLevel` has only the
+                `role === 'OWNER' && !cfg.baselineAtCreate` arm — doc 19 §5.3
+                step 10 removed the ADMIN one and plan 36 §0.6 then scoped
+                OWNER's away from the private resources too. The old string was
+                wrong in the dangerous direction: an admin restricting a dataset
+                was told a group still had access when it did not, and could
+                leave a genuine grant off. */}
+            <span className='text-muted-foreground text-xs'>Only people listed below</span>
           </div>
         </SelectItem>
       </SelectContent>
@@ -146,7 +154,7 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
         {restricted ? (
           <>
             This {copy.noun} is <span className='font-medium'>restricted</span>. Only the people
-            below and admins can access it.
+            listed below can access it.
           </>
         ) : (
           <>
@@ -168,6 +176,19 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
           copy={copy}
           disabled={!canAdmin}
         />
+        {/* Plan 43 §5.5.2 — the mirror of the area row's confusion, and this
+            dialog's own: an admin sets a workspace default and it does not reach
+            everyone, because §0.2a gates the baseline lane on the member's area
+            rung. The row above is titled "Everyone in the workspace"; this is the
+            sentence that makes that title honest.
+
+            Only for the six org-shared keys (`baselineReachNote` is unset on the
+            private three, where there is no workspace default to be shut out of),
+            and only while a default actually exists — under Restricted the
+            baseline reaches nobody, so the line would imply the opposite. */}
+        {!restricted && copy.baselineReachNote ? (
+          <p className='px-2 pt-1 text-muted-foreground text-xs'>{copy.baselineReachNote}</p>
+        ) : null}
       </div>
 
       <InstanceShareBody recordId={recordId} emptyHint={INSTANCE_ROW_COPY.baseline.emptyHint} />

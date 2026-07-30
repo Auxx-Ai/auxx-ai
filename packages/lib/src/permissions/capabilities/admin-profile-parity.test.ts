@@ -96,6 +96,8 @@ function composeAdmin(
       entityDefinitionId: string
       entityInstanceId: string
       permission: ResourcePermission
+      /** Grantee kind (plan 43 §4.1) — `'role'` is the gated baseline lane. */
+      granteeType: string
     }>
   } = {}
 ) {
@@ -125,6 +127,8 @@ function adminAccess(
       entityDefinitionId: string
       entityInstanceId: string
       permission: ResourcePermission
+      /** Grantee kind (plan 43 §4.1) — `'role'` is the gated baseline lane. */
+      granteeType: string
     }>
   } = {}
 ): ResolvedRecordAccess {
@@ -141,6 +145,7 @@ function adminAccess(
     restrictedEntityDefIds: new Set(opts.restricted ?? []),
     defBaseOverrides: {},
     instanceAccess: caps.instanceAccess,
+    baselineInstanceAccess: caps.baselineInstanceAccess,
     governingInstanceIds: new Set(opts.restrictedInstances ?? []),
   }
 }
@@ -208,13 +213,18 @@ describe('ADMIN parity — areas (byte-identical to the removed short-circuit)',
     )
   })
 
-  it('the composed blob carries exactly four fields (no ceiling rides out)', () => {
+  it('the composed blob carries exactly five fields (no ceiling rides out)', () => {
     // Plan 20 §2.a.2: `ceilingDefs` is gone from `UserCapabilities`. Pinned here
     // as a shape assertion because a re-added field would silently ride into the
     // cached blob and force another `user:capabilities:vN` bump.
     // `instanceDerivedKeys` joined the shape in item 5b — and did force the
     // v10 → v11 bump, which is exactly the tripwire this assertion is.
+    // `baselineInstanceAccess` joined it in plan 43 §4.1 and forced v15 → v16.
+    // That bump was MANDATORY rather than hygienic, and this assertion is why it
+    // was noticed: the new field's absence on a stale blob is not a benign gap,
+    // because `instanceAccess` NARROWED underneath it in the same change.
     expect(Object.keys(composeAdmin()).sort()).toEqual([
+      'baselineInstanceAccess',
       'defAccess',
       'instanceAccess',
       'instanceDerivedKeys',
@@ -289,7 +299,9 @@ describe('ADMIN parity — instance-access resources', () => {
       (id) => id,
       caps.instanceAccess,
       new Set(),
-      {}
+      {},
+      new Set(caps.instanceDerivedKeys),
+      caps.baselineInstanceAccess
     )
     expect(set.canViewInstance('dataset', 'inst_1')).toBe(true)
     expect(set.canEditInstance('dataset', 'inst_1')).toBe(true)
@@ -317,6 +329,10 @@ describe('ADMIN parity — instance-access resources', () => {
           entityDefinitionId: 'dashboard',
           entityInstanceId: 'dash_1',
           permission: ResourcePermission.view,
+          // The `role:org_member @ view` row every dashboard writes at create —
+          // the BASELINE lane (plan 43 §4.1). An admin composes `dashboards: Full`,
+          // so §4.2's step-2 gate passes and the answer is unchanged.
+          granteeType: 'role',
         },
       ],
     })

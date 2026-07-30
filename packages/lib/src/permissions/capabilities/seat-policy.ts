@@ -10,13 +10,14 @@ import { Area, buildAreaLevels, Level, PermissionKey } from './registry'
  * seat can EVER reach — the worker ceiling is what makes the field seat safely
  * cheaper (no org config, group, or user grant can promote it).
  *
- * **Plan 22 (member baseline strip):** unset on a USER-rank profile now means
- * `None`, full stop — `ROLE_DEFAULTS.USER` is the all-`None` floor, not a
- * generous map. The Member profile's actual out-of-the-box access is carried
- * as explicit `PermissionGrant` levels, seeded from {@link MEMBER_BASELINE_LEVELS}
- * (today's positive baseline, unchanged) at `ensureSystemProfiles` time — it is
- * written as DATA, not composed from this file at read time. `field_tech` gets
- * the same treatment via {@link FIELD_TECH_BASELINE_LEVELS}.
+ * **Plan 22 (member baseline strip):** unset on a USER-rank profile means `None`
+ * for every area EXCEPT the three plan 43 §3.2 names below — `ROLE_DEFAULTS.USER`
+ * is the `None` floor, not a generous map. The Member profile's actual
+ * out-of-the-box access is carried as explicit `PermissionGrant` levels, seeded
+ * from {@link MEMBER_BASELINE_LEVELS} (today's positive baseline, unchanged) at
+ * `ensureSystemProfiles` time — it is written as DATA, not composed from this
+ * file at read time. `field_tech` gets the same treatment via
+ * {@link FIELD_TECH_BASELINE_LEVELS}.
  * `ROLE_DEFAULTS.ADMIN`/`.OWNER` stay `ALL_FULL` UNTOUCHED: that fall-through is
  * the recovery guarantee (plan 21 §2.a.7) — a mis-shaped profile can never lock
  * out every admin/owner.
@@ -25,7 +26,17 @@ import { Area, buildAreaLevels, Level, PermissionKey } from './registry'
  * plans/permissions/v2/22-member-baseline-strip.md.
  */
 
-/** Every registered PermissionKey, in registry order. */
+/**
+ * Every registered PermissionKey, in registry order.
+ *
+ * **This is the ENUM, and since plan 43 §3.1 it is a strict SUPERSET of the keys
+ * any level can compose.** `signaturesEdit` / `snippetsEdit` / `dashboardsEdit`
+ * are still enum members — they are per-instance ladder vocabulary — but their
+ * areas no longer carry a `Level.Edit` rung, so `expandLevelsToKeys` never emits
+ * them at any level, `Full` included. Do not use this list as "what an all-Full
+ * member holds"; use `expandLevelsToKeys(buildAreaLevels(() => Level.Full))`.
+ * Its own consumer here only needs a STABLE ORDER, which is unaffected.
+ */
 export const ALL_KEYS: PermissionKey[] = Object.values(PermissionKey)
 
 /** Every area at `Full` — the OWNER/ADMIN and full-seat ceiling baseline. */
@@ -89,24 +100,64 @@ export const WORKER_SEAT_KEYS: PermissionKey[] = [
 
 /**
  * What each role gets out of the box, per area (before grants + seat clamp).
- * OWNER/ADMIN short-circuit to Full anyway; USER is the all-`None` floor
- * (plan 22) — unset on a USER-rank profile means no access, full stop. The
- * Member profile's actual out-of-the-box access is seeded as data, not
+ * OWNER/ADMIN short-circuit to Full anyway. USER is the `None` floor (plan 22)
+ * with **three deliberate exceptions**, added by plan 43 §3.2 / §0.5 option (A):
+ * `signatures`, `snippets` and `dashboards` sit at {@link Level.Read}.
+ *
+ * Four things a reader must know before "correcting" those three entries — the
+ * sentence that used to stand here (*"unset on a USER-rank profile means no
+ * access, full stop"*) is now FALSE and was rewritten in the same commit
+ * precisely so the next reader does not delete them as a mistake:
+ *
+ * 1. **Unset on these three means *the workspace default reaches you*; an
+ *    explicit `None` is the deny lever.** Plan 43 §4 made the area level gate the
+ *    BASELINE path (`role:org_member` rows + the area fall-through), so silence
+ *    would otherwise DENY — and every custom profile starts silent on every area
+ *    its author did not think about. `support_rep`, the one real custom profile
+ *    in dev, is exactly that case.
+ * 2. **`Read` here confers NOTHING on its own.** All three resources are
+ *    `baselineAtCreate: true`, so with no `ResourceAccess` row
+ *    `effectiveInstanceLevel` still resolves `undefined`. The only thing this
+ *    rung opens is content somebody deliberately shared workspace-wide.
+ * 3. **`Full` (create) stays closed**, so plan 22 §2.5's *"a new area ships
+ *    CLOSED"* still holds for the rung that actually grants something. A new
+ *    area added to the enum still lands at `None` here by construction
+ *    ({@link buildAreaLevels}).
+ * 4. **This is the USER-RANK FLOOR, not the Member profile.** The naming invites
+ *    the mistake — `ROLE_RANK_LABEL` renders rank `USER` as the word "Member" —
+ *    but the Member profile is a data row that stores all three areas
+ *    EXPLICITLY and therefore never reaches this fall-through. Say "the
+ *    USER-rank floor" or "the Member profile", never "the member default".
+ *
+ * The Member profile's actual out-of-the-box access is seeded as data, not
  * composed here — see {@link MEMBER_BASELINE_LEVELS}.
  */
 export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
   OWNER: ALL_FULL,
   ADMIN: ALL_FULL,
-  USER: buildAreaLevels(() => Level.None),
+  USER: {
+    ...buildAreaLevels(() => Level.None),
+    [Area.signatures]: Level.Read,
+    [Area.snippets]: Level.Read,
+    [Area.dashboards]: Level.Read,
+  },
 }
 
 /**
  * The Member profile's seeded baseline (plan 22 §2.2) — today's positive USER
  * map, unchanged, now written as an explicit `PermissionGrant` row instead of
  * composed from `ROLE_DEFAULTS` at read time: every area at `Full` EXCEPT the
- * ten org-administration areas below (OMITTED entirely — with the floor at
- * `None`, storing `None` for them would be dead weight and the editor should
- * show those rows as unset), `datasets: Read`, and `knowledgeBase: Edit`.
+ * ten org-administration areas below (OMITTED entirely — the floor is `None` for
+ * every one of them, so storing `None` would be dead weight and the editor
+ * should show those rows as unset), `datasets: Read`, and `knowledgeBase: Edit`.
+ *
+ * **The "omitted ⇒ `None`" shorthand is no longer universal** (plan 43 §3.2):
+ * {@link ROLE_DEFAULTS}`.USER` now floors `signatures` / `snippets` /
+ * `dashboards` at `Read`. It stays exactly true for the ten areas this map
+ * omits, none of which is one of those three — but do not read it as a claim
+ * about `ROLE_DEFAULTS.USER` as a whole. All three are listed here EXPLICITLY at
+ * `Full` anyway, so this profile never reaches that floor either way; see
+ * `ROLE_DEFAULTS` note 4 for why conflating the two is the standing trap.
  *
  * Written literally (not derived by excluding an admin-areas set from
  * `AREA_ORDER`) so that adding a new `Area` ships CLOSED for members by

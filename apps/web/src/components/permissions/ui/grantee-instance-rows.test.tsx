@@ -305,3 +305,45 @@ describe('GranteeInstanceRows — the shared-component props (plan 33 §3)', () 
     expect(onChange).toHaveBeenCalledWith('workflow', 'wf_gone', 'inherit')
   })
 })
+
+/**
+ * Plan 43 §8 item 23 / §5.4 — **the grantee picker keeps `Read+write`.**
+ *
+ * §3.1 dropped the `Level.Edit` rung from `Area.signatures` / `snippets` /
+ * `dashboards`. `ResourcePermission.edit` is a different thing: a per-INSTANCE
+ * tier, asserted by `assertEditInstance` and spoken by the share dialog. Filtering
+ * this picker by the area's rungs is the obvious-looking follow-up and would
+ * delete a live tier on three resources at once, which is why the area access row
+ * passes its own explicit option list instead of narrowing `POSITIVE_LEVELS`.
+ */
+describe('GranteeInstanceRows — the instance ladder is independent of the area rungs', () => {
+  it('still offers Read and write on a signature row', async () => {
+    const user = userEvent.setup()
+    render(
+      <TooltipProvider>
+        <GranteeInstanceRows
+          rows={[
+            {
+              key: 'signature',
+              id: 'sig_1',
+              name: 'Anna – Support',
+              grantLevel: undefined,
+            },
+          ]}
+          canEdit
+          onChange={vi.fn()}
+        />
+      </TooltipProvider>
+    )
+
+    await user.click(screen.getAllByRole('combobox')[0] as HTMLElement)
+    const labels = (await screen.findAllByRole('option')).map((o) =>
+      o.querySelector('div.items-start > span')?.textContent?.trim()
+    )
+    expect(labels).toContain('Read and write')
+    // …and it is NOT renamed into the area's private vocabulary: this row is
+    // about one signature, not the workspace default lane.
+    expect(labels).toContain('Read only')
+    expect(labels).not.toContain('Use')
+  })
+})

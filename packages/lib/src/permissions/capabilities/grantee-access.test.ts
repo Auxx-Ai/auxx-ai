@@ -184,6 +184,7 @@ describe('getGranteeAccess — own / baseline / effective are split cleanly', ()
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
           permission: ResourcePermission.none,
+          granteeType: 'user',
         },
       ],
     })
@@ -259,11 +260,13 @@ describe('getGranteeAccess — each instance is resolved against its OWN resourc
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
           permission: ResourcePermission.view,
+          granteeType: 'user',
         },
         {
           entityDefinitionId: 'dashboard',
           entityInstanceId: DASH,
           permission: ResourcePermission.edit,
+          granteeType: 'user',
         },
       ],
     })
@@ -336,11 +339,13 @@ describe('getGranteeAccess — finding 4: a user-level "none" loses to a group g
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
           permission: ResourcePermission.none,
+          granteeType: 'user',
         },
         {
           entityDefinitionId: 'workflow',
           entityInstanceId: WF,
           permission: ResourcePermission.view,
+          granteeType: 'user',
         },
       ],
     })
@@ -513,6 +518,7 @@ describe('getGranteeAccess — the seat ceiling still dominates', () => {
             entityDefinitionId: 'workflow',
             entityInstanceId: WF,
             permission: ResourcePermission.admin,
+            granteeType: 'user',
           },
         ],
       },

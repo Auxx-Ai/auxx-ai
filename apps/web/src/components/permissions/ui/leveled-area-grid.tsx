@@ -7,9 +7,11 @@ import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
-import { SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
-import { LevelControl } from './level-control'
+import { Tooltip } from '~/components/global/tooltip'
+import { AreaAccessRow, hasAreaAccessRow } from './area-access-row'
+import { clampToArea, LevelControl } from './level-control'
 import { effectiveLevelLabel } from './level-labels'
 import { PROFILE_AREA_GROUPS } from './profile-copy'
 
@@ -93,10 +95,18 @@ interface LeveledAreaGridProps {
  * default. Every rung is selectable in either mode — an override that doesn't
  * lift the baseline is composed away and flagged as "ignored" on the grantee.
  *
+ * **Except the eight instance-access areas** (plan 43 decision 0.7), which render
+ * a controlless header with the resolved rung as text and carry their control in
+ * an {@link AreaAccessRow} nested beneath it. The set is derived from
+ * `INSTANCE_ACCESS_RESOURCES`, so this grid and `ProfileAreaGrid` cannot convert
+ * different areas. `Area.records` keeps its ladder on purpose (§5.2): its children
+ * are per-*definition* and its rung genuinely IS their default.
+ *
  * An area may also nest child rows via `renderChildren` (the member baseline
  * supplies per-def workspace baselines under Records). Children are collapsed by
  * default and participate in the search: a def name keeps its parent row visible
- * and expands it.
+ * and expands it. The access row sits ahead of them and never counts toward
+ * `matchCount` — it writes `values[area]`, which "Overrides only" already reads.
  */
 export function LeveledAreaGrid({
   values,
@@ -180,6 +190,21 @@ export function LeveledAreaGrid({
                     : roleDefaults[area]
                 const isOpen = openAreas[area] ?? autoOpen
                 const effective = effectiveLevels?.[area]
+                // Plan 43 decision 0.7 — the eight instance-access areas trade
+                // their ladder for a controlless header plus an access child
+                // row. Derived from the registry, never listed, so this grid and
+                // `ProfileAreaGrid` cannot drift into converting different sets.
+                const hasAccessRow = hasAreaAccessRow(area)
+                const accessRow = hasAccessRow ? (
+                  <AreaAccessRow
+                    area={area}
+                    value={value}
+                    inheritedLevel={inherited}
+                    disabled={disabled}
+                    onChange={(level) => onChange(area, level)}
+                  />
+                ) : null
+                const expandable = accessRow !== null || children !== undefined
                 return (
                   <TreeRow
                     rowClassName='bg-primary-50 hover:bg-primary-100'
@@ -203,23 +228,56 @@ export function LeveledAreaGrid({
                         </span>
                       ) : undefined
                     }
-                    expandable={children !== undefined}
-                    isOpen={children !== undefined ? isOpen : undefined}
+                    expandable={expandable}
+                    isOpen={expandable ? isOpen : undefined}
                     onToggleOpen={
-                      children !== undefined
+                      expandable
                         ? () => setOpenAreas((prev) => ({ ...prev, [area]: !isOpen }))
                         : undefined
                     }
+                    // §2.1b — the collapsed header still states its resolved
+                    // rung, as text. On this grid it reads beside the
+                    // `Effective · …` line above, which is the composed answer
+                    // including group raises and both clamps; this one is what
+                    // the row itself authors.
+                    actions={
+                      hasAccessRow ? (
+                        <>
+                          {/*
+                            The "ignored" warning is `LevelControl`'s, and the
+                            eight converted rows no longer have one — but the
+                            state it reports is real and raise-only-specific (an
+                            override at or below the baseline is composed away
+                            server-side and the row would otherwise look like it
+                            did something). It moves here rather than to the
+                            access child row: it is a statement about this
+                            grantee's override versus the member baseline, which
+                            is what the HEADER is about.
+                          */}
+                          {mode === 'override' && value !== undefined && value <= inherited ? (
+                            <Tooltip content='This override is ignored. The member baseline already grants this level of access.'>
+                              <AlertTriangle className='size-3.5 text-amber-500' />
+                            </Tooltip>
+                          ) : null}
+                          <span className='text-xs text-muted-foreground whitespace-nowrap'>
+                            {effectiveLevelLabel(clampToArea(meta, value ?? inherited))}
+                          </span>
+                        </>
+                      ) : undefined
+                    }
                     trailing={
-                      <LevelControl
-                        area={meta}
-                        value={value}
-                        inherited={inherited}
-                        ignored={mode === 'override' && value !== undefined && value <= inherited}
-                        onChange={(level) => onChange(area, level)}
-                        disabled={disabled}
-                      />
+                      hasAccessRow ? undefined : (
+                        <LevelControl
+                          area={meta}
+                          value={value}
+                          inherited={inherited}
+                          ignored={mode === 'override' && value !== undefined && value <= inherited}
+                          onChange={(level) => onChange(area, level)}
+                          disabled={disabled}
+                        />
+                      )
                     }>
+                    {accessRow}
                     {children?.rows}
                   </TreeRow>
                 )

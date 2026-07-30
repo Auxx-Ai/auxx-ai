@@ -51,6 +51,16 @@ interface MemberOpts {
     entityDefinitionId?: InstanceAccessKey
     entityInstanceId: string
     permission: ResourcePermission
+    /**
+     * The grantee kind, which plan 43 §4.1 made load-bearing: `'role'` sorts the
+     * row into the GATED baseline lane, anything else into the ungated individual
+     * lane. Defaults to `'user'` — an individual grant — which reproduces this
+     * harness's pre-plan-43 behaviour EXACTLY (every row used to land in the one
+     * merged, ungated map), so any failure below is a real signal rather than a
+     * harness artefact. Cases that specifically model the workspace baseline pass
+     * `'role'`; the dedicated coverage lives in `area-baseline-gate.test.ts`.
+     */
+    granteeType?: string
   }>
   /**
    * The org-wide ROW-GOVERNED set (`governingInstanceIdsProvider`): instances
@@ -76,7 +86,11 @@ function member(opts: MemberOpts = {}) {
     seatType,
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     typeAccessRows: [],
-    instanceAccessRows: (opts.rows ?? []).map((row) => ({ entityDefinitionId: 'dataset', ...row })),
+    instanceAccessRows: (opts.rows ?? []).map((row) => ({
+      entityDefinitionId: 'dataset',
+      granteeType: 'user',
+      ...row,
+    })),
   })
   const restricted = new Set(
     opts.restrictedInstances ?? (opts.rows ?? []).map((r) => r.entityInstanceId)
@@ -92,7 +106,8 @@ function member(opts: MemberOpts = {}) {
     caps.instanceAccess,
     restricted,
     {},
-    new Set(caps.instanceDerivedKeys)
+    new Set(caps.instanceDerivedKeys),
+    caps.baselineInstanceAccess
   )
   // The client only ever sees the wire snapshot — build its view from that, not
   // from the composed blob, so a field dropped in serialization shows up here.

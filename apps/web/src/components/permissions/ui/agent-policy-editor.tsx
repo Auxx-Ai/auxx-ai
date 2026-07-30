@@ -105,10 +105,21 @@ function emptyStateFor(
  * The three flat sections (Areas / Record types / Resources) are gone.
  *
  * ```
- * Knowledge bases            [None|Read|Full]      ← the L2 area rung
- *   ├ All knowledge bases    [Default · None  ▾]   ← resources.kb.default
+ * Knowledge bases                                  Read      ← resolved, read-only
+ *   ├ Knowledge base access  [Read            ▾]   ← areas.overrides[kb] (plan 43)
+ *   ├ All knowledge bases    [Default · Read  ▾]   ← resources.kb.default
  *   └ Returns Policy         [Read            ▾]   ← resources.kb.overrides[id]
  * ```
+ *
+ * The first child row is plan 43's **access child row**, which carries the area
+ * rung the header used to. It renders on this surface for the same reason it
+ * renders on the three human ones: the header is controlless for every
+ * instance-access area now, so this is the only place the rung — the `min` every
+ * row under it is clamped against — can be authored. The two child rows read as a
+ * chain rather than a duplication: `All knowledge bases` says `Default · Read`
+ * and the row it means by *default* is the one directly above it, which is
+ * strictly better than the pre-43 arrangement where it pointed at a segmented
+ * ladder in the header's trailing cluster.
  *
  * What this surface is careful about, in the order it is easy to get wrong:
  *
@@ -527,6 +538,14 @@ export function AgentPolicyEditor({
           baseLevel={LEVEL_OF_PERMISSION[policy.areas.default]}
           areaGroups={AGENT_POLICY_AREA_GROUPS}
           unsetHintFor={unsetHintFor}
+          // Plan 43 §5.2 — the access child row renders HERE TOO. The header
+          // lost its ladder for the instance-access areas on every grid, so
+          // without this row the agent's area rung (the `min` every nested
+          // rule is clamped against) would be unauthorable on this surface.
+          // `Default`, not `Inherit`, for the reason the instance rows below
+          // already use it: an agent policy is a SET over a mandatory
+          // `areas.default`, so there is no baseline to inherit from.
+          accessInheritLabel={AGENT_INHERIT_LABEL}
           disabled={disabled}
           onChange={(area, level) =>
             setAreaOverride(area, level === undefined ? undefined : permissionOfLevel(level))

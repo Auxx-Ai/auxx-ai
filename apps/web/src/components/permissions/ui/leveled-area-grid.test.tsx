@@ -1,9 +1,17 @@
 // apps/web/src/components/permissions/ui/leveled-area-grid.test.tsx
 
-import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
+import {
+  Area,
+  INSTANCE_ACCESS_KEYS,
+  INSTANCE_ACCESS_RESOURCES,
+  Level,
+  PERMISSION_AREAS,
+} from '@auxx/lib/permissions/client'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { AREA_ACCESS_ROW_COPY } from './area-access-copy'
 import { LeveledAreaGrid } from './leveled-area-grid'
 
 /**
@@ -24,6 +32,11 @@ import { LeveledAreaGrid } from './leveled-area-grid'
  */
 
 beforeAll(() => {
+  // Plan 43's access child row is a Radix Select, which drives itself off
+  // pointer capture — unimplemented in jsdom.
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
   Element.prototype.scrollIntoView = () => {}
 })
 
@@ -126,5 +139,100 @@ describe('LeveledAreaGrid — the line reports EVERY area it has a level for', (
     expect(screen.getAllByText(/^Effective ·/)).toHaveLength(2)
     expect(screen.getByText('Effective · Read')).toBeTruthy()
     expect(screen.getByText('Effective · No access')).toBeTruthy()
+  })
+})
+
+/**
+ * Plan 43 §8 items 17 and 19 (grid 2 of 4) — **the grantee-overrides tab.**
+ *
+ * `GranteeOverridesTab` renders THIS grid, not `ProfileAreaGrid`, so the
+ * conversion has to land here independently or the access row appears on one
+ * screen and vanishes on another — §5.2 calls that outcome worse than today. The
+ * set of converted areas is derived from `INSTANCE_ACCESS_RESOURCES` in one
+ * place precisely so the two grids cannot disagree; these tests are what would
+ * fail if someone re-listed it by hand.
+ */
+
+const ROW = 'div[class*="group/tree-row"]'
+const ROW_TITLE = 'span.truncate.px-1.text-foreground'
+
+function areaRows(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>(ROW))
+}
+
+function rowFor(title: string): HTMLElement {
+  const found = areaRows().find((r) => r.querySelector(ROW_TITLE)?.textContent?.trim() === title)
+  if (!found) throw new Error(`no row titled "${title}"`)
+  return found
+}
+
+/** Expand one area row through its chevron, then hand back its access-row trigger. */
+async function openAccess(
+  user: ReturnType<typeof userEvent.setup>,
+  area: Area
+): Promise<HTMLElement> {
+  const chevron = rowFor(PERMISSION_AREAS[area].label).querySelector<HTMLElement>(
+    'button[aria-label="Expand"]'
+  )
+  if (chevron) await user.click(chevron)
+  const label = AREA_ACCESS_ROW_COPY[area]?.label
+  if (!label) throw new Error(`no access-row copy for ${area}`)
+  return within(rowFor(label)).getByRole('combobox')
+}
+
+const INSTANCE_AREAS = [
+  ...new Set(INSTANCE_ACCESS_KEYS.map((key) => INSTANCE_ACCESS_RESOURCES[key].area)),
+]
+
+describe('plan 43 §8 item 17 — this grid converts the same eight areas', () => {
+  it('drops the ladder from every instance-access area and keeps it on Records', () => {
+    renderGrid()
+
+    for (const area of INSTANCE_AREAS) {
+      const label = PERMISSION_AREAS[area].label
+      expect(rowFor(label).querySelector('[role="radio"]')).toBeNull()
+    }
+    expect(rowFor('Records').querySelector('[role="radio"]')).not.toBeNull()
+  })
+
+  it('states the resolved rung as text on the collapsed header', () => {
+    renderGrid({ baseline: { [Area.datasets]: Level.Edit } })
+
+    expect(within(rowFor('Datasets')).getAllByText('Edit').length).toBeGreaterThan(0)
+  })
+})
+
+describe('plan 43 §8 item 19 (grid 2 of 4) — the access row writes levels[area]', () => {
+  it('shows the same value the profile editor would for the same levels map', async () => {
+    const user = userEvent.setup()
+    renderGrid({ values: { [Area.signatures]: Level.Full } })
+
+    // The private three's own vocabulary: "Full access" on a signatures row would
+    // claim access to every signature, which the rung does not grant.
+    expect((await openAccess(user, Area.signatures)).textContent).toBe('Create')
+  })
+
+  it('emits through the grid onChange, keyed to the area', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderGrid({ onChange })
+
+    await user.click(await openAccess(user, Area.dashboards))
+    await user.click(await screen.findByRole('option', { name: /Create/ }))
+
+    expect(onChange).toHaveBeenCalledWith(Area.dashboards, Level.Full)
+  })
+
+  it('keeps the raise-only "ignored" signal, which the ladder used to carry', () => {
+    // An override at or below the member baseline is composed away server-side.
+    // Losing this on eight rows would make the grid silently pretend the write
+    // did something.
+    renderGrid({
+      mode: 'override',
+      baseline: { [Area.datasets]: Level.Full },
+      values: { [Area.datasets]: Level.Read },
+    })
+
+    expect(rowFor('Datasets').querySelector('svg.lucide-triangle-alert')).not.toBeNull()
   })
 })

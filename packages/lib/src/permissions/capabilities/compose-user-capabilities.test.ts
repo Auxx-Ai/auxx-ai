@@ -17,7 +17,6 @@ import {
   PermissionKey,
 } from './registry'
 import {
-  ALL_KEYS,
   FIELD_TECH_BASELINE_LEVELS,
   MEMBER_BASELINE_LEVELS,
   ROLE_DEFAULTS,
@@ -26,6 +25,19 @@ import {
 } from './seat-policy'
 
 const sorted = (keys: PermissionKey[]) => [...keys].sort()
+
+/**
+ * Every key an all-`Full` composition can actually produce.
+ *
+ * **NOT `ALL_KEYS`**, which is `Object.values(PermissionKey)` — the enum — and
+ * has been a strict SUPERSET of this set since plan 43 §3.1 dropped the
+ * `Level.Edit` rung from `signatures` / `snippets` / `dashboards`. Those three
+ * `*Edit` keys stay in the enum as per-instance ladder vocabulary
+ * (`ResourcePermission.edit`, `assertEditInstance`) but no AREA level emits them
+ * any more, so an assertion of "an admin holds every key" written against the
+ * enum now fails for reasons that have nothing to do with the admin.
+ */
+const ALL_COMPOSABLE_KEYS: PermissionKey[] = expandLevelsToKeys(buildAreaLevels(() => Level.Full))
 
 /**
  * Rebuilds `seat-policy.ts`'s deleted `effectiveDefault` helper for the two
@@ -42,6 +54,29 @@ function legacyEffectiveDefault(role: 'ADMIN' | 'OWNER', seatType: SeatType): Pe
   const clamped = buildAreaLevels((area) => Math.min(defaults[area], ceiling[area]) as Level)
   return expandLevelsToKeys(clamped)
 }
+
+/**
+ * What a full-seat USER-rank principal composes when NOTHING is authored for
+ * them — no profile levels, no `baseLevel`, no grants. It is no longer `[]`:
+ * plan 43 §3.2 (option A of its §0.5) floors `signatures`, `snippets` and
+ * `dashboards` at `Level.Read` in `ROLE_DEFAULTS.USER`.
+ *
+ * Why the floor moved, since these tests were written to pin it AT zero: plan 43
+ * §4 made the area level GATE the workspace-baseline path, so silence would
+ * otherwise DENY — and every custom profile is silent on every area its author
+ * did not think about. `Read` here is permission to RECEIVE a workspace default,
+ * not a grant: all three resources are `baselineAtCreate: true`, so with no
+ * `ResourceAccess` row the member still resolves `undefined` (pinned as §8 item
+ * 16b in `area-baseline-gate.test.ts`). `Full` — create — stays closed, so plan
+ * 22 §2.5's "a new area ships CLOSED" still holds for the rung that grants
+ * anything.
+ *
+ * A WORKER seat still composes `[]` from the same inputs: none of the three
+ * areas is in `WORKER_AREAS`, so the seat ceiling clamps all three back to None.
+ */
+const USER_FLOOR_KEYS: PermissionKey[] = expandLevelsToKeys(
+  buildAreaLevels((area) => ROLE_DEFAULTS.USER[area])
+)
 
 describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
   it('gives OWNER and ADMIN every key (full seat)', () => {
@@ -198,7 +233,7 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     })
     expect(caps.keys).toContain(PermissionKey.recordsDelete)
     expect(caps.keys).toContain(PermissionKey.settingsManage)
-    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_COMPOSABLE_KEYS))
   })
 
   it('a group grant raises above the profile baseline but cannot lower it', () => {
@@ -322,7 +357,12 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       seatType: 'full',
       typeAccessRows: [],
       instanceAccessRows: [
-        { entityDefinitionId: 'dataset', entityInstanceId: 'ds_locked', permission: 'none' },
+        {
+          entityDefinitionId: 'dataset',
+          entityInstanceId: 'ds_locked',
+          permission: 'none',
+          granteeType: 'user',
+        },
       ],
     })
     expect(caps.instanceAccess).toEqual({ ds_locked: 'none' })
@@ -334,8 +374,18 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     // last-wins reducer would leave the person the instance was just shared with
     // sitting on the lockdown marker.
     const rows = [
-      { entityDefinitionId: 'dataset', entityInstanceId: 'ds_locked', permission: 'none' as const },
-      { entityDefinitionId: 'dataset', entityInstanceId: 'ds_locked', permission: 'edit' as const },
+      {
+        entityDefinitionId: 'dataset',
+        entityInstanceId: 'ds_locked',
+        permission: 'none' as const,
+        granteeType: 'user',
+      },
+      {
+        entityDefinitionId: 'dataset',
+        entityInstanceId: 'ds_locked',
+        permission: 'edit' as const,
+        granteeType: 'user',
+      },
     ]
     for (const instanceAccessRows of [rows, [...rows].reverse()]) {
       const caps = composeUserCapabilities({
@@ -377,7 +427,12 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
       userLevels: { [Area.knowledgeBase]: Level.Full },
       typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
       instanceAccessRows: [
-        { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
+        {
+          entityDefinitionId: 'dataset',
+          entityInstanceId: 'inst_a',
+          permission: 'none',
+          granteeType: 'user',
+        },
       ],
     })
     for (const userType of ['USER', 'SYSTEM'] as const) {
@@ -390,7 +445,12 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
         userLevels: { [Area.knowledgeBase]: Level.Full },
         typeAccessRows: [{ entityDefinitionId: 'def_a', permission: 'edit' }],
         instanceAccessRows: [
-          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
+          {
+            entityDefinitionId: 'dataset',
+            entityInstanceId: 'inst_a',
+            permission: 'none',
+            granteeType: 'user',
+          },
         ],
       })
       expect(withType).toEqual(legacy)
@@ -451,7 +511,12 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
         profileCeiling: null,
         typeAccessRows: [],
       })
-      expect(nullBound.keys).toEqual([])
+      // Plan 43 §3.2 moved the floor off zero for three areas. It still fails
+      // CLOSED in the sense that matters — no create rung, and `Read` on a
+      // `baselineAtCreate: true` resource grants nothing without a row — and a
+      // WORKER seat still composes exactly `[]`, because none of the three areas
+      // is in `WORKER_AREAS`.
+      expect(sorted(nullBound.keys)).toEqual(seatType === 'worker' ? [] : sorted(USER_FLOOR_KEYS))
     }
   })
 
@@ -508,7 +573,7 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       profileBaseLevel: Level.Full,
       typeAccessRows: [],
     })
-    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_COMPOSABLE_KEYS))
     expect(caps.keys).toContain(PermissionKey.settingsManage)
 
     // …and an explicit level still beats baseLevel for the areas it sets.
@@ -609,7 +674,7 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       typeAccessRows: [],
     })
     // A mis-shaped profile can never lock the last owner out of fixing it.
-    expect(sorted(caps.keys)).toEqual(sorted(ALL_KEYS))
+    expect(sorted(caps.keys)).toEqual(sorted(ALL_COMPOSABLE_KEYS))
     expect(caps.keys).toContain(PermissionKey.permissionsManage)
   })
 
@@ -639,7 +704,7 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       for (const key of rung.keys) expect(admin.keys).toContain(key)
     }
     // Every other area too — nothing silently dropped to None.
-    expect(sorted(admin.keys)).toEqual(sorted(ALL_KEYS))
+    expect(sorted(admin.keys)).toEqual(sorted(ALL_COMPOSABLE_KEYS))
   })
 
   it('a foreign/unresolvable binding degrades to the None floor, not silently generous (plan 22 §2.5)', () => {
@@ -657,7 +722,10 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       profileCeiling: null,
       typeAccessRows: [],
     })
-    expect(caps.keys).toEqual([])
+    // The USER-rank floor, which plan 43 §3.2 raised off zero for `signatures` /
+    // `snippets` / `dashboards`. Still not "silently generous": no create rung
+    // anywhere, and `Read` on those three confers nothing absent a row.
+    expect(sorted(caps.keys)).toEqual(sorted(USER_FLOOR_KEYS))
   })
 
   it('a `null` ceiling composes to the EXACT pre-plan-20 blob for ADMIN/OWNER (the whole safety claim)', () => {
@@ -691,11 +759,25 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
           { entityDefinitionId: 'def_locked', permission: 'none' },
         ],
         instanceAccessRows: [
-          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
-          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_b', permission: 'edit' },
+          {
+            entityDefinitionId: 'dataset',
+            entityInstanceId: 'inst_a',
+            permission: 'none',
+            granteeType: 'user',
+          },
+          {
+            entityDefinitionId: 'dataset',
+            entityInstanceId: 'inst_b',
+            permission: 'edit',
+            granteeType: 'user',
+          },
         ],
       })
+      // `baselineInstanceAccess` joined the shape in plan 43 §4.1 — the SECOND
+      // instance lane, gated by the area level while `instanceAccess` is not.
+      // Its arrival is exactly why `user:capabilities` went v15 → v16.
       expect(Object.keys(caps).sort()).toEqual([
+        'baselineInstanceAccess',
         'defAccess',
         'instanceAccess',
         'instanceDerivedKeys',
@@ -703,6 +785,7 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       ])
       expect(caps).toEqual({
         keys: caps.keys,
+        baselineInstanceAccess: {},
         // OWNER short-circuits and ADMIN already holds `datasets.view` from the
         // all-Full profile, so nothing is DERIVED for either — the `edit` row on
         // `inst_b` would derive the Read rung for a member, not for these two.
@@ -733,13 +816,25 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
           { entityDefinitionId: 'def_locked', permission: 'none' },
         ],
         instanceAccessRows: [
-          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' },
-          { entityDefinitionId: 'dataset', entityInstanceId: 'inst_b', permission: 'edit' },
+          {
+            entityDefinitionId: 'dataset',
+            entityInstanceId: 'inst_a',
+            permission: 'none',
+            granteeType: 'user',
+          },
+          {
+            entityDefinitionId: 'dataset',
+            entityInstanceId: 'inst_b',
+            permission: 'edit',
+            granteeType: 'user',
+          },
         ],
       })
-      expect(caps.keys).toEqual([])
+      expect(sorted(caps.keys)).toEqual(seatType === 'worker' ? [] : sorted(USER_FLOOR_KEYS))
       expect(caps.defAccess).toEqual({ def_a: 'admin' })
       expect(caps.instanceAccess).toEqual({ inst_a: 'none', inst_b: 'edit' })
+      // Both rows are `user` grantees, so nothing lands in the baseline lane.
+      expect(caps.baselineInstanceAccess).toEqual({})
     }
   })
 
@@ -804,7 +899,12 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
         { entityDefinitionId: 'def_a', permission: 'view' as const },
       ],
       instanceAccessRows: [
-        { entityDefinitionId: 'kb', entityInstanceId: 'kb_1', permission: 'edit' as const },
+        {
+          entityDefinitionId: 'kb',
+          entityInstanceId: 'kb_1',
+          permission: 'edit' as const,
+          granteeType: 'user',
+        },
       ],
     })
     expect(caps.defAccess).toEqual({})
@@ -819,8 +919,18 @@ describe('composeUserCapabilities — AGENT branch composes NOTHING (doc 19 §0.
         { entityDefinitionId: 'def_locked', permission: 'none' as const },
       ],
       instanceAccessRows: [
-        { entityDefinitionId: 'dataset', entityInstanceId: 'inst_a', permission: 'none' as const },
-        { entityDefinitionId: 'dataset', entityInstanceId: 'inst_b', permission: 'edit' as const },
+        {
+          entityDefinitionId: 'dataset',
+          entityInstanceId: 'inst_a',
+          permission: 'none' as const,
+          granteeType: 'user',
+        },
+        {
+          entityDefinitionId: 'dataset',
+          entityInstanceId: 'inst_b',
+          permission: 'edit' as const,
+          granteeType: 'user',
+        },
       ],
     }
     const human = composeUserCapabilities({
@@ -938,8 +1048,14 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
     for (const area of AREA_ORDER) {
       if (area === Area.records) expect(areaLevelFromKeys(keys, area)).toBe(Level.Edit)
       else if (area === Area.knowledgeBase) expect(areaLevelFromKeys(keys, area)).toBe(Level.Full)
-      else expect(areaLevelFromKeys(keys, area)).toBe(Level.None)
+      // Plan 43 §3.2: three areas floor at `Read` rather than `None`, so an
+      // unset area is "the workspace default reaches you" for exactly those and
+      // still "no access" for the other twelve.
+      else expect(areaLevelFromKeys(keys, area)).toBe(ROLE_DEFAULTS.USER[area])
     }
+    expect(ROLE_DEFAULTS.USER[Area.signatures]).toBe(Level.Read)
+    expect(ROLE_DEFAULTS.USER[Area.snippets]).toBe(Level.Read)
+    expect(ROLE_DEFAULTS.USER[Area.dashboards]).toBe(Level.Read)
   })
 
   it('admin/owner untouched: ROLE_DEFAULTS.ADMIN/.OWNER stay all-Full', () => {
@@ -963,7 +1079,7 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
         profileCeiling: null,
         typeAccessRows: [],
       })
-      expect(userCaps.keys).toEqual([])
+      expect(sorted(userCaps.keys)).toEqual(sorted(USER_FLOOR_KEYS))
 
       const adminCaps = composeUserCapabilities({
         role: 'ADMIN',
@@ -973,7 +1089,7 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
         profileCeiling: null,
         typeAccessRows: [],
       })
-      expect(sorted(adminCaps.keys)).toEqual(sorted(ALL_KEYS))
+      expect(sorted(adminCaps.keys)).toEqual(sorted(ALL_COMPOSABLE_KEYS))
     }).not.toThrow()
   })
 
@@ -1019,7 +1135,17 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
   /** Compose a full-seat USER whose ONE named area is closed, then resolve one instance. */
   function resolve(opts: {
     area: Area
-    rows: Array<{ entityInstanceId: string; permission: ResourcePermission }>
+    rows: Array<{
+      entityInstanceId: string
+      permission: ResourcePermission
+      /**
+       * Grantee kind (plan 43 §4.1). Defaults to `'user'`, and that is the RIGHT
+       * default for this whole describe block: #1346 is a claim about INDIVIDUAL
+       * grants specifically. The baseline lane's own behaviour at area `None` is
+       * the opposite and is covered in `area-baseline-gate.test.ts`.
+       */
+      granteeType?: string
+    }>
     instanceId: string
     key: InstanceAccessKey
     role?: 'USER' | 'OWNER'
@@ -1033,7 +1159,11 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       typeAccessRows: [],
       // Every row belongs to the resource under test — the composer needs the
       // type to decide WHICH area's Read rung (if any) it derives.
-      instanceAccessRows: opts.rows.map((row) => ({ entityDefinitionId: opts.key, ...row })),
+      instanceAccessRows: opts.rows.map((row) => ({
+        entityDefinitionId: opts.key,
+        granteeType: 'user',
+        ...row,
+      })),
     })
     const access: ResolvedRecordAccess = {
       role,
@@ -1042,6 +1172,7 @@ describe('plan 25 §2 — an explicit instance grant overrides the area-None flo
       defAccess: caps.defAccess,
       restrictedEntityDefIds: new Set(),
       instanceAccess: caps.instanceAccess,
+      baselineInstanceAccess: caps.baselineInstanceAccess,
       // Grantee-agnostic by construction (see `computeUserCapabilities`): any row
       // on an instance puts it under explicit management, grant or restriction.
       governingInstanceIds: new Set(opts.rows.map((r) => r.entityInstanceId)),

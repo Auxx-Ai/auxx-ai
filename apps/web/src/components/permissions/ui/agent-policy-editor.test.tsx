@@ -244,11 +244,17 @@ describe('plan 29 §5 bar 2 — every rule reachable before is reachable after',
     // every area at once, so each row names what it resolves to THERE. Billing
     // implements Read, so `areas.default: 'view'` lands on Read…
     expect(hintOf('Billing')).toBe('Default · Read')
-    // …while Comments is a Full-only ladder, so the same default composes down to
+    // …while Channels is a Full-only ladder, so the same default composes down to
     // None — and the highlighted segment agrees, which is the whole point (#1342).
-    expect(hintOf('Comments')).toBe('Default · None')
+    //
+    // This used to name `Comments`, which has had a Read rung for as long as the
+    // registry has been in git — so the assertion was asserting the opposite of
+    // the registry and failing. Any Full-only area proves the clamp; `Channels`
+    // is one and has no access row of its own (plan 43), so it still renders the
+    // ladder this test reads.
+    expect(hintOf('Channels')).toBe('Default · None')
     expect(
-      row('Comments').querySelector('[role="radio"][aria-checked="true"]')?.getAttribute('value')
+      row('Channels').querySelector('[role="radio"][aria-checked="true"]')?.getAttribute('value')
     ).toBe('0')
     // A row with a rule of its own hides the hint entirely.
     expect(hintOf('Records')).toBe('')
@@ -726,5 +732,71 @@ describe('plan 26 §2.5a — the two select discriminants survive the wrapper de
     await user.click(screen.getByRole('option', { name: 'None' }))
     expect(headerSelect('Unset areas fall through to').textContent).toContain('None')
     expect(changeCount()).toBe(1)
+  })
+})
+
+/**
+ * Plan 43 §8 items 17 and 19 (grid 3 of 4) — **the access row on the agent
+ * surface.**
+ *
+ * §5.2 leaves this one open ("decide whether the access row renders there or
+ * whether the agent surface keeps the plain ladder"). It renders, and the reason
+ * is forced rather than aesthetic: decision 0.7 takes the ladder off the header
+ * for every instance-access area on every grid, and the agent's area rung is the
+ * `min` each nested rule is clamped against (`resourceTypeAreaLevel`). Keeping
+ * the plain ladder here would have been the fifth shape in a plan whose whole
+ * point is that there is one; dropping the row would have made the rung
+ * unauthorable.
+ *
+ * `Area.agents` and `Area.inboxes` are already out of `AGENT_POLICY_AREA_GROUPS`,
+ * so six of the eight areas reach this surface.
+ */
+describe('plan 43 §8 item 19 (grid 3 of 4) — the agent policy renders the access row', () => {
+  it('carries the area rung on the access row, named "Default" not "Inherit"', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    await toggleArea(user, 'Knowledge Base')
+    // `areas.default` is `view` and KB has no override in FULL_POLICY, so the
+    // row falls through and names the rung it resolves to.
+    expect(ruleOf('Knowledge base access')).toBe('Default · Read only')
+  })
+
+  it('shows an explicit area override on the access row', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    await toggleArea(user, 'Datasets')
+    expect(ruleOf('Dataset access')).toBe('Default · Read only')
+
+    await pick(user, 'Dataset access', /^Full access/)
+    expect(ruleOf('Dataset access')).toBe('Full access')
+    expect(changeCount()).toBe(1)
+  })
+
+  it('leaves the header controlless and states the resolved rung as text', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    expect(row('Datasets').querySelector('[role="radio"]')).toBeNull()
+    // Records keeps its ladder — its children are per-DEFINITION (§5.2).
+    expect(row('Records').querySelector('[role="radio"]')).not.toBeNull()
+
+    await toggleArea(user, 'Datasets')
+    // Raising the access row moves the header text with it.
+    await pick(user, 'Dataset access', /^Full access/)
+    expect(hintOf('Datasets')).toBe('Full')
+  })
+
+  it('sits directly above the "All X" row it is the default for', async () => {
+    const user = userEvent.setup()
+    renderEditor()
+
+    await toggleArea(user, 'Knowledge Base')
+    const titles = rowTitles()
+    expect(titles.indexOf('Knowledge base access')).toBeGreaterThan(
+      titles.indexOf('Knowledge Base')
+    )
+    expect(titles.indexOf('All knowledge bases')).toBe(titles.indexOf('Knowledge base access') + 1)
   })
 })

@@ -49,12 +49,40 @@ export interface UserCapabilities {
   defAccess: Record<string, ResourcePermission>
   /**
    * Highest instance-level ResourceAccess permission per `entityInstanceId`
-   * (CUID) for the instance-access resources (datasets etc., §1.2). Keys are
+   * (CUID) for the instance-access resources (datasets etc., §1.2), from
+   * **INDIVIDUAL** grantee rows only — `user`, `group` and `profile`. Keys are
    * globally-unique instance ids, so no `resourceKey` disambiguation is needed.
    * Unlike `defAccess`, explicit `'none'` rows are KEPT — they are the per-
    * instance downward marker (a real grant outranks them via {@link PERMISSION_RANK}).
+   *
+   * **A grant addressed to THIS member. Never gated by the area level** (plan 43
+   * §0.2a decision C, preserving #1346 / plan 25 §2). It is also what keeps a
+   * creator's own `user @ admin` row reachable at any area level, so nobody can
+   * lose content they made by having their profile closed.
    */
   instanceAccess: Record<string, ResourcePermission>
+  /**
+   * The same map for `role` grantee rows (`role:org_member`) — the ORG-WIDE
+   * WORKSPACE DEFAULT, split out of {@link instanceAccess} by plan 43 §4.1.
+   *
+   * Max-wins within itself, and `'none'` is KEPT here too: a `role:org_member @
+   * none` row is the workspace restriction marker, the same way an individual
+   * `user @ none` is a personal one.
+   *
+   * **This lane is GATED by the member's area level** (plan 43 §0.2a). The one
+   * sentence the whole design rests on: *the area level gates the baseline path;
+   * an individual grant always overrules it.* A member at `Dashboards: None`
+   * therefore does not receive the 89 auto-written `role:org_member @ view` rows
+   * — which is the lever admins asked for — while still keeping any dashboard
+   * shared with them by name. See
+   * {@link import('./entity-access').effectiveInstanceLevel} for the resolver.
+   *
+   * Optional at the type level ONLY on the read side (`caps.baselineInstanceAccess
+   * ?.[id]`), because a cache blob written before this field existed lacks it.
+   * That staleness FAILS OPEN — see the `user:capabilities:v16` ledger entry in
+   * `cache/user-cache-keys.ts` for why the bump is mandatory, not hygienic.
+   */
+  baselineInstanceAccess: Record<string, ResourcePermission>
 }
 
 /**
@@ -67,6 +95,31 @@ export const PERMISSION_RANK: Record<ResourcePermission, number> = {
   view: 1,
   edit: 2,
   admin: 3,
+}
+
+/**
+ * The grantee kinds whose `ResourceAccess` rows are a grant addressed to THIS
+ * member, rather than the org-wide default (plan 43 §0.2a). Only these bypass
+ * the area gate in `effectiveInstanceLevel`.
+ *
+ * **An ALLOWLIST, not `!== 'role'`, and that is the whole point.** Two readers
+ * sort these rows — the lane split in {@link composeUserCapabilities} and the
+ * `instanceDerivedKeys` filter (§4.4) — and both must agree about a grantee kind
+ * neither was written for. A denylist sorts an unrecognized kind into the
+ * INDIVIDUAL lane, which is the UNGATED one, so adding a grantee kind to the
+ * storage vocabulary would silently wave it past the area level. With an
+ * allowlist the unknown kind is gated instead: it still resolves through the
+ * baseline path, which is the failure direction we can live with.
+ *
+ * This is the same hazard `governingInstanceIdsProvider` records — *"Adding a
+ * grantee kind to the storage vocabulary still means adding it to every reader
+ * in the same change."* Adding one here means adding it to this constant.
+ */
+const INDIVIDUAL_GRANTEE_TYPES: ReadonlySet<string> = new Set(['user', 'group', 'profile'])
+
+/** Whether a `ResourceAccess` row is an individual grant — see {@link INDIVIDUAL_GRANTEE_TYPES}. */
+function isIndividualGranteeType(granteeType: string): boolean {
+  return INDIVIDUAL_GRANTEE_TYPES.has(granteeType)
 }
 
 /**
@@ -174,11 +227,21 @@ export function composeUserCapabilities(input: {
    * `dashboard` | `workflow`) and is REQUIRED — it is what makes
    * {@link UserCapabilities.instanceDerivedKeys} type-aware, so a dashboard
    * grant cannot open the workflows front door.
+   *
+   * `granteeType` is REQUIRED for the same class of reason (plan 43 §4.1): it is
+   * what sorts a row into the INDIVIDUAL lane ({@link UserCapabilities.instanceAccess})
+   * or the BASELINE lane ({@link UserCapabilities.baselineInstanceAccess}), and
+   * only the second is gated by the area level. Left optional with a default,
+   * either default would be silently wrong for half the callers — a `'user'`
+   * default fails OPEN (every `role:org_member` row becomes an ungated individual
+   * grant), a `'role'` default fails closed but strips real shares. Making it
+   * required turns that into a compile error at every construction site.
    */
   instanceAccessRows?: Array<{
     entityDefinitionId: string
     entityInstanceId: string
     permission: ResourcePermission
+    granteeType: string
   }>
 }): UserCapabilities {
   const {
@@ -194,14 +257,23 @@ export function composeUserCapabilities(input: {
     instanceAccessRows = [],
   } = input
 
-  // instanceAccess: highest permission wins per instance. `'none'` is KEPT here
-  // (unlike defAccess) — it is the per-instance downward marker; a real grant
-  // outranks it via PERMISSION_RANK.
+  // TWO lanes, split by grantee kind (plan 43 §4.1). Highest permission wins
+  // WITHIN each lane; `'none'` is KEPT in both (unlike defAccess) — it is the
+  // per-instance downward marker, personal in one lane and workspace-wide in the
+  // other, and a real grant outranks it via PERMISSION_RANK.
+  //
+  // The lanes are never merged here, and that is the whole point: only the
+  // baseline lane is gated by the area level (§0.2a). Merging them would restore
+  // exactly the fail-open state a stale v15 blob has.
   const instanceAccess: Record<string, ResourcePermission> = {}
+  const baselineInstanceAccess: Record<string, ResourcePermission> = {}
   for (const row of instanceAccessRows) {
-    const existing = instanceAccess[row.entityInstanceId]
+    // `role` (i.e. `role:org_member`) is the workspace default; `user` / `group`
+    // / `profile` are grants addressed to this member.
+    const lane = isIndividualGranteeType(row.granteeType) ? instanceAccess : baselineInstanceAccess
+    const existing = lane[row.entityInstanceId]
     if (!existing || PERMISSION_RANK[row.permission] > PERMISSION_RANK[existing]) {
-      instanceAccess[row.entityInstanceId] = row.permission
+      lane[row.entityInstanceId] = row.permission
     }
   }
 
@@ -221,13 +293,20 @@ export function composeUserCapabilities(input: {
   }
 
   // Fail closed: a non-member holds no capabilities.
-  if (!role) return { keys: [], instanceDerivedKeys: [], defAccess, instanceAccess }
+  if (!role)
+    return { keys: [], instanceDerivedKeys: [], defAccess, instanceAccess, baselineInstanceAccess }
 
   // AGENT principals hold NO composed capability (doc 19 §0.16/§2.3). Their
   // authority lives exclusively in `AgentVersion.permissionPolicy`, resolved by
   // `AgentPolicyCapabilities` — see the note above this function.
   if (userType === 'AGENT') {
-    return { keys: [], instanceDerivedKeys: [], defAccess: {}, instanceAccess: {} }
+    return {
+      keys: [],
+      instanceDerivedKeys: [],
+      defAccess: {},
+      instanceAccess: {},
+      baselineInstanceAccess: {},
+    }
   }
 
   const ceiling = SEAT_CEILINGS[seatType]
@@ -246,6 +325,7 @@ export function composeUserCapabilities(input: {
       instanceDerivedKeys: [],
       defAccess,
       instanceAccess,
+      baselineInstanceAccess,
     }
   }
 
@@ -283,28 +363,42 @@ export function composeUserCapabilities(input: {
 
   return {
     keys: expandLevelsToKeys(resolved),
-    instanceDerivedKeys: deriveInstanceReadKeys(instanceAccessRows, ceiling),
+    // INDIVIDUAL rows only (plan 43 §4.4) — see `deriveInstanceReadKeys`. Uses
+    // the SAME predicate as the lane split above, deliberately: two readers of
+    // one rule that disagree about an unknown grantee kind is the defect this
+    // helper exists to prevent.
+    instanceDerivedKeys: deriveInstanceReadKeys(
+      instanceAccessRows.filter((row) => isIndividualGranteeType(row.granteeType)),
+      ceiling
+    ),
     defAccess,
     instanceAccess,
+    baselineInstanceAccess,
   }
 }
 
 /**
  * Synthesize the `Level.Read` rung of every instance-access area the member
- * holds ≥1 `view`-or-better instance grant on — see
+ * holds ≥1 `view`-or-better **individual** instance grant on — see
  * {@link UserCapabilities.instanceDerivedKeys} for why the result is kept out of
  * `keys`.
  *
- * Three properties, each deliberate:
+ * Four properties, each deliberate:
  *
+ * - **INDIVIDUAL rows only** (plan 43 §4.4). The caller filters `granteeType ===
+ *   'role'` out before calling; passing baseline rows in would defeat the §0.2a
+ *   lever outright, because every dashboard writes a `role:org_member @ view`
+ *   row at create — so every member would derive `dashboards.view` and the front
+ *   door would stand open for exactly the profile an admin just set to `None`.
+ *   It also finally fixes the problem the "Per-resource, not a flat union" note
+ *   in `INSTANCE_ACCESS_READ_KEYS` describes: *"holds SOME instance grant" was
+ *   effectively always true*. Keying by resource narrowed it; dropping the
+ *   baseline lane makes it mean what it says.
  * - **Read rung only, regardless of grant strength.** An `admin` grant on one
  *   workflow yields `workflows.view`, never `workflows.manage` — that rung
  *   fronts `create`, which has no instance to assert on.
  * - **Type-aware.** The row's `entityDefinitionId` names the resource, so a
- *   dashboard grant opens `dashboards.view` and nothing else. This is what
- *   `baselineAtCreate: true` makes essential: every dashboard writes a
- *   `role:org_member @ view` row at create, so "holds SOME instance grant" is
- *   true for practically every member of every org with a dashboard.
+ *   dashboard grant opens `dashboards.view` and nothing else.
  * - **The seat ceiling still dominates**, matching `effectiveInstanceLevel`,
  *   which checks the same clamp before it reads any row. Without this a worker
  *   seat holding one grant would be handed a front-door key to an area its

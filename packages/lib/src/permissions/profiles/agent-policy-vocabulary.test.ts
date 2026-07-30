@@ -4,7 +4,7 @@ import type { PublishedAgentPermissionPolicy } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import { migrateAgentPolicyVocabulary } from '../../data-migrations/migrations/054-agent-policy-vocabulary'
 import { dropResourceDefault } from '../../data-migrations/migrations/055-agent-policy-resource-area-fallthrough'
-import { AREA_ORDER, PermissionKey } from '../capabilities/registry'
+import { AREA_ORDER, Area, PERMISSION_AREAS, PermissionKey } from '../capabilities/registry'
 import baseline from './__snapshots__/agent-policy-vocabulary.baseline.json'
 import {
   AgentPolicyCapabilities,
@@ -231,23 +231,18 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
    * from laundering a real shift into this file.
    */
   it('carries exactly the signatures/snippets keys their recorded area levels imply', () => {
-    for (const [name, scenario] of Object.entries(SCENARIOS)) {
-      for (const [area, rungs] of [
-        [
-          'signatures',
-          [
-            PermissionKey.signaturesView,
-            PermissionKey.signaturesEdit,
-            PermissionKey.signaturesManage,
-          ],
-        ],
-        [
-          'snippets',
-          [PermissionKey.snippetsView, PermissionKey.snippetsEdit, PermissionKey.snippetsManage],
-        ],
-      ] as const) {
+    // Re-derived from `PERMISSION_AREAS` rather than a hardcoded three-rung list
+    // (changed by plan 43 §3.1, which dropped the `Level.Edit` rung from both
+    // areas). The old `rungs.slice(0, level)` shape was exactly the trap the
+    // `inboxes` sibling below was written to warn about — it invents a rung the
+    // ladder does not have — and it went from a latent hazard to a live failure
+    // the moment these two ladders became partial. Deriving means the next rung
+    // change needs no edit here at all.
+    for (const area of [Area.signatures, Area.snippets] as const) {
+      const rungs = PERMISSION_AREAS[area].rungs
+      for (const [name, scenario] of Object.entries(SCENARIOS)) {
         const level = scenario.composed.areaLevels[area] ?? 0
-        const expected = rungs.slice(0, level)
+        const expected = rungs.filter((rung) => level >= rung.level).flatMap((rung) => rung.keys)
         const actual = scenario.composed.keys.filter((key) => key.startsWith(`${area}.`)).sort()
         expect(actual, `${name}/${area}`).toEqual([...expected].sort())
       }
