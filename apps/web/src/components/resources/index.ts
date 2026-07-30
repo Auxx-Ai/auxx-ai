@@ -4,6 +4,7 @@
 export {
   // Types
   type FieldInfo,
+  type FileRefDetail,
   // Per-definition read gate for `recordResource` surfaces (tabs, cards)
   useCanViewRecordResource,
   // Entity field values
@@ -11,6 +12,8 @@ export {
   useField,
   useFieldByKey,
   useFields,
+  // Batched FILE ref hydration
+  useFileRefs,
   useIsRecordLoading,
   useIsRecordPending,
   useRecord,

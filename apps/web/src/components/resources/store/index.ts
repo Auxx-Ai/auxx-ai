@@ -10,6 +10,15 @@ export {
 
 export { fieldValueFetchQueue } from './field-value-fetch-queue'
 export {
+  type FileRefDetail,
+  type FileRefStoreState,
+  getFileRefStoreState,
+  invalidateFileRefs,
+  useFileRefStore,
+  useHydratedFileRefs,
+  useIsLoadingFileRefs,
+} from './file-ref-store'
+export {
   createListKey,
   EMPTY_FILTERS,
   EMPTY_SORTING,

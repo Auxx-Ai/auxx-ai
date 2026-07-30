@@ -17,6 +17,7 @@ import {
 import { initComputedFieldSync } from '../store/computed-field-registry'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 import { useFieldValueStore } from '../store/field-value-store'
+import { getFileRefStoreState, useFileRefStore } from '../store/file-ref-store'
 import { getResourceStoreState } from '../store/resource-store'
 import { usePrefixEpoch } from '../utils/normalize-record-id'
 
@@ -30,6 +31,9 @@ function RecordBatchFetcher() {
 
 const BATCH_DELAY = 50
 const MAX_RELATIONSHIP_BATCH = 100
+// Queries go out as GET with the input in the URL, so keep a batch well inside
+// the ~8KB URL ceiling common proxies enforce (a ref is ~35 chars encoded).
+const MAX_FILE_REF_BATCH = 100
 
 /**
  * ResourceProvider - Centralized resource data management
@@ -173,6 +177,47 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     setRelationshipBatch([])
   }, [relationshipError, relationshipBatch])
 
+  // === FILE REF BATCHING ===
+  // FILE cells/displays queue refs instead of each firing their own
+  // `file.resolveFileRefs`, so a table viewport resolves in one request.
+  const [fileRefBatch, setFileRefBatch] = useState<string[]>([])
+  const fileRefPendingSize = useFileRefStore((s) => s.pendingIds.size)
+
+  useEffect(() => {
+    if (fileRefPendingSize === 0 || fileRefBatch.length > 0) return
+    const timeout = setTimeout(() => {
+      const refs = getFileRefStoreState().startBatch(MAX_FILE_REF_BATCH)
+      if (refs.length === 0) return
+      setFileRefBatch(refs)
+    }, BATCH_DELAY)
+    return () => clearTimeout(timeout)
+  }, [fileRefPendingSize, fileRefBatch.length])
+
+  const { data: fileRefData, error: fileRefError } = api.file.resolveFileRefs.useQuery(
+    { refs: fileRefBatch },
+    { enabled: fileRefBatch.length > 0, staleTime: Infinity, refetchOnWindowFocus: false }
+  )
+
+  useEffect(() => {
+    if (!fileRefData || fileRefBatch.length === 0) return
+    const state = getFileRefStoreState()
+    // Org-switch guard: reset() empties loadingIds, so a response landing after
+    // clearResourceCaches() must not publish into the new org's store.
+    if (!fileRefBatch.some((ref) => state.loadingIds.has(ref))) {
+      setFileRefBatch([])
+      return
+    }
+    state.completeBatch(fileRefData, fileRefBatch)
+    setFileRefBatch([])
+  }, [fileRefData, fileRefBatch])
+
+  useEffect(() => {
+    if (!fileRefError || fileRefBatch.length === 0) return
+    console.error('Failed to resolve file refs:', fileRefError)
+    getFileRefStoreState().markError(fileRefBatch)
+    setFileRefBatch([])
+  }, [fileRefError, fileRefBatch])
+
   return (
     <>
       <RecordBatchFetcher />
@@ -194,4 +239,5 @@ export function clearResourceCaches() {
   getRecordStoreState().clearAll()
   useFieldValueStore.getState().clearAll()
   getActorStoreState().reset()
+  getFileRefStoreState().reset()
 }

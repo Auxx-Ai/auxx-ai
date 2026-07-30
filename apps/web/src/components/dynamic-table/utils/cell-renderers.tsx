@@ -21,10 +21,10 @@ import { CheckSquare } from 'lucide-react'
 import { useMemo } from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import { VisualIcon } from '~/components/icons/ui/visual-icon'
+import { useFileRefs } from '~/components/resources'
 import { ActorBadge, RecordBadge, RestrictedRelationshipChip } from '~/components/resources/ui'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { TagsCellView } from '~/components/ui/tags-view'
-import { api } from '~/trpc/react'
 import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { ExpandableCell } from '../components/expandable-cell'
 import type { CellConfig } from '../components/formatted-cell'
@@ -516,7 +516,9 @@ export function renderRichTextValue(value: unknown): React.ReactNode {
 
 /**
  * File cell content — resolves refs and renders file badges.
- * Same pattern as RelationshipCellContent / ActorCellContent.
+ * Same pattern as RelationshipCellContent / ActorCellContent: refs go through
+ * the shared hydration store, so a viewport's worth of FILE cells resolves in
+ * one batched request instead of one `file.resolveFileRefs` query per cell.
  */
 function FileCellContent({ value }: { value: unknown }) {
   const refs = useMemo(() => {
@@ -529,19 +531,17 @@ function FileCellContent({ value }: { value: unknown }) {
     return value.filter((v) => v?.ref).map((v: { ref: string }) => v.ref)
   }, [value])
 
-  const { data: fileDetails, isLoading } = api.file.resolveFileRefs.useQuery(
-    { refs },
-    { enabled: refs.length > 0 }
-  )
+  const { details, isLoading } = useFileRefs(refs)
 
-  const items = useMemo(() => {
-    if (!fileDetails) return []
-    return fileDetails.map((d) => ({
-      id: d.ref,
-      name: d.name,
-      mimeType: d.mimeType || 'application/octet-stream',
-    }))
-  }, [fileDetails])
+  const items = useMemo(
+    () =>
+      details.map((d) => ({
+        id: d.ref,
+        name: d.name,
+        mimeType: d.mimeType || 'application/octet-stream',
+      })),
+    [details]
+  )
 
   if (refs.length === 0) return <EmptyCell />
 

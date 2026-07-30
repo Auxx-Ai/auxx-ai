@@ -8,7 +8,7 @@ import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import type { FileItem } from '~/components/files/files-store'
 import { MessageFile } from '~/components/mail/email-editor/message-file'
 import { FileSelectPicker } from '~/components/pickers/file-select-picker'
-import { api } from '~/trpc/react'
+import { useFileRefs } from '~/components/resources'
 
 interface SequenceStepAttachmentsProps {
   stepId: string
@@ -21,7 +21,7 @@ interface SequenceStepAttachmentsProps {
  * Per-step attachment chips + an "Attach files" picker, reusing the mail
  * composer's upload path (`useFileSelect` with the MESSAGE entity config +
  * `FileSelectPicker` for upload / browse-library). Persisted ids resolve their
- * display names via `file.resolveFileRefs`; a fresh upload's name comes from
+ * display names via the batched `useFileRefs` store; a fresh upload's name comes from
  * the in-flight file-select item until it lands in the persisted list.
  */
 export function SequenceStepAttachments({
@@ -54,18 +54,15 @@ export function SequenceStepAttachments({
     () => attachmentIds.flatMap((id) => [`file:${id}`, `asset:${id}`]),
     [attachmentIds]
   )
-  const { data: resolved } = api.file.resolveFileRefs.useQuery(
-    { refs },
-    { enabled: refs.length > 0 }
-  )
+  const { details } = useFileRefs(refs)
   const metaById = useMemo(() => {
     const map = new Map<string, { name: string; mimeType: string | null; size: number | null }>()
-    for (const entry of resolved ?? []) {
+    for (const entry of details) {
       const id = entry.ref.slice(entry.ref.indexOf(':') + 1)
       if (!map.has(id)) map.set(id, entry)
     }
     return map
-  }, [resolved])
+  }, [details])
 
   // Session names for ids the resolver hasn't caught up with yet.
   const sessionNameById = useMemo(() => {
