@@ -171,13 +171,22 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
           limit,
         }
       } else {
-        // Global search — all visible entity types. Layer the per-user def grant
-        // (§3) on top of the org-wide `isVisible` UI flag; they are independent.
+        // Global search — every entity type the principal has PRESENCE on. Layer
+        // the per-user def grant (§3) on top of the org-wide `isVisible` UI flag;
+        // they are independent.
+        //
+        // `hasDefPresence`, not `canViewEntity` (plan v3/03 §6.1): a def reached
+        // only through per-record grants belongs in the search SCOPE, because the
+        // picker's def-list arm partitions the list into viewable / grant-only and
+        // narrows the grant-only half per ROW in SQL. Filtering on `canViewEntity`
+        // here would drop such a def before that partition ever runs, so a record
+        // shared with the principal would be unfindable. This widens the scope,
+        // never the answer.
         const visibleDefIds = allResources
           .filter(
             (r) =>
               r.isVisible !== false &&
-              (!capabilities || capabilities.canViewEntity(r.entityDefinitionId ?? r.id))
+              (!capabilities || capabilities.hasDefPresence(r.entityDefinitionId ?? r.id))
           )
           .map((r) => r.entityDefinitionId ?? r.id)
 

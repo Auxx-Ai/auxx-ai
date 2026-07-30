@@ -4,17 +4,25 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
-import { getCachedEntityDefId, getCachedResource, getOrgCache } from '../../cache'
+import {
+  getCachedEntityDefId,
+  getCachedResource,
+  getCachedResources,
+  getOrgCache,
+} from '../../cache'
 import { getRecordIdentitiesForRecords } from '../../identity'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
+import { isDeclaredInstanceDomain } from '../../permissions/capabilities/instance-access'
 import {
   type RecordVisibilityScope,
   recordAccessRankSql,
   recordScopeArmFor,
   recordSearchVisibilitySql,
+  recordUnionVisibilitySql,
   resolveRecordVisibilityScope,
 } from '../../permissions/capabilities/record-visibility-scope'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
+import { isMailSharingDef } from '../../resource-access/mail-sharing-defs'
 import {
   type CustomResource,
   isCustomResource,
@@ -953,8 +961,10 @@ export class RecordPickerService {
     //    query, arms 2/3 contribute `scopedVisibility` to the WHERE below.
     //  - Multi-def list → keep every def the member has PRESENCE on (viewable
     //    OR grant-only), then narrow the grant-only half per row.
-    //  - Global union (no scope) → still the `canViewEntity` post-filter. See
-    //    the note at that branch for why grant-only defs are excluded there.
+    //  - Global union (no scope) → enforces itself inside `searchGlobalUnion`:
+    //    the grant-only arm is pushed into the EntityInstance leg in SQL, and the
+    //    system-table legs keep a `canViewEntity` post-filter widened to admit
+    //    grant-only defs. Grant-only defs are NO LONGER excluded there.
     let scopedVisibility: SQL | undefined
     let listVisibility: SQL | undefined
     if (this.capabilities) {
@@ -1004,26 +1014,10 @@ export class RecordPickerService {
     // Unpaginated in v1; each kind contributes up to perKindCap items merge-sorted
     // by updatedAt desc.
     if (!entityDefinitionId && (!entityDefinitionIds || entityDefinitionIds.length === 0)) {
-      const union = await this.searchGlobalUnion(trimmedQuery, limit, startTime)
-      if (!this.capabilities) return union
-      // Post-filter cross-type union rows by per-user def visibility.
-      //
-      // ⚠ KNOWN GAP (plan v3/03 P5): this arm still keys on `canViewEntity`
-      // alone, so a def a member reaches ONLY through per-record grants
-      // contributes nothing to the unscoped global search. That is fail-CLOSED —
-      // a shared record is missing from ⌘K, never wrongly present — and it is a
-      // deliberate scope line: `searchGlobalUnion` merges several system tables
-      // with EntityInstance under a per-kind cap, so a correct grant-only arm
-      // means pushing the predicate into that union's EntityInstance leg and
-      // re-reasoning about the cap's fairness across kinds. Every SCOPED search
-      // (single def and def-list, i.e. every record surface's own search box)
-      // is fully scoped above.
-      return {
-        ...union,
-        items: union.items.filter((item) =>
-          this.capabilities!.canViewEntity(parseRecordId(item.recordId).entityDefinitionId)
-        ),
-      }
+      // The UNSCOPED union — its own visibility lives inside `searchGlobalUnion`
+      // (§5.1's grant-only arm pushed into the EntityInstance leg, plus the
+      // `canViewEntity` post-filter the system-table legs still need).
+      return this.searchGlobalUnion(trimmedQuery, limit, startTime)
     }
 
     // Build entity definition filter
@@ -1326,9 +1320,61 @@ export class RecordPickerService {
   }
 
   /**
+   * The record defs this member reaches **only** through per-record grants —
+   * `hasDefPresence(def) && !canViewEntity(def)`, resolved against the org's def
+   * catalog and therefore bounded by DEF COUNT, never by grant count. No grant-id
+   * set is materialized here or anywhere else; the per-ROW answer stays in SQL.
+   *
+   * The two exclusions are the record-lane test spelled out in
+   * `computeGrantedDefIds`, restated at the site where getting it wrong would be
+   * worst. `hasRecordGrantsOn` already reads a `grantedDefIds` map the composer
+   * built with the same two exclusions applied, so this is belt-and-braces — but
+   * this arm merges the MAIL system tables into its result, and a `contact` grant
+   * canonicalizes into the mail keyspace and fans a full lens across that
+   * contact's entire conversation history (§10.1). `isInstanceAccessKey` alone is
+   * NOT the test: it is blob-lane only, so it answers `false` for `thread`.
+   *
+   * Empty (and free) for the overwhelmingly common member who holds no per-record
+   * grant at all.
+   */
+  private async grantOnlyRecordDefIds(): Promise<string[]> {
+    const capabilities = this.capabilities
+    if (!capabilities) return []
+    const resources = await getCachedResources(this.organizationId)
+    const grantOnly: string[] = []
+    for (const resource of resources) {
+      const defId = resource.entityDefinitionId ?? resource.id
+      const laneKey = resource.entityType ?? defId
+      if (isDeclaredInstanceDomain(laneKey) || isMailSharingDef(laneKey)) continue
+      if (capabilities.canViewEntity(defId)) continue
+      if (!capabilities.hasRecordGrantsOn(defId)) continue
+      grantOnly.push(defId)
+    }
+    return grantOnly
+  }
+
+  /**
    * Global union search across system tables + EntityInstance.
    * Each kind contributes up to perKindCap items (capped at limit overall).
    * Merge-sorted by updatedAt desc. Unpaginated in v1.
+   *
+   * **Read enforcement lives here, not in the caller** (plan v3/03 §5.1, the
+   * UNSCOPED arm). Two halves, because the union has two kinds of leg:
+   *
+   *  - The **EntityInstance** leg is narrowed IN SQL by
+   *    {@link recordUnionVisibilitySql} — rows of a grant-only def survive only
+   *    with a `read`-or-better grant addressed to this member. Applied before the
+   *    per-kind cap, so a grant-only row competes for the bucket on equal terms
+   *    instead of being fetched and then discarded.
+   *  - The **system-table** legs (thread, user, …) are not `EntityInstance` rows
+   *    and carry no record grants, so they keep the `canViewEntity` post-filter
+   *    they have always had.
+   *
+   * The post-filter is widened to `canViewEntity(def) || <grant-only def>` for the
+   * same reason: `canViewEntity` is `false` for a grant-only def by construction,
+   * so leaving it as the sole test would discard exactly the rows the SQL just
+   * authorized. It now runs BEFORE the final slice rather than in the caller after
+   * it, so a page is no longer shortened by rows the member could never see.
    */
   private async searchGlobalUnion(
     trimmedQuery: string,
@@ -1338,6 +1384,19 @@ export class RecordPickerService {
     const tableIds = Object.keys(RESOURCE_TABLE_MAP) as TableId[]
     const kindCount = tableIds.length + 1 // +1 for EntityInstance bucket
     const perKindCap = Math.max(1, Math.ceil(limit / kindCount))
+
+    const grantOnlyDefIds = await this.grantOnlyRecordDefIds()
+    const grantOnlyDefSet = new Set(grantOnlyDefIds)
+    const eiVisibility =
+      grantOnlyDefIds.length > 0
+        ? recordUnionVisibilitySql({
+            organizationId: this.organizationId,
+            grantees: await resolveResourceAccessGrantees(this.organizationId, this.userId ?? ''),
+            grantOnlyDefIds,
+            instanceIdColumn: sql.raw('ei."id"'),
+            defIdColumn: sql.raw('ei."entityDefinitionId"'),
+          })
+        : undefined
 
     // System tables: use their existing direct-fetch path (respects display config).
     const systemPromises = tableIds.map(async (tableId) => {
@@ -1364,7 +1423,11 @@ export class RecordPickerService {
     // ed IDs via the underlying SQL path by stripping the union guard).
     const eiPromise = (async (): Promise<RecordPickerItem[]> => {
       try {
-        const eiResult = await this.searchEntityInstancesOnly(trimmedQuery, perKindCap)
+        const eiResult = await this.searchEntityInstancesOnly(
+          trimmedQuery,
+          perKindCap,
+          eiVisibility
+        )
         return eiResult
       } catch (err) {
         logger.warn('searchGlobalUnion: EntityInstance fetch failed', {
@@ -1385,7 +1448,15 @@ export class RecordPickerService {
       return b.id.localeCompare(a.id)
     })
 
-    const items = merged.slice(0, limit)
+    const capabilities = this.capabilities
+    const visible = capabilities
+      ? merged.filter((item) => {
+          const defId = parseRecordId(item.recordId).entityDefinitionId
+          return capabilities.canViewEntity(defId) || grantOnlyDefSet.has(defId)
+        })
+      : merged
+
+    const items = visible.slice(0, limit)
     const processingTimeMs = performance.now() - startTime
 
     logger.debug('Global union search completed', {
@@ -1410,11 +1481,19 @@ export class RecordPickerService {
    * EntityInstance-only search slice. Mirrors `search()` but unconditionally
    * scopes to EntityInstance, used by `searchGlobalUnion` for the EntityInstance
    * bucket without re-entering the union branch.
+   *
+   * `visibilityFilter` is the union arm's §5.1 predicate, already built against
+   * the `ei` alias by {@link searchGlobalUnion}. Applied to BOTH the empty-query
+   * and the full-text query — a search box that reveals rows when you clear it is
+   * the classic shape of this bug, and `getRecentEntityInstances` carries the
+   * same note for the same reason.
    */
   private async searchEntityInstancesOnly(
     trimmedQuery: string,
-    limit: number
+    limit: number,
+    visibilityFilter?: SQL
   ): Promise<RecordPickerItem[]> {
+    const visibility = visibilityFilter ? sql`AND ${visibilityFilter}` : sql``
     if (!trimmedQuery) {
       const recent = (
         await this.db.execute(sql`
@@ -1429,6 +1508,7 @@ export class RecordPickerService {
           FROM "EntityInstance" ei
           WHERE ei."organizationId" = ${this.organizationId}
             AND ei."archivedAt" IS NULL
+            ${visibility}
           ORDER BY ei."updatedAt" DESC, ei.id DESC
           LIMIT ${limit}
         `)
@@ -1479,6 +1559,7 @@ export class RecordPickerService {
             OR ei."displayName" ILIKE ${`%${trimmedQuery}%`}
             OR ei."secondaryDisplayValue" ILIKE ${`%${trimmedQuery}%`}
           )
+          ${visibility}
         ORDER BY ei."updatedAt" DESC, ei.id DESC
         LIMIT ${limit}
       `)
