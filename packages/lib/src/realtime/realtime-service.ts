@@ -76,6 +76,39 @@ export class RealtimeService {
   }
 
   /**
+   * Authorize many channels for ONE socket in a single pass (plan v3/05).
+   *
+   * Returns a verdict per requested channel — the signed payload, or `null` for
+   * a denial. Channel names are answered in the order given; duplicates are the
+   * caller's to collapse.
+   *
+   * This is a transport optimization and nothing else: it delegates to
+   * {@link authorize} per channel rather than reimplementing the
+   * `fromPusherChannel` → `findRoom` → prefix-check → `def.authorize` dispatch,
+   * because a second copy of that sequence is exactly how the batch path and
+   * the single path drift into disagreeing about who may subscribe to what.
+   *
+   * The win is already in the caller: one `getSession` instead of N. The loop
+   * is deliberately SEQUENTIAL — the first call warms the `memberRoleMap` /
+   * `getCapabilities` caches every later one reads, and firing N concurrent
+   * cache misses is the one way this could come out slower than the per-channel
+   * route it replaces.
+   */
+  async authorizeMany(
+    socketId: string,
+    channelNames: string[],
+    ctx: AuthorizeCtx,
+    userData?: { id: string; name?: string; email?: string; image?: string }
+  ): Promise<Record<string, { auth: string; channel_data?: string } | null>> {
+    const results: Record<string, { auth: string; channel_data?: string } | null> = {}
+    for (const channelName of channelNames) {
+      if (channelName in results) continue
+      results[channelName] = await this.authorize(socketId, channelName, ctx, userData)
+    }
+    return results
+  }
+
+  /**
    * Raw Pusher authentication — used by the widget auth route which does its
    * own visitor-passport check upstream. Prefer `authorize(...)` everywhere
    * else.
