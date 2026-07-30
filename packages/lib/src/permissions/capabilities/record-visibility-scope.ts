@@ -1,6 +1,5 @@
 // packages/lib/src/permissions/capabilities/record-visibility-scope.ts
 
-import { schema } from '@auxx/database'
 import type { Rung } from '@auxx/database/enums'
 import { and, or, type SQL, sql } from 'drizzle-orm'
 import { ForbiddenError } from '../../errors'
@@ -168,10 +167,34 @@ export interface RecordScopeSqlInput {
   grantees: ResourceAccessGrantees
   /**
    * The outer `id` column to correlate `ResourceAccess.entityInstanceId` against.
-   * Defaults to `EntityInstance.id`; the picker and stamp pass the same column.
+   * Defaults to {@link DEFAULT_INSTANCE_ID_COLUMN}; the search paths pass their
+   * own alias (`ei."id"`).
    */
   instanceIdColumn?: SQL | unknown
 }
+
+/**
+ * 🔴 **The correlation target is a RAW qualified identifier, NOT
+ * `schema.EntityInstance.id`, and that is load-bearing.**
+ *
+ * Drizzle's `buildSelection` rewrites every `Column` chunk it finds in the
+ * PROJECTION to a bare `sql.identifier(column.name)` when the query has a single
+ * table in its `FROM` — and it walks into nested `sql` fragments to do it. Every
+ * one of these predicates rides in the projection of a single-table
+ * `select(...).from(EntityInstance)` (the `_access` stamp, the sharing guard,
+ * the request lane), so a `Column` here rendered as bare `"id"` — which, inside
+ * `FROM "ResourceAccess"`, binds to **`ResourceAccess.id`**, not the outer row.
+ * The correlation silently became `ResourceAccess.entityInstanceId =
+ * ResourceAccess.id`, `max()` aggregated zero rows, and every per-record grant
+ * folded away to the def rung.
+ *
+ * It fails CLOSED and silently: a member granted `edit` on a row reads back
+ * `_access: 'read'`, so the drawer stays read-only, the write gate refuses, and
+ * the access-request lane re-derives `read → edit` forever. Nothing errors.
+ *
+ * A raw identifier cannot be rewritten, so it survives the projection.
+ */
+const DEFAULT_INSTANCE_ID_COLUMN = sql.raw('"EntityInstance"."id"')
 
 /**
  * `EXISTS (… a grant of `floor` or better addressed to this member …)` — the
@@ -188,7 +211,7 @@ export interface RecordScopeSqlInput {
  * with.
  */
 function grantExistsSql(input: RecordScopeSqlInput, floor: Rung): SQL {
-  const instanceId = input.instanceIdColumn ?? schema.EntityInstance.id
+  const instanceId = input.instanceIdColumn ?? DEFAULT_INSTANCE_ID_COLUMN
   const grantee = or(...resourceAccessGranteeConditions(input.grantees))
   const rungs = rungsAtOrAbove(floor)
   return sql`EXISTS (
@@ -211,7 +234,7 @@ function grantExistsSql(input: RecordScopeSqlInput, floor: Rung): SQL {
  * marker would be silently unenforceable.
  */
 function notRowRestrictedSql(input: RecordScopeSqlInput): SQL {
-  const instanceId = input.instanceIdColumn ?? schema.EntityInstance.id
+  const instanceId = input.instanceIdColumn ?? DEFAULT_INSTANCE_ID_COLUMN
   return sql`NOT EXISTS (
     SELECT 1 FROM "ResourceAccess"
     WHERE "ResourceAccess"."organizationId" = ${input.organizationId}
@@ -485,7 +508,7 @@ const RUNG_RANK_CASE = sql.raw(
  * only by arithmetic accident. Excluding them says why.
  */
 export function recordAccessRankSql(input: RecordScopeSqlInput): SQL<number | null> {
-  const instanceId = input.instanceIdColumn ?? schema.EntityInstance.id
+  const instanceId = input.instanceIdColumn ?? DEFAULT_INSTANCE_ID_COLUMN
   const grantee = or(...resourceAccessGranteeConditions(input.grantees))
   return sql<number | null>`(
     SELECT max(${RUNG_RANK_CASE})
