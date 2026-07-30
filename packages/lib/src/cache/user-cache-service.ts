@@ -8,9 +8,16 @@ import { LocalCache } from './local-cache'
 import type { CacheProvider } from './org-cache-provider'
 import { PromiseMemoizer } from './promise-memoizer'
 import type { UserCacheDataMap, UserCacheKeyName } from './user-cache-keys'
-import { ORG_SCOPED_USER_KEYS, USER_CACHE_KEY_CONFIG } from './user-cache-keys'
+import {
+  ORG_SCOPED_USER_KEYS,
+  USER_CACHE_KEY_CONFIG,
+  USER_KEY_RECOMPUTE_TIERS,
+} from './user-cache-keys'
 
 const logger = createScopedLogger('UserCache', { color: 'green' })
+
+/** Members whose keys are deleted concurrently during an org-wide sweep. */
+const ORG_SWEEP_CONCURRENCY = 25
 
 /**
  * User Cache Service — same multi-tier pattern as OrganizationCacheService
@@ -210,9 +217,60 @@ export class UserCacheService {
     keys: readonly UserCacheKeyName[],
     orgId?: string
   ): Promise<void> {
+    // Phase 1 — delete everything in the batch.
+    await this.deleteKeys(userId, keys, orgId)
+
+    // Phase 2 — recompute, in dependency tiers (plan 45 §1.4). Read-through has
+    // already made this correct in any order; the tiers stop the DEPENDENT key
+    // from composing its dependency a second time. `USER_KEY_RECOMPUTE_TIERS`
+    // carries the full reasoning, including why the graph's array order and the
+    // memoizer are both the wrong lever.
+    const remaining = new Set(keys)
+    for (const tier of USER_KEY_RECOMPUTE_TIERS) {
+      const batch = tier.filter((keyName) => remaining.has(keyName))
+      if (batch.length === 0) continue
+      for (const keyName of batch) remaining.delete(keyName)
+      await this.recomputeBatch(userId, batch, orgId)
+    }
+    // Unlisted keys have no declared dependency — one concurrent pass.
+    await this.recomputeBatch(userId, Array.from(remaining), orgId)
+  }
+
+  /** Recompute a set of keys concurrently; a failure warns and never rejects. */
+  private async recomputeBatch(
+    userId: string,
+    keys: readonly UserCacheKeyName[],
+    orgId?: string
+  ): Promise<void> {
+    if (keys.length === 0) return
+    await Promise.all(
+      keys.map(async (keyName) => {
+        if (!this.providers.has(keyName)) return
+        try {
+          await this.recompute(userId, keyName, orgId)
+        } catch (error) {
+          logger.warn(`Recompute failed for ${keyName}:${userId}`, {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      })
+    )
+  }
+
+  /**
+   * Drop a user's keys from local + Redis. No recompute — the next read
+   * composes.
+   *
+   * Extracted so the org-wide sweep can reuse it: the delete half is what makes
+   * an invalidation correct, and the recompute half is only a warm-up.
+   */
+  private async deleteKeys(
+    userId: string,
+    keys: readonly UserCacheKeyName[],
+    orgId?: string
+  ): Promise<void> {
     const redis = await this.getRedis()
 
-    // Phase 1 — delete everything in the batch.
     await Promise.all(
       keys.map(async (keyName) => {
         const sid = this.scopeId(userId, keyName, orgId)
@@ -225,21 +283,6 @@ export class UserCacheService {
           } catch {
             // Ignore
           }
-        }
-      })
-    )
-
-    // Phase 2 — recompute. Any provider that reads a sibling key now read-throughs
-    // to a freshly computed value rather than a surviving stale one.
-    await Promise.all(
-      keys.map(async (keyName) => {
-        if (!this.providers.has(keyName)) return
-        try {
-          await this.recompute(userId, keyName, orgId)
-        } catch (error) {
-          logger.warn(`Recompute failed for ${keyName}:${userId}`, {
-            error: error instanceof Error ? error.message : String(error),
-          })
         }
       })
     )
@@ -318,16 +361,41 @@ export class UserCacheService {
 
   /**
    * Invalidate org-scoped user cache keys for ALL members of an organization.
-   * Fetches the member list from org cache, then invalidates each member's keys.
-   * Call after org-level changes that affect user-scoped data (e.g. shared views, org settings).
+   * Fetches the member list from org cache, then deletes each member's keys.
+   * Call after org-level changes that affect user-scoped data (e.g. shared views,
+   * org settings, an inbox default-lens edit, a system-profile edit).
+   *
+   * **Deletes, does not recompute (plan 45 §1.7), and the two halves are not
+   * equally load-bearing.** The delete is what makes the invalidation correct;
+   * eagerly composing every member's blob was a warm-up that mostly warmed
+   * nothing — in a 200-member org, ~200 concurrent `computeUserMailVisibility`
+   * calls for a set of answers that is unchanged for nearly all of them. This is
+   * the same delete-only + lazy-read-through contract {@link flushKeyForAllUsers}
+   * already documents, and it is strictly SAFER than the eager version: with no
+   * explicit recompute there is nothing that can pin a stale sibling, and the
+   * double-compose of §1.4 cannot arise here at all.
+   *
+   * Ordering upstream survives: `onCacheEvent` awaits this before publishing
+   * `visibility:changed`, so every client refetch composes post-delete.
+   *
+   * The cost that remains moves to read-through for the members who are actually
+   * connected — a subset of the org, deduped per (key, user) by the memoizer —
+   * rather than scaling with member count.
+   *
+   * `flushKeyForAllUsers` is NOT the shortcut here: its prefix SCAN is key-wide,
+   * so it would bust every other org's entries too.
    */
   async invalidateOrgUsersForKeys(orgId: string, keys: readonly UserCacheKeyName[]): Promise<void> {
     const { getOrgCache } = await import('./index')
     const members = await getOrgCache().get(orgId, 'members')
 
-    await Promise.all(
-      members.map((member) => this.invalidateAndRecompute(member.userId, keys, orgId))
-    )
+    // Chunked rather than one unbounded `Promise.all`: an org-wide sweep is 2
+    // Redis DELs per member per key, and a 200-member org should not open 400
+    // round trips at once.
+    for (let i = 0; i < members.length; i += ORG_SWEEP_CONCURRENCY) {
+      const chunk = members.slice(i, i + ORG_SWEEP_CONCURRENCY)
+      await Promise.all(chunk.map((member) => this.deleteKeys(member.userId, keys, orgId)))
+    }
   }
 
   /** Flush org-scoped keys for a user in a specific org */

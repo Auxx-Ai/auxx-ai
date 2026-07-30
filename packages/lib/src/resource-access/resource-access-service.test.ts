@@ -115,9 +115,12 @@ describe('resource-access cache-event emission', () => {
         permission: ResourcePermission.view,
       }
     )
+    // `userIds`, not `userId`: ONE cache event per audience (plan 45 §1.3). The
+    // targeted branch of `onCacheEvent` re-walks the graph, marks counts stale and
+    // publishes per call, so a per-user loop multiplied all three.
     expect(emit).toHaveBeenCalledWith('resource-access.changed', {
       orgId: ORG,
-      userId: 'u_target',
+      userIds: ['u_target'],
     })
   })
 
@@ -135,6 +138,106 @@ describe('resource-access cache-event emission', () => {
       orgId: ORG,
       broadcastUserKeys: true,
     })
+  })
+
+  // ── Plan 45 §3.3 — narrowing the group/team fan-out ──
+  //
+  // The load-bearing safety here is the `default` branch, not the agreement
+  // between resolvers: narrowing a broadcast is the fail-OPEN direction, so a
+  // grantee kind nobody classified must still bust everyone.
+
+  it('targets a GROUP grant at its members instead of the whole org (§1.3)', async () => {
+    expandGranteeToUserIds.mockResolvedValueOnce({
+      userIds: ['u_g1', 'u_g2', 'u_g3'],
+      capped: false,
+    } as never)
+
+    await grantInstanceAccess(
+      { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: RECORD,
+        granteeType: ResourceGranteeType.group,
+        granteeId: 'grp_support',
+        permission: ResourcePermission.view,
+      }
+    )
+
+    expect(emit).toHaveBeenCalledWith('resource-access.changed', {
+      orgId: ORG,
+      userIds: ['u_g1', 'u_g2', 'u_g3'],
+    })
+    // The whole point: a three-person group used to recompute every member's mail
+    // blob and make every connected client refetch three queries.
+    expect(emit).not.toHaveBeenCalledWith('resource-access.changed', {
+      orgId: ORG,
+      broadcastUserKeys: true,
+    })
+  })
+
+  it('narrows a legacy TEAM grantee too — the mail evaluator treats it as a group', async () => {
+    expandGranteeToUserIds.mockResolvedValueOnce({ userIds: ['u_t1'], capped: false } as never)
+
+    await grantInstanceAccess(
+      { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: RECORD,
+        granteeType: ResourceGranteeType.team,
+        granteeId: 'team_legacy',
+        permission: ResourcePermission.view,
+      }
+    )
+
+    // Drop the `team` case from the switch and this fails while every other test
+    // in the file still passes — the §3.3 mutation, made concrete.
+    expect(emit).toHaveBeenCalledWith('resource-access.changed', {
+      orgId: ORG,
+      userIds: ['u_t1'],
+    })
+  })
+
+  it('an UNCLASSIFIED grantee kind still broadcasts — the fail-safe default', async () => {
+    await grantInstanceAccess(
+      { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: RECORD,
+        // A kind that does not exist yet, standing in for the one added next year
+        // by someone who never reads this file.
+        granteeType: 'future_kind' as ResourceGranteeType,
+        granteeId: 'x_1',
+        permission: ResourcePermission.view,
+      }
+    )
+
+    // THE assertion of item 3. Make the switch exhaustive without a broadcasting
+    // `default` and a share becomes visible in one direction only, for the full
+    // ONE_DAY TTL (19a finding 4).
+    expect(emit).toHaveBeenCalledWith('resource-access.changed', {
+      orgId: ORG,
+      broadcastUserKeys: true,
+    })
+  })
+
+  it('collapses to ONE broadcast when a mixed set contains an unclassified kind', async () => {
+    expandGranteeToUserIds.mockResolvedValueOnce({ userIds: ['u_g1'], capped: false } as never)
+
+    await setInstanceAccess(
+      { db: fakeDb({ deleteReturning: [] }), organizationId: ORG, userId: 'g' },
+      RECORD,
+      ResourceGranteeType.group,
+      [{ granteeId: 'grp_a', permission: ResourcePermission.view }]
+    )
+    emit.mockClear()
+
+    await setInstanceAccess(
+      { db: fakeDb({ deleteReturning: [] }), organizationId: ORG, userId: 'g' },
+      RECORD,
+      'future_kind' as ResourceGranteeType,
+      [{ granteeId: 'x_1', permission: ResourcePermission.view }]
+    )
+
+    const changed = emit.mock.calls.filter((c) => c[0] === 'resource-access.changed')
+    expect(changed).toHaveLength(1)
+    expect(changed[0]?.[1]).toEqual({ orgId: ORG, broadcastUserKeys: true })
   })
 
   it('does not emit when a revoke deletes nothing', async () => {
@@ -175,7 +278,7 @@ describe('resource-access cache-event emission', () => {
     })
     const targeted = emit.mock.calls
       .filter((c) => c[0] === 'resource-access.changed')
-      .map((c) => c[1].userId)
+      .flatMap((c) => c[1].userIds ?? [])
       .sort()
     expect(targeted).toEqual(['u_holder_a', 'u_holder_b'])
     expect(emit).not.toHaveBeenCalledWith('resource-access.changed', {
@@ -299,7 +402,7 @@ describe('resource-access cache-event emission', () => {
     // `emit.mock.calls` sees each grantee twice.
     const targeted = emit.mock.calls
       .filter((c) => c[0] === 'resource-access.changed')
-      .map((c) => c[1].userId)
+      .flatMap((c) => c[1].userIds ?? [])
       .sort()
     expect(targeted).toEqual(['u_added', 'u_removed'])
   })
@@ -324,7 +427,7 @@ describe('resource-access cache-event emission', () => {
     )
     const instanceEvents = emit.mock.calls
       .filter((c) => c[0] === 'resource-access.instance.changed')
-      .map((c) => c[1].userId)
+      .flatMap((c) => c[1].userIds ?? [])
       .sort()
     expect(instanceEvents).toEqual(['u_added', 'u_removed'])
   })

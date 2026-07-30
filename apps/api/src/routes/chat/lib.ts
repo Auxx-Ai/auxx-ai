@@ -4,6 +4,7 @@ import { database, schema } from '@auxx/database'
 import { getCachedAgentById, getCachedOrgProfile } from '@auxx/lib/cache'
 import type { ChatAttachment } from '@auxx/lib/chat'
 import { listOnDutyUserIds } from '@auxx/lib/chat-duty'
+import { shapeThreadEventForVisitor } from '@auxx/lib/events'
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { Context } from 'hono'
 
@@ -64,11 +65,15 @@ export async function loadThreadEvents(
     .orderBy(asc(schema.Event.createdAt))
     .limit(THREAD_EVENT_LIMIT)
 
+  // Shaped for the visitor, exactly as the realtime publish is (plan 45 §1.5).
+  // Without this the allowlist would be cosmetic: `Event.data` is the complete
+  // internal payload and the widget fetches it straight back over HTTP, so
+  // `userId` / `previousState` would arrive by the history route instead.
   return rows.map((r) => ({
     id: r.id,
     type: r.type as WidgetThreadEventType,
     createdAt: r.createdAt,
-    data: (r.data ?? {}) as Record<string, unknown>,
+    data: shapeThreadEventForVisitor((r.data ?? {}) as Record<string, unknown>),
   }))
 }
 

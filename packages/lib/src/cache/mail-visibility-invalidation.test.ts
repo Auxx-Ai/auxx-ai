@@ -39,7 +39,8 @@ vi.mock('./singletons', () => ({
     invalidateAndRecompute: async (_org: string, keys: string[]) => {
       h.orgInvalidations.push(keys)
     },
-    get: async () => [],
+    // `invalidateOrgUsersForKeys` reads the member list through here (block 4).
+    get: async (_org: string, key: string) => (key === 'members' ? [{ userId: 'u_2' }] : []),
     flush: async () => {},
   }),
   getUserCache: () => ({
@@ -193,5 +194,115 @@ describe('§4.5 — compose order: every key is DELETED before any key recompute
     // Interleaving delete-with-recompute (the pre-fix shape) lets this read the
     // 30ms-slow-to-delete capability entry and observe 'Full'.
     expect(mail.sawLevel).toBe('None')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. Plan 45 §3.4 — the recompute ORDER, instrumented rather than asserted.
+//
+//    Both orderings produce a correct blob (that is what block 2 above is for),
+//    so no behavioural test can see this. What is observable is a call COUNT:
+//    the dependent key composing its dependency itself, on top of the explicit
+//    recompute of the same key.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A service with both providers registered and their compute calls counted. */
+function makeCountingCache() {
+  const counts = { userCapabilities: 0, userMailVisibility: 0 }
+  const cache = new UserCacheService({} as never)
+  const anyCache = cache as unknown as {
+    register: (k: string, p: { compute: (sid: string) => Promise<unknown> }) => void
+    get: (u: string, k: string, o?: string) => Promise<unknown>
+    invalidateAndRecompute: (u: string, k: readonly string[], o?: string) => Promise<void>
+  }
+
+  anyCache.register('userCapabilities', {
+    compute: async () => {
+      counts.userCapabilities++
+      return { keys: ['Full'] }
+    },
+  })
+  anyCache.register('userMailVisibility', {
+    compute: async (sid: string) => {
+      counts.userMailVisibility++
+      const [userId, orgId] = sid.split(':')
+      // `computeUserMailVisibility` reads the sibling back through the cache.
+      await anyCache.get(userId!, 'userCapabilities', orgId)
+      return { ok: true }
+    },
+  })
+
+  return { anyCache, counts }
+}
+
+describe('§3.4 — capabilities compose ONCE per invalidation, not twice', () => {
+  it('recomputes the dependency before the dependent', async () => {
+    const { anyCache, counts } = makeCountingCache()
+
+    // The six-event shape: both keys in one batch, capability blob deleted, mail
+    // provider reading it back.
+    await anyCache.invalidateAndRecompute(USER, ['userCapabilities', 'userMailVisibility'], ORG)
+
+    // Was 2 before plan 45: the explicit recompute plus the mail provider's own
+    // read-through miss, racing each other. Drop `USER_KEY_RECOMPUTE_TIERS` back
+    // to one concurrent pass and this is the assertion that fails.
+    expect(counts.userCapabilities).toBe(1)
+    expect(counts.userMailVisibility).toBe(1)
+  })
+
+  it('holds when the graph declares the keys MAIL-FIRST — group.members.changed does', async () => {
+    const { anyCache, counts } = makeCountingCache()
+
+    // `invalidation-graph.ts` declares `['userMailVisibility', 'userCapabilities']`
+    // for `group.deleted` and `group.members.changed`. An implementation that
+    // ordered by the array it was handed would compose twice here and pass the
+    // test above — which is why this case exists separately.
+    await anyCache.invalidateAndRecompute(USER, ['userMailVisibility', 'userCapabilities'], ORG)
+
+    expect(counts.userCapabilities).toBe(1)
+    expect(counts.userMailVisibility).toBe(1)
+  })
+
+  it('still recomputes a key with no declared tier', async () => {
+    const { anyCache, counts } = makeCountingCache()
+
+    await anyCache.invalidateAndRecompute(USER, ['userMailVisibility'], ORG)
+
+    // `resource-access.changed`'s shape — mail alone. The capability read is a
+    // warm-blob hit in production; here it is the read-through, and the point is
+    // that the mail key itself was not skipped by the tier walk.
+    expect(counts.userMailVisibility).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Plan 45 §3.6 — the org-wide sweep DELETES and does not recompute.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§3.6 — invalidateOrgUsersForKeys is delete-only', () => {
+  it('deletes every member’s keys without composing a single blob', async () => {
+    const { anyCache, counts } = makeCountingCache()
+    const sweep = anyCache as unknown as {
+      invalidateOrgUsersForKeys: (o: string, k: readonly string[]) => Promise<void>
+    }
+
+    // Seed one member so there is something to delete, then reset the counters:
+    // what matters is what the SWEEP composes, not the seeding.
+    await anyCache.get('u_2', 'userMailVisibility', ORG)
+    counts.userCapabilities = 0
+    counts.userMailVisibility = 0
+
+    await sweep.invalidateOrgUsersForKeys(ORG, ['userCapabilities', 'userMailVisibility'])
+
+    // THE assertion (plan 45 §1.7). Eagerly recomputing here cost a 200-member org
+    // 200 concurrent composes for an answer that was unchanged for nearly all of
+    // them; the delete is the half that makes the invalidation correct. Reinstate
+    // `invalidateAndRecompute` in the sweep and this fails.
+    expect(counts.userCapabilities).toBe(0)
+    expect(counts.userMailVisibility).toBe(0)
+
+    // And the entries really are gone — the next read composes fresh.
+    await anyCache.get('u_2', 'userMailVisibility', ORG)
+    expect(counts.userMailVisibility).toBe(1)
   })
 })

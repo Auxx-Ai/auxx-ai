@@ -9,8 +9,44 @@ interface HtmlBodyState {
   error: string | null
 }
 
-/** In-memory cache keyed by messageId to survive collapse/expand cycles. */
+/**
+ * In-memory cache keyed by messageId to survive collapse/expand cycles.
+ *
+ * Bounded and clearable, both for the same reason (plan 45 §1.6): it holds full
+ * HTML bodies, it is module-level so it outlives every route change, and it is
+ * NOT keyed by lens — so without {@link clearHtmlBodyCache} a viewer who loses
+ * `full` keeps every body they had already opened for the tab's lifetime.
+ */
 const htmlBodyCache = new Map<string, string>()
+
+/**
+ * FIFO bound. Insertion-ordered `Map`, so the oldest key is the first one
+ * `keys()` yields. A single long thread can hold a few hundred KB per body;
+ * unbounded, a day of triage is a memory profile nobody has looked at.
+ */
+const HTML_BODY_CACHE_MAX = 50
+
+function cacheHtmlBody(messageId: string, html: string): void {
+  htmlBodyCache.set(messageId, html)
+  while (htmlBodyCache.size > HTML_BODY_CACHE_MAX) {
+    const oldest = htmlBodyCache.keys().next().value
+    if (oldest === undefined) break
+    htmlBodyCache.delete(oldest)
+  }
+}
+
+/**
+ * Drop every cached body. Called from `use-mail-sync`'s `visibility:changed`
+ * handler — a revoke has to take the bodies with it.
+ *
+ * This only stops a body being re-served on the next expand: a body already
+ * rendered lives in the hook's `useState`, and what actually removes it from the
+ * screen is the lens refresh in the same handler, which makes `thread-messages`
+ * render the redaction banner instead and unmount this hook.
+ */
+export function clearHtmlBodyCache(): void {
+  htmlBodyCache.clear()
+}
 
 /**
  * Lazy-loads an inbound message HTML body from object storage.
@@ -42,7 +78,7 @@ export function useHtmlBody(messageId: string | undefined) {
 
     try {
       const html = await fetchBodyHtml(messageId)
-      htmlBodyCache.set(messageId, html)
+      cacheHtmlBody(messageId, html)
       setState({ html, isLoading: false, error: null })
     } catch (err) {
       setState({

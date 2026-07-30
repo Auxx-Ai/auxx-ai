@@ -360,10 +360,27 @@ async function notifyNewInstanceShare(
  * `emitGrantChanged` uses, deliberately not a second implementation — which
  * resolves explicit holders plus the null-bound majority, and self-collapses to
  * a broadcast when the profile is unclassifiable or the holder set is large.
- * Everything else (role/group/team) still fans out org-wide: correct but
- * expensive, which is why profiles are worth narrowing.
+ * **Group / team** grants expand through `expandGranteeToUserIds` (plan 45 §1.3).
  *
- * Fails SAFE in both directions — the worst outcome is an over-broad bust.
+ * **The `default` is a BROADCAST, and that is the safety mechanism.** Narrowing a
+ * broadcast to a targeted set is the fail-OPEN direction: a user who matches the
+ * forward grantee resolver but is missed here keeps a stale `userMailVisibility`
+ * for the full ONE_DAY TTL, holding a share they cannot see — the class
+ * `mail-grant-index-provider`'s docstring names of itself ("the two must expand
+ * the same grantee kinds or a share is visible in one direction only", 19a
+ * finding 4). So the narrowing is an explicit ALLOWLIST of kinds whose two
+ * directions are known to agree, and a grantee kind added later broadcasts
+ * without anyone having to remember this file.
+ *
+ * Why `group`/`team` are safe to narrow: the forward matcher's group ids come from
+ * `getCachedUserGroupIds`, which is `groupMembers[userId]`, and the reverse
+ * expansion is `resolveGroupHolders` inverting that same cached map. One
+ * projection read two directions — they cannot disagree. `team` is covered because
+ * `expandGranteeToUserIds` sends it through `resolveGroupHolders` too, mirroring
+ * the mail evaluator's `treatTeamAsGroup`.
+ *
+ * `role:org_member` stays a broadcast on purpose: it IS every member, so expanding
+ * it would trade one publish for N.
  */
 async function resolveInvalidationTargets(
   organizationId: string,
@@ -373,22 +390,36 @@ async function resolveInvalidationTargets(
   let broadcast = false
 
   for (const g of grantees) {
-    if (g.granteeType === ResourceGranteeType.user) {
-      userIds.add(g.granteeId)
-      continue
+    switch (g.granteeType) {
+      case ResourceGranteeType.user:
+        userIds.add(g.granteeId)
+        break
+
+      case ResourceGranteeType.profile: {
+        // Lazy import — the profiles module pulls the cache + dehydration barrels,
+        // and the cache invalidation path imports back into this file's neighbours.
+        const { resolveProfileAudience } = await import(
+          '../permissions/profiles/profile-invalidation'
+        )
+        const audience = await resolveProfileAudience({ organizationId, profileId: g.granteeId })
+        if (audience.broadcast) broadcast = true
+        else for (const userId of audience.userIds) userIds.add(userId)
+        break
+      }
+
+      case ResourceGranteeType.group:
+      case ResourceGranteeType.team: {
+        // Cache-only, no query (#1400 dropped the `db` param). A group of three in
+        // a 200-member org used to recompute all 200 blobs and make every
+        // connected client refetch three queries.
+        const { userIds: holders } = await expandGranteeToUserIds(organizationId, g)
+        for (const userId of holders) userIds.add(userId)
+        break
+      }
+
+      default:
+        broadcast = true
     }
-    if (g.granteeType === ResourceGranteeType.profile) {
-      // Lazy import — the profiles module pulls the cache + dehydration barrels,
-      // and the cache invalidation path imports back into this file's neighbours.
-      const { resolveProfileAudience } = await import(
-        '../permissions/profiles/profile-invalidation'
-      )
-      const audience = await resolveProfileAudience({ organizationId, profileId: g.granteeId })
-      if (audience.broadcast) broadcast = true
-      else for (const userId of audience.userIds) userIds.add(userId)
-      continue
-    }
-    broadcast = true
   }
 
   // A single org-wide fan-out already covers every member — no need to also
@@ -404,6 +435,11 @@ async function resolveInvalidationTargets(
  *
  * Phase 0 of the mail-permissions plan wires the emission; Phase 1 attaches
  * the keys (`userMailVisibility`, `mailGrantIndex`) to the invalidation graph.
+ *
+ * ONE `onCacheEvent` for the whole audience, not one per user (plan 45 §1.3): the
+ * targeted branch re-walks the invalidation graph, marks mail counts stale and
+ * publishes per call, so a per-user loop turned a 20-member group share into 20
+ * of each. `userIds` is the field that exists for this.
  */
 async function emitResourceAccessChanged(
   organizationId: string,
@@ -419,11 +455,8 @@ async function emitResourceAccessChanged(
     return
   }
 
-  await Promise.all(
-    userIds.map((userId) =>
-      onCacheEvent('resource-access.changed', { orgId: organizationId, userId })
-    )
-  )
+  if (userIds.length === 0) return
+  await onCacheEvent('resource-access.changed', { orgId: organizationId, userIds })
 }
 
 /**
@@ -458,11 +491,12 @@ async function emitResourceAccessTypeChanged(
     return
   }
 
+  if (userIds.length === 0) return
+  // One cache event for the audience; the capability publish stays per-user
+  // because `publishCapabilitiesChanged` targets one room at a time.
+  await onCacheEvent('resource-access.type.changed', { orgId: organizationId, userIds })
   await Promise.all(
-    userIds.map(async (userId) => {
-      await onCacheEvent('resource-access.type.changed', { orgId: organizationId, userId })
-      await publishCapabilitiesChanged(getRealtimeService(), { userId })
-    })
+    userIds.map((userId) => publishCapabilitiesChanged(getRealtimeService(), { userId }))
   )
 }
 
@@ -499,11 +533,12 @@ export async function emitResourceAccessInstanceChanged(
     return
   }
 
+  if (userIds.length === 0) return
+  // One cache event for the audience (plan 45 §1.3); the capability publish stays
+  // per-user because it targets one room at a time.
+  await onCacheEvent('resource-access.instance.changed', { orgId: organizationId, userIds })
   await Promise.all(
-    userIds.map(async (userId) => {
-      await onCacheEvent('resource-access.instance.changed', { orgId: organizationId, userId })
-      await publishCapabilitiesChanged(getRealtimeService(), { userId })
-    })
+    userIds.map((userId) => publishCapabilitiesChanged(getRealtimeService(), { userId }))
   )
 }
 

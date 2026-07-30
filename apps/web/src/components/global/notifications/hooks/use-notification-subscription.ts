@@ -28,6 +28,23 @@ export function useNotificationSubscription(userId: string) {
             }))
             if (bellSoundRef.current) playNotificationSound(NEW_MESSAGE_SOUND)
           }
+          // An access request the viewer FILED was decided (plan 45 §1.2). The
+          // "requested" chip reads `accessRequestPreflight`, which is invalidated
+          // only by the viewer's own request/withdraw mutations and has
+          // `refetchOnWindowFocus: false` — so on a decision made by someone else
+          // it stays stuck until a thread switch or a reload.
+          //
+          // This is the LIFECYCLE half only. On approve the access itself arrives
+          // via `visibility:changed` (`use-mail-sync`), which is the funnel for
+          // all eleven causes of a lens change; deny and supersede write no grant
+          // and correctly publish no visibility event, so this notification —
+          // which `notifyRequesterDecided` sends on all three outcomes — is the
+          // signal they have. Un-keyed because the payload carries an
+          // `approvalRequestId`, not a thread id; only the open thread's preflight
+          // query is ever active, so it is one refetch.
+          if ((payload as { type?: string } | undefined)?.type === 'ACCESS_REQUEST_DECIDED') {
+            void utils.approval.accessRequestPreflight.invalidate()
+          }
           if (useNotificationPanelStore.getState().open) {
             void utils.notification.getNotifications.invalidate()
           }
