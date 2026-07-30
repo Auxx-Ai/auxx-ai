@@ -227,6 +227,25 @@ Short version: exported `async function`s with `db` first (no service classes),
 reads and writes in separate files, explicit named exports, and zero access
 checks in lib — the router asserts and list scopes are applied in SQL.
 
+## Agents, Procedures & Evals
+
+**Before touching an agent's persona, toolsets, knowledge scope, triggers,
+permissions, procedures, or evals, read `docs/agents-architecture-guide.md`.**
+It documents the draft-row-vs-`AgentVersion` model (the `Agent` row IS the
+draft — there is no `draftVersionId`), the versioned six behavior fields, the
+prompt-section registry and its stability tiers, the compiled procedure step
+tree + selection/stepper contract, the tool filter chain through
+`buildEffectiveAgentRuntime`, the published permission policy and its
+`policy ∩ run-as ∩ invoker` run-time intersection, and the eval
+case/run/suite model.
+
+Short version: behavior and authorization are versioned together and always
+resolved from the same view (`active` vs `draft` — never mixed); production
+never reads the mutable draft row or the live permission profile; procedure
+frames pin a `procedureVersionId` for the whole run; `buildEffectiveAgentRuntime`
+is the single construction site for production, builder, chat, and eval
+runtimes. `docs/kopilot-architecture-guide.md` covers the engine underneath.
+
 ## Database Models — LEGACY
 
 Existing models extend `BaseModel`. Do NOT add new model classes; put query code
