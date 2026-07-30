@@ -1,6 +1,6 @@
 // apps/web/src/app/api/imports/[importJobId]/events/records-import-access.test.ts
 
-import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
+import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -10,24 +10,49 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * import. The forwarded `planning:row` events carry the imported record VALUES
  * (`fields`) plus `existingRecordId`, and the terminal replay carries
  * `statistics`. Its tRPC sibling (`server/api/routers/data-import.ts`) puts
- * every one of its procedures behind `permissionProcedure(recordsImport)`.
+ * every one of its procedures behind `assertImportEntity`.
  *
- * Behavioral: the real handler runs, and the gate resolves through a REAL
- * `CapabilitySet` built from `expandLevelsToKeys`. The job lookup is the
- * observed side effect — the gate must land ahead of it.
+ * **The gate is def-aware, so the ORDER inverted and so did the status code.**
+ * This file used to pin the opposite of what the route now does, because it
+ * predates that rework and `web` runs in no CI job that would have said so.
+ *
+ * `canImportEntity` needs the job's TARGET DEFINITION, which only the
+ * `ImportMapping` join yields — so the gate can no longer precede the lookup the
+ * way a coarse `requirePermission(recordsImport)` did. Existence is kept
+ * unprobeable instead by answering **404 for a denial too**: "no such job in your
+ * org" and "not yours to import into" are byte-identical to the caller. The
+ * anti-oracle property is now an assertion here rather than a consequence of
+ * ordering, and `deniedAndAbsentAreIndistinguishable` is the test that guards it.
+ *
+ * A 404 also keeps the route free of `AuxxError` -> status mapping: App Router
+ * handlers have no `auxxErrorMiddleware`, so the throwing `assertImportEntity`
+ * would surface as an unhandled 500. The route reads the boolean predicate.
+ *
+ * Behavioral: the real handler runs and the gate resolves through a REAL
+ * `CapabilitySet`, so allow/deny comes from the shipped registry expansion.
+ * `canImportEntity` requires `effectiveRecordLevel >= edit` AND either the
+ * `recordsImport` key or `admin` — which is why `Full` streams while `Edit`,
+ * who holds recordsView + recordsEdit and nothing more, does not.
  */
 
-const { requirePermission, getSession, limit } = vi.hoisted(() => ({
-  requirePermission: vi.fn(),
+const { getCapabilities, getSession, limit } = vi.hoisted(() => ({
+  getCapabilities: vi.fn(),
   getSession: vi.fn(),
   limit: vi.fn(),
 }))
 
 vi.mock('@auxx/database', () => ({
   database: {
-    select: () => ({ from: () => ({ where: () => ({ limit }) }) }),
+    select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ limit }) }) }) }),
   },
-  schema: { ImportJob: { id: 'id', organizationId: 'organizationId' } },
+  schema: {
+    ImportJob: {
+      id: 'id',
+      organizationId: 'organizationId',
+      importMappingId: 'importMappingId',
+    },
+    ImportMapping: { id: 'id', entityDefinitionId: 'entityDefinitionId' },
+  },
 }))
 
 vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn() }))
@@ -37,8 +62,8 @@ vi.mock('@auxx/logger', () => ({
 }))
 
 // The `@auxx/lib/permissions` barrel HANGS under vitest — stub it, keep the
-// enums real via `/client` and the assert real via the deep `capability-set`.
-vi.mock('@auxx/lib/permissions', () => ({ requirePermission }))
+// enums real via `/client` and the predicate real via the deep `capability-set`.
+vi.mock('@auxx/lib/permissions', () => ({ getCapabilities }))
 
 vi.mock('@auxx/redis', () => ({
   createDedicatedClient: vi.fn(async () => ({
@@ -60,13 +85,16 @@ const { GET } = await import('./route')
 const ORG_ID = 'org_cuid000000000000000000000'
 const USER_ID = 'usr_cuid000000000000000000000'
 const JOB_ID = 'imj_cuid000000000000000000000'
+/** The job's target definition, reached only through the `ImportMapping` join. */
+const DEF_ID = 'edf_cuid000000000000000000000'
 
 /**
- * Signs a member in at `level` on the `records` area and wires the stubbed
- * `requirePermission` to the REAL `CapabilitySet.assert` for that composition —
- * so allow/deny comes from the shipped registry expansion, not from the test.
- * (`recordsImport` carries no `featureKey`, so the real `requirePermission`
- * reduces to exactly this assert; there is no plan gate to model.)
+ * Signs a member in at `level` on the `records` area and resolves a REAL
+ * `CapabilitySet` for that composition, so allow/deny comes from the shipped
+ * registry expansion rather than from the test.
+ *
+ * Returns the set so a caller can spy on `canImportEntity` and pin WHICH
+ * definition the route gates on — the whole point of the mapping join.
  */
 function signedIn(level: Level) {
   getSession.mockResolvedValue({ user: { id: USER_ID, defaultOrganizationId: ORG_ID } })
@@ -76,9 +104,8 @@ function signedIn(level: Level) {
     'MEMBER',
     'full'
   )
-  requirePermission.mockImplementation(async (_userId, _orgId, key: PermissionKey) =>
-    capabilities.assert(key)
-  )
+  getCapabilities.mockResolvedValue(capabilities)
+  return capabilities
 }
 
 const request = () =>
@@ -109,6 +136,13 @@ const completedJob = {
   completedAt: new Date('2026-07-27T00:00:00.000Z'),
 }
 
+/**
+ * What the joined select projects: `{ job, entityDefinitionId }`, not a flat job
+ * row. The route reads `importJob.job` and `importJob.entityDefinitionId`, so a
+ * flat fixture makes the gate read `undefined` and every case throw.
+ */
+const row = (job: object, entityDefinitionId = DEF_ID) => [{ job, entityDefinitionId }]
+
 /** Reads `count` SSE chunks, then cancels so no heartbeat interval leaks. */
 async function readChunks(res: Response, count = 1) {
   const reader = res.body?.getReader()
@@ -126,8 +160,8 @@ async function readChunks(res: Response, count = 1) {
 
 beforeEach(() => {
   getSession.mockReset()
-  requirePermission.mockReset()
-  limit.mockReset().mockResolvedValue([runningJob])
+  getCapabilities.mockReset()
+  limit.mockReset().mockResolvedValue(row(runningJob))
 })
 
 describe('GET /api/imports/[importJobId]/events — the records-import hole', () => {
@@ -135,67 +169,81 @@ describe('GET /api/imports/[importJobId]/events — the records-import hole', ()
     getSession.mockResolvedValue(null)
     const res = await GET(request(), params)
     expect(res.status).toBe(401)
-    expect(requirePermission).not.toHaveBeenCalled()
+    expect(getCapabilities).not.toHaveBeenCalled()
     expect(limit).not.toHaveBeenCalled()
   })
 
-  it('403s a member composing `records: Edit` before touching the job', async () => {
+  it('404s a member composing `records: Edit`', async () => {
     // Edit grants recordsView + recordsEdit but NOT recordsImport — the exact
     // member who used to get the whole stream, row values included.
     signedIn(Level.Edit)
     const res = await GET(request(), params)
-    expect(res.status).toBe(403)
-    // The gate must precede the lookup — otherwise job existence is probeable.
-    expect(limit).not.toHaveBeenCalled()
+    expect(res.status).toBe(404)
   })
 
-  it('403s a member composing `records: None`', async () => {
+  it('404s a member composing `records: None`', async () => {
     signedIn(Level.None)
     const res = await GET(request(), params)
-    expect(res.status).toBe(403)
-    expect(limit).not.toHaveBeenCalled()
+    expect(res.status).toBe(404)
   })
 
-  it('asserts `records.import` specifically', async () => {
-    signedIn(Level.Full)
+  it('gates on the definition the mapping join yields, not the job id', async () => {
+    const capabilities = signedIn(Level.Full)
+    const canImport = vi.spyOn(capabilities, 'canImportEntity')
     await readChunks(await GET(request(), params))
-    expect(requirePermission).toHaveBeenCalledWith(USER_ID, ORG_ID, PermissionKey.recordsImport)
+    expect(canImport).toHaveBeenCalledWith(DEF_ID)
   })
 
-  it('streams the job for a member holding records.import, gate first', async () => {
+  it('streams the job for a member holding records.import', async () => {
     signedIn(Level.Full)
     const res = await GET(request(), params)
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('text/event-stream')
     expect(limit).toHaveBeenCalledTimes(1)
-    // Ordering pinned on the ALLOWED path too: moving the gate below the lookup
-    // still 403s the unauthorized caller, but leaks existence timing.
-    expect(requirePermission.mock.invocationCallOrder[0]).toBeLessThan(
-      limit.mock.invocationCallOrder[0]
+    // The lookup NOW PRECEDES the gate, inverting what this file used to pin:
+    // the gate needs the mapping's definition, which only the lookup yields.
+    // Existence stays unprobeable via the status code, asserted below.
+    expect(limit.mock.invocationCallOrder[0]).toBeLessThan(
+      getCapabilities.mock.invocationCallOrder[0]
     )
     expect(await readChunks(res)).toContain('event: connected')
   })
 
-  it('404s an unknown job for an authorized member', async () => {
+  it('404s an unknown job without reading capabilities at all', async () => {
     signedIn(Level.Full)
     limit.mockResolvedValue([])
     const res = await GET(request(), params)
     expect(res.status).toBe(404)
+    expect(getCapabilities).not.toHaveBeenCalled()
+  })
+
+  it('makes denial and absence indistinguishable — the anti-oracle property', async () => {
+    // What ordering used to buy, the status code now buys. If either arm ever
+    // answers 403, a member without import authority can enumerate which job
+    // ids exist in the org by reading the difference.
+    signedIn(Level.Edit)
+    const denied = await GET(request(), params)
+
+    signedIn(Level.Full)
+    limit.mockResolvedValue([])
+    const absent = await GET(request(), params)
+
+    expect(denied.status).toBe(absent.status)
+    expect(await denied.text()).toBe(await absent.text())
   })
 
   it('withholds the terminal statistics replay from a member without records.import', async () => {
     // The finished-job branch replays `importJob.statistics` — behind the same gate.
     signedIn(Level.Edit)
-    limit.mockResolvedValue([completedJob])
+    limit.mockResolvedValue(row(completedJob))
     const res = await GET(request(), params)
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
     expect(await res.text()).not.toContain('statistics')
-    expect(limit).not.toHaveBeenCalled()
   })
 
   it('replays the terminal statistics for a member holding records.import', async () => {
     signedIn(Level.Full)
-    limit.mockResolvedValue([completedJob])
+    limit.mockResolvedValue(row(completedJob))
     const res = await GET(request(), params)
     expect(res.status).toBe(200)
     const body = await readChunks(res, 2)
