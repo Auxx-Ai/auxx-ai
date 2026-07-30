@@ -5,6 +5,7 @@ import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import { ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { getPostImage } from '~/lib/blog-image'
 import { formatDate } from '~/lib/format-date'
 import type { BlogPost } from '~/types/blog'
 
@@ -26,36 +27,36 @@ function pickPalette(slug: string): GradientPaletteName {
 }
 
 export function PostCard({ post, priority }: { post: BlogPost; priority?: boolean }) {
-  const hasImage = Boolean(post.image) && post.image !== '/blog/default-og.jpg'
+  const image = getPostImage(post)
 
   return (
     <article className='bg-card hover:bg-card/75 group relative flex flex-col space-y-4 rounded-md p-6 duration-200'>
       <div className='before:border-foreground/15 before:inset-ring-1 before:inset-ring-background/10 relative aspect-[3/2] overflow-hidden rounded-[10px] shadow-md shadow-black/10 before:absolute before:inset-0 before:rounded-[10px] before:border'>
-        <RandomGradient
-          colors={[...GRADIENT_PALETTES[pickPalette(post.slug)]]}
-          mode='mesh'
-          animationDuration={4}
-        />
-        {hasImage && (
-          <div className='absolute left-1/2 top-4 w-[65%] -translate-x-1/2 overflow-hidden rounded-md shadow-lg shadow-black/30 ring-1 ring-black/10'>
-            <div className='relative aspect-video w-full'>
-              <Image
-                src={post.image}
-                alt={post.title}
-                fill
-                className='object-cover'
-                sizes='(min-width: 1024px) 20vw, (min-width: 640px) 30vw, 60vw'
-                priority={priority}
-              />
-            </div>
-          </div>
+        {image ? (
+          <Image
+            src={image}
+            alt={post.title}
+            fill
+            className='object-cover'
+            sizes='(min-width: 1024px) 25vw, (min-width: 640px) 45vw, 90vw'
+            priority={priority}
+          />
+        ) : (
+          <RandomGradient
+            colors={[...GRADIENT_PALETTES[pickPalette(post.slug)]]}
+            mode='mesh'
+            animationDuration={4}
+          />
         )}
+        {/* Scrim so the title stays legible over artwork or a pale palette. Both
+            treatments get it, and the title is pinned white, so the tile reads
+            the same in either theme. */}
+        <div
+          aria-hidden
+          className='absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-black/80 via-black/30 to-transparent'
+        />
         <div className='relative z-10 flex h-full items-end p-4'>
-          <h2 className='text-foreground text-balance text-lg font-semibold'>
-            <Link href={`/blog/${post.slug}`} className='before:absolute before:inset-0'>
-              {post.title}
-            </Link>
-          </h2>
+          <h2 className='text-balance text-lg font-semibold text-white'>{post.title}</h2>
         </div>
       </div>
 
@@ -85,8 +86,10 @@ export function PostCard({ post, priority }: { post: BlogPost; priority?: boolea
           ))}
         </div>
         <div className='flex h-6 items-center'>
+          {/* Decorative — the stretched link below is the real target, so this
+              must not announce itself as a second control. */}
           <span
-            aria-label={`Read ${post.title}`}
+            aria-hidden='true'
             className='text-primary group-hover:text-foreground flex items-center gap-1 text-sm font-medium transition-colors duration-200'>
             Read
             <ChevronRight
@@ -97,6 +100,14 @@ export function PostCard({ post, priority }: { post: BlogPost; priority?: boolea
           </span>
         </div>
       </div>
+
+      {/* One stretched target so the whole card — artwork, title, and the "Read"
+          affordance the group-hover styling already telegraphs — navigates. */}
+      <Link
+        href={`/blog/${post.slug}`}
+        className='focus-visible:ring-ring absolute inset-0 z-10 rounded-md focus-visible:outline-none focus-visible:ring-2'>
+        <span className='sr-only'>Read {post.title}</span>
+      </Link>
     </article>
   )
 }
