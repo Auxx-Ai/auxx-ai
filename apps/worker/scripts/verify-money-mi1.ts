@@ -788,7 +788,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     for (const id of ownedCopies.ids) createdLineIds.push(id)
     check(
@@ -1076,7 +1075,6 @@ async function main() {
         },
       ],
       limit: 10,
-      mode: 'oneshot',
     })
     check(
       'quoteless invoice has exactly 1 owned copy before delete',

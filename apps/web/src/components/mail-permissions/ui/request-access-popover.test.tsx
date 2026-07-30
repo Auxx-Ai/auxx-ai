@@ -25,7 +25,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
  */
 
 const h = vi.hoisted(() => ({
-  myLens: 'metadata' as 'metadata' | 'subject' | 'full',
+  myLens: 'metadata' as 'metadata' | 'identity' | 'read',
   isAdminOrOwner: false,
   canAdminInstance: false,
   preflight: {
@@ -119,7 +119,7 @@ describe('eligibility truth table (plan 42 §6.3)', () => {
   })
 
   it('renders NOTHING for a full-lens viewer — there is nothing to ask for', () => {
-    h.myLens = 'full'
+    h.myLens = 'read'
     const { container } = render(<RequestAccessPopover threadId='thr_1' />)
     expect(container).toBeEmptyDOMElement()
   })

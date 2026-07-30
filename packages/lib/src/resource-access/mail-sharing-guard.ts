@@ -1,18 +1,17 @@
 // packages/lib/src/resource-access/mail-sharing-guard.ts
 
 import { schema } from '@auxx/database'
-import { ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { getCachedUserMailVisibility, getOrgCache } from '../cache'
+import { getCachedUserInstanceGrants, getOrgCache } from '../cache'
 import { ForbiddenError } from '../errors'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
 import { FeatureKey } from '../permissions/types'
 import { getLoadedThreadLens, type LoadedThreadFacts } from '../permissions/visibility'
 import { isInboxDef, isMailSharingDef } from './mail-sharing-defs'
 import { hasPermission } from './resource-access-service'
-import type { GrantLens, ResourceAccessContext } from './types'
+import type { ResourceAccessContext } from './types'
 
 /**
  * `MAIL_SHARING_DEFS` / {@link isMailSharingDef} live in `./mail-sharing-defs`
@@ -95,9 +94,9 @@ async function loadThreadFacts(
  *   `hasPermission`, so the org is never locked out;
  * - org admins may manage thread/contact sharing anywhere (plan 40 §2 keeps
  *   those two branches exactly as they are — they are question 4's, not v2's);
- * - `thread`: viewers with `full` on the thread who are also a Manager of the
- *   thread's inbox (admins short-circuit above) — a sub-full viewer must never
- *   self-raise, and full-lens members don't get to re-share by default;
+ * - `thread`: viewers at `read` on the thread who are also a Manager of the
+ *   thread's inbox (admins short-circuit above) — a sub-`read` viewer must never
+ *   self-raise, and `read`-lens members don't get to re-share by default;
  * - `contact`: org admins only in v1 (contact shares derive to every thread
  *   the contact participates in — the widest blast radius in the model).
  *
@@ -146,11 +145,11 @@ export async function assertCanManageMailSharing(
   // `assertAdminInstance` (§5.3), which resolves the same rows through the v2
   // capability layer.
   if (isInboxDef(entityDefinitionId)) {
-    if (await hasPermission(ctx, recordId, ResourcePermission.admin)) return
+    if (await hasPermission(ctx, recordId, 'admin')) return
     throw new ForbiddenError('Only inbox managers can change inbox access')
   }
 
-  const vis = await getCachedUserMailVisibility(userId, organizationId)
+  const vis = await getCachedUserInstanceGrants(userId, organizationId)
   if (vis.isAdmin) return
 
   if (entityDefinitionId === 'thread') {
@@ -164,14 +163,14 @@ export async function assertCanManageMailSharing(
       : // No row: "invisible ≍ nonexistent", the same answer `getThreadLens`
         // returns for a nonexistent or cross-org id.
         'none'
-    if (lens === 'full' && thread?.inboxId) {
+    if (lens === 'read' && thread?.inboxId) {
       if (
         await hasPermission(
           ctx,
           // The thread's inbox may be a personal mailbox — resolve its def
           // rather than assuming `'inbox'`.
           await inboxAccessRecordId(organizationId, thread.inboxId),
-          ResourcePermission.admin
+          'admin'
         )
       ) {
         return
@@ -196,36 +195,47 @@ export async function assertCanManageMailTypeAccess(
   entityDefinitionId: string
 ): Promise<void> {
   if (!isMailSharingDef(entityDefinitionId)) return
-  const vis = await getCachedUserMailVisibility(ctx.userId, ctx.organizationId)
+  const vis = await getCachedUserInstanceGrants(ctx.userId, ctx.organizationId)
   if (vis.isAdmin) return
   throw new ForbiddenError('Only admins can manage type-level access')
 }
 
 /**
- * Enterprise gate for lens-bearing sharing (§7.1 / plan decision 4). Throws
- * unless the org has `FeatureKey.mailPermissions` when the mutation:
- * - grants a sub-`full` lens (metadata/subject shares), or
- * - adds a NEW inbox Manager (`admin` permission) — delegation. Re-submitting
- *   an existing Manager row (the inbox form's replace-all save includes the
+ * Plan gate for tiered sharing (§7.1 / plan decision 4). Throws unless the org
+ * has `FeatureKey.granularPermissions` when the mutation:
+ * - grants a sub-`read` rung (metadata/identity shares), or
+ * - adds a NEW inbox Manager (`admin` rung) — delegation. Re-submitting an
+ *   existing Manager row (the inbox form's replace-all save includes the
  *   non-removable creator row) stays ungated so free-plan saves don't trip.
  *
- * Full-lens grants stay ungated: they only widen access, which assignment
- * already does on every plan. No-op for non-mail definitions.
+ * `read` grants stay ungated: they only widen access, which assignment already
+ * does on every plan. No-op for non-mail definitions.
+ *
+ * ⚠ `'none'` is NOT gated here and must not become so. It is a RESTRICTION, and
+ * the plan gate exists to paywall added capability — paywalling a restriction
+ * would mean a downgraded org cannot close an inbox it had already closed. The
+ * `none` floor is gated separately, on authoring, by `assertInboxFloorFeature`.
+ *
+ * **The key was `FeatureKey.mailPermissions` until plan v3/03 §7.6 (D9) deleted
+ * it.** One key now gates the entire permission layer, so record sharing rides
+ * the same paywall as mail sharing instead of a parallel one. The plan matrix
+ * became Demo + Growth + Enterprise (Growth gains mail sharing; it already had
+ * profiles and grants).
  */
 export async function assertMailSharingFeature(
   ctx: ResourceAccessContext,
   recordId: RecordId,
-  grants: Array<{ granteeId: string; permission: string; lens?: GrantLens | null }>
+  grants: Array<{ granteeId: string; rung: string }>
 ): Promise<void> {
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   if (!isMailSharingDef(entityDefinitionId)) return
 
-  let gated = grants.some((g) => g.lens != null && g.lens !== 'full')
+  let gated = grants.some((g) => g.rung === 'metadata' || g.rung === 'identity')
 
   // Both mailbox defs (plan 40 §3) — delegation on a personal mailbox is the
   // same Enterprise-gated new-Manager write, just keyed `personal_inbox`.
   if (!gated && isInboxDef(entityDefinitionId)) {
-    const newManagers = grants.filter((g) => g.permission === ResourcePermission.admin)
+    const newManagers = grants.filter((g) => g.rung === 'admin')
     if (newManagers.length > 0) {
       const existing = await ctx.db
         .select({ granteeId: schema.ResourceAccess.granteeId })
@@ -235,7 +245,7 @@ export async function assertMailSharingFeature(
             eq(schema.ResourceAccess.organizationId, ctx.organizationId),
             eq(schema.ResourceAccess.entityDefinitionId, entityDefinitionId),
             eq(schema.ResourceAccess.entityInstanceId, entityInstanceId),
-            eq(schema.ResourceAccess.permission, ResourcePermission.admin)
+            eq(schema.ResourceAccess.rung, 'admin')
           )
         )
       const existingIds = new Set(existing.map((r: { granteeId: string }) => r.granteeId))
@@ -246,7 +256,7 @@ export async function assertMailSharingFeature(
   if (gated) {
     await new FeaturePermissionService(ctx.db).requireAccess(
       ctx.organizationId,
-      FeatureKey.mailPermissions
+      FeatureKey.granularPermissions
     )
   }
 }

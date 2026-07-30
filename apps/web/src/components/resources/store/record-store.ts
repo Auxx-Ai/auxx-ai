@@ -1,6 +1,7 @@
 // apps/web/src/components/resources/store/record-store.ts
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
+import type { Rung } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import {
   parseRecordId,
@@ -42,6 +43,22 @@ export interface RecordMeta {
    * no app identity.
    */
   sources?: RecordSourceChip[]
+  /**
+   * **The row-effective access rung** (plan v3/03 §5.2) — `max(def level, max
+   * rung across the member's grant rows on THIS row)`, resolved server-side in
+   * the same query that produced the row.
+   *
+   * This is what makes edit/delete/share affordances per-ROW instead of per-def.
+   * A member can hold `edit` on one row of a definition they otherwise cannot
+   * see at all, and the def-level `canEditEntity` has no right answer for that
+   * row — see `useRecordAccess` / `useRecordDrawerReadOnly`.
+   *
+   * **Absent means "unknown", never "allowed".** It is absent on rows that
+   * arrived from a lane that does not stamp (`record.listAll`, the realtime
+   * `record:created` payload, an optimistic seed), so every reader must decide
+   * its own fallback explicitly rather than treating `undefined` as a rung.
+   */
+  _access?: Rung
   /** Additional database fields from the specific resource table */
   [key: string]: unknown
 }
@@ -56,7 +73,7 @@ interface ListCache {
   total: number
   /** When this cache was created */
   fetchedAt: number
-  /** Cursor for next page (encodes snapshotId + offset internally) */
+  /** Presence marker for "more pages exist" (the real cursor is the page offset) */
   nextCursor: string | null
 }
 

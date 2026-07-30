@@ -80,7 +80,7 @@ vi.mock('@auxx/lib/inboxes', () => ({
 // The org cache is the def authority — `toInboxRecordId` runs FOR REAL against
 // this list, which is the point of the test.
 vi.mock('@auxx/lib/cache', () => ({
-  getCachedUserMailVisibility: vi.fn(async () => ({ isAdmin: false, inboxLens: {} })),
+  getCachedUserInstanceGrants: vi.fn(async () => ({ isAdmin: false, inboxLens: {} })),
   getOrgCache: () => ({ get: async () => world.inboxes }),
 }))
 

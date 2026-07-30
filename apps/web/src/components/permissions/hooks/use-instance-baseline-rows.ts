@@ -8,12 +8,14 @@ import {
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
   Level,
-  levelToPermission,
+  levelToRung,
+  permissionToRung,
 } from '@auxx/lib/permissions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
+import { displayPermissionOfRung } from '../ui/level-labels'
 import { deriveInstanceBadge, type InstanceAccessBadge } from '../utils/instance-access-badge'
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
@@ -167,8 +169,9 @@ export function useInstanceBaselineRows() {
         ? undefined
         : cfg.baselineAtCreate
           ? ResourcePermission.none
-          : ((areaLevel !== undefined ? levelToPermission(areaLevel) : undefined) ??
-            ResourcePermission.none)
+          : ((areaLevel !== undefined
+              ? displayPermissionOfRung(levelToRung(areaLevel) ?? 'none')
+              : undefined) ?? ResourcePermission.none)
 
       result[key] = lists[key].items.map((item) => {
         const instanceRows = allRows.filter(
@@ -182,7 +185,9 @@ export function useInstanceBaselineRows() {
           key,
           id: item.id,
           name: item.name,
-          baselineLevel: baselineRow?.permission,
+          // Stored rung → the grid's def-axis display vocabulary (see
+          // `displayPermissionOfRung` for why this is a clamp, not a conversion).
+          baselineLevel: baselineRow ? displayPermissionOfRung(baselineRow.rung) : undefined,
           inheritedLevel,
           inheritLabelText: isPrivate ? PRIVATE_INHERIT_LABEL : undefined,
           inheritHelperText: isPrivate ? PRIVATE_INHERIT_HELPER : undefined,
@@ -209,7 +214,7 @@ export function useInstanceBaselineRows() {
         recordId,
         granteeType: ResourceGranteeType.role,
         granteeId: MEMBER_BASELINE_GRANTEE_ID,
-        permission: level,
+        rung: permissionToRung(level),
       })
     },
     [grantInstance, revokeInstance]

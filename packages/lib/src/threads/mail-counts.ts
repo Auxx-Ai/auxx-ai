@@ -72,8 +72,8 @@ export async function computeAndSeedMailCounts(
 ): Promise<FullCountsResponse> {
   // Counts run as the target user's viewer (§10.1) — the one documented
   // worker exception to SYSTEM_VISIBILITY: a badge is a per-user artifact.
-  const { getOrgCache, getCachedUserMailVisibility } = await import('../cache')
-  const viewer = await getCachedUserMailVisibility(userId, orgId)
+  const { getOrgCache, getCachedUserInstanceGrants } = await import('../cache')
+  const viewer = await getCachedUserInstanceGrants(userId, orgId)
   const unreadService = new UnreadService(orgId, userId, viewer)
   const redis = await getRedisClient()
 
@@ -90,7 +90,7 @@ export async function computeAndSeedMailCounts(
   // `metadata` (never `full`) on others' personal mailboxes, so this filter
   // returns the identical set for them, and the correct — smaller — one for an
   // admin whose profile was downgraded.
-  const countableInboxes = inboxes.filter((ib) => viewer.inboxLens[ib.id] === 'full')
+  const countableInboxes = inboxes.filter((ib) => viewer.inboxLens[ib.id] === 'read')
 
   const [inbox, drafts, views, perInbox] = await Promise.all([
     unreadService.getPersonalInboxCount(),

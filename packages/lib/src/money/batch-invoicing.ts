@@ -108,11 +108,11 @@ async function resolveWorkOrderInstanceIds(input: {
   filters: ConditionGroup[]
 }): Promise<string[]> {
   const handler = new UnifiedCrudHandler(input.organizationId, input.userId)
-  const { ids, total } = await handler.listFiltered({
+  // First page (offset 0) ⇒ `total` is always present; the default is belt-and-braces.
+  const { ids, total = 0 } = await handler.listFiltered({
     entityDefinitionId: 'work_order',
     filters: input.filters,
     limit: 1000,
-    mode: 'oneshot',
   })
   if (total > ids.length) {
     logger.warn('Invoice batch truncated to first 1000 matching work orders', {

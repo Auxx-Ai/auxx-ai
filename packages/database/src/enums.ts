@@ -1841,6 +1841,47 @@ export const ResourcePermission = {
 } as const
 
 /**
+ * One instance-grant **rung** — the single ordinal ladder every
+ * `ResourceAccess.rung` value is drawn from (plan v3/03 §2).
+ *
+ * ```
+ * none < metadata < identity < read < edit < admin
+ * ```
+ *
+ * The NAME is what persists; the ordinal (`RUNG_ORDER`) and every comparator
+ * live in `@auxx/lib/permissions/capabilities/rung`, which re-exports this type.
+ * The declaration sits HERE, beside {@link ResourcePermission}, for exactly the
+ * reason that one does: `packages/database` is tier 1 and cannot import
+ * `@auxx/lib` (tier 3), but `resource-access.ts` needs the type for
+ * `text().$type<Rung>()`.
+ *
+ * `text()` + a CHECK constraint, deliberately not a `pgEnum`: `ALTER TYPE ADD
+ * VALUE` cannot insert a value BETWEEN two existing ones, and this ladder is
+ * expected to grow inward (mail already retro-fitted `metadata`/`identity`
+ * between existing tiers once; a Docs-style `commenter` between `read` and
+ * `edit` is the plausible next one). Adding a rung must stay a code change plus
+ * one CHECK swap, never a renumbering migration over persisted rows.
+ *
+ * ⚠ **`none` is a RESTRICTION marker, never a grant** — see
+ * `project_permission_none_is_a_restriction`.
+ */
+export const RungValues = ['none', 'metadata', 'identity', 'read', 'edit', 'admin'] as const
+export type Rung = (typeof RungValues)[number]
+
+/*
+ * NOTE — deliberately NO `export const Rung = { none: 'none', … }` companion
+ * object, unlike {@link ResourcePermission} above.
+ *
+ * That pattern buys `ResourcePermission.view` in place of `'view'`, and its only
+ * real value is grep-ability on a vocabulary whose members are also common
+ * English words. `Rung`'s members are ORDINAL and are compared through
+ * `RUNG_ORDER` / `satisfiesRung`, never spelled out for their own sake — and the
+ * const-object form would have made the ladder look like an unordered enum,
+ * which is exactly the reading `Rung` exists to replace. Use the literals;
+ * `RungValues` is there for the runtime list (zod enums, `IN (...)` builders).
+ */
+
+/**
  * Member seat type — packaging/billing identity, decoupled from `role` authority.
  * `worker` (UI: "Field seat") locks the member to a tiny capability ceiling so it
  * can be priced below a full seat. Invariant: `worker` ⇒ role `USER`.

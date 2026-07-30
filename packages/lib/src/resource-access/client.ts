@@ -5,8 +5,8 @@
  * Types and utilities that can be used in React components.
  */
 
-// Constants
-export { PERMISSION_HIERARCHY, satisfiesPermission } from './constants'
+// Constants — the ONE permission ordinal + comparator (plan v3/03 P3a §3)
+export { PERMISSION_RANK, satisfiesPermission } from '@auxx/types/permissions'
 // Types
 export type {
   AccessCheckResult,

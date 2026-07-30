@@ -1,7 +1,7 @@
 // apps/web/src/components/permissions/hooks/use-instance-share.ts
 'use client'
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type Rung } from '@auxx/database/enums'
 import type { Level } from '@auxx/lib/permissions/client'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
 import type { ActorId } from '@auxx/types/actor'
@@ -17,8 +17,15 @@ import {
 } from '~/components/permissions/utils/grantee'
 import { api } from '~/trpc/react'
 
-/** Instance grant level — the raw Read/Write/Full ResourceAccess permission. */
-export type InstanceLevel = Exclude<ResourcePermission, 'none'>
+/**
+ * Instance grant level — the raw Read/Write/Full rung on a `ResourceAccess` row.
+ *
+ * `Exclude<Rung, …>` rather than a hand-written union so this picker can never
+ * offer a rung the config-scale resources do not declare: `metadata` and
+ * `identity` are mail's tiers (`INBOX_RUNGS`), and `none` is a RESTRICTION,
+ * expressed by `WorkspaceBaseline`'s `'restricted'` and never by a grantee row.
+ */
+export type InstanceLevel = Exclude<Rung, 'none' | 'metadata' | 'identity'>
 
 /**
  * The workspace-baseline (`role:org_member`) state for an instance:
@@ -34,10 +41,10 @@ export interface InstanceShareGrant {
   actorId: ActorId
   choice: InstanceLevel
   /**
-   * The raw stored permission, INCLUDING `'none'` — which {@link choice} cannot
+   * The raw stored rung, INCLUDING `'none'` — which {@link choice} cannot
    * express. Only the dead-row warning reads it (see {@link granteeAreaLevel}).
    */
-  permission: ResourcePermission
+  rung: Rung
   /**
    * The user grantee's own composed Layer-2 level for this instance's L2 area
    * (capability layer v2 Part B.2.8), server-annotated on `forInstance`.
@@ -47,8 +54,8 @@ export interface InstanceShareGrant {
    * `Level.None` no longer means the row is dead: since plan 25 §2 an explicit
    * row beats the area floor, so a positive grant on a `None`-area member is
    * precisely how a single-instance share works. Only `Level.None` combined with
-   * an explicit `'none'` {@link permission} is inert — it removes access the
-   * member never had.
+   * an explicit `'none'` {@link rung} is inert — it removes access the member
+   * never had.
    */
   granteeAreaLevel?: Level
 }
@@ -97,15 +104,14 @@ export function useInstanceShare({
   const optimisticRow = (
     granteeType: ResourceGranteeType,
     granteeId: string,
-    permission: ResourcePermission
+    rung: Rung
   ): ResourceAccessInfo => ({
     id: `optimistic-${granteeType}-${granteeId}`,
     entityDefinitionId: recordId.split(':')[0] ?? '',
     entityInstanceId: recordId.split(':')[1] ?? null,
     granteeType,
     granteeId,
-    permission,
-    lens: null,
+    rung,
     createdAt: new Date(),
   })
 
@@ -114,7 +120,7 @@ export function useInstanceShare({
       await utils.resourceAccess.forInstance.cancel({ recordId })
       const previous = utils.resourceAccess.forInstance.getData({ recordId })
       setRows((rows) => [
-        optimisticRow(input.granteeType, input.granteeId, input.permission),
+        optimisticRow(input.granteeType, input.granteeId, input.rung),
         ...rows.filter(
           (r) => !(r.granteeType === input.granteeType && r.granteeId === input.granteeId)
         ),
@@ -155,8 +161,8 @@ export function useInstanceShare({
         return [
           {
             actorId,
-            choice: r.permission as InstanceLevel,
-            permission: r.permission,
+            choice: r.rung as InstanceLevel,
+            rung: r.rung,
             granteeAreaLevel: r.granteeAreaLevel,
           },
         ]
@@ -197,9 +203,9 @@ export function useInstanceShare({
   )
 
   const baseline: WorkspaceBaseline = baselineRow
-    ? baselineRow.permission === ResourcePermission.none
+    ? baselineRow.rung === 'none'
       ? 'restricted'
-      : (baselineRow.permission as InstanceLevel)
+      : (baselineRow.rung as InstanceLevel)
     : undefined
 
   /**
@@ -231,7 +237,7 @@ export function useInstanceShare({
       })
       return
     }
-    grantInstance.mutate({ recordId, ...grantee, permission: choice })
+    grantInstance.mutate({ recordId, ...grantee, rung: choice })
   }
 
   const revoke = (actorId: ActorId) => {
@@ -249,7 +255,7 @@ export function useInstanceShare({
       recordId,
       granteeType: WORKSPACE_GRANTEE.granteeType,
       granteeId: WORKSPACE_GRANTEE.granteeId,
-      permission: next === 'restricted' ? ResourcePermission.none : next,
+      rung: next === 'restricted' ? 'none' : next,
     })
   }
 

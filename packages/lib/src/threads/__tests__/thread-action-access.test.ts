@@ -1,7 +1,7 @@
 // packages/lib/src/threads/__tests__/thread-action-access.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { UserMailVisibility } from '../../permissions/visibility/context'
+import type { UserInstanceGrants } from '../../permissions/visibility/context'
 import { SYSTEM_VISIBILITY } from '../../permissions/visibility/context'
 import type { Lens } from '../../permissions/visibility/lens'
 
@@ -81,7 +81,7 @@ const THREAD_A = 'thr_cuid00000000000000000a'
 const THREAD_B = 'thr_cuid00000000000000000b'
 
 /** A plain member viewer — no admin short-circuit, no grants of its own. */
-function viewer(): UserMailVisibility {
+function viewer(): UserInstanceGrants {
   return {
     userId: USER_ID,
     role: 'MEMBER',
@@ -89,9 +89,7 @@ function viewer(): UserMailVisibility {
     isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
-    threadGrants: {},
-    contactGrants: {},
-    entityGrants: {},
+    grants: {},
   }
 }
 
@@ -151,7 +149,7 @@ beforeEach(() => {
 
 describe('assertCanActOnThreads — the extracted gate', () => {
   it('permits a thread at `full` lens', async () => {
-    lensFixture.lenses = { [THREAD_A]: 'full' }
+    lensFixture.lenses = { [THREAD_A]: 'read' }
     await expect(
       assertCanActOnThreads({} as never, ORG_ID, viewer(), [THREAD_A])
     ).resolves.toBeUndefined()
@@ -159,7 +157,7 @@ describe('assertCanActOnThreads — the extracted gate', () => {
 
   it.each([
     'metadata',
-    'subject',
+    'identity',
     'none',
   ])('refuses a thread at `%s` lens', async (lens: string) => {
     lensFixture.lenses = { [THREAD_A]: lens }
@@ -177,14 +175,14 @@ describe('assertCanActOnThreads — the extracted gate', () => {
   })
 
   it('rejects a PARTIALLY visible batch outright — no silent partial apply', async () => {
-    lensFixture.lenses = { [THREAD_A]: 'full', [THREAD_B]: 'metadata' }
+    lensFixture.lenses = { [THREAD_A]: 'read', [THREAD_B]: 'metadata' }
     await expect(
       assertCanActOnThreads({} as never, ORG_ID, viewer(), [THREAD_A, THREAD_B])
     ).rejects.toMatchObject({ name: 'ForbiddenError', statusCode: 403 })
   })
 
   it('permits a fully visible batch', async () => {
-    lensFixture.lenses = { [THREAD_A]: 'full', [THREAD_B]: 'full' }
+    lensFixture.lenses = { [THREAD_A]: 'read', [THREAD_B]: 'read' }
     await expect(
       assertCanActOnThreads({} as never, ORG_ID, viewer(), [THREAD_A, THREAD_B])
     ).resolves.toBeUndefined()
@@ -238,7 +236,7 @@ describe('ThreadMutationService delegates to the shared gate', () => {
   })
 
   it('bulk update rejects the whole set when ONE thread is sub-`full`', async () => {
-    lensFixture.lenses = { [THREAD_A]: 'full', [THREAD_B]: 'subject' }
+    lensFixture.lenses = { [THREAD_A]: 'read', [THREAD_B]: 'identity' }
     const { db, writes } = recordingDb()
     const service = new ThreadMutationService(ORG_ID, db, undefined, USER_ID, viewer())
     await expect(
@@ -250,7 +248,7 @@ describe('ThreadMutationService delegates to the shared gate', () => {
   it('tagThreadsBulk — the bulk toolbar’s path — takes the same gate', async () => {
     // The §5.5 pairing: this is the surface that WORKED while the Tags field
     // 403'd. Both now resolve to this one predicate.
-    lensFixture.lenses = { [THREAD_A]: 'subject' }
+    lensFixture.lenses = { [THREAD_A]: 'identity' }
     const { db } = recordingDb()
     const service = new ThreadMutationService(ORG_ID, db, undefined, USER_ID, viewer())
     await expect(

@@ -227,7 +227,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     return ids
   }
@@ -822,7 +821,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     for (const id of invoice5bLines.ids) createdLineIds.push(id)
 
@@ -872,7 +870,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     for (const id of invoice5cLines.ids) createdLineIds.push(id)
 

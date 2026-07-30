@@ -200,7 +200,7 @@ export class UserCacheService {
    *
    * **Two phases, and the split is load-bearing.** EVERY key in the batch is
    * deleted (local + Redis) before ANY of them recomputes, because user providers
-   * read each other: `userMailVisibility` composes from `userCapabilities` (plan
+   * read each other: `userInstanceGrants` composes from `userCapabilities` (plan
    * 40 §4.2/§4.4). Interleaving delete-and-recompute per key — which is what a
    * single `Promise.all` over "delete then recompute" did — left a window where
    * the mail provider's read-through could still hit the sibling's not-yet-deleted
@@ -368,7 +368,7 @@ export class UserCacheService {
    * **Deletes, does not recompute (plan 45 §1.7), and the two halves are not
    * equally load-bearing.** The delete is what makes the invalidation correct;
    * eagerly composing every member's blob was a warm-up that mostly warmed
-   * nothing — in a 200-member org, ~200 concurrent `computeUserMailVisibility`
+   * nothing — in a 200-member org, ~200 concurrent `computeUserInstanceGrants`
    * calls for a set of answers that is unchanged for nearly all of them. This is
    * the same delete-only + lazy-read-through contract {@link flushKeyForAllUsers}
    * already documents, and it is strictly SAFER than the eager version: with no

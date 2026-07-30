@@ -61,6 +61,49 @@ export interface InstanceShareCopy {
    * read as stopping something it does not stop (workflows: automation).
    */
   scopeNote?: string
+  /**
+   * Which sharing LANE this target belongs to (plan v3/03 §6.3).
+   *
+   *  - `'instance'` (default) — the config-scale resources in
+   *    `INSTANCE_ACCESS_RESOURCES`. They carry a per-instance **workspace
+   *    baseline** row that an admin can set, including down to Restricted.
+   *  - `'record'` — one row of a record DEFINITION. There is no per-instance
+   *    baseline to render: the record lane is raise-only (D7 — the write path
+   *    rejects `rung: 'none'` for record defs), so a "Restricted" control would
+   *    offer a state the server refuses to store. The card renders the def-level
+   *    inherited-access line instead — §6.3's "same slot, per-domain content".
+   */
+  lane?: 'instance' | 'record'
+}
+
+/**
+ * The RECORD-DEFINITION copy fallback (plan v3/03 §6.2/§6.3).
+ *
+ * Record defs are per-org CUIDs, so they can never be keys of
+ * {@link INSTANCE_SHARE_COPY} — the narrowing `key in INSTANCE_SHARE_COPY`
+ * therefore rendered NOTHING for a record row, which is why the share dialog
+ * could not be mounted on records at all. This builds an entry on the fly from
+ * the definition's own SINGULAR name, so a "Work order" and a "Deal" each read
+ * naturally with no per-def table to maintain.
+ *
+ * The level labels are the record lane's verbs, not the config lane's: a record
+ * grant at `admin` means "may re-share this row", which is exactly what the
+ * server's `assertCanManageRecordSharing` reads it as.
+ */
+export function recordShareCopy(singularName: string): InstanceShareCopy {
+  const noun = singularName.trim().toLowerCase() || 'record'
+  return {
+    lane: 'record',
+    noun,
+    // The inherited-access footer, per-domain (§6.3): a record's non-local
+    // source is its DEFINITION level, not a per-instance baseline row.
+    baselineHint: `Everyone whose profile lets them see ${noun}s already has access. Sharing adds people who do not.`,
+    levels: {
+      read: `View this ${noun}`,
+      write: `Edit this ${noun}`,
+      full: `Edit and re-share this ${noun}`,
+    },
+  }
 }
 
 /**

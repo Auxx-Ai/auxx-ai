@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/signature-instance-access.test.ts
 
 import { schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -261,8 +261,7 @@ function capabilitiesFor(
   // `signaturesView` (Read rung ONLY — never `signaturesManage`), clamped away
   // on a worker seat since `signatures` is outside WORKER_AREAS.
   const derived =
-    seatType !== 'worker' &&
-    Object.values(instances).some((p) => p !== undefined && p !== ResourcePermission.none)
+    seatType !== 'worker' && Object.values(instances).some((p) => p !== undefined && p !== 'none')
       ? [PermissionKey.signaturesView]
       : []
   return new CapabilitySet(
@@ -323,11 +322,7 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('signature router — the read tier (`get`, `getDefault`)', () => {
-  it.each([
-    ResourcePermission.view,
-    ResourcePermission.edit,
-    ResourcePermission.admin,
-  ])('get succeeds at instance `%s`', async (permission) => {
+  it.each(['read', 'edit', 'admin'])('get succeeds at instance `%s`', async (permission) => {
     await expect(caller(holding(permission)).get({ id: MINE })).resolves.toMatchObject({
       id: MINE,
       name: 'Mine signature',
@@ -339,20 +334,18 @@ describe('signature router — the read tier (`get`, `getDefault`)', () => {
     // `resourceAccess.grantInstance` and the instance-share components key on
     // `signature:<id>` — the slug the ResourceAccess rows carry. Emitting the def
     // UUID here would silently break every share dialog.
-    const result = await caller(holding(ResourcePermission.view)).get({ id: MINE })
+    const result = await caller(holding('read')).get({ id: MINE })
     expect(result?.recordId).toBe(`signature:${MINE}`)
   })
 
   it('get is refused for an explicit `none` row even at area Full', async () => {
-    await expect(caller(holding(ResourcePermission.none)).get({ id: MINE })).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(caller(holding('none')).get({ id: MINE })).rejects.toMatchObject(FORBIDDEN)
   })
 
   it('getDefault returns the pointer only while it is still viewable', async () => {
     cache.userSettings.value = { 'signature.defaultId': SHARED }
     await expect(
-      caller(capabilitiesFor({ instances: { [SHARED]: ResourcePermission.view } })).getDefault()
+      caller(capabilitiesFor({ instances: { [SHARED]: 'read' } })).getDefault()
     ).resolves.toBe(SHARED)
   })
 
@@ -364,15 +357,12 @@ describe('signature router — the read tier (`get`, `getDefault`)', () => {
   })
 
   it('getDefault is null when nothing is set', async () => {
-    await expect(caller(holding(ResourcePermission.admin)).getDefault()).resolves.toBeNull()
+    await expect(caller(holding('admin')).getDefault()).resolves.toBeNull()
   })
 })
 
 describe('signature router — the edit tier (`update`)', () => {
-  it.each([
-    ResourcePermission.edit,
-    ResourcePermission.admin,
-  ])('update succeeds at instance `%s`', async (permission) => {
+  it.each(['edit', 'admin'])('update succeeds at instance `%s`', async (permission) => {
     await expect(
       caller(holding(permission)).update({ id: MINE, name: 'Renamed' })
     ).resolves.toBeDefined()
@@ -383,7 +373,7 @@ describe('signature router — the edit tier (`update`)', () => {
 
   it('update is refused at instance `view` — the read/write boundary', async () => {
     await expect(
-      caller(holding(ResourcePermission.view)).update({ id: MINE, name: 'Renamed' })
+      caller(holding('read')).update({ id: MINE, name: 'Renamed' })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(crud.update).not.toHaveBeenCalled()
   })
@@ -396,7 +386,7 @@ describe('signature router — the edit tier (`update`)', () => {
   })
 
   it('update writes only the keys it was given', async () => {
-    await caller(holding(ResourcePermission.edit)).update({ id: MINE, body: '<p>new</p>' })
+    await caller(holding('edit')).update({ id: MINE, body: '<p>new</p>' })
     expect(crud.update).toHaveBeenCalledWith(`signature:${MINE}`, {
       signature_body: '<p>new</p>',
     })
@@ -406,25 +396,22 @@ describe('signature router — the edit tier (`update`)', () => {
 describe('signature router — the admin tier (`delete`)', () => {
   it('delete succeeds at instance `admin`', async () => {
     const db = fakeDb()
-    await expect(
-      caller(holding(ResourcePermission.admin), db).delete({ id: MINE })
-    ).resolves.toEqual({ success: true })
+    await expect(caller(holding('admin'), db).delete({ id: MINE })).resolves.toEqual({
+      success: true,
+    })
     expect(crud.delete).toHaveBeenCalledWith(`signature:${MINE}`)
     // The ResourceAccess rows are not FK-cascaded by the instance delete.
     expect(db.captured.deleted).toBe(1)
   })
 
-  it.each([
-    ResourcePermission.edit,
-    ResourcePermission.view,
-  ])('delete is refused at instance `%s`', async (permission) => {
+  it.each(['edit', 'read'])('delete is refused at instance `%s`', async (permission) => {
     await expect(caller(holding(permission)).delete({ id: MINE })).rejects.toMatchObject(FORBIDDEN)
     expect(crud.delete).not.toHaveBeenCalled()
   })
 
   it('delete clears the CALLER’s default pointer when it named this signature', async () => {
     cache.userSettings.value = { 'signature.defaultId': MINE }
-    await caller(holding(ResourcePermission.admin)).delete({ id: MINE })
+    await caller(holding('admin')).delete({ id: MINE })
     expect(settings.updateUserSetting).toHaveBeenCalledWith(
       expect.objectContaining({ key: 'signature.defaultId', value: null, userId: USER_ID })
     )
@@ -432,7 +419,7 @@ describe('signature router — the admin tier (`delete`)', () => {
 
   it('delete leaves an unrelated default pointer alone', async () => {
     cache.userSettings.value = { 'signature.defaultId': SHARED }
-    await caller(holding(ResourcePermission.admin)).delete({ id: MINE })
+    await caller(holding('admin')).delete({ id: MINE })
     expect(settings.updateUserSetting).not.toHaveBeenCalled()
   })
 })
@@ -466,9 +453,10 @@ describe('signature router — `create` rides the coarse `signaturesManage` rung
     // `deriveInstanceReadKeys` synthesizes the Read rung only, regardless of
     // grant strength — precisely so a share cannot confer `signaturesManage`.
     await expect(
-      caller(
-        capabilitiesFor({ area: Level.None, instances: { [MINE]: ResourcePermission.admin } })
-      ).create({ name: 'New', body: '<p>b</p>' })
+      caller(capabilitiesFor({ area: Level.None, instances: { [MINE]: 'admin' } })).create({
+        name: 'New',
+        body: '<p>b</p>',
+      })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(crud.create).not.toHaveBeenCalled()
   })
@@ -488,7 +476,7 @@ describe('signature router — `create` rides the coarse `signaturesManage` rung
         entityInstanceId: NEW_ID,
         granteeType: ResourceGranteeType.user,
         granteeId: USER_ID,
-        permission: ResourcePermission.admin,
+        rung: 'admin',
         grantedById: USER_ID,
       }),
     ])
@@ -509,9 +497,13 @@ describe('signature router — `create` rides the coarse `signaturesManage` rung
     // Without the event the creator's cached blob predates the row and they
     // cannot see their own signature until the TTL expires.
     await caller(capabilitiesFor({ area: Level.Full })).create({ name: 'N', body: '<p>b</p>' })
-    expect(resourceAccess.emitResourceAccessInstanceChanged).toHaveBeenCalledWith(ORG_ID, [
-      { granteeType: ResourceGranteeType.user, granteeId: USER_ID },
-    ])
+    // The def id is the THIRD argument and is required since plan v3/03 P3b — the
+    // event is def-agnostic, so the emitter has to be told which key it is for.
+    expect(resourceAccess.emitResourceAccessInstanceChanged).toHaveBeenCalledWith(
+      ORG_ID,
+      [{ granteeType: ResourceGranteeType.user, granteeId: USER_ID }],
+      'signature'
+    )
   })
 })
 
@@ -520,7 +512,7 @@ describe('signature router — `setDefault` asserts `view`, deliberately (§12.2
     // The wave-3 note: gating this at `edit` would make every SHARED signature
     // un-defaultable, and the write touches only the caller's own row.
     await expect(
-      caller(capabilitiesFor({ instances: { [SHARED]: ResourcePermission.view } })).setDefault({
+      caller(capabilitiesFor({ instances: { [SHARED]: 'read' } })).setDefault({
         id: SHARED,
       })
     ).resolves.toEqual({ success: true })
@@ -542,9 +534,7 @@ describe('signature router — `setDefault` asserts `view`, deliberately (§12.2
   })
 
   it('is refused for an explicit `none` row', async () => {
-    await expect(
-      caller(holding(ResourcePermission.none)).setDefault({ id: MINE })
-    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(caller(holding('none')).setDefault({ id: MINE })).rejects.toMatchObject(FORBIDDEN)
     expect(settings.updateUserSetting).not.toHaveBeenCalled()
   })
 
@@ -581,7 +571,7 @@ describe('signature router — `baselineAtCreate: true`: absent row ⇒ NO acces
   it('an explicit row beats area `None` — this is what sharing IS', async () => {
     const caps = capabilitiesFor({
       area: Level.None,
-      instances: { [SHARED]: ResourcePermission.edit },
+      instances: { [SHARED]: 'edit' },
     })
     await expect(caller(caps).get({ id: SHARED })).resolves.toMatchObject({ id: SHARED })
     await expect(caller(caps).update({ id: SHARED, name: 'x' })).resolves.toBeDefined()
@@ -596,7 +586,7 @@ describe('signature router — decision 0.5: a worker seat gets nothing', () => 
     // explicit-row branch, so owning the signature does not help.
     const worker = capabilitiesFor({
       seatType: 'worker',
-      instances: { [MINE]: ResourcePermission.admin },
+      instances: { [MINE]: 'admin' },
     })
     await expect(caller(worker).get({ id: MINE })).rejects.toMatchObject(FORBIDDEN)
     await expect(caller(worker).update({ id: MINE, name: 'x' })).rejects.toMatchObject(FORBIDDEN)
@@ -606,7 +596,7 @@ describe('signature router — decision 0.5: a worker seat gets nothing', () => 
   it('list returns [] WITHOUT querying', async () => {
     const worker = capabilitiesFor({
       seatType: 'worker',
-      instances: { [MINE]: ResourcePermission.admin },
+      instances: { [MINE]: 'admin' },
     })
     const db = fakeDb()
     await expect(caller(worker, db).list()).resolves.toEqual([])
@@ -641,7 +631,7 @@ describe('signature router — §0.6 revised: neither ADMIN nor OWNER bypasses',
     const admin = capabilitiesFor({
       role: 'ADMIN',
       area: Level.Full,
-      instances: { [MINE]: ResourcePermission.admin },
+      instances: { [MINE]: 'admin' },
     })
     const result = await caller(admin).list()
     expect(result.map((s: { id: string }) => s.id)).toEqual([MINE])
@@ -660,7 +650,7 @@ describe('signature router — §0.6 revised: neither ADMIN nor OWNER bypasses',
     const owner = capabilitiesFor({
       role: 'OWNER',
       area: Level.Full,
-      instances: { [MINE]: ResourcePermission.admin },
+      instances: { [MINE]: 'admin' },
     })
     const result = await caller(owner).list()
     expect(result.map((s: { id: string }) => s.id)).toEqual([MINE])
@@ -679,7 +669,7 @@ describe('signature router — §0.6 revised: neither ADMIN nor OWNER bypasses',
     const owner = capabilitiesFor({
       role: 'OWNER',
       area: Level.Full,
-      instances: { [MINE]: ResourcePermission.admin },
+      instances: { [MINE]: 'admin' },
     })
     await expect(caller(owner).get({ id: MINE })).resolves.toMatchObject({ id: MINE })
     await expect(caller(owner).delete({ id: MINE })).resolves.toEqual({ success: true })
@@ -692,7 +682,7 @@ describe('signature router — §0.6 revised: neither ADMIN nor OWNER bypasses',
     const owner = capabilitiesFor({
       role: 'OWNER',
       seatType: 'worker',
-      instances: { [MINE]: ResourcePermission.admin },
+      instances: { [MINE]: 'admin' },
     })
     await expect(caller(owner).get({ id: MINE })).rejects.toMatchObject(FORBIDDEN)
     await expect(caller(owner).list()).resolves.toEqual([])
@@ -709,12 +699,7 @@ describe('signature router — 404 before 403 (a foreign-org id is indistinguish
 
   it.each(CALLS)('%s 404s a foreign-org id for a fully-granted caller', async (_n, call) => {
     await expect(
-      call(
-        caller(
-          capabilitiesFor({ area: Level.Full, instances: { [MINE]: ResourcePermission.admin } })
-        ),
-        FOREIGN
-      )
+      call(caller(capabilitiesFor({ area: Level.Full, instances: { [MINE]: 'admin' } })), FOREIGN)
     ).rejects.toMatchObject(NOT_FOUND)
   })
 
@@ -730,7 +715,7 @@ describe('signature router — 404 before 403 (a foreign-org id is indistinguish
   it('an org with no seeded signature def 404s rather than leaking', async () => {
     cache.findCachedResource.mockResolvedValue(undefined as never)
     await expect(
-      caller(capabilitiesFor({ instances: { [MINE]: ResourcePermission.admin } })).get({ id: MINE })
+      caller(capabilitiesFor({ instances: { [MINE]: 'admin' } })).get({ id: MINE })
     ).rejects.toMatchObject(NOT_FOUND)
   })
 })
@@ -739,7 +724,7 @@ describe('signature router — `list` FILTERS, and filters in SQL before paginat
   it('a member sees only the signatures shared with them', async () => {
     const result = await caller(
       capabilitiesFor({
-        instances: { [MINE]: ResourcePermission.admin, [SHARED]: ResourcePermission.view },
+        instances: { [MINE]: 'admin', [SHARED]: 'read' },
       })
     ).list()
     expect(result.map((s: { id: string }) => s.id)).toEqual([MINE, SHARED])
@@ -749,7 +734,7 @@ describe('signature router — `list` FILTERS, and filters in SQL before paginat
     const result = await caller(
       capabilitiesFor({
         area: Level.Full,
-        instances: { [MINE]: ResourcePermission.admin, [SHARED]: ResourcePermission.none },
+        instances: { [MINE]: 'admin', [SHARED]: 'none' },
       })
     ).list()
     expect(result.map((s: { id: string }) => s.id)).toEqual([MINE])
@@ -765,7 +750,7 @@ describe('signature router — `list` FILTERS, and filters in SQL before paginat
     // Post-fetch filtering returns the same rows here but shorts every page once
     // `list` grows a limit — so the compiled SQL is the assertion, not the rows.
     const db = fakeDb()
-    await caller(capabilitiesFor({ instances: { [MINE]: ResourcePermission.view } }), db).list()
+    await caller(capabilitiesFor({ instances: { [MINE]: 'read' } }), db).list()
     const instanceWhere = db.captured.where[0] as { text: string; params: unknown[] }
     expect(instanceWhere.text).toMatch(/ in \(/i)
     expect(instanceWhere.params).toContain(MINE)
@@ -773,9 +758,7 @@ describe('signature router — `list` FILTERS, and filters in SQL before paginat
   })
 
   it('hydrates name and body from FieldValue, falling back to displayName', async () => {
-    const result = await caller(
-      capabilitiesFor({ instances: { [MINE]: ResourcePermission.view } })
-    ).list()
+    const result = await caller(capabilitiesFor({ instances: { [MINE]: 'read' } })).list()
     expect(result[0]).toMatchObject({
       id: MINE,
       recordId: `signature:${MINE}`,

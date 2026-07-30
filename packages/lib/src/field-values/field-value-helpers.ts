@@ -22,7 +22,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
-import type { CapabilitySet } from '../permissions/capabilities/capability-set'
+import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { getRealtimeService, rooms } from '../realtime'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
@@ -74,8 +74,13 @@ export interface FieldValueContext {
    * Request-scoped entity-def read enforcement (capability layer v2 §2.2).
    * Present ⇒ `batchGetValues` drops anchors and traversal refs on defs the
    * member can't view. Absent ⇒ no enforcement (internal/system callers).
+   *
+   * Typed as the {@link CapabilityView} gate surface, not the concrete
+   * `CapabilitySet`: both consumers here call only `canViewEntity`, and an
+   * agent run reaches this path holding a `MinCapabilitySet`. Narrowing it
+   * back would force a cast at every non-request caller.
    */
-  capabilities?: CapabilitySet
+  capabilities?: CapabilityView
 }
 
 // =============================================================================
@@ -86,7 +91,7 @@ export interface FieldValueContext {
 export interface CreateFieldValueContextOptions {
   bypassFieldGuards?: ReadonlySet<SystemAttribute>
   skipPreHooks?: boolean
-  capabilities?: CapabilitySet
+  capabilities?: CapabilityView
 }
 
 const EMPTY_BYPASS: ReadonlySet<SystemAttribute> = new Set()
@@ -923,8 +928,9 @@ async function resolveNameFieldDisplayValue(
 
 /**
  * Publish a `record:updated` realtime event carrying just the denormalized
- * column(s) that changed. Matches RecordUpdatedEvent's intended contract:
- * "denormalized columns changed". Excludes the originating socket.
+ * column(s) that changed, on the def's own record channel (plan v3/03 §8.1).
+ * Matches RecordUpdatedEvent's intended contract: "denormalized columns
+ * changed". Excludes the originating socket.
  */
 async function publishRecordColumnUpdate(
   ctx: FieldValueContext,
@@ -940,7 +946,7 @@ async function publishRecordColumnUpdate(
     const recordId = toRecordId(entityDefId, entityInstanceId)
     getRealtimeService()
       .publish(
-        rooms.orgPresence(ctx.organizationId),
+        rooms.orgRecords(ctx.organizationId, entityDefId),
         'record:updated',
         {
           entityDefinitionId: entityDefId,

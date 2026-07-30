@@ -1,4 +1,4 @@
-// packages/lib/src/cache/mail-visibility-invalidation.test.ts
+// packages/lib/src/cache/instance-grants-invalidation.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -6,13 +6,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Plan 40 §4.5 — the new dependency MUST enter the invalidation graph, and the
  * recompute must be ORDER-SAFE.
  *
- * Phase 2 makes `composeUserMailVisibility` read the member's capability blob
+ * Phase 2 makes `composeUserInstanceGrants` read the member's capability blob
  * (the `Area.inboxes` fallback §4.2 + `isMailAdmin` §4.4). That creates a
  * cross-key dependency inside the user cache, with two independent ways to get it
  * wrong — one per describe block below:
  *
  *  1. **The graph edge.** `permission-profile.changed` / `permission-grant.changed`
- *     used to invalidate `userCapabilities` alone. Without `userMailVisibility`
+ *     used to invalidate `userCapabilities` alone. Without `userInstanceGrants`
  *     beside it, a profile downgrade leaves a stale mail blob for the full
  *     ONE_DAY TTL — the member keeps reading mail their new profile denies. This
  *     is the one stale-blob direction in the whole slice that fails OPEN.
@@ -59,7 +59,7 @@ vi.mock('./singletons', () => ({
 }))
 
 // The two lazy imports `onCacheEvent` reaches for when a mapping touches
-// `userMailVisibility` — counts staleness and the realtime nudge. Both are
+// `userInstanceGrants` — counts staleness and the realtime nudge. Both are
 // fire-and-forget side effects, not the subject here.
 vi.mock('../threads/mail-counts', () => ({
   bumpMailCountsEpoch: vi.fn(async () => {}),
@@ -83,26 +83,26 @@ beforeEach(() => {
 
 describe('§4.5 — a profile/grant change recomputes the mail blob, not just capabilities', () => {
   for (const event of ['permission-profile.changed', 'permission-grant.changed'] as const) {
-    it(`${event} invalidates userMailVisibility for the targeted member`, async () => {
+    it(`${event} invalidates userInstanceGrants for the targeted member`, async () => {
       await onCacheEvent(event, { orgId: ORG, userIds: [USER] })
 
       const call = h.userInvalidations.find((c) => c.userId === USER)
       expect(call).toBeDefined()
       // The pre-§4.5 graph had only `userCapabilities` here. Deleting
-      // `'userMailVisibility'` from either mapping in `invalidation-graph.ts`
+      // `'userInstanceGrants'` from either mapping in `invalidation-graph.ts`
       // fails this line.
-      expect(call?.keys).toContain('userMailVisibility')
+      expect(call?.keys).toContain('userInstanceGrants')
       expect(call?.keys).toContain('userCapabilities')
       expect(call?.orgId).toBe(ORG)
     })
 
     it(`${event} takes the org-wide fan-out when the audience is a broadcast`, async () => {
       await onCacheEvent(event, { orgId: ORG, broadcastUserKeys: true })
-      expect(h.broadcasts.at(-1)).toContain('userMailVisibility')
+      expect(h.broadcasts.at(-1)).toContain('userInstanceGrants')
     })
   }
 
-  it('control: an unrelated event does NOT drag userMailVisibility along', async () => {
+  it('control: an unrelated event does NOT drag userInstanceGrants along', async () => {
     await onCacheEvent('member.seat-type.changed', { orgId: ORG, userIds: [USER] })
     expect(h.userInvalidations.at(-1)?.keys).toEqual(['userCapabilities'])
   })
@@ -170,10 +170,10 @@ describe('§4.5 — compose order: every key is DELETED before any key recompute
     anyCache.register('userCapabilities', {
       compute: async () => ({ keys: [level.value] }),
     })
-    anyCache.register('userMailVisibility', {
+    anyCache.register('userInstanceGrants', {
       compute: async (sid: string) => {
         const [userId, orgId] = sid.split(':')
-        // Exactly what `computeUserMailVisibility` does: read the sibling key
+        // Exactly what `computeUserInstanceGrants` does: read the sibling key
         // back through the cache.
         const caps = (await anyCache.get(userId!, 'userCapabilities', orgId)) as {
           keys: string[]
@@ -185,12 +185,12 @@ describe('§4.5 — compose order: every key is DELETED before any key recompute
     // Seed both keys under the OLD level, then flip it — the writer has committed,
     // the caches have not.
     await anyCache.get(USER, 'userCapabilities', ORG)
-    await anyCache.get(USER, 'userMailVisibility', ORG)
+    await anyCache.get(USER, 'userInstanceGrants', ORG)
     level.value = 'None'
 
-    await anyCache.invalidateAndRecompute(USER, ['userCapabilities', 'userMailVisibility'], ORG)
+    await anyCache.invalidateAndRecompute(USER, ['userCapabilities', 'userInstanceGrants'], ORG)
 
-    const mail = (await anyCache.get(USER, 'userMailVisibility', ORG)) as { sawLevel: string }
+    const mail = (await anyCache.get(USER, 'userInstanceGrants', ORG)) as { sawLevel: string }
     // Interleaving delete-with-recompute (the pre-fix shape) lets this read the
     // 30ms-slow-to-delete capability entry and observe 'Full'.
     expect(mail.sawLevel).toBe('None')
@@ -208,7 +208,7 @@ describe('§4.5 — compose order: every key is DELETED before any key recompute
 
 /** A service with both providers registered and their compute calls counted. */
 function makeCountingCache() {
-  const counts = { userCapabilities: 0, userMailVisibility: 0 }
+  const counts = { userCapabilities: 0, userInstanceGrants: 0 }
   const cache = new UserCacheService({} as never)
   const anyCache = cache as unknown as {
     register: (k: string, p: { compute: (sid: string) => Promise<unknown> }) => void
@@ -222,11 +222,11 @@ function makeCountingCache() {
       return { keys: ['Full'] }
     },
   })
-  anyCache.register('userMailVisibility', {
+  anyCache.register('userInstanceGrants', {
     compute: async (sid: string) => {
-      counts.userMailVisibility++
+      counts.userInstanceGrants++
       const [userId, orgId] = sid.split(':')
-      // `computeUserMailVisibility` reads the sibling back through the cache.
+      // `computeUserInstanceGrants` reads the sibling back through the cache.
       await anyCache.get(userId!, 'userCapabilities', orgId)
       return { ok: true }
     },
@@ -241,37 +241,37 @@ describe('§3.4 — capabilities compose ONCE per invalidation, not twice', () =
 
     // The six-event shape: both keys in one batch, capability blob deleted, mail
     // provider reading it back.
-    await anyCache.invalidateAndRecompute(USER, ['userCapabilities', 'userMailVisibility'], ORG)
+    await anyCache.invalidateAndRecompute(USER, ['userCapabilities', 'userInstanceGrants'], ORG)
 
     // Was 2 before plan 45: the explicit recompute plus the mail provider's own
     // read-through miss, racing each other. Drop `USER_KEY_RECOMPUTE_TIERS` back
     // to one concurrent pass and this is the assertion that fails.
     expect(counts.userCapabilities).toBe(1)
-    expect(counts.userMailVisibility).toBe(1)
+    expect(counts.userInstanceGrants).toBe(1)
   })
 
   it('holds when the graph declares the keys MAIL-FIRST — group.members.changed does', async () => {
     const { anyCache, counts } = makeCountingCache()
 
-    // `invalidation-graph.ts` declares `['userMailVisibility', 'userCapabilities']`
+    // `invalidation-graph.ts` declares `['userInstanceGrants', 'userCapabilities']`
     // for `group.deleted` and `group.members.changed`. An implementation that
     // ordered by the array it was handed would compose twice here and pass the
     // test above — which is why this case exists separately.
-    await anyCache.invalidateAndRecompute(USER, ['userMailVisibility', 'userCapabilities'], ORG)
+    await anyCache.invalidateAndRecompute(USER, ['userInstanceGrants', 'userCapabilities'], ORG)
 
     expect(counts.userCapabilities).toBe(1)
-    expect(counts.userMailVisibility).toBe(1)
+    expect(counts.userInstanceGrants).toBe(1)
   })
 
   it('still recomputes a key with no declared tier', async () => {
     const { anyCache, counts } = makeCountingCache()
 
-    await anyCache.invalidateAndRecompute(USER, ['userMailVisibility'], ORG)
+    await anyCache.invalidateAndRecompute(USER, ['userInstanceGrants'], ORG)
 
     // `resource-access.changed`'s shape — mail alone. The capability read is a
     // warm-blob hit in production; here it is the read-through, and the point is
     // that the mail key itself was not skipped by the tier walk.
-    expect(counts.userMailVisibility).toBe(1)
+    expect(counts.userInstanceGrants).toBe(1)
   })
 })
 
@@ -288,21 +288,21 @@ describe('§3.6 — invalidateOrgUsersForKeys is delete-only', () => {
 
     // Seed one member so there is something to delete, then reset the counters:
     // what matters is what the SWEEP composes, not the seeding.
-    await anyCache.get('u_2', 'userMailVisibility', ORG)
+    await anyCache.get('u_2', 'userInstanceGrants', ORG)
     counts.userCapabilities = 0
-    counts.userMailVisibility = 0
+    counts.userInstanceGrants = 0
 
-    await sweep.invalidateOrgUsersForKeys(ORG, ['userCapabilities', 'userMailVisibility'])
+    await sweep.invalidateOrgUsersForKeys(ORG, ['userCapabilities', 'userInstanceGrants'])
 
     // THE assertion (plan 45 §1.7). Eagerly recomputing here cost a 200-member org
     // 200 concurrent composes for an answer that was unchanged for nearly all of
     // them; the delete is the half that makes the invalidation correct. Reinstate
     // `invalidateAndRecompute` in the sweep and this fails.
     expect(counts.userCapabilities).toBe(0)
-    expect(counts.userMailVisibility).toBe(0)
+    expect(counts.userInstanceGrants).toBe(0)
 
     // And the entries really are gone — the next read composes fresh.
-    await anyCache.get('u_2', 'userMailVisibility', ORG)
-    expect(counts.userMailVisibility).toBe(1)
+    await anyCache.get('u_2', 'userInstanceGrants', ORG)
+    expect(counts.userInstanceGrants).toBe(1)
   })
 })

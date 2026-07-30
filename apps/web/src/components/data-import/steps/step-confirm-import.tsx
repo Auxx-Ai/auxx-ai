@@ -87,8 +87,12 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
     onComplete: () => {
       setIsExecuting(false)
       utils.dataImport.getJob.invalidate({ jobId })
-      // Invalidate resource list cache so imported records appear immediately
-      utils.resource.listFiltered.invalidate()
+      // Refresh the record grid — an import is a bulk insert the list query
+      // cannot know about. This previously targeted `utils.resource.listFiltered`,
+      // a procedure that does not exist on `resourceRouter`, so it silently never
+      // refreshed anything; plan v3/02 removed the dead call and this restores the
+      // intent against the real one.
+      utils.record.listFiltered.invalidate()
     },
   })
 

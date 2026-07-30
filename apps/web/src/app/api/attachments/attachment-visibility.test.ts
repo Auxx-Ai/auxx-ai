@@ -32,7 +32,7 @@ const {
   select,
   getCapabilities,
   getCachedResources,
-  getCachedUserMailVisibility,
+  getCachedUserInstanceGrants,
   getThreadLens,
   assertWorkflowRunNotSystemOwned,
   loadOwnVisit,
@@ -43,7 +43,7 @@ const {
   select: vi.fn(),
   getCapabilities: vi.fn(),
   getCachedResources: vi.fn(),
-  getCachedUserMailVisibility: vi.fn(),
+  getCachedUserInstanceGrants: vi.fn(),
   getThreadLens: vi.fn(),
   assertWorkflowRunNotSystemOwned: vi.fn(),
   loadOwnVisit: vi.fn(),
@@ -112,7 +112,7 @@ vi.mock('@auxx/lib/permissions', async () => {
   return { buildDefIdToDefinitionId, buildDefIdToSlug, PermissionKey, getCapabilities }
 })
 
-vi.mock('@auxx/lib/cache', () => ({ getCachedResources, getCachedUserMailVisibility }))
+vi.mock('@auxx/lib/cache', () => ({ getCachedResources, getCachedUserInstanceGrants }))
 vi.mock('@auxx/lib/permissions/visibility', () => ({ getThreadLens }))
 // Both of these are `await import(...)`ed INSIDE their arm — `vi.mock`
 // intercepts dynamic imports the same as static ones.
@@ -246,7 +246,7 @@ beforeEach(() => {
   // Default to a member with nothing — every grant test opts in explicitly.
   getCapabilities.mockReset().mockResolvedValue(capabilitiesWith({}))
   getCachedResources.mockReset().mockResolvedValue(RESOURCES)
-  getCachedUserMailVisibility.mockReset().mockResolvedValue({ userId: USER_ID })
+  getCachedUserInstanceGrants.mockReset().mockResolvedValue({ userId: USER_ID })
   getThreadLens.mockReset().mockResolvedValue('none')
   assertWorkflowRunNotSystemOwned.mockReset().mockResolvedValue(WORKFLOW_APP_ID)
   loadOwnVisit.mockReset().mockResolvedValue({ id: VISIT_ID })
@@ -443,7 +443,7 @@ describe('canViewAttachment — COMMENT', () => {
     memberHolding({ [Area.comments]: Level.Read, [Area.inboxes]: Level.None })
 
     await expect(canView()).resolves.toBe(false)
-    expect(getCachedUserMailVisibility).not.toHaveBeenCalled()
+    expect(getCachedUserInstanceGrants).not.toHaveBeenCalled()
     expect(getThreadLens).not.toHaveBeenCalled()
   })
 

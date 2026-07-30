@@ -1,7 +1,7 @@
 // @auxx/lib/realtime/mail-event-shaping.ts
 
+import { satisfiesRung } from '../permissions/capabilities/rung'
 import type { Lens } from '../permissions/visibility/lens'
-import { satisfiesLens } from '../permissions/visibility/lens'
 import { redactMessagePatch, redactThreadPatch } from '../permissions/visibility/redact'
 import type { MailSyncEvent } from './events'
 
@@ -29,17 +29,17 @@ export function shapeMailEventForLens(e: MailSyncEvent, lens: Lens): MailSyncEve
     case 'inbox:syncCompleted':
       return e
     case 'thread:updated': {
-      if (lens === 'full') return e
+      if (lens === 'read') return e
       const patch = redactThreadPatch(e.data.patch, lens)
       if (!Object.keys(patch).some((k) => k !== 'id')) return null
       return { event: 'thread:updated', data: { threadId: e.data.threadId, patch } }
     }
     case 'message:created':
     case 'message:deleted':
-      return satisfiesLens(lens, 'subject') ? e : null
+      return satisfiesRung(lens, 'identity') ? e : null
     case 'message:updated': {
-      if (!satisfiesLens(lens, 'subject')) return null
-      if (lens === 'full') return e
+      if (!satisfiesRung(lens, 'identity')) return null
+      if (lens === 'read') return e
       const patch = redactMessagePatch(e.data.patch as Record<string, unknown>, lens)
       if (!Object.keys(patch).some((k) => k !== 'id' && k !== 'threadId')) return null
       return {

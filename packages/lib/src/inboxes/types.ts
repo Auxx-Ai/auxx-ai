@@ -108,7 +108,7 @@ export interface Inbox {
    * as a blocking pre-deploy step, so new code serves requests while 060/062 are
    * still queued. In that window an unmigrated org's personal mailboxes are
    * still on the shared def carrying the marker, and def-only would report them
-   * `false` → no personal branch in `composeUserMailVisibility` → the
+   * `false` → no personal branch in `composeUserInstanceGrants` → the
    * `Area.inboxes` fallback hands every member `full` on someone's private
    * mailbox. Registry deletion does not hide the value either: the resource
    * registry merges DB `CustomField` rows and keeps unmatched ones

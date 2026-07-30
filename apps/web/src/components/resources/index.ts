@@ -14,6 +14,10 @@ export {
   useIsRecordLoading,
   useIsRecordPending,
   useRecord,
+  // Per-ROW record affordances, from the `_access` stamp (plan v3/03 §5.2)
+  useRecordAccess,
+  useRecordAccessAt,
+  useRecordAccessFor,
   useRecordHydration,
   useRecordInvalidation,
   // Record store hooks

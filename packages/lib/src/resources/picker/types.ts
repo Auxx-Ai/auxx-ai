@@ -1,5 +1,6 @@
 // packages/lib/src/resources/picker/types.ts
 
+import type { Rung } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 
 /**
@@ -80,6 +81,19 @@ export interface RecordPickerItem {
 
   /** Full row data (for custom rendering) */
   data: Record<string, unknown>
+
+  /**
+   * The ROW-EFFECTIVE rung (plan v3/03 §5.2) —
+   * `max(effectiveRecordLevel(def), max rung across the member's grant rows)`,
+   * resolved in the SAME query as the row.
+   *
+   * Present on enforced reads that render an affordance; absent on internal
+   * reads (there is no member to be relative to) and on pure display hits.
+   * It IS the row-effective level: the shipped verb gates
+   * (`canDeleteRecordAt`, the `edit` floor) consume it unchanged — there is no
+   * separate `deleteAt` / `editAt` vocabulary anywhere.
+   */
+  _access?: Rung
 
   /** Timestamps (can be Date or ISO string) */
   createdAt: Date | string

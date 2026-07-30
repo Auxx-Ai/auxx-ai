@@ -41,15 +41,15 @@ export async function onCacheEvent(
   if (!mapping) return
 
   // Visibility recomputes reshape which inboxes/threads count toward badges
-  // (§10.1): whenever an event touches `userMailVisibility`, the affected
+  // (§10.1): whenever an event touches `userInstanceGrants`, the affected
   // users' counter hashes are stale too. Epoch bump for broadcasts (lazy
   // reconcile on next read), targeted staleness for specific users.
-  const touchesMailVisibility =
+  const touchesInstanceGrants =
     !!context.orgId &&
     isMixedMapping(mapping) &&
     'user' in mapping &&
-    !!mapping.user?.includes('userMailVisibility')
-  if (touchesMailVisibility && context.orgId) {
+    !!mapping.user?.includes('userInstanceGrants')
+  if (touchesInstanceGrants && context.orgId) {
     const orgId = context.orgId
     const { bumpMailCountsEpoch, markMailCountsStale } = await import('../threads/mail-counts')
     if (context.broadcastUserKeys) {
@@ -65,7 +65,7 @@ export async function onCacheEvent(
       await getOrgCache().invalidateAndRecompute(context.orgId, mapping)
     }
   } else if (isMixedMapping(mapping)) {
-    // Org keys recompute BEFORE user keys: user providers (userMailVisibility)
+    // Org keys recompute BEFORE user keys: user providers (userInstanceGrants)
     // compose from org keys, so a concurrent recompute could pin stale org
     // data into the user entry until its next invalidation.
     if ('org' in mapping && mapping.org && mapping.org.length > 0 && context.orgId) {
@@ -101,11 +101,11 @@ export async function onCacheEvent(
   }
 
   // Realtime nudge (mail-permissions §6.1): whenever an event reshaped
-  // `userMailVisibility`, tell the affected live clients so they refetch
+  // `userInstanceGrants`, tell the affected live clients so they refetch
   // `inbox.myLenses` and re-derive their per-lens channel subscriptions.
   // AFTER the invalidations above, so the refetch reads fresh data.
   // Fire-and-forget — a Pusher hiccup must never fail the mutation.
-  if (touchesMailVisibility && context.orgId) {
+  if (touchesInstanceGrants && context.orgId) {
     const orgId = context.orgId
     void (async () => {
       // Lazy import — the realtime registry reads this cache module back.

@@ -1,8 +1,9 @@
 // packages/lib/src/permissions/capabilities/capability-set-workflow-instance.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import { effectiveInstanceLevel, toResolvedRecordAccess } from './entity-access'
@@ -42,7 +43,7 @@ interface MemberOpts {
   rows?: Array<{
     entityDefinitionId?: string
     entityInstanceId: string
-    permission: ResourcePermission
+    rung: Rung
     /**
      * Grantee kind (plan 43 §4.1). Defaults to `'user'` — the individual lane —
      * which reproduces this harness's pre-plan-43 behaviour exactly. Pass
@@ -61,11 +62,14 @@ function member(opts: MemberOpts = {}) {
     seatType,
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     typeAccessRows: [],
-    instanceAccessRows: (opts.rows ?? []).map((row) => ({
-      entityDefinitionId: 'workflow',
-      granteeType: 'user',
-      ...row,
-    })),
+    instanceGrants: bucketInstanceGrantRows(
+      (opts.rows ?? []).map((row) => ({
+        entityDefinitionId: 'workflow',
+        granteeType: 'user',
+        granteeId: 'usr_x',
+        ...row,
+      }))
+    ),
   })
   const restricted = new Set(
     opts.restrictedInstances ?? (opts.rows ?? []).map((r) => r.entityInstanceId)
@@ -92,11 +96,9 @@ function levelFor(
   m: ReturnType<typeof member>,
   key: 'workflow' | 'dashboard' | 'dataset',
   instanceId: string
-): ResourcePermission | undefined {
+): Rung | undefined {
   const client = effectiveInstanceLevel(m.client, key, instanceId)
-  expect(m.server.canViewInstance(key, instanceId)).toBe(
-    client !== undefined && client !== ResourcePermission.none
-  )
+  expect(m.server.canViewInstance(key, instanceId)).toBe(client !== undefined && client !== 'none')
   return client
 }
 
@@ -107,8 +109,10 @@ describe('workflow registry entry (plan 30 §3)', () => {
     // no backfill migration written); point `area` elsewhere and the rungs stop
     // gating it.
     expect(INSTANCE_ACCESS_RESOURCES.workflow).toEqual({
+      lane: 'blob',
       baselineAtCreate: false,
       area: Area.workflows,
+      rungs: ['none', 'read', 'edit', 'admin'],
     })
   })
 })
@@ -134,21 +138,21 @@ describe('the Area.workflows ladder (plan 30 §1)', () => {
   })
 
   it.each([
-    [Level.Read, ResourcePermission.view],
-    [Level.Edit, ResourcePermission.edit],
-    [Level.Full, ResourcePermission.admin],
-  ])('level %i is the absent-row fallback for a workflow', (level, permission) => {
+    [Level.Read, 'read'],
+    [Level.Edit, 'edit'],
+    [Level.Full, 'admin'],
+  ])('level %i is the absent-row fallback for a workflow', (level, rung) => {
     // THE reason §1 could not be skipped: with `baselineAtCreate: false` the
     // no-row answer IS the area level, so a single-rung area could only ever
     // answer `undefined` or `admin`.
     const m = member({ profileLevels: { [Area.workflows]: level } })
-    expect(levelFor(m, 'workflow', 'wf_unrestricted')).toBe(permission)
+    expect(levelFor(m, 'workflow', 'wf_unrestricted')).toBe(rung)
   })
 
   it('area None denies a workflow with NO row, but an explicit row overrides it', () => {
     const m = member({
       profileLevels: { [Area.workflows]: Level.None },
-      rows: [{ entityInstanceId: 'wf_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'wf_shared', rung: 'admin' }],
     })
     // Fail-closed for the unshared majority — the load-bearing half.
     expect(levelFor(m, 'workflow', 'wf_unrestricted')).toBeUndefined()
@@ -156,7 +160,7 @@ describe('the Area.workflows ladder (plan 30 §1)', () => {
     // grant): most-specific-wins runs all the way down, so "no workflows except
     // this one" is expressible at last.
     expect(m.caps.instanceAccess).toEqual({ wf_shared: 'admin' })
-    expect(levelFor(m, 'workflow', 'wf_shared')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_shared')).toBe('admin')
   })
 })
 
@@ -168,7 +172,7 @@ describe('`baselineAtCreate: false` — the deliberate opposite of dashboards', 
     expect(m.server.areaLevel(Area.workflows)).toBe(Level.Full)
     expect(m.server.areaLevel(Area.dashboards)).toBe(Level.Full)
 
-    expect(levelFor(m, 'workflow', 'wf_never_shared')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_never_shared')).toBe('admin')
     expect(levelFor(m, 'dashboard', 'dash_never_shared')).toBeUndefined()
   })
 
@@ -179,16 +183,16 @@ describe('`baselineAtCreate: false` — the deliberate opposite of dashboards', 
     // all under `baselineAtCreate: false`.
     const m = member({ rows: [], restrictedInstances: ['wf_locked'] })
     expect(levelFor(m, 'workflow', 'wf_locked')).toBeUndefined()
-    expect(levelFor(m, 'workflow', 'wf_untouched')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_untouched')).toBe('admin')
   })
 })
 
 describe('restricting one workflow (plan 30 §7 — the `none` member)', () => {
   it('a `role:org_member @ none` row denies it at every rung while siblings stay open', () => {
-    const m = member({ rows: [{ entityInstanceId: 'wf_locked', permission: 'none' }] })
+    const m = member({ rows: [{ entityInstanceId: 'wf_locked', rung: 'none' }] })
     expect(m.server.areaLevel(Area.workflows)).toBe(Level.Full)
 
-    expect(levelFor(m, 'workflow', 'wf_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, 'workflow', 'wf_locked')).toBe('none')
     expect(m.server.canViewInstance('workflow', 'wf_locked')).toBe(false)
     expect(m.server.canEditInstance('workflow', 'wf_locked')).toBe(false)
     expect(m.server.canAdminInstance('workflow', 'wf_locked')).toBe(false)
@@ -198,7 +202,7 @@ describe('restricting one workflow (plan 30 §7 — the `none` member)', () => {
   })
 
   it('the restricted workflow drops out of the same filter `workflow.list` runs', () => {
-    const m = member({ rows: [{ entityInstanceId: 'wf_locked', permission: 'none' }] })
+    const m = member({ rows: [{ entityInstanceId: 'wf_locked', rung: 'none' }] })
     const listed = ['wf_open', 'wf_locked', 'wf_other'].filter((id) =>
       m.server.canViewInstance('workflow', id)
     )
@@ -211,11 +215,11 @@ describe('restricting one workflow (plan 30 §7 — the `none` member)', () => {
     // not to save it.
     const m = member({
       rows: [
-        { entityInstanceId: 'wf_locked', permission: 'none' },
-        { entityInstanceId: 'wf_locked', permission: 'view' },
+        { entityInstanceId: 'wf_locked', rung: 'none' },
+        { entityInstanceId: 'wf_locked', rung: 'read' },
       ],
     })
-    expect(levelFor(m, 'workflow', 'wf_locked')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'workflow', 'wf_locked')).toBe('read')
     expect(m.server.canViewInstance('workflow', 'wf_locked')).toBe(true)
     expect(m.server.canEditInstance('workflow', 'wf_locked')).toBe(false)
   })
@@ -225,9 +229,9 @@ describe('restricting one workflow (plan 30 §7 — the `none` member)', () => {
     // row under `workflows: Full` must actually take Save/Publish/Delete away —
     // this is the "lock the billing automation away from general editing" case
     // plan 30 §3 names as the whole reason the entry exists.
-    const m = member({ rows: [{ entityInstanceId: 'wf_billing', permission: 'view' }] })
+    const m = member({ rows: [{ entityInstanceId: 'wf_billing', rung: 'read' }] })
     expect(m.server.areaLevel(Area.workflows)).toBe(Level.Full)
-    expect(levelFor(m, 'workflow', 'wf_billing')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'workflow', 'wf_billing')).toBe('read')
     expect(m.server.canEditInstance('workflow', 'wf_billing')).toBe(false)
     expect(m.server.canAdminInstance('workflow', 'wf_billing')).toBe(false)
   })
@@ -239,10 +243,10 @@ describe('restricting one workflow (plan 30 §7 — the `none` member)', () => {
     // 25 §2 has to change a test to change it.
     const m = member({
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.workflows]: Level.Read },
-      rows: [{ entityInstanceId: 'wf_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'wf_shared', rung: 'admin' }],
     })
     expect(m.server.areaLevel(Area.workflows)).toBe(Level.Read)
-    expect(levelFor(m, 'workflow', 'wf_shared')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_shared')).toBe('admin')
     expect(m.server.canAdminInstance('workflow', 'wf_shared')).toBe(true)
     // …but the coarse `workflowsManage` rung — what `create` / `duplicate`
     // gate on — is still absent, so they cannot create a workflow.
@@ -266,7 +270,7 @@ describe('worker seats compose `workflows: None` (plan 30 §8 item 1 — DELIBER
     const m = member({
       seatType: 'worker',
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.workflows]: Level.Full },
-      rows: [{ entityInstanceId: 'wf_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'wf_shared', rung: 'admin' }],
     })
     expect(m.server.areaLevel(Area.workflows)).toBe(Level.None)
     expect(levelFor(m, 'workflow', 'wf_shared')).toBeUndefined()
@@ -279,7 +283,7 @@ describe('worker seats compose `workflows: None` (plan 30 §8 item 1 — DELIBER
     // grants nothing in the first place.
     const m = member({ profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.workflows]: Level.Full } })
     expect(m.server.areaLevel(Area.workflows)).toBe(Level.Full)
-    expect(levelFor(m, 'workflow', 'wf_unrestricted')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_unrestricted')).toBe('admin')
   })
 })
 
@@ -293,7 +297,7 @@ describe('the seeded Member baseline is unaffected by the rung split', () => {
     expect(m.server.can(PermissionKey.workflowsView)).toBe(true)
     expect(m.server.can(PermissionKey.workflowsEdit)).toBe(true)
     expect(m.server.can(PermissionKey.workflowsManage)).toBe(true)
-    expect(levelFor(m, 'workflow', 'wf_any')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_any')).toBe('admin')
   })
 })
 
@@ -330,8 +334,8 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
   it('names exactly the explicitly-restricted workflows, and nothing else', () => {
     const m = member({
       rows: [
-        { entityInstanceId: 'wf_locked', permission: 'none' },
-        { entityInstanceId: 'wf_shared', permission: 'view' },
+        { entityInstanceId: 'wf_locked', rung: 'none' },
+        { entityInstanceId: 'wf_shared', rung: 'read' },
       ],
     })
     // `wf_shared` carries a row but the member may still VIEW it, so it must NOT
@@ -369,8 +373,8 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
     const m = member({
       profileLevels: { [Area.workflows]: Level.None },
       rows: [
-        { entityInstanceId: 'wf_shared', permission: 'view' },
-        { entityInstanceId: 'wf_locked', permission: 'none' },
+        { entityInstanceId: 'wf_shared', rung: 'read' },
+        { entityInstanceId: 'wf_locked', rung: 'none' },
       ],
     })
     expect(m.server.instanceListScope('workflow')).toEqual({
@@ -384,7 +388,7 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
   it('area None whose only rows are `none` restrictions still sees nothing', () => {
     const m = member({
       profileLevels: { [Area.workflows]: Level.None },
-      rows: [{ entityInstanceId: 'wf_locked', permission: 'none' }],
+      rows: [{ entityInstanceId: 'wf_locked', rung: 'none' }],
     })
     expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'none' })
     expect(viewableByScope(m)).toEqual(viewableByGate(m))
@@ -394,7 +398,7 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
     const m = member({
       seatType: 'worker',
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.workflows]: Level.Full },
-      rows: [{ entityInstanceId: 'wf_shared', permission: 'admin' }],
+      rows: [{ entityInstanceId: 'wf_shared', rung: 'admin' }],
     })
     expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'none' })
     expect(viewableByScope(m)).toEqual(viewableByGate(m))
@@ -403,7 +407,7 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
   it('excludes nothing for an OWNER, even with a `none` row', () => {
     const m = member({
       role: 'OWNER',
-      rows: [{ entityInstanceId: 'wf_locked', permission: 'none' }],
+      rows: [{ entityInstanceId: 'wf_locked', rung: 'none' }],
     })
     expect(m.server.instanceListScope('workflow')).toEqual({ kind: 'exclude', excludeIds: [] })
     expect(viewableByScope(m)).toEqual(CANDIDATES)
@@ -421,8 +425,8 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
   it('is grantable-up: an explicit grant on a restricted workflow drops out of the exclusion', () => {
     const m = member({
       rows: [
-        { entityInstanceId: 'wf_locked', permission: 'none' },
-        { entityInstanceId: 'wf_locked', permission: 'view' },
+        { entityInstanceId: 'wf_locked', rung: 'none' },
+        { entityInstanceId: 'wf_locked', rung: 'read' },
       ],
     })
     expect(m.server.instanceListScope('workflow').excludeIds).toEqual([])
@@ -435,7 +439,7 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
     // Ids are globally-unique cuid2s, so an over-broad exclusion can never drop
     // a workflow the member may see — documented here so nobody "fixes" it by
     // adding a per-type query.
-    const m = member({ rows: [{ entityInstanceId: 'ds_locked', permission: 'none' }] })
+    const m = member({ rows: [{ entityInstanceId: 'ds_locked', rung: 'none' }] })
     expect(m.server.instanceListScope('workflow').excludeIds).toEqual(['ds_locked'])
     expect(viewableByScope(m)).toEqual(CANDIDATES)
     expect(viewableByScope(m)).toEqual(viewableByGate(m))
@@ -448,7 +452,7 @@ describe('instanceListScope — the list filter reproduces the gate exactly', ()
     // a workflow than an over-broad exclusion can drop one.
     const m = member({
       profileLevels: { [Area.workflows]: Level.None },
-      rows: [{ entityInstanceId: 'ds_shared', permission: 'view' }],
+      rows: [{ entityInstanceId: 'ds_shared', rung: 'read' }],
     })
     expect(m.server.instanceListScope('workflow')).toEqual({
       kind: 'include',
@@ -465,15 +469,15 @@ describe('OWNER regression (plan 30 §7)', () => {
     // owner out of the workflow that would let them undo it.
     const m = member({
       role: 'OWNER',
-      rows: [{ entityInstanceId: 'wf_locked', permission: 'none' }],
+      rows: [{ entityInstanceId: 'wf_locked', rung: 'none' }],
     })
-    expect(levelFor(m, 'workflow', 'wf_locked')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_locked')).toBe('admin')
     expect(m.server.canAdminInstance('workflow', 'wf_locked')).toBe(true)
   })
 
   it('short-circuits ahead of the area gate too (worker-seat owner)', () => {
     const m = member({ role: 'OWNER', seatType: 'worker' })
     expect(m.server.areaLevel(Area.workflows)).toBe(Level.None)
-    expect(levelFor(m, 'workflow', 'wf_any')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'workflow', 'wf_any')).toBe('admin')
   })
 })

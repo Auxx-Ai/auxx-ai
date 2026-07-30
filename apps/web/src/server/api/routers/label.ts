@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/label.ts
 
 import { schema } from '@auxx/database'
-import { getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { listManageableChannelIds, requireChannelManageAccess } from '@auxx/lib/channels'
 import {
   addLabelToThread,
@@ -336,7 +336,7 @@ export const labelRouter = createTRPCRouter({
     .input(z.object({ ...integrationRef, labelId: z.string(), threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const viewer = await getCachedUserInstanceGrants(userId, organizationId)
       await assertCanActOnThreads(ctx.db, organizationId, viewer, [input.threadId])
       const result = await addLabelToThread(ctx.db, organizationId, input)
       if (result.isErr()) throw result.error
@@ -348,7 +348,7 @@ export const labelRouter = createTRPCRouter({
     .input(z.object({ ...integrationRef, labelId: z.string(), threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const viewer = await getCachedUserInstanceGrants(userId, organizationId)
       await assertCanActOnThreads(ctx.db, organizationId, viewer, [input.threadId])
       const result = await removeLabelFromThread(ctx.db, organizationId, input)
       if (result.isErr()) throw result.error

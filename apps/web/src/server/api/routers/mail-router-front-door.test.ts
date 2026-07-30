@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *    thread-reading surface with no door at all.
  *  - **`message.ts`** — `getByIds` / `listByThread`, the message bodies
  *    themselves. Content was lens-gated (both construct a
- *    `MessageQueryService` from the caller's `UserMailVisibility`); the *area*
+ *    `MessageQueryService` from the caller's `UserInstanceGrants`); the *area*
  *    question was simply unanswerable.
  *  - **`participant.ts`** — `getByIds` / `ensureContact`.
  *
@@ -93,7 +93,7 @@ const {
     get: vi.fn(async () => null),
   },
   cache: {
-    getCachedUserMailVisibility: vi.fn(),
+    getCachedUserInstanceGrants: vi.fn(),
     getCachedResources: vi.fn(),
   },
   onCacheEvent: vi.fn(async () => undefined),
@@ -209,6 +209,20 @@ vi.mock('@auxx/lib/permissions', async () => {
  * on the BUILDER is under test: deleting `permissionProcedure(inboxesView)` from
  * any of the three mail routers fails its whole block.
  */
+// Plan v3/03 §5.3 — the record-host branch now gets a SECOND chance after the
+// def gate refuses: the row is stamped through the read path and re-judged
+// against `_access`. These tests exercise the DENIAL, so the stamped read
+// returns nothing, which is the non-enumeration contract's strongest denial
+// ("an id the read path hid must not pass the write path"). Mocked at the
+// picker rather than at the gate so the gate's own logic still runs.
+vi.mock('@auxx/lib/resources/picker/record-picker-service', () => ({
+  RecordPickerService: class {
+    async getResourcesByIds() {
+      return {}
+    }
+  },
+}))
+
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')
   const t = initTRPC.context<Record<string, unknown>>().create()
@@ -337,9 +351,7 @@ const VIEWER = {
   isMailAdmin: false,
   inboxLens: { [INBOX_ID]: 'full' },
   personalInboxIds: {},
-  threadGrants: {},
-  contactGrants: {},
-  entityGrants: {},
+  grants: {},
 }
 
 beforeEach(() => {
@@ -355,8 +367,8 @@ beforeEach(() => {
 
   assertCanActOnThreads.mockReset()
   assertCanActOnThreads.mockResolvedValue(undefined as never)
-  cache.getCachedUserMailVisibility.mockReset()
-  cache.getCachedUserMailVisibility.mockResolvedValue(VIEWER as never)
+  cache.getCachedUserInstanceGrants.mockReset()
+  cache.getCachedUserInstanceGrants.mockResolvedValue(VIEWER as never)
   cache.getCachedResources.mockReset()
   cache.getCachedResources.mockResolvedValue(RESOURCES as never)
   getCapabilities.mockReset()
@@ -542,11 +554,11 @@ describe('positive controls — the dispatch org, which an instance gate would b
     ...VIEWER,
     // No inbox floor at all — only the assigned thread is reachable.
     inboxLens: {},
-    threadGrants: { [THREAD_ID]: 'full' },
+    grants: { thread: { [THREAD_ID]: 'read' } },
   }
 
   beforeEach(() => {
-    cache.getCachedUserMailVisibility.mockResolvedValue(ASSIGNEE_VIEWER as never)
+    cache.getCachedUserInstanceGrants.mockResolvedValue(ASSIGNEE_VIEWER as never)
   })
 
   it('reads their assigned thread through message.listByThread', async () => {

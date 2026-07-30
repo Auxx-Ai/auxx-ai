@@ -81,7 +81,6 @@ export async function findActiveJobForQuote(
       },
     ],
     limit: 1,
-    mode: 'oneshot',
   })
   return existingJobs.ids[0]
 }
@@ -269,7 +268,6 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     ],
     sorting: [{ id: 'sortOrder', desc: false }],
     limit: 1000,
-    mode: 'oneshot',
   })
 
   const lineFieldIds = [

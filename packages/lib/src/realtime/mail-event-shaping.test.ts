@@ -10,20 +10,20 @@ const INBOX = 'f6b2c1d0-1111-2222-3333-444455556666'
 
 describe('per-lens inbox room keys', () => {
   it('builds and parses round-trip (UUID slugs contain dashes)', () => {
-    const key = rooms.orgInbox(ORG, INBOX, 'subject')
-    expect(key).toBe(`org-${ORG}-inbox-${INBOX}-subject`)
+    const key = rooms.orgInbox(ORG, INBOX, 'identity')
+    expect(key).toBe(`org-${ORG}-inbox-${INBOX}-identity`)
     expect(parseInboxRoomKey(key)).toEqual({
       organizationId: ORG,
       inboxSlug: INBOX,
-      lens: 'subject',
+      lens: 'identity',
     })
   })
 
   it('parses the residual none channel', () => {
-    expect(parseInboxRoomKey(rooms.orgInbox(ORG, 'none', 'full'))).toEqual({
+    expect(parseInboxRoomKey(rooms.orgInbox(ORG, 'none', 'read'))).toEqual({
       organizationId: ORG,
       inboxSlug: 'none',
-      lens: 'full',
+      lens: 'read',
     })
   })
 
@@ -43,16 +43,16 @@ describe('shapeMailEventForLens', () => {
     },
   }
 
-  it('full passes every event through unchanged', () => {
-    expect(shapeMailEventForLens(threadUpdated, 'full')).toBe(threadUpdated)
+  it('read passes every event through unchanged', () => {
+    expect(shapeMailEventForLens(threadUpdated, 'read')).toBe(threadUpdated)
   })
 
   it('none drops everything', () => {
     expect(shapeMailEventForLens(threadUpdated, 'none')).toBeNull()
   })
 
-  it('subject keeps subject but strips full-only fields from thread patches', () => {
-    const shaped = shapeMailEventForLens(threadUpdated, 'subject')
+  it('identity keeps subject but strips read-only fields from thread patches', () => {
+    const shaped = shapeMailEventForLens(threadUpdated, 'identity')
     expect(shaped).not.toBeNull()
     const patch = (shaped as Extract<MailSyncEvent, { event: 'thread:updated' }>).data.patch
     expect(patch.subject).toBe('Secret')
@@ -72,9 +72,9 @@ describe('shapeMailEventForLens', () => {
       event: 'thread:updated',
       data: { threadId: 't1', patch: { id: 't1', isUnread: false, userId: 'u1' } },
     }
-    expect(shapeMailEventForLens(unread, 'subject')).toBeNull()
+    expect(shapeMailEventForLens(unread, 'identity')).toBeNull()
     expect(shapeMailEventForLens(unread, 'metadata')).toBeNull()
-    expect(shapeMailEventForLens(unread, 'full')).toBe(unread)
+    expect(shapeMailEventForLens(unread, 'read')).toBe(unread)
   })
 
   it('message events are invisible at metadata, envelope-only at subject', () => {
@@ -83,7 +83,7 @@ describe('shapeMailEventForLens', () => {
       data: { messageId: 'm1', threadId: 't1' },
     }
     expect(shapeMailEventForLens(created, 'metadata')).toBeNull()
-    expect(shapeMailEventForLens(created, 'subject')).toBe(created)
+    expect(shapeMailEventForLens(created, 'identity')).toBe(created)
 
     const updated: MailSyncEvent = {
       event: 'message:updated',
@@ -93,7 +93,7 @@ describe('shapeMailEventForLens', () => {
         patch: { id: 'm1', threadId: 't1', snippet: 'body preview', sendStatus: 'SENT' },
       },
     }
-    const shaped = shapeMailEventForLens(updated, 'subject')
+    const shaped = shapeMailEventForLens(updated, 'identity')
     const patch = (shaped as Extract<MailSyncEvent, { event: 'message:updated' }>).data.patch
     expect('snippet' in patch).toBe(false)
     expect(patch.sendStatus).toBe('SENT')
@@ -108,7 +108,7 @@ describe('shapeMailEventForLens', () => {
         patch: { id: 'm1', threadId: 't1', attachments: [] },
       },
     }
-    expect(shapeMailEventForLens(contentOnly, 'subject')).toBeNull()
+    expect(shapeMailEventForLens(contentOnly, 'identity')).toBeNull()
   })
 
   it('shapes mail:batch recursively and drops empty frames', () => {

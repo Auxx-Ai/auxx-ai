@@ -5,7 +5,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getCachedResourceFields } from '../cache'
-import type { CapabilitySet } from '../permissions/capabilities/capability-set'
+import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import {
   type CachedField,
   createFieldValueContext,
@@ -57,8 +57,16 @@ export interface FieldValueServiceOptions {
    * Present ⇒ read methods gate defs through `canViewEntity`; absent ⇒ no
    * enforcement (internal/system callers stay unrestricted). Request paths
    * must thread `ctx.capabilities` (resolved once via `capabilityProcedure`).
+   *
+   * Typed as the {@link CapabilityView} GATE surface, not the concrete
+   * `CapabilitySet`: the two enforcement points inside `field-value-queries`
+   * (`batchGetValues`'s def/path filter and the relationship redaction) call
+   * `canViewEntity` and nothing else, and `UnifiedCrudHandler` — which now
+   * forwards its own capabilities here (plan v3/03 §5.4) — holds a
+   * `CapabilityView` so an agent run's `MinCapabilitySet` reaches the redaction
+   * path instead of being dropped.
    */
-  capabilities?: CapabilitySet
+  capabilities?: CapabilityView
 }
 
 export class FieldValueService {

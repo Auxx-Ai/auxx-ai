@@ -335,7 +335,6 @@ async function loadPdfLines(
     filters,
     sorting: [{ id: 'sortOrder', desc: false }],
     limit: 1000,
-    mode: 'oneshot',
   })
 
   const lineFieldIds = [

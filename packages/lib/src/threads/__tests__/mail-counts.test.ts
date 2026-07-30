@@ -97,23 +97,21 @@ vi.mock('../unread-service', () => ({
 // It used to lean on `isAdmin: true` with an EMPTY `inboxLens`. Plan 40 §4.2
 // deleted that arm from `computeAndSeedMailCounts` — an admin's reach now arrives
 // through the composed floor like everyone else's — so the floors have to be
-// spelled out here, exactly as `composeUserMailVisibility` would produce them for
+// spelled out here, exactly as `composeUserInstanceGrants` would produce them for
 // a default admin (the `Area.inboxes` fallback on two row-less shared inboxes).
 vi.mock('../../cache', () => ({
   getOrgCache: vi.fn(() => ({
     get: vi.fn(async () => [{ id: 'ibx1' }, { id: 'ibx2' }]),
   })),
   getCachedMembers: vi.fn(async () => [{ userId: 'u1' }, { userId: 'u2' }]),
-  getCachedUserMailVisibility: vi.fn(async () => ({
+  getCachedUserInstanceGrants: vi.fn(async () => ({
     userId: 'u1',
     role: 'ADMIN',
     isAdmin: true,
     isMailAdmin: true,
-    inboxLens: { ibx1: 'full', ibx2: 'full' },
+    inboxLens: { ibx1: 'read', ibx2: 'read' },
     personalInboxIds: {},
-    threadGrants: {},
-    contactGrants: {},
-    entityGrants: {},
+    grants: {},
   })),
 }))
 

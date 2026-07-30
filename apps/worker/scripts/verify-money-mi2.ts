@@ -191,7 +191,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     return ids
   }
@@ -211,7 +210,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     return ids
   }

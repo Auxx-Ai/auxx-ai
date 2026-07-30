@@ -1,36 +1,124 @@
 // packages/lib/src/permissions/capabilities/instance-access.ts
 
 import { Area, Level, PERMISSION_AREAS, type PermissionKey } from './registry'
+import type { Rung } from './rung'
 
 /**
- * Per-resource declaration for instance-level access (doc 08 §1.1 / doc 11 §1.1).
+ * A domain evaluated through the **composed per-user capability blob** — its
+ * grants are non-local (floors, derivations, workspace baselines) and its
+ * instance count is bounded by org setup, so every instance the member can
+ * reach is resolved once at compose time and shipped (plan v3/03 §4).
+ *
  *  - `baselineAtCreate` — whether every instance is born with a workspace
  *    baseline row. `false` (datasets, kb, workflows): a resource with no
  *    explicit instance rows falls back to the member's base L2 `area` level
  *    (org-shared). `true` (dashboards): no-row ⇒ no access.
  *  - `area` — the coarse L2 capability {@link Area} that gates "may this member
  *    touch the feature at all" AND supplies the absent-row fallback level.
+ *  - `rungs` — the domain's grant vocabulary, a sparse ascending subset of
+ *    {@link Rung} (plan v3/03 §2.2). Ascending and duplicate-free, so a rung
+ *    can be inserted between two existing ones without a data migration.
  */
-export interface InstanceAccessResourceConfig {
+export interface BlobLaneConfig {
+  lane: 'blob'
   baselineAtCreate: boolean
   area: Area
+  rungs: readonly Rung[]
 }
 
 /**
- * The registry of resources that use instance-level `ResourceAccess` grants
+ * A domain evaluated **in the database, per query** — its grants are row-local
+ * and its instance count is unbounded, so no per-user id set is ever composed
+ * or cached for it (plan v3/03 §4). It carries NO `area` (the {@link Area} enum
+ * has no `threads` and no `sequences` member — `area` exists solely to drive
+ * the blob lane's absent-row fallback and L2 gate) and NO `baselineAtCreate`
+ * (there is no compose-time baseline to write).
+ *
+ *  - `rungs` — the domain's grant vocabulary, as above.
+ *  - `actAt` — the rung at which the domain's grant confers ACTING, when that
+ *    is below `edit`. Mail is the case: `read` on a thread confers reply and
+ *    assign, because there is no thread authority axis to express it on
+ *    (`registry.ts`, the `inboxesView`/`inboxesManage` note). Absent means the
+ *    ordinary reading: acting starts at `edit`.
+ */
+export interface QueryLaneConfig {
+  lane: 'query'
+  rungs: readonly Rung[]
+  actAt?: Rung
+}
+
+/**
+ * Per-resource declaration for instance-level access (doc 08 §1.1 / doc 11
+ * §1.1), discriminated by evaluation lane.
+ *
+ * **The lane split is load-bearing, not documentation.** {@link
+ * InstanceAccessKey} and every derivation below it filter to `lane: 'blob'`,
+ * which is what lets a query-lane domain declare its rung vocabulary here
+ * without inheriting the blob lane's six behaviours — see the note on
+ * {@link isInstanceAccessKey}.
+ */
+export type InstanceAccessResourceConfig = BlobLaneConfig | QueryLaneConfig
+
+/**
+ * The config-scale vocabulary — today's `view / edit / admin` plus the `none`
+ * restriction marker, unchanged in behaviour (plan v3/03 §2.2). Every
+ * `baselineAtCreate`-bearing resource except the two inbox keys uses it.
+ */
+const CONFIG_SCALE_RUNGS = ['none', 'read', 'edit', 'admin'] as const
+
+/**
+ * The mail vocabulary. `metadata` and `identity` exist because a mailbox has
+ * partial views worth expressing (see plan 40 and `visibility/lens.ts`), and
+ * there is deliberately no `edit`: mail's `read` already confers acting
+ * (reply/assign), so the only thing above it is managing the inbox itself.
+ */
+const INBOX_RUNGS = ['none', 'metadata', 'identity', 'read', 'admin'] as const
+
+/**
+ * The rung vocabulary of a RECORD definition (plan v3/03 §2.2). A separate
+ * constant rather than a registry entry because record defs are CUIDs and can
+ * therefore never be registry keys.
+ *
+ * A def may opt into `identity` later — an ordinal insertion, no migration,
+ * with a fixed code-authored projection (the display name, i.e. `RecordMeta`),
+ * NOT per-org field mapping. Salesforce-style field-level security stays out of
+ * scope.
+ */
+export const RECORD_DEF_RUNGS: readonly Rung[] = CONFIG_SCALE_RUNGS
+
+/**
+ * The registry of resources that take instance-level `ResourceAccess` grants
  * (doc 11 §1.1). Keyed by the resource's non-CUID access key (a system resource
  * id or reserved slug). Datasets was the first entry; KB and dashboards were
  * added by later slices. Everything downstream is generic over
- * {@link InstanceAccessKey}.
+ * {@link InstanceAccessKey} — which is the BLOB-LANE keys only.
+ *
+ * Record definitions are absent by construction: their keys are CUIDs, so they
+ * can never be registry entries. Their vocabulary is {@link RECORD_DEF_RUNGS}.
  */
 export const INSTANCE_ACCESS_RESOURCES = {
   // org-shared; absent instance row → base L2 `datasets` level (§0.1)
-  dataset: { baselineAtCreate: false, area: Area.datasets },
+  dataset: {
+    lane: 'blob',
+    baselineAtCreate: false,
+    area: Area.datasets,
+    rungs: CONFIG_SCALE_RUNGS,
+  },
   // org-shared; absent instance row → base L2 `knowledgeBase` level (doc 12 §0.2)
-  kb: { baselineAtCreate: false, area: Area.knowledgeBase },
+  kb: {
+    lane: 'blob',
+    baselineAtCreate: false,
+    area: Area.knowledgeBase,
+    rungs: CONFIG_SCALE_RUNGS,
+  },
   // fully row-described at birth (workspace baseline + owner admin written at create);
   // absent instance row → NO access (doc 13 §0.1)
-  dashboard: { baselineAtCreate: true, area: Area.dashboards },
+  dashboard: {
+    lane: 'blob',
+    baselineAtCreate: true,
+    area: Area.dashboards,
+    rungs: CONFIG_SCALE_RUNGS,
+  },
   // org-shared; absent instance row → base L2 `workflows` level (plan 30 §3).
   // Deliberately the OPPOSITE of dashboards: members compose `workflows: Full`,
   // so RESTRICTION is the use case (lock the billing automation away from
@@ -43,7 +131,12 @@ export const INSTANCE_ACCESS_RESOURCES = {
   // runs as the system and reads no member capabilities, so a workflow
   // restricted to `none` still fires — see the `Area.workflows` note in
   // `registry.ts` and plan 30 §2.1.
-  workflow: { baselineAtCreate: false, area: Area.workflows },
+  workflow: {
+    lane: 'blob',
+    baselineAtCreate: false,
+    area: Area.workflows,
+    rungs: CONFIG_SCALE_RUNGS,
+  },
   // org-shared; absent instance row → base L2 `agents` level (plan 25 §4.2).
   // Same posture as workflows and for the same reason: members compose
   // `agents: Full`, so RESTRICTION is the use case ("only the support leads may
@@ -61,7 +154,7 @@ export const INSTANCE_ACCESS_RESOURCES = {
   // (schedule, record event, app trigger, webhook, visitor, eval) pass no
   // `invokerUserId` by design, so a restricted agent still runs headlessly —
   // the same carve-out `workflow` documents above.
-  agent: { baselineAtCreate: false, area: Area.agents },
+  agent: { lane: 'blob', baselineAtCreate: false, area: Area.agents, rungs: CONFIG_SCALE_RUNGS },
   // private by default (owner `admin` row at create); absent instance row → NO
   // access (plan 36 §0.2). Deliberately DASHBOARDS' posture, not
   // workflows'/agents': a signature is a personal sign-off and a snippet starts
@@ -75,8 +168,13 @@ export const INSTANCE_ACCESS_RESOURCES = {
   // WORKER SEATS get neither, by decision (plan 36 §0.5) — see the
   // `WORKER_AREAS` note in `seat-policy.ts` for why that bites even on an
   // instance the field tech owns.
-  signature: { baselineAtCreate: true, area: Area.signatures },
-  snippet: { baselineAtCreate: true, area: Area.snippets },
+  signature: {
+    lane: 'blob',
+    baselineAtCreate: true,
+    area: Area.signatures,
+    rungs: CONFIG_SCALE_RUNGS,
+  },
+  snippet: { lane: 'blob', baselineAtCreate: true, area: Area.snippets, rungs: CONFIG_SCALE_RUNGS },
   // ── Mail: TWO keys over ONE area (plan 40 §0.2), and the split is the point ──
   //
   // `Area.inboxes` is a single row in the profile editor because "may this
@@ -100,7 +198,8 @@ export const INSTANCE_ACCESS_RESOURCES = {
   //    it from.
   //
   // SAFETY PROPERTY THAT MUST KEEP HOLDING: `OrgSharedInstanceAccessKey`
-  // (`entity-access.ts`) is derived as "`baselineAtCreate: false` only", so
+  // (`entity-access.ts`) is derived as "`lane: 'blob'` AND
+  // `baselineAtCreate: false` only", so
   // `personal_inbox` is a COMPILE ERROR at every `instanceListScope` call site.
   // A list query cannot start leaking other people's mailboxes silently — it has
   // to fail the build first.
@@ -113,21 +212,115 @@ export const INSTANCE_ACCESS_RESOURCES = {
   // org-shared; absent instance row → base L2 `inboxes` level, i.e.
   // `Read → view` / `Full → admin` (plan 40 §1.2 — read that note in
   // `registry.ts` before changing either rung).
-  inbox: { baselineAtCreate: false, area: Area.inboxes },
+  inbox: { lane: 'blob', baselineAtCreate: false, area: Area.inboxes, rungs: INBOX_RUNGS },
   // private; absent instance row → NO access. Dashboards'/signatures' posture,
   // for a stronger reason than either: a personal mailbox is not "content that
   // starts private", it is content nobody else has a claim on by rank.
-  personal_inbox: { baselineAtCreate: true, area: Area.inboxes },
+  personal_inbox: { lane: 'blob', baselineAtCreate: true, area: Area.inboxes, rungs: INBOX_RUNGS },
+  // ── QUERY LANE — declared here for their vocabulary ONLY ────────────────────
+  //
+  // These two are NOT `InstanceAccessKey`s and must never become them. They sit
+  // in this table so that one place answers "which rungs may a grant on this
+  // domain take" — the share picker renders the declaration — while every
+  // derivation below filters to `lane: 'blob'` so their presence changes no
+  // behaviour. Read the {@link isInstanceAccessKey} note for the six behaviours
+  // a plain entry would have flipped.
+  //
+  // Mail threads: unbounded per org and evaluated against the composed mail
+  // visibility blob, never against `instanceAccess`. `identity` is today's
+  // `subject`; `read` is today's `full`.
+  //
+  // `actAt: 'read'` — mail's read rung confers reply and assign. That is not a
+  // convenience: `registry.ts` gives `Area.inboxes` exactly two rungs
+  // (`inboxesView` / `inboxesManage`) precisely BECAUSE there is no thread
+  // authority axis to express "may read but not reply" on. The rung ladder must
+  // record where acting starts rather than assume `edit`, since `edit` is not
+  // in this domain's vocabulary at all.
+  thread: { lane: 'query', rungs: ['none', 'metadata', 'identity', 'read'], actAt: 'read' },
+  // Sequences: QUERY-LANE PRIOR ART, and the reason this lane is not
+  // speculative. §2.2 of plan v3/03 omits `sequence`, which is a gap in the
+  // plan — it is the largest instance-grant lane in the dev database (235 rows,
+  // more than snippet or dashboard), and `sequences/access.ts` already resolves
+  // it with an uncached direct `hasPermission` query per request: exactly the
+  // model §4/§5 propose for records. It has never had an `Area` member, never
+  // had a `baselineAtCreate`, and never appeared in a composed blob.
+  sequence: { lane: 'query', rungs: CONFIG_SCALE_RUNGS },
 } as const satisfies Record<string, InstanceAccessResourceConfig>
 
-/** The set of resource keys backed by instance-level access. */
-export type InstanceAccessKey = keyof typeof INSTANCE_ACCESS_RESOURCES
+/** Every key declared in {@link INSTANCE_ACCESS_RESOURCES}, both lanes. */
+type DeclaredInstanceAccessKey = keyof typeof INSTANCE_ACCESS_RESOURCES
 
-/** All instance-access resource keys (for `IN (...)` queries and set membership). */
-export const INSTANCE_ACCESS_KEYS = Object.keys(INSTANCE_ACCESS_RESOURCES) as InstanceAccessKey[]
+/**
+ * The set of resource keys backed by the BLOB lane — i.e. by `instanceAccess` /
+ * `baselineInstanceAccess` in the composed capability blob.
+ *
+ * Derived by filtering the registry to `lane: 'blob'`, NOT by `keyof`. Query-
+ * lane declarations (`thread`, `sequence`) are deliberately excluded: they
+ * declare a rung vocabulary and nothing else.
+ */
+export type InstanceAccessKey = {
+  [K in DeclaredInstanceAccessKey]: (typeof INSTANCE_ACCESS_RESOURCES)[K]['lane'] extends 'blob'
+    ? K
+    : never
+}[DeclaredInstanceAccessKey]
 
-/** Type guard — whether an arbitrary `entityDefinitionId` is an instance-access key. */
+/** All blob-lane resource keys (for `IN (...)` queries and set membership). */
+export const INSTANCE_ACCESS_KEYS = (
+  Object.keys(INSTANCE_ACCESS_RESOURCES) as DeclaredInstanceAccessKey[]
+).filter((key): key is InstanceAccessKey => INSTANCE_ACCESS_RESOURCES[key].lane === 'blob')
+
+const INSTANCE_ACCESS_KEY_SET: ReadonlySet<string> = new Set(INSTANCE_ACCESS_KEYS)
+
+/**
+ * Type guard — whether an arbitrary `entityDefinitionId` is a BLOB-LANE
+ * instance-access key.
+ *
+ * **Membership in {@link INSTANCE_ACCESS_KEYS}, deliberately not
+ * `Object.hasOwn(INSTANCE_ACCESS_RESOURCES, key)`.** This predicate is the
+ * switch on six separate behaviours, and a query-lane key answering `true`
+ * would silently flip all of them:
+ *
+ *  1. `authorizeInstanceTarget` (`routers/resourceAccess.ts`) would assert
+ *     `assertAdminInstance(key, id)` instead of falling through to
+ *     `assertCanManageMailSharing` — re-routing mail's entire share
+ *     authorization.
+ *  2. The `none` rejection in the same router would start ALLOWING `none` rows
+ *     on threads.
+ *  3. `emitResourceAccessInstanceChanged` would fire on the hottest lane in the
+ *     product.
+ *  4. `governingInstanceIdsProvider`'s SQL filter would ingest thread rows.
+ *  5. `deriveInstanceReadKeys` would grant `INSTANCE_ACCESS_READ_KEYS[key]`.
+ *  6. {@link import('./entity-access').OrgSharedInstanceAccessKey} would widen,
+ *     destroying the compile-error safety property the `personal_inbox` note
+ *     above spells out.
+ *
+ * Every one of those reads the blob lane. The guard therefore names the blob
+ * lane, and adding a query-lane declaration is inert by construction.
+ */
 export function isInstanceAccessKey(key: string): key is InstanceAccessKey {
+  return INSTANCE_ACCESS_KEY_SET.has(key)
+}
+
+/**
+ * Whether `key` is declared in this registry **at all**, in either lane.
+ *
+ * The deliberate counterpart to {@link isInstanceAccessKey}, and the two must
+ * never be conflated: that one answers *"does the blob-lane machinery govern
+ * this?"* and is `false` for `thread` and `sequence`; this one answers *"is this
+ * a known, named domain rather than an `EntityDefinition` CUID?"* and is `true`
+ * for both.
+ *
+ * It exists because "is this a record def?" cannot be asked as
+ * `!isInstanceAccessKey(id)` — that reads `true` for `thread` and `sequence`,
+ * which would put mail threads and sequences into the record lane's front door.
+ * A record def is one that appears in NEITHER this registry NOR
+ * `MAIL_SHARING_DEFS`; both exclusions are required and neither is sufficient.
+ *
+ * This is exactly the predicate `isInstanceAccessKey` was before the lane split
+ * (`Object.hasOwn` over the registry). It is kept under a name that says what it
+ * means so the two can never be swapped back by accident.
+ */
+export function isDeclaredInstanceDomain(key: string): boolean {
   return Object.hasOwn(INSTANCE_ACCESS_RESOURCES, key)
 }
 
@@ -163,6 +356,8 @@ export function isInstanceAccessKey(key: string): key is InstanceAccessKey {
  *
  * Derived from {@link INSTANCE_ACCESS_RESOURCES} rather than hand-listed: an
  * area with no `Level.Read` rung contributes nothing and therefore fails closed.
+ * Blob-lane only, via {@link INSTANCE_ACCESS_KEYS} — a query-lane domain has no
+ * {@link Area} to derive a front-door key from, and must not synthesize one.
  */
 export const INSTANCE_ACCESS_READ_KEYS: Readonly<
   Record<InstanceAccessKey, readonly PermissionKey[]>

@@ -17,13 +17,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // ── mocks ─────────────────────────────────────────────────────────────────────
 
 const orgCacheData: Record<string, unknown> = {}
-const mailVisibility: Record<string, unknown> = {}
+const instanceGrants: Record<string, unknown> = {}
 
 vi.mock('../../cache', () => ({
   getOrgCache: () => ({
     get: async (_orgId: string, key: string) => orgCacheData[key],
   }),
-  getCachedUserMailVisibility: async (userId: string) => mailVisibility[userId],
+  getCachedUserInstanceGrants: async (userId: string) => instanceGrants[userId],
   getCachedMembersByUserIds: async (_orgId: string, userIds: string[]) =>
     userIds.map((userId) => ({
       userId,
@@ -234,9 +234,7 @@ function vis(userId: string, overrides: Record<string, unknown> = {}) {
     isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
-    threadGrants: {},
-    contactGrants: {},
-    entityGrants: {},
+    grants: {},
     ...overrides,
   }
 }
@@ -264,7 +262,7 @@ beforeEach(async () => {
   vi.clearAllMocks()
   resolvedInboxRecordId = null
   for (const key of Object.keys(orgCacheData)) delete orgCacheData[key]
-  for (const key of Object.keys(mailVisibility)) delete mailVisibility[key]
+  for (const key of Object.keys(instanceGrants)) delete instanceGrants[key]
   for (const key of Object.keys(capabilitiesByUser)) delete capabilitiesByUser[key]
 
   orgCacheData.inboxes = [
@@ -281,8 +279,8 @@ beforeEach(async () => {
     (userId) => ({ userId })
   )
 
-  mailVisibility.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'metadata' } })
-  mailVisibility.manager1 = vis('manager1', { inboxLens: { [INBOX]: 'full' } })
+  instanceGrants.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'metadata' } })
+  instanceGrants.manager1 = vis('manager1', { inboxLens: { [INBOX]: 'read' } })
   capabilitiesByUser.requester1 = await fullSeatCaps(['inboxesView'])
 })
 
@@ -414,7 +412,7 @@ describe('resolveThreadFrontDoor (plan 42 §5.3)', () => {
     const { PermissionKey } = await import('../../permissions/capabilities/registry')
     // `areaLevel(Area.inboxes)` is None here — `keys` is empty — but `can()` reads
     // `instanceDerivedKeys` too. Refusing from the area level rejects a VALID request.
-    const caps = await fullSeatCaps([], 'full', ['inboxesView'])
+    const caps = await fullSeatCaps([], 'read', ['inboxesView'])
     capabilitiesByUser.requester1 = caps
     expect(caps.can(PermissionKey.inboxesView)).toBe(true)
     expect(await resolveThreadFrontDoor(ORG, 'requester1')).toEqual({ open: true })
@@ -422,7 +420,7 @@ describe('resolveThreadFrontDoor (plan 42 §5.3)', () => {
 
   it('refuses a closed profile and names the profile lever', async () => {
     const { resolveThreadFrontDoor } = await import('../access-request-queries')
-    capabilitiesByUser.requester1 = await fullSeatCaps([], 'full')
+    capabilitiesByUser.requester1 = await fullSeatCaps([], 'read')
     expect(await resolveThreadFrontDoor(ORG, 'requester1')).toEqual({
       open: false,
       reason: 'front_door_closed',
@@ -453,7 +451,7 @@ describe('buildThreadSubjectLabel (plan 42 §7 / §6.2)', () => {
     )
     const { db } = makeFakeDb({ threads: [THREAD_ROW] })
     const ctx = await loadThreadAuthorityContext(db as never, ORG, THREAD)
-    const label = await buildThreadSubjectLabel(ORG, ctx!, 'subject')
+    const label = await buildThreadSubjectLabel(ORG, ctx!, 'identity')
     expect(label).toBe('Support · Refund for order #4821')
   })
 
@@ -511,7 +509,7 @@ describe('createThreadAccessRequest', () => {
     // canonicalize, so the persisted def id is the literal slug.
     expect(row.entityDefinitionId).toBe('thread')
     expect(row.entityInstanceId).toBe(THREAD)
-    expect(row.requestedLens).toBe('full')
+    expect(row.requestedLens).toBe('read')
     // H3 — both arrays are always written, never NULL.
     expect(Array.isArray(row.assigneeUsers)).toBe(true)
     expect(row.assigneeGroups).toEqual([])
@@ -643,7 +641,7 @@ describe('createThreadAccessRequest', () => {
 
   it('refuses a requester who already holds `full` — nothing to ask for', async () => {
     const { createThreadAccessRequest } = await import('../access-request-mutations')
-    mailVisibility.requester1 = vis('requester1', { threadGrants: { [THREAD]: 'full' } })
+    instanceGrants.requester1 = vis('requester1', { grants: { thread: { [THREAD]: 'read' } } })
     const { db, calls } = makeFakeDb({
       threads: [THREAD_ROW],
       managerRowsByRecordId: { 'inbox:inbox-1': [{ granteeType: 'user', granteeId: 'manager1' }] },
@@ -707,8 +705,7 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
       recordId: `thread:${THREAD}`,
       granteeType: 'user',
       granteeId: 'requester1',
-      permission: 'view',
-      lens: 'full',
+      rung: 'read',
       // §8 — suppresses the generic MESSAGE_SHARED so the requester is not told a
       // teammate "shared" the thing they asked for.
       origin: 'approval',
@@ -717,7 +714,7 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
     })
 
     const patch = calls.updates.at(-1) as Record<string, unknown>
-    expect(patch).toMatchObject({ grantedLevel: 'view', grantedLens: 'full' })
+    expect(patch).toMatchObject({ grantedLevel: 'view', grantedLens: 'read' })
 
     await out.afterCommit?.(db as never)
     expect(sendNotification).toHaveBeenCalledWith(
@@ -865,7 +862,7 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
     // Access arrived by another route between filing and Accept. Asserted on the
     // requester's CURRENT composed lens — NOT a fold of the proposed grant, which
     // `thread-grant` + `maxLens` make unconditionally `full` for everyone.
-    mailVisibility.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'full' } })
+    instanceGrants.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'read' } })
     const { db, calls } = makeFakeDb({ threads: [THREAD_ROW] })
 
     const out = await applyAccessDecision({
@@ -882,8 +879,8 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
 
   it('RAISE-ONLY: a requester at `subject` via a group grant is raised, not replaced', async () => {
     const { applyAccessDecision } = await import('../access-request-mutations')
-    const { maxLens } = await import('../../permissions/visibility/lens')
-    mailVisibility.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'subject' } })
+    const { maxRung } = await import('../../permissions/capabilities/rung')
+    instanceGrants.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'identity' } })
     const { db } = makeFakeDb({ threads: [THREAD_ROW] })
 
     await applyAccessDecision({
@@ -894,9 +891,10 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
     })
     // Not superseded — sub-full is a real ask — and the grant widens.
     expect(grantInstanceAccess).toHaveBeenCalledTimes(1)
-    // `maxLens` is the mechanism, not `stripInertNoneLevels`.
-    expect(maxLens('subject', 'full')).toBe('full')
-    expect(maxLens('full', 'subject')).toBe('full')
+    // `maxRung` is the mechanism, not `stripInertNoneLevels` (it was `maxLens`
+    // until plan v3/03 §11 collapsed the two ladders into one).
+    expect(maxRung('identity', 'read')).toBe('read')
+    expect(maxRung('read', 'identity')).toBe('read')
   })
 
   it('refuses the decision when the target thread is gone or cross-org (§4.2 step 1)', async () => {
@@ -980,7 +978,7 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
 
   it('SUPERSEDE notifies the requester too — their chip is the stalest of the three', async () => {
     const { applyAccessDecision } = await import('../access-request-mutations')
-    mailVisibility.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'full' } })
+    instanceGrants.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'read' } })
     const { db } = makeFakeDb({ threads: [THREAD_ROW] })
 
     const out = await applyAccessDecision({
@@ -1062,7 +1060,7 @@ describe('preflightThreadAccessRequest (plan 42 §6.2)', () => {
 
   it('refuses a full-lens viewer with `already_full`', async () => {
     const { preflightThreadAccessRequest } = await import('../access-request-queries')
-    mailVisibility.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'full' } })
+    instanceGrants.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'read' } })
     const { db } = makeFakeDb({
       threads: [THREAD_ROW],
       managerRowsByRecordId: { 'inbox:inbox-1': [{ granteeType: 'user', granteeId: 'manager1' }] },
@@ -1122,7 +1120,7 @@ describe('getThreadAccessRequestApproverView (plan 42 §7)', () => {
     requesterId: 'requester1',
     // Built at creation from the REQUESTER's redacted view, so it carries no subject.
     subjectLabel: 'Support · 2 participants · 4 messages',
-    requestedLens: 'full',
+    requestedLens: 'read',
     metadata: { remindCount: 2 },
   }
 
@@ -1133,7 +1131,7 @@ describe('getThreadAccessRequestApproverView (plan 42 §7)', () => {
 
     expect(view).toMatchObject({
       hydrated: true,
-      approverLens: 'full',
+      approverLens: 'read',
       requesterLens: 'metadata',
       targetAvailable: true,
       remindCount: 2,
@@ -1146,7 +1144,7 @@ describe('getThreadAccessRequestApproverView (plan 42 §7)', () => {
     const { getThreadAccessRequestApproverView } = await import('../access-request-queries')
     // The case §7 exists for: sharing authority without a reading lens. A downgraded
     // admin may decide this request and must not be shown live thread content.
-    mailVisibility.admin1 = vis('admin1', { inboxLens: { [INBOX]: 'metadata' } })
+    instanceGrants.admin1 = vis('admin1', { inboxLens: { [INBOX]: 'metadata' } })
     const { db } = makeFakeDb({ threads: [THREAD_ROW], pendingRequest: ACCESS_ROW })
     const view = await getThreadAccessRequestApproverView(db as never, ORG, 'admin1', 'req-1')
 

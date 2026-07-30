@@ -2,22 +2,27 @@
 //
 // End-to-end verification for plans/entity/field-value/batched-realtime-publish-plan.md.
 //
-// Subscribes to the org's presence channel on the local Sockudo (raw Pusher
-// protocol over Node's native WebSocket — no pusher-js dep), then runs a real
-// `UnifiedCrudHandler.create` for a 12-value line_item (the exact payload from
-// the original repro) and prints every realtime frame received. Expected:
-// ONE `fieldValues:updated` frame carrying all input-field entries, plus
-// separate hook/inverse frames (line_total, work-order totals). Deletes the
-// created record afterwards.
+// Subscribes to the line_item def's PRIVATE record channel on the local
+// Sockudo (raw Pusher protocol over Node's native WebSocket — no pusher-js
+// dep), then runs a real `UnifiedCrudHandler.create` for a 12-value line_item
+// (the exact payload from the original repro) and prints every realtime frame
+// received. Expected: ONE `fieldValues:updated` frame carrying all input-field
+// entries, plus separate hook/inverse frames (line_total, work-order totals).
+// Deletes the created record afterwards.
+//
+// The record family moved off the org presence channel onto per-def channels
+// (plan permissions/v3/03 §8.1), so the channel is resolved per def at startup
+// and signed as a private (not presence) channel.
 //
 // Run: cd apps/worker && npx dotenv -e ../../.env -- node --conditions source --import tsx/esm scripts/verify-batched-realtime-publish.ts
 
 import { createHmac } from 'node:crypto'
+import { requireCachedEntityDefId } from '@auxx/lib/cache'
+import { rooms } from '@auxx/lib/realtime'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
 
 const ORG_ID = 'abgwpa1l81reht2zmwrcihfu'
 const USER_ID = 'JR28eYz582CHqZN5SFlVrEnXErXmunaj' // m4rkuskk@gmail.com
-const CHANNEL = `presence-org-${ORG_ID}`
 
 const key = process.env.PUSHER_KEY!
 const secret = process.env.PUSHER_SECRET!
@@ -33,18 +38,12 @@ interface Frame {
 const frames: Frame[] = []
 let t0 = 0
 
-function presenceAuth(socketId: string): { auth: string; channel_data: string } {
-  const channelData = JSON.stringify({
-    user_id: USER_ID,
-    user_info: { name: 'verify-script' },
-  })
-  const signature = createHmac('sha256', secret)
-    .update(`${socketId}:${CHANNEL}:${channelData}`)
-    .digest('hex')
-  return { auth: `${key}:${signature}`, channel_data: channelData }
+function privateAuth(socketId: string, channel: string): { auth: string } {
+  const signature = createHmac('sha256', secret).update(`${socketId}:${channel}`).digest('hex')
+  return { auth: `${key}:${signature}` }
 }
 
-async function subscribe(): Promise<WebSocket> {
+async function subscribe(CHANNEL: string): Promise<WebSocket> {
   const ws = new WebSocket(
     `${scheme}://${host}:${port}/app/${key}?protocol=7&client=verify&version=1.0`
   )
@@ -57,7 +56,7 @@ async function subscribe(): Promise<WebSocket> {
         ws.send(
           JSON.stringify({
             event: 'pusher:subscribe',
-            data: { channel: CHANNEL, ...presenceAuth(socket_id) },
+            data: { channel: CHANNEL, ...privateAuth(socket_id, CHANNEL) },
           })
         )
       } else if (frame.event === 'pusher_internal:subscription_succeeded') {
@@ -98,8 +97,10 @@ async function subscribe(): Promise<WebSocket> {
 }
 
 async function main() {
+  const lineItemDefId = await requireCachedEntityDefId(ORG_ID, 'line_item')
+  const CHANNEL = `private-${rooms.orgRecords(ORG_ID, lineItemDefId)}`
   console.log(`connecting to ${scheme}://${host}:${port} channel ${CHANNEL}`)
-  const ws = await subscribe()
+  const ws = await subscribe(CHANNEL)
   console.log('subscribed; creating line_item…')
 
   const handler = new UnifiedCrudHandler(ORG_ID, USER_ID)

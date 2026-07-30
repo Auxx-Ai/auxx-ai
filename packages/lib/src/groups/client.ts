@@ -25,5 +25,5 @@ export type {
   GroupMemberUser,
   GroupPermissionInfo,
 } from '@auxx/types/groups'
-// Pure functions and constants from @auxx/types/groups
-export { PERMISSION_HIERARCHY, satisfiesPermission } from '@auxx/types/groups'
+// The one permission ordinal + comparator (plan v3/03 P3a §3)
+export { PERMISSION_RANK, satisfiesPermission } from '@auxx/types/permissions'

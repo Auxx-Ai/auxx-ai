@@ -1,6 +1,6 @@
 // packages/lib/src/resource-access/types.ts
 
-import type { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import type { ResourceGranteeType, Rung } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,12 +14,15 @@ export interface ResourceAccessContext {
   userId: string
 }
 
-/**
- * Visibility lens carried on a mail grant (mail-permissions §2.1). Meaningful
- * only for `permission='view'` rows on thread/contact/inbox — `edit`/`admin`
- * always evaluate as `full`. `null`/absent means legacy `full`.
+/*
+ * `GrantLens` (`'metadata' | 'subject' | 'full'`) is DELETED (plan v3/03 §11).
+ * It was a fourth hand-written copy of a ladder that now has exactly one
+ * definition — `Rung` — and it existed only to type the second half of the
+ * `(permission, lens)` encoding. Every former `{ permission, lens }` pair is now
+ * one `rung: Rung`; mail's narrowing of that ladder is `Lens`
+ * (`permissions/visibility/lens.ts`), which is where a "grantable mail tier"
+ * type belongs if one is ever needed again.
  */
-export type GrantLens = 'metadata' | 'subject' | 'full'
 
 /**
  * Where a grant came from, when that changes what the grantee should be TOLD
@@ -43,8 +46,14 @@ export interface GrantInstanceAccessInput {
   recordId: RecordId
   granteeType: ResourceGranteeType
   granteeId: string
-  permission: ResourcePermission
-  lens?: GrantLens | null
+  /**
+   * The rung to confer (plan v3/03 §3) — replaces the `(permission, lens)` pair.
+   *
+   * ⚠ `'none'` is a RESTRICTION marker, not a grant, and the `resourceAccess`
+   * router refuses it for record defs (raise-only, D7). It reaches this input
+   * only for the row-described resources that genuinely author restrictions.
+   */
+  rung: Rung
   /** See {@link GrantOrigin}. Optional; absent behaves exactly as before. */
   origin?: GrantOrigin
   /**
@@ -82,7 +91,13 @@ export interface GrantTypeAccessInput {
   entityDefinitionId: string
   granteeType: ResourceGranteeType
   granteeId: string
-  permission: ResourcePermission
+  /**
+   * TYPE rows store a rung too — the column is one vocabulary for the whole
+   * table. They are read back onto the DEF axis (`defAccess`,
+   * `effectiveRecordLevel`) through `rungToPermission`, which is the single
+   * boundary between the two vocabularies.
+   */
+  rung: Rung
 }
 
 /** Input for revoking instance-level access */
@@ -120,7 +135,8 @@ export type GrantedVia = 'direct' | 'group' | 'team' | 'role' | 'profile'
 /** Result of access check */
 export interface AccessCheckResult {
   hasAccess: boolean
-  permission: ResourcePermission | null
+  /** The highest rung the user resolved to across the matching rows. */
+  rung: Rung | null
   /** How access was granted */
   grantedVia: GrantedVia | null
   /** Whether access is type-level (all instances) or instance-specific */
@@ -134,13 +150,12 @@ export interface ResourceAccessInfo {
   entityInstanceId: string | null
   granteeType: ResourceGranteeType
   granteeId: string
-  permission: ResourcePermission
-  lens: GrantLens | null
+  rung: Rung
   createdAt: Date
 }
 
 /** Instance access with RecordId */
 export interface InstanceAccess {
   recordId: RecordId
-  permission: ResourcePermission
+  rung: Rung
 }

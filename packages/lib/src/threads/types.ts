@@ -226,7 +226,7 @@ export interface ThreadMeta {
    * redacted rendering (`LensBadge`, placeholder rows) without a second
    * request. Never `'none'` — such threads are dropped from the batch.
    */
-  myLens: 'metadata' | 'subject' | 'full'
+  myLens: 'metadata' | 'identity' | 'read'
 
   /**
    * True when the thread has explicit instance grants (shares). Operational

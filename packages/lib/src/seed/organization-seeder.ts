@@ -392,7 +392,7 @@ export class OrganizationSeeder {
 
     // Skip snapshot invalidation and events during seeding — no active users to notify,
     // and each invalidation attempt costs 5s on Lambda when Redis is slow/unavailable
-    const seedOpts = { skipSnapshotInvalidation: true, skipEvents: true }
+    const seedOpts = { skipEvents: true }
 
     // Create parent tag first - Topic Categorization
     // UnifiedCrudHandler.create() throws on error, so if we get a result, it succeeded

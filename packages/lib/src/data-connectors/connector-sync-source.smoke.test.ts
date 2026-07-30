@@ -1,5 +1,5 @@
 // Smoke: the wired SyncSource module imports cleanly under vitest (its static
-// crud/snapshot/reconciliation imports must not drag server-only deps that break).
+// crud/reconciliation imports must not drag server-only deps that break).
 import { describe, expect, it } from 'vitest'
 import { createConnectorStreamSyncSource } from './connector-sync-source'
 

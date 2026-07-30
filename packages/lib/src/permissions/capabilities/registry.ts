@@ -942,7 +942,7 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // (Read/Full) and `Area.channels` (Full-only).
     //
     // **`PermissionKey.signaturesEdit` deliberately STAYS in the enum.** It is
-    // per-instance ladder vocabulary (`RUNG_LABELS`, `levelToPermission`,
+    // per-instance ladder vocabulary (`RUNG_LABELS`, `levelToRung`,
     // `ResourcePermission.edit`) and backs the real `Read+write` instance tier
     // that `assertEditInstance` enforces. Deleting the key would break that tier;
     // only the AREA rung went.

@@ -16,7 +16,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedUserMailVisibility } from '../cache'
+import { getCachedUserInstanceGrants } from '../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { NotificationService } from '../notifications/notification-service'
 import { assertCanManageMailSharing } from '../resource-access/mail-sharing-guard'
@@ -45,7 +45,7 @@ import type {
 const logger = createScopedLogger('approval-requests')
 
 /** `full` — thread requests have no lens picker (plan 42 §0.2). */
-const THREAD_REQUESTED_LENS = 'full' as const
+const THREAD_REQUESTED_LENS = 'read' as const
 
 /**
  * File (or re-raise) a request for `full` access to one conversation.
@@ -54,7 +54,7 @@ const THREAD_REQUESTED_LENS = 'full' as const
  *
  * - **Input is `{ threadId }`, never a caller-supplied `RecordId`** (plan 42 §2.3
  *   second revision). `entityDefinitionId` is PERSISTED, so a CUID-keyed RecordId
- *   would store a def id `composeUserMailVisibility` never reads. Minting
+ *   would store a def id `composeUserInstanceGrants` never reads. Minting
  *   `toRecordId('thread', id)` here makes the slug keyspace a type-level guarantee
  *   and avoids a third copy of `canonicalMailRecordId`.
  * - **The lens is hardcoded `full`.** That is not only a UI simplification: it
@@ -84,9 +84,9 @@ export async function createThreadAccessRequest(
       const ctx = await loadThreadAuthorityContext(db, organizationId, input.threadId)
       if (!ctx) throw new NotFoundError(ACCESS_REFUSAL_COPY.target_unavailable)
 
-      const vis = await getCachedUserMailVisibility(userId, organizationId)
+      const vis = await getCachedUserInstanceGrants(userId, organizationId)
       const currentLens = await threadLensFromContext(db, vis, ctx)
-      if (currentLens === 'full') {
+      if (currentLens === 'read') {
         throw new BadRequestError(ACCESS_REFUSAL_COPY.already_full)
       }
 
@@ -297,7 +297,7 @@ export async function withdrawAccessRequest(
  *
  * **Raise-only comes free, from `maxLens` — not from `stripInertNoneLevels`.**
  * `effectiveLens` folds `DERIVATION_RULES` with `maxLens` and
- * `composeUserMailVisibility` raises rather than replaces, so an accepted lens grant
+ * `composeUserInstanceGrants` raises rather than replaces, so an accepted lens grant
  * can only widen. Nobody should re-implement the `Level.None` stripping the area
  * lane needs; this ladder does not need it.
  */
@@ -374,9 +374,9 @@ export async function applyAccessDecision(
   }
 
   // 4. Supersede when access already arrived by another route.
-  const requesterVis = await getCachedUserMailVisibility(requesterId, organizationId)
+  const requesterVis = await getCachedUserInstanceGrants(requesterId, organizationId)
   const requesterLens = await threadLensFromContext(tx, requesterVis, threadCtx)
-  if (requesterLens === 'full') {
+  if (requesterLens === 'read') {
     const metadata = (request.metadata as AccessRequestMetadata | null) ?? {}
     await tx
       .update(schema.ApprovalRequest)
@@ -416,8 +416,7 @@ export async function applyAccessDecision(
       recordId,
       granteeType: ResourceGranteeType.user,
       granteeId: requesterId,
-      permission: ResourcePermission.view,
-      lens: THREAD_REQUESTED_LENS,
+      rung: THREAD_REQUESTED_LENS,
       origin: 'approval',
       deferEmits: true,
     }

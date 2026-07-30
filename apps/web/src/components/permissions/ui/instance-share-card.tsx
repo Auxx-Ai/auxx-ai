@@ -1,9 +1,7 @@
 // apps/web/src/components/permissions/ui/instance-share-card.tsx
 'use client'
 
-import { ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId } from '@auxx/types/resource'
 import {
   Select,
   SelectContent,
@@ -14,16 +12,12 @@ import {
 } from '@auxx/ui/components/select'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { Globe, Lock } from 'lucide-react'
-import { useCanAdminInstance } from '~/providers/capabilities-provider'
 import type { InstanceLevel, WorkspaceBaseline } from '../hooks/use-instance-share'
 import { useInstanceShare } from '../hooks/use-instance-share'
+import { useCanManageInstanceSharing, useInstanceShareCopy } from '../hooks/use-instance-share-copy'
 import { InstanceShareBody, LEVEL_ORDER, levelHelper } from './instance-share-body'
-import {
-  INSTANCE_ROW_COPY,
-  INSTANCE_SHARE_COPY,
-  type InstanceShareCopy,
-} from './instance-share-copy'
-import { permissionLabel } from './level-labels'
+import { INSTANCE_ROW_COPY, type InstanceShareCopy } from './instance-share-copy'
+import { rungLabel } from './level-labels'
 
 /** The workspace-baseline picker: the three positive rungs + "No access (Restricted)". */
 function WorkspaceBaselineSelect({
@@ -44,14 +38,14 @@ function WorkspaceBaselineSelect({
       disabled={disabled}>
       <SelectTrigger size='sm' variant='transparent' className='h-7 w-40'>
         <SelectValue>
-          {value === 'restricted' ? 'Restricted' : permissionLabel(value, 'long')}
+          {value === 'restricted' ? 'Restricted' : rungLabel(value, 'long')}
         </SelectValue>
       </SelectTrigger>
       <SelectContent align='end' className='min-w-56'>
         {LEVEL_ORDER.map((level) => (
-          <SelectItem key={level} value={level} textValue={permissionLabel(level, 'long')}>
+          <SelectItem key={level} value={level} textValue={rungLabel(level, 'long')}>
             <div className='flex flex-col items-start'>
-              <span>{permissionLabel(level, 'long')}</span>
+              <span>{rungLabel(level, 'long')}</span>
               <span className='text-muted-foreground text-xs'>{levelHelper(copy, level)}</span>
             </div>
           </SelectItem>
@@ -94,7 +88,7 @@ function WorkspaceBaselineRow({
   disabled: boolean
 }) {
   const restricted = baseline === 'restricted'
-  const display: InstanceLevel | 'restricted' = baseline ?? ResourcePermission.view
+  const display: InstanceLevel | 'restricted' = baseline ?? 'read'
 
   return (
     <TreeRow
@@ -132,26 +126,35 @@ function WorkspaceBaselineRow({
  * affordance rule as `contact-shared-with-card.tsx`).
  */
 export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
-  const { entityDefinitionId: key } = parseRecordId(recordId)
-  const isSupported = key in INSTANCE_SHARE_COPY
-  const canAdmin = useCanAdminInstance(recordId)
+  const copy = useInstanceShareCopy(recordId)
+  const isSupported = copy !== null
+  const canAdmin = useCanManageInstanceSharing(recordId)
   const { grants, unmanageableGrants, baseline, setBaseline } = useInstanceShare({
     recordId,
     enabled: isSupported,
   })
 
-  if (!isSupported) return null
-  const copy = INSTANCE_SHARE_COPY[key as keyof typeof INSTANCE_SHARE_COPY]
+  if (!copy) return null
   // A grant this card can't render still means the resource IS shared — hiding
   // the card would leave an admin with no signal at all.
   if (!canAdmin && grants.length === 0 && unmanageableGrants.length === 0) return null
 
+  // **The record lane has no per-instance workspace baseline** (plan v3/03 §6.3):
+  // the record write path is raise-only (D7 rejects `rung: 'none'` for record
+  // defs), so a Restricted control would offer a state the server refuses to
+  // store, and there is no `role:org_member` default row to down-tier. What takes
+  // its slot is the def-level inherited-access line — "everyone who can see this
+  // definition already sees this row" — which is the same footer idea mail uses
+  // for its inbox floor, with per-domain content.
+  const isRecordLane = copy.lane === 'record'
   const restricted = baseline === 'restricted'
 
   return (
     <div className='space-y-2'>
       <p className='text-muted-foreground text-xs'>
-        {restricted ? (
+        {isRecordLane ? (
+          copy.baselineHint
+        ) : restricted ? (
           <>
             This {copy.noun} is <span className='font-medium'>restricted</span>. Only the people
             listed below can access it.
@@ -170,12 +173,14 @@ export function InstanceShareCard({ recordId }: { recordId: RecordId }) {
       {copy.scopeNote ? <p className='text-muted-foreground text-xs'>{copy.scopeNote}</p> : null}
 
       <div className='space-y-0.5'>
-        <WorkspaceBaselineRow
-          baseline={baseline}
-          onChange={setBaseline}
-          copy={copy}
-          disabled={!canAdmin}
-        />
+        {isRecordLane ? null : (
+          <WorkspaceBaselineRow
+            baseline={baseline}
+            onChange={setBaseline}
+            copy={copy}
+            disabled={!canAdmin}
+          />
+        )}
         {/* Plan 43 §5.5.2 — the mirror of the area row's confusion, and this
             dialog's own: an admin sets a workspace default and it does not reach
             everyone, because §0.2a gates the baseline lane on the member's area

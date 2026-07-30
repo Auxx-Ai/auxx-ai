@@ -2,6 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { database as defaultDatabase, schema } from '@auxx/database'
+import type { Rung } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { checkUniqueValue } from '@auxx/services/custom-fields'
@@ -21,12 +22,21 @@ import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
 import { upsertRecordIdentity } from '../../identity'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
-import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
+import {
+  assertRequestScoped,
+  type RecordVisibilityScope,
+  recordAccessRankSql,
+  recordScopeArmFor,
+  resolveRecordVisibilityScope,
+} from '../../permissions/capabilities/record-visibility-scope'
+import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
+import type { RecordPickerItem } from '../picker/types'
 import { isSystemResourceId } from '../registry'
 import type { TableId } from '../registry/field-registry'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import { assertRecordRowsEditable } from './record-row-access'
 import type { ResolvedEntityDefinition } from './types'
 import {
   archiveEntity,
@@ -52,9 +62,7 @@ import {
   type ListAllResult,
   type ListFilteredResult,
   listAll as listAllQuery,
-  queryEntityInstanceIds,
   queryEntityInstanceIdsPaged,
-  querySystemResourceIds,
   querySystemResourceIdsPaged,
   resolveEntityIdFromCache,
 } from './unified-handler-queries'
@@ -142,7 +150,7 @@ export type { CrudOptions } from './unified-handler-mutations'
  * - Integrates system hooks for validation and normalization
  * - Provides findByField and findOrCreate methods
  * - Handles bulk operations efficiently
- * - Manages events, snapshots, and field values consistently
+ * - Manages events and field values consistently
  *
  * @example
  * ```typescript
@@ -186,6 +194,16 @@ export interface UnifiedCrudHandlerOptions {
    * (resolved once via `capabilityProcedure`).
    */
   capabilities?: CapabilityView
+  /**
+   * Marks a REQUEST-path construction (plan v3/03 §5.1).
+   *
+   * `capabilities: undefined` legitimately means "internal caller, no
+   * enforcement" — workers, seeders and record-rules depend on it. The hazard is
+   * that the same absence on a request path is indistinguishable at runtime and
+   * reads the whole org silently. Request paths therefore say so, and
+   * {@link assertRequestScoped} turns the silent read into a loud 403.
+   */
+  requestPath?: boolean
 }
 
 export class UnifiedCrudHandler {
@@ -194,6 +212,8 @@ export class UnifiedCrudHandler {
   private bypassFieldGuards: ReadonlySet<SystemAttribute>
   /** Request-scoped read enforcement; undefined for internal/system callers. */
   private capabilities?: CapabilityView
+  /** Per-handler memo of {@link recordScope}, keyed by canonical def id. */
+  private scopeCache = new Map<string, Promise<RecordVisibilityScope>>()
 
   constructor(
     private organizationId: string,
@@ -204,9 +224,19 @@ export class UnifiedCrudHandler {
   ) {
     this.db = db ?? defaultDatabase
     this.bypassFieldGuards = options.bypassFieldGuards ?? new Set()
+    // §5.1: a request-path construction that forgot to thread `ctx.capabilities`
+    // would read the whole org unscoped. Fail loudly instead.
+    if (options.requestPath) assertRequestScoped(options.capabilities, 'UnifiedCrudHandler')
     this.capabilities = options.capabilities
     this.fieldValueService = new FieldValueService(organizationId, userId, this.db, socketId, {
       bypassFieldGuards: this.bypassFieldGuards,
+      // Forwarded since plan v3/03 §5.4. Without it this handler enforced
+      // `canViewEntity` on its OWN reads while the FieldValueService it owns ran
+      // unenforced — so `batchGetValues`' def/path filter and the relationship
+      // REDACTION (`redactedCount`, and the `RestrictedRelationshipChip` it
+      // feeds) were dead on every record read in the app. `RecordPickerService`
+      // below already got them; that asymmetry was the bug.
+      capabilities: this.capabilities,
     })
   }
 
@@ -239,19 +269,88 @@ export class UnifiedCrudHandler {
   }
 
   /**
-   * Write enforcement for bulk ops (§2): assert `assertEditEntity` once per
-   * DISTINCT def among the recordIds. Pure in-memory (just the recordId parse);
-   * a no-op when `capabilities` is absent (internal/system callers).
+   * The §5.1 per-record visibility scope for one def, memoized per handler so a
+   * request that lists and then stamps pays the (cache-only) grantee resolution
+   * once.
+   *
+   * Keyed by the CANONICAL `EntityDefinition.id` — that is the
+   * `ResourceAccess.entityDefinitionId` keyspace, and passing a slug would
+   * correlate the subquery against rows that do not exist, i.e. hide everything.
    */
-  private assertEditDistinctDefs(recordIds: RecordId[]): void {
-    if (!this.capabilities) return
-    const seen = new Set<string>()
-    for (const recordId of recordIds) {
-      const { entityDefinitionId } = parseRecordId(recordId)
-      if (seen.has(entityDefinitionId)) continue
-      seen.add(entityDefinitionId)
-      this.capabilities.assertEditEntity(entityDefinitionId)
-    }
+  private async recordScope(entityDefinitionId: string): Promise<RecordVisibilityScope> {
+    // System-table resources (`thread`, `message`, `inbox`, …) have no
+    // `EntityInstance` rows and are governed by mail visibility, not by record
+    // grants. There is nothing for this predicate to correlate against, so they
+    // short-circuit to arm 1 — the same answer `canViewEntity`'s mail-infra
+    // pass-through already gives them.
+    if (isSystemResource(entityDefinitionId)) return { arm: 'all' }
+
+    // ARMS 1 AND 4 COST NOTHING, and that ordering is the point (§5.1): the arm
+    // is decided from the in-memory capability view on the RAW def key, so a
+    // member who can see the whole def — and a member who can see none of it —
+    // pays no def normalization, no org-cache read and no grantee resolution.
+    // Only the two SQL-bearing arms below reach for either.
+    const arm = recordScopeArmFor(this.capabilities, entityDefinitionId)
+    if (arm === 'all' || arm === 'none') return { arm }
+
+    const defId = await this.canonicalDefId(entityDefinitionId)
+    const cached = this.scopeCache.get(defId)
+    if (cached) return cached
+    const pending = resolveRecordVisibilityScope({
+      organizationId: this.organizationId,
+      userId: this.userId,
+      entityDefinitionId: defId,
+      capabilities: this.capabilities,
+    })
+    this.scopeCache.set(defId, pending)
+    return pending
+  }
+
+  /**
+   * Any def form (slug, apiSlug, entity type, id) → the canonical
+   * `EntityDefinition.id`, i.e. the `ResourceAccess.entityDefinitionId`
+   * keyspace. Falls back to the input when nothing resolves, so an unknown key
+   * yields a predicate that simply matches no grant rows (fail-closed) rather
+   * than throwing on a read path.
+   */
+  private async canonicalDefId(entityDefinitionId: string): Promise<string> {
+    const resource = await findCachedResource(this.organizationId, entityDefinitionId)
+    return resource?.entityDefinitionId ?? resource?.id ?? entityDefinitionId
+  }
+
+  /**
+   * The grantee-union `max(rung)` subquery for the current member on one def —
+   * the grant half of the `_access` stamp (§5.2), resolved in the SAME query as
+   * the row it describes.
+   */
+  private async recordAccessRank(entityDefinitionId: string) {
+    const defId = await this.canonicalDefId(entityDefinitionId)
+    const grantees = await resolveResourceAccessGrantees(this.organizationId, this.userId)
+    return recordAccessRankSql({
+      organizationId: this.organizationId,
+      entityDefinitionId: defId,
+      grantees,
+    })
+  }
+
+  /**
+   * **The PER-ROW write gate** (plan v3/03 §5.3) — every row-addressed mutation
+   * on this handler goes through it, single and bulk alike.
+   *
+   * Replaces the old `assertEditDistinctDefs`, which asserted `assertEditEntity`
+   * once per DISTINCT def. That gate made a per-record `edit` grant **inert**:
+   * the member could read the row through §5.1's arm 3 and then be refused every
+   * write on it by a def-level question the row is not governed by.
+   *
+   * The def gate still runs FIRST and short-circuits, so the ordinary
+   * all-def-editable batch pays exactly what it paid before — zero I/O. Only the
+   * ids the def gate refuses are stamped and re-judged. See
+   * {@link assertRecordRowsEditable} for the missing-row/missing-stamp rule.
+   *
+   * A no-op when `capabilities` is absent (internal/system callers).
+   */
+  private async assertEditRows(recordIds: readonly RecordId[]): Promise<void> {
+    return assertRecordRowsEditable(this.capabilities, recordIds, (ids) => this.getByIds(ids))
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -265,7 +364,7 @@ export class UnifiedCrudHandler {
    *
    * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
    * @param values - Field values to set (map of fieldId -> value)
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    * @returns CreateEntityResult with instance, recordId, and all field values
    */
   async create(
@@ -337,7 +436,7 @@ export class UnifiedCrudHandler {
    *
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param values - Field values to update (map of fieldId -> value)
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async update(
     recordId: RecordId,
@@ -346,27 +445,61 @@ export class UnifiedCrudHandler {
     options: CrudOptions = {}
   ) {
     const { entityDefinitionId } = parseRecordId(recordId)
-    this.capabilities?.assertEditEntity(entityDefinitionId)
+    await this.assertEditRows([recordId])
     await this.warmCache(entityDefinitionId)
     return updateEntity(this.getMutationContext(), recordId, values, modes, options)
   }
 
   /**
-   * Get entity instance by ID
+   * Get entity instance by ID, carrying the `_access` stamp (plan v3/03 §5.2).
+   *
+   * On an enforced read this is ONE query: the §5.1 visibility predicate in the
+   * `WHERE`, the grantee-union `max(rung)` aggregate in the projection. No cache
+   * read, no post-filter, no second roundtrip.
+   *
+   * An unauthorized id returns `null` → the router's 404, matching the existing
+   * non-enumeration behaviour: the member cannot tell "does not exist" from
+   * "exists and is not mine".
+   *
+   * Unenforced callers (`capabilities: undefined` — workers, seeders,
+   * record-rules) keep the original `getEntityInstance` path verbatim and get no
+   * stamp, because `_access` is a member-relative value and there is no member.
    *
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    */
-  async getById(recordId: RecordId) {
+  async getById(recordId: RecordId): Promise<(EntityInstanceEntity & { _access?: Rung }) | null> {
     const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-    // Read enforcement (§2.1): a def the member can't view reads as not-found.
-    if (this.capabilities && !this.capabilities.canViewEntity(entityDefinitionId)) {
-      return null
+    const caps = this.capabilities
+    if (!caps) {
+      const result = await getEntityInstance({
+        id: entityInstanceId,
+        organizationId: this.organizationId,
+      })
+      return result.isOk() ? result.value : null
     }
-    const result = await getEntityInstance({
-      id: entityInstanceId,
-      organizationId: this.organizationId,
-    })
-    return result.isOk() ? result.value : null
+
+    const scope = await this.recordScope(entityDefinitionId)
+    // Arm 4 — nothing is reachable. Return without querying at all.
+    if (scope.arm === 'none') return null
+
+    const rows = await this.db
+      .select({
+        instance: schema.EntityInstance,
+        grantRank: await this.recordAccessRank(entityDefinitionId),
+      })
+      .from(schema.EntityInstance)
+      .where(
+        and(
+          eq(schema.EntityInstance.id, entityInstanceId),
+          eq(schema.EntityInstance.organizationId, this.organizationId),
+          scope.where
+        )
+      )
+      .limit(1)
+
+    const row = rows[0]
+    if (!row) return null
+    return { ...row.instance, _access: caps.recordAccessAt(entityDefinitionId, row.grantRank) }
   }
 
   /**
@@ -439,10 +572,11 @@ export class UnifiedCrudHandler {
     candidates: LookupCandidate[]
     limit: number
   }): Promise<LookupByFieldResult> {
-    // Read enforcement (§2.1): a def the member can't view yields no matches.
-    if (this.capabilities && !this.capabilities.canViewEntity(params.entityDefinitionId)) {
-      return { items: [], hasMore: false }
-    }
+    // Read enforcement (§5.1): arm 4 yields no matches without a query; the two
+    // middle arms narrow both lookup queries below (both inner-join
+    // EntityInstance, so the predicate correlates directly).
+    const lookupScope = await this.recordScope(params.entityDefinitionId)
+    if (lookupScope.arm === 'none') return { items: [], hasMore: false }
     const entityDef = await this.resolveEntityDefinition(params.entityDefinitionId)
     const seen = new Set<RecordId>()
     const items: LookupMatch[] = []
@@ -496,7 +630,8 @@ export class UnifiedCrudHandler {
               eq(schema.RecordIdentity.organizationId, this.organizationId),
               eq(schema.RecordIdentity.entityDefinitionId, entityDef.id),
               eq(schema.RecordIdentity.source, parsed.source),
-              eq(schema.RecordIdentity.externalId, parsed.externalId)
+              eq(schema.RecordIdentity.externalId, parsed.externalId),
+              lookupScope.where
             )
           )
           .limit(remaining + 1)
@@ -555,7 +690,8 @@ export class UnifiedCrudHandler {
           and(
             eq(schema.FieldValue.fieldId, field.id),
             eq(schema.FieldValue.organizationId, this.organizationId),
-            condition
+            condition,
+            lookupScope.where
           )
         )
         .limit(remaining + 1)
@@ -624,12 +760,12 @@ export class UnifiedCrudHandler {
    * Archive entity instance (soft delete)
    *
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async archive(recordId: RecordId, options: CrudOptions = {}) {
     const { entityDefinitionId } = parseRecordId(recordId)
-    // Soft delete is an edit (§0.1).
-    this.capabilities?.assertEditEntity(entityDefinitionId)
+    // Soft delete is an edit (§0.1) — judged at the row, not the def (§5.3).
+    await this.assertEditRows([recordId])
     await this.warmCache(entityDefinitionId)
     return archiveEntity(this.getMutationContext(), recordId, options)
   }
@@ -638,11 +774,11 @@ export class UnifiedCrudHandler {
    * Restore archived entity instance
    *
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async restore(recordId: RecordId, options: CrudOptions = {}) {
     const { entityDefinitionId } = parseRecordId(recordId)
-    this.capabilities?.assertEditEntity(entityDefinitionId)
+    await this.assertEditRows([recordId])
     await this.warmCache(entityDefinitionId)
     return restoreEntity(this.getMutationContext(), recordId, options)
   }
@@ -651,13 +787,15 @@ export class UnifiedCrudHandler {
    * Permanently delete entity instance
    *
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async delete(recordId: RecordId, options: CrudOptions = {}): Promise<void> {
     const { entityDefinitionId } = parseRecordId(recordId)
     // Record delete is a write (§0.1); the router additionally asserts the
-    // coarse `records.delete` verb (belt-and-braces Layer-2 gate).
-    this.capabilities?.assertEditEntity(entityDefinitionId)
+    // per-row DELETE rule (`assertCanDeleteRows`) before it gets here. The edit
+    // floor must be read at the ROW too, or a row the router's stamp just
+    // cleared for deletion would be refused here by the def gate.
+    await this.assertEditRows([recordId])
     await this.warmCache(entityDefinitionId)
     return deleteEntity(this.getMutationContext(), recordId, options)
   }
@@ -671,7 +809,7 @@ export class UnifiedCrudHandler {
    *
    * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
    * @param items - Array of field value maps to create
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async bulkCreate(
     entityDefinitionId: string,
@@ -688,14 +826,14 @@ export class UnifiedCrudHandler {
    * Bulk update entities
    *
    * @param updates - Array of { recordId, values } to update
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async bulkUpdate(
     updates: Array<{ recordId: RecordId; values: Record<string, unknown> }>,
     options: CrudOptions = {}
   ): Promise<{ updated: number; errors: Array<{ recordId: RecordId; error: string }> }> {
     if (updates.length === 0) return { updated: 0, errors: [] }
-    this.assertEditDistinctDefs(updates.map((u) => u.recordId))
+    await this.assertEditRows(updates.map((u) => u.recordId))
     const { entityDefinitionId } = parseRecordId(updates[0]!.recordId)
     await this.warmCache(entityDefinitionId)
     return bulkUpdateEntities(this.getMutationContext(), updates, options)
@@ -705,11 +843,11 @@ export class UnifiedCrudHandler {
    * Bulk archive entities (soft delete)
    *
    * @param recordIds - Array of RecordIds to archive
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async bulkArchive(recordIds: RecordId[], options: CrudOptions = {}): Promise<{ count: number }> {
     if (recordIds.length === 0) return { count: 0 }
-    this.assertEditDistinctDefs(recordIds)
+    await this.assertEditRows(recordIds)
     const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
     return bulkArchiveEntities(this.getMutationContext(), recordIds, options)
@@ -719,14 +857,14 @@ export class UnifiedCrudHandler {
    * Bulk delete entities (hard delete)
    *
    * @param recordIds - Array of RecordIds to delete
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents)
    */
   async bulkDelete(
     recordIds: RecordId[],
     options: CrudOptions = {}
   ): Promise<{ count: number; errors: Array<{ recordId: RecordId; message: string }> }> {
     if (recordIds.length === 0) return { count: 0, errors: [] }
-    this.assertEditDistinctDefs(recordIds)
+    await this.assertEditRows(recordIds)
     const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
     return bulkDeleteEntities(this.getMutationContext(), recordIds, options)
@@ -745,7 +883,7 @@ export class UnifiedCrudHandler {
     value: unknown
   ): Promise<{ count: number }> {
     if (recordIds.length === 0) return { count: 0 }
-    this.assertEditDistinctDefs(recordIds)
+    await this.assertEditRows(recordIds)
     return bulkSetFieldValue(this.getMutationContext(), recordIds, fieldId, value)
   }
 
@@ -801,20 +939,31 @@ export class UnifiedCrudHandler {
    * @param params - List all parameters (entityDefinitionId or apiSlug required)
    */
   async listAll(params: ListAllInput): Promise<ListAllResult> {
-    // Read enforcement (§2.1): a def the member can't view yields an empty list.
+    // Read enforcement (§5.1): arm 4 yields an empty list without a query; the
+    // two middle arms narrow the `findMany` in `listAllQuery`.
     const defKey = params.entityDefinitionId ?? params.apiSlug
-    if (this.capabilities && defKey && !this.capabilities.canViewEntity(defKey)) {
+    const scope = defKey ? await this.recordScope(defKey) : { arm: 'all' as const }
+    if (scope.arm === 'none') {
       return { items: [], entityDefinitionId: params.entityDefinitionId ?? '', fields: {} }
     }
     return listAllQuery(
-      { db: this.db, organizationId: this.organizationId, userId: this.userId },
+      {
+        db: this.db,
+        organizationId: this.organizationId,
+        userId: this.userId,
+        capabilities: this.capabilities,
+        visibilityWhere: scope.where,
+      },
       params
     )
   }
 
   /**
-   * List record IDs with server-side filtering (Query Snapshot pattern)
-   * Returns cached snapshot IDs for efficient pagination
+   * List record IDs with server-side filtering, paged straight from SQL.
+   *
+   * One page = one `SELECT id ... LIMIT n + 1 OFFSET m`; `hasMore` is the probe row.
+   * `COUNT(*)` runs on the first page only (or when `includeTotal` is forced), so an
+   * infinite scroll doesn't pay a count per tick — see plan v3/02 §2.2.
    *
    * @param params - Filter parameters
    */
@@ -823,131 +972,61 @@ export class UnifiedCrudHandler {
     filters?: ConditionGroup[]
     sorting?: Array<{ id: string; desc: boolean }>
     limit?: number
-    /** Pagination offset — honored in oneshot mode (snapshot mode uses cursor.offset). */
+    /** Pagination offset. `cursor.offset` wins when both are given. */
     offset?: number
-    cursor?: { snapshotId: string; offset: number }
-    /**
-     * Query mode:
-     * - 'snapshot' (default): cache the full filtered id list, slice for pagination.
-     * - 'oneshot': bypass Redis, run a paged SQL query + parallel COUNT(*). Use for
-     *   one-shot callers (agents) that don't benefit from a stable snapshot.
-     */
-    mode?: 'snapshot' | 'oneshot'
+    cursor?: { offset: number }
+    /** Force the `COUNT(*)`. Defaults to `offset === 0`. */
+    includeTotal?: boolean
   }): Promise<ListFilteredResult> {
-    const { entityDefinitionId, sorting = [], limit = 100, cursor, mode = 'snapshot' } = params
+    const { entityDefinitionId, sorting = [], limit = 100, cursor } = params
 
-    // Read enforcement (§2.1): a def the member can't view yields an empty page.
-    if (this.capabilities && !this.capabilities.canViewEntity(entityDefinitionId)) {
-      return { snapshotId: '', ids: [], total: 0, hasMore: false }
+    // Read enforcement (§5.1). Arm 4 returns an empty page WITHOUT querying;
+    // arms 2/3 join their predicate into `baseWhere`, which the page query and
+    // the `COUNT(*)` share — so `total` describes the visible set.
+    //
+    // System resources (`thread`, `message`, …) are not EntityInstance-backed
+    // and are governed by mail visibility, so the record scope does not apply to
+    // them; that branch is taken below, before `visibilityWhere` is used.
+    const scope = await this.recordScope(entityDefinitionId)
+    if (scope.arm === 'none') {
+      return { ids: [], total: 0, hasMore: false }
     }
 
-    // Resolve valueSource placeholders (e.g. currentUser) before any cache key
-    // is computed so snapshots are isolated per viewer.
+    // Resolve valueSource placeholders (e.g. currentUser) into the filters before
+    // they reach the WHERE clause.
     const filters = resolveConditionContext(params.filters ?? [], {
       currentUserId: this.userId,
     })
 
-    // Oneshot mode: bypass snapshot, run paged SQL + COUNT in parallel.
-    if (mode === 'oneshot') {
-      const offset = Math.max(params.offset ?? 0, 0)
+    const offset = Math.max(cursor?.offset ?? params.offset ?? 0, 0)
+    const includeTotal = params.includeTotal ?? offset === 0
 
-      const { ids, total } = isSystemResource(entityDefinitionId)
-        ? await querySystemResourceIdsPaged({
-            db: this.db,
-            tableId: entityDefinitionId as TableId,
-            organizationId: this.organizationId,
-            filters: filters as ConditionGroup[],
-            sorting,
-            limit,
-            offset,
-          })
-        : await queryEntityInstanceIdsPaged({
-            db: this.db,
-            entityDefinitionId: isEntityDefinitionType(entityDefinitionId)
-              ? (await this.resolveEntityDefinition(entityDefinitionId)).id
-              : entityDefinitionId,
-            organizationId: this.organizationId,
-            filters: filters as ConditionGroup[],
-            sorting,
-            limit,
-            offset,
-          })
-
-      return {
-        snapshotId: '',
-        ids,
-        total,
-        hasMore: offset + ids.length < total,
-        fromCache: false,
-      }
-    }
-
-    // Extract pagination from cursor if provided
-    const snapshotId = cursor?.snapshotId
-    const offset = cursor?.offset ?? 0
-
-    // If snapshotId provided via cursor, try to fetch chunk from cache
-    if (snapshotId) {
-      const chunk = await getSnapshotChunk({
-        snapshotId,
-        offset,
+    if (isSystemResource(entityDefinitionId)) {
+      return querySystemResourceIdsPaged({
+        db: this.db,
+        tableId: entityDefinitionId as TableId,
+        organizationId: this.organizationId,
+        filters: filters as ConditionGroup[],
+        sorting,
         limit,
+        offset,
+        includeTotal,
       })
-
-      if (chunk) {
-        return {
-          snapshotId,
-          ids: chunk.ids,
-          total: chunk.total,
-          hasMore: offset + chunk.ids.length < chunk.total,
-        }
-      }
-      // Snapshot expired - fall through to create a new one
     }
 
-    // No snapshotId - create new snapshot
-    const result = await getOrCreateSnapshot({
+    return queryEntityInstanceIdsPaged({
+      db: this.db,
+      entityDefinitionId: isEntityDefinitionType(entityDefinitionId)
+        ? (await this.resolveEntityDefinition(entityDefinitionId)).id
+        : entityDefinitionId,
       organizationId: this.organizationId,
-      resourceType: entityDefinitionId,
       filters: filters as ConditionGroup[],
       sorting,
-      executeQuery: async () => {
-        // Route to appropriate query function
-        if (isSystemResource(entityDefinitionId)) {
-          return querySystemResourceIds({
-            db: this.db,
-            tableId: entityDefinitionId as TableId,
-            organizationId: this.organizationId,
-            filters: filters as ConditionGroup[],
-            sorting,
-          })
-        }
-
-        // Resolve entity definition type (e.g. 'ticket', 'contact') to actual UUID
-        const resolvedId = isEntityDefinitionType(entityDefinitionId)
-          ? (await this.resolveEntityDefinition(entityDefinitionId)).id
-          : entityDefinitionId
-
-        return queryEntityInstanceIds({
-          db: this.db,
-          entityDefinitionId: resolvedId,
-          organizationId: this.organizationId,
-          filters: filters as ConditionGroup[],
-          sorting,
-        })
-      },
+      limit,
+      offset,
+      includeTotal,
+      visibilityWhere: scope.where,
     })
-
-    // Return first chunk
-    const ids = result.ids.slice(offset, offset + limit)
-
-    return {
-      snapshotId: result.snapshotId,
-      ids,
-      total: result.total,
-      hasMore: offset + ids.length < result.total,
-      fromCache: result.fromCache,
-    }
   }
 
   /**
@@ -955,8 +1034,8 @@ export class UnifiedCrudHandler {
    *
    * @param recordIds - Array of RecordIds to fetch
    */
-  async getByIds(recordIds: RecordId[]) {
-    if (recordIds.length === 0) return []
+  async getByIds(recordIds: RecordId[]): Promise<Record<RecordId, RecordPickerItem>> {
+    if (recordIds.length === 0) return {}
 
     const service = new RecordPickerService(
       this.organizationId,
@@ -1081,8 +1160,10 @@ export class UnifiedCrudHandler {
    * @param sourceRecordIds - RecordIds of instances to merge into target
    */
   async merge(targetRecordId: RecordId, sourceRecordIds: RecordId[]) {
-    // Merge writes the survivor and removes the sources — assert edit on every def.
-    this.assertEditDistinctDefs([targetRecordId, ...sourceRecordIds])
+    // Merge writes the survivor and removes the sources — the edit floor is
+    // asserted per ROW (§5.3) on the target and every source; the router's
+    // `assertCanDeleteRows` carries the destruction half.
+    await this.assertEditRows([targetRecordId, ...sourceRecordIds])
     return mergeEntities(this.getMutationContext(), targetRecordId, sourceRecordIds)
   }
 
@@ -1119,7 +1200,11 @@ export class UnifiedCrudHandler {
         id: instanceId,
         organizationId: this.organizationId,
       })
-      if (instance.isOk()) this.capabilities.assertEditEntity(instance.value.entityDefinitionId)
+      // Per row (§5.3), not per def — the RecordId is reconstructible once the
+      // def is known, so this lane gets the same gate as `update`.
+      if (instance.isOk()) {
+        await this.assertEditRows([toRecordId(instance.value.entityDefinitionId, instanceId)])
+      }
     }
     return updateValuesImpl(this.getMutationContext(), instanceId, values)
   }
@@ -1146,7 +1231,6 @@ export class UnifiedCrudHandler {
       value,
     })
 
-    await this.invalidateSnapshots(entityDef.id)
     await this.publishEvent('updated', entityDef, entityInstanceId, { [fieldId]: value })
   }
 
@@ -1264,17 +1348,6 @@ export class UnifiedCrudHandler {
         values: Array.isArray(e.value) ? e.value : [e.value],
         skipPublishEvents: !publishEvents,
       })
-    }
-  }
-
-  private async invalidateSnapshots(entityDefinitionId: string): Promise<void> {
-    try {
-      await invalidateSnapshots({
-        organizationId: this.organizationId,
-        resourceType: entityDefinitionId,
-      })
-    } catch {
-      // Non-critical
     }
   }
 

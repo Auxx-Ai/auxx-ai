@@ -1,15 +1,19 @@
 // packages/lib/src/permissions/visibility/mail-floor-authoring.test.ts
 
 import { describe, expect, it } from 'vitest'
+import {
+  bucketInstanceGrantRows,
+  type InstanceGrantRow,
+} from '../../resource-access/instance-grants'
 // Deep import: the `@auxx/lib/permissions` BARREL hangs under vitest.
 import { Level } from '../capabilities/registry'
-import { composeUserMailVisibility, type VisibilityGrantRow } from './compute-user-mail-visibility'
+import { composeUserInstanceGrants } from './compute-user-instance-grants'
 
 /**
  * Plan 40 §6 + 40a §3 — what the FLOOR AUTHORING conversion actually has to be
  * true for.
  *
- * Sibling of `compute-user-mail-visibility.test.ts` (which owns the phase-2
+ * Sibling of `compute-user-instance-grants.test.ts` (which owns the phase-2
  * floor-source assertions); this file owns the properties that only became
  * reachable once the UI started WRITING `role:org_member` rows:
  *
@@ -26,29 +30,37 @@ import { composeUserMailVisibility, type VisibilityGrantRow } from './compute-us
 const VIEWER = 'u_viewer'
 const OWNER = 'u_owner'
 
-const grant = (over: Partial<VisibilityGrantRow>): VisibilityGrantRow => ({
+const grant = (over: Partial<InstanceGrantRow>): InstanceGrantRow => ({
   entityDefinitionId: 'inbox',
   entityInstanceId: 'i_1',
   granteeType: 'user',
   granteeId: VIEWER,
-  permission: 'view',
-  lens: 'full',
+  rung: 'read',
   ...over,
 })
 
 /** The org-wide floor row `inbox.setAccessFloor` writes. */
-const baseline = (over: Partial<VisibilityGrantRow>): VisibilityGrantRow =>
+const baseline = (over: Partial<InstanceGrantRow>): InstanceGrantRow =>
   grant({ granteeType: 'role', granteeId: 'org_member', ...over })
 
-type ComposeInput = Parameters<typeof composeUserMailVisibility>[0]
+type ComposeInput = Parameters<typeof composeUserInstanceGrants>[0]
 
-const compose = (over: Partial<ComposeInput> = {}) =>
-  composeUserMailVisibility({
+/**
+ * `grants` takes RAW rows and runs them through the shared bucketing pass — the
+ * same one `loadUserInstanceGrants` runs in production (plan v3/03 P4). Tests
+ * state grant ROWS, which is what the database holds; the lane split and the
+ * governing set are then derived, not asserted into existence.
+ */
+const compose = ({
+  grants = [],
+  ...over
+}: Partial<Omit<ComposeInput, 'instanceGrants'>> & { grants?: InstanceGrantRow[] } = {}) =>
+  composeUserInstanceGrants({
     userId: VIEWER,
     role: 'USER',
     inboxesAreaLevel: Level.Read,
     inboxes: [],
-    grants: [],
+    instanceGrants: bucketInstanceGrantRows(grants),
     ...over,
   })
 
@@ -60,14 +72,14 @@ describe('authoring the floor changes what members see', () => {
   const inboxes = [{ id: 'shared' }]
 
   it('no baseline row ⇒ the org-shared default (`full`)', () => {
-    expect(compose({ inboxes }).inboxLens).toEqual({ shared: 'full' })
+    expect(compose({ inboxes }).inboxLens).toEqual({ shared: 'read' })
   })
 
   it('`role:org_member @ view` + lens ⇒ exactly that tier, not `full`', () => {
-    for (const lens of ['metadata', 'subject'] as const) {
+    for (const lens of ['metadata', 'identity'] as const) {
       const vis = compose({
         inboxes,
-        grants: [baseline({ entityInstanceId: 'shared', permission: 'view', lens })],
+        grants: [baseline({ entityInstanceId: 'shared', rung: lens })],
       })
       expect(vis.inboxLens).toEqual({ shared: lens })
     }
@@ -81,9 +93,9 @@ describe('authoring the floor changes what members see', () => {
       const vis = compose({
         inboxesAreaLevel: level,
         inboxes,
-        grants: [baseline({ entityInstanceId: 'shared', permission: 'view', lens: 'subject' })],
+        grants: [baseline({ entityInstanceId: 'shared', rung: 'identity' })],
       })
-      expect(vis.inboxLens).toEqual({ shared: 'subject' })
+      expect(vis.inboxLens).toEqual({ shared: 'identity' })
     }
   })
 
@@ -94,7 +106,7 @@ describe('authoring the floor changes what members see', () => {
       role: 'ADMIN',
       inboxesAreaLevel: Level.Full,
       inboxes,
-      grants: [baseline({ entityInstanceId: 'shared', permission: 'none', lens: null })],
+      grants: [baseline({ entityInstanceId: 'shared', rung: 'none' })],
     })
     expect(vis.inboxLens).toEqual({})
     expect(vis.isAdmin).toBe(true)
@@ -104,11 +116,11 @@ describe('authoring the floor changes what members see', () => {
     const vis = compose({
       inboxes,
       grants: [
-        baseline({ entityInstanceId: 'shared', permission: 'none', lens: null }),
-        grant({ entityInstanceId: 'shared', permission: 'view', lens: 'full' }),
+        baseline({ entityInstanceId: 'shared', rung: 'none' }),
+        grant({ entityInstanceId: 'shared', rung: 'read' }),
       ],
     })
-    expect(vis.inboxLens).toEqual({ shared: 'full' })
+    expect(vis.inboxLens).toEqual({ shared: 'read' })
   })
 })
 
@@ -126,7 +138,7 @@ describe('`inboxes: None` means none — for row-governed inboxes too', () => {
     const vis = compose({
       inboxesAreaLevel: Level.None,
       inboxes: [{ id: 'peek' }],
-      grants: [baseline({ entityInstanceId: 'peek', permission: 'view', lens: 'subject' })],
+      grants: [baseline({ entityInstanceId: 'peek', rung: 'identity' })],
     })
     expect(vis.inboxLens).toEqual({})
   })
@@ -135,7 +147,7 @@ describe('`inboxes: None` means none — for row-governed inboxes too', () => {
     const vis = compose({
       inboxesAreaLevel: Level.None,
       inboxes: [{ id: 'open' }],
-      grants: [baseline({ entityInstanceId: 'open', permission: 'view', lens: 'full' })],
+      grants: [baseline({ entityInstanceId: 'open', rung: 'read' })],
     })
     expect(vis.inboxLens).toEqual({})
   })
@@ -144,7 +156,7 @@ describe('`inboxes: None` means none — for row-governed inboxes too', () => {
     const vis = compose({
       inboxesAreaLevel: Level.None,
       inboxes: [{ id: 'closed' }],
-      grants: [baseline({ entityInstanceId: 'closed', permission: 'none', lens: null })],
+      grants: [baseline({ entityInstanceId: 'closed', rung: 'none' })],
     })
     expect(vis.inboxLens).toEqual({})
   })
@@ -156,9 +168,9 @@ describe('`inboxes: None` means none — for row-governed inboxes too', () => {
     const vis = compose({
       inboxesAreaLevel: Level.None,
       inboxes: [{ id: 'mine' }, { id: 'theirs' }],
-      grants: [grant({ entityInstanceId: 'mine', permission: 'view', lens: 'full' })],
+      grants: [grant({ entityInstanceId: 'mine', rung: 'read' })],
     })
-    expect(vis.inboxLens).toEqual({ mine: 'full' })
+    expect(vis.inboxLens).toEqual({ mine: 'read' })
   })
 
   it('POSITIVE CONTROL: a group row survives a closed front door too', () => {
@@ -170,12 +182,11 @@ describe('`inboxes: None` means none — for row-governed inboxes too', () => {
           entityInstanceId: 'mine',
           granteeType: 'group',
           granteeId: 'grp_1',
-          permission: 'admin',
-          lens: null,
+          rung: 'admin',
         }),
       ],
     })
-    expect(vis.inboxLens).toEqual({ mine: 'full' })
+    expect(vis.inboxLens).toEqual({ mine: 'read' })
   })
 
   it('POSITIVE CONTROL: an own `admin` row outranks a down-tiered floor', () => {
@@ -185,11 +196,11 @@ describe('`inboxes: None` means none — for row-governed inboxes too', () => {
       inboxesAreaLevel: Level.Read,
       inboxes: [{ id: 'shared' }],
       grants: [
-        baseline({ entityInstanceId: 'shared', permission: 'view', lens: 'subject' }),
-        grant({ entityInstanceId: 'shared', permission: 'admin', lens: null }),
+        baseline({ entityInstanceId: 'shared', rung: 'identity' }),
+        grant({ entityInstanceId: 'shared', rung: 'admin' }),
       ],
     })
-    expect(vis.inboxLens).toEqual({ shared: 'full' })
+    expect(vis.inboxLens).toEqual({ shared: 'read' })
   })
 })
 
@@ -205,19 +216,18 @@ describe('a newly provisioned personal mailbox is private to its owner', () => {
     entityInstanceId: 'pi_1',
     granteeType: 'user',
     granteeId: OWNER,
-    permission: 'admin',
-    lens: null,
+    rung: 'admin',
   })
 
   it('the OWNER reads it at `full` through their `personal_inbox`-keyed row', () => {
-    const vis = composeUserMailVisibility({
+    const vis = composeUserInstanceGrants({
       userId: OWNER,
       role: 'USER',
       inboxesAreaLevel: Level.Read,
       inboxes: mailbox,
-      grants: [ownerRow],
+      instanceGrants: bucketInstanceGrantRows([ownerRow]),
     })
-    expect(vis.inboxLens).toEqual({ pi_1: 'full' })
+    expect(vis.inboxLens).toEqual({ pi_1: 'read' })
     // Never in the viewer's OWN personal-inbox cap set.
     expect(vis.personalInboxIds).toEqual({})
   })
@@ -254,8 +264,7 @@ describe('a newly provisioned personal mailbox is private to its owner', () => {
         baseline({
           entityDefinitionId: 'personal_inbox',
           entityInstanceId: 'pi_1',
-          permission: 'view',
-          lens: 'full',
+          rung: 'read',
         }),
       ],
     })
@@ -271,11 +280,10 @@ describe('a newly provisioned personal mailbox is private to its owner', () => {
         grant({
           entityDefinitionId: 'personal_inbox',
           entityInstanceId: 'pi_1',
-          permission: 'view',
-          lens: 'subject',
+          rung: 'identity',
         }),
       ],
     })
-    expect(vis.inboxLens).toEqual({ pi_1: 'subject' })
+    expect(vis.inboxLens).toEqual({ pi_1: 'identity' })
   })
 })

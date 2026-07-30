@@ -255,6 +255,10 @@ export const searchRouter = createTRPCRouter({
               organizationId,
               userId,
               db: ctx.db,
+              // Threaded per plan v3/03 §5.4 — the def gate above is not enough:
+              // without this the `FieldValueService` inside `listAll` reads tag
+              // field values unenforced.
+              capabilities: ctx.capabilities,
             },
             {
               entityDefinitionId: 'tag',

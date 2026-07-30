@@ -1,7 +1,7 @@
 // packages/lib/src/permissions/profiles/profile-delete.ts
 
 import { type AgentKind, type Database, database, schema } from '@auxx/database'
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedResources, onCacheEvent } from '../../cache'
@@ -14,6 +14,7 @@ import {
   PERMISSION_AREAS,
   parseAreaLevels,
 } from '../capabilities/registry'
+import { RUNG_ORDER } from '../capabilities/rung'
 import { FeaturePermissionService } from '../feature-permission-service'
 import { FeatureKey } from '../types'
 import {
@@ -69,9 +70,18 @@ export interface ProfileDeletionResourceDelta {
   apiSlug?: string
   /** Display label when `id` resolves to a live entity definition. */
   label?: string
-  /** `null` = no access at all on that side. */
-  from: ResourcePermission | null
-  to: ResourcePermission | null
+  /**
+   * `null` = no access at all on that side.
+   *
+   * TWO ladders share this field, by domain: a DEF delta carries a
+   * {@link ResourcePermission} (`view/edit/admin`), an INSTANCE delta a
+   * {@link Rung} (`read/edit/admin`, plus mail's `metadata`/`identity`). They
+   * are never compared against each other — {@link buildResourceDeltas} picks
+   * the matching rank function per domain — and the union is what keeps this
+   * preview honest instead of stringifying one vocabulary into the other.
+   */
+  from: ResourcePermission | Rung | null
+  to: ResourcePermission | Rung | null
   direction: 'gain' | 'loss'
   holderCount: number
 }
@@ -867,6 +877,11 @@ function permissionRank(permission: ResourcePermission | undefined): number {
   return permission === undefined ? 0 : PERMISSION_RANK[permission]
 }
 
+/** {@link permissionRank}'s twin for the {@link Rung}-valued INSTANCE lane. */
+function rungRankOrNone(rung: Rung | undefined): number {
+  return rung === undefined ? 0 : RUNG_ORDER[rung]
+}
+
 /**
  * The definition/instance analogue of {@link buildAreaDeltas}. Keys present on
  * only one side still count: an absent key means no access, not "unchanged".
@@ -879,6 +894,14 @@ function buildResourceDeltas(
   labels?: Map<string, { apiSlug: string; label: string }>
 ): ProfileDeletionResourceDelta[] {
   const groups = new Map<string, ProfileDeletionResourceDelta>()
+  // Per-domain ladder (see `ProfileDeletionResourceDelta.from`). Ranking an
+  // instance rung through `PERMISSION_RANK` would read `undefined` for `read`
+  // and label every real gain a "loss".
+  const rank =
+    domain === 'defs'
+      ? (v: ResourcePermission | Rung | undefined) =>
+          permissionRank(v as ResourcePermission | undefined)
+      : (v: ResourcePermission | Rung | undefined) => rungRankOrNone(v as Rung | undefined)
 
   for (const userId of holderIds) {
     const prevMap = before.get(userId)?.[domain] ?? {}
@@ -900,7 +923,7 @@ function buildResourceDeltas(
         ...(meta ? { apiSlug: meta.apiSlug, label: meta.label } : {}),
         from: prev ?? null,
         to: next ?? null,
-        direction: permissionRank(next) > permissionRank(prev) ? 'gain' : 'loss',
+        direction: rank(next) > rank(prev) ? 'gain' : 'loss',
         holderCount: 1,
       })
     }

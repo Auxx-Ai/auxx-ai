@@ -8,6 +8,8 @@ import {
   Level,
   levelToRecordBasePermission,
   PERMISSION_AREAS,
+  permissionToRung,
+  rungToPermission,
 } from '@auxx/lib/permissions/client'
 import { isAccessManageable, type Resource } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
@@ -98,7 +100,8 @@ export function useDefBaselines() {
             entityInstanceId: null,
             granteeType: ResourceGranteeType.role,
             granteeId: MEMBER_BASELINE_GRANTEE_ID,
-            permission,
+            // Def-axis value → stored rung (plan v3/03 §3).
+            rung: permissionToRung(permission),
             createdAt: new Date(),
           } as (typeof rows)[number])
         }
@@ -133,7 +136,8 @@ export function useDefBaselines() {
         r.granteeType === ResourceGranteeType.role &&
         r.granteeId === MEMBER_BASELINE_GRANTEE_ID
       ) {
-        map.set(r.entityDefinitionId, r.permission)
+        const permission = rungToPermission(r.rung)
+        if (permission !== undefined) map.set(r.entityDefinitionId, permission)
       }
     }
     return map
@@ -182,7 +186,7 @@ export function useDefBaselines() {
         entityDefinitionId,
         granteeType: ResourceGranteeType.role,
         granteeId: MEMBER_BASELINE_GRANTEE_ID,
-        permission: level,
+        rung: permissionToRung(level),
       })
     },
     [grantType, revokeType, patchLocal]

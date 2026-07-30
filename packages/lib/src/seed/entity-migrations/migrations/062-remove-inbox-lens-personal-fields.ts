@@ -65,7 +65,7 @@ export interface StrandedPersonalInbox {
  *
  *  - `inbox_is_personal` is how 060 finds the instances to move. Delete it first
  *    and every personal mailbox stays on the shared def with nothing marking it
- *    — `derivePersonal` reports `false`, `composeUserMailVisibility` skips its
+ *    — `derivePersonal` reports `false`, `composeUserInstanceGrants` skips its
  *    personal branch, and the `Area.inboxes` fallback hands every org member
  *    `full` on somebody's private mail.
  *  - `inbox_default_lens` is the source 060 projects the `role:org_member`

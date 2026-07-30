@@ -95,7 +95,7 @@ export type NotificationMetadata =
       resourceKey?: string
       requestedLevel?: 'none' | 'view' | 'edit' | 'admin'
       /** Mail lens, when the target is a mail-sharing definition. */
-      requestedLens?: 'metadata' | 'subject' | 'full'
+      requestedLens?: 'metadata' | 'identity' | 'read'
       /** True when this is a re-ask that bumped `metadata.remindedAt` rather than a new row. */
       reRequest?: boolean
     }
@@ -111,7 +111,7 @@ export type NotificationMetadata =
        */
       decision: 'approved' | 'denied' | 'timeout' | 'superseded'
       grantedLevel?: 'none' | 'view' | 'edit' | 'admin'
-      grantedLens?: 'metadata' | 'subject' | 'full'
+      grantedLens?: 'metadata' | 'identity' | 'read'
     }
   | {
       kind:

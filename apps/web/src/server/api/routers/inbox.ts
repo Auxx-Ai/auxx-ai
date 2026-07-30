@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/inbox.ts
 
-import { getCachedUserMailVisibility, getOrgCache } from '@auxx/lib/cache'
+import { getCachedUserInstanceGrants, getOrgCache } from '@auxx/lib/cache'
 import { claimPersonalInbox, deleteOwnPersonalInbox, deletePersonalInbox } from '@auxx/lib/channels'
 import {
   inboxDefKeyOf,
@@ -119,7 +119,7 @@ const createInboxSchema = z.object({
   description: z.string().optional(),
   color: z.string().optional(),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'PAUSED']).optional(),
-  defaultLens: z.enum(['none', 'metadata', 'subject', 'full']).optional(),
+  defaultLens: z.enum(['none', 'metadata', 'identity', 'read']).optional(),
   settings: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -171,7 +171,7 @@ export const inboxRouter = createTRPCRouter({
     const { organizationId } = ctx.session
     const userId = ctx.session.user.id
     const [viewer, inboxes] = await Promise.all([
-      getCachedUserMailVisibility(userId, organizationId),
+      getCachedUserInstanceGrants(userId, organizationId),
       getOrgCache().get(organizationId, 'inboxes'),
     ])
     const lenses: Record<string, Exclude<Lens, 'none'>> = {}
@@ -192,7 +192,7 @@ export const inboxRouter = createTRPCRouter({
    * anything when phase 2 moved the read path onto `ResourceAccess` rows: the
    * form kept saving a field nothing consulted, so changing an inbox's org-wide
    * access level was a live no-op. The floor is now the `role:org_member`
-   * baseline row (`none` ⇒ the v2 RESTRICTION marker, `metadata`/`subject` ⇒
+   * baseline row (`none` ⇒ the RESTRICTION marker, `metadata`/`identity` ⇒
    * `view` with the lens preserved, `full` ⇒ no row at all).
    *
    * It carries the same two gates `guardInboxDefaultLens` enforced on the field,
@@ -200,7 +200,7 @@ export const inboxRouter = createTRPCRouter({
    *  - **Manager of THIS inbox** (or the OWNER short-circuit inside
    *    `checkAccess`) — not `channels.manage`, which governs the org's inbox
    *    INVENTORY rather than any one inbox's audience (§1.0).
-   *  - **Enterprise `mailPermissions`** for any sub-`full` floor. Note this is
+   *  - **`granularPermissions`** for any sub-`full` floor. Note this is
    *    NOT covered by `assertMailSharingFeature` on the generic sharing router:
    *    that gate keys on a non-`full` `lens`, and the Restricted floor is
    *    `permission: 'none'` with a NULL lens, so it would sail straight past.
@@ -214,7 +214,7 @@ export const inboxRouter = createTRPCRouter({
     .input(
       z.object({
         inboxId: z.string(),
-        floorLens: z.enum(['none', 'metadata', 'subject', 'full']),
+        floorLens: z.enum(['none', 'metadata', 'identity', 'read']),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -449,7 +449,7 @@ export const inboxRouter = createTRPCRouter({
    * The source assert is the half that turns a read into a hijack. Without it,
    * any member could create an inbox (Manager of it by construction), route the
    * company support channel in, and take delivery of every future message at
-   * `defaultLens: 'full'` while the real inbox went silent.
+   * `defaultLens: 'read'` while the real inbox went silent.
    */
   addIntegration: permissionProcedure(PermissionKey.channelsManage)
     .input(integrationSchema)
@@ -529,7 +529,7 @@ export const inboxRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const userId = ctx.session.user.id
-      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const viewer = await getCachedUserInstanceGrants(userId, organizationId)
       const threadMutation = new ThreadMutationService(
         organizationId,
         ctx.db,
@@ -588,7 +588,7 @@ export const inboxRouter = createTRPCRouter({
         })
       }
 
-      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const viewer = await getCachedUserInstanceGrants(userId, organizationId)
       const threadMutation = new ThreadMutationService(
         organizationId,
         ctx.db,

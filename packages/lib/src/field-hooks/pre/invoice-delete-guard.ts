@@ -94,7 +94,6 @@ export const guardInvoiceDelete: EntityPreDeleteHandler = async (event) => {
       },
     ],
     limit: 1000,
-    mode: 'oneshot',
   })
   for (const lineInstanceId of ownLineIds) {
     // Suppress the line-level billing post-delete hook — the invoice is being deleted, and

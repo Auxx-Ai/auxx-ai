@@ -1,9 +1,10 @@
 // packages/lib/src/permissions/capabilities/area-baseline-gate.test.ts
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, ResourcePermission, type Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
 import { isGoverningInstanceRow } from '../../cache/providers/governing-instance-ids-provider'
+import { bucketInstanceGrantRows } from '../../resource-access/instance-grants'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
 import {
@@ -56,7 +57,7 @@ interface OrgRow {
   instanceId: string
   granteeType: ResourceGranteeType
   granteeId: string
-  permission: ResourcePermission
+  rung: Rung
 }
 
 const ME = 'user_me'
@@ -64,55 +65,39 @@ const MY_GROUP = 'group_support'
 const MY_PROFILE = 'prof_member'
 
 /** `role:org_member @ <permission>` — the workspace default. The GATED lane. */
-const baselineRow = (
-  key: InstanceAccessKey,
-  instanceId: string,
-  permission: ResourcePermission
-): OrgRow => ({
+const baselineRow = (key: InstanceAccessKey, instanceId: string, rung: Rung): OrgRow => ({
   key,
   instanceId,
   granteeType: ResourceGranteeType.role,
   granteeId: 'org_member',
-  permission,
+  rung,
 })
 
 /** `user:me @ <permission>` — an individual grant. NEVER gated (#1346). */
-const myRow = (
-  key: InstanceAccessKey,
-  instanceId: string,
-  permission: ResourcePermission
-): OrgRow => ({
+const myRow = (key: InstanceAccessKey, instanceId: string, rung: Rung): OrgRow => ({
   key,
   instanceId,
   granteeType: ResourceGranteeType.user,
   granteeId: ME,
-  permission,
+  rung,
 })
 
 /** `group:support @ <permission>`, and I am in support. Also individual. */
-const myGroupRow = (
-  key: InstanceAccessKey,
-  instanceId: string,
-  permission: ResourcePermission
-): OrgRow => ({
+const myGroupRow = (key: InstanceAccessKey, instanceId: string, rung: Rung): OrgRow => ({
   key,
   instanceId,
   granteeType: ResourceGranteeType.group,
   granteeId: MY_GROUP,
-  permission,
+  rung,
 })
 
 /** `profile:member @ <permission>` — the third individual grantee kind. */
-const myProfileRow = (
-  key: InstanceAccessKey,
-  instanceId: string,
-  permission: ResourcePermission
-): OrgRow => ({
+const myProfileRow = (key: InstanceAccessKey, instanceId: string, rung: Rung): OrgRow => ({
   key,
   instanceId,
   granteeType: ResourceGranteeType.profile,
   granteeId: MY_PROFILE,
-  permission,
+  rung,
 })
 
 interface MemberOpts {
@@ -152,12 +137,15 @@ function member(opts: MemberOpts = {}) {
     profileLevels: opts.profileLevels ?? MEMBER_BASELINE_LEVELS,
     profileBaseLevel: opts.profileBaseLevel ?? null,
     typeAccessRows: [],
-    instanceAccessRows: mine.map((row) => ({
-      entityDefinitionId: row.key,
-      entityInstanceId: row.instanceId,
-      permission: row.permission,
-      granteeType: row.granteeType,
-    })),
+    instanceGrants: bucketInstanceGrantRows(
+      mine.map((row) => ({
+        entityDefinitionId: row.key,
+        entityInstanceId: row.instanceId,
+        rung: row.rung,
+        granteeType: row.granteeType,
+        granteeId: row.granteeId,
+      }))
+    ),
   })
 
   const governing = new Set(orgRows.filter(isGoverningInstanceRow).map((row) => row.instanceId))
@@ -199,7 +187,7 @@ function assertListAgrees(m: Member, key: InstanceAccessKey, ids: string[]) {
     : instanceListScope(m.client, key as OrgSharedInstanceAccessKey)
   for (const id of ids) {
     const level = effectiveInstanceLevel(m.client, key, id)
-    const visible = level !== undefined && level !== ResourcePermission.none
+    const visible = level !== undefined && level !== 'none'
     const listed =
       scope.kind === 'none'
         ? false
@@ -239,13 +227,13 @@ describe('§8 truth table — area None (plan 43 §0.2a)', () => {
   it.each(
     ALL_RESOURCES
   )('1. %s: a `role:org_member @ view` baseline row is DENIED — the lever works', (key, area) => {
-    const rows = [baselineRow(key, 'inst_1', ResourcePermission.view)]
+    const rows = [baselineRow(key, 'inst_1', 'read')]
     const m = member({ profileLevels: areaClosed(area), orgRows: rows })
 
     // The area really is shut, or this proves nothing.
     expect(m.server.areaLevel(area)).toBe(Level.None)
     // …and the row really did reach the member's grantee union.
-    expect(m.caps.baselineInstanceAccess).toEqual({ inst_1: 'view' })
+    expect(m.caps.baselineInstanceAccess).toEqual({ inst_1: 'read' })
     expect(m.caps.instanceAccess).toEqual({})
 
     expect(levelFor(m, key, 'inst_1')).toBeUndefined()
@@ -256,32 +244,32 @@ describe('§8 truth table — area None (plan 43 §0.2a)', () => {
   it.each(
     ALL_RESOURCES
   )('2. %s: the creator keeps their own `user @ admin` row — you always keep what you made', (key, area) => {
-    const rows = [myRow(key, 'inst_mine', ResourcePermission.admin)]
+    const rows = [myRow(key, 'inst_mine', 'admin')]
     const m = member({ profileLevels: areaClosed(area), orgRows: rows })
 
     expect(m.server.areaLevel(area)).toBe(Level.None)
-    expect(levelFor(m, key, 'inst_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, key, 'inst_mine')).toBe('admin')
     expect(m.server.canAdminInstance(key, 'inst_mine')).toBe(true)
     assertListAgrees(m, key, ['inst_mine'])
   })
 
   it.each(ALL_RESOURCES)('3. %s: a `user @ view` share still lands — #1346 holds', (key, area) => {
-    const rows = [myRow(key, 'inst_shared', ResourcePermission.view)]
+    const rows = [myRow(key, 'inst_shared', 'read')]
     const m = member({ profileLevels: areaClosed(area), orgRows: rows })
 
     expect(m.server.areaLevel(area)).toBe(Level.None)
-    expect(levelFor(m, key, 'inst_shared')).toBe(ResourcePermission.view)
+    expect(levelFor(m, key, 'inst_shared')).toBe('read')
     assertListAgrees(m, key, ['inst_shared'])
   })
 
   it.each(
     ALL_RESOURCES
   )('4. %s: a `group @ view` row lands for a member of that group', (key, area) => {
-    const rows = [myGroupRow(key, 'inst_team', ResourcePermission.view)]
+    const rows = [myGroupRow(key, 'inst_team', 'read')]
     const m = member({ profileLevels: areaClosed(area), orgRows: rows })
 
-    expect(m.caps.instanceAccess).toEqual({ inst_team: 'view' })
-    expect(levelFor(m, key, 'inst_team')).toBe(ResourcePermission.view)
+    expect(m.caps.instanceAccess).toEqual({ inst_team: 'read' })
+    expect(levelFor(m, key, 'inst_team')).toBe('read')
     assertListAgrees(m, key, ['inst_team'])
   })
 
@@ -291,12 +279,12 @@ describe('§8 truth table — area None (plan 43 §0.2a)', () => {
     // The third individual grantee kind. It matters because `profile` rows are
     // the ones `governingInstanceIds` was invented for — they can restrict
     // org-wide — so a positive one must still behave as a grant, not a default.
-    const rows = [myProfileRow(key, 'inst_prof', ResourcePermission.view)]
+    const rows = [myProfileRow(key, 'inst_prof', 'read')]
     const m = member({ profileLevels: areaClosed(area), orgRows: rows })
 
-    expect(m.caps.instanceAccess).toEqual({ inst_prof: 'view' })
+    expect(m.caps.instanceAccess).toEqual({ inst_prof: 'read' })
     expect(m.caps.baselineInstanceAccess).toEqual({})
-    expect(levelFor(m, key, 'inst_prof')).toBe(ResourcePermission.view)
+    expect(levelFor(m, key, 'inst_prof')).toBe('read')
   })
 
   it.each(ALL_RESOURCES)('5. %s: no rows at all is denied', (key, area) => {
@@ -310,11 +298,11 @@ describe('§8 truth table — area Read (plan 43 §0.2a)', () => {
   it.each(
     ALL_RESOURCES
   )('6. %s: a `role:org_member @ view` baseline row REACHES a member at Read', (key, area) => {
-    const rows = [baselineRow(key, 'inst_1', ResourcePermission.view)]
+    const rows = [baselineRow(key, 'inst_1', 'read')]
     const m = member({ profileLevels: areaAt(area, Level.Read), orgRows: rows })
 
     expect(m.server.areaLevel(area)).toBe(Level.Read)
-    expect(levelFor(m, key, 'inst_1')).toBe(ResourcePermission.view)
+    expect(levelFor(m, key, 'inst_1')).toBe('read')
     expect(m.server.canViewInstance(key, 'inst_1')).toBe(true)
     assertListAgrees(m, key, ['inst_1'])
   })
@@ -324,20 +312,20 @@ describe('§8 truth table — area Read (plan 43 §0.2a)', () => {
   )('7. %s: a `user @ admin` row is NOT clamped down to the area rung', (key, area) => {
     // The area gates WHETHER the baseline reaches you. It is not a ceiling on
     // an individual grant's tier — that would silently downgrade every share.
-    const rows = [myRow(key, 'inst_mine', ResourcePermission.admin)]
+    const rows = [myRow(key, 'inst_mine', 'admin')]
     const m = member({ profileLevels: areaAt(area, Level.Read), orgRows: rows })
 
     expect(m.server.areaLevel(area)).toBe(Level.Read)
-    expect(levelFor(m, key, 'inst_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, key, 'inst_mine')).toBe('admin')
     expect(m.server.canAdminInstance(key, 'inst_mine')).toBe(true)
   })
 
   it.each(
     ALL_RESOURCES
   )('7b. %s: an individual `none` still denies at an OPEN area — restrictions bite in both lanes', (key, area) => {
-    const rows = [myRow(key, 'inst_locked', ResourcePermission.none)]
+    const rows = [myRow(key, 'inst_locked', 'none')]
     const m = member({ profileLevels: areaAt(area, Level.Full), orgRows: rows })
-    expect(levelFor(m, key, 'inst_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, key, 'inst_locked')).toBe('none')
     expect(m.server.canViewInstance(key, 'inst_locked')).toBe(false)
     assertListAgrees(m, key, ['inst_locked'])
   })
@@ -345,9 +333,9 @@ describe('§8 truth table — area Read (plan 43 §0.2a)', () => {
   it.each(
     ALL_RESOURCES
   )('7c. %s: a `role:org_member @ none` restriction denies at an OPEN area', (key, area) => {
-    const rows = [baselineRow(key, 'inst_locked', ResourcePermission.none)]
+    const rows = [baselineRow(key, 'inst_locked', 'none')]
     const m = member({ profileLevels: areaAt(area, Level.Full), orgRows: rows })
-    expect(levelFor(m, key, 'inst_locked')).toBe(ResourcePermission.none)
+    expect(levelFor(m, key, 'inst_locked')).toBe('none')
     expect(m.server.canViewInstance(key, 'inst_locked')).toBe(false)
     assertListAgrees(m, key, ['inst_locked'])
   })
@@ -357,14 +345,11 @@ describe('§8 truth table — area Read (plan 43 §0.2a)', () => {
   )('7d. %s: an individual grant OUTRANKS a `role:org_member @ none` on the same instance', (key, area) => {
     // Both lanes carry a row for the same instance. Step 1 wins outright —
     // this is the "shared with me despite the workspace lockdown" case.
-    const rows = [
-      baselineRow(key, 'inst_locked', ResourcePermission.none),
-      myRow(key, 'inst_locked', ResourcePermission.edit),
-    ]
+    const rows = [baselineRow(key, 'inst_locked', 'none'), myRow(key, 'inst_locked', 'edit')]
     const m = member({ profileLevels: areaAt(area, Level.Full), orgRows: rows })
     expect(m.caps.baselineInstanceAccess).toEqual({ inst_locked: 'none' })
     expect(m.caps.instanceAccess).toEqual({ inst_locked: 'edit' })
-    expect(levelFor(m, key, 'inst_locked')).toBe(ResourcePermission.edit)
+    expect(levelFor(m, key, 'inst_locked')).toBe('edit')
     assertListAgrees(m, key, ['inst_locked'])
   })
 })
@@ -393,15 +378,15 @@ describe('§8 item 8 — the ORDERING guard (plan 43 §4.2)', () => {
   it('step 1 above step 2: an individual grant survives a closed area (#1346, plan 43 §4.2)', () => {
     const m = member({
       profileLevels: areaClosed(Area.dashboards),
-      orgRows: [myRow('dashboard', 'dash_shared', ResourcePermission.view)],
+      orgRows: [myRow('dashboard', 'dash_shared', 'read')],
     })
-    expect(levelFor(m, 'dashboard', 'dash_shared')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'dashboard', 'dash_shared')).toBe('read')
   })
 
   it('step 2 above step 3: a closed area cuts off the workspace baseline (plan 43 §4.2)', () => {
     const m = member({
       profileLevels: areaClosed(Area.dashboards),
-      orgRows: [baselineRow('dashboard', 'dash_org', ResourcePermission.view)],
+      orgRows: [baselineRow('dashboard', 'dash_org', 'read')],
     })
     expect(levelFor(m, 'dashboard', 'dash_org')).toBeUndefined()
   })
@@ -413,15 +398,15 @@ describe('§8 item 8 — the ORDERING guard (plan 43 §4.2)', () => {
     const m = member({
       profileLevels: areaClosed(Area.dashboards),
       orgRows: [
-        baselineRow('dashboard', 'dash_org', ResourcePermission.view),
-        baselineRow('dashboard', 'dash_shared', ResourcePermission.view),
-        myRow('dashboard', 'dash_shared', ResourcePermission.view),
-        myRow('dashboard', 'dash_mine', ResourcePermission.admin),
+        baselineRow('dashboard', 'dash_org', 'read'),
+        baselineRow('dashboard', 'dash_shared', 'read'),
+        myRow('dashboard', 'dash_shared', 'read'),
+        myRow('dashboard', 'dash_mine', 'admin'),
       ],
     })
     expect(levelFor(m, 'dashboard', 'dash_org')).toBeUndefined()
-    expect(levelFor(m, 'dashboard', 'dash_shared')).toBe(ResourcePermission.view)
-    expect(levelFor(m, 'dashboard', 'dash_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'dashboard', 'dash_shared')).toBe('read')
+    expect(levelFor(m, 'dashboard', 'dash_mine')).toBe('admin')
     assertListAgrees(m, 'dashboard', ['dash_org', 'dash_shared', 'dash_mine', 'dash_absent'])
   })
 })
@@ -439,7 +424,7 @@ describe('§8 item 9 — `deriveInstanceReadKeys` reads the INDIVIDUAL lane only
 
     const m = member({
       profileLevels: areaClosed(area),
-      orgRows: [baselineRow(key, 'inst_1', ResourcePermission.view)],
+      orgRows: [baselineRow(key, 'inst_1', 'read')],
     })
     // Before §4.4 this was TRUE for practically every member of every org with
     // a dashboard, and the front door stood open for exactly the profile an
@@ -452,7 +437,7 @@ describe('§8 item 9 — `deriveInstanceReadKeys` reads the INDIVIDUAL lane only
     const readKey = PERMISSION_AREAS[area].rungs.find((r) => r.level === Level.Read)?.keys[0]
     const m = member({
       profileLevels: areaClosed(area),
-      orgRows: [myRow(key, 'inst_1', ResourcePermission.view)],
+      orgRows: [myRow(key, 'inst_1', 'read')],
     })
     expect(m.caps.instanceDerivedKeys).toEqual([readKey])
     expect(m.server.can(readKey as PermissionKey)).toBe(true)
@@ -468,9 +453,9 @@ describe('§8 item 10 — `instanceDerivedKeys` does not defeat the gate', () =>
     // `Read` and the workspace baseline would flow again.
     const individual = member({
       profileLevels: areaClosed(Area.dashboards),
-      orgRows: [myRow('dashboard', 'dash_1', ResourcePermission.view)],
+      orgRows: [myRow('dashboard', 'dash_1', 'read')],
     })
-    expect(levelFor(individual, 'dashboard', 'dash_1')).toBe(ResourcePermission.view)
+    expect(levelFor(individual, 'dashboard', 'dash_1')).toBe('read')
     expect(individual.server.can(PermissionKey.dashboardsView)).toBe(true)
     // …and the AREA level is still None, which is what keeps the gate armed.
     expect(individual.server.areaLevel(Area.dashboards)).toBe(Level.None)
@@ -478,7 +463,7 @@ describe('§8 item 10 — `instanceDerivedKeys` does not defeat the gate', () =>
 
     const baselineOnly = member({
       profileLevels: areaClosed(Area.dashboards),
-      orgRows: [baselineRow('dashboard', 'dash_2', ResourcePermission.view)],
+      orgRows: [baselineRow('dashboard', 'dash_2', 'read')],
     })
     expect(levelFor(baselineOnly, 'dashboard', 'dash_2')).toBeUndefined()
     expect(baselineOnly.server.can(PermissionKey.dashboardsView)).toBe(false)
@@ -487,7 +472,7 @@ describe('§8 item 10 — `instanceDerivedKeys` does not defeat the gate', () =>
   it('the derived key never leaks into the wire snapshot`s `keys`', () => {
     const m = member({
       profileLevels: areaClosed(Area.workflows),
-      orgRows: [myRow('workflow', 'wf_1', ResourcePermission.admin)],
+      orgRows: [myRow('workflow', 'wf_1', 'admin')],
     })
     const wire = m.server.toClientCapabilities()
     expect(wire.keys).not.toContain(PermissionKey.workflowsView)
@@ -524,7 +509,7 @@ describe('§8 item 11 — a stale `v15` blob FAILS OPEN (the proof the v16 bump 
   it('resolves the workspace baseline at area None when the blob predates the lane split', () => {
     const fresh = member({
       profileLevels: areaClosed(Area.dashboards),
-      orgRows: [baselineRow('dashboard', 'dash_org', ResourcePermission.view)],
+      orgRows: [baselineRow('dashboard', 'dash_org', 'read')],
     })
     // Correct, v16-shaped answer: the lever works.
     expect(levelFor(fresh, 'dashboard', 'dash_org')).toBeUndefined()
@@ -535,13 +520,13 @@ describe('§8 item 11 — a stale `v15` blob FAILS OPEN (the proof the v16 bump 
       instanceAccess: { ...fresh.caps.instanceAccess, ...fresh.caps.baselineInstanceAccess },
       baselineInstanceAccess: undefined,
     }
-    expect(effectiveInstanceLevel(stale, 'dashboard', 'dash_org')).toBe(ResourcePermission.view)
+    expect(effectiveInstanceLevel(stale, 'dashboard', 'dash_org')).toBe('read')
   })
 
   it('and the same staleness leaks the row into the LIST scope too', () => {
     const fresh = member({
       profileLevels: areaClosed(Area.dashboards),
-      orgRows: [baselineRow('dashboard', 'dash_org', ResourcePermission.view)],
+      orgRows: [baselineRow('dashboard', 'dash_org', 'read')],
     })
     expect(privateInstanceListScope(fresh.client, 'dashboard')).toEqual({ kind: 'none' })
 
@@ -566,9 +551,9 @@ describe('§8 item 12 — the list scopes agree with the resolver on every row o
     const m = member({
       profileLevels: areaClosed(area),
       orgRows: [
-        baselineRow(key, 'inst_baseline', ResourcePermission.view),
-        myRow(key, 'inst_mine', ResourcePermission.admin),
-        myRow(key, 'inst_locked', ResourcePermission.none),
+        baselineRow(key, 'inst_baseline', 'read'),
+        myRow(key, 'inst_mine', 'admin'),
+        myRow(key, 'inst_locked', 'none'),
       ],
     })
     assertListAgrees(m, key, ['inst_baseline', 'inst_mine', 'inst_locked', 'inst_absent'])
@@ -578,10 +563,10 @@ describe('§8 item 12 — the list scopes agree with the resolver on every row o
     const m = member({
       profileLevels: areaAt(area, Level.Full),
       orgRows: [
-        baselineRow(key, 'inst_baseline', ResourcePermission.view),
-        baselineRow(key, 'inst_restricted', ResourcePermission.none),
-        myRow(key, 'inst_mine', ResourcePermission.admin),
-        myRow(key, 'inst_locked', ResourcePermission.none),
+        baselineRow(key, 'inst_baseline', 'read'),
+        baselineRow(key, 'inst_restricted', 'none'),
+        myRow(key, 'inst_mine', 'admin'),
+        myRow(key, 'inst_locked', 'none'),
       ],
     })
     assertListAgrees(m, key, [
@@ -602,10 +587,7 @@ describe('§8 item 12 — the list scopes agree with the resolver on every row o
     // exactly why it needs a test rather than a review.
     const m = member({
       profileLevels: areaClosed(Area.workflows),
-      orgRows: [
-        myRow('workflow', 'wf_mine', ResourcePermission.view),
-        baselineRow('workflow', 'wf_org', ResourcePermission.view),
-      ],
+      orgRows: [myRow('workflow', 'wf_mine', 'read'), baselineRow('workflow', 'wf_org', 'read')],
     })
     expect(instanceListScope(m.client, 'workflow')).toEqual({
       kind: 'include',
@@ -625,7 +607,7 @@ describe('§8 item 13 — the seat ceiling still dominates everything', () => {
     const m = member({
       seatType: 'worker',
       profileLevels: areaAt(area, Level.Full),
-      orgRows: [myRow(key, 'inst_mine', ResourcePermission.admin)],
+      orgRows: [myRow(key, 'inst_mine', 'admin')],
     })
     expect(levelFor(m, key, 'inst_mine')).toBeUndefined()
     assertListAgrees(m, key, ['inst_mine'])
@@ -637,7 +619,7 @@ describe('§8 item 14 — the OWNER bypass is unchanged (plan 36 §0.6)', () => 
     const cfg = INSTANCE_ACCESS_RESOURCES[key]
     const m = member({ role: 'OWNER' })
     const answer = levelFor(m, key, 'inst_nothing')
-    expect(answer).toBe(cfg.baselineAtCreate ? undefined : ResourcePermission.admin)
+    expect(answer).toBe(cfg.baselineAtCreate ? undefined : 'admin')
   })
 
   it('an OWNER at area None still gets nothing on a private resource, baseline row or not', () => {
@@ -646,7 +628,7 @@ describe('§8 item 14 — the OWNER bypass is unchanged (plan 36 §0.6)', () => 
     const m = member({
       role: 'OWNER',
       profileLevels: areaClosed(Area.signatures),
-      orgRows: [baselineRow('signature', 'sig_1', ResourcePermission.view)],
+      orgRows: [baselineRow('signature', 'sig_1', 'read')],
     })
     // NOTE: OWNER short-circuits `composeUserCapabilities` to the seat ceiling,
     // so their AREA level is Full regardless of the profile — that is §0.10's
@@ -683,7 +665,7 @@ describe('§8 item 15 — a stored legacy `Level.Edit` composes to Read, not Ful
     Area.snippets,
     Area.dashboards,
   ] as const)('%s: the `*Edit` PermissionKey survives as instance-ladder vocabulary', (area) => {
-    // §3.1 dropped the RUNG, not the KEY: `ResourcePermission.edit` is a real
+    // §3.1 dropped the RUNG, not the KEY: `'edit'` is a real
     // per-instance tier that `assertEditInstance` enforces. Deleting the enum
     // member would break it.
     const editKey = `${area}.edit` as PermissionKey
@@ -698,8 +680,8 @@ describe('§8 item 16 — `inbox` and `personal_inbox` obey the one rule though 
     const m = member({
       profileLevels: areaClosed(Area.inboxes),
       orgRows: [
-        baselineRow('inbox', 'ib_shared', ResourcePermission.view),
-        baselineRow('personal_inbox', 'pib_other', ResourcePermission.view),
+        baselineRow('inbox', 'ib_shared', 'read'),
+        baselineRow('personal_inbox', 'pib_other', 'read'),
       ],
     })
     expect(levelFor(m, 'inbox', 'ib_shared')).toBeUndefined()
@@ -709,18 +691,15 @@ describe('§8 item 16 — `inbox` and `personal_inbox` obey the one rule though 
   it('an individual grant reaches through on BOTH keys — a regression here breaks org mail', () => {
     const m = member({
       profileLevels: areaClosed(Area.inboxes),
-      orgRows: [
-        myRow('inbox', 'ib_mine', ResourcePermission.edit),
-        myRow('personal_inbox', 'pib_mine', ResourcePermission.admin),
-      ],
+      orgRows: [myRow('inbox', 'ib_mine', 'edit'), myRow('personal_inbox', 'pib_mine', 'admin')],
     })
-    expect(levelFor(m, 'inbox', 'ib_mine')).toBe(ResourcePermission.edit)
-    expect(levelFor(m, 'personal_inbox', 'pib_mine')).toBe(ResourcePermission.admin)
+    expect(levelFor(m, 'inbox', 'ib_mine')).toBe('edit')
+    expect(levelFor(m, 'personal_inbox', 'pib_mine')).toBe('admin')
   })
 
   it('the two keys still differ ONLY in their fall-through, which is all `baselineAtCreate` means', () => {
     const m = member({ profileLevels: areaAt(Area.inboxes, Level.Read) })
-    expect(levelFor(m, 'inbox', 'ib_rowless')).toBe(ResourcePermission.view)
+    expect(levelFor(m, 'inbox', 'ib_rowless')).toBe('read')
     expect(levelFor(m, 'personal_inbox', 'pib_rowless')).toBeUndefined()
   })
 })
@@ -744,10 +723,10 @@ describe('§8 item 16a — the §3.2 floor: unset and explicit None must stay di
       // seeded Member baseline".
       profileLevels: {},
       profileBaseLevel: null,
-      orgRows: [baselineRow(key, 'inst_org', ResourcePermission.view)],
+      orgRows: [baselineRow(key, 'inst_org', 'read')],
     })
     expect(m.server.areaLevel(area)).toBe(Level.Read)
-    expect(levelFor(m, key, 'inst_org')).toBe(ResourcePermission.view)
+    expect(levelFor(m, key, 'inst_org')).toBe('read')
   })
 
   it.each([
@@ -761,7 +740,7 @@ describe('§8 item 16a — the §3.2 floor: unset and explicit None must stay di
     const m = member({
       profileLevels: { [area]: Level.None },
       profileBaseLevel: null,
-      orgRows: [baselineRow(key, 'inst_org', ResourcePermission.view)],
+      orgRows: [baselineRow(key, 'inst_org', 'read')],
     })
     expect(m.server.areaLevel(area)).toBe(Level.None)
     expect(levelFor(m, key, 'inst_org')).toBeUndefined()
@@ -933,8 +912,9 @@ describe('§4.1 — an UNRECOGNIZED grantee kind sorts into the GATED lane', () 
   const unknownRow = {
     entityDefinitionId: 'dashboard',
     entityInstanceId: 'dash_unknown',
-    permission: ResourcePermission.admin,
+    rung: 'admin' as const,
     granteeType: 'team' as ResourceGranteeType,
+    granteeId: 'team_unknown',
   }
 
   it('lands in `baselineInstanceAccess`, never in `instanceAccess`', () => {
@@ -944,11 +924,11 @@ describe('§4.1 — an UNRECOGNIZED grantee kind sorts into the GATED lane', () 
       profileLevels: MEMBER_BASELINE_LEVELS,
       profileBaseLevel: null,
       typeAccessRows: [],
-      instanceAccessRows: [unknownRow],
+      instanceGrants: bucketInstanceGrantRows([unknownRow]),
     })
 
     expect(caps.instanceAccess).toEqual({})
-    expect(caps.baselineInstanceAccess).toEqual({ dash_unknown: ResourcePermission.admin })
+    expect(caps.baselineInstanceAccess).toEqual({ dash_unknown: 'admin' })
   })
 
   it('is GATED by an area at None, unlike a real individual grant', () => {
@@ -958,7 +938,7 @@ describe('§4.1 — an UNRECOGNIZED grantee kind sorts into the GATED lane', () 
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.dashboards]: Level.None },
       profileBaseLevel: null,
       typeAccessRows: [],
-      instanceAccessRows: [unknownRow],
+      instanceGrants: bucketInstanceGrantRows([unknownRow]),
     })
 
     const resolved = toResolvedRecordAccess({
@@ -977,7 +957,7 @@ describe('§4.1 — an UNRECOGNIZED grantee kind sorts into the GATED lane', () 
       profileLevels: { ...MEMBER_BASELINE_LEVELS, [Area.dashboards]: Level.None },
       profileBaseLevel: null,
       typeAccessRows: [],
-      instanceAccessRows: [unknownRow],
+      instanceGrants: bucketInstanceGrantRows([unknownRow]),
     })
 
     expect(caps.instanceDerivedKeys).not.toContain(PermissionKey.dashboardsView)

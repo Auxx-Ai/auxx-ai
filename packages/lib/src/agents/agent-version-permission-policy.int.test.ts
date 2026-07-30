@@ -517,7 +517,7 @@ describe('the published policy is the ONLY agent authority (§9.1 add-then-remov
       entityDefinitionId: def.entityDefinitionId,
       granteeType: 'user',
       granteeId: withV1.userId!,
-      permission: 'admin',
+      rung: 'admin',
       updatedAt: new Date(),
     })
 
@@ -552,7 +552,7 @@ describe('the published policy is the ONLY agent authority (§9.1 add-then-remov
       entityDefinitionId: def.entityDefinitionId,
       granteeType: 'user',
       granteeId: human.id,
-      permission: 'admin',
+      rung: 'admin',
       updatedAt: new Date(),
     })
     // The org cache is real and in-memory here, so rows written mid-test are not

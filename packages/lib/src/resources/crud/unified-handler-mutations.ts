@@ -16,7 +16,6 @@ import { publisher } from '../../events/publisher'
 import { getEntityPostDeleteHooks, getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
 import { getRealtimeService, rooms } from '../../realtime'
-import { invalidateSnapshots } from '../../snapshot'
 import {
   captureEventData,
   extractEventData,
@@ -48,8 +47,6 @@ export interface CrudOptions {
    * therefore means seed-only — anything else is a bug.
    */
   skipEvents?: boolean
-  /** Skip snapshot invalidation (caller will invalidate once at end) */
-  skipSnapshotInvalidation?: boolean
   /**
    * Skip post-delete hooks for this delete. Only for cleanup flows that delete child rows on
    * behalf of a parent operation which guarantees its own projection sync afterward (e.g. the
@@ -173,30 +170,6 @@ function publishEvent(params: PublishEventParams): void {
 }
 
 /**
- * Invalidate snapshots for an entity definition.
- * Logs errors instead of silently swallowing them.
- * Non-throwing — mutations should succeed even if cache invalidation fails.
- * The dirty marker (set first in invalidateSnapshots) ensures eventual correctness.
- */
-async function invalidateEntitySnapshots(
-  organizationId: string,
-  entityDefinitionId: string
-): Promise<void> {
-  try {
-    await invalidateSnapshots({
-      organizationId,
-      resourceType: entityDefinitionId,
-    })
-  } catch (error) {
-    logger.error('Failed to invalidate snapshots', {
-      entityDefinitionId,
-      error: (error as Error).message,
-    })
-    // Don't re-throw — mutations should succeed even if cache invalidation fails
-  }
-}
-
-/**
  * True if a value is considered present for required-field validation.
  * Null, undefined, empty string, and empty arrays count as missing.
  */
@@ -305,7 +278,7 @@ function assertRequiredFieldsPresent(
  * @param ctx - Mutation context
  * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
  * @param values - Field values to set (map of fieldId -> value)
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  * @returns CreateEntityResult with instance, recordId, and all field values
  */
 export async function createEntity(
@@ -377,11 +350,6 @@ export async function createEntity(
   })
   const freshInstance = freshResult.isOk() ? freshResult.value : instance
 
-  // Invalidate snapshots (unless skipped for bulk operations)
-  if (!options.skipSnapshotInvalidation) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
-  }
-
   // Publish event (unless skipped for bulk imports)
   if (!options.skipEvents) {
     const fields = await ctx.getFields(entityDef.id)
@@ -405,7 +373,7 @@ export async function createEntity(
   if (!options.skipEvents) {
     getRealtimeService()
       .publish(
-        rooms.orgPresence(ctx.organizationId),
+        rooms.orgRecords(ctx.organizationId, entityDef.id),
         'record:created',
         {
           entityDefinitionId: entityDef.id,
@@ -439,7 +407,7 @@ export async function createEntity(
  * @param ctx - Mutation context
  * @param recordId - RecordId in format "entityDefinitionId:instanceId"
  * @param values - Field values to update (map of fieldId -> value)
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function updateEntity(
   ctx: MutationContext,
@@ -486,11 +454,6 @@ export async function updateEntity(
   })
   const freshInstance = freshResult.isOk() ? freshResult.value : instance
 
-  // Invalidate snapshots (unless skipped for bulk operations)
-  if (!options.skipSnapshotInvalidation) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
-  }
-
   // Publish event (unless skipped for bulk imports)
   if (!options.skipEvents) {
     const fields = await ctx.getFields(entityDef.id)
@@ -516,7 +479,7 @@ export async function updateEntity(
   if (!options.skipEvents) {
     getRealtimeService()
       .publish(
-        rooms.orgPresence(ctx.organizationId),
+        rooms.orgRecords(ctx.organizationId, entityDef.id),
         'record:updated',
         {
           entityDefinitionId: entityDef.id,
@@ -544,7 +507,7 @@ export async function updateEntity(
  *
  * @param ctx - Mutation context
  * @param recordId - RecordId in format "entityDefinitionId:instanceId"
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function archiveEntity(
   ctx: MutationContext,
@@ -570,9 +533,6 @@ export async function archiveEntity(
 
   unwrapResult(updateResult)
 
-  if (!options.skipSnapshotInvalidation) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
-  }
   if (!options.skipEvents) {
     publishEvent({
       recordId,
@@ -590,7 +550,7 @@ export async function archiveEntity(
   if (!options.skipEvents) {
     getRealtimeService()
       .publish(
-        rooms.orgPresence(ctx.organizationId),
+        rooms.orgRecords(ctx.organizationId, entityDef.id),
         'record:archived',
         { recordId, entityDefinitionId: entityDef.id },
         { excludeSocketId: ctx.socketId }
@@ -607,7 +567,7 @@ export async function archiveEntity(
  *
  * @param ctx - Mutation context
  * @param recordId - RecordId in format "entityDefinitionId:instanceId"
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function restoreEntity(
   ctx: MutationContext,
@@ -633,9 +593,6 @@ export async function restoreEntity(
 
   unwrapResult(updateResult)
 
-  if (!options.skipSnapshotInvalidation) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
-  }
   if (!options.skipEvents) {
     publishEvent({
       recordId,
@@ -658,7 +615,7 @@ export async function restoreEntity(
  *
  * @param ctx - Mutation context
  * @param recordId - RecordId in format "entityDefinitionId:instanceId"
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function deleteEntity(
   ctx: MutationContext,
@@ -745,9 +702,6 @@ export async function deleteEntity(
     }
   }
 
-  if (!options.skipSnapshotInvalidation) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
-  }
   if (!options.skipEvents) {
     publishEvent({
       recordId,
@@ -763,7 +717,7 @@ export async function deleteEntity(
     // Publish record:deleted realtime event
     getRealtimeService()
       .publish(
-        rooms.orgPresence(ctx.organizationId),
+        rooms.orgRecords(ctx.organizationId, entityDef.id),
         'record:deleted',
         { recordId, entityDefinitionId: entityDef.id },
         { excludeSocketId: ctx.socketId }
@@ -782,7 +736,7 @@ export async function deleteEntity(
  * @param ctx - Mutation context
  * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
  * @param items - Array of field value maps to create
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function bulkCreateEntities(
   ctx: MutationContext,
@@ -792,27 +746,18 @@ export async function bulkCreateEntities(
 ): Promise<{ created: EntityInstanceEntity[]; errors: Array<{ index: number; error: string }> }> {
   if (items.length === 0) return { created: [], errors: [] }
 
-  const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
-
   const created: EntityInstanceEntity[] = []
   const errors: Array<{ index: number; error: string }> = []
 
-  // Create all records without individual snapshot invalidation
   for (let i = 0; i < items.length; i++) {
     try {
       const result = await createEntity(ctx, entityDefinitionId, items[i]!, {
         skipEvents: options.skipEvents,
-        skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
       })
       created.push(result.instance)
     } catch (e) {
       errors.push({ index: i, error: e instanceof Error ? e.message : 'Unknown error' })
     }
-  }
-
-  // Single snapshot invalidation at end (unless caller skipped it)
-  if (!options.skipSnapshotInvalidation && created.length > 0) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
 
   return { created, errors }
@@ -823,7 +768,7 @@ export async function bulkCreateEntities(
  *
  * @param ctx - Mutation context
  * @param updates - Array of { recordId, values } to update
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function bulkUpdateEntities(
   ctx: MutationContext,
@@ -832,29 +777,18 @@ export async function bulkUpdateEntities(
 ): Promise<{ updated: number; errors: Array<{ recordId: RecordId; error: string }> }> {
   if (updates.length === 0) return { updated: 0, errors: [] }
 
-  // Get entityDefinitionId from first recordId for invalidation
-  const { entityDefinitionId } = parseRecordId(updates[0]!.recordId)
-  const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
-
   let updated = 0
   const errors: Array<{ recordId: RecordId; error: string }> = []
 
-  // Update all records without individual snapshot invalidation
   for (const { recordId, values } of updates) {
     try {
       await updateEntity(ctx, recordId, values, {
         skipEvents: options.skipEvents,
-        skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
       })
       updated++
     } catch (e) {
       errors.push({ recordId, error: e instanceof Error ? e.message : 'Unknown error' })
     }
-  }
-
-  // Single snapshot invalidation at end (unless caller skipped it)
-  if (!options.skipSnapshotInvalidation && updated > 0) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
 
   return { updated, errors }
@@ -865,7 +799,7 @@ export async function bulkUpdateEntities(
  *
  * @param ctx - Mutation context
  * @param recordIds - Array of RecordIds to archive
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function bulkArchiveEntities(
   ctx: MutationContext,
@@ -874,26 +808,16 @@ export async function bulkArchiveEntities(
 ): Promise<{ count: number }> {
   if (recordIds.length === 0) return { count: 0 }
 
-  // Get entityDefinitionId from first recordId for invalidation
-  const { entityDefinitionId } = parseRecordId(recordIds[0]!)
-  const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
-
   let count = 0
   for (const recordId of recordIds) {
     try {
       await archiveEntity(ctx, recordId, {
         skipEvents: options.skipEvents,
-        skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
       })
       count++
     } catch {
       // Skip failures
     }
-  }
-
-  // Single snapshot invalidation at end (unless caller skipped it)
-  if (!options.skipSnapshotInvalidation && count > 0) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
 
   return { count }
@@ -904,7 +828,7 @@ export async function bulkArchiveEntities(
  *
  * @param ctx - Mutation context
  * @param recordIds - Array of RecordIds to delete
- * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+ * @param options - Optional CRUD options (skipEvents)
  */
 export async function bulkDeleteEntities(
   ctx: MutationContext,
@@ -913,10 +837,6 @@ export async function bulkDeleteEntities(
 ): Promise<{ count: number; errors: Array<{ recordId: RecordId; message: string }> }> {
   if (recordIds.length === 0) return { count: 0, errors: [] }
 
-  // Get entityDefinitionId from first recordId for invalidation
-  const { entityDefinitionId } = parseRecordId(recordIds[0]!)
-  const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
-
   let count = 0
   const errors: Array<{ recordId: RecordId; message: string }> = []
 
@@ -924,7 +844,6 @@ export async function bulkDeleteEntities(
     try {
       await deleteEntity(ctx, recordId, {
         skipEvents: options.skipEvents,
-        skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
       })
       count++
     } catch (error) {
@@ -933,11 +852,6 @@ export async function bulkDeleteEntities(
         message: error instanceof Error ? error.message : 'Unknown error',
       })
     }
-  }
-
-  // Single snapshot invalidation at end (unless caller skipped it)
-  if (!options.skipSnapshotInvalidation && count > 0) {
-    await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
 
   return { count, errors }
@@ -964,10 +878,6 @@ export async function bulkSetFieldValue(
     recordIds,
     values: [{ fieldId, value }],
   })
-
-  // Get entityDefinitionId from first recordId for invalidation
-  const { entityDefinitionId } = parseRecordId(recordIds[0]!)
-  await invalidateEntitySnapshots(ctx.organizationId, entityDefinitionId)
 
   return { count: result.count }
 }

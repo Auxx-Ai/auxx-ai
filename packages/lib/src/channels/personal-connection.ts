@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import type { IntegrationProviderType } from '@auxx/database/enums'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -105,12 +105,12 @@ export async function provisionPersonalInbox(args: {
   // `inbox.recordId` is minted from the definition the instance actually landed
   // on, so this row is keyed `personal_inbox` without the call site having to
   // know that — which is what keeps it in the same keyspace
-  // `composeUserMailVisibility` and `hasPermission` read it back from.
+  // `composeUserInstanceGrants` and `hasPermission` read it back from.
   await setInstanceAccess(
     { db, organizationId, userId: ownerUserId },
     inbox.recordId,
     ResourceGranteeType.user,
-    [{ granteeId: ownerUserId, permission: ResourcePermission.admin }]
+    [{ granteeId: ownerUserId, rung: 'admin' }]
   )
 
   await inboxService.addIntegration(inbox.recordId, integrationId, true)
@@ -295,7 +295,7 @@ export async function claimPersonalInbox(args: {
   await setInboxFloor({ db, organizationId, userId: adminUserId }, claimedRecordId, 'none')
 
   // Nulled, not dropped: the shared def carries `inbox_owner_user_id`, and this
-  // write also broadcasts `inbox.updated` so every member's `userMailVisibility`
+  // write also broadcasts `inbox.updated` so every member's `userInstanceGrants`
   // and the `org:inboxes` shape recompute off the instance's new definition.
   await inboxService.updateInbox(claimedRecordId, { ownerUserId: null })
 

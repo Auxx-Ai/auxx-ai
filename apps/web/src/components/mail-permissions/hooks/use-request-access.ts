@@ -36,7 +36,7 @@ export interface UseRequestAccessResult {
    */
   canShare: boolean
   /** The viewer's composed lens on the thread, as the thread payload reports it. */
-  myLens: 'metadata' | 'subject' | 'full'
+  myLens: 'metadata' | 'identity' | 'read'
   /** Render the trigger at all: sub-`full` and unable to just grant it themselves. */
   eligible: boolean
   /** Server-authoritative `false` — the ask would be refused. Presentation only. */
@@ -65,7 +65,7 @@ export interface UseRequestAccessResult {
  * cooldown, pending state — which is where a direct API caller meets them too. The
  * entry condition here is deliberately NOT plan 28 §4.6's generic
  * `deniedBy() === 'permission'`: mail redaction is a lens, not a denied permission
- * key, so the mail fork is `myLens !== 'full' && !canShare`.
+ * key, so the mail fork is `myLens !== 'read' && !canShare`.
  *
  * The preflight query is gated on that pair, so a full-lens member or a Manager
  * pays nothing for this hook.
@@ -85,8 +85,8 @@ export function useRequestAccess({
 
   // Inbox Managers administer sharing without being org admins (delegation).
   const canShare = isAdminOrOwner || (!!inbox && canAdminInstance(toInboxAccessRecordId(inbox)))
-  const myLens = thread?.myLens ?? 'full'
-  const clientEligible = !!thread && myLens !== 'full' && !canShare
+  const myLens = thread?.myLens ?? 'read'
+  const clientEligible = !!thread && myLens !== 'read' && !canShare
 
   const { data: preflight, isLoading } = api.approval.accessRequestPreflight.useQuery(
     { threadId },

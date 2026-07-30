@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/message.ts
 
-import { getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { NotFoundError } from '@auxx/lib/errors'
 import { MessageQueryService } from '@auxx/lib/messages'
@@ -19,7 +19,7 @@ const logger = createScopedLogger('message-router')
  * §5.3's table names the thread router; messages live in their own router and
  * were never enumerated, so this file had **no coarse door at all** — both
  * procedures were bare `protectedProcedure`s. Content was never unguarded (both
- * go through `MessageQueryService` with the caller's `UserMailVisibility`, and
+ * go through `MessageQueryService` with the caller's `UserInstanceGrants`, and
  * `getMessagesByThread` throws `NotFoundError` at lens `none`), but the *area*
  * question was unanswerable: a member whose profile sets `inboxes: None` could
  * still read every message body their lens floor allowed, and `inboxes: None` is
@@ -50,7 +50,7 @@ const getMessageQueryService = async (ctx: any) => {
       message: 'User organization context not found.',
     })
   }
-  const viewer = await getCachedUserMailVisibility(ctx.session.user.id as string, organizationId)
+  const viewer = await getCachedUserInstanceGrants(ctx.session.user.id as string, organizationId)
   return {
     organizationId,
     messageQuery: new MessageQueryService(organizationId, ctx.db, viewer),

@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import { SEAT_CEILINGS } from '@auxx/lib/permissions/capabilities/seat-policy'
@@ -216,7 +216,7 @@ interface CapsOpts {
   /** The member's Layer-2 `Area.snippets` level. Defaults to the seeded Member baseline. */
   areaLevel?: Level
   /** Explicit `ResourceAccess` instance rows reaching this member. */
-  instances?: Record<string, ResourcePermission>
+  instances?: Record<string, Rung>
   /** Read-rung keys the composer SYNTHESIZES from instance grants (front door only). */
   derivedKeys?: PermissionKey[]
 }
@@ -230,8 +230,8 @@ interface CapsOpts {
  * against the MOST privileged area a member can hold. A denial here is a denial
  * that no profile change can undo.
  */
-function capabilitiesFor(permission: ResourcePermission | undefined, opts: CapsOpts = {}) {
-  const instances = opts.instances ?? (permission === undefined ? {} : { [SNIPPET_ID]: permission })
+function capabilitiesFor(rung: Rung | undefined, opts: CapsOpts = {}) {
+  const instances = opts.instances ?? (rung === undefined ? {} : { [SNIPPET_ID]: rung })
   const seatType = opts.seatType ?? 'full'
   // `CapabilitySet` is handed an ALREADY seat-clamped key set — the `min` against
   // `SEAT_CEILINGS` happens in `composeUserCapabilities`, upstream. Reproduce it
@@ -390,12 +390,12 @@ beforeEach(() => {
 
 describe('snippet router — the `view` tier', () => {
   it.each(VIEW_TIER)('%s succeeds at an instance `view` row', async (_n, call, helper) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('read')))).resolves.toBeDefined()
     expect(snippets[helper]).toHaveBeenCalledTimes(1)
   })
 
   it.each(VIEW_TIER)('%s succeeds at `edit` and `admin` too', async (_n, call, helper) => {
-    for (const permission of [ResourcePermission.edit, ResourcePermission.admin] as const) {
+    for (const permission of ['edit', 'admin'] as const) {
       snippets[helper].mockClear()
       await expect(call(caller(capabilitiesFor(permission)))).resolves.toBeDefined()
       expect(snippets[helper]).toHaveBeenCalledTimes(1)
@@ -403,9 +403,7 @@ describe('snippet router — the `view` tier', () => {
   })
 
   it.each(VIEW_TIER)('%s is refused for an explicit `none` row', async (_n, call, helper) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.none)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('none')))).rejects.toMatchObject(FORBIDDEN)
     expect(snippets[helper]).not.toHaveBeenCalled()
   })
 
@@ -414,9 +412,9 @@ describe('snippet router — the `view` tier', () => {
     // drifting value is how a viewer gets an edit button that then 403s. Resolve
     // it at each rung and require it to agree with what `update` actually does.
     for (const [permission, expected] of [
-      [ResourcePermission.view, false],
-      [ResourcePermission.edit, true],
-      [ResourcePermission.admin, true],
+      ['read', false],
+      ['edit', true],
+      ['admin', true],
     ] as const) {
       const caps = capabilitiesFor(permission)
       const result = await caller(caps).byId({ id: SNIPPET_ID })
@@ -433,49 +431,43 @@ describe('snippet router — the `view` tier', () => {
     // (`{ success: result.isOk() }`), which makes it the easiest place to
     // accidentally swallow the denial too. A 403 here is a real answer.
     await expect(
-      caller(capabilitiesFor(ResourcePermission.none)).incrementUsage({ id: SNIPPET_ID })
+      caller(capabilitiesFor('none')).incrementUsage({ id: SNIPPET_ID })
     ).rejects.toMatchObject(FORBIDDEN)
   })
 })
 
 describe('snippet router — the `edit` tier', () => {
   it.each(EDIT_TIER)('%s is refused at instance `view`', async (_n, call, helper) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(snippets[helper]).not.toHaveBeenCalled()
   })
 
   it.each(EDIT_TIER)('%s succeeds at instance `edit`', async (_n, call, helper) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('edit')))).resolves.toBeDefined()
     expect(snippets[helper]).toHaveBeenCalledTimes(1)
   })
 
   it.each(EDIT_TIER)('%s succeeds at instance `admin`', async (_n, call, helper) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.admin)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('admin')))).resolves.toBeDefined()
     expect(snippets[helper]).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('snippet router — the `admin` tier', () => {
   it.each(ADMIN_TIER)('%s is refused at instance `view`', async (_n, call, helper) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(snippets[helper]).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_TIER)('%s is refused at instance `edit`', async (_n, call, helper) => {
     // The tier that is easiest to get wrong: an `edit` grantee may rewrite the
     // snippet but must not be able to destroy it.
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('edit')))).rejects.toMatchObject(FORBIDDEN)
     expect(snippets[helper]).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_TIER)('%s succeeds at instance `admin`', async (_n, call, helper) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.admin)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('admin')))).resolves.toBeDefined()
     expect(snippets[helper]).toHaveBeenCalledTimes(1)
   })
 })
@@ -503,7 +495,7 @@ describe('snippet router — `baselineAtCreate: true` means no row is no access'
     // 404-before-403 dance the identifier-resolving resources need exists to
     // reach this same indistinguishability; here it is structural.
     const caps = capabilitiesFor(undefined, {
-      instances: { [SNIPPET_ID]: ResourcePermission.admin, [FOREIGN_ID]: ResourcePermission.none },
+      instances: { [SNIPPET_ID]: 'admin', [FOREIGN_ID]: 'none' },
     })
     await expect(call(caller(caps))).resolves.toBeDefined()
     snippets[helper].mockClear()
@@ -527,9 +519,9 @@ describe('snippet router — `baselineAtCreate: true` means no row is no access'
         statusCode: 404,
       }),
     } as any)
-    await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).byId({ id: SNIPPET_ID })
-    ).rejects.toMatchObject(NOT_FOUND)
+    await expect(caller(capabilitiesFor('read')).byId({ id: SNIPPET_ID })).rejects.toMatchObject(
+      NOT_FOUND
+    )
   })
 })
 
@@ -549,9 +541,7 @@ describe('snippet router — role and seat short-circuits', () => {
     // The control: removing the bypass is not a self-lock. `createSnippet` writes
     // the author an `admin` row in the same transaction, so an owner reaches
     // their OWN snippets through the ordinary row path.
-    await expect(
-      call(caller(capabilitiesFor(ResourcePermission.admin, { role: 'OWNER' })))
-    ).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('admin', { role: 'OWNER' })))).resolves.toBeDefined()
     expect(snippets[h]).toHaveBeenCalledTimes(1)
   })
 
@@ -567,7 +557,7 @@ describe('snippet router — role and seat short-circuits', () => {
     // `Area.snippets` is outside `WORKER_AREAS`, and the ceiling is checked above
     // the explicit-row branch — so an `admin` row on content the field tech
     // authored buys nothing. Intended; stated in `seat-policy.ts`.
-    const caps = capabilitiesFor(ResourcePermission.admin, { seatType: 'worker' })
+    const caps = capabilitiesFor('admin', { seatType: 'worker' })
     await expect(c(caller(caps))).rejects.toMatchObject(FORBIDDEN)
     expect(snippets[h]).not.toHaveBeenCalled()
   })
@@ -618,7 +608,7 @@ describe('snippet router — the folder gate (plan 36 §6.3, a LIVE BUG FIX)', (
     // door), and `admin` on the instance lets them delete THAT snippet — but
     // neither may reach the instance-LESS `snippetsManage` rung. Holding an
     // `admin` row on one snippet must not confer the org's folder tree.
-    const caps = capabilitiesFor(ResourcePermission.admin, {
+    const caps = capabilitiesFor('admin', {
       areaLevel: Level.None,
       derivedKeys: [PermissionKey.snippetsView],
     })
@@ -657,9 +647,9 @@ describe('snippet router — `all` FILTERS, it never 403s', () => {
     const result = await caller(
       capabilitiesFor(undefined, {
         instances: {
-          [SNIPPET_ID]: ResourcePermission.view,
-          [OTHER_ID]: ResourcePermission.none,
-          [THIRD_ID]: ResourcePermission.admin,
+          [SNIPPET_ID]: 'read',
+          [OTHER_ID]: 'none',
+          [THIRD_ID]: 'admin',
         },
       })
     ).all({})
@@ -671,9 +661,7 @@ describe('snippet router — `all` FILTERS, it never 403s', () => {
     // helper, which pushes it into the SQL `WHERE`. Filtering afterwards would
     // make any future pagination report the unfiltered totals.
     listFixture.ids = [SNIPPET_ID, OTHER_ID]
-    await caller(
-      capabilitiesFor(undefined, { instances: { [SNIPPET_ID]: ResourcePermission.view } })
-    ).all({})
+    await caller(capabilitiesFor(undefined, { instances: { [SNIPPET_ID]: 'read' } })).all({})
     expect(snippets.listSnippetsForUser.mock.calls[0]?.[3]).toEqual({
       kind: 'include',
       includeIds: [SNIPPET_ID],
@@ -687,7 +675,7 @@ describe('snippet router — `all` FILTERS, it never 403s', () => {
     const result = await caller(
       capabilitiesFor(undefined, {
         role: 'OWNER',
-        instances: { [SNIPPET_ID]: ResourcePermission.admin },
+        instances: { [SNIPPET_ID]: 'admin' },
       })
     ).all({})
     expect(result.snippets).toEqual([{ id: SNIPPET_ID }])
@@ -712,9 +700,7 @@ describe('snippet router — `all` FILTERS, it never 403s', () => {
 
   it('a worker seat sees nothing, even holding an `admin` row', async () => {
     listFixture.ids = [SNIPPET_ID]
-    const result = await caller(
-      capabilitiesFor(ResourcePermission.admin, { seatType: 'worker' })
-    ).all({})
+    const result = await caller(capabilitiesFor('admin', { seatType: 'worker' })).all({})
     expect(result.snippets).toEqual([])
     expect(snippets.listSnippetsForUser.mock.calls[0]?.[3]).toEqual({ kind: 'none' })
   })
@@ -733,7 +719,7 @@ describe('snippet router — getFolders and the folder-count leak (§6.3)', () =
     // snippets each folder held. The count is only as safe as the scope it is
     // given, and the scope must be the one `all` uses or the two disagree.
     const caps = capabilitiesFor(undefined, {
-      instances: { [SNIPPET_ID]: ResourcePermission.view },
+      instances: { [SNIPPET_ID]: 'read' },
     })
     await expect(caller(caps).getFolders()).resolves.toBeDefined()
     const folderScope = snippets.listSnippetFoldersWithCounts.mock.calls[0]?.[2]
@@ -750,7 +736,7 @@ describe('snippet router — getFolders and the folder-count leak (§6.3)', () =
   })
 
   it('a worker seat gets the `none` scope too', async () => {
-    await caller(capabilitiesFor(ResourcePermission.admin, { seatType: 'worker' })).getFolders()
+    await caller(capabilitiesFor('admin', { seatType: 'worker' })).getFolders()
     expect(snippets.listSnippetFoldersWithCounts.mock.calls[0]?.[2]).toEqual({ kind: 'none' })
   })
 
@@ -761,7 +747,7 @@ describe('snippet router — getFolders and the folder-count leak (§6.3)', () =
     await caller(
       capabilitiesFor(undefined, {
         role: 'OWNER',
-        instances: { [SNIPPET_ID]: ResourcePermission.admin },
+        instances: { [SNIPPET_ID]: 'admin' },
       })
     ).getFolders()
     expect(snippets.listSnippetFoldersWithCounts.mock.calls[0]?.[2]).toEqual({
@@ -825,7 +811,7 @@ describe('snippet router — create writes the owner `admin` ResourceAccess row'
       entityInstanceId: 'snip_new',
       granteeType: ResourceGranteeType.user,
       granteeId: USER_ID,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
     })
     // Both inserts came off the transaction handle, not the bare db.
     expect(record.transactional).toBe(true)
@@ -852,9 +838,13 @@ describe('snippet router — create writes the owner `admin` ResourceAccess row'
       title: 'T',
       content: 'C',
     })
-    expect(resourceAccess.emitResourceAccessInstanceChanged).toHaveBeenCalledWith(ORG_ID, [
-      { granteeType: ResourceGranteeType.user, granteeId: USER_ID },
-    ])
+    // The def id is the THIRD argument and is required since plan v3/03 P3b — the
+    // event is def-agnostic, so the emitter has to be told which key it is for.
+    expect(resourceAccess.emitResourceAccessInstanceChanged).toHaveBeenCalledWith(
+      ORG_ID,
+      [{ granteeType: ResourceGranteeType.user, granteeId: USER_ID }],
+      'snippet'
+    )
   })
 })
 
@@ -873,12 +863,12 @@ describe('snippet sharing goes through resourceAccess.grantInstance', () => {
       session: { organizationId: ORG_ID, userId: USER_ID, user: { id: USER_ID } },
     } as any)
 
-  const share = (permission: ResourcePermission = ResourcePermission.view) =>
+  const share = (rung: Rung = 'read') =>
     shareCaller().grantInstance({
       recordId: SNIPPET_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission,
+      rung,
     })
 
   it('the snippet router exposes no `share` procedure of its own', () => {
@@ -886,18 +876,18 @@ describe('snippet sharing goes through resourceAccess.grantInstance', () => {
   })
 
   it('an instance `admin` holder can share', async () => {
-    getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.admin))
+    getCapabilities.mockResolvedValue(capabilitiesFor('admin'))
     await expect(share()).resolves.toEqual({ success: true })
     expect(resourceAccess.grantInstanceAccess).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG_ID }),
-      expect.objectContaining({ recordId: SNIPPET_RECORD_ID, permission: ResourcePermission.view })
+      expect.objectContaining({ recordId: SNIPPET_RECORD_ID, rung: 'read' })
     )
     // The snippet target never falls through to the mail-sharing authorizer.
     expect(resourceAccess.assertCanManageMailSharing).not.toHaveBeenCalled()
   })
 
   it('an instance `edit` holder cannot re-share', async () => {
-    getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.edit))
+    getCapabilities.mockResolvedValue(capabilitiesFor('edit'))
     await expect(share()).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
   })
@@ -915,7 +905,7 @@ describe('snippet sharing goes through resourceAccess.grantInstance', () => {
   })
 
   it('revoking is gated the same way', async () => {
-    getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.edit))
+    getCapabilities.mockResolvedValue(capabilitiesFor('edit'))
     await expect(
       shareCaller().revokeInstance({
         recordId: SNIPPET_RECORD_ID,
@@ -930,18 +920,18 @@ describe('snippet sharing goes through resourceAccess.grantInstance', () => {
     // `isInstanceAccessKey('snippet')` is what makes `none` acceptable here; on a
     // mail target the same call is a 400. This pins that snippets really did join
     // the registry rather than merely being spelled like a member of it.
-    getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.admin))
+    getCapabilities.mockResolvedValue(capabilitiesFor('admin'))
     await expect(
       shareCaller().grantInstance({
         recordId: SNIPPET_RECORD_ID,
         granteeType: ResourceGranteeType.role,
         granteeId: 'org_member',
-        permission: ResourcePermission.none,
+        rung: 'none',
       })
     ).resolves.toEqual({ success: true })
     expect(resourceAccess.grantInstanceAccess).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ permission: ResourcePermission.none })
+      expect.objectContaining({ rung: 'none' })
     )
   })
 })

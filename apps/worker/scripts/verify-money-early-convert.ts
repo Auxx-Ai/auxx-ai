@@ -120,7 +120,6 @@ async function lineIdsForWorkOrder(handler: UnifiedCrudHandler, workOrderRecordI
       },
     ],
     limit: 200,
-    mode: 'oneshot',
   })
   return ids
 }
@@ -139,7 +138,6 @@ async function workOrderIdsForQuote(handler: UnifiedCrudHandler, quoteRecordId: 
       },
     ],
     limit: 10,
-    mode: 'oneshot',
   })
   return ids
 }

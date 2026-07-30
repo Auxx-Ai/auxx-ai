@@ -23,7 +23,6 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
-import { invalidateSnapshots } from '../snapshot'
 import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../sync-core/contracts'
 import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
@@ -232,26 +231,16 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
 
   /**
    * Refresh the grid for the slice just written: mark each touched def's query
-   * snapshot dirty, then emit ONE coarse `records:invalidated` per def.
+   * emit ONE coarse `records:invalidated` per def.
    *
-   * Both halves are required. Per-record realtime is suppressed for connector
-   * writes (the sink passes `skipEvents`), so the coarse event is what tells an
-   * open grid to refetch instead of the per-record firehose that 403s Pusher at
-   * backfill scale. But the sink also writes with `skipSnapshotInvalidation` and
-   * the run-level invalidate only fires at finalize — so without marking the
-   * snapshot dirty here, the client's triggered refetch would hit a non-dirty
-   * cached `listFiltered` snapshot and return STALE ids (missing the records we
-   * just synced). Invalidate first so the marker is set before the event lands.
+   * Per-record realtime is suppressed for connector writes (the sink passes
+   * `skipEvents`), so this coarse event is what tells an open grid to refetch
+   * instead of the per-record firehose that 403s Pusher at backfill scale. The
+   * grid's refetch pages straight from SQL, so it always sees the fresh rows.
    */
   private async emitRecordsInvalidated(touchedDefs: Set<string>): Promise<void> {
     if (touchedDefs.size === 0) return
     const defIds = Array.from(touchedDefs)
-
-    await Promise.allSettled(
-      defIds.map((resourceType) =>
-        invalidateSnapshots({ organizationId: this.deps.organizationId, resourceType })
-      )
-    )
 
     // Lazy-import the realtime barrel: a static import from this low-level module
     // creates a load-time cycle (realtime → publish-helpers → cache → …) that
@@ -358,7 +347,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // Clear contributing markers for fields the connector no longer maps (the FK
     // set-null only covers connector deletion, not a reconfigured mapping).
     await reconcileManagedMarkers(syncCtx, this.deps.allStreams)
-    // Final sweep: invalidate snapshots AND emit the coarse refresh so the grid
+    // Final sweep: emit the coarse refresh so the grid
     // also reflects finalize-only writes (relationship resolution, orphan
     // archival) that the per-slice emits never saw.
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)

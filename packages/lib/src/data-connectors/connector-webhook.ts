@@ -15,7 +15,6 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
-import { invalidateSnapshots } from '../snapshot'
 import { flattenConnectionMeta } from './connection-meta'
 import { prepareConnectorFetch } from './connector-runtime'
 import { ConnectorRateLimitError } from './connectors'
@@ -139,11 +138,6 @@ export async function runWebhookSteeredRun(
     // connector-wide, so it's safe on a partial run and also clears edges stranded by
     // earlier deliveries. Without it, webhook-steered connectors never form relationships.
     await resolveRelationships(ctx)
-
-    // Invalidate snapshots AFTER the pass so the relationship writes refresh the grid too.
-    for (const defId of ctx.touchedDefs) {
-      await invalidateSnapshots({ organizationId, resourceType: defId })
-    }
 
     // Close the run PARTIAL — it observed a single steered record, so the connector
     // finalize must NOT reconcile orphans (that would archive the rest of the collection).

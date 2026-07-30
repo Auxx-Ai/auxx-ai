@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/workflow-instance-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -259,10 +259,10 @@ const RECORD_ID = 'contact:rec_cuid00000000000000'
 const FORBIDDEN = { cause: { name: 'ForbiddenError', statusCode: 403 } }
 
 const AREA_LEVEL_OF: Record<ResourcePermission, Level> = {
-  [ResourcePermission.none]: Level.None,
-  [ResourcePermission.view]: Level.Read,
-  [ResourcePermission.edit]: Level.Edit,
-  [ResourcePermission.admin]: Level.Full,
+  ['none']: Level.None,
+  ['read']: Level.Read,
+  ['edit']: Level.Edit,
+  ['admin']: Level.Full,
 }
 
 /**
@@ -291,8 +291,7 @@ function capabilitiesFor(
   // outside WORKER_AREAS). Without this a `workflows: None` grantee would 403 at
   // the coarse front door — the exact regression item 5b closes.
   const derived =
-    seatType !== 'worker' &&
-    Object.values(instances).some((p) => p !== ResourcePermission.none && p !== undefined)
+    seatType !== 'worker' && Object.values(instances).some((p) => p !== 'none' && p !== undefined)
       ? [PermissionKey.workflowsView]
       : []
   return new CapabilitySet(
@@ -477,7 +476,7 @@ beforeEach(() => {
 describe('workflow router — `view` may RUN it (plan 30 §2, the headline decision)', () => {
   it('triggerManualResource succeeds at instance view', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).triggerManualResource({
+      caller(capabilitiesFor('read')).triggerManualResource({
         workflowAppId: WF_ID,
         recordId: RECORD_ID,
       })
@@ -487,7 +486,7 @@ describe('workflow router — `view` may RUN it (plan 30 §2, the headline decis
 
   it('triggerManualResourceBulk succeeds at instance view', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).triggerManualResourceBulk({
+      caller(capabilitiesFor('read')).triggerManualResourceBulk({
         workflowAppId: WF_ID,
         recordIds: [RECORD_ID, 'contact:rec_second00000000000'],
       })
@@ -496,9 +495,9 @@ describe('workflow router — `view` may RUN it (plan 30 §2, the headline decis
   })
 
   it('both are refused for a workflow restricted to `none`', async () => {
-    const caps = capabilitiesFor(ResourcePermission.none, {
-      areaPermission: ResourcePermission.admin,
-      instances: { [WF_ID]: ResourcePermission.none },
+    const caps = capabilitiesFor('none', {
+      areaPermission: 'admin',
+      instances: { [WF_ID]: 'none' },
     })
     await expect(
       caller(caps).triggerManualResource({ workflowAppId: WF_ID, recordId: RECORD_ID })
@@ -513,7 +512,7 @@ describe('workflow router — `view` may RUN it (plan 30 §2, the headline decis
   it('triggerManualResourceBulk asserts ONCE, not per record (plan 30 §2.2)', async () => {
     // The workflow is singular; only the records are plural. A per-record loop
     // would be N assert calls and N× the cost for a 100-record bulk.
-    const caps = capabilitiesFor(ResourcePermission.view)
+    const caps = capabilitiesFor('read')
     const spy = vi.spyOn(caps, 'assertViewInstance')
     await caller(caps).triggerManualResourceBulk({
       workflowAppId: WF_ID,
@@ -537,7 +536,7 @@ describe('workflow router — `view` may RUN it (plan 30 §2, the headline decis
       undefined,
       undefined,
       undefined,
-      { [WF_ID]: ResourcePermission.admin },
+      { [WF_ID]: 'admin' },
       new Set([WF_ID])
     )
     await expect(
@@ -549,7 +548,7 @@ describe('workflow router — `view` may RUN it (plan 30 §2, the headline decis
 
 describe('workflow router — the view tier', () => {
   it.each(VIEW_READS)('%s succeeds at instance view', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('read')))).resolves.toBeDefined()
     expect(mock()).toHaveBeenCalledTimes(1)
   })
 
@@ -559,9 +558,9 @@ describe('workflow router — the view tier', () => {
     await expect(
       call(
         caller(
-          capabilitiesFor(ResourcePermission.none, {
-            areaPermission: ResourcePermission.admin,
-            instances: { [WF_ID]: ResourcePermission.none },
+          capabilitiesFor('none', {
+            areaPermission: 'admin',
+            instances: { [WF_ID]: 'none' },
           })
         )
       )
@@ -577,9 +576,9 @@ describe('workflow router — the view tier', () => {
     guards.run.mockResolvedValueOnce(OTHER)
     await expect(
       caller(
-        capabilitiesFor(ResourcePermission.admin, {
-          areaPermission: ResourcePermission.admin,
-          instances: { [WF_ID]: ResourcePermission.admin, [OTHER]: ResourcePermission.none },
+        capabilitiesFor('admin', {
+          areaPermission: 'admin',
+          instances: { [WF_ID]: 'admin', [OTHER]: 'none' },
         })
       ).getWorkflowRun({ runId: RUN_ID })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -589,7 +588,7 @@ describe('workflow router — the view tier', () => {
   it('an unknown run 404s before any capability decision leaks its existence', async () => {
     guards.run.mockResolvedValueOnce(undefined)
     await expect(
-      caller(capabilitiesFor(ResourcePermission.admin)).getWorkflowRun({ runId: 'run_missing' })
+      caller(capabilitiesFor('admin')).getWorkflowRun({ runId: 'run_missing' })
     ).rejects.toMatchObject({ cause: undefined, code: 'NOT_FOUND' })
     expect(executionService.getWorkflowRun).not.toHaveBeenCalled()
   })
@@ -597,21 +596,19 @@ describe('workflow router — the view tier', () => {
 
 describe('workflow router — the edit tier', () => {
   it.each(EDIT_LEVEL)('%s succeeds at instance edit', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('edit')))).resolves.toBeDefined()
     expect(mock()).toHaveBeenCalledTimes(1)
   })
 
   it.each(EDIT_LEVEL)('%s is refused at instance view', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
 
   it('stopWorkflowRun at instance edit never reads the run’s owner', async () => {
     // Ownership only matters for the `view` tier; `edit` stops ANY run, so the
     // common path must not pay the extra query.
-    await caller(capabilitiesFor(ResourcePermission.edit)).stopWorkflowRun({ runId: RUN_ID })
+    await caller(capabilitiesFor('edit')).stopWorkflowRun({ runId: RUN_ID })
     expect(guards.runCreator).not.toHaveBeenCalled()
     expect(executionService.stopWorkflowRun).toHaveBeenCalledTimes(1)
   })
@@ -621,9 +618,9 @@ describe('workflow router — the edit tier', () => {
     guards.run.mockResolvedValueOnce(OTHER)
     await expect(
       caller(
-        capabilitiesFor(ResourcePermission.admin, {
-          areaPermission: ResourcePermission.admin,
-          instances: { [WF_ID]: ResourcePermission.admin, [OTHER]: ResourcePermission.view },
+        capabilitiesFor('admin', {
+          areaPermission: 'admin',
+          instances: { [WF_ID]: 'admin', [OTHER]: 'read' },
         })
       ).stopWorkflowRun({ runId: RUN_ID })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -643,7 +640,7 @@ describe('workflow router — a `view` holder may stop a run THEY started', () =
   it('stops the run when the caller started it', async () => {
     guards.runCreator.mockResolvedValueOnce(USER_ID)
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).stopWorkflowRun({ runId: RUN_ID })
+      caller(capabilitiesFor('read')).stopWorkflowRun({ runId: RUN_ID })
     ).resolves.toBeDefined()
     expect(executionService.stopWorkflowRun).toHaveBeenCalledTimes(1)
   })
@@ -651,7 +648,7 @@ describe('workflow router — a `view` holder may stop a run THEY started', () =
   it('refuses someone else’s run', async () => {
     guards.runCreator.mockResolvedValueOnce(OTHER_USER_ID)
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).stopWorkflowRun({ runId: RUN_ID })
+      caller(capabilitiesFor('read')).stopWorkflowRun({ runId: RUN_ID })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(executionService.stopWorkflowRun).not.toHaveBeenCalled()
   })
@@ -659,7 +656,7 @@ describe('workflow router — a `view` holder may stop a run THEY started', () =
   it('an instance `edit` holder stops someone else’s run', async () => {
     // Default owner (someone else) — `edit` never reads it, which is the point.
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).stopWorkflowRun({ runId: RUN_ID })
+      caller(capabilitiesFor('edit')).stopWorkflowRun({ runId: RUN_ID })
     ).resolves.toBeDefined()
     expect(executionService.stopWorkflowRun).toHaveBeenCalledTimes(1)
   })
@@ -671,7 +668,7 @@ describe('workflow router — a `view` holder may stop a run THEY started', () =
     // able to cancel the org's automation.
     guards.runCreator.mockResolvedValueOnce(SYSTEM_USER_ID)
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).stopWorkflowRun({ runId: RUN_ID })
+      caller(capabilitiesFor('read')).stopWorkflowRun({ runId: RUN_ID })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(executionService.stopWorkflowRun).not.toHaveBeenCalled()
   })
@@ -682,7 +679,7 @@ describe('workflow router — a `view` holder may stop a run THEY started', () =
     // `edit` — `null` must never read as "mine".
     guards.runCreator.mockResolvedValueOnce(null)
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).stopWorkflowRun({ runId: RUN_ID })
+      caller(capabilitiesFor('read')).stopWorkflowRun({ runId: RUN_ID })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(executionService.stopWorkflowRun).not.toHaveBeenCalled()
   })
@@ -693,9 +690,9 @@ describe('workflow router — a `view` holder may stop a run THEY started', () =
     guards.runCreator.mockResolvedValueOnce(USER_ID)
     await expect(
       caller(
-        capabilitiesFor(ResourcePermission.none, {
-          areaPermission: ResourcePermission.admin,
-          instances: { [WF_ID]: ResourcePermission.none },
+        capabilitiesFor('none', {
+          areaPermission: 'admin',
+          instances: { [WF_ID]: 'none' },
         })
       ).stopWorkflowRun({ runId: RUN_ID })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -705,21 +702,17 @@ describe('workflow router — a `view` holder may stop a run THEY started', () =
 
 describe('workflow router — the admin tier', () => {
   it.each(ADMIN_ONLY)('%s is refused at instance edit', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('edit')))).rejects.toMatchObject(FORBIDDEN)
     if (mock) expect(mock()).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_ONLY)('%s is refused at instance view', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     if (mock) expect(mock()).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_ONLY)('%s succeeds at instance admin', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.admin)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('admin')))).resolves.toBeDefined()
     if (mock) expect(mock()).toHaveBeenCalledTimes(1)
   })
 })
@@ -727,7 +720,7 @@ describe('workflow router — the admin tier', () => {
 describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)', () => {
   it('a plain layout/graph save succeeds at instance edit', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({
+      caller(capabilitiesFor('edit')).update({
         id: WF_ID,
         graph: { nodes: [], edges: [] },
       })
@@ -737,7 +730,7 @@ describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)
 
   it('the other authoring fields stay on the edit rung', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({
+      caller(capabilitiesFor('edit')).update({
         id: WF_ID,
         graph: { nodes: [], edges: [] },
         envVars: [{ id: 'e1', name: 'KEY', value: 'v', type: 'string' }],
@@ -750,7 +743,7 @@ describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)
 
   it('is refused at instance view even for a pure graph save', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).update({
+      caller(capabilitiesFor('read')).update({
         id: WF_ID,
         graph: { nodes: [], edges: [] },
       })
@@ -762,7 +755,7 @@ describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)
     ADMIN_UPDATE_PAYLOADS
   )('carrying `%s` escalates the save to Full — refused at instance edit', async (_field, payload) => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({
+      caller(capabilitiesFor('edit')).update({
         id: WF_ID,
         graph: { nodes: [], edges: [] },
         ...payload,
@@ -775,7 +768,7 @@ describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)
     ADMIN_UPDATE_PAYLOADS
   )('carrying `%s` succeeds at instance admin', async (_f, payload) => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.admin)).update({ id: WF_ID, ...payload })
+      caller(capabilitiesFor('admin')).update({ id: WF_ID, ...payload })
     ).resolves.toBeDefined()
     expect(workflowService.update).toHaveBeenCalledTimes(1)
   })
@@ -790,7 +783,7 @@ describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)
     // that says the router's check has to become key-presence-based
     // (`field in input`).
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({
+      caller(capabilitiesFor('edit')).update({
         id: WF_ID,
         graph: { nodes: [], edges: [] },
         name: undefined,
@@ -807,7 +800,7 @@ describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)
 
   it('a settings save is refused at instance view too', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).update({ id: WF_ID, name: 'Renamed' })
+      caller(capabilitiesFor('read')).update({ id: WF_ID, name: 'Renamed' })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(workflowService.update).not.toHaveBeenCalled()
   })
@@ -816,14 +809,14 @@ describe('workflow router — `update` escalates on field PRESENCE (plan 30 §4)
 describe('workflow router — creating is the coarse `workflowsManage` rung', () => {
   it('create is refused for a member at the workflows Edit rung', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).create({ name: 'New', enabled: false })
+      caller(capabilitiesFor('edit')).create({ name: 'New', enabled: false })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(workflowService.create).not.toHaveBeenCalled()
   })
 
   it('createForResource is refused for a member at the workflows Edit rung', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).createForResource({
+      caller(capabilitiesFor('edit')).createForResource({
         entityDefinitionId: 'edef_1',
       })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -832,7 +825,7 @@ describe('workflow router — creating is the coarse `workflowsManage` rung', ()
 
   it('create succeeds once the member holds workflows Full', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.admin)).create({ name: 'New', enabled: false })
+      caller(capabilitiesFor('admin')).create({ name: 'New', enabled: false })
     ).resolves.toBeDefined()
     expect(workflowService.create).toHaveBeenCalledTimes(1)
   })
@@ -841,9 +834,10 @@ describe('workflow router — creating is the coarse `workflowsManage` rung', ()
     // Instance grants are not clamped to the area, so `admin` on WF_ID under a
     // workflows-Edit profile is reachable — it still must not create a workflow.
     await expect(
-      caller(
-        capabilitiesFor(ResourcePermission.admin, { areaPermission: ResourcePermission.edit })
-      ).duplicate({ id: WF_ID, name: 'Copy' })
+      caller(capabilitiesFor('admin', { areaPermission: 'edit' })).duplicate({
+        id: WF_ID,
+        name: 'Copy',
+      })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(workflowService.duplicate).not.toHaveBeenCalled()
   })
@@ -851,9 +845,9 @@ describe('workflow router — creating is the coarse `workflowsManage` rung', ()
   it('duplicate also needs `view` on the SOURCE workflow', async () => {
     await expect(
       caller(
-        capabilitiesFor(ResourcePermission.none, {
-          areaPermission: ResourcePermission.admin,
-          instances: { [WF_ID]: ResourcePermission.none },
+        capabilitiesFor('none', {
+          areaPermission: 'admin',
+          instances: { [WF_ID]: 'none' },
         })
       ).duplicate({ id: WF_ID, name: 'Copy' })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -862,9 +856,10 @@ describe('workflow router — creating is the coarse `workflowsManage` rung', ()
 
   it('duplicate succeeds at coarse Full + `view` on the source (not `admin`)', async () => {
     await expect(
-      caller(
-        capabilitiesFor(ResourcePermission.view, { areaPermission: ResourcePermission.admin })
-      ).duplicate({ id: WF_ID, name: 'Copy' })
+      caller(capabilitiesFor('read', { areaPermission: 'admin' })).duplicate({
+        id: WF_ID,
+        name: 'Copy',
+      })
     ).resolves.toBeDefined()
     expect(workflowService.duplicate).toHaveBeenCalledTimes(1)
   })
@@ -875,11 +870,11 @@ describe('workflow router — list/getManualWorkflows FILTER, never assert (plan
 
   /** A member who may view everything except {@link RESTRICTED}. */
   const restrictedFrom = (...ids: string[]) =>
-    capabilitiesFor(ResourcePermission.view, {
-      areaPermission: ResourcePermission.view,
+    capabilitiesFor('read', {
+      areaPermission: 'read',
       instances: {
-        [WF_ID]: ResourcePermission.view,
-        ...Object.fromEntries(ids.map((id) => [id, ResourcePermission.none])),
+        [WF_ID]: 'read',
+        ...Object.fromEntries(ids.map((id) => [id, 'none'])),
       },
     })
 
@@ -930,7 +925,7 @@ describe('workflow router — list/getManualWorkflows FILTER, never assert (plan
   })
 
   it('list returns an empty page (not a 403) for a member with workflows: None', async () => {
-    const result = await caller(capabilitiesFor(ResourcePermission.none, { instances: {} })).list({
+    const result = await caller(capabilitiesFor('none', { instances: {} })).list({
       limit: 50,
       offset: 0,
     })
@@ -943,7 +938,7 @@ describe('workflow router — list/getManualWorkflows FILTER, never assert (plan
 
   it('an unrestricted org pays nothing — the exclusion is empty', async () => {
     listFixture.ids = [WF_ID, 'wf_c']
-    const result = await caller(capabilitiesFor(ResourcePermission.admin, { instances: {} })).list({
+    const result = await caller(capabilitiesFor('admin', { instances: {} })).list({
       limit: 50,
       offset: 0,
     })
@@ -962,9 +957,9 @@ describe('workflow router — list/getManualWorkflows FILTER, never assert (plan
     })
     await expect(
       caller(
-        capabilitiesFor(ResourcePermission.view, {
-          areaPermission: ResourcePermission.view,
-          instances: { [WF_ID]: ResourcePermission.view, [RESTRICTED]: ResourcePermission.none },
+        capabilitiesFor('read', {
+          areaPermission: 'read',
+          instances: { [WF_ID]: 'read', [RESTRICTED]: 'none' },
         })
       ).getManualWorkflows({ entityDefinitionId: 'edef_1' })
     ).resolves.toEqual([{ id: WF_ID, name: 'Visible', description: null }])
@@ -976,7 +971,7 @@ describe('workflow router — list/getManualWorkflows FILTER, never assert (plan
       value: [{ workflowApp: { id: WF_ID, name: 'Visible', description: null } }],
     })
     await expect(
-      caller(capabilitiesFor(ResourcePermission.none, { instances: {} })).getManualWorkflows({
+      caller(capabilitiesFor('none', { instances: {} })).getManualWorkflows({
         entityDefinitionId: 'edef_1',
       })
     ).resolves.toEqual([])
@@ -989,42 +984,32 @@ describe('workflow router — `baselineAtCreate: false`: no row falls back to th
     capabilitiesFor(areaPermission, { areaPermission, instances: {} })
 
   it('area Read ⇒ the workflow opens and runs, but does not save', async () => {
+    await expect(caller(noRows('read')).getById({ id: WF_ID })).resolves.toBeDefined()
     await expect(
-      caller(noRows(ResourcePermission.view)).getById({ id: WF_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      caller(noRows(ResourcePermission.view)).triggerManualResource({
+      caller(noRows('read')).triggerManualResource({
         workflowAppId: WF_ID,
         recordId: RECORD_ID,
       })
     ).resolves.toBeDefined()
     await expect(
-      caller(noRows(ResourcePermission.view)).update({ id: WF_ID, graph: { nodes: [], edges: [] } })
+      caller(noRows('read')).update({ id: WF_ID, graph: { nodes: [], edges: [] } })
     ).rejects.toMatchObject(FORBIDDEN)
   })
 
   it('area Edit ⇒ saves and publishes, but does not delete', async () => {
     await expect(
-      caller(noRows(ResourcePermission.edit)).update({ id: WF_ID, graph: { nodes: [], edges: [] } })
+      caller(noRows('edit')).update({ id: WF_ID, graph: { nodes: [], edges: [] } })
     ).resolves.toBeDefined()
-    await expect(
-      caller(noRows(ResourcePermission.edit)).publish({ workflowId: WF_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      caller(noRows(ResourcePermission.edit)).delete({ id: WF_ID })
-    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(caller(noRows('edit')).publish({ workflowId: WF_ID })).resolves.toBeDefined()
+    await expect(caller(noRows('edit')).delete({ id: WF_ID })).rejects.toMatchObject(FORBIDDEN)
   })
 
   it('area Full ⇒ everything, with no ResourceAccess row anywhere', async () => {
-    await expect(
-      caller(noRows(ResourcePermission.admin)).delete({ id: WF_ID })
-    ).resolves.toBeDefined()
+    await expect(caller(noRows('admin')).delete({ id: WF_ID })).resolves.toBeDefined()
   })
 
   it('area None ⇒ nothing, even though the workflow is org-shared', async () => {
-    await expect(
-      caller(noRows(ResourcePermission.none)).getById({ id: WF_ID })
-    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(caller(noRows('none')).getById({ id: WF_ID })).rejects.toMatchObject(FORBIDDEN)
     expect(workflowService.getById).not.toHaveBeenCalled()
   })
 })
@@ -1039,9 +1024,9 @@ describe('workflow router — `isPublic` is a separate axis (plan 30 §8 item 4)
     workflowService.getById.mockResolvedValueOnce({ id: WF_ID, isPublic: true } as never)
     await expect(
       caller(
-        capabilitiesFor(ResourcePermission.none, {
-          areaPermission: ResourcePermission.admin,
-          instances: { [WF_ID]: ResourcePermission.none },
+        capabilitiesFor('none', {
+          areaPermission: 'admin',
+          instances: { [WF_ID]: 'none' },
         })
       ).getById({ id: WF_ID })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -1052,7 +1037,7 @@ describe('workflow router — `isPublic` is a separate axis (plan 30 §8 item 4)
     // `revokeShareToken` and `update({ webEnabled/apiEnabled/accessMode })` are
     // the only ways to shut the anonymous surface — an instance `edit` holder
     // reaches none of them, so they cannot mistake a restriction for a closure.
-    const editor = capabilitiesFor(ResourcePermission.edit)
+    const editor = capabilitiesFor('edit')
     await expect(caller(editor).revokeShareToken({ id: WF_ID })).rejects.toMatchObject(FORBIDDEN)
     await expect(
       caller(editor).update({ id: WF_ID, webEnabled: false, apiEnabled: false })
@@ -1065,9 +1050,9 @@ describe('workflow router — OWNER regression (plan 30 §7)', () => {
   it('short-circuits to admin on a workflow restricted to `none`', async () => {
     // §0.10 recovery guarantee: nothing authored on a workflow can lock the last
     // owner out of the workflow that would let them undo it.
-    const owner = capabilitiesFor(ResourcePermission.admin, {
+    const owner = capabilitiesFor('admin', {
       role: 'OWNER',
-      instances: { [WF_ID]: ResourcePermission.none },
+      instances: { [WF_ID]: 'none' },
     })
     await expect(caller(owner).delete({ id: WF_ID })).resolves.toBeDefined()
     await expect(caller(owner).update({ id: WF_ID, name: 'Renamed' })).resolves.toBeDefined()

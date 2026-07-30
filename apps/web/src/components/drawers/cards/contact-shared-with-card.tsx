@@ -5,7 +5,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { useState } from 'react'
 import { useMailShare } from '~/components/mail-permissions/hooks/use-mail-share'
 import { AccessLevelsGuide } from '~/components/mail-permissions/ui/access-levels-guide'
-import { EnterpriseGate } from '~/components/mail-permissions/ui/enterprise-gate'
+import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { MailGranteeList } from '~/components/mail-permissions/ui/mail-grantee-list'
 import { useUser } from '~/hooks/use-user'
 import type { DrawerTabProps } from '../drawer-tab-registry'
@@ -36,7 +36,7 @@ export function ContactSharedWithCard({ entityInstanceId }: DrawerTabProps) {
         People here can see <span className='font-medium'>all conversations</span> this contact
         participates in.
       </p>
-      <EnterpriseGate className='w-full'>
+      <GranularPermissionsGate className='w-full'>
         <MailGranteeList
           grants={grants}
           onGrant={grant}
@@ -47,7 +47,7 @@ export function ContactSharedWithCard({ entityInstanceId }: DrawerTabProps) {
           emptyHint='Not shared. Only inbox members see these conversations.'
           stagedAdd
         />
-      </EnterpriseGate>
+      </GranularPermissionsGate>
       <button
         type='button'
         className='text-muted-foreground text-xs underline-offset-2 hover:underline'

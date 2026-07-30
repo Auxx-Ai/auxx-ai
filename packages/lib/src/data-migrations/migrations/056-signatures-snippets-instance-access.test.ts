@@ -69,7 +69,7 @@ describe('buildInstanceAccessRows — snippets', () => {
       entityInstanceId: 'i1',
       granteeType: 'user',
       granteeId: 'u1',
-      permission: 'admin',
+      rung: 'admin',
       grantedById: 'u1',
     })
   })
@@ -82,7 +82,7 @@ describe('buildInstanceAccessRows — snippets', () => {
     expect(orgRows).toEqual([])
   })
 
-  it('ORGANIZATION → owner admin row plus role:org_member @ view', () => {
+  it('ORGANIZATION → owner admin row plus role:org_member @ read', () => {
     const { ownerRows, orgRows } = buildInstanceAccessRows('snippet', [
       seed({ shareWithOrg: true }),
     ])
@@ -93,7 +93,7 @@ describe('buildInstanceAccessRows — snippets', () => {
       entityInstanceId: 'i1',
       granteeType: 'role',
       granteeId: 'org_member',
-      permission: 'view',
+      rung: 'read',
     })
   })
 })
@@ -109,16 +109,16 @@ describe('buildInstanceAccessRows — signatures', () => {
       entityDefinitionId: 'signature',
       entityInstanceId: 'sig1',
       granteeType: 'user',
-      permission: 'admin',
+      rung: 'admin',
     })
   })
 
-  it('visibility=org_members → owner admin row plus role:org_member @ view', () => {
+  it('visibility=org_members → owner admin row plus role:org_member @ read', () => {
     const { ownerRows, orgRows } = buildInstanceAccessRows('signature', [
       seed({ instanceId: 'sig1', shareWithOrg: true }),
     ])
-    expect(ownerRows.map((r) => `${r.granteeType}:${r.permission}`)).toEqual(['user:admin'])
-    expect(orgRows.map((r) => `${r.granteeType}:${r.permission}`)).toEqual(['role:view'])
+    expect(ownerRows.map((r) => `${r.granteeType}:${r.rung}`)).toEqual(['user:admin'])
+    expect(orgRows.map((r) => `${r.granteeType}:${r.rung}`)).toEqual(['role:read'])
     expect([...ownerRows, ...orgRows].every((r) => r.entityDefinitionId === 'signature')).toBe(true)
   })
 })
@@ -137,8 +137,8 @@ describe('write-path split', () => {
       seed({ instanceId: 'a', shareWithOrg: true }),
       seed({ instanceId: 'b', shareWithOrg: true }),
     ])
-    expect(ownerRows.every((r) => r.granteeType === 'user' && r.permission === 'admin')).toBe(true)
-    expect(orgRows.every((r) => r.granteeType === 'role' && r.permission === 'view')).toBe(true)
+    expect(ownerRows.every((r) => r.granteeType === 'user' && r.rung === 'admin')).toBe(true)
+    expect(orgRows.every((r) => r.granteeType === 'role' && r.rung === 'read')).toBe(true)
     expect(ownerRows).toHaveLength(2)
     expect(orgRows).toHaveLength(2)
   })

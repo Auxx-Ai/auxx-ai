@@ -1,14 +1,21 @@
 // apps/web/src/server/lib/field-value-host-access.ts
 
 import type { Database } from '@auxx/database'
-import { getCachedResources, getCachedUserMailVisibility } from '@auxx/lib/cache'
+import { getCachedResources, getCachedUserInstanceGrants } from '@auxx/lib/cache'
 // Type-only, so it is erased at runtime and never pulls the (vitest-hostile)
 // permissions barrel into this module's import graph.
 import type { CapabilityView } from '@auxx/lib/permissions'
 import { buildDefIdToSlug, PermissionKey } from '@auxx/lib/permissions'
+// Deep subpath, NOT the `@auxx/lib/resources` barrel. The barrel reaches the
+// picker → the files service → `@auxx/database`'s `database` export, which
+// breaks every router test that partially mocks `@auxx/database` (the same
+// vitest-hostility this file's `import type` note records for the permissions
+// barrel). This module imports only `errors`, a type, and the RecordId parser;
+// the picker is behind a lazy `import()` inside it.
+import { assertRecordRowsEditableWithDb } from '@auxx/lib/resources/crud/record-row-access'
 import { assertCanActOnThreads } from '@auxx/lib/threads'
 import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 
 /** The mailbox def slugs a generic field write can land on. */
 const INBOX_DEF_SLUGS = new Set(['inbox', 'personal_inbox'])
@@ -36,7 +43,7 @@ type InboxDefSlug = 'inbox' | 'personal_inbox'
  * |---------------------|----------------------------------------------------------|
  * | `thread`            | front door `inboxes.view` **+** `full` lens on the thread |
  * | `inbox`/`personal_inbox` | `assertAdminInstance` — settings are the Manager's   |
- * | everything else     | `assertEditEntity` (unchanged)                            |
+ * | everything else     | `canEditEntity` def gate, then per-row `_access` (§5.3)    |
  *
  * so the Tags field and the bulk toolbar read the same two gates with no special
  * case in either. The lens half is the **shared**
@@ -85,8 +92,8 @@ export async function assertFieldValueHostsWritable(params: {
   const toSlug = buildDefIdToSlug(await getCachedResources(organizationId))
 
   const threadIds: string[] = []
-  /** Record hosts are asserted per DISTINCT def; thread/inbox hosts per INSTANCE. */
-  const assertedDefs = new Set<string>()
+  /** Record hosts are judged PER ROW (§5.3); thread/inbox hosts per INSTANCE. */
+  const recordHosts: RecordId[] = []
 
   for (const { entityDefinitionId, entityInstanceId } of parsed) {
     const slug = toSlug(entityDefinitionId)
@@ -104,11 +111,22 @@ export async function assertFieldValueHostsWritable(params: {
       continue
     }
 
-    // Every non-mail def keeps the def-aware Layer-2 × Layer-3 edit gate.
-    if (assertedDefs.has(entityDefinitionId)) continue
-    assertedDefs.add(entityDefinitionId)
-    capabilities.assertEditEntity(entityDefinitionId)
+    recordHosts.push(toRecordId(entityDefinitionId, entityInstanceId))
   }
+
+  // Every non-mail def keeps the def-aware Layer-2 × Layer-3 edit gate as its
+  // FAST PATH, and rows the def gate refuses get a second, per-row judgement
+  // against the `_access` stamp (plan v3/03 §5.3). This path is the one that
+  // matters most: a field write from the record drawer or the table grid is the
+  // primary way a record is edited, so leaving it on the def gate alone would
+  // have kept per-record `edit` grants inert no matter what the CRUD lane did.
+  await assertRecordRowsEditableWithDb({
+    db,
+    organizationId,
+    userId,
+    capabilities,
+    recordIds: recordHosts,
+  })
 
   if (threadIds.length === 0) return
 
@@ -118,6 +136,6 @@ export async function assertFieldValueHostsWritable(params: {
   // `None` holding one explicit inbox `view` row still gets through here.
   capabilities.assert(PermissionKey.inboxesView)
 
-  const viewer = await getCachedUserMailVisibility(userId, organizationId)
+  const viewer = await getCachedUserInstanceGrants(userId, organizationId)
   await assertCanActOnThreads(db, organizationId, viewer, threadIds)
 }

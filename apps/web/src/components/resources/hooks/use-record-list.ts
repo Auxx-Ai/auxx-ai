@@ -2,7 +2,7 @@
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { toRecordId } from '@auxx/lib/resources/client'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import {
   createListKey,
@@ -53,16 +53,14 @@ interface UseRecordListResult<T = RecordMeta> {
   refresh: () => void
   /** Data came from cache */
   isCached: boolean
-  /** Snapshot ID for pagination */
-  snapshotId: string | null
 }
 
 /**
  * Hook to fetch and cache a filtered/sorted list of record IDs.
  * Returns record IDs - each row should use useRecord(id) for its data.
  *
- * Uses useInfiniteQuery for cursor-based pagination with server-side snapshots.
- * The cursor is a typed object { snapshotId, offset } for type safety.
+ * Uses useInfiniteQuery for offset pagination — each page is its own
+ * `LIMIT n + 1 OFFSET m` query. The cursor is a typed object { offset }.
  *
  * This pattern enables row-level reactivity:
  * - Only the row whose record changed will re-render
@@ -91,9 +89,6 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     [entityDefinitionId, stableFilters, stableSorting]
   )
 
-  // Track snapshotId for use after initial fetch
-  const snapshotIdRef = useRef<string | null>(null)
-
   // ─── SELECTORS ─────────────────────────────────────────────────────
   // Check if we have a valid cache before fetching
 
@@ -104,7 +99,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   const setList = useRecordStore((s) => s.setList)
 
   // ─── INFINITE QUERY ────────────────────────────────────────────────
-  // Uses cursor-based pagination with typed cursor object { snapshotId, offset }
+  // Offset pagination with typed cursor object { offset }
 
   const shouldFetch = enabled && !cachedList
 
@@ -130,10 +125,10 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     enabled: shouldFetch,
     staleTime: 30_000,
     getNextPageParam: (lastPage, allPages) => {
-      if (!lastPage.hasMore || !lastPage.snapshotId) return undefined
+      if (!lastPage.hasMore) return undefined
       // Calculate total IDs fetched so far across all pages
       const totalFetched = allPages.reduce((sum, page) => sum + page.ids.length, 0)
-      return { snapshotId: lastPage.snapshotId, offset: totalFetched }
+      return { offset: totalFetched }
     },
   })
 
@@ -159,12 +154,6 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
       }
     }
 
-    // Get snapshot ID from first page
-    const firstPage = data.pages[0]
-    if (firstPage?.snapshotId) {
-      snapshotIdRef.current = firstPage.snapshotId
-    }
-
     const lastPage = data.pages[data.pages.length - 1]
 
     // Store uses nextCursor to track if more pages exist (value doesn't matter, just presence)
@@ -172,7 +161,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
     setList(listKey, {
       ids: allIds,
-      total: lastPage?.total ?? allIds.length,
+      // `total` rides on the first page only — later pages omit the COUNT.
+      total: data.pages[0]?.total ?? allIds.length,
       fetchedAt: Date.now(),
       nextCursor,
     })
@@ -198,7 +188,6 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
   const refresh = useCallback(() => {
     useRecordStore.getState().invalidateList(listKey)
-    snapshotIdRef.current = null
     refetch()
   }, [listKey, refetch])
 
@@ -216,7 +205,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     () => cachedList?.ids ?? (data?.pages?.flatMap((p: { ids: string[] }) => p.ids) || EMPTY_IDS),
     [cachedList, data]
   )
-  const total = cachedList?.total ?? data?.pages?.[data.pages.length - 1]?.total ?? 0
+  const total = cachedList?.total ?? data?.pages?.[0]?.total ?? 0
 
   // ─── RESOLVE RECORDS FROM RECORD STORE ─────────────────────────────────
   // Subscribe to record cache for this entity definition
@@ -258,6 +247,5 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     fetchNextPage,
     refresh,
     isCached: !!cachedList,
-    snapshotId: snapshotIdRef.current,
   }
 }

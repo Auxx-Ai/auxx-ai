@@ -1,7 +1,7 @@
 // packages/lib/src/snippets/snippet-mutations.ts
 
 import { type Database, schema } from '@auxx/database'
-import { BuiltInEntityType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { BuiltInEntityType, ResourceGranteeType } from '@auxx/database/enums'
 import { and, eq, sql } from 'drizzle-orm'
 import { AuxxError, BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { emitResourceAccessInstanceChanged } from '../resource-access'
@@ -101,7 +101,7 @@ export async function createSnippet(
           entityInstanceId: snippet.id,
           granteeType: ResourceGranteeType.user,
           granteeId: userId,
-          permission: ResourcePermission.admin,
+          rung: 'admin',
           grantedById: userId,
         })
         .onConflictDoNothing()
@@ -109,9 +109,11 @@ export async function createSnippet(
       return snippet.id
     })
 
-    await emitResourceAccessInstanceChanged(organizationId, [
-      { granteeType: ResourceGranteeType.user, granteeId: userId },
-    ])
+    await emitResourceAccessInstanceChanged(
+      organizationId,
+      [{ granteeType: ResourceGranteeType.user, granteeId: userId }],
+      SNIPPET_KEY
+    )
 
     return db.query.Snippet.findFirst({
       where: eq(schema.Snippet.id, snippetId),

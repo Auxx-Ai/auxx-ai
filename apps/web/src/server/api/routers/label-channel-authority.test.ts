@@ -225,7 +225,7 @@ const hoisted = vi.hoisted(() => {
     },
   }
 
-  const getCachedUserMailVisibility = vi.fn(async () => ({ userId: USER_ID, isAdmin: false }))
+  const getCachedUserInstanceGrants = vi.fn(async () => ({ userId: USER_ID, isAdmin: false }))
 
   return {
     ORG_ID,
@@ -244,7 +244,7 @@ const hoisted = vi.hoisted(() => {
     requireChannelManageAccess,
     listManageableChannelIds,
     assertCanActOnThreads,
-    getCachedUserMailVisibility,
+    getCachedUserInstanceGrants,
   }
 })
 
@@ -289,7 +289,7 @@ vi.mock('@auxx/lib/channels', () => ({
 }))
 vi.mock('@auxx/lib/email/labels', () => hoisted.labels)
 vi.mock('@auxx/lib/cache', () => ({
-  getCachedUserMailVisibility: hoisted.getCachedUserMailVisibility,
+  getCachedUserInstanceGrants: hoisted.getCachedUserInstanceGrants,
 }))
 vi.mock('@auxx/lib/threads/thread-action-access', () => ({
   assertCanActOnThreads: hoisted.assertCanActOnThreads,

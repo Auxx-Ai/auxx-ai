@@ -46,7 +46,7 @@ export function useRecordListData(config: RecordListConfig, _widgetId?: string) 
       : undefined
 
   const query = api.record.listFiltered.useQuery(
-    { entityDefinitionId, filters: config.filters, sorting, limit: pageSize, mode: 'oneshot' },
+    { entityDefinitionId, filters: config.filters, sorting, limit: pageSize },
     {
       enabled: Boolean(dashboardId) && Boolean(config.source),
       staleTime: 30_000,

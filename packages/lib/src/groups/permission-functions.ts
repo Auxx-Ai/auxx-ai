@@ -4,6 +4,7 @@ import { type ResourceGranteeType, ResourcePermission } from '@auxx/database/enu
 import type { GrantPermissionInput, GroupContext, GroupPermissionInfo } from '@auxx/types/groups'
 import { toRecordId } from '@auxx/types/resource'
 import { requireCachedEntityDefId } from '../cache'
+import { permissionToRung, rungToPermission } from '../permissions/capabilities/rung'
 import { getInstanceAccess, grantInstanceAccess, revokeInstanceAccess } from '../resource-access'
 import { requireGroupPermission } from './permissions'
 
@@ -37,7 +38,9 @@ export async function grantPermission(
       recordId: toRecordId(entityDefinitionId, groupId),
       granteeType,
       granteeId,
-      permission,
+      // Groups speak `view/edit/admin`; the ROW speaks `Rung`. One conversion at
+      // the module edge — see `rungToPermission`'s note on the two crossings.
+      rung: permissionToRung(permission),
     }
   )
 
@@ -57,7 +60,7 @@ export async function grantPermission(
     id: grant.id,
     granteeType: grant.granteeType,
     granteeId: grant.granteeId,
-    permission: grant.permission,
+    permission: rungToPermission(grant.rung) ?? ResourcePermission.none,
     createdAt: grant.createdAt,
   }
 }
@@ -115,7 +118,7 @@ export async function getPermissions(
     id: g.id,
     granteeType: g.granteeType,
     granteeId: g.granteeId,
-    permission: g.permission,
+    permission: rungToPermission(g.rung) ?? ResourcePermission.none,
     createdAt: g.createdAt,
   }))
 }

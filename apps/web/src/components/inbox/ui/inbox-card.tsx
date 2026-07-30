@@ -31,7 +31,7 @@ function getAccessDisplay(defaultLens: SettingsInboxItem['defaultLens']): string
   switch (defaultLens) {
     case 'none':
       return 'Restricted'
-    case 'subject':
+    case 'identity':
       return 'Subject only'
     case 'metadata':
       return 'Activity only'

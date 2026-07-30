@@ -7,7 +7,7 @@ import {
   type SharingGranteeType,
   SharingGranteeTypeValues,
 } from '@auxx/database/enums'
-import { PERMISSION_RANK } from '@auxx/lib/permissions/client'
+import { PERMISSION_RANK, permissionToRung, rungToPermission } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo } from 'react'
 import { granteeKindLabel, type UnmanageableGrant } from '~/components/permissions/utils/grantee'
@@ -87,7 +87,10 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
             entityInstanceId: null,
             granteeType,
             granteeId,
-            permission,
+            // The ROW is rung-valued; this grid's vocabulary is the DEF axis, so
+            // the optimistic row crosses back through `permissionToRung` (plan
+            // v3/03 §3 — one boundary, both directions).
+            rung: permissionToRung(permission),
             createdAt: new Date(),
           } as (typeof rows)[number])
         }
@@ -131,14 +134,18 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
   )
 
   /** The persisted baseline permission, or the default (Read and write) when absent. */
-  const baselineLevel: ResourcePermission = baselineRow?.permission ?? DEFAULT_BASELINE_LEVEL
+  const baselineLevel: ResourcePermission =
+    (baselineRow ? rungToPermission(baselineRow.rung) : undefined) ?? DEFAULT_BASELINE_LEVEL
   const isConfigured = rows.length > 0
 
   const teamGrants = useMemo<DefAccessGrant[]>(
     () =>
       rows
         .filter((r) => r.granteeType === ResourceGranteeType.group)
-        .map((r) => ({ granteeId: r.granteeId, permission: r.permission })),
+        .map((r) => ({
+          granteeId: r.granteeId,
+          permission: rungToPermission(r.rung) ?? ResourcePermission.none,
+        })),
     [rows]
   )
   // NOTE: `user` rows carry BOTH humans and agents — an agent grant is a `user`
@@ -149,7 +156,10 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
     () =>
       rows
         .filter((r) => r.granteeType === ResourceGranteeType.user)
-        .map((r) => ({ granteeId: r.granteeId, permission: r.permission })),
+        .map((r) => ({
+          granteeId: r.granteeId,
+          permission: rungToPermission(r.rung) ?? ResourcePermission.none,
+        })),
     [rows]
   )
 
@@ -181,7 +191,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
         entityDefinitionId: queryInput.entityDefinitionId,
         granteeType: ResourceGranteeType.role,
         granteeId: MEMBER_BASELINE_GRANTEE_ID,
-        permission,
+        rung: permissionToRung(permission),
       })
     },
     [grantType, patchLocal, queryInput.entityDefinitionId]
@@ -204,7 +214,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
           entityDefinitionId: queryInput.entityDefinitionId,
           granteeType: ResourceGranteeType.role,
           granteeId: MEMBER_BASELINE_GRANTEE_ID,
-          permission: DEFAULT_BASELINE_LEVEL,
+          rung: permissionToRung(DEFAULT_BASELINE_LEVEL),
         })
       }
       patchLocal(granteeType, granteeId, permission)
@@ -212,7 +222,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
         entityDefinitionId: queryInput.entityDefinitionId,
         granteeType,
         granteeId,
-        permission,
+        rung: permissionToRung(permission),
       })
     },
     [baselineRow, grantType, patchLocal, queryInput.entityDefinitionId]
@@ -226,7 +236,7 @@ export function useDefAccess(entityDefinitionId: string | undefined) {
         entityDefinitionId: queryInput.entityDefinitionId,
         granteeType,
         granteeId,
-        permission,
+        rung: permissionToRung(permission),
       })
     },
     [grantType, patchLocal, queryInput.entityDefinitionId]

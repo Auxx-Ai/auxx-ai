@@ -1,6 +1,6 @@
 // apps/web/src/components/permissions/utils/instance-access-badge.ts
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import type { ResourceAccessInfo } from '@auxx/lib/resource-access'
 
 /**
@@ -22,7 +22,7 @@ export function deriveInstanceBadge(rows: ResourceAccessInfo[]): InstanceAccessB
   const baselineRow = rows.find(
     (r) => r.granteeType === ResourceGranteeType.role && r.granteeId === BASELINE_GRANTEE_ID
   )
-  if (baselineRow?.permission === ResourcePermission.none) return 'restricted'
+  if (baselineRow?.rung === 'none') return 'restricted'
   const grantCount = rows.length - (baselineRow ? 1 : 0)
   return grantCount > 0 ? grantCount : undefined
 }

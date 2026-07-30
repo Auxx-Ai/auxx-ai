@@ -62,7 +62,7 @@ vi.mock('@auxx/lib/threads', () => ({
 }))
 
 vi.mock('@auxx/lib/cache', () => ({
-  getCachedUserMailVisibility: vi.fn(async () => ({ userId: USER_ID })),
+  getCachedUserInstanceGrants: vi.fn(async () => ({ userId: USER_ID })),
   getCachedEntityDefId: vi.fn(async () => null),
   getCachedResources: vi.fn(async () => []),
 }))

@@ -98,6 +98,11 @@ export function useRecordBatchFetcher() {
         secondaryInfo: item.secondaryInfo,
         avatarUrl: item.avatarUrl,
         sources: item.sources,
+        // The row-effective rung, resolved server-side in the SAME query as the
+        // row (plan v3/03 §5.2). `_access` is a TOP-LEVEL sibling of `item.data`,
+        // so the `...item.data` spread above does not carry it — every row-scoped
+        // affordance in the app reads it from here.
+        _access: item._access,
       }
 
       const entityDefinitionId = getDefinitionId(canonicalRecordId)

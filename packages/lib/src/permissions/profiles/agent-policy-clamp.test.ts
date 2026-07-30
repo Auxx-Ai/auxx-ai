@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { CapabilityView } from '../capabilities/capability-view'
 import type { InstanceAccessKey } from '../capabilities/instance-access'
 import { Area, areaCeilingLevel, Level, type PermissionKey } from '../capabilities/registry'
+import { permissionToRung } from '../capabilities/rung'
 import { emptyAgentPolicy, legacyFullAgentPolicy } from './agent-policy'
 import { type ClampDefinition, clampAgentPolicyToPublisher } from './agent-policy-clamp'
 
@@ -57,6 +58,14 @@ function publisher(spec: PublisherSpec): CapabilityView {
     canViewEntity: (id) => RANK[defRung(id)] >= RANK.view,
     assertViewEntity: notNeeded,
     filterViewableDefIds: notNeeded,
+    // Plan v3/03 P5 — the record-lane members. The author clamp bounds an agent
+    // policy by the PUBLISHER's def-axis authority and never consults per-record
+    // grants, so `hasRecordGrantsOn` is false and the stamp is the def rung.
+    hasDefPresence: (id) => RANK[defRung(id)] >= RANK.view,
+    hasRecordGrantsOn: () => false,
+    recordDefRung: (id) => permissionToRung(defRung(id)),
+    recordAccessAt: (id) => permissionToRung(defRung(id)),
+    canDeleteRecordAt: notNeeded,
     viewAccessFor: () => ResourcePermission.view,
     canAdministerDef: (id) => defRung(id) === 'admin',
     assertAdministerDef: notNeeded,

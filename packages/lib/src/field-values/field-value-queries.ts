@@ -15,7 +15,12 @@ import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm'
 import { findCachedResource } from '../cache'
 import type { FieldOptions, NameFieldOptions } from '../custom-fields/field-options'
+import { rungsAtOrAbove } from '../permissions/capabilities/record-visibility-scope'
 import type { AiStatus } from '../realtime/events'
+import {
+  resolveResourceAccessGrantees,
+  resourceAccessGranteeConditions,
+} from '../resource-access/grantee-resolution'
 import type { TableId } from '../resources/registry/field-registry'
 import { isSystemResourceId } from '../resources/registry/types'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
@@ -208,7 +213,20 @@ export async function batchGetValues(
   // Direct refs stay: they only yield values for the already-gated anchors.
   const caps = ctx.capabilities
   if (caps) {
-    recordIds = recordIds.filter((rid) => caps.canViewEntity(parseRecordId(rid).entityDefinitionId))
+    // ANCHOR records key off {@link hasDefPresence}, not `canViewEntity`
+    // (plan v3/03 §6.1): a member reaching a def ONLY through per-record grants
+    // must still get values for the rows they were shared. The rows themselves
+    // are already scoped — every path that produces these `recordIds`
+    // (`listFiltered`, `getById`, `getByIds`, the picker) applies
+    // `recordVisibilityScope` in SQL — so this gate's job is the DEF axis, and
+    // widening it here cannot admit a row the read path did not already admit.
+    recordIds = recordIds.filter((rid) =>
+      caps.hasDefPresence(parseRecordId(rid).entityDefinitionId)
+    )
+    // TRAVERSAL paths keep the strict `canViewEntity` test. A path hop reads
+    // *through* a def to rows the caller never named and this function never
+    // scoped, so presence is not enough — a grant on one row of a def must not
+    // open a traversal across all of it.
     fieldReferences = fieldReferences.filter(
       (ref) =>
         !isFieldPath(ref) ||
@@ -239,6 +257,61 @@ export async function batchGetValues(
   }
 
   return { values: results }
+}
+
+/** No grant-only relationship targets in play — the overwhelmingly common case. */
+const NO_GRANTED_IDS: ReadonlySet<string> = new Set()
+
+/**
+ * The referenced entity-instance ids the member holds a per-record grant on,
+ * across every GRANT-ONLY relationship target in this batch (plan v3/03 §5.4).
+ *
+ * "Grant-only" means: the member cannot view the target def outright
+ * (`!canViewEntity`) but does hold ≥1 record grant on it
+ * (`hasRecordGrantsOn`) — arm 3 of {@link
+ * import('../permissions/capabilities/record-visibility-scope').recordScopeArm}.
+ * Any other target is decided without I/O by the caller, so this returns an
+ * empty set and issues no query at all.
+ *
+ * One query for the whole batch, keyed on the referenced instance ids directly.
+ * The `entityDefinitionId` is deliberately NOT in the predicate: instance ids
+ * are globally-unique cuid2s, so a grant row on another def cannot match — the
+ * same argument `instanceListScope` records for its own id lists.
+ */
+async function resolveGrantedRelatedIds(
+  ctx: FieldValueContext,
+  rows: Array<{ relatedEntityDefinitionId?: string | null; relatedEntityId?: string | null }>
+): Promise<ReadonlySet<string>> {
+  const caps = ctx.capabilities
+  if (!caps || !ctx.userId) return NO_GRANTED_IDS
+
+  const candidateIds = new Set<string>()
+  const decided = new Map<string, boolean>()
+  for (const row of rows) {
+    const defId = row.relatedEntityDefinitionId
+    if (!defId || !row.relatedEntityId) continue
+    let grantOnly = decided.get(defId)
+    if (grantOnly === undefined) {
+      grantOnly = !caps.canViewEntity(defId) && caps.hasRecordGrantsOn(defId)
+      decided.set(defId, grantOnly)
+    }
+    if (grantOnly) candidateIds.add(row.relatedEntityId)
+  }
+  if (candidateIds.size === 0) return NO_GRANTED_IDS
+
+  const grantees = await resolveResourceAccessGrantees(ctx.organizationId, ctx.userId)
+  const granted = await ctx.db
+    .selectDistinct({ entityInstanceId: schema.ResourceAccess.entityInstanceId })
+    .from(schema.ResourceAccess)
+    .where(
+      and(
+        eq(schema.ResourceAccess.organizationId, ctx.organizationId),
+        inArray(schema.ResourceAccess.entityInstanceId, [...candidateIds]),
+        inArray(schema.ResourceAccess.rung, rungsAtOrAbove('read')),
+        or(...resourceAccessGranteeConditions(grantees))
+      )
+    )
+  return new Set(granted.map((row) => row.entityInstanceId).filter((id): id is string => !!id))
 }
 
 /**
@@ -562,6 +635,16 @@ async function fetchFieldValueResults(
     grouped.set(key, existing)
   }
 
+  // Plan v3/03 §5.4 — relationship chips pointing at a GRANT-ONLY def.
+  //
+  // Before P5 a relationship whose target def failed `canViewEntity` was
+  // redacted WHOLESALE, which under per-record sharing is wrong in the visible
+  // direction: a member shared one deal would see "🔒 1 restricted" on the very
+  // chip pointing at it. Resolving the granted subset takes ONE extra query, and
+  // only for defs the member genuinely reaches by grant alone — a def they can
+  // view outright, or one they have no grants on at all, never reaches here.
+  const grantedRelatedIds = await resolveGrantedRelatedIds(ctx, rows)
+
   const results: TypedFieldValueResult[] = []
 
   for (const [, fieldRows] of grouped) {
@@ -587,9 +670,14 @@ async function fetchFieldValueResults(
     let effectiveRows: typeof fieldRows = fieldRows
     if (fieldType === FieldTypeEnum.RELATIONSHIP && ctx.capabilities) {
       const caps = ctx.capabilities
-      effectiveRows = fieldRows.filter(
-        (row) => !row.relatedEntityDefinitionId || caps.canViewEntity(row.relatedEntityDefinitionId)
-      )
+      effectiveRows = fieldRows.filter((row) => {
+        if (!row.relatedEntityDefinitionId) return true
+        if (caps.canViewEntity(row.relatedEntityDefinitionId)) return true
+        // Grant-only def: keep exactly the referenced rows the member holds a
+        // grant on. `grantedRelatedIds` is empty unless such a def is in play,
+        // so the common case costs nothing and still redacts.
+        return Boolean(row.relatedEntityId && grantedRelatedIds.has(row.relatedEntityId))
+      })
     }
 
     const typedValues = effectiveRows.map((row) =>

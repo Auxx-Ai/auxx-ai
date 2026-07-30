@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/instance-grant-overrides-area-none.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import {
   Area,
   expandLevelsToKeys,
@@ -292,9 +292,7 @@ function caps(opts: {
   const derivedReadKey = PERMISSION_AREAS[opts.area].rungs.find((r) => r.level === Level.Read)
     ?.keys[0]
   const derived =
-    derivedReadKey && Object.values(rows).some((p) => p !== ResourcePermission.none)
-      ? [derivedReadKey]
-      : []
+    derivedReadKey && Object.values(rows).some((p) => p !== 'none') ? [derivedReadKey] : []
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [opts.area]: opts.areaLevel ?? Level.None })),
     {},
@@ -381,14 +379,14 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
   const ownerBypasses = !INSTANCE_ACCESS_RESOURCES[name].baselineAtCreate
 
   it('THE REPRO: area None + an explicit `view` grant can read the instance', async () => {
-    const c = caps({ area, rows: { [SHARED]: ResourcePermission.view } })
+    const c = caps({ area, rows: { [SHARED]: 'read' } })
     await expect(read(c, SHARED)).resolves.toBeDefined()
   })
 
   it('THE REPRO, list half: the granted instance APPEARS, alone', async () => {
     // The half that silently contradicts the gate when missed — an empty page
     // for an instance the member can demonstrably open.
-    const c = caps({ area, rows: { [SHARED]: ResourcePermission.view } })
+    const c = caps({ area, rows: { [SHARED]: 'read' } })
     expect(ids(await list(c))).toEqual([SHARED])
   })
 
@@ -401,13 +399,13 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
   it('area None + a grant does NOT open the instances with no row of their own', async () => {
     // The other fail-closed half: the flip must not turn a closed area into an
     // open one for everything else in the org.
-    const c = caps({ area, rows: { [SHARED]: ResourcePermission.view } })
+    const c = caps({ area, rows: { [SHARED]: 'read' } })
     await expect(read(c, OTHER)).rejects.toMatchObject(FORBIDDEN)
     expect(ids(await list(c))).not.toContain(OTHER)
   })
 
   it('area None + an explicit `none` restriction is denied', async () => {
-    const c = caps({ area, rows: { [SHARED]: ResourcePermission.none } })
+    const c = caps({ area, rows: { [SHARED]: 'none' } })
     await expect(read(c, SHARED)).rejects.toMatchObject(FORBIDDEN)
     expect(await list(c)).toEqual([])
   })
@@ -420,7 +418,7 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
     const c = caps({
       area,
       areaLevel: Level.Full,
-      rows: { [SHARED]: ResourcePermission.none },
+      rows: { [SHARED]: 'none' },
       role: 'OWNER',
     })
 
@@ -445,7 +443,7 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
     const c = caps({
       area,
       areaLevel: Level.Full,
-      rows: { [SHARED]: ResourcePermission.admin },
+      rows: { [SHARED]: 'admin' },
       role: 'OWNER',
     })
     await expect(read(c, SHARED)).resolves.toBeDefined()
@@ -454,7 +452,7 @@ describe.each(FAMILIES)('$name — an explicit grant overrides the area-None flo
 })
 
 describe('the derived Read rung is scoped to the Read rung (no create hole)', () => {
-  const granted = () => caps({ area: Area.workflows, rows: { [SHARED]: ResourcePermission.admin } })
+  const granted = () => caps({ area: Area.workflows, rows: { [SHARED]: 'admin' } })
 
   it('a `workflows: None` member holding an admin grant reaches the Read-rung procedure', async () => {
     // The composer DERIVES `workflowsView` from their instance grant, so the
@@ -484,7 +482,7 @@ describe('the derived Read rung is scoped to the Read rung (no create hole)', ()
     // key's own inputs — Read rung only, type-aware, seat-clamped — are pinned
     // in `packages/lib/.../capability-set-instance.test.ts`.
     await expect(
-      wf(caps({ area: Area.workflows, rows: { [OTHER]: ResourcePermission.none } })).getById({
+      wf(caps({ area: Area.workflows, rows: { [OTHER]: 'none' } })).getById({
         id: SHARED,
       })
     ).rejects.toMatchObject(FORBIDDEN)
@@ -493,7 +491,7 @@ describe('the derived Read rung is scoped to the Read rung (no create hole)', ()
 
 describe('the list filter and the gate agree (the two cannot drift)', () => {
   it('workflow.list hands the query an ALLOW-LIST when the area is closed', async () => {
-    await wf(caps({ area: Area.workflows, rows: { [SHARED]: ResourcePermission.view } })).list({
+    await wf(caps({ area: Area.workflows, rows: { [SHARED]: 'read' } })).list({
       limit: 50,
       offset: 0,
     })
@@ -515,7 +513,7 @@ describe('the list filter and the gate agree (the two cannot drift)', () => {
   })
 
   it('dataset.list hands the query an ALLOW-LIST when the area is closed', async () => {
-    await ds(caps({ area: Area.datasets, rows: { [SHARED]: ResourcePermission.edit } })).list({
+    await ds(caps({ area: Area.datasets, rows: { [SHARED]: 'edit' } })).list({
       page: 1,
       limit: 50,
     })
@@ -534,7 +532,7 @@ describe('the list filter and the gate agree (the two cannot drift)', () => {
       caps({
         area: Area.workflows,
         areaLevel: Level.Full,
-        rows: { [SHARED]: ResourcePermission.none },
+        rows: { [SHARED]: 'none' },
       })
     ).list({ limit: 50, offset: 0 })
     const filters = workflowService.getAll.mock.calls[0]?.[1] as {

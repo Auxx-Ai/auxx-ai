@@ -2,19 +2,30 @@
 
 export { getFullLensAudienceForInbox } from './audience'
 export { getAutomationVisibility } from './automation-visibility'
-export type { VisibilityGrantRow } from './compute-user-mail-visibility'
 export {
-  composeUserMailVisibility,
-  computeUserMailVisibility,
-} from './compute-user-mail-visibility'
+  composeUserInstanceGrants,
+  computeUserInstanceGrants,
+} from './compute-user-instance-grants'
 export type {
   AutomationVisibility,
   MailViewer,
   SystemVisibility,
   ThreadVisibilityInput,
-  UserMailVisibility,
+  UserInstanceGrants,
 } from './context'
-export { isAutomationViewer, isSystemViewer, isUserViewer, SYSTEM_VISIBILITY } from './context'
+export {
+  CONTACT_GRANT_DEF,
+  contactGrants,
+  hasContactGrants,
+  isAutomationViewer,
+  isSystemViewer,
+  isUserViewer,
+  primaryEntityThreadIdsAtOrAbove,
+  primaryEntityThreadRung,
+  SYSTEM_VISIBILITY,
+  THREAD_GRANT_DEF,
+  threadGrants,
+} from './context'
 export type { DerivationRule } from './derivation-rules'
 export { DERIVATION_RULES } from './derivation-rules'
 export {
@@ -24,15 +35,15 @@ export {
   inboxLensFor,
 } from './effective-lens'
 export type { Lens } from './lens'
-export { ALL_LENSES, lensRank, maxLens, satisfiesLens } from './lens'
+export { ALL_LENSES, normalizeLens } from './lens'
 export {
-  FULL_ONLY_THREAD_FIELDS,
+  IDENTITY_TIER_THREAD_FIELDS,
   MESSAGE_CONTENT_FIELDS,
+  READ_TIER_THREAD_FIELDS,
   redactMessage,
   redactMessagePatch,
   redactThreadMeta,
   redactThreadPatch,
-  SUBJECT_TIER_THREAD_FIELDS,
   THREAD_METADATA_FIELDS,
 } from './redact'
 export {

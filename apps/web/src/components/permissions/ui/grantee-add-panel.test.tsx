@@ -20,7 +20,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
  *    selecting. This is the whole bug; delete the staging and it fails.
  *  - **Submit writes the CHOSEN level, not `defaultChoice`.** A test that only
  *    asserts "onGrant was called" passes with the bug fully intact, because the
- *    old code called it too — just with `'full'` at the wrong moment.
+ *    old code called it too — just with `'read'` at the wrong moment.
  */
 
 const h = vi.hoisted(() => ({
@@ -82,9 +82,9 @@ vi.mock('~/components/resources/hooks/use-actor', () => ({
 
 // `LensSelect` opens an upgrade dialog for sub-`full` tiers when the org lacks
 // the feature — ungated here so the tier change under test actually lands.
-vi.mock('~/components/mail-permissions/ui/enterprise-gate', () => ({
-  useMailPermissionsGated: () => false,
-  MailPermissionsUpgradeDialog: () => null,
+vi.mock('~/components/mail-permissions/ui/granular-permissions-gate', () => ({
+  useGranularPermissionsGated: () => false,
+  GranularPermissionsUpgradeDialog: () => null,
 }))
 
 const { MailGranteeList } = await import('~/components/mail-permissions/ui/mail-grantee-list')
@@ -113,7 +113,7 @@ const onChangeLens = vi.fn()
 const onRevoke = vi.fn()
 
 function renderList(
-  grants: Array<{ actorId: ActorId; choice: 'full' | 'subject' | 'metadata' }> = []
+  grants: Array<{ actorId: ActorId; choice: 'read' | 'identity' | 'metadata' }> = []
 ) {
   // The grantee rows' remove button is a tooltip trigger — Radix throws without
   // a provider, which the app supplies globally.
@@ -169,10 +169,10 @@ describe('staged grantee add', () => {
     await selectTier(user, /subject only/i)
     await user.click(screen.getByRole('button', { name: /^add$/i }))
 
-    // `defaultChoice` for mail is 'full'. Asserting only "was called" would pass
+    // `defaultChoice` for mail is 'read'. Asserting only "was called" would pass
     // against the bug.
     expect(onGrant).toHaveBeenCalledTimes(1)
-    expect(onGrant).toHaveBeenCalledWith('user:u_sarah', 'subject')
+    expect(onGrant).toHaveBeenCalledWith('user:u_sarah', 'identity')
   })
 
   it('grants every selected actor at the same chosen level', async () => {
@@ -223,7 +223,7 @@ describe('staged grantee add', () => {
 
   it('excludes existing grantees from the picker', async () => {
     const user = userEvent.setup()
-    renderList([{ actorId: 'user:u_sarah' as ActorId, choice: 'full' }])
+    renderList([{ actorId: 'user:u_sarah' as ActorId, choice: 'read' }])
     await openAddPage(user)
 
     expect(h.lastExcludeIds).toContain('user:u_sarah')

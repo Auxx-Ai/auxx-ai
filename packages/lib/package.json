@@ -832,6 +832,12 @@
       "import": "./dist/permissions/capabilities/instance-access.mjs",
       "default": "./src/permissions/capabilities/instance-access.ts"
     },
+    "./permissions/capabilities/record-visibility-scope": {
+      "types": "./src/permissions/capabilities/record-visibility-scope.ts",
+      "source": "./src/permissions/capabilities/record-visibility-scope.ts",
+      "import": "./dist/permissions/capabilities/record-visibility-scope.mjs",
+      "default": "./src/permissions/capabilities/record-visibility-scope.ts"
+    },
     "./permissions/capabilities/registry": {
       "types": "./src/permissions/capabilities/registry.ts",
       "source": "./src/permissions/capabilities/registry.ts",
@@ -843,6 +849,12 @@
       "source": "./src/permissions/capabilities/resolve-capability-inputs.ts",
       "import": "./dist/permissions/capabilities/resolve-capability-inputs.mjs",
       "default": "./src/permissions/capabilities/resolve-capability-inputs.ts"
+    },
+    "./permissions/capabilities/rung": {
+      "types": "./src/permissions/capabilities/rung.ts",
+      "source": "./src/permissions/capabilities/rung.ts",
+      "import": "./dist/permissions/capabilities/rung.mjs",
+      "default": "./src/permissions/capabilities/rung.ts"
     },
     "./permissions/capabilities/seat-policy": {
       "types": "./src/permissions/capabilities/seat-policy.ts",
@@ -1023,6 +1035,12 @@
       "source": "./src/resources/client.ts",
       "import": "./dist/resources/client.mjs",
       "default": "./src/resources/client.ts"
+    },
+    "./resources/crud/record-row-access": {
+      "types": "./src/resources/crud/record-row-access.ts",
+      "source": "./src/resources/crud/record-row-access.ts",
+      "import": "./dist/resources/crud/record-row-access.mjs",
+      "default": "./src/resources/crud/record-row-access.ts"
     },
     "./resources/merge/client": {
       "types": "./src/resources/merge/client.ts",

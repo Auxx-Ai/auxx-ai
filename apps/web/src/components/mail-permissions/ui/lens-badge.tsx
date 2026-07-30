@@ -11,10 +11,10 @@ import { Lock } from 'lucide-react'
  * "Activity only"). Rendered only below `full` — full access shows nothing.
  */
 export function LensBadge({ lens, inboxName }: { lens: Lens; inboxName?: string | null }) {
-  if (lens === 'full' || lens === 'none') return null
+  if (lens === 'read' || lens === 'none') return null
 
   const scope =
-    lens === 'subject'
+    lens === 'identity'
       ? 'You can see who, when, and subject lines in this conversation — not its content.'
       : 'You can see activity in this conversation — not subjects or content.'
   const hint = inboxName ? ` Ask a manager of ${inboxName} for access.` : ''

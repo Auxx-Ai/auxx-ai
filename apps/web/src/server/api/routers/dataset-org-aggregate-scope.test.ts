@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/dataset-org-aggregate-scope.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -123,9 +123,7 @@ function caps(opts: {
   role?: 'MEMBER' | 'OWNER'
 }) {
   const rows = opts.rows ?? {}
-  const derived = Object.values(rows).some((p) => p !== ResourcePermission.none)
-    ? [PermissionKey.datasetsView]
-    : []
+  const derived = Object.values(rows).some((p) => p !== 'none') ? [PermissionKey.datasetsView] : []
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.datasets]: opts.areaLevel ?? Level.None })),
     {},
@@ -192,7 +190,7 @@ describe('dataset.getOrganizationStats — the org-wide aggregate is SCOPED, not
     // and got a 403; after it they hold the derived key, so without the scope
     // they would have received counts and byte sizes for every dataset in the
     // org — including the ones they cannot open.
-    await caller(caps({ rows: { [SHARED]: ResourcePermission.view } })).getOrganizationStats()
+    await caller(caps({ rows: { [SHARED]: 'read' } })).getOrganizationStats()
     expect(inArraySpy).toHaveBeenCalled()
     expect(inArraySpy.mock.calls[0]?.[1]).toEqual([SHARED])
     // An allow-list is the whole filter — nothing is expressed as an exclusion.
@@ -207,9 +205,7 @@ describe('dataset.getOrganizationStats — the org-wide aggregate is SCOPED, not
   })
 
   it('excludes the restricted datasets for a member with the area open', async () => {
-    await caller(
-      caps({ areaLevel: Level.Read, rows: { [OTHER]: ResourcePermission.none } })
-    ).getOrganizationStats()
+    await caller(caps({ areaLevel: Level.Read, rows: { [OTHER]: 'none' } })).getOrganizationStats()
     expect(notInArraySpy.mock.calls[0]?.[1]).toEqual([OTHER])
     expect(inArraySpy).not.toHaveBeenCalled()
   })
@@ -221,9 +217,7 @@ describe('dataset.getOrganizationStats — the org-wide aggregate is SCOPED, not
   })
 
   it('OWNER sees everything, unnarrowed', async () => {
-    await caller(
-      caps({ role: 'OWNER', rows: { [OTHER]: ResourcePermission.none } })
-    ).getOrganizationStats()
+    await caller(caps({ role: 'OWNER', rows: { [OTHER]: 'none' } })).getOrganizationStats()
     expect(inArraySpy).not.toHaveBeenCalled()
     expect(notInArraySpy).not.toHaveBeenCalled()
   })
@@ -232,7 +226,7 @@ describe('dataset.getOrganizationStats — the org-wide aggregate is SCOPED, not
 describe('dataset.getAvailableEmbeddingOptions — instance-scoped, not coarse-gated', () => {
   it('succeeds for the dataset the member was actually granted', async () => {
     await expect(
-      caller(caps({ rows: { [SHARED]: ResourcePermission.view } })).getAvailableEmbeddingOptions({
+      caller(caps({ rows: { [SHARED]: 'read' } })).getAvailableEmbeddingOptions({
         datasetId: SHARED,
       })
     ).resolves.toEqual({ systemDefault: 'openai:text-embed-3' })
@@ -242,7 +236,7 @@ describe('dataset.getAvailableEmbeddingOptions — instance-scoped, not coarse-g
   it('is refused for a dataset the member was NOT granted, despite the derived key', async () => {
     // The member holds `datasets.view` (derived from the SHARED grant) — the
     // exact caller the old coarse assert would have waved through.
-    const member = caps({ rows: { [SHARED]: ResourcePermission.view } })
+    const member = caps({ rows: { [SHARED]: 'read' } })
     expect(member.can(PermissionKey.datasetsView)).toBe(true)
     await expect(
       caller(member).getAvailableEmbeddingOptions({ datasetId: OTHER })
@@ -253,7 +247,7 @@ describe('dataset.getAvailableEmbeddingOptions — instance-scoped, not coarse-g
   it('is refused for a dataset restricted to `none`', async () => {
     await expect(
       caller(
-        caps({ areaLevel: Level.Full, rows: { [OTHER]: ResourcePermission.none } })
+        caps({ areaLevel: Level.Full, rows: { [OTHER]: 'none' } })
       ).getAvailableEmbeddingOptions({ datasetId: OTHER })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(datasetService.getAvailableEmbeddingOptions).not.toHaveBeenCalled()

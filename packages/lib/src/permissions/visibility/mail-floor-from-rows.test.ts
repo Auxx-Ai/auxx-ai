@@ -4,11 +4,15 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 // DEEP imports throughout — the `@auxx/lib/permissions` barrel HANGS under vitest.
 import { buildMailVisibilityPredicate, buildSearchScope } from '../../mail-query/visibility-scope'
+import {
+  bucketInstanceGrantRows,
+  type InstanceGrantRow,
+} from '../../resource-access/instance-grants'
 import { composeUserCapabilities } from '../capabilities/compose-user-capabilities'
 import { Area, areaLevelFromKeys, Level } from '../capabilities/registry'
 import { MEMBER_BASELINE_LEVELS } from '../capabilities/seat-policy'
-import { composeUserMailVisibility, type VisibilityGrantRow } from './compute-user-mail-visibility'
-import type { UserMailVisibility } from './context'
+import { composeUserInstanceGrants } from './compute-user-instance-grants'
+import type { UserInstanceGrants } from './context'
 import { effectiveLens, inboxLensFor } from './effective-lens'
 
 /**
@@ -17,7 +21,7 @@ import { effectiveLens, inboxLensFor } from './effective-lens'
  * anywhere in the mail path.
  *
  * These are END-TO-END over the real composition chain rather than unit tests of
- * `composeUserMailVisibility` alone (that file has its own suite): a real
+ * `composeUserInstanceGrants` alone (that file has its own suite): a real
  * `composeUserCapabilities` builds the capability blob from a profile, the real
  * `areaLevelFromKeys` recovers the area rung from it, and the resulting floors are
  * asserted through the SURFACES that enforce them — the evaluator, the realtime /
@@ -54,13 +58,12 @@ function inboxesLevelFor(profile: Profile, role: 'USER' | 'ADMIN' | 'OWNER' = 'U
   return areaLevelFromKeys(new Set(caps.keys), Area.inboxes)
 }
 
-const row = (over: Partial<VisibilityGrantRow>): VisibilityGrantRow => ({
+const row = (over: Partial<InstanceGrantRow>): InstanceGrantRow => ({
   entityDefinitionId: 'inbox',
   entityInstanceId: SHARED,
   granteeType: 'user',
   granteeId: ME,
-  permission: 'view',
-  lens: 'full',
+  rung: 'read',
   ...over,
 })
 
@@ -70,8 +73,7 @@ const restrictedBaseline = (id = RESTRICTED) =>
     entityInstanceId: id,
     granteeType: 'role',
     granteeId: 'org_member',
-    permission: 'none',
-    lens: null,
+    rung: 'none',
   })
 
 const INBOXES = [
@@ -83,16 +85,16 @@ const INBOXES = [
 function visFor(opts: {
   profile: Profile
   role?: 'USER' | 'ADMIN' | 'OWNER'
-  grants?: VisibilityGrantRow[]
+  grants?: InstanceGrantRow[]
   inboxes?: typeof INBOXES
-}): UserMailVisibility {
+}): UserInstanceGrants {
   const role = opts.role ?? 'USER'
-  return composeUserMailVisibility({
+  return composeUserInstanceGrants({
     userId: ME,
     role,
     inboxesAreaLevel: inboxesLevelFor(opts.profile, role),
     inboxes: opts.inboxes ?? INBOXES,
-    grants: opts.grants ?? [],
+    instanceGrants: bucketInstanceGrantRows(opts.grants ?? []),
   })
 }
 
@@ -105,7 +107,7 @@ const threadIn = (inboxId: string | null, over: Record<string, unknown> = {}) =>
   ...over,
 })
 
-const sqlOf = (viewer: UserMailVisibility) => {
+const sqlOf = (viewer: UserInstanceGrants) => {
   const predicate = buildMailVisibilityPredicate(viewer)
   return predicate ? new PgDialect().sqlToQuery(predicate) : undefined
 }
@@ -125,8 +127,8 @@ describe('the member baseline resolves through real capability composition', () 
 describe('§4.2 — admins read mail through rows, both directions', () => {
   it('a DEFAULT admin still sees every row-less shared inbox at full', () => {
     const vis = visFor({ profile: 'admin', role: 'ADMIN' })
-    expect(vis.inboxLens[SHARED]).toBe('full')
-    expect(effectiveLens(vis, threadIn(SHARED))).toBe('full')
+    expect(vis.inboxLens[SHARED]).toBe('read')
+    expect(effectiveLens(vis, threadIn(SHARED))).toBe('read')
   })
 
   it('an ADMIN-ranked member on a custom profile at inboxes: None sees NO shared mail', () => {
@@ -141,7 +143,7 @@ describe('§4.2 — admins read mail through rows, both directions', () => {
 
   it('an inbox at `role:org_member @ none` is invisible to a DEFAULT admin with no row', () => {
     const vis = visFor({ profile: 'admin', role: 'ADMIN', grants: [restrictedBaseline()] })
-    expect(vis.inboxLens[SHARED]).toBe('full')
+    expect(vis.inboxLens[SHARED]).toBe('read')
     expect(vis.inboxLens[RESTRICTED]).toBeUndefined()
     expect(effectiveLens(vis, threadIn(RESTRICTED))).toBe('none')
     expect(sqlOf(vis)?.params).not.toContain(RESTRICTED)
@@ -151,9 +153,9 @@ describe('§4.2 — admins read mail through rows, both directions', () => {
     const vis = visFor({
       profile: 'admin',
       role: 'ADMIN',
-      grants: [restrictedBaseline(), row({ entityInstanceId: RESTRICTED, permission: 'admin' })],
+      grants: [restrictedBaseline(), row({ entityInstanceId: RESTRICTED, rung: 'admin' })],
     })
-    expect(vis.inboxLens[RESTRICTED]).toBe('full')
+    expect(vis.inboxLens[RESTRICTED]).toBe('read')
   })
 
   it('an OWNER is scoped the same way — rank buys nothing in the mail path', () => {
@@ -163,7 +165,7 @@ describe('§4.2 — admins read mail through rows, both directions', () => {
 
   it('the search scope narrows admins too (no inclusion-list bypass left)', () => {
     const vis = visFor({ profile: 'admin', role: 'ADMIN', grants: [restrictedBaseline()] })
-    const scope = buildSearchScope(vis, 'full')
+    const scope = buildSearchScope(vis, 'read')
     expect(scope).toBeDefined()
     const q = new PgDialect().sqlToQuery(scope!)
     expect(q.params).toContain(SHARED)
@@ -201,8 +203,10 @@ describe('§4.4 — the personal metadata floor, keyed to the mail-operations ru
   it('a mail admin never gets more than metadata there without a row', () => {
     const vis = visFor({ profile: 'admin', role: 'ADMIN' })
     expect(inboxLensFor(vis, BOBS)).toBe('metadata')
-    expect(buildSearchScope(vis, 'subject')).toBeDefined()
-    expect(new PgDialect().sqlToQuery(buildSearchScope(vis, 'subject')!).params).not.toContain(BOBS)
+    expect(buildSearchScope(vis, 'identity')).toBeDefined()
+    expect(new PgDialect().sqlToQuery(buildSearchScope(vis, 'identity')!).params).not.toContain(
+      BOBS
+    )
   })
 })
 
@@ -219,13 +223,13 @@ describe('§12 positive control — the dispatch/controller org keeps working', 
   it('the assignee reads the assigned thread at FULL despite a floor-`none` inbox', () => {
     const vis = assignee()
     expect(vis.inboxLens[SHARED]).toBeUndefined() // no inbox access at all …
-    expect(effectiveLens(vis, threadIn(SHARED, { assigneeId: ME }))).toBe('full') // … but full here
+    expect(effectiveLens(vis, threadIn(SHARED, { assigneeId: ME }))).toBe('read') // … but full here
   })
 
   it('… and therefore may reply: `full` lens is the entirety of act-authorization', () => {
     // `assertCanActOnThreads` requires exactly `full` (plan 40 §2, pinned in
     // thread-action-access.test.ts). Assert the input it reads.
-    expect(effectiveLens(assignee(), threadIn(SHARED, { assigneeId: ME }))).toBe('full')
+    expect(effectiveLens(assignee(), threadIn(SHARED, { assigneeId: ME }))).toBe('read')
   })
 
   it('the SQL list predicate keeps the assignee seed, unconditionally', () => {
@@ -243,19 +247,19 @@ describe('§12 positive control — one explicit row at area None (plan 25 deriv
   it('a member at inboxes: None with one `view` row sees EXACTLY that inbox', () => {
     const vis = visFor({
       profile: { levels: { [Area.inboxes]: Level.None } },
-      grants: [row({ entityInstanceId: SHARED, permission: 'view', lens: 'full' })],
+      grants: [row({ entityInstanceId: SHARED, rung: 'read' })],
     })
     expect(Object.keys(vis.inboxLens)).toEqual([SHARED])
-    expect(effectiveLens(vis, threadIn(SHARED))).toBe('full')
+    expect(effectiveLens(vis, threadIn(SHARED))).toBe('read')
     expect(effectiveLens(vis, threadIn(RESTRICTED))).toBe('none')
   })
 
   it('the row survives even when the org-wide baseline on it says `none`', () => {
     const vis = visFor({
       profile: { levels: { [Area.inboxes]: Level.None } },
-      grants: [restrictedBaseline(), row({ entityInstanceId: RESTRICTED, lens: 'subject' })],
+      grants: [restrictedBaseline(), row({ entityInstanceId: RESTRICTED, rung: 'identity' })],
     })
-    expect(vis.inboxLens).toEqual({ [RESTRICTED]: 'subject' })
+    expect(vis.inboxLens).toEqual({ [RESTRICTED]: 'identity' })
   })
 })
 
@@ -291,6 +295,6 @@ describe('null-inbox triage threads', () => {
       'is null'
     )
     // Assignment still reaches them for everyone (ungated collaboration).
-    expect(effectiveLens(member, threadIn(null, { assigneeId: ME }))).toBe('full')
+    expect(effectiveLens(member, threadIn(null, { assigneeId: ME }))).toBe('read')
   })
 })

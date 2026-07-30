@@ -296,7 +296,6 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
     ],
     sorting: [{ id: 'sortOrder', desc: false }],
     limit: 1000,
-    mode: 'oneshot',
   })
 
   // One batched read for every line item (was N+1: one getFieldValues per line). Group the

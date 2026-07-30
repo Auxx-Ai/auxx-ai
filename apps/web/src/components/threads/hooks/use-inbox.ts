@@ -75,7 +75,7 @@ export interface InboxItem {
    * since phase 2 — rendering it would show the org the floor it had before its
    * last edit. `full` while the query is in flight, matching `myLens`.
    */
-  defaultLens: 'none' | 'metadata' | 'subject' | 'full'
+  defaultLens: 'none' | 'metadata' | 'identity' | 'read'
   /**
    * The viewer's effective lens on this inbox (mail-permissions §6.4).
    * Undefined while `inbox.myLenses` is loading; never `'none'` — such
@@ -194,7 +194,7 @@ export function useInboxes(options: { enabled?: boolean } = {}): UseInboxesResul
         status: scalarValue(record.fieldValues?.inbox_status),
         // Row-derived (see `InboxItem.defaultLens`). `inbox_default_lens` is
         // gone entirely now — registry, CustomField rows and all.
-        defaultLens: floors[record.id] ?? (defKey === 'personal_inbox' ? 'none' : 'full'),
+        defaultLens: floors[record.id] ?? (defKey === 'personal_inbox' ? 'none' : 'read'),
         myLens: lenses[record.id],
         // Def membership OR the legacy marker — see `InboxItem.isPersonal`.
         isPersonal: defKey === 'personal_inbox' || (record.fieldValues?.inbox_is_personal ?? false),

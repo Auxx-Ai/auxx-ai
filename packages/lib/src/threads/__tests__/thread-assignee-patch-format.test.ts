@@ -1,7 +1,7 @@
 // packages/lib/src/threads/__tests__/thread-assignee-patch-format.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { UserMailVisibility } from '../../permissions/visibility/context'
+import type { UserInstanceGrants } from '../../permissions/visibility/context'
 
 /**
  * Plan 44 §3.4 — the realtime assign patch must carry an `ActorId`.
@@ -107,7 +107,7 @@ function makeDb(selectResults: unknown[][], updateResult: unknown[]) {
   } as never
 }
 
-function viewer(): UserMailVisibility {
+function viewer(): UserInstanceGrants {
   return {
     userId: ACTOR_ID,
     role: 'MEMBER',
@@ -115,9 +115,7 @@ function viewer(): UserMailVisibility {
     isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
-    threadGrants: {},
-    contactGrants: {},
-    entityGrants: {},
+    grants: {},
   }
 }
 
@@ -128,7 +126,7 @@ function publishedPatch(): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  lensFixture.lenses = { [THREAD_ID]: 'full' }
+  lensFixture.lenses = { [THREAD_ID]: 'read' }
   getThreadLensBatch.mockClear()
   for (const fn of Object.values(realtime)) fn.mockClear()
   publisher.publishLater.mockClear()

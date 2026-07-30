@@ -45,7 +45,6 @@ export enum FeatureKey {
   agentProcedures = 'agentProcedures',
   mcp = 'mcp',
   dataConnectors = 'dataConnectors',
-  mailPermissions = 'mailPermissions',
   dashboards = 'dashboards',
   dispatch = 'dispatch',
   sequences = 'sequences',
@@ -184,13 +183,6 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     group: 'Data',
   },
   {
-    key: FeatureKey.mailPermissions,
-    type: 'boolean',
-    label: 'Mail Permissions',
-    description: 'Inbox access levels, conversation sharing, and inbox manager delegation.',
-    group: 'Security',
-  },
-  {
     key: FeatureKey.dashboards,
     type: 'boolean',
     label: 'Dashboards',
@@ -215,7 +207,11 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     key: FeatureKey.granularPermissions,
     type: 'boolean',
     label: 'Granular Permissions',
-    description: 'Configure per-member capability grants beyond the built-in role defaults.',
+    // The retired `mailPermissions` key folded in here (plan v3/03 §7.6 / D9):
+    // ONE key gates the whole permission layer, mail sharing included, so record
+    // sharing inherits the same gate with no new plumbing.
+    description:
+      'Configure per-member capability grants beyond the built-in role defaults, plus inbox access levels, conversation sharing, and inbox manager delegation.',
     group: 'Security',
   },
 

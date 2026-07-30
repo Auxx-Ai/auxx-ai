@@ -72,7 +72,11 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db,
-        ctx.headers.get('x-realtime-socket-id') ?? undefined
+        ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        // Read enforcement threaded per plan v3/03 §5.4: these are request paths
+        // with a resolved capability set, and the write methods below return the
+        // resulting values through the same gated read helpers.
+        { capabilities: ctx.capabilities }
       )
 
       if (input.mode === 'set') {
@@ -149,7 +153,11 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db,
-        ctx.headers.get('x-realtime-socket-id') ?? undefined
+        ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        // Read enforcement threaded per plan v3/03 §5.4: these are request paths
+        // with a resolved capability set, and the write methods below return the
+        // resulting values through the same gated read helpers.
+        { capabilities: ctx.capabilities }
       )
 
       // Bucketing + fan-out lives in FieldValueService.applyBulk so the router,
@@ -187,7 +195,11 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db,
-        ctx.headers.get('x-realtime-socket-id') ?? undefined
+        ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        // Read enforcement threaded per plan v3/03 §5.4: these are request paths
+        // with a resolved capability set, and the write methods below return the
+        // resulting values through the same gated read helpers.
+        { capabilities: ctx.capabilities }
       )
       await service.deleteValue({
         recordId: input.recordId as RecordId,
@@ -259,7 +271,11 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db,
-        ctx.headers.get('x-realtime-socket-id') ?? undefined
+        ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        // Read enforcement threaded per plan v3/03 §5.4: these are request paths
+        // with a resolved capability set, and the write methods below return the
+        // resulting values through the same gated read helpers.
+        { capabilities: ctx.capabilities }
       )
       return await service.addValue({
         recordId: input.recordId as RecordId,
@@ -306,7 +322,11 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.session.organizationId,
         ctx.session.user.id,
         ctx.db,
-        ctx.headers.get('x-realtime-socket-id') ?? undefined
+        ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        // Read enforcement threaded per plan v3/03 §5.4: these are request paths
+        // with a resolved capability set, and the write methods below return the
+        // resulting values through the same gated read helpers.
+        { capabilities: ctx.capabilities }
       )
       await service.removeValue(input.valueId)
       return { success: true }

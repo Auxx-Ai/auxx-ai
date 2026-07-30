@@ -2,8 +2,8 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
-import type { MailViewer, ThreadVisibilityInput, UserMailVisibility } from './context'
-import { isAutomationViewer, isSystemViewer } from './context'
+import type { MailViewer, ThreadVisibilityInput, UserInstanceGrants } from './context'
+import { hasContactGrants, isAutomationViewer, isSystemViewer } from './context'
 import { automationLens, effectiveLens } from './effective-lens'
 import type { Lens } from './lens'
 
@@ -27,7 +27,7 @@ export async function getThreadLensBatch(
   if (threadIds.length === 0) return lenses
 
   if (isSystemViewer(viewer)) {
-    for (const id of threadIds) lenses.set(id, 'full')
+    for (const id of threadIds) lenses.set(id, 'read')
     return lenses
   }
 
@@ -35,7 +35,7 @@ export async function getThreadLensBatch(
   // the exclusion is empty — skip the row query like SYSTEM.
   if (isAutomationViewer(viewer)) {
     if (Object.keys(viewer.personalInboxIds).length === 0) {
-      for (const id of threadIds) lenses.set(id, 'full')
+      for (const id of threadIds) lenses.set(id, 'read')
       return lenses
     }
     const rows = await db
@@ -72,7 +72,7 @@ export async function getThreadLensBatch(
     )
 
   const contactsByThread = new Map<string, string[]>()
-  if (Object.keys(viewer.contactGrants).length > 0 && threads.length > 0) {
+  if (hasContactGrants(viewer) && threads.length > 0) {
     const rows = await db
       .select({
         threadId: schema.ThreadParticipant.threadId,
@@ -143,17 +143,17 @@ export interface LoadedThreadFacts {
  * putting this beside it rather than in either caller is that the two cannot
  * drift on when participants matter.
  *
- * Human viewers only (`UserMailVisibility`, not `MailViewer`): the SYSTEM and
+ * Human viewers only (`UserInstanceGrants`, not `MailViewer`): the SYSTEM and
  * automation branches exist to SKIP the row read, so they have nothing to gain
  * from a preloaded row and both callers here resolve a real member.
  */
 export async function getLoadedThreadLens(
   db: Database,
-  viewer: UserMailVisibility,
+  viewer: UserInstanceGrants,
   thread: LoadedThreadFacts
 ): Promise<Lens> {
   let participantContactIds: string[] = []
-  if (Object.keys(viewer.contactGrants).length > 0) {
+  if (hasContactGrants(viewer)) {
     const rows = await db
       .select({ entityInstanceId: schema.ThreadParticipant.entityInstanceId })
       .from(schema.ThreadParticipant)

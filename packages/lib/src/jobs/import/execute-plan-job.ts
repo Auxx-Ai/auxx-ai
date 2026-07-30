@@ -15,7 +15,6 @@ import {
 } from '../../import'
 import type { ImportMappingProperty, ImportPlan } from '../../import/types'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import { invalidateSnapshots } from '../../snapshot'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('execute-plan-job')
@@ -125,11 +124,9 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         ...data.customFields,
       }
 
-      // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation
-      // Snapshot will be invalidated once at the end of the import
+      // Use UnifiedCrudHandler with skipEvents
       const instance = await crudHandler.create(entityDefinitionId, mergedData, {
         skipEvents: true,
-        skipSnapshotInvalidation: true,
       })
 
       // B2: capture lifecycle-created + `set`-transition field writes for record rules.
@@ -207,12 +204,11 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         }
       }
 
-      // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation.
+      // Use UnifiedCrudHandler with skipEvents.
       // `modes` is undefined — every field falls through to 'set' (today's
       // behavior); `options` moved to the fourth positional slot.
       const instance = await crudHandler.update(recordId, mergedData, undefined, {
         skipEvents: true,
-        skipSnapshotInvalidation: true,
       })
       if (captured) manifest.recordChange(recordId, captured)
 
@@ -255,14 +251,6 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         })
       },
     })
-
-    // Invalidate snapshots ONCE after all records processed
-    // This ensures the listFiltered cache is updated with the new records
-    await invalidateSnapshots({
-      organizationId,
-      resourceType: entityDefinitionId,
-    })
-    logger.debug('Invalidated snapshots after import', { entityDefinitionId })
 
     // Mark job as completed
     await markJobCompleted(db, jobId, result.statistics)

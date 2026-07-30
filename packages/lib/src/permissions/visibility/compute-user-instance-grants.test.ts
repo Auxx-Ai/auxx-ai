@@ -1,41 +1,72 @@
-// packages/lib/src/permissions/visibility/compute-user-mail-visibility.test.ts
+// packages/lib/src/permissions/visibility/compute-user-instance-grants.test.ts
 
 import { describe, expect, it } from 'vitest'
+import {
+  bucketInstanceGrantRows,
+  type InstanceGrantRow,
+} from '../../resource-access/instance-grants'
 // Deep import: the `@auxx/lib/permissions` BARREL hangs under vitest.
 import { Level } from '../capabilities/registry'
-import { composeUserMailVisibility, type VisibilityGrantRow } from './compute-user-mail-visibility'
+import { composeUserInstanceGrants } from './compute-user-instance-grants'
+import type { UserInstanceGrants } from './context'
 
 const USER = 'u_1'
 
 /** A user-grantee row (the default) — see {@link baseline} for the org-wide one. */
-const grant = (over: Partial<VisibilityGrantRow>): VisibilityGrantRow => ({
+const grant = (over: Partial<InstanceGrantRow>): InstanceGrantRow => ({
   entityDefinitionId: 'inbox',
   entityInstanceId: 'i_1',
   granteeType: 'user',
   granteeId: USER,
-  permission: 'view',
-  lens: 'full',
+  rung: 'read',
   ...over,
 })
 
 /** The `role:org_member` workspace-baseline row migration 060 writes (§4.1). */
-const baseline = (over: Partial<VisibilityGrantRow>): VisibilityGrantRow =>
+const baseline = (over: Partial<InstanceGrantRow>): InstanceGrantRow =>
   grant({ granteeType: 'role', granteeId: 'org_member', ...over })
 
-type ComposeInput = Parameters<typeof composeUserMailVisibility>[0]
+type ComposeInput = Parameters<typeof composeUserInstanceGrants>[0]
 
-const compose = (over: Partial<ComposeInput> = {}) =>
-  composeUserMailVisibility({
+/**
+ * `grants` takes RAW rows and runs them through the shared bucketing pass — the
+ * same one `loadUserInstanceGrants` runs in production (plan v3/03 P4). Tests
+ * state grant ROWS, which is what the database holds; the lane split and the
+ * governing set are then derived, not asserted into existence.
+ */
+const compose = ({
+  grants = [],
+  ...over
+}: Partial<Omit<ComposeInput, 'instanceGrants'>> & { grants?: InstanceGrantRow[] } = {}) =>
+  composeUserInstanceGrants({
     userId: USER,
     role: 'USER',
     // The member baseline: `MEMBER_BASELINE_LEVELS[Area.inboxes] = Level.Read`.
     inboxesAreaLevel: Level.Read,
     inboxes: [],
-    grants: [],
+    instanceGrants: bucketInstanceGrantRows(grants),
     ...over,
   })
 
-describe('composeUserMailVisibility', () => {
+/**
+ * The three lanes the flat `threadGrants`/`contactGrants`/`entityGrants` fields
+ * used to be, read back off the def-keyed {@link UserInstanceGrants.grants} map
+ * (plan v3/03 P4). `entityLane` folds every NON-mail def, which is the point of
+ * the reshape: the primary-entity lane is now a set of record defs rather than
+ * one anonymous bucket.
+ */
+const threadLane = (vis: UserInstanceGrants) => vis.grants.thread ?? {}
+const contactLane = (vis: UserInstanceGrants) => vis.grants.contact ?? {}
+const entityLane = (vis: UserInstanceGrants) => {
+  const out: Record<string, string> = {}
+  for (const [defId, byInstance] of Object.entries(vis.grants)) {
+    if (defId === 'thread' || defId === 'contact') continue
+    Object.assign(out, byInstance)
+  }
+  return out
+}
+
+describe('composeUserInstanceGrants', () => {
   it('marks OWNER/ADMIN as admin, USER as not', () => {
     for (const [role, isAdmin] of [
       ['OWNER', true],
@@ -56,7 +87,7 @@ describe('composeUserMailVisibility', () => {
     it('gives a row-LESS shared inbox the `full` fallback at any open rung', () => {
       for (const level of [Level.Read, Level.Edit, Level.Full] as const) {
         const vis = compose({ inboxesAreaLevel: level, inboxes: [{ id: 'open' }] })
-        expect(vis.inboxLens).toEqual({ open: 'full' })
+        expect(vis.inboxLens).toEqual({ open: 'read' })
       }
     })
 
@@ -70,15 +101,15 @@ describe('composeUserMailVisibility', () => {
       // migration's `subject` floors are silently undone.
       const vis = compose({
         inboxes: [{ id: 'peek' }],
-        grants: [baseline({ entityInstanceId: 'peek', permission: 'view', lens: 'subject' })],
+        grants: [baseline({ entityInstanceId: 'peek', rung: 'identity' })],
       })
-      expect(vis.inboxLens).toEqual({ peek: 'subject' })
+      expect(vis.inboxLens).toEqual({ peek: 'identity' })
     })
 
     it('excludes an inbox restricted with `role:org_member @ none`', () => {
       const vis = compose({
         inboxes: [{ id: 'closed' }],
-        grants: [baseline({ entityInstanceId: 'closed', permission: 'none', lens: null })],
+        grants: [baseline({ entityInstanceId: 'closed', rung: 'none' })],
       })
       expect(vis.inboxLens).toEqual({})
     })
@@ -87,17 +118,17 @@ describe('composeUserMailVisibility', () => {
       const vis = compose({
         inboxes: [{ id: 'closed' }],
         grants: [
-          baseline({ entityInstanceId: 'closed', permission: 'none', lens: null }),
-          grant({ entityInstanceId: 'closed', permission: 'view', lens: 'subject' }),
+          baseline({ entityInstanceId: 'closed', rung: 'none' }),
+          grant({ entityInstanceId: 'closed', rung: 'identity' }),
         ],
       })
-      expect(vis.inboxLens).toEqual({ closed: 'subject' })
+      expect(vis.inboxLens).toEqual({ closed: 'identity' })
     })
 
     it('lets an explicit user `none` row close an otherwise-open shared inbox', () => {
       const vis = compose({
         inboxes: [{ id: 'open' }],
-        grants: [grant({ entityInstanceId: 'open', permission: 'none', lens: null })],
+        grants: [grant({ entityInstanceId: 'open', rung: 'none' })],
       })
       expect(vis.inboxLens).toEqual({})
     })
@@ -107,11 +138,11 @@ describe('composeUserMailVisibility', () => {
         inboxesAreaLevel: Level.None,
         inboxes: [{ id: 'a' }, { id: 'b' }],
         grants: [
-          grant({ entityInstanceId: 'a', permission: 'admin', lens: null }),
-          grant({ entityInstanceId: 'b', permission: 'view', lens: null }),
+          grant({ entityInstanceId: 'a', rung: 'admin' }),
+          grant({ entityInstanceId: 'b', rung: 'read' }),
         ],
       })
-      expect(vis.inboxLens).toEqual({ a: 'full', b: 'full' })
+      expect(vis.inboxLens).toEqual({ a: 'read', b: 'read' })
     })
 
     // The area level is a GATE, not a confidentiality tier (§4.2). `Read` must
@@ -121,11 +152,11 @@ describe('composeUserMailVisibility', () => {
         inboxesAreaLevel: Level.Read,
         inboxes: [{ id: 'closed' }],
         grants: [
-          baseline({ entityInstanceId: 'closed', permission: 'none', lens: null }),
-          grant({ entityInstanceId: 'closed', permission: 'admin', lens: null }),
+          baseline({ entityInstanceId: 'closed', rung: 'none' }),
+          grant({ entityInstanceId: 'closed', rung: 'admin' }),
         ],
       })
-      expect(vis.inboxLens).toEqual({ closed: 'full' })
+      expect(vis.inboxLens).toEqual({ closed: 'read' })
     })
   })
 
@@ -139,7 +170,7 @@ describe('composeUserMailVisibility', () => {
         inboxesAreaLevel: Level.Full,
         inboxes: [{ id: 'open' }],
       })
-      expect(vis.inboxLens).toEqual({ open: 'full' })
+      expect(vis.inboxLens).toEqual({ open: 'read' })
     })
 
     it('an ADMIN-ranked member on a custom profile at inboxes: None sees no shared mail', () => {
@@ -157,9 +188,9 @@ describe('composeUserMailVisibility', () => {
         role: 'ADMIN',
         inboxesAreaLevel: Level.Full,
         inboxes: [{ id: 'open' }, { id: 'secret' }],
-        grants: [baseline({ entityInstanceId: 'secret', permission: 'none', lens: null })],
+        grants: [baseline({ entityInstanceId: 'secret', rung: 'none' })],
       })
-      expect(vis.inboxLens).toEqual({ open: 'full' })
+      expect(vis.inboxLens).toEqual({ open: 'read' })
     })
 
     it('an OWNER is scoped the same way — rank is not a mail authority', () => {
@@ -167,7 +198,7 @@ describe('composeUserMailVisibility', () => {
         role: 'OWNER',
         inboxesAreaLevel: Level.Full,
         inboxes: [{ id: 'secret' }],
-        grants: [baseline({ entityInstanceId: 'secret', permission: 'none', lens: null })],
+        grants: [baseline({ entityInstanceId: 'secret', rung: 'none' })],
       })
       expect(vis.inboxLens).toEqual({})
     })
@@ -216,12 +247,11 @@ describe('composeUserMailVisibility', () => {
           grant({
             entityDefinitionId: 'personal_inbox',
             entityInstanceId: 'mine',
-            permission: 'admin',
-            lens: null,
+            rung: 'admin',
           }),
         ],
       })
-      expect(vis.inboxLens).toEqual({ mine: 'full' })
+      expect(vis.inboxLens).toEqual({ mine: 'read' })
     })
 
     it('a personal mailbox NEVER takes the shared area fallback', () => {
@@ -236,39 +266,37 @@ describe('composeUserMailVisibility', () => {
     it('buckets thread/contact/entity grants and skips non-mail built-ins', () => {
       const vis = compose({
         grants: [
-          grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', lens: 'metadata' }),
-          grant({ entityDefinitionId: 'contact', entityInstanceId: 'c_1', lens: 'full' }),
+          grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', rung: 'metadata' }),
+          grant({ entityDefinitionId: 'contact', entityInstanceId: 'c_1', rung: 'read' }),
           grant({
             entityDefinitionId: 'ysd5fhcustomdef',
             entityInstanceId: 'e_1',
-            lens: 'subject',
+            rung: 'identity',
           }),
           grant({ entityDefinitionId: 'snippet', entityInstanceId: 's_1' }),
           grant({ entityDefinitionId: 'folder', entityInstanceId: 'f_1' }),
         ],
       })
-      expect(vis.threadGrants).toEqual({ t_1: 'metadata' })
-      expect(vis.contactGrants).toEqual({ c_1: 'full' })
-      expect(vis.entityGrants).toEqual({ e_1: 'subject' })
+      expect(threadLane(vis)).toEqual({ t_1: 'metadata' })
+      expect(contactLane(vis)).toEqual({ c_1: 'read' })
+      expect(entityLane(vis)).toEqual({ e_1: 'identity' })
     })
 
     it('keeps the max lens when the same instance is granted twice', () => {
       const vis = compose({
         grants: [
-          grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', lens: 'metadata' }),
-          grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', lens: 'full' }),
+          grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', rung: 'metadata' }),
+          grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', rung: 'read' }),
         ],
       })
-      expect(vis.threadGrants).toEqual({ t_1: 'full' })
+      expect(threadLane(vis)).toEqual({ t_1: 'read' })
     })
 
     it('a `none` permission confers nothing (the restriction marker, not a grant)', () => {
       const vis = compose({
-        grants: [
-          grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', permission: 'none' }),
-        ],
+        grants: [grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', rung: 'none' })],
       })
-      expect(vis.threadGrants).toEqual({})
+      expect(threadLane(vis)).toEqual({})
     })
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -294,14 +322,14 @@ describe('composeUserMailVisibility', () => {
         'workflow',
       ])('keeps a `%s` grant out of entityGrants', (key) => {
         const vis = compose({ grants: [grant({ entityDefinitionId: key, entityInstanceId: 'x' })] })
-        expect(vis.entityGrants).toEqual({})
+        expect(entityLane(vis)).toEqual({})
       })
 
       // The two built-in grant slugs that are NOT instance-access keys. A purely
       // `INSTANCE_ACCESS_KEYS`-derived set would have silently readmitted them.
       it.each(['folder', 'document'])('keeps a `%s` grant out of entityGrants', (key) => {
         const vis = compose({ grants: [grant({ entityDefinitionId: key, entityInstanceId: 'x' })] })
-        expect(vis.entityGrants).toEqual({})
+        expect(entityLane(vis)).toEqual({})
       })
 
       // Direction 2 — INCLUDED. `inbox` and `personal_inbox` are instance-access
@@ -313,29 +341,28 @@ describe('composeUserMailVisibility', () => {
         const vis = compose({
           inboxes: [{ id: 'shared' }, { id: 'mine', isPersonal: true, ownerUserId: USER }],
           grants: [
-            grant({ entityDefinitionId: 'inbox', entityInstanceId: 'shared', lens: 'subject' }),
+            grant({ entityDefinitionId: 'inbox', entityInstanceId: 'shared', rung: 'identity' }),
             grant({
               entityDefinitionId: 'personal_inbox',
               entityInstanceId: 'mine',
-              permission: 'admin',
-              lens: null,
+              rung: 'admin',
             }),
           ],
         })
-        expect(vis.inboxLens).toEqual({ shared: 'full', mine: 'full' })
-        expect(vis.entityGrants).toEqual({})
+        expect(vis.inboxLens).toEqual({ shared: 'read', mine: 'read' })
+        expect(entityLane(vis)).toEqual({})
       })
 
       it('still buckets thread and contact grants into their own maps', () => {
         const vis = compose({
           grants: [
-            grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', lens: 'metadata' }),
-            grant({ entityDefinitionId: 'contact', entityInstanceId: 'c_1', lens: 'full' }),
+            grant({ entityDefinitionId: 'thread', entityInstanceId: 't_1', rung: 'metadata' }),
+            grant({ entityDefinitionId: 'contact', entityInstanceId: 'c_1', rung: 'read' }),
           ],
         })
-        expect(vis.threadGrants).toEqual({ t_1: 'metadata' })
-        expect(vis.contactGrants).toEqual({ c_1: 'full' })
-        expect(vis.entityGrants).toEqual({})
+        expect(threadLane(vis)).toEqual({ t_1: 'metadata' })
+        expect(contactLane(vis)).toEqual({ c_1: 'read' })
+        expect(entityLane(vis)).toEqual({})
       })
 
       // A CUSTOM def's CUID must still reach `entityGrants` — that bucket is the
@@ -345,7 +372,7 @@ describe('composeUserMailVisibility', () => {
         const vis = compose({
           grants: [grant({ entityDefinitionId: 'ysd5fhcustomdef', entityInstanceId: 'e_1' })],
         })
-        expect(vis.entityGrants).toEqual({ e_1: 'full' })
+        expect(entityLane(vis)).toEqual({ e_1: 'read' })
       })
     })
   })
@@ -390,12 +417,11 @@ describe('composeUserMailVisibility', () => {
           grant({
             entityDefinitionId: 'personal_inbox',
             entityInstanceId: 'pi_1',
-            permission: 'admin',
-            lens: null,
+            rung: 'admin',
           }),
         ],
       })
-      expect(vis.inboxLens).toEqual({ pi_1: 'full' })
+      expect(vis.inboxLens).toEqual({ pi_1: 'read' })
     })
 
     it('does NOT leak the row into entityGrants (the pre-fix failure mode)', () => {
@@ -405,19 +431,19 @@ describe('composeUserMailVisibility', () => {
           grant({
             entityDefinitionId: 'personal_inbox',
             entityInstanceId: 'pi_1',
-            lens: 'subject',
+            rung: 'identity',
           }),
         ],
       })
-      expect(vis.entityGrants).toEqual({})
-      expect(vis.inboxLens).toEqual({ pi_1: 'subject' })
+      expect(entityLane(vis)).toEqual({})
+      expect(vis.inboxLens).toEqual({ pi_1: 'identity' })
     })
 
     it('produces the identical context for either keyspace — the re-key is invisible', () => {
       const build = (entityDefinitionId: string) =>
         compose({
           inboxes: [owner],
-          grants: [grant({ entityDefinitionId, entityInstanceId: 'pi_1', lens: 'metadata' })],
+          grants: [grant({ entityDefinitionId, entityInstanceId: 'pi_1', rung: 'metadata' })],
         })
       expect(build('personal_inbox')).toEqual(build('inbox'))
     })
@@ -426,11 +452,11 @@ describe('composeUserMailVisibility', () => {
       const vis = compose({
         inboxes: [owner],
         grants: [
-          grant({ entityDefinitionId: 'personal_inboxes', entityInstanceId: 'x_1', lens: 'full' }),
+          grant({ entityDefinitionId: 'personal_inboxes', entityInstanceId: 'x_1', rung: 'read' }),
         ],
       })
       expect(vis.inboxLens).toEqual({})
-      expect(vis.entityGrants).toEqual({ x_1: 'full' })
+      expect(entityLane(vis)).toEqual({ x_1: 'read' })
     })
   })
 

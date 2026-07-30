@@ -4,11 +4,11 @@
 //
 // `ResourceAccess.entityDefinitionId` is a DUAL keyspace with no FK. Mail defs
 // must be keyed by their entity SLUG (`inbox`/`thread`/`contact`) because
-// `composeUserMailVisibility` and `isMailSharingDef` both test the literal;
+// `composeUserInstanceGrants` and `isMailSharingDef` both test the literal;
 // generic record defs stay keyed by the def CUID. `inbox-detail.tsx` built the
 // inbox RecordId from the def CUID, so INSTANCE-level inbox grants landed in the
 // wrong keyspace: mail visibility never read them, AND they skipped both
-// `assertCanManageMailSharing` and the enterprise `mailPermissions` gate.
+// `assertCanManageMailSharing` and the `granularPermissions` plan gate.
 //
 // This re-keys those strays to the slug and drops the leftovers. The unique
 // arbiter is (organizationId, entityDefinitionId, entityInstanceId, granteeType,
@@ -45,8 +45,7 @@ interface StrayRow {
   entityInstanceId: string
   granteeType: string
   granteeId: string
-  permission: string
-  lens: string | null
+  rung: string
   grantedById: string | null
 }
 
@@ -66,8 +65,7 @@ async function findStrays(): Promise<StrayRow[]> {
            ra."entityInstanceId",
            ra."granteeType",
            ra."granteeId",
-           ra.permission,
-           ra.lens,
+           ra.rung,
            ra."grantedById"
     FROM "ResourceAccess" ra
     JOIN "EntityDefinition" ed ON ed.id = ra."entityDefinitionId"
@@ -133,7 +131,7 @@ async function main() {
     console.log(
       `  stray ${row.id}  org=${row.organizationId}  ${row.entityDefinitionId} → ${row.slug}` +
         `  instance=${row.entityInstanceId}  ${row.granteeType}:${row.granteeId}` +
-        `  ${row.permission}${row.lens ? `/${row.lens}` : ''}`
+        `  ${row.rung}`
     )
   }
 
@@ -155,8 +153,7 @@ async function main() {
         entityInstanceId: row.entityInstanceId,
         granteeType: row.granteeType as never,
         granteeId: row.granteeId,
-        permission: row.permission as never,
-        lens: row.lens as never,
+        rung: row.rung as never,
         grantedById: row.grantedById,
       })
       .onConflictDoNothing()
@@ -173,12 +170,12 @@ async function main() {
   }
 
   // Without the flush the repaired grant stays dark for the ONE_DAY TTL:
-  // `userMailVisibility` is the per-user lens blob, `mailGrantIndex` the org-wide
+  // `userInstanceGrants` is the per-user lens blob, `mailGrantIndex` the org-wide
   // reverse index that fans ingest/realtime out to grant holders.
   const orgIds = [...new Set(strays.map((r) => r.organizationId))]
   for (const orgId of orgIds) {
     await getOrgCache().flush(orgId, ['mailGrantIndex'])
-    await getUserCache().invalidateOrgUsersForKeys(orgId, ['userMailVisibility'])
+    await getUserCache().invalidateOrgUsersForKeys(orgId, ['userInstanceGrants'])
   }
 
   const strayAfter = await findStrays()

@@ -325,7 +325,7 @@ export function ThreadHeader() {
                 <RecordBadge recordId={thread?.inboxId} hoverCard={false} />
               </InboxPicker>
               <ThreadTicketControl />
-              <LensBadge lens={thread.myLens ?? 'full'} inboxName={inbox?.name} />
+              <LensBadge lens={thread.myLens ?? 'read'} inboxName={inbox?.name} />
             </div>
             {isChatChannel && <ThreadHandoffControl />}
             <ThreadParticipantButton threadId={threadId} />

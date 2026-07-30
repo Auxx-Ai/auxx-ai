@@ -100,11 +100,23 @@ export const ApprovalRequest = pgTable(
     grantedLevel: text().$type<ResourcePermission>(),
     /**
      * Mail visibility lens asked for / written (plan 42 §2.1). Set only for a
-     * mail-sharing definition; mirrors `ResourceAccess.lens`'s
+     * mail-sharing definition; mirrors `ResourceAccess.rung`'s
      * TypeScript-over-`text` representation rather than inventing a DB enum.
+     *
+     * Renamed onto the rung vocabulary with `ResourceAccess` (plan v3/03 §3):
+     * `subject`→`identity`, `full`→`read`. Migration 0319 rewrites the stored
+     * values in the same transaction as the `ResourceAccess` backfill — two
+     * columns holding the same vocabulary must never disagree about it.
+     *
+     * ⚠ `requestedLevel`/`grantedLevel` above stay {@link ResourcePermission}.
+     * For a THREAD row the pair is still the old two-column encoding
+     * (`view` + a lens), which is a residual this phase does not collapse: those
+     * two columns also carry AREA and DEF requests, where `ResourcePermission`
+     * is the correct axis. Collapsing them needs the target-kind split, not a
+     * vocabulary rename.
      */
-    requestedLens: text().$type<'metadata' | 'subject' | 'full'>(),
-    grantedLens: text().$type<'metadata' | 'subject' | 'full'>(),
+    requestedLens: text().$type<'metadata' | 'identity' | 'read'>(),
+    grantedLens: text().$type<'metadata' | 'identity' | 'read'>(),
     metadata: jsonb(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     expiresAt: timestamp({ precision: 3 }),

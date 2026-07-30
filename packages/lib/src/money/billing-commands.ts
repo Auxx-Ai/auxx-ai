@@ -88,7 +88,6 @@ async function getSourceLines(input: {
     ],
     sorting: [{ id: 'sortOrder', desc: false }],
     limit: 1000,
-    mode: 'oneshot',
   })
   const cache = getOrgCache()
   const fields = await cache

@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/signature.ts
 
 import { type Database, schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { emitResourceAccessInstanceChanged } from '@auxx/lib/resource-access'
@@ -257,16 +257,18 @@ export const signatureRouter = createTRPCRouter({
           entityInstanceId: signatureId,
           granteeType: ResourceGranteeType.user,
           granteeId: userId,
-          permission: ResourcePermission.admin,
+          rung: 'admin',
           grantedById: userId,
         })
         .onConflictDoNothing()
 
       // Without this the creator's composed capabilities blob still predates the
       // row and they cannot see their own new signature until the TTL expires.
-      await emitResourceAccessInstanceChanged(organizationId, [
-        { granteeType: ResourceGranteeType.user, granteeId: userId },
-      ])
+      await emitResourceAccessInstanceChanged(
+        organizationId,
+        [{ granteeType: ResourceGranteeType.user, granteeId: userId }],
+        SIGNATURE_INSTANCE_KEY
+      )
 
       return loadSignature(ctx.db, organizationId, signatureId)
     }),
@@ -335,9 +337,11 @@ export const signatureRouter = createTRPCRouter({
             eq(schema.ResourceAccess.entityInstanceId, signatureId)
           )
         )
-      await emitResourceAccessInstanceChanged(organizationId, [
-        { granteeType: ResourceGranteeType.role, granteeId: 'org_member' },
-      ])
+      await emitResourceAccessInstanceChanged(
+        organizationId,
+        [{ granteeType: ResourceGranteeType.role, granteeId: 'org_member' }],
+        SIGNATURE_INSTANCE_KEY
+      )
 
       const settings = await getUserCache().get(userId, 'userSettings', organizationId)
       if (settings['signature.defaultId'] === signatureId) {

@@ -3,7 +3,7 @@
 import type { EntityFieldChangeHandler } from '../types'
 
 /**
- * Inbox fields whose value feeds every member's cached `userMailVisibility`
+ * Inbox fields whose value feeds every member's cached `userInstanceGrants`
  * (mail-permissions §7.1) — changing one recomputes ALL members' contexts.
  *
  * ## One entry left, after plan 40 phase 4
@@ -24,7 +24,7 @@ import type { EntityFieldChangeHandler } from '../types'
  *
  * Coverage re-verified against `cache/invalidation-graph.ts` (2026-07-29), every
  * one a `broadcastUserKeys: true` event, which is what makes EVERY member's
- * `userMailVisibility` recompute rather than just the actor's:
+ * `userInstanceGrants` recompute rather than just the actor's:
  *
  *  - create → `InboxService.createInbox` fires `inbox.created`
  *  - claim (`personal_inbox` → `inbox`) → `setInboxFloor` fires
@@ -35,8 +35,8 @@ import type { EntityFieldChangeHandler } from '../types'
  *    `channel.disconnected` (no def change, but the channels stop syncing)
  *
  * `inbox.created` / `inbox.updated` / `inbox.deleted` each map to
- * `{ org: ['inboxes'], user: ['userMailVisibility'] }`, and
- * `resource-access.changed` to `{ user: ['userMailVisibility'], org:
+ * `{ org: ['inboxes'], user: ['userInstanceGrants'] }`, and
+ * `resource-access.changed` to `{ user: ['userInstanceGrants'], org:
  * ['mailGrantIndex'] }`.
  *
  * `inbox_owner_user_id` stays: it is a real field on both defs, still writable
@@ -56,7 +56,7 @@ const VISIBILITY_ATTRIBUTES = new Set<string>(['inbox_owner_user_id'])
  * - Every inbox field write → `inbox.updated` (recomputes the cached
  *   `inboxes` shape).
  * - A {@link VISIBILITY_ATTRIBUTES} write additionally broadcasts so every
- *   member's `userMailVisibility` recomputes (and counts go stale via the §10.1
+ *   member's `userInstanceGrants` recomputes (and counts go stale via the §10.1
  *   wiring in `onCacheEvent`).
  */
 export const invalidateInboxCacheOnFieldChange: EntityFieldChangeHandler = async (event) => {

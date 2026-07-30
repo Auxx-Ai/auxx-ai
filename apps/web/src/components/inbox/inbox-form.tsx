@@ -1,13 +1,8 @@
 // apps/web/src/components/inbox/inbox-form.tsx
 'use client'
 
-import {
-  FieldType,
-  ResourceGranteeType,
-  ResourcePermission,
-  type SharingGranteeType,
-} from '@auxx/database/enums'
-import type { Lens, LensChoice } from '@auxx/lib/permissions/visibility/client'
+import { FieldType, ResourceGranteeType, type SharingGranteeType } from '@auxx/database/enums'
+import { type Lens, type LensChoice, normalizeLens } from '@auxx/lib/permissions/visibility/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { type ActorId, toActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
@@ -23,9 +18,9 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { AccessLevelsGuide } from '~/components/mail-permissions/ui/access-levels-guide'
 import {
-  MailPermissionsUpgradeDialog,
-  useMailPermissionsGated,
-} from '~/components/mail-permissions/ui/enterprise-gate'
+  GranularPermissionsUpgradeDialog,
+  useGranularPermissionsGated,
+} from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
 import { MailGranteeList } from '~/components/mail-permissions/ui/mail-grantee-list'
 import {
@@ -75,7 +70,7 @@ const DEFAULT_VALUES: InboxFormValues = {
   description: '',
   color: 'indigo',
   accessType: 'anyone',
-  floorLens: 'full',
+  floorLens: 'read',
   grants: [],
 }
 
@@ -154,17 +149,17 @@ function floorFromRows(
   rows: ReadonlyArray<{
     granteeType: string
     granteeId: string
-    permission: string
-    lens: string | null
+    rung: string
   }>
 ): Lens {
   const baseline = rows.find(
     (r) => r.granteeType === ResourceGranteeType.role && r.granteeId === 'org_member'
   )
-  if (!baseline) return 'full'
-  if (baseline.permission === ResourcePermission.none) return 'none'
-  if (baseline.permission === ResourcePermission.view) return (baseline.lens ?? 'full') as Lens
-  return 'full'
+  // No baseline row IS the org-shared default (plan 40 §6). `edit`/`admin` are
+  // dead vocabulary on an inbox baseline; both clamp to `read`, matching
+  // `floorFromBaselineRow` server-side.
+  if (!baseline) return 'read'
+  return normalizeLens(baseline.rung, 'read')
 }
 
 /**
@@ -175,19 +170,15 @@ function floorFromRows(
 function rowToGrant(row: {
   granteeType: string
   granteeId: string
-  permission: string
-  lens: string | null
+  rung: string
 }): FormGrant | null {
   const actorId = granteeToActorId(row.granteeType, row.granteeId)
   if (!actorId) return null
   return {
     actorId,
-    choice:
-      row.permission === ResourcePermission.admin
-        ? 'manager'
-        : row.permission === ResourcePermission.edit
-          ? 'full'
-          : ((row.lens ?? 'full') as LensChoice),
+    // `admin` on an inbox IS the Manager entry; `edit` is dead vocabulary here
+    // and reads as full mail access, which `normalizeLens`'s fallback supplies.
+    choice: row.rung === 'admin' ? 'manager' : (normalizeLens(row.rung, 'read') as LensChoice),
   }
 }
 
@@ -232,7 +223,7 @@ export function InboxForm({
   const inboxId = recordId ? parseRecordId(recordId).entityInstanceId : null
 
   const { canAdminInstance } = useAccess()
-  const gated = useMailPermissionsGated()
+  const gated = useGranularPermissionsGated()
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
 
@@ -353,8 +344,9 @@ export function InboxForm({
         // The floor comes from the `role:org_member` baseline ROW, not from a
         // field value (plan 40 §6) — same rows the grantee list is built from.
         const storedLens = floorFromRows(accessRows)
-        const accessType = storedLens === 'none' ? 'restricted' : 'anyone'
-        const floorLens = (storedLens === 'none' ? 'full' : storedLens) as Exclude<Lens, 'none'>
+        const accessType: InboxFormValues['accessType'] =
+          storedLens === 'none' ? 'restricted' : 'anyone'
+        const floorLens = (storedLens === 'none' ? 'read' : storedLens) as Exclude<Lens, 'none'>
         const grants = accessRows.flatMap((row) => rowToGrant(row) ?? [])
 
         initialLensRef.current = storedLens
@@ -409,8 +401,8 @@ export function InboxForm({
    * NOT the `inbox_default_lens` field the form used to save. Its own procedure
    * rather than `resourceAccess.grantInstance` because the Restricted floor is
    * `permission: 'none'` with a null lens, which slips past
-   * `assertMailSharingFeature`'s `lens !== 'full'` test — `inbox.setAccessFloor`
-   * carries the Enterprise gate the retired field wall used to.
+   * `assertMailSharingFeature`'s sub-`read` rung test — `inbox.setAccessFloor`
+   * carries the `granularPermissions` plan gate the retired field wall used to.
    */
   const setAccessFloor = api.inbox.setAccessFloor.useMutation({
     onError: (error) => {
@@ -458,7 +450,7 @@ export function InboxForm({
   const isValid = values.name.trim().length > 0
 
   const handleAccessTypeChange = (value: string) => {
-    // Restricted means floor `none` — enterprise-gated like every sub-full floor.
+    // Restricted means floor `none` — plan-gated like every sub-full floor.
     if (value === 'restricted' && gated && initialLensRef.current !== 'none') {
       setUpgradeOpen(true)
       return
@@ -491,8 +483,7 @@ export function InboxForm({
       return [
         {
           granteeId: grantee.granteeId,
-          permission: g.choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
-          lens: g.choice === 'manager' ? undefined : g.choice,
+          rung: g.choice === 'manager' ? ('admin' as const) : g.choice,
         },
       ]
     })
@@ -605,9 +596,7 @@ export function InboxForm({
           await grantInstance.mutateAsync({
             recordId: createdRecordId,
             ...grantee,
-            permission:
-              grant.choice === 'manager' ? ResourcePermission.admin : ResourcePermission.view,
-            lens: grant.choice === 'manager' ? undefined : grant.choice,
+            rung: grant.choice === 'manager' ? ('admin' as const) : grant.choice,
           })
         }
         invalidateInboxes()
@@ -876,7 +865,7 @@ export function InboxForm({
 
       <ConfirmDialog />
       <ConfirmDeleteDialog />
-      <MailPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+      <GranularPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
       <AccessLevelsGuide open={guideOpen} onOpenChange={setGuideOpen} />
     </>
   )

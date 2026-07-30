@@ -174,7 +174,6 @@ export async function createQuoteFromRequest(input: CreateQuoteFromRequestInput)
       },
     ],
     limit: 1,
-    mode: 'oneshot',
   })
   if (existing.ids.length > 0) {
     throw new BadRequestError('An active quote already exists for this service request')

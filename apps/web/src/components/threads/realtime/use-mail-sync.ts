@@ -55,7 +55,7 @@ export function useMailSync() {
       slug,
       lens,
     }))
-    if (isAdmin) list.push({ slug: 'none', lens: 'full' })
+    if (isAdmin) list.push({ slug: 'none', lens: 'read' })
     return list
   }, [lenses, isAdmin, isLoaded])
 

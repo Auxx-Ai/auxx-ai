@@ -96,7 +96,7 @@ export class MessageSenderService {
   private async assertCanSendOnThread(threadId: string | null): Promise<void> {
     if (!threadId || !this.viewer || isSystemViewer(this.viewer)) return
     const lens = await getThreadLens(this.db ?? db, this.organizationId, this.viewer, threadId)
-    if (lens !== 'full') {
+    if (lens !== 'read') {
       throw new ForbiddenError(
         lens === 'none'
           ? 'Thread not found.'

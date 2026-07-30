@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * per-instance rows nested in the permission grids) funnels through
  * `resourceAccess.grantInstance`; picking **Restricted** on an instance row is
  * exactly `grantInstance({ granteeType: 'role', granteeId: 'org_member',
- * permission: 'none' })`.
+ * rung: 'none' })`.
  *
  * What these pin:
  *  - `none` survives the router untouched onto `grantInstanceAccess` (an
@@ -43,13 +43,23 @@ const { getCapabilities, resourceAccess, isAdminOrOwner, recordAuditFromCtx } = 
     assertCanManageMailSharing: vi.fn(async () => undefined),
     assertCanManageMailTypeAccess: vi.fn(async () => undefined),
     assertMailSharingFeature: vi.fn(async () => undefined),
-    isMailSharingDef: vi.fn(() => false),
   },
   isAdminOrOwner: vi.fn(async () => false),
   recordAuditFromCtx: vi.fn(async () => undefined),
 }))
 
-vi.mock('@auxx/lib/resource-access', () => resourceAccess)
+// `isMailSharingDef` + `ORG_MEMBER_GRANTEE_ID` are kept REAL: since plan v3/03 §7.1
+// the predicate decides which of THREE lanes a target takes (instance-access /
+// mail guard / record `assertEditEntity`), so a blanket `() => false` stub would
+// route `contact:<id>` into the record lane and assert the wrong authority.
+vi.mock('@auxx/lib/resource-access', async () => {
+  const defs = await import('@auxx/lib/resource-access/mail-sharing-defs')
+  return {
+    ...resourceAccess,
+    isMailSharingDef: defs.isMailSharingDef,
+    ORG_MEMBER_GRANTEE_ID: 'org_member',
+  }
+})
 vi.mock('@auxx/lib/members', () => ({ isAdminOrOwner }))
 vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx }))
 vi.mock('@auxx/lib/cache', () => ({
@@ -107,10 +117,10 @@ const WORKSPACE_BASELINE = {
 /** A real `CapabilitySet` holding `permission` on {@link DATASET_ID}. */
 function capabilitiesFor(permission: ResourcePermission) {
   const areaLevel = {
-    [ResourcePermission.none]: Level.None,
-    [ResourcePermission.view]: Level.Read,
-    [ResourcePermission.edit]: Level.Edit,
-    [ResourcePermission.admin]: Level.Full,
+    ['none']: Level.None,
+    ['read']: Level.Read,
+    ['edit']: Level.Edit,
+    ['admin']: Level.Full,
   }[permission]
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.datasets]: areaLevel })),
@@ -133,9 +143,8 @@ const caller = resourceAccessRouter.createCaller({
 
 beforeEach(() => {
   for (const fn of Object.values(resourceAccess)) fn.mockClear()
-  resourceAccess.isMailSharingDef.mockReturnValue(false)
   isAdminOrOwner.mockResolvedValue(false)
-  getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.admin))
+  getCapabilities.mockResolvedValue(capabilitiesFor('admin'))
 })
 
 describe('grantInstance — the Restricted baseline round-trip (plan 24 §B.4)', () => {
@@ -144,7 +153,7 @@ describe('grantInstance — the Restricted baseline round-trip (plan 24 §B.4)',
       caller.grantInstance({
         recordId: DATASET_RECORD_ID,
         ...WORKSPACE_BASELINE,
-        permission: ResourcePermission.none,
+        rung: 'none',
       })
     ).resolves.toEqual({ success: true })
 
@@ -157,7 +166,7 @@ describe('grantInstance — the Restricted baseline round-trip (plan 24 §B.4)',
         granteeId: 'org_member',
         // `undefined` here would read back as "inherit" and Restricted would be
         // unreachable from the picker.
-        permission: ResourcePermission.none,
+        rung: 'none',
       })
     )
   })
@@ -166,33 +175,29 @@ describe('grantInstance — the Restricted baseline round-trip (plan 24 §B.4)',
     await caller.grantInstance({
       recordId: DATASET_RECORD_ID,
       ...WORKSPACE_BASELINE,
-      permission: ResourcePermission.none,
+      rung: 'none',
     })
     expect(recordAuditFromCtx).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         action: 'permission.granted',
-        metadata: expect.objectContaining({ scope: 'instance', permission: 'none' }),
+        metadata: expect.objectContaining({ scope: 'instance', rung: 'none' }),
       })
     )
   })
 
-  it('carries the raise levels through unchanged too (view/edit/admin)', async () => {
-    for (const permission of [
-      ResourcePermission.view,
-      ResourcePermission.edit,
-      ResourcePermission.admin,
-    ] as const) {
+  it('carries the raise rungs through unchanged too (read/edit/admin)', async () => {
+    for (const rung of ['read', 'edit', 'admin'] as const) {
       resourceAccess.grantInstanceAccess.mockClear()
       await caller.grantInstance({
         recordId: DATASET_RECORD_ID,
         granteeType: ResourceGranteeType.user,
         granteeId: 'usr_grantee',
-        permission,
+        rung,
       })
       expect(resourceAccess.grantInstanceAccess).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ permission })
+        expect.objectContaining({ rung })
       )
     }
   })
@@ -202,7 +207,7 @@ describe('grantInstance — the Restricted baseline round-trip (plan 24 §B.4)',
       caller.grantInstance({
         recordId: CONTACT_RECORD_ID,
         ...WORKSPACE_BASELINE,
-        permission: ResourcePermission.none,
+        rung: 'none',
       })
     ).rejects.toMatchObject(BAD_REQUEST)
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
@@ -211,27 +216,27 @@ describe('grantInstance — the Restricted baseline round-trip (plan 24 §B.4)',
 
 describe('grantInstance — authorizeInstanceTarget gates on THIS instance (§B.2.7)', () => {
   it('refuses a sharer who only holds edit on the dataset', async () => {
-    getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.edit))
+    getCapabilities.mockResolvedValue(capabilitiesFor('edit'))
 
     await expect(
       caller.grantInstance({
         recordId: DATASET_RECORD_ID,
         granteeType: ResourceGranteeType.user,
         granteeId: 'usr_grantee',
-        permission: ResourcePermission.admin,
+        rung: 'admin',
       })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
   })
 
   it('refuses a sharer restricted out of the dataset entirely', async () => {
-    getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.none))
+    getCapabilities.mockResolvedValue(capabilitiesFor('none'))
 
     await expect(
       caller.grantInstance({
         recordId: DATASET_RECORD_ID,
         ...WORKSPACE_BASELINE,
-        permission: ResourcePermission.none,
+        rung: 'none',
       })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(resourceAccess.grantInstanceAccess).not.toHaveBeenCalled()
@@ -242,7 +247,7 @@ describe('grantInstance — authorizeInstanceTarget gates on THIS instance (§B.
       recordId: DATASET_RECORD_ID,
       granteeType: ResourceGranteeType.group,
       granteeId: 'grp_sales',
-      permission: ResourcePermission.view,
+      rung: 'read',
     })
     // The AUTHORIZER is skipped — that is the claim. The Enterprise plan gate is
     // NOT part of it: since plan 40 phase 3 `assertMailSharingFeature` runs on its
@@ -254,7 +259,7 @@ describe('grantInstance — authorizeInstanceTarget gates on THIS instance (§B.
     expect(resourceAccess.assertMailSharingFeature).toHaveBeenCalledWith(
       expect.anything(),
       DATASET_RECORD_ID,
-      [expect.objectContaining({ permission: ResourcePermission.view })]
+      [expect.objectContaining({ rung: 'read' })]
     )
   })
 
@@ -263,7 +268,7 @@ describe('grantInstance — authorizeInstanceTarget gates on THIS instance (§B.
       recordId: CONTACT_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission: ResourcePermission.view,
+      rung: 'read',
     })
     expect(getCapabilities).not.toHaveBeenCalled()
     expect(resourceAccess.assertCanManageMailSharing).toHaveBeenCalledTimes(1)
@@ -271,7 +276,7 @@ describe('grantInstance — authorizeInstanceTarget gates on THIS instance (§B.
   })
 
   it('revokeInstance is gated the same way — an edit holder cannot un-share', async () => {
-    getCapabilities.mockResolvedValue(capabilitiesFor(ResourcePermission.edit))
+    getCapabilities.mockResolvedValue(capabilitiesFor('edit'))
 
     await expect(
       caller.revokeInstance({
@@ -296,12 +301,14 @@ describe('resourceAccess — structural invariants', () => {
     'utf8'
   )
 
-  it('setInstance accepts only view/edit/admin — Restricted funnels through grantInstance', () => {
+  it('setInstance accepts no `none` rung — Restricted funnels through grantInstance', () => {
     const from = src.indexOf('setInstance: protectedProcedure')
     const to = src.indexOf('.mutation(', from)
     const inputBlock = src.slice(from, to)
-    expect(inputBlock).toContain('ResourcePermission.view')
-    expect(inputBlock).not.toContain('ResourcePermission.none')
+    // Post-P3b the input is ONE `rung` field (plan v3/03 §3), and the
+    // replace-all mutations use `grantRungSchema` — the ladder minus `none`.
+    expect(inputBlock).toContain('rung: grantRungSchema')
+    expect(inputBlock).not.toContain("'none'")
   })
 
   it('every instance write authorizes through authorizeInstanceTarget', () => {

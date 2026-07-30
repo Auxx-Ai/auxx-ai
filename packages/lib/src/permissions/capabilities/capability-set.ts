@@ -1,33 +1,31 @@
 // packages/lib/src/permissions/capabilities/capability-set.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
-import { satisfiesPermission } from '../../resource-access/constants'
 import type { CapabilityView } from './capability-view'
 import {
   type ClientCapabilities,
   canAdministerRecord,
   canDeleteRecord,
+  canDeleteRecordAtRung,
   canEditRecord,
+  canEditRecordAtRung,
   canImportRecord,
   canViewRecord,
+  type GrantedDefIds,
   type InstanceListScope,
   instanceFallbackLevel,
   instanceListScope,
-  levelToPermission,
+  levelToRung,
   NON_RECORD_DEF_SLUGS,
   type OrgSharedInstanceAccessKey,
   type ResolvedRecordAccess,
+  recordDefRung,
 } from './entity-access'
 import { INSTANCE_ACCESS_RESOURCES, type InstanceAccessKey } from './instance-access'
-import {
-  type Area,
-  areaLevelFromKeys,
-  Level,
-  PERMISSION_REGISTRY_MAP,
-  PermissionKey,
-} from './registry'
+import { Area, areaLevelFromKeys, Level, PERMISSION_REGISTRY_MAP, PermissionKey } from './registry'
+import { foldRecordAccess, satisfiesRung } from './rung'
 import { ENTITY_WRITE_KEYS, SEAT_CEILINGS } from './seat-policy'
 
 /**
@@ -104,14 +102,19 @@ export class CapabilitySet implements CapabilityView {
     private readonly defIdToSlug: DefIdToSlug = (id) => id,
     private readonly restrictedDefIds: ReadonlySet<string> = new Set(),
     private readonly defIdToDefinitionId: DefIdToSlug = (id) => id,
-    private readonly instanceAccess: Readonly<Record<string, ResourcePermission>> = {},
+    private readonly instanceAccess: Readonly<Record<string, Rung>> = {},
     private readonly governingInstanceIds: ReadonlySet<string> = new Set(),
     private readonly defBaseOverrides: Readonly<Record<string, ResourcePermission | null>> = {},
     private readonly instanceDerivedKeys: ReadonlySet<PermissionKey> = new Set(),
     // Appended rather than slotted beside `instanceAccess` (plan 43 §4.1): these
     // are positional parameters with ~15 construction sites, and re-ordering them
     // would silently re-bind every one that passes the tail arguments.
-    private readonly baselineInstanceAccess: Readonly<Record<string, ResourcePermission>> = {}
+    private readonly baselineInstanceAccess: Readonly<Record<string, Rung>> = {},
+    // Appended for the same reason (plan v3/03 P5). See
+    // {@link import('./entity-access').GrantedDefIds} — including the note that
+    // its compose-time population is wired by a separate slice, so the default
+    // `{}` is what every construction site produces today: a CLOSED front door.
+    private readonly grantedDefIds: GrantedDefIds = {}
   ) {}
 
   /**
@@ -190,6 +193,7 @@ export class CapabilitySet implements CapabilityView {
       defAccess: this.defAccess,
       restrictedEntityDefIds: this.restrictedDefIds,
       defBaseOverrides: this.defBaseOverrides,
+      grantedDefIds: this.grantedDefIds,
     }
   }
 
@@ -209,6 +213,9 @@ export class CapabilitySet implements CapabilityView {
       instanceAccess: { ...this.instanceAccess },
       baselineInstanceAccess: { ...this.baselineInstanceAccess },
       governingInstanceIds: [...this.governingInstanceIds],
+      // The front door rides the wire (contract §1) so the client's nav filter,
+      // route gate and column metadata resolve it identically to the server.
+      grantedDefIds: { ...this.grantedDefIds },
     }
   }
 
@@ -320,6 +327,81 @@ export class CapabilitySet implements CapabilityView {
   }
 
   /**
+   * **The front door** (plan v3/03 §6.1) — `canViewEntity(def) ||
+   * grantedDefIds[def]`. See {@link CapabilityView.hasDefPresence}. Zero I/O.
+   */
+  hasDefPresence(entityDefId: string): boolean {
+    if (this.canViewEntity(entityDefId)) return true
+    return this.hasRecordGrantsOn(entityDefId)
+  }
+
+  /**
+   * Whether the member holds ≥1 per-record grant on the def — the raw
+   * {@link GrantedDefIds} lookup, in the canonical `entityDefinitionId`
+   * keyspace. Zero I/O.
+   */
+  hasRecordGrantsOn(entityDefId: string): boolean {
+    return Boolean(this.grantedDefIds[this.defIdToDefinitionId(entityDefId)])
+  }
+
+  /**
+   * The member's DEF-level record authority on the {@link Rung} ladder — the def
+   * half of the `_access` stamp (plan v3/03 §5.2). Zero I/O.
+   */
+  recordDefRung(entityDefId: string): Rung | undefined {
+    if (this.isMailInfraDef(entityDefId)) return undefined
+    return recordDefRung(this.resolved(), this.defIdToDefinitionId(entityDefId))
+  }
+
+  /**
+   * The **row-effective** rung: the def level folded with a row's aggregated
+   * grant rank (§5.2). Zero I/O — `grantRank` was resolved in the row's own
+   * query by `recordAccessRankSql`.
+   *
+   * The SEAT ceiling is applied HERE, on the fold, and that placement is
+   * load-bearing: `recordDefRung` goes through `effectiveRecordLevel` and is
+   * already clamped, but the grant half comes straight off `ResourceAccess` rows
+   * that know nothing about seats. Without this a worker seat — whose
+   * `Area.records` is not in `WORKER_AREAS` and is therefore clamped to `None` —
+   * would be handed `edit` or `admin` on any row somebody shared with it, i.e. a
+   * billing invariant defeated by a share. Same shape as
+   * {@link import('./entity-access').effectiveRecordLevel}'s own ceiling check.
+   */
+  recordAccessAt(entityDefId: string, grantRank: number | null): Rung {
+    if (SEAT_CEILINGS[this.seatType][Area.records] === Level.None) return 'none'
+    return foldRecordAccess(this.recordDefRung(entityDefId), grantRank)
+  }
+
+  /**
+   * Row-effective DELETE gate (§5.3) — the shipped delete rule read at the
+   * `_access` stamp rather than at the def level. Zero I/O.
+   */
+  canDeleteRecordAt(access: Rung): boolean {
+    return canDeleteRecordAtRung(this.resolved(), access)
+  }
+
+  /** {@link canDeleteRecordAt} as a throwing guard (403). */
+  assertDeleteRecordAt(access: Rung): void {
+    if (this.canDeleteRecordAt(access)) return
+    throw new ForbiddenError("You don't have permission to delete these records.")
+  }
+
+  /**
+   * Row-effective EDIT gate (§5.3) — the `edit` floor read at the `_access`
+   * stamp. Zero I/O. See {@link CapabilityView.canEditRecordAt} for why the
+   * def-level {@link canEditEntity} cannot answer this question for a row.
+   */
+  canEditRecordAt(access: Rung): boolean {
+    return canEditRecordAtRung(access)
+  }
+
+  /** {@link canEditRecordAt} as a throwing guard (403). */
+  assertEditRecordAt(access: Rung): void {
+    if (this.canEditRecordAt(access)) return
+    throw new ForbiddenError("You don't have permission to edit these records.")
+  }
+
+  /**
    * Mail/messaging infrastructure def check ({@link NON_RECORD_DEF_SLUGS}),
    * matched on both the raw def-part and its resolved entity slug.
    */
@@ -406,12 +488,9 @@ export class CapabilitySet implements CapabilityView {
    * `capability-set-instance.test.ts` and `area-baseline-gate.test.ts` assert
    * both on every case.
    */
-  private effectiveInstanceLevel(
-    key: InstanceAccessKey,
-    instanceId: string
-  ): ResourcePermission | undefined {
+  private effectiveInstanceLevel(key: InstanceAccessKey, instanceId: string): Rung | undefined {
     const cfg = INSTANCE_ACCESS_RESOURCES[key]
-    if (this.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
+    if (this.role === 'OWNER' && !cfg.baselineAtCreate) return 'admin'
     if (SEAT_CEILINGS[this.seatType][cfg.area] === Level.None) return undefined
 
     // 1. An individual grant (user / group / profile) ALWAYS wins — #1346, and it is
@@ -428,7 +507,7 @@ export class CapabilitySet implements CapabilityView {
     const baseline = this.baselineInstanceAccess[instanceId]
     if (baseline !== undefined) return baseline
     if (this.governingInstanceIds.has(instanceId)) return undefined
-    return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
+    return cfg.baselineAtCreate ? undefined : levelToRung(areaLevel)
   }
 
   /**
@@ -474,7 +553,7 @@ export class CapabilitySet implements CapabilityView {
    *
    * Not a substitute for {@link assertViewInstance} on a request path. Zero I/O.
    */
-  instanceLevel(key: InstanceAccessKey, instanceId: string): ResourcePermission | undefined {
+  instanceLevel(key: InstanceAccessKey, instanceId: string): Rung | undefined {
     return this.effectiveInstanceLevel(key, instanceId)
   }
 
@@ -484,26 +563,26 @@ export class CapabilitySet implements CapabilityView {
    * {@link import('./entity-access').instanceFallbackLevel}. Lets a bulk read
    * cover "every other instance of this type" with one value. Zero I/O.
    */
-  instanceFallbackLevel(key: InstanceAccessKey): ResourcePermission | undefined {
+  instanceFallbackLevel(key: InstanceAccessKey): Rung | undefined {
     return instanceFallbackLevel(this.resolved(), key)
   }
 
   /** Whether the member may VIEW the instance (Read). Zero I/O. */
   canViewInstance(key: InstanceAccessKey, instanceId: string): boolean {
     const level = this.effectiveInstanceLevel(key, instanceId)
-    return level !== undefined && satisfiesPermission(level, ResourcePermission.view)
+    return level !== undefined && satisfiesRung(level, 'read')
   }
 
   /** Whether the member may EDIT the instance's contents (Write). Zero I/O. */
   canEditInstance(key: InstanceAccessKey, instanceId: string): boolean {
     const level = this.effectiveInstanceLevel(key, instanceId)
-    return level !== undefined && satisfiesPermission(level, ResourcePermission.edit)
+    return level !== undefined && satisfiesRung(level, 'edit')
   }
 
   /** Whether the member may ADMINISTER the instance + its settings (Full). Zero I/O. */
   canAdminInstance(key: InstanceAccessKey, instanceId: string): boolean {
     const level = this.effectiveInstanceLevel(key, instanceId)
-    return level !== undefined && satisfiesPermission(level, ResourcePermission.admin)
+    return level !== undefined && satisfiesRung(level, 'admin')
   }
 
   /** {@link canViewInstance} as a throwing guard (403). */

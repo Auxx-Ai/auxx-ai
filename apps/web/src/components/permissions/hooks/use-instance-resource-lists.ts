@@ -92,7 +92,7 @@ export function useInstanceResourceLists(
   // access defs on its MUTATION arm only, and the mail keys are explicitly
   // exempted on its READ arm (`record.ts` `MAIL_READ_EXEMPT_KEYS`) because the
   // records capability layer was never an inbox's access authority —
-  // `userMailVisibility` is. Adding an `inbox.list` procedure would not have
+  // `userInstanceGrants` is. Adding an `inbox.list` procedure would not have
   // closed anything either, since `record.getByIds` is an intentionally
   // MIXED-def batch and cannot move.
   // `fieldKeys` rather than the full fan-out: this list needs the NAME and

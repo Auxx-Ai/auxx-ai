@@ -7,12 +7,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Plan 40 §5.1 / §12 — the phase-0b ROUTER regression.
  *
  * `ResourceAccess.entityDefinitionId` is a dual keyspace: mail defs are keyed by
- * SLUG (`composeUserMailVisibility:69` and `isMailSharingDef` both test the
+ * SLUG (`composeUserInstanceGrants:69` and `isMailSharingDef` both test the
  * literal), generic record defs by the def CUID. `inbox-detail.tsx` built the
  * inbox RecordId from the def CUID, so inbox grants landed in a keyspace mail
  * visibility never reads AND — because `isMailSharingDef` is a slug test —
- * skipped BOTH `assertCanManageMailSharing` and the enterprise
- * `mailPermissions` gate. Anyone with `channels.manage` wrote inbox grants
+ * skipped BOTH `assertCanManageMailSharing` and the plan
+ * `granularPermissions` plan gate. Anyone with `channels.manage` wrote inbox grants
  * unguarded, and the grant then did nothing.
  *
  * Both halves are pinned here, together, because they have ONE cause: the
@@ -52,7 +52,7 @@ const { getCapabilities, resourceAccess, isAdminOrOwner, recordAuditFromCtx, get
 // the mail-sharing guard's db/permissions dependencies into the test.
 vi.mock('@auxx/lib/resource-access', async () => {
   const { isMailSharingDef } = await import('@auxx/lib/resource-access/mail-sharing-defs')
-  return { ...resourceAccess, isMailSharingDef }
+  return { ...resourceAccess, isMailSharingDef, ORG_MEMBER_GRANTEE_ID: 'org_member' }
 })
 vi.mock('@auxx/lib/members', () => ({ isAdminOrOwner }))
 vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx }))
@@ -116,6 +116,20 @@ const RESOURCES = [
 ]
 
 const assertAdminInstance = vi.fn()
+/**
+ * The record-lane and read-lane asserts plan v3/03 §7.1/§7.2 added. Permissive
+ * here on purpose: this file's subject is the KEYSPACE the authorizers see, not
+ * which answer they give — the record lane's own denials live in
+ * `resource-access-record-lane.test.ts`.
+ */
+const assertEditEntity = vi.fn()
+const assertViewEntity = vi.fn()
+const assertViewInstance = vi.fn()
+// Plan v3/03 P5 — the record lane's share gate now takes the DEF branch first
+// (`canEditEntity`) and only falls through to the row-effective read when that
+// says no. Permissive here for the same reason the asserts above are: this
+// file's subject is the KEYSPACE, not the answer.
+const canEditEntity = vi.fn(() => true)
 
 const caller = resourceAccessRouter.createCaller({
   db: {},
@@ -153,7 +167,18 @@ beforeEach(() => {
   recordAuditFromCtx.mockReset()
   assertAdminInstance.mockReset()
   getCapabilities.mockReset()
-  getCapabilities.mockResolvedValue({ assertAdminInstance, areaLevel: vi.fn() })
+  assertEditEntity.mockReset()
+  assertViewEntity.mockReset()
+  assertViewInstance.mockReset()
+  canEditEntity.mockClear()
+  getCapabilities.mockResolvedValue({
+    assertAdminInstance,
+    assertEditEntity,
+    assertViewEntity,
+    assertViewInstance,
+    canEditEntity,
+    areaLevel: vi.fn(),
+  })
   getCachedResources.mockReset()
   getCachedResources.mockResolvedValue(RESOURCES)
 })
@@ -169,8 +194,7 @@ describe('a CUID-keyed inbox grant is canonicalized BEFORE it is authorized (§5
       recordId: CUID_INBOX_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission: ResourcePermission.view,
-      lens: 'subject',
+      rung: 'identity',
     })
 
   it('grantInstance (a): the row lands in the keyspace mail visibility reads', async () => {
@@ -191,8 +215,7 @@ describe('a CUID-keyed inbox grant is canonicalized BEFORE it is authorized (§5
       recordId: CUID_CONTACT_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission: ResourcePermission.view,
-      lens: 'subject',
+      rung: 'identity',
     })
     expect(resourceAccess.assertCanManageMailSharing).toHaveBeenCalledWith(
       expect.anything(),
@@ -213,7 +236,7 @@ describe('a CUID-keyed inbox grant is canonicalized BEFORE it is authorized (§5
     await caller.setInstance({
       recordId: CUID_INBOX_RECORD_ID,
       granteeType: ResourceGranteeType.user,
-      grants: [{ granteeId: 'usr_grantee', permission: ResourcePermission.admin, lens: null }],
+      grants: [{ granteeId: 'usr_grantee', rung: 'admin' }],
     })
 
     expect(resourceAccess.setInstanceAccess).toHaveBeenCalledWith(
@@ -247,13 +270,21 @@ describe('a CUID-keyed inbox grant is canonicalized BEFORE it is authorized (§5
     )
   })
 
+  it('forInstance: the READ AUTHORIZER also runs on the canonical key (§7.2)', async () => {
+    // `forInstance` had NO authorization at all before plan v3/03 §7.2. Now that it
+    // has one, canonicalization has to precede it for the same reason it precedes
+    // the write authorizers: a gate resolved on a key nothing recognises is a gate
+    // that answers about the wrong instance.
+    await caller.forInstance({ recordId: CUID_INBOX_RECORD_ID })
+    expect(assertViewInstance).toHaveBeenCalledWith('inbox', INBOX_ID)
+  })
+
   it('audits the canonical key, so the log and the row agree', async () => {
     await caller.grantInstance({
       recordId: CUID_INBOX_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission: ResourcePermission.view,
-      lens: null,
+      rung: 'read',
     })
     expect(recordAuditFromCtx).toHaveBeenCalledWith(
       expect.anything(),
@@ -266,8 +297,7 @@ describe('a CUID-keyed inbox grant is canonicalized BEFORE it is authorized (§5
       recordId: SLUG_INBOX_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission: ResourcePermission.view,
-      lens: null,
+      rung: 'read',
     })
     expect(resourceAccess.grantInstanceAccess).toHaveBeenCalledWith(
       expect.anything(),
@@ -282,8 +312,7 @@ describe('canonicalization is scoped to mail defs — the negative control', () 
       recordId: CUSTOM_RECORD_ID,
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission: ResourcePermission.view,
-      lens: null,
+      rung: 'read',
     })
     expect(resourceAccess.grantInstanceAccess).toHaveBeenCalledWith(
       expect.anything(),
@@ -292,13 +321,16 @@ describe('canonicalization is scoped to mail defs — the negative control', () 
   })
 
   it('a non-mail instance-access key never reaches the mail authorizer', async () => {
-    getCapabilities.mockResolvedValue({ assertAdminInstance: vi.fn() })
+    getCapabilities.mockResolvedValue({
+      assertAdminInstance: vi.fn(),
+      assertEditEntity,
+      canEditEntity,
+    })
     await caller.grantInstance({
       recordId: 'dataset:dset_1',
       granteeType: ResourceGranteeType.user,
       granteeId: 'usr_grantee',
-      permission: ResourcePermission.view,
-      lens: null,
+      rung: 'read',
     })
     expect(resourceAccess.assertCanManageMailSharing).not.toHaveBeenCalled()
     expect(resourceAccess.grantInstanceAccess).toHaveBeenCalledWith(

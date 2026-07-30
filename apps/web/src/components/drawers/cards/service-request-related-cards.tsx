@@ -89,7 +89,6 @@ export function ServiceRequestQuotesCard({ recordId }: DrawerTabProps) {
         },
       ],
       limit: 1,
-      mode: 'oneshot',
     },
     { enabled: !!recordId }
   )

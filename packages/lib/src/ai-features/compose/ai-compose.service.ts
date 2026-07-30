@@ -157,8 +157,8 @@ export class AIComposeService {
     try {
       // AI compose inherits the invoking user's lens (mail-permissions §8.1):
       // an invisible thread 404s, a sub-full one yields blanked bodies.
-      const { getCachedUserMailVisibility } = await import('../../cache')
-      const viewer = await getCachedUserMailVisibility(userId, organizationId)
+      const { getCachedUserInstanceGrants } = await import('../../cache')
+      const viewer = await getCachedUserInstanceGrants(userId, organizationId)
       const messageQuery = new MessageQueryService(organizationId, this.db, viewer)
       const { messages: rawMessages } = await messageQuery.getMessagesByThread(threadId)
 

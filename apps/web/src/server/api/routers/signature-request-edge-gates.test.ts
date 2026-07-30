@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/signature-request-edge-gates.test.ts
 
 import { schema } from '@auxx/database'
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -89,7 +89,7 @@ const { mail, drafts, sequences, cache, caps } = vi.hoisted(() => ({
 
 vi.mock('@auxx/lib/cache', () => ({
   findCachedResource: cache.findCachedResource,
-  getCachedUserMailVisibility: async () => ({ userId: USER_ID, inboxIds: [] }),
+  getCachedUserInstanceGrants: async () => ({ userId: USER_ID, inboxIds: [] }),
   getCachedEntityDefId: async () => 'edf_ticket000000000000000000',
   getOrgCache: () => ({ get: async () => [] }),
 }))
@@ -352,13 +352,13 @@ beforeEach(() => {
   sequences.checkSequenceAccess.mockResolvedValue(true)
   cache.findCachedResource.mockReset()
   cache.findCachedResource.mockResolvedValue({ entityDefinitionId: SIGNATURE_DEF_ID })
-  caps.current = capabilitiesFor(ResourcePermission.view)
+  caps.current = capabilitiesFor('read')
 })
 
 describe('signature request-edge gates — another member’s private signature is refused', () => {
   it.each(EDGES)('%s refuses it with 403', async (_name, call, mock) => {
     // The live leak, pinned: without the gate this reads OTHERS' signature HTML.
-    caps.current = capabilitiesFor(ResourcePermission.view)
+    caps.current = capabilitiesFor('read')
     await expect(call(OTHERS)).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
@@ -370,7 +370,7 @@ describe('signature request-edge gates — another member’s private signature 
   })
 
   it.each(EDGES)('%s refuses an explicit `none` row', async (_n, call, mock) => {
-    caps.current = capabilitiesFor(ResourcePermission.none)
+    caps.current = capabilitiesFor('none')
     await expect(call(SHARED)).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
@@ -385,7 +385,7 @@ describe('signature request-edge gates — `view` is the tier, and null is a no-
   it.each(EDGES)('%s succeeds at instance `view`', async (_name, call, mock) => {
     // Stamping a signature on your own outgoing mail is READING it, not editing
     // it — an `edit`-tier gate here would break every shared signature.
-    caps.current = capabilitiesFor(ResourcePermission.view)
+    caps.current = capabilitiesFor('read')
     await expect(call(SHARED)).resolves.toBeDefined()
     expect(mock()).toHaveBeenCalledTimes(1)
   })
@@ -412,7 +412,7 @@ describe('signature request-edge gates — the headless carve-out', () => {
     // point is `sequence-send-email` in the worker and is out of reach from a
     // router test; plan §11 case 5 is the browser check for it. Stated rather
     // than faked.
-    caps.current = capabilitiesFor(ResourcePermission.view)
+    caps.current = capabilitiesFor('read')
     await send(SHARED)
     expect(mail.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ signatureId: SHARED, organizationId: ORG_ID, userId: USER_ID })
@@ -420,7 +420,7 @@ describe('signature request-edge gates — the headless carve-out', () => {
   })
 
   it('a `view` grant is enough — the sender is not asked for `edit`', async () => {
-    caps.current = capabilitiesFor(ResourcePermission.view)
+    caps.current = capabilitiesFor('read')
     await expect(send(SHARED)).resolves.toBeDefined()
     await expect(upsert(SHARED)).resolves.toBeDefined()
   })
@@ -431,14 +431,14 @@ describe('signature request-edge gates — ordering', () => {
     // Otherwise a member with no access to the sequence learns whether a given
     // signature id exists in the org by watching 403 flip to 404.
     sequences.checkSequenceAccess.mockResolvedValue(false)
-    caps.current = capabilitiesFor(ResourcePermission.view)
+    caps.current = capabilitiesFor('read')
     await expect(pin(FOREIGN)).rejects.toMatchObject({ code: 'FORBIDDEN' })
     expect(cache.findCachedResource).not.toHaveBeenCalled()
   })
 
   it('thread.sendMessage gates BEFORE the try, so the failure is 403 and not 500', async () => {
     // `sendMessage`'s catch flattens unknown errors to INTERNAL_SERVER_ERROR.
-    caps.current = capabilitiesFor(ResourcePermission.view)
+    caps.current = capabilitiesFor('read')
     await expect(send(OTHERS)).rejects.toMatchObject({
       cause: { name: 'ForbiddenError', statusCode: 403 },
     })

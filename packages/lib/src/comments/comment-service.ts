@@ -7,7 +7,7 @@ import type {
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { getCachedResources } from '../cache/org-cache-helpers'
-import { getCachedUserMailVisibility } from '../cache/user-cache-helpers'
+import { getCachedUserInstanceGrants } from '../cache/user-cache-helpers'
 import { touchActivityForThreadLinks, touchEntityActivity } from '../entity-instances/activity'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { publisher } from '../events'
@@ -237,7 +237,7 @@ export class CommentService {
 
     if (this.capabilities) {
       if (slug === 'thread') {
-        const viewer = await getCachedUserMailVisibility(this.userId, this.organizationId)
+        const viewer = await getCachedUserInstanceGrants(this.userId, this.organizationId)
         const lens = await getThreadLens(this.db, this.organizationId, viewer, entityInstanceId)
         if (lens === 'none') throw new ForbiddenError(message)
       }
@@ -288,7 +288,7 @@ export class CommentService {
     if (!this.capabilities || comment.createdById === this.userId) return comment
 
     if (parent.slug === 'thread') {
-      const viewer = await getCachedUserMailVisibility(this.userId, this.organizationId)
+      const viewer = await getCachedUserInstanceGrants(this.userId, this.organizationId)
       await assertCanActOnThreads(this.db, this.organizationId, viewer, [parent.entityInstanceId])
       if (viewer.isAdmin) return comment
       if (parent.inboxId) {
@@ -899,7 +899,7 @@ export class CommentService {
         `You don't have permission to pin this comment`
       )
       if (this.capabilities && parent.slug === 'thread') {
-        const viewer = await getCachedUserMailVisibility(this.userId, this.organizationId)
+        const viewer = await getCachedUserInstanceGrants(this.userId, this.organizationId)
         await assertCanActOnThreads(this.db, this.organizationId, viewer, [parent.entityInstanceId])
       }
       const [updatedComment] = await this.db

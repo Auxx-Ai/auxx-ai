@@ -8,7 +8,7 @@ import { useThread } from '~/components/threads/hooks'
 import { useAccess } from '~/providers/capabilities-provider'
 
 export type CommentParentKind = 'record' | 'thread' | 'unsupported'
-export type CommentThreadLens = 'none' | 'metadata' | 'subject' | 'full'
+export type CommentThreadLens = 'none' | 'metadata' | 'identity' | 'read'
 
 export interface ResolveCommentAccessInput {
   parentKind: CommentParentKind
@@ -56,7 +56,7 @@ export function resolveCommentAccess({
   const canCompose = commentsView && commentsManage && canViewParent
 
   if (parentKind === 'thread') {
-    const hasFullLens = threadLens === 'full'
+    const hasFullLens = threadLens === 'read'
     return {
       parentKind,
       canViewComments,
@@ -108,7 +108,7 @@ export function useCommentAccess(recordId: RecordId | null | undefined): Comment
     enabled: shouldLoadThread,
   })
 
-  const threadLens: CommentThreadLens = thread ? (thread.myLens ?? 'full') : 'none'
+  const threadLens: CommentThreadLens = thread ? (thread.myLens ?? 'read') : 'none'
   const canViewParent =
     parentKind === 'thread'
       ? canViewInboxArea && threadLens !== 'none'

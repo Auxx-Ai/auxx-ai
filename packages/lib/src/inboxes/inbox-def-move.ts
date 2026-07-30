@@ -2,7 +2,9 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import type { Rung } from '@auxx/database/enums'
 import { and, eq, inArray } from 'drizzle-orm'
+import { RUNG_ORDER } from '../permissions/capabilities/rung'
 import type { InboxDef } from '../resource-access/mail-sharing-defs'
 
 /**
@@ -127,27 +129,33 @@ export interface GrantRow {
   id: string
   granteeType: string
   granteeId: string
-  permission: string
-  lens: string | null
+  rung: string
 }
 
 export interface GrantRekeyPlan {
   /** Source-keyspace rows with no counterpart — flipped in place, ids and `createdAt` preserved. */
   recode: string[]
   /** Existing target-keyspace rows the source row is STRONGER than — raised, then the source row goes. */
-  raise: { id: string; permission: string; lens: string | null }[]
+  raise: { id: string; rung: string }[]
   /** Source-keyspace rows superseded by a target-keyspace row (never dropped before the raise). */
   drop: string[]
 }
 
-const PERMISSION_RANK: Record<string, number> = { none: 0, view: 1, edit: 2, admin: 3 }
-const LENS_RANK: Record<string, number> = { none: 0, metadata: 1, subject: 2, full: 3 }
-
-/** Rank a grant so a collision is resolved by strength, explicitly. */
-function grantStrength(row: Pick<GrantRow, 'permission' | 'lens'>): number {
-  const base = (PERMISSION_RANK[row.permission] ?? 0) * 10
-  // `lens` only discriminates `view` rows; `edit`/`admin` imply full and carry null.
-  return base + (row.permission === 'view' ? (LENS_RANK[row.lens ?? 'full'] ?? 3) : 3)
+/**
+ * Rank a grant so a collision is resolved by strength, explicitly.
+ *
+ * One `RUNG_ORDER` lookup since plan v3/03 P3b. It used to be
+ * `PERMISSION_RANK * 10 + LENS_RANK`, a private third ordinal table built to
+ * re-interleave two columns that encoded ONE ladder between them — which is
+ * exactly the redundancy the single `rung` column removes.
+ *
+ * `?? -1` survives the shared table: `row.rung` is a raw `string` off the row,
+ * so a value outside the ladder must rank BELOW `none` rather than produce
+ * `NaN` (every `>` against `NaN` is false, which would silently make the
+ * collision rule "keep the counterpart, always").
+ */
+function grantStrength(row: Pick<GrantRow, 'rung'>): number {
+  return RUNG_ORDER[row.rung as Rung] ?? -1
 }
 
 /**
@@ -165,7 +173,7 @@ function grantStrength(row: Pick<GrantRow, 'permission' | 'lens'>): number {
  * downgraded a creator-Manager from `admin` to `view`. Here the STRONGER of the
  * two always wins, and the source row is only dropped after the surviving row
  * has been raised to match it — so no ordering of partial failures can lose a
- * permission.
+ * rung.
  */
 export function planGrantRekey(input: {
   legacy: readonly GrantRow[]
@@ -183,7 +191,7 @@ export function planGrantRekey(input: {
       continue
     }
     if (grantStrength(row) > grantStrength(counterpart)) {
-      plan.raise.push({ id: counterpart.id, permission: row.permission, lens: row.lens })
+      plan.raise.push({ id: counterpart.id, rung: row.rung })
     }
     plan.drop.push(row.id)
   }
@@ -285,7 +293,7 @@ export async function moveInboxInstance(
  * Re-key one instance's `ResourceAccess` rows from `fromKey` to `toKey`.
  *
  * Mail grants live in the SLUG keyspace (`mail-sharing-defs.ts`), so the def
- * move is only half done until these rows follow: `composeUserMailVisibility`,
+ * move is only half done until these rows follow: `composeUserInstanceGrants`,
  * `mailGrantIndexProvider` and `hasPermission` all match
  * `ResourceAccess.entityDefinitionId` literally, and a row left behind is a
  * grant that silently stops being read.
@@ -302,8 +310,7 @@ export async function rekeyInboxGrants(
       entityDefinitionId: schema.ResourceAccess.entityDefinitionId,
       granteeType: schema.ResourceAccess.granteeType,
       granteeId: schema.ResourceAccess.granteeId,
-      permission: schema.ResourceAccess.permission,
-      lens: schema.ResourceAccess.lens,
+      rung: schema.ResourceAccess.rung,
     })
     .from(schema.ResourceAccess)
     .where(
@@ -324,7 +331,7 @@ export async function rekeyInboxGrants(
   for (const raise of plan.raise) {
     await db
       .update(schema.ResourceAccess)
-      .set({ permission: raise.permission as never, lens: raise.lens as never })
+      .set({ rung: raise.rung as never })
       .where(eq(schema.ResourceAccess.id, raise.id))
   }
 

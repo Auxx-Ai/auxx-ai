@@ -1,12 +1,13 @@
 // packages/lib/src/permissions/capabilities/capability-view.test.ts
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import { describe, expect, it, vi } from 'vitest'
 import { ForbiddenError } from '../../errors'
 import type { CapabilityView } from './capability-view'
 import { intersectCapabilities, MinCapabilitySet } from './capability-view'
 import type { InstanceAccessKey } from './instance-access'
-import { type Area, Level, type PermissionKey } from './registry'
+import { type Area, Level, PermissionKey } from './registry'
+import { foldRecordAccess, satisfiesRung } from './rung'
 
 /**
  * `MinCapabilitySet` is the intersection used for human-triggered agent runs
@@ -24,6 +25,10 @@ type Stub = {
   access?: Record<string, ResourcePermission>
   instances?: string[]
   areaLevels?: Partial<Record<Area, Level>>
+  /** Defs the principal holds per-record grants on (the P5 front door). */
+  granted?: string[]
+  /** Def-level rung per def — the def half of the `_access` stamp. */
+  defRungs?: Record<string, Rung>
   label?: string
 }
 
@@ -54,6 +59,16 @@ function stub(opts: Stub): CapabilityView {
       if (!self.canViewEntity(id)) deny()
     },
     filterViewableDefIds: (ids) => ids.filter((id) => self.canViewEntity(id)),
+    // Plan v3/03 P5 — the record-lane members. `granted` is the front-door
+    // allow-list; `defRungs` the per-def stamp source.
+    hasDefPresence: (id) => self.canViewEntity(id) || has(opts.granted, id),
+    hasRecordGrantsOn: (id) => has(opts.granted, id),
+    recordDefRung: (id) => opts.defRungs?.[id],
+    recordAccessAt: (id, grantRank) => foldRecordAccess(opts.defRungs?.[id], grantRank),
+    canDeleteRecordAt: (access) =>
+      satisfiesRung(access, 'edit') &&
+      ((opts.keys ?? []).includes(PermissionKey.recordsDelete) || satisfiesRung(access, 'admin')),
+    canEditRecordAt: (access) => satisfiesRung(access, 'edit'),
     viewAccessFor: (id) => opts.access?.[id],
     canAdministerDef: (id) => has(opts.admin, id),
     assertAdministerDef: (id) => {

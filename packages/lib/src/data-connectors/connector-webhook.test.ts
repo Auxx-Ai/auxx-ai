@@ -17,7 +17,6 @@ const {
   prepareConnectorFetch,
   sinkSourceRecord,
   archiveExternalId,
-  invalidateSnapshots,
   ConnectorRateLimitError,
   fetchFn,
   deleteWhere,
@@ -43,7 +42,6 @@ const {
     prepareConnectorFetch: vi.fn(),
     sinkSourceRecord: vi.fn(),
     archiveExternalId: vi.fn(),
-    invalidateSnapshots: vi.fn(),
     ConnectorRateLimitError,
     fetchFn: vi.fn(),
     deleteWhere: vi.fn(),
@@ -64,9 +62,6 @@ vi.mock('../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     async warmCache() {}
   },
-}))
-vi.mock('../snapshot', () => ({
-  invalidateSnapshots: (...a: unknown[]) => invalidateSnapshots(...a),
 }))
 vi.mock('./connector-runtime', () => ({
   prepareConnectorFetch: (...a: unknown[]) => prepareConnectorFetch(...a),
@@ -180,10 +175,6 @@ describe('runWebhookSteeredRun', () => {
       'dc1',
       expect.objectContaining({ ok: true, itemCount: 5 })
     )
-    expect(invalidateSnapshots).toHaveBeenCalledWith({
-      organizationId: 'org1',
-      resourceType: 'def1',
-    })
   })
 
   it('archives by externalId on a delete steer and never fetches', async () => {

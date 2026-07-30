@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/agent-instance-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level, PermissionKey } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -172,10 +172,10 @@ const FORBIDDEN = { cause: { name: 'ForbiddenError', statusCode: 403 } }
 const NOT_FOUND = { cause: { name: 'NotFoundError', statusCode: 404 } }
 
 const AREA_LEVEL_OF: Record<ResourcePermission, Level> = {
-  [ResourcePermission.none]: Level.None,
-  [ResourcePermission.view]: Level.Read,
-  [ResourcePermission.edit]: Level.Edit,
-  [ResourcePermission.admin]: Level.Full,
+  ['none']: Level.None,
+  ['read']: Level.Read,
+  ['edit']: Level.Edit,
+  ['admin']: Level.Full,
 }
 
 /**
@@ -210,8 +210,7 @@ function capabilitiesFor(
   // coarse front door on every instance-asserted procedure.
   const derived =
     opts.derivedKeys ??
-    (seatType !== 'worker' &&
-    Object.values(instances).some((p) => p !== ResourcePermission.none && p !== undefined)
+    (seatType !== 'worker' && Object.values(instances).some((p) => p !== 'none' && p !== undefined)
       ? [PermissionKey.agentsView]
       : [])
   return new CapabilitySet(
@@ -351,9 +350,9 @@ describe('agent router — `getById` asserts on the RESOLVED id, not the raw inp
     // The detail page routes by slug. `assertViewInstance('agent', <slug>)` would
     // find no ResourceAccess row for `escalation-lead`, fall back to the area
     // level (None here) and 403 a member who genuinely holds the agent.
-    const caps = capabilitiesFor(ResourcePermission.view, {
-      areaPermission: ResourcePermission.none,
-      instances: { [AGENT_ID]: ResourcePermission.view },
+    const caps = capabilitiesFor('read', {
+      areaPermission: 'none',
+      instances: { [AGENT_ID]: 'read' },
     })
     await expect(caller(caps).getById({ agentId: AGENT_SLUG })).resolves.toEqual({ id: AGENT_ID })
     // …and the service is handed the RESOLVED id, never the slug.
@@ -365,9 +364,9 @@ describe('agent router — `getById` asserts on the RESOLVED id, not the raw inp
     // was explicitly restricted from this agent must not walk around the row by
     // asking for it by slug. Asserting on the raw slug finds no row, falls
     // through to the area level (`admin`) and hands the agent straight over.
-    const caps = capabilitiesFor(ResourcePermission.none, {
-      areaPermission: ResourcePermission.admin,
-      instances: { [AGENT_ID]: ResourcePermission.none },
+    const caps = capabilitiesFor('none', {
+      areaPermission: 'admin',
+      instances: { [AGENT_ID]: 'none' },
     })
     await expect(caller(caps).getById({ agentId: AGENT_SLUG })).rejects.toMatchObject(FORBIDDEN)
     expect(agents.getAgentDetailByIdOrSlug).not.toHaveBeenCalled()
@@ -377,7 +376,7 @@ describe('agent router — `getById` asserts on the RESOLVED id, not the raw inp
     // The resolver is the ONE authority (`assertAgentAccess`), so the slug path
     // works uniformly — a caller that passes a slug to `update` gets the same
     // treatment, and the service receives the id.
-    const caps = capabilitiesFor(ResourcePermission.edit)
+    const caps = capabilitiesFor('edit')
     await expect(
       caller(caps).update({ agentId: AGENT_SLUG, prompt: { type: 'doc' } })
     ).resolves.toBeUndefined()
@@ -390,7 +389,7 @@ describe('agent router — `getById` asserts on the RESOLVED id, not the raw inp
     // An agent id from another org must not be distinguishable from one this
     // member is restricted from — both end as NotFoundError.
     await expect(
-      caller(capabilitiesFor(ResourcePermission.admin)).getById({ agentId: 'agt_missing' })
+      caller(capabilitiesFor('admin')).getById({ agentId: 'agt_missing' })
     ).rejects.toMatchObject(NOT_FOUND)
     expect(agents.getAgentDetailByIdOrSlug).not.toHaveBeenCalled()
   })
@@ -398,7 +397,7 @@ describe('agent router — `getById` asserts on the RESOLVED id, not the raw inp
 
 describe('agent router — the view tier', () => {
   it.each(VIEW_READS)('%s succeeds at instance view', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).resolves.toBeDefined()
+    await expect(call(caller(capabilitiesFor('read')))).resolves.toBeDefined()
     expect(mock()).toHaveBeenCalledTimes(1)
   })
 
@@ -406,9 +405,9 @@ describe('agent router — the view tier', () => {
     await expect(
       call(
         caller(
-          capabilitiesFor(ResourcePermission.none, {
-            areaPermission: ResourcePermission.admin,
-            instances: { [AGENT_ID]: ResourcePermission.none },
+          capabilitiesFor('none', {
+            areaPermission: 'admin',
+            instances: { [AGENT_ID]: 'none' },
           })
         )
       )
@@ -419,35 +418,29 @@ describe('agent router — the view tier', () => {
 
 describe('agent router — the edit tier', () => {
   it.each(EDIT_LEVEL)('%s succeeds at instance edit', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).resolves.not.toThrow()
+    await expect(call(caller(capabilitiesFor('edit')))).resolves.not.toThrow()
     expect(mock()).toHaveBeenCalledTimes(1)
   })
 
   it.each(EDIT_LEVEL)('%s is refused at instance view', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
 })
 
 describe('agent router — the admin tier', () => {
   it.each(ADMIN_ONLY)('%s succeeds at instance admin', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.admin)))).resolves.not.toThrow()
+    await expect(call(caller(capabilitiesFor('admin')))).resolves.not.toThrow()
     expect(mock()).toHaveBeenCalledTimes(1)
   })
 
   it.each(ADMIN_ONLY)('%s is refused at instance edit', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.edit)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('edit')))).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
 
   it.each(ADMIN_ONLY)('%s is refused at instance view', async (_name, call, mock) => {
-    await expect(call(caller(capabilitiesFor(ResourcePermission.view)))).rejects.toMatchObject(
-      FORBIDDEN
-    )
+    await expect(call(caller(capabilitiesFor('read')))).rejects.toMatchObject(FORBIDDEN)
     expect(mock()).not.toHaveBeenCalled()
   })
 
@@ -455,7 +448,7 @@ describe('agent router — the admin tier', () => {
     // The pair is easy to collapse: both destroy an agent row. `deleteDraft`
     // only ever touches an agent that never completed setup (no backing User,
     // nothing published), so it is authoring; `delete` destroys a live agent.
-    const editor = capabilitiesFor(ResourcePermission.edit)
+    const editor = capabilitiesFor('edit')
     await expect(caller(editor).deleteDraft({ agentId: AGENT_ID })).resolves.toBeUndefined()
     await expect(caller(editor).delete({ agentId: AGENT_ID })).rejects.toMatchObject(FORBIDDEN)
     expect(agents.deleteAgent).not.toHaveBeenCalled()
@@ -465,7 +458,7 @@ describe('agent router — the admin tier', () => {
 describe('agent router — `update` escalates on field PRESENCE', () => {
   it.each(EDIT_UPDATE_PAYLOADS)('carrying `%s` stays on the edit rung', async (_f, payload) => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({ agentId: AGENT_ID, ...payload })
+      caller(capabilitiesFor('edit')).update({ agentId: AGENT_ID, ...payload })
     ).resolves.toBeUndefined()
     expect(agents.updateAgent).toHaveBeenCalledTimes(1)
   })
@@ -474,7 +467,7 @@ describe('agent router — `update` escalates on field PRESENCE', () => {
     EDIT_UPDATE_PAYLOADS
   )('carrying `%s` is still refused at instance view', async (_f, p) => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).update({ agentId: AGENT_ID, ...p })
+      caller(capabilitiesFor('read')).update({ agentId: AGENT_ID, ...p })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(agents.updateAgent).not.toHaveBeenCalled()
   })
@@ -483,7 +476,7 @@ describe('agent router — `update` escalates on field PRESENCE', () => {
     ADMIN_UPDATE_PAYLOADS
   )('carrying `%s` escalates the save to Full — refused at instance edit', async (_f, payload) => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({
+      caller(capabilitiesFor('edit')).update({
         agentId: AGENT_ID,
         prompt: { type: 'doc' },
         ...payload,
@@ -496,7 +489,7 @@ describe('agent router — `update` escalates on field PRESENCE', () => {
     ADMIN_UPDATE_PAYLOADS
   )('carrying `%s` succeeds at instance admin', async (_f, payload) => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.admin)).update({ agentId: AGENT_ID, ...payload })
+      caller(capabilitiesFor('admin')).update({ agentId: AGENT_ID, ...payload })
     ).resolves.toBeUndefined()
     expect(agents.updateAgent).toHaveBeenCalledTimes(1)
   })
@@ -514,7 +507,7 @@ describe('agent router — `update` escalates on field PRESENCE', () => {
     // fails, and the router's escalation check has to become key-presence-based
     // (`field in patch`) to match.
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({
+      caller(capabilitiesFor('edit')).update({
         agentId: AGENT_ID,
         prompt: { type: 'doc' },
         runAsUserId: undefined,
@@ -534,7 +527,7 @@ describe('agent router — `update` escalates on field PRESENCE', () => {
     // whether a slug is taken by bundling one into the same payload.
     agents.isAgentSlugTaken.mockResolvedValue(true)
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).update({
+      caller(capabilitiesFor('edit')).update({
         agentId: AGENT_ID,
         slug: 'taken-slug',
         archivedAt: new Date(),
@@ -546,16 +539,16 @@ describe('agent router — `update` escalates on field PRESENCE', () => {
 
 describe('agent router — creating is the coarse `agentsManage` rung', () => {
   it('create is refused for a member at the agents Edit rung', async () => {
-    await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).create({ name: 'New' })
-    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(caller(capabilitiesFor('edit')).create({ name: 'New' })).rejects.toMatchObject(
+      FORBIDDEN
+    )
     expect(agents.createAgent).not.toHaveBeenCalled()
   })
 
   it('create succeeds once the member holds agents Full', async () => {
-    await expect(
-      caller(capabilitiesFor(ResourcePermission.admin)).create({ name: 'New' })
-    ).resolves.toMatchObject({ agentId: 'agt_new' })
+    await expect(caller(capabilitiesFor('admin')).create({ name: 'New' })).resolves.toMatchObject({
+      agentId: 'agt_new',
+    })
     expect(agents.createAgent).toHaveBeenCalledTimes(1)
   })
 
@@ -563,9 +556,7 @@ describe('agent router — creating is the coarse `agentsManage` rung', () => {
     // `deriveInstanceReadKeys` synthesizes the Read rung only, regardless of
     // grant strength — precisely so that a share cannot front-door `create`.
     await expect(
-      caller(
-        capabilitiesFor(ResourcePermission.admin, { areaPermission: ResourcePermission.none })
-      ).create({ name: 'New' })
+      caller(capabilitiesFor('admin', { areaPermission: 'none' })).create({ name: 'New' })
     ).rejects.toMatchObject(FORBIDDEN)
     expect(agents.createAgent).not.toHaveBeenCalled()
   })
@@ -579,11 +570,11 @@ describe('agent router — creating is the coarse `agentsManage` rung', () => {
    */
   it('checkSlug without excludeAgentId rides the coarse create rung', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).checkSlug({ slug: 'anything' })
+      caller(capabilitiesFor('edit')).checkSlug({ slug: 'anything' })
     ).rejects.toMatchObject(FORBIDDEN)
-    await expect(
-      caller(capabilitiesFor(ResourcePermission.admin)).checkSlug({ slug: 'anything' })
-    ).resolves.toEqual({ available: true })
+    await expect(caller(capabilitiesFor('admin')).checkSlug({ slug: 'anything' })).resolves.toEqual(
+      { available: true }
+    )
   })
 
   it('checkSlug with excludeAgentId is an instance edit check, not the create rung', async () => {
@@ -591,14 +582,15 @@ describe('agent router — creating is the coarse `agentsManage` rung', () => {
     // Full — `update` already lets them rename, so taking the preview away is an
     // affordance vanishing for no visible reason.
     await expect(
-      caller(
-        capabilitiesFor(ResourcePermission.edit, { areaPermission: ResourcePermission.none })
-      ).checkSlug({ slug: 'anything', excludeAgentId: AGENT_ID })
+      caller(capabilitiesFor('edit', { areaPermission: 'none' })).checkSlug({
+        slug: 'anything',
+        excludeAgentId: AGENT_ID,
+      })
     ).resolves.toEqual({ available: true })
 
     // …and it is still a real check: `view` on that agent is not enough.
     await expect(
-      caller(capabilitiesFor(ResourcePermission.view)).checkSlug({
+      caller(capabilitiesFor('read')).checkSlug({
         slug: 'anything',
         excludeAgentId: AGENT_ID,
       })
@@ -607,7 +599,7 @@ describe('agent router — creating is the coarse `agentsManage` rung', () => {
 
   it('checkSlug resolves excludeAgentId by slug, like every other instance assert', async () => {
     await expect(
-      caller(capabilitiesFor(ResourcePermission.edit)).checkSlug({
+      caller(capabilitiesFor('edit')).checkSlug({
         slug: 'anything',
         excludeAgentId: AGENT_SLUG,
       })
@@ -627,16 +619,16 @@ describe('agent router — `list` filters through all three instanceListScope ar
 
   it('EXCLUDE — an open area drops only the explicitly restricted agent', async () => {
     const result = await caller(
-      capabilitiesFor(ResourcePermission.admin, {
-        areaPermission: ResourcePermission.admin,
-        instances: { [OTHER_ID]: ResourcePermission.none },
+      capabilitiesFor('admin', {
+        areaPermission: 'admin',
+        instances: { [OTHER_ID]: 'none' },
       })
     ).list()
     expect(result.map((a: { id: string }) => a.id)).toEqual([AGENT_ID])
   })
 
   it('EXCLUDE with nothing restricted — an unrestricted org pays nothing', async () => {
-    const result = await caller(capabilitiesFor(ResourcePermission.admin, { instances: {} })).list()
+    const result = await caller(capabilitiesFor('admin', { instances: {} })).list()
     expect(result.map((a: { id: string }) => a.id)).toEqual([AGENT_ID, OTHER_ID])
   })
 
@@ -645,9 +637,9 @@ describe('agent router — `list` filters through all three instanceListScope ar
     // composes the area to None, so every row-LESS agent is invisible and no
     // exclusion list could enumerate them. The scope inverts to an allow-list.
     const result = await caller(
-      capabilitiesFor(ResourcePermission.view, {
-        areaPermission: ResourcePermission.none,
-        instances: { [AGENT_ID]: ResourcePermission.view },
+      capabilitiesFor('read', {
+        areaPermission: 'none',
+        instances: { [AGENT_ID]: 'read' },
       })
     ).list()
     expect(result.map((a: { id: string }) => a.id)).toEqual([AGENT_ID])
@@ -662,17 +654,17 @@ describe('agent router — `list` filters through all three instanceListScope ar
     // is handed in explicitly because production clamps it away upstream — this
     // pins the router's own defense-in-depth short-circuit, which is what
     // survives if the front-door gate is ever relaxed to `capabilityProcedure`.
-    const worker = capabilitiesFor(ResourcePermission.admin, {
+    const worker = capabilitiesFor('admin', {
       seatType: 'worker',
       derivedKeys: [PermissionKey.agentsView],
-      instances: { [AGENT_ID]: ResourcePermission.admin },
+      instances: { [AGENT_ID]: 'admin' },
     })
     await expect(caller(worker).list()).resolves.toEqual([])
     expect(agents.listAgents).not.toHaveBeenCalled()
   })
 
   it('keeps the `includeArchived` passthrough', async () => {
-    await caller(capabilitiesFor(ResourcePermission.admin, { instances: {} })).list({
+    await caller(capabilitiesFor('admin', { instances: {} })).list({
       includeArchived: true,
     })
     expect(agents.listAgents).toHaveBeenCalledWith(ORG_ID, { includeArchived: true })
@@ -688,26 +680,20 @@ describe('agent router — composition: `agents: None` + ONE explicit grant (pla
    */
   const shared = (permission: ResourcePermission) =>
     capabilitiesFor(permission, {
-      areaPermission: ResourcePermission.none,
+      areaPermission: 'none',
       instances: { [AGENT_ID]: permission },
     })
 
   it('an `admin` grant reaches every rung on that one agent', async () => {
+    await expect(caller(shared('admin')).getById({ agentId: AGENT_ID })).resolves.toBeDefined()
     await expect(
-      caller(shared(ResourcePermission.admin)).getById({ agentId: AGENT_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      caller(shared(ResourcePermission.admin)).update({
+      caller(shared('admin')).update({
         agentId: AGENT_ID,
         prompt: { type: 'doc' },
       })
     ).resolves.toBeUndefined()
-    await expect(
-      caller(shared(ResourcePermission.admin)).publish({ agentId: AGENT_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      caller(shared(ResourcePermission.admin)).delete({ agentId: AGENT_ID })
-    ).resolves.toBeUndefined()
+    await expect(caller(shared('admin')).publish({ agentId: AGENT_ID })).resolves.toBeDefined()
+    await expect(caller(shared('admin')).delete({ agentId: AGENT_ID })).resolves.toBeUndefined()
   })
 
   it('and reaches NOTHING else — a row-less agent stays invisible', async () => {
@@ -716,18 +702,16 @@ describe('agent router — composition: `agents: None` + ONE explicit grant (pla
       { id: AGENT_ID, slug: AGENT_SLUG },
       { id: OTHER_ID, slug: 'other-agent' },
     ]
-    await expect(
-      caller(shared(ResourcePermission.admin)).getById({ agentId: OTHER_ID })
-    ).rejects.toMatchObject(FORBIDDEN)
+    await expect(caller(shared('admin')).getById({ agentId: OTHER_ID })).rejects.toMatchObject(
+      FORBIDDEN
+    )
     expect(agents.getAgentDetailByIdOrSlug).not.toHaveBeenCalled()
   })
 
   it('a `view` grant is usable but not editable', async () => {
+    await expect(caller(shared('read')).getById({ agentId: AGENT_ID })).resolves.toBeDefined()
     await expect(
-      caller(shared(ResourcePermission.view)).getById({ agentId: AGENT_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      caller(shared(ResourcePermission.view)).update({ agentId: AGENT_ID, prompt: { type: 'doc' } })
+      caller(shared('read')).update({ agentId: AGENT_ID, prompt: { type: 'doc' } })
     ).rejects.toMatchObject(FORBIDDEN)
   })
 })
@@ -738,37 +722,31 @@ describe('agent router — `baselineAtCreate: false`: no row falls back to the A
     capabilitiesFor(areaPermission, { areaPermission, instances: {} })
 
   it('area Read ⇒ the agent opens, but does not save', async () => {
+    await expect(caller(noRows('read')).getById({ agentId: AGENT_ID })).resolves.toBeDefined()
     await expect(
-      caller(noRows(ResourcePermission.view)).getById({ agentId: AGENT_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      caller(noRows(ResourcePermission.view)).update({ agentId: AGENT_ID, prompt: { type: 'doc' } })
+      caller(noRows('read')).update({ agentId: AGENT_ID, prompt: { type: 'doc' } })
     ).rejects.toMatchObject(FORBIDDEN)
   })
 
   it('area Edit ⇒ saves, but does not publish or archive', async () => {
     await expect(
-      caller(noRows(ResourcePermission.edit)).update({ agentId: AGENT_ID, prompt: { type: 'doc' } })
+      caller(noRows('edit')).update({ agentId: AGENT_ID, prompt: { type: 'doc' } })
     ).resolves.toBeUndefined()
+    await expect(caller(noRows('edit')).publish({ agentId: AGENT_ID })).rejects.toMatchObject(
+      FORBIDDEN
+    )
     await expect(
-      caller(noRows(ResourcePermission.edit)).publish({ agentId: AGENT_ID })
-    ).rejects.toMatchObject(FORBIDDEN)
-    await expect(
-      caller(noRows(ResourcePermission.edit)).update({ agentId: AGENT_ID, archivedAt: new Date() })
+      caller(noRows('edit')).update({ agentId: AGENT_ID, archivedAt: new Date() })
     ).rejects.toMatchObject(FORBIDDEN)
   })
 
   it('area Full ⇒ everything, with no ResourceAccess row anywhere', async () => {
     // The no-regression guarantee: `MEMBER_BASELINE_LEVELS[agents] = Full`, so
     // this is what every existing member is, and nothing here may 403.
+    await expect(caller(noRows('admin')).delete({ agentId: AGENT_ID })).resolves.toBeUndefined()
+    await expect(caller(noRows('admin')).publish({ agentId: AGENT_ID })).resolves.toBeDefined()
     await expect(
-      caller(noRows(ResourcePermission.admin)).delete({ agentId: AGENT_ID })
-    ).resolves.toBeUndefined()
-    await expect(
-      caller(noRows(ResourcePermission.admin)).publish({ agentId: AGENT_ID })
-    ).resolves.toBeDefined()
-    await expect(
-      caller(noRows(ResourcePermission.admin)).completeSetup({ agentId: AGENT_ID })
+      caller(noRows('admin')).completeSetup({ agentId: AGENT_ID })
     ).resolves.toBeUndefined()
   })
 })
@@ -777,9 +755,9 @@ describe('agent router — OWNER regression', () => {
   it('short-circuits to admin on an agent restricted to `none`', async () => {
     // §0.10 recovery guarantee: nothing authored on an agent can lock the last
     // owner out of the agent that would let them undo it.
-    const owner = capabilitiesFor(ResourcePermission.admin, {
+    const owner = capabilitiesFor('admin', {
       role: 'OWNER',
-      instances: { [AGENT_ID]: ResourcePermission.none },
+      instances: { [AGENT_ID]: 'none' },
     })
     await expect(caller(owner).delete({ agentId: AGENT_ID })).resolves.toBeUndefined()
     expect(agents.deleteAgent).toHaveBeenCalledTimes(1)

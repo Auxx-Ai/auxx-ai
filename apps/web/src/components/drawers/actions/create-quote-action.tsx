@@ -53,7 +53,6 @@ export function CreateQuoteAction({ recordId }: DrawerActionProps) {
         },
       ],
       limit: 1,
-      mode: 'oneshot',
     },
     { enabled: !!recordId }
   )

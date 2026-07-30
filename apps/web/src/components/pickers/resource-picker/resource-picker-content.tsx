@@ -62,7 +62,7 @@ export function ResourceCommandBody({
   viewableOnly = false,
 }: Omit<ResourcePickerContentProps, 'className'>) {
   const [search, setSearch] = useState('')
-  const { canViewEntity } = useAccess()
+  const { hasDefPresence } = useAccess()
 
   // Notify parent about capture state on mount/unmount
   useEffect(() => {
@@ -93,9 +93,11 @@ export function ResourceCommandBody({
       if (entityDefinedOnly && isSystemResource(r)) return false
       if (r.entityType && !includeSystem) return false
       if (!r.entityType && !includeCustom) return false
-      // Per-def read gate (opt-in) — hide defs the member can't view. Phase 8
-      // (§6.5): OR a nonempty per-record instance-grant set once that lands.
-      if (viewableOnly && !canViewEntity(r.entityDefinitionId)) return false
+      // Per-def PRESENCE gate (opt-in) — hide defs the member can reach no row
+      // of. This is the OR the seam comment promised (plan v3/03 §6.1, P5): a def
+      // reachable only through per-record grants stays pickable, and the picker's
+      // own record query is scoped per row in SQL.
+      if (viewableOnly && !hasDefPresence(r.entityDefinitionId)) return false
       return true
     })
   }, [
@@ -105,7 +107,7 @@ export function ResourceCommandBody({
     includeCustom,
     entityDefinedOnly,
     viewableOnly,
-    canViewEntity,
+    hasDefPresence,
   ])
 
   // Initially selected items, filtered by search

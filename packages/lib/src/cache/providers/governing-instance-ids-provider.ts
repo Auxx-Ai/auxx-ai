@@ -1,7 +1,7 @@
 // packages/lib/src/cache/providers/governing-instance-ids-provider.ts
 
 import { schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { INSTANCE_ACCESS_KEYS } from '../../permissions/capabilities/instance-access'
 import { ORG_MEMBER_GRANTEE_ID } from '../../resource-access/grantee-resolution'
@@ -15,11 +15,10 @@ import type { CacheProvider } from '../org-cache-provider'
  * An instance is governed when it carries an **instance-level** `ResourceAccess`
  * row (`entityInstanceId IS NOT NULL`) for an instance-access resource that is
  * EITHER:
- *  - the **workspace baseline** (`role:org_member`) at ANY permission — the
- *    authored statement "this instance's org-wide default is X, not the area
- *    level"; or
- *  - an explicit **`permission = 'none'`** row at ANY grantee kind — v2's
- *    per-instance downward marker.
+ *  - the **workspace baseline** (`role:org_member`) at ANY rung — the authored
+ *    statement "this instance's org-wide default is X, not the area level"; or
+ *  - an explicit **`rung = 'none'`** row at ANY grantee kind — the per-instance
+ *    downward marker.
  *
  * **Deliberately NOT "carries ≥1 row for anyone".** That older reading (the
  * `restrictedInstanceIds` this provider replaces) conflated SHARING with
@@ -27,14 +26,14 @@ import type { CacheProvider } from '../org-cache-provider'
  * it to grantees-only for the whole org, while the permissions page's
  * Workspace-defaults tab still rendered it "Inherit → «area level»" — that tab
  * models exactly three states (no `role:org_member` row = Inherit,
- * `role:org_member @ none` = Restricted, else that row's permission; see
+ * `role:org_member @ none` = Restricted, else that row's rung; see
  * `use-instance-baseline-rows.ts`). One React hook carried a compensating
  * "materialize the baseline at Read on the first grant" hack for precisely this
  * conflation; it is deleted with this change.
  *
  * The predicate here is **mail's `rowGoverned` verbatim**
- * (`compute-user-mail-visibility.ts` — a `role:org_member` row of any permission,
- * or any `none` row), so the capability layer and the mail visibility layer can
+ * (`compute-user-instance-grants.ts` — a `role:org_member` row at any rung, or any
+ * `none` row), so the capability layer and the mail visibility layer can
  * no longer disagree about which inboxes are governed.
  *
  * **Deliberate behaviour delta:** for the `baselineAtCreate: false` resources
@@ -58,7 +57,10 @@ import type { CacheProvider } from '../org-cache-provider'
  * instance rows (`contact:<id>` etc.) are excluded by the `IN (...)` filter, so
  * they never enter the capability path.
  *
- * Invalidated by the `resource-access.instance.changed` cache event.
+ * Invalidated by the `resource-access.governing-instance.changed` cache event —
+ * its own event since v3/03 §9, because `resource-access.instance.changed` became
+ * def-agnostic (it busts the capability blob for record-def instance grants too)
+ * while this set stays gated on the `IN (...)` filter below.
  */
 export const governingInstanceIdsProvider: CacheProvider<string[]> = {
   async compute(orgId, db) {
@@ -67,7 +69,7 @@ export const governingInstanceIdsProvider: CacheProvider<string[]> = {
         entityInstanceId: schema.ResourceAccess.entityInstanceId,
         granteeType: schema.ResourceAccess.granteeType,
         granteeId: schema.ResourceAccess.granteeId,
-        permission: schema.ResourceAccess.permission,
+        rung: schema.ResourceAccess.rung,
       })
       .from(schema.ResourceAccess)
       .where(
@@ -99,13 +101,13 @@ export const governingInstanceIdsProvider: CacheProvider<string[]> = {
  * single definition behind both {@link governingInstanceIdsProvider} (cached read
  * path) and `effective-state.ts` (transaction-local escalation guard).
  *
- * True for the authored workspace baseline (`role:org_member`) at ANY permission,
- * and for any `permission = 'none'` marker at ANY grantee kind. False for an
+ * True for the authored workspace baseline (`role:org_member`) at ANY rung, and
+ * for any `rung = 'none'` marker at ANY grantee kind. False for an
  * ordinary positive grant — a creator's `user @ admin` row or a share to one
  * colleague — because **sharing is not restricting**.
  *
  * Structurally identical to mail's `rowGoverned`
- * (`compute-user-mail-visibility.ts`), which is the point: the two layers now
+ * (`compute-user-instance-grants.ts`), which is the point: the two layers now
  * answer "is this inbox governed by rows?" the same way by construction. Mail
  * composes its answer per-user from an already grantee-expanded row set, so it
  * cannot share this exact function; if either predicate changes, change both.
@@ -113,8 +115,8 @@ export const governingInstanceIdsProvider: CacheProvider<string[]> = {
 export function isGoverningInstanceRow(row: {
   granteeType: string
   granteeId: string
-  permission: string
+  rung: string
 }): boolean {
-  if (row.permission === ResourcePermission.none) return true
+  if (row.rung === 'none') return true
   return row.granteeType === ResourceGranteeType.role && row.granteeId === ORG_MEMBER_GRANTEE_ID
 }

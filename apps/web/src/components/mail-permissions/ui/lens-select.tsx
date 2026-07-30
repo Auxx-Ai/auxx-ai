@@ -12,7 +12,10 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { useState } from 'react'
-import { MailPermissionsUpgradeDialog, useMailPermissionsGated } from './enterprise-gate'
+import {
+  GranularPermissionsUpgradeDialog,
+  useGranularPermissionsGated,
+} from './granular-permissions-gate'
 
 interface LensSelectProps {
   value: LensChoice
@@ -28,9 +31,10 @@ interface LensSelectProps {
 
 /**
  * The one tier picker every mail-permission surface uses. Options below
- * Full access (and the Manager entry) are enterprise-gated: without the
- * feature they render with an "Enterprise" badge and selecting one opens
- * the upgrade dialog instead of changing the value.
+ * Full access (and the Manager entry) are plan-gated: without the
+ * feature they render with an "Upgrade" badge and selecting one opens
+ * the upgrade dialog instead of changing the value. The badge is deliberately
+ * plan-agnostic — `granularPermissions` is Growth+, not Enterprise-only.
  */
 export function LensSelect({
   value,
@@ -41,27 +45,27 @@ export function LensSelect({
   variant = 'default',
   className,
 }: LensSelectProps) {
-  const gated = useMailPermissionsGated()
+  const gated = useGranularPermissionsGated()
   const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   const handleChange = (next: string) => {
     const choice = next as LensChoice
-    if (gated && choice !== 'full') {
+    if (gated && choice !== 'read') {
       setUpgradeOpen(true)
       return
     }
     onChange(choice)
   }
 
-  const enterpriseBadge = (
+  const upgradeBadge = (
     <Badge variant='outline' className='ml-2 px-1 text-[10px]'>
-      Enterprise
+      Upgrade
     </Badge>
   )
 
   // Never feed Radix an unknown value — it renders the placeholder fallback and,
   // via its hidden native <select>, warns on non-scalar values. Guards regressions.
-  const safeValue = LENS_LABELS[value] ? value : 'full'
+  const safeValue = LENS_LABELS[value] ? value : 'read'
 
   return (
     <>
@@ -75,7 +79,7 @@ export function LensSelect({
               <div className='flex flex-col items-start'>
                 <span className='flex items-center'>
                   {LENS_LABELS[lens].label}
-                  {gated && lens !== 'full' && enterpriseBadge}
+                  {gated && lens !== 'read' && upgradeBadge}
                 </span>
                 <span className='text-muted-foreground text-xs'>{LENS_LABELS[lens].helper}</span>
               </div>
@@ -88,7 +92,7 @@ export function LensSelect({
                 <div className='flex flex-col items-start'>
                   <span className='flex items-center'>
                     {LENS_LABELS.manager.label}
-                    {gated && enterpriseBadge}
+                    {gated && upgradeBadge}
                   </span>
                   <span className='text-muted-foreground text-xs'>
                     {LENS_LABELS.manager.helper}
@@ -99,7 +103,7 @@ export function LensSelect({
           )}
         </SelectContent>
       </Select>
-      <MailPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+      <GranularPermissionsUpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </>
   )
 }

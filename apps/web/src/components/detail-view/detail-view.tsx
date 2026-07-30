@@ -40,7 +40,7 @@ import type { DetailViewProps } from './types'
  */
 export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: DetailViewProps) {
   const { resource, isLoading: resourceLoading } = useResource(apiSlug)
-  const { can, canViewEntity } = useAccess()
+  const { can, hasDefPresence } = useAccess()
   const canViewRecordResource = useCanViewRecordResource()
 
   // Get resource properties including id (entityDefinitionId) and entityType
@@ -60,7 +60,13 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
 
   // Build recordId with the actual entityDefinitionId
   const recordId = toRecordId(entityDefinitionId, instanceId)
-  const canViewDefinition = resource ? canViewEntity(resource.entityDefinitionId) : !resourceLoading
+  // Presence, not def-view (plan v3/03 §6.1): a shared record must be openable
+  // on its own detail page. The record READ itself is still scoped server-side —
+  // `record.getById` returns `null` (→ 404) for a row this member cannot see, so
+  // presence opens the route without opening the row.
+  const canViewDefinition = resource
+    ? hasDefPresence(resource.entityDefinitionId)
+    : !resourceLoading
 
   // Get record data
   const { record, isLoading, isNotFound, hasLoadedOnce } = useRecord({

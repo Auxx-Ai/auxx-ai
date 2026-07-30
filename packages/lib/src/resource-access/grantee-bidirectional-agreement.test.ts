@@ -6,7 +6,7 @@
 // Why this matters for plan 45: item 3 narrows the group/team invalidation from an
 // org-wide broadcast to a targeted set, and narrowing is the fail-OPEN direction.
 // A user the forward resolver matches but the reverse expansion misses keeps a
-// stale `userMailVisibility` for the full ONE_DAY TTL, holding a share they cannot
+// stale `userInstanceGrants` for the full ONE_DAY TTL, holding a share they cannot
 // see — the class `mail-grant-index-provider`'s docstring names of itself: "the
 // two must expand the same grantee kinds or a share is visible in one direction
 // only (19a finding 4)."
@@ -143,13 +143,15 @@ describe('§3.3 — forward and reverse agree on every NARROWED grantee kind', (
     expect(await forwardReach(row)).toEqual(await reverseReach(row))
   })
 
-  it('team: agrees under the mail evaluator’s treatTeamAsGroup', async () => {
+  it('team: agrees under the shared loader’s treatTeamAsGroup', async () => {
     const row = { granteeType: ResourceGranteeType.team, granteeId: 'grp_support' }
 
-    // `computeUserMailVisibility` passes `treatTeamAsGroup: true`, and the reverse
-    // expansion mirrors it by routing `team` through `resolveGroupHolders`. Drop
-    // the `team` case from EITHER side and this fails while every behavioural test
-    // still passes — the §3.3 mutation.
+    // `loadUserInstanceGrants` passes `treatTeamAsGroup: true`, and since plan
+    // v3/03 P4 that is the ONE instance-level query — `computeUserCapabilities`
+    // runs it too, where it used to hand-roll a union that omitted `team`
+    // entirely. The reverse expansion mirrors it by routing `team` through
+    // `resolveGroupHolders`. Drop the `team` case from EITHER side and this fails
+    // while every behavioural test still passes — the §3.3 mutation.
     expect(await forwardReach(row, { treatTeamAsGroup: true })).toEqual(await reverseReach(row))
     expect(await reverseReach(row)).toEqual(['u_1', 'u_2', 'u_3'])
   })
@@ -157,8 +159,8 @@ describe('§3.3 — forward and reverse agree on every NARROWED grantee kind', (
   it('team WITHOUT treatTeamAsGroup over-invalidates, which is the safe direction', async () => {
     const row = { granteeType: ResourceGranteeType.team, granteeId: 'grp_support' }
 
-    // Non-mail readers (`checkAccess`, `getUserAccessibleInstances`) do not treat
-    // team as group, so a team row reaches nobody forward while the reverse still
+    // The point-check readers (`checkAccess`, `getUserAccessibleInstances`) do not
+    // treat team as group, so a team row reaches nobody forward while the reverse still
     // busts three users. Recorded deliberately: an over-broad bust costs a refetch,
     // an under-broad one hides a share.
     expect(await forwardReach(row)).toEqual([])

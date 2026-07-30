@@ -9,6 +9,7 @@ import {
   levelToRecordBasePermission,
   PERMISSION_AREAS,
   PERMISSION_RANK,
+  permissionToRung,
 } from '@auxx/lib/permissions/client'
 import { isAccessManageable, type Resource } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
@@ -254,11 +255,16 @@ export function useGranteeDefAccess(
           entityDefinitionId,
           granteeType: ResourceGranteeType.role,
           granteeId: MEMBER_BASELINE_GRANTEE_ID,
-          permission: defaultBaseline,
+          rung: permissionToRung(defaultBaseline),
         })
       }
       patchLocal(entityDefinitionId, 'own', level)
-      grantType.mutate({ entityDefinitionId, granteeType, granteeId, permission: level })
+      grantType.mutate({
+        entityDefinitionId,
+        granteeType,
+        granteeId,
+        rung: permissionToRung(level),
+      })
     },
     [
       baselineByDef,

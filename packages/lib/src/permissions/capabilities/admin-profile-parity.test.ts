@@ -1,9 +1,13 @@
 // packages/lib/src/permissions/capabilities/admin-profile-parity.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import { ResourcePermission, type Rung } from '@auxx/database/enums'
 import type { SeatType } from '@auxx/database/types'
+import { satisfiesPermission } from '@auxx/types/permissions'
 import { describe, expect, it } from 'vitest'
-import { satisfiesPermission } from '../../resource-access/constants'
+import {
+  bucketInstanceGrantRows,
+  type InstanceGrantRow,
+} from '../../resource-access/instance-grants'
 import { systemProfileFor, systemProfileSeed } from '../profiles/system-profiles'
 import { CapabilitySet } from './capability-set'
 import { composeUserCapabilities } from './compose-user-capabilities'
@@ -91,14 +95,8 @@ function composeAdmin(
     profileLevels?: Partial<Record<Area, Level>>
     groupLevels?: Array<Partial<Record<Area, Level>>>
     userLevels?: Partial<Record<Area, Level>>
-    typeAccessRows?: Array<{ entityDefinitionId: string; permission: ResourcePermission }>
-    instanceAccessRows?: Array<{
-      entityDefinitionId: string
-      entityInstanceId: string
-      permission: ResourcePermission
-      /** Grantee kind (plan 43 §4.1) — `'role'` is the gated baseline lane. */
-      granteeType: string
-    }>
+    typeAccessRows?: Array<{ entityDefinitionId: string; rung: Rung }>
+    instanceRows?: InstanceGrantRow[]
   } = {}
 ) {
   const seed = systemProfileSeed('admin')
@@ -112,7 +110,7 @@ function composeAdmin(
     groupLevels: opts.groupLevels,
     userLevels: opts.userLevels,
     typeAccessRows: opts.typeAccessRows ?? [],
-    instanceAccessRows: opts.instanceAccessRows ?? [],
+    instanceGrants: bucketInstanceGrantRows(opts.instanceRows ?? []),
   })
 }
 
@@ -122,20 +120,14 @@ function adminAccess(
     seatType?: SeatType
     restricted?: string[]
     restrictedInstances?: string[]
-    typeAccessRows?: Array<{ entityDefinitionId: string; permission: ResourcePermission }>
-    instanceAccessRows?: Array<{
-      entityDefinitionId: string
-      entityInstanceId: string
-      permission: ResourcePermission
-      /** Grantee kind (plan 43 §4.1) — `'role'` is the gated baseline lane. */
-      granteeType: string
-    }>
+    typeAccessRows?: Array<{ entityDefinitionId: string; rung: Rung }>
+    instanceRows?: InstanceGrantRow[]
   } = {}
 ): ResolvedRecordAccess {
   const caps = composeAdmin({
     seatType: opts.seatType,
     typeAccessRows: opts.typeAccessRows,
-    instanceAccessRows: opts.instanceAccessRows,
+    instanceRows: opts.instanceRows,
   })
   return {
     role: 'ADMIN',
@@ -213,7 +205,7 @@ describe('ADMIN parity — areas (byte-identical to the removed short-circuit)',
     )
   })
 
-  it('the composed blob carries exactly five fields (no ceiling rides out)', () => {
+  it('the composed blob carries exactly six fields (no ceiling rides out)', () => {
     // Plan 20 §2.a.2: `ceilingDefs` is gone from `UserCapabilities`. Pinned here
     // as a shape assertion because a re-added field would silently ride into the
     // cached blob and force another `user:capabilities:vN` bump.
@@ -223,9 +215,15 @@ describe('ADMIN parity — areas (byte-identical to the removed short-circuit)',
     // That bump was MANDATORY rather than hygienic, and this assertion is why it
     // was noticed: the new field's absence on a stale blob is not a benign gap,
     // because `instanceAccess` NARROWED underneath it in the same change.
+    // `grantedDefIds` joined it in plan v3/03 §6.1 and rides the v16 → v17 bump.
+    // Its absence on a stale blob fails CLOSED (`?? {}` in `get-capabilities.ts`
+    // shuts the record front door), so unlike v16 the bump is a correctness
+    // measure rather than a leak fix — but it is still mandatory, because a
+    // member shared a record would otherwise see no nav entry for a full TTL.
     expect(Object.keys(composeAdmin()).sort()).toEqual([
       'baselineInstanceAccess',
       'defAccess',
+      'grantedDefIds',
       'instanceAccess',
       'instanceDerivedKeys',
       'keys',
@@ -266,7 +264,7 @@ describe('ADMIN parity — definitions', () => {
     // The lever that makes the divergence above administrable rather than fatal.
     const caps = adminAccess({
       restricted: ['invoice-def'],
-      typeAccessRows: [{ entityDefinitionId: 'invoice-def', permission: ResourcePermission.admin }],
+      typeAccessRows: [{ entityDefinitionId: 'invoice-def', rung: 'admin' }],
     })
     expect(effectiveRecordLevel(caps, 'invoice-def')).toBe(ResourcePermission.admin)
     expect(canAdministerRecord(caps, 'invoice-def')).toBe(true)
@@ -324,22 +322,21 @@ describe('ADMIN parity — instance-access resources', () => {
     // row for them is invisible.
     const shared = adminAccess({
       restrictedInstances: ['dash_1'],
-      instanceAccessRows: [
+      instanceRows: [
         {
           entityDefinitionId: 'dashboard',
           entityInstanceId: 'dash_1',
-          permission: ResourcePermission.view,
+          rung: 'read',
           // The `role:org_member @ view` row every dashboard writes at create —
           // the BASELINE lane (plan 43 §4.1). An admin composes `dashboards: Full`,
           // so §4.2's step-2 gate passes and the answer is unchanged.
           granteeType: 'role',
+          granteeId: 'org_member',
         },
       ],
     })
-    expect(effectiveInstanceLevel(shared, 'dashboard', 'dash_1')).toBe(ResourcePermission.view)
-    expect(effectiveInstanceLevel({ ...shared, role: 'OWNER' }, 'dashboard', 'dash_1')).toBe(
-      ResourcePermission.view
-    )
+    expect(effectiveInstanceLevel(shared, 'dashboard', 'dash_1')).toBe('read')
+    expect(effectiveInstanceLevel({ ...shared, role: 'OWNER' }, 'dashboard', 'dash_1')).toBe('read')
 
     const priv = adminAccess({ restrictedInstances: ['dash_2'] })
     expect(effectiveInstanceLevel(priv, 'dashboard', 'dash_2')).toBeUndefined()

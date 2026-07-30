@@ -1,14 +1,15 @@
 // packages/lib/src/mail-query/__tests__/visibility-scope.test.ts
 
+import type { Rung } from '@auxx/database/enums'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 import type { ConditionGroup } from '../../conditions/types'
-import type { UserMailVisibility } from '../../permissions/visibility/context'
-import { SYSTEM_VISIBILITY } from '../../permissions/visibility/context'
+import type { UserInstanceGrants } from '../../permissions/visibility/context'
+import { SYSTEM_VISIBILITY, THREAD_GRANT_DEF } from '../../permissions/visibility/context'
 import { buildConditionGroupsQuery } from '../condition-query-builder'
 import { sharedThreadIds } from '../visibility-scope'
 
-function userVisibility(threadGrants: UserMailVisibility['threadGrants']): UserMailVisibility {
+function userVisibility(threadGrants: Record<string, Rung>): UserInstanceGrants {
   return {
     userId: 'user-1',
     role: 'USER',
@@ -16,9 +17,8 @@ function userVisibility(threadGrants: UserMailVisibility['threadGrants']): UserM
     isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
-    threadGrants,
-    contactGrants: {},
-    entityGrants: {},
+    grants: { [THREAD_GRANT_DEF]: threadGrants },
+    defEntityTypes: {},
   }
 }
 
@@ -27,11 +27,11 @@ describe('sharedThreadIds', () => {
     const viewer = userVisibility({
       hidden: 'none',
       metadata: 'metadata',
-      subject: 'subject',
-      full: 'full',
+      identity: 'identity',
+      read: 'read',
     })
 
-    expect(sharedThreadIds(viewer)).toEqual(['metadata', 'subject', 'full'])
+    expect(sharedThreadIds(viewer)).toEqual(['metadata', 'identity', 'read'])
   })
 
   it('returns no user-specific grants for system or automation viewers', () => {
@@ -68,7 +68,7 @@ describe('sharedWithMe condition', () => {
   })
 
   it('narrows admins to their explicitly granted thread ids', () => {
-    const viewer = userVisibility({ 'thread-1': 'full' })
+    const viewer = userVisibility({ 'thread-1': 'read' })
     viewer.isAdmin = true
 
     const condition = buildConditionGroupsQuery(sharedWithMeGroup, 'organization-1', viewer)
@@ -78,7 +78,7 @@ describe('sharedWithMe condition', () => {
   })
 
   it('excludes explicitly shared threads for a negative boolean condition', () => {
-    const viewer = userVisibility({ 'thread-1': 'full' })
+    const viewer = userVisibility({ 'thread-1': 'read' })
     viewer.isAdmin = true
     const negativeGroup = structuredClone(sharedWithMeGroup)
     negativeGroup[0]!.conditions[0]!.value = false

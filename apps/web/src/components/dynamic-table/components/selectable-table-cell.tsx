@@ -147,6 +147,7 @@ function SelectableTableCellInner<TData>({
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!cellSelectionConfig?.enabled || cellSelectionConfig.readOnly || isSystemColumn) return
+      if (cellSelectionConfig.isRowReadOnly?.(rowId)) return
       if (!isUpdatable) return
       if (!cellRef.current?.contains(e.target as Node)) return
       e.stopPropagation()
@@ -155,6 +156,7 @@ function SelectableTableCellInner<TData>({
     [
       cellSelectionConfig?.enabled,
       cellSelectionConfig?.readOnly,
+      cellSelectionConfig?.isRowReadOnly,
       isSystemColumn,
       isUpdatable,
       rowId,
@@ -173,6 +175,7 @@ function SelectableTableCellInner<TData>({
       switch (e.key) {
         case 'Enter':
           if (!isUpdatable || cellSelectionConfig?.readOnly) return
+          if (cellSelectionConfig?.isRowReadOnly?.(rowId)) return
           e.preventDefault()
           setEditingCell({ rowId, columnId })
           break
@@ -187,6 +190,7 @@ function SelectableTableCellInner<TData>({
       isEditing,
       isUpdatable,
       cellSelectionConfig?.readOnly,
+      cellSelectionConfig?.isRowReadOnly,
       rowId,
       columnId,
       setEditingCell,

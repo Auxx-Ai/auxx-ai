@@ -2,7 +2,7 @@
 
 import type { DehydratedUser } from '../dehydration/types'
 import type { UserCapabilities } from '../permissions/capabilities/compose-user-capabilities'
-import type { UserMailVisibility } from '../permissions/visibility/context'
+import type { UserInstanceGrants } from '../permissions/visibility/context'
 import type { SettingValue } from '../settings/types'
 
 /** Membership info for user cache */
@@ -71,7 +71,7 @@ export interface UserCacheDataMap {
   userMailViews: CachedMailView[]
   userTableViews: CachedTableView[]
   userFavorites: CachedFavorite[]
-  userMailVisibility: UserMailVisibility
+  userInstanceGrants: UserInstanceGrants
   userCapabilities: UserCapabilities
 }
 
@@ -83,7 +83,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
   'userMailViews',
   'userTableViews',
   'userFavorites',
-  'userMailVisibility',
+  'userInstanceGrants',
   'userCapabilities',
 ])
 
@@ -92,7 +92,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
  *
  * Keys in an EARLIER tier are recomputed before later ones; anything unlisted
  * runs last, concurrently. This exists because user providers read each other:
- * `computeUserMailVisibility` calls `getCachedUserCapabilities`, so recomputing
+ * `computeUserInstanceGrants` calls `getCachedUserCapabilities`, so recomputing
  * both concurrently makes the mail provider miss (Phase 1 just deleted the key)
  * and compose the capability blob a SECOND time, racing the explicit recompute.
  * Capability composition is the expensive one in this system.
@@ -100,7 +100,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
  * Three things this deliberately is not:
  *
  * - **Not the `INVALIDATION_GRAPH` array order.** `group.deleted` and
- *   `group.members.changed` declare `['userMailVisibility', 'userCapabilities']`
+ *   `group.members.changed` declare `['userInstanceGrants', 'userCapabilities']`
  *   — the dependent first — and `invalidateAndRecompute`'s docstring already
  *   rejected declared order as a mechanism for the older delete-ordering bug.
  * - **Not a `PromiseMemoizer` on `recompute`.** Memoizing a write-after-write
@@ -114,7 +114,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
  */
 export const USER_KEY_RECOMPUTE_TIERS: readonly (readonly UserCacheKeyName[])[] = [
   ['userCapabilities'],
-  ['userMailVisibility'],
+  ['userInstanceGrants'],
 ]
 
 const ONE_DAY = 60 * 60 * 24
@@ -160,7 +160,7 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // So the stale direction is lost access, not lost restriction — the safe one.
   // The genuinely dangerous stale blob is the CAPABILITIES one (`user:capabilities`
   // below), and that is why `permission-profile.changed` / `permission-grant.changed`
-  // gained a `userMailVisibility` edge in `invalidation-graph.ts` in this same
+  // gained a `userInstanceGrants` edge in `invalidation-graph.ts` in this same
   // change: without it a profile downgrade leaves a mail blob composed against the
   // OLD area level for the full ONE_DAY TTL, and THAT fails OPEN — the member keeps
   // reading mail their new profile denies. The version bump cannot help there; only
@@ -168,7 +168,154 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // Do NOT re-bump `user:capabilities` (already v14 for this slice) or
   // `org:inboxes` (already v6). `org:mail-grant-index` is deliberately unbumped —
   // migration 060 invalidates it per org instead.
-  userMailVisibility: { prefix: 'user:mail-visibility:v3', ttlSeconds: ONE_DAY },
+  //
+  // v4 (plan v3/03 P3b §3): the VALUE VOCABULARY changed. `Lens` became mail's
+  // narrowing of the shared `Rung` ladder, so `'subject'` → `'identity'` and
+  // `'full'` → `'read'` in every one of the blob's five lens-valued maps
+  // (`inboxLens`, `threadGrants`, `contactGrants`, `entityGrants`, and the lens
+  // side of `personalInboxIds`' companions).
+  //
+  // THE SHAPE DID NOT CHANGE, AND THAT IS THE TRAP. Both before and after, this
+  // blob is `Record<string, string>`. "Did the shape change?" is the wrong test
+  // (`project_value_vocabulary_cache_bump`); the right one is *can the current
+  // parser read a blob the old code wrote* — and it cannot, because `'full'` and
+  // `'subject'` are not keys in `RUNG_ORDER`.
+  //
+  // WHICH WAY A STALE BLOB FAILS — traced through the consumers, not assumed.
+  // Every comparator is `RUNG_ORDER[value] >= n`, so an unknown value evaluates
+  // `undefined >= n`, which is FALSE for every n:
+  //   - `idsAtOrAbove` (`mail-query/visibility-scope.ts`) drops the inbox/thread
+  //     id from the list predicate ⇒ the member's mailbox looks EMPTY.
+  //   - `effectiveLens` folds with `maxRung`; `RUNG_ORDER['full'] >= RUNG_ORDER[b]`
+  //     is false, so the fold keeps `b` ⇒ a `'full'` floor loses to `'none'`.
+  //   - `redactThreadMeta` sees `lens !== 'read'` and `!satisfiesRung(lens,
+  //     'identity')` ⇒ subject and body blanked for a full viewer.
+  //   - `rooms.ts`'s inbox ACL denies the subscribe.
+  // All FAIL-CLOSED. The reverse rollout direction is closed too: old code
+  // reading a v4 blob computes `ORDER['read']` ⇒ `undefined`, equally false.
+  //
+  // So the bump is mandatory not because a stale blob leaks, but because both
+  // directions are a TOTAL and SILENT loss of mail for the full ONE_DAY TTL —
+  // and `vN` is the only thing that stops a draining old instance from
+  // repopulating the same keyspace mid-rollout.
+  //
+  // ⚠ `'none'` and `'metadata'` are spelled the SAME in both vocabularies, so a
+  // stale blob is PARTIALLY readable. A smoke test that only exercises a
+  // restricted inbox passes. Do not read that as "the bump was optional".
+  //
+  // ── `user:mail-visibility:v4` → `user:instance-grants:v1` ─────────────────────
+  //
+  // **v1, not v5, and the reason is the PREFIX, not modesty** (plan v3/03 P4 §12).
+  // The version suffix exists to strand blobs written by older code *inside the
+  // same keyspace*. Renaming the prefix strands them by construction: no reader of
+  // `user:instance-grants:*` can ever encounter a `user:mail-visibility:*` blob,
+  // because the key it would have to look up does not exist. Continuing the old
+  // counter into a new prefix would advertise a lineage the keyspace does not have.
+  // The orphaned `user:mail-visibility:v2..v4` keys are unreachable and expire
+  // within the ONE_DAY TTL; the deploy-time flush clears them sooner.
+  //
+  // WHAT CHANGED, both halves:
+  //   1. RENAME. `UserMailVisibility` → `UserInstanceGrants`; the blob is no
+  //      longer mail-shaped — it is one member's instance-level grants, of which
+  //      mail is (today) the only consumer.
+  //   2. RESHAPE, and this is the substantive half. `threadGrants`,
+  //      `contactGrants` and `entityGrants` — three FLAT `Record<instanceId,
+  //      Lens>` maps with the def baked into the FIELD NAME — collapse into ONE
+  //      def-keyed `grants: Record<defId, Record<instanceId, Rung>>`, and the
+  //      values are now the STORED rung rather than a lens pre-clamped at compose
+  //      time. (Plan §4 claims the maps "were always" def-keyed longhand. They
+  //      were not; this is a genuine reshape, which is why it needs a key change
+  //      at all.) `inboxLens` and `personalInboxIds` are unchanged — `inboxLens`
+  //      is the precomputed floor, not a grant projection, and it stays that way.
+  //
+  // WHICH WAY A STALE BLOB FAILS — traced, not assumed. In the ordinary case the
+  // question is moot: the prefix changed, so a v4 blob is not merely stale, it is
+  // UNREACHABLE. The analysis that matters is what happens if the two shapes DO
+  // meet — a hand-written key, a restored Redis snapshot, or a future prefix reuse:
+  //   - New code reading an OLD-shaped value: `grants` is `undefined`, so
+  //     `threadGrants()` / `contactGrants()` return the frozen empty map and
+  //     `primaryEntityGrant()` iterates nothing. Every derivation rule except the
+  //     inbox floor contributes `'none'`. The member keeps exactly their inbox
+  //     floors and their assigned threads, and loses every SHARE.
+  //     Fail-CLOSED — lost access, not lost restriction.
+  //   - Old code reading a NEW-shaped value: `threadGrants` / `contactGrants` /
+  //     `entityGrants` are `undefined`; `idsAtOrAbove(undefined, …)` throws inside
+  //     `Object.entries`, so the request 500s rather than resolving permissively.
+  //     Loud, and closed.
+  //   - `inboxLens` and `personalInboxIds` survive both directions byte-identically,
+  //     which is the reason the failure is partial-but-safe rather than total: a
+  //     smoke test that only opens a shared inbox passes in BOTH directions. The
+  //     same trap the v4 entry above records — do not read a green smoke test as
+  //     "the rename was inert".
+  //
+  // ⚠ ROLLING DEPLOY — what a PREFIX rename means that a version bump does not.
+  // During a rollout BOTH prefixes are live at once: new instances read and write
+  // `user:instance-grants:v1` while draining old instances keep reading AND
+  // WRITING `user:mail-visibility:v4`. The two keyspaces do not observe each
+  // other's invalidations — `UserCacheService` deletes by key name, so an
+  // invalidation issued by a new instance leaves the old key populated and vice
+  // versa. Consequence: a grant changed on a NEW instance is invisible to a
+  // request served by an OLD one for up to the ONE_DAY TTL of the old key, and a
+  // member could observe access flip back and forth depending on which instance
+  // answers. That window is bounded by the drain, and it fails in the "stale
+  // grant" direction on the old side only — but it is real, and it is the price of
+  // a rename rather than a bump. Run the flush
+  // (`packages/lib/scripts/flush-user-capabilities-cache.ts`) AFTER the rollout
+  // completes, not before: flushing while old instances still serve traffic just
+  // lets them repopulate the abandoned prefix.
+  //
+  // ── v1 → v2 (plan v3/03 P5 §13.1 — THE CASCADE CAP) ──────────────────────────
+  //
+  // WHAT CHANGED. `UserInstanceGrants` gains ONE field:
+  //
+  //     defEntityTypes: Record<defId, string | null>
+  //
+  // projected onto exactly the defs present in `grants` (bounded by the member's
+  // grant DEFS — typically zero or one — never by grant count). Nothing else in
+  // the blob moved: `grants`, `inboxLens`, `personalInboxIds` are byte-identical.
+  //
+  // WHY A FIELD THIS SMALL NEEDS A BUMP AT ALL. It is not the field, it is the
+  // BEHAVIOUR it feeds. `grants` is keyed by per-org definition CUIDs, so the two
+  // primary-entity readers (`primaryEntityThreadRung`,
+  // `primaryEntityThreadIdsAtOrAbove`) could see a rung and had NO way to learn
+  // which def produced it — they folded with `max()` and discarded the def. That
+  // is why the uncapped fan-out shipped: ANY record grant, on ANY def, at
+  // whatever rung it carried, raised the lens on every thread whose
+  // `primaryEntityInstanceId` was that record. The cap
+  // (`record-thread-derivation.ts`: ticket-like defs derive thread `read`,
+  // generic defs derive NOTHING) is keyed by `entityType`, so this map IS the cap.
+  //
+  // WHICH WAY A STALE BLOB FAILS — traced through both readers, not assumed.
+  //   - **New code reading a v1 blob** (`defEntityTypes` absent). Both readers do
+  //     `v.defEntityTypes[defId]`, which is a TypeError on `undefined` — so this
+  //     direction does NOT silently degrade, it 500s the mail list and the lens
+  //     evaluator. Loud, and closed. (It is also why the field is required on the
+  //     interface rather than optional: an optional field would have made this
+  //     direction resolve to `undefined` → `recordThreadDerivationCap(undefined)`
+  //     → `'none'`, i.e. every record-derived thread silently vanishing from
+  //     every mailbox for the full ONE_DAY TTL, which is a *worse* failure than a
+  //     500 because nobody would notice it was the cache.)
+  //   - **Old code reading a v2 blob.** The extra key is ignored by
+  //     `primaryEntityGrant`/`primaryEntityIdsAtOrAbove` (the uncapped readers a
+  //     draining instance still runs). Result: the old instance keeps applying
+  //     the OLD uncapped fan-out — a deal share still lights up that deal's whole
+  //     email history — until it drains. Fail-OPEN, and this is the direction
+  //     that matters: it is not fixed by the bump, only bounded by the drain. It
+  //     is the same exposure that ships in production today, so the rollout does
+  //     not make anything worse; it just does not make it better instantly.
+  //
+  // So unlike the v3→v4 lens-vocabulary bump above, this one is NOT about
+  // stranding an unreadable blob — the new shape is a strict superset and the old
+  // readers tolerate it. It is about making sure no new-code instance ever reads a
+  // blob composed WITHOUT the cap's input, because the only alternative encoding
+  // (optional field, absent ⇒ cap everything to `'none'`) fails silently and
+  // totally. Run the dev flush after deploying.
+  //
+  // ⚠ `grants` is unchanged, so a v1 blob is PARTIALLY readable: inbox floors,
+  // per-thread shares and contact-derived lenses all resolve correctly from it.
+  // A smoke test that never opens a thread hanging off a shared RECORD passes in
+  // both directions. Do not read that as "the bump was optional".
+  userInstanceGrants: { prefix: 'user:instance-grants:v2', ttlSeconds: ONE_DAY },
   // v2: instance-access slice (#1313) added the `instanceAccess` field + the
   // `datasets` L2 area/keys. Pre-#1313 blobs lack the datasets area entirely, so
   // their expanded key set is missing `datasets.*` (even admins 403 on
@@ -293,7 +440,7 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // rollout, which is the entire reason `vN` exists.
   // The bump itself is INERT on landing: plan 40 phase 1 adds the registry
   // entries only — nothing reads `inboxes.*` or the inbox instance rows until
-  // phase 2 switches `composeUserMailVisibility`'s floor source. `user:mail-
+  // phase 2 switches `composeUserInstanceGrants`'s floor source. `user:mail-
   // visibility` above is deliberately NOT bumped here; that one belongs to
   // phase 2 and must land WITH the blob's shape change, not ahead of it.
   // NOT BUMPED for the 2026-07-29 `governingInstanceIds` slice — recorded so the
@@ -360,9 +507,52 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // not a gap, it is a wrong answer. Same class of accident as v12, whose
   // fail-closed direction was luck rather than structure.
   //
+  // v17 (plan v3/03 P3b §3): the VALUE VOCABULARY of the two instance maps
+  // changed. `instanceAccess` and `baselineInstanceAccess` carried
+  // `ResourcePermission` (`none|view|edit|admin`); they now carry `Rung`
+  // (`none|metadata|identity|read|edit|admin`), read verbatim off the new
+  // single-column `ResourceAccess.rung`.
+  //
+  // AS WITH v4 ABOVE, THE SHAPE IS UNCHANGED — `Record<string, string>` before
+  // and after — so the "did the shape change?" test says no bump is needed and
+  // is wrong. The test that matters is whether the CURRENT parser can read a
+  // blob the OLD code wrote.
+  //
+  // It cannot, and the failure is PARTIAL, which is the sharp edge here: THREE
+  // of the four old values (`none`, `edit`, `admin`) are spelled identically in
+  // both ladders and keep their exact relative order, so they round-trip
+  // perfectly. Only `'view'` is orphaned. A stale v16 blob is therefore mostly
+  // correct, and any smoke test that happens to exercise an `admin` creator row
+  // — which is every `baselineAtCreate: true` resource's create-time row —
+  // passes cleanly while every `view`-tier share is broken.
+  //
+  // WHICH WAY IT FAILS, traced rather than assumed. `RUNG_ORDER['view']` is
+  // `undefined`, so every `satisfiesRung(have, need)` against it is
+  // `undefined >= n` ⇒ FALSE:
+  //   - `effectiveInstanceLevel` step 1 still RETURNS `'view'` (own-row-first
+  //     tests `!== undefined`, not readability), so the resolver short-circuits
+  //     with a value no gate accepts: `canViewInstance` /`canEditInstance` /
+  //     `canAdminInstance` all deny.
+  //   - `instanceListScope`, both arms, push the id into `excludeIds` (open
+  //     area) or omit it from `includeIds` (closed area) ⇒ the instance vanishes
+  //     from lists too, so list and point-check still AGREE. No empty-page-with-
+  //     `hasMore` divergence.
+  //   - `instanceDerivedKeys` is stored pre-expanded and its vocabulary did not
+  //     change, so the member keeps the coarse front-door key while every
+  //     per-instance gate denies: a 403 maze, not a leak.
+  // FAIL-CLOSED in every branch, and the reverse rollout direction matches —
+  // old code reading a v17 blob computes `PERMISSION_RANK['read']` ⇒
+  // `undefined`, equally false.
+  //
+  // Contrast v16's second cause above, which was fail-OPEN: there, the NEW field
+  // was absent AND the old field's meaning had changed underneath it. Here no
+  // field is absent and no surviving value changed meaning — one value simply
+  // left the vocabulary. That asymmetry is the whole reason the direction has to
+  // be traced per bump instead of inherited from the previous entry.
+  //
   // Deploy-time flush is mandatory and is NOT a substitute for the bump
   // (`packages/lib/scripts/flush-user-capabilities-cache.ts`): a draining old
   // instance repopulates the same keyspace during a rollout, which is the entire
   // reason `vN` exists.
-  userCapabilities: { prefix: 'user:capabilities:v16', ttlSeconds: ONE_DAY },
+  userCapabilities: { prefix: 'user:capabilities:v17', ttlSeconds: ONE_DAY },
 }

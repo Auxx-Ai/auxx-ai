@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/mailView.ts
 
 import { schema } from '@auxx/database'
-import { getCachedUserMailVisibility, onCacheEvent } from '@auxx/lib/cache'
+import { getCachedUserInstanceGrants, onCacheEvent } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 import { MailViewService } from '@auxx/lib/mail-views'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
@@ -34,7 +34,7 @@ import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
  *    `ResourceAccess` row on the inbox by construction, and `getThreads` is
  *    exactly the surface they use; an instance gate here would deny precisely
  *    the people the model exists to serve. Thread content stays gated by
- *    `MailViewService`'s `UserMailVisibility` lens predicate, which every
+ *    `MailViewService`'s `UserInstanceGrants` lens predicate, which every
  *    procedure in this file already constructs.
  *
  * The per-view ownership checks below (`userId === caller`, `isShared`) are a
@@ -104,7 +104,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
     const result = await mailViewService.createMailView(userId, input)
     await onCacheEvent('mail-view.changed', { orgId: organizationId, userId })
@@ -117,7 +117,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
 
     const mailView = await mailViewService.getMailView(input.id)
@@ -136,7 +136,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
 
     return await mailViewService.getUserMailViews(userId)
@@ -148,7 +148,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
 
     return await mailViewService.getSharedMailViews()
@@ -161,7 +161,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
 
     const [userViews, sharedViews] = await Promise.all([
@@ -182,7 +182,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
 
     // Check if the user has access to modify this view
@@ -211,7 +211,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
 
     // Check if the user has access to delete this view
@@ -244,7 +244,7 @@ export const mailViewRouter = createTRPCRouter({
     const mailViewService = new MailViewService(
       organizationId,
       ctx.db,
-      await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+      await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
     )
 
     // Check if the user has access to this view
@@ -265,7 +265,7 @@ export const mailViewRouter = createTRPCRouter({
       const mailViewService = new MailViewService(
         organizationId,
         ctx.db,
-        await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+        await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
       )
 
       // Check if the user has access to this view
@@ -300,7 +300,7 @@ export const mailViewRouter = createTRPCRouter({
       const mailViewService = new MailViewService(
         organizationId,
         ctx.db,
-        await getCachedUserMailVisibility(ctx.session.user.id, organizationId)
+        await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
       )
 
       // Check if the mail view exists

@@ -1,12 +1,12 @@
 // packages/lib/src/sequences/access.ts
 // ResourceAccess integration for sequences (Sequences plan §10 — all members
-// can create; per-sequence view/edit/admin grants; creator gets admin). Uses
+// can create; per-sequence read/edit/admin grants; creator gets admin). Uses
 // the generic `entityDefinitionId: 'sequence'` bucket the same way
 // `groups/permission-functions.ts` uses `'entity_group'` — sequences aren't a
 // real `EntityDefinition` row, `ResourceAccess` just needs a stable string key.
 
 import type { Database } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type Rung } from '@auxx/database/enums'
 import { toRecordId } from '@auxx/types/resource'
 import { grantInstanceAccess, hasPermission } from '../resource-access'
 
@@ -32,13 +32,13 @@ export async function grantSequenceCreatorAccess(
       recordId: toRecordId(SEQUENCE_ENTITY_DEFINITION_ID, sequenceId),
       granteeType: ResourceGranteeType.user,
       granteeId: ctx.userId,
-      permission: ResourcePermission.admin,
+      rung: 'admin',
     }
   )
 }
 
 /**
- * Check whether `userId` has at least `required` permission on a sequence.
+ * Check whether `userId` holds at least `required` on a sequence.
  * A thin, sequence-scoped wrapper for the tRPC router — all of the logic is in
  * `hasPermission`/`checkAccess`.
  *
@@ -57,7 +57,7 @@ export async function checkSequenceAccess(
   ctx: SequenceAccessContext,
   sequenceId: string,
   userId: string,
-  required: ResourcePermission
+  required: Rung
 ): Promise<boolean> {
   return hasPermission(
     { db: ctx.db, organizationId: ctx.organizationId, userId },

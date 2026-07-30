@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
@@ -145,7 +145,7 @@ vi.mock('@auxx/lib/threads', () => ({
 vi.mock('@auxx/lib/channels', () => channels)
 vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx }))
 vi.mock('@auxx/lib/cache', () => ({
-  getCachedUserMailVisibility: vi.fn(async () => ({ isAdmin: false, inboxLens: {} })),
+  getCachedUserInstanceGrants: vi.fn(async () => ({ isAdmin: false, inboxLens: {} })),
   getOrgCache: () => ({ get: async () => [] }),
 }))
 vi.mock('@auxx/lib/permissions/visibility', () => ({ inboxLensFor: () => 'none' }))
@@ -645,7 +645,7 @@ describe('getIntegrations — the read gate, now assertViewInstance (§5.2/§5.3
       caller(
         capabilitiesFor({
           inboxes: Level.None,
-          instances: { [SUPPORT_INBOX]: ResourcePermission.view },
+          instances: { [SUPPORT_INBOX]: 'read' },
           derivedKeys: [PermissionKey.inboxesView],
         })
       ).getIntegrations({ inboxId: SUPPORT_INBOX })
@@ -667,9 +667,9 @@ describe('getIntegrations — the read gate, now assertViewInstance (§5.2/§5.3
 
   it('an explicit `none` row denies the member specifically', async () => {
     await expect(
-      caller(
-        capabilitiesFor({ instances: { [SUPPORT_INBOX]: ResourcePermission.none } })
-      ).getIntegrations({ inboxId: SUPPORT_INBOX })
+      caller(capabilitiesFor({ instances: { [SUPPORT_INBOX]: 'none' } })).getIntegrations({
+        inboxId: SUPPORT_INBOX,
+      })
     ).rejects.toMatchObject(FORBIDDEN_CAPABILITY)
   })
 
@@ -753,7 +753,7 @@ describe('the mail front door (§5.3) — `inboxes: None` closes the working rea
     // exactly them.
     const assignee = capabilitiesFor({
       inboxes: Level.Read,
-      instances: { [SUPPORT_INBOX]: ResourcePermission.none },
+      instances: { [SUPPORT_INBOX]: 'none' },
     })
     expect(assignee.canViewInstance('inbox', SUPPORT_INBOX)).toBe(false)
     await expect(caller(assignee).myLenses()).resolves.toBeDefined()

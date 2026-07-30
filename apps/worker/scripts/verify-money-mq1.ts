@@ -643,7 +643,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     for (const id of woLines.ids) createdLineIds.push(id)
     check('WO got 2 duplicated lines', woLines.ids.length === 2, woLines.ids.length)
@@ -687,7 +686,6 @@ async function main() {
         },
       ],
       limit: 100,
-      mode: 'oneshot',
     })
     check(
       'original quote lines untouched (still 2, still linked to quote)',

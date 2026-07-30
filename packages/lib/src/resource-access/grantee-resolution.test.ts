@@ -48,7 +48,7 @@ function member(over: Partial<MemberRoleEntry> = {}): MemberRoleEntry {
  * as data and this evaluator stands in for the WHERE clause.
  */
 function rowsVisibleTo(
-  rows: Array<{ granteeType: string; granteeId: string; permission: string }>,
+  rows: Array<{ granteeType: string; granteeId: string; rung: string }>,
   matchers: GranteeMatcher[]
 ) {
   return rows.filter((row) =>
@@ -95,8 +95,8 @@ describe('the finding-1 lockout', () => {
   // def restricted for the whole org. So a grantee kind a reader cannot resolve
   // does not fail closed for that grantee — it hides the def from everyone.
   const defRows = [
-    { granteeType: 'role', granteeId: 'org_member', permission: 'view' },
-    { granteeType: 'profile', granteeId: 'prof_field', permission: 'admin' },
+    { granteeType: 'role', granteeId: 'org_member', rung: 'read' },
+    { granteeType: 'profile', granteeId: 'prof_field', rung: 'admin' },
   ]
 
   it('leaves an unrelated non-admin member on the workspace baseline', () => {
@@ -104,7 +104,7 @@ describe('the finding-1 lockout', () => {
       defRows,
       granteeMatchers({ userId: 'u_other', groupIds: [], profileId: 'prof_member' })
     )
-    expect(visible).toEqual([{ granteeType: 'role', granteeId: 'org_member', permission: 'view' }])
+    expect(visible).toEqual([{ granteeType: 'role', granteeId: 'org_member', rung: 'read' }])
   })
 
   it('gives the granted profile’s holders the profile row', () => {
@@ -112,14 +112,14 @@ describe('the finding-1 lockout', () => {
       defRows,
       granteeMatchers({ userId: 'u_tech', groupIds: [], profileId: 'prof_field' })
     )
-    expect(visible.map((r) => r.permission).sort()).toEqual(['admin', 'view'])
+    expect(visible.map((r) => r.rung).sort()).toEqual(['admin', 'read'])
   })
 
   it('reproduces the pre-step-9 lockout when the profile matcher is dropped', () => {
     // Same rows, but with the grantee union as it was BEFORE step 9 (no profile
     // matcher) AND no baseline row — the def is restricted org-wide and nobody
     // can resolve a grant through it.
-    const restrictedOnly = [{ granteeType: 'profile', granteeId: 'prof_field', permission: 'view' }]
+    const restrictedOnly = [{ granteeType: 'profile', granteeId: 'prof_field', rung: 'read' }]
     const preStep9 = granteeMatchers({ userId: 'u_tech', groupIds: [], profileId: null })
     expect(rowsVisibleTo(restrictedOnly, preStep9)).toEqual([])
 

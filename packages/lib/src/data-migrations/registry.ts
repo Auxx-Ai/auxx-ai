@@ -29,6 +29,7 @@ import { migration056SignaturesSnippetsInstanceAccess } from './migrations/056-s
 import { migration058ReopenPersonalOnboarding } from './migrations/058-reopen-personal-onboarding'
 import { migration060PersonalInboxMove } from './migrations/060-personal-inbox-move'
 import { migration061InboxesMemberBaselineBackfill } from './migrations/061-inboxes-member-baseline-backfill'
+import { migration063RetireMailPermissionsFeatureKey } from './migrations/063-retire-mail-permissions-feature-key'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -77,6 +78,10 @@ function buildRegistry(): DataMigrationDef[] {
     // the shared id sequence and sorts before 060, which depends on it.
     migration060PersonalInboxMove,
     migration061InboxesMemberBaselineBackfill,
+    // 062 is an ENTITY migration (drops the retired inbox lens/personal fields)
+    // and arrives via ALL_ENTITY_MIGRATIONS above; it owns 062 in the shared id
+    // sequence.
+    migration063RetireMailPermissionsFeatureKey,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

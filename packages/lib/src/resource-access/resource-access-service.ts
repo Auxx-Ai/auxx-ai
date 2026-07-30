@@ -1,7 +1,7 @@
 // packages/lib/src/resource-access/resource-access-service.ts
 
 import { schema } from '@auxx/database'
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, type Rung } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
@@ -17,7 +17,7 @@ import {
   isInstanceAccessKey,
 } from '../permissions/capabilities/instance-access'
 import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability-inputs'
-import { satisfiesPermission } from './constants'
+import { maxRung, satisfiesRung } from '../permissions/capabilities/rung'
 import {
   expandGranteeToUserIds,
   grantedViaFor,
@@ -31,7 +31,6 @@ import type {
   GrantedVia,
   GrantInstanceAccessInput,
   GrantInstanceAccessResult,
-  GrantLens,
   GrantTypeAccessInput,
   InstanceAccess,
   ResourceAccessContext,
@@ -76,7 +75,7 @@ async function isOwner(ctx: ResourceAccessContext, targetUserId: string): Promis
  * It is gone because every server resolver now goes through
  * `grantee-resolution.ts`: `checkAccess`,
  * `getUserAccessibleInstances`, `computeUserCapabilities`,
- * `computeUserMailVisibility` (forward) and `mailGrantIndexProvider` (reverse),
+ * `computeUserInstanceGrants` (forward) and `mailGrantIndexProvider` (reverse),
  * plus `snippet-permissions.ts`'s in-memory equivalent. Do not reintroduce a
  * per-kind write guard here — the invariant to protect is "every reader
  * enumerates every kind", which the shared builder enforces structurally.
@@ -250,7 +249,7 @@ async function notifyNewInstanceShare(
   entityDefinitionId: string,
   entityInstanceId: string
 ): Promise<void> {
-  if (input.permission === ResourcePermission.none) return
+  if (input.rung === 'none') return
   // An approval-origin grant is announced by `ACCESS_REQUEST_DECIDED` instead
   // (plan 42 §8) — otherwise the requester is told a teammate "shared" something
   // they explicitly asked for, which reads as an unrelated event.
@@ -278,7 +277,9 @@ async function notifyNewInstanceShare(
       columns: { subject: true },
     })
     if (!thread) return
-    const lens = input.permission === ResourcePermission.view ? (input.lens ?? 'full') : 'full'
+    // Third and last site of the old `permission === 'view' ? (lens ?? 'full') :
+    // 'full'` triplicate (plan v3/03 §11) — now just the stored rung.
+    const lens = input.rung
     const visibleSubject = lens === 'metadata' ? null : thread.subject
     await Promise.all(
       recipientIds.map((userId) =>
@@ -322,12 +323,7 @@ async function notifyNewInstanceShare(
   // reads "shared the agent null with you".
   const resourceName = resource.name ?? `Untitled ${resourceConfig.noun}`
 
-  const level =
-    input.permission === ResourcePermission.admin
-      ? 'full'
-      : input.permission === ResourcePermission.edit
-        ? 'write'
-        : 'read'
+  const level = input.rung === 'admin' ? 'full' : input.rung === 'edit' ? 'write' : 'read'
   const targetIds = resourceConfig.targetIds(entityInstanceId)
 
   await Promise.all(
@@ -364,7 +360,7 @@ async function notifyNewInstanceShare(
  *
  * **The `default` is a BROADCAST, and that is the safety mechanism.** Narrowing a
  * broadcast to a targeted set is the fail-OPEN direction: a user who matches the
- * forward grantee resolver but is missed here keeps a stale `userMailVisibility`
+ * forward grantee resolver but is missed here keeps a stale `userInstanceGrants`
  * for the full ONE_DAY TTL, holding a share they cannot see — the class
  * `mail-grant-index-provider`'s docstring names of itself ("the two must expand
  * the same grantee kinds or a share is visible in one direction only", 19a
@@ -434,7 +430,7 @@ async function resolveInvalidationTargets(
  * Call AFTER the DB write commits.
  *
  * Phase 0 of the mail-permissions plan wires the emission; Phase 1 attaches
- * the keys (`userMailVisibility`, `mailGrantIndex`) to the invalidation graph.
+ * the keys (`userInstanceGrants`, `mailGrantIndex`) to the invalidation graph.
  *
  * ONE `onCacheEvent` for the whole audience, not one per user (plan 45 §1.3): the
  * targeted branch re-walks the invalidation graph, marks mail counts stale and
@@ -501,14 +497,38 @@ async function emitResourceAccessTypeChanged(
 }
 
 /**
- * Emit the narrow instance-level cache event that busts the `userCapabilities`
- * `instanceAccess` map + the org-wide `governingInstanceIds` set after an
- * INSTANCE-level ResourceAccess mutation whose target is an instance-access
- * resource (datasets etc., §1.5). Same user/broadcast fan-out shape as
- * {@link emitResourceAccessTypeChanged}; kept separate so generic mail-share
- * instance traffic (which only fires {@link emitResourceAccessChanged}) never
- * churns these caches. Also publishes `publishCapabilitiesChanged` so other
- * members' live sessions re-compose (phase 4 §10). Call AFTER the write commits.
+ * Emit the instance-level cache events after an INSTANCE-level `ResourceAccess`
+ * mutation. Same user/broadcast fan-out shape as
+ * {@link emitResourceAccessTypeChanged}; kept separate from
+ * {@link emitResourceAccessChanged} so the two lanes' key sets stay independent.
+ * Also publishes `publishCapabilitiesChanged` so other members' live sessions
+ * re-compose (phase 4 §10). Call AFTER the write commits.
+ *
+ * **Def-agnostic, by design (v3/03 §9).** `resource-access.instance.changed`
+ * busts `userCapabilities` for EVERY instance write, whatever keyspace the def id
+ * is in. It used to be gated on {@link isInstanceAccessKey} at the three write
+ * funnels, which a record-def CUID can never satisfy — so a record share
+ * invalidated the mail keys only and left the capability blob (where §4's
+ * `grantedDefIds` front door lives) stale for the full ONE_DAY TTL on the very
+ * first share.
+ *
+ * The org-wide `governingInstanceIds` half stays keyspace-gated as
+ * `resource-access.governing-instance.changed`: the provider filters
+ * `entityDefinitionId IN INSTANCE_ACCESS_KEYS` in SQL *and* through
+ * `isGoverningInstanceRow` in JS, so a row on any other def provably cannot enter
+ * the set, and recomputing that org key for record/thread traffic is an org-wide
+ * query with a guaranteed-unchanged answer. It is emitted FIRST so the org key is
+ * fresh before the capability publish sends clients back to read it — and, since
+ * it carries no per-user audience, ahead of the zero-audience bail, so a
+ * restriction row written against an empty group still recomputes the set.
+ *
+ * @param entityDefinitionId The written row's def id, used only to decide whether
+ *   the `governingInstanceIds` key needs recomputing. **Required**: it was briefly
+ *   optional (absent meaning "recompute", the fail-safe direction), but an optional
+ *   fail-safe is indistinguishable from a forgotten argument at the call site. Every
+ *   caller already knows the def it just wrote a row for, so requiring it turns that
+ *   mistake into a compile error and keeps the redundant-recompute path from being
+ *   reachable by accident.
  *
  * Exported (not module-private) — instance-access resources that write their own
  * `ResourceAccess` rows outside `grantInstanceAccess` (e.g. dashboards' create-time
@@ -516,15 +536,20 @@ async function emitResourceAccessTypeChanged(
  */
 export async function emitResourceAccessInstanceChanged(
   organizationId: string,
-  grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
+  grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>,
+  entityDefinitionId: string
 ): Promise<void> {
   const { userIds, broadcast } = await resolveInvalidationTargets(organizationId, grantees)
+  const governs = isInstanceAccessKey(entityDefinitionId)
 
   // Lazy import — the cache invalidation path lazily imports realtime, so this
   // module must not statically import the realtime barrel back (import cycle).
   const { getRealtimeService, publishCapabilitiesChanged } = await import('../realtime')
 
   if (broadcast) {
+    if (governs) {
+      await onCacheEvent('resource-access.governing-instance.changed', { orgId: organizationId })
+    }
     await onCacheEvent('resource-access.instance.changed', {
       orgId: organizationId,
       broadcastUserKeys: true,
@@ -533,6 +558,21 @@ export async function emitResourceAccessInstanceChanged(
     return
   }
 
+  // The governing key is ORG-level and has no per-user audience, so it must be
+  // emitted BEFORE the empty-audience bail below. A `none` restriction row
+  // written against a group with no members — or a profile nobody currently
+  // holds — expands to zero user ids. Bailing first would skip this recompute
+  // and leave the instance OUT of `governingInstanceIds`, where absence means
+  // "unrestricted" (`effectiveInstanceLevel` falls through to
+  // `instanceFallbackLevel`), so the restriction silently would not apply for
+  // the full ONE_DAY TTL. Fail-open on the restriction path — the one direction
+  // that must never be a silent no-op.
+  if (governs) {
+    await onCacheEvent('resource-access.governing-instance.changed', { orgId: organizationId })
+  }
+
+  // Below here is per-USER invalidation only: no audience, nothing to bust and
+  // nobody to publish to.
   if (userIds.length === 0) return
   // One cache event for the audience (plan 45 §1.3); the capability publish stays
   // per-user because it targets one room at a time.
@@ -547,13 +587,13 @@ export async function emitResourceAccessInstanceChanged(
  *
  * `ResourceAccess.entityDefinitionId` is a DUAL keyspace with no FK: mail defs
  * are keyed by their entity SLUG (`inbox`, `thread`, `contact`) because
- * `composeUserMailVisibility` and {@link isMailSharingDef} both test the
+ * `composeUserInstanceGrants` and {@link isMailSharingDef} both test the
  * literal, while generic record defs stay keyed by the def CUID (custom defs
  * have no stable slug — `entityType` is null and `apiSlug` is renameable).
  *
  * A caller that mints a mail RecordId from the def CUID therefore writes a row
  * that mail visibility never reads AND that skipped `assertCanManageMailSharing`
- * + the enterprise `mailPermissions` gate, both of which key off the slug. That
+ * + the `granularPermissions` plan gate, both of which key off the slug. That
  * shipped for months through `inbox-detail.tsx` and was invisible.
  *
  * THROW, not normalize — deliberately:
@@ -613,8 +653,7 @@ export async function grantInstanceAccess(
       entityInstanceId,
       granteeType: input.granteeType,
       granteeId: input.granteeId,
-      permission: input.permission,
-      lens: input.lens ?? null,
+      rung: input.rung,
       grantedById: userId,
     })
     .onConflictDoUpdate({
@@ -626,8 +665,7 @@ export async function grantInstanceAccess(
         schema.ResourceAccess.granteeId,
       ],
       set: {
-        permission: input.permission,
-        lens: input.lens ?? null,
+        rung: input.rung,
         grantedById: userId,
         updatedAt: new Date(),
       },
@@ -643,9 +681,9 @@ export async function grantInstanceAccess(
   // before the row is visible is the same staleness bug one layer up.
   const flushEmits = async (): Promise<void> => {
     await emitResourceAccessChanged(organizationId, grantees)
-    if (isInstanceAccessKey(entityDefinitionId)) {
-      await emitResourceAccessInstanceChanged(organizationId, grantees)
-    }
+    // Def-agnostic (v3/03 §9): the def id is passed for the `governingInstanceIds`
+    // decision only — the capability bust fires for every keyspace.
+    await emitResourceAccessInstanceChanged(organizationId, grantees, entityDefinitionId)
 
     if (isNewGrant) {
       void notifyNewInstanceShare(ctx, input, entityDefinitionId, entityInstanceId).catch(
@@ -682,7 +720,7 @@ export async function grantTypeAccess(
       entityInstanceId: null,
       granteeType: input.granteeType,
       granteeId: input.granteeId,
-      permission: input.permission,
+      rung: input.rung,
       grantedById: userId,
     })
     .onConflictDoUpdate({
@@ -694,7 +732,7 @@ export async function grantTypeAccess(
         schema.ResourceAccess.granteeId,
       ],
       set: {
-        permission: input.permission,
+        rung: input.rung,
         grantedById: userId,
         updatedAt: new Date(),
       },
@@ -732,15 +770,11 @@ export async function revokeInstanceAccess(
   if (result.length > 0) {
     const grantees = [{ granteeType: input.granteeType, granteeId: input.granteeId }]
     await emitResourceAccessChanged(organizationId, grantees)
-    if (isInstanceAccessKey(entityDefinitionId)) {
-      await emitResourceAccessInstanceChanged(organizationId, grantees)
-    }
+    // Def-agnostic (v3/03 §9) — see `grantInstanceAccess`.
+    await emitResourceAccessInstanceChanged(organizationId, grantees, entityDefinitionId)
 
     if (entityDefinitionId === 'thread' || isInstanceAccessKey(entityDefinitionId)) {
-      const recipients = await resolveShareRecipients(ctx, {
-        ...input,
-        permission: ResourcePermission.view,
-      })
+      const recipients = await resolveShareRecipients(ctx, { ...input, rung: 'read' })
       // Table-driven rather than a ternary chain: the chain's trailing branch
       // was `DASHBOARD`, so every key added to `INSTANCE_ACCESS_RESOURCES`
       // after dashboards silently un-shared the wrong notification target.
@@ -804,7 +838,7 @@ export async function setInstanceAccess(
   ctx: ResourceAccessContext,
   recordId: RecordId,
   granteeType: ResourceGranteeType,
-  grants: Array<{ granteeId: string; permission: ResourcePermission; lens?: GrantLens | null }>
+  grants: Array<{ granteeId: string; rung: Rung }>
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
   await assertCanonicalMailKey(organizationId, recordId)
@@ -833,8 +867,7 @@ export async function setInstanceAccess(
           entityInstanceId,
           granteeType,
           granteeId: g.granteeId,
-          permission: g.permission,
-          lens: g.lens ?? null,
+          rung: g.rung,
           grantedById: userId,
         }))
       )
@@ -847,9 +880,8 @@ export async function setInstanceAccess(
   const affected = new Set([...removed.map((r) => r.granteeId), ...grants.map((g) => g.granteeId)])
   const grantees = Array.from(affected, (granteeId) => ({ granteeType, granteeId }))
   await emitResourceAccessChanged(organizationId, grantees)
-  if (isInstanceAccessKey(entityDefinitionId)) {
-    await emitResourceAccessInstanceChanged(organizationId, grantees)
-  }
+  // Def-agnostic (v3/03 §9) — see `grantInstanceAccess`.
+  await emitResourceAccessInstanceChanged(organizationId, grantees, entityDefinitionId)
 }
 
 /**
@@ -859,7 +891,7 @@ export async function setTypeAccess(
   ctx: ResourceAccessContext,
   entityDefinitionId: string,
   granteeType: ResourceGranteeType,
-  grants: Array<{ granteeId: string; permission: ResourcePermission }>
+  grants: Array<{ granteeId: string; rung: Rung }>
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
 
@@ -886,7 +918,7 @@ export async function setTypeAccess(
           entityInstanceId: null,
           granteeType,
           granteeId: g.granteeId,
-          permission: g.permission,
+          rung: g.rung,
           grantedById: userId,
         }))
       )
@@ -921,12 +953,7 @@ export async function checkAccess(
   //    sharing bypassed for admins through a completely separate code path.
   //    An admin now resolves through their own grantee union like anyone else.
   if (await isOwner(ctx, targetUserId)) {
-    return {
-      hasAccess: true,
-      permission: ResourcePermission.admin,
-      grantedVia: 'role',
-      accessLevel: 'type',
-    }
+    return { hasAccess: true, rung: 'admin', grantedVia: 'role', accessLevel: 'type' }
   }
 
   // 2+3. Grantee conditions: direct user, `role:org_member` baseline, the bound
@@ -952,26 +979,24 @@ export async function checkAccess(
   })
 
   if (grants.length === 0) {
-    return { hasAccess: false, permission: null, grantedVia: null, accessLevel: null }
+    return { hasAccess: false, rung: null, grantedVia: null, accessLevel: null }
   }
 
-  // 5. Find highest permission level (instance-specific grants take precedence)
-  let highestPermission: ResourcePermission = grants[0]!.permission as ResourcePermission
+  // 5. Find the highest rung (instance-specific grants take precedence)
+  let highestRung: Rung = grants[0]!.rung as Rung
   let grantedVia: GrantedVia = 'direct'
   let accessLevel: 'type' | 'instance' = grants[0]!.entityInstanceId ? 'instance' : 'type'
 
   for (const grant of grants) {
-    const perm = grant.permission as ResourcePermission
+    const rung = grant.rung as Rung
     const isInstanceLevel = !!grant.entityInstanceId
 
-    // Instance-level grants have priority, then compare permission level
+    // Instance-level grants have priority, then compare rung
     if (isInstanceLevel && accessLevel === 'type') {
-      highestPermission = perm
+      highestRung = rung
       accessLevel = 'instance'
     } else if (isInstanceLevel === (accessLevel === 'instance')) {
-      if (satisfiesPermission(perm, highestPermission)) {
-        highestPermission = perm
-      }
+      highestRung = maxRung(highestRung, rung)
     }
 
     // Track how access was granted. Total over the grantee vocabulary — an
@@ -980,12 +1005,7 @@ export async function checkAccess(
     grantedVia = grantedViaFor(grant.granteeType)
   }
 
-  return {
-    hasAccess: true,
-    permission: highestPermission,
-    grantedVia,
-    accessLevel,
-  }
+  return { hasAccess: true, rung: highestRung, grantedVia, accessLevel }
 }
 
 /**
@@ -994,15 +1014,12 @@ export async function checkAccess(
 export async function hasPermission(
   ctx: ResourceAccessContext,
   recordId: RecordId,
-  required: ResourcePermission
+  required: Rung
 ): Promise<boolean> {
-  const result = await checkAccess(ctx, {
-    recordId,
-    userId: ctx.userId,
-  })
+  const result = await checkAccess(ctx, { recordId, userId: ctx.userId })
 
-  if (!result.hasAccess || !result.permission) return false
-  return satisfiesPermission(result.permission, required)
+  if (!result.hasAccess || !result.rung) return false
+  return satisfiesRung(result.rung, required)
 }
 
 /**
@@ -1030,8 +1047,7 @@ export async function getInstanceAccess(
     entityInstanceId: g.entityInstanceId,
     granteeType: g.granteeType as ResourceGranteeType,
     granteeId: g.granteeId,
-    permission: g.permission as ResourcePermission,
-    lens: (g.lens ?? null) as GrantLens | null,
+    rung: g.rung as Rung,
     createdAt: g.createdAt,
   }))
 }
@@ -1060,7 +1076,7 @@ export async function getTypeAccess(
     entityInstanceId: g.entityInstanceId,
     granteeType: g.granteeType as ResourceGranteeType,
     granteeId: g.granteeId,
-    permission: g.permission as ResourcePermission,
+    rung: g.rung as Rung,
     createdAt: g.createdAt,
   }))
 }
@@ -1091,7 +1107,7 @@ export async function getAllTypeAccess(ctx: ResourceAccessContext): Promise<Reso
     entityInstanceId: g.entityInstanceId,
     granteeType: g.granteeType as ResourceGranteeType,
     granteeId: g.granteeId,
-    permission: g.permission as ResourcePermission,
+    rung: g.rung as Rung,
     createdAt: g.createdAt,
   }))
 }
@@ -1128,7 +1144,7 @@ export async function getAllInstanceAccess(
     entityInstanceId: g.entityInstanceId,
     granteeType: g.granteeType as ResourceGranteeType,
     granteeId: g.granteeId,
-    permission: g.permission as ResourcePermission,
+    rung: g.rung as Rung,
     createdAt: g.createdAt,
   }))
 }
@@ -1143,7 +1159,7 @@ export async function getUserAccessibleInstances(
   entityDefinitionId: string
 ): Promise<{
   hasTypeAccess: boolean
-  typePermission: ResourcePermission | null
+  typeRung: Rung | null
   instances: InstanceAccess[]
 }> {
   const { db, organizationId } = ctx
@@ -1165,33 +1181,28 @@ export async function getUserAccessibleInstances(
 
   // Separate type-level and instance-level grants
   let hasTypeAccess = false
-  let typePermission: ResourcePermission | null = null
-  const instanceMap = new Map<string, ResourcePermission>()
+  let typeRung: Rung | null = null
+  const instanceMap = new Map<string, Rung>()
 
   for (const grant of grants) {
+    const rung = grant.rung as Rung
     if (!grant.entityInstanceId) {
       // Type-level grant
       hasTypeAccess = true
-      const perm = grant.permission as ResourcePermission
-      if (!typePermission || satisfiesPermission(perm, typePermission)) {
-        typePermission = perm
-      }
+      typeRung = typeRung === null ? rung : maxRung(rung, typeRung)
     } else {
       // Instance-level grant
       const existing = instanceMap.get(grant.entityInstanceId)
-      const current = grant.permission as ResourcePermission
-      if (!existing || satisfiesPermission(current, existing)) {
-        instanceMap.set(grant.entityInstanceId, current)
-      }
+      instanceMap.set(grant.entityInstanceId, existing ? maxRung(rung, existing) : rung)
     }
   }
 
   return {
     hasTypeAccess,
-    typePermission,
-    instances: Array.from(instanceMap.entries()).map(([instanceId, permission]) => ({
+    typeRung,
+    instances: Array.from(instanceMap.entries()).map(([instanceId, rung]) => ({
       recordId: toRecordId(entityDefinitionId, instanceId),
-      permission,
+      rung,
     })),
   }
 }

@@ -15,7 +15,7 @@ import { useActor } from '~/components/resources/hooks'
 import { useInbox, useThread } from '~/components/threads/hooks'
 import { Tooltip } from '../../global/tooltip'
 import { AccessLevelsGuide } from './access-levels-guide'
-import { EnterpriseGate, useMailPermissionsGated } from './enterprise-gate'
+import { GranularPermissionsGate, useGranularPermissionsGated } from './granular-permissions-gate'
 import { MailGranteeList } from './mail-grantee-list'
 import { RequestAccessPopover } from './request-access-popover'
 
@@ -51,7 +51,7 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
 
   const { thread } = useThread({ threadId })
   const { inbox } = useInbox(thread?.inboxId)
-  const gated = useMailPermissionsGated()
+  const gated = useGranularPermissionsGated()
 
   const recordId = toRecordId('thread', threadId)
   const { grants, unmanageableGrants, grant, changeLens, revoke } = useMailShare({ recordId })
@@ -69,10 +69,10 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
   // empty header: being unable to administer sharing is not the same as lacking read
   // access, so only a sub-`full` viewer gets the trigger here.
   if (!canShare && grants.length === 0) {
-    return myLens !== 'full' ? <RequestAccessPopover threadId={threadId} variant='icon' /> : null
+    return myLens !== 'read' ? <RequestAccessPopover threadId={threadId} variant='icon' /> : null
   }
 
-  const floor = inbox?.defaultLens ?? 'full'
+  const floor = inbox?.defaultLens ?? 'read'
 
   const button = (
     <Button variant='ghost' size='icon' className='rounded-full hover:bg-foreground/10'>
@@ -96,7 +96,7 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
 
   // Free-plan sharers get the tease; grantee-holders still see the list.
   if (gated && grants.length === 0) {
-    return <EnterpriseGate>{button}</EnterpriseGate>
+    return <GranularPermissionsGate>{button}</GranularPermissionsGate>
   }
 
   return (

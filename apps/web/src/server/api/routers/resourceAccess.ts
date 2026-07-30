@@ -1,17 +1,23 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
-import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
-import { getCachedResources } from '@auxx/lib/cache'
-import { BadRequestError } from '@auxx/lib/errors'
+import { type Database, schema } from '@auxx/database'
+import { ResourceGranteeType, RungValues } from '@auxx/database/enums'
+import { getCachedResources, getCachedUserInstanceGrants } from '@auxx/lib/cache'
+import { BadRequestError, ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import {
   buildDefIdToSlug,
+  type CapabilitySet,
+  type CapabilityView,
   FeatureKey,
   FeaturePermissionService,
   getCapabilities,
   INSTANCE_ACCESS_RESOURCES,
   isInstanceAccessKey,
   type Level,
+  recordAccessRankSql,
+  resolveRecordVisibilityScope,
+  satisfiesRung,
 } from '@auxx/lib/permissions'
 import type { ResourceAccessContext, ResourceAccessInfo } from '@auxx/lib/resource-access'
 import {
@@ -25,6 +31,7 @@ import {
   grantInstanceAccess,
   grantTypeAccess,
   isMailSharingDef,
+  ORG_MEMBER_GRANTEE_ID,
   revokeInstanceAccess,
   revokeTypeAccess,
   setInstanceAccess,
@@ -33,17 +40,35 @@ import {
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { assertProfileGranteesAuthorable, granteeTypeSchema } from '~/server/api/grantee-schema'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
-/** Visibility lens on mail grants (mail-permissions §2.1). Optional everywhere. */
-const lensSchema = z.enum(['metadata', 'subject', 'full']).nullish()
+/**
+ * The grant ladder on the wire (plan v3/03 §3). ONE field where `permission` +
+ * `lens` used to be two — the mail tiers (`metadata`, `identity`) and the
+ * config-scale tiers (`read`, `edit`, `admin`) are rungs on the same ladder, so
+ * the input no longer has to express a two-column encoding the storage layer
+ * stopped having.
+ *
+ * `none` is included and is a RESTRICTION marker, never a grant; the mutations
+ * below narrow WHERE it is legal (instance-access resources only, and at type
+ * level only for `role:org_member`).
+ */
+const rungSchema = z.enum(RungValues)
+
+/**
+ * {@link rungSchema} minus `none` — for the two `set*` replace-all mutations,
+ * which never author a restriction (a removed grantee is expressed by ABSENCE
+ * from the array, not by a `none` row).
+ */
+const grantRungSchema = z.enum(['metadata', 'identity', 'read', 'edit', 'admin'])
 
 /**
  * Mail grants live in the entity-SLUG keyspace (`inbox:<id>`, `contact:<id>`):
- * `composeUserMailVisibility` buckets rows by `entityDefinitionId === 'inbox'`,
+ * `composeUserInstanceGrants` buckets rows by `entityDefinitionId === 'inbox'`,
  * and `isMailSharingDef` gates authorization on the same literal. Record-layer
  * callers mint RecordIds from the EntityDefinition id instead (the inbox
  * settings page builds `toRecordId(inboxResource.id, inboxId)`), so their grants
@@ -127,23 +152,217 @@ async function assertTypeAccessEditFeature(
 }
 
 /**
- * Authorize a per-INSTANCE sharing mutation (§1.6). If the target's def id is an
- * instance-access resource (datasets etc.), managing its sharing requires
- * `canAdminInstance(key, instanceId)` **or** OWNER/ADMIN — scoped to the exact
- * `entityInstanceId` (no cross-instance escalation) — and returns `true` so the
- * caller SKIPS the mail-sharing authorizer + feature gate. Returns `false` for
- * generic mail targets (`contact:<id>`, `inbox:<id>`, …), which fall through to
- * {@link assertCanManageMailSharing}.
+ * Plan gate for per-RECORD instance sharing (plan v3/03 §7.6, D9 — the handoff's
+ * owed follow-up #4).
+ *
+ * `assertMailSharingFeature` returns early for every non-mail def and
+ * `assertTypeAccessEditFeature` only guards the TYPE axis, so a record-def
+ * INSTANCE grant took no plan gate at all. That was inert while no record share
+ * UI existed; P5 mounts one, so the gate lands with it.
+ *
+ * Instance-access resources are exempt — dataset/KB/dashboard sharing is core
+ * product on every plan and has always been ungated — as are the mail defs,
+ * which keep their own narrower gate (sub-`read` rungs and NEW Manager rows).
+ * Revokes stay ungated everywhere: revoking only tightens access.
+ */
+async function assertRecordSharingFeature(
+  ctx: { db: any; session: { organizationId: string } },
+  recordId: RecordId
+): Promise<void> {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  if (isInstanceAccessKey(entityDefinitionId) || isMailSharingDef(entityDefinitionId)) return
+  await new FeaturePermissionService(ctx.db).requireAccess(
+    ctx.session.organizationId,
+    FeatureKey.granularPermissions
+  )
+}
+
+/**
+ * Authorize sharing ONE record-def row (plan v3/03 §7.1).
+ *
+ * **This is the fix for a live fail-OPEN.** `canonicalMailRecordId` passes a
+ * record CUID straight through; `authorizeInstanceTarget` used to answer `false`
+ * for it *without asserting anything*, and both mail funnels
+ * (`assertCanManageMailSharing`, `assertMailSharingFeature`) early-return on a
+ * non-mail def — so every `grantInstance` / `setInstance` / `revokeInstance` call
+ * naming a record row was written unauthorized. It was inert only because the
+ * capability composer filtered those rows back out on read; plan v3/03 §5 removes
+ * that inertness, so the authorizer lands first.
+ *
+ * The bar is **row-effective `edit`**, not def `admin`: administering a
+ * definition (fields, name, the Access tab) is a different, heavier authority
+ * than "re-share one row I can already change" (plan 08 §4.4). Do NOT reach for
+ * {@link CapabilityView.assertAdminInstance} here — that is the instance-access
+ * registry's ladder, and record defs are deliberately not in it.
+ *
+ * **P5 swapped the stamp in — this is that swap.** The def read is still the
+ * FIRST branch and still the common case (a member who may edit the def may
+ * re-share any of its rows, exactly as before, with no query). What is new is
+ * the SECOND branch: a member who cannot edit the def at all, but whose
+ * ROW-EFFECTIVE `_access` reaches `admin`, may re-share that one row. Strictly
+ * additive — nobody who could share before loses it, and the row-effective read
+ * is only paid when the cheap def read has already said no.
+ *
+ * The `admin` bar on the row half, against `edit` on the def half, is not an
+ * inconsistency: the def branch already carries an org-wide authority over every
+ * row of the definition, whereas a per-row grant carries authority over exactly
+ * one row — and "may pass this on to others" is the top rung of the per-instance
+ * ladder everywhere else in the product (`canAdminInstance`). Handing re-share
+ * rights to a row shared at `edit` would let a collaborator widen an audience the
+ * grantor chose.
+ *
+ * Do NOT reach for {@link CapabilityView.assertAdminInstance} here — that is the
+ * instance-access registry's ladder, and record defs are deliberately not in it.
+ *
+ * No self-revoke hatch, unlike {@link assertCanManageMailSharing}: mail's hatch
+ * exists so a member can leave a shared conversation, and the record lane has no
+ * such affordance yet. Adding one silently would be a widening, not a fix.
+ */
+async function assertCanManageRecordSharing(
+  ctx: { db: Database; session: { organizationId: string; userId: string } },
+  capabilities: CapabilitySet,
+  recordId: RecordId
+): Promise<void> {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  if (capabilities.canEditEntity(entityDefinitionId)) return
+
+  // The ROW-EFFECTIVE read, in ONE query: the §5.1 visibility predicate in the
+  // `WHERE`, the grantee-union `max(rung)` aggregate in the projection. Written
+  // out here rather than through `UnifiedCrudHandler.getByIds` on purpose — this
+  // router must not import the `@auxx/lib/resources` barrel, which pulls the
+  // dataset/connector service graph into every consumer of `resourceAccess`.
+  const resources = await getCachedResources(ctx.session.organizationId)
+  const resource = resources.find(
+    (r) => r.id === entityDefinitionId || r.entityDefinitionId === entityDefinitionId
+  )
+  const defId = resource?.entityDefinitionId ?? resource?.id ?? entityDefinitionId
+
+  const scope = await resolveRecordVisibilityScope({
+    organizationId: ctx.session.organizationId,
+    userId: ctx.session.userId,
+    entityDefinitionId: defId,
+    capabilities,
+  })
+  // Arm 4 — the member can reach no row of this def at all. Deny without querying.
+  if (scope.arm === 'none') {
+    throw new ForbiddenError("You don't have permission to manage sharing for this record.")
+  }
+
+  const rows = await ctx.db
+    .select({
+      grantRank: recordAccessRankSql({
+        organizationId: ctx.session.organizationId,
+        entityDefinitionId: defId,
+        grantees: scope.grantees,
+      }),
+    })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.id, entityInstanceId),
+        eq(schema.EntityInstance.organizationId, ctx.session.organizationId),
+        scope.where
+      )
+    )
+    .limit(1)
+
+  // A row that does not come back is one the read path itself hid — the
+  // strongest possible denial, and the same non-enumeration answer `getById`
+  // gives.
+  const row = rows[0]
+  if (!row || !satisfiesRung(capabilities.recordAccessAt(defId, row.grantRank), 'admin')) {
+    throw new ForbiddenError("You don't have permission to manage sharing for this record.")
+  }
+}
+
+/**
+ * Authorize a per-INSTANCE sharing mutation (§1.6). Answers `true` when it has
+ * FULLY authorized the target, `false` only for the mail-share targets that must
+ * fall through to {@link assertCanManageMailSharing} (`thread:<id>`,
+ * `contact:<id>`).
+ *
+ * Three lanes, in this order — the ordering is load-bearing:
+ *  1. **instance-access resources** (datasets, KBs, and since plan 40 phase 1
+ *     `inbox`/`personal_inbox`): `canAdminInstance(key, instanceId)`, scoped to
+ *     the exact `entityInstanceId` so there is no cross-instance escalation.
+ *     Checked FIRST because `inbox` is both an instance-access key and a
+ *     mail-sharing def, and phase 1 deliberately routes it here rather than to
+ *     the mail guard (§5.3).
+ *  2. **the remaining mail-share defs** — `thread` and `contact`, which are
+ *     excluded from the instance-access registry on purpose — hand back `false`.
+ *  3. **everything else is a record def**: {@link assertCanManageRecordSharing}.
+ *     This arm used to be a bare `return false`, which authorized nothing.
  */
 async function authorizeInstanceTarget(
   ctx: { db: any; session: { organizationId: string; userId: string } },
   recordId: string
 ): Promise<boolean> {
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
-  if (!isInstanceAccessKey(entityDefinitionId)) return false
+  // Lane 2 before the capability read: `thread`/`contact` answer to the mail
+  // guard, which resolves its own (mail-visibility) authority.
+  if (!isInstanceAccessKey(entityDefinitionId) && isMailSharingDef(entityDefinitionId)) {
+    return false
+  }
   const capabilities = await getCapabilities(ctx.session.userId, ctx.session.organizationId)
-  capabilities.assertAdminInstance(entityDefinitionId, entityInstanceId)
+  if (isInstanceAccessKey(entityDefinitionId)) {
+    capabilities.assertAdminInstance(entityDefinitionId, entityInstanceId)
+    return true
+  }
+  await assertCanManageRecordSharing(ctx, capabilities, recordId as RecordId)
   return true
+}
+
+/**
+ * Authorize READING one instance's grantee list (plan v3/03 §7.2).
+ *
+ * `forInstance` shipped with **no authorization at all**: any member could
+ * enumerate the grantees (user / group / profile ids, rung) of any
+ * `recordId` — `inbox:*`, `thread:*`, `contact:*` included — because
+ * `getInstanceAccess` filters on org + def + instance only.
+ *
+ * **The bar is "may the caller SEE the target", not "may they manage its
+ * sharing".** Deliberately weaker than the write authorizer, because every share
+ * surface in the tree renders a READ-ONLY grantee list to non-managers once a
+ * target has grants: `ThreadSharePopover` (a `read`-lens viewer who is not an
+ * inbox Manager), `ContactSharedWithCard` (non-admins), `InboxInfoCard` (the
+ * inbox detail page's info panel), and `InstanceShareBody`'s disabled state.
+ * Gating on the write authority would blank all four. Gating on visibility is
+ * also the honest rule: knowing who else can see a thing you can see leaks
+ * nothing about a thing you cannot.
+ *
+ * Three lanes, mirroring {@link authorizeInstanceTarget}:
+ *  - instance-access keys → `assertViewInstance` (Read rung on that instance);
+ *  - `thread` → the caller's composed lens must be above `none`. `canViewEntity`
+ *    is useless here: `thread` is in `NON_RECORD_DEF_SLUGS`, so it answers `true`
+ *    unconditionally and mail visibility is the only real authority;
+ *  - `contact` and every record def → `assertViewEntity(def)`, which is what the
+ *    contact drawer / record drawer the list is mounted in already requires.
+ */
+async function assertCanReadInstanceAccess(
+  ctx: { db: any; session: { organizationId: string; userId: string } },
+  recordId: RecordId
+): Promise<void> {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  const { organizationId, userId } = ctx.session
+  if (isInstanceAccessKey(entityDefinitionId)) {
+    const capabilities = await getCapabilities(userId, organizationId)
+    capabilities.assertViewInstance(entityDefinitionId, entityInstanceId)
+    return
+  }
+  if (entityDefinitionId === 'thread') {
+    // Lazy import: the visibility barrel is heavy (it pulls the mail composer),
+    // and this is the only branch that needs it — the same shape
+    // `api/messages/[messageId]/body/route.ts` uses.
+    const { getThreadLens } = await import('@auxx/lib/permissions/visibility')
+    const viewer = await getCachedUserInstanceGrants(userId, organizationId)
+    const lens = await getThreadLens(ctx.db, organizationId, viewer, entityInstanceId)
+    if (lens === 'none') {
+      throw new ForbiddenError("You don't have permission to view this conversation.")
+    }
+    return
+  }
+  const capabilities = await getCapabilities(userId, organizationId)
+  capabilities.assertViewEntity(entityDefinitionId)
 }
 
 /**
@@ -176,13 +395,7 @@ export const resourceAccessRouter = createTRPCRouter({
         // it restricts the instance without granting anyone. Mail-share targets
         // never send it (their picker is view/manager). The compose + resolver
         // already keep `'none'` instance rows as an explicit floor.
-        permission: z.enum([
-          ResourcePermission.none,
-          ResourcePermission.view,
-          ResourcePermission.edit,
-          ResourcePermission.admin,
-        ]),
-        lens: lensSchema,
+        rung: rungSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -196,12 +409,10 @@ export const resourceAccessRouter = createTRPCRouter({
       // any non-instance-access recordId (defense in depth; mail pickers never
       // send it). Keeps the shared enum honest without a per-consumer schema.
       if (
-        input.permission === ResourcePermission.none &&
+        input.rung === 'none' &&
         !isInstanceAccessKey(parseRecordId(recordId).entityDefinitionId)
       ) {
-        throw new BadRequestError(
-          'The "none" permission is only valid for instance-access resources'
-        )
+        throw new BadRequestError('The "none" rung is only valid for instance-access resources')
       }
       await assertProfileGranteesAuthorable(ctx.session.organizationId, input.granteeType, [
         input.granteeId,
@@ -213,16 +424,16 @@ export const resourceAccessRouter = createTRPCRouter({
       // phase 1 put `inbox`/`personal_inbox` in `INSTANCE_ACCESS_RESOURCES`, an
       // inbox target takes the `assertAdminInstance` branch above — which is the
       // intended replacement for the guard's `inbox` arm (§5.3), but would have
-      // taken the Enterprise `mailPermissions` gate with it. §2 lists that gate
-      // (sub-`full` lenses and NEW Manager rows) as explicitly out of scope, so it
+      // taken the `granularPermissions` plan gate with it. §2 lists that gate
+      // (sub-`read` rungs and NEW Manager rows) as explicitly out of scope, so it
       // stays on its own line here. No-op for every non-mail def.
       await assertMailSharingFeature(context, recordId, [input])
+      await assertRecordSharingFeature(ctx, recordId)
       await grantInstanceAccess(context, {
         recordId,
         granteeType: input.granteeType,
         granteeId: input.granteeId,
-        permission: input.permission,
-        lens: input.lens,
+        rung: input.rung,
       })
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -233,8 +444,7 @@ export const resourceAccessRouter = createTRPCRouter({
           scope: 'instance',
           granteeType: input.granteeType,
           granteeId: input.granteeId,
-          permission: input.permission,
-          lens: input.lens ?? null,
+          rung: input.rung,
         },
       })
       return { success: true }
@@ -251,15 +461,30 @@ export const resourceAccessRouter = createTRPCRouter({
         entityDefinitionId: z.string(),
         granteeType: granteeTypeSchema,
         granteeId: z.string(),
-        permission: z.enum([
-          ResourcePermission.none,
-          ResourcePermission.view,
-          ResourcePermission.edit,
-          ResourcePermission.admin,
-        ]),
+        rung: rungSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // `none` is a RESTRICTION marker, never a grant — and at type level the only
+      // thing it may restrict is the WORKSPACE BASELINE (`role:org_member`), which
+      // is what the doc comment above has always claimed and nothing enforced.
+      // Unenforced, a `profile`/`group`/`user` row at `none` did two wrong things
+      // at once: it granted that grantee nothing, and it put the def into the
+      // grantee-agnostic `restrictedEntityDefIds` set — silently converting the
+      // whole definition to grantees-only for the entire org (§7.3's sibling hole).
+      // `setType`/`setInstance` exclude `none` at the schema level; this endpoint
+      // is the one write path that still accepts it.
+      if (
+        input.rung === 'none' &&
+        !(
+          input.granteeType === ResourceGranteeType.role &&
+          input.granteeId === ORG_MEMBER_GRANTEE_ID
+        )
+      ) {
+        throw new BadRequestError(
+          'The "none" rung is only valid for the workspace baseline (role:org_member)'
+        )
+      }
       await assertCanManageTypeAccess(ctx, input.entityDefinitionId)
       await assertTypeAccessEditFeature(ctx, input.entityDefinitionId)
       await assertProfileGranteesAuthorable(ctx.session.organizationId, input.granteeType, [
@@ -275,7 +500,7 @@ export const resourceAccessRouter = createTRPCRouter({
           scope: 'type',
           granteeType: input.granteeType,
           granteeId: input.granteeId,
-          permission: input.permission,
+          rung: input.rung,
         },
       })
       return { success: true }
@@ -317,7 +542,7 @@ export const resourceAccessRouter = createTRPCRouter({
       //
       // It cannot become a plan-gate bypass: `revokeInstance` runs no
       // `assertMailSharingFeature` at all (revoking only tightens access, so the
-      // Enterprise `mailPermissions` gate lives on `grantInstance`/`setInstance`,
+      // `granularPermissions` plan gate lives on `grantInstance`/`setInstance`,
       // where phase 3 hoisted it onto its own unconditional line). Nothing here
       // widens access, so there is no gate to route around.
       const isSelfRevoke =
@@ -385,12 +610,7 @@ export const resourceAccessRouter = createTRPCRouter({
         grants: z.array(
           z.object({
             granteeId: z.string(),
-            permission: z.enum([
-              ResourcePermission.view,
-              ResourcePermission.edit,
-              ResourcePermission.admin,
-            ]),
-            lens: lensSchema,
+            rung: grantRungSchema,
           })
         ),
       })
@@ -411,6 +631,7 @@ export const resourceAccessRouter = createTRPCRouter({
       }
       // See `grantInstance` — the plan gate is independent of the authorizer.
       await assertMailSharingFeature(context, recordId, input.grants)
+      await assertRecordSharingFeature(ctx, recordId)
       await setInstanceAccess(context, recordId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',
@@ -432,11 +653,7 @@ export const resourceAccessRouter = createTRPCRouter({
         grants: z.array(
           z.object({
             granteeId: z.string(),
-            permission: z.enum([
-              ResourcePermission.view,
-              ResourcePermission.edit,
-              ResourcePermission.admin,
-            ]),
+            rung: grantRungSchema,
           })
         ),
       })
@@ -464,6 +681,11 @@ export const resourceAccessRouter = createTRPCRouter({
   /**
    * Get all access grants for a specific instance.
    *
+   * Gated by {@link assertCanReadInstanceAccess} — "may the caller see the
+   * target" (plan v3/03 §7.2), deliberately weaker than the write authorizer so
+   * the read-only grantee lists on the thread popover / contact card / inbox
+   * info panel keep rendering.
+   *
    * `user` grantees are annotated with `granteeAreaLevel` — their composed
    * Layer-2 level for the instance's L2 `area` (capability layer v2 Part B.2.8)
    * — so the Share UI can warn when a row is inert. Since plan 25 §2 an explicit
@@ -490,6 +712,7 @@ export const resourceAccessRouter = createTRPCRouter({
           ctx.session.organizationId,
           input.recordId as RecordId
         )
+        await assertCanReadInstanceAccess(ctx, recordId)
         const rows = await getInstanceAccess(toContext(ctx), recordId)
         const { entityDefinitionId } = parseRecordId(recordId)
         if (!isInstanceAccessKey(entityDefinitionId)) return rows

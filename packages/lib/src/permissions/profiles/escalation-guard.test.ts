@@ -1,6 +1,6 @@
 // packages/lib/src/permissions/profiles/escalation-guard.test.ts
 
-import type { ResourcePermission } from '@auxx/database/enums'
+import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
 import { describe, expect, it } from 'vitest'
 import { ForbiddenError } from '../../errors'
@@ -26,7 +26,7 @@ function state(input: {
   base?: Level
   areas?: Partial<Record<Area, Level>>
   defs?: Record<string, ResourcePermission>
-  instances?: Record<string, ResourcePermission>
+  instances?: Record<string, Rung>
 }): EffectiveState {
   const areas = buildAreaLevels((area) => input.areas?.[area] ?? input.base ?? Level.None)
   return {
@@ -129,8 +129,8 @@ describe('assertNoEscalation — §6.1.2 delta gating', () => {
   it('DENIES an instance-level raise above the actor’s own instance access', () => {
     expect(() =>
       run({
-        actor: actorAt({ base: Level.Full, instances: { ds_1: 'view' } }),
-        before: state({ base: Level.Full, instances: { ds_1: 'view' } }),
+        actor: actorAt({ base: Level.Full, instances: { ds_1: 'read' } }),
+        before: state({ base: Level.Full, instances: { ds_1: 'read' } }),
         after: state({ base: Level.Full, instances: { ds_1: 'admin' } }),
       })
     ).toThrow(ForbiddenError)

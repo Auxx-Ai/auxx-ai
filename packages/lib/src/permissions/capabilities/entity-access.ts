@@ -1,14 +1,15 @@
 // packages/lib/src/permissions/capabilities/entity-access.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import { ResourcePermission, type Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
-import { satisfiesPermission } from '../../resource-access/constants'
+import { satisfiesPermission } from '@auxx/types/permissions'
 import {
   INSTANCE_ACCESS_RESOURCES,
   type InstanceAccessKey,
   isInstanceAccessKey,
 } from './instance-access'
 import { Area, areaLevelFromKeys, Level, PermissionKey } from './registry'
+import { permissionToRung, satisfiesRung } from './rung'
 import { SEAT_CEILINGS } from './seat-policy'
 
 /**
@@ -75,7 +76,7 @@ import { SEAT_CEILINGS } from './seat-policy'
  *   working, and it must survive.
  *
  * This is safe because the pass-through only exposes inbox METADATA (name, colour,
- * status). Mail content is governed by `userMailVisibility` / the per-thread lens,
+ * status). Mail content is governed by `userInstanceGrants` / the per-thread lens,
  * a separate authority these gates never consult in either direction.
  *
  * Keyed by entity slug; the caller resolves the def to its slug before checking.
@@ -124,7 +125,7 @@ export interface ResolvedRecordAccess {
    * A grant addressed to this member — **never gated by the area level**
    * (plan 43 §0.2a / #1346). See {@link baselineInstanceAccess} for its twin.
    */
-  instanceAccess?: Readonly<Record<string, ResourcePermission>>
+  instanceAccess?: Readonly<Record<string, Rung>>
   /**
    * The same map for `role` grantee rows (`role:org_member`) — the workspace
    * default, split out by plan 43 §4.1. **GATED by the member's area level**
@@ -132,7 +133,7 @@ export interface ResolvedRecordAccess {
    * Optional — absent = `{}`, which is also what a pre-`v16` cache blob yields
    * (that staleness fails OPEN; see the ledger entry at `user:capabilities:v16`).
    */
-  baselineInstanceAccess?: Readonly<Record<string, ResourcePermission>>
+  baselineInstanceAccess?: Readonly<Record<string, Rung>>
   /**
    * Org-wide set of instance ids whose access is GOVERNED by rows — a
    * `role:org_member` baseline row at any permission, or any `permission =
@@ -140,6 +141,57 @@ export interface ResolvedRecordAccess {
    * {@link effectiveInstanceLevel}. Optional (see above).
    */
   governingInstanceIds?: ReadonlySet<string>
+  /** See {@link GrantedDefIds}. Optional — absent = `{}` = no front door. */
+  grantedDefIds?: GrantedDefIds
+}
+
+/**
+ * **THE FRONT DOOR** (plan v3/03 §6.1): record defs the member holds ≥ `read`
+ * per-record `ResourceAccess` grants on, via ANY grantee kind.
+ *
+ * Bounded by DEF count, not grant count — never an instance-id set. That is the
+ * whole point of §4's locality rule: the record lane is evaluated in the
+ * database per query, so the only thing the composed blob may carry about it is
+ * the one bit "is there anything here for me at all".
+ *
+ * Absent / empty ⇒ no front door, which is the fail-closed direction and must
+ * stay so.
+ *
+ * ⚠ **POPULATION IS WIRED SEPARATELY.** This phase declares the field, reads it
+ * defensively everywhere (`?? EMPTY_GRANTED_DEFS`), and implements
+ * {@link hasDefPresence} on top of it. The compose-time producer — one
+ * `SELECT DISTINCT "entityDefinitionId"` over the full grantee union at
+ * `rung >= read`, restricted to record-def CUIDs (excluding every
+ * `INSTANCE_ACCESS_KEYS` and every `MAIL_SHARING_DEFS` member) — lands in
+ * `compose-user-capabilities.ts`, which a concurrent slice owns. Until that
+ * lands every read here yields `{}`, so the front door is simply closed and no
+ * behaviour is wrong, merely absent.
+ */
+export type GrantedDefIds = Readonly<Record<string, true>>
+
+const EMPTY_GRANTED_DEFS: GrantedDefIds = {}
+
+/**
+ * **A SECOND predicate, never a wider `canViewEntity`** (plan v3/03 §6.1).
+ *
+ * ```
+ * hasDefPresence(def) = canViewEntity(def) || grantedDefIds[def]
+ * ```
+ *
+ * `canViewEntity` keeps meaning **"may see ALL rows"** and keeps guarding the
+ * realtime def-channel ACLs, tableView listing, def administration and field
+ * config. `hasDefPresence` gates ONLY the nav entry, the route gate, def
+ * metadata surfaces and column metadata — the surfaces a member needs open in
+ * order to *reach* the rows they were shared, all of which are scoped per row
+ * downstream by {@link import('./record-visibility-scope').recordVisibilityScope}.
+ *
+ * ⚠ Widening `canViewEntity` instead would open whole defs off one grant, and
+ * would let records into `instanceDerivedKeys` via `deriveInstanceReadKeys`.
+ * Records must stay excluded from that.
+ */
+export function hasDefPresence(caps: ResolvedRecordAccess, entityDefinitionId: string): boolean {
+  if (canViewRecord(caps, entityDefinitionId)) return true
+  return Boolean((caps.grantedDefIds ?? EMPTY_GRANTED_DEFS)[entityDefinitionId])
 }
 
 /**
@@ -164,15 +216,23 @@ export function levelToRecordBasePermission(level: Level): ResourcePermission | 
 }
 
 /**
- * Map an L2 area {@link Level} to the {@link ResourcePermission} vocabulary the
- * instance-access resolver speaks (Read→view · Edit→edit · Full→admin ·
- * None→undefined). Used as the absent-instance-row fallback for
- * `baselineAtCreate: false` resources (§1.4).
+ * Map an L2 area {@link Level} to the {@link Rung} vocabulary the instance-access
+ * resolver speaks (Read→`read` · Edit→`edit` · Full→`admin` · None→undefined).
+ * Used as the absent-instance-row fallback for `baselineAtCreate: false`
+ * resources (§1.4).
+ *
+ * **Renamed from `levelToPermission` in plan v3/03 P3b, along with its return
+ * type.** The instance lane stores rungs now; keeping the old name would have
+ * left a function called `…Permission` producing values the def axis cannot
+ * read. Its record-axis twin, {@link levelToRecordBasePermission}, is
+ * deliberately NOT renamed — that one really does still produce a
+ * {@link ResourcePermission}, and the two existing side by side is the clearest
+ * statement of where the vocabularies part.
  */
-export function levelToPermission(level: Level): ResourcePermission | undefined {
-  if (level >= Level.Full) return ResourcePermission.admin
-  if (level >= Level.Edit) return ResourcePermission.edit
-  if (level >= Level.Read) return ResourcePermission.view
+export function levelToRung(level: Level): Rung | undefined {
+  if (level >= Level.Full) return 'admin'
+  if (level >= Level.Edit) return 'edit'
+  if (level >= Level.Read) return 'read'
   return undefined
 }
 
@@ -312,6 +372,66 @@ export function canImportRecord(caps: ResolvedRecordAccess, entityDefinitionId: 
 }
 
 /**
+ * The member's DEF-level record authority, expressed on the {@link Rung} ladder
+ * — the def half of the `_access` stamp (plan v3/03 §5.2).
+ *
+ * Goes through {@link effectiveRecordLevel} rather than reading `defAccess` raw,
+ * so every clamp on that path (the worker seat ceiling, the OWNER bypass, the
+ * restricted-def replacement) applies to the stamp too. `undefined` — no
+ * def-level access at all — folds as `'none'`, which is exactly right: the row
+ * is then reachable only through an explicit grant, and its rung is whatever
+ * that grant says.
+ */
+export function recordDefRung(
+  caps: ResolvedRecordAccess,
+  entityDefinitionId: string
+): Rung | undefined {
+  const level = effectiveRecordLevel(caps, entityDefinitionId)
+  return level === undefined ? undefined : permissionToRung(level)
+}
+
+/**
+ * **The `Full`-rung record verbs evaluated at a ROW-EFFECTIVE rung** (plan
+ * v3/03 §5.3, D6) — the same rule as {@link canFullRungRecordVerb}, reading the
+ * `_access` stamp instead of recomputing the def level.
+ *
+ * **No new vocabulary.** The stamp value *is* the row-effective level, so the
+ * shipped gate is reused verbatim: the `edit` floor first, then
+ * `(the org-wide key OR rung ≥ admin)`. Evaluated per row this yields exactly
+ * the §5.3 table:
+ *
+ * | Member | Row at | Delete? |
+ * |---|---|---|
+ * | holds `recordsDelete`, def not viewable | `edit` | yes |
+ * | no `recordsDelete` | `edit` | no — collaboration, not destruction |
+ * | any | `admin` | yes — may manage the row's sharing ⇒ may delete the row |
+ *
+ * **The seat ceiling is applied by the caller**, not here: it belongs on the
+ * stamp's construction (see `CapabilitySet.recordAccessAt`) so that a worker
+ * seat whose `records` area is clamped to `None` can never reach a positive
+ * rung in the first place — a clamp applied at some seams only is defeated by
+ * the others (§3).
+ */
+export function canRecordVerbAtRung(
+  caps: ResolvedRecordAccess,
+  access: Rung,
+  key: PermissionKey
+): boolean {
+  if (!satisfiesRung(access, 'edit')) return false
+  return caps.keys.has(key) || satisfiesRung(access, 'admin')
+}
+
+/** Row-effective DELETE gate — {@link canRecordVerbAtRung} on `recordsDelete`. */
+export function canDeleteRecordAtRung(caps: ResolvedRecordAccess, access: Rung): boolean {
+  return canRecordVerbAtRung(caps, access, PermissionKey.recordsDelete)
+}
+
+/** Row-effective EDIT gate — the `edit` floor on the stamp, nothing else. */
+export function canEditRecordAtRung(access: Rung): boolean {
+  return satisfiesRung(access, 'edit')
+}
+
+/**
  * Def-ADMINISTRATION gate (§9.1) — whether the member may administer the
  * DEFINITION itself: manage its fields, its access (the Access tab), its
  * metadata (name/icon/description), and delete/archive the def. This is the
@@ -406,20 +526,27 @@ export interface ClientCapabilities {
    * carried in the dehydration seed so the client instance-access resolver and
    * any server-built snapshot have it; absent = treat as `{}`.
    */
-  instanceAccess?: Record<string, ResourcePermission>
+  instanceAccess?: Record<string, Rung>
   /**
    * The BASELINE lane (`role:org_member` rows) — plan 43 §4.1. Gated by the area
    * level in {@link effectiveInstanceLevel}; kept separate on the wire for the
    * same reason it is separate in the blob, so a client affordance and the server
    * gate cannot disagree about which lane a row is in. Optional; absent = `{}`.
    */
-  baselineInstanceAccess?: Record<string, ResourcePermission>
+  baselineInstanceAccess?: Record<string, Rung>
   /**
    * Org-wide set of instance ids whose access is GOVERNED by rows (a
    * `role:org_member` baseline at any permission, or any `none` marker).
    * Optional (see above).
    */
   governingInstanceIds?: string[]
+  /**
+   * Record defs the member holds ≥ `read` per-record grants on — THE FRONT DOOR
+   * (plan v3/03 §6.1). See {@link GrantedDefIds}, including the note that its
+   * compose-time population is wired by a separate slice. Optional; absent = no
+   * front door, which is the fail-closed direction.
+   */
+  grantedDefIds?: Record<string, true>
 }
 
 /**
@@ -442,6 +569,7 @@ export function toResolvedRecordAccess(caps: ClientCapabilities): ResolvedRecord
     instanceAccess: caps.instanceAccess ?? {},
     baselineInstanceAccess: caps.baselineInstanceAccess ?? {},
     governingInstanceIds: new Set(caps.governingInstanceIds ?? []),
+    grantedDefIds: caps.grantedDefIds ?? EMPTY_GRANTED_DEFS,
   }
 }
 
@@ -549,7 +677,7 @@ function parseInstanceRecordId(recordId: string): { key: string; instanceId: str
  * (a share to one colleague, an author's own creator row) silently converted it to
  * grantees-only for the entire org, while every other layer meant "has a
  * RESTRICTION":
- *  - mail's `rowGoverned` (`compute-user-mail-visibility.ts`) counts a
+ *  - mail's `rowGoverned` (`compute-user-instance-grants.ts`) counts a
  *    `role:org_member` row at any permission, or any `none` row — never a
  *    creator's `user @ admin` row;
  *  - the permissions page's Workspace-defaults tab models exactly three states
@@ -610,9 +738,9 @@ export function effectiveInstanceLevel(
   caps: ResolvedRecordAccess,
   key: InstanceAccessKey,
   instanceId: string
-): ResourcePermission | undefined {
+): Rung | undefined {
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
-  if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
+  if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return 'admin'
   if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
 
   // 1. An individual grant (user / group / profile) ALWAYS wins — #1346, and it is
@@ -658,17 +786,17 @@ export function effectiveInstanceLevel(
 export function instanceFallbackLevel(
   caps: ResolvedRecordAccess,
   key: InstanceAccessKey
-): ResourcePermission | undefined {
+): Rung | undefined {
   const cfg = INSTANCE_ACCESS_RESOURCES[key]
-  if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return ResourcePermission.admin
+  if (caps.role === 'OWNER' && !cfg.baselineAtCreate) return 'admin'
   if (SEAT_CEILINGS[caps.seatType][cfg.area] === Level.None) return undefined
   const areaLevel = areaLevelFromKeys(caps.keys, cfg.area)
   if (areaLevel === Level.None) return undefined
-  return cfg.baselineAtCreate ? undefined : levelToPermission(areaLevel)
+  return cfg.baselineAtCreate ? undefined : levelToRung(areaLevel)
 }
 
 const EMPTY_INSTANCE_SET: ReadonlySet<string> = new Set()
-const EMPTY_INSTANCE_ACCESS: Readonly<Record<string, ResourcePermission>> = {}
+const EMPTY_INSTANCE_ACCESS: Readonly<Record<string, Rung>> = {}
 
 /**
  * Instance-access keys whose absent-row fallback is the member's AREA level
@@ -677,9 +805,17 @@ const EMPTY_INSTANCE_ACCESS: Readonly<Record<string, ResourcePermission>> = {}
  * resource to `baselineAtCreate: true` removes it here and makes
  * {@link instanceListScope} a COMPILE error at its call sites instead of a
  * silent leak — see that function for why the distinction is load-bearing.
+ *
+ * The `lane: 'blob'` conjunct is redundant today ({@link InstanceAccessKey} is
+ * already blob-only) and stated anyway: a query-lane domain has no
+ * `baselineAtCreate`, so it must never satisfy this union by accident if the
+ * key type is ever widened.
  */
 export type OrgSharedInstanceAccessKey = {
-  [K in InstanceAccessKey]: (typeof INSTANCE_ACCESS_RESOURCES)[K]['baselineAtCreate'] extends false
+  [K in InstanceAccessKey]: (typeof INSTANCE_ACCESS_RESOURCES)[K] extends {
+    lane: 'blob'
+    baselineAtCreate: false
+  }
     ? K
     : never
 }[InstanceAccessKey]
@@ -755,7 +891,7 @@ export type PrivateInstanceListScope = Extract<InstanceListScope, { kind: 'none'
  *  5. no row of either kind + instance in `governingInstanceIds` → `undefined`
  *     (somebody else holds a `none` marker on it). **Enumerable** — the set is
  *     exactly the org's row-governed instances.
- *  6. no row of either kind + not governed + open area → `levelToPermission(areaLevel)`,
+ *  6. no row of either kind + not governed + open area → `levelToRung(areaLevel)`,
  *     always ≥ `view`. Never denies.
  * So an instance is denied by the member's own sub-`view` individual row, by a
  * sub-`view` baseline row, by the governing set with no row at all, or by the
@@ -805,7 +941,7 @@ export function instanceListScope(
     // two lanes were one map — that is precisely the leak the split closes.
     const includeIds: string[] = []
     for (const [instanceId, level] of Object.entries(own)) {
-      if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
+      if (satisfiesRung(level, 'read')) includeIds.push(instanceId)
     }
     return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
   }
@@ -823,12 +959,12 @@ export function instanceListScope(
     // it, and that denies. Reading `baseline` here is what plan 43 §4.1's lane
     // split makes necessary: these permissions used to arrive inside `own`.
     const workspace = baseline[instanceId]
-    if (workspace === undefined || !satisfiesPermission(workspace, ResourcePermission.view)) {
+    if (workspace === undefined || !satisfiesRung(workspace, 'read')) {
       excludeIds.push(instanceId)
     }
   }
   for (const [instanceId, level] of Object.entries(own)) {
-    if (!satisfiesPermission(level, ResourcePermission.view)) excludeIds.push(instanceId)
+    if (!satisfiesRung(level, 'read')) excludeIds.push(instanceId)
   }
   return { kind: 'exclude', excludeIds }
 }
@@ -841,7 +977,10 @@ export function instanceListScope(
  * list-scope helper into a COMPILE error rather than a silent leak.
  */
 export type PrivateInstanceAccessKey = {
-  [K in InstanceAccessKey]: (typeof INSTANCE_ACCESS_RESOURCES)[K]['baselineAtCreate'] extends true
+  [K in InstanceAccessKey]: (typeof INSTANCE_ACCESS_RESOURCES)[K] extends {
+    lane: 'blob'
+    baselineAtCreate: true
+  }
     ? K
     : never
 }[InstanceAccessKey]
@@ -921,7 +1060,7 @@ export function privateInstanceListScope(
   const includeIds: string[] = []
   // Lane 1 — individual grants. Never gated (§4.2 step 1).
   for (const [instanceId, level] of Object.entries(own)) {
-    if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
+    if (satisfiesRung(level, 'read')) includeIds.push(instanceId)
   }
   // Lane 2 — the workspace baseline, admitted only above `None` (§4.2 steps 2-3).
   if (areaLevelFromKeys(caps.keys, area) !== Level.None) {
@@ -932,7 +1071,7 @@ export function privateInstanceListScope(
       // including when it decided DENY — skip, or a `user @ none` restriction
       // would be undone by the very baseline row it exists to override.
       if (own[instanceId] !== undefined) continue
-      if (satisfiesPermission(level, ResourcePermission.view)) includeIds.push(instanceId)
+      if (satisfiesRung(level, 'read')) includeIds.push(instanceId)
     }
   }
   return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
@@ -947,7 +1086,7 @@ export function canViewInstance(caps: ResolvedRecordAccess, recordId: string): b
   const { key, instanceId } = parseInstanceRecordId(recordId)
   if (!isInstanceAccessKey(key)) return false
   const level = effectiveInstanceLevel(caps, key, instanceId)
-  return level !== undefined && satisfiesPermission(level, ResourcePermission.view)
+  return level !== undefined && satisfiesRung(level, 'read')
 }
 
 /**
@@ -957,7 +1096,7 @@ export function canEditInstance(caps: ResolvedRecordAccess, recordId: string): b
   const { key, instanceId } = parseInstanceRecordId(recordId)
   if (!isInstanceAccessKey(key)) return false
   const level = effectiveInstanceLevel(caps, key, instanceId)
-  return level !== undefined && satisfiesPermission(level, ResourcePermission.edit)
+  return level !== undefined && satisfiesRung(level, 'edit')
 }
 
 /**
@@ -968,5 +1107,5 @@ export function canAdminInstance(caps: ResolvedRecordAccess, recordId: string): 
   const { key, instanceId } = parseInstanceRecordId(recordId)
   if (!isInstanceAccessKey(key)) return false
   const level = effectiveInstanceLevel(caps, key, instanceId)
-  return level !== undefined && satisfiesPermission(level, ResourcePermission.admin)
+  return level !== undefined && satisfiesRung(level, 'admin')
 }

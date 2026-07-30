@@ -143,9 +143,21 @@ Example (ids match list_entity_fields output):
 
       // Write enforcement (permissions v2 §3.3). This tool bypasses
       // `UnifiedCrudHandler` and writes straight through `FieldValueService`,
-      // so it carries its own copy of the handler's `assertEditDistinctDefs`:
-      // one `assertEditEntity` per DISTINCT def among the recordIds, in-memory,
+      // so it carries its own copy of the handler's write gate: one
+      // `assertEditEntity` per DISTINCT def among the recordIds, in-memory,
       // before any DB work. Absent capabilities ⇒ unrestricted, as before.
+      //
+      // ⚠ **Still DEF-only — plan v3/03 P5 did NOT convert this one.** The
+      // handler's gate moved to a per-row `_access` judgement
+      // (`assertRecordRowsEditableWithDb`); this copy did not follow. For a pure
+      // AGENT principal that is behaviour-identical, because
+      // `AgentPolicyCapabilities.hasRecordGrantsOn` is unconditionally `false`
+      // and an agent therefore has no per-record grants for a row gate to find.
+      // The gap is a Kopilot run clamped against a HUMAN capability set: a row
+      // that member holds an `edit` share on is refused here. Converting it
+      // needs this file's capability tests rewritten around a stamped read
+      // (they assert `assertEditEntity` call ORDER today), which is why it was
+      // left rather than half-done.
       if (capabilities) {
         const seenDefIds = new Set<string>()
         for (const recordId of recordIds) {

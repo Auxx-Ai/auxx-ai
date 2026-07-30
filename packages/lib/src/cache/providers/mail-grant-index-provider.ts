@@ -1,9 +1,11 @@
 // packages/lib/src/cache/providers/mail-grant-index-provider.ts
 
 import { schema } from '@auxx/database'
+import type { Rung } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
-import { type Lens, maxLens } from '../../permissions/visibility/lens'
+import { maxRung, satisfiesRung } from '../../permissions/capabilities/rung'
+import type { Lens } from '../../permissions/visibility/lens'
 import { resolveProfileIdByUser } from '../../resource-access/grantee-resolution'
 import { isInboxDef } from '../../resource-access/mail-sharing-defs'
 import type { CacheProvider } from '../org-cache-provider'
@@ -33,8 +35,7 @@ interface IndexGrantRow {
   entityInstanceId: string
   granteeType: string
   granteeId: string
-  permission: string
-  lens: Lens | null
+  rung: Rung
 }
 
 /**
@@ -108,7 +109,7 @@ function bucketFor(
  * Pure composition — grant rows + cached membership shapes in, inverted
  * per-user audience maps out. IO lives in the provider below.
  *
- * This is the REVERSE of `computeUserMailVisibility`; the two must expand the
+ * This is the REVERSE of `computeUserInstanceGrants`; the two must expand the
  * same grantee kinds or a share is visible in one direction only (19a finding
  * 4). Until doc 19 step 9 the expansion was a ternary whose final branch treated
  * ANY unrecognised `granteeId` as a group instance id — a `profile` grantee
@@ -151,14 +152,17 @@ export function composeMailGrantIndex(input: {
   const index: MailGrantIndex = { threads: {}, contacts: {}, inboxes: {} }
 
   for (const row of rows) {
-    // `none` is the v2 restriction marker, not a grant — and it is exactly what
+    // `none` is the RESTRICTION marker, not a grant — and it is exactly what
     // data migration 060 writes as `role:org_member @ none` on a restricted shared
-    // inbox (plan 40 §4.1). The old `!== 'view' ⇒ full` shorthand would have
-    // inverted that row into a FULL-lens entry for every org member, which is the
-    // widest possible reading of a row whose entire purpose is to close the inbox.
-    // Same fix, same reason, as `grantLens` in `compute-user-mail-visibility.ts`.
-    if (row.permission === 'none') continue
-    const lens: Lens = row.permission === 'view' ? (row.lens ?? 'full') : 'full'
+    // inbox (plan 40 §4.1). The pre-P3b `!== 'view' ⇒ full` shorthand inverted that
+    // row into a FULL-lens entry for every org member, which is the widest possible
+    // reading of a row whose entire purpose is to close the inbox. One column makes
+    // the marker unmissable: it is a value on the ladder, not an absence to infer.
+    if (row.rung === 'none') continue
+    // `edit`/`admin` on an INBOX mean "manages the mailbox"; the widest a thread
+    // can be published at is `read`. Same clamp as `inboxRungAsLens` in
+    // `compute-user-instance-grants.ts` — the forward reader of these same rows.
+    const lens: Lens = satisfiesRung(row.rung, 'read') ? 'read' : (row.rung as Lens)
     const userIds = expandGrantee(row, { memberUserIds, usersByGroup, usersByProfile })
 
     if (userIds.length === 0) continue
@@ -168,7 +172,7 @@ export function composeMailGrantIndex(input: {
     const existing = bucket[row.entityInstanceId] ?? []
     for (const userId of userIds) {
       const entry = existing.find((e) => e.userId === userId)
-      if (entry) entry.lens = maxLens(entry.lens, lens)
+      if (entry) entry.lens = maxRung(entry.lens, lens)
       else existing.push({ userId, lens })
     }
     bucket[row.entityInstanceId] = existing
@@ -186,8 +190,7 @@ export const mailGrantIndexProvider: CacheProvider<MailGrantIndex> = {
         entityInstanceId: schema.ResourceAccess.entityInstanceId,
         granteeType: schema.ResourceAccess.granteeType,
         granteeId: schema.ResourceAccess.granteeId,
-        permission: schema.ResourceAccess.permission,
-        lens: schema.ResourceAccess.lens,
+        rung: schema.ResourceAccess.rung,
       })
       .from(schema.ResourceAccess)
       .where(

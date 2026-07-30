@@ -63,9 +63,9 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
       caps({
         governingInstanceIds: new Set(['s_view', 's_admin', 's_none']),
         instanceAccess: {
-          s_view: ResourcePermission.view,
-          s_admin: ResourcePermission.admin,
-          s_none: ResourcePermission.none,
+          s_view: 'read',
+          s_admin: 'admin',
+          s_none: 'none',
         },
       }),
       'snippet'
@@ -82,7 +82,7 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
       caps({
         keys: new Set(),
         governingInstanceIds: new Set(['s1']),
-        instanceAccess: { s1: ResourcePermission.view },
+        instanceAccess: { s1: 'read' },
       }),
       'snippet'
     )
@@ -104,7 +104,7 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
         caps({
           role: 'OWNER',
           governingInstanceIds: new Set(['s_mine', 's_theirs']),
-          instanceAccess: { s_mine: ResourcePermission.admin },
+          instanceAccess: { s_mine: 'admin' },
         }),
         'snippet'
       )
@@ -118,7 +118,7 @@ describe('privateInstanceListScope — the `baselineAtCreate: true` list filter'
       caps({
         seatType: 'worker',
         governingInstanceIds: new Set(['s1']),
-        instanceAccess: { s1: ResourcePermission.admin },
+        instanceAccess: { s1: 'admin' },
       }),
       'snippet'
     )
@@ -277,7 +277,7 @@ describe('createSnippet — the owner admin row is part of the create', () => {
       entityInstanceId: 's_new',
       granteeType: ResourceGranteeType.user,
       granteeId: 'u1',
-      permission: ResourcePermission.admin,
+      rung: 'admin',
     })
     // Both inserts came off the transaction handle, not the bare db.
     expect(record.transactional).toBe(true)
@@ -299,8 +299,10 @@ describe('createSnippet — the owner admin row is part of the create', () => {
     // no row for the new id and `effectiveInstanceLevel` returns undefined.
     const { db } = makeCreateDb([])
     await createSnippet(db, 'org1', 'u1', { title: 'T', content: 'C' })
-    expect(emitResourceAccessInstanceChanged).toHaveBeenCalledWith('org1', [
-      { granteeType: ResourceGranteeType.user, granteeId: 'u1' },
-    ])
+    expect(emitResourceAccessInstanceChanged).toHaveBeenCalledWith(
+      'org1',
+      [{ granteeType: ResourceGranteeType.user, granteeId: 'u1' }],
+      'snippet'
+    )
   })
 })

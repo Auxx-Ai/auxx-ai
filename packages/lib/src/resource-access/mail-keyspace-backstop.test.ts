@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * def CUID. `resourceAccess`'s router canonicalizes, but the router covers tRPC
  * only — the three write funnels are reachable from lib/REST/SDK directly, and
  * before this backstop they took `parseRecordId` at face value. A CUID-keyed
- * inbox grant landed in a keyspace `composeUserMailVisibility` never reads AND
+ * inbox grant landed in a keyspace `composeUserInstanceGrants` never reads AND
  * skipped `assertCanManageMailSharing` + the enterprise gate (both slug tests).
  *
  * These pin the funnel-level invariant, in both directions:
@@ -67,6 +67,7 @@ const ORG = 'org_1'
 const INBOX_DEF_ID = 'qiramlz5m0cswo4n4v10mxkz'
 const THREAD_DEF_ID = 'thr4defcuid00000000000000'
 const CONTACT_DEF_ID = 'mzxt3cxyzhm3cbtgcbpmeir1'
+const PERSONAL_INBOX_DEF_ID = 'pinbox4defcuid00000000000'
 const DEALS_DEF_ID = 'deal5defcuid0000000000000'
 
 /**
@@ -86,6 +87,12 @@ const RESOURCES: FakeResource[] = [
     entityDefinitionId: CONTACT_DEF_ID,
     apiSlug: 'contacts',
     entityType: 'contact',
+  },
+  {
+    id: PERSONAL_INBOX_DEF_ID,
+    entityDefinitionId: PERSONAL_INBOX_DEF_ID,
+    apiSlug: 'personal-inboxes',
+    entityType: 'personal_inbox',
   },
   { id: DEALS_DEF_ID, entityDefinitionId: DEALS_DEF_ID, apiSlug: 'deals', entityType: undefined },
 ]
@@ -133,7 +140,7 @@ const grant = (recordId: string) =>
     recordId: recordId as RecordId,
     granteeType: ResourceGranteeType.user,
     granteeId: 'u_target',
-    permission: ResourcePermission.view,
+    rung: 'read',
   })
 
 const revoke = (recordId: string) =>
@@ -145,7 +152,7 @@ const revoke = (recordId: string) =>
 
 const set = (recordId: string) =>
   setInstanceAccess(ctx(), recordId as RecordId, ResourceGranteeType.user, [
-    { granteeId: 'u_target', permission: ResourcePermission.view },
+    { granteeId: 'u_target', rung: 'read' },
   ])
 
 beforeEach(() => {
@@ -173,6 +180,12 @@ describe('mail keyspace backstop — a CUID mail RecordId cannot reach the table
   it('covers every MAIL_SHARING_DEFS member, not just inbox', async () => {
     await expect(grant(`${THREAD_DEF_ID}:thr_1`)).rejects.toMatchObject(BAD_REQUEST)
     await expect(grant(`${CONTACT_DEF_ID}:cnt_1`)).rejects.toMatchObject(BAD_REQUEST)
+    // `personal_inbox` completes the set (plan v3/03 §7.4). The backstop is ONE
+    // `isMailSharingDef(slug)` test with no per-def branch, so this is the fourth
+    // member rather than a fourth code path — but the test's name claims "every
+    // member", and a name that overstates its coverage is how a def added to
+    // `MAIL_SHARING_DEFS` later gets assumed covered.
+    await expect(grant(`${PERSONAL_INBOX_DEF_ID}:pi_1`)).rejects.toMatchObject(BAD_REQUEST)
     expect(writes.insert).not.toHaveBeenCalled()
   })
 
@@ -241,7 +254,7 @@ describe('deferEmits — cache busting is the CALLER’s to schedule', () => {
       recordId: toRecordId('dashboard', 'dash_deferred'),
       granteeType: ResourceGranteeType.user,
       granteeId: 'u_target',
-      permission: ResourcePermission.view,
+      rung: 'read',
       deferEmits: true,
     })
 

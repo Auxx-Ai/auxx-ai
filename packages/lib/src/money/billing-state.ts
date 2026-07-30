@@ -118,7 +118,6 @@ export async function getWorkOrderBillingState(input: {
           },
         ],
         limit: 1000,
-        mode: 'oneshot',
       }),
       listWorkOrderPayments(input),
       listUninvoicedLines(input),
@@ -240,7 +239,6 @@ export async function getContactBillingOverview(input: {
         },
       ],
       limit: 1000,
-      mode: 'oneshot',
     }),
     handler.listFiltered({
       entityDefinitionId: 'invoice',
@@ -259,7 +257,6 @@ export async function getContactBillingOverview(input: {
         },
       ],
       limit: 1000,
-      mode: 'oneshot',
     }),
   ])
   // Fixed query count regardless of work-order/invoice counts (plan §4.7): read the projected
