@@ -7,8 +7,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Plan 44 §1 — the detail pane's auto-mark-read must not fire a write it knows
  * will be refused.
  *
- * Read-state is `full`-tier: `UnreadService.setReadStatus` throws
- * `ForbiddenError` unless every target is at `full` lens. The pane marked read
+ * Read-state is top-tier: `UnreadService.setReadStatus` throws
+ * `ForbiddenError` unless every target is at the `read` lens (spelled `full`
+ * before the permissions-v3 rename — `read` is now the TOP lens). The pane marked read
  * on mount regardless, and `useThreadReadStatus` defaulted an unknown thread to
  * unread — so a share recipient following the MESSAGE_SHARED deep link (no list
  * load in front of it, store not yet hydrated) got a rejection toast on open.
@@ -55,7 +56,7 @@ const { ThreadDisplay } = await import('./thread-display')
 const THREAD_ID = 'thr_1'
 
 /** A hydrated, unread thread at the given lens. */
-function hydrated(myLens: 'full' | 'subject' | 'metadata') {
+function hydrated(myLens: 'read' | 'identity' | 'metadata') {
   h.thread = { id: THREAD_ID, subject: 'Hello', myLens, isUnread: true }
   h.isUnread = true
 }
@@ -67,15 +68,15 @@ beforeEach(() => {
 })
 
 describe('ThreadDisplay auto-mark-read gate', () => {
-  it('marks read at `full` lens (positive control)', () => {
-    hydrated('full')
+  it('marks read at `read` lens (positive control)', () => {
+    hydrated('read')
     render(<ThreadDisplay expectedThreadId={THREAD_ID} />)
 
     expect(h.markAsRead).toHaveBeenCalled()
   })
 
-  it('does NOT mark read at `subject` lens', () => {
-    hydrated('subject')
+  it('does NOT mark read at `identity` lens', () => {
+    hydrated('identity')
     render(<ThreadDisplay expectedThreadId={THREAD_ID} />)
 
     expect(h.markAsRead).not.toHaveBeenCalled()
@@ -106,7 +107,7 @@ describe('ThreadDisplay auto-mark-read gate', () => {
   })
 
   it('does not mark an already-read thread', () => {
-    h.thread = { id: THREAD_ID, subject: 'Hello', myLens: 'full', isUnread: false }
+    h.thread = { id: THREAD_ID, subject: 'Hello', myLens: 'read', isUnread: false }
     h.isUnread = false
     render(<ThreadDisplay expectedThreadId={THREAD_ID} />)
 

@@ -209,8 +209,10 @@ describe('useInboxes — isPersonal is derived, both eras', () => {
     // `inbox-picker.tsx` / `inbox-destination-field.tsx` filter exactly like this.
     const routingTargets = result.current.inboxes.filter((i) => !i.isPersonal)
     expect(routingTargets.map((i) => i.id)).toEqual([SHARED_ID])
-    // No baseline row ⇒ the org-shared default.
-    expect(routingTargets[0]?.defaultLens).toBe('full')
+    // No baseline row ⇒ the org-shared default, which is the TOP lens: `read`
+    // since permissions v3 (the `inbox_default_lens: ['full']` above is a stale
+    // stored value in the retired vocabulary, and is deliberately not read).
+    expect(routingTargets[0]?.defaultLens).toBe('read')
   })
 })
 
@@ -221,13 +223,13 @@ describe('useInboxes — `defaultLens` is the ROW-derived floor (plan 40 §6)', 
     // rows. Rendering it would show the org the floor it had before its last
     // edit — the access badge, the detail card and the share popover's
     // inherited-access footer all read this value.
-    useMyInboxLenses.mockReturnValue({ lenses: {}, floors: { [SHARED_ID]: 'subject' } })
+    useMyInboxLenses.mockReturnValue({ lenses: {}, floors: { [SHARED_ID]: 'identity' } })
     mockArms({
       inbox: arm([rec(SHARED_ID, 'inbox', { inbox_default_lens: ['full'] })]),
       personal_inbox: arm([]),
     })
     const { result } = renderHook(() => useInboxes())
-    expect(result.current.inboxes[0]?.defaultLens).toBe('subject')
+    expect(result.current.inboxes[0]?.defaultLens).toBe('identity')
   })
 
   it('defaults a personal mailbox to `none` — it has no org-wide floor at all', () => {

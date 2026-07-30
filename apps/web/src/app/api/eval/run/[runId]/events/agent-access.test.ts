@@ -68,6 +68,7 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
 
 const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capability-set')
+const { permissionToRung } = await import('@auxx/lib/permissions/capabilities/rung')
 const { GET } = await import('./route')
 
 const ORG_ID = 'org_cuid000000000000000000000'
@@ -83,6 +84,11 @@ const AGENT_ID = 'agt_cuid000000000000000000000'
  *   `instanceAccess` is keyed by bare instance id and `restrictedInstanceIds`
  *   marks which ids carry an explicit row — both are needed, or the row is
  *   invisible to `effectiveInstanceLevel`.
+ *
+ *   The row is stated as a `ResourcePermission` and converted to a `Rung` on the
+ *   way in: permissions v3 split the two axes, and `instanceAccess` takes rungs.
+ *   A bare `view` in a rung slot evaluates to NO access — it fails exactly the
+ *   explicit-grant cases while the `none` and area-level ones keep passing.
  */
 function signedIn(agentsLevel: Level, instance?: ResourcePermission) {
   getSession.mockResolvedValue({ user: { id: USER_ID, defaultOrganizationId: ORG_ID } })
@@ -104,7 +110,7 @@ function signedIn(agentsLevel: Level, instance?: ResourcePermission) {
       (id) => id,
       new Set(),
       (id) => id,
-      instance === undefined ? {} : { [AGENT_ID]: instance },
+      instance === undefined ? {} : { [AGENT_ID]: permissionToRung(instance) },
       instance === undefined ? new Set() : new Set([AGENT_ID]),
       {},
       derived

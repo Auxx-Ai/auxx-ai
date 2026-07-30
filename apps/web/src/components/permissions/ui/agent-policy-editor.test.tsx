@@ -173,6 +173,17 @@ async function pick(user: UserEvent, title: string, option: RegExp) {
   await user.click(screen.getByRole('option', { name: option }))
 }
 
+/**
+ * The resolved rung a CONTROLLESS area header states at its end (`RungBadge`).
+ *
+ * Distinct from {@link hintOf}: an instance-access header drops the muted
+ * fall-through hint entirely (its access row states the same thing, in the
+ * control, one row down) and states the resolved rung as a badge instead.
+ */
+function badgeOf(title: string): string {
+  return row(title).querySelector('div.mr-2.whitespace-nowrap')?.textContent?.trim() ?? ''
+}
+
 /** An area row's muted fall-through hint (`LevelControl`'s `unsetHint`). */
 function hintOf(title: string): string {
   const el = row(title).querySelector('span.text-xs.text-muted-foreground.whitespace-nowrap')
@@ -783,9 +794,11 @@ describe('plan 43 §8 item 19 (grid 3 of 4) — the agent policy renders the acc
     expect(row('Records').querySelector('[role="radio"]')).not.toBeNull()
 
     await toggleArea(user, 'Datasets')
-    // Raising the access row moves the header text with it.
+    // Raising the access row moves the header's resolved-rung badge with it.
     await pick(user, 'Dataset access', /^Full access/)
-    expect(hintOf('Datasets')).toBe('Full')
+    expect(badgeOf('Datasets')).toBe('Full')
+    // ...and the muted fall-through hint stays absent on a controlless header.
+    expect(hintOf('Datasets')).toBe('')
   })
 
   it('sits directly above the "All X" row it is the default for', async () => {

@@ -200,6 +200,7 @@ vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
 
 // Deep path on purpose — the barrel above is mocked, and it hangs under vitest.
 const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capability-set')
+const { permissionToRung } = await import('@auxx/lib/permissions/capabilities/rung')
 const { POST } = await import('./route')
 
 const ORG_ID = 'org_cuid000000000000000000000'
@@ -217,11 +218,21 @@ const SESSION_ID = 'ses_cuid000000000000000000000'
  * `composeUserCapabilities` synthesizes for any member holding a ≥`view` grant —
  * without it an `agents: None` grantee would be refused at the coarse front door
  * and the `include` regime would be untestable.
+ *
+ * The rows are stated in the `ResourcePermission` vocabulary the share dialog
+ * writes, and converted to `Rung`s on the way into `instanceAccess` — that
+ * parameter is `Record<string, Rung>`, and permissions v3 split the two axes
+ * apart. Handing it a bare `view` puts a non-rung in a rung slot, where it
+ * evaluates to NO access and every "member holds an explicit grant" case fails
+ * while the `none` and area-level ones keep passing.
  */
 function capabilitiesWith(agentsLevel: Level, instances: Record<string, ResourcePermission> = {}) {
   const derived = Object.values(instances).some((p) => p !== ResourcePermission.none)
     ? [PermissionKey.agentsView]
     : []
+  const instanceRungs = Object.fromEntries(
+    Object.entries(instances).map(([id, permission]) => [id, permissionToRung(permission)])
+  )
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.agents]: agentsLevel }) as PermissionKeyType[]),
     {},
@@ -230,7 +241,7 @@ function capabilitiesWith(agentsLevel: Level, instances: Record<string, Resource
     undefined,
     undefined,
     undefined,
-    instances,
+    instanceRungs,
     new Set(Object.keys(instances)),
     undefined,
     new Set(derived as PermissionKeyType[])

@@ -1,7 +1,5 @@
 // apps/web/src/components/global/comments/use-comment-access.test.ts
 
-// apps/web/src/components/global/comments/use-comment-access.test.ts
-
 import { describe, expect, it } from 'vitest'
 import { resolveCommentAccess } from './use-comment-access'
 
@@ -24,7 +22,7 @@ describe('resolveCommentAccess', () => {
     })
   })
 
-  it('lets a visible subject-lens thread read and compose without full-lens moderation', () => {
+  it('lets a visible identity-lens thread read and compose without read-lens moderation', () => {
     expect(
       resolveCommentAccess({
         parentKind: 'thread',
@@ -32,7 +30,7 @@ describe('resolveCommentAccess', () => {
         commentsManage: true,
         canViewParent: true,
         canAdministerParent: false,
-        threadLens: 'subject',
+        threadLens: 'identity',
         canAdministerInbox: true,
       })
     ).toMatchObject({
@@ -44,7 +42,9 @@ describe('resolveCommentAccess', () => {
     })
   })
 
-  it('requires a full thread lens and inbox administration to moderate other authors', () => {
+  // `read` is the TOP mail lens since permissions v3 — the value this used to
+  // spell `full`.
+  it('requires the top (read) thread lens and inbox administration to moderate other authors', () => {
     expect(
       resolveCommentAccess({
         parentKind: 'thread',
@@ -52,7 +52,7 @@ describe('resolveCommentAccess', () => {
         commentsManage: true,
         canViewParent: true,
         canAdministerParent: false,
-        threadLens: 'full',
+        threadLens: 'read',
         canAdministerInbox: true,
       })
     ).toMatchObject({
@@ -69,7 +69,7 @@ describe('resolveCommentAccess', () => {
         commentsManage: true,
         canViewParent: true,
         canAdministerParent: true,
-        threadLens: 'full',
+        threadLens: 'read',
         canAdministerInbox: true,
       })
     ).toEqual({
