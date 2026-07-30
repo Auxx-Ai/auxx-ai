@@ -43,6 +43,12 @@ interface NotificationRowProps {
   actionLabel?: React.ReactNode
   /** Detail drawer, rendered below the footer so the actions never move. */
   expanded?: React.ReactNode
+  /**
+   * Flashes a ring on the card. Set while a caller is pointing the viewer at this
+   * one row — it belongs on the card so the ring follows the card's own bounds,
+   * not on a wrapper, which would trace a full-width rectangle beside it.
+   */
+  highlighted?: boolean
 }
 
 function formatNotificationType(type: string): string {
@@ -75,6 +81,7 @@ export function NotificationRow({
   actions,
   actionLabel,
   expanded,
+  highlighted,
 }: NotificationRowProps) {
   const iconConfig = type ? (NOTIFICATION_ICON_MAP[type] ?? DEFAULT_NOTIFICATION_ICON) : null
   const headerLabel = label ?? (type ? formatNotificationType(type) : null)
@@ -100,10 +107,15 @@ export function NotificationRow({
 
   return (
     <div
+      data-notification-id={id}
       className={cn(
-        'group/item mx-2 mb-2 rounded-lg border-[0.5px] border-border shadow-xs last-of-type:mb-0',
+        'group/item mx-2 mb-2 rounded-lg border-[0.5px] border-border shadow-xs transition-shadow last-of-type:mb-0',
         isRead ? 'bg-secondary/20 opacity-80' : 'bg-secondary/30',
-        onOpen && 'hover:bg-secondary/50 hover:ring-1 hover:ring-blue-500'
+        onOpen && 'hover:bg-secondary/50 hover:ring-1 hover:ring-blue-500',
+        // Not `ring-inset`: an inset ring paints under the header band's own
+        // background, so it would only show along the body. The card's mx-2
+        // leaves room for the outer ring.
+        highlighted && 'ring-2 ring-info'
       )}>
       <div className='flex h-9 items-center gap-1.5 rounded-t-lg bg-primary-150/50 px-2 text-muted-foreground text-xs font-medium'>
         {icon ?? (iconConfig ? <EntityIcon {...iconConfig} size='sm' /> : null)}

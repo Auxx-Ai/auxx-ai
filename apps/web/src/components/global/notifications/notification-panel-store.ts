@@ -4,7 +4,11 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-/** `all` / `unread` filter the notification feed; `approvals` swaps the source entirely. */
+/**
+ * `unread` / `all` filter the notification feed; `approvals` swaps the source
+ * entirely. `unread` is the default — opening the bell should show what still
+ * needs attention, not the whole archive.
+ */
 export type NotificationPanelMode = 'all' | 'unread' | 'approvals'
 
 interface NotificationPanelState {
@@ -38,7 +42,7 @@ export const useNotificationPanelStore = create<NotificationPanelState>()(
     (set) => ({
       open: false,
       width: 420,
-      mode: 'all',
+      mode: 'unread',
       highlightApprovalId: undefined,
       bellPulse: 0,
       toggle: () => set((state) => ({ open: !state.open })),

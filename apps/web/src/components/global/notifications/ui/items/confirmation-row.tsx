@@ -44,9 +44,12 @@ function formatTimestamp(value: Date | string | null | undefined): string {
 export function ConfirmationRow({
   request,
   onResolved,
+  highlighted,
 }: {
   request: PendingApprovalRequest
   onResolved: () => void
+  /** Flashes the card when the tab was opened pointing at this request. */
+  highlighted?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [comment, setComment] = useState('')
@@ -183,6 +186,7 @@ export function ConfirmationRow({
       <NotificationRow
         id={request.id}
         createdAt={request.createdAt}
+        highlighted={highlighted}
         // The body carries the "Approval required" lead — the header names the kind.
         label='Workflow'
         icon={<StatusIndicator status='pending' />}

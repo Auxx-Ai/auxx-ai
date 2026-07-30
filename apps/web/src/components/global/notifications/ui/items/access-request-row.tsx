@@ -43,9 +43,12 @@ function formatTimestamp(value: Date | string | null | undefined): string {
 export function AccessRequestRow({
   request,
   onResolved,
+  highlighted,
 }: {
   request: PendingApprovalRequest
   onResolved: () => void
+  /** Flashes the card when the tab was opened pointing at this request. */
+  highlighted?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [comment, setComment] = useState('')
@@ -222,6 +225,7 @@ export function AccessRequestRow({
       <NotificationRow
         id={request.id}
         createdAt={request.createdAt}
+        highlighted={highlighted}
         label='Access'
         icon={<LockKeyhole className='size-4' />}
         subtitle={subtitle}
