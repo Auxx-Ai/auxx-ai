@@ -61,6 +61,9 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
           color: inbox.color ?? 'indigo',
           isPersonal: true,
           ownerUserId: inbox.ownerUserId,
+          // Carried, never derived from `isPersonal` — the row's "Edit Inbox"
+          // gate mints its access RecordId from this.
+          entityDefinitionKey: inbox.entityDefinitionKey,
         })),
     [rawInboxes, userId]
   )
@@ -92,6 +95,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
           isPersonal: inbox.isPersonal,
           ownerUserId: inbox.ownerUserId,
+          entityDefinitionKey: inbox.entityDefinitionKey,
         })
         processedIds.add(id)
       }
@@ -107,6 +111,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
           isVisible: inboxVisibilitySettings[inbox.id] !== false, // Default true
           isPersonal: inbox.isPersonal,
           ownerUserId: inbox.ownerUserId,
+          entityDefinitionKey: inbox.entityDefinitionKey,
         })
       }
     })
