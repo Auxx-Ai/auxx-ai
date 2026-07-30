@@ -1,10 +1,15 @@
 // apps/web/src/components/threads/hooks/use-thread-mutation.ts
 
+import { safeParseActorId } from '@auxx/types/actor'
 import { getInstanceId, toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
-import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hooks'
+import { useCountUpdates } from '~/components/mail/hooks'
 import { type CountUpdates, useMailCountsStore } from '~/components/mail/store'
+import {
+  buildThreadCountContext,
+  type ThreadCountContext,
+} from '~/components/mail/utils/thread-count-context'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
 import { type ThreadMeta, useThreadSelectionStore, useThreadStore } from '../store'
@@ -87,19 +92,12 @@ export function useThreadMutation() {
 
   /**
    * Build thread context for count updates from current store state.
+   * Id normalization lives in the shared producer — see `thread-count-context`.
    */
   const buildThreadContext = useCallback(
     (threadId: string): ThreadCountContext | null => {
       const thread = getThread(threadId)
-      if (!thread) return null
-
-      return {
-        isUnread: thread.isUnread,
-        inboxId: thread.inboxId ?? null,
-        assigneeId: thread.assigneeId ?? null,
-        status: thread.status as 'OPEN' | 'ARCHIVED' | 'TRASH' | 'CLOSED' | 'SPAM',
-        threadData: thread as unknown as Record<string, unknown>,
-      }
+      return thread ? buildThreadCountContext(thread) : null
     },
     [getThread]
   )
@@ -157,16 +155,13 @@ export function useThreadMutation() {
         for (const context of contexts) {
           if (!context.isUnread || context.status !== 'OPEN') continue
 
-          // Decrement old inbox.
-          // PRE-EXISTING, definition-independent: `context.inboxId` is the
-          // thread's stored RecordId, while `counts.sharedInboxes` is keyed by
-          // the BARE instance id (`mail-counts.ts` `si:{inboxId}`), so this
-          // debit has never matched. `use-count-updates.ts` repeats the shape.
-          // Left alone here — fixing it changes shared-inbox badges too, which
-          // is outside the plan-40 RecordId sweep.
-          if (context.inboxId) {
-            countUpdates.sharedInboxes![context.inboxId] =
-              (countUpdates.sharedInboxes![context.inboxId] ?? 0) - 1
+          // Decrement old inbox. `inboxInstanceId` is already parsed off the
+          // stored RecordId by the shared context producer (plan 44 §3.3) — the
+          // debit used to key off the whole RecordId and so never matched the
+          // badge's bare-id keyspace.
+          if (context.inboxInstanceId) {
+            countUpdates.sharedInboxes![context.inboxInstanceId] =
+              (countUpdates.sharedInboxes![context.inboxInstanceId] ?? 0) - 1
           }
           // Increment new inbox
           countUpdates.sharedInboxes![newInboxId] =
@@ -176,11 +171,12 @@ export function useThreadMutation() {
 
       // Handle assignee changes
       if (updates.assigneeId !== undefined) {
-        const newAssigneeId = updates.assigneeId?.replace('user:', '') ?? null
+        // Parse, don't strip — same rule as the inbox RecordId above.
+        const newAssigneeId = safeParseActorId(updates.assigneeId)?.id ?? null
         for (const context of contexts) {
           if (!context.isUnread || context.status !== 'OPEN') continue
 
-          const wasAssignedToMe = context.assigneeId === currentUserId
+          const wasAssignedToMe = context.assigneeUserId === currentUserId
           const isAssigningToMe = newAssigneeId === currentUserId
 
           if (wasAssignedToMe && !isAssigningToMe) {
@@ -300,11 +296,11 @@ export function useThreadMutation() {
         const context = buildThreadContext(threadId)
         if (context?.isUnread && context.status === 'OPEN') {
           const countUpdates: CountUpdates = { inbox: 0, sharedInboxes: {} }
-          if (context.assigneeId === currentUserId) {
+          if (context.assigneeUserId === currentUserId) {
             countUpdates.inbox = -1
           }
-          if (context.inboxId) {
-            countUpdates.sharedInboxes![context.inboxId] = -1
+          if (context.inboxInstanceId) {
+            countUpdates.sharedInboxes![context.inboxInstanceId] = -1
           }
           batchUpdate(countUpdates)
         }
@@ -360,12 +356,12 @@ export function useThreadMutation() {
         const countUpdates: CountUpdates = { inbox: 0, sharedInboxes: {} }
         for (const context of contexts) {
           if (!context.isUnread || context.status !== 'OPEN') continue
-          if (context.assigneeId === currentUserId) {
+          if (context.assigneeUserId === currentUserId) {
             countUpdates.inbox! -= 1
           }
-          if (context.inboxId) {
-            countUpdates.sharedInboxes![context.inboxId] =
-              (countUpdates.sharedInboxes![context.inboxId] ?? 0) - 1
+          if (context.inboxInstanceId) {
+            countUpdates.sharedInboxes![context.inboxInstanceId] =
+              (countUpdates.sharedInboxes![context.inboxInstanceId] ?? 0) - 1
           }
         }
         batchUpdate(countUpdates)

@@ -92,23 +92,28 @@ beforeEach(() => {
   }
 })
 
-/**
- * The key the DESTINATION credit landed under.
- *
- * Only the credit is asserted. The matching source DEBIT keys off the thread's
- * stored `inboxId`, i.e. a whole RecordId, and so has never matched the badge's
- * bare-id keyspace — a separate, definition-independent pre-existing bug that
- * `use-count-updates.ts` repeats. Pinning it here would lock it in.
- */
-function creditedKey(inboxRecordId: string): string {
+/** Every `sharedInboxes` delta the move batched, keyed as the store filed it. */
+function inboxDeltas(inboxRecordId: string): Record<string, number> {
   const { result } = renderHook(() => useThreadMutation())
   result.current.updateBulk(['t_1'], { inboxId: inboxRecordId as never })
   const { sharedInboxes } = h.batchUpdate.mock.calls.at(-1)?.[0] as {
     sharedInboxes: Record<string, number>
   }
-  const credited = Object.entries(sharedInboxes).filter(([, delta]) => delta > 0)
+  return sharedInboxes
+}
+
+/** The key the DESTINATION credit landed under. */
+function creditedKey(inboxRecordId: string): string {
+  const credited = Object.entries(inboxDeltas(inboxRecordId)).filter(([, delta]) => delta > 0)
   expect(credited).toHaveLength(1)
   return credited[0]![0]
+}
+
+/** The key the SOURCE debit landed under. */
+function debitedKey(inboxRecordId: string): string {
+  const debited = Object.entries(inboxDeltas(inboxRecordId)).filter(([, delta]) => delta < 0)
+  expect(debited).toHaveLength(1)
+  return debited[0]![0]
 }
 
 describe('useThreadMutation inbox move — RecordId round trip (plan 40a §5.1)', () => {
@@ -130,6 +135,27 @@ describe('useThreadMutation inbox move — RecordId round trip (plan 40a §5.1)'
 
   it('never produces a mangled `personal_…` key', () => {
     expect(creditedKey(`personal_inbox:${PERSONAL_INBOX}`)).not.toBe(`personal_${PERSONAL_INBOX}`)
+  })
+
+  /**
+   * Plan 44 §3.3. The source debit used to key off `context.inboxId`, the whole
+   * stored RecordId, so it never matched the badge's bare-id keyspace — this
+   * file previously said so and declined to pin it. The context producer now
+   * parses it, so both halves of a move land in the same keyspace.
+   */
+  it('debits the BARE instance id of the source mailbox', () => {
+    expect(debitedKey(`personal_inbox:${PERSONAL_INBOX}`)).toBe(SHARED_INBOX)
+  })
+
+  it('debits the bare instance id when the source is a personal mailbox', () => {
+    h.threads.t_1 = {
+      id: 't_1',
+      isUnread: true,
+      status: 'OPEN',
+      inboxId: `personal_inbox:${PERSONAL_INBOX}`,
+    }
+
+    expect(debitedKey(`inbox:${SHARED_INBOX}`)).toBe(PERSONAL_INBOX)
   })
 
   it('still forwards the full RecordId to the server mutation', () => {

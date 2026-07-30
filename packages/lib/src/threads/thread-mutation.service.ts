@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { type ActorId, parseActorId } from '@auxx/types/actor'
+import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
 import { getCachedResources, getOrgCache } from '../cache'
@@ -289,7 +289,15 @@ export class ThreadMutationService {
       const patch: Partial<ThreadMeta> = {}
       if ('status' in dbUpdates) patch.status = dbUpdates.status
       if ('subject' in dbUpdates) patch.subject = dbUpdates.subject
-      if ('assigneeId' in dbUpdates) patch.assigneeId = dbUpdates.assigneeId
+      if ('assigneeId' in dbUpdates) {
+        // ActorId on the wire, same as the fetch path
+        // (`thread-query.service.ts` `toActorId('user', …)`). `dbUpdates` holds
+        // the BARE column value, and publishing that put a bare id into a store
+        // field typed `ActorId | null` until the next refetch — enough for
+        // `parseActorId` to throw on ticket creation and for every assignee
+        // chip to render nothing (plan 44 §3.4). One format on the wire.
+        patch.assigneeId = dbUpdates.assigneeId ? toActorId('user', dbUpdates.assigneeId) : null
+      }
       if ('inboxId' in dbUpdates) {
         // The destination may be a personal mailbox, which lives on the
         // `personal_inbox` definition (plan 40 §3 / 40a §5.1) — resolve the def
@@ -670,7 +678,10 @@ export class ThreadMutationService {
 
       const patch: Partial<ThreadMeta> = {}
       if ('status' in dbUpdates) patch.status = dbUpdates.status
-      if ('assigneeId' in dbUpdates) patch.assigneeId = dbUpdates.assigneeId
+      if ('assigneeId' in dbUpdates) {
+        // ActorId on the wire, same as the single-thread patch above (§3.4).
+        patch.assigneeId = dbUpdates.assigneeId ? toActorId('user', dbUpdates.assigneeId) : null
+      }
       if ('inboxId' in dbUpdates) {
         // Def-resolved, same as the single-thread patch above (40a §5.1). The
         // whole batch moves to ONE destination inbox, so this is one lookup.

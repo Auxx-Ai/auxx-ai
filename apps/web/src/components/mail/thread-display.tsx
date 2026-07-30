@@ -50,13 +50,21 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
   const { thread, isLoading, isNotFound, isDeleted } = useThread({ threadId })
   const { isUnread, markAsRead } = useThreadReadStatus(threadId)
 
+  // Read-state is `full`-tier (`UnreadService.setReadStatus` refuses anything
+  // below it), so the auto-mark must know the lens before it writes. Both
+  // halves matter: `!thread` is the reported path — a share recipient follows
+  // the MESSAGE_SHARED deep link, the pane renders from the URL id before the
+  // batched meta fetch returns, and firing here earns a rejection toast on
+  // open (plan 44 §1.2). This is UX; the server check stays authoritative.
+  const canMarkRead = !!thread && (thread.myLens ?? 'full') === 'full'
+
   // Mark thread as read when displayed. Skip in edit mode — the thread isn't
   // rendered, the user is just multi-selecting.
   useEffect(() => {
-    if (threadId && isUnread && viewMode !== 'edit') {
+    if (threadId && isUnread && canMarkRead && viewMode !== 'edit') {
       markAsRead()
     }
-  }, [threadId, isUnread, markAsRead, viewMode])
+  }, [threadId, isUnread, canMarkRead, markAsRead, viewMode])
 
   // BulkActionToolbar is self-managing (renders only when it has selection / edit mode).
   // The detail pane follows the *active* thread: whenever the user has opened one,
