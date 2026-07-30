@@ -3,8 +3,7 @@
 
 import type { ResourcePermission } from '@auxx/database/enums'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { EmptySection } from '@auxx/ui/components/section'
-import { TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { TreeRowEmpty, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { Lock, ShieldCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Tooltip } from '~/components/global/tooltip'
@@ -55,8 +54,8 @@ export function DefBaselineRows({
 
   if (rows.length === 0) {
     return (
-      <EmptySection
-        orientation='horizontal'
+      <TreeRowEmpty
+        depth={CHILD_DEPTH}
         icon={<ShieldCheck />}
         title='No matches'
         description='No record types match your search.'

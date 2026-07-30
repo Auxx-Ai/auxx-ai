@@ -5,8 +5,7 @@ import type { ResourcePermission } from '@auxx/database/enums'
 import type { InstanceAccessKey } from '@auxx/lib/permissions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
-import { EmptySection } from '@auxx/ui/components/section'
-import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { TreeRow, TreeRowEmpty, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { Library } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import type { InstanceBaselineRow } from '../hooks/use-instance-baseline-rows'
@@ -86,8 +85,8 @@ export function InstanceBaselineRows({
     return (
       <div className='flex flex-col gap-0.5'>
         {leadingRow}
-        <EmptySection
-          orientation='horizontal'
+        <TreeRowEmpty
+          depth={CHILD_DEPTH}
           icon={<Library />}
           title='No matches'
           description='No items match your search.'

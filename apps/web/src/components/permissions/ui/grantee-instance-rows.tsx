@@ -4,8 +4,7 @@
 import { ResourcePermission } from '@auxx/database/enums'
 import { type InstanceAccessKey, Level } from '@auxx/lib/permissions/client'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
-import { EmptySection } from '@auxx/ui/components/section'
-import { TreeRowButton, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { TreeRowButton, TreeRowEmpty, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Library, Users } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
@@ -205,8 +204,8 @@ export function GranteeInstanceRows({
           <TreeRowSkeleton depth={depth} />
         </>
       ) : rows.length === 0 ? (
-        <EmptySection
-          orientation='horizontal'
+        <TreeRowEmpty
+          depth={depth}
           icon={emptyState.icon}
           title={emptyState.title}
           description={emptyState.description}
