@@ -120,6 +120,7 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
               disabled={!canShare || gated}
               unmanageableGrants={unmanageableGrants}
               emptyHint='Not shared with anyone yet.'
+              stagedAdd
             />
           </div>
           <div className='space-y-1 border-t px-3 py-2 text-muted-foreground text-xs'>

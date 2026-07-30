@@ -3,6 +3,12 @@
 
 import type { ActorId } from '@auxx/types/actor'
 import { Button } from '@auxx/ui/components/button'
+import {
+  CommandBreadcrumb,
+  CommandNavigation,
+  type NavigationItem,
+  useCommandNavigationOptional,
+} from '@auxx/ui/components/command'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { INDENT_REM, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
@@ -15,6 +21,15 @@ import { ActorAvatar } from '~/components/resources/ui/actor-badge'
 import { actorAvatarType } from '~/components/resources/utils/actor-id'
 import type { UnmanageableGrant } from '../utils/grantee'
 import { unmanageableGrantsNote } from '../utils/grantee'
+import { GranteeAddPanel } from './grantee-add-panel'
+
+/** The one drill-down page this list owns. */
+interface GranteeNavItem extends NavigationItem {
+  id: 'add-grantee'
+  label: string
+}
+
+const ADD_PAGE: GranteeNavItem = { id: 'add-grantee', label: 'Add people' }
 
 /**
  * Render the level picker for one editable grantee row. The neutral list is
@@ -73,6 +88,32 @@ export interface GranteeListProps<TChoice extends string> {
    * belong to.
    */
   depth?: number
+  /**
+   * Opt into the staged add flow: the inline "Add people or groups" trigger
+   * drills down to a {@link GranteeAddPanel} page — picker, one level select,
+   * submit — instead of granting on pick at `defaultChoice`. Requires
+   * `renderBatchPicker`.
+   *
+   * Opt-IN rather than the default because granting on pick is what sends a
+   * wrong share notification that can never be corrected (see
+   * `grantee-add-panel.tsx`), and the fix is being rolled out one surface family
+   * at a time: mail first, the instance-access surfaces after. Two things block
+   * flipping this on for them — `instance-share-body`'s `renderPicker` returns a
+   * per-row dead-grant warning alongside its select (meaningless for a batch),
+   * and `instance-baseline-rows` mounts this list at `depth > 0` inside a tree,
+   * where swapping the whole body for a picker reads worse than a popover.
+   */
+  stagedAdd?: boolean
+  /**
+   * The level select for the staged add page. Separate from `renderPicker`
+   * because that one is row-shaped (it receives an `actorId`) and the staged
+   * batch has no rows yet.
+   */
+  renderBatchPicker?: (args: {
+    value: TChoice
+    onChange: (choice: TChoice) => void
+    disabled: boolean
+  }) => ReactNode
 }
 
 /**
@@ -85,8 +126,22 @@ export interface GranteeListProps<TChoice extends string> {
  * Lifted out of `mail-permissions/ui` (was mail-`LensSelect`-specific) to a
  * neutral home with a pluggable picker so both mail and instance-access sharing
  * share one list component with two pickers.
+ *
+ * With `stagedAdd`, provides the `CommandNavigation` stack the add page drills
+ * into. Self-providing rather than requiring one from the host so the two mail
+ * mounts don't each have to wire a stack; a host that already has one is reused
+ * instead (`useCommandNavigationOptional` in the body).
  */
-export function GranteeList<TChoice extends string>({
+export function GranteeList<TChoice extends string>(props: GranteeListProps<TChoice>) {
+  if (!props.stagedAdd) return <GranteeListBody {...props} />
+  return (
+    <CommandNavigation<GranteeNavItem>>
+      <GranteeListBody {...props} />
+    </CommandNavigation>
+  )
+}
+
+function GranteeListBody<TChoice extends string>({
   grants,
   onGrant,
   onChange,
@@ -100,17 +155,45 @@ export function GranteeList<TChoice extends string>({
   hideAddButton = false,
   unmanageableGrants,
   depth = 0,
+  stagedAdd = false,
+  renderBatchPicker,
 }: GranteeListProps<TChoice>) {
+  const nav = useCommandNavigationOptional<GranteeNavItem>()
   const locked = useMemo(() => new Set(lockedActorIds), [lockedActorIds])
   const hiddenNote = useMemo(
     () => unmanageableGrantsNote(unmanageableGrants ?? []),
     [unmanageableGrants]
   )
+  const currentActorIds = useMemo(() => grants.map((g) => g.actorId), [grants])
 
   // `TreeRow` indents itself from `depth`; the empty state, the disclosure note
   // and the add trigger are plain elements, so they take the same offset by hand
   // or they hang left of the rows they belong to.
   const indent = { paddingLeft: `${depth * INDENT_REM}rem` }
+
+  const staged = stagedAdd && nav !== null && renderBatchPicker !== undefined
+
+  if (staged && nav.current?.id === ADD_PAGE.id) {
+    return (
+      <div className='space-y-2' style={indent}>
+        <CommandBreadcrumb rootLabel='Shared with' className='border-b-0 px-0 py-0' />
+        <GranteeAddPanel<TChoice>
+          excludeIds={currentActorIds}
+          defaultChoice={defaultChoice}
+          renderLevelSelect={renderBatchPicker}
+          disabled={disabled}
+          onCancel={nav.pop}
+          onSubmit={(actorIds, choice) => {
+            // One write per actor at the level the admin just picked — the same
+            // per-grantee upsert the rows use, so each recipient's share
+            // notification names the access they actually got.
+            for (const actorId of actorIds) onGrant(actorId, choice)
+            nav.pop()
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className='space-y-0.5'>
@@ -147,12 +230,24 @@ export function GranteeList<TChoice extends string>({
 
       {!hideAddButton && (
         <div style={indent}>
-          <GranteeAddButton
-            grants={grants}
-            onGrant={onGrant}
-            defaultChoice={defaultChoice}
-            disabled={disabled}
-          />
+          {staged ? (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground'
+              disabled={disabled}
+              onClick={() => nav.push(ADD_PAGE)}>
+              <Plus />
+              Add people or groups
+            </Button>
+          ) : (
+            <GranteeAddButton
+              grants={grants}
+              onGrant={onGrant}
+              defaultChoice={defaultChoice}
+              disabled={disabled}
+            />
+          )}
         </div>
       )}
     </div>
