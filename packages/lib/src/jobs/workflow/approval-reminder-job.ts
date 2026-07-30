@@ -4,11 +4,12 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import {
-  approvalEmailEnabled,
+  approvalEmailEnabledFor,
   getApprovalAssigneeUserIds,
 } from '../../approval-requests/approval-recipients'
+import { getCachedMembersByUserIds } from '../../cache'
 import { enqueueEmailJob } from '../email'
 import type { JobContext } from '../types'
 
@@ -103,7 +104,7 @@ async function sendReminderNotifications(
   reminderNumber: number
 ): Promise<void> {
   // Get all assignee user IDs
-  const allUserIds = await getApprovalAssigneeUserIds(db, {
+  const allUserIds = await getApprovalAssigneeUserIds({
     assigneeUsers: approvalRequest.assigneeUsers,
     assigneeGroups: approvalRequest.assigneeGroups,
     organizationId: approvalRequest.organizationId,
@@ -154,25 +155,25 @@ async function sendEmailReminders(
   reminderNumber: number,
   timeRemaining: string
 ): Promise<void> {
-  // Get user details — exclude agents (synthetic users) from email fan-out.
-  const users = await db
-    .select({
-      id: schema.User.id,
-      email: schema.User.email,
-      name: schema.User.name,
-    })
-    .from(schema.User)
-    .where(and(inArray(schema.User.id, userIds), eq(schema.User.userType, 'USER')))
-  // Generate approval URL
-  const approvalUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
-  for (const user of users) {
-    try {
-      // Same recipient gate as the request email — one key for both, so nobody
-      // can end up receiving reminders for an email they never got (§7).
-      if (!(await approvalEmailEnabled(approvalRequest.organizationId, user.id))) continue
+  if (userIds.length === 0) return
+  const organizationId = approvalRequest.organizationId as string
 
+  // Recipient names/emails are a cache read, and agents are already excluded —
+  // `getApprovalAssigneeUserIds` filtered `userType === 'USER'` before this, so
+  // the `User` select this replaces was re-deriving a filter it had already been
+  // handed. Same three-query shape as the request email (see the confirmation
+  // node's `sendEmailNotifications`).
+  const members = await getCachedMembersByUserIds(organizationId, userIds)
+  // Same recipient gate as the request email — one key for both, so nobody can
+  // end up receiving reminders for an email they never got (§7). Batched: the
+  // per-user form cost up to two queries EACH.
+  const emailAllowed = await approvalEmailEnabledFor(db, organizationId, userIds)
+
+  const approvalUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
+  for (const user of members.filter((m) => m.user?.email && emailAllowed.has(m.userId))) {
+    try {
       await enqueueEmailJob('approval-reminder', {
-        recipient: { email: user.email, name: user.name || 'User' },
+        recipient: { email: user.user!.email!, name: user.user!.name || 'User' },
         workflowName: approvalRequest.workflow.name,
         message: approvalRequest.message,
         approvalUrl,
@@ -184,8 +185,8 @@ async function sendEmailReminders(
       })
     } catch (error) {
       logger.warn('Failed to send email reminder', {
-        userId: user.id,
-        email: user.email,
+        userId: user.userId,
+        email: user.user?.email,
         approvalRequestId: approvalRequest.id,
         error: error instanceof Error ? error.message : String(error),
       })

@@ -5,7 +5,7 @@ import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { getCachedResources, onCacheEvent } from '../cache'
 import { BadRequestError } from '../errors'
@@ -103,7 +103,7 @@ async function resolveShareRecipients(
   // ONE shared expansion (plan 42 §3.1) — the inverse of `granteeMatchers`, also
   // used by the access-request approver resolver. Before this it was a private
   // third copy of the same switch, and the copies had already drifted.
-  const { userIds, capped } = await expandGranteeToUserIds(ctx.db, ctx.organizationId, input, {
+  const { userIds, capped } = await expandGranteeToUserIds(ctx.organizationId, input, {
     cap: SHARE_NOTIFICATION_RECIPIENT_CAP,
   })
   if (capped) {
@@ -559,18 +559,18 @@ export async function grantInstanceAccess(
   const { db, organizationId, userId } = ctx
   await assertCanonicalMailKey(organizationId, input.recordId)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
-  const existing = await db.query.ResourceAccess.findFirst({
-    where: and(
-      eq(schema.ResourceAccess.organizationId, organizationId),
-      eq(schema.ResourceAccess.entityDefinitionId, entityDefinitionId),
-      eq(schema.ResourceAccess.entityInstanceId, entityInstanceId),
-      eq(schema.ResourceAccess.granteeType, input.granteeType),
-      eq(schema.ResourceAccess.granteeId, input.granteeId)
-    ),
-    columns: { id: true },
-  })
 
-  await db
+  // `xmax = 0` distinguishes an INSERT from an ON CONFLICT UPDATE: on a freshly
+  // inserted tuple xmax is zero, on an updated one it carries the deleting
+  // transaction of the row this version replaced. That is the only thing the old
+  // pre-flight `SELECT` was for — deciding whether this grant is NEW and therefore
+  // worth a share notification — so the upsert now answers it itself.
+  //
+  // Every grant paid for that extra round trip, and an approval-origin grant paid
+  // it to compute a value it then ignored: `notifyNewInstanceShare` returns
+  // immediately for `origin: 'approval'`, since an accepted access request is
+  // announced by `ACCESS_REQUEST_DECIDED` instead.
+  const [upserted] = await db
     .insert(schema.ResourceAccess)
     .values({
       organizationId,
@@ -597,6 +597,8 @@ export async function grantInstanceAccess(
         updatedAt: new Date(),
       },
     })
+    .returning({ inserted: sql<boolean>`xmax = 0` })
+  const isNewGrant = upserted?.inserted === true
 
   const grantees = [{ granteeType: input.granteeType, granteeId: input.granteeId }]
 
@@ -610,7 +612,7 @@ export async function grantInstanceAccess(
       await emitResourceAccessInstanceChanged(organizationId, grantees)
     }
 
-    if (!existing) {
+    if (isNewGrant) {
       void notifyNewInstanceShare(ctx, input, entityDefinitionId, entityInstanceId).catch(
         (error) => {
           logger.warn('Failed to send instance share notification', {

@@ -35,4 +35,9 @@ export {
   SUBJECT_TIER_THREAD_FIELDS,
   THREAD_METADATA_FIELDS,
 } from './redact'
-export { getThreadLens, getThreadLensBatch } from './thread-lens'
+export {
+  getLoadedThreadLens,
+  getThreadLens,
+  getThreadLensBatch,
+  type LoadedThreadFacts,
+} from './thread-lens'

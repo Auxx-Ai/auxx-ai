@@ -35,6 +35,7 @@ export {
   buildThreadSubjectLabel,
   findPendingThreadAccessRequest,
   findThreadDenyCooldown,
+  getThreadAccessRequestApproverView,
   loadThreadAuthorityContext,
   preflightThreadAccessRequest,
   resolveThreadApprovers,
@@ -48,6 +49,7 @@ export {
   cleanupExpiredApprovals,
   cleanupOrphanedApprovals,
   generateApprovalToken,
+  generateApprovalTokens,
   resolveApprovalByToken,
   resolveApprovalRequest,
   resolveApprovalRequests,
@@ -82,6 +84,7 @@ export {
 } from './client'
 export { allowsTokenResolution, getApprovalKindHandler } from './registry'
 export type {
+  AccessRequestApproverView,
   AccessRequestPreflight,
   ApprovalAudience,
   ApprovalKindHandler,

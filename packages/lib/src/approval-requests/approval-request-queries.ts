@@ -30,7 +30,7 @@ import {
   sql,
 } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { getCachedUserGroupIds } from '../cache'
+import { getCachedMembersByUserIds, getCachedUserGroupIds, isOrgMember } from '../cache'
 import { guard } from './guard'
 import type { ApprovalRequestEntity } from './types'
 
@@ -95,6 +95,12 @@ function assignedTo(userId: string, userGroupIds: string[]): SQL | undefined {
  *
  * The access-lane columns are projected alongside the workflow ones because the
  * rows H1 stopped excluding are useless to the Approvals tab without them.
+ *
+ * `requester` is resolved for the whole list in ONE org-member cache read rather
+ * than a `User` join or a per-row query (plan 42 §6.2's rule, applied to the
+ * approver side): "who asked" is the lead of an access row's collapsed copy, so it
+ * cannot be deferred to the lazily-fetched detail drawer without the row rendering
+ * anonymous. `null` for workflow rows, which have no requester.
  */
 export async function getPendingApprovalsForUser(
   db: Database,
@@ -102,7 +108,7 @@ export async function getPendingApprovalsForUser(
   userId: string
 ) {
   const userGroups = await getCachedUserGroupIds(organizationId, userId)
-  return await db
+  const rows = await db
     .select({
       id: schema.ApprovalRequest.id,
       organizationId: schema.ApprovalRequest.organizationId,
@@ -144,6 +150,28 @@ export async function getPendingApprovalsForUser(
       )
     )
     .orderBy(schema.ApprovalRequest.createdAt)
+
+  const requesterIds = [
+    ...new Set(rows.flatMap((row) => (row.requesterId ? [row.requesterId] : []))),
+  ]
+  const members = requesterIds.length
+    ? await getCachedMembersByUserIds(organizationId, requesterIds)
+    : []
+  const byUserId = new Map(members.map((member) => [member.userId, member]))
+
+  return rows.map((row) => {
+    const member = row.requesterId ? byUserId.get(row.requesterId) : undefined
+    return {
+      ...row,
+      requester: member
+        ? {
+            userId: member.userId,
+            name: member.user?.name ?? null,
+            image: member.user?.image ?? null,
+          }
+        : null,
+    }
+  })
 }
 
 /**
@@ -177,6 +205,56 @@ export async function getPendingCount(
 }
 
 /**
+ * The audience columns both predicates below read, fetched ONCE.
+ *
+ * `canUserApprove` used to read the row for `status`/`expiresAt` and then call
+ * `canUserViewApproval`, which read the SAME row again for the assignee columns —
+ * and the router then calls `resolveApprovalRequest`, which reads it a third time
+ * inside the decision transaction. Projecting all four columns in one read
+ * collapses the first two; the third is the transactional one and has to stay
+ * (its read is what the atomic claim is built on).
+ */
+async function loadApprovalAudienceRow(db: Database, approvalRequestId: string) {
+  return db.query.ApprovalRequest.findFirst({
+    where: eq(schema.ApprovalRequest.id, approvalRequestId),
+    columns: {
+      organizationId: true,
+      status: true,
+      expiresAt: true,
+      assigneeUsers: true,
+      assigneeGroups: true,
+    },
+  })
+}
+
+/**
+ * Whether a user is in the approval audience of an ALREADY-LOADED request row.
+ *
+ * Membership is the cached {@link isOrgMember}, not a direct `OrganizationMember`
+ * query: this runs on every drawer open and every decision, and org membership is
+ * one of the hottest cache keys there is.
+ */
+async function isInApprovalAudience(
+  userId: string,
+  request: {
+    organizationId: string
+    assigneeUsers: string[] | null
+    assigneeGroups: string[] | null
+  }
+): Promise<boolean> {
+  if (!(await isOrgMember(request.organizationId, userId))) return false
+
+  const userGroupIds = await getCachedUserGroupIds(request.organizationId, userId)
+  // `?? []` — both columns are nullable `text().array()` and a NULL THROWS here
+  // (plan 28 H3). The access lane always writes both arrays (possibly empty, never
+  // NULL); this is the read-side half of the same invariant.
+  return (
+    (request.assigneeUsers ?? []).includes(userId) ||
+    (request.assigneeGroups ?? []).some((groupId) => userGroupIds.includes(groupId))
+  )
+}
+
+/**
  * Whether a user is in a request's approval AUDIENCE — an org member named
  * directly or through one of their groups.
  *
@@ -189,29 +267,9 @@ export async function canUserViewApproval(
   userId: string,
   approvalRequestId: string
 ): Promise<boolean> {
-  const request = await db.query.ApprovalRequest.findFirst({
-    where: eq(schema.ApprovalRequest.id, approvalRequestId),
-    columns: { organizationId: true, assigneeUsers: true, assigneeGroups: true },
-  })
+  const request = await loadApprovalAudienceRow(db, approvalRequestId)
   if (!request) return false
-
-  const membership = await db.query.OrganizationMember.findFirst({
-    where: and(
-      eq(schema.OrganizationMember.userId, userId),
-      eq(schema.OrganizationMember.organizationId, request.organizationId)
-    ),
-    columns: { id: true },
-  })
-  if (!membership) return false
-
-  const userGroupIds = await getCachedUserGroupIds(request.organizationId, userId)
-  // `?? []` — both columns are nullable `text().array()` and a NULL THROWS here
-  // (plan 28 H3). The access lane always writes both arrays (possibly empty, never
-  // NULL); this is the read-side half of the same invariant.
-  return (
-    (request.assigneeUsers ?? []).includes(userId) ||
-    (request.assigneeGroups ?? []).some((groupId) => userGroupIds.includes(groupId))
-  )
+  return isInApprovalAudience(userId, request)
 }
 
 /**
@@ -228,10 +286,7 @@ export async function canUserApprove(
   userId: string,
   approvalRequestId: string
 ): Promise<boolean> {
-  const request = await db.query.ApprovalRequest.findFirst({
-    where: eq(schema.ApprovalRequest.id, approvalRequestId),
-    columns: { status: true, expiresAt: true },
-  })
+  const request = await loadApprovalAudienceRow(db, approvalRequestId)
   if (!request || request.status !== ApprovalStatus.pending) return false
   // Nullable in the schema — a request with no expiry never expires. The explicit
   // truthiness guard is load-bearing (plan 28 H2): `null < new Date()` coerces
@@ -239,7 +294,7 @@ export async function canUserApprove(
   // request permanently UN-approvable. {@link notExpired} is the SQL side of the
   // same reading — the two agree now; at HEAD they did not.
   if (request.expiresAt && request.expiresAt < new Date()) return false
-  return await canUserViewApproval(db, userId, approvalRequestId)
+  return isInApprovalAudience(userId, request)
 }
 
 /** One request with full workflow-run / response context, for the decision drawer. */
@@ -427,25 +482,36 @@ export async function getApprovalMetrics(
 
   const baseWhere = and(eq(schema.ApprovalRequest.organizationId, organizationId), ...rangeConds)
 
-  const countFor = async (extra?: SQL | undefined) => {
-    const [row] = await db
-      .select({ cnt: count() })
-      .from(schema.ApprovalRequest)
-      .where(extra ? and(baseWhere, extra) : baseWhere)
-    return Number(row?.cnt ?? 0)
-  }
+  // ONE conditional aggregation, not one query per status. This was seven
+  // identical scans of the same rows differing only in a `status` equality —
+  // `FILTER (WHERE …)` gets every bucket out of a single pass. Plan 42 widened the
+  // set from five statuses to seven (the access lane's `withdrawn`/`superseded`,
+  // H9), which is what made the shape worth changing rather than just wider.
+  const statusCount = (status: string) =>
+    sql<number>`count(*) FILTER (WHERE ${schema.ApprovalRequest.status} = ${status})`
 
-  const [total, pending, approved, denied, timeout, withdrawn, superseded] = await Promise.all([
-    countFor(),
-    countFor(eq(schema.ApprovalRequest.status, ApprovalStatus.pending)),
-    countFor(eq(schema.ApprovalRequest.status, ApprovalStatus.approved)),
-    countFor(eq(schema.ApprovalRequest.status, ApprovalStatus.denied)),
-    countFor(eq(schema.ApprovalRequest.status, ApprovalStatus.timeout)),
-    // The two access-only terminal states (H9). Counted so the metrics do not
-    // silently under-report the access lane's volume once it ships.
-    countFor(eq(schema.ApprovalRequest.status, 'withdrawn')),
-    countFor(eq(schema.ApprovalRequest.status, 'superseded')),
-  ])
+  const [counts] = await db
+    .select({
+      total: count(),
+      pending: statusCount(ApprovalStatus.pending),
+      approved: statusCount(ApprovalStatus.approved),
+      denied: statusCount(ApprovalStatus.denied),
+      timeout: statusCount(ApprovalStatus.timeout),
+      withdrawn: statusCount('withdrawn'),
+      superseded: statusCount('superseded'),
+    })
+    .from(schema.ApprovalRequest)
+    .where(baseWhere)
+
+  // `count(*)` is int8, which pg hands back as a string — every one of these needs
+  // the cast or the rate arithmetic below concatenates.
+  const total = Number(counts?.total ?? 0)
+  const pending = Number(counts?.pending ?? 0)
+  const approved = Number(counts?.approved ?? 0)
+  const denied = Number(counts?.denied ?? 0)
+  const timeout = Number(counts?.timeout ?? 0)
+  const withdrawn = Number(counts?.withdrawn ?? 0)
+  const superseded = Number(counts?.superseded ?? 0)
 
   const [avgRow] = await db
     .select({

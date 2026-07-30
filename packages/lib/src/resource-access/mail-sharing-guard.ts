@@ -1,6 +1,6 @@
 // packages/lib/src/resource-access/mail-sharing-guard.ts
 
-import { database, schema } from '@auxx/database'
+import { schema } from '@auxx/database'
 import { ResourcePermission } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
@@ -9,7 +9,7 @@ import { getCachedUserMailVisibility, getOrgCache } from '../cache'
 import { ForbiddenError } from '../errors'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
 import { FeatureKey } from '../permissions/types'
-import { getThreadLens } from '../permissions/visibility'
+import { getLoadedThreadLens, type LoadedThreadFacts } from '../permissions/visibility'
 import { isInboxDef, isMailSharingDef } from './mail-sharing-defs'
 import { hasPermission } from './resource-access-service'
 import type { GrantLens, ResourceAccessContext } from './types'
@@ -54,6 +54,39 @@ export async function inboxAccessRecordId(
 }
 
 /**
+ * The org-scoped thread facts the `thread` branch needs, in ONE select — the
+ * fallback for a caller that has not already loaded them.
+ *
+ * Selects exactly {@link LoadedThreadFacts}: previously the branch got
+ * `inboxId`/`assigneeId`/`primaryEntityInstanceId` implicitly via `getThreadLens`
+ * and then re-selected `inboxId` on its own, so the columns were split across two
+ * reads of the same row for no reason.
+ */
+async function loadThreadFacts(
+  db: ResourceAccessContext['db'],
+  organizationId: string,
+  threadId: string
+): Promise<LoadedThreadFacts | null> {
+  const [thread] = await db
+    .select({
+      id: schema.Thread.id,
+      inboxId: schema.Thread.inboxId,
+      assigneeId: schema.Thread.assigneeId,
+      primaryEntityInstanceId: schema.Thread.primaryEntityInstanceId,
+    })
+    .from(schema.Thread)
+    .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
+    .limit(1)
+  if (!thread) return null
+  return {
+    threadId: thread.id,
+    inboxId: thread.inboxId ?? null,
+    assigneeId: thread.assigneeId ?? null,
+    primaryEntityInstanceId: thread.primaryEntityInstanceId ?? null,
+  }
+}
+
+/**
  * Authorization for mutating mail-visibility grants (§7):
  * - `inbox` / `personal_inbox`: inbox Managers (instance `admin` grant) may
  *   manage their inbox — **and nobody else, not even an org admin** (plan 40
@@ -70,11 +103,22 @@ export async function inboxAccessRecordId(
  *
  * `selfRevokeGranteeId` allows a user to remove their OWN user grant (leave a
  * shared thread) without manager rights. No-op for non-mail definitions.
+ *
+ * `preloadedThread` lets a caller that has already loaded the org-scoped thread
+ * hand it in. The `thread` branch otherwise reads that one row TWICE — once
+ * through `getThreadLens` and once for its `inboxId` — on top of whatever the
+ * caller already did, which is how the access-request decision path reached three
+ * reads of the same row. A caller must only pass a row it loaded org-scoped, since
+ * that scoping is what the branch relies on for "invisible ≍ nonexistent".
  */
 export async function assertCanManageMailSharing(
   ctx: ResourceAccessContext,
   recordId: RecordId,
-  opts?: { selfRevokeGranteeId?: string; selfRevokeGranteeType?: string }
+  opts?: {
+    selfRevokeGranteeId?: string
+    selfRevokeGranteeType?: string
+    preloadedThread?: LoadedThreadFacts
+  }
 ): Promise<void> {
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   if (!isMailSharingDef(entityDefinitionId)) return
@@ -110,27 +154,25 @@ export async function assertCanManageMailSharing(
   if (vis.isAdmin) return
 
   if (entityDefinitionId === 'thread') {
-    const lens = await getThreadLens(database, organizationId, vis, entityInstanceId)
-    if (lens === 'full') {
-      const [thread] = await database
-        .select({ inboxId: schema.Thread.inboxId })
-        .from(schema.Thread)
-        .where(
-          and(
-            eq(schema.Thread.id, entityInstanceId),
-            eq(schema.Thread.organizationId, organizationId)
-          )
-        )
-        .limit(1)
+    // `ctx.db`, not the module-level `database`: a transactional caller expects
+    // the guard it runs INSIDE its transaction to read through that transaction,
+    // and `hasPermission` below already does.
+    const thread =
+      opts?.preloadedThread ?? (await loadThreadFacts(ctx.db, organizationId, entityInstanceId))
+    const lens = thread
+      ? await getLoadedThreadLens(ctx.db, vis, thread)
+      : // No row: "invisible ≍ nonexistent", the same answer `getThreadLens`
+        // returns for a nonexistent or cross-org id.
+        'none'
+    if (lens === 'full' && thread?.inboxId) {
       if (
-        thread?.inboxId &&
-        (await hasPermission(
+        await hasPermission(
           ctx,
           // The thread's inbox may be a personal mailbox — resolve its def
           // rather than assuming `'inbox'`.
           await inboxAccessRecordId(organizationId, thread.inboxId),
           ResourcePermission.admin
-        ))
+        )
       ) {
         return
       }

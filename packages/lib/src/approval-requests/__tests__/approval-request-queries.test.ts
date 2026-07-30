@@ -13,7 +13,7 @@
 // text, so the test fails.
 
 import { PgDialect } from 'drizzle-orm/pg-core'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // NOTE on the deep relative import: it puts `packages/database/src/**` into THIS
 // package's tsc program, which surfaces ~200 of that package's own pre-existing
@@ -27,8 +27,12 @@ vi.mock('@auxx/database', async () => {
   return { schema, ...enums, database: {} }
 })
 
+const isOrgMember = vi.fn(async () => true)
 vi.mock('../../cache', () => ({
   getCachedUserGroupIds: vi.fn(async () => []),
+  getCachedMembersByUserIds: vi.fn(async () => []),
+  isOrgMember: (...args: unknown[]) =>
+    (isOrgMember as unknown as (...a: unknown[]) => Promise<boolean>)(...args),
 }))
 
 let notExpired: typeof import('../approval-request-queries').notExpired
@@ -128,53 +132,67 @@ describe('canUserViewApproval — plan 28 H3', () => {
   // Both assignee columns are nullable `text().array()`. Calling `.includes` /
   // `.some` on NULL THROWS, which made a null-assignee request unreadable rather
   // than merely unassigned.
-  const dbWith = (request: unknown, membership: unknown) => ({
-    query: {
-      ApprovalRequest: { findFirst: async () => request },
-      OrganizationMember: { findFirst: async () => membership },
-    },
+  //
+  // Membership is the CACHED `isOrgMember`, not an `OrganizationMember` query —
+  // hence the mock rather than a `db.query.OrganizationMember` double.
+  const dbWith = (request: unknown) => ({
+    query: { ApprovalRequest: { findFirst: async () => request } },
   })
+
+  beforeEach(() => isOrgMember.mockResolvedValue(true as never))
 
   it('does not throw when both assignee arrays are NULL', async () => {
     const mod = await import('../approval-request-queries')
-    const db = dbWith(
-      { organizationId: 'org1', assigneeUsers: null, assigneeGroups: null },
-      { id: 'm1' }
-    )
+    const db = dbWith({ organizationId: 'org1', assigneeUsers: null, assigneeGroups: null })
     await expect(mod.canUserViewApproval(db as never, 'user1', 'req1')).resolves.toBe(false)
   })
 
   it('still finds a directly-named approver', async () => {
     const mod = await import('../approval-request-queries')
-    const db = dbWith(
-      { organizationId: 'org1', assigneeUsers: ['user1'], assigneeGroups: null },
-      { id: 'm1' }
-    )
+    const db = dbWith({ organizationId: 'org1', assigneeUsers: ['user1'], assigneeGroups: null })
     await expect(mod.canUserViewApproval(db as never, 'user1', 'req1')).resolves.toBe(true)
   })
 
   it('refuses a non-member even when they are named', async () => {
     const mod = await import('../approval-request-queries')
-    const db = dbWith(
-      { organizationId: 'org1', assigneeUsers: ['user1'], assigneeGroups: [] },
-      null
-    )
+    isOrgMember.mockResolvedValue(false as never)
+    const db = dbWith({ organizationId: 'org1', assigneeUsers: ['user1'], assigneeGroups: [] })
     await expect(mod.canUserViewApproval(db as never, 'user1', 'req1')).resolves.toBe(false)
+  })
+
+  // The audience columns and the actionability columns come from ONE read now.
+  // Pinning the count is what stops the two predicates drifting back apart into
+  // a read each (plus a third in the resolve path).
+  it('reads the request row exactly once', async () => {
+    const mod = await import('../approval-request-queries')
+    const findFirst = vi.fn(async () => ({
+      organizationId: 'org1',
+      status: 'pending',
+      expiresAt: null,
+      assigneeUsers: ['user1'],
+      assigneeGroups: [],
+    }))
+    const db = { query: { ApprovalRequest: { findFirst } } }
+    await expect(mod.canUserApprove(db as never, 'user1', 'req1')).resolves.toBe(true)
+    expect(findFirst).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('canUserApprove — plan 28 H2', () => {
-  const dbWith = (request: unknown) => ({
+  const dbWith = (request: Record<string, unknown>) => ({
     query: {
       ApprovalRequest: {
-        findFirst: async (args: { columns?: Record<string, boolean> }) =>
-          args?.columns?.status
-            ? request
-            : { organizationId: 'org1', assigneeUsers: ['user1'], assigneeGroups: [] },
+        findFirst: async () => ({
+          organizationId: 'org1',
+          assigneeUsers: ['user1'],
+          assigneeGroups: [],
+          ...request,
+        }),
       },
-      OrganizationMember: { findFirst: async () => ({ id: 'm1' }) },
     },
   })
+
+  beforeEach(() => isOrgMember.mockResolvedValue(true as never))
 
   it('treats a NULL expiry as "never expires", not as expired', async () => {
     const mod = await import('../approval-request-queries')

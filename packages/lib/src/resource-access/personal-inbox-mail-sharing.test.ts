@@ -87,7 +87,12 @@ function fakeDb() {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
     insert: () => {
       writes.insert()
-      return { values: () => ({ onConflictDoUpdate: async () => {} }) }
+      // Chainable AND awaitable — see the note in mail-keyspace-backstop.test.ts.
+      return {
+        values: () => ({
+          onConflictDoUpdate: () => ({ returning: async () => [{ inserted: true }] }),
+        }),
+      }
     },
     delete: () => {
       writes.delete()

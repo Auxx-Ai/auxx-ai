@@ -402,26 +402,20 @@ export async function cleanupOrphanedApprovals(
   return updated.length
 }
 
-/** Sweep and retract every pending request belonging to one workflow run. */
+/**
+ * Sweep and retract every pending request belonging to one workflow run.
+ *
+ * The `UPDATE` returns the audience columns rather than a `SELECT` fetching them
+ * first under the identical predicate. That removes a query and, more importantly,
+ * a race: the two statements were separate, so a request decided in between was
+ * still in the selected set — and got its notifications retracted and an
+ * `approval:resolved` published as a timeout, having just been approved.
+ * `RETURNING` can only describe rows this statement actually claimed.
+ */
 export async function cleanupApprovalsForWorkflowRun(
   db: Database,
   workflowRunId: string
 ): Promise<number> {
-  const approvalsToCleanup = await db
-    .select({
-      id: schema.ApprovalRequest.id,
-      organizationId: schema.ApprovalRequest.organizationId,
-      assigneeUsers: schema.ApprovalRequest.assigneeUsers,
-      assigneeGroups: schema.ApprovalRequest.assigneeGroups,
-    })
-    .from(schema.ApprovalRequest)
-    .where(
-      and(
-        eq(schema.ApprovalRequest.workflowRunId, workflowRunId),
-        eq(schema.ApprovalRequest.status, ApprovalStatus.pending)
-      )
-    )
-
   const updated = await db
     .update(schema.ApprovalRequest)
     .set({
@@ -434,9 +428,14 @@ export async function cleanupApprovalsForWorkflowRun(
         eq(schema.ApprovalRequest.status, ApprovalStatus.pending)
       )
     )
-    .returning({ id: schema.ApprovalRequest.id })
+    .returning({
+      id: schema.ApprovalRequest.id,
+      organizationId: schema.ApprovalRequest.organizationId,
+      assigneeUsers: schema.ApprovalRequest.assigneeUsers,
+      assigneeGroups: schema.ApprovalRequest.assigneeGroups,
+    })
 
-  for (const approval of approvalsToCleanup) {
+  for (const approval of updated) {
     await retractApprovalNotifications(db, approval.id, approval.organizationId)
     await publishResolved(db, approval.id, {
       assigneeUsers: approval.assigneeUsers ?? [],
@@ -457,30 +456,56 @@ export async function generateApprovalToken(
   approvalRequestId: string,
   userId: string
 ): Promise<string> {
-  const token = Buffer.from(
-    JSON.stringify({ approvalRequestId, userId, timestamp: Date.now() })
-  ).toString('base64')
+  const tokens = await generateApprovalTokens(db, approvalRequestId, [userId])
+  return tokens[userId]!
+}
+
+/**
+ * Mint email-link tokens for a whole recipient list, in ONE read + ONE write.
+ *
+ * The email fan-out mints a token per recipient, and the single-user form is a
+ * read-modify-write of the same `metadata` JSON — so N recipients meant N reads
+ * and N rewrites of a document that grows with every one of them. Minting the
+ * batch merges all N entries into a single update.
+ *
+ * Returns `{}` when the request no longer exists, so a caller that lost a race
+ * against cancellation sends no tokenized links rather than links whose stored
+ * counterpart was never written (`validateApprovalToken` would reject them).
+ */
+export async function generateApprovalTokens(
+  db: Database,
+  approvalRequestId: string,
+  userIds: string[]
+): Promise<Record<string, string>> {
+  if (userIds.length === 0) return {}
+  const timestamp = Date.now()
+  const minted: Record<string, string> = {}
+  for (const userId of userIds) {
+    minted[userId] = Buffer.from(JSON.stringify({ approvalRequestId, userId, timestamp })).toString(
+      'base64'
+    )
+  }
 
   const approvalRequest = await db.query.ApprovalRequest.findFirst({
     where: eq(schema.ApprovalRequest.id, approvalRequestId),
     columns: { metadata: true },
   })
-  if (approvalRequest) {
-    const metadata = (approvalRequest.metadata as Record<string, unknown>) || {}
-    await db
-      .update(schema.ApprovalRequest)
-      .set({
-        metadata: {
-          ...metadata,
-          approvalTokens: {
-            ...((metadata.approvalTokens as Record<string, string>) || {}),
-            [userId]: token,
-          },
+  if (!approvalRequest) return {}
+
+  const metadata = (approvalRequest.metadata as Record<string, unknown>) || {}
+  await db
+    .update(schema.ApprovalRequest)
+    .set({
+      metadata: {
+        ...metadata,
+        approvalTokens: {
+          ...((metadata.approvalTokens as Record<string, string>) || {}),
+          ...minted,
         },
-      })
-      .where(eq(schema.ApprovalRequest.id, approvalRequestId))
-  }
-  return token
+      },
+    })
+    .where(eq(schema.ApprovalRequest.id, approvalRequestId))
+  return minted
 }
 
 /** Validate an email-link token. Does NOT decide whether the kind may use it (H5). */
@@ -538,7 +563,7 @@ async function publishResolved(
 ): Promise<void> {
   if (!audience) return
   try {
-    const userIds = await getApprovalAssigneeUserIds(db, audience)
+    const userIds = await getApprovalAssigneeUserIds(audience)
     // Lazy import — keeps the realtime barrel out of this module's static graph
     // (`project_realtime_barrel_import_cycle`).
     const { getRealtimeService, publishApprovalResolved } = await import('../realtime')

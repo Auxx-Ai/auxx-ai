@@ -2227,6 +2227,13 @@
       "when": 1785369094614,
       "tag": "0317_access_columns_not_null_check",
       "breakpoints": true
+    },
+    {
+      "idx": 318,
+      "version": "7",
+      "when": 1785370638595,
+      "tag": "0318_approval_audience_gin_indexes",
+      "breakpoints": true
     }
   ]
 }
