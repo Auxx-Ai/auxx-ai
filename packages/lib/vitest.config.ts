@@ -5,6 +5,7 @@ import path from 'path'
 import { loadEnv, type Plugin } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
+import { auxxSourceAlias } from '../../vitest.alias'
 
 /**
  * Loads `.md` imports as default-exported strings so source-level imports
@@ -76,17 +77,12 @@ export default defineConfig(({ mode }) => {
     },
 
     resolve: {
+      // The shared map covers all fifteen workspace packages by prefix, which
+      // subsumes the bespoke `@auxx/credentials/store` and `/crypto` entries
+      // that used to sit here. The subset it replaces covered eight, and on a
+      // checkout with no `dist` that left 304 of 507 files unable to resolve.
       alias: {
-        '@auxx/database': path.resolve(__dirname, '../database/src'),
-        // The credentials store/crypto subpaths have no built `dist` (added post-build);
-        // resolve them to source so cross-package imports work under Vitest.
-        '@auxx/credentials/store': path.resolve(__dirname, '../credentials/src/store'),
-        '@auxx/credentials/crypto': path.resolve(__dirname, '../credentials/src/crypto'),
-        '@auxx/lib': path.resolve(__dirname, './src'),
-        '@auxx/utils': path.resolve(__dirname, '../utils/src'),
-        '@auxx/logger': path.resolve(__dirname, '../logger/src'),
-        '@auxx/config': path.resolve(__dirname, '../config/src'),
-        '@auxx/workflow-nodes': path.resolve(__dirname, '../workflow-nodes/src'),
+        ...auxxSourceAlias,
         '~/': path.resolve(__dirname, './src/'),
       },
     },

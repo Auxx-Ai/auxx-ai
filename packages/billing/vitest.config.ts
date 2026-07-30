@@ -3,6 +3,7 @@
 import path from 'path'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
+import { auxxSourceAlias } from '../../vitest.alias'
 
 export default defineConfig({
   root: __dirname,
@@ -24,12 +25,12 @@ export default defineConfig({
     },
   },
   resolve: {
+    // The last of the bespoke subsets folded into the shared map. This one was
+    // not broken — billing is the project that has always passed cold — but a
+    // partial map is only ever one new import away from becoming the next
+    // `apps/web`, and there is no reason for five copies of the same table.
     alias: {
-      '@auxx/billing': path.resolve(__dirname, './src'),
-      '@auxx/credentials': path.resolve(__dirname, '../credentials/src'),
-      '@auxx/database': path.resolve(__dirname, '../database/src'),
-      '@auxx/logger': path.resolve(__dirname, '../logger/src'),
-      '@auxx/lib': path.resolve(__dirname, '../lib/src'),
+      ...auxxSourceAlias,
       '~/': path.resolve(__dirname, './src/'),
     },
   },
