@@ -22,6 +22,21 @@ const src = fs.readFileSync(
   'utf8'
 )
 
+/**
+ * The RECORD plan gate's source, which since plan v3/04 §3.5 lives in lib.
+ *
+ * It had to move: the approval-decision handler runs in `packages/lib` and also
+ * calls `grantInstanceAccess`, so a router-private gate meant a non-Enterprise
+ * org could not share a record through the dialog but COULD through an approved
+ * access request. Reading the lib file from here keeps the assertion attached to
+ * the router that consumes it — a second copy reappearing in either place is
+ * exactly what these tests exist to catch.
+ */
+const guardSrc = fs.readFileSync(
+  path.resolve(APP_ROOT, '../../packages/lib/src/resource-access/record-sharing-guard.ts'),
+  'utf8'
+)
+
 /** Source between two unique anchors (fails loudly if an anchor moves). */
 function between(start: string, end: string): string {
   const from = src.indexOf(start)
@@ -80,12 +95,22 @@ describe('resourceAccess type-level plan gate (plan 23 §2.1)', () => {
  */
 describe('resourceAccess RECORD-instance plan gate (plan v3/03 §7.6, D9)', () => {
   it('the helper exempts instance-access resources and mail defs, and gates the rest', () => {
-    const helper = between('async function assertRecordSharingFeature', 'Authorize sharing ONE')
+    const from = guardSrc.indexOf('export async function assertRecordSharingFeature')
+    expect(from, 'the gate must live in lib (plan v3/04 §3.5)').toBeGreaterThan(-1)
+    const helper = guardSrc.slice(from)
     // Datasets / KB / dashboards / inboxes: core product on every plan.
     expect(helper).toContain('isInstanceAccessKey(entityDefinitionId)')
     // Mail keeps its own narrower gate (sub-`read` rungs, NEW Manager rows).
     expect(helper).toContain('isMailSharingDef(entityDefinitionId)')
     expect(helper).toContain('FeatureKey.granularPermissions')
+  })
+
+  it('there is exactly ONE implementation — the router keeps no private copy', () => {
+    // 🔴 Two copies of a gate that must never disagree is the bug plan v3/04
+    // §3.5 closed. A re-added router-local helper would silently re-open the
+    // approval-lane bypass, because the approval handler cannot call it.
+    expect(src).not.toContain('async function assertRecordSharingFeature')
+    expect(src).toContain('assertRecordSharingFeature')
   })
 
   it('grantInstance and setInstance run it BEFORE the write', () => {
@@ -95,14 +120,44 @@ describe('resourceAccess RECORD-instance plan gate (plan v3/03 §7.6, D9)', () =
     ] as const) {
       const body = between(proc, libCall)
       expect(body, `${proc} must plan-gate record sharing before ${libCall}`).toContain(
-        'assertRecordSharingFeature(ctx, recordId)'
+        'assertRecordSharingFeature(context, recordId)'
       )
     }
+  })
+
+  it('the APPROVAL decision handler runs the same gate before granting', () => {
+    // The other half of §3.5, and the reason the gate moved at all: an approved
+    // record request writes through `grantInstanceAccess` from lib, so without
+    // this call a plan-gated org could be granted a record it cannot buy.
+    const handler = fs.readFileSync(
+      path.resolve(
+        APP_ROOT,
+        '../../packages/lib/src/approval-requests/record-access-request-mutations.ts'
+      ),
+      'utf8'
+    )
+    const decision = handler.slice(
+      handler.indexOf('export async function applyRecordAccessDecision')
+    )
+    const gateAt = decision.indexOf('assertRecordSharingFeature(')
+    const grantAt = decision.indexOf('grantInstanceAccess(')
+    expect(gateAt, 'the decision handler must run the plan gate').toBeGreaterThan(-1)
+    expect(grantAt).toBeGreaterThan(gateAt)
   })
 
   it('revokeInstance stays ungated — revoking only tightens access', () => {
     expect(between('revokeInstance:', 'revokeInstanceAccess(')).not.toContain(
       'assertRecordSharingFeature'
     )
+  })
+
+  it('the record-sharing guard is imported from its DEEP subpath, not the barrel', () => {
+    // Plan v3/04 §10.2: the guard moved into lib so the approval-decision handler
+    // can re-assert authority inside its transaction. It writes the row-effective
+    // read out longhand precisely to avoid the `resources` barrel's dataset/
+    // connector service graph — routing the import through the `resource-access`
+    // barrel would hand that cost straight back (HANDOFF §5 correction 5).
+    expect(src).toContain("from '@auxx/lib/resource-access/record-sharing-guard'")
+    expect(src).not.toContain('async function assertCanManageRecordSharing')
   })
 })

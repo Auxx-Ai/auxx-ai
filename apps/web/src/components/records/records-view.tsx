@@ -52,6 +52,7 @@ import { KopilotContext } from '~/components/kopilot/context'
 import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { MergeDialog } from '~/components/merge'
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
+import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
 import { PrintWizardDialog } from '~/components/print/ui/print-wizard-dialog'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import {
@@ -347,6 +348,19 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
                 <Share2 />
                 Share
               </DropdownMenuItem>
+            </GranularPermissionsGate>
+          )}
+          {/* Ask for the next rung (plan v3/04 §8.2, mount 3). The only per-row
+              cost is this rung read — Radix does not mount the dropdown subtree
+              until the menu opens, so the hook inside runs once per OPENED menu,
+              never once per row (§8.5). */}
+          {rowRung(row) === 'read' && (
+            <GranularPermissionsGate>
+              <RecordRequestAccessPopover
+                entityDefinitionId={entityDefinitionId}
+                entityInstanceId={row.id}
+                variant='menu-item'
+              />
             </GranularPermissionsGate>
           )}
           {canEditRecordAtRung(rowRung(row)) && (

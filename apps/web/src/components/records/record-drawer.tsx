@@ -39,6 +39,7 @@ import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { MergeDialog } from '~/components/merge'
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
+import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import {
   resourceHasDetailPage,
@@ -209,7 +210,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   // editable row that is NOT re-shareable — is the common case, so the two gates
   // are genuinely different questions.
   const [shareDialogOpen, setShareDialogOpen] = React.useState(false)
-  const { canShare } = useRecordAccess(recordId)
+  const { access, canShare } = useRecordAccess(recordId)
 
   // Confirm dialog for delete
   const [confirm, ConfirmDialog] = useConfirm()
@@ -351,6 +352,20 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 buttonClassName='rounded-full'
                 tooltipContent='Run workflow'
               />
+            )}
+
+            {/* Ask for the next rung (plan v3/04 §8.2, mount 1). Only at `read`:
+                below that the drawer never opened, and at `edit`/`admin` there is
+                nothing left to ask for. Gated because an approved request writes
+                a grant the org's plan must be able to honour (§3.5 / §8.4). */}
+            {access === 'read' && entityDefinitionId && entityInstanceId && (
+              <GranularPermissionsGate>
+                <RecordRequestAccessPopover
+                  entityDefinitionId={entityDefinitionId}
+                  entityInstanceId={entityInstanceId}
+                  variant='icon'
+                />
+              </GranularPermissionsGate>
             )}
 
             {/* More actions dropdown */}

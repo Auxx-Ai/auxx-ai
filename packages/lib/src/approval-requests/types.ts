@@ -1,7 +1,14 @@
 // packages/lib/src/approval-requests/types.ts
 
 import type { ApprovalRequestEntity, Database } from '@auxx/database'
-import type { AccessLens, AccessRefusalReason, AccessTargetKind, ApprovalKind } from './client'
+import type { Rung } from '@auxx/database/enums'
+import type {
+  AccessLens,
+  AccessRefusalReason,
+  AccessTargetKind,
+  ApprovalKind,
+  RecordAccessRefusalReason,
+} from './client'
 
 export type { ApprovalRequestEntity }
 
@@ -197,4 +204,142 @@ export interface ThreadAuthorityContext {
   participantCount: number
 }
 
-export type { AccessLens, AccessRefusalReason, AccessTargetKind, ApprovalKind }
+// ─────────────────────────────────────────────────────────────────────────────
+// RECORD LANE (plan v3/04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Input for creating a RECORD access request (plan v3/04 §3.2 / §7).
+ *
+ * 🔴 **There is deliberately NO rung field.** The requested rung is DERIVED
+ * server-side from the requester's current row-effective rung (`none → read`,
+ * `read → edit`), for the same reason the thread lane takes `{ threadId }`
+ * rather than a caller-supplied `RecordId`: a persisted authorization value a
+ * caller can NAME is a value a caller can CHOOSE. A `{ rung: 'admin' }` input
+ * would let anyone file an admin request, and the only thing between that and a
+ * written grant would be an approver misreading a row.
+ *
+ * `admin` is unrequestable by construction. Sharing authority is delegated, not
+ * asked for — a request lane that can produce `admin` lets a member bootstrap
+ * themselves into re-sharing a row their grantor scoped to one person.
+ */
+export interface CreateRecordAccessRequestInput {
+  /** The definition key as the caller knows it (slug, apiSlug or CUID). */
+  entityDefinitionId: string
+  /** The `EntityInstance.id`. */
+  entityInstanceId: string
+  /** Optional note. Disclosed behind a button in the UI, so most requests carry none. */
+  message?: string
+}
+
+/** The org-scoped record facts every record-lane read needs (plan v3/04 §6). */
+export interface RecordAuthorityContext {
+  /**
+   * The CANONICAL `EntityDefinition.id` — the keyspace `ResourceAccess` rows,
+   * `defAccess` and `grantedDefIds` are all keyed on. Resolved from the caller's
+   * key through the `resources` cache, never assumed.
+   */
+  entityDefinitionId: string
+  entityInstanceId: string
+  /** The definition's singular noun ("Ticket"), for the requester-safe label. */
+  defLabel: string
+  /**
+   * `EntityInstance.displayName` — denormalized, so reading it costs one row.
+   *
+   * ⚠ Only rendered into a label when the viewer already holds `read` (§6).
+   * A `none` requester gets the def noun ALONE; leaking the display name to
+   * someone who cannot see the record turns an existence oracle into a content
+   * leak (§9).
+   */
+  displayName: string | null
+}
+
+/** Resolved approval audience for one record (plan v3/04 §5, D3). */
+export interface RecordApproverResolution {
+  /**
+   * Every user id snapshotted into `assigneeUsers`.
+   *
+   * Under D3 this is org ADMIN + OWNER and nothing else — the thread resolver's
+   * rule 1 (row-`admin` holders) is deliberately deleted, so `primaryUserIds`
+   * and `userIds` are the same array under two names. They are kept as one
+   * field for exactly that reason.
+   */
+  userIds: string[]
+}
+
+/**
+ * Server-authoritative answer to "can this member ask for this record, and who
+ * would decide it?" (plan v3/04 §7).
+ *
+ * The record twin of {@link AccessRequestPreflight}, deliberately a separate
+ * type rather than a widened one: the mail shape speaks `currentLens` over
+ * `AccessLens` and carries `approversAre`, which is the constant `'admins'`
+ * here after D3.
+ */
+export interface RecordAccessRequestPreflight {
+  eligible: boolean
+  /** The requester's CURRENT row-effective rung on the record. */
+  currentRung: Rung
+  /**
+   * The rung an ask would be for — `null` when there is nothing to ask for
+   * (already at `edit`/`admin`) or when the target refused before it could be
+   * derived. NEVER `admin`, and never `none` (§3.2).
+   */
+  requestedRung: Rung | null
+  /** An existing pending request of theirs, if any — drives the pending trigger state. */
+  pending: { id: string; createdAt: Date; remindedAt: string | null } | null
+  /**
+   * Safe display names for the notification recipients. A cache read
+   * (`getCachedMembersByUserIds`), never a `User` join.
+   */
+  approvers: Array<{ userId: string; name: string | null; image: string | null }>
+  /**
+   * The popover header, composed SERVER-SIDE (§6). The def noun alone for a
+   * `none` requester; `"<Noun> · <display name>"` once they hold `read`.
+   *
+   * `null` only when there is no target to label.
+   */
+  subjectLabel: string | null
+  /** Populated iff `eligible === false`. */
+  refusalReason: RecordAccessRefusalReason | null
+}
+
+/**
+ * What ONE approver sees of a record access request (plan v3/04 §6).
+ *
+ * Same hydration rule as the thread twin, for the same reason: deciding a
+ * request and being able to READ the record are different authorities. Under D3
+ * requests route to org admins, who may hold nothing on the def at all — so the
+ * durable snapshot (built from the REQUESTER's own view, and therefore incapable
+ * of leaking anything they could not already see) is the fallback.
+ */
+export interface RecordAccessRequestApproverView {
+  /** Who asked. A cached member read, never a `User` join. */
+  requester: { userId: string; name: string | null; image: string | null } | null
+  /** Live-composed when {@link hydrated}, else the durable `subjectLabel` snapshot. */
+  label: string
+  /** True when THIS approver's own row-effective rung reaches `read`. */
+  hydrated: boolean
+  /** This approver's row-effective rung on the target — why {@link label} is what it is. */
+  approverRung: Rung
+  /** What the requester holds TODAY, which is what the decision is raising from. */
+  requesterRung: Rung
+  /** The rung the request asks for, off the persisted row. */
+  requestedRung: Rung | null
+  /**
+   * False when the record is deleted or cross-org. The decision handler refuses
+   * such a request, so the row must say so instead of offering an Approve that
+   * fails.
+   */
+  targetAvailable: boolean
+  /** How many times the requester has re-asked (`metadata.remindCount`). */
+  remindCount: number
+}
+
+export type {
+  AccessLens,
+  AccessRefusalReason,
+  AccessTargetKind,
+  ApprovalKind,
+  RecordAccessRefusalReason,
+}

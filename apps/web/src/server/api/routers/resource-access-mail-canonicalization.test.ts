@@ -60,6 +60,15 @@ vi.mock('@auxx/lib/cache', () => ({
   getCachedResources,
   // `grantee-schema.ts` is kept real — it decides which grantee kinds are legal.
   getCachedPermissionProfiles: vi.fn(async () => []),
+  // The record plan gate moved into `@auxx/lib/resource-access/record-sharing-guard`
+  // (plan v3/04 §3.5), and its `FeaturePermissionService` is constructed from
+  // lib's own deep path — so the `@auxx/lib/permissions` BARREL stub below no
+  // longer intercepts it. The service reads the org cache directly; hand it an
+  // entitled org so the gate passes and this file keeps testing keyspace
+  // canonicalization rather than billing.
+  getOrgCache: () => ({
+    getOrRecompute: vi.fn(async () => ({ features: { granularPermissions: true } })),
+  }),
 }))
 
 // The permissions barrel reaches redis/db at import time and hangs under vitest.

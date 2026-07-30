@@ -1018,6 +1018,12 @@
       "import": "./dist/resource-access/mail-sharing-defs.mjs",
       "default": "./src/resource-access/mail-sharing-defs.ts"
     },
+    "./resource-access/record-sharing-guard": {
+      "types": "./src/resource-access/record-sharing-guard.ts",
+      "source": "./src/resource-access/record-sharing-guard.ts",
+      "import": "./dist/resource-access/record-sharing-guard.mjs",
+      "default": "./src/resource-access/record-sharing-guard.ts"
+    },
     "./resources": {
       "types": "./src/resources/index.ts",
       "source": "./src/resources/index.ts",

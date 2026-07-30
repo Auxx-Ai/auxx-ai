@@ -13,7 +13,7 @@
 export type { Lens } from './lens'
 export { ALL_LENSES, normalizeLens } from './lens'
 export type { LensChoice, LensLabel } from './lens-labels'
-export { LENS_CHOICES, LENS_LABELS } from './lens-labels'
+export { LENS_CHOICES, LENS_LABELS, RUNG_LABELS } from './lens-labels'
 export {
   IDENTITY_TIER_THREAD_FIELDS,
   MESSAGE_CONTENT_FIELDS,

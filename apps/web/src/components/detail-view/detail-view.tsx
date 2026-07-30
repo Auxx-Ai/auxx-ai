@@ -159,9 +159,19 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
     return <DetailViewSkeleton label={label} backUrl={backUrl} />
   }
 
-  // Not found state
+  // Not found state. The ids are threaded through so the screen can offer an
+  // access request (plan v3/04 §8.2, mount 4) — ids ONLY: a display name here
+  // would turn §9's accepted existence oracle into a content leak, and there is
+  // no name to read anyway, because `record` is null on this branch.
   if (isNotFound || !record) {
-    return <DetailViewNotFound label={label} backUrl={backUrl} />
+    return (
+      <DetailViewNotFound
+        label={label}
+        backUrl={backUrl}
+        entityDefinitionId={resource?.entityDefinitionId}
+        entityInstanceId={instanceId}
+      />
+    )
   }
 
   const displayName = (record.displayName as string) || (record.name as string) || 'Untitled'

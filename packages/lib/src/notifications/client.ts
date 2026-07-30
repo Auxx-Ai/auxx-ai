@@ -1,6 +1,7 @@
 // packages/lib/src/notifications/client.ts
 // Client-safe types and constants for the notifications feature.
 
+import type { Rung } from '@auxx/database/enums'
 import type { NotificationType } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
 
@@ -91,11 +92,27 @@ export type NotificationMetadata =
       /** The server-built durable label (plan 42 §7) — never client-authored. */
       subjectLabel: string
       targetKind: 'area' | 'def' | 'instance'
-      /** Definition slug for def/instance targets; `'thread'` for the mail lane. */
+      /**
+       * Definition key for def/instance targets: the literal `'thread'` slug for
+       * the mail lane, a canonical `EntityDefinition.id` for the record lane —
+       * which is also how a renderer tells the two apart. It has to: `read` is
+       * the TOP of mail's ladder ("Full access") and the BOTTOM of the record
+       * ladder ("Read access"), so one label map over both silently rewords one
+       * of them (plan v3/04 §8.1).
+       */
       resourceKey?: string
       requestedLevel?: 'none' | 'view' | 'edit' | 'admin'
-      /** Mail lens, when the target is a mail-sharing definition. */
-      requestedLens?: 'metadata' | 'identity' | 'read'
+      /**
+       * The instance {@link Rung} asked for. Widened from the mail-only
+       * `'metadata' | 'identity' | 'read'` by plan v3/04: this is a SEPARATE type
+       * from `ApprovalRequest.requestedLens`'s column type, so the schema's own
+       * widening did not reach it, and the record lane writing `'edit'` would
+       * have been a type error here.
+       *
+       * ⚠ The `Lens` in the name is the same historical residual the column
+       * carries — read it as "instance rung".
+       */
+      requestedLens?: Rung
       /** True when this is a re-ask that bumped `metadata.remindedAt` rather than a new row. */
       reRequest?: boolean
     }
@@ -111,7 +128,8 @@ export type NotificationMetadata =
        */
       decision: 'approved' | 'denied' | 'timeout' | 'superseded'
       grantedLevel?: 'none' | 'view' | 'edit' | 'admin'
-      grantedLens?: 'metadata' | 'identity' | 'read'
+      /** The instance {@link Rung} actually written. See `requestedLens` above. */
+      grantedLens?: Rung
     }
   | {
       kind:

@@ -4,12 +4,15 @@ import {
   canUserApprove,
   canUserViewApproval,
   cleanupApprovalsForWorkflowRun,
+  createRecordAccessRequest,
   createThreadAccessRequest,
   getApprovalMetrics,
   getApprovalRequestWithContext,
   getPendingApprovalsForUser,
   getPendingCount,
+  getRecordAccessRequestApproverView,
   getThreadAccessRequestApproverView,
+  preflightRecordAccessRequest,
   preflightThreadAccessRequest,
   resolveApprovalByToken,
   resolveApprovalRequest,
@@ -238,6 +241,105 @@ export const approvalRouter = createTRPCRouter({
       )
       if (result.isErr()) throw result.error
       return { success: true }
+    }),
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ACCESS LANE — record requests (plan v3/04 §7)
+  //
+  // Deliberately SEPARATE procedures rather than a `targetKind`-discriminated
+  // union input. The thread input is `{ threadId }` precisely so the slug
+  // keyspace is a type-level guarantee (plan 42 §2.3); merging the two inputs
+  // re-opens exactly that hole.
+  //
+  // `withdrawAccessRequest` is NOT duplicated — it already scopes on
+  // `requesterId === userId` and nothing else, so it is target-agnostic.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Server-authoritative eligibility for the record request trigger (§7).
+   *
+   * The client's `!canSelfGrant && (access === 'none' || access === 'read')`
+   * check is presentation only; this is the answer that decides whether Send
+   * does anything. Ordered cheapest-refusal-first — after D3 approver resolution
+   * is a `memberRoleMap` cache read, so the only queries a refusal can reach are
+   * the ones no refusal renders.
+   */
+  recordAccessRequestPreflight: protectedProcedure
+    .input(z.object({ entityDefinitionId: z.string(), entityInstanceId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return await preflightRecordAccessRequest(
+        ctx.db,
+        ctx.session.organizationId,
+        ctx.session.userId,
+        input.entityDefinitionId,
+        input.entityInstanceId
+      )
+    }),
+
+  /**
+   * Ask for the next rung on one record.
+   *
+   * 🔴 **There is no rung input, and there must never be one** (§3.2). The ask is
+   * DERIVED server-side from the requester's current row-effective rung
+   * (`none → read`, `read → edit`); `admin` is unrequestable because sharing
+   * authority is delegated, not asked for. A `{ rung }` input would let any
+   * caller file an admin request, leaving an approver misreading a row as the
+   * only thing between that and a written grant.
+   */
+  requestRecordAccess: protectedProcedure
+    .input(
+      z.object({
+        entityDefinitionId: z.string(),
+        entityInstanceId: z.string(),
+        message: z.string().max(2000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await createRecordAccessRequest(
+          ctx.db,
+          ctx.session.organizationId,
+          ctx.session.userId,
+          {
+            entityDefinitionId: input.entityDefinitionId,
+            entityInstanceId: input.entityInstanceId,
+            message: input.message,
+          }
+        )
+        if (result.isErr()) throw result.error
+        return result.value
+      } catch (error) {
+        // `isAuxxError`, never `error instanceof TRPCError`: the latter misses an
+        // AuxxError and flattens a 403/404 into a generic 500.
+        if (isAuxxError(error)) throw error
+        throw error
+      }
+    }),
+
+  /**
+   * The approver-side detail for one record access request (§6).
+   *
+   * Returns `null` for anything that is not a record access request, so the row
+   * falls back to the generic details instead of rendering record copy over a
+   * thread or workflow row. Gated by `canUserViewApproval` — the same audience
+   * read the generic details use, and for the same reason: an approver may read
+   * a request they already decided.
+   */
+  recordAccessRequestDetails: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      if (!(await canUserViewApproval(ctx.db, ctx.session.userId, input.id))) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not authorized to view this access request',
+        })
+      }
+      return await getRecordAccessRequestApproverView(
+        ctx.db,
+        ctx.session.organizationId,
+        ctx.session.userId,
+        input.id
+      )
     }),
 
   // ───────────────────────────────────────────────────────────────────────────

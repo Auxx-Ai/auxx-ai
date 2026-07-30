@@ -21,21 +21,23 @@ import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { NotificationService } from '../notifications/notification-service'
 import { assertCanManageMailSharing } from '../resource-access/mail-sharing-guard'
 import { grantInstanceAccess } from '../resource-access/resource-access-service'
+import { notifyAccessApprovers, notifyRequesterDecided } from './access-request-notifications'
 import {
   buildThreadSubjectLabel,
-  findPendingThreadAccessRequest,
-  findThreadDenyCooldown,
   loadThreadAuthorityContext,
   resolveThreadApprovers,
   resolveThreadFrontDoor,
   threadLensFromContext,
 } from './access-request-queries'
 import {
-  ACCESS_REFUSAL_COPY,
-  ACCESS_REQUEST_EXPIRY_DAYS,
-  type AccessRequestMetadata,
-} from './client'
+  accessRequestExpiresAt,
+  findInstanceDenyCooldown,
+  findPendingInstanceAccessRequest,
+} from './access-request-shared'
+import { ACCESS_REFUSAL_COPY, type AccessRequestMetadata } from './client'
 import { guard } from './guard'
+import { applyRecordAccessDecision } from './record-access-request-mutations'
+import { isRecordRequestDef } from './record-access-request-queries'
 import type {
   ApprovalResolveContext,
   CreateAccessRequestResult,
@@ -43,6 +45,9 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('approval-requests')
+
+/** The slug the thread lane persists — never a CUID (plan 42 §2.3). */
+const THREAD_DEF_ID = 'thread'
 
 /** `full` — thread requests have no lens picker (plan 42 §0.2). */
 const THREAD_REQUESTED_LENS = 'read' as const
@@ -108,19 +113,26 @@ export async function createThreadAccessRequest(
         )
       }
 
-      const existing = await findPendingThreadAccessRequest(
+      const existing = await findPendingInstanceAccessRequest(
         db,
         organizationId,
         userId,
+        THREAD_DEF_ID,
         input.threadId
       )
       if (!existing) {
-        const cooldown = await findThreadDenyCooldown(db, organizationId, userId, input.threadId)
+        const cooldown = await findInstanceDenyCooldown(
+          db,
+          organizationId,
+          userId,
+          THREAD_DEF_ID,
+          input.threadId
+        )
         if (cooldown) throw new ForbiddenError(ACCESS_REFUSAL_COPY.deny_cooldown)
       }
 
       const subjectLabel = await buildThreadSubjectLabel(organizationId, ctx, currentLens)
-      const expiresAt = new Date(Date.now() + ACCESS_REQUEST_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+      const expiresAt = accessRequestExpiresAt()
 
       if (!existing) {
         const [inserted] = await db
@@ -133,7 +145,7 @@ export async function createThreadAccessRequest(
             createdById: userId,
             requesterId: userId,
             targetKind: 'instance',
-            entityDefinitionId: 'thread',
+            entityDefinitionId: THREAD_DEF_ID,
             entityInstanceId: input.threadId,
             requestedLevel: ResourcePermission.view,
             requestedLens: THREAD_REQUESTED_LENS,
@@ -149,12 +161,15 @@ export async function createThreadAccessRequest(
           .returning({ id: schema.ApprovalRequest.id })
 
         if (inserted) {
-          await notifyApprovers(db, {
+          await notifyAccessApprovers(db, {
             organizationId,
             requesterId: userId,
             approvalRequestId: inserted.id,
             approverUserIds: approvers.primaryUserIds,
             subjectLabel,
+            resourceKey: THREAD_DEF_ID,
+            requestedLevel: 'view',
+            requestedRung: THREAD_REQUESTED_LENS,
             reRequest: false,
           })
           return {
@@ -172,7 +187,13 @@ export async function createThreadAccessRequest(
       // dedup identity precisely so this is an upgrade, not a second row.
       const row =
         existing ??
-        (await findPendingThreadAccessRequest(db, organizationId, userId, input.threadId))
+        (await findPendingInstanceAccessRequest(
+          db,
+          organizationId,
+          userId,
+          THREAD_DEF_ID,
+          input.threadId
+        ))
       if (!row) {
         // The conflicting row went terminal between the insert and this read. Nothing
         // sensible to update; treat it as a transient conflict.
@@ -200,12 +221,15 @@ export async function createThreadAccessRequest(
         })
         .where(eq(schema.ApprovalRequest.id, row.id))
 
-      await notifyApprovers(db, {
+      await notifyAccessApprovers(db, {
         organizationId,
         requesterId: userId,
         approvalRequestId: row.id,
         approverUserIds: approvers.primaryUserIds,
         subjectLabel,
+        resourceKey: THREAD_DEF_ID,
+        requestedLevel: 'view',
+        requestedRung: THREAD_REQUESTED_LENS,
         reRequest: true,
       })
 
@@ -268,8 +292,45 @@ export async function withdrawAccessRequest(
 }
 
 /**
- * The `access` kind handler (plan 42 §4.2) — invoked inside the winning decision
- * claim by `registry.ts`.
+ * The `access` kind handler — invoked inside the winning decision claim by
+ * `registry.ts`, and the **target-kind dispatch** across the instance lanes
+ * (plan v3/04 §3.4).
+ *
+ * This used to be the thread body with a `entityDefinitionId !== 'thread'`
+ * refusal at the top. It is a dispatch now, and the ORDER of the two def tests is
+ * the design:
+ *
+ * - the thread lane is the literal slug `'thread'` and never a CUID (plan 42
+ *   §2.3 makes that a type-level guarantee), so it is testable by equality;
+ * - everything else must pass {@link isRecordRequestDef} — `!isDeclaredInstanceDomain
+ *   && !isMailSharingDef` — which is what keeps `contact` (Invariant #7),
+ *   `sequence` and the instance-access resources out of the record handler;
+ * - anything left refuses. The def, area and generic instance lanes are plan
+ *   28's and nothing here owns them; refusing beats writing a grant through
+ *   someone else's logic.
+ *
+ * ⚠ **The dispatch is deliberately NOT a `domain` parameter threaded through one
+ * body** (§3.1). Mail resolves approvers from an inbox, labels from a redaction
+ * projection and eligibility from a lens; records do none of those. Unifying them
+ * produces a function with a `switch` in every branch — two implementations
+ * wearing one name.
+ */
+export async function applyAccessDecision(
+  ctx: ApprovalResolveContext
+): Promise<{ message: string; afterCommit?: (db: Database) => Promise<void> }> {
+  const { request } = ctx
+  if (request.targetKind !== 'instance') {
+    throw new BadRequestError('This access request lane is not supported yet')
+  }
+  if (request.entityDefinitionId === 'thread') return applyThreadAccessDecision(ctx)
+  if (request.entityDefinitionId && isRecordRequestDef(request.entityDefinitionId)) {
+    return applyRecordAccessDecision(ctx)
+  }
+  throw new BadRequestError('This access request lane is not supported yet')
+}
+
+/**
+ * The THREAD arm of the `access` kind handler (plan 42 §4.2).
  *
  * Order is load-bearing, and it is the same for BOTH decisions:
  *
@@ -301,18 +362,13 @@ export async function withdrawAccessRequest(
  * can only widen. Nobody should re-implement the `Level.None` stripping the area
  * lane needs; this ladder does not need it.
  */
-export async function applyAccessDecision(
+async function applyThreadAccessDecision(
   ctx: ApprovalResolveContext
 ): Promise<{ message: string; afterCommit?: (db: Database) => Promise<void> }> {
   const { request, approverUserId, action } = ctx
   const tx = ctx.tx as Database
   const organizationId = request.organizationId
 
-  if (request.targetKind !== 'instance' || request.entityDefinitionId !== 'thread') {
-    // The def, area and generic instance lanes are plan 28's; this handler owns the
-    // thread lane only. Refusing beats writing a grant through mail-shaped logic.
-    throw new BadRequestError('This access request lane is not supported yet')
-  }
   const threadId = request.entityInstanceId
   const requesterId = request.requesterId
   if (!threadId || !requesterId) {
@@ -361,6 +417,7 @@ export async function applyAccessDecision(
           approverUserId,
           approvalRequestId: request.id,
           subjectLabel: request.subjectLabel,
+          resourceKey: THREAD_DEF_ID,
           decision: 'denied',
         }),
     }
@@ -398,6 +455,7 @@ export async function applyAccessDecision(
           approverUserId,
           approvalRequestId: request.id,
           subjectLabel: request.subjectLabel,
+          resourceKey: THREAD_DEF_ID,
           decision: 'superseded',
         }),
     }
@@ -447,114 +505,11 @@ export async function applyAccessDecision(
         approverUserId,
         approvalRequestId: request.id,
         subjectLabel: request.subjectLabel,
+        resourceKey: THREAD_DEF_ID,
         decision: 'approved',
+        grantedLevel: 'view',
+        grantedRung: THREAD_REQUESTED_LENS,
       })
     },
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NOTIFICATIONS (plan 42 §8)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Tell the primary approvers a request is waiting.
- *
- * `targetType: 'APPROVAL'` with `{ approvalRequestId }` — the existing shape, and
- * deliberately NOT a `THREAD` target: routing an approver to the conversation
- * instead of the decision is a worse action, and half of them may not be able to
- * read it. `ThreadNotification` already owns the thread-destination case for
- * `MESSAGE_SHARED`.
- */
-async function notifyApprovers(
-  db: Database,
-  params: {
-    organizationId: string
-    requesterId: string
-    approvalRequestId: string
-    approverUserIds: string[]
-    subjectLabel: string
-    reRequest: boolean
-  }
-): Promise<void> {
-  if (params.approverUserIds.length === 0) return
-  try {
-    const service = new NotificationService(db)
-    await Promise.all(
-      params.approverUserIds
-        .filter((userId) => userId !== params.requesterId)
-        .map((userId) =>
-          service.sendNotification({
-            type: 'ACCESS_REQUESTED',
-            userId,
-            organizationId: params.organizationId,
-            actorId: params.requesterId,
-            targetType: 'APPROVAL',
-            targetIds: { approvalRequestId: params.approvalRequestId },
-            message: params.reRequest
-              ? `Reminder: access requested for ${params.subjectLabel}`
-              : `Access requested for ${params.subjectLabel}`,
-            metadata: {
-              kind: 'ACCESS_REQUESTED',
-              subjectLabel: params.subjectLabel,
-              targetKind: 'instance',
-              resourceKey: 'thread',
-              requestedLevel: 'view',
-              requestedLens: THREAD_REQUESTED_LENS,
-              reRequest: params.reRequest,
-            },
-          })
-        )
-    )
-  } catch (error) {
-    // Best-effort: the pending row is already the source of truth for the badge.
-    logger.warn('Failed to notify access-request approvers', {
-      approvalRequestId: params.approvalRequestId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-/** Tell the requester what happened. Also the DENIED requester's only history row. */
-async function notifyRequesterDecided(
-  db: Database,
-  params: {
-    organizationId: string
-    requesterId: string
-    approverUserId: string
-    approvalRequestId: string
-    subjectLabel: string
-    decision: 'approved' | 'denied' | 'superseded'
-  }
-): Promise<void> {
-  const copy: Record<typeof params.decision, string> = {
-    approved: `Your access request for ${params.subjectLabel} was approved`,
-    denied: `Your access request for ${params.subjectLabel} was declined`,
-    superseded: `You already have access to ${params.subjectLabel}`,
-  }
-  try {
-    await new NotificationService(db).sendNotification({
-      type: 'ACCESS_REQUEST_DECIDED',
-      userId: params.requesterId,
-      organizationId: params.organizationId,
-      actorId: params.approverUserId,
-      targetType: 'APPROVAL',
-      targetIds: { approvalRequestId: params.approvalRequestId },
-      message: copy[params.decision],
-      metadata: {
-        kind: 'ACCESS_REQUEST_DECIDED',
-        subjectLabel: params.subjectLabel,
-        targetKind: 'instance',
-        resourceKey: 'thread',
-        decision: params.decision,
-        grantedLevel: params.decision === 'approved' ? 'view' : undefined,
-        grantedLens: params.decision === 'approved' ? THREAD_REQUESTED_LENS : undefined,
-      },
-    })
-  } catch (error) {
-    logger.warn('Failed to notify access-request requester', {
-      approvalRequestId: params.approvalRequestId,
-      error: error instanceof Error ? error.message : String(error),
-    })
   }
 }
