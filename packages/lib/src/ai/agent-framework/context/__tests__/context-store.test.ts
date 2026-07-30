@@ -15,8 +15,12 @@ import {
 
 // Stub the v8 field resolver so field reads are deterministic and call-counted.
 const { resolveSpy } = vi.hoisted(() => ({ resolveSpy: vi.fn() }))
+// A factory REPLACES the module, so every export the graph reaches for has to
+// be listed: `context/sources/field-source.ts` picked up `buildSubjectFieldResolver`
+// after this mock was written, and its absence throws before any test runs.
 vi.mock('../../../../agents/bindings/resolve', () => ({
   buildResolveVarSource: () => resolveSpy,
+  buildSubjectFieldResolver: () => resolveSpy,
 }))
 
 function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
