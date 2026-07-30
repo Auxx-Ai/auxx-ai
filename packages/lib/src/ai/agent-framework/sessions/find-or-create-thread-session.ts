@@ -11,8 +11,12 @@ const logger = createScopedLogger('find-or-create-thread-session')
  * The `triggerContext` shape stored on chat sessions. Mirrors the audit
  * answer to "why did this agent fire?" for chat — there is no `AgentTrigger`
  * row (chat binds via `ChatWidget.agentId`). See plans/chat/v5 phase-3.
+ *
+ * A type alias, not an interface: `createSession` stores this in a
+ * `Record<string, unknown>` jsonb column, and only aliases get an implicit
+ * index signature.
  */
-export interface ChatTriggerContext {
+export type ChatTriggerContext = {
   kind: 'chat'
   threadId: string
   contactId: string | null

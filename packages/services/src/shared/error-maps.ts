@@ -86,7 +86,6 @@ export const ERROR_TRPC_MAP: Record<
  */
 export type AnyServiceError =
   | import('../apps/errors').AppError
-  | import('../app-versions/errors').AppVersionError
   | import('../app-bundles/errors').AppBundleError
   | import('../app-installations/errors').AppInstallationError
   | import('../organizations/errors').OrganizationError

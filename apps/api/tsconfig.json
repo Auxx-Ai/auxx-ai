@@ -2,12 +2,8 @@
   "extends": "@auxx/typescript-config/base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "baseUrl": ".",
-    "paths": {
-      "@auxx/services/*": ["../../packages/services/src/*"]
-    }
+    "baseUrl": "."
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [{ "path": "../../packages/services" }]
+  "exclude": ["node_modules", "dist"]
 }

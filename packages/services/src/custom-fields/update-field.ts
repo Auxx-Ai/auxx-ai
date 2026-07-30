@@ -13,9 +13,8 @@ import type { CustomFieldNotFoundError } from './errors'
 import { isProtectedField } from './ownership'
 import {
   type ActorOptions,
+  type CustomFieldOptionsInput,
   canFieldBeUnique,
-  type DisplayOptions,
-  type FileOptions,
   getInverseFieldId,
   isDisplayOptions,
   mergeDisplayOptions,
@@ -52,13 +51,8 @@ export interface UpdateCustomFieldInput {
   required?: boolean
   defaultValue?: string
   /** Field options - select options, file config, flat display options
-   *  (incl. CURRENCY), or `{ options, ai }` for AI-enabled selects. */
-  options?:
-    | SelectOption[]
-    | { file: FileOptions }
-    | { calc: CalcOptions }
-    | { options: SelectOption[]; ai?: AiOptions }
-    | (DisplayOptions & { ai?: AiOptions })
+   *  (incl. CURRENCY), actor/calc bags, or `{ options, ai }` for AI-enabled selects. */
+  options?: CustomFieldOptionsInput
   addressComponents?: string[]
   /** ADDRESS_STRUCT input variant: single free-text input (default, omitted
    *  from storage) vs. separate structured sub-fields. */

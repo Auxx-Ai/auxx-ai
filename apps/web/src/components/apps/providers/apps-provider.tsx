@@ -41,6 +41,29 @@ interface AppsProviderProps {
 }
 
 /**
+ * `connectionDefinitions` is a projection of the ConnectionDefinition row, so its
+ * `label`/`global` are nullable and `connectionType` is an open string. The host props
+ * want the narrowed client view, so the boundary is normalised here rather than by
+ * loosening what MessageClientWrapper accepts — `connectionType` drives real branching
+ * (OAuth vs secret) downstream.
+ */
+function toHostConnectionDefinition(
+  def: { label: string | null; global: boolean | null; connectionType: string } | undefined
+):
+  | { label: string; global: boolean; connectionType: 'oauth2-code' | 'secret' | 'none' }
+  | undefined {
+  if (!def) return undefined
+  return {
+    label: def.label ?? '',
+    global: def.global ?? false,
+    connectionType:
+      def.connectionType === 'oauth2-code' || def.connectionType === 'secret'
+        ? def.connectionType
+        : 'none',
+  }
+}
+
+/**
  * Main orchestrator for extension loading and management.
  *
  * 1. Fetches installed extensions for organization via tRPC
@@ -179,10 +202,10 @@ export function AppsProvider({ children }: AppsProviderProps) {
                       appTitle={installation.app.title}
                       organizationId={organizationId}
                       clientBundleSha={installation.currentDeployment!.clientBundleSha}
-                      connectionDefinition={
+                      connectionDefinition={toHostConnectionDefinition(
                         installation.connectionDefinitions?.user ??
-                        installation.connectionDefinitions?.organization
-                      }
+                          installation.connectionDefinitions?.organization
+                      )}
                     />
 
                     {/* 2. Set up data handlers for this extension (Plan 4) */}

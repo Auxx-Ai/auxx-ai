@@ -2,6 +2,7 @@
 
 import { findCredential, revealSecrets } from '@auxx/credentials/store'
 import { err, ok } from 'neverthrow'
+import type { DecryptedConnectionData } from './types'
 
 /**
  * Get connection for app (used when executing app functions)
@@ -84,6 +85,11 @@ export async function getAppConnection(appId: string, organizationId: string, us
   if (revealed.isErr()) return err(revealed.error)
 
   // Preserve the legacy "full data" shape: non-secret companion fields flattened to the top
-  // level, secrets layered on top (secrets win on key collisions).
-  return ok({ ...revealed.value.record.metadata, ...revealed.value.secrets })
+  // level, secrets layered on top (secrets win on key collisions). Spreading two
+  // index-signature types erases every named key, so the shape is asserted once here
+  // rather than at each call site.
+  return ok({
+    ...revealed.value.record.metadata,
+    ...revealed.value.secrets,
+  } as DecryptedConnectionData)
 }

@@ -4,6 +4,7 @@ import { QuickActionExecutor } from '@auxx/lib/quick-actions'
 import { TicketEventType, TimelineActorType, TimelineEntityType } from '@auxx/lib/timeline'
 import { createScopedLogger } from '@auxx/logger'
 import { createTimelineEvent } from '@auxx/services/timeline'
+import { toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -76,17 +77,16 @@ export const quickActionRouter = createTRPCRouter({
         if (!action || !input.context.ticketId) continue
 
         try {
+          // `createTimelineEvent` takes a `recordId` plus a flat actor pair. This call
+          // still passed the retired `{ entityType, entityId, actor }` shape, so the
+          // service destructured `recordId` as undefined and every quick-action
+          // timeline event threw into the catch below instead of being written.
           await createTimelineEvent({
             organizationId,
-            entityType: TimelineEntityType.TICKET,
-            entityId: input.context.ticketId,
+            recordId: toRecordId(TimelineEntityType.TICKET, input.context.ticketId),
             eventType: TicketEventType.QUICK_ACTION_EXECUTED,
-            actor: {
-              type: TimelineActorType.USER,
-              id: userId,
-              name: user?.name ?? undefined,
-              email: user?.email ?? undefined,
-            },
+            actorType: TimelineActorType.USER,
+            actorId: userId,
             eventData: {
               appId: action.appId,
               actionId: action.actionId,

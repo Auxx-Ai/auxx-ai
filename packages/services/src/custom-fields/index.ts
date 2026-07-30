@@ -32,6 +32,7 @@ export type { RelationshipConfig, RelationshipOptions } from './types'
 // Types - unified types from @auxx/database
 // Consolidated field option types (single source of truth)
 export {
+  type CustomFieldOptionsInput,
   canFieldBeUnique,
   DEFAULT_SELECT_OPTION_COLOR,
   type DisplayOptions,

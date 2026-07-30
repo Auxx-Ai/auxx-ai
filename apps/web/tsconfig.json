@@ -22,7 +22,6 @@
     "skipLibCheck": true,
     "module": "esnext"
   },
-  "references": [{ "path": "../../packages/services" }],
   "include": [
     "next-env.d.ts",
     "**/*.ts",

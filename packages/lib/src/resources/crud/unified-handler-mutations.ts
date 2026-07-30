@@ -9,6 +9,7 @@ import {
   getEntityInstance,
   updateEntityInstance,
 } from '@auxx/services/entity-instances'
+import type { Result } from 'neverthrow'
 import { findCachedResource } from '../../cache'
 import { CommentService } from '../../comments'
 import { UnprocessableEntityError } from '../../errors'
@@ -101,13 +102,13 @@ export interface CreateEntityResult {
 }
 
 /**
- * Helper to unwrap neverthrow Result and throw on error
+ * Helper to unwrap neverthrow Result and throw on error.
+ *
+ * Typed against `Result`, not structurally: an `Err` carries no `value` and an
+ * `Ok` carries no `error`, so a `{ isErr, error, value }` parameter matches
+ * neither arm and silently degraded `T` to `unknown`.
  */
-function unwrapResult<T, E extends { message: string; cause?: unknown }>(result: {
-  isErr: () => boolean
-  error: E
-  value: T
-}): T {
+function unwrapResult<T>(result: Result<T, { message: string; cause?: unknown }>): T {
   if (result.isErr()) {
     // Preserve `cause` so route-level logs can see the underlying DB error
     // (constraint violation, missing column, etc.) instead of the generic
@@ -782,7 +783,10 @@ export async function bulkUpdateEntities(
 
   for (const { recordId, values } of updates) {
     try {
-      await updateEntity(ctx, recordId, values, {
+      // `updateEntity` takes `modes` fourth and `options` fifth — the options object
+      // was landing in the `modes` slot, so `skipEvents` was silently dropped and a
+      // bulk update published per-record events regardless.
+      await updateEntity(ctx, recordId, values, undefined, {
         skipEvents: options.skipEvents,
       })
       updated++

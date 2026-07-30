@@ -67,7 +67,8 @@ export async function createView(input: CreateViewInput) {
 
   if (existingResult.isErr()) return existingResult
   if (existingResult.value.length > 0) {
-    return err<ViewAlreadyExistsError>({
+    // `err<T, E>` — the FIRST slot is the ok-value type; see get-view.ts.
+    return err<never, ViewAlreadyExistsError>({
       code: 'VIEW_ALREADY_EXISTS',
       message: 'A view with this name already exists',
       name,

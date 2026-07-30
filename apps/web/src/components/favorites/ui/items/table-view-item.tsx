@@ -21,7 +21,9 @@ export function TableViewItem({ favorite }: { favorite: FavoriteEntity<'TABLE_VI
   if (code === 'NOT_FOUND' || code === 'FORBIDDEN' || (!isLoading && !data)) {
     return <PrivateItem favoriteId={favorite.id} />
   }
-  if (isLoading) return <FavoriteItemSkeleton favoriteId={favorite.id} />
+  // `!data` here can only mean the query is still in flight — the guard above already
+  // returned for a settled-but-empty result.
+  if (isLoading || !data) return <FavoriteItemSkeleton favoriteId={favorite.id} />
 
   // Most table views live under /app/<apiSlug>?view=<id>; we don't have apiSlug
   // here, so we route through tableId which is a system table or entityDefinitionId.

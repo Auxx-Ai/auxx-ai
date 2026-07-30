@@ -2,7 +2,7 @@
 
 import { type Database, database } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
-import type { DisplayOptions, FileOptions, SelectOption } from '@auxx/services/custom-fields'
+import type { CustomFieldOptionsInput } from '@auxx/services/custom-fields'
 import {
   createCustomField,
   deleteCustomField,
@@ -10,9 +10,18 @@ import {
   type RelationshipOptions,
   updateCustomField,
 } from '@auxx/services/custom-fields'
-import type { AiOptions } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { onCacheEvent } from '../cache/invalidate'
+
+/**
+ * Only the database-backed service errors carry a `cause`; the not-found,
+ * access-denied and validation shapes are just a code and a message. Reading it
+ * off the union directly does not typecheck, and at runtime it was always
+ * `undefined` for those.
+ */
+function errorCause(error: { message: string; cause?: unknown }): unknown {
+  return error.cause
+}
 
 /**
  * Service for managing custom fields and their values across different models
@@ -56,11 +65,7 @@ export class CustomFieldService {
     description?: string
     required?: boolean
     defaultValue?: string
-    options?:
-      | SelectOption[]
-      | { file: FileOptions }
-      | { options: SelectOption[]; ai?: AiOptions }
-      | (DisplayOptions & { ai?: AiOptions })
+    options?: CustomFieldOptionsInput
     addressComponents?: string[]
     /** ADDRESS_STRUCT input variant — see addressFieldOptionsSchema. */
     inputMode?: 'single' | 'structured'
@@ -95,11 +100,7 @@ export class CustomFieldService {
     description?: string
     required?: boolean
     defaultValue?: string
-    options?:
-      | SelectOption[]
-      | { file: FileOptions }
-      | { options: SelectOption[]; ai?: AiOptions }
-      | (DisplayOptions & { ai?: AiOptions })
+    options?: CustomFieldOptionsInput
     addressComponents?: string[]
     /** ADDRESS_STRUCT input variant — see addressFieldOptionsSchema. */
     inputMode?: 'single' | 'structured'
@@ -117,7 +118,7 @@ export class CustomFieldService {
 
     if (result.isErr()) {
       // Preserve the cause for better error debugging
-      throw new Error(result.error.message, { cause: result.error.cause })
+      throw new Error(result.error.message, { cause: errorCause(result.error) })
     }
 
     await onCacheEvent('custom-field.updated', { orgId: this.organizationId })
@@ -137,7 +138,7 @@ export class CustomFieldService {
 
     if (result.isErr()) {
       // Preserve the cause for better error debugging
-      throw new Error(result.error.message, { cause: result.error.cause })
+      throw new Error(result.error.message, { cause: errorCause(result.error) })
     }
 
     await onCacheEvent('custom-field.deleted', { orgId: this.organizationId })
@@ -158,7 +159,7 @@ export class CustomFieldService {
 
     if (result.isErr()) {
       // Preserve the cause for better error debugging
-      throw new Error(result.error.message, { cause: result.error.cause })
+      throw new Error(result.error.message, { cause: errorCause(result.error) })
     }
 
     return result.value

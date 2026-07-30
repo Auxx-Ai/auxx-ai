@@ -7,7 +7,7 @@ import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { DYNAMIC_TABLE_CONFIG } from '../config/table-config'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
-import type { TableView } from '../types'
+import type { TableView, ViewConfig } from '../types'
 import { tableViewPreferenceKey } from '../utils/constants'
 import {
   hasPresentationPreference,
@@ -125,7 +125,10 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
         config: mergedConfig,
       })
 
-      confirmSave(viewId, result.config)
+      // This hook only ever persists table `ViewConfig`s. The endpoint's return type is
+      // the wider `ViewConfig | FieldViewConfig` because the same route also serves
+      // panel/dialog field configs, which this store never drives.
+      confirmSave(viewId, result.config as ViewConfig)
       lastSavedRef.current = JSON.stringify(result.config)
 
       if (view?.isShared) {

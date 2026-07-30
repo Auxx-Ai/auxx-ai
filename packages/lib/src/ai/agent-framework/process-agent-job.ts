@@ -83,6 +83,11 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   }
   const session = sessionResult.value
 
+  // The `messages` column is untyped `Record<string, unknown>[]` jsonb. The engine is
+  // its only writer, so the stored rows ARE `SessionMessage`s — but the two shapes do
+  // not overlap enough for a direct assertion, hence the hop through `unknown`.
+  const sessionMessages = (session.messages ?? []) as unknown as SessionMessage[]
+
   // Prefer the agentId persisted on the session row; the job payload's
   // `agentId` is only authoritative on the very first turn before the row
   // is read back.
@@ -173,7 +178,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   }
 
   const engine = new AgentEngine(engineConfig, {
-    messages: (session.messages ?? []) as SessionMessage[],
+    messages: sessionMessages,
     domainState: (session.domainState ?? {}) as Record<string, unknown>,
   })
 
@@ -245,7 +250,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   if (hasProcedures && type !== 'approval') {
     const subject: Subject = { anchors: {}, identityVerified: false }
     const conversation: ConversationMessage[] = [
-      ...sessionMessagesToConversation((session.messages ?? []) as SessionMessage[]),
+      ...sessionMessagesToConversation(sessionMessages),
       { role: 'user', content: message },
     ]
     const buildCtx = (): ToolContext => {

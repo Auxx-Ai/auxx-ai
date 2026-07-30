@@ -17,11 +17,18 @@ export const buildOrganizationsProvider: CacheProvider<BuildCachedOrganization[]
       throw new Error(`Failed to fetch organizations: ${result.error.message}`)
     }
 
-    return result.value.map((org) => ({
-      id: org.id,
-      name: org.name,
-      handle: org.handle,
-      slug: org.handle,
-    }))
+    return (
+      result.value
+        // `Organization.handle` is nullable, but every consumer of this list addresses an
+        // org BY its handle — the build portal renders it as `@slug` and uses it as a
+        // SelectItem value. An org without one cannot be selected, so it is not listed.
+        .filter((org): org is typeof org & { handle: string } => org.handle !== null)
+        .map((org) => ({
+          id: org.id,
+          name: org.name,
+          handle: org.handle,
+          slug: org.handle,
+        }))
+    )
   },
 }

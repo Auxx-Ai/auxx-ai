@@ -372,7 +372,8 @@ function deriveConnectionDescriptor(
   methods: ConnectionMethod[],
   hasOauth: boolean
 ): { label: string } | null {
-  if (methods.length === 1) return { label: methods[0].label }
+  const only = methods.length === 1 ? methods[0] : undefined
+  if (only) return { label: only.label }
   if (methods.length > 1) return { label: 'Connection' }
   if (hasOauth) return { label: 'OAuth connection' }
   return null

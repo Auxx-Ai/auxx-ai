@@ -14,7 +14,9 @@ const authStatusRoute = new Hono()
  * Check authentication status for a shared workflow
  */
 authStatusRoute.get('/', async (c) => {
-  const shareToken = c.req.param('shareToken')
+  // Non-null: the parent router only mounts this under `/:shareToken/auth-status`,
+  // which Hono can't see from a sub-app. Same as site.ts.
+  const shareToken = c.req.param('shareToken')!
 
   // Get passport from query or header
   const passportToken = c.req.query('passport') || c.req.header('x-workflow-passport')

@@ -30,7 +30,7 @@ export async function listDeployments(params: {
           columns: { id: true, name: true, email: true },
         },
         targetOrganization: {
-          columns: { id: true, name: true, slug: true },
+          columns: { id: true, name: true, handle: true },
         },
       },
     }),
