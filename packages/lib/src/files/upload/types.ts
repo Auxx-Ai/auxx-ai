@@ -1,6 +1,6 @@
 // packages/lib/src/files/file-upload/types.ts
 
-import type { File } from '@auxx/database/types'
+import type { FileEntity as File } from '@auxx/database/types'
 import type { EntityType } from '../types'
 
 // Re-export types for backward compatibility

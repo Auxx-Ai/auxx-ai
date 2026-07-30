@@ -24,7 +24,7 @@ vi.mock('../../../../../../kb/articles/publish-article', () => ({
   publishArticle: (...args: unknown[]) => publishArticleSpy(...args),
 }))
 
-import type { ToolContext } from '../../../../agent-framework/tool-context'
+import type { ToolContext } from '../../../../../agent-framework/tool-context'
 import { createUpsertLearnedArticleTool, withRecordChip } from '../upsert-learned-article'
 
 const LEARNED_KB = { id: 'kb_learned', createdById: 'u_sys' }

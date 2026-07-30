@@ -21,6 +21,7 @@ export type {
   PaginationSpec,
   StreamIncrementalConfig,
   StreamRequestConfig,
+  StreamWebhookTrigger,
 } from '../types'
 export {
   ConnectorRateLimitError,

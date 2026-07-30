@@ -89,3 +89,5 @@ export const File = pgTable(
     ),
   ]
 )
+
+export type FileEntity = typeof File.$inferSelect

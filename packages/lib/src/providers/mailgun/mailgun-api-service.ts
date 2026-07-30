@@ -1,11 +1,12 @@
 // packages/lib/src/providers/mailgun/mailgun-api-service.ts
 
 import { configService } from '@auxx/credentials'
+import type { EmailOptions, EmailResult } from '@auxx/email'
 import { createScopedLogger } from '@auxx/logger'
 import formData from 'form-data'
 import Mailgun from 'mailgun.js'
-import type { DkimRecord, EmailOptions, EmailProvider, EmailResult } from '../../email/types'
 import { verifyHmacSignature } from '../../webhooks/inbound'
+import type { DkimRecord, EmailProvider } from '../email/types'
 
 const logger = createScopedLogger('mailgun-api')
 

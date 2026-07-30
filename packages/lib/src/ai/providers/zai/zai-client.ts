@@ -1,7 +1,8 @@
 // packages/lib/src/ai/providers/zai/zai-client.ts
 
 import OpenAI from 'openai'
-import { type BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
+import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import {
   type ConnectionTestResult,

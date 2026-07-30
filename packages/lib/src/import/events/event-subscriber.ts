@@ -1,6 +1,6 @@
 // packages/lib/src/import/events/event-subscriber.ts
 
-import type Redis from 'ioredis'
+import type { RedisClient } from '@auxx/redis'
 import type { AnyImportEvent } from './event-types'
 
 /** Redis channel for import events */
@@ -14,11 +14,11 @@ export type EventCallback = (event: AnyImportEvent) => void
  * Uses Redis pub/sub to receive events.
  */
 export class ImportEventSubscriber {
-  private redis: Redis
+  private redis: RedisClient
   private callbacks: Map<string, Set<EventCallback>> = new Map()
   private isListening = false
 
-  constructor(redis: Redis) {
+  constructor(redis: RedisClient) {
     this.redis = redis
   }
 

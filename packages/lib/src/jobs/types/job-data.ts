@@ -1,3 +1,5 @@
+// packages/lib/src/jobs/types/job-data.ts
+
 export interface EmailJobData {
   email: string
   subject: string
