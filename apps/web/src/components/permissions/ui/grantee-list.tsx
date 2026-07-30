@@ -345,14 +345,21 @@ function GranteeRow<TChoice extends string>({
               disabled,
               actorId,
             })}
-            <TreeRowButton
-              variant='destructive'
-              disabled={disabled}
-              aria-label='Remove access'
-              tooltipText='Remove access'
-              onClick={() => onRevoke(actorId)}>
-              <Trash2 />
-            </TreeRowButton>
+            {/* Hidden rather than disabled for a viewer who cannot manage sharing,
+                which is deliberately NOT what the picker beside it does. The picker
+                still carries information when it is inert — it says what level this
+                grantee holds — so greying it out is the honest rendering. A revoke
+                button carries none: it is purely an action, and a disabled one just
+                advertises a capability the viewer does not have. */}
+            {!disabled && (
+              <TreeRowButton
+                variant='destructive'
+                aria-label='Remove access'
+                tooltipText='Remove access'
+                onClick={() => onRevoke(actorId)}>
+                <Trash2 />
+              </TreeRowButton>
+            )}
           </>
         )
       }

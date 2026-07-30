@@ -129,6 +129,17 @@ export interface DetailViewNotFoundProps {
   label?: string
   /** Back URL for breadcrumb and return button */
   backUrl: string
+  /**
+   * The two halves of the record that could not be reached, so the screen can
+   * offer an ask instead of an ambiguous sentence (plan v3/04 §8.2 mount 4 / §9).
+   *
+   * ⚠ Deliberately ids and nothing else. This surface must never receive a
+   * display name: the accepted exposure is an existence oracle, and a name would
+   * make it a CONTENT leak (§9). The popover's label is composed server-side and
+   * degrades to the definition noun alone for a `none` requester.
+   */
+  entityDefinitionId?: string
+  entityInstanceId?: string
 }
 
 /**

@@ -10,7 +10,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getCachedMembersByUserIds, getCachedUserInstanceGrants, getOrgCache } from '../cache'
 import { getCapabilities } from '../permissions/capabilities/get-capabilities'
 import { PermissionKey } from '../permissions/capabilities/registry'
@@ -21,11 +21,12 @@ import { getLoadedThreadLens } from '../permissions/visibility/thread-lens'
 import { expandGranteeToUserIds } from '../resource-access/grantee-resolution'
 import { inboxAccessRecordId } from '../resource-access/mail-sharing-guard'
 import type { ThreadMeta } from '../threads/types'
-import {
-  ACCESS_DENY_COOLDOWN_DAYS,
-  type AccessRefusalReason,
-  type AccessRequestMetadata,
-} from './client'
+// The two `ApprovalRequest` reads live in the SHARED module (§3.1): they are
+// keyed on `(org, requester, entityDefinitionId, entityInstanceId)` and nothing
+// else, so the thread lane simply passes the literal `'thread'` slug where it
+// used to be hardcoded inside them.
+import { findInstanceDenyCooldown, findPendingInstanceAccessRequest } from './access-request-shared'
+import type { AccessRefusalReason, AccessRequestMetadata } from './client'
 import type {
   AccessRequestApproverView,
   AccessRequestPreflight,
@@ -223,85 +224,6 @@ export async function resolveThreadFrontDoor(
   return { open: false, reason: caps.seatType === 'worker' ? 'worker_seat' : 'front_door_closed' }
 }
 
-/** The existing pending `access` request for one (requester, thread), if any. */
-export async function findPendingThreadAccessRequest(
-  db: Database,
-  organizationId: string,
-  requesterId: string,
-  threadId: string
-) {
-  return db.query.ApprovalRequest.findFirst({
-    where: and(
-      eq(schema.ApprovalRequest.organizationId, organizationId),
-      eq(schema.ApprovalRequest.kind, 'access'),
-      eq(schema.ApprovalRequest.status, 'pending'),
-      eq(schema.ApprovalRequest.requesterId, requesterId),
-      eq(schema.ApprovalRequest.targetKind, 'instance'),
-      eq(schema.ApprovalRequest.entityDefinitionId, 'thread'),
-      eq(schema.ApprovalRequest.entityInstanceId, threadId)
-    ),
-  })
-}
-
-/**
- * Whether a DENY on this exact target is still inside its cooldown window
- * (plan 28 §4.5). Without this the deny button does not actually stop anything —
- * and with a one-click, picker-less trigger every re-click is byte-identical.
- *
- * The window is measured from `metadata.deniedAt` (written by the decision
- * handler), falling back to `createdAt` for a row that predates the field.
- *
- * **`ORDER BY createdAt DESC LIMIT 1`, served by
- * `ApprovalRequest_access_instance_denied_idx`.** This previously selected EVERY
- * historical denial for the (requester, target) pair and reduced them in JS,
- * against no usable index — so a target denied repeatedly re-read the whole
- * history on every trigger render.
- *
- * Taking the newest-CREATED row is sound even though the window is measured from
- * `deniedAt`, because the pending unique index serializes the lifecycle: a second
- * request for one target cannot be created while the first is still pending, so a
- * later-created denial was necessarily decided later too.
- *
- * There is deliberately NO `createdAt >= now() - cooldown` predicate. It looks
- * like a free narrowing and is wrong: `deniedAt` can trail `createdAt` by the
- * request's whole 14-day life, so a row created 30 days ago may have been denied
- * yesterday and still be inside a 7-day cooldown. The index ordering is what
- * bounds this read; a date filter on the wrong column would silently drop live
- * cooldowns.
- */
-export async function findThreadDenyCooldown(
-  db: Database,
-  organizationId: string,
-  requesterId: string,
-  threadId: string
-): Promise<{ until: Date } | null> {
-  const [row] = await db
-    .select({
-      createdAt: schema.ApprovalRequest.createdAt,
-      metadata: schema.ApprovalRequest.metadata,
-    })
-    .from(schema.ApprovalRequest)
-    .where(
-      and(
-        eq(schema.ApprovalRequest.organizationId, organizationId),
-        eq(schema.ApprovalRequest.kind, 'access'),
-        eq(schema.ApprovalRequest.status, 'denied'),
-        eq(schema.ApprovalRequest.requesterId, requesterId),
-        eq(schema.ApprovalRequest.targetKind, 'instance'),
-        eq(schema.ApprovalRequest.entityDefinitionId, 'thread'),
-        eq(schema.ApprovalRequest.entityInstanceId, threadId)
-      )
-    )
-    .orderBy(desc(schema.ApprovalRequest.createdAt))
-    .limit(1)
-  if (!row) return null
-
-  const deniedAtRaw = (row.metadata as AccessRequestMetadata | null)?.deniedAt
-  const latest = deniedAtRaw ? new Date(deniedAtRaw) : row.createdAt
-  const until = new Date(latest.getTime() + ACCESS_DENY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000)
-  return until > new Date() ? { until } : null
-}
-
 /**
  * The durable display label for a thread access request (plan 42 §7).
  *
@@ -414,7 +336,7 @@ export async function preflightThreadAccessRequest(
   // Independent of each other, so concurrent: one `ApprovalRequest` read and one
   // `ResourceAccess` read.
   const [pendingRow, approverResolution] = await Promise.all([
-    findPendingThreadAccessRequest(db, organizationId, userId, threadId),
+    findPendingInstanceAccessRequest(db, organizationId, userId, 'thread', threadId),
     resolveThreadApprovers(db, organizationId, ctx),
   ])
   const pending = pendingRow
@@ -441,7 +363,7 @@ export async function preflightThreadAccessRequest(
   // A pending request is not a refusal — the UI swaps the trigger for a status
   // view (§6.4). Only a fresh deny blocks.
   if (!pending) {
-    const cooldown = await findThreadDenyCooldown(db, organizationId, userId, threadId)
+    const cooldown = await findInstanceDenyCooldown(db, organizationId, userId, 'thread', threadId)
     if (cooldown) return { eligible: false, ...base, refusalReason: 'deny_cooldown' }
   }
 

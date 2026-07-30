@@ -3,6 +3,7 @@
 
 import { ACCESS_REFUSAL_COPY, type AccessRefusalReason } from '@auxx/lib/approval-requests/client'
 import { toastError } from '@auxx/ui/components/toast'
+import type { RequestAccessState } from '~/components/permissions/hooks/use-request-access'
 import { toInboxAccessRecordId, useInbox, useThread } from '~/components/threads/hooks'
 import { useUser } from '~/hooks/use-user'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -23,7 +24,12 @@ import { api } from '~/trpc/react'
  */
 const SPOKEN_REFUSALS: AccessRefusalReason[] = ['worker_seat', 'front_door_closed', 'deny_cooldown']
 
-export interface UseRequestAccessResult {
+/**
+ * Mail's request-access state: the shared contract (which is what
+ * `permissions/ui/request-access-popover.tsx` renders) plus the three facts that
+ * are mail authority and stay out of the shell.
+ */
+export interface UseRequestAccessResult extends RequestAccessState {
   /**
    * Whether this member administers sharing on the thread — org admin/owner, or a
    * Manager of its inbox.
@@ -37,23 +43,8 @@ export interface UseRequestAccessResult {
   canShare: boolean
   /** The viewer's composed lens on the thread, as the thread payload reports it. */
   myLens: 'metadata' | 'identity' | 'read'
-  /** Render the trigger at all: sub-`full` and unable to just grant it themselves. */
-  eligible: boolean
-  /** Server-authoritative `false` — the ask would be refused. Presentation only. */
-  refusalCopy: string | null
-  /** An existing pending request of theirs, which swaps the trigger for a status view. */
-  pending: { id: string; createdAt: Date } | null
-  /** Who will decide it, named — "sent into the void" vs "Sarah will see this". */
-  approvers: Array<{ userId: string; name: string | null; image: string | null }>
-  /** Whether {@link approvers} are inbox Managers or the org-admin fallback. */
+  /** Whether the shared `approvers` are inbox Managers or the org-admin fallback. */
   approversAre: 'managers' | 'admins' | null
-  /** Server-composed header label; degrades safely at `metadata` lens. */
-  subjectLabel: string | null
-  isLoading: boolean
-  send: (message?: string) => void
-  withdraw: () => void
-  isSending: boolean
-  isWithdrawing: boolean
 }
 
 /**
@@ -69,6 +60,11 @@ export interface UseRequestAccessResult {
  *
  * The preflight query is gated on that pair, so a full-lens member or a Manager
  * pays nothing for this hook.
+ *
+ * ⚠ **The body stays mail** (plan v3 04 §8.1). Only the RESULT shape generalized —
+ * every input it reads is mail authority (the thread lens, the inbox's Managers,
+ * `canAdminInstance` on the inbox), so a `domain` parameter here would be two
+ * hooks wearing one name. The record lane gets its own, beside `RequestAccessState`.
  */
 export function useRequestAccess({
   threadId,

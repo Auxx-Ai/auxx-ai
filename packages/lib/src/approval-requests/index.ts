@@ -33,8 +33,6 @@ export {
 } from './access-request-mutations'
 export {
   buildThreadSubjectLabel,
-  findPendingThreadAccessRequest,
-  findThreadDenyCooldown,
   getThreadAccessRequestApproverView,
   loadThreadAuthorityContext,
   preflightThreadAccessRequest,
@@ -42,6 +40,13 @@ export {
   resolveThreadFrontDoor,
   threadLensFromContext,
 } from './access-request-queries'
+// Shared across BOTH instance lanes (plan v3/04 §3.1) — keyed on
+// `(org, requester, entityDefinitionId, entityInstanceId)` and nothing else.
+export {
+  accessRequestExpiresAt,
+  findInstanceDenyCooldown,
+  findPendingInstanceAccessRequest,
+} from './access-request-shared'
 export { approvalEmailEnabled, getApprovalAssigneeUserIds } from './approval-recipients'
 export {
   cancelApprovalRequest,
@@ -74,6 +79,7 @@ export type {
   AccessRequestMetadata,
   AccessTargetKind,
   ApprovalKind,
+  RecordAccessRefusalReason,
 } from './client'
 export {
   ACCESS_DENY_COOLDOWN_DAYS,
@@ -81,7 +87,24 @@ export {
   ACCESS_REQUEST_EXPIRY_DAYS,
   ACCESS_TARGET_KINDS,
   APPROVAL_KINDS,
+  RECORD_ACCESS_REFUSAL_COPY,
+  SPOKEN_RECORD_REFUSALS,
 } from './client'
+export {
+  applyRecordAccessDecision,
+  createRecordAccessRequest,
+} from './record-access-request-mutations'
+export {
+  buildRecordSubjectLabel,
+  getRecordAccessRequestApproverView,
+  isRecordRequestDef,
+  loadRecordAuthorityContext,
+  nextRecordRung,
+  preflightRecordAccessRequest,
+  recordRungFor,
+  resolveRecordApprovers,
+  resolveRecordFrontDoor,
+} from './record-access-request-queries'
 export { allowsTokenResolution, getApprovalKindHandler } from './registry'
 export type {
   AccessRequestApproverView,
@@ -92,7 +115,12 @@ export type {
   ApprovalResolveContext,
   ApprovalResponseResult,
   CreateAccessRequestResult,
+  CreateRecordAccessRequestInput,
   CreateThreadAccessRequestInput,
+  RecordAccessRequestApproverView,
+  RecordAccessRequestPreflight,
+  RecordApproverResolution,
+  RecordAuthorityContext,
   ThreadApproverResolution,
   ThreadAuthorityContext,
 } from './types'

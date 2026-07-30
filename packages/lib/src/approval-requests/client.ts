@@ -42,28 +42,62 @@ export const ACCESS_REQUEST_EXPIRY_DAYS = 14
 export const ACCESS_DENY_COOLDOWN_DAYS = 7
 
 /**
- * Why a thread access request cannot be honoured (plan 42 §5.3).
+ * Why an instance access request cannot be honoured (plan 42 §5.3, extended by
+ * plan v3/04 §4).
  *
- * There is deliberately no `plan` case: a `full`-lens thread grant trips neither
- * arm of `assertMailSharingFeature`, so thread requests are honourable on EVERY
- * plan. That is the concrete payoff of hardcoding the lens (§5.2).
+ * **Not every reason applies to every lane, and that is the point** — the union
+ * is shared so the two lanes cannot invent overlapping vocabularies, but which
+ * members a lane can actually produce is narrowed at the lane
+ * ({@link RecordAccessRefusalReason}).
  */
 export type AccessRefusalReason =
   /**
-   * The requester's seat cannot hold the mail front door at all. `Area.inboxes`
-   * is absent from `WORKER_AREAS`, and the seat ceiling clamps LAST — so no
-   * permission change lifts this. Name the seat, not the profile: pointing an
-   * approver at a lever they cannot pull is worse than naming none.
+   * The requester's seat cannot hold the target's front door at all.
+   *
+   * MAIL: `Area.inboxes` is absent from `WORKER_AREAS`. RECORDS: `Area.records`
+   * is absent from the same set, so `recordAccessAt` returns `'none'`
+   * unconditionally — checked ABOVE any row branch, so no share can lift it
+   * either. Both are clamped LAST, so no permission change helps: name the seat,
+   * not the profile. Pointing an approver at a lever they cannot pull is worse
+   * than naming none.
    */
   | 'worker_seat'
-  /** `inboxes.view` is closed by the requester's profile and no inbox grant derives it. */
+  /**
+   * `inboxes.view` is closed by the requester's profile and no inbox grant
+   * derives it.
+   *
+   * **MAIL ONLY.** A record grant at `read` or better populates `grantedDefIds`
+   * itself (`computeGrantedDefIds`), which is exactly what `RecordRouteGuard`
+   * gates on — there is no separate key for a record request to be missing
+   * (plan v3/04 §4). Do not port this reason into the record lane.
+   */
   | 'front_door_closed'
-  /** The requester already has `full` on this thread — nothing to ask for. */
+  /** MAIL: the requester already has `full` on this thread — nothing to ask for. */
   | 'already_full'
+  /**
+   * RECORDS: the requester is already at the top of what this lane can ask for.
+   *
+   * Fires at `edit`, NOT at the top of the ladder: `admin` is deliberately
+   * unrequestable (§3.2), so a member holding `edit` — or `admin` — has nothing
+   * left to ask for. The mail twin is {@link AccessRefusalReason} `already_full`;
+   * they are separate members because they fire at different rungs and read
+   * differently to a user.
+   */
+  | 'already_at_ceiling'
   /** A deny on this exact target is still inside its cooldown window. */
   | 'deny_cooldown'
-  /** The thread does not exist in this org, or is invisible to the requester. */
+  /** The target does not exist in this org, or is invisible to the requester. */
   | 'target_unavailable'
+  /**
+   * RECORDS: the org's plan does not include `granularPermissions`, so an
+   * approved request could not write the grant it promises (§3.5).
+   *
+   * Mail has no such case — a `read` thread grant trips neither arm of
+   * `assertMailSharingFeature`, which is the concrete payoff of hardcoding the
+   * thread lens (plan 42 §5.2). Records have no exemption, so the gate is real
+   * and is applied at BOTH creation and the decision handler.
+   */
+  | 'plan_gated'
 
 /** Human-facing copy for each refusal, keyed so the UI never re-derives it. */
 export const ACCESS_REFUSAL_COPY: Record<AccessRefusalReason, string> = {
@@ -72,9 +106,56 @@ export const ACCESS_REFUSAL_COPY: Record<AccessRefusalReason, string> = {
   front_door_closed:
     'Your permission profile has Inboxes turned off, so conversation access cannot be granted yet.',
   already_full: 'You already have full access to this conversation.',
+  already_at_ceiling: 'You already have edit access to this record.',
   deny_cooldown: 'This request was recently declined. You can ask again later.',
   target_unavailable: 'This conversation is no longer available.',
+  plan_gated: 'Record sharing is not available on your plan.',
 }
+
+/**
+ * The subset of {@link AccessRefusalReason} the RECORD lane can produce
+ * (plan v3/04 §4).
+ *
+ * Spelled as a narrowing rather than a second union so the two lanes cannot
+ * drift into overlapping vocabularies — and so `front_door_closed` /
+ * `already_full` are a COMPILE error in record code rather than a plausible
+ * copy-paste.
+ */
+export type RecordAccessRefusalReason = Exclude<
+  AccessRefusalReason,
+  'front_door_closed' | 'already_full'
+>
+
+/**
+ * Record-lane copy. Deliberately a second table rather than a per-key override:
+ * every string here names a RECORD, and a partial override map is how one of
+ * them ends up saying "conversation" six months from now.
+ */
+export const RECORD_ACCESS_REFUSAL_COPY: Record<RecordAccessRefusalReason, string> = {
+  worker_seat:
+    'Field seats do not include record access. This needs a full seat, not a permission change.',
+  already_at_ceiling: 'You already have edit access to this record.',
+  deny_cooldown: 'This request was recently declined. You can ask again later.',
+  target_unavailable: 'This record is no longer available.',
+  // Names the PLAN, never the profile: this is not a permission problem, and
+  // telling someone to ask an admin for permission wastes their time (§4).
+  plan_gated: 'Record sharing is not available on your plan.',
+}
+
+/**
+ * Which record refusals the popover SPEAKS, mirroring mail's `SPOKEN_REFUSALS`
+ * (§4).
+ *
+ * The rest stay silent because the client has already hidden the trigger for
+ * them — `already_at_ceiling` is decidable from the `_access` stamp and
+ * `target_unavailable` means there is nothing to render against — and explaining
+ * a control the user cannot see is noise.
+ */
+export const SPOKEN_RECORD_REFUSALS: readonly RecordAccessRefusalReason[] = [
+  'worker_seat',
+  'deny_cooldown',
+  'plan_gated',
+]
 
 /**
  * `ApprovalRequest.metadata` for an `access` row. Stored as jsonb, so treat every
@@ -89,6 +170,11 @@ export interface AccessRequestMetadata {
   deniedAt?: string
   /** Who decided it, for the requester's history row. */
   decidedById?: string
-  /** Why an approve was recorded as `superseded` rather than granting again. */
-  supersededReason?: 'already_full'
+  /**
+   * Why an approve was recorded as `superseded` rather than granting again —
+   * `already_full` from the thread lane, `already_at_ceiling` from the record
+   * lane. Both mean "access arrived another way between filing and the
+   * decision"; they differ only in which ladder said so.
+   */
+  supersededReason?: 'already_full' | 'already_at_ceiling'
 }

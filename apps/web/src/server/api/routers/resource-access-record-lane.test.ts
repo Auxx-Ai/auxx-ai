@@ -94,6 +94,13 @@ const { resourceAccess, cache, isAdminOrOwner, recordAuditFromCtx, getThreadLens
       getCachedUserGroupIds: vi.fn(async () => []),
       getOrgCache: () => ({
         get: vi.fn(async (_org: string, key: string) => (key === 'profiles' ? [] : {})),
+        // The record plan gate moved into
+        // `@auxx/lib/resource-access/record-sharing-guard` (plan v3/04 §3.5), so
+        // it constructs `FeaturePermissionService` from lib's own deep path and
+        // the `@auxx/lib/permissions` barrel stub below no longer intercepts it.
+        // The service reads the org cache directly; an entitled org keeps these
+        // cases about the AUTHORITY rule rather than about billing.
+        getOrRecompute: vi.fn(async () => ({ features: { granularPermissions: true } })),
       }),
     },
     isAdminOrOwner: vi.fn(async () => false),

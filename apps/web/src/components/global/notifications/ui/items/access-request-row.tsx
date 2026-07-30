@@ -2,7 +2,7 @@
 'use client'
 
 import { ACCESS_DENY_COOLDOWN_DAYS } from '@auxx/lib/approval-requests/client'
-import { LENS_LABELS } from '@auxx/lib/permissions/visibility/client'
+import { LENS_LABELS, RUNG_LABELS } from '@auxx/lib/permissions/visibility/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
@@ -83,9 +83,31 @@ export function AccessRequestRow({
   const actionsDisabled = isMutating || isExpired || targetGone
 
   const requesterName = request.requester?.name ?? 'A teammate'
+  /**
+   * **Labels are chosen per LANE, because `read` means different things in each.**
+   *
+   * `read` is the TOP of mail's ladder (`Lens = metadata | identity | read`), so
+   * mail calls it "Full access". It is the BOTTOM of the record ladder
+   * (`RECORD_DEF_RUNGS = none | read | edit | admin`), where "Full access" would
+   * describe the ask as the widest in the system when it is the narrowest. One
+   * shared map cannot be right for both — reading every row through `RUNG_LABELS`
+   * silently reworded every existing mail request from "full access" to "read
+   * access".
+   *
+   * The discriminator is the persisted `entityDefinitionId`: the thread lane
+   * writes the literal slug `'thread'` (never a CUID — that keyspace guarantee is
+   * plan 42 §2.3), so anything else is a record def.
+   *
+   * `?? 'read'` covers only a NULL column, which is what an area/def target
+   * leaves behind. Neither map needs a miss fallback: `RUNG_LABELS` is total over
+   * `Rung`, so an unhandled rung is a compile error rather than a wrong string.
+   */
+  const isThreadLane = request.entityDefinitionId === 'thread'
+  const requestedRung = request.requestedLens ?? 'read'
   const levelLabel = (
-    LENS_LABELS[(request.requestedLens ?? 'read') as keyof typeof LENS_LABELS]?.label ??
-    'Full access'
+    isThreadLane && requestedRung in LENS_LABELS
+      ? LENS_LABELS[requestedRung as keyof typeof LENS_LABELS].label
+      : RUNG_LABELS[requestedRung]
   ).toLowerCase()
   const trimmedComment = comment.trim()
 

@@ -1,23 +1,17 @@
 // apps/web/src/server/api/routers/resourceAccess.ts
 
-import { type Database, schema } from '@auxx/database'
 import { ResourceGranteeType, RungValues } from '@auxx/database/enums'
 import { getCachedResources, getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { BadRequestError, ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import {
   buildDefIdToSlug,
-  type CapabilitySet,
-  type CapabilityView,
   FeatureKey,
   FeaturePermissionService,
   getCapabilities,
   INSTANCE_ACCESS_RESOURCES,
   isInstanceAccessKey,
   type Level,
-  recordAccessRankSql,
-  resolveRecordVisibilityScope,
-  satisfiesRung,
 } from '@auxx/lib/permissions'
 import type { ResourceAccessContext, ResourceAccessInfo } from '@auxx/lib/resource-access'
 import {
@@ -37,10 +31,23 @@ import {
   setInstanceAccess,
   setTypeAccess,
 } from '@auxx/lib/resource-access'
+// DEEP SUBPATH on purpose (plan v3/04 §10.2, and the same rule HANDOFF §5
+// correction 5 states for `field-value-host-access.ts`): the guard's whole point
+// is that it does NOT drag the dataset/connector service graph in behind it, and
+// routing it through the `@auxx/lib/resource-access` barrel would give that back.
+import {
+  assertCanManageRecordSharing,
+  // The record plan gate MOVED into lib (plan v3/04 §3.5). It used to be a
+  // private copy in this file, which meant the approval-decision handler — which
+  // runs in `packages/lib` and also calls `grantInstanceAccess` — bypassed it
+  // entirely: a non-Enterprise org could not share a record through this router
+  // but COULD through an approved access request. Two copies of a gate that must
+  // never disagree is the bug that closed; this file now imports the one copy.
+  assertRecordSharingFeature,
+} from '@auxx/lib/resource-access/record-sharing-guard'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { assertProfileGranteesAuthorable, granteeTypeSchema } from '~/server/api/grantee-schema'
@@ -152,130 +159,6 @@ async function assertTypeAccessEditFeature(
 }
 
 /**
- * Plan gate for per-RECORD instance sharing (plan v3/03 §7.6, D9 — the handoff's
- * owed follow-up #4).
- *
- * `assertMailSharingFeature` returns early for every non-mail def and
- * `assertTypeAccessEditFeature` only guards the TYPE axis, so a record-def
- * INSTANCE grant took no plan gate at all. That was inert while no record share
- * UI existed; P5 mounts one, so the gate lands with it.
- *
- * Instance-access resources are exempt — dataset/KB/dashboard sharing is core
- * product on every plan and has always been ungated — as are the mail defs,
- * which keep their own narrower gate (sub-`read` rungs and NEW Manager rows).
- * Revokes stay ungated everywhere: revoking only tightens access.
- */
-async function assertRecordSharingFeature(
-  ctx: { db: any; session: { organizationId: string } },
-  recordId: RecordId
-): Promise<void> {
-  const { entityDefinitionId } = parseRecordId(recordId)
-  if (isInstanceAccessKey(entityDefinitionId) || isMailSharingDef(entityDefinitionId)) return
-  await new FeaturePermissionService(ctx.db).requireAccess(
-    ctx.session.organizationId,
-    FeatureKey.granularPermissions
-  )
-}
-
-/**
- * Authorize sharing ONE record-def row (plan v3/03 §7.1).
- *
- * **This is the fix for a live fail-OPEN.** `canonicalMailRecordId` passes a
- * record CUID straight through; `authorizeInstanceTarget` used to answer `false`
- * for it *without asserting anything*, and both mail funnels
- * (`assertCanManageMailSharing`, `assertMailSharingFeature`) early-return on a
- * non-mail def — so every `grantInstance` / `setInstance` / `revokeInstance` call
- * naming a record row was written unauthorized. It was inert only because the
- * capability composer filtered those rows back out on read; plan v3/03 §5 removes
- * that inertness, so the authorizer lands first.
- *
- * The bar is **row-effective `edit`**, not def `admin`: administering a
- * definition (fields, name, the Access tab) is a different, heavier authority
- * than "re-share one row I can already change" (plan 08 §4.4). Do NOT reach for
- * {@link CapabilityView.assertAdminInstance} here — that is the instance-access
- * registry's ladder, and record defs are deliberately not in it.
- *
- * **P5 swapped the stamp in — this is that swap.** The def read is still the
- * FIRST branch and still the common case (a member who may edit the def may
- * re-share any of its rows, exactly as before, with no query). What is new is
- * the SECOND branch: a member who cannot edit the def at all, but whose
- * ROW-EFFECTIVE `_access` reaches `admin`, may re-share that one row. Strictly
- * additive — nobody who could share before loses it, and the row-effective read
- * is only paid when the cheap def read has already said no.
- *
- * The `admin` bar on the row half, against `edit` on the def half, is not an
- * inconsistency: the def branch already carries an org-wide authority over every
- * row of the definition, whereas a per-row grant carries authority over exactly
- * one row — and "may pass this on to others" is the top rung of the per-instance
- * ladder everywhere else in the product (`canAdminInstance`). Handing re-share
- * rights to a row shared at `edit` would let a collaborator widen an audience the
- * grantor chose.
- *
- * Do NOT reach for {@link CapabilityView.assertAdminInstance} here — that is the
- * instance-access registry's ladder, and record defs are deliberately not in it.
- *
- * No self-revoke hatch, unlike {@link assertCanManageMailSharing}: mail's hatch
- * exists so a member can leave a shared conversation, and the record lane has no
- * such affordance yet. Adding one silently would be a widening, not a fix.
- */
-async function assertCanManageRecordSharing(
-  ctx: { db: Database; session: { organizationId: string; userId: string } },
-  capabilities: CapabilitySet,
-  recordId: RecordId
-): Promise<void> {
-  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-  if (capabilities.canEditEntity(entityDefinitionId)) return
-
-  // The ROW-EFFECTIVE read, in ONE query: the §5.1 visibility predicate in the
-  // `WHERE`, the grantee-union `max(rung)` aggregate in the projection. Written
-  // out here rather than through `UnifiedCrudHandler.getByIds` on purpose — this
-  // router must not import the `@auxx/lib/resources` barrel, which pulls the
-  // dataset/connector service graph into every consumer of `resourceAccess`.
-  const resources = await getCachedResources(ctx.session.organizationId)
-  const resource = resources.find(
-    (r) => r.id === entityDefinitionId || r.entityDefinitionId === entityDefinitionId
-  )
-  const defId = resource?.entityDefinitionId ?? resource?.id ?? entityDefinitionId
-
-  const scope = await resolveRecordVisibilityScope({
-    organizationId: ctx.session.organizationId,
-    userId: ctx.session.userId,
-    entityDefinitionId: defId,
-    capabilities,
-  })
-  // Arm 4 — the member can reach no row of this def at all. Deny without querying.
-  if (scope.arm === 'none') {
-    throw new ForbiddenError("You don't have permission to manage sharing for this record.")
-  }
-
-  const rows = await ctx.db
-    .select({
-      grantRank: recordAccessRankSql({
-        organizationId: ctx.session.organizationId,
-        entityDefinitionId: defId,
-        grantees: scope.grantees,
-      }),
-    })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, entityInstanceId),
-        eq(schema.EntityInstance.organizationId, ctx.session.organizationId),
-        scope.where
-      )
-    )
-    .limit(1)
-
-  // A row that does not come back is one the read path itself hid — the
-  // strongest possible denial, and the same non-enumeration answer `getById`
-  // gives.
-  const row = rows[0]
-  if (!row || !satisfiesRung(capabilities.recordAccessAt(defId, row.grantRank), 'admin')) {
-    throw new ForbiddenError("You don't have permission to manage sharing for this record.")
-  }
-}
-
-/**
  * Authorize a per-INSTANCE sharing mutation (§1.6). Answers `true` when it has
  * FULLY authorized the target, `false` only for the mail-share targets that must
  * fall through to {@link assertCanManageMailSharing} (`thread:<id>`,
@@ -308,7 +191,7 @@ async function authorizeInstanceTarget(
     capabilities.assertAdminInstance(entityDefinitionId, entityInstanceId)
     return true
   }
-  await assertCanManageRecordSharing(ctx, capabilities, recordId as RecordId)
+  await assertCanManageRecordSharing(toContext(ctx), capabilities, recordId as RecordId)
   return true
 }
 
@@ -428,7 +311,7 @@ export const resourceAccessRouter = createTRPCRouter({
       // (sub-`read` rungs and NEW Manager rows) as explicitly out of scope, so it
       // stays on its own line here. No-op for every non-mail def.
       await assertMailSharingFeature(context, recordId, [input])
-      await assertRecordSharingFeature(ctx, recordId)
+      await assertRecordSharingFeature(context, recordId)
       await grantInstanceAccess(context, {
         recordId,
         granteeType: input.granteeType,
@@ -631,7 +514,7 @@ export const resourceAccessRouter = createTRPCRouter({
       }
       // See `grantInstance` — the plan gate is independent of the authorizer.
       await assertMailSharingFeature(context, recordId, input.grants)
-      await assertRecordSharingFeature(ctx, recordId)
+      await assertRecordSharingFeature(context, recordId)
       await setInstanceAccess(context, recordId, input.granteeType, input.grants)
       await recordAuditFromCtx(ctx, {
         category: 'security',
