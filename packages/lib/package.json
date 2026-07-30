@@ -148,6 +148,12 @@
       "import": "./dist/ai/quota/client.mjs",
       "default": "./src/ai/quota/client.ts"
     },
+    "./approval-requests": {
+      "types": "./src/approval-requests/index.ts",
+      "source": "./src/approval-requests/index.ts",
+      "import": "./dist/approval-requests/index.mjs",
+      "default": "./src/approval-requests/index.ts"
+    },
     "./approvals": {
       "types": "./src/approvals/index.ts",
       "source": "./src/approvals/index.ts",

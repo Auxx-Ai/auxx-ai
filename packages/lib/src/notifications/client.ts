@@ -83,6 +83,36 @@ export type NotificationMetadata =
       level: 'read' | 'write' | 'full'
     }
   | { kind: 'MESSAGE_SHARED'; subject?: string | null; lens: string }
+  // Access requests (plans/permissions/v2/28 §7, 42 §8). `ResourcePermission`
+  // vocabulary (`none|view|edit|admin`), deliberately NOT `RESOURCE_SHARED`'s stale
+  // `'read'|'write'|'full'` — do not propagate that shape into new variants.
+  | {
+      kind: 'ACCESS_REQUESTED'
+      /** The server-built durable label (plan 42 §7) — never client-authored. */
+      subjectLabel: string
+      targetKind: 'area' | 'def' | 'instance'
+      /** Definition slug for def/instance targets; `'thread'` for the mail lane. */
+      resourceKey?: string
+      requestedLevel?: 'none' | 'view' | 'edit' | 'admin'
+      /** Mail lens, when the target is a mail-sharing definition. */
+      requestedLens?: 'metadata' | 'subject' | 'full'
+      /** True when this is a re-ask that bumped `metadata.remindedAt` rather than a new row. */
+      reRequest?: boolean
+    }
+  | {
+      kind: 'ACCESS_REQUEST_DECIDED'
+      subjectLabel: string
+      targetKind: 'area' | 'def' | 'instance'
+      resourceKey?: string
+      /**
+       * `superseded` is not a decision the approver made — it is "access already
+       * arrived another way", which the requester needs told differently from an
+       * approval they can act on.
+       */
+      decision: 'approved' | 'denied' | 'timeout' | 'superseded'
+      grantedLevel?: 'none' | 'view' | 'edit' | 'admin'
+      grantedLens?: 'metadata' | 'subject' | 'full'
+    }
   | {
       kind:
         | 'WORKFLOW_APPROVAL_REQUIRED'
@@ -120,6 +150,8 @@ export const NOTIFICATION_ICON_MAP: Record<NotificationType, { iconId: string; c
   TASK_ASSIGNED: { iconId: 'clipboard-check', color: 'blue' },
   RESOURCE_SHARED: { iconId: 'share-2', color: 'blue' },
   MESSAGE_SHARED: { iconId: 'mail', color: 'blue' },
+  ACCESS_REQUESTED: { iconId: 'lock-keyhole', color: 'orange' },
+  ACCESS_REQUEST_DECIDED: { iconId: 'lock-keyhole-open', color: 'green' },
 }
 
 export const DEFAULT_NOTIFICATION_ICON = { iconId: 'bell', color: 'gray' }

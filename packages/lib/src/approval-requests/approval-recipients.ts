@@ -1,9 +1,9 @@
-// packages/lib/src/workflow-engine/services/approval-recipients.ts
+// packages/lib/src/approval-requests/approval-recipients.ts
 
 import { type Database, database, schema } from '@auxx/database'
 import { MemberType } from '@auxx/database/enums'
 import { and, eq, inArray } from 'drizzle-orm'
-import { getUserSetting } from '../../settings'
+import { getUserSetting } from '../settings'
 
 /** The assignee columns of an `ApprovalRequest`, plus the org they live in. */
 export interface ApprovalAudience {

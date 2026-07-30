@@ -1,0 +1,1 @@
+ALTER TABLE "ApprovalRequest" ADD CONSTRAINT "ApprovalRequest_access_columns_check" CHECK (("ApprovalRequest"."kind" = 'access') = ("ApprovalRequest"."targetKind" IS NOT NULL AND "ApprovalRequest"."requesterId" IS NOT NULL));

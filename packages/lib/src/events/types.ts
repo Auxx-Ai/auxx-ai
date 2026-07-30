@@ -454,7 +454,8 @@ export type ApprovalRespondedEvent = AuxxEventGeneric<
   'approval:responded',
   {
     approvalRequestId: string
-    workflowRunId: string
+    /** `null` for an `access`-kind approval — it has no workflow run (plan 28 §3). */
+    workflowRunId: string | null
     action: 'approve' | 'deny'
     userId: string
     organizationId: string
@@ -464,7 +465,8 @@ export type ApprovalCancelledEvent = AuxxEventGeneric<
   'approval:cancelled',
   {
     approvalRequestId: string
-    workflowRunId: string
+    /** `null` for an `access`-kind approval — it has no workflow run (plan 28 §3). */
+    workflowRunId: string | null
     cancelledBy: string
     organizationId: string
   }

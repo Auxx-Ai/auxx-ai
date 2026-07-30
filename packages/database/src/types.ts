@@ -11,6 +11,8 @@ export type ApprovalAction = (typeof Enums.ApprovalActionValues)[number]
 
 export type ApprovalStatus = (typeof Enums.ApprovalStatusValues)[number]
 
+export type ApprovalKind = (typeof Enums.ApprovalKindValues)[number]
+
 export type ArticleStatus = (typeof Enums.ArticleStatusValues)[number]
 
 export type ArticleKind = (typeof Enums.ArticleKindValues)[number]

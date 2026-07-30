@@ -1,11 +1,14 @@
 // packages/lib/src/resource-access/grantee-resolution.ts
 
-import { schema } from '@auxx/database'
-import { ResourceGranteeType } from '@auxx/database/enums'
+import { type Database, schema } from '@auxx/database'
+import { MemberType, ResourceGranteeType } from '@auxx/database/enums'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, type SQL } from 'drizzle-orm'
 import type { MemberRoleEntry } from '../cache/org-cache-keys'
 import { resolveBaseProfile } from '../permissions/profiles/profile-resolution'
 import type { CachedPermissionProfile } from '../permissions/profiles/types'
+
+const logger = createScopedLogger('grantee-resolution')
 
 /**
  * The ONE place the server resolves **which `ResourceAccess` grantee rows apply
@@ -203,6 +206,89 @@ export function resourceAccessGranteeConditions(
         : inArray(schema.ResourceAccess.granteeId, matcher.granteeIds)
     )
   )
+}
+
+/**
+ * The INVERSE of {@link granteeMatchers}: given one `ResourceAccess` grantee, which
+ * concrete users does it reach?
+ *
+ * **This is the ONE implementation, and it exists because there were three**
+ * (plan 42 §3.1): `mail-grant-index-provider`'s `expandGrantee` (cache-only),
+ * `resource-access-service`'s private `resolveShareRecipients` (share notification
+ * fan-out), and `approval-recipients`'s `getApprovalAssigneeUserIds` (which
+ * resolves assignee COLUMNS, a different input shape, and stays as it is). The
+ * forward matcher and this reverse expansion must enumerate the same grantee
+ * vocabulary or a grant is visible in one direction only — the failure mode 19a
+ * finding 4 recorded, and the reason a fourth copy for approver resolution was
+ * not acceptable.
+ *
+ * Exhaustive over the vocabulary: an unknown kind resolves to nobody and says so,
+ * rather than being silently reinterpreted as a group id.
+ *
+ * `humansOnly` drops agent / system principals using `memberRoleMap.userType` —
+ * a filter over data already being read, not an extra query. Approval audiences
+ * MUST set it: a synthetic agent user holding an inbox `admin` row would otherwise
+ * be snapshotted as an approver, satisfy the non-empty assertion, and be unable to
+ * decide anything.
+ */
+export async function expandGranteeToUserIds(
+  db: Database,
+  organizationId: string,
+  grantee: { granteeType: string; granteeId: string },
+  opts: { cap?: number; humansOnly?: boolean } = {}
+): Promise<{ userIds: string[]; capped: boolean }> {
+  const { getOrgCache } = await import('../cache')
+  const cap = opts.cap ?? Number.POSITIVE_INFINITY
+
+  const finish = async (ids: string[]): Promise<{ userIds: string[]; capped: boolean }> => {
+    let out = ids
+    if (opts.humansOnly) {
+      const roleMap = await getOrgCache().get(organizationId, 'memberRoleMap')
+      out = out.filter((userId) => roleMap[userId]?.userType === 'USER')
+    }
+    const capped = out.length > cap
+    return { userIds: capped ? out.slice(0, cap) : out, capped }
+  }
+
+  switch (grantee.granteeType) {
+    case ResourceGranteeType.user:
+      return finish([grantee.granteeId])
+
+    case ResourceGranteeType.role:
+      // `org_member` is the only role grantee on ResourceAccess — the
+      // def/workspace baseline marker (doc 19 §11a deviation 2). It is NOT a
+      // personal share, which is why the notification path passes it through and
+      // then drops the result.
+      if (grantee.granteeId !== ORG_MEMBER_GRANTEE_ID) return { userIds: [], capped: false }
+      return finish(
+        (await getOrgCache().get(organizationId, 'members')).map(
+          (m: { userId: string }) => m.userId
+        )
+      )
+
+    case ResourceGranteeType.profile:
+      return finish(await resolveProfileHolders(organizationId, grantee.granteeId))
+
+    case ResourceGranteeType.group:
+    case ResourceGranteeType.team: {
+      const members = (await db.query.EntityGroupMember.findMany({
+        where: and(
+          eq(schema.EntityGroupMember.groupInstanceId, grantee.granteeId),
+          eq(schema.EntityGroupMember.memberType, MemberType.user)
+        ),
+        columns: { memberRefId: true },
+      })) as Array<{ memberRefId: string }>
+      return finish(members.map((m) => m.memberRefId))
+    }
+
+    default:
+      logger.warn('Unhandled ResourceAccess granteeType in grantee expansion — reaches nobody', {
+        organizationId,
+        granteeType: grantee.granteeType,
+        granteeId: grantee.granteeId,
+      })
+      return { userIds: [], capped: false }
+  }
 }
 
 /**

@@ -43,10 +43,11 @@ vi.mock('../../../../notifications/notification-service', () => ({
     sendNotification = mocks.sendNotification
   },
 }))
-vi.mock('../../../services/approval-response-service', () => ({
-  ApprovalResponseService: class {
-    generateApprovalToken = vi.fn(async () => 'tok')
-  },
+// The approval spine moved out of `workflow-engine/services` into the functional
+// `approval-requests` module (the two service classes are gone).
+vi.mock('../../../../approval-requests', () => ({
+  generateApprovalToken: vi.fn(async () => 'tok'),
+  approvalEmailEnabled: vi.fn(async () => true),
 }))
 
 const { HumanConfirmationProcessor } = await import('../human-confirmation')

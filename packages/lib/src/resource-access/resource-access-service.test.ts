@@ -12,6 +12,13 @@ vi.mock('../cache', () => ({
   onCacheEvent: vi.fn(async () => {}),
   getCachedUserGroupIds: vi.fn(async () => []),
   getCachedResources: vi.fn(async () => []),
+  // `resolveShareRecipients` now routes through the ONE shared grantee expansion
+  // (`grantee-resolution.expandGranteeToUserIds`, plan 42 §3.1), which reads the
+  // org cache for the `role:org_member` and `humansOnly` branches.
+  getOrgCache: () => ({
+    get: async (_orgId: string, key: string) =>
+      key === 'members' ? [] : key === 'memberRoleMap' ? {} : [],
+  }),
 }))
 
 // A profile grantee routes through the SAME audience sweep `grant-service.ts`
@@ -33,9 +40,19 @@ const resolveResourceAccessGrantees = vi.fn(async (_org: string, userId: string)
   groupIds: [] as string[],
   profileId: null as string | null,
 }))
+// Spied at the SHARED-EXPANSION seam (plan 42 §3.1). `resolveShareRecipients` no
+// longer calls `resolveProfileHolders` itself — it routes every grantee kind
+// through `expandGranteeToUserIds`, which is what 19a #26's bug (a profile grantee
+// falling through to the group branch and matching nothing) now cannot happen in
+// only one of several copies.
+const expandGranteeToUserIds = vi.fn(async () => ({
+  userIds: ['u_holder_a', 'u_holder_b'],
+  capped: false,
+}))
 vi.mock('./grantee-resolution', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./grantee-resolution')>()),
   resolveProfileHolders: (...a: unknown[]) => resolveProfileHolders(...(a as [])),
+  expandGranteeToUserIds: (...a: unknown[]) => expandGranteeToUserIds(...(a as [])),
   resolveResourceAccessGrantees: (...a: unknown[]) =>
     resolveResourceAccessGrantees(...(a as [string, string])),
 }))
@@ -180,7 +197,7 @@ describe('resource-access cache-event emission', () => {
   })
 
   it('notifies a profile grant’s holders instead of nobody (19a #26)', async () => {
-    resolveProfileHolders.mockClear()
+    expandGranteeToUserIds.mockClear()
     await grantInstanceAccess(
       { db: fakeDb(), organizationId: ORG, userId: 'granter' },
       {
@@ -192,7 +209,53 @@ describe('resource-access cache-event emission', () => {
     )
     // The share notification is fire-and-forget; let the microtask queue drain.
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(resolveProfileHolders).toHaveBeenCalledWith(ORG, 'prof_field')
+    // The profile grantee reaches the shared expansion AS a profile — not
+    // reinterpreted as a group instance id, which resolved to nobody with no error
+    // and no log.
+    expect(expandGranteeToUserIds).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG,
+      expect.objectContaining({
+        granteeType: ResourceGranteeType.profile,
+        granteeId: 'prof_field',
+      }),
+      expect.objectContaining({ cap: expect.any(Number) })
+    )
+  })
+
+  it('an approval-origin grant suppresses the generic share notification (plan 42 §8)', async () => {
+    expandGranteeToUserIds.mockClear()
+    await grantInstanceAccess(
+      { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: toRecordId('thread', 'thread_1'),
+        granteeType: ResourceGranteeType.user,
+        granteeId: 'u_requester',
+        permission: ResourcePermission.view,
+        lens: 'full',
+        origin: 'approval',
+      }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // `ACCESS_REQUEST_DECIDED` is sent instead — "Sarah approved your request"
+    // beats "Sarah shared a conversation with you" for a thing they asked for.
+    expect(expandGranteeToUserIds).not.toHaveBeenCalled()
+  })
+
+  it('a DIRECT grant still notifies — the suppression is origin-scoped', async () => {
+    expandGranteeToUserIds.mockClear()
+    await grantInstanceAccess(
+      { db: fakeDb(), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: toRecordId('thread', 'thread_1'),
+        granteeType: ResourceGranteeType.user,
+        granteeId: 'u_requester',
+        permission: ResourcePermission.view,
+        lens: 'full',
+      }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(expandGranteeToUserIds).toHaveBeenCalled()
   })
 
   it('emits for both removed and added grantees on a set', async () => {

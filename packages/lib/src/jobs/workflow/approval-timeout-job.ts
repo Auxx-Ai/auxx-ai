@@ -5,8 +5,8 @@ import { ApprovalStatus } from '@auxx/database/enums'
 import type { ApprovalRequestEntity as ApprovalRequest } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import { getApprovalAssigneeUserIds } from '../../approval-requests/approval-recipients'
 import { publisher } from '../../events/publisher'
-import { getApprovalAssigneeUserIds } from '../../workflow-engine/services/approval-recipients'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
 import type { JobContext } from '../types'
 
@@ -118,11 +118,11 @@ async function sendTimeoutNotifications(approvalRequest: ApprovalRequest): Promi
           userId,
           targetType: 'APPROVAL',
           targetIds: { approvalRequestId: approvalRequest.id },
-          message: `Approval request for workflow "${approvalRequest.workflowName}" has expired`,
+          message: `Approval request for workflow "${approvalRequest.subjectLabel}" has expired`,
           organizationId: approvalRequest.organizationId,
           metadata: {
             kind: 'WORKFLOW_APPROVAL_COMPLETED',
-            workflowName: approvalRequest.workflowName,
+            workflowName: approvalRequest.subjectLabel,
             workflowId: approvalRequest.workflowId,
             workflowRunId: approvalRequest.workflowRunId,
             nodeId: approvalRequest.nodeId,

@@ -6,6 +6,11 @@ import { ApprovalStatus } from '@auxx/database/enums'
 import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { eq, inArray } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
+import { generateApprovalToken } from '../../../approval-requests'
+import {
+  approvalEmailEnabled,
+  getApprovalAssigneeUserIds,
+} from '../../../approval-requests/approval-recipients'
 import { getCachedWorkflowApp } from '../../../cache/workflow-app-queries'
 import { publisher } from '../../../events/publisher'
 import { enqueueEmailJob } from '../../../jobs/email'
@@ -18,11 +23,6 @@ import type {
   WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import {
-  approvalEmailEnabled,
-  getApprovalAssigneeUserIds,
-} from '../../services/approval-recipients'
-import { ApprovalResponseService } from '../../services/approval-response-service'
 import { BaseNodeProcessor } from '../base-node'
 
 interface HumanConfirmationNodeData {
@@ -163,6 +163,10 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         .values({
           id: uuidv4(),
           organizationId,
+          // Explicit, not defaulted (plan 28 §6 item 4): the column has a
+          // `DEFAULT 'workflow'` for the backfill, but a writer that relies on the
+          // default reads as if the kind were incidental.
+          kind: 'workflow',
           workflowId: context.workflowId,
           workflowRunId,
           nodeId: node.nodeId,
@@ -171,7 +175,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
           message,
           assigneeUsers: assignees.userIds,
           assigneeGroups: assignees.groups,
-          workflowName,
+          subjectLabel: workflowName,
           createdById,
           expiresAt,
           metadata: {
@@ -397,7 +401,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         await publishApprovalPing(getRealtimeService(), allUserIds, {
           approvalRequestId: approvalRequest.id,
           organizationId: approvalRequest.organizationId,
-          workflowName: approvalRequest.workflowName,
+          workflowName: approvalRequest.subjectLabel,
           expiresAt: approvalRequest.expiresAt?.toISOString() ?? null,
         })
         contextManager.log('INFO', approvalRequest.nodeId, 'Pinged approval assignees', {
@@ -437,7 +441,6 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       .from(schema.User)
       .where(inArray(schema.User.id, userIds))
 
-    const responseService = new ApprovalResponseService(db)
     const baseUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
 
     for (const user of users) {
@@ -449,13 +452,13 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         let approvalUrl = baseUrl
 
         if (!requireLogin) {
-          const token = await responseService.generateApprovalToken(approvalRequest.id, user.id)
+          const token = await generateApprovalToken(db, approvalRequest.id, user.id)
           approvalUrl += `?token=${encodeURIComponent(token)}`
         }
 
         await enqueueEmailJob('approval-request', {
           recipient: { email: user.email!, name: user.name || 'User' },
-          workflowName: approvalRequest.workflowName,
+          workflowName: approvalRequest.subjectLabel,
           message: approvalRequest.message,
           approvalUrl,
           expiresAt: approvalRequest.expiresAt,

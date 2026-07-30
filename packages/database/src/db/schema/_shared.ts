@@ -34,7 +34,23 @@ export const actionType = pgEnum('ActionType', [
 ])
 export const aiIntegrationStatus = pgEnum('AiIntegrationStatus', ['PENDING', 'VALID', 'INVALID'])
 export const approvalAction = pgEnum('ApprovalAction', ['approve', 'deny'])
-export const approvalStatus = pgEnum('ApprovalStatus', ['pending', 'approved', 'denied', 'timeout'])
+// `withdrawn` / `superseded` are ACCESS-kind terminal states (plan 28 H9):
+// the requester withdrew their own pending ask, or access arrived by another
+// route before it was decided. Workflow approvals never produce either, so the
+// resume branch in `approval-response-service` is unaffected.
+export const approvalStatus = pgEnum('ApprovalStatus', [
+  'pending',
+  'approved',
+  'denied',
+  'timeout',
+  'withdrawn',
+  'superseded',
+])
+// Which lane an `ApprovalRequest` row belongs to (plan 28 §3). `workflow` is the
+// human-confirmation node; `access` is a user asking for permission. The
+// discriminator exists so `ApprovalResponse`, the pending list and the badge stay
+// one shared spine instead of a second table per kind.
+export const approvalKind = pgEnum('ApprovalKind', ['workflow', 'access'])
 export const articleStatus = pgEnum('ArticleStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED'])
 export const articleKind = pgEnum('articleKind', ['page', 'category', 'header', 'tab', 'link'])
 export const kbPublishStatus = pgEnum('KBPublishStatus', ['DRAFT', 'PUBLISHED', 'UNLISTED'])
@@ -345,6 +361,15 @@ export const notificationType = pgEnum('NotificationType', [
   'TASK_ASSIGNED',
   'RESOURCE_SHARED',
   'MESSAGE_SHARED',
+  // Access requests (plans/permissions/v2/28 §7, 42 §8). Both reuse the existing
+  // APPROVAL notification target with an approvalRequestId — deliberately NOT a
+  // THREAD target on the request notification, so the approver lands on the
+  // decision rather than on a conversation they may not be able to read.
+  // NB: keep quoted string literals OUT of comments inside a pgEnum array —
+  // scripts/generate-client-enums.ts parses these arrays textually and would
+  // lift a quoted word out of the comment into the generated value list.
+  'ACCESS_REQUESTED',
+  'ACCESS_REQUEST_DECIDED',
 ])
 export const orderAddressType = pgEnum('ORDER_ADDRESS_TYPE', ['SHIPPING', 'BILLING'])
 export const orderCancelReason = pgEnum('ORDER_CANCEL_REASON', [

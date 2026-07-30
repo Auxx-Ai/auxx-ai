@@ -292,7 +292,7 @@ function ApprovalCard({
             : 'Approval Required'}
         </CardTitle>
         <CardDescription>
-          {approval.workflowName ?? 'Workflow'} — {approval.nodeName ?? approval.nodeId}
+          {approval.subjectLabel ?? 'Workflow'} — {approval.nodeName ?? approval.nodeId}
         </CardDescription>
       </CardHeader>
 

@@ -147,14 +147,18 @@ describe('personal_inbox inherits the mail keyspace backstop', () => {
   })
 
   it('writes the slug-keyed owner row — the shape provisioning actually uses', async () => {
-    await expect(grant(toRecordId('personal_inbox', 'pi_1'))).resolves.toBeUndefined()
+    await expect(grant(toRecordId('personal_inbox', 'pi_1'))).resolves.toMatchObject({
+      flushEmits: expect.any(Function),
+    })
     expect(writes.insert).toHaveBeenCalled()
     // Already canonical: the hot mail path never reads the resources projection.
     expect(getCachedResources).not.toHaveBeenCalled()
   })
 
   it('still leaves a CUID-keyed grant on a custom def alone', async () => {
-    await expect(grant(`${DEALS_DEF_ID}:rec_1`)).resolves.toBeUndefined()
+    await expect(grant(`${DEALS_DEF_ID}:rec_1`)).resolves.toMatchObject({
+      flushEmits: expect.any(Function),
+    })
     expect(writes.insert).toHaveBeenCalled()
   })
 })
