@@ -304,8 +304,14 @@ vi.mock('@auxx/lib/permissions', async () => {
  */
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')
+  const { AuxxError } = await import('@auxx/lib/errors')
   const t = initTRPC.context<Record<string, unknown>>().create()
   return {
+    // The REAL predicate: `thread.ts`'s `handleServiceError` uses it to let an
+    // AuxxError through untouched instead of flattening it to a 500 (plan 44).
+    isAuxxError: (error: unknown) =>
+      error instanceof AuxxError ||
+      (error instanceof Error && typeof (error as { statusCode?: number }).statusCode === 'number'),
     createTRPCRouter: t.router,
     capabilityProcedure: t.procedure,
     protectedProcedure: t.procedure,

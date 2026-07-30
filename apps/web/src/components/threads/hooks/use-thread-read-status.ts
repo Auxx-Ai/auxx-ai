@@ -3,13 +3,20 @@
 import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useRef } from 'react'
-import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hooks'
+import { useCountUpdates } from '~/components/mail/hooks'
+import { buildThreadCountContext } from '~/components/mail/utils/thread-count-context'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
 import { useThreadStore } from '../store'
 
 interface UseThreadReadStatusResult {
-  isUnread: boolean
+  /**
+   * `undefined` while the thread is not in the store — the caller decides what
+   * an unknown thread looks like. A list row may render it bold (`?? true`);
+   * the detail pane must NOT, because its auto-mark effect turns that default
+   * into a write against a thread whose lens it cannot know yet (plan 44 §1.2).
+   */
+  isUnread: boolean | undefined
   markAsRead: () => void
   markAsUnread: () => void
 }
@@ -53,14 +60,9 @@ export function useThreadReadStatus(threadId: string | null): UseThreadReadStatu
     onMutate: ({ updates }) => {
       if (!threadId || !thread || !currentUserId || updates.isUnread === undefined) return
 
-      // Build context from current thread state
-      const context: ThreadCountContext = {
-        isUnread: thread.isUnread,
-        inboxId: thread.inboxId ?? null,
-        assigneeId: thread.assigneeId ?? null,
-        status: thread.status as 'OPEN' | 'ARCHIVED' | 'TRASH' | 'CLOSED' | 'SPAM',
-        threadData: thread as unknown as Record<string, unknown>,
-      }
+      // Build context from current thread state (the shared producer is what
+      // normalizes ActorId/RecordId into the bare count keyspaces).
+      const context = buildThreadCountContext(thread)
 
       // Update ThreadStore (for UI)
       updateThread(threadId, { isUnread: updates.isUnread })
@@ -88,7 +90,7 @@ export function useThreadReadStatus(threadId: string | null): UseThreadReadStatu
   mutateRef.current = readStatus.mutate
 
   return {
-    isUnread: isUnread ?? true,
+    isUnread,
     markAsRead: useCallback(() => {
       if (threadId) {
         mutateRef.current({

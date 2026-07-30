@@ -39,7 +39,7 @@ import { getInstanceId, recordIdSchema } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, isAuxxError, notDemo, permissionProcedure } from '~/server/api/trpc'
 import { assertSignatureUsable } from '~/server/lib/signature-instance-access'
 
 const logger = createScopedLogger('thread-router')
@@ -185,6 +185,14 @@ const getServiceDependencies = async (
 /**
  * Centralized error handler for service calls.
  * Logs the error and throws an appropriate TRPCError.
+ *
+ * Every `thread.*` catch funnels through here, so the `AuxxError` passthrough
+ * below is the whole file's fix (plan 44 §1.3 / §1.4): a service refusal —
+ * `UnreadService.setReadStatus`'s `ForbiddenError` on a sub-`full` thread, and
+ * every other authorization throw in the thread services — used to be flattened
+ * into `INTERNAL_SERVER_ERROR` right here, so a 403 reached the client as
+ * "An unexpected error occurred in <procedure>". Rethrown untouched, it reaches
+ * `auxxErrorMiddleware`, which maps `statusCode` to the real tRPC code.
  */
 const handleServiceError = (
   error: unknown,
@@ -194,6 +202,7 @@ const handleServiceError = (
   const message = error instanceof Error ? error.message : 'Unknown error'
   const stack = error instanceof Error ? error.stack : undefined
   logger.error(`Error in ${procedureName}`, { ...context, error: message, stack })
+  if (isAuxxError(error)) throw error
   if (error instanceof Error) {
     if (message.includes('not found')) {
       throw new TRPCError({ code: 'NOT_FOUND', message, cause: error })
@@ -1019,6 +1028,11 @@ export const threadRouter = createTRPCRouter({
           error: error instanceof Error ? error.message : error,
           stack: error instanceof Error ? error.stack : undefined,
         })
+        // Already-typed throws pass straight through: the `chat_retry_unsupported`
+        // BAD_REQUEST above matches none of the message sniffs below and would
+        // otherwise be re-wrapped as a 500 (plan 44 §1.4).
+        if (error instanceof TRPCError) throw error
+        if (isAuxxError(error)) throw error
         // Map service errors to tRPC codes
         if (error instanceof Error) {
           const message = error.message.toLowerCase()
@@ -1075,6 +1089,7 @@ export const threadRouter = createTRPCRouter({
           actorId: userId,
         })
       } catch (error) {
+        if (isAuxxError(error)) throw error
         const message = error instanceof Error ? error.message : String(error)
         if (message.includes('not found')) {
           throw new TRPCError({ code: 'NOT_FOUND', message })

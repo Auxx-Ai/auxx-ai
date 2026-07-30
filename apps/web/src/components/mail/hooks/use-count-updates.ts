@@ -1,26 +1,15 @@
 // apps/web/src/components/mail/hooks/use-count-updates.ts
 
 import { type ConditionGroup, evaluateConditions } from '@auxx/lib/conditions/client'
+import { safeParseActorId } from '@auxx/types/actor'
 import { useCallback, useMemo } from 'react'
 import { useSession } from '~/auth/auth-client'
 import { type CountUpdates, useMailCountsStore } from '../store'
+import type { ThreadCountContext } from '../utils/thread-count-context'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Context about a thread needed to calculate which counts to update.
- * This should be derived from the thread's current state before mutation.
- */
-export interface ThreadCountContext {
-  isUnread: boolean
-  inboxId: string | null
-  assigneeId: string | null // Plain user ID (not ActorId format)
-  status: 'OPEN' | 'ARCHIVED' | 'TRASH' | 'CLOSED' | 'SPAM'
-  /** Full thread data for view filter evaluation */
-  threadData?: Record<string, unknown>
-}
 
 /**
  * View definition for filter evaluation.
@@ -78,7 +67,13 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
       case 'inbox':
         return thread.inboxId
       case 'assignee':
-        return thread.assigneeId
+        // Bare user id, not the store's ActorId. A view filter's
+        // `valueSource: 'currentUser'` is substituted with the BARE session id
+        // (`resolveConditionContext`) and the server evaluates the same filter
+        // in SQL against the bare `Thread.assigneeId` column — so an ActorId
+        // here makes every "assignee is me" view delta silently miss, which is
+        // exactly the filter people actually build (plan 44 §3.3).
+        return safeParseActorId(thread.assigneeId)?.id ?? thread.assigneeId
       case 'tags':
         return thread.tagIds
       case 'tag':
@@ -126,13 +121,14 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
         if (thread.status !== 'OPEN') continue // Only OPEN threads affect counts
 
         // Decrement personal inbox if assigned to current user
-        if (thread.assigneeId === currentUserId) {
+        if (thread.assigneeUserId === currentUserId) {
           updates.inbox! -= 1
         }
 
         // Decrement shared inbox count
-        if (thread.inboxId) {
-          updates.sharedInboxes![thread.inboxId] = (updates.sharedInboxes![thread.inboxId] ?? 0) - 1
+        if (thread.inboxInstanceId) {
+          updates.sharedInboxes![thread.inboxInstanceId] =
+            (updates.sharedInboxes![thread.inboxInstanceId] ?? 0) - 1
         }
 
         // Decrement view counts using filter evaluation
@@ -163,13 +159,14 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
         if (thread.status !== 'OPEN') continue // Only OPEN threads affect counts
 
         // Increment personal inbox if assigned to current user
-        if (thread.assigneeId === currentUserId) {
+        if (thread.assigneeUserId === currentUserId) {
           updates.inbox! += 1
         }
 
         // Increment shared inbox count
-        if (thread.inboxId) {
-          updates.sharedInboxes![thread.inboxId] = (updates.sharedInboxes![thread.inboxId] ?? 0) + 1
+        if (thread.inboxInstanceId) {
+          updates.sharedInboxes![thread.inboxInstanceId] =
+            (updates.sharedInboxes![thread.inboxInstanceId] ?? 0) + 1
         }
 
         // Increment view counts using filter evaluation
@@ -189,6 +186,9 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
   /**
    * Update counts when moving thread to a different inbox.
    * Only updates if thread is unread and OPEN.
+   *
+   * @param toInboxId - BARE destination inbox instance id (parse the RecordId
+   *   with `getInstanceId` first; the count keyspace is unprefixed).
    */
   const onMoveToInbox = useCallback(
     (thread: ThreadCountContext, toInboxId: string) => {
@@ -199,8 +199,8 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
       const updates: CountUpdates = { sharedInboxes: {}, views: {} }
 
       // Decrement source inbox
-      if (thread.inboxId) {
-        updates.sharedInboxes![thread.inboxId] = -1
+      if (thread.inboxInstanceId) {
+        updates.sharedInboxes![thread.inboxInstanceId] = -1
       }
 
       // Increment destination inbox
@@ -235,13 +235,16 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
   /**
    * Update counts when assigning thread to a user.
    * Only updates personal inbox count if thread is unread and OPEN.
+   *
+   * @param toUserId - BARE destination user id (parse the ActorId with
+   *   `safeParseActorId` first).
    */
   const onAssignThread = useCallback(
     (thread: ThreadCountContext, toUserId: string | null, currentUserId: string) => {
       if (!thread.isUnread) return // Read threads don't affect counts
       if (thread.status !== 'OPEN') return
 
-      const wasAssignedToMe = thread.assigneeId === currentUserId
+      const wasAssignedToMe = thread.assigneeUserId === currentUserId
       const isAssigningToMe = toUserId === currentUserId
 
       if (wasAssignedToMe === isAssigningToMe) return // No change for current user
@@ -294,13 +297,14 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
         if (thread.status !== 'OPEN') continue // Already not OPEN
 
         // Decrement personal inbox if assigned to current user
-        if (thread.assigneeId === currentUserId) {
+        if (thread.assigneeUserId === currentUserId) {
           updates.inbox! -= 1
         }
 
         // Decrement shared inbox count
-        if (thread.inboxId) {
-          updates.sharedInboxes![thread.inboxId] = (updates.sharedInboxes![thread.inboxId] ?? 0) - 1
+        if (thread.inboxInstanceId) {
+          updates.sharedInboxes![thread.inboxInstanceId] =
+            (updates.sharedInboxes![thread.inboxInstanceId] ?? 0) - 1
         }
 
         // Decrement all matching view counts
@@ -330,13 +334,13 @@ export function useCountUpdates(views: ViewDefinition[] = EMPTY_VIEWS) {
       const updates: CountUpdates = { inbox: 0, sharedInboxes: {}, views: {} }
 
       // Increment personal inbox if assigned to current user
-      if (thread.assigneeId === currentUserId) {
+      if (thread.assigneeUserId === currentUserId) {
         updates.inbox! += 1
       }
 
       // Increment shared inbox count
-      if (thread.inboxId) {
-        updates.sharedInboxes![thread.inboxId] = 1
+      if (thread.inboxInstanceId) {
+        updates.sharedInboxes![thread.inboxInstanceId] = 1
       }
 
       // Increment all matching view counts

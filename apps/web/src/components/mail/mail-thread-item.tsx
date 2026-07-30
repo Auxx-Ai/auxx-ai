@@ -234,7 +234,10 @@ export const MailThreadItem = memo(function MailThreadItem({
   // Redacted rendering (mail-permissions): below `full` the row never looks
   // unread (isUnread is full-tier); at `metadata` the subject is absent.
   const myLens = thread?.myLens ?? 'full'
-  const isUnread = myLens === 'full' && readStatusUnread
+  // A row whose thread hasn't landed yet renders bold — a list-row concern
+  // only, which is why the hook now hands back `undefined` instead of baking
+  // this default in for the detail pane too (plan 44 §1.3).
+  const isUnread = myLens === 'full' && (readStatusUnread ?? true)
 
   // --- Selection store actions ---
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
