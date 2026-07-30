@@ -181,22 +181,31 @@ jobs:
     needs: [changes, lint, typecheck, test]
     runs-on: ubuntu-latest
     steps:
+      # `success` and `skipped` pass; EVERYTHING else fails. The earlier version
+      # tested only for `failure`, which let `cancelled` through as green — and
+      # that is not hypothetical. On 2026-07-30 a push superseded an in-flight
+      # run, `Typecheck (web)` was cancelled mid-job, `ci-ok` reported success,
+      # and a TS6307 that job would have caught sat on `main` until an unrelated
+      # commit tripped it.
+      #
+      # A superseded run reporting failure is the correct reading: it verified
+      # nothing. The run that replaced it is the one that speaks for the commit.
       - name: Check results
         run: |
-          if [[ "${{ needs.changes.result }}" == "failure" ]]; then
-            echo "::error::changes job failed"
-            exit 1
-          fi
-          if [[ "${{ needs.lint.result }}" == "failure" ]]; then
-            echo "::error::lint job failed"
-            exit 1
-          fi
-          if [[ "${{ needs.typecheck.result }}" == "failure" ]]; then
-            echo "::error::typecheck job failed"
-            exit 1
-          fi
-          if [[ "${{ needs.test.result }}" == "failure" ]]; then
-            echo "::error::test job failed"
+          failed=0
+          for job in changes lint typecheck test; do
+            case "$job" in
+              changes)   result="${{ needs.changes.result }}" ;;
+              lint)      result="${{ needs.lint.result }}" ;;
+              typecheck) result="${{ needs.typecheck.result }}" ;;
+              test)      result="${{ needs.test.result }}" ;;
+            esac
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "::error::$job job did not pass (result: $result)"
+              failed=1
+            fi
+          done
+          if [[ "$failed" == "1" ]]; then
             exit 1
           fi
           echo "All checks passed or were skipped"
