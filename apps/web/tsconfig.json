@@ -36,6 +36,12 @@
     "**/*.test.tsx",
     "**/*.spec.ts",
     "**/*.spec.tsx",
-    "**/__tests__/**"
+    "**/__tests__/**",
+    // Vitest's own config is not app code, and `packages/lib` already excludes
+    // it for that reason. It matters here because the config imports the shared
+    // alias map from the REPO ROOT: under `composite: true` every file in the
+    // program must be listed by the project, and `../../vitest.alias.ts` cannot
+    // be — so tsc reported TS6307 against a file Next never compiles.
+    "vitest.config.*"
   ]
 }
