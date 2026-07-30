@@ -1,5 +1,29 @@
 // packages/services/src/custom-fields/types.ts
 
+import type {
+  ActorOptions,
+  AiOptions,
+  CalcOptions,
+  DisplayOptions,
+  FileOptions,
+  SelectOption,
+} from '@auxx/types/custom-field'
+
+/**
+ * The `options` payload a create/update accepts, in one place.
+ *
+ * Create and update each used to spell this union out, and they had drifted:
+ * update omitted `{ actor }` even though `updateCustomField` merges actor options,
+ * so the tRPC router's `fieldOptionsUnionSchema` input did not typecheck against it.
+ */
+export type CustomFieldOptionsInput =
+  | SelectOption[]
+  | { file: FileOptions }
+  | { actor: ActorOptions }
+  | { calc: CalcOptions }
+  | { options: SelectOption[]; ai?: AiOptions }
+  | (DisplayOptions & { ai?: AiOptions })
+
 // Re-export all types from @auxx/types/custom-field (single source of truth)
 export {
   type ActorOptions,

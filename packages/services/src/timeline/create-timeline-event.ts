@@ -16,10 +16,13 @@ export interface CreateTimelineEventInput {
   actorType: string
   actorId: string
   eventData?: Record<string, any>
+  /** Persisted verbatim into a `jsonb` column. `oldValue`/`newValue` are the legacy raw
+   *  pair — writers now send server-resolved `oldDisplay`/`newDisplay` snapshots instead
+   *  (see `TimelineChange` in `@auxx/lib/timeline`), so neither is required. */
   changes?: Array<{
     field: string
-    oldValue: any
-    newValue: any
+    oldValue?: unknown
+    newValue?: unknown
   }> | null
   metadata?: Record<string, any> | null
   organizationId: string

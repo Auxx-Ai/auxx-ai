@@ -73,7 +73,10 @@ export async function getView(input: GetViewInput) {
 
   const view = dbResult.value[0]
   if (!view) {
-    return err<ViewNotFoundError>({
+    // `err<T, E>` — the FIRST slot is the ok-value type. Naming only one argument
+    // leaves `E` on its `unknown` default, which erases the error type for every
+    // caller that narrows on `isErr()`.
+    return err<never, ViewNotFoundError>({
       code: 'VIEW_NOT_FOUND',
       message: notFoundMessage,
       viewId: id,

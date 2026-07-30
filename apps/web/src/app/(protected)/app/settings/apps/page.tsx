@@ -120,7 +120,7 @@ export default function IntegrationList() {
   // Filter categories based on whether they have apps
   const categoriesToDisplay = SHOW_EMPTY_CATEGORIES
     ? allCategories
-    : allCategories.filter((cat) => appsByCategory[cat.value]?.length > 0)
+    : allCategories.filter((cat) => (appsByCategory[cat.value]?.length ?? 0) > 0)
 
   // Create refs for each category section
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})

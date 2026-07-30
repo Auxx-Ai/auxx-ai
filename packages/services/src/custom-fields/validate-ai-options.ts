@@ -1,7 +1,7 @@
 // packages/services/src/custom-fields/validate-ai-options.ts
 
 import { database, schema } from '@auxx/database'
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity } from '@auxx/database/types'
 import {
   type AiOptions,
   extractFieldIdsFromPrompt,
@@ -19,7 +19,10 @@ export interface AiOptionsValidationError {
 
 export interface ValidateAiOptionsInput {
   organizationId: string
-  type: FieldType
+  /** The STORED field type. Wider than `FieldType`: the `ContactFieldType`
+   *  column still carries the legacy `PHONE` value that the TS vocabulary
+   *  dropped in favour of `PHONE_INTL`, so an existing row can present one. */
+  type: CustomFieldEntity['type']
   /** `options.ai` parsed from the incoming create/update payload. `undefined`
    *  when the caller did not set an AI block — no validation runs. */
   ai: AiOptions | undefined

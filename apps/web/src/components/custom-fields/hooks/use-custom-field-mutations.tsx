@@ -145,8 +145,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 
       // Determine base type from field type — CALC follows its result type
       // (see the create-onMutate note above).
+      // Passed as `type` (which accepts `FieldType | string`) rather than `fieldType`:
+      // the stored column is the wider `ContactFieldType`, which still carries the
+      // legacy `PHONE` value the TS `FieldType` vocabulary dropped.
       const baseType = mapFieldTypeToBaseType(
-        getEffectiveFieldType({ fieldType: result.type, options: result.options })
+        getEffectiveFieldType({ type: result.type, options: result.options })
       )
 
       // Build capabilities from server response

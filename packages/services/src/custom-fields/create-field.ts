@@ -13,9 +13,8 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import {
+  type CustomFieldOptionsInput,
   canFieldBeUnique,
-  type DisplayOptions,
-  type FileOptions,
   isDisplayOptions,
   type ModelType,
   ModelTypes,
@@ -67,13 +66,7 @@ export interface CreateCustomFieldInput {
   defaultValue?: string
   /** Field options - select options, file config, flat display options
    *  (incl. CURRENCY), actor/calc bags, or `{ options, ai }` for AI-enabled selects. */
-  options?:
-    | SelectOption[]
-    | { file: FileOptions }
-    | { actor: ActorOptions }
-    | { calc: CalcOptions }
-    | { options: SelectOption[]; ai?: AiOptions }
-    | (DisplayOptions & { ai?: AiOptions })
+  options?: CustomFieldOptionsInput
   addressComponents?: string[]
   /** ADDRESS_STRUCT input variant: single free-text input (default, omitted
    *  from storage) vs. separate structured sub-fields. */
@@ -213,10 +206,16 @@ async function resolveUniqueFieldName(
  * For RELATIONSHIP type, automatically creates the inverse field
  *
  * @param input - Field data
- * @param tx - Optional transaction context (defaults to global database)
+ * @param tx - Optional database or transaction context (defaults to global database).
+ *             Every helper this hands it to already takes `Database | Transaction`, and
+ *             the relationship path opens its own transaction when handed the global
+ *             database — so a plain `Database` has always been valid here.
  * @returns Result with created field (or primary field for relationships)
  */
-export async function createCustomField(input: CreateCustomFieldInput, tx?: Transaction) {
+export async function createCustomField(
+  input: CreateCustomFieldInput,
+  tx?: Database | Transaction
+) {
   const {
     organizationId,
     name,

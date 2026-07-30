@@ -27,6 +27,9 @@ export interface WorkflowShareConfig {
   hideBranding?: boolean
   showWorkflowPreview?: boolean
   showInputForm?: boolean
+  /** Stream per-node workflow events to the public runner. Default false (privacy) —
+   *  written by the access-settings panel, read by the shared-run route. */
+  showWorkflowDetails?: boolean
   submitButtonText?: string
   successMessage?: string
   maxConcurrentRuns?: number

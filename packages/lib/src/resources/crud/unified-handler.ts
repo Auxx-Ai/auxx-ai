@@ -13,6 +13,7 @@ import { createTypedValueInput } from '@auxx/types/field-value'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { type AnyColumn, and, eq, type SQL } from 'drizzle-orm'
+import type { Result } from 'neverthrow'
 import { findCachedResource, getCachedCustomFields, getCachedFieldMap } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import { BadRequestError } from '../../errors'
@@ -125,13 +126,13 @@ export type LookupByFieldResult = {
 }
 
 /**
- * Helper to unwrap neverthrow Result and throw on error
+ * Helper to unwrap neverthrow Result and throw on error.
+ *
+ * Typed against `Result`, not structurally: an `Err` carries no `value` and an
+ * `Ok` carries no `error`, so a `{ isErr, error, value }` parameter matches
+ * neither arm and silently degraded `T` to `unknown`.
  */
-function unwrapResult<T, E extends { message: string }>(result: {
-  isErr: () => boolean
-  error: E
-  value: T
-}): T {
+function unwrapResult<T, E extends { message: string }>(result: Result<T, E>): T {
   if (result.isErr()) {
     throw new Error(result.error.message)
   }

@@ -243,7 +243,9 @@ apps.post('/:appSlug/install', requireOrganizationRole(['ADMIN', 'OWNER']), asyn
     )
   }
 
-  const { type, versionId } = bodyResult.data
+  // The request schema's field is `deploymentId`; destructuring `versionId` yielded
+  // undefined, so pinning an install to a specific deployment was silently ignored.
+  const { type, deploymentId } = bodyResult.data
 
   // Resolve slug from cache
   const cachedApp = await getCachedAppBySlug(appSlug)
@@ -256,7 +258,7 @@ apps.post('/:appSlug/install', requireOrganizationRole(['ADMIN', 'OWNER']), asyn
     appId: cachedApp.id,
     organizationId,
     installationType: type!,
-    deploymentId: versionId,
+    deploymentId,
     installedById: userId,
   })
 

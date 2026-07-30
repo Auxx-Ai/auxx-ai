@@ -280,7 +280,10 @@ export const procedureRouter = createTRPCRouter({
       )
       if (!draft) throw new TRPCError({ code: 'NOT_FOUND', message: 'Draft version not found' })
 
-      const { compiled, errors } = compileProcedure(draft.doc as TiptapDoc)
+      // `ProcedureVersion.doc` is untyped `Record<string, unknown>` jsonb and the editor
+      // is its only writer, so the two shapes don't overlap enough for a direct assertion.
+      const draftDoc = draft.doc as unknown as TiptapDoc
+      const { compiled, errors } = compileProcedure(draftDoc)
       if (errors && errors.length > 0) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -292,7 +295,7 @@ export const procedureRouter = createTRPCRouter({
         await publishProcedure({
           organizationId,
           procedureId: input.id,
-          doc: draft.doc as TiptapDoc,
+          doc: draftDoc,
           compiled,
           editorId: ctx.session.userId,
         }),

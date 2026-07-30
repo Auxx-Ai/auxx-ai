@@ -100,7 +100,10 @@ export function useLoadSession() {
     // renders the sender chip non-interactive.
     setActiveSessionAgentId((data as any)?.agentId ?? null)
 
-    const raw = (data?.messages ?? []) as PersistedMessage[]
+    // The session `messages` column is untyped `Record<string, unknown>[]` jsonb; the
+    // agent engine is its only writer. The two shapes don't overlap enough for a direct
+    // assertion, hence the hop through `unknown`.
+    const raw = (data?.messages ?? []) as unknown as PersistedMessage[]
 
     // Persisted shape == render-ready shape. No filter, no reparent loop,
     // no _pendingToolCall re-emit, no reconstructThinkingGroups.

@@ -100,7 +100,13 @@ export class EntityDefinitionService {
       entityType: input.entityType ?? null,
       standardType: input.standardType ?? null,
     })
-    const value = unwrapResult(result)
+    // Narrowed inline rather than through `unwrapResult`: this service returns a UNION
+    // of `Err`s with different error shapes, and inferring `E` from a union argument
+    // only picks up some of its members.
+    if (result.isErr()) {
+      throw new Error(result.error.message)
+    }
+    const value = result.value
     await notifyEntityDefChanged(this.organizationId, value.id, 'created')
     return value
   }

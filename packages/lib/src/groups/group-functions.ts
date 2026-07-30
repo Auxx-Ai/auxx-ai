@@ -26,8 +26,10 @@ import { hasGroupPermission, requireGroupPermission } from './permissions'
 // Group Metadata Type
 // ============================================================================
 
-/** Metadata stored on EntityInstance for entity_group type */
-interface GroupMetadata {
+/** Metadata stored on EntityInstance for entity_group type.
+ *  A type alias, not an interface: `createEntityInstance` takes
+ *  `Record<string, unknown>`, and only aliases get an implicit index signature. */
+type GroupMetadata = {
   memberType?: 'any' | string
   visibility?: GroupVisibility
   color?: string
