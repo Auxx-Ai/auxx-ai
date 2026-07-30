@@ -19,6 +19,13 @@ import { displayPermissionOfRung } from '../ui/level-labels'
 import { deriveInstanceBadge, type InstanceAccessBadge } from '../utils/instance-access-badge'
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
+import {
+  type AccessChoice,
+  parseStagedInstanceKey,
+  type StagedSurface,
+  stagedInstanceKey,
+  useStagedEdits,
+} from './use-staged-edits'
 
 /**
  * Every instance-access key is always "open" here — see the hook doc below.
@@ -104,12 +111,25 @@ export interface InstanceAreaAccess {
  * unlike the agent-policy grid's own per-row expand toggle) plus the org-wide
  * `resourceAccess.allInstanceAccess` rows, and derives each instance's
  * workspace-baseline level and collapsed-row badge without a per-instance
- * query (§B.2.5). Writes reuse the same `grantInstance`/`revokeInstance`
+ * query (§B.2.5).
+ *
+ * **Edits are STAGED, not written** ({@link useStagedEdits}): `setBaseline` moves
+ * the select, `save()` flushes through the same `grantInstance`/`revokeInstance`
  * funnel the Share card and dialog already use, keyed to the `role:org_member`
  * grantee — "Inherit" REVOKES that row (no explicit baseline), "Restricted"
  * WRITES it at `'none'`, and Read/Write/Full write the matching permission.
+ *
+ * The collapsed-row **badge deliberately tracks the persisted rows**, not the
+ * staged ones: `Restricted` / `Shared · N` describe who can reach the item right
+ * now, which an unsaved select has not changed.
  */
-export function useInstanceBaselineRows() {
+export function useInstanceBaselineRows(): {
+  lists: ReturnType<typeof useInstanceResourceLists>
+  isLoading: boolean
+  rowsByKey: Record<InstanceAccessKey, InstanceBaselineRow[]>
+  areaAccessByKey: Record<InstanceAccessKey, InstanceAreaAccess>
+  setBaseline: (key: InstanceAccessKey, instanceId: string, level: AccessChoice) => void
+} & StagedSurface {
   const utils = api.useUtils()
   const { roleDefaults, baseline } = usePermissionGrants()
   const lists = useInstanceResourceLists(ALWAYS_OPEN)
@@ -117,14 +137,14 @@ export function useInstanceBaselineRows() {
   const allQuery = api.resourceAccess.allInstanceAccess.useQuery(undefined, { staleTime: 30_000 })
   const allRows = useMemo(() => allQuery.data ?? [], [allQuery.data])
 
-  const invalidate = useCallback(() => {
-    void utils.resourceAccess.allInstanceAccess.invalidate()
-  }, [utils])
+  // Returns the promise (rather than voiding it) so `save` can await the refetch
+  // before clearing its staged edits — see there.
+  const invalidate = useCallback(() => utils.resourceAccess.allInstanceAccess.invalidate(), [utils])
 
   const grantInstance = api.resourceAccess.grantInstance.useMutation({
     onError: (error) => toastError({ title: 'Error updating access', description: error.message }),
     onSettled: (_data, _error, variables) => {
-      invalidate()
+      void invalidate()
       if (variables)
         void utils.resourceAccess.forInstance.invalidate({ recordId: variables.recordId })
     },
@@ -132,11 +152,38 @@ export function useInstanceBaselineRows() {
   const revokeInstance = api.resourceAccess.revokeInstance.useMutation({
     onError: (error) => toastError({ title: 'Error removing access', description: error.message }),
     onSettled: (_data, _error, variables) => {
-      invalidate()
+      void invalidate()
       if (variables)
         void utils.resourceAccess.forInstance.invalidate({ recordId: variables.recordId })
     },
   })
+
+  const {
+    edits: staged,
+    entries: stagedEntries,
+    stage,
+    discard,
+    replace,
+    isDirty,
+  } = useStagedEdits<AccessChoice>()
+
+  /** The persisted `role:org_member` permission per `type:instanceId`. */
+  const persistedByRow = useMemo(() => {
+    const map = new Map<string, ResourcePermission>()
+    for (const r of allRows) {
+      if (
+        r.granteeType === ResourceGranteeType.role &&
+        r.granteeId === MEMBER_BASELINE_GRANTEE_ID &&
+        r.entityInstanceId
+      ) {
+        map.set(
+          stagedInstanceKey(r.entityDefinitionId, r.entityInstanceId),
+          displayPermissionOfRung(r.rung)
+        )
+      }
+    }
+    return map
+  }, [allRows])
 
   /**
    * The Member profile's area rung per resource type — the subject of the tab's
@@ -177,17 +224,20 @@ export function useInstanceBaselineRows() {
         const instanceRows = allRows.filter(
           (r) => r.entityDefinitionId === key && r.entityInstanceId === item.id
         )
-        const baselineRow = instanceRows.find(
-          (r) =>
-            r.granteeType === ResourceGranteeType.role && r.granteeId === MEMBER_BASELINE_GRANTEE_ID
-        )
+        const rowKey = stagedInstanceKey(key, item.id)
+        // Staged edits win over the persisted row, so the select moves the
+        // instant it is clicked even though nothing has been written yet.
+        const choice = staged[rowKey]
         return {
           key,
           id: item.id,
           name: item.name,
-          // Stored rung → the grid's def-axis display vocabulary (see
-          // `displayPermissionOfRung` for why this is a clamp, not a conversion).
-          baselineLevel: baselineRow ? displayPermissionOfRung(baselineRow.rung) : undefined,
+          baselineLevel:
+            choice === undefined
+              ? persistedByRow.get(rowKey)
+              : choice === 'inherit'
+                ? undefined
+                : choice,
           inheritedLevel,
           inheritLabelText: isPrivate ? PRIVATE_INHERIT_LABEL : undefined,
           inheritHelperText: isPrivate ? PRIVATE_INHERIT_HELPER : undefined,
@@ -196,29 +246,51 @@ export function useInstanceBaselineRows() {
       })
     }
     return result
-  }, [lists, allRows, baseline, roleDefaults])
+  }, [lists, allRows, baseline, roleDefaults, staged, persistedByRow])
 
-  /** Set (or, `'inherit'`, revoke) the `role:org_member` row for one instance. */
+  /** Stage (not write) the `role:org_member` row for one instance. */
   const setBaseline = useCallback(
-    (key: InstanceAccessKey, instanceId: string, level: ResourcePermission | 'inherit') => {
-      const recordId = toRecordId(key, instanceId)
-      if (level === 'inherit') {
-        revokeInstance.mutate({
-          recordId,
-          granteeType: ResourceGranteeType.role,
-          granteeId: MEMBER_BASELINE_GRANTEE_ID,
-        })
-        return
-      }
-      grantInstance.mutate({
-        recordId,
-        granteeType: ResourceGranteeType.role,
-        granteeId: MEMBER_BASELINE_GRANTEE_ID,
-        rung: permissionToRung(level),
-      })
+    (key: InstanceAccessKey, instanceId: string, level: AccessChoice) => {
+      const rowKey = stagedInstanceKey(key, instanceId)
+      stage(rowKey, level, persistedByRow.get(rowKey) ?? 'inherit')
     },
-    [grantInstance, revokeInstance]
+    [stage, persistedByRow]
   )
+
+  /**
+   * Flush every staged row, one write at a time. A row whose write fails STAYS
+   * staged (its `toastError` already fired) so Save retries only what is left.
+   * There is no optimistic patch on this lane, so the refetch is awaited before
+   * the staging map is cleared — otherwise the select would flash back.
+   */
+  const save = useCallback(async () => {
+    const failed: Record<string, AccessChoice> = {}
+    for (const [rowKey, level] of stagedEntries) {
+      const { key, instanceId } = parseStagedInstanceKey<InstanceAccessKey>(rowKey)
+      const recordId = toRecordId(key, instanceId)
+      try {
+        if (level === 'inherit') {
+          await revokeInstance.mutateAsync({
+            recordId,
+            granteeType: ResourceGranteeType.role,
+            granteeId: MEMBER_BASELINE_GRANTEE_ID,
+          })
+        } else {
+          await grantInstance.mutateAsync({
+            recordId,
+            granteeType: ResourceGranteeType.role,
+            granteeId: MEMBER_BASELINE_GRANTEE_ID,
+            rung: permissionToRung(level),
+          })
+        }
+      } catch {
+        failed[rowKey] = level
+      }
+    }
+    await invalidate()
+    replace(failed)
+    return Object.keys(failed).length === 0
+  }, [stagedEntries, grantInstance, revokeInstance, invalidate, replace])
 
   return {
     lists,
@@ -226,5 +298,9 @@ export function useInstanceBaselineRows() {
     rowsByKey,
     areaAccessByKey,
     setBaseline,
+    isDirty,
+    isSaving: grantInstance.isPending || revokeInstance.isPending,
+    save,
+    discard,
   }
 }

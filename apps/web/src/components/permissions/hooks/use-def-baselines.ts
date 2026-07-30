@@ -17,6 +17,7 @@ import { useCallback, useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
 import { MEMBER_BASELINE_GRANTEE_ID, usePermissionGrants } from './use-permission-grants'
+import { type AccessChoice, type StagedSurface, useStagedEdits } from './use-staged-edits'
 
 /** One CRM def's row under the Record types collection. */
 export interface DefBaselineRow {
@@ -46,16 +47,23 @@ export interface DefBaselineRow {
  * Reads `resourceAccess.allTypeAccess` (all type rows, org-wide) plus
  * `useResources`, and derives per def: the configured baseline (if any), the
  * level it inherits from the Member profile's Records rung, and whether it is
- * locked down. Writes go through `grantType` / `revokeType` with an optimistic
- * cache patch, so picking **No Access** shows its restriction lock without a
- * reload.
+ * locked down.
+ *
+ * **Edits are STAGED, not written** (see {@link useStagedEdits}). `setBaseline`
+ * only moves the select; `save()` flushes every staged row through
+ * `grantType` / `revokeType`, so this grid commits from the host's `FormSaveBar`
+ * exactly like the profile editor does.
  *
  * Unlike {@link useGranteeDefAccess} there is no first-touch baseline write to
  * make — this surface *is* the baseline. Invalidation is broadened to the whole
  * `resourceAccess` namespace because the per-def tab reads the same rows under a
  * different query key (`forType`). Errors surface via `toastError`.
  */
-export function useDefBaselines() {
+export function useDefBaselines(): {
+  isLoading: boolean
+  rows: DefBaselineRow[]
+  setBaseline: (entityDefinitionId: string, level: AccessChoice) => void
+} & StagedSurface {
   const utils = api.useUtils()
   const { resources, isLoading: resourcesLoading } = useResources()
   const { isLoading: grantsLoading, roleDefaults, baseline } = usePermissionGrants()
@@ -143,12 +151,29 @@ export function useDefBaselines() {
     return map
   }, [allRows])
 
+  const {
+    edits: staged,
+    entries: stagedEntries,
+    stage,
+    discard,
+    replace,
+    isDirty,
+  } = useStagedEdits<AccessChoice>()
+
   const rows = useMemo<DefBaselineRow[]>(
     () =>
       resources
         .filter(isAccessManageable)
         .map((resource) => {
-          const baselineLevel = baselineByDef.get(resource.entityDefinitionId)
+          // Staged edits win over the persisted row, so the select moves the
+          // instant it is clicked even though nothing has been written yet.
+          const choice = staged[resource.entityDefinitionId]
+          const baselineLevel =
+            choice === undefined
+              ? baselineByDef.get(resource.entityDefinitionId)
+              : choice === 'inherit'
+                ? undefined
+                : choice
           const baseArea = ENTITY_BASE_AREAS[resource.entityType ?? ''] ?? Area.records
           return {
             resource,
@@ -162,39 +187,67 @@ export function useDefBaselines() {
           }
         })
         .sort((a, b) => a.resource.plural.localeCompare(b.resource.plural)),
-    [resources, baselineByDef, inheritedPermissionByArea]
+    [resources, baselineByDef, inheritedPermissionByArea, staged]
   )
 
   /**
-   * Set a def's workspace baseline. `'inherit'` deletes the row so the def falls
-   * back to the Member profile's Records level; every explicit level (including `none`, the
-   * restriction marker) writes it.
+   * Stage a def's workspace baseline. `'inherit'` will delete the row so the def
+   * falls back to the Member profile's Records level; every explicit level
+   * (including `none`, the restriction marker) will write it. Nothing is sent
+   * until {@link save}.
    */
   const setBaseline = useCallback(
-    (entityDefinitionId: string, level: ResourcePermission | 'inherit') => {
-      if (level === 'inherit') {
-        patchLocal(entityDefinitionId)
-        revokeType.mutate({
-          entityDefinitionId,
-          granteeType: ResourceGranteeType.role,
-          granteeId: MEMBER_BASELINE_GRANTEE_ID,
-        })
-        return
-      }
-      patchLocal(entityDefinitionId, level)
-      grantType.mutate({
-        entityDefinitionId,
-        granteeType: ResourceGranteeType.role,
-        granteeId: MEMBER_BASELINE_GRANTEE_ID,
-        rung: permissionToRung(level),
-      })
+    (entityDefinitionId: string, level: AccessChoice) => {
+      stage(entityDefinitionId, level, baselineByDef.get(entityDefinitionId) ?? 'inherit')
     },
-    [grantType, revokeType, patchLocal]
+    [stage, baselineByDef]
   )
+
+  /**
+   * Flush every staged row, one write at a time.
+   *
+   * A row whose write fails STAYS staged (its `toastError` already fired), so the
+   * bar remains up and Save retries only what is left. The optimistic
+   * `patchLocal` still runs per row, and the trailing `invalidate` is awaited
+   * before the staging map is cleared — otherwise the select would flash back to
+   * the pre-save value in the window before the refetch lands.
+   */
+  const save = useCallback(async () => {
+    const failed: Record<string, AccessChoice> = {}
+    for (const [entityDefinitionId, level] of stagedEntries) {
+      try {
+        if (level === 'inherit') {
+          patchLocal(entityDefinitionId)
+          await revokeType.mutateAsync({
+            entityDefinitionId,
+            granteeType: ResourceGranteeType.role,
+            granteeId: MEMBER_BASELINE_GRANTEE_ID,
+          })
+        } else {
+          patchLocal(entityDefinitionId, level)
+          await grantType.mutateAsync({
+            entityDefinitionId,
+            granteeType: ResourceGranteeType.role,
+            granteeId: MEMBER_BASELINE_GRANTEE_ID,
+            rung: permissionToRung(level),
+          })
+        }
+      } catch {
+        failed[entityDefinitionId] = level
+      }
+    }
+    await invalidate()
+    replace(failed)
+    return Object.keys(failed).length === 0
+  }, [stagedEntries, patchLocal, grantType, revokeType, invalidate, replace])
 
   return {
     isLoading: resourcesLoading || rowsQuery.isLoading || grantsLoading,
     rows,
     setBaseline,
+    isDirty,
+    isSaving: grantType.isPending || revokeType.isPending,
+    save,
+    discard,
   }
 }

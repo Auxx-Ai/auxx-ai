@@ -17,6 +17,13 @@ import { displayPermissionOfRung } from '../ui/level-labels'
 import { useGranteeAccess, useInvalidateGranteeAccess } from './use-grantee-access'
 import type { GranteeKind } from './use-grantee-def-access'
 import { type OpenInstanceTypes, useInstanceResourceLists } from './use-instance-resource-lists'
+import {
+  type AccessChoice,
+  parseStagedInstanceKey,
+  type StagedSurface,
+  stagedInstanceKey,
+  useStagedEdits,
+} from './use-staged-edits'
 
 /** {@link displayPermissionOfRung}, pass-through on `undefined`. */
 const optionalDisplay = (rung: Rung | undefined): ResourcePermission | undefined =>
@@ -62,6 +69,14 @@ export interface InstanceGranteeRow extends InstanceAccessRow {
  * `grantInstance`/`revokeInstance` funnel the Share card uses, offering the full
  * Inherit / Read / Write / Full / No Access vocabulary.
  *
+ * **Edits are STAGED, not written** ({@link useStagedEdits}): `setGrant` moves the
+ * select, `save()` flushes. Every host renders a `FormSaveBar`, so these rows
+ * commit together with the area levels above them.
+ *
+ * `effectiveLevel` deliberately keeps reporting the PERSISTED composition — it is
+ * the server's answer about what this grantee can open today, and an unsaved
+ * select has not changed it.
+ *
  * **Reads one grantee, not the org** (plan 31 §2.4). It used to pull
  * `resourceAccess.allInstanceAccess` — every per-instance row for every grantee
  * — and narrow client-side. That was properly gated, so this is a SHAPE fix, not
@@ -69,7 +84,15 @@ export interface InstanceGranteeRow extends InstanceAccessRow {
  * cache is what made the §2.1 scope leak buildable, and is what the next row
  * would have reached for.
  */
-export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: string) {
+export function useInstanceGranteeRows(
+  granteeType: GranteeKind,
+  granteeId: string
+): {
+  lists: ReturnType<typeof useInstanceResourceLists>
+  isLoading: boolean
+  rowsByKey: Record<InstanceAccessKey, InstanceGranteeRow[]>
+  setGrant: (key: InstanceAccessKey, instanceId: string, level: AccessChoice) => void
+} & StagedSurface {
   const utils = api.useUtils()
   const lists = useInstanceResourceLists(ALWAYS_OPEN)
   const { isLoading, own, effective } = useGranteeAccess(granteeType, granteeId)
@@ -78,7 +101,7 @@ export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: stri
   const grantInstance = api.resourceAccess.grantInstance.useMutation({
     onError: (error) => toastError({ title: 'Error updating access', description: error.message }),
     onSettled: (_data, _error, variables) => {
-      invalidate()
+      void invalidate()
       if (variables)
         void utils.resourceAccess.forInstance.invalidate({ recordId: variables.recordId })
     },
@@ -86,57 +109,123 @@ export function useInstanceGranteeRows(granteeType: GranteeKind, granteeId: stri
   const revokeInstance = api.resourceAccess.revokeInstance.useMutation({
     onError: (error) => toastError({ title: 'Error removing access', description: error.message }),
     onSettled: (_data, _error, variables) => {
-      invalidate()
+      void invalidate()
       if (variables)
         void utils.resourceAccess.forInstance.invalidate({ recordId: variables.recordId })
     },
   })
 
+  const {
+    edits: staged,
+    entries: stagedEntries,
+    stage,
+    discard,
+    replace,
+    isDirty,
+  } = useStagedEdits<AccessChoice>()
+
+  /** This grantee's persisted grant per `type:instanceId`. */
+  const persistedByRow = useMemo(() => {
+    const map = new Map<string, ResourcePermission>()
+    if (!own) return map
+    for (const key of INSTANCE_ACCESS_KEYS) {
+      for (const item of lists[key].items) {
+        const level = optionalDisplay(own.instances[item.id])
+        if (level !== undefined) map.set(stagedInstanceKey(key, item.id), level)
+      }
+    }
+    return map
+  }, [own, lists])
+
   const rowsByKey = useMemo(() => {
     const result = {} as Record<InstanceAccessKey, InstanceGranteeRow[]>
     for (const key of INSTANCE_ACCESS_KEYS) {
-      result[key] = lists[key].items.map((item) => ({
-        key,
-        id: item.id,
-        name: item.name,
-        // Scope-specific copy, so it is composed here rather than inside a row
-        // component four surfaces share — the agent policy's rows say something
-        // else entirely about the same instance.
-        description: INSTANCE_ROW_COPY.grantee.description(INSTANCE_SHARE_COPY[key].noun),
-        // Stored rung → this grid's def-axis DISPLAY vocabulary; see
-        // `displayPermissionOfRung`.
-        grantLevel: own ? optionalDisplay(own.instances[item.id]) : undefined,
-        // An instance absent from `effective.instances` has no row anywhere in
-        // the org, so its answer is the per-type row-less fallback. A pure
-        // lookup — §2.5 is explicit that re-deriving this client-side would put
-        // display and enforcement on separate implementations.
-        effectiveLevel: effective
-          ? (optionalDisplay(effective.instances[item.id] ?? undefined) ??
-            optionalDisplay(effective.instanceFallback[key] ?? undefined) ??
-            null)
-          : undefined,
-      }))
+      result[key] = lists[key].items.map((item) => {
+        const rowKey = stagedInstanceKey(key, item.id)
+        // Staged edits win over the persisted grant, so the select moves the
+        // instant it is clicked even though nothing has been written yet.
+        const choice = staged[rowKey]
+        return {
+          key,
+          id: item.id,
+          name: item.name,
+          // Scope-specific copy, so it is composed here rather than inside a row
+          // component four surfaces share — the agent policy's rows say something
+          // else entirely about the same instance.
+          description: INSTANCE_ROW_COPY.grantee.description(INSTANCE_SHARE_COPY[key].noun),
+          // Stored rung → this grid's def-axis DISPLAY vocabulary; see
+          // `displayPermissionOfRung`.
+          grantLevel:
+            choice === undefined
+              ? own
+                ? optionalDisplay(own.instances[item.id])
+                : undefined
+              : choice === 'inherit'
+                ? undefined
+                : choice,
+          // An instance absent from `effective.instances` has no row anywhere in
+          // the org, so its answer is the per-type row-less fallback. A pure
+          // lookup — §2.5 is explicit that re-deriving this client-side would put
+          // display and enforcement on separate implementations.
+          effectiveLevel: effective
+            ? (optionalDisplay(effective.instances[item.id] ?? undefined) ??
+              optionalDisplay(effective.instanceFallback[key] ?? undefined) ??
+              null)
+            : undefined,
+        }
+      })
     }
     return result
-  }, [lists, own, effective])
+  }, [lists, own, effective, staged])
 
-  /** Set (or, `'inherit'`, revoke) this grantee's own row for one instance. */
+  /** Stage (not write) this grantee's own row for one instance. */
   const setGrant = useCallback(
-    (key: InstanceAccessKey, instanceId: string, level: ResourcePermission | 'inherit') => {
-      const recordId = toRecordId(key, instanceId)
-      if (level === 'inherit') {
-        revokeInstance.mutate({ recordId, granteeType, granteeId })
-        return
-      }
-      grantInstance.mutate({ recordId, granteeType, granteeId, rung: permissionToRung(level) })
+    (key: InstanceAccessKey, instanceId: string, level: AccessChoice) => {
+      const rowKey = stagedInstanceKey(key, instanceId)
+      stage(rowKey, level, persistedByRow.get(rowKey) ?? 'inherit')
     },
-    [grantInstance, revokeInstance, granteeType, granteeId]
+    [stage, persistedByRow]
   )
+
+  /**
+   * Flush every staged row, one write at a time. A row whose write fails STAYS
+   * staged (its `toastError` already fired) so Save retries only what is left;
+   * the awaited `invalidate` keeps the select from flashing back before the
+   * refetch lands.
+   */
+  const save = useCallback(async () => {
+    const failed: Record<string, AccessChoice> = {}
+    for (const [rowKey, level] of stagedEntries) {
+      const { key, instanceId } = parseStagedInstanceKey<InstanceAccessKey>(rowKey)
+      const recordId = toRecordId(key, instanceId)
+      try {
+        if (level === 'inherit') {
+          await revokeInstance.mutateAsync({ recordId, granteeType, granteeId })
+        } else {
+          await grantInstance.mutateAsync({
+            recordId,
+            granteeType,
+            granteeId,
+            rung: permissionToRung(level),
+          })
+        }
+      } catch {
+        failed[rowKey] = level
+      }
+    }
+    await invalidate()
+    replace(failed)
+    return Object.keys(failed).length === 0
+  }, [stagedEntries, grantInstance, revokeInstance, granteeType, granteeId, invalidate, replace])
 
   return {
     lists,
     isLoading,
     rowsByKey,
     setGrant,
+    isDirty,
+    isSaving: grantInstance.isPending || revokeInstance.isPending,
+    save,
+    discard,
   }
 }

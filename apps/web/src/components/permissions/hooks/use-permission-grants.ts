@@ -148,13 +148,28 @@ export function useGrantWrites() {
     [grant]
   )
 
+  /**
+   * {@link save}, awaitable — what a staged surface's `FormSaveBar` flushes
+   * through (`useStagedEdits`), so it can report whether the write landed.
+   *
+   * A separate function rather than switching {@link save} to `mutateAsync`:
+   * `save` has fire-and-forget callers (the overrides tab persists an empty grant
+   * row the moment a grantee is added), and a rejected promise nobody awaits is
+   * an unhandled rejection. This one is only ever awaited.
+   */
+  const saveAsync = useCallback(
+    (granteeType: OverrideGranteeType, granteeId: string, levels: Partial<Record<Area, Level>>) =>
+      grant.mutateAsync({ granteeType, granteeId, levels: levels as Record<Area, Level> }),
+    [grant]
+  )
+
   const remove = useCallback(
     (granteeType: OverrideGranteeType, granteeId: string) =>
       revoke.mutate({ granteeType, granteeId }),
     [revoke]
   )
 
-  return { save, remove, isSaving: grant.isPending || revoke.isPending }
+  return { save, saveAsync, remove, isSaving: grant.isPending || revoke.isPending }
 }
 
 /**

@@ -10,9 +10,12 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { Shapes, SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
+import { FormSaveBar } from '~/components/global/forms/form-save-bar'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useDefBaselines } from '../hooks/use-def-baselines'
 import type { InstanceAreaAccess } from '../hooks/use-instance-baseline-rows'
 import { useInstanceBaselineRows } from '../hooks/use-instance-baseline-rows'
+import { mergeStaged } from '../hooks/use-staged-edits'
 import { AreaAccessRow, hasAreaAccessRow } from './area-access-row'
 import { DefBaselineRows } from './def-baseline-rows'
 import { InstanceBaselineRows } from './instance-baseline-rows'
@@ -60,16 +63,27 @@ const RECORDS_ID = 'records'
  * headed by a **read-only** {@link AreaAccessRow} showing the Member profile's
  * rung for the area — see {@link areaAccessLeadingRow} for why read-only is the
  * only shape that does not reopen the hole this tab's missing grid closed.
+ *
+ * Both lanes STAGE their edits and commit from one {@link FormSaveBar}, matching
+ * the profile editor next door — see `useStagedEdits` for why every grid on this
+ * page now works that way.
  */
 export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean }) {
-  const { isLoading: defsLoading, rows: defRows, setBaseline: setDefBaseline } = useDefBaselines()
+  const defBaselines = useDefBaselines()
+  const instanceBaselines = useInstanceBaselineRows()
+  const { isLoading: defsLoading, rows: defRows, setBaseline: setDefBaseline } = defBaselines
   const {
     isLoading: instanceRowsLoadingAll,
     lists: instanceLists,
     rowsByKey: instanceRowsByKey,
     areaAccessByKey,
     setBaseline: setInstanceBaseline,
-  } = useInstanceBaselineRows()
+  } = instanceBaselines
+
+  // The two lanes write different endpoints but read as one grid, so they share
+  // one Save bar (plan: staged edits everywhere, `useStagedEdits`).
+  const staged = mergeStaged([defBaselines, instanceBaselines])
+  const [confirmDiscard, ConfirmDialog] = useConfirm()
 
   const [search, setSearch] = useState('')
   const [configuredOnly, setConfiguredOnly] = useState(false)
@@ -212,8 +226,20 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
     )
   }
 
+  const handleDiscard = async () => {
+    const confirmed = await confirmDiscard({
+      title: 'Discard changes?',
+      description: 'Your unsaved workspace defaults will be lost.',
+      confirmText: 'Discard',
+      cancelText: 'Keep editing',
+      destructive: true,
+    })
+    if (confirmed) staged.discard()
+  }
+
   return (
-    <div className='flex flex-col gap-3 p-3 sm:p-6'>
+    <div className='flex flex-1 flex-col gap-3 p-3 sm:p-6'>
+      <ConfirmDialog />
       <p className='max-w-2xl text-sm text-muted-foreground'>
         What every member gets on each individual record type, dataset, knowledge base, dashboard
         and workflow. Leave an item on Inherit to follow the Member profile, or set an explicit
@@ -268,6 +294,19 @@ export function WorkspaceDefaultsTab({ disabled = false }: { disabled?: boolean 
           })}
         </div>
       )}
+
+      {/*
+        `dirty` drives visibility, so a read-only org (no `granularPermissions`)
+        never sees the bar — its selects are disabled and nothing can stage.
+      */}
+      <FormSaveBar
+        dirty={staged.isDirty}
+        isSaving={staged.isSaving}
+        onSave={() => void staged.save()}
+        onDiscard={() => void handleDiscard()}
+        label='Unsaved workspace defaults'
+        saveDisabled={disabled}
+      />
     </div>
   )
 }
