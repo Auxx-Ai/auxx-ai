@@ -13,12 +13,20 @@ const { ticketSelectRowsRef, workflowRunSelectRowsRef, createSelectBuilder } = v
   const ticketSelectRowsRef = { value: [{ id: 'ticket123' }] }
   const workflowRunSelectRowsRef = { value: [{ id: 'workflow123' }] }
 
-  // Creates a lightweight Drizzle-style select builder chain
+  // Creates a lightweight Drizzle-style select builder chain.
+  // `limit` resolves to the rows AND carries `.prepare`, because modules reached
+  // transitively (e.g. `users/system-user-service.ts`) build prepared statements
+  // at import time — a bare promise there fails collection with
+  // `.prepare is not a function`.
   const createSelectBuilder = (rowsRef: { value: any[] }) => {
     const builder: Record<string, any> = {}
     builder.from = vi.fn().mockReturnValue(builder)
     builder.where = vi.fn().mockReturnValue(builder)
-    builder.limit = vi.fn().mockImplementation(async () => rowsRef.value)
+    builder.limit = vi.fn().mockImplementation(() => {
+      const pending: any = Promise.resolve(rowsRef.value)
+      pending.prepare = vi.fn(() => ({ execute: async () => rowsRef.value }))
+      return pending
+    })
     return builder
   }
 
@@ -26,7 +34,7 @@ const { ticketSelectRowsRef, workflowRunSelectRowsRef, createSelectBuilder } = v
 })
 
 // Mock the database and services
-vi.mock('@auxx/database', () => ({
+vi.mock('@auxx/database', async () => ({
   database: {
     select: vi.fn(() => createSelectBuilder(ticketSelectRowsRef)),
     query: {
@@ -51,7 +59,7 @@ vi.mock('@auxx/database', () => ({
     update: vi.fn(),
     delete: vi.fn(),
   },
-  schema: {
+  schema: (await import('../../../../test/database-mock')).createSchemaMock({
     Article: { id: 'id', organizationId: 'organizationId' },
     WorkflowRun: { id: 'id', organizationId: 'organizationId' },
     User: { id: 'id' },
@@ -63,14 +71,17 @@ vi.mock('@auxx/database', () => ({
     KnowledgeBase: { id: 'id', organizationId: 'organizationId' },
     Attachment: { id: 'id' },
     FolderFile: { id: 'id' },
-  },
+  }),
 }))
 
 vi.mock('../../../../members', () => ({
   isMember: vi.fn().mockResolvedValue(true),
 }))
 
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks collection.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -107,12 +118,15 @@ vi.mock('../../../files/core/thumbnail-batch', () => ({
 }))
 
 // Mock drizzle-orm operators used in entity processors
-vi.mock('drizzle-orm', () => ({
+// Partial mock: modules reached transitively build SQL fragments at import time
+// (`record-visibility-scope.ts` calls `sql.raw`), so a full replacement of
+// drizzle-orm kills collection.
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
   and: vi.fn((...args: any[]) => args),
   eq: vi.fn((a: any, b: any) => [a, b]),
   desc: vi.fn(),
   isNull: vi.fn(),
-  sql: vi.fn(),
 }))
 
 // Mock storage manager

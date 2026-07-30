@@ -73,8 +73,8 @@ vi.mock('@auxx/redis', () => ({
 }))
 
 // Mock database and services
-vi.mock('@auxx/database', () => ({
-  schema: {
+vi.mock('@auxx/database', async () => ({
+  schema: (await import('../../../test/database-mock')).createSchemaMock({
     Article: { id: 'id', organizationId: 'organizationId' },
     WorkflowRun: { id: 'id', organizationId: 'organizationId' },
     User: { id: 'id' },
@@ -94,7 +94,7 @@ vi.mock('@auxx/database', () => ({
     KnowledgeBase: { id: 'id', organizationId: 'organizationId' },
     Attachment: { id: 'id' },
     FolderFile: { id: 'id' },
-  },
+  }),
   database: {
     select: selectMock,
     insert: vi.fn(),
@@ -116,7 +116,10 @@ vi.mock('@auxx/database', () => ({
   },
 }))
 
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks collection.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -152,12 +155,15 @@ vi.mock('@auxx/lib/members', () => ({
 }))
 
 // Mock drizzle-orm operators used in entity processors
-vi.mock('drizzle-orm', () => ({
+// Partial mock: modules reached transitively build SQL fragments at import time
+// (`record-visibility-scope.ts` calls `sql.raw`), so a full replacement of
+// drizzle-orm kills collection.
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
   and: vi.fn((...args: any[]) => args),
   eq: vi.fn((a: any, b: any) => [a, b]),
   desc: vi.fn(),
   isNull: vi.fn(),
-  sql: vi.fn(),
 }))
 
 // Mock thumbnail-related modules

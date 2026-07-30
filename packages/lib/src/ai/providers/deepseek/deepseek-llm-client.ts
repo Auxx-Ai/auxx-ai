@@ -29,22 +29,31 @@ export class DeepSeekLLMClient extends OpenAILLMClient {
   }
 
   /**
-   * Strip reasoning_content from all assistant messages except the last one.
-   * DeepSeek requires that reasoning_content from prior turns is NOT sent back,
-   * but the most recent assistant message's reasoning must be preserved within
-   * the current tool-calling cycle.
+   * Keep `reasoning_content` ONLY on an assistant message that is still inside
+   * the current tool-calling cycle; strip it everywhere else.
+   *
+   * DeepSeek rejects (400) reasoning carried over from a COMPLETED turn, but
+   * requires it on the last assistant message while a tool-calling cycle is
+   * still open. The two cases are told apart by what follows that message: a
+   * later `user` message means the turn closed, so its reasoning must go.
+   *
+   *   [user, assistant(reasoning, tool_calls), tool]  → cycle open,   keep
+   *   [user, assistant(reasoning), user]              → turn closed,  strip
    */
   protected override prepareReasoningContent(messages: Message[]): Message[] {
-    // Find the last assistant message that has reasoning_content
     const lastAssistantWithReasoningIdx = messages.findLastIndex(
       (m) => m.role === 'assistant' && m.reasoning_content
     )
 
     if (lastAssistantWithReasoningIdx === -1) return messages
 
-    // Strip reasoning_content from all assistant messages except the last one
+    const turnClosed = messages
+      .slice(lastAssistantWithReasoningIdx + 1)
+      .some((m) => m.role === 'user')
+    const keepIdx = turnClosed ? -1 : lastAssistantWithReasoningIdx
+
     return messages.map((msg, i) => {
-      if (i < lastAssistantWithReasoningIdx && msg.role === 'assistant' && msg.reasoning_content) {
+      if (i !== keepIdx && msg.role === 'assistant' && msg.reasoning_content) {
         const { reasoning_content, ...rest } = msg
         return rest
       }

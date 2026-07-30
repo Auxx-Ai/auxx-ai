@@ -38,7 +38,11 @@ vi.mock('@auxx/database', () => ({
 
 vi.mock('drizzle-orm', () => ({ eq: (col: any, val: any) => ({ col, val }) }))
 
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks whichever test file happens
+// to load it first.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({ warn: vi.fn(), error: vi.fn(), debug: vi.fn(), info: vi.fn() }),
 }))
 

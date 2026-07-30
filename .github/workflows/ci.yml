@@ -143,10 +143,9 @@ jobs:
       # Every vitest project that is currently 100% green, so none of them can
       # rot the way `lib` did — 49 failures accumulated there unnoticed because
       # only `billing` and `workflow-nodes` were ever run. The reason to
-      # enumerate rather than run everything is that three projects cannot pass
+      # enumerate rather than run everything is that two projects cannot pass
       # here yet:
       #
-      #   lib          25 files / 24 tests failing
       #   integration  (packages/test-utils) needs a live database
       #   database     sets no `name:` in its vitest.config.ts, so it is
       #                unreachable by `--project` and runs nowhere
@@ -158,8 +157,16 @@ jobs:
       # `web` joined the list once its last 8 failing files were fixed — all of
       # them stale specs, mostly the permissions-v3 rename (`full`→`read`, and
       # `ResourcePermission` handed to a `Rung` slot). It is 150 files / 2437
-      # tests and runs in ~25s, so it dominates this job's wall-clock; the other
-      # ten together are ~3s.
+      # tests and runs in ~25s, so it dominates this job's wall-clock.
+      #
+      # `lib` joined last: 506 files / 5764 tests, ~90s. Its 25 failures were
+      # mostly import-time, not assertion drift — `vi.mock` factories that
+      # replace a shared module wholesale (`@auxx/database`, `@auxx/logger`,
+      # `drizzle-orm`) and then die when the import graph reaches an export they
+      # did not list. `packages/lib/src/test/database-mock.ts` exists for that.
+      # The 4 that report as SKIPPED here are the live-API provider suites,
+      # gated on `describe.skipIf(!process.env.<VENDOR>_API_KEY)` — they are
+      # meant never to run on a runner.
       - name: Run tests
         run: |
           npx vitest run \
@@ -173,11 +180,8 @@ jobs:
             --project redis \
             --project utils \
             --project ui \
-            --project web
-
-      # `lib` as a whole is not green yet, so keep running the one subpath that is.
-      - name: Validate workflow templates
-        run: npx vitest run --project lib src/workflows/templates
+            --project web \
+            --project lib
 
   ci-ok:
     name: CI

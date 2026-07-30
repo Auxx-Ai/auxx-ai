@@ -7,35 +7,46 @@ import type { FieldValueContext } from '../field-value-helpers'
 import type { SystemFieldDescriptor } from './system-table-resolver'
 
 /** Replace the org cache with deterministic actor records for resolver tests. */
-const { getCachedMembersByUserIds } = vi.hoisted(() => ({
+const { getCachedMembersByUserIds, getCachedAgentsByUserIds, getOrgCache } = vi.hoisted(() => ({
   getCachedMembersByUserIds: vi.fn(),
+  getCachedAgentsByUserIds: vi.fn(),
+  getOrgCache: vi.fn(),
 }))
 
-vi.mock('../../cache', () => ({ getCachedMembersByUserIds }))
+vi.mock('../../cache', () => ({
+  getCachedMembersByUserIds,
+  getCachedAgentsByUserIds,
+  getOrgCache,
+}))
 vi.mock('@auxx/database', () => ({
   schema: {
     WorkOrderVisit: { id: {}, organizationId: {}, assigneeUserId: {} },
     Thread: { id: {}, organizationId: {}, assigneeUserId: {} },
+    User: { id: {}, name: {} },
   },
 }))
 
 import { resolveSystemTableFields } from './system-table-resolver'
 
-/** Build the minimal query-chain double used by the system-table resolver. */
-function createDatabase(rows: unknown[]) {
+/**
+ * Build the minimal query-chain double used by the system-table resolver.
+ * A projection containing `name` is the last-resort `User` lookup in
+ * `hydrateActorDisplayNames`; anything else is the system-table read.
+ */
+function createDatabase(rows: unknown[], userRows: unknown[] = []) {
   return {
-    select: () => ({
+    select: (projection: Record<string, unknown>) => ({
       from: () => ({
-        where: async () => rows,
+        where: async () => ('name' in projection ? userRows : rows),
       }),
     }),
   }
 }
 
 /** Build a field-value context with the supplied system-table rows. */
-function createContext(rows: unknown[]): FieldValueContext {
+function createContext(rows: unknown[], userRows: unknown[] = []): FieldValueContext {
   return {
-    db: createDatabase(rows) as unknown as FieldValueContext['db'],
+    db: createDatabase(rows, userRows) as unknown as FieldValueContext['db'],
     organizationId: 'org_123',
     fieldCache: new Map(),
     batchRelationshipValidationCache: new Map(),
@@ -59,6 +70,10 @@ function actorField(entityType: string): SystemFieldDescriptor {
 describe('resolveSystemTableFields actor hydration', () => {
   beforeEach(() => {
     getCachedMembersByUserIds.mockReset()
+    // The remaining hydration fallbacks (agents, then the org system user) resolve
+    // nothing by default — each test only cares about the member lane.
+    getCachedAgentsByUserIds.mockReset().mockResolvedValue([])
+    getOrgCache.mockReset().mockReturnValue({ get: vi.fn().mockResolvedValue(null) })
   })
 
   it('uses the cached member name for a Visit actor field', async () => {

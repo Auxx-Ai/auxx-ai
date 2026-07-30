@@ -10,7 +10,11 @@ import { CircuitBreakerError, RateLimitError } from '../types'
 import { UniversalThrottler } from '../universal-throttler'
 
 // Mock logger to prevent actual logging
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks whichever test file happens
+// to load it first.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -67,11 +71,20 @@ describe('TokenBucket', () => {
   })
 
   it('should calculate wait time correctly', () => {
-    const bucket = new TokenBucket(10, 0.1) // 0.1 token/ms
-    bucket.tryAcquire(10) // Empty the bucket
+    // Fake timers freeze `Date.now()`, which `getWaitTime` consults via `refill()`.
+    // On a real clock a SINGLE elapsed millisecond refills 0.1 tokens and the
+    // answer becomes 49 — which is exactly how this test flaked under full-suite
+    // load while passing in isolation.
+    vi.useFakeTimers()
+    try {
+      const bucket = new TokenBucket(10, 0.1) // 0.1 token/ms
+      bucket.tryAcquire(10) // Empty the bucket
 
-    const waitTime = bucket.getWaitTime(5) // Need 5 tokens
-    expect(waitTime).toBe(50) // 5 tokens / 0.1 token per ms = 50ms
+      const waitTime = bucket.getWaitTime(5) // Need 5 tokens
+      expect(waitTime).toBe(50) // 5 tokens / 0.1 token per ms = 50ms
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('should reset to full capacity', () => {

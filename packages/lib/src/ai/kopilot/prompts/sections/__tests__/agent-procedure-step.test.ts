@@ -22,11 +22,14 @@ describe('agentProcedureStep', () => {
     expect(agentProcedureStep.render(ctxWith(undefined))).toBeNull()
   })
 
-  it('renders the active step text', () => {
+  it('renders the active step text, followed by the standing step-discipline block', () => {
     const out = agentProcedureStep.render(
       ctxWith({ activeStep: { doc: frag('Cancel the order.') }, depth: 1 })
     )
-    expect(out).toBe('Current step: Cancel the order.')
+    // The step line leads — nothing is prepended when there is no breadcrumb.
+    expect(out?.startsWith('Current step: Cancel the order.')).toBe(true)
+    // Every rendered step carries the discipline rules; they are not conditional.
+    expect(out).toContain('Step discipline:')
   })
 
   it('prepends a re-anchor breadcrumb when present', () => {

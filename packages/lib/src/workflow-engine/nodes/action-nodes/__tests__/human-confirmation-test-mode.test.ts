@@ -5,16 +5,21 @@ import type { WorkflowNode } from '../../../core/types'
 import { NodeRunningStatus } from '../../../core/types'
 
 vi.mock('@auxx/config/server', () => ({ WEBAPP_URL: 'http://localhost:3000' }))
-vi.mock('@auxx/database', () => ({
-  database: {},
-  schema: {
-    ApprovalRequest: {},
-    WorkflowRun: {},
-    User: { id: {}, email: {}, name: {}, userType: {} },
-    OrganizationMember: { userId: {}, organizationId: {} },
-    EntityGroupMember: { groupInstanceId: {}, memberType: {}, memberRefId: {} },
-  },
-}))
+vi.mock('@auxx/database', async () => {
+  const { createSchemaMock, createChainableDatabaseMock } = await import(
+    '../../../../test/database-mock'
+  )
+  return {
+    database: createChainableDatabaseMock(),
+    schema: createSchemaMock({
+      ApprovalRequest: {},
+      WorkflowRun: {},
+      User: { id: {}, email: {}, name: {}, userType: {} },
+      OrganizationMember: { userId: {}, organizationId: {} },
+      EntityGroupMember: { groupInstanceId: {}, memberType: {}, memberRefId: {} },
+    }),
+  }
+})
 vi.mock('../../../../cache/workflow-app-queries', () => ({
   getCachedWorkflowApp: vi.fn(async () => ({ name: 'Human in the loop' })),
 }))

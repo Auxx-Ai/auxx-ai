@@ -11,7 +11,11 @@ vi.mock('../../../apps/app-storage', () => ({
   countExpiredAppStorage: () => countExpired(),
 }))
 
-vi.mock('@auxx/logger', () => ({
+// Partial mock: `@auxx/logger/run-log` imports sink-registration helpers from this
+// barrel at module load, so a full replacement breaks whichever test file happens
+// to load it first.
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({ info: () => {}, warn: () => {}, error: () => {} }),
 }))
 
