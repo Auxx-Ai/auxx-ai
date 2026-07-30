@@ -3,7 +3,23 @@
   "compilerOptions": {
     "module": "esnext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    // `globals: true` in vitest.config.ts injects describe/it/expect/vi, but tsc
+    // has no way to know that, so every one of the ~500 test files reported them
+    // as TS2304/TS2582 "Cannot find name". That was 708 errors — 19% of this
+    // package's total — burying the real ones in the same files.
+    //
+    // Naming `types` at all narrows the global scope to just this list, so
+    // "node" is not optional here: dropping it takes process/Buffer with it.
+    "types": ["vitest/globals", "node"],
+    // Nothing declares `packages/lib` in a "references" array, so `composite`
+    // (inherited from @auxx/typescript-config/base.json) buys this package no
+    // incremental consumer — it only enforces "list every file in the program".
+    // lib imports @auxx/database through its source-resolving exports, which
+    // pulls ~40 schema files into the program that lib's `include` cannot
+    // match, and each one became TS6307. lib is bundled by tsdown, not tsc, so
+    // nothing downstream needs the project-reference contract.
+    "composite": false
   },
   "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
   "exclude": [

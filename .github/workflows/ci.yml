@@ -140,9 +140,38 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Every vitest project that is currently 100% green, so none of them can
+      # rot the way `lib` did — 49 failures accumulated there unnoticed because
+      # only `billing` and `workflow-nodes` were ever run. The whole list costs
+      # ~3s; the reason to enumerate rather than run everything is that four
+      # projects cannot pass here yet:
+      #
+      #   lib          26 files / 49 tests failing
+      #   web          24 files / 40 tests failing (19 are permissions/mail
+      #                specs stale since the v3 rename — the regression tests
+      #                for the outage that shipped 2026-07-30)
+      #   integration  (packages/test-utils) needs a live database
+      #   database     sets no `name:` in its vitest.config.ts, so it is
+      #                unreachable by `--project` and runs nowhere
+      #
+      # `--project='!lib'`-style negation is NOT a substitute: it selects the
+      # `integration` project, which then fails on a missing database. Adding a
+      # project here is the deliberate act that puts it under watch.
       - name: Run tests
-        run: npx vitest run --project billing --project workflow-nodes
+        run: |
+          npx vitest run \
+            --project api \
+            --project worker \
+            --project kb \
+            --project billing \
+            --project services \
+            --project workflow-nodes \
+            --project credentials \
+            --project redis \
+            --project utils \
+            --project ui
 
+      # `lib` as a whole is not green yet, so keep running the one subpath that is.
       - name: Validate workflow templates
         run: npx vitest run --project lib src/workflows/templates
 

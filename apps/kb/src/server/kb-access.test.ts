@@ -1,6 +1,6 @@
 // apps/kb/src/server/kb-access.test.ts
 
-import { ResourcePermission } from '@auxx/database/enums'
+import type { Rung } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -88,7 +88,7 @@ const KB_ID = 'kb_cuid00000000000000000000'
 function capabilitiesFor({
   role = 'MEMBER' as OrganizationRole,
   area = Level.Read,
-  instances = {} as Record<string, ResourcePermission>,
+  instances = {} as Record<string, Rung>,
 } = {}) {
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.knowledgeBase]: area })),
@@ -161,10 +161,8 @@ describe('canViewKB — composition', () => {
     await expect(canViewKB(KB_ID, ORG_ID, USER_ID)).resolves.toBe(true)
   })
 
-  it('denies a member with an explicit permission: none row on this KB', async () => {
-    givenCapabilities(
-      capabilitiesFor({ area: Level.Full, instances: { [KB_ID]: ResourcePermission.none } })
-    )
+  it('denies a member with an explicit none rung on this KB', async () => {
+    givenCapabilities(capabilitiesFor({ area: Level.Full, instances: { [KB_ID]: 'none' } }))
     await expect(canViewKB(KB_ID, ORG_ID, USER_ID)).resolves.toBe(false)
   })
 
@@ -184,23 +182,19 @@ describe('canViewKB — composition', () => {
       capabilitiesFor({
         role: 'OWNER',
         area: Level.None,
-        instances: { [KB_ID]: ResourcePermission.none },
+        instances: { [KB_ID]: 'none' },
       })
     )
     await expect(canViewKB(KB_ID, ORG_ID, USER_ID)).resolves.toBe(true)
   })
 
-  it('lets an explicit view grant beat a knowledgeBase: None area floor', async () => {
-    givenCapabilities(
-      capabilitiesFor({ area: Level.None, instances: { [KB_ID]: ResourcePermission.view } })
-    )
+  it('lets an explicit read rung beat a knowledgeBase: None area floor', async () => {
+    givenCapabilities(capabilitiesFor({ area: Level.None, instances: { [KB_ID]: 'read' } }))
     await expect(canViewKB(KB_ID, ORG_ID, USER_ID)).resolves.toBe(true)
   })
 
   it('scopes the grant to the KB it was written for', async () => {
-    givenCapabilities(
-      capabilitiesFor({ area: Level.None, instances: { [KB_ID]: ResourcePermission.view } })
-    )
+    givenCapabilities(capabilitiesFor({ area: Level.None, instances: { [KB_ID]: 'read' } }))
     await expect(canViewKB('kb_other', ORG_ID, USER_ID)).resolves.toBe(false)
   })
 })
@@ -227,9 +221,7 @@ describe('loadKBPayload — gate wiring', () => {
   })
 
   it('runs the per-instance gate for a session on an INTERNAL KB', async () => {
-    givenCapabilities(
-      capabilitiesFor({ area: Level.Full, instances: { [KB_ID]: ResourcePermission.none } })
-    )
+    givenCapabilities(capabilitiesFor({ area: Level.Full, instances: { [KB_ID]: 'none' } }))
 
     const { kb, articles, accessDenied } = await loadKBPayload('acme', 'hr-policies', {
       session: { userId: USER_ID },
