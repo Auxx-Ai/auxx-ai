@@ -367,7 +367,7 @@ export const memberRouter = createTRPCRouter({
         ctx.db
       )
 
-      const dehydrationService = new DehydrationService(ctx.db)
+      const dehydrationService = new DehydrationService()
       await dehydrationService.refreshUser(ctx.session.user.id)
 
       await recordAuditFromCtx(ctx, {
@@ -394,7 +394,7 @@ export const memberRouter = createTRPCRouter({
         ctx.db
       )
 
-      const dehydrationService = new DehydrationService(ctx.db)
+      const dehydrationService = new DehydrationService()
       await dehydrationService.refreshUser(ctx.session.user.id)
 
       await recordAuditFromCtx(ctx, {

@@ -481,7 +481,7 @@ export const organizationRouter = createTRPCRouter({
 
         // Invalidate dehydration cache if user was not deleted
         if (!result.userDeleted) {
-          const dehydrationService = new DehydrationService(ctx.db)
+          const dehydrationService = new DehydrationService()
           await dehydrationService.invalidateUser(sessionUser.id)
         }
 

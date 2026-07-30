@@ -29,7 +29,7 @@ export const authRouter = createTRPCRouter({
       })
 
       // Invalidate dehydrated cache to update hasPassword flag
-      const dehydrationService = new DehydrationService(ctx.db)
+      const dehydrationService = new DehydrationService()
       await dehydrationService.invalidateUser(ctx.session.userId)
 
       await recordAuditFromCtx(ctx, {
