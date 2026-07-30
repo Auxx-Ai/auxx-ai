@@ -70,19 +70,24 @@ const ORG = 'org_1'
 const RECORD = toRecordId('inbox', 'inbox_1')
 
 /** Minimal chainable fake db covering the write shapes these functions use. */
-function fakeDb(opts: { deleteReturning?: Array<{ granteeId: string }> } = {}) {
+function fakeDb(opts: { deleteReturning?: Array<{ granteeId: string }>; inserted?: boolean } = {}) {
   const db: any = {
     query: {
-      ResourceAccess: {
-        findFirst: async () => undefined,
-      },
       User: { findFirst: async () => ({ name: 'Granter' }) },
     },
     // The share-notification path resolves the shared resource's name; an empty
     // result short-circuits it after the recipients have been resolved.
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
+    // `onConflictDoUpdate` is both awaitable and chainable: `grantInstanceAccess`
+    // reads `RETURNING xmax = 0` off it to tell an INSERT from an UPDATE (which is
+    // what decides whether this is a NEW share worth notifying about), while
+    // `grantTypeAccess` awaits it directly.
     insert: () => ({
-      values: () => ({ onConflictDoUpdate: async () => {} }),
+      values: () => ({
+        onConflictDoUpdate: () => ({
+          returning: async () => [{ inserted: opts.inserted ?? true }],
+        }),
+      }),
     }),
     delete: () => ({
       where: () => ({ returning: async () => opts.deleteReturning ?? [] }),
@@ -213,7 +218,6 @@ describe('resource-access cache-event emission', () => {
     // reinterpreted as a group instance id, which resolved to nobody with no error
     // and no log.
     expect(expandGranteeToUserIds).toHaveBeenCalledWith(
-      expect.anything(),
       ORG,
       expect.objectContaining({
         granteeType: ResourceGranteeType.profile,
@@ -221,6 +225,25 @@ describe('resource-access cache-event emission', () => {
       }),
       expect.objectContaining({ cap: expect.any(Number) })
     )
+  })
+
+  // The new-vs-existing distinction used to be a pre-flight `SELECT`; it is now
+  // `RETURNING xmax = 0` off the upsert itself. Same rule — only a genuinely new
+  // grant announces itself — so a re-save of an existing row must stay silent, or
+  // every permissions-page save re-notifies everyone on it.
+  it('does NOT notify when the upsert updated an existing grant', async () => {
+    expandGranteeToUserIds.mockClear()
+    await grantInstanceAccess(
+      { db: fakeDb({ inserted: false }), organizationId: ORG, userId: 'granter' },
+      {
+        recordId: toRecordId('dashboard', 'dash_1'),
+        granteeType: ResourceGranteeType.user,
+        granteeId: 'u_existing',
+        permission: ResourcePermission.edit,
+      }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(expandGranteeToUserIds).not.toHaveBeenCalled()
   })
 
   it('an approval-origin grant suppresses the generic share notification (plan 42 §8)', async () => {

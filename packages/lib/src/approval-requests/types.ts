@@ -113,8 +113,62 @@ export interface AccessRequestPreflight {
    * the difference between "sent into the void" and "Sarah will see this".
    */
   approvers: Array<{ userId: string; name: string | null; image: string | null }>
+  /**
+   * Whether {@link approvers} are inbox Managers or the org-admin fallback, so the
+   * popover can say which without re-deriving authority in the client (plan 42 §3
+   * resolves this already; `null` when there is no target to resolve).
+   */
+  approversAre: 'managers' | 'admins' | null
+  /**
+   * The popover header, composed SERVER-SIDE with the requester's own lens through
+   * the same `buildThreadSubjectLabel` the durable snapshot uses (plan 42 §6.2).
+   *
+   * The client must not compose this itself: at `metadata` the redactor blanks
+   * `subject`, and a client-side `thread.subject` read renders an EMPTY string —
+   * "the copy case most likely to ship looking broken". Degrading to inbox +
+   * participants + message count is one function, and this is it.
+   *
+   * `null` only when there is no target to label.
+   */
+  subjectLabel: string | null
   /** Populated iff `eligible === false`. */
   refusalReason: AccessRefusalReason | null
+}
+
+/**
+ * What ONE approver sees of a thread access request (plan 42 §7).
+ *
+ * The hydration rule is the whole reason this is a separate read rather than
+ * columns on the pending list: **live wins only when THIS approver can hydrate;
+ * the snapshot is the fallback.** Inbox Managers normally hold `full` through
+ * their inbox row, but the org-admin fallback and the owner recovery audience pass
+ * through *sharing authority*, not a mail-reading lens — a downgraded admin, or one
+ * deciding a null-inbox request, may be allowed to approve while unable to read the
+ * conversation.
+ */
+export interface AccessRequestApproverView {
+  /** Who asked. A cached member read (§6.2's rule), never a `User` join. */
+  requester: { userId: string; name: string | null; image: string | null } | null
+  /**
+   * The conversation label to render: live-composed when {@link hydrated}, else the
+   * durable `subjectLabel` snapshot taken at creation from the REQUESTER's own
+   * redacted view.
+   */
+  label: string
+  /** True when this approver's own lens is `subject` or `full`. */
+  hydrated: boolean
+  /** This approver's composed lens on the target — why {@link label} is what it is. */
+  approverLens: AccessLens | 'none'
+  /** What the requester holds TODAY, which is what the decision is raising from. */
+  requesterLens: AccessLens | 'none'
+  /**
+   * False when the thread is deleted or cross-org. The decision handler refuses
+   * such a request (§4.2 step 1), so the row must say so instead of offering an
+   * Approve that fails.
+   */
+  targetAvailable: boolean
+  /** How many times the requester has re-asked (`metadata.remindCount`). */
+  remindCount: number
 }
 
 /** Resolved approval audience for one thread (plan 42 §3). */

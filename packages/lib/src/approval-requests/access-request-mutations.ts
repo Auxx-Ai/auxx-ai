@@ -303,7 +303,7 @@ export async function withdrawAccessRequest(
  */
 export async function applyAccessDecision(
   ctx: ApprovalResolveContext
-): Promise<{ message: string; afterCommit?: () => Promise<void> }> {
+): Promise<{ message: string; afterCommit?: (db: Database) => Promise<void> }> {
   const { request, approverUserId, action } = ctx
   const tx = ctx.tx as Database
   const organizationId = request.organizationId
@@ -324,9 +324,16 @@ export async function applyAccessDecision(
   if (!threadCtx) throw new NotFoundError(ACCESS_REFUSAL_COPY.target_unavailable)
 
   // 2. CURRENT authority of the acting approver, on both decisions.
+  //
+  // `preloadedThread` hands the guard the row step 1 just loaded. Without it the
+  // guard's thread branch re-reads it twice — once through `getThreadLens`, once
+  // for `inboxId` — so one decision read one `Thread` row three times, which is
+  // exactly what plan 42 §3's "that loader must reduce thread reads, not add one"
+  // was about.
   await assertCanManageMailSharing(
     { db: tx, organizationId, userId: approverUserId },
-    toRecordId('thread', threadId)
+    toRecordId('thread', threadId),
+    { preloadedThread: threadCtx }
   )
 
   const recordId = toRecordId('thread', threadId)

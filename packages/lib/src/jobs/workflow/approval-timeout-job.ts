@@ -90,7 +90,7 @@ async function sendTimeoutNotifications(approvalRequest: ApprovalRequest): Promi
     // Import notification service dynamically to avoid circular dependencies
     const { NotificationService } = await import('../../notifications/notification-service')
     const notificationService = new NotificationService(db)
-    const userIds = await getApprovalAssigneeUserIds(db, {
+    const userIds = await getApprovalAssigneeUserIds({
       assigneeUsers: (approvalRequest.assigneeUsers ?? []) as string[],
       assigneeGroups: (approvalRequest.assigneeGroups ?? []) as string[],
       organizationId: approvalRequest.organizationId,

@@ -1,7 +1,7 @@
 // packages/lib/src/resource-access/grantee-resolution.ts
 
-import { type Database, schema } from '@auxx/database'
-import { MemberType, ResourceGranteeType } from '@auxx/database/enums'
+import { schema } from '@auxx/database'
+import { ResourceGranteeType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, type SQL } from 'drizzle-orm'
 import type { MemberRoleEntry } from '../cache/org-cache-keys'
@@ -124,6 +124,35 @@ export function resolveProfileIdByUser(input: {
   return byUser
 }
 
+/**
+ * Every user belonging to ANY of `groupIds`, from the cached `groupMembers` map.
+ * Cache-only, and ONE pass regardless of how many groups are asked for.
+ *
+ * The cache stores the forward projection (`userId → groupInstanceIds`), so this
+ * is the same inversion `composeMailGrantIndex` does for its own expansion — the
+ * reason it lives here is that three callers now need it and the alternative was
+ * a per-group `EntityGroupMember` query inside a loop.
+ *
+ * Note the cached map is org-scoped through the group's `EntityInstance` row,
+ * which the raw `EntityGroupMember` queries this replaces were NOT: `groupId` is
+ * globally unique so it made no practical difference, but the cached read is the
+ * tighter one.
+ */
+export async function resolveGroupHolders(
+  organizationId: string,
+  groupIds: string[]
+): Promise<string[]> {
+  if (groupIds.length === 0) return []
+  const { getOrgCache } = await import('../cache')
+  const groupMembers = await getOrgCache().get(organizationId, 'groupMembers')
+  const wanted = new Set(groupIds)
+  const out: string[] = []
+  for (const [userId, memberOf] of Object.entries(groupMembers)) {
+    if (memberOf.some((groupId) => wanted.has(groupId))) out.push(userId)
+  }
+  return out
+}
+
 /** Every member whose resolved base profile is `profileId`. Cache-only. */
 export async function resolveProfileHolders(
   organizationId: string,
@@ -230,9 +259,21 @@ export function resourceAccessGranteeConditions(
  * MUST set it: a synthetic agent user holding an inbox `admin` row would otherwise
  * be snapshotted as an approver, satisfy the non-empty assertion, and be unable to
  * decide anything.
+ *
+ * **Cache-only — no `db` parameter, and that is the point.** The `group`/`team`
+ * branch used to run an `EntityGroupMember` query, which made every caller that
+ * expands a SET of grantee rows an N+1: the thread approver resolver loops over
+ * one inbox's `admin` rows and called this once per row. Group membership is
+ * already an org-cache key (`groupMembers`), read that way by
+ * `getCachedUserGroupIds` on the approvals list itself, so the query was the
+ * outlier rather than the cache being a shortcut. Every branch is now a cache
+ * read and the loop costs nothing.
+ *
+ * Safe because no caller mutates group membership in the transaction it expands
+ * from: the share-notification fan-out runs post-commit and the approver resolver
+ * runs outside any transaction.
  */
 export async function expandGranteeToUserIds(
-  db: Database,
   organizationId: string,
   grantee: { granteeType: string; granteeId: string },
   opts: { cap?: number; humansOnly?: boolean } = {}
@@ -270,16 +311,8 @@ export async function expandGranteeToUserIds(
       return finish(await resolveProfileHolders(organizationId, grantee.granteeId))
 
     case ResourceGranteeType.group:
-    case ResourceGranteeType.team: {
-      const members = (await db.query.EntityGroupMember.findMany({
-        where: and(
-          eq(schema.EntityGroupMember.groupInstanceId, grantee.granteeId),
-          eq(schema.EntityGroupMember.memberType, MemberType.user)
-        ),
-        columns: { memberRefId: true },
-      })) as Array<{ memberRefId: string }>
-      return finish(members.map((m) => m.memberRefId))
-    }
+    case ResourceGranteeType.team:
+      return finish(await resolveGroupHolders(organizationId, [grantee.granteeId]))
 
     default:
       logger.warn('Unhandled ResourceAccess granteeType in grantee expansion — reaches nobody', {

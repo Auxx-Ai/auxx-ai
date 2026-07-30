@@ -313,14 +313,20 @@ describe('resolveThreadApprovers (plan 42 §3)', () => {
     const { resolveThreadApprovers, loadThreadAuthorityContext } = await import(
       '../access-request-queries'
     )
-    const { db } = makeFakeDb({
+    // Group membership comes from the CACHED `groupMembers` map (userId →
+    // groupInstanceIds), not an `EntityGroupMember` query — otherwise resolving one
+    // inbox's Manager rows is an N+1, one query per grantee row.
+    orgCacheData.groupMembers = { manager1: ['group-1'], other1: ['group-9'] }
+    const { db, calls } = makeFakeDb({
       threads: [THREAD_ROW],
       managerRowsByRecordId: { 'inbox:inbox-1': [{ granteeType: 'group', granteeId: 'group-1' }] },
-      groupMembers: [{ memberRefId: 'manager1' }],
     })
     const ctx = await loadThreadAuthorityContext(db as never, ORG, THREAD)
     const result = await resolveThreadApprovers(db as never, ORG, ctx!)
     expect(result.primaryUserIds).toEqual(['manager1'])
+    // ONE `ResourceAccess` read is the entire DB cost of resolving approvers: the
+    // thread load plus the grant read, and nothing per grantee row.
+    expect(calls.selects.length).toBe(2)
   })
 
   it('does NOT make an agent user an approver, even holding inbox admin (§3.1)', async () => {
@@ -830,7 +836,12 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
     })
     expect(assertCanManageMailSharing).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG, userId: 'owner1' }),
-      `thread:${THREAD}`
+      `thread:${THREAD}`,
+      // The thread row step 1 loaded is handed to the guard rather than letting it
+      // re-read the same row twice (plan 42 §3's "reduce thread reads, not add one").
+      expect.objectContaining({
+        preloadedThread: expect.objectContaining({ threadId: THREAD, inboxId: INBOX }),
+      })
     )
   })
 
@@ -1006,5 +1017,106 @@ describe('preflightThreadAccessRequest (plan 42 §6.2)', () => {
     const { db } = makeFakeDb({ threads: [] })
     const result = await preflightThreadAccessRequest(db as never, ORG, 'requester1', 'nope')
     expect(result).toMatchObject({ eligible: false, refusalReason: 'target_unavailable' })
+  })
+
+  it('composes the popover header with the REQUESTER’s own lens, never a bare subject', async () => {
+    const { preflightThreadAccessRequest } = await import('../access-request-queries')
+    const { db } = makeFakeDb({
+      threads: [THREAD_ROW],
+      managerRowsByRecordId: { 'inbox:inbox-1': [{ granteeType: 'user', granteeId: 'manager1' }] },
+      pendingRequest: null,
+    })
+    // requester1 is at `metadata`, so the header degrades — the client must never be
+    // handed the subject to render (or an empty string when it tries and fails).
+    const result = await preflightThreadAccessRequest(db as never, ORG, 'requester1', THREAD)
+
+    expect(result.subjectLabel).toBe('Support · 2 participants · 4 messages')
+    expect(result.subjectLabel).not.toContain('Refund')
+    expect(result.subjectLabel?.trim()).not.toBe('')
+    expect(result.approversAre).toBe('managers')
+  })
+
+  it('names the org-admin fallback as admins, not managers, when the inbox has none', async () => {
+    const { preflightThreadAccessRequest } = await import('../access-request-queries')
+    const { db } = makeFakeDb({ threads: [{ ...THREAD_ROW, inboxId: null }], pendingRequest: null })
+    const result = await preflightThreadAccessRequest(db as never, ORG, 'requester1', THREAD)
+
+    expect(result.approversAre).toBe('admins')
+    expect(result.approvers.map((a) => a.userId).sort()).toEqual(['admin1', 'owner1'])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §7 — the approver-side view, and its hydration gate
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('getThreadAccessRequestApproverView (plan 42 §7)', () => {
+  const ACCESS_ROW = {
+    id: 'req-1',
+    organizationId: ORG,
+    kind: 'access',
+    status: 'pending',
+    targetKind: 'instance',
+    entityDefinitionId: 'thread',
+    entityInstanceId: THREAD,
+    requesterId: 'requester1',
+    // Built at creation from the REQUESTER's redacted view, so it carries no subject.
+    subjectLabel: 'Support · 2 participants · 4 messages',
+    requestedLens: 'full',
+    metadata: { remindCount: 2 },
+  }
+
+  it('HYDRATES for an approver who can read the conversation', async () => {
+    const { getThreadAccessRequestApproverView } = await import('../access-request-queries')
+    const { db } = makeFakeDb({ threads: [THREAD_ROW], pendingRequest: ACCESS_ROW })
+    const view = await getThreadAccessRequestApproverView(db as never, ORG, 'manager1', 'req-1')
+
+    expect(view).toMatchObject({
+      hydrated: true,
+      approverLens: 'full',
+      requesterLens: 'metadata',
+      targetAvailable: true,
+      remindCount: 2,
+      requester: { userId: 'requester1', name: 'Name requester1' },
+    })
+    expect(view?.label).toBe('Support · Refund for order #4821')
+  })
+
+  it('falls back to the SNAPSHOT for an approver whose own lens is metadata — no leaked subject', async () => {
+    const { getThreadAccessRequestApproverView } = await import('../access-request-queries')
+    // The case §7 exists for: sharing authority without a reading lens. A downgraded
+    // admin may decide this request and must not be shown live thread content.
+    mailVisibility.admin1 = vis('admin1', { inboxLens: { [INBOX]: 'metadata' } })
+    const { db } = makeFakeDb({ threads: [THREAD_ROW], pendingRequest: ACCESS_ROW })
+    const view = await getThreadAccessRequestApproverView(db as never, ORG, 'admin1', 'req-1')
+
+    expect(view?.hydrated).toBe(false)
+    expect(view?.label).toBe(ACCESS_ROW.subjectLabel)
+    expect(view?.label).not.toContain('Refund')
+  })
+
+  it('reports a deleted / cross-org target instead of pretending it can be granted', async () => {
+    const { getThreadAccessRequestApproverView } = await import('../access-request-queries')
+    const { db } = makeFakeDb({ threads: [], pendingRequest: ACCESS_ROW })
+    const view = await getThreadAccessRequestApproverView(db as never, ORG, 'manager1', 'req-1')
+
+    expect(view).toMatchObject({ targetAvailable: false, hydrated: false, approverLens: 'none' })
+    // The snapshot is the only thing left that says what was asked for.
+    expect(view?.label).toBe(ACCESS_ROW.subjectLabel)
+  })
+
+  it('returns null for a lane it does not own, so the row falls back to generic details', async () => {
+    const { getThreadAccessRequestApproverView } = await import('../access-request-queries')
+    const { db } = makeFakeDb({
+      threads: [THREAD_ROW],
+      pendingRequest: {
+        ...ACCESS_ROW,
+        targetKind: 'area',
+        entityDefinitionId: null,
+        area: 'inboxes',
+      },
+    })
+    const view = await getThreadAccessRequestApproverView(db as never, ORG, 'manager1', 'req-1')
+    expect(view).toBeNull()
   })
 })

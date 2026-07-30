@@ -11,14 +11,14 @@
 import { type Database, schema } from '@auxx/database'
 import { ResourcePermission } from '@auxx/database/enums'
 import { parseRecordId } from '@auxx/types/resource'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { getCachedMembersByUserIds, getCachedUserMailVisibility, getOrgCache } from '../cache'
 import { getCapabilities } from '../permissions/capabilities/get-capabilities'
 import { PermissionKey } from '../permissions/capabilities/registry'
 import type { UserMailVisibility } from '../permissions/visibility/context'
-import { effectiveLens } from '../permissions/visibility/effective-lens'
 import type { Lens } from '../permissions/visibility/lens'
 import { redactThreadMeta } from '../permissions/visibility/redact'
+import { getLoadedThreadLens } from '../permissions/visibility/thread-lens'
 import { expandGranteeToUserIds } from '../resource-access/grantee-resolution'
 import { inboxAccessRecordId } from '../resource-access/mail-sharing-guard'
 import type { ThreadMeta } from '../threads/types'
@@ -28,6 +28,7 @@ import {
   type AccessRequestMetadata,
 } from './client'
 import type {
+  AccessRequestApproverView,
   AccessRequestPreflight,
   ThreadApproverResolution,
   ThreadAuthorityContext,
@@ -86,34 +87,19 @@ export async function loadThreadAuthorityContext(
  *
  * Exists so the request/decision paths do not re-read the thread through
  * `getThreadLens` after this module already has it.
+ *
+ * A thin alias over {@link getLoadedThreadLens}, which lives beside
+ * `getThreadLensBatch` so the "participants only when the viewer holds contact
+ * grants" rule has exactly one home. `assertCanManageMailSharing` consumes the
+ * same helper on the same context, which is what makes one thread read serve the
+ * whole decision.
  */
 export async function threadLensFromContext(
   db: Database,
   vis: UserMailVisibility,
   ctx: ThreadAuthorityContext
 ): Promise<Lens> {
-  let participantContactIds: string[] = []
-  if (Object.keys(vis.contactGrants).length > 0) {
-    const rows = await db
-      .select({ entityInstanceId: schema.ThreadParticipant.entityInstanceId })
-      .from(schema.ThreadParticipant)
-      .where(
-        and(
-          eq(schema.ThreadParticipant.threadId, ctx.threadId),
-          isNotNull(schema.ThreadParticipant.entityInstanceId)
-        )
-      )
-    participantContactIds = rows
-      .map((r) => r.entityInstanceId)
-      .filter((id): id is string => id !== null)
-  }
-  return effectiveLens(vis, {
-    threadId: ctx.threadId,
-    inboxId: ctx.inboxId,
-    assigneeId: ctx.assigneeId,
-    primaryEntityInstanceId: ctx.primaryEntityInstanceId,
-    participantContactIds,
-  })
+  return getLoadedThreadLens(db, vis, ctx)
 }
 
 /**
@@ -184,11 +170,13 @@ export async function resolveThreadApprovers(
           eq(schema.ResourceAccess.permission, ResourcePermission.admin)
         )
       )
+    // The expansion is cache-only (see `expandGranteeToUserIds`), so this loop
+    // costs no queries — one targeted `ResourceAccess` read above is the whole
+    // DB cost of resolving approvers. Before that it ran an `EntityGroupMember`
+    // query per grantee row, making a group-managed inbox an N+1.
     const seen = new Set<string>()
     for (const row of rows) {
-      const { userIds } = await expandGranteeToUserIds(db, organizationId, row, {
-        humansOnly: true,
-      })
+      const { userIds } = await expandGranteeToUserIds(organizationId, row, { humansOnly: true })
       for (const userId of userIds) seen.add(userId)
     }
     managerUserIds = Array.from(seen)
@@ -263,6 +251,24 @@ export async function findPendingThreadAccessRequest(
  *
  * The window is measured from `metadata.deniedAt` (written by the decision
  * handler), falling back to `createdAt` for a row that predates the field.
+ *
+ * **`ORDER BY createdAt DESC LIMIT 1`, served by
+ * `ApprovalRequest_access_instance_denied_idx`.** This previously selected EVERY
+ * historical denial for the (requester, target) pair and reduced them in JS,
+ * against no usable index — so a target denied repeatedly re-read the whole
+ * history on every trigger render.
+ *
+ * Taking the newest-CREATED row is sound even though the window is measured from
+ * `deniedAt`, because the pending unique index serializes the lifecycle: a second
+ * request for one target cannot be created while the first is still pending, so a
+ * later-created denial was necessarily decided later too.
+ *
+ * There is deliberately NO `createdAt >= now() - cooldown` predicate. It looks
+ * like a free narrowing and is wrong: `deniedAt` can trail `createdAt` by the
+ * request's whole 14-day life, so a row created 30 days ago may have been denied
+ * yesterday and still be inside a 7-day cooldown. The index ordering is what
+ * bounds this read; a date filter on the wrong column would silently drop live
+ * cooldowns.
  */
 export async function findThreadDenyCooldown(
   db: Database,
@@ -270,7 +276,7 @@ export async function findThreadDenyCooldown(
   requesterId: string,
   threadId: string
 ): Promise<{ until: Date } | null> {
-  const rows = await db
+  const [row] = await db
     .select({
       createdAt: schema.ApprovalRequest.createdAt,
       metadata: schema.ApprovalRequest.metadata,
@@ -287,15 +293,13 @@ export async function findThreadDenyCooldown(
         eq(schema.ApprovalRequest.entityInstanceId, threadId)
       )
     )
-  const cooldownMs = ACCESS_DENY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
-  let latest: Date | null = null
-  for (const row of rows) {
-    const deniedAtRaw = (row.metadata as AccessRequestMetadata | null)?.deniedAt
-    const deniedAt = deniedAtRaw ? new Date(deniedAtRaw) : row.createdAt
-    if (!latest || deniedAt > latest) latest = deniedAt
-  }
-  if (!latest) return null
-  const until = new Date(latest.getTime() + cooldownMs)
+    .orderBy(desc(schema.ApprovalRequest.createdAt))
+    .limit(1)
+  if (!row) return null
+
+  const deniedAtRaw = (row.metadata as AccessRequestMetadata | null)?.deniedAt
+  const latest = deniedAtRaw ? new Date(deniedAtRaw) : row.createdAt
+  const until = new Date(latest.getTime() + ACCESS_DENY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000)
   return until > new Date() ? { until } : null
 }
 
@@ -359,6 +363,15 @@ export async function buildThreadSubjectLabel(
  * userType }`. Naming the approver is load-bearing — it is the difference between
  * "sent into the void" and "Sarah will see this" — and resolving Managers in the
  * client would be a second authority implementation free to drift.
+ *
+ * **Ordered cheapest-refusal-first.** Approver resolution costs a `ResourceAccess`
+ * query and pending state costs another, and neither is rendered by ANY refusal:
+ * `already_full` says "you already have access", and `worker_seat` /
+ * `front_door_closed` deliberately name the seat or the profile rather than a
+ * person, because pointing an approver at a lever they cannot pull is worse than
+ * naming none (§5.3). Every refusal therefore answers from the thread load, the
+ * viewer's cached lens and one cached capability read. Only the eligible path pays
+ * for the audience — and it needs it, since the pending view is "waiting on Sarah".
  */
 export async function preflightThreadAccessRequest(
   db: Database,
@@ -368,6 +381,8 @@ export async function preflightThreadAccessRequest(
 ): Promise<AccessRequestPreflight> {
   const empty = {
     approvers: [] as AccessRequestPreflight['approvers'],
+    approversAre: null,
+    subjectLabel: null,
     pending: null,
   }
 
@@ -379,7 +394,30 @@ export async function preflightThreadAccessRequest(
   const vis = await getCachedUserMailVisibility(userId, organizationId)
   const currentLens = await threadLensFromContext(db, vis, ctx)
 
-  const pendingRow = await findPendingThreadAccessRequest(db, organizationId, userId, threadId)
+  // Composed with the REQUESTER's own lens, through the same builder the durable
+  // snapshot uses — so the popover header degrades to inbox + participants + count
+  // at `metadata` instead of rendering an empty subject client-side (§6.2).
+  // Cache-only, so it rides along on the refusal paths too.
+  const subjectLabel = await buildThreadSubjectLabel(organizationId, ctx, currentLens)
+  const refuseEarly = (refusalReason: AccessRefusalReason): AccessRequestPreflight => ({
+    ...empty,
+    eligible: false,
+    currentLens,
+    subjectLabel,
+    refusalReason,
+  })
+
+  if (currentLens === 'full') return refuseEarly('already_full')
+
+  const frontDoor = await resolveThreadFrontDoor(organizationId, userId)
+  if (!frontDoor.open) return refuseEarly(frontDoor.reason)
+
+  // Independent of each other, so concurrent: one `ApprovalRequest` read and one
+  // `ResourceAccess` read.
+  const [pendingRow, approverResolution] = await Promise.all([
+    findPendingThreadAccessRequest(db, organizationId, userId, threadId),
+    resolveThreadApprovers(db, organizationId, ctx),
+  ])
   const pending = pendingRow
     ? {
         id: pendingRow.id,
@@ -388,33 +426,106 @@ export async function preflightThreadAccessRequest(
       }
     : null
 
-  const approverResolution = await resolveThreadApprovers(db, organizationId, ctx)
   const members = await getCachedMembersByUserIds(organizationId, approverResolution.primaryUserIds)
-  const approvers = members.map((m) => ({
-    userId: m.userId,
-    name: m.user?.name ?? null,
-    image: m.user?.image ?? null,
-  }))
-
-  const refuse = (refusalReason: AccessRefusalReason): AccessRequestPreflight => ({
-    eligible: false,
+  const base = {
     currentLens,
     pending,
-    approvers,
-    refusalReason,
-  })
-
-  if (currentLens === 'full') return refuse('already_full')
-
-  const frontDoor = await resolveThreadFrontDoor(organizationId, userId)
-  if (!frontDoor.open) return refuse(frontDoor.reason)
+    subjectLabel,
+    approvers: members.map((m) => ({
+      userId: m.userId,
+      name: m.user?.name ?? null,
+      image: m.user?.image ?? null,
+    })),
+    approversAre: approverResolution.hasManagers ? ('managers' as const) : ('admins' as const),
+  }
 
   // A pending request is not a refusal — the UI swaps the trigger for a status
   // view (§6.4). Only a fresh deny blocks.
   if (!pending) {
     const cooldown = await findThreadDenyCooldown(db, organizationId, userId, threadId)
-    if (cooldown) return refuse('deny_cooldown')
+    if (cooldown) return { eligible: false, ...base, refusalReason: 'deny_cooldown' }
   }
 
-  return { eligible: true, currentLens, pending, approvers, refusalReason: null }
+  return { eligible: true, ...base, refusalReason: null }
+}
+
+/**
+ * What ONE approver sees of a thread access request (plan 42 §7) — the
+ * hydration-gated half of the decision row.
+ *
+ * **Live wins only when THIS approver can hydrate; the snapshot is the fallback.**
+ * Being able to *decide* a request and being able to *read* the conversation are
+ * different authorities: inbox Managers normally hold `full` through their inbox
+ * row, but the org-admin fallback and the owner recovery audience pass through
+ * sharing authority alone. So the lens is computed for the acting approver and the
+ * label follows it — `subject`/`full` hydrates, `metadata`/`none` renders the
+ * durable snapshot, which was itself built from the requester's redacted view and
+ * therefore cannot leak anything the requester could not already see.
+ *
+ * Returns `null` for anything that is not a thread access request, so the caller
+ * falls back to the generic approval details rather than rendering mail copy over a
+ * workflow row.
+ */
+export async function getThreadAccessRequestApproverView(
+  db: Database,
+  organizationId: string,
+  approverUserId: string,
+  approvalRequestId: string
+): Promise<AccessRequestApproverView | null> {
+  const request = await db.query.ApprovalRequest.findFirst({
+    where: and(
+      eq(schema.ApprovalRequest.id, approvalRequestId),
+      eq(schema.ApprovalRequest.organizationId, organizationId),
+      eq(schema.ApprovalRequest.kind, 'access')
+    ),
+  })
+  if (
+    !request ||
+    request.targetKind !== 'instance' ||
+    request.entityDefinitionId !== 'thread' ||
+    !request.entityInstanceId ||
+    !request.requesterId
+  ) {
+    return null
+  }
+
+  const [member] = await getCachedMembersByUserIds(organizationId, [request.requesterId])
+  const requester = member
+    ? { userId: member.userId, name: member.user?.name ?? null, image: member.user?.image ?? null }
+    : null
+  const remindCount = (request.metadata as AccessRequestMetadata | null)?.remindCount ?? 0
+
+  const ctx = await loadThreadAuthorityContext(db, organizationId, request.entityInstanceId)
+  if (!ctx) {
+    // Deleted or cross-org. The snapshot is the only thing left that says what was
+    // asked for, and `targetAvailable: false` is what stops the row offering an
+    // Approve the decision handler will refuse.
+    return {
+      requester,
+      label: request.subjectLabel,
+      hydrated: false,
+      approverLens: 'none',
+      requesterLens: 'none',
+      targetAvailable: false,
+      remindCount,
+    }
+  }
+
+  const approverVis = await getCachedUserMailVisibility(approverUserId, organizationId)
+  const approverLens = await threadLensFromContext(db, approverVis, ctx)
+  const requesterVis = await getCachedUserMailVisibility(request.requesterId, organizationId)
+  const requesterLens = await threadLensFromContext(db, requesterVis, ctx)
+
+  const hydrated = approverLens === 'subject' || approverLens === 'full'
+  return {
+    requester,
+    label: hydrated
+      ? await buildThreadSubjectLabel(organizationId, ctx, approverLens)
+      : request.subjectLabel,
+    hydrated,
+    approverLens,
+    requesterLens,
+    targetAvailable: true,
+    remindCount,
+  }
 }

@@ -4,13 +4,14 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { type Database, database, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { type ActorId, parseActorId } from '@auxx/types/actor'
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
-import { generateApprovalToken } from '../../../approval-requests'
+import { generateApprovalTokens } from '../../../approval-requests'
 import {
-  approvalEmailEnabled,
+  approvalEmailEnabledFor,
   getApprovalAssigneeUserIds,
 } from '../../../approval-requests/approval-recipients'
+import { getCachedMembersByUserIds } from '../../../cache'
 import { getCachedWorkflowApp } from '../../../cache/workflow-app-queries'
 import { publisher } from '../../../events/publisher'
 import { enqueueEmailJob } from '../../../jobs/email'
@@ -384,7 +385,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
   ): Promise<void> {
     const db = contextManager.getContext().db ?? database
     // Get all users (direct + from groups)
-    const allUserIds = await getApprovalAssigneeUserIds(db, {
+    const allUserIds = await getApprovalAssigneeUserIds({
       assigneeUsers: assignees.userIds,
       assigneeGroups: assignees.groups,
       organizationId: approvalRequest.organizationId,
@@ -424,6 +425,26 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       )
     }
   }
+  /**
+   * Fan the approval email out to every assignee.
+   *
+   * Deliberately THREE queries total, not `3N + 1`. Each of the three used to be
+   * per-recipient work inside the loop:
+   *
+   * - **Recipient name/email is a cache read.** `getCachedMembersByUserIds`
+   *   already projects `{ id, name, email, image, userType }`, so the `User`
+   *   select was redundant with a blob every permission path in the request has
+   *   loaded already.
+   * - **The preference gate is batched.** `approvalEmailEnabled` costs up to two
+   *   queries per recipient (`UserSetting`, then `OrganizationSetting` when unset);
+   *   `approvalEmailEnabledFor` answers the whole list in one.
+   * - **Tokens are minted as a batch.** The per-recipient form is a
+   *   read-modify-write of one `metadata` JSON, so N recipients rewrote a document
+   *   that grew with each of them. One read, one write, N entries.
+   *
+   * Enqueue failures stay per-recipient: one bad address must not cost the rest
+   * their notification.
+   */
   private async sendEmailNotifications(
     db: Database,
     approvalRequest: any,
@@ -431,45 +452,44 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     contextManager: ExecutionContextManager,
     requireLogin: boolean
   ): Promise<void> {
-    // Get user details
-    const users = await db
-      .select({
-        id: schema.User.id,
-        email: schema.User.email,
-        name: schema.User.name,
-      })
-      .from(schema.User)
-      .where(inArray(schema.User.id, userIds))
+    if (userIds.length === 0) return
+    const organizationId = approvalRequest.organizationId as string
+
+    const members = await getCachedMembersByUserIds(organizationId, userIds)
+    // Recipient's half of the email decision — ANDs with the node's
+    // `methods.email` (§7). Unset still sends.
+    const emailAllowed = await approvalEmailEnabledFor(db, organizationId, userIds)
+
+    const recipients = members.filter((m) => m.user?.email && emailAllowed.has(m.userId))
+    if (recipients.length === 0) return
+
+    const tokens = requireLogin
+      ? {}
+      : await generateApprovalTokens(
+          db,
+          approvalRequest.id,
+          recipients.map((m) => m.userId)
+        )
 
     const baseUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
 
-    for (const user of users) {
+    for (const member of recipients) {
+      const token = tokens[member.userId]
       try {
-        // Recipient's half of the email decision — ANDs with the node's
-        // `methods.email` (§7). Unset still sends.
-        if (!(await approvalEmailEnabled(approvalRequest.organizationId, user.id, db))) continue
-
-        let approvalUrl = baseUrl
-
-        if (!requireLogin) {
-          const token = await generateApprovalToken(db, approvalRequest.id, user.id)
-          approvalUrl += `?token=${encodeURIComponent(token)}`
-        }
-
         await enqueueEmailJob('approval-request', {
-          recipient: { email: user.email!, name: user.name || 'User' },
+          recipient: { email: member.user!.email!, name: member.user!.name || 'User' },
           workflowName: approvalRequest.subjectLabel,
           message: approvalRequest.message,
-          approvalUrl,
+          approvalUrl: token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl,
           expiresAt: approvalRequest.expiresAt,
           source: 'human-confirmation',
-          organizationId: approvalRequest.organizationId,
+          organizationId,
         })
       } catch (error) {
         contextManager.log(
           'WARN',
           approvalRequest.nodeId,
-          `Failed to send email notification to ${user.email}`,
+          `Failed to send email notification to ${member.user?.email}`,
           { error: error instanceof Error ? error.message : String(error) }
         )
       }

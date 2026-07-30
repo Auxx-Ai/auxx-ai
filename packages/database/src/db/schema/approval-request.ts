@@ -111,16 +111,32 @@ export const ApprovalRequest = pgTable(
   },
   (table) => [
     index('ApprovalRequest_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
-    index('ApprovalRequest_organizationId_assigneeGroups_idx').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.assigneeGroups.asc().nullsLast()
-    ),
-    index('ApprovalRequest_organizationId_assigneeUsers_idx').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.assigneeUsers.asc().nullsLast()
-    ),
+    // ── Audience lookup: GIN, because the predicate is `@>` / `&&` ──
+    //
+    // The pending list and the badge count match assignees with
+    // `arrayContains(assigneeUsers, [userId])` and
+    // `arrayOverlaps(assigneeGroups, groupIds)`. These replace two B-tree indexes
+    // — `(organizationId, assigneeUsers)` and `(organizationId, assigneeGroups)` —
+    // which could serve NEITHER operator: a B-tree over `text[]` indexes the array
+    // as one opaque sortable value, so it answers whole-array equality and nothing
+    // else. Both surfaces therefore scanned the org's whole approval history while
+    // still paying the write amplification of maintaining the indexes.
+    //
+    // Partial on `status = 'pending'` because that is the only status either query
+    // asks for, and it is a small slice of the table forever — a decided approval
+    // never returns to pending. Postgres can bitmap-OR the two indexes for the
+    // `OR` in the assignee predicate.
+    //
+    // `organizationId` is deliberately NOT a leading column: a multi-column GIN
+    // over a scalar needs the `btree_gin` extension, and the array match is
+    // already selective (assignee ids are org-scoped users), so the org equality
+    // is a cheap recheck on a handful of heap rows.
+    index('ApprovalRequest_assigneeUsers_pending_gin')
+      .using('gin', table.assigneeUsers)
+      .where(sql`status = 'pending'`),
+    index('ApprovalRequest_assigneeGroups_pending_gin')
+      .using('gin', table.assigneeGroups)
+      .where(sql`status = 'pending'`),
     index('ApprovalRequest_organizationId_idx').using(
       'btree',
       table.organizationId.asc().nullsLast()
@@ -155,6 +171,29 @@ export const ApprovalRequest = pgTable(
     uniqueIndex('ApprovalRequest_access_instance_pending_key')
       .on(table.organizationId, table.requesterId, table.entityDefinitionId, table.entityInstanceId)
       .where(sql`kind = 'access' AND status = 'pending' AND "targetKind" = 'instance'`),
+    // ── Deny cooldown: the TERMINAL counterpart to the pending uniques above ──
+    //
+    // `findThreadDenyCooldown` asks "did anyone deny this exact (requester,
+    // target) recently?" — the same key list as the pending unique, but on
+    // `status = 'denied'` and non-unique (a target may be denied repeatedly over
+    // its lifetime). Without it that read had no usable index at all and fell back
+    // to the org-wide `organizationId` index, fetching every historical denial in
+    // the org for that requester and reducing them in JS.
+    //
+    // `createdAt DESC` is the trailing key so the query is an index-ordered
+    // `LIMIT 1` rather than a sort. That ordering is sound because the pending
+    // unique above serializes the lifecycle: a second request for one target
+    // cannot be created while the first is pending, so a later-created denial was
+    // necessarily decided later too.
+    index('ApprovalRequest_access_instance_denied_idx')
+      .on(
+        table.organizationId,
+        table.requesterId,
+        table.entityDefinitionId,
+        table.entityInstanceId,
+        table.createdAt.desc()
+      )
+      .where(sql`kind = 'access' AND status = 'denied' AND "targetKind" = 'instance'`),
     // The workflow columns are present iff this is a workflow row.
     check(
       'ApprovalRequest_workflow_columns_check',

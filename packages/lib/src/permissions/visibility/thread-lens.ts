@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
-import type { MailViewer, ThreadVisibilityInput } from './context'
+import type { MailViewer, ThreadVisibilityInput, UserMailVisibility } from './context'
 import { isAutomationViewer, isSystemViewer } from './context'
 import { automationLens, effectiveLens } from './effective-lens'
 import type { Lens } from './lens'
@@ -118,4 +118,60 @@ export async function getThreadLens(
 ): Promise<Lens> {
   const lenses = await getThreadLensBatch(db, organizationId, viewer, [threadId])
   return lenses.get(threadId) ?? 'none'
+}
+
+/** The thread columns {@link getLoadedThreadLens} needs from a caller. */
+export interface LoadedThreadFacts {
+  threadId: string
+  inboxId: string | null
+  assigneeId: string | null
+  primaryEntityInstanceId: string | null
+}
+
+/**
+ * A human viewer's effective lens on a thread the caller has ALREADY loaded
+ * org-scoped — {@link getThreadLens} minus its thread-row query.
+ *
+ * Exists because two callers legitimately need the lens for a row they are
+ * already holding, and going back through `getThreadLens` re-selected it: the
+ * access-request lane loads the thread once for its authority context, and
+ * `assertCanManageMailSharing`'s thread branch is then handed that same context.
+ * Between them the decision path read one `Thread` row three times.
+ *
+ * Keeps the `ThreadParticipant` query CONDITIONAL on the viewer actually holding
+ * contact grants, which is the rule `getThreadLensBatch` owns — the whole point of
+ * putting this beside it rather than in either caller is that the two cannot
+ * drift on when participants matter.
+ *
+ * Human viewers only (`UserMailVisibility`, not `MailViewer`): the SYSTEM and
+ * automation branches exist to SKIP the row read, so they have nothing to gain
+ * from a preloaded row and both callers here resolve a real member.
+ */
+export async function getLoadedThreadLens(
+  db: Database,
+  viewer: UserMailVisibility,
+  thread: LoadedThreadFacts
+): Promise<Lens> {
+  let participantContactIds: string[] = []
+  if (Object.keys(viewer.contactGrants).length > 0) {
+    const rows = await db
+      .select({ entityInstanceId: schema.ThreadParticipant.entityInstanceId })
+      .from(schema.ThreadParticipant)
+      .where(
+        and(
+          eq(schema.ThreadParticipant.threadId, thread.threadId),
+          isNotNull(schema.ThreadParticipant.entityInstanceId)
+        )
+      )
+    participantContactIds = rows
+      .map((r) => r.entityInstanceId)
+      .filter((id): id is string => id !== null)
+  }
+  return effectiveLens(viewer, {
+    threadId: thread.threadId,
+    inboxId: thread.inboxId,
+    assigneeId: thread.assigneeId,
+    primaryEntityInstanceId: thread.primaryEntityInstanceId,
+    participantContactIds,
+  })
 }

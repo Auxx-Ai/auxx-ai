@@ -63,7 +63,10 @@ vi.mock('../cache', () => ({
 }))
 
 vi.mock('../permissions/visibility', () => ({
-  getThreadLens: (...a: unknown[]) => h.getThreadLens(...a),
+  // The guard resolves the lens for a thread row it (or its caller) already
+  // loaded, so it consumes `getLoadedThreadLens` rather than re-selecting through
+  // `getThreadLens`.
+  getLoadedThreadLens: (...a: unknown[]) => h.getThreadLens(...a),
 }))
 
 vi.mock('../permissions/feature-permission-service', () => ({
@@ -80,11 +83,27 @@ import { assertCanManageMailSharing, assertMailSharingFeature } from './mail-sha
 
 const ORG = 'org_1'
 
-/** `ctx.db` — only `assertMailSharingFeature`'s existing-Manager probe uses it. */
+/**
+ * `ctx.db` — used by `assertMailSharingFeature`'s existing-Manager probe AND, since
+ * the guard stopped reaching for the module-level `database`, by the thread
+ * branch's own thread-facts load. The two are told apart by the terminator:
+ * the Manager probe awaits `.where()`, the thread load calls `.limit()`.
+ */
 const existingManagerRows: Array<{ granteeId: string }> = []
 const ctx = () =>
   ({
-    db: { select: () => ({ from: () => ({ where: async () => existingManagerRows }) }) },
+    db: {
+      select: () => ({
+        from: (table: { id: string }) => ({
+          where: () => {
+            const rows = h.rowsByTable[String(table.id).split('.')[0] ?? ''] ?? []
+            return Object.assign(Promise.resolve(existingManagerRows), {
+              limit: async () => rows,
+            })
+          },
+        }),
+      }),
+    },
     organizationId: ORG,
     userId: 'u_caller',
   }) as any
@@ -237,6 +256,42 @@ describe('assertCanManageMailSharing — thread re-share resolves the inbox’s 
       'Only admins or inbox managers can share this conversation'
     )
     expect(h.hasPermission).not.toHaveBeenCalled()
+  })
+
+  // `preloadedThread` is what keeps the access-request decision path from reading
+  // one `Thread` row three times. If the guard ever goes back to loading it
+  // itself, this select count is what says so.
+  it('reads NO thread row when the caller preloads it', async () => {
+    const selects = vi.fn()
+    const preloadingCtx = {
+      db: {
+        select: () => {
+          selects()
+          return {
+            from: () => ({
+              where: () => Object.assign(Promise.resolve([]), { limit: async () => [] }),
+            }),
+          }
+        },
+      },
+      organizationId: ORG,
+      userId: 'u_caller',
+    } as any
+    h.cachedInboxes = [{ id: 'pi_1', entityDefinitionKey: 'personal_inbox' }]
+    h.hasPermission.mockResolvedValue(true)
+
+    await expect(
+      assertCanManageMailSharing(preloadingCtx, toRecordId('thread', 't_1'), {
+        preloadedThread: {
+          threadId: 't_1',
+          inboxId: 'pi_1',
+          assigneeId: null,
+          primaryEntityInstanceId: null,
+        },
+      })
+    ).resolves.toBeUndefined()
+    expect(selects).not.toHaveBeenCalled()
+    expect(askedAbout()).toBe('personal_inbox:pi_1')
   })
 })
 

@@ -109,7 +109,12 @@ function fakeDb() {
     insert: () => {
       writes.insert()
       return {
-        values: () => ({ onConflictDoUpdate: async () => {} }),
+        // Chainable AND awaitable: `grantInstanceAccess` reads
+        // `RETURNING xmax = 0` to tell an INSERT from an UPDATE, `grantTypeAccess`
+        // awaits it directly.
+        values: () => ({
+          onConflictDoUpdate: () => ({ returning: async () => [{ inserted: true }] }),
+        }),
       }
     },
     delete: () => {
