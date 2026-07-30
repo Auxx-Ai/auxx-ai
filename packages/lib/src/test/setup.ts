@@ -73,7 +73,19 @@ vi.mock('@auxx/database', () => ({
       },
     },
   },
-  schema: new Proxy({}, { get: () => ({}) }),
+  // MEMOIZED per key, deliberately. An un-memoized `get: () => ({})` hands out a
+  // FRESH object on every access, so `schema.Foo !== schema.Foo` and any test
+  // that identifies a table by reference silently misbehaves: `toContain` never
+  // matches and — worse — the paired `not.toContain` passes vacuously, so the
+  // test looks green while asserting nothing. Stable identity costs nothing
+  // (columns are still `{}`, so column-level refs remain unassertable — see the
+  // Drizzle-under-vitest note) and lets `.from(table)` be compared by reference.
+  schema: new Proxy({} as Record<string, object>, {
+    get: (target, key: string) => {
+      if (!(key in target)) target[key] = {}
+      return target[key]
+    },
+  }),
   IntegrationProviderTypeValues: ['google', 'outlook'],
 }))
 

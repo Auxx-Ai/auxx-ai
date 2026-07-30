@@ -143,9 +143,9 @@ async function collectNativeTools(): Promise<AgentToolDefinition[]> {
  * either half without the other.
  */
 const KNOWN_UNENFORCED: readonly string[] = [
-  // 19b G3 — record-adjacent write, deliberately ungated to match the human
-  // comment routers (doc 14 §8.3). The four G3 *reads* were fixed; this is the pair's survivor.
-  'create_note',
+  // 19b G3 is GONE from this list: `create_note` was the pair's last survivor and
+  // it now enforces (`CommentService` asserts `commentsManage` plus parent view,
+  // with thread hosts branching to inbox view + the mail lens — plan 41).
   // 19b G7 — the residue of the coarse org-wide reads. `list_table_views` and
   // `list_tags` are GONE from this list: both found a real rung (the page's def /
   // the `tag` def) and now assert `canViewEntity`. These two did not, and the
