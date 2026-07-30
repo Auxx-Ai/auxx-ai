@@ -1,6 +1,7 @@
 // apps/homepage/src/app/platform/ai/_mocks/mock-app-sidebar.tsx
 
 import {
+  Bot,
   Building2,
   Calendar,
   ChevronDown,
@@ -25,6 +26,7 @@ export type SidebarKey =
   | 'drafts'
   | 'today'
   | 'kopilot'
+  | 'agents'
   | 'workflows'
   | 'datasets'
   | 'kb'
@@ -104,6 +106,7 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { key: 'today', label: 'Today', icon: Calendar },
       { key: 'kopilot', label: 'Chats', icon: MessagesSquare },
+      { key: 'agents', label: 'Agents', icon: Bot },
       { key: 'workflows', label: 'Workflows', icon: Workflow },
     ],
   },

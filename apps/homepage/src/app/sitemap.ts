@@ -141,6 +141,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
+      url: `${baseUrl}/platform/ai/agents`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
       url: `${baseUrl}/platform/reporting`,
       lastModified: new Date(),
       changeFrequency: 'monthly',

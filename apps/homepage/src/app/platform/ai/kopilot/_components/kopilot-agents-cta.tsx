@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { type CSSProperties, type MouseEvent, useRef, useState } from 'react'
 import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
 import { Button } from '~/components/ui/button'
-import { config } from '~/lib/config'
 
 interface Character {
   src: string
@@ -130,7 +129,7 @@ export default function KopilotAgentsCta() {
                 asChild
                 size='sm'
                 className='bg-white text-zinc-900 hover:bg-white/90 shadow-md'>
-                <Link href={config.urls.signup}>Get started</Link>
+                <Link href='/platform/ai/agents'>See what agents can do</Link>
               </Button>
             </div>
           </div>
