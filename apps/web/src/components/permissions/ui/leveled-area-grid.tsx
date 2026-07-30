@@ -14,6 +14,7 @@ import { AreaAccessRow, hasAreaAccessRow } from './area-access-row'
 import { clampToArea, LevelControl } from './level-control'
 import { effectiveLevelLabel } from './level-labels'
 import { PROFILE_AREA_GROUPS } from './profile-copy'
+import { RungBadge } from './rung-badge'
 
 /** The grid's live filter, handed to {@link LeveledAreaGridProps.renderChildren}. */
 export interface AreaChildFilter {
@@ -259,9 +260,7 @@ export function LeveledAreaGrid({
                               <AlertTriangle className='size-3.5 text-amber-500' />
                             </Tooltip>
                           ) : null}
-                          <span className='text-xs text-muted-foreground whitespace-nowrap'>
-                            {effectiveLevelLabel(clampToArea(meta, value ?? inherited))}
-                          </span>
+                          <RungBadge level={clampToArea(meta, value ?? inherited)} />
                         </>
                       ) : undefined
                     }

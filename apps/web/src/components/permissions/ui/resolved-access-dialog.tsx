@@ -15,7 +15,7 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { ShieldQuestion } from 'lucide-react'
 import { useState } from 'react'
-import { RUNG_LABELS } from './level-labels'
+import { RUNG_BADGE_VARIANT, RUNG_LABELS } from './level-labels'
 
 /** Shared row chrome — same shape the leveled grids use. */
 const ROW_CLASS = 'bg-primary-50 hover:bg-primary-100'
@@ -41,15 +41,30 @@ export type ResolvedAccessLevelMetaMap = Record<ResolvedAccessLevel, ResolvedAcc
 /**
  * Last-resort names, used only when a caller's map is missing a rung. `none`
  * reads as an explicit denial, never as "inherit" or an empty cell (doc 19 §7).
+ * Labels and colours both come from the shared ladder vocabulary — a fallback
+ * that invented its own would be the hardest kind of drift to notice, since it
+ * only ever renders where a caller already forgot a rung.
  */
 const FALLBACK_LEVEL_META: ResolvedAccessLevelMetaMap = {
-  none: { label: RUNG_LABELS[Level.None], helper: 'Denied', variant: 'outline' },
-  read: { label: RUNG_LABELS[Level.Read], helper: 'Read only', variant: 'sky' },
-  write: { label: RUNG_LABELS[Level.Edit], helper: 'Read plus write', variant: 'amber' },
+  none: {
+    label: RUNG_LABELS[Level.None],
+    helper: 'Denied',
+    variant: RUNG_BADGE_VARIANT[Level.None],
+  },
+  read: {
+    label: RUNG_LABELS[Level.Read],
+    helper: 'Read only',
+    variant: RUNG_BADGE_VARIANT[Level.Read],
+  },
+  write: {
+    label: RUNG_LABELS[Level.Edit],
+    helper: 'Read plus write',
+    variant: RUNG_BADGE_VARIANT[Level.Edit],
+  },
   full: {
     label: RUNG_LABELS[Level.Full],
     helper: 'Read and write, plus administration',
-    variant: 'green',
+    variant: RUNG_BADGE_VARIANT[Level.Full],
   },
 }
 

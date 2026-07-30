@@ -1,6 +1,7 @@
 // packages/ui/src/components/tree-row.tsx
 'use client'
 
+import { EmptySection, type EmptySectionProps } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
@@ -424,6 +425,27 @@ export function TreeRowSkeleton({ depth = 0 }: { depth?: number }) {
         <Skeleton className='size-4 shrink-0 rounded' />
         <Skeleton className='h-4 w-40 max-w-full' />
       </div>
+    </div>
+  )
+}
+
+/**
+ * The empty twin of {@link TreeRowSkeleton}: a horizontal {@link EmptySection}
+ * carrying the same indent its sibling rows have, so a list that empties out
+ * (a search miss, a filter) keeps sitting at its own level instead of jumping
+ * back to the parent's.
+ *
+ * `depth` is the only reason this exists — `EmptySection` is a card primitive
+ * with no tree awareness, and the three states of one list (loading, empty,
+ * populated) must all read the same indent from the same `INDENT_REM` step.
+ */
+export function TreeRowEmpty({
+  depth = 0,
+  ...props
+}: { depth?: number } & Omit<EmptySectionProps, 'orientation'>) {
+  return (
+    <div style={{ paddingLeft: `${depth * INDENT_REM}rem` }}>
+      <EmptySection orientation='horizontal' {...props} />
     </div>
   )
 }

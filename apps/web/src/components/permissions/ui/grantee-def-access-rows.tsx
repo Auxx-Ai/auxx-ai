@@ -4,8 +4,7 @@
 import type { ResourcePermission } from '@auxx/database/enums'
 import { Badge } from '@auxx/ui/components/badge'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { EmptySection } from '@auxx/ui/components/section'
-import { TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { TreeRowEmpty, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Lock, ShieldCheck, Table2 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -121,8 +120,8 @@ export function GranteeDefAccessRows({
           <TreeRowSkeleton depth={depth} />
         </>
       ) : rows.length === 0 ? (
-        <EmptySection
-          orientation='horizontal'
+        <TreeRowEmpty
+          depth={depth}
           icon={emptyState.icon}
           title={emptyState.title}
           description={emptyState.description}

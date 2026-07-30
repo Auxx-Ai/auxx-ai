@@ -89,5 +89,5 @@ export function AccessTreeRow({
 export function AccessRowSelect(
   props: Omit<ComponentProps<typeof AccessLevelSelect>, 'size' | 'variant' | 'className'>
 ) {
-  return <AccessLevelSelect {...props} size='sm' variant='transparent' className='h-7 w-44' />
+  return <AccessLevelSelect {...props} size='sm' variant='transparent' className='h-7 w-60' />
 }
