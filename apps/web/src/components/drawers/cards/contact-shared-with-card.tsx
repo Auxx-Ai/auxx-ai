@@ -45,6 +45,7 @@ export function ContactSharedWithCard({ entityInstanceId }: DrawerTabProps) {
           disabled={!isAdminOrOwner}
           unmanageableGrants={unmanageableGrants}
           emptyHint='Not shared. Only inbox members see these conversations.'
+          stagedAdd
         />
       </EnterpriseGate>
       <button

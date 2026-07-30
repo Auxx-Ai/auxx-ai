@@ -26,6 +26,7 @@ export function MailGranteeList({
   lockedActorIds,
   hideAddButton,
   unmanageableGrants,
+  stagedAdd,
 }: {
   grants: Array<{ actorId: ActorId; choice: LensChoice }>
   onGrant: (actorId: ActorId, choice: LensChoice) => void
@@ -38,6 +39,13 @@ export function MailGranteeList({
   hideAddButton?: boolean
   /** Grants on a kind this list can't address (e.g. `profile`) — disclosed, not dropped. */
   unmanageableGrants?: UnmanageableGrant[]
+  /**
+   * Drill into a staged add page instead of granting Full on pick. Set by the
+   * surfaces that persist immediately (thread share popover, contact card); the
+   * inbox form stages its grants in local form state and submits them with the
+   * inbox, so it never had the premature-notification problem to fix.
+   */
+  stagedAdd?: boolean
 }) {
   return (
     <GranteeList<LensChoice>
@@ -56,6 +64,17 @@ export function MailGranteeList({
           size='sm'
           variant='transparent'
           className='h-7 w-36'
+        />
+      )}
+      stagedAdd={stagedAdd}
+      renderBatchPicker={({ value, onChange, disabled: panelDisabled }) => (
+        <LensSelect
+          value={value}
+          onChange={onChange}
+          includeManager={includeManager}
+          disabled={panelDisabled}
+          size='sm'
+          className='h-8 w-40'
         />
       )}
       disabled={disabled}
