@@ -5,6 +5,7 @@ import path from 'path'
 import { loadEnv } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
+import { auxxSourceAlias } from '../../vitest.alias'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -55,14 +56,15 @@ export default defineConfig(({ mode }) => {
     },
 
     resolve: {
+      // The shared map, not a bespoke subset. The subset that used to live here
+      // was missing most of the workspace AND pointed `@auxx/database` at the
+      // package ROOT rather than `src`, which sent resolution straight back
+      // through the package.json `import` condition to `dist/`. On a laptop that
+      // directory exists and nothing looks wrong; on a fresh checkout 105 of 148
+      // files fail to resolve before a single assertion runs.
       alias: {
         '~': path.resolve(__dirname, './src'),
-        '@auxx/database/enums': path.resolve(__dirname, '../../packages/database/src/enums.ts'),
-        '@auxx/database': path.resolve(__dirname, '../../packages/database'),
-        '@auxx/logger': path.resolve(__dirname, '../../packages/logger/src'),
-        '@auxx/lib': path.resolve(__dirname, '../../packages/lib/src'),
-        '@auxx/config': path.resolve(__dirname, '../../packages/config/src'),
-        '@auxx/workflow-nodes': path.resolve(__dirname, '../../packages/workflow-nodes/src'),
+        ...auxxSourceAlias,
       },
     },
 

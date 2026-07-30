@@ -8,6 +8,7 @@ import { isGoverningInstanceRow } from '@auxx/lib/cache/providers/governing-inst
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 40 phase 3 — the enforcement surface, driven for real.
@@ -1044,10 +1045,7 @@ describe('positive controls — over-denial is the failure mode this slice risks
  * the same idiom as `snippet-instance-access.test.ts`.
  */
 describe('thread router — structural invariants', () => {
-  const src = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/server/api/routers/thread.ts'),
-    'utf8'
-  )
+  const src = fs.readFileSync(path.resolve(APP_ROOT, 'src/server/api/routers/thread.ts'), 'utf8')
 
   const PROCEDURES = [
     'cancelScheduledMessage',
@@ -1104,7 +1102,7 @@ describe('thread router — structural invariants', () => {
 })
 
 describe('page guards (§5.3)', () => {
-  const read = (p: string) => fs.readFileSync(path.resolve(process.cwd(), p), 'utf8')
+  const read = (p: string) => fs.readFileSync(path.resolve(APP_ROOT, p), 'utf8')
 
   it('/app/mail is guarded on inboxes.view, at the LAYOUT', () => {
     // On the layout, not the index page: every nested mailbox route

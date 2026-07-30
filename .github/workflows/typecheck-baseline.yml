@@ -1,0 +1,137 @@
+# .github/workflows/typecheck-baseline.yml
+#
+# Re-records `scripts/ci/typecheck-baseline.json` ON A RUNNER and opens a PR when
+# the floor has dropped.
+#
+# WHY THIS EXISTS. The baseline is a record of pre-existing type errors, and it
+# only means anything if it was measured in the same environment that checks it.
+# It was not. It was recorded on a laptop, where `dist/` directories and a
+# generated `next-env.d.ts` are lying around, and a CI runner has neither — so
+# `apps/web` reported two TS2307s that existed nowhere else and #1412 merged red
+# on 2026-07-30. #1413 patched that by teaching the job to build what web needs,
+# but the underlying asymmetry stayed: a human still types `--update` on a
+# machine that does not resemble CI, and nothing stops the next drift.
+#
+# This closes it from the other end. The authoritative baseline is whatever a
+# runner measures, and a contributor who fixes type errors never has to think
+# about the file at all — the tightening arrives as a reviewable PR.
+#
+# The two ratchet invocations are deliberate and in this order:
+#
+#   1. CHECK mode fails if any `<file>::<code>` count went UP. On `main` that
+#      should be impossible (the PR that raised it could not have merged), so a
+#      failure here is real news: an error that only appears in a cold
+#      environment, i.e. exactly the class that caused #1412.
+#   2. Only once check has passed is `--update` allowed to write. That ordering
+#      is what makes the diff safe to merge unread: every change in it is a
+#      count that fell.
+#
+# The second `tsc` reuses the first one's `.tsbuildinfo`, so it costs seconds.
+
+name: Typecheck baseline
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays, 06:00 UTC. Deliberately not per-merge: the baseline only moves
+    # when someone actually deletes errors, and a PR after every merge would be
+    # noise that trains people to ignore it.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: typecheck-baseline
+  cancel-in-progress: true
+
+jobs:
+  tighten:
+    name: Re-record on a runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Same preparation the `web` leg of CI does — see the comment there. Run
+      # unconditionally because this job measures both packages in one go.
+      - name: Prepare workspace for typecheck
+        run: |
+          pnpm --filter @auxx/chat build
+          pnpm --filter @auxx/web exec next typegen
+
+      - name: Fail if anything regressed
+        env:
+          TYPECHECK_HEAP_MB: 6144
+        run: node scripts/ci/typecheck-ratchet.js
+
+      - name: Re-record the baseline
+        env:
+          TYPECHECK_HEAP_MB: 6144
+        run: node scripts/ci/typecheck-ratchet.js --update
+
+      - name: Open a PR if the floor dropped
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BASELINE=scripts/ci/typecheck-baseline.json
+
+          if git diff --quiet -- "$BASELINE"; then
+            echo "Baseline unchanged — nothing to tighten."
+            exit 0
+          fi
+
+          # HEAD still holds the pre-update file; the working tree holds the new one.
+          SUMMARY=$(node -e '
+            const { execSync } = require("node:child_process")
+            const now = require("./scripts/ci/typecheck-baseline.json").packages
+            const before = JSON.parse(
+              execSync("git show HEAD:scripts/ci/typecheck-baseline.json", { encoding: "utf8" })
+            ).packages
+            const total = (o) => Object.values(o ?? {}).reduce((s, n) => s + n, 0)
+            for (const name of Object.keys(now)) {
+              const [a, b] = [total(before[name]), total(now[name])]
+              if (a !== b) console.log(`| \`${name}\` | ${a} | ${b} | ${b - a} |`)
+            }
+          ')
+
+          BRANCH=chore/typecheck-baseline
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add "$BASELINE"
+          git commit -m "chore(ci): tighten the typecheck baseline"
+          git push -f -u origin "$BRANCH"
+
+          BODY=$(printf '%s\n' \
+            "Re-recorded by \`.github/workflows/typecheck-baseline.yml\` on a runner." \
+            "" \
+            "| package | was | now | delta |" \
+            "|---|---|---|---|" \
+            "$SUMMARY" \
+            "" \
+            "Every change here is a count that **fell** — the ratchet ran in check mode first" \
+            "and would have failed the job before writing if anything had risen. Safe to merge" \
+            "on the strength of that; the diff itself is 3k lines of generated JSON." \
+            "" \
+            "Tightening matters because unclaimed headroom is where a new error hides: an" \
+            "untouched baseline lets a regression land in a file that already had a budget.")
+
+          if gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$BRANCH" --body "$BODY"
+            echo "Updated the existing baseline PR."
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(ci): tighten the typecheck baseline" --body "$BODY"
+          fi

@@ -6,9 +6,10 @@ import path from 'node:path'
 // would drag server-only modules (db, queues) into jsdom.
 import { mcpTemplates } from '@auxx/lib/ai/mcp/templates/catalog'
 import { describe, expect, it } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 import { BRAND_ICONS } from '../brands'
 
-const BRANDS_DIR = path.resolve(process.cwd(), 'public/icons/brands')
+const BRANDS_DIR = path.resolve(APP_ROOT, 'public/icons/brands')
 
 const files = fs.readdirSync(BRANDS_DIR).filter((f) => f.endsWith('.svg'))
 const baseFiles = files.filter((f) => !f.endsWith('-dark.svg'))

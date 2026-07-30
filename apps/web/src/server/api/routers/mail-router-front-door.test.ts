@@ -7,6 +7,7 @@ import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 40 phase 3 — the FOUR routers §5.3's table never enumerated.
@@ -769,7 +770,7 @@ describe('attachment router — gated by HOST, not by a mail key', () => {
  */
 describe('structural invariants — the builder itself', () => {
   const read = (name: string) =>
-    fs.readFileSync(path.resolve(process.cwd(), `src/server/api/routers/${name}`), 'utf8')
+    fs.readFileSync(path.resolve(APP_ROOT, `src/server/api/routers/${name}`), 'utf8')
 
   const GATED: Array<[string, string[]]> = [
     [
