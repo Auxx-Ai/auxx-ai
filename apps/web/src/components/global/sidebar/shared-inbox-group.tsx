@@ -23,15 +23,16 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { Inbox as InboxIcon, Mail } from 'lucide-react'
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
 import { useDndState } from '~/app/context/dnd-state-context'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
+import { InboxEditMenuItem } from '~/components/global/sidebar/inbox-edit-menu-item'
 import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { useMailCountsStore } from '~/components/mail/store'
+import type { InboxDefKey } from '~/components/threads/hooks/use-inbox'
 
 export interface Inbox {
   id: string
@@ -42,6 +43,14 @@ export interface Inbox {
   /** Personal-account inbox (mail-permissions §11) — renders the owner affordance. */
   isPersonal?: boolean
   ownerUserId?: string | null
+  /**
+   * Which of the two inbox definitions this row lives on — THE key for minting
+   * its access `RecordId` ({@link InboxEditMenuItem}). Cannot be derived from
+   * `isPersonal`: a personal mailbox awaiting data migration 060 is still on the
+   * shared def and its grants are keyed there. Optional because this shape is
+   * reused for mail views, which have no definition.
+   */
+  entityDefinitionKey?: InboxDefKey
 }
 
 interface SharedInboxesSectionProps {
@@ -86,12 +95,6 @@ const DroppableInboxSidebarItem = ({
   const pathname = usePathname()
   const isActive = pathname?.startsWith(`/app/mail/inboxes/${inbox.id}`)
 
-  const editItems = (
-    <DropdownMenuItem asChild>
-      <Link href={`/app/settings/inbox/${inbox.id}?tab=settings`}>Edit Inbox</Link>
-    </DropdownMenuItem>
-  )
-
   return (
     <div
       ref={setNodeRef}
@@ -108,7 +111,7 @@ const DroppableInboxSidebarItem = ({
         color={inbox.color || 'indigo'}
         isSubmenu={true}
         isActive={isActive}
-        editItems={editItems}
+        editItems={<InboxEditMenuItem inbox={inbox} />}
         onToggleEditMode={onToggleEditMode}
       />
     </div>

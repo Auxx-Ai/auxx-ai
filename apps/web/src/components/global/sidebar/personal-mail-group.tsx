@@ -24,6 +24,7 @@ import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
+import { InboxEditMenuItem } from '~/components/global/sidebar/inbox-edit-menu-item'
 import type { Inbox } from '~/components/global/sidebar/shared-inbox-group'
 import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
 import { useMailCountsStore } from '~/components/mail/store'
@@ -282,6 +283,11 @@ export function PersonalMailItems({
                         !!pathname?.startsWith(`/app/mail/personal/${inbox.id}`) &&
                         !pathname?.startsWith(`/app/mail/personal/${inbox.id}/sent`)
                       }
+                      // Owner-only list (§11), and provisioning grants the owner
+                      // `admin` on their mailbox — so this renders. The gate is
+                      // still asked rather than assumed: a claimed or re-granted
+                      // inbox answers to its rows like any other.
+                      editItems={<InboxEditMenuItem inbox={inbox} />}
                       onToggleEditMode={onToggleEditMode}
                     />
                   </SidebarMenuSubItem>
