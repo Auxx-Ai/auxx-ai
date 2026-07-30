@@ -95,6 +95,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A fresh checkout is COLD and `apps/web` cannot be typechecked in that
+      # state. `@auxx/chat` resolves through `dist/`, and `next-env.d.ts` (which
+      # declares `*.png` and friends) is gitignored and generated — so both are
+      # present on a dev laptop and absent here. Without this step the ratchet
+      # reports two phantom TS2307s that exist only in CI.
+      #
+      # This is not cosmetic. An unresolved module makes every import from it
+      # `any`, which SUPPRESSES downstream errors — so a cold typecheck is more
+      # permissive than a warm one and would let real breakage through. The
+      # baseline is recorded warm; CI has to match.
+      #
+      # Targeted rather than `turbo build --filter=@auxx/web^...` to keep the job
+      # short. If a NEW dist-consuming dependency is added to web, this step is
+      # where to add it — the ratchet will name the unresolved file.
+      - name: Prepare workspace for typecheck
+        if: matrix.package == 'web'
+        run: |
+          pnpm --filter @auxx/chat build
+          pnpm --filter @auxx/web exec next typegen
+
       - name: Typecheck ratchet
         env:
           # Under the ~7GB of a standard runner. Raising this above physical RAM
