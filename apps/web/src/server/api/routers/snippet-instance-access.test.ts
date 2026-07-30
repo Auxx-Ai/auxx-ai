@@ -8,6 +8,7 @@ import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import { SEAT_CEILINGS } from '@auxx/lib/permissions/capabilities/seat-policy'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 36 §10 — the snippet router at the tier boundary, driven for real.
@@ -943,10 +944,7 @@ describe('snippet sharing goes through resourceAccess.grantInstance', () => {
  * source, the same idiom as `segment-instance-access.test.ts`.
  */
 describe('snippet router — structural invariants', () => {
-  const src = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/server/api/routers/snippet.ts'),
-    'utf8'
-  )
+  const src = fs.readFileSync(path.resolve(APP_ROOT, 'src/server/api/routers/snippet.ts'), 'utf8')
 
   it('every procedure is a capabilityProcedure — no bare protectedProcedure', () => {
     for (const name of PROCEDURES) {

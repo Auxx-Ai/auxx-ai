@@ -54,7 +54,7 @@ export async function canViewAttachment(
 
   switch (attachment.entityType) {
     // Mail attachments are `full`-tier (mail-permissions §7): the caller must hold
-    // the `full` lens on the parent thread.
+    // the `read` lens (the top tier) on the parent thread.
     case 'MESSAGE': {
       const [message] = await database
         .select({ threadId: schema.Message.threadId })

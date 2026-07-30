@@ -7,6 +7,7 @@ import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 40 phase 0a — the channels↔inboxes seam, driven for real.
@@ -773,10 +774,7 @@ describe('the mail front door (§5.3) — `inboxes: None` closes the working rea
  * Pin it in source, the idiom `snippet-instance-access.test.ts` uses.
  */
 describe('inbox router — structural invariants', () => {
-  const src = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/server/api/routers/inbox.ts'),
-    'utf8'
-  )
+  const src = fs.readFileSync(path.resolve(APP_ROOT, 'src/server/api/routers/inbox.ts'), 'utf8')
 
   it.each([
     'create',

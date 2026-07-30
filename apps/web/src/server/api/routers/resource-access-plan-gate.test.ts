@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan-23 §2.1 regression guard: per-def (type-level) record-access EDITING is
@@ -17,7 +18,7 @@ import { describe, expect, it } from 'vitest'
  */
 
 const src = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/server/api/routers/resourceAccess.ts'),
+  path.resolve(APP_ROOT, 'src/server/api/routers/resourceAccess.ts'),
   'utf8'
 )
 

@@ -284,9 +284,9 @@ describe('canViewAttachment — the attachment row itself', () => {
 })
 
 describe('canViewAttachment — MESSAGE (unchanged; must not regress)', () => {
-  it('grants a caller holding the `full` lens on the parent thread', async () => {
+  it('grants a caller holding the `read` lens on the parent thread', async () => {
     queueRows(attachmentRow('MESSAGE', MESSAGE_ID), [{ threadId: THREAD_ID }])
-    getThreadLens.mockResolvedValue('full')
+    getThreadLens.mockResolvedValue('read')
     await expect(canView()).resolves.toBe(true)
     expect(getThreadLens).toHaveBeenCalledWith(
       expect.anything(),
@@ -296,9 +296,12 @@ describe('canViewAttachment — MESSAGE (unchanged; must not regress)', () => {
     )
   })
 
-  it('denies the `read` lens — mail attachments are full-tier', async () => {
+  // `read` is the TOP mail lens after the v3 rename (`full`->`read`,
+  // `subject`->`identity`), so the tier below it is `identity`. Attachments are
+  // body-tier: seeing that a thread exists must not hand over its files.
+  it('denies the `identity` lens — mail attachments are body-tier', async () => {
     queueRows(attachmentRow('MESSAGE', MESSAGE_ID), [{ threadId: THREAD_ID }])
-    getThreadLens.mockResolvedValue('read')
+    getThreadLens.mockResolvedValue('identity')
     await expect(canView()).resolves.toBe(false)
   })
 
@@ -316,7 +319,7 @@ describe('canViewAttachment — MESSAGE (unchanged; must not regress)', () => {
 
   it('reads no capabilities at all on the mail path', async () => {
     queueRows(attachmentRow('MESSAGE', MESSAGE_ID), [{ threadId: THREAD_ID }])
-    getThreadLens.mockResolvedValue('full')
+    getThreadLens.mockResolvedValue('read')
     await canView()
     expect(getCapabilities).not.toHaveBeenCalled()
   })

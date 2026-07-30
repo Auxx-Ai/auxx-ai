@@ -5,6 +5,7 @@ import path from 'node:path'
 import { ResourceGranteeType, type ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 24 §B.4 — the **instance baseline picker round-trip** at the router that
@@ -297,7 +298,7 @@ describe('grantInstance — authorizeInstanceTarget gates on THIS instance (§B.
  */
 describe('resourceAccess — structural invariants', () => {
   const src = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/server/api/routers/resourceAccess.ts'),
+    path.resolve(APP_ROOT, 'src/server/api/routers/resourceAccess.ts'),
     'utf8'
   )
 

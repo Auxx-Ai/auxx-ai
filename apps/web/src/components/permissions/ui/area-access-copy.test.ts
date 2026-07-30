@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { describe, expect, it } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 import { AREA_ACCESS_ROW_COPY, areaRungHelper, areaRungLabel } from './area-access-copy'
 import { INSTANCE_ROW_COPY, INSTANCE_SHARE_COPY } from './instance-share-copy'
 import { RUNG_LABELS_LONG } from './level-labels'
@@ -242,7 +243,7 @@ describe('the Restricted helper claims no admin bypass (§5.5.3)', () => {
   // string was wrong in the DANGEROUS direction — it told an admin a group still
   // had access when it did not.
   const source = readFileSync(
-    resolve(process.cwd(), 'src/components/permissions/ui/instance-share-card.tsx'),
+    resolve(APP_ROOT, 'src/components/permissions/ui/instance-share-card.tsx'),
     'utf8'
   )
 

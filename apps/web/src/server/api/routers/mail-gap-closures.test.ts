@@ -8,6 +8,7 @@ import { isGoverningInstanceRow } from '@auxx/lib/cache/providers/governing-inst
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 40 phase 3 — the three gaps phase 3 left behind.
@@ -659,10 +660,7 @@ describe('gap 3 — `assertViewInstance` and mail visibility now AGREE on the ma
  * pre-fix state was exactly that: eight bare `protectedProcedure`s.
  */
 describe('draft router — structural invariants', () => {
-  const src = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/server/api/routers/draft.ts'),
-    'utf8'
-  )
+  const src = fs.readFileSync(path.resolve(APP_ROOT, 'src/server/api/routers/draft.ts'), 'utf8')
 
   const PROCEDURES = [
     'delete',

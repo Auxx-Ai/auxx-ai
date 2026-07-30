@@ -74,6 +74,7 @@ vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
 
 // Deep path on purpose — the barrel hangs (see above).
 const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capability-set')
+const { permissionToRung } = await import('@auxx/lib/permissions/capabilities/rung')
 const { GET } = await import('./route')
 
 const ORG_ID = 'org_cuid000000000000000000000'
@@ -91,7 +92,7 @@ const AREA_LEVEL_OF: Record<ResourcePermission, Level> = {
 
 /** A real `CapabilitySet` holding `permission` on {@link WF_ID} via an explicit row. */
 function capabilitiesFor(permission: ResourcePermission, areaLevel = AREA_LEVEL_OF[permission]) {
-  const instances = { [WF_ID]: permission }
+  const instances = { [WF_ID]: permissionToRung(permission) }
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.workflows]: areaLevel })),
     {},

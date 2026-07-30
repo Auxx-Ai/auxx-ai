@@ -5,6 +5,7 @@ import path from 'node:path'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 40 §5.1 / 40a §5.1 — the CLIENT-MINTED half of the inbox RecordId bug,
@@ -409,10 +410,7 @@ describe('the definition is resolved from the instance, not from the caller', ()
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('inbox router — canonicalization is applied where a RecordId crosses the wire', () => {
-  const src = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/server/api/routers/inbox.ts'),
-    'utf8'
-  )
+  const src = fs.readFileSync(path.resolve(APP_ROOT, 'src/server/api/routers/inbox.ts'), 'utf8')
 
   it('no gate is handed a raw client RecordId any more', () => {
     // The bug in one line: `input.recordId` / `input.*InboxRecordId` reaching a

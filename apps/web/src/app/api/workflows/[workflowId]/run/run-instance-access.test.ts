@@ -93,6 +93,7 @@ vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
 
 // Deep path on purpose — see the note in `segment-instance-access.test.ts`.
 const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capability-set')
+const { permissionToRung } = await import('@auxx/lib/permissions/capabilities/rung')
 const { POST, DELETE } = await import('./route')
 
 const ORG_ID = 'org_cuid000000000000000000000'
@@ -114,7 +115,7 @@ function capabilitiesFor(
   permission: ResourcePermission,
   extraInstances: Record<string, ResourcePermission> = {}
 ) {
-  const instances = { [WF_ID]: permission, ...extraInstances }
+  const instances = { [WF_ID]: permissionToRung(permission), ...extraInstances }
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.workflows]: AREA_LEVEL_OF[permission] })),
     {},

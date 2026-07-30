@@ -6,6 +6,7 @@ import { schema } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
 import { Area, expandLevelsToKeys, Level } from '@auxx/lib/permissions/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_ROOT } from '../../../test/app-root'
 
 /**
  * Plan 24 §A.2.1 / §A.4 — the one genuine **privilege hole** this plan closed:
@@ -318,10 +319,7 @@ describe('segment router — how the dataset is resolved', () => {
  * same idiom as `resource-access-plan-gate.test.ts`.
  */
 describe('segment router — structural invariants', () => {
-  const src = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/server/api/routers/segment.ts'),
-    'utf8'
-  )
+  const src = fs.readFileSync(path.resolve(APP_ROOT, 'src/server/api/routers/segment.ts'), 'utf8')
 
   const PROCEDURES = [
     'updateContent',
