@@ -8,7 +8,6 @@ import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { JsonFieldValue, TypedFieldValue } from '@auxx/types/field-value'
 import { type FileRef, getFileRefDownloadUrl } from '@auxx/types/file-ref'
 import { toastError } from '@auxx/ui/components/toast'
-import { keepPreviousData } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileOptions } from '~/components/custom-fields/ui/file-options-editor'
@@ -16,6 +15,7 @@ import type { FileState } from '~/components/file-upload/stores'
 import { useUploadStore } from '~/components/file-upload/stores'
 import type { FileItem } from '~/components/files/files-store'
 import { convertHeicFiles } from '~/components/files/utils/convert-heic'
+import { useFileRefs } from '~/components/resources/hooks/use-file-refs'
 import {
   buildFieldValueKey,
   useFieldValueStore,
@@ -457,39 +457,45 @@ export function useFieldFileUpload({
     [typedValues]
   )
 
-  // Fetch display details for all file refs
+  // Resolve display details through the shared hydration store — one batched
+  // request per viewport instead of a query per hook instance (LinePhotoPopover
+  // mounts this for every line row).
   const refs = useMemo(() => fileRefs.map((fr) => fr.ref), [fileRefs])
-  const { data: fileDetails } = api.file.resolveFileRefs.useQuery(
-    { refs },
-    { enabled: refs.length > 0, placeholderData: keepPreviousData }
-  )
+  const { details: fileDetails, isLoading: isResolvingRefs } = useFileRefs(refs)
 
   // Build display files by joining fileRefs with details
   const displayFiles = useMemo(() => {
-    if (!fileDetails || fileRefs.length === 0) return []
+    if (fileRefs.length === 0) return []
+    // Nothing resolved yet — render nothing rather than a row of "Unknown file"
+    // placeholders (matches the old `!fileDetails` guard).
+    if (isResolvingRefs && fileDetails.length === 0) return []
+
     const detailMap = new Map(fileDetails.map((d) => [d.ref, d]))
-    return fileRefs
-      .map((fr) => {
-        const detail = detailMap.get(fr.ref)
-        return {
-          id: fr.fieldValueId,
-          ref: fr.ref as FileRef,
-          name: detail?.name ?? 'Unknown file',
-          mimeType: detail?.mimeType ?? null,
-          size: detail?.size ?? null,
-          caption: fr.caption,
-          internal: fr.internal,
-        }
-      })
-      .filter((f) => f.name !== 'Unknown file' || fileDetails.length < fileRefs.length)
-  }, [fileRefs, fileDetails])
+    return (
+      fileRefs
+        .map((fr) => {
+          const detail = detailMap.get(fr.ref)
+          return {
+            id: fr.fieldValueId,
+            ref: fr.ref as FileRef,
+            name: detail?.name ?? 'Unknown file',
+            mimeType: detail?.mimeType ?? null,
+            size: detail?.size ?? null,
+            caption: fr.caption,
+            internal: fr.internal,
+          }
+        })
+        // Drop refs that resolved to nothing (deleted file), but keep the ones
+        // still in flight so a freshly uploaded file doesn't blink out.
+        .filter((f) => f.name !== 'Unknown file' || isResolvingRefs)
+    )
+  }, [fileRefs, fileDetails, isResolvingRefs])
 
   // Set of asset IDs fully absorbed into displayFiles (store entry + resolved details).
-  // Only mark as absorbed once fileDetails has the ref — prevents the upload entry
+  // Only mark as absorbed once the ref has resolved — prevents the upload entry
   // from disappearing before displayFiles can render it.
   const absorbedAssetIds = useMemo(() => {
     const ids = new Set<string>()
-    if (!fileDetails) return ids
     const resolvedRefs = new Set(fileDetails.map((d) => d.ref))
     for (const fr of fileRefs) {
       if (fr.sourceType === 'asset' && resolvedRefs.has(fr.ref)) {

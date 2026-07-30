@@ -7,8 +7,8 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { EyeOff } from 'lucide-react'
 import { useMemo } from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
+import { useFileRefs } from '~/components/resources'
 import { type ItemsListItem, ItemsListView } from '~/components/ui/items-list-view'
-import { api } from '~/trpc/react'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 
@@ -38,15 +38,12 @@ export function DisplayFile() {
   }, [value])
   const refs = useMemo(() => envelopes.map((v) => v.ref), [envelopes])
 
-  const { data: fileDetails, isLoading } = api.file.resolveFileRefs.useQuery(
-    { refs },
-    { enabled: refs.length > 0 }
-  )
+  const { details, isLoading } = useFileRefs(refs)
+
   // Build file items for ItemsListView
   const fileItems = useMemo<DisplayFileItem[]>(() => {
-    if (!fileDetails) return []
     const envelopeMap = new Map(envelopes.map((v) => [v.ref, v]))
-    return fileDetails.map((detail) => ({
+    return details.map((detail) => ({
       id: detail.ref,
       ref: detail.ref,
       name: detail.name,
@@ -54,7 +51,7 @@ export function DisplayFile() {
       caption: envelopeMap.get(detail.ref)?.caption,
       internal: envelopeMap.get(detail.ref)?.internal,
     }))
-  }, [fileDetails, envelopes])
+  }, [details, envelopes])
 
   if (isLoading && refs.length > 0) {
     return (

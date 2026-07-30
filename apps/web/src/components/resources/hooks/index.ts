@@ -27,6 +27,8 @@ export {
 } from './use-field'
 // Field value hooks (extracted from store)
 export { useFieldCellState, useFieldValue, useFieldValues } from './use-field-values'
+// FILE ref hydration (batched — see file-ref-store)
+export { type FileRefDetail, useFileRefs } from './use-file-refs'
 export { useIsRecordLoading, useIsRecordPending, useRecord } from './use-record'
 // Per-ROW record affordances, from the `_access` stamp (plan v3/03 §5.2)
 export type { RecordRowAccess } from './use-record-access'

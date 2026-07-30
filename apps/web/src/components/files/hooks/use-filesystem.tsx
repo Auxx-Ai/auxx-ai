@@ -8,6 +8,7 @@ import { keepPreviousData } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
 import { useUploadStore } from '~/components/file-upload/stores'
+import { invalidateFileRefs } from '~/components/resources/store/file-ref-store'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { type FileItem, type FolderTreeNode, useFileSystemStore } from '../files-store'
@@ -502,6 +503,10 @@ export function useFilesystem() {
           ...folderIds.map((id) => deleteFolderMutation.mutateAsync({ folderId: id })),
         ])
 
+        // Drop cached FILE-field display details for the deleted files —
+        // the hydration store caches for the session.
+        invalidateFileRefs(fileIds.map((id) => `file:${id}`))
+
         // O(1) optimistic update using Maps
         removeItems(itemIds)
         clearSelection()
@@ -570,6 +575,9 @@ export function useFilesystem() {
           await renameFolderMutation.mutateAsync({ folderId: itemId, newName: newName })
         } else {
           await renameMutation.mutateAsync({ fileId: itemId, newName: newName })
+          // Drop the cached FILE-field display name — the hydration store
+          // caches for the session, so it won't pick the rename up on its own.
+          invalidateFileRefs([`file:${itemId}`])
         }
 
         // O(1) optimistic update
