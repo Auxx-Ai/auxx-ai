@@ -640,7 +640,7 @@ export const dataConnectorRouter = createTRPCRouter({
       if (!readiness.canSync) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: READINESS_REASON[readiness.problems[0]],
+          message: READINESS_REASON[readiness.problems[0] ?? 'no-endpoint'],
         })
       }
       await enqueueConnectorSync({
@@ -712,7 +712,7 @@ export const dataConnectorRouter = createTRPCRouter({
       if (!readiness.canSample) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: READINESS_REASON[readiness.problems[0]],
+          message: READINESS_REASON[readiness.problems[0] ?? 'no-endpoint'],
         })
       }
       // Test-fetch reuses the exact fetch path the scheduled sync runs (same

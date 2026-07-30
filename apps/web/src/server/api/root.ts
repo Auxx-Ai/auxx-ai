@@ -65,7 +65,6 @@ import { organizationRouter } from './routers/organization'
 import { participantRouter } from './routers/participant'
 import { permissionsRouter } from './routers/permissions'
 import { procedureRouter } from './routers/procedure'
-import { productRouter } from './routers/product'
 import { promptTemplateRouter } from './routers/promptTemplate'
 import { quickActionRouter } from './routers/quick-actions'
 import { realtimeRouter } from './routers/realtime'
@@ -162,7 +161,6 @@ export const appRouter = createTRPCRouter({
   participant: participantRouter,
   permissions: permissionsRouter,
   procedure: procedureRouter,
-  product: productRouter,
   promptTemplate: promptTemplateRouter,
   quickAction: quickActionRouter,
   realtime: realtimeRouter,

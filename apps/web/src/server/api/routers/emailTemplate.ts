@@ -266,9 +266,14 @@ async function renderSampleTemplate(
     return d.toLocaleDateString()
   })
 
-  Handlebars.registerHelper('ifEquals', function (arg1: any, arg2: any, options: any) {
-    return arg1 === arg2 ? options.fn(this) : options.inverse(this)
-  })
+  // `this` is Handlebars' template context, supplied at call time — it needs the
+  // explicit annotation or both `this` references below are an implicit any.
+  Handlebars.registerHelper(
+    'ifEquals',
+    function (this: unknown, arg1: any, arg2: any, options: any) {
+      return arg1 === arg2 ? options.fn(this) : options.inverse(this)
+    }
+  )
 
   try {
     // Compile templates
