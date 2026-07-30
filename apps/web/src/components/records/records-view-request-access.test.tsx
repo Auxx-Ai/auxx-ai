@@ -113,6 +113,11 @@ vi.mock('~/providers/capabilities-provider', () => ({
     // eligible row below is eligible because of its own `_access` stamp.
     recordDefRung: () => 'none',
     canDeleteRecordAt: () => false,
+    // `true`, matching the fixture: every row below carries its own `_access`
+    // stamp, which is only possible for a member who holds row grants here.
+    // This is what keeps the def-level `readOnly` degrade from short-circuiting
+    // the per-row predicate — see `records-view.tsx`'s `hasRowGrants`.
+    hasRecordGrantsOn: () => true,
   }),
 }))
 vi.mock('~/providers/feature-flag-provider', () => ({

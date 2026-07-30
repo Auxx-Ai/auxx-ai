@@ -103,6 +103,18 @@ interface CapabilitiesContextType {
    */
   recordDefRung: (entityDefinitionId: string) => Rung | undefined
   /**
+   * Whether the member holds ANY per-record grant (`read` or better) on this
+   * definition — the client mirror of `CapabilitySet.hasRecordGrantsOn`.
+   *
+   * Unlike {@link hasDefPresence} this is the grant half ALONE: it is `false`
+   * for a member who can view every row of the def and holds no row grants, and
+   * `true` for a grant-only member. That distinction is the point — it answers
+   * *"could any row of this def be more permissive than my def level?"*, which
+   * is what a def-level `readOnly` degrade must ask before hard-blocking a
+   * surface that also narrows per row.
+   */
+  hasRecordGrantsOn: (entityDefinitionId: string) => boolean
+  /**
    * **Row-effective DELETE gate** — the server's `canDeleteRecordAt` rule read
    * at a row's `_access` stamp instead of at the def level. Same predicate the
    * server applies in `assertCanDeleteRows`, so the affordance and the mutation
@@ -291,6 +303,8 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       canDeleteEntity: (entityDefinitionId: string) =>
         canDeleteRecord(resolved, entityDefinitionId),
       recordDefRung: (entityDefinitionId: string) => recordDefRung(resolved, entityDefinitionId),
+      hasRecordGrantsOn: (entityDefinitionId: string) =>
+        Boolean(resolved.grantedDefIds?.[entityDefinitionId]),
       canDeleteRecordAt: (access: Rung) => canDeleteRecordAtRung(resolved, access),
       canImportEntity: (entityDefinitionId: string) =>
         canImportRecord(resolved, entityDefinitionId),

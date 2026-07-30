@@ -6,6 +6,7 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import type { Actor, ActorId } from '@auxx/types/actor'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
+import { useRecordAccessRefresh } from '../hooks/use-record-access-refresh'
 import { useRecordBatchFetcher } from '../hooks/use-record-batch-fetcher'
 import {
   getActorStoreState,
@@ -26,6 +27,10 @@ import { usePrefixEpoch } from '../utils/normalize-record-id'
  */
 function RecordBatchFetcher() {
   useRecordBatchFetcher()
+  // Re-stamps `_access` on loaded rows when the member's access changes. Lives
+  // beside the batch fetcher because it drains through the same queue — the
+  // refresh is "re-queue the loaded ids", not a second fetch path.
+  useRecordAccessRefresh()
   return null
 }
 

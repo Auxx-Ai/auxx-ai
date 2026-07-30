@@ -142,6 +142,30 @@ export interface RecordStoreState {
   requestRecord: (recordId: RecordId) => void
 
   /** Process all pending items into a batch (called by provider) */
+  /**
+   * Re-queue every LOADED record so its `_access` stamp is recomputed.
+   *
+   * 🔴 **`_access` is the one field on a row that can go stale without the row
+   * itself changing.** It is not a property of the record — it is the viewer's
+   * row-effective rung, folded server-side per query
+   * (`foldRecordAccess(defRung, grantRank)`), and this store is the ONLY cache
+   * of that fold anywhere in the system (the server deliberately keeps none —
+   * plan v3/03 §4). So when a share, an approved access request, a role change
+   * or a seat change moves a member's access, every already-loaded row keeps
+   * the rung it was stamped with at first fetch.
+   *
+   * Nothing else recovers from that: `requestRecord` returns early for a row
+   * already in `records`, `record.getByIds` is `staleTime: Infinity`, and
+   * `capabilities:changed` refetches the capabilities BLOB only — which is why
+   * def-level surfaces (nav, New) updated live while the drawer and the grid
+   * stayed read-only until a full reload.
+   *
+   * Skips rows already pending/loading; leaves the existing rows in place so
+   * the UI never blanks mid-refresh. Caller must invalidate the
+   * `record.getByIds` query cache first — see `useRecordAccessRefresh`.
+   */
+  requestAccessRefresh: () => void
+
   startBatch: () => RecordId[]
 
   /** Mark batch as complete */
@@ -350,6 +374,38 @@ export const useRecordStore = create<RecordStoreState>()(
             // Provider will pick up via subscription to pendingFetchIds.size
           }, BATCH_DELAY)
 
+          set((state) => {
+            state.batchTimer = timer
+          })
+        }
+      },
+
+      requestAccessRefresh: () => {
+        // Every LOADED row, re-queued past `requestRecord`'s presence dedupe.
+        // The rows stay in the store while the refetch is in flight, so nothing
+        // blanks and no consumer sees an intermediate `_access: undefined`.
+        const state = get()
+        const stale: RecordId[] = []
+        for (const [entityDefinitionId, map] of Object.entries(state.records)) {
+          for (const entityInstanceId of map.keys()) {
+            const recordId = toRecordId(entityDefinitionId, entityInstanceId)
+            if (state.pendingFetchIds.has(recordId)) continue
+            if (state.loadingIds.has(recordId)) continue
+            stale.push(recordId)
+          }
+        }
+        if (stale.length === 0) return
+
+        set((state) => {
+          for (const recordId of stale) state.pendingFetchIds.add(recordId)
+        })
+
+        if (!get().batchTimer) {
+          const timer = setTimeout(() => {
+            set((state) => {
+              state.batchTimer = null
+            })
+          }, BATCH_DELAY)
           set((state) => {
             state.batchTimer = timer
           })
