@@ -124,6 +124,7 @@
     "lucide-react": "catalog:",
     "maplibre-gl": "^5.24.0",
     "motion": "^12.23.16",
+    "neverthrow": "^6.2.2",
     "next": "catalog:",
     "next-themes": "^0.4.4",
     "nodemailer": "catalog:",
