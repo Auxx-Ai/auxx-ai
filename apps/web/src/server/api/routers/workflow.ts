@@ -1068,11 +1068,11 @@ export const workflowRouter = createTRPCRouter({
           })
         }
 
-        if (
-          error.code === 'WORKFLOW_NOT_ENABLED' ||
-          error.code === 'WORKFLOW_TYPE_MISMATCH' ||
-          error.code === 'WORKFLOW_NOT_PUBLISHED'
-        ) {
+        // No `WORKFLOW_NOT_ENABLED` arm here: only the BULK variant emits that
+        // code. Testing for it on the single-record path was dead (TS2367) and
+        // read as coverage this branch never had. The bulk mutation below keeps
+        // its arm, where the code is real.
+        if (error.code === 'WORKFLOW_TYPE_MISMATCH' || error.code === 'WORKFLOW_NOT_PUBLISHED') {
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: error.message,

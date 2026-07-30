@@ -26,16 +26,13 @@ export const mediaAssetRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const mediaAssetService = new MediaAssetService(
-        ctx.session.organization.id,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const { organizationId, userId } = ctx.session
+      const mediaAssetService = new MediaAssetService(organizationId, userId, ctx.db)
 
       await mediaAssetService.convertTempToPermanent(
         input.mediaAssetId,
         input.newKind,
-        ctx.session.organization.id
+        organizationId
       )
 
       return { success: true }

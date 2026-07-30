@@ -2,12 +2,19 @@
 // tRPC surface for Sequences (outbound email cadences — Sequences plan Phase 3).
 // Thin, validated edge over @auxx/lib/sequences: every procedure resolves org via
 // ctx.session, unwraps the domain layer's neverthrow Results into TRPCErrors, and
-// enforces per-sequence ResourceAccess (plan §10 — reads need 'view', step/settings
+// enforces per-sequence ResourceAccess (plan §10 — reads need 'read', step/settings
 // mutations 'edit', delete 'admin'; only the org OWNER short-circuits, inside
 // checkSequenceAccess/hasPermission; `create` is open to all members).
+//
+// The levels below are `Rung`s, NOT `ResourcePermission`s. The two vocabularies
+// overlap on 'none'/'edit'/'admin' and diverge on exactly one value — v3's
+// 'read' is v2's 'view' — so passing a `ResourcePermission` here type-checks
+// against nothing and silently DENIES: `satisfiesRung` looks 'view' up in
+// `RUNG_ORDER`, gets `undefined`, and `rank >= undefined` is false for every
+// caller including an admin. That is what this file did until #1423's follow-up.
 
 import { type Database, schema } from '@auxx/database'
-import { ResourcePermission } from '@auxx/database/enums'
+import type { Rung } from '@auxx/database/enums'
 import { getOrgCache } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { AuxxError } from '@auxx/lib/errors'
@@ -119,7 +126,7 @@ type SequenceSessionCtx = {
 async function requireSequenceAccess(
   ctx: SequenceSessionCtx,
   sequenceId: string,
-  required: ResourcePermission
+  required: Rung
 ): Promise<void> {
   const allowed = await checkSequenceAccess(
     { db: ctx.db, organizationId: ctx.session.organizationId },
@@ -230,7 +237,7 @@ export const sequenceRouter = createTRPCRouter({
 
   /** A sequence + its ordered steps in one payload. */
   get: sequenceProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    await requireSequenceAccess(ctx, input.id, ResourcePermission.view)
+    await requireSequenceAccess(ctx, input.id, 'read')
 
     const sequence = unwrap(
       await getSequence(ctx.db, {
@@ -283,7 +290,7 @@ export const sequenceRouter = createTRPCRouter({
   update: sequenceProcedure
     .input(z.object({ id: z.string(), fields: updateSequenceFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.id, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, input.id, 'edit')
       // Instance access (plan 36 §5) — pinning a signature to a sequence is a
       // USER-INITIATED act, so it needs `view` on the signature. Sequence
       // EXECUTION stays uncapped: `sequence-send-email` runs as the system and
@@ -349,7 +356,7 @@ export const sequenceRouter = createTRPCRouter({
 
   /** Delete a sequence (and its hidden workflow) — admin grant required, no active runs. */
   delete: sequenceProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    await requireSequenceAccess(ctx, input.id, ResourcePermission.admin)
+    await requireSequenceAccess(ctx, input.id, 'admin')
     unwrap(
       await deleteSequence(ctx.db, {
         sequenceId: input.id,
@@ -366,7 +373,7 @@ export const sequenceRouter = createTRPCRouter({
   createStep: sequenceProcedure
     .input(z.object({ sequenceId: z.string(), afterStepId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, input.sequenceId, 'edit')
 
       const created = unwrap(
         await createStep(ctx.db, {
@@ -407,7 +414,7 @@ export const sequenceRouter = createTRPCRouter({
     .input(z.object({ stepId: z.string(), fields: updateStepFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
       const sequenceId = await getStepSequenceId(ctx, input.stepId)
-      await requireSequenceAccess(ctx, sequenceId, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, sequenceId, 'edit')
 
       return unwrap(
         await updateStep(ctx.db, {
@@ -423,7 +430,7 @@ export const sequenceRouter = createTRPCRouter({
     .input(z.object({ stepId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const sequenceId = await getStepSequenceId(ctx, input.stepId)
-      await requireSequenceAccess(ctx, sequenceId, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, sequenceId, 'edit')
 
       unwrap(
         await deleteStep(ctx.db, {
@@ -445,7 +452,7 @@ export const sequenceRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, input.sequenceId, 'edit')
 
       return unwrap(
         await reorderStep(ctx.db, {
@@ -462,7 +469,7 @@ export const sequenceRouter = createTRPCRouter({
   publish: sequenceProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.id, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, input.id, 'edit')
 
       return unwrap(
         await publishSequence(ctx.db, {
@@ -481,7 +488,7 @@ export const sequenceRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, input.sequenceId, 'edit')
 
       return unwrap(
         await enrollRecipients(ctx.db, {
@@ -497,7 +504,7 @@ export const sequenceRouter = createTRPCRouter({
   listRuns: sequenceProcedure
     .input(z.object({ sequenceId: z.string(), status: runStatusSchema.optional() }))
     .query(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.view)
+      await requireSequenceAccess(ctx, input.sequenceId, 'read')
 
       return unwrap(
         await listRuns(ctx.db, {
@@ -520,7 +527,7 @@ export const sequenceRouter = createTRPCRouter({
         columns: { sequenceId: true },
       })
       if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Sequence run not found' })
-      await requireSequenceAccess(ctx, run.sequenceId, ResourcePermission.edit)
+      await requireSequenceAccess(ctx, run.sequenceId, 'edit')
 
       unwrap(
         await manualExitRun(ctx.db, {
@@ -535,7 +542,7 @@ export const sequenceRouter = createTRPCRouter({
   stats: sequenceProcedure
     .input(z.object({ sequenceId: z.string() }))
     .query(async ({ ctx, input }) => {
-      await requireSequenceAccess(ctx, input.sequenceId, ResourcePermission.view)
+      await requireSequenceAccess(ctx, input.sequenceId, 'read')
 
       return unwrap(
         await getSequenceStats(ctx.db, {
