@@ -331,7 +331,7 @@ export function ThreadHeader() {
             <ThreadParticipantButton threadId={threadId} />
             <ThreadMergeBadge mergeData={thread.mergeData} />
           </div>
-          <div data-slot='thread-header-actions' className=' flex items-center '>
+          <div data-slot='thread-header-actions' className='flex shrink-0 items-center'>
             <Tooltip content={isDone ? 'Unarchive' : 'Archive'} shortcut='D' delayDuration={300}>
               <Button
                 variant='ghost'
@@ -428,7 +428,7 @@ export function ThreadHeader() {
               multi={false}
               target='user'
               emptyLabel='Assign'>
-              <div>
+              <div className='shrink-0'>
                 <Tooltip
                   content={assignee ? assignee.name || 'Assigned' : 'Assign'}
                   shortcut='A'
@@ -471,7 +471,7 @@ export function ThreadHeader() {
               align='end'
               side='bottom'
               emptyLabel='Merge into thread…'>
-              <div>
+              <div className='shrink-0'>
                 <Tooltip content='Merge into…' delayDuration={300}>
                   <Button
                     variant='ghost'

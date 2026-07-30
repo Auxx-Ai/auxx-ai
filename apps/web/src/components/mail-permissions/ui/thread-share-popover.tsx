@@ -102,14 +102,14 @@ export function ThreadSharePopover({ threadId }: { threadId: string }) {
 
   // Free-plan sharers get the tease; grantee-holders still see the list.
   if (gated && grants.length === 0) {
-    return <GranularPermissionsGate>{button}</GranularPermissionsGate>
+    return <GranularPermissionsGate className='shrink-0'>{button}</GranularPermissionsGate>
   }
 
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <div>
+          <div className='shrink-0'>
             <Tooltip content='Share'>{button}</Tooltip>
           </div>
         </PopoverTrigger>
