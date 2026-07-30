@@ -56,13 +56,23 @@ const PACKAGES = {
 /** `src/foo.ts(12,34): error TS2367: ...` → `{ file, code }`. */
 const ERROR_LINE = /^(.+?)\((\d+),(\d+)\): error (TS\d+):/
 
+/** Path segments whose errors are not source errors. See {@link collectErrors}. */
+const GENERATED = ['node_modules', '.next/']
+
 /**
  * Run `tsc --noEmit` in one package and tally errors by `<file>::<code>`.
  *
  * `tsc` exits non-zero whenever it reports anything, so the exit code is
- * discarded and stdout is parsed instead. Errors under `node_modules` are
- * dropped: they vary with the installed dependency tree rather than with the
- * code under review, and would make the baseline machine-dependent.
+ * discarded and stdout is parsed instead.
+ *
+ * GENERATED paths are dropped, and both exclusions are load-bearing:
+ *  - `node_modules` varies with the installed dependency tree, not the code
+ *    under review, and would make the baseline machine-dependent.
+ *  - `.next` is Next's own output. `.next/types/validator.ts` is written by
+ *    `next typegen` and its error count depends on WHEN it was generated, so a
+ *    laptop with a warm `.next` and a runner that just generated one disagree.
+ *    Nobody can fix those errors by editing them — they are a projection of the
+ *    route tree — so tracking them only produces unfixable red.
  */
 function collectErrors(name) {
   const { dir } = PACKAGES[name]
@@ -82,8 +92,9 @@ function collectErrors(name) {
     const match = ERROR_LINE.exec(line.trim())
     if (!match) continue
     const [, file, , , code] = match
-    if (file.includes('node_modules')) continue
-    const key = `${file.replaceAll('\\', '/')}::${code}`
+    const path = file.replaceAll('\\', '/')
+    if (GENERATED.some((segment) => path.includes(segment))) continue
+    const key = `${path}::${code}`
     counts[key] = (counts[key] ?? 0) + 1
   }
   return counts
