@@ -18,7 +18,6 @@ export {
   type FieldId,
   isCustomEntityDefinitionId,
   isSystemModelType,
-  type ResourceId,
 } from './identifiers'
 export type {
   ImportJob,

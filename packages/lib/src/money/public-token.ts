@@ -10,12 +10,14 @@ import { and, eq, gt } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import type {
   DiscountType,
-  DocumentBrandingSettings,
-  DocumentBusinessSettings,
   PdfPhotoRef,
   QuotePdfContact,
   QuotePdfLineItem,
 } from '../documents/payload'
+import type {
+  DocumentBrandingSettings,
+  DocumentBusinessSettings,
+} from '../documents/resolve-settings'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'

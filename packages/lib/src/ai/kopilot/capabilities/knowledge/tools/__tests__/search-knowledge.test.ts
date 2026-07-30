@@ -8,7 +8,7 @@ vi.mock('../../../../../../datasets/services/search.service', () => ({
   SearchService: { search: (...args: unknown[]) => searchSpy(...args) },
 }))
 
-import type { ToolContext } from '../../../../agent-framework/tool-context'
+import type { ToolContext } from '../../../../../agent-framework/tool-context'
 import { createSearchKnowledgeTool } from '../search-knowledge'
 
 /**

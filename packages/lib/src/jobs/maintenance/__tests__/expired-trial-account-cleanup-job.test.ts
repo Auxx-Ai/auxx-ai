@@ -134,7 +134,7 @@ function buildExpiredTrialRow(overrides: Record<string, unknown> = {}) {
 // ---- tests ----
 
 describe('expiredTrialAccountCleanupJob', () => {
-  let expiredTrialAccountCleanupJob: (job: Job) => Promise<{
+  let expiredTrialAccountCleanupJob: (ctx: JobContext) => Promise<{
     scanned: number
     deleted: number
     skipped: number

@@ -1,6 +1,6 @@
 // packages/lib/src/files/upload/processors/entity-processors.ts
 import { database as db, schema } from '@auxx/database'
-import type { MediaAsset } from '@auxx/database/types'
+import type { MediaAssetEntity as MediaAsset } from '@auxx/database/types'
 import { and, desc, eq } from 'drizzle-orm'
 import { getOrgCache, isAgentUser, onCacheEvent } from '../../../cache'
 import { isMember } from '../../../members'

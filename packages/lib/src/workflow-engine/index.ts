@@ -40,6 +40,7 @@ export {
   WorkflowGraphHelper,
 } from './core/workflow-graph-builder'
 export { isCredentialInUse } from './credentials/is-credential-in-use'
+export type { WorkflowEventGeneric } from './events/types'
 // Execution functions
 export { triggerManualResourceWorkflow } from './execution/trigger-manual-resource-workflow'
 export {
@@ -54,7 +55,6 @@ export {
   NullWorkflowExecutionReporter,
   // WorkflowExecutionReporter,
   RedisWorkflowExecutionReporter,
-  type WorkflowEvent as WorkflowEventGeneric,
 } from './execution-reporter'
 export { AIProcessor } from './nodes/action-nodes/ai'
 export { AnswerProcessor } from './nodes/action-nodes/answer'

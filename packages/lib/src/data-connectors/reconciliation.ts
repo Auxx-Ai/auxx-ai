@@ -16,10 +16,10 @@ import { and, eq, notInArray } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { connectorFor } from './connectors'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
-import { findItem, type StreamWithMappings } from './service'
+import { type DecodedMapping, findItem, type StreamWithMappings } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { SyncCtx } from './sinks/types'
-import type { DecodedMapping, SyncMode } from './types'
+import type { SyncMode } from './types'
 
 const logger = createScopedLogger('data-connector-reconciliation')
 

@@ -35,7 +35,8 @@
 //   PAGE_SIZE records per page (default 100). Lower it for a fast smoke that still
 //             chunks: RECORDS=300 PAGE_SIZE=10 → 30 pages → 2 slices.
 
-import { type AddressInfo, createServer } from 'node:http'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config as loadEnv } from 'dotenv'
