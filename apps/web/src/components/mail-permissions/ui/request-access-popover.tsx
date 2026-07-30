@@ -74,6 +74,7 @@ export function RequestAccessPopover({
     subjectLabel,
     send,
     withdraw,
+    isLoading,
     isSending,
     isWithdrawing,
   } = useRequestAccess({ threadId })
@@ -89,6 +90,7 @@ export function RequestAccessPopover({
         subjectLabel={subjectLabel}
         send={send}
         withdraw={withdraw}
+        isLoading={isLoading}
         isSending={isSending}
         isWithdrawing={isWithdrawing}
         copy={COPY}

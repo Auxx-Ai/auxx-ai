@@ -70,6 +70,7 @@ export function RecordRequestAccessPopover({
     subjectLabel,
     send,
     withdraw,
+    isLoading,
     isSending,
     isWithdrawing,
   } = useRecordRequestAccess({ entityDefinitionId, entityInstanceId, open, assumeNoAccess })
@@ -90,6 +91,7 @@ export function RecordRequestAccessPopover({
       subjectLabel={subjectLabel}
       send={send}
       withdraw={withdraw}
+      isLoading={isLoading}
       isSending={isSending}
       isWithdrawing={isWithdrawing}
       copy={copy}
