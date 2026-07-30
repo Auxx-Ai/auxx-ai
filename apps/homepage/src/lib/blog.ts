@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import matter from 'gray-matter'
 import readingTime from 'reading-time'
+import { DEFAULT_OG_IMAGE } from '~/lib/blog-image'
 import type { BlogPost, Category } from '~/types/blog'
 
 const CONTENT_DIR = path.join(process.cwd(), 'content', 'blog')
@@ -30,7 +31,7 @@ function parseMdxFile(filePath: string): BlogPost | null {
     description: data.description,
     slug: data.slug,
     date: data.date,
-    image: data.image ?? '/blog/default-og.jpg',
+    image: data.image ?? DEFAULT_OG_IMAGE,
     category: {
       slug: data.category?.slug ?? 'uncategorized',
       title: data.category?.title ?? 'Uncategorized',
@@ -74,7 +75,7 @@ export function getPostBySlug(slug: string): { post: BlogPost; content: string }
           description: data.description,
           slug: data.slug,
           date: data.date,
-          image: data.image ?? '/blog/default-og.jpg',
+          image: data.image ?? DEFAULT_OG_IMAGE,
           category: {
             slug: data.category?.slug ?? 'uncategorized',
             title: data.category?.title ?? 'Uncategorized',

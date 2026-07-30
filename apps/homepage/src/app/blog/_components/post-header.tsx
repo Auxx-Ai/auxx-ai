@@ -2,10 +2,13 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { getPostImage } from '~/lib/blog-image'
 import { formatDate } from '~/lib/format-date'
 import type { BlogPost } from '~/types/blog'
 
 export function PostHeader({ post }: { post: BlogPost }) {
+  const image = getPostImage(post)
+
   return (
     <div className='relative mx-auto max-w-5xl px-6'>
       <header className='mx-auto mb-8 max-w-2xl text-center'>
@@ -34,10 +37,10 @@ export function PostHeader({ post }: { post: BlogPost }) {
         </h1>
       </header>
 
-      {post.image && post.image !== '/blog/default-og.jpg' && (
+      {image && (
         <div className='relative overflow-hidden rounded-xl border shadow shadow-black/5'>
           <Image
-            src={post.image}
+            src={image}
             alt={post.title}
             width={1200}
             height={675}
