@@ -4,6 +4,7 @@ import path from 'path'
 import { loadEnv } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
+import { auxxSourceAlias } from '../../vitest.alias'
 
 export default defineConfig(({ mode }) => {
   const monorepoRoot = path.resolve(__dirname, '../..')
@@ -26,12 +27,12 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '~': path.resolve(__dirname, './src'),
-        // Resolve @auxx/lib to SOURCE, not the built dist — a stale dist would
-        // silently test old permission composition code.
-        '@auxx/database/enums': path.resolve(monorepoRoot, 'packages/database/src/enums.ts'),
-        '@auxx/database': path.resolve(monorepoRoot, 'packages/database/src'),
-        '@auxx/lib': path.resolve(monorepoRoot, 'packages/lib/src'),
-        '@auxx/config': path.resolve(monorepoRoot, 'packages/config/src'),
+        // Resolve every @auxx package to SOURCE, not the built dist — a stale
+        // dist would silently test old permission composition code, and on a
+        // cold CI checkout there is no dist to resolve at all. The bespoke
+        // subset that used to live here missed `@auxx/types`, which is what
+        // `capability-set` reaches for.
+        ...auxxSourceAlias,
       },
     },
 

@@ -2,6 +2,7 @@
 
 import path from 'path'
 import { defineConfig } from 'vitest/config'
+import { auxxSourceAlias } from '../../vitest.alias'
 
 export default defineConfig({
   root: __dirname,
@@ -14,6 +15,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      ...auxxSourceAlias,
       '@auxx/services': path.resolve(__dirname, './src'),
     },
   },

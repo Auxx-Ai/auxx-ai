@@ -1,7 +1,7 @@
 // packages/redis/vitest.config.ts
 
-import path from 'node:path'
 import { defineConfig } from 'vitest/config'
+import { auxxSourceAlias } from '../../vitest.alias'
 
 export default defineConfig({
   root: __dirname,
@@ -13,9 +13,6 @@ export default defineConfig({
     exclude: ['node_modules/**', 'dist/**', '**/*.config.*'],
   },
   resolve: {
-    alias: {
-      '@auxx/logger': path.resolve(__dirname, '../logger/src'),
-      '@auxx/config': path.resolve(__dirname, '../config/src'),
-    },
+    alias: auxxSourceAlias,
   },
 })
