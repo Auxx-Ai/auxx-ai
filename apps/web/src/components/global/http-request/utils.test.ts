@@ -116,7 +116,10 @@ describe('HTTP utils serialization', () => {
     expect(parsed[0].value).toBe('')
   })
 
-  it('should filter out empty rows when serializing', () => {
+  // Blank rows are PRESERVED as a bare ':' so a row the user just added does not
+  // vanish from the editor mid-edit; they round-trip back as a blank row, and
+  // `keyValueToRecord` is what drops them before anything is persisted.
+  it('should keep empty rows when serializing, as a bare colon', () => {
     const keyValue: KeyValue[] = [
       { id: '1', key: 'Header1', value: 'Value1' },
       { id: '2', key: '', value: '' },
@@ -126,9 +129,18 @@ describe('HTTP utils serialization', () => {
     const serialized = keyValueToString(keyValue)
     const lines = serialized.split('\n')
 
-    expect(lines).toHaveLength(2)
+    expect(lines).toHaveLength(3)
     expect(lines[0]).toBe('Header1:Value1')
-    expect(lines[1]).toBe('Header3:Value3')
+    expect(lines[1]).toBe(':')
+    expect(lines[2]).toBe('Header3:Value3')
+
+    // The blank row survives the round-trip rather than being dropped...
+    const parsed = parseHeadersToKeyValue(serialized)
+    expect(parsed).toHaveLength(3)
+    expect(parsed[1]).toMatchObject({ key: '', value: '' })
+
+    // ...and is dropped only at the point of persistence.
+    expect(keyValueToRecord(parsed)).toEqual({ Header1: 'Value1', Header3: 'Value3' })
   })
 })
 

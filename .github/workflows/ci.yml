@@ -142,14 +142,11 @@ jobs:
 
       # Every vitest project that is currently 100% green, so none of them can
       # rot the way `lib` did — 49 failures accumulated there unnoticed because
-      # only `billing` and `workflow-nodes` were ever run. The whole list costs
-      # ~3s; the reason to enumerate rather than run everything is that four
-      # projects cannot pass here yet:
+      # only `billing` and `workflow-nodes` were ever run. The reason to
+      # enumerate rather than run everything is that three projects cannot pass
+      # here yet:
       #
-      #   lib          26 files / 49 tests failing
-      #   web          24 files / 40 tests failing (19 are permissions/mail
-      #                specs stale since the v3 rename — the regression tests
-      #                for the outage that shipped 2026-07-30)
+      #   lib          25 files / 24 tests failing
       #   integration  (packages/test-utils) needs a live database
       #   database     sets no `name:` in its vitest.config.ts, so it is
       #                unreachable by `--project` and runs nowhere
@@ -157,6 +154,12 @@ jobs:
       # `--project='!lib'`-style negation is NOT a substitute: it selects the
       # `integration` project, which then fails on a missing database. Adding a
       # project here is the deliberate act that puts it under watch.
+      #
+      # `web` joined the list once its last 8 failing files were fixed — all of
+      # them stale specs, mostly the permissions-v3 rename (`full`→`read`, and
+      # `ResourcePermission` handed to a `Rung` slot). It is 150 files / 2437
+      # tests and runs in ~25s, so it dominates this job's wall-clock; the other
+      # ten together are ~3s.
       - name: Run tests
         run: |
           npx vitest run \
@@ -169,7 +172,8 @@ jobs:
             --project credentials \
             --project redis \
             --project utils \
-            --project ui
+            --project ui \
+            --project web
 
       # `lib` as a whole is not green yet, so keep running the one subpath that is.
       - name: Validate workflow templates

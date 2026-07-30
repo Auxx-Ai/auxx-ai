@@ -95,6 +95,15 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }))
 
+// Mock the Web Animations API — jsdom implements none of it. `@base-ui-components`'
+// ScrollArea calls `viewport.getAnimations({ subtree: true })` from a timer, so the
+// resulting throw lands OUTSIDE any test as an UNHANDLED error, which fails the whole
+// run while every assertion in the file still passes. An empty list is what a viewport
+// with nothing animating returns.
+if (!Element.prototype.getAnimations) {
+  Element.prototype.getAnimations = () => []
+}
+
 // Mock matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
