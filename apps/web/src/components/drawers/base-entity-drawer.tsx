@@ -14,6 +14,7 @@ import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/c
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
+import { cn } from '@auxx/ui/lib/utils'
 import {
   CalendarClock,
   Clock,
@@ -793,11 +794,29 @@ function TabCards({
 }
 
 /**
+ * A card that rendered NOTHING hides its whole Section, header included.
+ *
+ * The header lives outside the card, so a card that returns `null` — the
+ * documented behaviour of several of them (`ContactExternalIdentitiesCard` with
+ * no linked apps, `ContactSharedWithCard` for a non-admin with no shares) — left
+ * its title stranded above blank space. `detail-view-config.ts` even documents
+ * these cards as "renders nothing", which was only ever true of the BODY.
+ *
+ * Done in CSS rather than by asking cards to report emptiness upward: `:empty`
+ * is exactly the question ("did this card put any node on the page?"), it needs
+ * no cooperation from ~20 card components, and a card that renders a deliberate
+ * empty state (`EmptyRow`, `EmptySection`) is not empty and still shows its
+ * header. `collapsible={false}` keeps `section-content` mounted, so the match is
+ * stable rather than a side effect of the open state.
+ */
+const HIDE_WHEN_CARD_RENDERS_NOTHING = '[&:has([data-slot=section-content]:empty)]:hidden'
+
+/**
  * A single tab card wrapped in its Section. Owns the Section header's actions-slot
  * element and exposes it to the lazily-loaded card via `DrawerCardActionsProvider`,
  * so the card can portal buttons into the header (see `DrawerCardActions`).
  * Exported for surfaces that replay a drawer's card list outside the drawer
- * itself (e.g. `InvoiceDetailPanel`).
+ * itself (e.g. `InvoiceDetailPanel`, `DetailViewSidebar`).
  */
 export function TabCardSection({
   card,
@@ -825,11 +844,11 @@ export function TabCardSection({
       initialOpen
       collapsible={false}
       actions={<span ref={setActionsEl} className='contents' />}
-      className={
-        card.fullBleed
-          ? '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3 [&>[data-slot=section]>[data-slot=section-content]]:-mb-4'
-          : undefined
-      }>
+      className={cn(
+        HIDE_WHEN_CARD_RENDERS_NOTHING,
+        card.fullBleed &&
+          '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3 [&>[data-slot=section]>[data-slot=section-content]]:-mb-4'
+      )}>
       <DrawerCardActionsProvider value={actionsEl}>
         <LazyTabCard
           entityType={entityType}

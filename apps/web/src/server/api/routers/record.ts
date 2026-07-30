@@ -263,6 +263,42 @@ async function assertCanDeleteRows(
 }
 
 /**
+ * **The PER-ROW read gate** — the view twin of {@link assertCanDeleteRows}, for a
+ * point read that does NOT flow through `UnifiedCrudHandler.getById` (which
+ * applies the visibility scope in SQL for free). Today's only caller is
+ * {@link recordRouter.getIdentities}.
+ *
+ * Same two-step shape, same reasons: the def gate runs first and short-circuits
+ * in memory (the common all-def-viewable read pays no extra I/O and the
+ * `NON_RECORD_DEF_SLUGS` / mail-infra branch of `canViewEntity` stays
+ * reachable), and only a def-DENIED id is read back.
+ *
+ * Unlike the delete gate there is NO second judgement on the returned stamp, and
+ * that is deliberate: `getByIds` is already scoped at the `read` floor
+ * (`recordVisibilityScope` / `RECORD_READ_FLOOR`) and drops unauthorized ids
+ * silently, so **a row coming back IS the read verdict**. Re-deriving that floor
+ * from the stamp here would put the same rule in two places, which is exactly
+ * how the two halves drift apart. A row that does not come back DENIES.
+ */
+async function assertCanViewRows(
+  handler: UnifiedCrudHandler,
+  capabilities: CapabilitySet,
+  recordIds: RecordId[]
+): Promise<void> {
+  const denied = recordIds.filter(
+    (recordId) => !capabilities.canViewEntity(parseRecordId(recordId).entityDefinitionId)
+  )
+  if (denied.length === 0) return
+
+  const visible = await handler.getByIds(denied)
+  for (const recordId of denied) {
+    if (!visible[recordId]) {
+      throw new ForbiddenError("You don't have permission to view this record.")
+    }
+  }
+}
+
+/**
  * Validate entity definition ID - accepts system TableId, new system entity type, or custom entity UUID
  */
 const entityDefinitionIdSchema = z.string().refine(
@@ -433,14 +469,39 @@ export const recordRouter = createTRPCRouter({
    * data source (RecordIdentity index, decorated from org cache). One batch
    * query, no N+1. Values themselves still render as normal FieldValues in the
    * field grid; this surfaces the cross-system/cross-store link set.
+   *
+   * 🔴 **This shipped as a `protectedProcedure` with NO view authority.**
+   * `assertNotInstanceAccessDefForRead` is a ROUTING guard — it refuses defs
+   * that belong to another router — and it was the only thing standing here, so
+   * any member of the org could read the identity index of any row of any def:
+   * defs they hold `none` on, rows they hold no grant on. It returned
+   * `externalId`, the app field key/label, the app name and the connection
+   * label — the linked customer's id in every connected store.
+   *
+   * It is now `capabilityProcedure` + {@link assertCanViewRows}, which is the
+   * same authority every other point read on this router gets for free through
+   * `UnifiedCrudHandler` (this one reads no record at all — hence the explicit
+   * gate). A def-viewable row costs zero extra I/O; only a def-denied row is
+   * read back through the scoped `getByIds`, where absent ⇒ 403.
    */
-  getIdentities: protectedProcedure
+  getIdentities: capabilityProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts([input.recordId]))
+      const { organizationId, user } = ctx.session
+      const recordId = input.recordId as RecordId
+      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts([recordId]))
+      // Both guards sit OUTSIDE the try — the catch below flattens everything to
+      // a 500, and a denial must surface as a 403 (§3).
+      await assertCanViewRows(
+        new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+          requestPath: true,
+        }),
+        ctx.capabilities,
+        [recordId]
+      )
       try {
-        return await getRecordIdentityViews(organizationId, input.recordId as RecordId)
+        return await getRecordIdentityViews(organizationId, recordId)
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         throw new TRPCError({

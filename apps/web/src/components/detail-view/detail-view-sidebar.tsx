@@ -4,15 +4,13 @@
 import { parseRecordId } from '@auxx/lib/field-values/client'
 import type { DrawerTabCardDefinition } from '@auxx/lib/resources/client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { cn } from '@auxx/ui/lib/utils'
 import React from 'react'
-import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
-import { getTabCardComponent } from '~/components/drawers/drawer-tab-registry'
+import { TabCardSection } from '~/components/drawers/base-entity-drawer'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useCommentAccess } from '~/components/global/comments/use-comment-access'
 import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
-import { useCanViewRecordResource } from '~/components/resources'
+import { type RecordId, useCanViewRecordResource } from '~/components/resources'
 import { useAccess } from '~/providers/capabilities-provider'
 import { DetailViewCardHeader } from './components/detail-view-card-header'
 import type { DetailViewSidebarProps } from './types'
@@ -134,7 +132,17 @@ export function DetailViewSidebar({
 }
 
 /**
- * Renders sidebar card components for the given card definitions
+ * Renders sidebar card components for the given card definitions, through the
+ * SAME `TabCardSection` wrapper the drawer uses (`base-entity-drawer.tsx`,
+ * exported for exactly this) rather than a local `<h4>` + lazy loader.
+ *
+ * The local copy diverged from the drawer in three ways that were all visible:
+ * it rendered a sentence-case heading with no Section chrome, so the same card
+ * (e.g. Billing) looked like a different component on the contact page than in
+ * the contact drawer; it ignored `card.icon`; and it provided no
+ * `DrawerCardActionsProvider`, so a card portaling header actions through
+ * `DrawerCardActions` silently rendered none — `quote:jobs` is a sidebar card
+ * and its "Create job" button simply did not exist on the quote detail page.
  */
 function SidebarCards({
   cards,
@@ -146,7 +154,7 @@ function SidebarCards({
   cards: DrawerTabCardDefinition[]
   entityType: string
   entityInstanceId: string
-  recordId: string
+  recordId: RecordId
   record: Record<string, unknown>
 }) {
   if (!cards.length) return null
@@ -154,46 +162,15 @@ function SidebarCards({
   return (
     <>
       {cards.map((card) => (
-        <div key={card.value} className={cn('space-y-1', card.fullBleed ? 'pt-4' : 'p-4')}>
-          <h4 className={cn('text-sm', card.fullBleed && 'px-4')}>{card.label}</h4>
-          <LazySidebarCard
-            entityType={entityType}
-            cardValue={card.value}
-            entityInstanceId={entityInstanceId}
-            recordId={recordId}
-            record={record}
-          />
-        </div>
+        <TabCardSection
+          key={card.value}
+          card={card}
+          entityType={entityType}
+          entityInstanceId={entityInstanceId}
+          recordId={recordId}
+          record={record}
+        />
       ))}
     </>
   )
-}
-
-/**
- * Lazy load and render a sidebar card component from the shared drawer tab card registry
- */
-function LazySidebarCard({
-  entityType,
-  cardValue,
-  entityInstanceId,
-  recordId,
-  record,
-}: {
-  entityType: string
-  cardValue: string
-  entityInstanceId: string
-  recordId: string
-  record: Record<string, unknown>
-}) {
-  const componentLoader = getTabCardComponent(entityType, cardValue)
-  const [Component, setComponent] = React.useState<React.ComponentType<DrawerTabProps> | null>(null)
-
-  React.useEffect(() => {
-    if (!componentLoader) return
-    componentLoader().then((mod) => setComponent(() => mod.default))
-  }, [componentLoader])
-
-  if (!componentLoader || !Component) return null
-
-  return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />
 }
