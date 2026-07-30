@@ -5,10 +5,12 @@ import FooterSection from '../../_components/main/footer-section'
 import Header from '../../_components/main/header'
 import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 import DataConnectorsSection from '../data-model/_components/data-connectors-section'
+import AccessSection from './_components/access-section'
 import CrmCenterSection from './_components/crm-center-section'
+import CrmFinalCta from './_components/crm-final-cta'
 import CrmHero from './_components/crm-hero'
-import CustomerProfilesSection from './_components/customer-profiles-section'
 import HowItWorksSection from './_components/how-it-works-section'
+import PlatformSection from './_components/platform-section'
 
 export const metadata: Metadata = {
   alternates: { canonical: '/platform/crm' },
@@ -30,10 +32,11 @@ export default function CrmPage() {
       <main className=''>
         <CrmHero bottomFadeColor='color-mix(in oklab, var(--color-muted) 30%, var(--color-background))' />
         <HowItWorksSection />
+        <AccessSection />
         <CrmCenterSection />
         <DataConnectorsSection />
-
-        <CustomerProfilesSection />
+        <PlatformSection />
+        <CrmFinalCta />
 
         {/* <PipelineSection /> */}
       </main>
