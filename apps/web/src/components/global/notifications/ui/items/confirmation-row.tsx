@@ -78,7 +78,12 @@ export function ConfirmationRow({
   const isExpired = request.expiresAt ? new Date(request.expiresAt) < new Date() : false
   const actionsDisabled = isMutating || isExpired
 
-  const workflowName = request.workflowName || request.workflow?.name
+  // `workflowName` became `subjectLabel` (plan 28 §3.1) — one column now serving
+  // both approval kinds. Live-join-wins ordering is preserved: the joined workflow
+  // name is the truth when this reader can hydrate it, and the denormalized label is
+  // the fallback and the durability guarantee (renamed/deleted subject, or an
+  // `access` row that has no workflow to join at all).
+  const subjectLabel = request.workflow?.name || request.subjectLabel
   const trimmedComment = comment.trim()
 
   const handleApprove = () => {
@@ -241,10 +246,10 @@ export function ConfirmationRow({
           </AnimatePresence>
         }>
         Approval required
-        {workflowName ? (
+        {subjectLabel ? (
           <>
             {' '}
-            for <Emphasis>{workflowName}</Emphasis>
+            for <Emphasis>{subjectLabel}</Emphasis>
           </>
         ) : null}
       </NotificationRow>

@@ -1,6 +1,14 @@
 // packages/lib/src/workflow-engine/index.ts
 
 export { CredentialTestingService } from '@auxx/credentials'
+export type {
+  GetResourceByIdInput,
+  GetResourcesInput,
+  PaginatedResourcesResult,
+  RecordPickerItem,
+} from '../resources/picker'
+// Record picker service
+export { RecordPickerService } from '../resources/picker'
 // Constants
 export * from './constants'
 export { CancellationManager } from './core/cancellation-manager'
@@ -59,7 +67,6 @@ export { IfElseProcessor } from './nodes/condition-nodes/if-else'
 export { EndProcessor } from './nodes/flow-nodes/end'
 // Node processors
 export { MessageReceivedProcessor } from './nodes/trigger-nodes/message-received'
-
 // Query builder exports
 export {
   BaseConditionBuilder,
@@ -73,8 +80,13 @@ export {
   systemConditionBuilder,
   type ValidationResult,
 } from './query-builder'
-export { ApprovalQueryService } from './services/approval-query-service'
-export { ApprovalResponseService } from './services/approval-response-service'
+// Rate limiting
+export {
+  type CheckWorkflowRateLimitOptions,
+  checkWorkflowRateLimit,
+  type RateLimitCheckResult,
+  type WorkflowRateLimitConfig,
+} from './rate-limit'
 // Shared exports (safe for frontend and backend)
 export * from './shared/types'
 // Content segment support (for end node rich content)
@@ -104,27 +116,7 @@ export {
 export * from './types/file-variable'
 // Resource reference support
 export * from './types/resource-reference'
-
 export { safeJsonStringify } from './utils'
-
-// Removed ApprovalResponseService export to avoid circular dependency
-// Import it directly from './services/approval-response-service' when needed
-
-export type {
-  GetResourceByIdInput,
-  GetResourcesInput,
-  PaginatedResourcesResult,
-  RecordPickerItem,
-} from '../resources/picker'
-// Record picker service
-export { RecordPickerService } from '../resources/picker'
-// Rate limiting
-export {
-  type CheckWorkflowRateLimitOptions,
-  checkWorkflowRateLimit,
-  type RateLimitCheckResult,
-  type WorkflowRateLimitConfig,
-} from './rate-limit'
 // Form input validation
 export {
   extractFormInputConfigs,

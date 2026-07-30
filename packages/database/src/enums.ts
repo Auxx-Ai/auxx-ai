@@ -34,7 +34,16 @@ export const AiIntegrationStatusValues = ['PENDING', 'VALID', 'INVALID'] as cons
 
 export const ApprovalActionValues = ['approve', 'deny'] as const
 
-export const ApprovalStatusValues = ['pending', 'approved', 'denied', 'timeout'] as const
+export const ApprovalStatusValues = [
+  'pending',
+  'approved',
+  'denied',
+  'timeout',
+  'withdrawn',
+  'superseded',
+] as const
+
+export const ApprovalKindValues = ['workflow', 'access'] as const
 
 export const ArticleStatusValues = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const
 
@@ -635,6 +644,8 @@ export const NotificationTypeValues = [
   'TASK_ASSIGNED',
   'RESOURCE_SHARED',
   'MESSAGE_SHARED',
+  'ACCESS_REQUESTED',
+  'ACCESS_REQUEST_DECIDED',
 ] as const
 
 export const ORDER_ADDRESS_TYPEValues = ['SHIPPING', 'BILLING'] as const
@@ -1007,6 +1018,13 @@ export const ApprovalStatus = {
   approved: 'approved',
   denied: 'denied',
   timeout: 'timeout',
+  withdrawn: 'withdrawn',
+  superseded: 'superseded',
+} as const
+
+export const ApprovalKind = {
+  workflow: 'workflow',
+  access: 'access',
 } as const
 
 export const ArticleStatus = {
@@ -1346,6 +1364,8 @@ export const NotificationType = {
   TASK_ASSIGNED: 'TASK_ASSIGNED',
   RESOURCE_SHARED: 'RESOURCE_SHARED',
   MESSAGE_SHARED: 'MESSAGE_SHARED',
+  ACCESS_REQUESTED: 'ACCESS_REQUESTED',
+  ACCESS_REQUEST_DECIDED: 'ACCESS_REQUEST_DECIDED',
 } as const
 
 export const ORDER_ADDRESS_TYPE = {

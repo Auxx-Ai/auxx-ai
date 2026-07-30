@@ -8,7 +8,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import {
   approvalEmailEnabled,
   getApprovalAssigneeUserIds,
-} from '../../workflow-engine/services/approval-recipients'
+} from '../../approval-requests/approval-recipients'
 import { enqueueEmailJob } from '../email'
 import type { JobContext } from '../types'
 
@@ -132,7 +132,7 @@ async function sendReminderNotifications(
     await publishApprovalPing(getRealtimeService(), allUserIds, {
       approvalRequestId: approvalRequest.id,
       organizationId: approvalRequest.organizationId,
-      workflowName: approvalRequest.workflow?.name ?? approvalRequest.workflowName,
+      workflowName: approvalRequest.workflow?.name ?? approvalRequest.subjectLabel,
       expiresAt: approvalRequest.expiresAt?.toISOString() ?? null,
       reminderNumber,
     })

@@ -1,7 +1,7 @@
 // packages/lib/src/resource-access/resource-access-service.ts
 
 import { schema } from '@auxx/database'
-import { MemberType, ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
+import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
@@ -19,8 +19,8 @@ import {
 import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability-inputs'
 import { satisfiesPermission } from './constants'
 import {
+  expandGranteeToUserIds,
   grantedViaFor,
-  resolveProfileHolders,
   resolveResourceAccessGrantees,
   resourceAccessGranteeConditions,
 } from './grantee-resolution'
@@ -30,6 +30,7 @@ import type {
   CheckAccessInput,
   GrantedVia,
   GrantInstanceAccessInput,
+  GrantInstanceAccessResult,
   GrantLens,
   GrantTypeAccessInput,
   InstanceAccess,
@@ -94,31 +95,18 @@ async function resolveShareRecipients(
   ctx: ResourceAccessContext,
   input: GrantInstanceAccessInput
 ): Promise<string[]> {
+  // `role:org_member` is deliberately silent — an org-wide baseline change is not
+  // a personal share. The shared expansion resolves it to every member, so the
+  // drop stays here where the reason lives.
   if (input.granteeType === ResourceGranteeType.role) return []
-  if (input.granteeType === ResourceGranteeType.user) return [input.granteeId]
 
-  if (input.granteeType === ResourceGranteeType.profile) {
-    const holders = await resolveProfileHolders(ctx.organizationId, input.granteeId)
-    if (holders.length > SHARE_NOTIFICATION_RECIPIENT_CAP) {
-      logger.warn('Share notification fan-out capped', {
-        organizationId: ctx.organizationId,
-        granteeType: input.granteeType,
-        granteeId: input.granteeId,
-        cap: SHARE_NOTIFICATION_RECIPIENT_CAP,
-      })
-    }
-    return holders.slice(0, SHARE_NOTIFICATION_RECIPIENT_CAP)
-  }
-
-  const members = await ctx.db.query.EntityGroupMember.findMany({
-    where: and(
-      eq(schema.EntityGroupMember.groupInstanceId, input.granteeId),
-      eq(schema.EntityGroupMember.memberType, MemberType.user)
-    ),
-    columns: { memberRefId: true },
-    limit: SHARE_NOTIFICATION_RECIPIENT_CAP + 1,
+  // ONE shared expansion (plan 42 §3.1) — the inverse of `granteeMatchers`, also
+  // used by the access-request approver resolver. Before this it was a private
+  // third copy of the same switch, and the copies had already drifted.
+  const { userIds, capped } = await expandGranteeToUserIds(ctx.db, ctx.organizationId, input, {
+    cap: SHARE_NOTIFICATION_RECIPIENT_CAP,
   })
-  if (members.length > SHARE_NOTIFICATION_RECIPIENT_CAP) {
+  if (capped) {
     logger.warn('Share notification fan-out capped', {
       organizationId: ctx.organizationId,
       granteeType: input.granteeType,
@@ -126,9 +114,7 @@ async function resolveShareRecipients(
       cap: SHARE_NOTIFICATION_RECIPIENT_CAP,
     })
   }
-  return members
-    .slice(0, SHARE_NOTIFICATION_RECIPIENT_CAP)
-    .map((member: { memberRefId: string }) => member.memberRefId)
+  return userIds
 }
 
 /**
@@ -265,6 +251,10 @@ async function notifyNewInstanceShare(
   entityInstanceId: string
 ): Promise<void> {
   if (input.permission === ResourcePermission.none) return
+  // An approval-origin grant is announced by `ACCESS_REQUEST_DECIDED` instead
+  // (plan 42 §8) — otherwise the requester is told a teammate "shared" something
+  // they explicitly asked for, which reads as an unrelated event.
+  if (input.origin === 'approval') return
   if (entityDefinitionId !== 'thread' && !isInstanceAccessKey(entityDefinitionId)) return
 
   const recipientIds = (await resolveShareRecipients(ctx, input)).filter(
@@ -565,7 +555,7 @@ async function assertCanonicalMailKey(organizationId: string, recordId: RecordId
 export async function grantInstanceAccess(
   ctx: ResourceAccessContext,
   input: GrantInstanceAccessInput
-): Promise<void> {
+): Promise<GrantInstanceAccessResult> {
   const { db, organizationId, userId } = ctx
   await assertCanonicalMailKey(organizationId, input.recordId)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
@@ -609,20 +599,33 @@ export async function grantInstanceAccess(
     })
 
   const grantees = [{ granteeType: input.granteeType, granteeId: input.granteeId }]
-  await emitResourceAccessChanged(organizationId, grantees)
-  if (isInstanceAccessKey(entityDefinitionId)) {
-    await emitResourceAccessInstanceChanged(organizationId, grantees)
+
+  // Cache busting + realtime, as one closure so a transactional caller can run
+  // it AFTER commit (`deferEmits`, module guide §8). The notification rides
+  // along: it reads the grant back through the cache, so announcing the share
+  // before the row is visible is the same staleness bug one layer up.
+  const flushEmits = async (): Promise<void> => {
+    await emitResourceAccessChanged(organizationId, grantees)
+    if (isInstanceAccessKey(entityDefinitionId)) {
+      await emitResourceAccessInstanceChanged(organizationId, grantees)
+    }
+
+    if (!existing) {
+      void notifyNewInstanceShare(ctx, input, entityDefinitionId, entityInstanceId).catch(
+        (error) => {
+          logger.warn('Failed to send instance share notification', {
+            organizationId,
+            recordId: input.recordId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      )
+    }
   }
 
-  if (!existing) {
-    void notifyNewInstanceShare(ctx, input, entityDefinitionId, entityInstanceId).catch((error) => {
-      logger.warn('Failed to send instance share notification', {
-        organizationId,
-        recordId: input.recordId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    })
-  }
+  if (input.deferEmits) return { flushEmits }
+  await flushEmits()
+  return { flushEmits: async () => {} }
 }
 
 /**

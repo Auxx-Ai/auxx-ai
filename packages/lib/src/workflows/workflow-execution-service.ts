@@ -23,7 +23,6 @@ import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { WorkflowGraphBuilder } from '../workflow-engine/core/workflow-graph-builder'
 import { RedisWorkflowExecutionReporter } from '../workflow-engine/execution-reporter'
 import { buildWorkflowResumeJobId } from '../workflow-engine/nodes/wait/resume-job-id'
-import { ApprovalQueryService } from '../workflow-engine/services/approval-query-service'
 import { WorkflowEventType } from '../workflow-engine/shared/types'
 import {
   type ErrorHandler,
@@ -1321,8 +1320,11 @@ export class WorkflowExecutionService {
 
       // Clean up pending approval requests for this workflow run
       try {
-        const approvalService = new ApprovalQueryService(this.db)
-        const cleanedCount = await approvalService.cleanupApprovalsForWorkflowRun(runId)
+        // Lazy import — `approval-requests`' workflow kind handler imports THIS
+        // module, so a static import here would close the very cycle the old
+        // `// Removed ApprovalResponseService export` comment was papering over.
+        const { cleanupApprovalsForWorkflowRun } = await import('../approval-requests')
+        const cleanedCount = await cleanupApprovalsForWorkflowRun(this.db as never, runId)
         if (cleanedCount > 0) {
           logger.info('Cleaned up approval requests during workflow stop', {
             runId,

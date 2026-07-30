@@ -32,9 +32,11 @@ interface FakeResource {
 }
 
 const getCachedResources = vi.fn(async (): Promise<FakeResource[]> => RESOURCES)
+/** Hoisted so the deferred-emit test can observe cache busting directly. */
+const onCacheEvent = vi.fn(async () => {})
 
 vi.mock('../cache', () => ({
-  onCacheEvent: vi.fn(async () => {}),
+  onCacheEvent: (...a: unknown[]) => onCacheEvent(...(a as [])),
   getCachedUserGroupIds: vi.fn(async () => []),
   getCachedResources: (...a: unknown[]) => getCachedResources(...(a as [])),
 }))
@@ -176,24 +178,73 @@ describe('mail keyspace backstop — a CUID mail RecordId cannot reach the table
 
 describe('mail keyspace backstop — scoped strictly to mail defs', () => {
   it('writes a slug-keyed mail grant without consulting the resolver', async () => {
-    await expect(grant(toRecordId('inbox', 'inbox_1'))).resolves.toBeUndefined()
+    await expect(grant(toRecordId('inbox', 'inbox_1'))).resolves.toMatchObject({
+      flushEmits: expect.any(Function),
+    })
     expect(writes.insert).toHaveBeenCalled()
     // Already canonical: no `resources` read at all on the hot mail path.
     expect(getCachedResources).not.toHaveBeenCalled()
   })
 
   it('leaves a CUID-keyed grant on a CUSTOM def alone (blanket normalization would break it)', async () => {
-    await expect(grant(`${DEALS_DEF_ID}:rec_1`)).resolves.toBeUndefined()
+    await expect(grant(`${DEALS_DEF_ID}:rec_1`)).resolves.toMatchObject({
+      flushEmits: expect.any(Function),
+    })
     expect(writes.insert).toHaveBeenCalled()
   })
 
   it('leaves a non-mail instance-access key alone', async () => {
-    await expect(grant(toRecordId('dashboard', 'dash_1'))).resolves.toBeUndefined()
+    await expect(grant(toRecordId('dashboard', 'dash_1'))).resolves.toMatchObject({
+      flushEmits: expect.any(Function),
+    })
     expect(writes.insert).toHaveBeenCalled()
   })
 
   it('leaves an unknown def id alone — the resolver falls through to itself', async () => {
-    await expect(grant('def_not_in_cache:rec_1')).resolves.toBeUndefined()
+    await expect(grant('def_not_in_cache:rec_1')).resolves.toMatchObject({
+      flushEmits: expect.any(Function),
+    })
     expect(writes.insert).toHaveBeenCalled()
+  })
+})
+
+/**
+ * `deferEmits` (module guide §8) — the half of the contract that lives in the
+ * funnel rather than in its caller.
+ *
+ * The approval-decision handler passes the decision `tx` into
+ * `grantInstanceAccess`, because the grant row must land atomically with the
+ * decision. Its cache busting must NOT: `onCacheEvent` mid-transaction drops the
+ * grantee's cached blob while the row is still invisible to every other
+ * connection, so a reader racing the commit repopulates from PRE-grant state and
+ * the requester is left without the access they were just granted.
+ *
+ * The handler-side test asserts `deferEmits: true` is passed and that the
+ * returned `flushEmits` is invoked post-commit — but it mocks this module, so it
+ * cannot see whether the flag does anything. This is where that is pinned.
+ */
+describe('deferEmits — cache busting is the CALLER’s to schedule', () => {
+  it('emits inline by default (every existing caller keeps its behaviour)', async () => {
+    onCacheEvent.mockClear()
+    await grant(toRecordId('dashboard', 'dash_inline'))
+    expect(onCacheEvent).toHaveBeenCalled()
+  })
+
+  it('emits NOTHING until flushEmits() is called', async () => {
+    onCacheEvent.mockClear()
+    const { flushEmits } = await grantInstanceAccess(ctx(), {
+      recordId: toRecordId('dashboard', 'dash_deferred'),
+      granteeType: ResourceGranteeType.user,
+      granteeId: 'u_target',
+      permission: ResourcePermission.view,
+      deferEmits: true,
+    })
+
+    // The row is written; the cache is untouched.
+    expect(writes.insert).toHaveBeenCalled()
+    expect(onCacheEvent).not.toHaveBeenCalled()
+
+    await flushEmits()
+    expect(onCacheEvent).toHaveBeenCalled()
   })
 })

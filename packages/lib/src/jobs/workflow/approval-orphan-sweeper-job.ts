@@ -2,7 +2,7 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { ApprovalQueryService } from '../../workflow-engine/services/approval-query-service'
+import { cleanupOrphanedApprovals } from '../../approval-requests'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('approval-orphan-sweeper')
@@ -46,8 +46,7 @@ export async function approvalOrphanSweeperJob(
   logger.info('Starting orphaned approval sweep', { organizationId, jobId: ctx.job.id })
 
   try {
-    const service = new ApprovalQueryService(database)
-    const swept = await service.cleanupOrphanedApprovals(organizationId)
+    const swept = await cleanupOrphanedApprovals(database, organizationId)
 
     logger.info('Orphaned approval sweep finished', { organizationId, swept })
     return { swept }

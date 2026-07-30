@@ -2213,6 +2213,20 @@
       "when": 1785287363533,
       "tag": "0315_drop_snippet_is_favorite",
       "breakpoints": true
+    },
+    {
+      "idx": 316,
+      "version": "7",
+      "when": 1785367241706,
+      "tag": "0316_approval_request_access_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 317,
+      "version": "7",
+      "when": 1785369094614,
+      "tag": "0317_access_columns_not_null_check",
+      "breakpoints": true
     }
   ]
 }
