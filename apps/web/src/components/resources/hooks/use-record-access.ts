@@ -7,7 +7,7 @@ import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { useCallback } from 'react'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useRecordStore } from '../store/record-store'
-import { useNormalizedRecordId } from '../utils/normalize-record-id'
+import { useNormalizedDefinitionId, useNormalizedRecordId } from '../utils/normalize-record-id'
 
 /**
  * **The per-ROW record affordance gate** (plan v3/03 §5.2 / §6.2).
@@ -73,7 +73,15 @@ export function useRecordAccessFor(
   entityDefinitionId: string | null | undefined,
   entityInstanceId: string | null | undefined
 ): RecordRowAccess {
-  const defId = entityDefinitionId ?? ''
+  // ⚠ NORMALIZE, exactly as `useRecordAccess` does through
+  // `useNormalizedRecordId`. The record store keys its slots on the CANONICAL
+  // definition id (`setRecords` normalizes on write), so a caller handing in an
+  // entityType or apiSlug — which `parseRecordId` returns verbatim, and which
+  // `base-entity-drawer` / `record-drawer` do pass — misses the slot entirely
+  // and silently falls back to the DEF rung. That reads as "read-only" for a
+  // member whose grant is on the row, i.e. the same class of failure as the
+  // server-side one, one layer up.
+  const defId = useNormalizedDefinitionId(entityDefinitionId ?? '')
   const instId = entityInstanceId ?? ''
   const stamp = useRecordStore(
     useCallback(
@@ -81,7 +89,10 @@ export function useRecordAccessFor(
       [defId, instId]
     )
   )
-  return useRecordAccessAt(entityDefinitionId ?? undefined, stamp)
+  // The normalized id here too: the unstamped fallback reads `defAccess`, which
+  // is the canonical-id keyspace as well, so an alias would resolve to `'none'`
+  // and report read-only for a member who can edit the whole def.
+  return useRecordAccessAt(defId || undefined, stamp)
 }
 
 /**

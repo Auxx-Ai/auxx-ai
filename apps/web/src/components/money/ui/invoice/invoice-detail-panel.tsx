@@ -9,6 +9,7 @@ import { HouseIcon } from 'lucide-react'
 import { TabCardSection } from '~/components/drawers/base-entity-drawer'
 import EntityFields from '~/components/fields/entity-fields'
 import type { RecordDrillContext } from '~/components/records/record-drill-panels'
+import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
 import { parseRecordId, useRecord } from '~/components/resources'
 
 /**
@@ -24,12 +25,19 @@ import { parseRecordId, useRecord } from '~/components/resources'
 export function InvoiceDetailPanel({ itemId }: RecordDrillContext) {
   const invoiceRecordId = (itemId ?? '') as RecordId
   const { record } = useRecord({ recordId: invoiceRecordId, enabled: Boolean(itemId) })
+  // Before the early return — hooks may not sit behind it. An empty recordId
+  // parses to empty halves, which resolves to `false` (nothing to restrict).
+  const parsed = parseRecordId(invoiceRecordId)
+  // Per-ROW read-only, the same question the drawer asks. `EntityFields`
+  // defaults `readOnly` to `false`, so without this a `read`-only member got a
+  // full edit affordance here and the save 403'd.
+  const readOnly = useRecordDrawerReadOnly(parsed.entityDefinitionId, parsed.entityInstanceId)
 
   if (!itemId) {
     return <div className='p-6 text-sm text-muted-foreground'>Invoice not found.</div>
   }
 
-  const { entityInstanceId } = parseRecordId(invoiceRecordId)
+  const { entityInstanceId } = parsed
   const cards = getEntityDrawerConfig('invoice').tabCards?.overview ?? []
 
   return (
@@ -40,7 +48,7 @@ export function InvoiceDetailPanel({ itemId }: RecordDrillContext) {
         initialOpen
         collapsible={false}
         icon={<HouseIcon className='size-4' />}>
-        <EntityFields recordId={invoiceRecordId} />
+        <EntityFields recordId={invoiceRecordId} readOnly={readOnly} canEdit={!readOnly} />
       </Section>
       {cards.map((card) => (
         <TabCardSection

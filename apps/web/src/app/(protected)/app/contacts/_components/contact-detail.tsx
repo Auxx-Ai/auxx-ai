@@ -26,6 +26,7 @@ import { useQueryState } from 'nuqs'
 import React, { useState } from 'react'
 import { getCustomerStatusVariant } from '~/components/contacts/contact-status'
 import EntityFields from '~/components/fields/entity-fields'
+import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
 import { toRecordId } from '~/components/resources'
 import { TimelineTab } from '~/components/timeline'
 import { useDockStore } from '~/stores/dock-store'
@@ -77,6 +78,7 @@ function ContactDetailSidebar({ customer }: { customer: any }) {
     () => `Created ${formatDistanceToNow(new Date(customer.createdAt), { addSuffix: true })}`,
     [customer.createdAt]
   )
+  const fieldsReadOnly = useRecordDrawerReadOnly('contact', customer.id)
 
   return (
     <div className='h-full overflow-y-auto'>
@@ -94,7 +96,15 @@ function ContactDetailSidebar({ customer }: { customer: any }) {
       </div>
 
       {/* Entity Fields - directly below person card, no tabs */}
-      <MemoEntityFields recordId={toRecordId('contact', customer.id)} className='m-4' />
+      {/* Per-ROW read-only, same question the drawer asks. Without it this
+          panel offered a full edit affordance to a `read`-only member and the
+          save 403'd — `EntityFields` defaults `readOnly` to `false`. */}
+      <MemoEntityFields
+        recordId={toRecordId('contact', customer.id)}
+        className='m-4'
+        readOnly={fieldsReadOnly}
+        canEdit={!fieldsReadOnly}
+      />
 
       {/* Sources */}
       <div className='px-4 pb-4'>

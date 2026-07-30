@@ -11,6 +11,7 @@ import { getTabCardComponent } from '~/components/drawers/drawer-tab-registry'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useCommentAccess } from '~/components/global/comments/use-comment-access'
+import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
 import { useCanViewRecordResource } from '~/components/resources'
 import { useAccess } from '~/providers/capabilities-provider'
 import { DetailViewCardHeader } from './components/detail-view-card-header'
@@ -33,8 +34,24 @@ export function DetailViewSidebar({
   color,
   displayName,
 }: DetailViewSidebarProps) {
-  const { entityInstanceId } = parseRecordId(recordId)
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const { can } = useAccess()
+  /**
+   * 🔴 **This sidebar rendered its fields unconditionally editable.**
+   *
+   * `EntityFields` defaults to `readOnly = false`, and this mount passed nothing
+   * — so a member holding only `read` on the row (or on the whole definition)
+   * got a full edit affordance on the record's full page and a 403 from
+   * `assertFieldValueHostsWritable` on save. The drawer's twin
+   * (`base-entity-drawer.tsx`) has always threaded a flag; this surface was
+   * simply never converted.
+   *
+   * It is the SAME question the drawer asks, so it uses the same hook and the
+   * same per-ROW answer (plan v3/03 §5.2): the `_access` stamp, not
+   * `canEditEntity(def)`. Plan v3/04 §10.4 fixed this file's sibling
+   * (`DetailViewActions`, the header verbs) and stopped there.
+   */
+  const readOnly = useRecordDrawerReadOnly(entityDefinitionId, entityInstanceId)
   const { canViewComments } = useCommentAccess(recordId)
   const canViewRecordResource = useCanViewRecordResource()
   const entityType = config.entityType
@@ -85,7 +102,16 @@ export function DetailViewSidebar({
             record={record}
           />
 
-          <MemoEntityFields recordId={recordId} className='m-4' />
+          {/* `canEdit` here gates FIELD MANAGEMENT (Add field), which
+              `EntityFields` already floors on `canAdministerDef`. Passing
+              `!readOnly` matches the drawer, so a row the member cannot edit
+              does not offer schema edits either. */}
+          <MemoEntityFields
+            recordId={recordId}
+            className='m-4'
+            readOnly={readOnly}
+            canEdit={!readOnly}
+          />
 
           {/* After cards (e.g., customer, relationships) */}
           <SidebarCards

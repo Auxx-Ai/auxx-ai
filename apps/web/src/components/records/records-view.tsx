@@ -129,8 +129,21 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   // who can view but not edit this def (Read-only grantee / field seat). The
   // server enforces regardless; this just avoids a click-then-403. Keyed by
   // `entityDefinitionId` (the defAccess keyspace), not `resource.id`.
-  const { canEditEntity, canAdministerDef, recordDefRung, canDeleteRecordAt } = useAccess()
+  const { canEditEntity, canAdministerDef, recordDefRung, canDeleteRecordAt, hasRecordGrantsOn } =
+    useAccess()
   const canEdit = resource ? canEditEntity(resource.entityDefinitionId) : false
+  /**
+   * Whether ANY row of this def may be more permissive than the def level —
+   * i.e. the member holds ≥1 per-record grant here.
+   *
+   * 🔴 **This is what stops the def-level `readOnly` degrade from hard-blocking a
+   * per-record `edit` grant.** `cellSelectionConfig.readOnly` is checked FIRST at
+   * every write entry point and `isRowReadOnly` can only ever NARROW it further
+   * (`selectable-table-cell.tsx`), so `readOnly: !canEdit` made a row shared at
+   * `edit` uneditable inside a def the member cannot otherwise edit — exactly the
+   * case §6.2 exists to serve, and the symptom that outlived the SQL fix.
+   */
+  const hasRowGrants = resource ? hasRecordGrantsOn(resource.entityDefinitionId) : false
   // The DEF rung — the fallback for a row that carries no `_access` stamp yet.
   // It is exactly what the server's fold computes for a row with no grants on
   // it, so the fallback is the honest one rather than a guess.
@@ -520,10 +533,18 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       enabled: true,
       // Read-only degrade for members below Edit on this def — keeps selection +
       // copy, disables every inline write path (server enforces regardless).
-      readOnly: !canEdit,
-      // …narrowed PER ROW by the `_access` stamp (§6.2). The def flag above is
-      // the cheap short-circuit; this is what makes a shared-at-`edit` row
-      // writable inside a def the member cannot otherwise edit.
+      //
+      // ⚠ `&& !hasRowGrants`: this flag is the SHORT-CIRCUIT, checked before
+      // `isRowReadOnly` at every write entry point, and `isRowReadOnly` can only
+      // narrow it. So it may only assert "no row here is editable" — which stops
+      // being true the moment the member holds one per-record grant. Below Edit
+      // on the def AND holding no row grants, nothing changes; holding a grant,
+      // the per-row predicate takes over and answers the same question the def
+      // flag was answering, only correctly.
+      readOnly: !canEdit && !hasRowGrants,
+      // …narrowed PER ROW by the `_access` stamp (§6.2). This is what makes a
+      // shared-at-`edit` row writable inside a def the member cannot otherwise
+      // edit — and what keeps every OTHER row of that def read-only.
       isRowReadOnly,
       getFieldDefinition: resolveField,
       getCellValue: (rowId: string, columnId: string) => {
@@ -683,6 +704,13 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
             skipped++
             continue
           }
+          // Per-ROW, because a range can span rows of mixed rungs once the def
+          // flag stops short-circuiting. The server's per-row gate fails a batch
+          // WHOLE, so an unfiltered range would lose the editable cells too.
+          if (isRowReadOnly(rowId)) {
+            skipped++
+            continue
+          }
           rowIds.add(rowId)
           fieldIds.add(columnId)
           if (!fieldTypes.has(columnId)) {
@@ -710,6 +738,12 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
         for (const u of updates) {
           const field = resolveField(u.columnId)
           if (!field || field.capabilities?.updatable === false) {
+            skipped++
+            continue
+          }
+          // Per-ROW — see `clearCells` above for why the range must be filtered
+          // here rather than left to the server.
+          if (isRowReadOnly(u.rowId)) {
             skipped++
             continue
           }
@@ -773,6 +807,11 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
             skipped++
             continue
           }
+          // Per-ROW — AI generation writes field values like any other save.
+          if (isRowReadOnly(rowId)) {
+            skipped++
+            continue
+          }
           if (!byCol.has(columnId)) byCol.set(columnId, [])
           byCol.get(columnId)!.push(rowId)
         }
@@ -795,6 +834,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
     saveBulkMultipleFields,
     runAiBulkGenerate,
     canEdit,
+    hasRowGrants,
     isRowReadOnly,
   ])
 
