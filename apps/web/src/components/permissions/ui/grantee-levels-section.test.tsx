@@ -2,7 +2,7 @@
 
 import { Area, Level, PERMISSION_AREAS } from '@auxx/lib/permissions/client'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -14,20 +14,31 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
  * pre-scoped as `granteeAccess.own.areas`, and the *Inherit* fall-through as
  * `granteeAccess.baseline.areas`.
  *
- * The load-bearing part is not the read, it is `handleChange`: it edits a COPY
- * of that map and saves the whole thing, so a swap that pointed `values` at the
- * wrong half would silently wipe every other area the grantee holds on the next
- * click. That is the test worth having here.
+ * The load-bearing part is not the read, it is the flush: `useGranteeAreaLevels`
+ * lays the staged edits over that map and saves the whole thing, so a swap that
+ * pointed the persisted half at `baseline.areas` would silently wipe every other
+ * area the grantee holds. That is the test worth having here.
+ *
+ * Since the staged-edits change, clicking a rung writes nothing — the section
+ * commits from its `FormSaveBar`, like the Profiles tab always did.
  */
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = () => {}
 })
 
-const { granteeAccess, save, defAccess, instanceRows } = vi.hoisted(() => ({
+const { granteeAccess, saveAsync, defAccess, instanceRows } = vi.hoisted(() => ({
   granteeAccess: { current: undefined as unknown },
-  save: vi.fn(),
-  defAccess: { isLoading: false, rows: [], setLevel: vi.fn() },
+  saveAsync: vi.fn(),
+  defAccess: {
+    isLoading: false,
+    rows: [],
+    setLevel: vi.fn(),
+    isDirty: false,
+    isSaving: false,
+    save: async () => true,
+    discard: () => {},
+  },
   // One entry per `InstanceAccessKey`. `agent` joined the registry in the
   // 2026-07-28 agents slice, and because `AREA_TO_INSTANCE_KEY` is DERIVED from
   // that registry, the Agents area row immediately started nesting instance
@@ -61,6 +72,10 @@ const { granteeAccess, save, defAccess, instanceRows } = vi.hoisted(() => ({
       personal_inbox: [],
     },
     setGrant: vi.fn(),
+    isDirty: false,
+    isSaving: false,
+    save: async () => true,
+    discard: () => {},
   },
 }))
 
@@ -71,8 +86,10 @@ const ROLE_DEFAULTS = Object.fromEntries(
 vi.mock('../hooks/use-grantee-access', () => ({
   useGranteeAccess: () => granteeAccess.current,
 }))
+// `useGranteeAreaLevels` is deliberately NOT mocked — the staging it does is the
+// subject of the flush test below. Only the write it reaches for is.
 vi.mock('../hooks/use-permission-grants', () => ({
-  useGrantWrites: () => ({ save }),
+  useGrantWrites: () => ({ saveAsync, isSaving: false }),
   useRoleDefaults: () => ({ roleDefaults: ROLE_DEFAULTS, isLoading: false }),
 }))
 vi.mock('../hooks/use-grantee-def-access', () => ({
@@ -134,8 +151,14 @@ function rung(areaLabel: string, label: string): HTMLElement {
   return radio as HTMLElement
 }
 
+/** The `FormSaveBar`'s Save button — absent entirely while nothing is staged. */
+function saveButton(): HTMLElement | undefined {
+  return screen.queryAllByRole('button').find((el) => el.textContent === 'Save')
+}
+
 beforeEach(() => {
-  save.mockReset()
+  saveAsync.mockReset()
+  saveAsync.mockResolvedValue(undefined)
 })
 
 describe('the ladder reads the grantee-scoped payload', () => {
@@ -158,23 +181,63 @@ describe('the ladder reads the grantee-scoped payload', () => {
 
 describe('an area write keeps every other area the grantee holds', () => {
   /**
-   * The clobber case. `handleChange` spreads `values` and saves the whole map,
-   * so if `values` ever stopped being this grantee's own areas — pointing at
-   * `baseline.areas`, or at an empty object while the query was still settling —
-   * changing one area would silently revoke all the others. Server-side there is
-   * no guard against it: `setGranteeLevels` stores the sparse map verbatim.
+   * The clobber case. The flush lays the staged edits over `values` and saves the
+   * whole map, so if the persisted half ever stopped being this grantee's own
+   * areas — pointing at `baseline.areas`, or at an empty object while the query
+   * was still settling — changing one area would silently revoke all the others.
+   * Server-side there is no guard against it: `setGranteeLevels` stores the
+   * sparse map verbatim.
    */
-  it('saves the untouched areas alongside the changed one', () => {
+  it('saves the untouched areas alongside the changed one', async () => {
     setup({
       own: { [Area.files]: Level.Read, [Area.workflows]: Level.Edit },
       baseline: {},
     })
 
     fireEvent.click(rung(FILES_LABEL, 'Full'))
+    const button = saveButton()
+    if (!button) throw new Error('no Save button after staging an edit')
+    await act(async () => {
+      fireEvent.click(button)
+    })
 
-    expect(save).toHaveBeenCalledWith('user', GRANTEE, {
+    expect(saveAsync).toHaveBeenCalledWith('user', GRANTEE, {
       [Area.files]: Level.Full,
       [Area.workflows]: Level.Edit,
+    })
+  })
+})
+
+/**
+ * The staged-edits contract at the surface an admin actually touches. Before
+ * this, clicking a rung wrote immediately — while the Profiles tab next door
+ * drafted and saved from a bar. Same-looking controls, two commit models.
+ */
+describe('edits stage until the save bar is used', () => {
+  it('writes nothing on a rung click, and shows the bar instead', () => {
+    setup({ own: { [Area.files]: Level.Read }, baseline: {} })
+
+    expect(saveButton()).toBeUndefined()
+
+    fireEvent.click(rung(FILES_LABEL, 'Full'))
+
+    expect(saveAsync).not.toHaveBeenCalled()
+    expect(saveButton()).toBeTruthy()
+    // The ladder still moves — it renders the staged value.
+    expect(rung(FILES_LABEL, 'Full').getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('takes the bar away again when the edit is undone by hand', async () => {
+    setup({ own: { [Area.files]: Level.Read }, baseline: {} })
+
+    fireEvent.click(rung(FILES_LABEL, 'Full'))
+    expect(saveButton()).toBeTruthy()
+
+    fireEvent.click(rung(FILES_LABEL, 'Read'))
+    // `waitFor`, not a bare assertion: the bar is an `AnimatePresence` child, so
+    // it stays mounted for the length of its exit spring after going clean.
+    await waitFor(() => {
+      expect(saveButton()).toBeUndefined()
     })
   })
 })

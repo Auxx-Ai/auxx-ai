@@ -10,7 +10,7 @@ import {
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InstanceAreaAccess, InstanceBaselineRow } from '../hooks/use-instance-baseline-rows'
 
 /**
@@ -32,10 +32,19 @@ import type { InstanceAreaAccess, InstanceBaselineRow } from '../hooks/use-insta
 const h = vi.hoisted(() => ({
   rowsByKey: {} as Record<InstanceAccessKey, InstanceBaselineRow[]>,
   areaAccessByKey: {} as Record<InstanceAccessKey, InstanceAreaAccess>,
+  // The two lanes' staged halves, per-test settable — the tab folds them into one
+  // `FormSaveBar` through `mergeStaged`, so both have to be modelled.
+  defStaged: { isDirty: false, isSaving: false, save: vi.fn(async () => true), discard: vi.fn() },
+  instanceStaged: {
+    isDirty: false,
+    isSaving: false,
+    save: vi.fn(async () => true),
+    discard: vi.fn(),
+  },
 }))
 
 vi.mock('../hooks/use-def-baselines', () => ({
-  useDefBaselines: () => ({ isLoading: false, rows: [], setBaseline: vi.fn() }),
+  useDefBaselines: () => ({ isLoading: false, rows: [], setBaseline: vi.fn(), ...h.defStaged }),
 }))
 vi.mock('../hooks/use-instance-baseline-rows', () => ({
   useInstanceBaselineRows: () => ({
@@ -46,6 +55,7 @@ vi.mock('../hooks/use-instance-baseline-rows', () => ({
     rowsByKey: h.rowsByKey,
     areaAccessByKey: h.areaAccessByKey,
     setBaseline: vi.fn(),
+    ...h.instanceStaged,
   }),
 }))
 vi.mock('./instance-share-body', () => ({
@@ -59,6 +69,13 @@ beforeAll(() => {
   Element.prototype.setPointerCapture = () => {}
   Element.prototype.releasePointerCapture = () => {}
   Element.prototype.scrollIntoView = () => {}
+})
+
+beforeEach(() => {
+  h.defStaged.isDirty = false
+  h.instanceStaged.isDirty = false
+  h.defStaged.save.mockClear()
+  h.instanceStaged.save.mockClear()
 })
 
 function seed(overrides: Partial<Record<InstanceAccessKey, Level>> = {}) {
@@ -165,6 +182,48 @@ describe('plan 43 §5.2 — the tab’s access row is READ-ONLY', () => {
     renderTab()
 
     expect(document.querySelector('[role="radio"]')).toBeNull()
+  })
+})
+
+/**
+ * This tab used to write on every select change while the Profiles tab next door
+ * drafted and saved from a bar — the inconsistency the staged-edits change
+ * removed. Both lanes here stage independently but commit from ONE bar, so the
+ * fold is the part worth pinning: a lane left out of `mergeStaged` would look
+ * saved and silently not be.
+ */
+describe('both lanes commit from one save bar', () => {
+  function saveButton(): HTMLElement | undefined {
+    return screen.queryAllByRole('button').find((el) => el.textContent === 'Save')
+  }
+
+  it('shows no bar while nothing is staged', () => {
+    seed()
+    renderTab()
+
+    expect(saveButton()).toBeUndefined()
+  })
+
+  it('raises the bar when EITHER lane is dirty', () => {
+    seed()
+    h.instanceStaged.isDirty = true
+    renderTab()
+
+    expect(saveButton()).toBeTruthy()
+  })
+
+  it('flushes both lanes from one click', async () => {
+    const user = userEvent.setup()
+    seed()
+    h.defStaged.isDirty = true
+    renderTab()
+
+    const button = saveButton()
+    if (!button) throw new Error('no Save button while a lane is dirty')
+    await user.click(button)
+
+    expect(h.defStaged.save).toHaveBeenCalledTimes(1)
+    expect(h.instanceStaged.save).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -33,12 +33,15 @@ export type GranteeAccessData = RouterOutputs['permissions']['granteeAccess']
  * The `permission-grant.changed` realtime nudge does not cover this either: it
  * targets the AFFECTED member's own client so their `myCapabilities` refreshes,
  * not the admin's client sitting on that member's Permissions tab.
+ *
+ * Returns the invalidation promise so a staged flush can await the refetch before
+ * clearing its edits (`useStagedEdits`) — otherwise every select would flash back
+ * to its pre-save value for the length of the round-trip. `onSettled` callers
+ * ignore it, which is why it is `void`-ed at those call sites rather than here.
  */
 export function useInvalidateGranteeAccess() {
   const utils = api.useUtils()
-  return useCallback(() => {
-    void utils.permissions.granteeAccess.invalidate()
-  }, [utils])
+  return useCallback(() => utils.permissions.granteeAccess.invalidate(), [utils])
 }
 
 /**

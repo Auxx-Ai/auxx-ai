@@ -12,14 +12,18 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Folder, Plus, SlidersHorizontal, Trash2, Users } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { FormSaveBar } from '~/components/global/forms/form-save-bar'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useActor, useActors } from '~/components/resources/hooks/use-actor'
 import { ActorAvatar } from '~/components/resources/ui/actor-badge'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { useGranteeAccess } from '../hooks/use-grantee-access'
+import { useGranteeAreaLevels } from '../hooks/use-grantee-area-levels'
 import { useGranteeDefAccess } from '../hooks/use-grantee-def-access'
 import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { usePermissionGrants } from '../hooks/use-permission-grants'
+import { mergeStaged } from '../hooks/use-staged-edits'
 import { GranteeDefAccessRows } from './grantee-def-access-rows'
 import { GranteeInstanceRows } from './grantee-instance-rows'
 import { AREA_TO_INSTANCE_KEY, deadGrantWarning } from './instance-share-copy'
@@ -113,6 +117,15 @@ function useGranteeName(granteeType: OverrideType, granteeId: string) {
  * grantee immediately persists an empty grant row (composes to nothing but
  * survives reloads), and clearing every raised area keeps that row; only the
  * delete action removes the grant.
+ *
+ * **Level edits are STAGED and commit from a `FormSaveBar`** ({@link useStagedEdits}),
+ * matching the Profiles tab. Adding and removing a grantee stay immediate: those
+ * are list operations, not level edits, and the row they write composes to
+ * nothing on its own.
+ *
+ * Switching the selected grantee **discards** whatever was staged — the detail is
+ * keyed on the grantee id, so all three of its staged surfaces reset together.
+ * Same rule `useProfileEditor` already followed when the selected profile changed.
  */
 export function GranteeOverridesTab({
   granteeType,
@@ -166,15 +179,6 @@ export function GranteeOverridesTab({
     if (added.length > 0) setSelectedId(added[0] ?? null)
   }
 
-  const handleChange = (granteeId: string, area: Area, level: Level | undefined) => {
-    const current = persisted.find((g) => g.granteeId === granteeId)?.levels ?? {}
-    const next = { ...current }
-    if (level === undefined) delete next[area]
-    else next[area] = level
-
-    save(granteeType, granteeId, next)
-  }
-
   const handleRemove = (granteeId: string) => {
     remove(granteeType, granteeId)
     if (selectedId === granteeId) setSelectedId(null)
@@ -190,7 +194,7 @@ export function GranteeOverridesTab({
   }
 
   return (
-    <div className='flex flex-col p-3 sm:p-6'>
+    <div className='flex flex-1 flex-col p-3 sm:p-6'>
       <p className='mb-3 max-w-2xl text-sm text-muted-foreground'>{copy.empty}</p>
 
       {/* Grantee list */}
@@ -254,16 +258,20 @@ export function GranteeOverridesTab({
         )}
       </Section>
 
-      {/* Selected grantee's leveled grid */}
+      {/*
+        Selected grantee's leveled grid. `key` is the discard: every staged
+        surface inside lives in this subtree, so switching grantee drops the
+        unsaved edits rather than carrying them onto someone else's row.
+      */}
       {selectedGranteeId ? (
         <GranteeAccessDetail
+          key={selectedGranteeId}
           granteeType={granteeType}
           granteeId={selectedGranteeId}
-          values={persisted.find((g) => g.granteeId === selectedGranteeId)?.levels ?? {}}
+          persistedLevels={persisted.find((g) => g.granteeId === selectedGranteeId)?.levels ?? {}}
           roleDefaults={roleDefaults}
           baseline={effectiveBaseline}
           disabled={disabled}
-          onChange={(area, level) => handleChange(selectedGranteeId, area, level)}
         />
       ) : (
         <Section title='Access' icon={<SlidersHorizontal className='size-4' />} collapsible={false}>
@@ -324,40 +332,63 @@ function GranteeListRow({
   )
 }
 
-/** The selected grantee's leveled grid, headed by its resolved name. */
+/**
+ * The selected grantee's leveled grid, headed by its resolved name, with the Save
+ * bar for all three staged surfaces it hosts (area levels, per-def overrides,
+ * per-instance grants).
+ *
+ * Mounted with `key={granteeId}` by the tab, so the staging state is per-grantee
+ * by construction rather than by an effect that has to notice the id moved.
+ */
 function GranteeAccessDetail({
   granteeType,
   granteeId,
-  values,
+  persistedLevels,
   roleDefaults,
   baseline,
   disabled,
-  onChange,
 }: {
   granteeType: OverrideType
   granteeId: string
-  values: Partial<Record<Area, Level>>
+  /** The grantee's stored sparse map — staged edits are laid over it. */
+  persistedLevels: Partial<Record<Area, Level>>
   roleDefaults: Record<Area, Level>
   baseline: Partial<Record<Area, Level>>
   disabled: boolean
-  onChange: (area: Area, level: Level | undefined) => void
 }) {
   const { name } = useGranteeName(granteeType, granteeId)
-  const {
-    isLoading: defAccessLoading,
-    rows: defRows,
-    setLevel: setDefLevel,
-  } = useGranteeDefAccess(granteeType, granteeId)
+  const areaLevels = useGranteeAreaLevels(granteeType, granteeId, persistedLevels)
+  const defAccess = useGranteeDefAccess(granteeType, granteeId)
+  const instanceRows = useInstanceGranteeRows(granteeType, granteeId)
+  const { isLoading: defAccessLoading, rows: defRows, setLevel: setDefLevel } = defAccess
   const {
     isLoading: instanceRowsLoadingAll,
     lists: instanceLists,
     rowsByKey: instanceRowsByKey,
     setGrant: setInstanceGrant,
-  } = useInstanceGranteeRows(granteeType, granteeId)
+  } = instanceRows
+  const values = areaLevels.values
   // Deduped by React Query with the call inside `useInstanceGranteeRows`, so the
   // area rows' effective line costs no extra request. Null for a team, which is
   // exactly when it must not render.
   const { effective } = useGranteeAccess(granteeType, granteeId)
+
+  // Area levels first: they are the base every nested def/instance row is
+  // measured against, so a half-applied save leaves the coarser value written and
+  // the finer one still staged, not the other way round.
+  const staged = mergeStaged([areaLevels, defAccess, instanceRows])
+  const [confirmDiscard, ConfirmDialog] = useConfirm()
+
+  const handleDiscard = async () => {
+    const confirmed = await confirmDiscard({
+      title: 'Discard changes?',
+      description: `Your unsaved access changes for ${name} will be lost.`,
+      confirmText: 'Discard',
+      cancelText: 'Keep editing',
+      destructive: true,
+    })
+    if (confirmed) staged.discard()
+  }
 
   /**
    * Per-def overrides nested under Records (capability layer v2 Part B.0), and
@@ -462,20 +493,34 @@ function GranteeAccessDetail({
   )
 
   return (
-    <Section
-      title={`Access · ${name}`}
-      icon={<SlidersHorizontal className='size-4' />}
-      collapsible={false}>
-      <LeveledAreaGrid
-        mode='override'
-        values={values}
-        roleDefaults={roleDefaults}
-        baseline={baseline}
-        onChange={onChange}
-        disabled={disabled}
-        renderChildren={renderChildren}
-        effectiveLevels={effective?.areas}
+    <>
+      <ConfirmDialog />
+      <Section
+        title={`Access · ${name}`}
+        icon={<SlidersHorizontal className='size-4' />}
+        collapsible={false}>
+        <LeveledAreaGrid
+          mode='override'
+          values={values}
+          roleDefaults={roleDefaults}
+          baseline={baseline}
+          onChange={areaLevels.setLevel}
+          disabled={disabled}
+          renderChildren={renderChildren}
+          effectiveLevels={effective?.areas}
+        />
+      </Section>
+
+      {/* A fragment, not a child of the Section: the bar is the tab's last
+          element so it pins to the page bottom, not inside the card. */}
+      <FormSaveBar
+        dirty={staged.isDirty}
+        isSaving={staged.isSaving}
+        onSave={() => void staged.save()}
+        onDiscard={() => void handleDiscard()}
+        label={`Unsaved access changes · ${name}`}
+        saveDisabled={disabled}
       />
-    </Section>
+    </>
   )
 }

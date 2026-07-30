@@ -2,7 +2,7 @@
 
 import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { Area, Level } from '@auxx/lib/permissions/client'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -21,6 +21,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * (`own.defs` for the grantee's grant, `baseline.defs` for the workspace
  * default), and that the optimistic write still lands — on `own`/`baseline`,
  * which the server stores verbatim, and NEVER on `effective`, which is composed.
+ *
+ * Since the staged-edits change, `setLevel` **writes nothing**: it stages, and
+ * `save()` flushes. Every write assertion below therefore drives both, and the
+ * dedicated `staging` block pins the half that has no mutation at all.
  */
 
 const {
@@ -56,8 +60,8 @@ vi.mock('~/trpc/react', () => ({
       roleDefaults: { useQuery: roleDefaultsQuery },
     },
     resourceAccess: {
-      grantType: { useMutation: () => ({ mutate: grantTypeMutate }) },
-      revokeType: { useMutation: () => ({ mutate: revokeTypeMutate }) },
+      grantType: { useMutation: () => ({ mutateAsync: grantTypeMutate, isPending: false }) },
+      revokeType: { useMutation: () => ({ mutateAsync: revokeTypeMutate, isPending: false }) },
     },
   },
 }))
@@ -116,6 +120,36 @@ function setup(data: Payload, granteeKind: 'user' | 'group' = 'user') {
   return renderHook(() => useGranteeDefAccess(granteeKind, USER)).result
 }
 
+/** Stage one level. Wrapped in `act` — staging is a state update now. */
+async function stage(
+  result: { current: { setLevel: (id: string, level: ResourcePermission | 'inherit') => void } },
+  entityDefinitionId: string,
+  level: ResourcePermission | 'inherit'
+) {
+  await act(async () => {
+    result.current.setLevel(entityDefinitionId, level)
+  })
+}
+
+/** Stage one level and flush it — the two halves of what `setLevel` used to do. */
+async function stageAndSave(
+  result: {
+    current: {
+      setLevel: (id: string, level: ResourcePermission | 'inherit') => void
+      save: () => Promise<boolean>
+    }
+  },
+  entityDefinitionId: string,
+  level: ResourcePermission | 'inherit'
+) {
+  await stage(result, entityDefinitionId, level)
+  let ok = false
+  await act(async () => {
+    ok = await result.current.save()
+  })
+  return ok
+}
+
 /** Run the last `setData` updater over `prev` and return what it produced. */
 function patched(prev: Payload) {
   const call = granteeAccessSetData.mock.calls.at(-1)
@@ -135,6 +169,9 @@ beforeEach(() => {
   ]) {
     fn.mockReset()
   }
+  // `save` awaits every write, so the mutation mocks must resolve.
+  grantTypeMutate.mockResolvedValue(undefined)
+  revokeTypeMutate.mockResolvedValue(undefined)
 })
 
 describe('rows are derived from the grantee-scoped payload', () => {
@@ -200,12 +237,12 @@ describe('writes patch own/baseline optimistically and never effective', () => {
     baseline: { areas: {}, defs: { [TICKET]: ResourcePermission.view } },
   })
 
-  it("writes the new permission onto own.defs, addressed to this grantee's key", () => {
+  it("writes the new permission onto own.defs, addressed to this grantee's key", async () => {
     const result = setup(
       payload({ baseline: { areas: {}, defs: { [TICKET]: ResourcePermission.view } } })
     )
 
-    result.current.setLevel(TICKET, ResourcePermission.edit)
+    await stageAndSave(result, TICKET, ResourcePermission.edit)
 
     const { input, next } = patched(prev)
     expect(input).toEqual({ granteeType: 'user', granteeId: USER })
@@ -221,22 +258,22 @@ describe('writes patch own/baseline optimistically and never effective', () => {
     })
   })
 
-  it('leaves effective alone — it is composed, and the invalidation owns it', () => {
+  it('leaves effective alone — it is composed, and the invalidation owns it', async () => {
     const result = setup(
       payload({ baseline: { areas: {}, defs: { [TICKET]: ResourcePermission.view } } })
     )
 
-    result.current.setLevel(TICKET, ResourcePermission.edit)
+    await stageAndSave(result, TICKET, ResourcePermission.edit)
 
     expect(patched(prev).next.effective).toBe(prev.effective)
   })
 
-  it('drops the row from own.defs on Inherit, and revokes', () => {
+  it('drops the row from own.defs on Inherit, and revokes', async () => {
     const result = setup(
       payload({ own: { areas: {}, defs: { [CONTACT]: ResourcePermission.view } } })
     )
 
-    result.current.setLevel(CONTACT, 'inherit')
+    await stageAndSave(result, CONTACT, 'inherit')
 
     expect(patched(prev).next.own.defs).toEqual({})
     expect(revokeTypeMutate).toHaveBeenCalledWith({
@@ -252,10 +289,10 @@ describe('writes patch own/baseline optimistically and never effective', () => {
    * every other member out. The baseline write has to be patched too, or the row
    * re-renders as "Restricted" for the moment before the refetch lands.
    */
-  it('writes and patches the workspace baseline on first touch', () => {
+  it('writes and patches the workspace baseline on first touch', async () => {
     const result = setup(payload({ own: { areas: { [Area.records]: Level.Full }, defs: {} } }))
 
-    result.current.setLevel(CONTACT, ResourcePermission.admin)
+    await stageAndSave(result, CONTACT, ResourcePermission.admin)
 
     // Two `grantType` calls: the baseline first, then the grantee's own row.
     expect(grantTypeMutate).toHaveBeenNthCalledWith(1, {
@@ -277,12 +314,12 @@ describe('writes patch own/baseline optimistically and never effective', () => {
     expect(patched(prev).next.own.defs[CONTACT]).toBe(ResourcePermission.admin)
   })
 
-  it('does NOT re-write the baseline when the def already has one', () => {
+  it('does NOT re-write the baseline when the def already has one', async () => {
     const result = setup(
       payload({ baseline: { areas: {}, defs: { [TICKET]: ResourcePermission.view } } })
     )
 
-    result.current.setLevel(TICKET, ResourcePermission.admin)
+    await stageAndSave(result, TICKET, ResourcePermission.admin)
 
     expect(grantTypeMutate).toHaveBeenCalledTimes(1)
     expect(grantTypeMutate).toHaveBeenCalledWith(
@@ -290,15 +327,99 @@ describe('writes patch own/baseline optimistically and never effective', () => {
     )
   })
 
-  it('does not touch the cache when the grantee page is not mounted', () => {
+  it('does not touch the cache when the grantee page is not mounted', async () => {
     const result = setup(
       payload({ baseline: { areas: {}, defs: { [TICKET]: ResourcePermission.view } } })
     )
 
-    result.current.setLevel(TICKET, ResourcePermission.edit)
+    await stageAndSave(result, TICKET, ResourcePermission.edit)
 
     const updater = granteeAccessSetData.mock.calls.at(-1)?.[1] as (p: unknown) => unknown
     expect(updater(undefined)).toBeUndefined()
+  })
+})
+
+/**
+ * The staged-edits contract. Before this, every select change fired a mutation
+ * while the profile editor next door drafted and saved from a `FormSaveBar` —
+ * identical-looking controls, two commit models. `setLevel` now only stages.
+ */
+describe('edits stage until save', () => {
+  it('writes nothing on setLevel, and shows the staged value on the row', async () => {
+    const result = setup(
+      payload({ baseline: { areas: {}, defs: { [TICKET]: ResourcePermission.view } } })
+    )
+
+    await stage(result, TICKET, ResourcePermission.edit)
+
+    expect(grantTypeMutate).not.toHaveBeenCalled()
+    expect(revokeTypeMutate).not.toHaveBeenCalled()
+    expect(granteeAccessSetData).not.toHaveBeenCalled()
+    expect(result.current.isDirty).toBe(true)
+    // The select still moves — the row reads the staged value, not the server's.
+    expect(
+      result.current.rows.find((r) => r.resource.entityDefinitionId === TICKET)?.grantLevel
+    ).toBe(ResourcePermission.edit)
+  })
+
+  it('is clean again when a row is staged back to its persisted value', async () => {
+    const result = setup(
+      payload({ own: { areas: {}, defs: { [TICKET]: ResourcePermission.view } } })
+    )
+
+    await stage(result, TICKET, ResourcePermission.edit)
+    expect(result.current.isDirty).toBe(true)
+
+    await stage(result, TICKET, ResourcePermission.view)
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it('drops every staged edit on discard', async () => {
+    const result = setup(payload())
+
+    await stage(result, TICKET, ResourcePermission.edit)
+    await act(async () => {
+      result.current.discard()
+    })
+
+    expect(result.current.isDirty).toBe(false)
+    expect(
+      result.current.rows.find((r) => r.resource.entityDefinitionId === TICKET)?.grantLevel
+    ).toBeUndefined()
+  })
+
+  /**
+   * A failed write has to stay staged or the bar disappears and the admin
+   * believes a change landed that did not. The rows that DID land are dropped, so
+   * a retry does not re-send them.
+   */
+  it('keeps only the failed rows staged', async () => {
+    const result = setup(
+      payload({
+        baseline: {
+          areas: {},
+          defs: { [TICKET]: ResourcePermission.view, [CONTACT]: ResourcePermission.view },
+        },
+      })
+    )
+
+    await stage(result, TICKET, ResourcePermission.edit)
+    await stage(result, CONTACT, ResourcePermission.admin)
+
+    grantTypeMutate.mockImplementation(async (input: { entityDefinitionId: string }) => {
+      if (input.entityDefinitionId === CONTACT) throw new Error('nope')
+    })
+
+    let ok = true
+    await act(async () => {
+      ok = await result.current.save()
+    })
+
+    expect(ok).toBe(false)
+    expect(result.current.isDirty).toBe(true)
+    expect(
+      result.current.rows.find((r) => r.resource.entityDefinitionId === CONTACT)?.grantLevel
+    ).toBe(ResourcePermission.admin)
   })
 })
 

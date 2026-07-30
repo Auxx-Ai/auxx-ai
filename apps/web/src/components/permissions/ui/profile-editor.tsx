@@ -16,6 +16,7 @@ import { useGranteeDefAccess } from '../hooks/use-grantee-def-access'
 import { useInstanceGranteeRows } from '../hooks/use-instance-grantee-rows'
 import { useProfileEditor } from '../hooks/use-profile-editor'
 import type { PermissionProfile } from '../hooks/use-profiles'
+import { mergeStaged } from '../hooks/use-staged-edits'
 import { AgentPolicyEditor } from './agent-policy-editor'
 import { BaseLevelSelect } from './base-level-select'
 import { GranteeDefAccessRows } from './grantee-def-access-rows'
@@ -45,7 +46,8 @@ interface ProfileEditorProps {
  * them (`ProcedureDetailBar`'s idiom). Unlike that bar, though, every one of them
  * writes to the **draft** via `patch` and never fires a mutation of its own,
  * because of the one-transaction rule above. The bottom `FormSaveBar` is the only
- * thing that saves.
+ * thing that saves — including the nested per-def and per-instance rows, which
+ * stage through `useStagedEdits` and flush after the profile's own transaction.
  *
  * Two things this screen deliberately does not offer:
  * - **The `owner` profile is not editable** (§0.10). It is the recovery guarantee:
@@ -157,20 +159,29 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
   // "expand Records and set the permissions for Companies", combined into
   // this same grid (not a separate section). Called unconditionally (rules of
   // hooks) even for an agent profile, which never renders `ProfileAreaGrid`.
-  const {
-    isLoading: defAccessLoading,
-    rows: defRows,
-    setLevel: setDefLevel,
-  } = useGranteeDefAccess('profile', profile.id, {
+  const defAccess = useGranteeDefAccess('profile', profile.id, {
     levels: draft.levels,
     baseLevel: draft.baseLevel,
   })
+  const instanceRows = useInstanceGranteeRows('profile', profile.id)
+  const { isLoading: defAccessLoading, rows: defRows, setLevel: setDefLevel } = defAccess
   const {
     isLoading: instanceRowsLoadingAll,
     lists: instanceLists,
     rowsByKey: instanceRowsByKey,
     setGrant: setInstanceGrant,
-  } = useInstanceGranteeRows('profile', profile.id)
+  } = instanceRows
+
+  /**
+   * The two nested lanes, folded into the same bar as the profile draft.
+   *
+   * They used to fire a mutation per select while the base map above them waited
+   * for Save — the inconsistency that made every other grid on this page look
+   * like it was the odd one out. They are NOT part of the profile's single
+   * transaction (they write `ResourceAccess`, not `PermissionGrant`), so `save`
+   * below runs the profile first and these after.
+   */
+  const nestedStaged = mergeStaged([defAccess, instanceRows])
 
   /**
    * `ProfileAreaGrid`'s `renderChildren` — the profile-authoring twin of
@@ -261,7 +272,16 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
       cancelText: 'Keep editing',
       destructive: true,
     })
-    if (confirmed) reset()
+    if (confirmed) {
+      reset()
+      nestedStaged.discard()
+    }
+  }
+
+  /** The profile's own transaction first, then the nested `ResourceAccess` rows. */
+  const handleSave = async () => {
+    if (isDirty) await save()
+    await nestedStaged.save()
   }
 
   return (
@@ -423,9 +443,9 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
           `getProfile` lands would write a half-loaded draft.
         */}
         <FormSaveBar
-          dirty={isDirty}
-          isSaving={isSaving}
-          onSave={() => void save()}
+          dirty={isDirty || nestedStaged.isDirty}
+          isSaving={isSaving || nestedStaged.isSaving}
+          onSave={() => void handleSave()}
           onDiscard={() => void handleDiscard()}
           label='Unsaved profile changes'
           saveDisabled={!editable || isLoading}

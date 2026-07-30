@@ -23,6 +23,7 @@ import {
   usePatchGranteeAccess,
 } from './use-grantee-access'
 import { MEMBER_BASELINE_GRANTEE_ID, useRoleDefaults } from './use-permission-grants'
+import { type AccessChoice, type StagedSurface, useStagedEdits } from './use-staged-edits'
 
 /**
  * The grantee axis this section edits: an individual member, a team, or (doc 19
@@ -88,12 +89,19 @@ export interface GranteeDefAccessRow extends DefAccessRow {
  *
  * Derives per def: the baseline (`role:org_member` row), the locked-down flag
  * (baseline = No Access), this grantee's grant, and whether that grant is a
- * no-op (≤ baseline). Writes reuse `grantType`/`revokeType`.
+ * no-op (≤ baseline).
+ *
+ * **Edits are STAGED, not written** ({@link useStagedEdits}): `setLevel` moves the
+ * select, `save()` flushes through `grantType`/`revokeType`. Every host of this
+ * hook renders a `FormSaveBar`, so the nested per-def rows now commit with the
+ * area levels above them instead of firing a mutation per click.
  *
  * **First-touch rule (correctness, not polish):** setting an explicit grant on a
  * def with no baseline row yet ALSO writes `role:org_member @ edit`, so the def
- * doesn't silently become restricted and lock every other member out. Selecting
- * Inherit (revoke) never touches the baseline. Errors surface via `toastError`.
+ * doesn't silently become restricted and lock every other member out. It is
+ * evaluated at FLUSH time, against the baseline as it stands then — staging it
+ * would have to guess. Selecting Inherit (revoke) never touches the baseline.
+ * Errors surface via `toastError`.
  */
 export function useGranteeDefAccess(
   granteeKind: GranteeKind,
@@ -106,7 +114,11 @@ export function useGranteeDefAccess(
    * fall-through is this draft, not `usePermissionGrants()`'s persisted maps.
    */
   profileOwnLevels?: { levels: Partial<Record<Area, Level>>; baseLevel: Level | null }
-) {
+): {
+  isLoading: boolean
+  rows: GranteeDefAccessRow[]
+  setLevel: (entityDefinitionId: string, level: AccessChoice) => void
+} & StagedSurface {
   const utils = api.useUtils()
   const { resources, isLoading: resourcesLoading } = useResources()
   const granteeType = GRANTEE_TYPE[granteeKind]
@@ -153,10 +165,10 @@ export function useGranteeDefAccess(
   // `granteeAccess` rides along because a def write moves its COMPOSED
   // `effective` half, which no optimistic patch here can predict.
   const invalidateGranteeAccess = useInvalidateGranteeAccess()
-  const invalidate = useCallback(() => {
-    invalidateGranteeAccess()
-    return utils.resourceAccess.invalidate()
-  }, [utils, invalidateGranteeAccess])
+  const invalidate = useCallback(
+    () => Promise.all([invalidateGranteeAccess(), utils.resourceAccess.invalidate()]),
+    [utils, invalidateGranteeAccess]
+  )
 
   const patchGranteeAccess = usePatchGranteeAccess()
 
@@ -202,6 +214,15 @@ export function useGranteeDefAccess(
   /** This grantee's explicit grant per def, keyed by def id. */
   const grantByDef = useMemo(() => own?.defs ?? {}, [own])
 
+  const {
+    edits: staged,
+    entries: stagedEntries,
+    stage,
+    discard,
+    replace,
+    isDirty,
+  } = useStagedEdits<AccessChoice>()
+
   const rows = useMemo<GranteeDefAccessRow[]>(() => {
     return resources
       .filter(isAccessManageable)
@@ -209,7 +230,16 @@ export function useGranteeDefAccess(
         const configuredBaseline = baselineByDef[resource.entityDefinitionId]
         const baseArea = ENTITY_BASE_AREAS[resource.entityType ?? ''] ?? Area.records
         const baselineLevel = configuredBaseline ?? workspaceBasePermission(baseArea)
-        const grantLevel = grantByDef[resource.entityDefinitionId]
+        // Staged edits win over the persisted grant, so the select moves the
+        // instant it is clicked even though nothing has been written yet — and
+        // `isNoEffect` below judges what the admin is about to save.
+        const choice = staged[resource.entityDefinitionId]
+        const grantLevel =
+          choice === undefined
+            ? grantByDef[resource.entityDefinitionId]
+            : choice === 'inherit'
+              ? undefined
+              : choice
         // Configured def → inherit its workspace baseline; unconfigured → the
         // grantee's general Records level.
         const inheritedLevel = configuredBaseline ?? targetBasePermission(baseArea)
@@ -232,55 +262,85 @@ export function useGranteeDefAccess(
         }
       })
       .sort((a, b) => a.resource.plural.localeCompare(b.resource.plural))
-  }, [resources, baselineByDef, grantByDef, targetBasePermission, workspaceBasePermission])
+  }, [resources, baselineByDef, grantByDef, targetBasePermission, workspaceBasePermission, staged])
 
   /**
-   * Set this grantee's level for a def. `'inherit'` revokes the explicit row;
-   * a positive level writes it (auto-persisting the baseline on first touch).
+   * Stage this grantee's level for a def. `'inherit'` will revoke the explicit
+   * row; a positive level will write it. Nothing is sent until {@link save}.
    */
   const setLevel = useCallback(
-    (entityDefinitionId: string, level: ResourcePermission | 'inherit') => {
-      if (level === 'inherit') {
-        patchLocal(entityDefinitionId, 'own')
-        revokeType.mutate({ entityDefinitionId, granteeType, granteeId })
-        return
-      }
-      // First-touch: keep everyone at the default while this grantee is raised.
-      if (baselineByDef[entityDefinitionId] === undefined) {
-        const resource = resources.find((item) => item.entityDefinitionId === entityDefinitionId)
-        const baseArea = ENTITY_BASE_AREAS[resource?.entityType ?? ''] ?? Area.records
-        const defaultBaseline = workspaceBasePermission(baseArea)
-        patchLocal(entityDefinitionId, 'baseline', defaultBaseline)
-        grantType.mutate({
-          entityDefinitionId,
-          granteeType: ResourceGranteeType.role,
-          granteeId: MEMBER_BASELINE_GRANTEE_ID,
-          rung: permissionToRung(defaultBaseline),
-        })
-      }
-      patchLocal(entityDefinitionId, 'own', level)
-      grantType.mutate({
-        entityDefinitionId,
-        granteeType,
-        granteeId,
-        rung: permissionToRung(level),
-      })
+    (entityDefinitionId: string, level: AccessChoice) => {
+      stage(entityDefinitionId, level, grantByDef[entityDefinitionId] ?? 'inherit')
     },
-    [
-      baselineByDef,
-      resources,
-      workspaceBasePermission,
-      granteeType,
-      granteeId,
-      grantType,
-      revokeType,
-      patchLocal,
-    ]
+    [stage, grantByDef]
   )
+
+  /**
+   * Flush every staged def, one write at a time — including the first-touch
+   * baseline write, which is decided here rather than at stage time so it reads
+   * the baseline as it actually stands when the row is committed.
+   *
+   * A def whose write fails STAYS staged (its `toastError` already fired) so Save
+   * retries only what is left; the awaited `invalidate` keeps the select from
+   * flashing back before the refetch lands.
+   */
+  const save = useCallback(async () => {
+    const failed: Record<string, AccessChoice> = {}
+    for (const [entityDefinitionId, level] of stagedEntries) {
+      try {
+        if (level === 'inherit') {
+          patchLocal(entityDefinitionId, 'own')
+          await revokeType.mutateAsync({ entityDefinitionId, granteeType, granteeId })
+          continue
+        }
+        // First-touch: keep everyone at the default while this grantee is raised.
+        if (baselineByDef[entityDefinitionId] === undefined) {
+          const resource = resources.find((item) => item.entityDefinitionId === entityDefinitionId)
+          const baseArea = ENTITY_BASE_AREAS[resource?.entityType ?? ''] ?? Area.records
+          const defaultBaseline = workspaceBasePermission(baseArea)
+          patchLocal(entityDefinitionId, 'baseline', defaultBaseline)
+          await grantType.mutateAsync({
+            entityDefinitionId,
+            granteeType: ResourceGranteeType.role,
+            granteeId: MEMBER_BASELINE_GRANTEE_ID,
+            rung: permissionToRung(defaultBaseline),
+          })
+        }
+        patchLocal(entityDefinitionId, 'own', level)
+        await grantType.mutateAsync({
+          entityDefinitionId,
+          granteeType,
+          granteeId,
+          rung: permissionToRung(level),
+        })
+      } catch {
+        failed[entityDefinitionId] = level
+      }
+    }
+    await invalidate()
+    replace(failed)
+    return Object.keys(failed).length === 0
+  }, [
+    stagedEntries,
+    baselineByDef,
+    resources,
+    workspaceBasePermission,
+    granteeType,
+    granteeId,
+    grantType,
+    revokeType,
+    patchLocal,
+    invalidate,
+    replace,
+  ])
 
   return {
     isLoading: resourcesLoading || granteeLoading || roleDefaultsLoading,
     rows,
     setLevel,
+    isDirty,
+    isSaving: grantType.isPending || revokeType.isPending,
+    save,
+    discard,
   }
 }
