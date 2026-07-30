@@ -17,6 +17,7 @@ import type {
 import { rooms } from '@auxx/lib/realtime/client'
 import { extractUniqueParticipantIds } from '@auxx/types'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { clearHtmlBodyCache } from '~/components/mail/hooks/use-html-body'
 import { useUser } from '~/hooks/use-user'
 import {
   type InboxChannelEntry,
@@ -60,6 +61,7 @@ export function useMailSync() {
 
   // Store actions (selectors to avoid re-renders).
   const requestThread = useThreadStore((s) => s.requestThread)
+  const forceRequestThread = useThreadStore((s) => s.forceRequestThread)
   const setThreadPatch = useThreadStore((s) => s.setThreadPatch)
   const removeThread = useThreadStore((s) => s.removeThread)
   const invalidateAllContexts = useThreadStore((s) => s.invalidateAllContexts)
@@ -294,36 +296,6 @@ export function useMailSync() {
     ]
   )
 
-  // The viewer's visibility changed (grant added/revoked, inbox lens moved,
-  // role changed). Refetch `inbox.myLenses` — the `entries` memo re-derives
-  // and `useInboxChannels` resubscribes to the new per-lens channel set — and
-  // refresh everything lens-dependent that's already on screen.
-  const handleVisibilityChanged = useCallback(() => {
-    utils.inbox.myLenses.invalidate()
-    utils.thread.listIds.invalidate()
-    utils.thread.getCounts.invalidate()
-    invalidateAllContexts()
-  }, [utils, invalidateAllContexts])
-
-  // Org-channel event dispatcher — broadcast visibility changes (e.g. an
-  // inbox default-lens edit) that fan out to every member.
-  const onOrgEvent = useCallback(
-    (event: string, _payload: unknown) => {
-      if (event === 'visibility:changed') handleVisibilityChanged()
-    },
-    [handleVisibilityChanged]
-  )
-
-  // User-channel event dispatcher: targeted visibility changes + the
-  // per-user grantee/assignee mail-event fanout (§6.3).
-  const onUserEvent = useCallback(
-    (event: string, payload: unknown) => {
-      if (event === 'visibility:changed') return handleVisibilityChanged()
-      onInboxEvent(event, payload)
-    },
-    [handleVisibilityChanged, onInboxEvent]
-  )
-
   // Catch-up on (re)subscribe. Pusher does NOT replay events published while a
   // channel was mid-subscribe — and inbox channels only bind after the async
   // `inbox.myLenses` query resolves, plus rebind on every reconnect and on
@@ -384,6 +356,59 @@ export function useMailSync() {
       if (catchUpTimerRef.current) clearTimeout(catchUpTimerRef.current)
     },
     []
+  )
+
+  // The viewer's visibility changed (grant added/revoked, inbox lens moved,
+  // role changed). Refetch `inbox.myLenses` — the `entries` memo re-derives
+  // and `useInboxChannels` resubscribes to the new per-lens channel set — and
+  // refresh everything lens-dependent that's already on screen.
+  //
+  // Declared AFTER `runCatchUp` because it calls it. The last three statements
+  // are the ones that do any work on a THREAD grant (plan 45 §1.1); the four
+  // above them cannot reach the open conversation at all. Thread meta has no
+  // query cache — `thread.getByIds` is a mutation, so the Zustand map holds the
+  // only copy of `myLens`, and that value *is* the redaction banner — and
+  // `useMessages` disables itself once `useMessageListStore` has a list. A thread
+  // grant also moves no inbox lens, so `myLenses` refetches byte-identically,
+  // `entryKey` is unchanged, nothing resubscribes, and the `onSubscribed` →
+  // `runCatchUp` self-heal never fires. Hence calling it directly.
+  const handleVisibilityChanged = useCallback(() => {
+    utils.inbox.myLenses.invalidate()
+    utils.thread.listIds.invalidate()
+    utils.thread.getCounts.invalidate()
+    invalidateAllContexts()
+
+    // Full HTML bodies otherwise survive a revoke — the map is module-level and
+    // not lens-keyed (plan 45 §1.6).
+    clearHtmlBodyCache()
+
+    // Thread META. `runCatchUp` refetches the message list and the thread LIST,
+    // and neither carries `myLens`, so without this the banner never clears.
+    const activeThreadId = getThreadSelectionState().activeThreadId
+    if (activeThreadId) forceRequestThread(activeThreadId)
+
+    // Message bodies: fetches past the `!cachedList` gate and OVERWRITES the
+    // store, so `subject`-blanked bodies get replaced rather than merged.
+    runCatchUp()
+  }, [utils, invalidateAllContexts, forceRequestThread, runCatchUp])
+
+  // Org-channel event dispatcher — broadcast visibility changes (e.g. an
+  // inbox default-lens edit) that fan out to every member.
+  const onOrgEvent = useCallback(
+    (event: string, _payload: unknown) => {
+      if (event === 'visibility:changed') handleVisibilityChanged()
+    },
+    [handleVisibilityChanged]
+  )
+
+  // User-channel event dispatcher: targeted visibility changes + the
+  // per-user grantee/assignee mail-event fanout (§6.3).
+  const onUserEvent = useCallback(
+    (event: string, payload: unknown) => {
+      if (event === 'visibility:changed') return handleVisibilityChanged()
+      onInboxEvent(event, payload)
+    },
+    [handleVisibilityChanged, onInboxEvent]
   )
 
   useInboxChannels(entries, {

@@ -14,6 +14,7 @@ import type {
   ThreadTakenOverEvent,
   ThreadVisitorIdentifiedEvent,
 } from '../types'
+import { shapeThreadEventForVisitor } from '../visitor-event-shaping'
 
 const logger = createScopedLogger('publish-thread-event-to-realtime')
 
@@ -88,6 +89,25 @@ export const publishThreadEventToRealtime = async (job: Job<AuxxEvent>) => {
 
   // Per-thread room: the admin conversation panel and the widget's per-thread
   // subscription both listen here. This is the primary delivery path.
+  //
+  // Deliberately NOT routed through `shapeMailEventForLens`, unlike every other
+  // mail publish path. `rooms.chatThread` admits an org member at
+  // `satisfiesLens(lens, 'metadata')`, and all six payloads are within that tier
+  // (plan 45 §1.5 audit, resolved 2026-07-29):
+  //
+  // - `userId` / `fromUserId` / `toUserId` / `previousState` map to `assigneeId`
+  //   and `handoffState`, both in `THREAD_METADATA_FIELDS`.
+  // - `visitorEmail` is the case that needed deciding, and it is metadata-tier:
+  //   `participants` is itself a metadata field, and the ParticipantId[] it
+  //   carries hydrates through `participant.getByIds` — a `mailProcedure` with
+  //   no per-thread lens gate — into a `ParticipantMeta.identifier`, which for
+  //   an EMAIL participant IS the address. A metadata-lens viewer can already
+  //   read it via the `participantId` this same event carries, so withholding
+  //   it here would hide nothing and only make the tiers disagree.
+  //
+  // Pinned by `__tests__/publish-thread-event-to-realtime.test.ts` — if the
+  // participant hydration path ever gains a lens gate, that assertion is the
+  // thing that has to change, and this publish becomes a shaping site.
   try {
     await getRealtimeService().publish(rooms.chatThread(threadId), event.type, payload)
   } catch (error) {
@@ -115,7 +135,14 @@ export const publishThreadEventToRealtime = async (job: Job<AuxxEvent>) => {
         : await resolveVisitorParticipantId(threadId)
   if (visitorParticipantId) {
     try {
-      await getRealtimeService().publish(rooms.visitor(visitorParticipantId), event.type, payload)
+      // Shaped, NOT spread: this room is a public channel (plan 45 §1.5). The
+      // widget keys its system lines off `type` alone, so the allowlist costs it
+      // nothing. `loadThreadEvents` applies the same shaping to the history rows.
+      await getRealtimeService().publish(
+        rooms.visitor(visitorParticipantId),
+        event.type,
+        shapeThreadEventForVisitor(payload)
+      )
     } catch (error) {
       logger.error('Failed to publish thread event to visitor channel', {
         type: event.type,

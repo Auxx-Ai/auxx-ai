@@ -941,6 +941,66 @@ describe('applyAccessDecision (plan 42 §4.2)', () => {
     ).rejects.toThrow(/not supported/i)
     expect(grantInstanceAccess).not.toHaveBeenCalled()
   })
+
+  // Plan 45 §3.2. The client clears the requester's "requested" chip off the
+  // `ACCESS_REQUEST_DECIDED` notification rather than off a second realtime
+  // event, precisely because ONE funnel already covers all three outcomes —
+  // `notifyRequesterDecided` publishes to `rooms.user(requesterId)` via
+  // `NotificationService.sendNotification`. Deny and supersede write no grant and
+  // so publish no `visibility:changed`, which is correct: their ACCESS did not
+  // change, only their REQUEST did.
+  //
+  // This is the assertion that fails if the funnel ever becomes two, which would
+  // silently strand the chip on whichever outcome lost its notification.
+  it.each([
+    ['approve', 'approved'],
+    ['deny', 'denied'],
+  ] as const)('EVERY terminal outcome notifies the REQUESTER (%s) — the single funnel §3.2 depends on', async (action, decision) => {
+    const { applyAccessDecision } = await import('../access-request-mutations')
+    const { db } = makeFakeDb({ threads: [THREAD_ROW] })
+
+    const out = await applyAccessDecision({
+      tx: db,
+      request: ACCESS_ROW as never,
+      approverUserId: 'manager1',
+      action,
+    })
+
+    sendNotification.mockClear()
+    await out.afterCommit?.(db as never)
+
+    expect(sendNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ACCESS_REQUEST_DECIDED',
+        userId: 'requester1',
+        metadata: expect.objectContaining({ decision }),
+      })
+    )
+  })
+
+  it('SUPERSEDE notifies the requester too — their chip is the stalest of the three', async () => {
+    const { applyAccessDecision } = await import('../access-request-mutations')
+    mailVisibility.requester1 = vis('requester1', { inboxLens: { [INBOX]: 'full' } })
+    const { db } = makeFakeDb({ threads: [THREAD_ROW] })
+
+    const out = await applyAccessDecision({
+      tx: db,
+      request: ACCESS_ROW as never,
+      approverUserId: 'manager1',
+      action: 'approve',
+    })
+
+    sendNotification.mockClear()
+    await out.afterCommit?.(db as never)
+
+    expect(sendNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'ACCESS_REQUEST_DECIDED',
+        userId: 'requester1',
+        metadata: expect.objectContaining({ decision: 'superseded' }),
+      })
+    )
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -253,7 +253,16 @@ interface ThreadStoreState {
   invalidateAllContexts: () => void
 
   // Batch loading (threads)
+  /** Internal — the shared enqueue + batch-timer kick. Use the two below. */
+  enqueueThread: (id: string) => void
   requestThread: (id: string) => void
+  /**
+   * Re-fetch a thread the store already holds, for when the SERVER's answer
+   * changed rather than the id set — today only a `visibility:changed` lens move
+   * (plan 45 §1.1). Bypasses `requestThread`'s cache short-circuit without
+   * evicting the entry, so the open thread never blanks mid-read.
+   */
+  forceRequestThread: (id: string) => void
   startBatch: () => string[]
   completeBatch: (threads: ThreadMeta[], notFoundIds: string[]) => void
 
@@ -510,17 +519,8 @@ export const useThreadStore = create<ThreadStoreState>()(
       // BATCH LOADING ACTIONS
       // ═══════════════════════════════════════════════════════════════
 
-      requestThread: (id) => {
+      enqueueThread: (id) => {
         const state = get()
-        if (
-          state.threads.has(id) ||
-          state.loadingIds.has(id) ||
-          state.pendingIds.has(id) ||
-          state.notFoundIds.has(id) ||
-          state.deletedIds.has(id)
-        ) {
-          return
-        }
 
         set((s) => {
           s.pendingIds.add(id)
@@ -537,6 +537,49 @@ export const useThreadStore = create<ThreadStoreState>()(
             s.batchTimer = timer
           })
         }
+      },
+
+      requestThread: (id) => {
+        const state = get()
+        if (
+          state.threads.has(id) ||
+          state.loadingIds.has(id) ||
+          state.pendingIds.has(id) ||
+          state.notFoundIds.has(id) ||
+          state.deletedIds.has(id)
+        ) {
+          return
+        }
+
+        get().enqueueThread(id)
+      },
+
+      forceRequestThread: (id) => {
+        const state = get()
+
+        // A deleted thread stays deleted — a lens change doesn't resurrect it.
+        if (state.deletedIds.has(id)) return
+        // Already queued: that fetch is issued after this call, so it returns the
+        // post-change row anyway.
+        if (state.pendingIds.has(id)) return
+
+        // `notFoundIds` MUST be cleared, not respected: a thread that 404'd at
+        // `none` and has just been granted is precisely the case that has to
+        // re-request, and the one a `threads.has(id)`-only bypass misses
+        // (plan 45 §5 hazard 2).
+        if (state.notFoundIds.has(id)) {
+          set((s) => {
+            s.notFoundIds.delete(id)
+          })
+        }
+
+        // Deliberately NOT gated on `loadingIds`: a batch already in flight was
+        // issued before the lens moved and may answer from pre-change state.
+        // `useBatchDrain` serialises thread batches, so ours lands after it and
+        // wins. And deliberately no eviction — `completeBatch` replaces in place,
+        // so the pane keeps rendering the old lens for one batch window instead
+        // of blanking (`thread-messages.tsx` returns null on a missing thread).
+        get().enqueueThread(id)
       },
 
       startBatch: () => {

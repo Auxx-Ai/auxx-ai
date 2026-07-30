@@ -28,50 +28,21 @@ export interface ThreadEvent {
   data: ThreadEventData
 }
 
-/** Per-event payload shapes — mirrored from `packages/lib/src/events/types.ts`. */
-export type ThreadEventData =
-  | ThreadTakenOverData
-  | ThreadReturnedToAiData
-  | ThreadArchivedData
-  | ThreadReopenedData
-  | ThreadAssigneeChangedData
-  | ThreadVisitorIdentifiedData
-
-export interface ThreadTakenOverData {
+/**
+ * What a visitor-facing thread event carries — ONE shape for all six types,
+ * because the server projects every one of them through
+ * `shapeThreadEventForVisitor`'s allowlist before it reaches this bundle
+ * (plan 45 §1.5). Both sinks are shaped: the public realtime channel and the
+ * history rows in `initialize` / `threads`.
+ *
+ * The internal payloads in `packages/lib/src/events/types.ts` are richer —
+ * `userId`, `previousState`, `fromUserId` / `toUserId`, `visitorEmail` — and
+ * those fields are deliberately NOT mirrored here. They never arrive, and
+ * `system-line.tsx` keys its copy off `type` alone, so nothing reads them.
+ *
+ * Adding a field to this interface is therefore not enough to receive it: it has
+ * to be classified into `VISITOR_THREAD_EVENT_FIELDS` server-side first.
+ */
+export interface ThreadEventData {
   threadId: string
-  organizationId: string
-  userId: string
-  previousState: 'ai' | 'human'
-}
-
-export interface ThreadReturnedToAiData {
-  threadId: string
-  organizationId: string
-  userId: string
-}
-
-export interface ThreadArchivedData {
-  threadId: string
-  organizationId: string
-  userId: string
-}
-
-export interface ThreadReopenedData {
-  threadId: string
-  organizationId: string
-  userId: string
-}
-
-export interface ThreadAssigneeChangedData {
-  threadId: string
-  organizationId: string
-  fromUserId: string | null
-  toUserId: string | null
-}
-
-export interface ThreadVisitorIdentifiedData {
-  threadId: string
-  organizationId: string
-  visitorEmail: string
-  participantId: string
 }

@@ -87,6 +87,36 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
   'userCapabilities',
 ])
 
+/**
+ * Recompute tiers for `invalidateAndRecompute`'s Phase 2 (plan 45 §1.4).
+ *
+ * Keys in an EARLIER tier are recomputed before later ones; anything unlisted
+ * runs last, concurrently. This exists because user providers read each other:
+ * `computeUserMailVisibility` calls `getCachedUserCapabilities`, so recomputing
+ * both concurrently makes the mail provider miss (Phase 1 just deleted the key)
+ * and compose the capability blob a SECOND time, racing the explicit recompute.
+ * Capability composition is the expensive one in this system.
+ *
+ * Three things this deliberately is not:
+ *
+ * - **Not the `INVALIDATION_GRAPH` array order.** `group.deleted` and
+ *   `group.members.changed` declare `['userMailVisibility', 'userCapabilities']`
+ *   — the dependent first — and `invalidateAndRecompute`'s docstring already
+ *   rejected declared order as a mechanism for the older delete-ordering bug.
+ * - **Not a `PromiseMemoizer` on `recompute`.** Memoizing a write-after-write
+ *   barrier lets a later invalidation adopt an earlier one's in-flight promise,
+ *   which may have read the DB before the later mutation committed — caching a
+ *   value that predates its own write for the full TTL. Safe on `get`, unsafe
+ *   here.
+ * - **Not a correctness mechanism.** Phase 1 deletes everything before Phase 2
+ *   recomputes anything, so read-through already guarantees a fresh sibling. This
+ *   is purely about not composing it twice.
+ */
+export const USER_KEY_RECOMPUTE_TIERS: readonly (readonly UserCacheKeyName[])[] = [
+  ['userCapabilities'],
+  ['userMailVisibility'],
+]
+
 const ONE_DAY = 60 * 60 * 24
 
 /** Key configuration for user-scoped cache */
