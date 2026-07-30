@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
@@ -23,7 +24,7 @@ export interface RequestAccessCopy {
   notePlaceholder: string
 }
 
-export interface RequestAccessPopoverProps extends Omit<RequestAccessState, 'isLoading'> {
+export interface RequestAccessPopoverProps extends RequestAccessState {
   copy: RequestAccessCopy
   /**
    * "Sarah Chen (inbox manager)" / "Sarah Chen and 2 others (inbox managers)".
@@ -97,6 +98,7 @@ export function RequestAccessPopover({
   subjectLabel,
   send,
   withdraw,
+  isLoading,
   isSending,
   isWithdrawing,
   copy,
@@ -175,7 +177,7 @@ export function RequestAccessPopover({
     <Popover open={open} onOpenChange={setOpenAndNotify}>
       <PopoverTrigger asChild>
         {variant === 'icon' ? (
-          <div>
+          <div className='shrink-0'>
             <Tooltip content={label}>{trigger}</Tooltip>
           </div>
         ) : (
@@ -187,63 +189,97 @@ export function RequestAccessPopover({
           <span className='font-medium text-sm'>{label}</span>
         </div>
 
-        <div className='space-y-2 px-3 py-2'>
-          {/* Composed on the SERVER, so a viewer who cannot read the target still
-              gets a usable label rather than an empty string — mail's `metadata`
-              lens is the case that forced it (plan 42 §6.2). */}
-          {subjectLabel ? <p className='text-sm leading-5'>{subjectLabel}</p> : null}
-
-          {/* Naming the approver is load-bearing: it is the difference between
-              "sent into the void" and "Sarah will see this". Resolved on the
-              server — the client never reconstructs who holds authority. */}
-          {approverSummary ? (
-            <div className='flex items-center gap-2'>
-              <span className='-space-x-2 flex items-center'>
-                {approvers.slice(0, 3).map((approver) => (
-                  <Avatar key={approver.userId} className='size-5 border-2 border-background'>
-                    <AvatarImage src={approver.image || undefined} alt={approver.name ?? ''} />
-                    <AvatarFallback className='text-[9px]'>
-                      {initials(approver.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-              </span>
-              <span className='text-muted-foreground text-xs'>{approverSummary}</span>
-            </div>
-          ) : null}
-
-          {pending ? (
-            <p className='text-muted-foreground text-xs'>
-              Requested {formatDistanceToNowStrict(pending.createdAt, { addSuffix: true })}
-              {approvers.length > 0
-                ? ` · waiting on ${approvers[0]?.name ?? 'your team'}`
-                : ' · waiting for a decision'}
-            </p>
+        <div aria-busy={isLoading} className='space-y-2 px-3 py-2'>
+          {/* The preflight is what fills this body, and in the record lane it does
+              not even start until the popover opens (§8.5 / D6) — so the FIRST
+              paint has no subject, no approvers and no verdict on `pending`. The
+              skeleton stands in at the same 88px, because a popover that grows
+              under the pointer moves the Send button after the user has aimed at
+              it: py-2 (16) + subject (20) + gap (8) + approvers (20) + gap (8) +
+              note toggle (16).
+              ⚠ Three DIRECT children, no wrapper — the gaps come from THIS div's
+              `space-y-2`, exactly as they do for the real rows. A wrapper with its
+              own `space-y-2` renders 8px taller: v4 spaces on
+              `:not(:last-child) { margin-block-end }`, so the bottom row keeps a
+              trailing margin that has nothing after it. */}
+          {isLoading ? (
+            <>
+              {/* h-5 = the subject's `text-sm leading-5`. */}
+              <div className='flex h-5 items-center'>
+                <Skeleton className='h-3.5 w-2/3' />
+                <span className='sr-only'>Loading request details</span>
+              </div>
+              {/* h-5 = the `size-5` avatar stack. */}
+              <div className='flex h-5 items-center gap-2'>
+                <Skeleton className='size-5 rounded-full' />
+                <Skeleton className='h-3 w-36' />
+              </div>
+              {/* h-4 = the `text-xs` note toggle, which the pending line replaces
+                  at the same height. */}
+              <div className='flex h-4 items-center'>
+                <Skeleton className='h-3 w-24' />
+              </div>
+            </>
           ) : (
             <>
-              <button
-                type='button'
-                onClick={toggleNote}
-                className='flex items-center gap-1.5 text-muted-foreground text-xs underline-offset-2 hover:underline'>
-                {noteOpen && trimmedNote ? (
-                  <Pencil className='size-3' />
-                ) : (
-                  <Plus className='size-3' />
-                )}
-                {trimmedNote ? 'Edit note' : 'Add a note'}
-              </button>
-              {noteOpen ? (
-                <Textarea
-                  ref={noteRef}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder={copy.notePlaceholder}
-                  rows={2}
-                  maxLength={2000}
-                  disabled={isSending}
-                  className='text-sm'
-                />
+              {/* Composed on the SERVER, so a viewer who cannot read the target
+                  still gets a usable label rather than an empty string — mail's
+                  `metadata` lens is the case that forced it (plan 42 §6.2). */}
+              {subjectLabel ? <p className='text-sm leading-5'>{subjectLabel}</p> : null}
+
+              {/* Naming the approver is load-bearing: it is the difference between
+                  "sent into the void" and "Sarah will see this". Resolved on the
+                  server — the client never reconstructs who holds authority. */}
+              {approverSummary ? (
+                <div className='flex items-center gap-2'>
+                  <span className='-space-x-2 flex items-center'>
+                    {approvers.slice(0, 3).map((approver) => (
+                      <Avatar key={approver.userId} className='size-5 border-2 border-background'>
+                        <AvatarImage src={approver.image || undefined} alt={approver.name ?? ''} />
+                        <AvatarFallback className='text-[9px]'>
+                          {initials(approver.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    ))}
+                  </span>
+                  <span className='text-muted-foreground text-xs'>{approverSummary}</span>
+                </div>
               ) : null}
+
+              {pending ? (
+                <p className='text-muted-foreground text-xs'>
+                  Requested {formatDistanceToNowStrict(pending.createdAt, { addSuffix: true })}
+                  {approvers.length > 0
+                    ? ` · waiting on ${approvers[0]?.name ?? 'your team'}`
+                    : ' · waiting for a decision'}
+                </p>
+              ) : (
+                <>
+                  <button
+                    type='button'
+                    onClick={toggleNote}
+                    className='flex items-center gap-1.5 text-muted-foreground text-xs underline-offset-2 hover:underline'>
+                    {noteOpen && trimmedNote ? (
+                      <Pencil className='size-3' />
+                    ) : (
+                      <Plus className='size-3' />
+                    )}
+                    {trimmedNote ? 'Edit note' : 'Add a note'}
+                  </button>
+                  {noteOpen ? (
+                    <Textarea
+                      ref={noteRef}
+                      value={note}
+                      onChange={(event) => setNote(event.target.value)}
+                      placeholder={copy.notePlaceholder}
+                      rows={2}
+                      maxLength={2000}
+                      disabled={isSending}
+                      className='text-sm'
+                    />
+                  ) : null}
+                </>
+              )}
             </>
           )}
         </div>
@@ -271,7 +307,15 @@ export function RequestAccessPopover({
               <Button variant='ghost' size='sm' onClick={() => setOpenAndNotify(false)}>
                 Cancel
               </Button>
-              <Button size='sm' loading={isSending} loadingText='Sending...' onClick={handleSend}>
+              {/* Disabled until the preflight answers: `pending` is null while it
+                  loads, so this branch renders even for someone who ALREADY has a
+                  request outstanding — an enabled Send would file a duplicate. */}
+              <Button
+                size='sm'
+                disabled={isLoading}
+                loading={isSending}
+                loadingText='Sending...'
+                onClick={handleSend}>
                 Send
               </Button>
             </div>
