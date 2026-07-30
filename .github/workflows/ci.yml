@@ -69,6 +69,39 @@ jobs:
       - name: Verify package exports resolve
         run: node scripts/ci/check-package-exports.js
 
+  # A RATCHET, not a gate: lib and web carry thousands of pre-existing errors, so
+  # this asserts only that a PR adds none. CI ran no typecheck at all until
+  # 2026-07-30, when six TS2367s shipped a mail outage — see the script header.
+  # One package per runner: each tsc peaks near 6GB and they must not share a box.
+  typecheck:
+    name: Typecheck (${{ matrix.package }})
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [lib, web]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck ratchet
+        env:
+          # Under the ~7GB of a standard runner. Raising this above physical RAM
+          # swaps instead of failing fast; move to a larger runner instead.
+          TYPECHECK_HEAP_MB: 6144
+        run: node scripts/ci/typecheck-ratchet.js --package ${{ matrix.package }}
+
   test:
     name: Test
     needs: changes
@@ -96,7 +129,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, test]
+    needs: [changes, lint, typecheck, test]
     runs-on: ubuntu-latest
     steps:
       - name: Check results
@@ -107,6 +140,10 @@ jobs:
           fi
           if [[ "${{ needs.lint.result }}" == "failure" ]]; then
             echo "::error::lint job failed"
+            exit 1
+          fi
+          if [[ "${{ needs.typecheck.result }}" == "failure" ]]; then
+            echo "::error::typecheck job failed"
             exit 1
           fi
           if [[ "${{ needs.test.result }}" == "failure" ]]; then
