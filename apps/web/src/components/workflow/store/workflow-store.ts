@@ -88,7 +88,20 @@ interface WorkflowStore extends DragState {
   duplicateWorkflow: (workflowId: string) => Promise<Workflow>
 
   // Export/Import
-  exportWorkflow: () => string
+  /**
+   * Serialize the workflow for download.
+   *
+   * `nodes` is a PARAMETER because this store cannot reach them: they live in
+   * React Flow's store, which is only reachable through `useStoreApi()` inside
+   * the provider (see `use-workflow-save.ts`). The body used to read a
+   * `useNodeStore` that is now an empty stub file — the import was commented
+   * out in the initial commit and the local `const nodes` with it, leaving the
+   * object literal below referencing an undeclared `nodes`. That is a
+   * ReferenceError for any caller, and it is why the compiler has flagged this
+   * line (TS18004) since day one. There are no callers today; a future one
+   * passes `useStoreApi().getState().nodes`.
+   */
+  exportWorkflow: (nodes: Node[]) => string
   importWorkflow: (data: string) => Promise<void>
 
   // Helpline actions
@@ -387,15 +400,16 @@ export const useWorkflowStore = create<WorkflowStore>()(
       }
     },
 
-    exportWorkflow: () => {
+    exportWorkflow: (nodes) => {
       const { workflow, metadata } = get()
 
       if (!workflow || !metadata) {
         throw new Error('No workflow to export')
       }
 
-      // Get current nodes and edges from stores
-      // const nodes = useNodeStore.getState().nodes
+      // `nodes` arrives from the caller — see the interface declaration for why
+      // it cannot be read here. Edges, vars and viewport DO live in stores this
+      // one can reach.
       const edges = useEdgeStore.getState().edges
       const envVariables = Array.from(useVarStore.getState().environmentVariables.values())
       const viewport = useCanvasStore.getState().viewport
