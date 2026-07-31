@@ -79,6 +79,7 @@ export function DashboardSwitcherList({
         items={items}
         activeId={activeDashboardId}
         isLoading={dashboards.isLoading}
+        nav={{ orphanLabel: 'Dashboards' }}
         onSelect={(item) => onSelectDashboard(item.id)}
         canEdit={canAdmin}
         onEdit={(item) =>

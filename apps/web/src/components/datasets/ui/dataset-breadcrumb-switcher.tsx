@@ -70,6 +70,7 @@ export function DatasetBreadcrumbSwitcher({
       items={items}
       activeId={activeDatasetId}
       isLoading={isLoading}
+      nav={{ orphanLabel: 'Datasets' }}
       searchPlaceholder='Search datasets...'
       emptyText='No datasets'
       onSelect={(item) => router.push(item.href ?? '/app/datasets')}

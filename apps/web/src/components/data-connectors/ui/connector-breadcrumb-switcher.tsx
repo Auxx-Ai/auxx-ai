@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 import { VisualIcon } from '~/components/icons/ui/visual-icon'
 import { EntityBreadcrumbSwitcher, type EntitySwitcherItem } from '~/components/pickers'
 import { api } from '~/trpc/react'
+import { selectIsDirty, useConnectorDraftStore } from '../stores/connector-draft-store'
 import { asConnectorStatus, ConnectorStatusDot } from './connector-status'
 
 /** Default icon id for connectors without a brand (generic-rest, unknown types). */
@@ -60,6 +61,14 @@ export function ConnectorBreadcrumbSwitcher({
   const router = useRouter()
   const { data, isLoading } = api.dataConnector.list.useQuery(undefined, { staleTime: 30_000 })
 
+  // Only guard edits that a navigation would actually lose: the draft must be
+  // seeded for THIS connector, and autosave must be off — the same condition
+  // that gates the `beforeunload` listener in `use-connector-draft-sync.ts`.
+  const draftSeeded = useConnectorDraftStore((s) => s.connectorId === activeConnectorId)
+  const draftDirty = useConnectorDraftStore(selectIsDirty)
+  const autoSave = useConnectorDraftStore((s) => s.autoSave)
+  const isDirty = draftSeeded && draftDirty && !autoSave
+
   const items = useMemo<EntitySwitcherItem[]>(
     () =>
       (data ?? []).map((connector) => ({
@@ -79,6 +88,13 @@ export function ConnectorBreadcrumbSwitcher({
       items={items}
       activeId={activeConnectorId}
       isLoading={isLoading}
+      nav={{
+        isDirty,
+        orphanLabel: 'Connectors',
+        confirmOptions: {
+          description: 'This connector has unsaved changes. Leaving now will discard them.',
+        },
+      }}
       searchPlaceholder='Search connectors...'
       emptyText='No connectors'
       onSelect={(item) => router.push(item.href ?? '/app/connectors')}

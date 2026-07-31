@@ -96,6 +96,7 @@ export function SequenceBreadcrumbSwitcher({
       items={items}
       activeId={activeSequenceId}
       isLoading={isLoading}
+      nav={{ orphanLabel: 'Sequences' }}
       searchPlaceholder='Search sequences...'
       emptyText='No sequences'
       onSelect={(item) => router.push(item.href ?? SEQUENCES_HREF)}

@@ -293,8 +293,9 @@ export function useWorkflowShortcuts() {
   // Toggle Disable: D
   useHotkey('D', () => handleNodeDisable())
 
-  // Toggle Collapse: K
-  useHotkey('K', () => handleToggleCollapse())
+  // Toggle Collapse: Shift+K — bare `K` walks the workflow switcher's list
+  // (`EntityNavButtons`), which is mounted in this page's breadcrumb.
+  useHotkey('Shift+K', () => handleToggleCollapse())
 
   // === HELP OVERLAY ===
 

@@ -44,6 +44,7 @@ export function AgentBreadcrumbSwitcher({ activeAgent }: AgentBreadcrumbSwitcher
       items={items}
       activeId={activeAgent.id}
       isLoading={isLoading}
+      nav={{ orphanLabel: 'Agents' }}
       onSelect={(item) => {
         if (item.href) router.push(item.href)
       }}
