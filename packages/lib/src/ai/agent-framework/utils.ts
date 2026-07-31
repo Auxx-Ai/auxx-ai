@@ -220,14 +220,32 @@ export async function executeToolWithProgress(
  * splices it into the message list in place of the source assistant.
  */
 export function partsToWireFormat(parts: ContentPart[]): Message[] {
+  // Text written after the last tool call is the answer the model reached FROM
+  // those results, so it has to be replayed after them. Folding every text part
+  // into the single leading assistant message put the conclusion in front of its
+  // own evidence, and the model would then contradict tool output that appeared
+  // to postdate its answer. Text before (or between) tool calls is a preamble and
+  // stays on the leading message.
+  // Manual reverse scan: `findLastIndex` needs lib es2023, which this package's
+  // tsconfig target predates.
+  let lastToolIdx = -1
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i]!.type === 'tool_call') {
+      lastToolIdx = i
+      break
+    }
+  }
+
   let textContent = ''
+  let trailingText = ''
   const reasoningChunks: string[] = []
   const toolCalls: ToolCall[] = []
   const toolMessages: Message[] = []
 
-  for (const part of parts) {
+  for (const [idx, part] of parts.entries()) {
     if (part.type === 'text') {
-      textContent += part.text
+      if (lastToolIdx !== -1 && idx > lastToolIdx) trailingText += part.text
+      else textContent += part.text
       continue
     }
     if (part.type === 'thinking') {
@@ -281,7 +299,21 @@ export function partsToWireFormat(parts: ContentPart[]): Message[] {
   // it, but OpenAI-compatible providers (Kimi, DeepSeek, …) reject an empty
   // assistant message ("the message at position N with role 'assistant' must
   // not be empty"). Emit nothing so it never reaches the wire.
-  if (textContent.length === 0 && toolCalls.length === 0 && reasoningChunks.length === 0) {
+  // A trailing assistant message is only safe once at least one tool message
+  // separates it from the leading one — otherwise (every tool call still
+  // running / awaiting approval) we'd emit assistant→assistant back to back,
+  // which Anthropic rejects. In that case keep the old single-message shape.
+  if (toolMessages.length === 0 && trailingText.length > 0) {
+    textContent += trailingText
+    trailingText = ''
+  }
+
+  if (
+    textContent.length === 0 &&
+    trailingText.length === 0 &&
+    toolCalls.length === 0 &&
+    reasoningChunks.length === 0
+  ) {
     return []
   }
 
@@ -292,7 +324,8 @@ export function partsToWireFormat(parts: ContentPart[]): Message[] {
   if (toolCalls.length > 0) assistant.tool_calls = toolCalls
   if (reasoningChunks.length > 0) assistant.reasoning_content = reasoningChunks.join('')
 
-  return [assistant, ...toolMessages]
+  if (trailingText.length === 0) return [assistant, ...toolMessages]
+  return [assistant, ...toolMessages, { role: 'assistant', content: trailingText }]
 }
 
 /**

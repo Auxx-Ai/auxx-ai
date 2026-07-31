@@ -51,6 +51,7 @@ import { buildSimulationTriggerContext } from './customer-envelope'
 import { buildSimulationFieldResolver } from './field-resolver'
 import { type ToolInvocationRecord, wrapToolsWithMocks } from './mock-tools'
 import { LlmPersonaConversationSource } from './persona'
+import { buildSubjectMocks } from './subject-mocks'
 
 const logger = createScopedLogger('eval-executor')
 
@@ -129,9 +130,15 @@ export async function runAgentSimulation(
   const toolInvocations: ToolInvocationRecord[] = []
   let unmatchedOccurred = false
   let nonOffline = false
+  // Identity lookups answer with the simulation's own customer instead of the
+  // tool's schema-doc `exampleOutput`. Author-written mocks are listed FIRST
+  // because the resolver takes the first match in stored order — an explicit
+  // mock must always beat a derived one. Anything unmatched still falls through
+  // to `exampleOutput` exactly as before.
+  const subjectMocks = buildSubjectMocks(config)
   const wrapTools = (tools: Parameters<typeof wrapToolsWithMocks>[0]) =>
     wrapToolsWithMocks(tools, {
-      mocks: config.connectorMocks,
+      mocks: [...config.connectorMocks, ...subjectMocks],
       unmatchedPolicy: config.unmatchedToolPolicy,
       onInvocation: (rec) => {
         toolInvocations.push(rec)

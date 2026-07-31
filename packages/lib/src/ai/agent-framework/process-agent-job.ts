@@ -185,8 +185,11 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   // 5. Create event publisher
   const publisher = createAgentEventPublisher(sessionId)
 
-  // 6. Run engine and publish events
-  const sessionContext = { page, ...(context ?? {}) }
+  // 6. Run engine and publish events.
+  // `page` last — it is the page the toolset was resolved from, and it must win
+  // over any stale `context.page` the caller carried in. See the matching order
+  // in `apps/web/src/app/api/kopilot/stream/route.ts`.
+  const sessionContext = { ...(context ?? {}), page }
   const usageEntries: UsageTrackingRequest[] = []
 
   // Drain one engine pass: publish every event, accumulate per-call usage, and
