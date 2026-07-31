@@ -9,8 +9,12 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, inArray, ne } from 'drizzle-orm'
 import { getQueue, Queues } from '../jobs/queues'
-import { convertToCronPattern, type ScheduledTriggerConfig } from '../workflows/cron-pattern'
+import {
+  type ScheduledTriggerConfig as CronTriggerConfig,
+  convertToCronPattern,
+} from '../workflows/cron-pattern'
 import type { DataConnectorRow } from './service'
+import type { ScheduledTriggerConfig } from './types'
 
 const logger = createScopedLogger('data-connector-scheduler')
 
@@ -31,6 +35,17 @@ function scheduleConfigOf(connector: DataConnectorRow): ScheduledTriggerConfig |
 }
 
 /**
+ * Narrow away `'off'`, which is a connector-only sweep cadence with no cron pattern
+ * behind it, so the rest fits `convertToCronPattern`. Returns null for `'off'`.
+ * (A property check alone would not narrow the object — the config is not a
+ * discriminated union.)
+ */
+function cronConfigOf(config: ScheduledTriggerConfig): CronTriggerConfig | null {
+  const { triggerInterval } = config
+  return triggerInterval === 'off' ? null : { ...config, triggerInterval }
+}
+
+/**
  * Register or remove this connector's SYNC scheduler to match its current state, then
  * unconditionally reconcile its SWEEP scheduler too (`syncConnectorSweepScheduler` —
  * independent of sync mode, own gate decides active/inactive; v9 §5 fix — a webhook
@@ -42,9 +57,13 @@ function scheduleConfigOf(connector: DataConnectorRow): ScheduledTriggerConfig |
 export async function syncConnectorScheduler(connector: DataConnectorRow): Promise<void> {
   const queue = getQueue(Queues.dataConnectorQueue)
   const config = scheduleConfigOf(connector)
-  const active = connector.syncBehavior === 'scheduled' && connector.status !== 'paused' && !!config
+  // `'off'` is a webhook-only sweep cadence and carries no cron pattern, so a
+  // 'scheduled' connector holding it has nothing to register.
+  const cronConfig = config ? cronConfigOf(config) : null
+  const active =
+    connector.syncBehavior === 'scheduled' && connector.status !== 'paused' && !!cronConfig
 
-  if (!active || !config) {
+  if (!active || !cronConfig) {
     try {
       await queue.removeJobScheduler(schedulerId(connector.id))
     } catch {
@@ -52,10 +71,10 @@ export async function syncConnectorScheduler(connector: DataConnectorRow): Promi
     }
   } else {
     try {
-      const pattern = convertToCronPattern(config)
+      const pattern = convertToCronPattern(cronConfig)
       await queue.upsertJobScheduler(
         schedulerId(connector.id),
-        { pattern, tz: config.timezone },
+        { pattern, tz: cronConfig.timezone },
         {
           name: 'data-connector-sync',
           data: {
@@ -108,8 +127,8 @@ export async function syncConnectorSweepScheduler(connector: DataConnectorRow): 
     return
   }
   try {
-    const pattern =
-      config && config.triggerInterval !== 'off' ? convertToCronPattern(config) : SWEEP_CRON
+    const cronConfig = config ? cronConfigOf(config) : null
+    const pattern = cronConfig ? convertToCronPattern(cronConfig) : SWEEP_CRON
     await queue.upsertJobScheduler(
       sweepSchedulerId(connector.id),
       { pattern, tz: config?.timezone },

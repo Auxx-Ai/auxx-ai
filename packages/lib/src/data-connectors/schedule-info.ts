@@ -51,6 +51,12 @@ export function deriveConnectorScheduleInfo(input: DeriveScheduleInput): Connect
   if (triggerInterval === 'custom') {
     return { nextSyncAt: null, cadenceLabel: 'on a custom schedule' }
   }
+  // `'off'` is the webhook-mode sweep cadence (v9 §5) and carries no interval. It is
+  // unreachable behind the `syncBehavior === 'scheduled'` gate above, but the column
+  // can hold it, so there is no fixed interval to describe.
+  if (triggerInterval === 'off') {
+    return { nextSyncAt: null, cadenceLabel: null }
+  }
 
   const raw = scheduleConfig.timeBetweenTriggers[triggerInterval]
   const value = typeof raw === 'string' ? Number(raw) : raw
