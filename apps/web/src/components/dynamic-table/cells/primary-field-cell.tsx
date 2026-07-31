@@ -35,6 +35,11 @@ interface PrimaryFieldCellProps {
    * is not rendered (widget/read-only use).
    */
   children?: ReactNode
+  /**
+   * A complete menu rendered instead of the built-in kebab — for menus that own
+   * their own dialogs. See {@link PrimaryCell}'s `actions`.
+   */
+  actions?: ReactNode
 }
 
 /**
@@ -50,6 +55,7 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   rowId,
   onTitleClick,
   children,
+  actions,
 }: PrimaryFieldCellProps) {
   // Extract entityDefinitionId and fieldId from ResourceFieldId
   const { entityDefinitionId, fieldId } = useMemo(
@@ -133,6 +139,7 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
           inverse
         />
       }
+      actions={actions}
       suffix={
         <ConnectorSourceBadge sources={record?.sources} variant='icon' className='shrink-0' />
       }>
