@@ -186,6 +186,19 @@ export async function POST(request: NextRequest) {
           })
           .where(eq(schema.OrganizationAiQuota.organizationId, organizationId))
       }
+
+      // 7c. Bust the plan-derived caches for the swapped subscription.
+      //
+      // The delete + insert above is raw Drizzle, so nothing fired the invalidation
+      // the billing service paths would have. `org.updated` at step 6b only reaches
+      // `orgProfile`; the per-org `features` map is a SEPARATE key, and it is what
+      // every feature gate reads (`FeaturePermissionService.hasAccess`,
+      // `useFeatureFlags`). A `features` entry warmed during seeding — before this
+      // route existed to swap the plan — describes the now-deleted TRIAL
+      // subscription, and boolean gates fail closed, so the demo org would spend its
+      // whole hour with Demo-plan surfaces such as dashboards silently locked.
+      // `plan.changed` fans out to `features` + `subscription` + `overages`.
+      await onCacheEvent('plan.changed', { orgId: organizationId })
     }
 
     // 8. Enqueue async demo data seeding job (customers, tickets, etc.)

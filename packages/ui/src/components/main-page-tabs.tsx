@@ -65,7 +65,11 @@ function MainPageTabs({ items, value, onValueChange, size = 'sm', className }: M
   const router = useRouter()
 
   const visible = items.filter((item) => !item.hidden)
-  if (visible.length === 0) return null
+  // A switcher with a single choice is not a switcher — it renders as a full-width
+  // bar with one permanently-selected tab and dead space beside it. Feature gating
+  // (`hidden`) routinely collapses a two-tab header down to one, so drop the whole
+  // control rather than leaving the empty half behind.
+  if (visible.length < 2) return null
 
   const isRouteMode = value === undefined
   const activeValue = isRouteMode ? longestPrefixMatch(visible, pathname) : value
