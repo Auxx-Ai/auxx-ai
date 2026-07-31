@@ -4,7 +4,8 @@ import type { DrawerConfig, DrawerConfigRegistry } from './drawer-config-types'
 
 /**
  * Drawer configuration registry
- * ONLY contains drawer-specific config (tabs, actions)
+ * ONLY contains drawer-specific config (tabs, cards) — record actions live in
+ * `record-actions-config.ts`
  * - Tab metadata (value, label, icon) - NOT React components
  * - Action capabilities
  *
@@ -18,12 +19,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       { value: 'tickets', label: 'Tickets', icon: 'ticket', recordResource: 'ticket' },
       { value: 'conversations', label: 'Conversations', icon: 'mail' },
     ],
-    actions: {
-      enableMerge: true,
-      enableGroups: true,
-      enableArchive: true,
-      enableDelete: true,
-    },
     tabCards: {
       overview: [
         {
@@ -41,23 +36,11 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [
       { value: 'parts', label: 'Parts', icon: 'package', recordResource: 'vendor_part' },
     ],
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-    },
   },
 
   ticket: {
     entityType: 'ticket',
     additionalTabs: [{ value: 'conversation', label: 'Conversation', icon: 'mail' }],
-    actions: {
-      enableEdit: true,
-      enableRename: true,
-      enableMerge: true,
-      enableArchive: true,
-      enableLink: true,
-      enableDelete: true,
-    },
     tabCards: {
       overview: [
         { value: 'metrics', label: 'Metrics', position: 'before', fullBleed: true },
@@ -73,10 +56,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       { value: 'subparts', label: 'Subparts', icon: 'layers', recordResource: 'subpart' },
       { value: 'vendors', label: 'Suppliers', icon: 'truck', recordResource: 'vendor_part' },
     ],
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-    },
     tabCards: {
       overview: [{ value: 'inventory', label: 'Inventory' }],
     },
@@ -85,10 +64,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   service_request: {
     entityType: 'service_request',
     additionalTabs: [],
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-    },
     // Related work orders + quotes rendered as uniform overview blocks (styled like
     // the ticket customer block). The `workOrders`/`quotes` inverse fields are hidden
     // from the Details field panel (showInPanel:false) so they only appear here.
@@ -108,10 +83,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   work_order: {
     entityType: 'work_order',
     additionalTabs: [],
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-    },
     // Schedule (visits + schedule popover) and Invoices (list + gather dialog) as
     // uniform overview blocks — the quote/line-items relationship fields are hidden
     // from the Details panel (showInPanel:false) so they only surface here.
@@ -148,10 +119,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     // cards and detail-page sidebarCards are independent lists, so this
     // never leaks onto the detail page.
     additionalTabs: [],
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-    },
     tabCards: {
       overview: [
         {
@@ -175,12 +142,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     // Drawer-only entity (01-ui #10 lock, hasDetailPage: false) — no additionalTabs, the
     // entire lifecycle/line/payment UI lives in overview tabCards (money MI1 build spec §J.1).
     additionalTabs: [],
-    actions: {
-      // No enableArchive — invoices are ledger records, delete is the only removal path
-      // (the §G.5 override in use-entity-instance-operations.tsx routes it to
-      // `money.deleteInvoice`, which enforces the payments guard + source-line unstamp).
-      enableDelete: true,
-    },
     tabCards: {
       overview: [
         {
@@ -208,7 +169,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
 
 /**
  * Get drawer configuration for entity type
- * Returns ONLY drawer-specific config (tabs, actions)
+ * Returns ONLY drawer-specific config (tabs, cards)
  * Entity metadata comes from Resource object
  */
 export function getEntityDrawerConfig(
@@ -224,10 +185,6 @@ export function getEntityDrawerConfig(
   return {
     entityType: entityDefinitionId ?? entityType,
     additionalTabs: [],
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-    },
   }
 }
 

@@ -7,6 +7,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Blocks, MoreHorizontal } from 'lucide-react'
@@ -33,16 +36,14 @@ interface AppRecordActionsProps {
  * applicability inside their own dialog. The overflow menu keeps N installed
  * apps from crowding the header.
  */
-export function AppRecordActions({ recordId, recordType, compact }: AppRecordActionsProps) {
+function useAppRecordActions({ recordId, recordType }: AppRecordActionsProps) {
   const { store } = useInternalAppsContext()
   const { data: actions } = useSurfaces({
     surfaceType: 'record-action',
     context: { recordId, recordType },
   })
 
-  if (actions.length === 0) return null
-
-  const handleTrigger = (appId: string, appInstallationId: string, surfaceId: string) => {
+  const trigger = (appId: string, appInstallationId: string, surfaceId: string) => {
     void store.triggerSurface({
       appId,
       appInstallationId,
@@ -51,6 +52,61 @@ export function AppRecordActions({ recordId, recordType, compact }: AppRecordAct
       payload: { recordId, recordType },
     })
   }
+
+  return { actions, trigger }
+}
+
+/** One app-declared record action as a menu row. */
+function AppActionItem({
+  surface,
+  onSelect,
+}: {
+  surface: { id: string; label?: string; icon?: unknown }
+  onSelect: () => void
+}) {
+  return (
+    <DropdownMenuItem onSelect={onSelect} className='flex items-center gap-2'>
+      {typeof surface.icon === 'string' && surface.icon.length <= 2 && <span>{surface.icon}</span>}
+      <span className='truncate'>{surface.label ?? surface.id}</span>
+    </DropdownMenuItem>
+  )
+}
+
+/**
+ * App actions as a SUBMENU of a caller-owned dropdown (`RecordActionsMenu`).
+ *
+ * Deliberately renders a DISABLED branch when no installed app declares a
+ * record action, where {@link AppRecordActions} returns `null` — same reasoning
+ * as `WorkflowSubMenu`. On a stock org that standalone "… More" button
+ * simply never appeared, so nothing on this surface ever told a user that apps
+ * can contribute actions here at all.
+ */
+export function AppRecordActionsSubmenu({ recordId, recordType }: AppRecordActionsProps) {
+  const { actions, trigger } = useAppRecordActions({ recordId, recordType })
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger disabled={actions.length === 0}>
+        <Blocks />
+        App actions
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className='w-56'>
+        {actions.map(({ surface, appId, appInstallationId }) => (
+          <AppActionItem
+            key={`${appId}:${appInstallationId}:${surface.id}`}
+            surface={surface}
+            onSelect={() => trigger(appId, appInstallationId, surface.id)}
+          />
+        ))}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
+export function AppRecordActions({ recordId, recordType, compact }: AppRecordActionsProps) {
+  const { actions, trigger: handleTrigger } = useAppRecordActions({ recordId, recordType })
+
+  if (actions.length === 0) return null
 
   return (
     <DropdownMenu>

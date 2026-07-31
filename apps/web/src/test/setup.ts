@@ -81,12 +81,31 @@ process.env.APP_URL = 'http://localhost:3000'
 process.env.NEXT_PUBLIC_ENV = 'development'
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test'
 
-// Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}))
+/**
+ * Mock ResizeObserver — a real CLASS, not `vi.fn().mockImplementation(...)`.
+ *
+ * floating-ui's `autoUpdate` does `new ResizeObserver(...)`, and a mock whose
+ * implementation returns an object literal is not a valid constructor there, so
+ * every Radix popper (dropdown, popover, tooltip content) threw
+ * "is not a constructor" the moment it opened. `records-view-request-access.test.tsx`
+ * carried a local `NoopResizeObserver` + `vi.stubGlobal` workaround for exactly
+ * this; hoisting it here means the next test that opens a menu doesn't have to
+ * rediscover it.
+ */
+class NoopResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+global.ResizeObserver = NoopResizeObserver
+
+// jsdom implements none of the Pointer Capture API, which Radix menus call on
+// pointer-down. Without these, opening a menu with `userEvent` throws.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+}
 
 // Mock IntersectionObserver
 global.IntersectionObserver = vi.fn().mockImplementation(() => ({

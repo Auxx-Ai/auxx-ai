@@ -203,7 +203,7 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
               entityType={entityType}
               recordId={recordId}
               record={record}
-              config={config}
+              backUrl={backUrl}
             />
           </div>
         }>
