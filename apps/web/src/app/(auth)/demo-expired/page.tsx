@@ -6,13 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx
 import { Check } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect } from 'react'
-import { client } from '~/auth/auth-client'
+import { signOutAndClear } from '~/auth/sign-out'
 import { Logo } from '~/components/global/login/logo'
 
 export default function DemoExpiredPage() {
   // Sign out the expired demo user so they can sign up or log in fresh
   useEffect(() => {
-    client.signOut({ fetchOptions: { onSuccess: () => {} } })
+    signOutAndClear({ fetchOptions: { onSuccess: () => {} } })
   }, [])
   return (
     <div className='flex min-h-screen w-screen items-center justify-center p-4 bg-white/10'>

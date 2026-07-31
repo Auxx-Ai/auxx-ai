@@ -43,7 +43,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { client } from '~/auth/auth-client'
+import { signOutAndClear } from '~/auth/sign-out'
 import { useDemo } from '~/hooks/use-demo'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
@@ -302,7 +302,7 @@ function DemoSidebarBanner() {
         className='mt-2 relative h-8.5 rounded-full'
         tooltip='Demo time remaining'
         onClick={() => {
-          client.signOut({
+          signOutAndClear({
             fetchOptions: { onSuccess: () => router.push('/signup?from=demo') },
           })
         }}>

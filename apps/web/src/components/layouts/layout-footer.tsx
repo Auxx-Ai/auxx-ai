@@ -5,7 +5,7 @@ import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { Button } from '@auxx/ui/components/button'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { client } from '~/auth/auth-client'
+import { signOutAndClear } from '~/auth/sign-out'
 import { useDehydratedOrganizations, useEnv } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 
@@ -35,7 +35,7 @@ export function LayoutFooter({ showBackToDashboard = true }: LayoutFooterProps) 
 
   const handleLogout = async () => {
     try {
-      await client.signOut()
+      await signOutAndClear()
       router.push('/login')
     } catch (error) {
       console.error('Error during logout:', error)

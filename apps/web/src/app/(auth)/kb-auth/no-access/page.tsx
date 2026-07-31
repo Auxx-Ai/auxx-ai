@@ -14,7 +14,7 @@ import { Lock } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
-import { client } from '~/auth/auth-client'
+import { signOutAndClear } from '~/auth/sign-out'
 import { Logo } from '~/components/global/login/logo'
 
 function NoAccessContent() {
@@ -64,7 +64,7 @@ function NoAccessContent() {
         <Button
           variant='outline'
           onClick={() =>
-            client.signOut({
+            signOutAndClear({
               fetchOptions: {
                 onSuccess: () => {
                   window.location.href = '/login'

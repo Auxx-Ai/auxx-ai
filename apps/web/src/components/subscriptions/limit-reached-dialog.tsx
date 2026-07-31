@@ -7,7 +7,7 @@ import { Sparkles, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useState } from 'react'
-import { client } from '~/auth/auth-client'
+import { signOutAndClear } from '~/auth/sign-out'
 import { EmptyState } from '~/components/global/empty-state'
 import { useDemo } from '~/hooks/use-demo'
 import { PlanChangeSummary } from './plan-change-summary'
@@ -48,7 +48,7 @@ export function LimitReachedDialog({
                 <Button
                   onClick={() => {
                     onOpenChange(false)
-                    client.signOut({
+                    signOutAndClear({
                       fetchOptions: { onSuccess: () => router.push('/signup?from=demo') },
                     })
                   }}>

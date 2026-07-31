@@ -546,7 +546,9 @@ export const IndexStatusValues = ['PENDING', 'INDEXED', 'ERROR'] as const
 
 export const IntegrationSyncStageValues = [
   'IDLE',
+  'MESSAGE_LIST_FETCH_PENDING',
   'MESSAGE_LIST_FETCH',
+  'MESSAGES_IMPORT_PENDING',
   'MESSAGES_IMPORT',
   'FAILED',
 ] as const
@@ -1237,7 +1239,9 @@ export const IndexStatus = {
 
 export const IntegrationSyncStage = {
   IDLE: 'IDLE',
+  MESSAGE_LIST_FETCH_PENDING: 'MESSAGE_LIST_FETCH_PENDING',
   MESSAGE_LIST_FETCH: 'MESSAGE_LIST_FETCH',
+  MESSAGES_IMPORT_PENDING: 'MESSAGES_IMPORT_PENDING',
   MESSAGES_IMPORT: 'MESSAGES_IMPORT',
   FAILED: 'FAILED',
 } as const

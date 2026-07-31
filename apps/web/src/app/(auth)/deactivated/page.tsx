@@ -6,12 +6,12 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@auxx/
 import { ShieldOff } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect } from 'react'
-import { client } from '~/auth/auth-client'
+import { signOutAndClear } from '~/auth/sign-out'
 import { Logo } from '~/components/global/login/logo'
 
 export default function DeactivatedPage() {
   useEffect(() => {
-    client.signOut({ fetchOptions: { onSuccess: () => {} } })
+    signOutAndClear({ fetchOptions: { onSuccess: () => {} } })
   }, [])
 
   return (
