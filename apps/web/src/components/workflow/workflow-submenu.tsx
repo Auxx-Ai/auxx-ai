@@ -7,6 +7,7 @@ import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -29,6 +30,12 @@ interface WorkflowSubMenuProps {
   recordId: RecordId
   /** Called after successful trigger */
   onSuccess?: () => void
+  /**
+   * Key hint shown on the submenu trigger. Only pass it where the key is
+   * actually bound (the record detail page and drawer, via `useRecordShortcuts`)
+   * — a hint for a dead key is worse than none.
+   */
+  shortcut?: string
 }
 
 /**
@@ -38,7 +45,7 @@ interface WorkflowSubMenuProps {
  * Shows loading state while fetching, then displays available workflows.
  * Shows "No workflows available" if none exist.
  */
-export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
+export function WorkflowSubMenu({ recordId, onSuccess, shortcut }: WorkflowSubMenuProps) {
   const router = useRouter()
   const { entityDefinitionId } = recordId ? parseRecordId(recordId) : { entityDefinitionId: '' }
 
@@ -112,6 +119,7 @@ export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
       <DropdownMenuSubTrigger>
         <Play />
         Run Workflow
+        {shortcut && <DropdownMenuShortcut className='mr-1'>{shortcut}</DropdownMenuShortcut>}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className='w-48'>
         {workflowsLoading ? (

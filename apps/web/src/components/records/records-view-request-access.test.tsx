@@ -118,6 +118,10 @@ vi.mock('~/providers/capabilities-provider', () => ({
     // This is what keeps the def-level `readOnly` degrade from short-circuiting
     // the per-row predicate — see `records-view.tsx`'s `hasRowGrants`.
     hasRecordGrantsOn: () => true,
+    // The row renders the shared `RecordActionsMenu` now, whose `WorkflowSubMenu`
+    // asks for the coarse `workflows.manage` key to decide whether "Create
+    // workflow" is clickable. Nothing here turns on the answer.
+    can: () => false,
   }),
 }))
 vi.mock('~/providers/feature-flag-provider', () => ({
@@ -172,6 +176,12 @@ vi.mock('~/components/data-export/ui/export-progress-dialog', () => ({
 vi.mock('~/components/print/ui/print-wizard-dialog', () => ({ PrintWizardDialog: () => null }))
 vi.mock('~/components/sequences/ui/add-to-sequence-dialog', () => ({
   AddToSequenceDialog: () => null,
+}))
+// Both submenus of the shared `RecordActionsMenu` the row now renders. They own
+// their own tRPC surfaces and say nothing about the preflight property here.
+vi.mock('~/components/workflow/workflow-submenu', () => ({ WorkflowSubMenu: () => null }))
+vi.mock('~/components/detail-view/components/app-record-actions', () => ({
+  AppRecordActionsSubmenu: () => null,
 }))
 vi.mock('~/components/workflow/mass-workflow-trigger-dialog', () => ({
   MassWorkflowTriggerDialog: () => null,

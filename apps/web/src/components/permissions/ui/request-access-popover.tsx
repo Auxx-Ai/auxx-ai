@@ -4,6 +4,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
@@ -68,6 +69,26 @@ export interface RequestAccessPopoverProps extends RequestAccessState {
    * the query on this instead.
    */
   onOpenChange?: (open: boolean) => void
+  /**
+   * Optional controlled open state. Omit and the shell owns it (the default, and
+   * what every click-driven mount wants).
+   *
+   * Passing it is how a KEYBOARD shortcut reaches this popover: the trigger must
+   * still be mounted and visible for Radix to anchor to, but the thing that opens
+   * it lives outside. `onOpenChange` stays the notification either way, so the
+   * lazy-preflight seam behaves identically for both paths.
+   */
+  open?: boolean
+  /**
+   * Key hint for the trigger. Rendered as an inline `Kbd` on the labelled
+   * `header` variant and as a tooltip hint on the icon-only one — an icon button
+   * has no room for a key cap, and a key cap on a button with no label names
+   * nothing.
+   *
+   * Only pass it where the key is bound: `useRecordShortcuts` binds `R` on the
+   * record detail page and drawer, and nowhere else.
+   */
+  shortcut?: string
 }
 
 function initials(name: string | null): string {
@@ -109,15 +130,19 @@ export function RequestAccessPopover({
   footer,
   variant = 'inline',
   onOpenChange,
+  open: controlledOpen,
+  shortcut,
 }: RequestAccessPopoverProps) {
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
   const noteRef = useRef<HTMLTextAreaElement>(null)
 
+  const open = controlledOpen ?? uncontrolledOpen
+
   /** Every open/close path goes through here, so a lane cannot miss one. */
   const setOpenAndNotify = (next: boolean) => {
-    setOpen(next)
+    setUncontrolledOpen(next)
     onOpenChange?.(next)
   }
 
@@ -160,10 +185,12 @@ export function RequestAccessPopover({
 
   const trigger =
     variant === 'icon' ? (
-      <Button variant='ghost' size='icon' className='rounded-full hover:bg-foreground/10'>
-        <LockKeyhole />
-        <span className='sr-only'>{label}</span>
-      </Button>
+      <Tooltip content={label} shortcut={shortcut}>
+        <Button variant='ghost' size='icon' className='rounded-full hover:bg-foreground/10'>
+          <LockKeyhole />
+          <span className='sr-only'>{label}</span>
+        </Button>
+      </Tooltip>
     ) : variant === 'menu-item' ? (
       // `onSelect` is prevented so the host dropdown does NOT close: closing it
       // unmounts this trigger, and Radix anchors the popover to it.
@@ -183,6 +210,11 @@ export function RequestAccessPopover({
         className='hover:bg-foreground/10 data-[state=open]:bg-foreground/10'>
         <LockKeyhole />
         {label}
+        {shortcut && (
+          <Kbd variant='outline' size='sm'>
+            {shortcut}
+          </Kbd>
+        )}
       </Button>
     ) : (
       <Button variant='outline' size='sm'>

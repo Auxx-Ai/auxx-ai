@@ -1,17 +1,15 @@
 // apps/web/src/components/records/records-view.tsx
 'use client'
 
-import type { Rung } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { isAiEligible } from '@auxx/lib/custom-fields/client'
 import { converters } from '@auxx/lib/field-values/client'
-import { canEditRecordAtRung, FeatureKey, satisfiesRung } from '@auxx/lib/permissions/client'
+import { canEditRecordAtRung, FeatureKey } from '@auxx/lib/permissions/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import type { AiOptions } from '@auxx/types/custom-field'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
-import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import { MainPageAction } from '@auxx/ui/components/main-page'
 import { useQueryClient } from '@tanstack/react-query'
@@ -19,12 +17,10 @@ import {
   Archive,
   Combine,
   Database,
-  Expand,
   Play,
   Plus,
   Printer,
   Send,
-  Share2,
   SquarePen,
   Trash2,
 } from 'lucide-react'
@@ -49,17 +45,13 @@ import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { KopilotContext } from '~/components/kopilot/context'
-import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { MergeDialog } from '~/components/merge'
-import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
-import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
 import { PrintWizardDialog } from '~/components/print/ui/print-wizard-dialog'
+import { RecordActionsMenu } from '~/components/records/record-actions-menu'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import {
-  getRecordLink,
   getRecordStoreState,
   type RecordMeta,
-  resourceHasDetailPage,
   toRecordId,
   useResource,
 } from '~/components/resources'
@@ -129,8 +121,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   // who can view but not edit this def (Read-only grantee / field seat). The
   // server enforces regardless; this just avoids a click-then-403. Keyed by
   // `entityDefinitionId` (the defAccess keyspace), not `resource.id`.
-  const { canEditEntity, canAdministerDef, recordDefRung, canDeleteRecordAt, hasRecordGrantsOn } =
-    useAccess()
+  const { canEditEntity, canAdministerDef, recordDefRung, hasRecordGrantsOn } = useAccess()
   const canEdit = resource ? canEditEntity(resource.entityDefinitionId) : false
   /**
    * Whether ANY row of this def may be more permissive than the def level —
@@ -149,17 +140,14 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   // it, so the fallback is the honest one rather than a guess.
   const defRung = resource ? recordDefRung(resource.entityDefinitionId) : undefined
   /**
-   * **The per-ROW affordance rung** (plan v3/03 §5.2/§6.2). `canEdit` above is
-   * the DEF question and stays where it belongs — New, bulk, view management.
-   * Row edit / archive / delete / share read THIS instead, because a member can
-   * hold `edit` on one row of a definition they otherwise cannot see, and only
-   * `read` on a row whose siblings they edit freely.
+   * The per-ROW affordance rung used to live here as `rowRung`, feeding a
+   * hand-rolled kebab menu. Both are gone: the row renders `RecordActionsMenu`,
+   * which resolves the same stamp through `useRecordAccess` — the ONE per-row
+   * gate the page and the drawer already shared.
+   *
+   * What stays is the fold from a bare row id, because the inline cell editors
+   * have no `RecordActionsMenu` to ask.
    */
-  const rowRung = useCallback(
-    (row: { _access?: Rung }): Rung => row._access ?? defRung ?? 'none',
-    [defRung]
-  )
-  /** The same fold from a bare row id — the inline-editor entry points. */
   const isRowReadOnly = useCallback(
     (rowId: string) => {
       if (!entityDefinitionId) return true
@@ -216,9 +204,9 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [isAddToSequenceDialogOpen, setIsAddToSequenceDialogOpen] = useState(false)
-  // The row whose sharing dialog is open (plan v3/03 §6.2) — one hoisted dialog
-  // for the whole table rather than one per row.
-  const [shareRecordId, setShareRecordId] = useState<RecordId | null>(null)
+  // No hoisted per-row share dialog any more: `RecordActionsMenu` owns the one
+  // it opens, which is the whole reason `PrimaryCell` had to learn to take a
+  // complete menu instead of items (its dialogs must outlive the closing menu).
 
   // Print wizard (bulk-action entry — scope pinned to the frozen selection) + its progress
   // dialog, wired exactly like the CSV export flow (`table-toolbar.tsx`'s toolbar entry).
@@ -249,8 +237,6 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   }, [])
 
   const {
-    handleArchive,
-    handleDelete,
     handleDrawerDelete,
     handleBulkDelete,
     handleBulkArchive,
@@ -316,7 +302,18 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
     [setIsCreateDialogOpen]
   )
 
-  // Primary cell renderer — title + Edit / Favorite / Archive / Delete dropdown.
+  /**
+   * The menu's record TYPE key, derived exactly as `RecordDrawer` derives it —
+   * both surfaces must resolve the same `RECORD_ACTIONS_REGISTRY` entry or the
+   * row and the drawer start disagreeing about what a record offers again, which
+   * is the drift PR #1438 existed to end.
+   */
+  const menuEntityType = useMemo(
+    () => resource?.entityType ?? (resource?.type === 'system' ? resource?.id : 'custom'),
+    [resource?.entityType, resource?.type, resource?.id]
+  )
+
+  // Primary cell renderer — title + the SHARED record-actions menu.
   const primaryFieldId = resource?.display.primaryDisplayField?.id ?? resource?.fields[0]?.id
   const primaryResourceFieldId = useMemo(() => {
     if (!entityDefinitionId || !primaryFieldId) return null
@@ -330,83 +327,43 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
         <PrimaryFieldCell
           resourceFieldId={primaryResourceFieldId}
           rowId={row.id}
-          onTitleClick={() => handleOpenDrawer(row)}>
-          {canEditRecordAtRung(rowRung(row)) && (
-            <DropdownMenuItem onClick={() => handleOpenEditDialog(row)}>
-              <SquarePen />
-              Edit
-            </DropdownMenuItem>
-          )}
-          {resource && resourceHasDetailPage(resource) && (
-            <DropdownMenuItem
-              onClick={() => {
-                const href = getRecordLink(toRecordId(entityDefinitionId, row.id), resource)
-                if (href) router.push(href)
-              }}>
-              <Expand />
-              Open full page
-            </DropdownMenuItem>
-          )}
-          <FavoriteToggleMenuItem
-            targetType='ENTITY_INSTANCE'
-            targetIds={{
-              entityDefinitionId,
-              entityInstanceId: row.id,
-            }}
-          />
-          {satisfiesRung(rowRung(row), 'admin') && (
-            <GranularPermissionsGate>
-              <DropdownMenuItem
-                onClick={() => setShareRecordId(toRecordId(entityDefinitionId, row.id))}>
-                <Share2 />
-                Share
-              </DropdownMenuItem>
-            </GranularPermissionsGate>
-          )}
-          {/* Ask for the next rung (plan v3/04 §8.2, mount 3). The only per-row
-              cost is this rung read — Radix does not mount the dropdown subtree
-              until the menu opens, so the hook inside runs once per OPENED menu,
-              never once per row (§8.5). */}
-          {rowRung(row) === 'read' && (
-            <GranularPermissionsGate>
-              <RecordRequestAccessPopover
-                entityDefinitionId={entityDefinitionId}
-                entityInstanceId={row.id}
-                variant='menu-item'
+          onTitleClick={() => handleOpenDrawer(row)}
+          // The LAST of the three record surfaces to join the shared menu
+          // (HANDOFF §1, "Still owed"). It hand-rolled its own list against its
+          // own helpers until `PrimaryCell` learned to take a whole menu — the
+          // menu's dialogs must be siblings of its `DropdownMenu`, which
+          // items-as-`children` could not express.
+          actions={
+            <RecordActionsMenu
+              recordId={toRecordId(entityDefinitionId, row.id)}
+              entityType={menuEntityType ?? ''}
+              record={row}
+              surface='row'
+              onEdit={() => handleOpenEditDialog(row)}
+              // Archive and Delete live inside the menu now, and its own
+              // `useEntityInstanceOperations` only refetches through this
+              // callback — without it the deleted row stays on screen.
+              onDeleted={refresh}>
+              {/* Favourite stays an ITEM here, unlike the page and the drawer,
+                  which promote it to a star beside the trigger. A table row has
+                  nowhere to put a persistent control, and a star that appears
+                  only on hover reports its state to nobody. */}
+              <FavoriteToggleMenuItem
+                targetType='ENTITY_INSTANCE'
+                targetIds={{ entityDefinitionId, entityInstanceId: row.id }}
               />
-            </GranularPermissionsGate>
-          )}
-          {canEditRecordAtRung(rowRung(row)) && (
-            <>
-              <DropdownMenuItem onClick={() => handleArchive(row.id)}>
-                <Archive />
-                Archive
-              </DropdownMenuItem>
-              {canDeleteRecordAt(rowRung(row)) && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.id)}>
-                    <Trash2 />
-                    Delete
-                  </DropdownMenuItem>
-                </>
-              )}
-            </>
-          )}
-        </PrimaryFieldCell>
+            </RecordActionsMenu>
+          }
+        />
       )
     },
     [
-      rowRung,
-      canDeleteRecordAt,
       entityDefinitionId,
       primaryResourceFieldId,
-      resource,
-      router,
+      menuEntityType,
       handleOpenDrawer,
       handleOpenEditDialog,
-      handleArchive,
-      handleDelete,
+      refresh,
     ]
   )
 
@@ -1120,18 +1077,6 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
           onMergeComplete={() => {
             setSelectedRowIds(new Set())
             refresh()
-          }}
-        />
-      )}
-
-      {/* Per-record sharing (plan v3/03 §6.2). Only ever opened from a row whose
-          `_access` stamp is `admin`; the server re-asserts on the grant write. */}
-      {shareRecordId && (
-        <InstanceShareDialog
-          recordId={shareRecordId}
-          open={!!shareRecordId}
-          onOpenChange={(open) => {
-            if (!open) setShareRecordId(null)
           }}
         />
       )}

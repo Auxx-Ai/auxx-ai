@@ -102,6 +102,17 @@ vi.mock('~/hooks/use-entity-instance-operations', () => ({
 vi.mock('~/components/favorites/ui/favorite-toggle-menu-item', () => ({
   FavoriteToggleMenuItem: () => null,
 }))
+// `useRecordShortcuts` binds `F` through this; the favourite lane has its own
+// tRPC surface and nothing to do with the preflight gate under test.
+vi.mock('~/components/favorites/hooks/use-favorite-toggle', () => ({
+  useFavoriteToggle: () => ({ toggle: vi.fn(), isFavorited: false, isPending: false }),
+}))
+vi.mock('~/components/workflow/mass-workflow-trigger-dialog', () => ({
+  MassWorkflowTriggerDialog: () => null,
+}))
+// The drawer asks whether it is nested inside a mail thread to decide whether to
+// bind its shortcuts at all. Standalone here.
+vi.mock('~/components/mail/thread-provider', () => ({ useIsNestedThread: () => false }))
 vi.mock('~/components/fields/connector-source-badge', () => ({ ConnectorSourceBadge: () => null }))
 vi.mock('~/components/resources/ui/avatar-upload-icon', () => ({ AvatarUploadIcon: () => null }))
 vi.mock('~/components/resources/ui/record-icon', () => ({ RecordIcon: () => null }))
@@ -167,17 +178,20 @@ beforeEach(() => {
 })
 
 describe('the drawer header pays NOTHING to render the request trigger (§8.5 / D6)', () => {
-  // The trigger now lives inside the shared `RecordActionsMenu`, which makes the
-  // laziness STRICTER, not weaker: Radix does not mount `DropdownMenuContent`'s
-  // subtree until the menu is opened, so the popover's body cannot run for a
-  // member who never opens the menu at all.
-  it('fires no preflight on open, none on opening the menu, and exactly one on the item', async () => {
+  // The trigger sits in the drawer HEADER again (the `icon` variant), not inside
+  // `RecordActionsMenu`. That was a deliberate reversal of PR #1438's placement:
+  // the `R` shortcut has to anchor to something, and Radix does not mount
+  // `DropdownMenuContent` until the menu opens.
+  //
+  // 🔴 **The laziness this file exists to protect is UNAFFECTED**, because it was
+  // never about mounting. `useRecordRequestAccess` gates its query on the popover
+  // being OPEN. Being back in the header costs one more mounted button and zero
+  // more requests — which is exactly what the first case below asserts.
+  it('fires no preflight on mount, and exactly one when the trigger is used', async () => {
     render(<RecordDrawer open recordId={RECORD_ID as never} />)
-    expect(h.preflightCalls).toHaveLength(0)
 
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
-    // The item is mounted and labelled — still without asking the server.
-    const trigger = screen.getByRole('menuitem', { name: 'Request edit access' })
+    // Mounted and labelled in the header — still without asking the server.
+    const trigger = screen.getByRole('button', { name: 'Request edit access' })
     expect(h.preflightCalls).toHaveLength(0)
 
     await userEvent.click(trigger)
@@ -188,9 +202,28 @@ describe('the drawer header pays NOTHING to render the request trigger (§8.5 / 
     h.access = 'edit'
     render(<RecordDrawer open recordId={RECORD_ID as never} />)
 
+    expect(screen.queryByRole('button', { name: /Request/ })).not.toBeInTheDocument()
+    expect(h.preflightCalls).toHaveLength(0)
+  })
+
+  // The menu must not ALSO offer it — `omitItems={['request-access']}`. Two ways
+  // to ask for the same rung on one surface is how the three surfaces drifted
+  // apart in the first place.
+  it('does not duplicate the ask inside the actions menu', async () => {
+    render(<RecordDrawer open recordId={RECORD_ID as never} />)
+
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
 
     expect(screen.queryByRole('menuitem', { name: /Request/ })).not.toBeInTheDocument()
+  })
+
+  // `R` is a keyboard path to the SAME popover, so it must obey the same gate.
+  it('opens the popover on `R`, and only then asks', async () => {
+    render(<RecordDrawer open recordId={RECORD_ID as never} />)
     expect(h.preflightCalls).toHaveLength(0)
+
+    await userEvent.keyboard('r')
+
+    expect(h.preflightCalls).toEqual([{ entityDefinitionId: DEF, entityInstanceId: ROW }])
   })
 })
