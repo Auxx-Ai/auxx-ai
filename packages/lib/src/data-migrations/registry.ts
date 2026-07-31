@@ -31,6 +31,7 @@ import { migration060PersonalInboxMove } from './migrations/060-personal-inbox-m
 import { migration061InboxesMemberBaselineBackfill } from './migrations/061-inboxes-member-baseline-backfill'
 import { migration063RetireMailPermissionsFeatureKey } from './migrations/063-retire-mail-permissions-feature-key'
 import { migration064SequencesLimit } from './migrations/064-sequences-limit'
+import { migration065DashboardsAllPlans } from './migrations/065-dashboards-all-plans'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -84,6 +85,7 @@ function buildRegistry(): DataMigrationDef[] {
     // sequence.
     migration063RetireMailPermissionsFeatureKey,
     migration064SequencesLimit,
+    migration065DashboardsAllPlans,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

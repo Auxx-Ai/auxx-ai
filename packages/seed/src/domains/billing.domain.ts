@@ -138,7 +138,7 @@ const BOOLEAN_GATES = {
     agentProcedures: false,
     mcp: false,
     dataConnectors: true,
-    dashboards: false,
+    dashboards: true,
     dispatch: false,
     // Sequences is metered by `sequencesLimit`, not bundled with `dispatch` — the
     // dispatch-triggered client-notification templates stay unreachable without the
@@ -169,7 +169,7 @@ const BOOLEAN_GATES = {
     agentProcedures: false,
     mcp: false,
     dataConnectors: true,
-    dashboards: false,
+    dashboards: true,
     dispatch: false,
     sequences: false,
     granularPermissions: false,
@@ -193,7 +193,7 @@ const BOOLEAN_GATES = {
     agentProcedures: false,
     mcp: false,
     dataConnectors: true,
-    dashboards: false,
+    dashboards: true,
     dispatch: false,
     // On at a metered 3 (`sequencesLimit`) — the upgrade lever into Growth's 25.
     sequences: true,
