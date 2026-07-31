@@ -1,13 +1,16 @@
 // packages/lib/src/providers/provider-capabilities.ts
 
+// `IntegrationProviderType` from `@auxx/database/enums` is a const *object* — usable
+// for keys/values only. `ChannelProviderType` (providers/types.ts) is the matching
+// union *type*, aliased onto the same enum object.
 import { IntegrationProviderType } from '@auxx/database/enums'
-import type { ProviderCapabilities } from './types'
+import type { ChannelProviderType, ProviderCapabilities } from './types'
 
 export type { ProviderCapabilities } from './types'
 /**
  * Provider capability presets
  */
-export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapabilities> = {
+export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabilities> = {
   [IntegrationProviderType.google]: {
     supportsPersonalConnection: true,
     supportsBidirectionalStatusSync: true,
@@ -463,9 +466,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
 /**
  * Helper function to get provider capabilities with defaults
  */
-export function getProviderCapabilities(
-  providerType: IntegrationProviderType
-): ProviderCapabilities {
+export function getProviderCapabilities(providerType: ChannelProviderType): ProviderCapabilities {
   return (
     PROVIDER_CAPABILITIES[providerType] || {
       // Default minimal capabilities

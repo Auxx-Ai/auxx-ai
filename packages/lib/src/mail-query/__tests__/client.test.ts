@@ -300,6 +300,6 @@ describe('filterThreads', () => {
     ]
 
     const result = filterThreads(extended, { status: 'OPEN' })
-    expect(result[0].customField).toBe('test')
+    expect(result[0]?.customField).toBe('test')
   })
 })

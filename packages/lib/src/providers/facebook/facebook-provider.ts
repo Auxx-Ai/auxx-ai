@@ -6,6 +6,7 @@ import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import {
+  type IntegrationSettings, // Per-integration record-creation/filter settings
   type MessageData, // Data structure expected by storage service
   MessageStorageService,
   type ParticipantInputData, // Structure for participant info from provider
@@ -56,6 +57,33 @@ interface FacebookWebhookMessage {
 interface FacebookGraphParticipant {
   id: string // PSID or Page ID
   name?: string
+}
+/** Generic shape of a paginated Graph API edge response. */
+interface FacebookGraphListResponse<T> {
+  data?: T[]
+  paging?: {
+    next?: string | null
+  }
+  error?: {
+    message?: string
+    code?: number
+  }
+}
+/** Conversation node returned by the /{page-id}/conversations edge. */
+interface FacebookGraphConversation {
+  id?: string
+  updated_time?: string
+  participants?: {
+    data?: FacebookGraphParticipant[]
+  }
+}
+/** Message node returned by the /{conversation-id}/messages edge. */
+interface FacebookGraphMessage {
+  id?: string
+  created_time?: string
+  from?: FacebookGraphParticipant
+  to?: unknown
+  message?: unknown
 }
 // --- End Interfaces ---
 export class FacebookProvider
@@ -147,10 +175,14 @@ export class FacebookProvider
       })
       throw new Error(`Invalid metadata format for Facebook integration ${integrationId}`)
     }
-    // Pass integration settings to storage service
-    if (integration.settings) {
-      this.storageService.setIntegrationSettings(integration.settings as any)
-      logger.info(`Integration settings loaded for selective mode: ${integration.settings}`)
+    // Pass integration settings to storage service (they live in metadata)
+    const settings = (integration.metadata as { settings?: IntegrationSettings }).settings
+    if (settings) {
+      this.storageService.setIntegrationSettings(settings)
+      logger.info('Integration settings loaded for selective mode', {
+        integrationId,
+        hasSettings: true,
+      })
     }
     logger.info(`FacebookProvider initialized successfully for Page ID: ${this.pageId}`, {
       integrationId,
@@ -289,7 +321,8 @@ export class FacebookProvider
           { integrationId: this.integrationId }
         )
         const convoRes = await fetch(conversationsLink)
-        const convoData = await convoRes.json()
+        const convoData =
+          (await convoRes.json()) as FacebookGraphListResponse<FacebookGraphConversation>
         if (!convoRes.ok || convoData.error) {
           logger.error('Failed to fetch conversations', {
             status: convoRes.status,
@@ -353,7 +386,7 @@ export class FacebookProvider
               { integrationId: this.integrationId }
             )
             const msgRes = await fetch(messagesLink)
-            const msgData = await msgRes.json()
+            const msgData = (await msgRes.json()) as FacebookGraphListResponse<FacebookGraphMessage>
             if (!msgRes.ok || msgData.error) {
               logger.error(`Failed to fetch messages for conversation ${conversationId}`, {
                 status: msgRes.status,
@@ -379,7 +412,7 @@ export class FacebookProvider
                 messagesToStore.push(converted)
               }
             }
-            messagesLink = msgData.paging?.next // Get next page link for messages
+            messagesLink = msgData.paging?.next ?? null // Get next page link for messages
           } // End message pagination loop
           // --- Store fetched messages for this conversation ---
           if (messagesToStore.length > 0) {
@@ -392,7 +425,7 @@ export class FacebookProvider
             )
           }
         } // End conversation loop
-        conversationsLink = convoData.paging?.next // Get next page link for conversations
+        conversationsLink = convoData.paging?.next ?? null // Get next page link for conversations
       } // End conversation pagination loop
       // Update last synced time after successful completion
       await db
@@ -409,9 +442,11 @@ export class FacebookProvider
         integrationId: this.integrationId,
       })
       // Update last synced time even on failure to mark the attempt? Optional.
-      await db.integration
-        .update({ where: { id: this.integrationId! }, data: { lastSyncedAt: new Date() } })
-        .catch((updateErr) =>
+      await db
+        .update(schema.Integration)
+        .set({ lastSyncedAt: new Date() })
+        .where(eq(schema.Integration.id, this.integrationId!))
+        .catch((updateErr: unknown) =>
           logger.error('Failed to update lastSyncedAt after sync error', { updateErr })
         )
       throw error // Re-throw the error
@@ -502,8 +537,13 @@ export class FacebookProvider
         cc: [],
         bcc: [],
         replyTo: [],
-        hasAttachments: attachments.length > 0,
-        attachments: attachments,
+        // Facebook has no inbound attachment ingestor, so no MessageAttachment
+        // rows are ever created and `providerAttachments` is never populated.
+        // `hasAttachments` is a workflow trigger filter (see
+        // workflow-engine/nodes/trigger-nodes/message-received.ts), so claiming
+        // true here fires attachment rules for bytes that were never fetched.
+        // The `attachments` local below still drives the snippet fallback.
+        hasAttachments: false,
         textPlain: message.message, //text,
         textHtml: undefined, // No HTML support
         snippet: message.message

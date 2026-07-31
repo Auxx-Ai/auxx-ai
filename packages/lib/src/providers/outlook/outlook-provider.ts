@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
-import type { IntegrationEntity } from '@auxx/database/types'
+import type { EmailLabel as EmailLabelType, IntegrationEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getAttachmentByteSize, sanitizeFilename, toGraphRecipients } from '@auxx/utils'
 import {
@@ -523,10 +523,14 @@ export class OutlookProvider
         })
       }
       // Store/update subscription ID and potentially the secret used in metadata
+      const storedMetadata = this.integration?.metadata as
+        | Record<string, unknown>
+        | null
+        | undefined
       if (
-        (this.integrationId &&
-          (this.integration?.metadata as any)?.graphSubscriptionId !== response.id) ||
-        (this.integration?.metadata as any)?.webhookSecret !== webhookSecret
+        this.integrationId &&
+        (storedMetadata?.graphSubscriptionId !== response.id ||
+          storedMetadata?.webhookSecret !== webhookSecret)
       ) {
         const updatedMetadata = {
           ...(this.integration?.metadata || {}),
@@ -800,7 +804,7 @@ export class OutlookProvider
           const senderEmail = fromInput.identifier?.toLowerCase()
           const isInbound = allAddresses.size > 0 ? !allAddresses.has(senderEmail || '') : true
           // Determine EmailLabel based on standard folder names (case-insensitive check might be needed)
-          let _emailLabel = EmailLabel.inbox // Default
+          let _emailLabel: EmailLabelType = EmailLabel.inbox // Default
           const folderIdLower = message.parentFolderId?.toLowerCase()
           if (folderIdLower === 'sentitems' || folderIdLower?.includes('sent')) {
             // Simple checks
@@ -837,7 +841,6 @@ export class OutlookProvider
             bcc: bccInputs,
             replyTo: replyToInputs,
             hasAttachments: message.hasAttachments || false,
-            attachments: [], // Processed separately if needed
             textHtml:
               message.body?.contentType?.toLowerCase() === 'html'
                 ? message.body?.content

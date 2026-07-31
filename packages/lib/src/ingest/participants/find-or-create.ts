@@ -21,6 +21,13 @@ import type { ParticipantInputData } from '../types'
 import { calculateDisplayName, calculateInitials } from './display'
 import { normalizeIdentifier } from './normalize'
 
+/** Roles that make a participant a recipient of an outbound message. */
+const OUTBOUND_RECIPIENT_ROLES: readonly ParticipantRole[] = [
+  ParticipantRoleEnum.TO,
+  ParticipantRoleEnum.CC,
+  ParticipantRoleEnum.BCC,
+]
+
 /**
  * Compute whether an email identifier belongs to the org. Returns true when
  * the address matches one of the active integration's own addresses
@@ -113,9 +120,7 @@ export async function findOrCreateParticipantRecord(
     const isOutboundRecipient =
       messageContext &&
       !messageContext.isInbound &&
-      [ParticipantRoleEnum.TO, ParticipantRoleEnum.CC, ParticipantRoleEnum.BCC].includes(
-        messageContext.role
-      )
+      OUTBOUND_RECIPIENT_ROLES.includes(messageContext.role)
 
     const isInternal = await classifyIsInternal(ctx, normalizedIdentifier, identifierType)
 
@@ -192,7 +197,15 @@ export async function findOrCreateParticipantRecord(
       })
       .returning()
 
+    // `INSERT … ON CONFLICT DO UPDATE … RETURNING` always yields exactly one
+    // row, so this is a shape assertion. Throwing keeps the caller from linking
+    // a message to a participant that was never written.
     const participant = participantData[0]
+    if (!participant) {
+      throw new Error(
+        `Participant upsert returned no row for ${identifierType} ${normalizedIdentifier}`
+      )
+    }
 
     // Emit `participant:updated` only when this was an UPDATE (previous row
     // existed) AND at least one tracked column actually changed. New rows
@@ -202,7 +215,10 @@ export async function findOrCreateParticipantRecord(
       const patch: Partial<ParticipantMeta> = {}
       if (participant.name !== previous.name) patch.name = participant.name
       if (participant.displayName !== previous.displayName) {
-        patch.displayName = participant.displayName
+        // `ParticipantMeta.displayName` is `string | undefined`; the column is
+        // nullable. The insert/update path always writes a computed display
+        // name (it falls back to the identifier), so null is unreachable here.
+        patch.displayName = participant.displayName ?? undefined
       }
       if (participant.hasReceivedMessage !== previous.hasReceivedMessage) {
         patch.hasReceivedMessage = participant.hasReceivedMessage
@@ -239,7 +255,16 @@ export async function findOrCreateParticipantRecord(
           .set({ entityInstanceId, updatedAt: new Date() })
           .where(eq(schema.Participant.id, participant.id))
           .returning()
-        return updatedParticipants[0]
+        const updated = updatedParticipants[0]
+        if (updated) return updated
+        // Zero rows back means the row we just upserted disappeared between the
+        // two statements (concurrent delete/merge). Return the in-memory row
+        // carrying the link we tried to write rather than an undefined record.
+        ctx.logger.warn('Participant row missing when linking its contact; using in-memory row', {
+          participantId: participant.id,
+          entityInstanceId,
+        })
+        return { ...participant, entityInstanceId }
       }
     }
 

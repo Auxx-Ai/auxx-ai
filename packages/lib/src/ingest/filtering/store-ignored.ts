@@ -2,13 +2,22 @@
 
 import { schema } from '@auxx/database'
 import { ThreadStatus } from '@auxx/database/enums'
+import { sql } from 'drizzle-orm'
 import type { IngestContext } from '../context'
+import { findOrCreateParticipantRecord } from '../participants/find-or-create'
+import { determineIdentifierType } from '../participants/normalize'
 import type { MessageData } from '../types'
 
 /**
  * Insert a minimal Thread + Message pair purely for dedup purposes.
- * No participants, contacts, body, or attachments — the message was matched
- * by an ignore rule, we only need enough shape to keep future sync idempotent.
+ * No contacts, body, attachments, recipients, or events — the message was
+ * matched by an ignore rule, we only need enough shape to keep future sync
+ * idempotent.
+ *
+ * The sender Participant is the one exception: `Message.fromId` is NOT NULL
+ * with an FK to `Participant`, so the row cannot exist without it. Contact
+ * creation is explicitly suppressed, so an ignored sender still never enters
+ * the contact graph.
  */
 export async function storeIgnoredMessage(
   ctx: IngestContext,
@@ -28,20 +37,50 @@ export async function storeIgnoredMessage(
       participantCount: 0,
     })
     .onConflictDoUpdate({
+      // Nothing to change on a hit — we only need `RETURNING` to yield the
+      // existing row's id (DO NOTHING returns none). Drizzle rejects an empty
+      // `set`, so assign the conflict-target column to itself: `excluded` holds
+      // the same value the matched row already has, making this a no-op write.
       target: [schema.Thread.integrationId, schema.Thread.externalId],
-      set: {},
+      set: { externalId: sql`excluded."externalId"` },
     })
     .returning({ id: schema.Thread.id })
+
+  if (!thread) {
+    throw new Error(
+      `Ignored-message thread upsert returned no row for externalThreadId ${messageData.externalThreadId} (integration ${messageData.integrationId})`
+    )
+  }
+
+  const senderIdentifierType = await determineIdentifierType(
+    ctx,
+    messageData.from.identifier,
+    messageData.integrationId
+  )
+  const sender = await findOrCreateParticipantRecord(
+    ctx,
+    messageData.from,
+    senderIdentifierType,
+    // No messageContext: an ignored message must not move interaction state.
+    undefined,
+    null,
+    true
+  )
 
   const [message] = await ctx.db
     .insert(schema.Message)
     .values({
       externalId: messageData.externalId,
+      fromId: sender.id,
       externalThreadId: messageData.externalThreadId,
       threadId: thread.id,
       organizationId: messageData.organizationId,
       integrationId: messageData.integrationId,
       internetMessageId: messageData.internetMessageId,
+      // Both are NOT NULL with no column default — omitting them makes Postgres
+      // reject the row outright. Mirrors `storeMessage`'s insert.
+      createdAt: messageData.createdTime,
+      updatedAt: new Date(),
       sentAt: messageData.sentAt,
       receivedAt: messageData.receivedAt,
       subject: messageData.subject ?? '',

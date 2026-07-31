@@ -254,10 +254,11 @@ export class MessageComposerService {
 
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i]
+      if (id === undefined) continue
       // Try MediaAsset first
       const asset = await this.db.query.MediaAsset.findFirst({
         where: (assets, { eq, and }) =>
-          and(eq(assets.id, id!), eq(assets.organizationId, organizationId)),
+          and(eq(assets.id, id), eq(assets.organizationId, organizationId)),
         columns: { id: true, name: true },
       })
       if (asset) {
@@ -272,7 +273,7 @@ export class MessageComposerService {
       // Try FolderFile
       const file = await this.db.query.FolderFile.findFirst({
         where: (files, { eq, and }) =>
-          and(eq(files.id, id!), eq(files.organizationId, organizationId)),
+          and(eq(files.id, id), eq(files.organizationId, organizationId)),
         columns: { id: true, name: true },
       })
       if (file) {
@@ -332,9 +333,12 @@ export class MessageComposerService {
           textPlain: textPlain,
           snippet: textPlain ? textPlain.slice(0, 280) : null,
 
-          // Update references
-          inReplyTo: input.inReplyTo,
-          references: input.references,
+          // NOTE: `Message.inReplyTo` / `Message.references` were dropped in
+          // migration 0028 and are NOT persisted. RFC threading headers are
+          // re-derived at send time from the thread's `internetMessageId`s
+          // (`MessageSenderService#getInReplyTo` / `#getReferences`), so
+          // `input.inReplyTo` / `input.references` only ride out on the returned
+          // `ComposedMessage`.
 
           // Update signature
           signatureId: input.signatureId,
@@ -478,9 +482,8 @@ export class MessageComposerService {
           textPlain: textPlain,
           snippet: textPlain ? textPlain.slice(0, 280) : null,
 
-          // Update references
-          inReplyTo: input.inReplyTo,
-          references: input.references,
+          // NOTE: `inReplyTo` / `references` are not columns — see the comment in
+          // `updateExistingDraft`. They travel on the returned `ComposedMessage`.
 
           // Update signature
           signatureId: input.signatureId,

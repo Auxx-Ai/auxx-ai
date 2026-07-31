@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { MessageSenderService } from '../messages/message-sender.service'
 import { MessageSyncService } from '../messages/message-sync-service'
+import type { ParticipantInput } from '../messages/types/message-sending.types'
 import type { ChannelProvider, SendMessageOptions } from '../providers/channel-provider.interface'
 import { ProviderRegistryService } from '../providers/provider-registry-service'
 import { WebhookManagerService } from '../providers/webhook-manager-service'
@@ -15,11 +16,20 @@ import { ChannelProviderType, MessageType } from '../providers/types'
 // Re-export for backward compatibility
 export { ChannelProviderType, MessageType }
 
+/** Email addresses -> the participant shape MessageSenderService expects. */
+function toParticipants(addresses: string | string[]): ParticipantInput[] {
+  return (Array.isArray(addresses) ? addresses : [addresses]).map((identifier) => ({
+    identifier,
+    identifierType: 'EMAIL' as const,
+  }))
+}
+
 export interface ActiveIntegration {
   type: ChannelProviderType
   id: string
   details: { identifier?: string; provider: string }
-  metadata?: { email?: string; phoneNumber?: string; pageId?: string } | null
+  /** Raw `Integration.metadata` jsonb — shape varies per provider. */
+  metadata?: Record<string, unknown> | null
 }
 
 export interface ProviderInstance {
@@ -27,7 +37,8 @@ export interface ProviderInstance {
   type: ChannelProviderType
   integrationId: string
   details: { identifier?: string; provider: string }
-  metadata?: { email?: string; phoneNumber?: string; pageId?: string } | null
+  /** Raw `Integration.metadata` jsonb — shape varies per provider. */
+  metadata?: Record<string, unknown> | null
 }
 
 /**
@@ -102,28 +113,32 @@ export class MessageService {
 
   async sendMessage(
     options: SendMessageOptions & {
-      providerType?: ChannelProviderType
-      integrationId?: string
+      /** Sending user — required by MessageSenderService for attribution. */
+      userId: string
+      integrationId: string
+      /** Internal thread to reply on. Omit to start a new thread. */
+      threadId?: string
     }
   ): Promise<{ id?: string; success: boolean; threadId?: string }> {
-    // Determine provider and delegate to MessageSenderService
     const sendResult = await this.messageSender.sendMessage({
-      to: Array.isArray(options.to) ? options.to : [options.to],
-      from: options.from || '',
-      subject: options.subject,
+      userId: options.userId,
+      organizationId: this.organizationId,
+      integrationId: options.integrationId,
+      threadId: options.threadId,
+      messageId: options.messageId,
+      subject: options.subject ?? '',
       textHtml: options.html,
       textPlain: options.text,
-      references: options.references,
-      inReplyTo: options.inReplyTo,
-      externalThreadId: options.externalThreadId,
-      providerType: options.providerType || 'google',
-      integrationId: options.integrationId || '',
+      to: toParticipants(options.to),
+      cc: options.cc ? toParticipants(options.cc) : undefined,
+      bcc: options.bcc ? toParticipants(options.bcc) : undefined,
+      attachmentIds: options.attachmentIds,
     })
 
     return {
       id: sendResult.id,
-      success: sendResult.success,
-      threadId: (sendResult as any).threadId,
+      success: sendResult.sendStatus === 'SENT',
+      threadId: sendResult.threadId,
     }
   }
 

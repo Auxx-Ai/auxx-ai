@@ -240,13 +240,15 @@ export class ThreadMergeService {
       // sources it had previously absorbed (`mergeData.sources[]`); those
       // descendants need their pointer / target rewritten too so the
       // flatten invariant holds (no two-hop chains).
-      const directSourceEntries: ThreadMergeSourceEntry[] = sources.map((src, i) => ({
-        threadId: src.id,
-        subject: src.subject,
+      // Built from `snapshots` (itself `sources.map(...)`, so same order and
+      // length) rather than zipping the two arrays by index.
+      const directSourceEntries: ThreadMergeSourceEntry[] = snapshots.map((snap) => ({
+        threadId: snap.sourceThreadId,
+        subject: snap.sourceSubject,
         mergedAt: now.toISOString(),
         mergedById: input.actorUserId,
         batchId,
-        messageCount: snapshots[i].movedMessageIds.length,
+        messageCount: snap.movedMessageIds.length,
       }))
       const descendantEntries: ThreadMergeSourceEntry[] = sources.flatMap(
         (src) => (src.mergeData as ThreadMergeData | null)?.sources ?? []

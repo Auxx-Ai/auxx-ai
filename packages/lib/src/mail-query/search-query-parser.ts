@@ -172,7 +172,10 @@ export function parseSearchQuery(query: string): ParsedSearchQuery {
     const operatorMatch = actualSegment.match(/^([a-zA-Z-]+):(.*)$/)
 
     if (operatorMatch) {
-      const [, operator, rawValue] = operatorMatch
+      // Both groups are non-optional in the regex above, so the fallbacks are
+      // unreachable — they only satisfy `noUncheckedIndexedAccess`.
+      const operator = operatorMatch[1] ?? ''
+      const rawValue = operatorMatch[2] ?? ''
 
       // Handle quoted values
       let value = rawValue

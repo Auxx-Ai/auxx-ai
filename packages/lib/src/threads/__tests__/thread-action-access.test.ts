@@ -84,12 +84,15 @@ const THREAD_B = 'thr_cuid00000000000000000b'
 function viewer(): UserInstanceGrants {
   return {
     userId: USER_ID,
-    role: 'MEMBER',
+    // `OrganizationRole` is OWNER | ADMIN | USER — 'USER' is the plain-member rank.
+    role: 'USER',
     isAdmin: false,
     isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
     grants: {},
+    // Empty = fail-closed: no def is ticket-like, so nothing derives.
+    defEntityTypes: {},
   }
 }
 

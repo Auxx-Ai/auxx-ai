@@ -14,9 +14,12 @@ Handlebars.registerHelper('formatDate', (date: Date, format: string) => {
   return d.toLocaleDateString()
 })
 
-Handlebars.registerHelper('ifEquals', function (arg1: any, arg2: any, options: any) {
-  return arg1 === arg2 ? options.fn(this) : options.inverse(this)
-})
+Handlebars.registerHelper(
+  'ifEquals',
+  function (this: unknown, arg1: unknown, arg2: unknown, options: Handlebars.HelperOptions) {
+    return arg1 === arg2 ? options.fn(this) : options.inverse(this)
+  }
+)
 
 export interface TemplateData {
   [key: string]: any
@@ -171,6 +174,10 @@ export class EmailTemplateService {
         } as any)
         .returning()
 
+      if (!template) {
+        throw new Error('Failed to create email template')
+      }
+
       logger.info('Template created:', { templateId: template.id, organizationId })
       return template
     } catch (error) {
@@ -220,6 +227,10 @@ export class EmailTemplateService {
           organizationId,
         } as any)
         .returning()
+
+      if (!newTemplate) {
+        throw new Error('Failed to copy email template')
+      }
 
       logger.info('Template copied:', { sourceId: templateId, newId: newTemplate.id })
       return newTemplate

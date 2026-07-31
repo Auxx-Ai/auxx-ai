@@ -10,12 +10,16 @@ import type { MessageData } from '../types'
  * Merge provider-sourced data into an existing message row. Preserves any
  * user-authored fields on the row (text, html, snippet) when the provider
  * update would blank them, and marks metadata as reconciled.
+ *
+ * Returns `null` when the row disappeared between the match read and this
+ * write (concurrent delete/merge) — the caller then treats it as "no match"
+ * and stores the message fresh rather than reporting a merge that never landed.
  */
 export async function mergeProviderData(
   ctx: IngestContext,
   existing: Message,
   providerData: MessageData
-): Promise<Message> {
+): Promise<Message | null> {
   const mergedMetadata = {
     ...((existing.metadata as any) || {}),
     ...((providerData.metadata as any) || {}),
@@ -37,6 +41,14 @@ export async function mergeProviderData(
     })
     .where(eq(schema.Message.id, existing.id))
     .returning()
+
+  if (!row) {
+    ctx.logger.warn('Message row disappeared before provider-data merge could be applied', {
+      messageId: existing.id,
+      externalId: providerData.externalId,
+    })
+    return null
+  }
 
   return row
 }

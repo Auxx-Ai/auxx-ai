@@ -12,6 +12,7 @@
  */
 
 import { IntegrationProviderType } from '@auxx/database/enums'
+import type { IntegrationProviderType as ProviderType } from '@auxx/database/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FacebookProvider } from '../facebook/facebook-provider'
 import { GoogleProvider } from '../google/google-provider'
@@ -414,7 +415,7 @@ describe('Provider Integration Tests', () => {
   describe('Error Handling and Edge Cases', () => {
     it('should handle unknown provider types gracefully', () => {
       // Should return default minimal capabilities for unknown types
-      const unknownCaps = getProviderCapabilities('unknown' as IntegrationProviderType)
+      const unknownCaps = getProviderCapabilities('unknown' as ProviderType)
       expect(unknownCaps.canSend).toBe(false)
       expect(unknownCaps.canReply).toBe(false)
       expect(unknownCaps.labelScope).toBe('none')

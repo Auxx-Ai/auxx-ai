@@ -218,6 +218,19 @@ function makeGetProviderRow(overrides: Record<string, unknown> = {}, requiresRea
   return { integration: makeIntegrationRow(overrides), requiresReauth }
 }
 
+/**
+ * Returns the first element of a result array, failing loudly when the array is
+ * empty so an unexpectedly empty result reads as an explicit error rather than
+ * a `TypeError` on `undefined` (or, worse, a silently skipped assertion).
+ */
+function firstOf<T>(items: readonly T[]): T {
+  const [item] = items
+  if (item === undefined) {
+    throw new Error('Expected at least one item in the result, but it was empty')
+  }
+  return item
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -285,7 +298,7 @@ describe('ProviderRegistryService', () => {
       const result = await service.getAllIntegrations()
 
       expect(result).toHaveLength(1)
-      expect(result[0].details.identifier).toBe('+15551234567')
+      expect(firstOf(result).details.identifier).toBe('+15551234567')
     })
 
     it('should filter out unknown provider types', async () => {
@@ -298,7 +311,7 @@ describe('ProviderRegistryService', () => {
       const result = await service.getAllIntegrations()
 
       expect(result).toHaveLength(1)
-      expect(result[0].id).toBe('int-1')
+      expect(firstOf(result).id).toBe('int-1')
     })
 
     it('should return an empty array when no integrations exist', async () => {
@@ -376,7 +389,7 @@ describe('ProviderRegistryService', () => {
       // Only the outlook provider should be cached
       const instances = service.getAllProviderInstances()
       expect(instances).toHaveLength(1)
-      expect(instances[0].integrationId).toBe('int-ok')
+      expect(firstOf(instances).integrationId).toBe('int-ok')
     })
 
     it('should clear previously cached providers before re-initializing', async () => {
@@ -391,7 +404,7 @@ describe('ProviderRegistryService', () => {
 
       const instances = service.getAllProviderInstances()
       expect(instances).toHaveLength(1)
-      expect(instances[0].integrationId).toBe('int-2')
+      expect(firstOf(instances).integrationId).toBe('int-2')
     })
   })
 
@@ -688,8 +701,8 @@ describe('ProviderRegistryService', () => {
       const providers = await service.getProvidersWithCapability('canReact')
 
       expect(providers).toHaveLength(1)
-      expect(providers[0].integrationId).toBe('int-fb')
-      expect(providers[0].type).toBe(IntegrationProviderType.facebook)
+      expect(firstOf(providers).integrationId).toBe('int-fb')
+      expect(firstOf(providers).type).toBe(IntegrationProviderType.facebook)
     })
 
     it('should return empty array when no providers support the capability', async () => {

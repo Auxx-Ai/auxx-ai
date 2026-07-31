@@ -332,7 +332,6 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
             latestMessageId: finalId,
             messageCount: sql`${schema.Thread.messageCount} + 1`,
             status: ThreadStatus.OPEN,
-            updatedAt: now,
           })
           .where(eq(schema.Thread.id, thread.id))
 

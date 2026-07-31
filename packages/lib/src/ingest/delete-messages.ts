@@ -96,7 +96,9 @@ export async function deleteMessagesByExternalIds(
       .from(schema.Message)
       .where(eq(schema.Message.threadId, threadId))
 
-    if (remaining.count === 0) {
+    // An aggregate always returns a row; when in doubt fall to the non-empty
+    // branch so a missing count can never delete a thread.
+    if (remaining?.count === 0) {
       await ctx.db.delete(schema.Thread).where(eq(schema.Thread.id, threadId))
       ctx.logger.debug('Deleted empty thread after message removal', { threadId })
 

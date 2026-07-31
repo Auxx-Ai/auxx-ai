@@ -89,7 +89,7 @@ export class MessageAttachmentService {
     }
 
     // Update message hasAttachments flag using Drizzle
-    const [{ cnt }] = await this.db
+    const [countRow] = await this.db
       .select({ cnt: count() })
       .from(schema.Attachment)
       .where(
@@ -100,7 +100,7 @@ export class MessageAttachmentService {
         )
       )
 
-    const hasAny = Number((cnt as any) ?? 0) > 0
+    const hasAny = Number(countRow?.cnt ?? 0) > 0
 
     await this.db
       .update(schema.Message)
@@ -145,7 +145,7 @@ export class MessageAttachmentService {
    * @returns Number of attachments
    */
   async getAttachmentCount(messageId: string): Promise<number> {
-    const [{ cnt }] = await this.db
+    const [countRow] = await this.db
       .select({ cnt: count() })
       .from(schema.Attachment)
       .where(
@@ -155,7 +155,7 @@ export class MessageAttachmentService {
           eq(schema.Attachment.organizationId, this.organizationId)
         )
       )
-    return Number((cnt as any) ?? 0)
+    return Number(countRow?.cnt ?? 0)
   }
 
   /**

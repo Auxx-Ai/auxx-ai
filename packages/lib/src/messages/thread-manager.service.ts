@@ -42,10 +42,11 @@ export class ThreadManagerService {
     organizationId: string
   }): Promise<ThreadContext> {
     // If threadId provided, retrieve existing thread
-    if (input.threadId) {
+    const { threadId, organizationId } = input
+    if (threadId) {
       const thread = await this.db.query.Thread.findFirst({
         where: (threads, { and, eq }) =>
-          and(eq(threads.id, input.threadId), eq(threads.organizationId, input.organizationId)),
+          and(eq(threads.id, threadId), eq(threads.organizationId, organizationId)),
         columns: {
           id: true,
           organizationId: true,

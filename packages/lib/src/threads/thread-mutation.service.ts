@@ -279,7 +279,8 @@ export class ThreadMutationService {
           assigneeId: schema.Thread.assigneeId,
         })
 
-      if (result.length === 0) {
+      const [updatedThread] = result
+      if (!updatedThread) {
         throw new Error(`Thread ${threadId} not found`)
       }
 
@@ -320,9 +321,9 @@ export class ThreadMutationService {
           this.organizationId,
           {
             threadId,
-            inboxId: result[0].inboxId ?? null,
+            inboxId: updatedThread.inboxId ?? null,
             previousInboxId: previous?.inboxId ?? null,
-            assigneeId: result[0].assigneeId ?? null,
+            assigneeId: updatedThread.assigneeId ?? null,
             patch,
           },
           { excludeSocketId: this.socketId }
@@ -1326,12 +1327,11 @@ export class ThreadMutationService {
       ),
     ]
 
+    // `Thread.participantIds` was dropped in migration 0028 — only the count is
+    // a column. Matches `ThreadManagerService#updateThreadParticipants`.
     await this.db
       .update(schema.Thread)
-      .set({
-        participantIds,
-        participantCount: participantIds.length,
-      })
+      .set({ participantCount: participantIds.length })
       .where(eq(schema.Thread.id, threadId))
 
     logger.debug('Updated thread participants', {

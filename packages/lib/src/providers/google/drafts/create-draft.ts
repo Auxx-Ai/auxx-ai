@@ -76,7 +76,7 @@ export async function createGmailDraft(
 
     return {
       id: response.data.id,
-      messageId: response.data.message?.id,
+      messageId: response.data.message?.id ?? undefined,
     }
   } catch (error) {
     throw await handleGmailError(error, 'createDraft', integrationId)

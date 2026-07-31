@@ -1,14 +1,14 @@
 // packages/lib/src/providers/message-provider-interface.ts
 
-import type { IntegrationProviderType } from '@auxx/database/types'
 import type { ProviderCapabilities } from './provider-capabilities'
+import type { ChannelProviderType } from './types'
 
 /**
  * Extended interface for message providers with capability support
  */
 export interface MessageProvider {
   // Provider identification
-  type: IntegrationProviderType
+  type: ChannelProviderType
   integrationId: string | null
   organizationId: string
 
@@ -273,7 +273,7 @@ export interface ShareOptions {
  */
 export abstract class BaseMessageProvider implements MessageProvider {
   constructor(
-    public type: IntegrationProviderType,
+    public type: ChannelProviderType,
     public integrationId: string | null,
     public organizationId: string
   ) {}

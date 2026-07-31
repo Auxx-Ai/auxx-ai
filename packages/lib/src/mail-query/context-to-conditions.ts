@@ -1,5 +1,6 @@
 // packages/lib/src/mail-query/context-to-conditions.ts
 
+import type { Operator } from '../conditions/operator-definitions'
 import type { Condition, ConditionGroup } from '../conditions/types'
 import { SEARCH_SCOPE_FIELD_ID } from '../mail-views/mail-view-field-definitions'
 
@@ -295,7 +296,7 @@ export function buildContextConditionGroups(params: ContextConditionParams): Con
  */
 export function buildConditionGroups(
   contextParams: ContextConditionParams,
-  searchConditions?: { id: string; fieldId: string; operator: string; value: any }[]
+  searchConditions?: { id: string; fieldId: string; operator: Operator; value: any }[]
 ): ConditionGroup[] {
   const groups: ConditionGroup[] = []
 
@@ -336,7 +337,12 @@ export function buildConditionGroups(
           group.conditions = []
         }
       } else if (searchFieldIds.size > 0) {
-        group.conditions = group.conditions.filter((c) => !searchFieldIds.has(c.fieldId))
+        // `searchFieldIds` only ever holds plain string fieldIds, so a
+        // relationship-path fieldId (ResourceFieldId[]) could never match and is
+        // always kept.
+        group.conditions = group.conditions.filter(
+          (c) => typeof c.fieldId !== 'string' || !searchFieldIds.has(c.fieldId)
+        )
       }
       if (group.conditions.length > 0) {
         groups.push(group)

@@ -1,5 +1,7 @@
 // packages/lib/src/messages/types/message-sending.types.ts
-import type { IdentifierType, ParticipantRole, SendStatus } from '@auxx/database/enums'
+// `@auxx/database/enums` exports these as const *objects* (values); the matching
+// string-literal union *types* live in `@auxx/database/types`.
+import type { IdentifierType, ParticipantRole, SendStatus } from '@auxx/database/types'
 
 /**
  * Input for sending a message

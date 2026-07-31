@@ -110,12 +110,15 @@ function makeDb(selectResults: unknown[][], updateResult: unknown[]) {
 function viewer(): UserInstanceGrants {
   return {
     userId: ACTOR_ID,
-    role: 'MEMBER',
+    // `OrganizationRole` is OWNER | ADMIN | USER — 'USER' is the plain-member rank.
+    role: 'USER',
     isAdmin: false,
     isMailAdmin: false,
     inboxLens: {},
     personalInboxIds: {},
     grants: {},
+    // Empty = fail-closed: no def is ticket-like, so nothing derives.
+    defEntityTypes: {},
   }
 }
 

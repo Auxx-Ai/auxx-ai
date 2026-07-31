@@ -8,6 +8,15 @@ import type { ParsedEmail } from './types'
 
 const logger = createScopedLogger('imap-parser')
 
+/**
+ * PostalMime hands attachment bodies back as an ArrayBuffer by default, but as a
+ * string when a text/base64 encoding is requested. Measure both correctly.
+ */
+function attachmentByteLength(content: ArrayBuffer | string | undefined): number {
+  if (!content) return 0
+  return typeof content === 'string' ? Buffer.byteLength(content) : content.byteLength
+}
+
 export class ImapMessageParserService {
   /** Fetch and parse a single message by UID from an already-locked mailbox */
   async parseMessage(client: ImapFlow, uid: number): Promise<ParsedEmail | null> {
@@ -58,7 +67,7 @@ export class ImapMessageParserService {
         attachments: (parsed.attachments || []).map((att) => ({
           filename: att.filename || 'unnamed',
           mimeType: att.mimeType || 'application/octet-stream',
-          size: att.content?.byteLength || 0,
+          size: attachmentByteLength(att.content),
         })),
       }
     } catch (error) {

@@ -8,8 +8,8 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import type { ChannelProviderType, MessageType } from './types'
+import { eq, inArray } from 'drizzle-orm'
+import { ChannelProviderType, MessageType } from './types'
 
 /**
  * Derives the primary message type from a provider.
@@ -26,20 +26,21 @@ import type { ChannelProviderType, MessageType } from './types'
  */
 export function getMessageTypeFromProvider(provider: ChannelProviderType): MessageType {
   const mapping: Record<ChannelProviderType, MessageType> = {
-    google: 'EMAIL',
-    outlook: 'EMAIL',
-    mailgun: 'EMAIL',
-    email: 'EMAIL',
-    facebook: 'FACEBOOK',
-    instagram: 'INSTAGRAM',
-    openphone: 'SMS',
-    sms: 'SMS',
-    whatsapp: 'WHATSAPP',
-    chat: 'CHAT',
-    shopify: 'EMAIL', // Shopify uses email notifications
+    google: MessageType.EMAIL,
+    outlook: MessageType.EMAIL,
+    mailgun: MessageType.EMAIL,
+    email: MessageType.EMAIL,
+    imap: MessageType.EMAIL,
+    facebook: MessageType.FACEBOOK,
+    instagram: MessageType.INSTAGRAM,
+    openphone: MessageType.SMS,
+    sms: MessageType.SMS,
+    whatsapp: MessageType.WHATSAPP,
+    chat: MessageType.CHAT,
+    shopify: MessageType.EMAIL, // Shopify uses email notifications
   }
 
-  return mapping[provider] || 'EMAIL'
+  return mapping[provider] || MessageType.EMAIL
 }
 
 /**
@@ -67,7 +68,7 @@ export async function getProviderForMessage(
     .where(eq(schema.Message.id, messageId))
     .limit(1)
 
-  return result[0]?.provider || 'google'
+  return result[0]?.provider ?? ChannelProviderType.google
 }
 
 /**
@@ -95,7 +96,7 @@ export async function getProviderForThread(
     .where(eq(schema.Thread.id, threadId))
     .limit(1)
 
-  return result[0]?.provider || 'google'
+  return result[0]?.provider ?? ChannelProviderType.google
 }
 
 /**
@@ -127,7 +128,7 @@ export async function getProvidersForMessages(
     })
     .from(schema.Message)
     .innerJoin(schema.Integration, eq(schema.Message.integrationId, schema.Integration.id))
-    .where(eq(schema.Message.id, messageIds[0])) // This needs inArray for multiple IDs
+    .where(inArray(schema.Message.id, messageIds))
 
   const map = new Map<string, ChannelProviderType>()
   for (const result of results) {
@@ -166,7 +167,7 @@ export async function getProvidersForThreads(
     })
     .from(schema.Thread)
     .innerJoin(schema.Integration, eq(schema.Thread.integrationId, schema.Integration.id))
-    .where(eq(schema.Thread.id, threadIds[0])) // This needs inArray for multiple IDs
+    .where(inArray(schema.Thread.id, threadIds))
 
   const map = new Map<string, ChannelProviderType>()
   for (const result of results) {

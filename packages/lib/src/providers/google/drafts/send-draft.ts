@@ -65,7 +65,7 @@ export async function sendGmailDraft(input: SendGmailDraftInput): Promise<SendGm
 
     return {
       id: response.data.id,
-      threadId: response.data.threadId,
+      threadId: response.data.threadId ?? undefined,
     }
   } catch (error) {
     throw await handleGmailError(error, 'sendDraft', integrationId)
