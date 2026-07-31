@@ -11,6 +11,7 @@ import { EntityBreadcrumbSwitcher, type EntitySwitcherItem } from '~/components/
 import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { WorkflowFormDialog } from '../dialogs/workflow-form-dialog'
+import { useWorkflowStore } from '../store/workflow-store'
 
 /** A workflow row as returned by `workflow.list`. */
 type WorkflowRow = RouterOutputs['workflow']['list']['workflows'][number]
@@ -66,6 +67,10 @@ export function WorkflowBreadcrumbSwitcher({
   const { canAdminInstance } = useAccess()
   const [editing, setEditing] = useState<WorkflowRow | null>(null)
 
+  // Jumping to another workflow abandons unsaved canvas edits, so every exit the
+  // switcher owns — rows and prev/next alike — confirms first.
+  const isDirty = useWorkflowStore((state) => state.isDirty)
+
   const { data, isLoading } = api.workflow.list.useQuery(
     { limit: LIST_LIMIT },
     { staleTime: 30_000 }
@@ -102,6 +107,13 @@ export function WorkflowBreadcrumbSwitcher({
         items={items}
         activeId={activeWorkflowId}
         isLoading={isLoading}
+        nav={{
+          isDirty,
+          orphanLabel: 'Workflows',
+          confirmOptions: {
+            description: 'This workflow has unsaved changes. Leaving now will discard them.',
+          },
+        }}
         searchPlaceholder='Search workflows...'
         emptyText='No workflows'
         onSelect={(item) => router.push(item.href ?? '/app/workflows')}

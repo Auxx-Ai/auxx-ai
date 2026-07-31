@@ -8,8 +8,13 @@ export type {
   RelativeDatePreset,
 } from './date-time-picker'
 export { DateTimePicker, DEFAULT_DATE_PRESETS, Period, ViewType } from './date-time-picker'
-export type { EntityBreadcrumbSwitcherProps } from './entity-breadcrumb-switcher'
+export type {
+  EntityBreadcrumbNavOptions,
+  EntityBreadcrumbSwitcherProps,
+} from './entity-breadcrumb-switcher'
 export { EntityBreadcrumbSwitcher } from './entity-breadcrumb-switcher'
+export type { EntityNavButtonsProps } from './entity-nav-buttons'
+export { EntityNavButtons } from './entity-nav-buttons'
 export type { EntitySwitcherItem, EntitySwitcherListProps } from './entity-switcher-list'
 export { EntitySwitcherList } from './entity-switcher-list'
 export type {
@@ -65,3 +70,15 @@ export {
   ResourcePicker,
   ResourcePickerContent,
 } from './resource-picker'
+export type {
+  EntityListNav,
+  EntityNavConfirmOptions,
+  UseEntityListNavInput,
+} from './use-entity-list-nav'
+export { useEntityListNav } from './use-entity-list-nav'
+export type {
+  EntitySwitcherFavoriteConfig,
+  EntitySwitcherOrder,
+  EntitySwitcherSection,
+} from './use-entity-switcher-order'
+export { useEntitySwitcherOrder } from './use-entity-switcher-order'

@@ -1,8 +1,7 @@
 // apps/web/src/components/pickers/entity-switcher-list.tsx
 'use client'
 
-import type { FavoriteTargetIdsMap, FavoriteTargetType } from '@auxx/lib/favorites/client'
-import { favoriteTargetKey } from '@auxx/lib/favorites/client'
+import type { FavoriteTargetType } from '@auxx/lib/favorites/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -18,14 +17,12 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Loader2, Pencil, Plus, Star, Trash2 } from 'lucide-react'
 import type * as React from 'react'
 import { useMemo, useState } from 'react'
-import { useFavoritesStore } from '~/components/favorites/store/favorites-store'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { useConfirm } from '~/hooks/use-confirm'
-
-/** Group id used by the default Favorites/All partition. */
-const FAVORITES_GROUP_ID = '__favorites__'
-/** Group id used by the default Favorites/All partition. */
-const ALL_GROUP_ID = '__all__'
+import {
+  type EntitySwitcherFavoriteConfig,
+  useEntitySwitcherOrder,
+} from './use-entity-switcher-order'
 
 /**
  * One row in an {@link EntitySwitcherList}.
@@ -72,10 +69,7 @@ export interface EntitySwitcherListProps<T extends FavoriteTargetType = Favorite
   deleteConfirm?: (item: EntitySwitcherItem) => { title: string; description: string }
 
   /** Omit entirely for non-favoritable types (agents, sequences, connectors). */
-  favorite?: {
-    targetType: T
-    targetIds: (item: EntitySwitcherItem) => FavoriteTargetIdsMap[T]
-  }
+  favorite?: EntitySwitcherFavoriteConfig<T>
 
   /** Footer row. */
   onCreate?: () => void
@@ -150,71 +144,28 @@ export function EntitySwitcherList<T extends FavoriteTargetType = FavoriteTarget
 }: EntitySwitcherListProps<T>) {
   const [searchValue, setSearchValue] = useState('')
   const [confirm, ConfirmDialog] = useConfirm()
-  const favoritesById = useFavoritesStore((s) => s.byId)
+
+  // Display order — shared with the prev/next nav so `J` walks exactly what the
+  // eye sees. Grouping runs over the unfiltered items; search is applied below.
+  const { sections, isFavorited } = useEntitySwitcherOrder<T>({ items, groupBy, groups, favorite })
 
   // Client-side filter — the list is complete in one query, so there is nothing
   // to lie about. Ported from `multi-select-picker.tsx:186-190`.
-  const filteredItems = useMemo(() => {
-    if (!searchValue.trim()) return items
-    const search = searchValue.toLowerCase()
-    return items.filter((item) => item.label.toLowerCase().includes(search))
-  }, [items, searchValue])
+  const matchesSearch = useMemo(() => {
+    const search = searchValue.trim().toLowerCase()
+    if (!search) return () => true
+    return (item: EntitySwitcherItem) => item.label.toLowerCase().includes(search)
+  }, [searchValue])
 
-  // Every favorited target key the store holds. One pass, reused by every row —
-  // `useFavoriteForTarget` is a hook and can't be called per item.
-  const favoritedKeys = useMemo(() => {
-    const keys = new Set<string>()
-    for (const fav of Object.values(favoritesById)) {
-      if (fav.nodeType !== 'ITEM' || !fav.targetType || !fav.targetIds) continue
-      keys.add(
-        favoriteTargetKey(fav.targetType, fav.targetIds as FavoriteTargetIdsMap[FavoriteTargetType])
-      )
-    }
-    return keys
-  }, [favoritesById])
+  const filteredItems = useMemo(() => items.filter(matchesSearch), [items, matchesSearch])
 
-  // Favorites/All is the default partition for favoritable entities — a handful
-  // of pinned rows stay on top no matter how long the list gets. Costs no query:
-  // the favorites store is already hydrated client-side.
-  const effectiveGroupBy = useMemo(() => {
-    if (groupBy) return groupBy
-    if (!favorite) return undefined
-    return (item: EntitySwitcherItem) =>
-      favoritedKeys.has(favoriteTargetKey(favorite.targetType, favorite.targetIds(item)))
-        ? FAVORITES_GROUP_ID
-        : ALL_GROUP_ID
-  }, [groupBy, favorite, favoritedKeys])
-
-  const effectiveGroups = useMemo(() => {
-    if (groupBy) return groups
-    if (!favorite) return undefined
-    return [
-      { id: FAVORITES_GROUP_ID, heading: 'Favorites' },
-      { id: ALL_GROUP_ID, heading: 'All' },
-    ]
-  }, [groupBy, groups, favorite])
-
-  // Ordered, headed sections; `null` keeps the single ungrouped list. Group order
-  // follows `groups`, then any ids `groupBy` produces that `groups` omits
-  // (first-seen). Groups emptied by search are dropped.
-  // Ported from `multi-select-picker.tsx:196-212`.
+  /** Sections with the search applied; groups emptied by it are dropped. */
   const groupedItems = useMemo(() => {
-    if (!effectiveGroupBy) return null
-    const headingById = new Map((effectiveGroups ?? []).map((g) => [g.id, g.heading]))
-    const order: string[] = (effectiveGroups ?? []).map((g) => g.id)
-    const itemsById = new Map<string, EntitySwitcherItem[]>()
-    for (const item of filteredItems) {
-      const id = effectiveGroupBy(item)
-      if (!itemsById.has(id)) {
-        itemsById.set(id, [])
-        if (!headingById.has(id)) order.push(id)
-      }
-      itemsById.get(id)?.push(item)
-    }
-    return order
-      .filter((id) => itemsById.has(id))
-      .map((id) => ({ id, heading: headingById.get(id) ?? id, items: itemsById.get(id) ?? [] }))
-  }, [effectiveGroupBy, effectiveGroups, filteredItems])
+    if (!sections) return null
+    return sections
+      .map((section) => ({ ...section, items: section.items.filter(matchesSearch) }))
+      .filter((section) => section.items.length > 0)
+  }, [sections, matchesSearch])
 
   const handleDelete = async (item: EntitySwitcherItem) => {
     if (!onDelete) return
@@ -235,9 +186,6 @@ export function EntitySwitcherList<T extends FavoriteTargetType = FavoriteTarget
   const renderItem = (item: EntitySwitcherItem) => {
     const showEdit = Boolean(onEdit) && (canEdit?.(item) ?? true)
     const showDelete = Boolean(onDelete) && (canDelete?.(item) ?? true)
-    const isFavorited = favorite
-      ? favoritedKeys.has(favoriteTargetKey(favorite.targetType, favorite.targetIds(item)))
-      : false
 
     // The star lives in the SLIDE cluster, not the static trailing row. The
     // cluster is anchored to the row's right edge and appears on hover, so
@@ -245,7 +193,7 @@ export function EntitySwitcherList<T extends FavoriteTargetType = FavoriteTarget
     // summons the thing covering it. A favorited row still needs to read as
     // favorited at rest, so it also gets a plain glyph in `trailing`; the
     // cluster's opaque background hides it on hover, leaving one visible star.
-    const staticStar = isFavorited ? (
+    const staticStar = isFavorited(item) ? (
       <Star className='size-4 shrink-0 fill-amber-400 text-amber-500' aria-hidden />
     ) : null
 
