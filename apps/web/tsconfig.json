@@ -1,7 +1,6 @@
 {
   "extends": "@auxx/typescript-config/nextjs.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "incremental": true,
     "moduleResolution": "Bundler",
     "paths": {

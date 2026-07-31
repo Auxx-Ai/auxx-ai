@@ -7,6 +7,6 @@ export default defineConfig({
   target: 'es2022',
   platform: 'node',
   unbundle: true,
-  dts: true,
+  dts: false,
   tsconfig: 'tsconfig.build.json',
 })

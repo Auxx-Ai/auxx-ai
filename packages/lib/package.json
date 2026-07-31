@@ -1430,6 +1430,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "dotenv": "catalog:",
+    "oxc-parser": "^0.142.0",
     "tsdown": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

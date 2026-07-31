@@ -77,7 +77,7 @@ catalog:
   tsup: ^8.0.2
   tsx: ^4.20.5
   turndown: ^7.2.0
-  typescript: 5.9.2
+  typescript: 7.0.2
   uuid: ^11.0.5
   vite: ^6.3.5
   vite-tsconfig-paths: ^5.1.4
