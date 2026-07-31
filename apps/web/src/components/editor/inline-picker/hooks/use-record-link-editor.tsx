@@ -4,6 +4,7 @@
 
 import type { RecordId } from '@auxx/types/resource'
 import { cn } from '@auxx/ui/lib/utils'
+import type { AnyExtension } from '@tiptap/core'
 import type { Editor, JSONContent } from '@tiptap/react'
 import { useCallback } from 'react'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -22,7 +23,7 @@ interface UseRecordLinkEditorOptions {
   /** Enable editable mode (default: true) */
   editable?: boolean
   /** Additional TipTap extensions */
-  extensions?: unknown[]
+  extensions?: AnyExtension[]
   /** Custom editor class name */
   className?: string
 }

@@ -25,7 +25,6 @@ export {
 export { ThreadActionsProvider, ThreadDataProvider, useThreadActions } from './providers'
 // Stores
 export {
-  type ActorId,
   type ChannelProvider,
   type ContextPagination,
   createAssignedThreadsSelector,

@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/settings/dataset-settings.tsx
 'use client'
-import type { Dataset } from '@auxx/database/types'
+import type { DatasetEntity } from '@auxx/database/types'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Layers, Search, Settings, Zap } from 'lucide-react'
 import { useQueryState } from 'nuqs'
@@ -10,8 +10,8 @@ import { GeneralSettingsSection } from './sections/general-settings-section'
 import { SearchConfigurationSection } from './sections/search-configuration-section'
 
 interface DatasetSettingsProps {
-  dataset: Dataset
-  onUpdate?: (dataset: Dataset) => void
+  dataset: DatasetEntity
+  onUpdate?: (dataset: DatasetEntity) => void
   readOnly?: boolean
 }
 

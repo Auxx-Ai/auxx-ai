@@ -12,7 +12,7 @@ import {
   tryParsePlaceholderId,
 } from '@auxx/lib/placeholders/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
-import { isFieldPath, type ResourceFieldId } from '@auxx/types/field'
+import { isFieldPath, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -170,12 +170,15 @@ function fieldTypeFromNewId(newId: string): FallbackSupportedType | null {
   if (parsed.kind === 'user') {
     return parsed.slug === 'email' ? 'EMAIL' : 'TEXT'
   }
+  if (parsed.kind === 'visitor') {
+    return parsed.slug === 'email' ? 'EMAIL' : 'TEXT'
+  }
   // Field token — walk the path to the terminal field, look up its fieldType
   // in the resource store, and normalize via mapBaseTypeToFieldType for
   // system fields.
-  const ids: ResourceFieldId[] = isFieldPath(parsed.fieldRef)
-    ? [...parsed.fieldRef]
-    : [parsed.fieldRef]
+  const ref = parsed.fieldRef
+  // A bare `FieldId` carries no entity prefix, so it can't key `fieldMap`.
+  const ids: ResourceFieldId[] = isFieldPath(ref) ? [...ref] : isResourceFieldId(ref) ? [ref] : []
   const terminalId = ids[ids.length - 1]
   if (!terminalId) return null
   const field = useResourceStore.getState().fieldMap[terminalId]

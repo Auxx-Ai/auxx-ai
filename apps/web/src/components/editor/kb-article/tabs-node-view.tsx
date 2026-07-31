@@ -58,8 +58,9 @@ export function TabsNodeView({ node, editor, getPos }: NodeViewProps) {
   // Fall back to first panel if active was deleted.
   useEffect(() => {
     if (panels.length === 0) return
-    if (!panels.find((p) => p.id === activeId)) {
-      setActiveId(panels[0].id)
+    const first = panels[0]
+    if (first && !panels.find((p) => p.id === activeId)) {
+      setActiveId(first.id)
     }
   }, [panels, activeId])
 
@@ -227,12 +228,15 @@ function SortableTabHeader({
         ref={setNodeRef}
         style={style}
         className={styles.tabButton}
-        role='tab'
         aria-selected={isActive}
         data-dragging={isDragging || undefined}
         data-active={isActive || undefined}
         {...attributes}
         {...listeners}
+        // After the spread: dnd-kit's `attributes` carries `role='button'`,
+        // which silently won this slot when the role was declared above it —
+        // leaving `aria-selected` on a non-tab role.
+        role='tab'
         onClick={(e) => {
           if (e.defaultPrevented) return
           // Click an already-active tab to open the edit popover; otherwise switch.

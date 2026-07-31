@@ -194,7 +194,8 @@ export function KBArticleEditor({
       // Strip the stored link mark so the next typed character isn't linked.
       chain
         .command(({ tr }) => {
-          tr.removeStoredMark(editor.schema.marks.link)
+          const linkMark = editor.schema.marks.link
+          if (linkMark) tr.removeStoredMark(linkMark)
           return true
         })
         .run()
@@ -228,6 +229,12 @@ export function KBArticleEditor({
     setLinkMenu(null)
   }
 
+  // React passes `--*` keys straight through to the inline style attribute,
+  // but `CSSProperties` has no index signature for them.
+  const gutterStyle: CSSProperties & Record<`--${string}`, string> = hideGutter
+    ? { '--editor-gutter-min-width': '0px', '--editor-gutter-pull-left': '0' }
+    : { '--editor-gutter-min-width': `calc(${gutterCharWidth}ch + 1rem)` }
+
   return (
     <KBEditorContextProvider knowledgeBaseId={knowledgeBaseId}>
       <div
@@ -235,11 +242,7 @@ export function KBArticleEditor({
         className={styles.editorWrapper}
         onMouseDown={handleWrapperMouseDown}
         onContextMenu={handleContextMenu}
-        style={
-          (hideGutter
-            ? { '--editor-gutter-min-width': '0px', '--editor-gutter-pull-left': '0' }
-            : { '--editor-gutter-min-width': `calc(${gutterCharWidth}ch + 1rem)` }) as CSSProperties
-        }>
+        style={gutterStyle}>
         <div className={styles.editorContainer}>
           <EditorContent editor={editor} className={styles.editorContent} />
         </div>

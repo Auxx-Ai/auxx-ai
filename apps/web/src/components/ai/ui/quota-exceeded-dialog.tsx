@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Progress } from '@auxx/ui/components/progress'
-import { formatDate } from '@auxx/utils/date'
+import { formatDate } from 'date-fns'
 import { AlertTriangle, Calendar, CreditCard, Key } from 'lucide-react'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 

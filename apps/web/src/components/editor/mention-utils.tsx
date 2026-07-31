@@ -40,7 +40,7 @@ export const fetchMentionUsers = async (query: string): Promise<MentionItem[]> =
   return mockUsers.filter(
     (user) =>
       user.name.toLowerCase().includes(query.toLowerCase()) ||
-      user.email.toLowerCase().includes(query.toLowerCase()) ||
+      (user.email?.toLowerCase().includes(query.toLowerCase()) ?? false) ||
       user.role?.toLowerCase().includes(query.toLowerCase())
   )
 }

@@ -3,6 +3,7 @@
 'use client'
 
 import type { RecordId } from '@auxx/lib/resources/client'
+import type { AnyExtension } from '@tiptap/core'
 import Placeholder from '@tiptap/extension-placeholder'
 import { type Editor, type JSONContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -15,7 +16,7 @@ interface UseReferencePickerEditorOptions {
   onUpdate?: (html: string, editor: Editor) => void
   onJsonUpdate?: (json: JSONContent) => void
   editable?: boolean
-  extensions?: unknown[]
+  extensions?: AnyExtension[]
   className?: string
   /** Mount the `@`-mention reference picker. Default: true. */
   enableReferencePicker?: boolean
@@ -107,7 +108,7 @@ export function useReferencePickerEditor(options: UseReferencePickerEditorOption
       }),
       ...referencePickerExtensions,
       ...(placeholder ? [Placeholder.configure({ placeholder, showOnlyWhenEditable: true })] : []),
-      ...(extensions as []),
+      ...extensions,
     ],
     content: initialContent,
     editable,

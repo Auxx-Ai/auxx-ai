@@ -75,8 +75,8 @@ function parseAttrs(input: string, tag: string): string | null {
   while ((match = re.exec(input)) !== null) {
     if (input.slice(lastIndex, match.index).trim() !== '') return null
     lastIndex = re.lastIndex
-    const name = match[1].toLowerCase()
-    const value = match[2]
+    const name = (match[1] ?? '').toLowerCase()
+    const value = match[2] ?? ''
     if (!allowed.has(name)) return null
     if (name === 'class' && !SAFE_CLASS.test(value)) return null
     if (name === 'style' && !SAFE_STYLE.test(value)) return null

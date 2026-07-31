@@ -1046,6 +1046,9 @@ importers:
       '@tanstack/react-virtual':
         specifier: ^3.13.2
         version: 3.13.19(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@tanstack/table-core':
+        specifier: ^8.21.3
+        version: 8.21.3
       '@tiptap/core':
         specifier: 2.11.9
         version: 2.11.9(@tiptap/pm@2.11.9)
@@ -1229,6 +1232,9 @@ importers:
       posthog-js:
         specifier: 'catalog:'
         version: 1.369.0
+      prosemirror-model:
+        specifier: ^1.25.4
+        version: 1.25.4
       prosemirror-state:
         specifier: ^1.4.3
         version: 1.4.4

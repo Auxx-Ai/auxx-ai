@@ -56,9 +56,9 @@ export const Panel = Node.create({
     // this, only the inner NodeViewWrapper carries `data-panel-id` and the
     // outer wrapper still claims box space when its content is hidden.
     return ReactNodeViewRenderer(PanelNodeView, {
-      attrs: ({ node }) => {
-        const id = (node.attrs as { id?: string }).id
-        return id ? { 'data-panel-id': id } : {}
+      attrs: ({ node }): Record<string, string> => {
+        const id = node.attrs.id
+        return typeof id === 'string' && id ? { 'data-panel-id': id } : {}
       },
     })
   },

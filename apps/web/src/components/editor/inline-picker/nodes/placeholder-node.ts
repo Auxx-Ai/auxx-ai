@@ -40,13 +40,25 @@ const placeholderNodeConfig: InlineNodeConfig = {
     fallback: {
       default: null,
       dataAttr: 'data-fallback',
-      serialize: encodeFallback,
+      // The node attribute is `unknown` at the framework boundary (it comes
+      // straight off `node.attrs`), so re-validate through the decoder rather
+      // than handing raw attr state to `encodeFallback`. A payload the codec
+      // rejects serializes to '' instead of round-tripping malformed JSON
+      // back into the document HTML.
+      serialize: (value) => {
+        const payload = decodeFallback(JSON.stringify(value))
+        return payload ? encodeFallback(payload) : ''
+      },
       parse: decodeFallback,
     },
     format: {
       default: null,
       dataAttr: 'data-format',
-      serialize: encodePlaceholderFormat,
+      // Same boundary revalidation as `fallback` above.
+      serialize: (value) => {
+        const payload = decodePlaceholderFormat(JSON.stringify(value))
+        return payload ? encodePlaceholderFormat(payload) : ''
+      },
       parse: decodePlaceholderFormat,
     },
   },

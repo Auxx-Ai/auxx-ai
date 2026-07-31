@@ -9,8 +9,13 @@ export const deleteTableWhenAllCellsSelected: KeyboardShortcutCommand = ({ edito
     return false
   }
 
+  const firstRange = selection.ranges[0]
+  if (!firstRange) {
+    return false
+  }
+
   let cellCount = 0
-  const table = findParentNodeClosestToPos(selection.ranges[0].$from, (node) => {
+  const table = findParentNodeClosestToPos(firstRange.$from, (node) => {
     return node.type.name === 'table'
   })
 

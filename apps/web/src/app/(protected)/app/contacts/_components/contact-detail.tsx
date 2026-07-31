@@ -25,6 +25,7 @@ import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import React, { useState } from 'react'
 import { getCustomerStatusVariant } from '~/components/contacts/contact-status'
+import { ContactTicketsTab } from '~/components/drawers/tabs/contact-tickets-tab'
 import EntityFields from '~/components/fields/entity-fields'
 import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
 import { toRecordId } from '~/components/resources'
@@ -34,7 +35,6 @@ import { api } from '~/trpc/react'
 // import { toast } from '@auxx/ui/components/toast'
 import CustomerSourcesCard from './customer-sources-card'
 import CustomerSpamDialog from './customer-spam-dialog'
-import CustomerTicketsTab from './customer-tickets-tab'
 import { useContactMutations } from './use-contact-mutations'
 
 // Memoized EntityFields for performance
@@ -209,7 +209,7 @@ export function ContactDetail({ id }: { id: string }) {
           </TabsList>
 
           <TabsContent value='tickets' className='flex flex-col flex-1 min-h-0 '>
-            <CustomerTicketsTab customer={customer} contactId={id} />
+            <ContactTicketsTab entityInstanceId={id} recordId={recordId} />
           </TabsContent>
 
           <TabsContent value='timeline' className='flex flex-col flex-1 min-h-0'>

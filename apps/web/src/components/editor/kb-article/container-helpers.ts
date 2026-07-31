@@ -92,6 +92,7 @@ export function reorderPanels(
   if (toIndex < 0 || toIndex >= children.length) return
 
   const [moved] = children.splice(fromIndex, 1)
+  if (!moved) return
   children.splice(toIndex, 0, moved)
 
   // Rebuild the container with the same attrs and reordered children.

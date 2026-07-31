@@ -145,8 +145,8 @@ function attachListeners(): void {
       if (!hover) {
         const first = rows[0]
         const last = rows[rows.length - 1]
-        if (y < first.rect.top) hover = first
-        else if (y > last.rect.bottom) hover = last
+        if (first && y < first.rect.top) hover = first
+        else if (last && y > last.rect.bottom) hover = last
       }
       if (!hover || hover.index === drag.index) return setDrop(null)
       const isAfter = y > hover.rect.top + hover.rect.height / 2
@@ -168,8 +168,8 @@ function attachListeners(): void {
     if (!hover) {
       const first = cols[0]
       const last = cols[cols.length - 1]
-      if (x < first.rect.left) hover = first
-      else if (x > last.rect.right) hover = last
+      if (first && x < first.rect.left) hover = first
+      else if (last && x > last.rect.right) hover = last
     }
     if (!hover || hover.index === drag.index) return setDrop(null)
     const isAfter = x > hover.rect.left + hover.rect.width / 2

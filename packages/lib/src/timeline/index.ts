@@ -1,6 +1,5 @@
 // packages/lib/src/timeline/index.ts
 
-export { ContactTimelineTracker } from './contact-timeline-tracker'
 export {
   COMMUNICATION_TIMELINE_EVENT_TYPES,
   ContactEventType,

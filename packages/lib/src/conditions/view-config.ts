@@ -16,11 +16,18 @@ export const currencyFormattingSchema = z.object({
   currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']).optional(),
 })
 
-/** Date formatting schema */
+/**
+ * Date formatting schema.
+ *
+ * `format` mirrors `DateFieldOptions['format']` — including `'time-only'`, which
+ * TIME columns use. `timeFormat` is the column-level override for those; without
+ * it the formatting dialog's 12h/24h control had nowhere to persist to.
+ */
 export const dateFormattingSchema = z.object({
   type: z.literal('date'),
-  format: z.enum(['short', 'medium', 'long', 'relative', 'iso']).optional(),
+  format: z.enum(['short', 'medium', 'long', 'relative', 'iso', 'time-only']).optional(),
   includeTime: z.boolean().optional(),
+  timeFormat: z.enum(['12h', '24h']).optional(),
 })
 
 /** Number formatting schema */

@@ -2,8 +2,8 @@
 // Variable node for rendering workflow variables as styled tags in Tiptap editor
 
 import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core'
-import { Fragment, Slice } from '@tiptap/pm/model'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Fragment, type Node as PMNode, Slice } from '@tiptap/pm/model'
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import VariableNodeView from './variable-node-view'
 
@@ -81,14 +81,14 @@ export const VariableNode = Node.create({
       // Delete selected variable with Delete or Backspace
       Delete: () => {
         const { selection } = this.editor.state
-        if (selection.node && selection.node.type.name === this.name) {
+        if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
           return this.editor.commands.deleteSelection()
         }
         return false
       },
       Backspace: () => {
         const { selection } = this.editor.state
-        if (selection.node && selection.node.type.name === this.name) {
+        if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
           return this.editor.commands.deleteSelection()
         }
         return false
@@ -108,14 +108,20 @@ export const VariableNode = Node.create({
             const tagPattern = /\{\{([^}]+)\}\}/g
             if (!tagPattern.test(text)) return false
 
+            const schema = view.state.schema
+            const variableType = schema.nodes['variable-node']
+            const paragraphType = schema.nodes.paragraph
+            // Without both node types we can't build a replacement at all —
+            // fall through to the default handler rather than swallowing the
+            // paste and then throwing on `undefined.create`.
+            if (!variableType || !paragraphType) return false
+
             // Prevent default paste and handle custom parsing
             event.preventDefault()
 
-            const schema = view.state.schema
-
             // Build inline content for a single line, parsing {{varId}} patterns
-            function buildLineContent(line: string) {
-              const nodes: any[] = []
+            const buildLineContent = (line: string): PMNode[] => {
+              const nodes: PMNode[] = []
               const pattern = /\{\{([^}]+)\}\}/g
               let lastIdx = 0
               let m
@@ -124,7 +130,7 @@ export const VariableNode = Node.create({
                 if (m.index > lastIdx) {
                   nodes.push(schema.text(line.slice(lastIdx, m.index)))
                 }
-                nodes.push(schema.nodes['variable-node'].create({ variableId: m[1] }))
+                nodes.push(variableType.create({ variableId: m[1] }))
                 lastIdx = m.index + m[0].length
               }
               if (lastIdx < line.length) {
@@ -136,7 +142,7 @@ export const VariableNode = Node.create({
             // Split on \n\n (ProseMirror paragraph separator) to get paragraphs
             const paragraphs = text
               .split('\n\n')
-              .map((para) => schema.nodes.paragraph.create(null, buildLineContent(para)))
+              .map((para) => paragraphType.create(null, buildLineContent(para)))
 
             const { tr } = view.state
             const { from, to } = view.state.selection

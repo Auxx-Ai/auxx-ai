@@ -16,7 +16,7 @@ import type { ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
-import { isFieldPath } from '@auxx/types/field'
+import { isFieldPath, isResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useResourceProperty } from '~/components/resources'
@@ -129,7 +129,11 @@ export function usePlaceholderLabel(id: string): PlaceholderLabel {
 
   const ids: ResourceFieldId[] = useMemo(() => {
     if (!parsed || parsed.kind !== 'field') return []
-    return isFieldPath(parsed.fieldRef) ? [...parsed.fieldRef] : [parsed.fieldRef]
+    const ref = parsed.fieldRef
+    if (isFieldPath(ref)) return [...ref]
+    // A bare `FieldId` carries no entity prefix, so it can't key the
+    // resource store's `fieldMap` (which is ResourceFieldId-keyed).
+    return isResourceFieldId(ref) ? [ref] : []
   }, [parsed])
 
   const rootLabel = useResourceStore((state) => {

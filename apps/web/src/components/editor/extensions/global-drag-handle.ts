@@ -14,7 +14,6 @@ function getPmView() {
 
 export function serializeForClipboard(view: EditorView, slice: Slice) {
   // Newer Tiptap/ProseMirror
-  // @ts-expect-error
   if (view && typeof view.serializeForClipboard === 'function') {
     return view.serializeForClipboard(slice)
   }
@@ -355,7 +354,7 @@ export function DragHandlePlugin(options: GlobalDragHandleOptions & { pluginKey:
   })
 }
 
-const GlobalDragHandle = Extension.create({
+const GlobalDragHandle = Extension.create<GlobalDragHandleOptions>({
   name: 'globalDragHandle',
 
   addOptions() {

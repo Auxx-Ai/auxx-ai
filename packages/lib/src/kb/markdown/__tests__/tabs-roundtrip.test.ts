@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest'
 import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
-import type { DocJSON, TabsJSON } from '../types'
+import { blockAt, panelAt, tabsAt } from '../test-helpers'
+import type { DocJSON } from '../types'
 
 const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
 
@@ -63,30 +64,29 @@ describe('tabs markdown serialization', () => {
     const original = makeTabsDoc()
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
-    const tabs = reparsed.content[0] as TabsJSON
-    expect(tabs.type).toBe('tabs')
+    const tabs = tabsAt(reparsed.content)
     expect(tabs.content).toHaveLength(2)
-    expect(tabs.content[0].attrs.label).toBe('JavaScript')
-    expect(tabs.content[0].attrs.iconId).toBe('javascript')
-    expect(tabs.content[1].attrs.label).toBe('TypeScript')
+    expect(panelAt(tabs, 0).attrs.label).toBe('JavaScript')
+    expect(panelAt(tabs, 0).attrs.iconId).toBe('javascript')
+    expect(panelAt(tabs, 1).attrs.label).toBe('TypeScript')
 
     // First panel: text + codeBlock
-    const firstPanelBlocks = tabs.content[0].content
+    const firstPanelBlocks = panelAt(tabs, 0).content
     expect(firstPanelBlocks).toHaveLength(2)
-    expect(firstPanelBlocks[0].attrs.blockType).toBe('text')
-    expect(firstPanelBlocks[1].attrs.blockType).toBe('codeBlock')
-    expect(firstPanelBlocks[1].attrs.codeLanguage).toBe('js')
+    expect(blockAt(firstPanelBlocks, 0).attrs.blockType).toBe('text')
+    expect(blockAt(firstPanelBlocks, 1).attrs.blockType).toBe('codeBlock')
+    expect(blockAt(firstPanelBlocks, 1).attrs.codeLanguage).toBe('js')
   })
 
   it('regenerates panel ids on import (Q6c)', () => {
     const original = makeTabsDoc()
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
-    const tabs = reparsed.content[0] as TabsJSON
-    expect(tabs.content[0].attrs.id).not.toBe('p1')
-    expect(tabs.content[1].attrs.id).not.toBe('p2')
-    expect(tabs.content[0].attrs.id).toBeTruthy()
-    expect(tabs.content[1].attrs.id).toBeTruthy()
+    const tabs = tabsAt(reparsed.content)
+    expect(panelAt(tabs, 0).attrs.id).not.toBe('p1')
+    expect(panelAt(tabs, 1).attrs.id).not.toBe('p2')
+    expect(panelAt(tabs, 0).attrs.id).toBeTruthy()
+    expect(panelAt(tabs, 1).attrs.id).toBeTruthy()
   })
 
   it('renders nothing for an empty tabs container', () => {

@@ -4,8 +4,9 @@ import type { BatchUploadResult, EntityType } from '@auxx/lib/files/types'
 import { generateId } from '@auxx/utils/generateId'
 import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import type { FileState } from '../stores'
 import { cleanupUploader, useUploadStore } from '../stores'
-import type { EntityUploadConfig, FileState } from '../types'
+import type { EntityUploadConfig } from '../types'
 
 export interface UseFileUploadOptions {
   entityType: EntityType

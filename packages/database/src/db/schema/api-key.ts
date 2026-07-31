@@ -53,3 +53,5 @@ export const ApiKey = pgTable(
     ),
   ]
 )
+
+export type ApiKeyEntity = typeof ApiKey.$inferSelect

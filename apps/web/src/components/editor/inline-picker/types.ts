@@ -1,5 +1,6 @@
 // apps/web/src/components/editor/inline-picker/types.ts
 
+import type { AnyExtension } from '@tiptap/core'
 import type { Editor, JSONContent } from '@tiptap/react'
 
 /**
@@ -56,8 +57,12 @@ export interface PastePatternConfig {
 export interface InputRuleConfig {
   /** Regex pattern to match (must end with $) */
   find: RegExp
-  /** Extract id from match */
-  getId: (match: RegExpExecArray) => string
+  /**
+   * Extract id from match. Typed `RegExpMatchArray` — not `RegExpExecArray` —
+   * because TipTap's `nodeInputRule` hands `getAttributes` an
+   * `ExtendedRegExpMatchArray`, which carries no guaranteed `index`/`input`.
+   */
+  getId: (match: RegExpMatchArray) => string
 }
 
 /**
@@ -136,7 +141,7 @@ export interface UseInlinePickerOptions {
   /** Optional input rules for auto-conversion */
   inputRules?: InputRuleConfig[]
   /** Additional TipTap extensions */
-  extensions?: unknown[]
+  extensions?: AnyExtension[]
   /** Callback when editor content changes */
   onUpdate?: (editor: Editor) => void
   /** Callback when JSON content changes */

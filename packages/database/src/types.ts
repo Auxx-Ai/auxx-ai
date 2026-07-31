@@ -179,6 +179,7 @@ export type EntityType = (typeof Enums.EntityTypeValues)[number] | null
 
 export type StandardType = (typeof Enums.StandardTypeValues)[number] | null
 
+export type { ApiKeyEntity } from './db/schema/api-key'
 export type { ApprovalRequestEntity } from './db/schema/approval-request'
 export type { AttachmentEntity } from './db/schema/attachment'
 export type { AuditLogEntity } from './db/schema/audit-log'

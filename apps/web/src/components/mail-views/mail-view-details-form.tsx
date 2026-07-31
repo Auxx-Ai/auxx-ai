@@ -12,7 +12,7 @@ import {
 import { Input } from '@auxx/ui/components/input'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { useFormContext } from 'react-hook-form'
-import type { MailViewFormValues } from './mail-view-dialog'
+import type { MailViewFormValues } from './mail-view-form'
 
 export function MailViewDetailsForm() {
   const { control } = useFormContext<MailViewFormValues>()

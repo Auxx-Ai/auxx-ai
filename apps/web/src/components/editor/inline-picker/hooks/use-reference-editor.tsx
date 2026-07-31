@@ -5,6 +5,7 @@
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import { cn } from '@auxx/ui/lib/utils'
+import type { AnyExtension } from '@tiptap/core'
 import type { Editor, JSONContent } from '@tiptap/react'
 import { useCallback } from 'react'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
@@ -18,7 +19,7 @@ interface UseReferenceEditorOptions {
   onUpdate?: (html: string, editor: Editor) => void
   onJsonUpdate?: (json: JSONContent) => void
   editable?: boolean
-  extensions?: unknown[]
+  extensions?: AnyExtension[]
   className?: string
 }
 

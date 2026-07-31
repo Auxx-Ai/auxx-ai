@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/segments/use-segments.ts
 
-import type { DocumentSegment } from '@auxx/database/types'
+import type { DocumentSegmentEntity } from '@auxx/database/types'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
@@ -12,8 +12,8 @@ interface UseSegmentsOptions {
 }
 interface UseSegmentsReturn {
   // Data
-  segments: DocumentSegment[]
-  filteredSegments: DocumentSegment[]
+  segments: DocumentSegmentEntity[]
+  filteredSegments: DocumentSegmentEntity[]
   totalCount: number
   loadedCount: number
   // Selection
@@ -53,7 +53,7 @@ export function useSegments(
     enableVirtualization = true,
   } = options
   // State
-  const [allSegments, setAllSegments] = useState<DocumentSegment[]>([])
+  const [allSegments, setAllSegments] = useState<DocumentSegmentEntity[]>([])
   const [selectedSegments, setSelectedSegments] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery)
   const [isLoadingAll, setIsLoadingAll] = useState(false)

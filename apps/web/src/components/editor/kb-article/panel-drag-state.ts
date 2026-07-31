@@ -136,8 +136,8 @@ function attachListeners(): void {
     if (!hover) {
       const first = items[0]
       const last = items[items.length - 1]
-      if (y < first.rect.top) hover = first
-      else if (y > last.rect.bottom) hover = last
+      if (first && y < first.rect.top) hover = first
+      else if (last && y > last.rect.bottom) hover = last
     }
 
     if (!hover || hover.id === drag.panelId) {

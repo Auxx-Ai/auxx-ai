@@ -186,7 +186,7 @@ function expandReferencesInInline(inline: InlineJSON[], pool: string[]): InlineJ
       if (match.index > lastIndex) {
         out.push(makeText(node.text.slice(lastIndex, match.index), marks))
       }
-      const idx = Number.parseInt(match[1], 10)
+      const idx = Number.parseInt(match[1] ?? '', 10)
       const id = pool[idx]
       if (id) out.push({ type: 'reference', attrs: { id } })
       lastIndex = match.index + match[0].length
@@ -225,11 +225,11 @@ export function parseFrontmatter(markdown: string): {
   if (!m) return { body: markdown ?? '', fields: {} }
   const body = (markdown ?? '').slice(m[0].length)
   const fields: FrontmatterFields = {}
-  for (const line of m[1].split(/\r?\n/)) {
+  for (const line of (m[1] ?? '').split(/\r?\n/)) {
     const kv = line.match(/^([a-zA-Z][\w-]*)\s*:\s*(.*)$/)
     if (!kv) continue
-    const key = kv[1].toLowerCase()
-    const value = trimYamlValue(kv[2])
+    const key = (kv[1] ?? '').toLowerCase()
+    const value = trimYamlValue(kv[2] ?? '')
     if (key === 'title') fields.title = value
     else if (key === 'slug') fields.slug = value
     else if (key === 'description') fields.description = value
@@ -429,9 +429,9 @@ function walkTable(node: MdastNode, ctx: ParseCtx): void {
   const mdastRows = (node.children ?? []).filter((c) => c.type === 'tableRow')
   if (mdastRows.length === 0) return
   const rows: TableRowJSON[] = []
-  for (let i = 0; i < mdastRows.length; i++) {
+  for (const [i, mdastRow] of mdastRows.entries()) {
     const isHeader = i === 0
-    const cellsInline = (mdastRows[i].children ?? []).filter((c) => c.type === 'tableCell')
+    const cellsInline = (mdastRow.children ?? []).filter((c) => c.type === 'tableCell')
     const cells: TableCellJSON[] = []
     for (const cell of cellsInline) {
       const inline = inlineFrom(cell.children)
@@ -467,7 +467,7 @@ function inlineFrom(children: MdastNode[] | undefined): InlineJSON[] {
         continue
       }
       if (/^<\/u>$/i.test(value)) {
-        const idx = htmlMarks.findLastIndex((m) => m.type === 'underline')
+        const idx = htmlMarks.map((m) => m.type).lastIndexOf('underline')
         if (idx >= 0) htmlMarks.splice(idx, 1)
         continue
       }
@@ -531,7 +531,7 @@ function walkInline(node: MdastNode, marks: MarkJSON[], out: InlineJSON[]): void
       const value = node.value ?? ''
       const m = value.match(/^<u>(.*)<\/u>$/i)
       if (m) {
-        out.push(makeText(m[1], addMark(marks, { type: 'underline' })))
+        out.push(makeText(m[1] ?? '', addMark(marks, { type: 'underline' })))
         return
       }
       // Otherwise drop tags, keep text.
@@ -631,9 +631,11 @@ function sameMarks(a: MarkJSON[] | undefined, b: MarkJSON[] | undefined) {
   if (!a && !b) return true
   if (!a || !b) return a?.length === 0 && b == null ? true : (a == null && b?.length === 0) || false
   if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].type !== b[i].type) return false
-    if (!sameAttrs(a[i].attrs, b[i].attrs)) return false
+  for (const [i, markA] of a.entries()) {
+    const markB = b[i]
+    if (!markB) return false
+    if (markA.type !== markB.type) return false
+    if (!sameAttrs(markA.attrs, markB.attrs)) return false
   }
   return true
 }
@@ -654,6 +656,7 @@ function paragraphAsEmbed(children: MdastNode[] | undefined): Partial<BlockAttrs
   if (!children || children.length === 0) return null
   if (children.length !== 1) return null
   const only = children[0]
+  if (!only) return null
   // Bare URL on its own line (autolink → link node, plain link → also link).
   if (only.type === 'link' && typeof only.url === 'string') {
     const provider = sniffProvider(only.url)
@@ -679,14 +682,14 @@ function paragraphAsImage(children: MdastNode[] | undefined): Partial<BlockAttrs
   if (next?.type === 'text' && typeof next.value === 'string') {
     const m = next.value.match(IMAGE_ATTR_TRAILER_RE)
     if (m) {
-      Object.assign(result, parseImageTrailer(m[1]))
+      Object.assign(result, parseImageTrailer(m[1] ?? ''))
       const remainder = next.value.slice(m[0].length).trim()
       if (remainder.length > 0) return null // image + extra text → not just an image
     }
   }
   // Reject if there's any non-trailer content.
-  for (let i = 1; i < children.length; i++) {
-    const c = children[i]
+  for (const [i, c] of children.entries()) {
+    if (i === 0) continue
     if (i === 1 && c.type === 'text' && typeof c.value === 'string') {
       const stripped = c.value.replace(IMAGE_ATTR_TRAILER_RE, '').trim()
       if (stripped.length > 0) return null
@@ -702,8 +705,8 @@ function parseImageTrailer(body: string): Partial<BlockAttrs> {
   for (const part of body.split(/\s+/)) {
     const kv = part.match(/^([a-z]+)=(.+)$/i)
     if (!kv) continue
-    const key = kv[1].toLowerCase()
-    const value = stripQuotes(kv[2])
+    const key = (kv[1] ?? '').toLowerCase()
+    const value = stripQuotes(kv[2] ?? '')
     if (key === 'width') {
       const n = Number.parseInt(value, 10)
       if (Number.isFinite(n) && n > 0) out.imageWidth = n
@@ -897,19 +900,19 @@ function tryParseTableHtml(raw: string): TableJSON | null {
   const rows: TableRowJSON[] = []
   const headInnerMatch = value.match(/<thead(?:\s[^>]*)?>([\s\S]*?)<\/thead>/i)
   const bodyInnerMatch = value.match(/<tbody(?:\s[^>]*)?>([\s\S]*?)<\/tbody>/i)
-  const inThead = headInnerMatch ? headInnerMatch[1] : ''
-  const inTbody = bodyInnerMatch
-    ? bodyInnerMatch[1]
-    : // No explicit thead/tbody — strip the outer <table> tags and treat the
-      // remainder as body rows.
-      value.replace(TABLE_OPEN_RE, '').replace(TABLE_CLOSE_RE, '')
+  const inThead = headInnerMatch?.[1] ?? ''
+  const inTbody =
+    bodyInnerMatch?.[1] ??
+    // No explicit thead/tbody — strip the outer <table> tags and treat the
+    // remainder as body rows.
+    value.replace(TABLE_OPEN_RE, '').replace(TABLE_CLOSE_RE, '')
 
   for (const headRowMatch of inThead.matchAll(ROW_RE)) {
-    const row = parseTableRowHtml(headRowMatch[1], 'tableHeader')
+    const row = parseTableRowHtml(headRowMatch[1] ?? '', 'tableHeader')
     if (row) rows.push(row)
   }
   for (const bodyRowMatch of inTbody.matchAll(ROW_RE)) {
-    const row = parseTableRowHtml(bodyRowMatch[1], 'tableCell')
+    const row = parseTableRowHtml(bodyRowMatch[1] ?? '', 'tableCell')
     if (row) rows.push(row)
   }
   if (rows.length === 0) return null
@@ -922,7 +925,7 @@ function parseTableRowHtml(
 ): TableRowJSON | null {
   const cells: TableCellJSON[] = []
   for (const cellMatch of rowInnerHtml.matchAll(CELL_RE)) {
-    const tagLower = cellMatch[1].toLowerCase()
+    const tagLower = (cellMatch[1] ?? '').toLowerCase()
     const attrsRaw = cellMatch[2] ?? ''
     const inner = cellMatch[3] ?? ''
     const cellType: 'tableCell' | 'tableHeader' =
@@ -930,8 +933,8 @@ function parseTableRowHtml(
 
     const attrs: TableCellJSON['attrs'] = {}
     for (const attrMatch of attrsRaw.matchAll(ATTR_RE)) {
-      const name = attrMatch[1].toLowerCase()
-      const valueStr = attrMatch[2]
+      const name = (attrMatch[1] ?? '').toLowerCase()
+      const valueStr = attrMatch[2] ?? ''
       if (name === 'colspan') {
         const n = Number.parseInt(valueStr, 10)
         if (n > 1) attrs.colspan = n
@@ -966,7 +969,7 @@ function tryParseDetailsHtml(raw: string): PanelJSON | null {
   // Strip outer <details>...</details>.
   const inner = value.replace(DETAILS_OPEN_RE, '').replace(DETAILS_CLOSE_RE, '').trim()
   const summaryMatch = inner.match(SUMMARY_RE)
-  const label = summaryMatch ? summaryMatch[1].replace(/<[^>]+>/g, '').trim() : 'Details'
+  const label = summaryMatch ? (summaryMatch[1] ?? '').replace(/<[^>]+>/g, '').trim() : 'Details'
   const body = inner.replace(SUMMARY_RE, '').trim()
   // Re-parse the body as markdown so embedded markdown lists / paragraphs
   // produce real blocks.

@@ -311,7 +311,10 @@ function selectionIsInsideTableCell(editor: Editor): boolean {
   return false
 }
 
-interface SlashCommandNavItem {
+// A type alias, not an interface: `NavigationItem`'s `[key: string]: unknown`
+// constraint is only satisfied by types with an implicit index signature, which
+// interfaces don't get.
+type SlashCommandNavItem = {
   id: string
   label: string
   type: 'snippets' | 'folder'
@@ -495,7 +498,8 @@ function ArticleLinkMode({
               })
               // Strip the stored link mark so the next typed character isn't linked.
               .command(({ tr }) => {
-                tr.removeStoredMark(editor.schema.marks.link)
+                const linkMark = editor.schema.marks.link
+                if (linkMark) tr.removeStoredMark(linkMark)
                 return true
               })
               .run()

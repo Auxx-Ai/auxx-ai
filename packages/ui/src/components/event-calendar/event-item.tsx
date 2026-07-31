@@ -3,7 +3,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import type { DraggableAttributes, SyntheticListenerMap } from '@dnd-kit/core'
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import { differenceInMinutes } from 'date-fns'
 import { useMemo } from 'react'
 import type { CalendarView, EventCalendarItem, RenderEvent } from './types'
@@ -27,7 +27,7 @@ interface EventWrapperProps {
   onClick?: (e: React.MouseEvent) => void
   className?: string
   children: React.ReactNode
-  dndListeners?: SyntheticListenerMap
+  dndListeners?: DraggableSyntheticListeners
   dndAttributes?: DraggableAttributes
   onMouseDown?: (e: React.MouseEvent) => void
   onTouchStart?: (e: React.TouchEvent) => void
@@ -90,7 +90,7 @@ interface EventItemProps<T extends EventCalendarItem = EventCalendarItem> {
   children?: React.ReactNode
   className?: string
   renderEvent?: RenderEvent<T>
-  dndListeners?: SyntheticListenerMap
+  dndListeners?: DraggableSyntheticListeners
   dndAttributes?: DraggableAttributes
   onMouseDown?: (e: React.MouseEvent) => void
   onTouchStart?: (e: React.TouchEvent) => void

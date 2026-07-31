@@ -3,9 +3,12 @@
 import { describe, expect, it } from 'vitest'
 import { blockIdNumber, createBlockIdAllocator, maxBlockNumber, reassignIds } from '../block-id'
 import { mdToBlocks } from '../md-to-blocks'
-import type { ArticleNodeJSON } from '../types'
+import { accordionAt, blockAt, panelAt } from '../test-helpers'
+import type { ArticleNodeJSON, BlockJSON } from '../types'
 
-const block = (id: string | undefined): ArticleNodeJSON => ({
+// Returns `BlockJSON`, not `ArticleNodeJSON` — panel and table-cell `content`
+// are `BlockJSON[]`, so the wider union doesn't fit inside a container.
+const block = (id: string | undefined): BlockJSON => ({
   type: 'block',
   attrs: id === undefined ? { blockType: 'text' } : { id, blockType: 'text' },
   content: [],
@@ -84,13 +87,11 @@ describe('reassignIds', () => {
       },
     ]
     const out = reassignIds(body, createBlockIdAllocator([]))
-    const first = out[0]
-    expect(first.type === 'block' && first.attrs.id).toBe('b1')
-    const acc = out[1]
-    if (acc.type !== 'accordion') throw new Error('expected accordion')
+    expect(blockAt(out, 0).attrs.id).toBe('b1')
+    const acc = accordionAt(out, 1)
     expect(acc.attrs.id).toBe('b2')
-    expect(acc.content[0].attrs.id).toBe('b3')
-    expect(acc.content[0].content[0].attrs.id).toBe('b4')
+    expect(panelAt(acc).attrs.id).toBe('b3')
+    expect(blockAt(panelAt(acc).content).attrs.id).toBe('b4')
   })
 
   it('seeds above an existing doc so inserted ids never collide', () => {
@@ -106,7 +107,7 @@ describe('reassignIds', () => {
   it('does not mutate the input', () => {
     const body = [block('b9')]
     reassignIds(body, createBlockIdAllocator([]))
-    expect(body[0].type === 'block' && body[0].attrs.id).toBe('b9')
+    expect(blockAt(body).attrs.id).toBe('b9')
   })
 })
 

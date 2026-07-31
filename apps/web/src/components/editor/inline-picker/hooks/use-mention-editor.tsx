@@ -4,6 +4,7 @@
 
 import type { ActorId } from '@auxx/types/actor'
 import { cn } from '@auxx/ui/lib/utils'
+import type { AnyExtension } from '@tiptap/core'
 import type { Editor, JSONContent } from '@tiptap/react'
 import { useCallback } from 'react'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
@@ -22,7 +23,7 @@ interface UseMentionEditorOptions {
   /** Enable editable mode (default: true) */
   editable?: boolean
   /** Additional TipTap extensions */
-  extensions?: unknown[]
+  extensions?: AnyExtension[]
   /** Custom editor class name */
   className?: string
 }

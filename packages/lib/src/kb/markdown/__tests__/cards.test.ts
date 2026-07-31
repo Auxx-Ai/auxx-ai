@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
+import { blockAt } from '../test-helpers'
 import type { DocJSON } from '../types'
 
 const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
@@ -53,9 +54,9 @@ describe('cards markdown serialization', () => {
 :::
 `
     const doc = mdToDoc(md)
-    const block = doc.content[0]
-    expect(block?.attrs.blockType).toBe('cards')
-    const cards = block?.attrs.cards ?? []
+    const block = blockAt(doc.content)
+    expect(block.attrs.blockType).toBe('cards')
+    const cards = block.attrs.cards ?? []
     expect(cards).toHaveLength(2)
     expect(cards[0]).toMatchObject({
       title: 'Docs',
@@ -92,7 +93,7 @@ describe('cards markdown serialization', () => {
     }
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
-    const card = reparsed.content[0]?.attrs.cards?.[0]
+    const card = blockAt(reparsed.content).attrs.cards?.[0]
     expect(card?.title).toBe('Foo')
     expect(card?.href).toBe('auxx://kb/article/abc')
     expect(card?.iconId).toBe('rocket')

@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { stampBlockIds } from '../stamp-ids'
+import { accordionAt, blockAt, cellBlockAt, panelAt, tableAt, tabsAt } from '../test-helpers'
 import type { ArticleNodeJSON } from '../types'
 
 describe('stampBlockIds', () => {
@@ -12,9 +13,8 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    expect(content[0].type).toBe('block')
-    if (content[0].type === 'block') expect(content[0].attrs.id).toMatch(/.+/)
-    if (content[1].type === 'block') expect(content[1].attrs.id).toMatch(/.+/)
+    expect(blockAt(content, 0).attrs.id).toMatch(/.+/)
+    expect(blockAt(content, 1).attrs.id).toMatch(/.+/)
   })
 
   it('preserves existing unique ids', () => {
@@ -24,8 +24,8 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(false)
-    if (content[0].type === 'block') expect(content[0].attrs.id).toBe('b1')
-    if (content[1].type === 'block') expect(content[1].attrs.id).toBe('b2')
+    expect(blockAt(content, 0).attrs.id).toBe('b1')
+    expect(blockAt(content, 1).attrs.id).toBe('b2')
   })
 
   it('replaces duplicate ids', () => {
@@ -35,11 +35,9 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    if (content[0].type === 'block' && content[1].type === 'block') {
-      expect(content[0].attrs.id).toBe('dup')
-      expect(content[1].attrs.id).not.toBe('dup')
-      expect(content[1].attrs.id).toMatch(/.+/)
-    }
+    expect(blockAt(content, 0).attrs.id).toBe('dup')
+    expect(blockAt(content, 1).attrs.id).not.toBe('dup')
+    expect(blockAt(content, 1).attrs.id).toMatch(/.+/)
   })
 
   it('stamps ids on panel blocks and panel children', () => {
@@ -58,11 +56,9 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    if (content[0].type === 'tabs') {
-      const panel = content[0].content[0]
-      expect(panel.attrs.id).toMatch(/.+/)
-      expect(panel.content[0].attrs.id).toMatch(/.+/)
-    }
+    const panel = panelAt(tabsAt(content))
+    expect(panel.attrs.id).toMatch(/.+/)
+    expect(blockAt(panel.content).attrs.id).toMatch(/.+/)
   })
 
   it('stamps ids inside table cells', () => {
@@ -84,10 +80,7 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    if (content[0].type === 'table') {
-      const cell = content[0].content[0].content[0]
-      expect(cell.content[0].attrs.id).toMatch(/.+/)
-    }
+    expect(cellBlockAt(tableAt(content), 0, 0).attrs.id).toMatch(/.+/)
   })
 
   it('is idempotent — stamping a fully-stamped doc returns changed: false', () => {
@@ -130,9 +123,7 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    if (content[0].type === 'table') {
-      expect(content[0].attrs?.id).toMatch(/.+/)
-    }
+    expect(tableAt(content).attrs?.id).toMatch(/.+/)
   })
 
   it('stamps id on a tabs container and preserves activeTab', () => {
@@ -151,10 +142,8 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    if (content[0].type === 'tabs') {
-      expect(content[0].attrs.id).toMatch(/.+/)
-      expect(content[0].attrs.activeTab).toBe('p1')
-    }
+    expect(tabsAt(content).attrs.id).toMatch(/.+/)
+    expect(tabsAt(content).attrs.activeTab).toBe('p1')
   })
 
   it('stamps id on an accordion container and preserves allowMultiple', () => {
@@ -173,10 +162,8 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    if (content[0].type === 'accordion') {
-      expect(content[0].attrs.id).toMatch(/.+/)
-      expect(content[0].attrs.allowMultiple).toBe(false)
-    }
+    expect(accordionAt(content).attrs.id).toMatch(/.+/)
+    expect(accordionAt(content).attrs.allowMultiple).toBe(false)
   })
 
   it('preserves an existing container id', () => {
@@ -199,7 +186,7 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(false)
-    if (content[0].type === 'table') expect(content[0].attrs?.id).toBe('keep-me')
+    expect(tableAt(content).attrs?.id).toBe('keep-me')
   })
 
   it('replaces a duplicate container id', () => {
@@ -223,9 +210,7 @@ describe('stampBlockIds', () => {
     ]
     const { content, changed } = stampBlockIds(input)
     expect(changed).toBe(true)
-    if (content[1].type === 'table') {
-      expect(content[1].attrs?.id).not.toBe('dup')
-      expect(content[1].attrs?.id).toMatch(/.+/)
-    }
+    expect(tableAt(content, 1).attrs?.id).not.toBe('dup')
+    expect(tableAt(content, 1).attrs?.id).toMatch(/.+/)
   })
 })

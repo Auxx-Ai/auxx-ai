@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/segments/document-segments.tsx
 'use client'
-import type { Document } from '@auxx/database/types'
+import type { DocumentEntity } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import {
@@ -15,7 +15,7 @@ import { DocumentSegmentItem } from './document-segment-item'
 import { useSegments } from './use-segments'
 
 interface DocumentSegmentsTabProps {
-  document: Document & {
+  document: DocumentEntity & {
     _count?: {
       segments: number
     }

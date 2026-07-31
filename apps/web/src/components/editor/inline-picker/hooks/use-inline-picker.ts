@@ -9,7 +9,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { escapeHtml } from '~/lib/sanitize'
 import { createInlineNode } from '../core/inline-node'
 import { createInlinePickerExtension } from '../core/inline-picker-extension'
-import type { InlinePickerState, UseInlinePickerOptions, UseInlinePickerReturn } from '../types'
+import type {
+  InlinePickerState,
+  PastePatternConfig,
+  UseInlinePickerOptions,
+  UseInlinePickerReturn,
+} from '../types'
 
 /**
  * Preprocesses content by converting pattern matches to HTML spans.
@@ -23,20 +28,26 @@ import type { InlinePickerState, UseInlinePickerOptions, UseInlinePickerReturn }
 function preprocessContent(
   content: string,
   type: string,
-  pastePattern?: { pattern: RegExp; getId: (match: RegExpMatchArray) => string }
+  pastePattern?: PastePatternConfig
 ): string {
   if (!pastePattern || typeof content !== 'string') return content
 
   const { pattern, getId } = pastePattern
   const globalPattern = new RegExp(pattern.source, 'g')
 
-  return content.replace(globalPattern, (fullMatch, ...captureGroups) => {
-    // Reconstruct match array for getId function (remove offset and input args)
-    const matchArray = [fullMatch, ...captureGroups.slice(0, -2)] as RegExpMatchArray
-    const id = getId(matchArray)
+  // `matchAll` yields genuine match arrays, so `getId` sees real capture
+  // groups (including `undefined` for a group that didn't participate, which
+  // the `match[1] ?? match[2]` implementors rely on) plus `index`/`input`.
+  // The previous `String.replace` callback had to rebuild that shape by hand.
+  let out = ''
+  let lastIndex = 0
+  for (const match of content.matchAll(globalPattern)) {
+    out += content.slice(lastIndex, match.index)
     // Empty span - React NodeView replaces content with badge component
-    return `<span data-type="${type}" data-id="${escapeHtml(id)}"></span>`
-  })
+    out += `<span data-type="${type}" data-id="${escapeHtml(getId(match))}"></span>`
+    lastIndex = match.index + match[0].length
+  }
+  return out + content.slice(lastIndex)
 }
 
 /** Initial closed state */
