@@ -16,6 +16,7 @@ import { ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import type { CapabilitySet } from '@auxx/lib/permissions'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { countSavedViewsUsed } from '@auxx/lib/table-views'
 import {
   createView,
   deleteView,
@@ -25,7 +26,7 @@ import {
   updateView,
 } from '@auxx/services/table-view'
 import { TRPCError } from '@trpc/server'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 import { isStructural, resolveDefId } from './table-view-helpers'
@@ -301,16 +302,8 @@ export const tableViewRouter = createTRPCRouter({
         const featureService = new FeaturePermissionService(ctx.db)
         const viewLimit = await featureService.getLimit(organizationId, FeatureKey.savedViews)
         if (typeof viewLimit === 'number' && viewLimit >= 0) {
-          const [countRow] = await ctx.db
-            .select({ value: count() })
-            .from(schema.TableView)
-            .where(
-              and(
-                eq(schema.TableView.organizationId, organizationId),
-                eq(schema.TableView.isShared, true)
-              )
-            )
-          if ((countRow?.value ?? 0) >= viewLimit) {
+          const current = await countSavedViewsUsed(ctx.db, organizationId)
+          if (current >= viewLimit) {
             throw new TRPCError({
               code: 'FORBIDDEN',
               message: `You have reached your saved view limit (${viewLimit}). Upgrade your plan to create more views.`,

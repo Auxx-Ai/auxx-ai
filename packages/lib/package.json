@@ -1138,6 +1138,12 @@
       "import": "./dist/snippets/snippet-mutations.mjs",
       "default": "./src/snippets/snippet-mutations.ts"
     },
+    "./table-views": {
+      "types": "./src/table-views/index.ts",
+      "source": "./src/table-views/index.ts",
+      "import": "./dist/table-views/index.mjs",
+      "default": "./src/table-views/index.ts"
+    },
     "./tags": {
       "types": "./src/tags/index.ts",
       "source": "./src/tags/index.ts",

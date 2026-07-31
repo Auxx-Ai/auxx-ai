@@ -2,6 +2,7 @@
 
 export type { CreateTableViewInput, CreateTableViewResult } from './create-table-view'
 export { createTableView } from './create-table-view'
+export { countSavedViewsUsed } from './saved-view-limits'
 export type { SetDefaultTableViewInput, SetDefaultTableViewResult } from './set-default-table-view'
 export { setDefaultTableView } from './set-default-table-view'
 export { computeUserTableViews } from './table-view-queries'
