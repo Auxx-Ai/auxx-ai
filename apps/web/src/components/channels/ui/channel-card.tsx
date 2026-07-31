@@ -64,12 +64,18 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
     channel.provider === 'email' &&
     (channel.metadata as { channelType?: string } | null)?.channelType === 'forwarding-address'
 
+  const isSyncing = channel.syncStatus === 'SYNCING'
+
   const toggle = api.channel.toggle.useMutation({
     onSuccess: () => utils.channel.list.invalidate(),
     onError: (error) => toastError({ title: 'Error updating channel', description: error.message }),
   })
 
+  // Refetch so the card picks up the SYNCING status dot — this also covers the
+  // `alreadyInProgress` reply, where a background poll is already running and no
+  // new job was started.
   const syncMessages = api.channel.syncMessages.useMutation({
+    onSuccess: () => utils.channel.list.invalidate(),
     onError: (error) => toastError({ title: 'Error starting sync', description: error.message }),
   })
 
@@ -114,9 +120,14 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
       onClick: () => router.push(`${DETAIL_BASE}/${channel.id}`),
     },
     {
-      label: 'Sync messages',
+      label: isSyncing ? 'Syncing…' : 'Sync messages',
       icon: <RefreshCw />,
-      disabled: !canManage || channel.provider === 'chat' || isForwarding,
+      disabled:
+        !canManage ||
+        channel.provider === 'chat' ||
+        isForwarding ||
+        isSyncing ||
+        syncMessages.isPending,
       onClick: () => syncMessages.mutate({ integrationId: channel.id, days: 7 }),
     },
     {

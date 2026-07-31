@@ -3,6 +3,7 @@ import { SYNC_STATUS } from '@auxx/database/enums'
 import type { SYNC_STATUS as SyncStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
+import { NotFoundError, RateLimitError } from '../errors'
 import { type MessageSyncFailedEvent, type MessageSyncPendingEvent, publisher } from '../events'
 // Import from the defining job modules, not the '../jobs' barrel — the barrel
 // pulls every job handler into the module graph (heavy, breaks mocked tests).
@@ -21,7 +22,8 @@ type SyncInputProps = {
   since?: Date
 }
 type SyncOutputProps = {
-  syncJobId: string
+  /** Null when an in-flight sync was detected without a SyncJob row backing it. */
+  syncJobId: string | null
   status: SyncStatus
   message: string
   alreadyInProgress: boolean
@@ -81,6 +83,28 @@ export class SyncMessages {
         alreadyInProgress: true,
       }
     }
+    // --- 1b. Check the integration's own sync state ---
+    // A background poll (`messageListFetchJob`) flips Integration.syncStatus to
+    // SYNCING without creating a SyncJob row, so an in-flight sync can be invisible
+    // to the check above. Resolve it here, *before* creating a job, and report it
+    // the same way — an already-running sync is not a failure.
+    const integrationToSync = integrationId
+      ? await this.findSyncableIntegration(integrationId, organizationId)
+      : undefined
+
+    if (integrationToSync?.syncStatus === 'SYNCING') {
+      logger.info(
+        `Integration ${integrationId} is already syncing — reporting in-progress to caller`,
+        { userId, organizationId }
+      )
+      return {
+        syncJobId: null,
+        status: SYNC_STATUS.IN_PROGRESS,
+        message: 'A message sync is already in progress.',
+        alreadyInProgress: true,
+      }
+    }
+
     // --- 2. If no active sync, create a new SyncJob record (initial state: PENDING) ---
     // We create the job regardless of whether it's a single or all sync.
     // We set the integrationId if it's a single sync.
@@ -119,25 +143,7 @@ export class SyncMessages {
         `Initiating single integration sync for job ${syncJobId}, integration ${integrationId}.`,
         { userId, organizationId }
       )
-      // Validate the provided integrationId: check if it exists, is enabled, and belongs to the org
-      const [integrationToSync] = await this.db
-        .select({
-          id: schema.Integration.id,
-          provider: schema.Integration.provider,
-          metadata: schema.Integration.metadata,
-          syncStatus: schema.Integration.syncStatus,
-          throttleRetryAfter: schema.Integration.throttleRetryAfter,
-        })
-        .from(schema.Integration)
-        .where(
-          and(
-            eq(schema.Integration.id, integrationId),
-            eq(schema.Integration.organizationId, organizationId),
-            eq(schema.Integration.enabled, true),
-            isNull(schema.Integration.deletedAt)
-          )
-        )
-        .limit(1)
+      // `integrationToSync` was resolved above, before the SyncJob row was created.
       if (!integrationToSync) {
         logger.error(
           `Requested integration ${integrationId} not found, not enabled, or does not belong to organization ${organizationId}.`,
@@ -168,29 +174,10 @@ export class SyncMessages {
             errorDetails: `Integration ${integrationId} not found, not enabled, or unauthorized.`,
           },
         } as MessageSyncFailedEvent)
-        throw new Error(`Integration ${integrationId} not found or enabled for this organization.`)
+        throw new NotFoundError(
+          `Integration ${integrationId} not found or enabled for this organization.`
+        )
       }
-      // Hard reject if integration is currently syncing
-      if (integrationToSync.syncStatus === 'SYNCING') {
-        logger.warn(`Integration ${integrationId} is already syncing — rejecting sync request`, {
-          organizationId,
-        })
-        await this.db
-          .update(schema.SyncJob)
-          .set({
-            status: SYNC_STATUS.FAILED,
-            endTime: new Date(),
-            error: `Integration ${integrationId} is already syncing.`,
-            totalRecords: 0,
-            processedRecords: 0,
-            failedRecords: 0,
-            integrationSyncJobIds: [],
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.SyncJob.id, syncJobId))
-        throw new Error(`Integration ${integrationId} is already syncing.`)
-      }
-
       // Hard reject if integration is throttled
       if (
         integrationToSync.throttleRetryAfter &&
@@ -214,7 +201,13 @@ export class SyncMessages {
             updatedAt: new Date(),
           })
           .where(eq(schema.SyncJob.id, syncJobId))
-        throw new Error(`Integration ${integrationId} is throttled. Retry after ${retryAfter}.`)
+        throw new RateLimitError(
+          `This channel is rate limited by the provider. Retry after ${retryAfter}.`,
+          Math.max(
+            0,
+            Math.ceil((integrationToSync.throttleRetryAfter.getTime() - Date.now()) / 1000)
+          )
+        )
       }
 
       // Prepare job data for the single sync job
@@ -352,7 +345,7 @@ export class SyncMessages {
       .limit(1)
 
     if (!syncJob) {
-      throw new Error('Sync job not found or unauthorized')
+      throw new NotFoundError('Sync job not found or unauthorized')
     }
 
     // 2. Check if cancellable (not already in terminal state)
@@ -427,6 +420,33 @@ export class SyncMessages {
       success: true,
       message: 'Sync cancelled successfully',
     }
+  }
+
+  /**
+   * Load an enabled, non-deleted channel owned by the org, with the fields the
+   * pre-flight guards need. Returns undefined when no such channel exists.
+   */
+  private async findSyncableIntegration(integrationId: string, organizationId: string) {
+    const [integration] = await this.db
+      .select({
+        id: schema.Integration.id,
+        provider: schema.Integration.provider,
+        metadata: schema.Integration.metadata,
+        syncStatus: schema.Integration.syncStatus,
+        throttleRetryAfter: schema.Integration.throttleRetryAfter,
+      })
+      .from(schema.Integration)
+      .where(
+        and(
+          eq(schema.Integration.id, integrationId),
+          eq(schema.Integration.organizationId, organizationId),
+          eq(schema.Integration.enabled, true),
+          isNull(schema.Integration.deletedAt)
+        )
+      )
+      .limit(1)
+
+    return integration
   }
 
   /**
