@@ -132,6 +132,8 @@ function RadioTab({
   // Generate grid classes and indicator positioning
   const getGridClasses = () => {
     switch (totalItems) {
+      case 1:
+        return 'grid-cols-1'
       case 2:
         return 'grid-cols-2'
       case 3:
@@ -153,17 +155,19 @@ function RadioTab({
     )
 
     const widthClass =
-      totalItems === 2
-        ? 'after:w-1/2'
-        : totalItems === 3
-          ? 'after:w-1/3'
-          : totalItems === 4
-            ? 'after:w-1/4'
-            : totalItems === 5
-              ? 'after:w-1/5'
-              : totalItems === 6
-                ? 'after:w-1/6'
-                : 'after:w-1/2'
+      totalItems === 1
+        ? 'after:w-full'
+        : totalItems === 2
+          ? 'after:w-1/2'
+          : totalItems === 3
+            ? 'after:w-1/3'
+            : totalItems === 4
+              ? 'after:w-1/4'
+              : totalItems === 5
+                ? 'after:w-1/5'
+                : totalItems === 6
+                  ? 'after:w-1/6'
+                  : 'after:w-1/2'
 
     const translateClass =
       index === 0
