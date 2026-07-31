@@ -314,7 +314,9 @@ export async function getWorkItemsForThread(
 // ---------------------------------------------------------------------------
 
 async function upsertSecondaryLink(
-  trx: Database,
+  // Called from inside `db.transaction()` callbacks as well as with a plain
+  // connection — hence `DbOrTx`, not `Database`.
+  trx: DbOrTx,
   params: {
     threadId: string
     entityInstanceId: string

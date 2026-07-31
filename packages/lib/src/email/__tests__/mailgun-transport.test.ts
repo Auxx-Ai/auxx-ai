@@ -63,7 +63,7 @@ describe('createMailgunTransport', () => {
     } as unknown as Mail.Options
 
     const info = await new Promise<any>((resolve, reject) => {
-      transport.send(mail, (err, response) => {
+      transport.send(mail, (err: Error | null, response?: unknown) => {
         if (err) {
           reject(err)
         } else {
@@ -74,7 +74,7 @@ describe('createMailgunTransport', () => {
 
     expect(info).toEqual(expect.objectContaining({ messageId: 'queued@example.com' }))
     expect(messagesCreateMock).toHaveBeenCalledTimes(1)
-    const payload = messagesCreateMock.mock.calls[0][1]
+    const payload = messagesCreateMock.mock.calls[0]?.[1]
     expect(payload).toMatchObject({
       from: 'Support <support@example.com>',
       to: 'User <user@example.com>',
@@ -101,7 +101,7 @@ describe('createMailgunTransport', () => {
     } as unknown as Mail.Options
 
     await new Promise<void>((resolve, reject) => {
-      transport.send(mail, (err) => {
+      transport.send(mail, (err: Error | null) => {
         if (err) {
           reject(err)
         } else {
@@ -111,7 +111,7 @@ describe('createMailgunTransport', () => {
     })
 
     expect(messagesCreateMock).toHaveBeenCalledTimes(1)
-    expect(messagesCreateMock.mock.calls[0][1]).toMatchObject({
+    expect(messagesCreateMock.mock.calls[0]?.[1]).toMatchObject({
       from: 'Support <support@example.com>',
       to: 'user@example.com',
       subject: 'Hello',

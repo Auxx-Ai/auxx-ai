@@ -15,6 +15,18 @@ import type { LabelProvider, ProviderLabel } from './label-provider.interface'
 
 const logger = createScopedLogger('gmail-label-provider')
 
+/** Shape googleapis errors take: an Error decorated with the HTTP response. */
+interface GoogleApiError {
+  code?: number | string
+  message?: string
+  response?: { status?: number; data?: { error?: string; error_subtype?: string } }
+}
+
+/** Narrows an unknown catch value to the loosely-shaped googleapis error object. */
+function asGoogleApiError(error: unknown): GoogleApiError {
+  return typeof error === 'object' && error !== null ? (error as GoogleApiError) : {}
+}
+
 export class GmailLabelProvider implements LabelProvider {
   private gmail: any
   private client: any
@@ -82,7 +94,8 @@ export class GmailLabelProvider implements LabelProvider {
       return await operation()
     } catch (error) {
       // Check for token expiration (normal 401)
-      if (error.code === 401 || (error.response && error.response.status === 401)) {
+      const apiError = asGoogleApiError(error)
+      if (apiError.code === 401 || apiError.response?.status === 401) {
         try {
           logger.info('Access token expired, refreshing and retrying operation')
 
@@ -93,10 +106,11 @@ export class GmailLabelProvider implements LabelProvider {
           return await operation()
         } catch (refreshError) {
           // Check for the specific invalid_grant/invalid_rapt error
+          const refreshApiError = asGoogleApiError(refreshError)
           if (
-            refreshError.response?.data?.error === 'invalid_grant' &&
-            (refreshError.response?.data?.error_subtype === 'invalid_rapt' ||
-              refreshError.message?.includes('invalid_rapt'))
+            refreshApiError.response?.data?.error === 'invalid_grant' &&
+            (refreshApiError.response?.data?.error_subtype === 'invalid_rapt' ||
+              refreshApiError.message?.includes('invalid_rapt'))
           ) {
             // This is a re-authentication required error
             logger.warn('Re-authentication required, refresh token no longer valid', {

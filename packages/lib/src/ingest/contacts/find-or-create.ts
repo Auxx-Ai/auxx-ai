@@ -11,6 +11,13 @@ import { getOwnDomains } from '../domain/classifier'
 import { getNamesFromParticipant } from '../participants/display'
 import { hasOrganizationSentToParticipant } from './has-sent-to'
 
+/** Roles that make a participant a recipient of an outbound message. */
+const OUTBOUND_RECIPIENT_ROLES: readonly ParticipantRole[] = [
+  ParticipantRoleEnum.TO,
+  ParticipantRoleEnum.CC,
+  ParticipantRoleEnum.BCC,
+]
+
 /**
  * Find (or create, depending on integration record-creation mode) a contact
  * EntityInstance for a participant. Uses UnifiedCrudHandler for the underlying
@@ -91,10 +98,7 @@ export async function findOrCreateContactForParticipant(
       }
 
       const isOutboundRecipient =
-        !messageContext.isInbound &&
-        [ParticipantRoleEnum.TO, ParticipantRoleEnum.CC, ParticipantRoleEnum.BCC].includes(
-          messageContext.role
-        )
+        !messageContext.isInbound && OUTBOUND_RECIPIENT_ROLES.includes(messageContext.role)
 
       if (!isOutboundRecipient) {
         const hasSentBefore = await hasOrganizationSentToParticipant(ctx, {

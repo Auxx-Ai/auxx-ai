@@ -122,7 +122,7 @@ export async function clearImportCache(integrationId: string): Promise<void> {
   const redis = await getRedisClient()
   if (!redis) return
 
-  await redis.del(cacheKey(integrationId), processingKey(integrationId))
+  await redis.del([cacheKey(integrationId), processingKey(integrationId)])
 
   logger.debug('Cleared import cache', { integrationId })
 }

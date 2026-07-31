@@ -565,6 +565,7 @@ export const IntegrationProviderTypeValues = [
   'chat',
   'email',
   'shopify',
+  'imap',
 ] as const
 
 export const InvitationStatusValues = ['PENDING', 'ACCEPTED', 'EXPIRED', 'CANCELLED'] as const

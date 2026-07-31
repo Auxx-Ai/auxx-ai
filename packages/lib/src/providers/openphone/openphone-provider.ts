@@ -6,9 +6,10 @@ import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import {
-  EmailLabel, // Keep for MessageData structure
+  type IntegrationSettings, // Per-integration record-creation/filter settings
   type MessageData,
   MessageStorageService,
+  type ParticipantInputData,
 } from '../../email/email-storage' // Adjust path
 import type {
   ChannelProvider,
@@ -18,7 +19,6 @@ import type {
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import type {
-  OpenPhoneAttachment,
   OpenPhoneConversation,
   OpenPhoneIntegrationMetadata,
   OpenPhoneMessage,
@@ -106,10 +106,14 @@ export class OpenPhoneProvider
       })
       throw new Error(`Invalid metadata format for OpenPhone integration ${integrationId}`)
     }
-    // Pass integration settings to storage service
-    if (integration.settings) {
-      this.storageService.setIntegrationSettings(integration.settings as any)
-      logger.info(`Integration settings loaded for selective mode: ${integration.settings}`)
+    // Pass integration settings to storage service (they live in metadata)
+    const settings = (integration.metadata as { settings?: IntegrationSettings }).settings
+    if (settings) {
+      this.storageService.setIntegrationSettings(settings)
+      logger.info('Integration settings loaded for selective mode', {
+        integrationId,
+        hasSettings: true,
+      })
     }
     logger.info(
       `OpenphoneProvider initialized successfully for Number: ${this.phoneNumber} (ID: ${this.phoneNumberId})`,
@@ -417,16 +421,11 @@ export class OpenPhoneProvider
         logger.warn(`Missing recipient number for message ${externalId}`)
         toNumber = 'unknown_recipient'
       }
-      const fromParticipant = { address: fromNumber, identifierType: IdentifierType.PHONE } // No name info directly on message sender/recipient
-      const toParticipant = { address: toNumber, identifierType: IdentifierType.PHONE }
-      const attachments = (message.attachments || []).map((att: OpenPhoneAttachment) => ({
-        id: att.id, // Store OpenPhone attachment ID
-        filename: att.file_name,
-        mimeType: att.content_type,
-        size: att.size_bytes,
-        inline: false, // Assume not inline for SMS/MMS attachments
-        contentLocation: att.url,
-      }))
+      // No name info directly on message sender/recipient. The ingest pipeline derives the
+      // IdentifierType from the integration's provider (openphone -> PHONE), so the raw
+      // identifier is all that is passed here.
+      const fromParticipant: ParticipantInputData = { identifier: fromNumber }
+      const toParticipant: ParticipantInputData = { identifier: toNumber }
       const messageData: MessageData = {
         externalId: externalId,
         externalThreadId: externalThreadId,
@@ -441,15 +440,20 @@ export class OpenPhoneProvider
         cc: [],
         bcc: [],
         replyTo: [],
-        hasAttachments: attachments.length > 0,
-        attachments: attachments,
+        // OpenPhone has no inbound attachment ingestor, so no MessageAttachment
+        // rows are ever created and `providerAttachments` is never populated.
+        // `hasAttachments` is a workflow trigger filter (see
+        // workflow-engine/nodes/trigger-nodes/message-received.ts), so claiming
+        // true here fires attachment rules for bytes that were never fetched.
+        // The raw MMS payload — including each attachment's `url` — is retained
+        // in `metadata.openphone_message` for a future backfill.
+        hasAttachments: false,
         textPlain: message.body,
         snippet: message.body?.substring(0, 100),
         isInbound: isInbound,
         metadata: { openphone_message: message, openphone_conversation: conversation }, // Store raw event
         keywords: [],
         labelIds: [],
-        emailLabel: EmailLabel.inbox,
         // Fields from Message model defaults
         isFirstInThread: false, // Cannot easily determine from single message
         isAIGenerated: false, // Assume false

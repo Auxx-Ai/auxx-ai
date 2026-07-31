@@ -25,19 +25,21 @@ export async function removeWebhook(params: {
     logger.info('Gmail watch stopped successfully', { integrationId })
 
     // Clear watch metadata from database
-    await db
-      .update(schema.Integration)
-      .set({
-        metadata: db.raw(`
-          CASE
-            WHEN metadata IS NOT NULL
-            THEN jsonb_set(metadata, '{watchExpiration}', 'null'::jsonb)
-            ELSE NULL
-          END
-        `),
-      })
+    const [integration] = await db
+      .select({ metadata: schema.Integration.metadata })
+      .from(schema.Integration)
       .where(eq(schema.Integration.id, integrationId))
-      .catch((err) => logger.error('Failed to clear watch metadata after stop', { err }))
+      .limit(1)
+
+    const metadata = integration?.metadata
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      const { watchExpiration: _cleared, ...rest } = metadata as Record<string, unknown>
+      await db
+        .update(schema.Integration)
+        .set({ metadata: rest })
+        .where(eq(schema.Integration.id, integrationId))
+        .catch((err) => logger.error('Failed to clear watch metadata after stop', { err }))
+    }
   } catch (error: any) {
     const gaxiosError = error as GaxiosError
 

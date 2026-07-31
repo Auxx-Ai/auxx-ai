@@ -3,6 +3,7 @@
 import { getRedisClient } from '@auxx/redis'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InternalFilterContextType } from '../../mail-query/types'
+import type { UserInstanceGrants } from '../../permissions/visibility/context'
 import { createMockRedis } from '../../test/utils'
 import { ThreadQueryService } from '../thread-query.service'
 
@@ -142,6 +143,21 @@ const mockDb = {
   ),
 }
 
+/** A plain member viewer — no grants, no admin short-circuit. */
+function viewer(): UserInstanceGrants {
+  return {
+    userId: 'user-123',
+    role: 'USER',
+    isAdmin: false,
+    isMailAdmin: false,
+    inboxLens: {},
+    personalInboxIds: {},
+    grants: {},
+    // Empty = fail-closed: no def is ticket-like, so nothing derives.
+    defEntityTypes: {},
+  }
+}
+
 describe('ThreadQueryService', () => {
   let service: ThreadQueryService
   const organizationId = 'test-org-id'
@@ -153,10 +169,13 @@ describe('ThreadQueryService', () => {
     mockRedis.keys.mockResolvedValue([])
     mockRedis.del.mockResolvedValue(0)
     mockRedis.setex.mockResolvedValue('OK')
-    vi.mocked(getRedisClient).mockResolvedValue(mockRedis)
+    // `createMockRedis` only stubs the handful of commands this suite exercises.
+    vi.mocked(getRedisClient).mockResolvedValue(
+      mockRedis as unknown as Awaited<ReturnType<typeof getRedisClient>>
+    )
 
     mockDb.execute.mockResolvedValue({ rows: [] })
-    service = new ThreadQueryService(organizationId, mockDb as any)
+    service = new ThreadQueryService(organizationId, mockDb as any, viewer())
   })
 
   describe('Phase 1: Thread ID Query', () => {

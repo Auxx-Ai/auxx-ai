@@ -23,6 +23,7 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import type { Operator } from '../conditions/operator-definitions'
 import type { Condition, ConditionGroup } from '../conditions/types'
 import {
@@ -40,6 +41,18 @@ import {
 } from './visibility-scope'
 
 const logger = createScopedLogger('condition-query-builder')
+
+/**
+ * Normalize drizzle's "no clause" (`undefined`, returned by `and()` / `or()`
+ * when every operand is undefined) onto this builder's own sentinel (`null`).
+ *
+ * Both are falsy, so the `.filter(Boolean)` call sites in `buildGroupQuery` /
+ * `buildConditionGroupsQuery` behave identically — this is a type-level
+ * normalization at the drizzle boundary, not a change to which clauses survive.
+ */
+function toClause(built: SQL<unknown> | undefined): SQL<unknown> | null {
+  return built ?? null
+}
 
 /**
  * Build Drizzle WHERE condition from ConditionGroup[].
@@ -93,8 +106,11 @@ function buildGroupQuery(
     .filter(Boolean) as SQL<unknown>[]
 
   if (conditions.length === 0) return null
-  if (conditions.length === 1) return conditions[0]
+  if (conditions.length === 1) return conditions[0] ?? null
 
+  // Group-level operator: every surviving condition in the group is combined
+  // with the SAME operator, so dropping a condition above can never shift which
+  // operator a later clause is joined with.
   return group.logicalOperator === 'AND' ? and(...conditions)! : or(...conditions)!
 }
 
@@ -286,6 +302,7 @@ function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
   const inboxIds: string[] = raw.map((v: string) =>
     isRecordId(v) ? getInstanceId(v as RecordId) : v
   )
+  const [onlyInboxId] = inboxIds
 
   switch (operator) {
     case 'empty':
@@ -294,14 +311,15 @@ function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
       return isNotNull(Thread.inboxId)
     case 'is':
       if (inboxIds.length === 0) return null
-      if (inboxIds.length === 1) return eq(Thread.inboxId, inboxIds[0])
+      if (inboxIds.length === 1 && onlyInboxId !== undefined) return eq(Thread.inboxId, onlyInboxId)
       return inArray(Thread.inboxId, inboxIds)
     case 'in':
       if (inboxIds.length === 0) return null
       return inArray(Thread.inboxId, inboxIds)
     case 'is not':
       if (inboxIds.length === 0) return null
-      if (inboxIds.length === 1) return not(eq(Thread.inboxId, inboxIds[0]))
+      if (inboxIds.length === 1 && onlyInboxId !== undefined)
+        return not(eq(Thread.inboxId, onlyInboxId))
       return not(inArray(Thread.inboxId, inboxIds))
     case 'not in':
       if (inboxIds.length === 0) return null
@@ -374,7 +392,7 @@ function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
   if (operator === 'in' && Array.isArray(value)) {
     const conditions = value.map((v) => getStatusCondition(v)).filter(Boolean) as SQL<unknown>[]
     if (conditions.length === 0) return null
-    return or(...conditions)
+    return toClause(or(...conditions))
   }
 
   const condition = getStatusCondition(value)
@@ -421,7 +439,7 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
       startOfDay.setHours(0, 0, 0, 0)
       const endOfDay = new Date(isDate)
       endOfDay.setHours(23, 59, 59, 999)
-      return and(gte(dateColumn, startOfDay), lte(dateColumn, endOfDay))
+      return toClause(and(gte(dateColumn, startOfDay), lte(dateColumn, endOfDay)))
     }
     case 'is not':
     case 'not_on_date': {
@@ -431,7 +449,7 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
       startOfDay.setHours(0, 0, 0, 0)
       const endOfDay = new Date(isNotDate)
       endOfDay.setHours(23, 59, 59, 999)
-      return or(lt(dateColumn, startOfDay), gt(dateColumn, endOfDay))
+      return toClause(or(lt(dateColumn, startOfDay), gt(dateColumn, endOfDay)))
     }
     case 'empty':
       return isNull(dateColumn)
@@ -579,9 +597,9 @@ function buildSubjectQuery(operator: Operator, value: any): SQL<unknown> | null 
     case 'not contains':
       return not(ilike(Thread.subject, `%${value}%`))
     case 'empty':
-      return or(isNull(Thread.subject), eq(Thread.subject, ''))
+      return toClause(or(isNull(Thread.subject), eq(Thread.subject, '')))
     case 'not empty':
-      return and(isNotNull(Thread.subject), not(eq(Thread.subject, '')))
+      return toClause(and(isNotNull(Thread.subject), not(eq(Thread.subject, ''))))
     default:
       return null
   }
@@ -829,8 +847,10 @@ function buildFreeTextQuery(
     scopes.body
   )
 
-  // Search in subject OR body (textPlain / textHtml)
-  return or(subjectMatch!, bodyMatch!)
+  // Search in subject OR body (textPlain / textHtml). Both halves are built from
+  // a non-null `ilike` / `exists`, so `withScope` always returns a clause here.
+  if (!subjectMatch || !bodyMatch) return subjectMatch ?? bodyMatch
+  return toClause(or(subjectMatch, bodyMatch))
 }
 
 /**
@@ -883,14 +903,24 @@ function buildSentQuery(operator: Operator, value: any): SQL<unknown> | null {
 /**
  * Build condition for a direct string/ID column on Thread.
  * Supports: is, is not, contains, not contains, starts with, ends with,
- * in, not in, empty, not empty, exists, not exists
+ * in, not in, empty, not empty.
+ *
+ * `exists` / `not exists` are commented out of `OPERATOR_DEFINITIONS` (so they
+ * are not in the `Operator` union) but can still turn up in conditions that were
+ * persisted as jsonb before they were retired. They are aliased onto their
+ * surviving equivalents rather than falling through to `default` — dropping the
+ * clause would silently widen an AND group's result set.
  */
 function buildDirectColumnQuery(
   operator: Operator,
   value: any,
-  column: typeof Thread.id
+  column: AnyPgColumn
 ): SQL<unknown> | null {
-  switch (operator) {
+  const legacyOperator: string = operator
+  const op: Operator =
+    legacyOperator === 'exists' ? 'not empty' : legacyOperator === 'not exists' ? 'empty' : operator
+
+  switch (op) {
     case 'is':
       if (value === null || value === undefined) return isNull(column)
       return eq(column, String(value))
@@ -914,11 +944,9 @@ function buildDirectColumnQuery(
       return values.length > 0 ? not(inArray(column, values)) : null
     }
     case 'empty':
-    case 'not exists':
-      return or(isNull(column), eq(column, ''))
+      return toClause(or(isNull(column), eq(column, '')))
     case 'not empty':
-    case 'exists':
-      return and(isNotNull(column), not(eq(column, '')))
+      return toClause(and(isNotNull(column), not(eq(column, ''))))
     default:
       return null
   }

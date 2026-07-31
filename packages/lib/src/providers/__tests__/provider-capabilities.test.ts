@@ -1,6 +1,7 @@
 // packages/lib/src/providers/__tests__/provider-capabilities.test.ts
 
 import { IntegrationProviderType } from '@auxx/database/enums'
+import type { IntegrationProviderType as ProviderType } from '@auxx/database/types'
 import { describe, expect, it, vi } from 'vitest'
 import { getProviderCapabilities, PROVIDER_CAPABILITIES } from '../provider-capabilities'
 import { ProviderRegistryService } from '../provider-registry-service'
@@ -70,6 +71,19 @@ vi.mock('../openphone/openphone-provider', () => ({
   OpenPhoneProvider: vi.fn().mockImplementation(() => ({ ...mockProvider })),
 }))
 
+/**
+ * Reads a provider's capability preset and fails loudly when it is missing, so
+ * a dropped preset surfaces as one explicit error instead of every downstream
+ * assertion quietly comparing against `undefined`.
+ */
+function capabilitiesFor(providerType: ProviderType) {
+  const capabilities = PROVIDER_CAPABILITIES[providerType]
+  if (!capabilities) {
+    throw new Error(`No capability preset registered for provider "${providerType}"`)
+  }
+  return capabilities
+}
+
 describe('Provider Capabilities', () => {
   describe('PROVIDER_CAPABILITIES constants', () => {
     it('should have capabilities defined for all provider types', () => {
@@ -126,7 +140,7 @@ describe('Provider Capabilities', () => {
   })
 
   describe('Email Provider Capabilities', () => {
-    const emailCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.email]
+    const emailCapabilities = capabilitiesFor(IntegrationProviderType.email)
 
     it('should support full email operations', () => {
       expect(emailCapabilities.canSend).toBe(true)
@@ -159,7 +173,7 @@ describe('Provider Capabilities', () => {
   })
 
   describe('Facebook Provider Capabilities', () => {
-    const facebookCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.facebook]
+    const facebookCapabilities = capabilitiesFor(IntegrationProviderType.facebook)
 
     it('should support basic messaging', () => {
       expect(facebookCapabilities.canSend).toBe(true)
@@ -189,7 +203,7 @@ describe('Provider Capabilities', () => {
   })
 
   describe('Instagram Provider Capabilities', () => {
-    const instagramCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.instagram]
+    const instagramCapabilities = capabilitiesFor(IntegrationProviderType.instagram)
 
     it('should support basic messaging but not labels', () => {
       expect(instagramCapabilities.canSend).toBe(true)
@@ -214,8 +228,8 @@ describe('Provider Capabilities', () => {
   })
 
   describe('SMS/OpenPhone Provider Capabilities', () => {
-    const smsCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.sms]
-    const openPhoneCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.openphone]
+    const smsCapabilities = capabilitiesFor(IntegrationProviderType.sms)
+    const openPhoneCapabilities = capabilitiesFor(IntegrationProviderType.openphone)
 
     it('should support basic SMS operations', () => {
       expect(smsCapabilities.canSend).toBe(true)
@@ -243,7 +257,7 @@ describe('Provider Capabilities', () => {
   })
 
   describe('WhatsApp Provider Capabilities', () => {
-    const whatsappCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.whatsapp]
+    const whatsappCapabilities = capabilitiesFor(IntegrationProviderType.whatsapp)
 
     it('should support messaging with attachments', () => {
       expect(whatsappCapabilities.canSend).toBe(true)
@@ -267,7 +281,7 @@ describe('Provider Capabilities', () => {
   })
 
   describe('Shopify Provider Capabilities', () => {
-    const shopifyCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.shopify]
+    const shopifyCapabilities = capabilitiesFor(IntegrationProviderType.shopify)
 
     it('should not support any messaging operations', () => {
       expect(shopifyCapabilities.canSend).toBe(false)
@@ -284,7 +298,7 @@ describe('Provider Capabilities', () => {
   })
 
   describe('Outlook Provider Capabilities', () => {
-    const outlookCapabilities = PROVIDER_CAPABILITIES[IntegrationProviderType.outlook]
+    const outlookCapabilities = capabilitiesFor(IntegrationProviderType.outlook)
 
     it('should support full email operations like Gmail', () => {
       expect(outlookCapabilities.canSend).toBe(true)
@@ -383,10 +397,7 @@ describe('Provider Capabilities', () => {
       commonActions.forEach((action) => {
         Object.keys(PROVIDER_CAPABILITIES).forEach((providerType) => {
           expect(() => {
-            providerRegistry.isActionSupportedByProvider(
-              action,
-              providerType as keyof typeof IntegrationProviderType
-            )
+            providerRegistry.isActionSupportedByProvider(action, providerType as ProviderType)
           }).not.toThrow()
         })
       })

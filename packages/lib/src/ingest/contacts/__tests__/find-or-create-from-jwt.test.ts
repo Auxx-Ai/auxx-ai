@@ -104,7 +104,7 @@ describe('findOrCreateContactFromJwt — chat (app-less) visitor', () => {
       contact_status: 'ACTIVE',
     })
     // No external_id array in the create payload.
-    expect(create.mock.calls[0][1]).not.toHaveProperty('external_id')
+    expect(create.mock.calls[0]?.[1]).not.toHaveProperty('external_id')
     expect(upsertRecordIdentity).toHaveBeenCalledWith(
       expect.objectContaining({
         entityInstanceId: 'new_contact',

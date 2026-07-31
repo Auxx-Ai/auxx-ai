@@ -261,11 +261,13 @@ export class MailgunApiService implements EmailProvider {
 
     // Add attachments if provided
     if (options.attachments && options.attachments.length > 0) {
-      messageData.attachment = options.attachments.map((attachment) => ({
-        filename: attachment.filename,
-        data: attachment.data,
-        contentType: attachment.contentType,
-      }))
+      messageData.attachment = options.attachments.map(
+        (attachment: { filename: string; data: Buffer; contentType: string }) => ({
+          filename: attachment.filename,
+          data: attachment.data,
+          contentType: attachment.contentType,
+        })
+      )
     }
 
     try {

@@ -14,6 +14,18 @@ import type { LabelProvider, ProviderLabel } from './label-provider.interface'
 
 const logger = createScopedLogger('outlook-label-provider')
 
+/** Shape Microsoft Graph client errors take: an Error decorated with HTTP details. */
+interface GraphApiError {
+  code?: string
+  statusCode?: number
+  message?: string
+}
+
+/** Narrows an unknown catch value to the loosely-shaped Graph error object. */
+function asGraphApiError(error: unknown): GraphApiError {
+  return typeof error === 'object' && error !== null ? (error as GraphApiError) : {}
+}
+
 export class OutlookLabelProvider implements LabelProvider {
   private client: Client | null = null
   private organizationId: string
@@ -76,7 +88,8 @@ export class OutlookLabelProvider implements LabelProvider {
       return await operation()
     } catch (error) {
       // If token expired, refresh token and try once more
-      if (error.statusCode === 401 || (error.code && error.code === 'InvalidAuthenticationToken')) {
+      const apiError = asGraphApiError(error)
+      if (apiError.statusCode === 401 || apiError.code === 'InvalidAuthenticationToken') {
         try {
           logger.info('Access token expired, refreshing and retrying operation')
 
@@ -87,9 +100,10 @@ export class OutlookLabelProvider implements LabelProvider {
           return await operation()
         } catch (refreshError) {
           // Check for invalid_grant errors that might indicate re-auth needed
+          const refreshApiError = asGraphApiError(refreshError)
           if (
-            refreshError.message?.includes('invalid_grant') ||
-            refreshError.message?.includes('AADSTS70000')
+            refreshApiError.message?.includes('invalid_grant') ||
+            refreshApiError.message?.includes('AADSTS70000')
           ) {
             logger.warn('Re-authentication required, refresh token no longer valid', {
               refreshError,

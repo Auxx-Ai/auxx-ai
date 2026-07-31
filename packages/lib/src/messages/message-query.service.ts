@@ -144,7 +144,7 @@ export class MessageQueryService {
         attempts: m.attempts ?? 0,
         attachments: attachmentsByMessage.get(m.id) ?? [],
       }
-      return redactMessage(meta as unknown as Record<string, unknown>, threadLens) as MessageMeta
+      return redactMessage(meta, threadLens)
     })
 
     return { messages, total: messages.length }
@@ -243,10 +243,7 @@ export class MessageQueryService {
           attempts: m.attempts ?? 0,
           attachments: attachmentsByMessage.get(m.id) ?? [],
         }
-        const redacted = redactMessage(
-          meta as unknown as Record<string, unknown>,
-          lensByThread.get(m.threadId) ?? 'none'
-        ) as MessageMeta
+        const redacted = redactMessage(meta, lensByThread.get(m.threadId) ?? 'none')
         return [m.id, redacted]
       })
     )

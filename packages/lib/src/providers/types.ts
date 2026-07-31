@@ -1,5 +1,7 @@
 // packages/lib/src/providers/types.ts
 
+import { IntegrationProviderType } from '@auxx/database/enums'
+
 /**
  * Centralized provider type definitions for consistent usage across the codebase
  * This file serves as the single source of truth for provider type mapping
@@ -85,23 +87,20 @@ export interface ProviderCapabilities {
 }
 
 /**
- * Channel Provider Types Enum
- * These correspond to the provider strings stored in the database
+ * Channel Provider Types
+ *
+ * Aliased directly onto the generated `IntegrationProviderType` enum object so
+ * this can never drift from the `IntegrationProviderType` pgEnum backing
+ * `Integration.provider`. Usable as a value (`ChannelProviderType.google`) and
+ * as a type, and — unlike a TS `enum` — a bare `'google'` read straight off a
+ * Drizzle row is assignable to it.
+ *
+ * Members: google | outlook | facebook | instagram | openphone | mailgun |
+ * sms | whatsapp | chat | email | shopify | imap.
  */
-export enum ChannelProviderType {
-  google = 'google',
-  outlook = 'outlook',
-  facebook = 'facebook',
-  instagram = 'instagram',
-  openphone = 'openphone',
-  mailgun = 'mailgun',
-  sms = 'sms', // Generic SMS provider
-  whatsapp = 'whatsapp', // WhatsApp Business API
-  chat = 'chat', // Internal chat system
-  email = 'email', // Generic email provider
-  shopify = 'shopify', // Shopify integration (not a messaging provider)
-  imap = 'imap', // Generic IMAP/SMTP email (self-hosted, enterprise)
-}
+export const ChannelProviderType = IntegrationProviderType
+export type ChannelProviderType =
+  (typeof IntegrationProviderType)[keyof typeof IntegrationProviderType]
 
 /**
  * Message Type Categories

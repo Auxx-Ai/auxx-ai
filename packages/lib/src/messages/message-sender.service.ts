@@ -14,6 +14,10 @@ import { ParticipantService } from '../participants/participant-service'
 import type { MailViewer } from '../permissions/visibility/context'
 import { isSystemViewer } from '../permissions/visibility/context'
 import { getThreadLens } from '../permissions/visibility/thread-lens'
+// Type-only (erased at runtime) so the lazy `await import()` of the error
+// normalizer below stays lazy. Aliased because the dynamic import destructures a
+// *value* binding of the same name into the same scope.
+import type { NormalizedEmailError as NormalizedEmailErrorInstance } from '../providers/error-normalization'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
 import { getRealtimeService, publishMessageCreated } from '../realtime'
@@ -41,6 +45,27 @@ import type {
 } from './types/message-sending.types'
 
 const logger = createScopedLogger('message-sender')
+
+/** Module default connection, reachable from inside the constructor where the
+ *  `db` parameter shadows the `database as db` import. */
+const defaultDb: Database = db
+
+/**
+ * What providers actually return from `sendMessage`.
+ *
+ * `ChannelProvider.sendMessage` declares only `{ id?, success }`, but the email
+ * providers return more — Google returns `threadId` (see
+ * `google-provider.ts#sendMessage`) and Gmail additionally returns `historyId` /
+ * `labelIds`. Widening the shared interface belongs in `providers/`; this local
+ * shape at least keeps the extra reads named instead of `(result as any).x`.
+ */
+type ProviderSendResult = {
+  success: boolean
+  id?: string
+  threadId?: string
+  historyId?: string
+  labelIds?: string[]
+}
 
 /** Providers where "recipient" means an email address — suppression + List-Unsubscribe
  * apply here and nowhere else (chat/SMS/social DMs have no unsubscribe concept). */
@@ -81,12 +106,16 @@ export class MessageSenderService {
     viewer?: MailViewer
   ) {
     this.viewer = viewer
-    this.threadManager = new ThreadManagerService(organizationId, db)
-    this.composer = new MessageComposerService(organizationId, db)
-    this.reconciler = new MessageReconcilerService(organizationId, this.threadManager, db)
-    this.participantService = new ParticipantService(organizationId, db)
-    this.mediaAssetService = new MediaAssetService(organizationId, undefined, db)
-    this.fileService = new FileService(organizationId, undefined, db)
+    // `MessageComposerService` / `MessageReconcilerService` take a non-optional
+    // `Database` and dereference it eagerly, so callers that omit `db` (e.g.
+    // `email/message-service.ts`) must still get a real connection here.
+    const conn = db ?? defaultDb
+    this.threadManager = new ThreadManagerService(organizationId, conn)
+    this.composer = new MessageComposerService(organizationId, conn)
+    this.reconciler = new MessageReconcilerService(organizationId, this.threadManager, conn)
+    this.participantService = new ParticipantService(organizationId, conn)
+    this.mediaAssetService = new MediaAssetService(organizationId, undefined, conn)
+    this.fileService = new FileService(organizationId, undefined, conn)
     this.socketId = socketId
   }
   /**
@@ -235,7 +264,7 @@ export class MessageSenderService {
         internetMessageId: composed.messageId,
       })
       // Step 4: Apply signature if needed
-      let finalContent = {
+      let finalContent: { html?: string | null; plain?: string | null } = {
         html: composed.textHtml,
         plain: composed.textPlain,
       }
@@ -441,6 +470,7 @@ export class MessageSenderService {
     requiresRecipients: boolean
     countsAgainstOutboundEmailsQuota: boolean
     triggersPostSendSync: boolean
+    requiresSendReconciliation: boolean
   }> {
     const [integration] = await (this.db ?? db)
       .select({ provider: schema.Integration.provider })
@@ -458,6 +488,7 @@ export class MessageSenderService {
       requiresRecipients: caps.requiresRecipients,
       countsAgainstOutboundEmailsQuota: caps.countsAgainstOutboundEmailsQuota,
       triggersPostSendSync: caps.triggersPostSendSync,
+      requiresSendReconciliation: caps.requiresSendReconciliation,
     }
   }
   /**
@@ -687,7 +718,7 @@ export class MessageSenderService {
         ? undefined
         : input.threadContext.externalId
       // Call provider's sendMessage method
-      const result = await provider.sendMessage({
+      const result: ProviderSendResult = await provider.sendMessage({
         messageId: input.composed.messageId,
         internalMessageId: input.composed.id,
         from: input.participants.from.identifier,
@@ -708,8 +739,8 @@ export class MessageSenderService {
         success: result.success,
         messageId: result.id,
         threadId: result.threadId,
-        historyId: (result as any).historyId,
-        labelIds: (result as any).labelIds,
+        historyId: result.historyId,
+        labelIds: result.labelIds,
         timestamp: new Date(),
         metadata: result,
       }
@@ -720,7 +751,7 @@ export class MessageSenderService {
       )
       // Determine provider type for normalization
       const providerType = (provider as any).getProviderName?.() || 'unknown'
-      let normalizedError: NormalizedEmailError
+      let normalizedError: NormalizedEmailErrorInstance
       // Check if already normalized
       if (error && typeof error === 'object' && error.name === 'NormalizedEmailError') {
         normalizedError = error
@@ -752,9 +783,14 @@ export class MessageSenderService {
       return {
         success: false,
         error: userMessage,
-        errorCode: normalizedError.code,
-        retryable: normalizedError.details?.retryable,
         timestamp: new Date(),
+        // `ProviderSendResponse` carries only `error`; the structured code and
+        // retryability ride along in `metadata` (nothing reads them off the
+        // response today — they exist for the failure log / future retry logic).
+        metadata: {
+          errorCode: normalizedError.code,
+          retryable: normalizedError.details?.retryable,
+        },
       }
     }
   }
@@ -815,30 +851,40 @@ export class MessageSenderService {
     }
     return {
       id: message.id,
-      externalId: message.externalId,
+      // Both columns are nullable in the schema but always populated on the send
+      // path (`createPendingMessage` writes a `pending_<token>` externalId and a
+      // subject); `SentMessage` declares them non-null.
+      externalId: message.externalId ?? '',
       threadId: message.threadId,
-      subject: message.subject,
+      subject: message.subject ?? '',
       sendStatus: message.sendStatus || 'PENDING',
       sentAt: message.sentAt,
       error: message.providerError,
     }
   }
   /**
-   * Checks if we can send messages for an integration
+   * Checks if we can send messages for an integration.
+   *
+   * NOTE: currently has no callers anywhere in `packages/` or `apps/`.
+   *
+   * `Integration.settings` was dropped in migration 0028; integration settings
+   * now live under `Integration.metadata.settings` (same read as
+   * `google-provider.ts#initialize`). The gate is deliberately fail-open — an
+   * integration with no settings blob can send.
    */
   async canSendMessages(integrationId: string): Promise<boolean> {
     const [integration] = await db
       .select({
         id: schema.Integration.id,
         provider: schema.Integration.provider,
-        settings: schema.Integration.settings,
+        metadata: schema.Integration.metadata,
       })
       .from(schema.Integration)
       .where(eq(schema.Integration.id, integrationId))
       .limit(1)
     if (!integration) return false
     // Check if integration is configured for sending
-    const settings = integration.settings as any
+    const settings = (integration.metadata as { settings?: { canSend?: boolean } } | null)?.settings
     return settings?.canSend !== false
   }
   /**
@@ -1184,14 +1230,17 @@ export class MessageSenderService {
     const cc: ProcessedParticipant[] = []
     const bcc: ProcessedParticipant[] = []
     for (const mp of message.participants) {
+      // `initials` is on the `Participant` row but not on `ProcessedParticipant`
+      // — nothing on the send path reads it, so it is not carried through.
       const participant: ProcessedParticipant = {
         id: mp.participant.id,
         identifier: mp.participant.identifier,
         identifierType: mp.participant.identifierType,
         name: mp.participant.name,
         displayName: mp.participant.displayName,
-        initials: mp.participant.initials,
-        contactId: mp.participant.contactId,
+        // The linked CRM contact is `Participant.entityInstanceId`; there is no
+        // `contactId` column, so the old key read `undefined` and dropped it.
+        entityInstanceId: mp.participant.entityInstanceId,
         role: mp.role,
       }
       switch (mp.role) {
@@ -1206,7 +1255,7 @@ export class MessageSenderService {
           break
       }
     }
-    return { from, to, cc, bcc }
+    return { from, to, cc, bcc, all: [from, ...to, ...cc, ...bcc] }
   }
   /**
    * Extracts attachments from a message for retry
@@ -1257,7 +1306,7 @@ export class MessageSenderService {
       const sanitizedExternalThreadId = this.isPlaceholderThreadId(params.threadContext.externalId)
         ? undefined
         : params.threadContext.externalId
-      const result = await provider.sendMessage({
+      const result: ProviderSendResult = await provider.sendMessage({
         messageId: params.internetMessageId, // Use original Message-ID
         from: params.participants.from.identifier,
         to: params.participants.to.map((p: any) => p.identifier),
@@ -1275,8 +1324,8 @@ export class MessageSenderService {
         success: result.success,
         messageId: result.id,
         threadId: result.threadId,
-        historyId: (result as any).historyId,
-        labelIds: (result as any).labelIds,
+        historyId: result.historyId,
+        labelIds: result.labelIds,
         timestamp: new Date(),
         metadata: result,
       }
@@ -1286,7 +1335,7 @@ export class MessageSenderService {
         '../providers/error-normalization'
       )
       const providerType = (provider as any).getProviderName?.() || 'unknown'
-      let normalizedError: NormalizedEmailError
+      let normalizedError: NormalizedEmailErrorInstance
       if (error && typeof error === 'object' && error.name === 'NormalizedEmailError') {
         normalizedError = error
       } else if (providerType === 'google' || providerType === 'gmail') {

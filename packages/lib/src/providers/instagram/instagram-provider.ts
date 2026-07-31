@@ -6,7 +6,7 @@ import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import {
-  EmailLabel, // Still needed for MessageData structure
+  type IntegrationSettings, // Per-integration record-creation/filter settings
   type MessageData, // Data structure expected by storage service
   MessageStorageService,
   type ParticipantInputData, // Structure for participant info from provider
@@ -50,6 +50,33 @@ interface InstagramGraphMessageContent {
 interface InstagramGraphParticipant {
   id: string // IGSID or IGBID
   username?: string // Instagram username
+}
+/** Generic shape of a paginated Graph API edge response. */
+interface InstagramGraphListResponse<T> {
+  data?: T[]
+  paging?: {
+    next?: string | null
+  }
+  error?: {
+    message?: string
+    code?: number
+  }
+}
+/** Conversation node returned by the /{page-id}/conversations edge (platform=instagram). */
+interface InstagramGraphConversation {
+  id?: string
+  updated_time?: string
+  participants?: {
+    data?: InstagramGraphParticipant[]
+  }
+}
+/** Message node returned by the /{conversation-id}/messages edge. */
+interface InstagramGraphMessage {
+  id?: string
+  created_time?: string
+  from?: InstagramGraphParticipant
+  to?: unknown
+  message?: unknown
 }
 // --- End Interfaces ---
 export class InstagramProvider
@@ -138,10 +165,14 @@ export class InstagramProvider
       })
       throw new Error(`Invalid metadata format for Instagram integration ${integrationId}`)
     }
-    // Pass integration settings to storage service
-    if (integration.settings) {
-      this.storageService.setIntegrationSettings(integration.settings as any)
-      logger.info(`Integration settings loaded for selective mode: ${integration.settings}`)
+    // Pass integration settings to storage service (they live in metadata)
+    const settings = (integration.metadata as { settings?: IntegrationSettings }).settings
+    if (settings) {
+      this.storageService.setIntegrationSettings(settings)
+      logger.info('Integration settings loaded for selective mode', {
+        integrationId,
+        hasSettings: true,
+      })
     }
     logger.info(
       `InstagramProvider initialized successfully for IGBID: ${this.instagramBusinessAccountId}, Page ID: ${this.pageId}`,
@@ -287,7 +318,8 @@ export class InstagramProvider
           { integrationId: this.integrationId }
         )
         const convoRes = await fetch(conversationsLink)
-        const convoData = await convoRes.json()
+        const convoData =
+          (await convoRes.json()) as InstagramGraphListResponse<InstagramGraphConversation>
         if (!convoRes.ok || convoData.error) {
           logger.error('Failed to fetch Instagram conversations', {
             status: convoRes.status,
@@ -350,7 +382,8 @@ export class InstagramProvider
               { integrationId: this.integrationId }
             )
             const msgRes = await fetch(messagesLink)
-            const msgData = await msgRes.json()
+            const msgData =
+              (await msgRes.json()) as InstagramGraphListResponse<InstagramGraphMessage>
             if (!msgRes.ok || msgData.error) {
               logger.error(`Failed to fetch messages for IG conversation ${conversationId}`, {
                 status: msgRes.status,
@@ -376,7 +409,7 @@ export class InstagramProvider
                 messagesToStore.push(converted)
               }
             }
-            messagesLink = msgData.paging?.next // Next page link for messages
+            messagesLink = msgData.paging?.next ?? null // Next page link for messages
           } // End message pagination
           // --- Store fetched messages ---
           if (messagesToStore.length > 0) {
@@ -388,7 +421,7 @@ export class InstagramProvider
             )
           }
         } // End conversation loop
-        conversationsLink = convoData.paging?.next // Next page link for conversations
+        conversationsLink = convoData.paging?.next ?? null // Next page link for conversations
       } // End conversation pagination
       // Update last synced time on successful completion
       await db
@@ -504,8 +537,13 @@ export class InstagramProvider
         cc: [],
         bcc: [],
         replyTo: [],
-        hasAttachments: attachments.length > 0,
-        attachments: attachments,
+        // Instagram has no inbound attachment ingestor, so no MessageAttachment
+        // rows are ever created and `providerAttachments` is never populated.
+        // `hasAttachments` is a workflow trigger filter (see
+        // workflow-engine/nodes/trigger-nodes/message-received.ts), so claiming
+        // true here fires attachment rules for bytes that were never fetched.
+        // The `attachments` local below still drives the snippet fallback.
+        hasAttachments: false,
         textPlain: text,
         textHtml: undefined, // No HTML
         snippet: text ? text.substring(0, 100) : attachments[0]?.filename || '',
@@ -520,7 +558,6 @@ export class InstagramProvider
         // Default values for non-applicable fields
         keywords: [],
         labelIds: [],
-        emailLabel: EmailLabel.inbox,
       }
       return messageData
     } catch (error: any) {

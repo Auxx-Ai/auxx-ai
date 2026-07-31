@@ -319,20 +319,19 @@ export class MessageSyncService {
 
     // Log detailed results for failures
     results.forEach((result, index) => {
+      // `results` comes from settling `providerInstances.map(...)`, so the two
+      // arrays are index-aligned; the fallback label only guards the type.
       const providerInstance = providerInstances[index]
+      const label = providerInstance
+        ? `${providerInstance.type} - ${providerInstance.integrationId}`
+        : `unknown provider #${index}`
       if (result.status === 'rejected') {
-        logger.warn(
-          `Sync failed for: ${providerInstance.type} - ${providerInstance.integrationId}`,
-          {
-            reason: result.reason,
-            organizationId: this.organizationId,
-          }
-        )
+        logger.warn(`Sync failed for: ${label}`, {
+          reason: result.reason,
+          organizationId: this.organizationId,
+        })
       } else {
-        logger.debug(
-          `Sync succeeded for: ${providerInstance.type} - ${providerInstance.integrationId}`,
-          { organizationId: this.organizationId }
-        )
+        logger.debug(`Sync succeeded for: ${label}`, { organizationId: this.organizationId })
       }
     })
 

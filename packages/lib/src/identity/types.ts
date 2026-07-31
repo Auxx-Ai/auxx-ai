@@ -1,5 +1,7 @@
 // packages/lib/src/identity/types.ts
 
+import type { RecordId } from '@auxx/types/resource'
+
 /**
  * Fields needed to write or mirror one identity link into `RecordIdentity`.
  * Upserts on the record+kind unique key
@@ -37,6 +39,7 @@ export interface FindRecordByIdentityInput {
 }
 
 export interface RecordIdentityMatch {
-  recordId: string
+  /** Built by `findRecordByIdentity` via `toRecordId`, so it is always branded. */
+  recordId: RecordId
   displayName: string | null
 }

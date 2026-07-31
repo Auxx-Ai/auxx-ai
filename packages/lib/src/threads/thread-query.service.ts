@@ -8,7 +8,6 @@ import { toRecordId } from '@auxx/types/resource'
 import {
   and,
   asc,
-  type Column,
   count,
   desc,
   eq,
@@ -21,6 +20,7 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm'
+import type { PgColumn } from 'drizzle-orm/pg-core'
 import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { resolveConditionContext } from '../conditions/resolve-context'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
@@ -201,7 +201,8 @@ export class ThreadQueryService {
     return undefined
   }
 
-  private getSortValueSelection(sort: ThreadSortDescriptor): Column {
+  /** Sender sorting is a correlated subquery, not a column — hence the union. */
+  private getSortValueSelection(sort: ThreadSortDescriptor): PgColumn | SQL {
     if (sort.field === 'subject') {
       return schema.Thread.subject
     }
@@ -542,8 +543,8 @@ export class ThreadQueryService {
 
     // Build next cursor from last item
     let nextCursor: string | null = null
-    if (hasMore && items.length > 0) {
-      const lastItem = items[items.length - 1]
+    const lastItem = items.at(-1)
+    if (hasMore && lastItem) {
       nextCursor = this.encodeMixedCursor({
         sortValue: lastItem.sortDate,
         entityType: lastItem.entityType as 'thread' | 'draft',
@@ -1076,7 +1077,7 @@ export class ThreadQueryService {
 
     // Note: Integration JOIN is added automatically by Drizzle when using
     // whereThreadMessageType/whereThreadProvider helpers in the WHERE clause
-    let query = this.db
+    const baseQuery = this.db
       .select({
         id: schema.Thread.id,
         lastMessageAt: schema.Thread.lastMessageAt,
@@ -1084,9 +1085,9 @@ export class ThreadQueryService {
       })
       .from(schema.Thread)
 
-    if (finalWhereCondition) {
-      query = query.where(finalWhereCondition)
-    }
+    // Applied as a ternary rather than `query = query.where(...)`: each chained
+    // method narrows the builder's own type, so reassignment doesn't typecheck.
+    const query = finalWhereCondition ? baseQuery.where(finalWhereCondition) : baseQuery
 
     const orderByExpressions = orderBy.length > 0 ? orderBy : this.createOrderByFromDescriptor(sort)
     const finalQuery =

@@ -53,6 +53,15 @@ export class ProviderRegistryService {
     }
   }
   /**
+   * Narrow the raw `Integration.metadata` jsonb column (typed `unknown`) to a
+   * plain object, or null when it is absent / not an object.
+   */
+  private static asMetadataRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null
+  }
+  /**
    * Get identifier from metadata (helper extracted from MessageService)
    */
   private static getIdentifierFromMetadata(metadata: any | null): string | undefined {
@@ -96,7 +105,7 @@ export class ProviderRegistryService {
             type: providerType,
             id: integration.id,
             details: { identifier: identifier, provider: integration.provider },
-            metadata: integration.metadata,
+            metadata: ProviderRegistryService.asMetadataRecord(integration.metadata),
           })
         } else {
           logger.warn(`Skipping unknown integration provider type: ${integration.provider}`, {
@@ -196,7 +205,15 @@ export class ProviderRegistryService {
           provider = new EmailForwardingProvider(this.organizationId)
           break
         case IntegrationProviderEnum.chat:
-          provider = new ChatProvider(this.organizationId)
+          // ChatProvider deliberately implements the narrower `MessageProvider`
+          // (send/receive) rather than the fat legacy `ChannelProvider`: chat has
+          // no webhooks, no external mailbox to sync and no labels. The registry
+          // itself only calls `initialize()`, and every ChannelProvider-only path
+          // excludes chat explicitly (`channels/toggle` skips webhook register /
+          // unregister for chat, `channels/sync` rejects it), so none of the
+          // legacy members are reachable on a chat instance. Splitting
+          // `ChannelProvider` is the real fix — see the registry TODO.
+          provider = new ChatProvider(this.organizationId) as unknown as ChannelProvider
           break
         default:
           logger.error('Attempted to initialize unsupported provider type', { type, integrationId })
@@ -393,7 +410,7 @@ export class ProviderRegistryService {
   async getBestProviderForAction(actionType: string): Promise<{
     type: IntegrationProviderType
     integrationId: string
-    provider: IntegrationProvider
+    provider: ChannelProvider
   } | null> {
     // Get all available providers and check which ones support the action
     for (const [key, instance] of this.providers) {

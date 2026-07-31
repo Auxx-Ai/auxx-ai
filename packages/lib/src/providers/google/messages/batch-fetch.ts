@@ -395,7 +395,7 @@ function parseBatchResponse(batchResponseText: string, contentTypeHeader: string
   const results: any[] = []
 
   for (let i = 1; i < parts.length - 1; i++) {
-    const part = parts[i].trim()
+    const part = parts[i]?.trim()
     if (!part) continue
 
     const jsonStartIndex = part.indexOf('{')

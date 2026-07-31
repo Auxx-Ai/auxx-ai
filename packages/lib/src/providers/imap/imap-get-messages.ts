@@ -109,11 +109,6 @@ export class ImapGetMessagesService {
                 name: addr.name,
               })),
               hasAttachments: parsed.attachments.length > 0,
-              attachments: parsed.attachments.map((att) => ({
-                filename: att.filename,
-                mimeType: att.mimeType,
-                size: att.size,
-              })),
               internetMessageId: parsed.messageId || null,
               inReplyTo: parsed.inReplyTo || null,
               references: parsed.references || null,

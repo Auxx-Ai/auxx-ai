@@ -1,5 +1,6 @@
 // packages/lib/src/providers/google/messages/parse-message.ts
 
+import type { EmailLabel as EmailLabelType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { extractEmailAddress, isUserEmail } from '@auxx/utils'
 import parse from 'gmail-api-parse-message'
@@ -217,15 +218,6 @@ export function convertMessagesToMessageData(
           embeddedData: att.embeddedData,
         }))
 
-        // Legacy attachments array (for hasAttachments and backward compat)
-        const attachments = payloadAttachments.map((att) => ({
-          filename: att.filename,
-          mimeType: att.mimeType,
-          size: att.size,
-          inline: att.inline,
-          contentId: att.contentId,
-        }))
-
         return {
           externalId: message.id,
           externalThreadId: message.threadId,
@@ -241,8 +233,7 @@ export function convertMessagesToMessageData(
           cc: ccInputs,
           bcc: bccInputs,
           replyTo: replyToInputs,
-          hasAttachments: attachments.length > 0,
-          attachments,
+          hasAttachments: payloadAttachments.length > 0,
           providerAttachments,
           textHtml: message.textHtml || '',
           textPlain: message.textPlain || '',
@@ -255,7 +246,7 @@ export function convertMessagesToMessageData(
           references: message.headers['references'],
           metadata: { headers: message.headers },
           isInbound,
-        } as MessageData
+        } satisfies MessageData
       } catch (error: any) {
         logger.error('Error converting Gmail message to MessageData:', {
           error: error.message,
@@ -298,7 +289,7 @@ function determineIsInbound(message: ParsedGmailMessage, userEmails: string[]): 
 /**
  * Determine the email label based on Gmail labels
  */
-function determineEmailLabel(labelIds: string[]): EmailLabel {
+function determineEmailLabel(labelIds: string[]): EmailLabelType {
   if (labelIds.includes('DRAFT')) return EmailLabel.draft
   if (labelIds.includes('SENT')) return EmailLabel.sent
   // Note: EmailLabel enum doesn't have spam/trash, so we map them to inbox

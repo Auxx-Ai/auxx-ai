@@ -231,7 +231,9 @@ export class SyncMessages {
           removeOnFail: false, // Keep failed jobs for inspection
           attempts: 3, // Retry attempts for this specific integration sync
           backoff: { type: 'exponential', delay: 1000 },
-          timeout: 300000, // 5 minutes - prevents runaway jobs even if lock is maintained
+          // NOTE: BullMQ removed the per-job `timeout` option (it was Bull v3);
+          // it has been silently ignored here. Runaway jobs are bounded by the
+          // worker's `lockDuration` / `stalledInterval`, not by job options.
         }
       )
       logger.info(

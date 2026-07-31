@@ -243,9 +243,11 @@ export class MessageReconcilerService {
         historyId: providerData.historyId ? Number(providerData.historyId) : undefined,
         hasAttachments: providerData.hasAttachments,
 
-        // Threading
-        inReplyTo: providerData.inReplyTo || undefined,
-        references: providerData.references || undefined,
+        // Threading: `Message.inReplyTo` / `Message.references` were dropped in
+        // migration 0028, so there is nowhere to store the provider's copies.
+        // Outbound threading headers are re-derived from the thread's
+        // `internetMessageId`s at send time (`MessageSenderService#getInReplyTo`),
+        // and inbound ones stay in `metadata.headers` (see `ingest/store-message`).
 
         // Merge metadata
         metadata: {

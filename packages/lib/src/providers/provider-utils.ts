@@ -42,8 +42,9 @@ export function parseParticipantString(participantStr: string): ParticipantInput
   try {
     const parsed = addressparser(trimmedStr)
 
-    if (parsed && parsed.length > 0) {
-      const { address, name } = parsed[0]
+    const first = parsed?.[0]
+    if (first) {
+      const { address, name } = first
 
       if (address) {
         const cleanName = name ? stripBoundaryQuotes(name) || undefined : undefined
@@ -81,7 +82,7 @@ export function parseMultipleParticipants(participantsStr: string): ParticipantI
     const parsedAddresses = addressparser(participantsStr)
 
     return parsedAddresses
-      .map(({ address, name }) => {
+      .map(({ address, name }): ParticipantInputData | null => {
         if (!address) {
           logger.debug(
             `Skipping invalid address in multiple participants: ${JSON.stringify({ address, name })}`

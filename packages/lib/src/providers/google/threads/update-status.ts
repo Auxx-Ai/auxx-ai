@@ -29,20 +29,23 @@ export async function updateThreadStatus(options: UpdateThreadStatusOptions): Pr
 
   logger.info(`Updating Gmail thread ${externalThreadId} status to ${status}`)
 
-  const reqBody: gmail_v1.Schema$ModifyThreadRequest = { addLabelIds: [], removeLabelIds: [] }
+  const reqBody: { addLabelIds: string[]; removeLabelIds: string[] } = {
+    addLabelIds: [],
+    removeLabelIds: [],
+  }
 
   switch (status) {
     case MessageStatus.READ:
-      reqBody.removeLabelIds?.push('UNREAD')
+      reqBody.removeLabelIds.push('UNREAD')
       break
     case MessageStatus.UNREAD:
-      reqBody.addLabelIds?.push('UNREAD')
+      reqBody.addLabelIds.push('UNREAD')
       break
     case MessageStatus.IMPORTANT:
-      reqBody.addLabelIds?.push('IMPORTANT')
+      reqBody.addLabelIds.push('IMPORTANT')
       break
     case MessageStatus.STARRED:
-      reqBody.addLabelIds?.push('STARRED')
+      reqBody.addLabelIds.push('STARRED')
       break
     // Archive/Spam/Trash handled by specific methods
     default:
@@ -50,7 +53,7 @@ export async function updateThreadStatus(options: UpdateThreadStatusOptions): Pr
       return false
   }
 
-  if (reqBody.addLabelIds?.length === 0 && reqBody.removeLabelIds?.length === 0) return true // No change
+  if (reqBody.addLabelIds.length === 0 && reqBody.removeLabelIds.length === 0) return true // No change
 
   try {
     await modifyWithThrottling(gmail, 'thread', externalThreadId, reqBody, integrationId, throttler)

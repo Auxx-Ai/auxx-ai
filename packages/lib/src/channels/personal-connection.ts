@@ -1,8 +1,8 @@
 // packages/lib/src/channels/personal-connection.ts
 
 import { database as db, schema } from '@auxx/database'
-import type { IntegrationProviderType } from '@auxx/database/enums'
 import { ResourceGranteeType } from '@auxx/database/enums'
+import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'

@@ -114,6 +114,9 @@ export function getConnectionOptions(): RedisConnectionOptions {
  * @param {boolean} required - If true, will throw error when connection fails
  * @returns {Promise<RedisClient|null>} - Redis client or null if not required and connection fails
  */
+export async function getRedisClient(required?: true): Promise<RedisClient>
+export async function getRedisClient(required: false): Promise<RedisClient | undefined>
+export async function getRedisClient(required: boolean): Promise<RedisClient | undefined>
 export async function getRedisClient(required = true): Promise<RedisClient | undefined> {
   // Fast-fail during cooldown period after a connection failure.
   // Prevents burning 5s per call when Redis is unreachable (e.g., Lambda cold start).

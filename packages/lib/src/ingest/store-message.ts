@@ -2,7 +2,11 @@
 
 import { schema } from '@auxx/database'
 import { ParticipantRole as ParticipantRoleEnum, ThreadStatus } from '@auxx/database/enums'
-import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/database/types'
+import type {
+  ParticipantEntity as Participant,
+  ParticipantRole,
+  ThreadStatus as ThreadStatusValue,
+} from '@auxx/database/types'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
@@ -34,7 +38,7 @@ import type { IntegrationSettings, MessageData, ParticipantInputData } from './t
  * state); TRASH/SPAM map straight through. Shared inboxes never call this — they
  * keep everything-open helpdesk semantics.
  */
-function deriveThreadStatusFromLabels(labelIds: string[]): ThreadStatus {
+function deriveThreadStatusFromLabels(labelIds: string[]): ThreadStatusValue {
   if (labelIds.includes('TRASH')) return ThreadStatus.TRASH
   if (labelIds.includes('SPAM')) return ThreadStatus.SPAM
   return labelIds.includes('INBOX') ? ThreadStatus.OPEN : ThreadStatus.ARCHIVED
@@ -116,7 +120,7 @@ export async function storeMessage(
           metadata: reconciledMetadata,
           receivedAt: messageData.receivedAt,
           sentAt: messageData.sentAt,
-          historyId: messageData.historyId ? BigInt(messageData.historyId) : null,
+          historyId: messageData.historyId ? Number(messageData.historyId) : null,
           isInbound: messageData.isInbound,
           updatedAt: new Date(),
         })
@@ -356,9 +360,10 @@ export async function storeMessage(
     const senderParticipantId = senderParticipant.id
 
     let firstReplyToParticipantId: string | null = null
-    if (messageData.replyTo && messageData.replyTo.length > 0) {
+    const firstReplyTo = messageData.replyTo?.[0]
+    if (firstReplyTo) {
       const replyToParticipant = await processAndCacheParticipant(
-        messageData.replyTo[0],
+        firstReplyTo,
         ParticipantRoleEnum.REPLY_TO
       )
       firstReplyToParticipantId = replyToParticipant?.id ?? null
@@ -407,7 +412,17 @@ export async function storeMessage(
           participantCount: schema.Thread.participantCount,
         })
 
+      // `INSERT … ON CONFLICT DO UPDATE … RETURNING` always yields exactly one
+      // row (unlike DO NOTHING, which returns none on a conflict), so this is a
+      // shape assertion, not a recoverable case. Throwing rolls the whole write
+      // set back rather than proceeding with a half-built thread.
       const thread = threadData[0]
+      if (!thread) {
+        throw new Error(
+          `Thread upsert returned no row for externalThreadId ${messageData.externalThreadId} (integration ${messageData.integrationId})`
+        )
+      }
+
       const isNewThread =
         (thread.messageCount ?? 0) === 1 &&
         thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
@@ -495,9 +510,17 @@ export async function storeMessage(
         })
         .returning({ id: schema.Message.id })
 
+      // Same guarantee as the thread upsert above — DO UPDATE always returns
+      // the row. Asserted here so the MessageParticipant / ThreadParticipant
+      // writes below can't insert links against an undefined messageId.
       const messageRecord = messageRecords[0]
+      if (!messageRecord) {
+        throw new Error(
+          `Message upsert returned no row for externalId ${messageData.externalId} (integration ${messageData.integrationId})`
+        )
+      }
 
-      if (isNewThread && messageRecord?.id) {
+      if (isNewThread && messageRecord.id) {
         await tx
           .update(schema.Thread)
           .set({ latestMessageId: messageRecord.id })

@@ -29,8 +29,13 @@ export interface AttachmentMeta {
 /**
  * Message metadata for display.
  * Simplified structure using ParticipantId[] for all participant references.
+ *
+ * Declared as a type alias rather than an interface on purpose: only object-type
+ * aliases get an implicit index signature, which is what lets a `MessageMeta`
+ * be passed to the generic `redactMessage<T extends Record<string, unknown>>`
+ * and come back still typed as `MessageMeta` — no double cast through `unknown`.
  */
-export interface MessageMeta {
+export type MessageMeta = {
   id: string
   threadId: string
   subject: string | null
