@@ -2,6 +2,18 @@ packages:
   - apps/*
   - packages/*
 
+# Next.js resolves `typescript/lib/typescript.js` directly, a path TypeScript 7's
+# `exports` map does not expose (ERR_PACKAGE_PATH_NOT_EXPORTED). Next then tries to
+# auto-install TypeScript, which throws on a CI runner — so `next typegen` dies,
+# `next-env.d.ts` is never written, and web's typecheck reports a phantom TS2307 for
+# every `*.png` import. Every Next app therefore stays on 5.9.2 for what Next itself
+# loads; they still TYPECHECK with 7 via the `typescript7` alias (see their
+# `typecheck` scripts and scripts/ci/typecheck-ratchet.js). Drop this catalog once
+# Next resolves TypeScript through its package exports.
+catalogs:
+  next-typescript:
+    typescript: 5.9.2
+
 catalog:
   '@aws-sdk/client-cloudfront': ^3.995.0
   '@aws-sdk/client-s3': ^3.995.0

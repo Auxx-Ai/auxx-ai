@@ -48,6 +48,20 @@ const BASELINE_PATH = join(ROOT, 'scripts', 'ci', 'typecheck-baseline.json')
  * if CI starts dying here, move to a larger runner rather than trimming this.
  */
 const HEAP_MB = Number(process.env.TYPECHECK_HEAP_MB) || 8192
+
+/**
+ * Always typecheck with TypeScript 7, resolved by PATH rather than through
+ * `pnpm exec tsc`.
+ *
+ * `apps/web` deliberately pins `typescript` to 5.9.2 — Next loads
+ * `typescript/lib/typescript.js`, which 7's `exports` map does not expose, and
+ * without it `next typegen` dies and the web run reports phantom TS2307s (see
+ * `pnpm-workspace.yaml`). That pin makes `apps/web/node_modules/.bin/tsc` 5.9.2,
+ * so `pnpm exec tsc` would silently measure web on a DIFFERENT compiler than the
+ * baseline was recorded with, and `lib` on 7. Naming the binary keeps both on 7.
+ */
+const TSC_BIN = join(ROOT, 'node_modules', 'typescript7', 'bin', 'tsc')
+
 const PACKAGES = {
   lib: { dir: 'packages/lib' },
   web: { dir: 'apps/web' },
@@ -76,7 +90,7 @@ const GENERATED = ['node_modules', '.next/']
  */
 function collectErrors(name) {
   const { dir } = PACKAGES[name]
-  const result = spawnSync('pnpm', ['exec', 'tsc', '--noEmit'], {
+  const result = spawnSync(process.execPath, [TSC_BIN, '--noEmit'], {
     cwd: join(ROOT, dir),
     encoding: 'utf8',
     maxBuffer: 128 * 1024 * 1024,
