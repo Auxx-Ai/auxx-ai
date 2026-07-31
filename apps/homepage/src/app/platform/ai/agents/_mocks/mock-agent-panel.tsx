@@ -291,7 +291,11 @@ export function MockAgentPanel({
           Step-by-step playbooks the agent follows for specific situations.
         </p>
 
-        <div className='flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto'>
+        {/* `p-px`: `overflow-y-auto` promotes overflow-x to `auto` too, so this
+            box clips on all four sides at its padding edge. The rows' `ring-1`
+            paints outside their border box, so without the pad the ring loses
+            its left/right edges and the first and last row lose theirs. */}
+        <div className='flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-px'>
           {procedures.map((link) => {
             const isOpen = link.id === openedId
             const isCandidate = openedId == null
