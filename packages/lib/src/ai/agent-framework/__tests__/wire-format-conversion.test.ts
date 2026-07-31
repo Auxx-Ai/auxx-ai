@@ -320,13 +320,47 @@ describe('partsToWireFormat — interleaved text/tool/text', () => {
       { type: 'text', text: 'Post-tool conclusion.' },
     ]
     const wire = partsToWireFormat(parts, messageId)
-    // Wire format collapses text into a single assistant content string. The
-    // tool boundary is preserved by the trailing tool message, not by
-    // splitting text into multiple assistant messages.
-    const assistantMessages = wire.filter((m) => m.role === 'assistant')
-    expect(assistantMessages).toHaveLength(1)
-    expect(assistantMessages[0]?.content).toBe('Pre-tool: Post-tool conclusion.')
-    // The follow-up tool message comes after the assistant.
-    expect(wire[wire.length - 1]?.role).toBe('tool')
+    // Text written AFTER the last tool call is the conclusion drawn from that
+    // call, so it is replayed after the tool result — not concatenated onto the
+    // leading assistant message.
+    //
+    // This assertion was inverted before: the old contract folded both text
+    // parts together, which put the answer in front of its own evidence and led
+    // the model to contradict tool results that appeared to postdate it.
+    expect(wire.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant'])
+    expect(wire[0]?.content).toBe('Pre-tool: ')
+    expect(wire[0]?.tool_calls?.[0]?.id).toBe('tc_1')
+    expect(wire[2]?.content).toBe('Post-tool conclusion.')
+  })
+
+  it('keeps one assistant message when there is no tool call to order against', () => {
+    const parts: ContentPart[] = [
+      { type: 'text', text: 'Just ' },
+      { type: 'text', text: 'prose.' },
+    ]
+    const wire = partsToWireFormat(parts, messageId)
+    expect(wire).toHaveLength(1)
+    expect(wire[0]?.content).toBe('Just prose.')
+  })
+
+  it('does not emit assistant→assistant while a tool call is still pending', () => {
+    // No tool result yet (awaiting approval), so there is nothing to separate a
+    // trailing assistant message from the leading one. Anthropic rejects two
+    // adjacent assistant messages, so the text stays folded.
+    const parts: ContentPart[] = [
+      { type: 'text', text: 'Working on it. ' },
+      {
+        type: 'tool_call',
+        toolCallId: 'tc_pending',
+        name: 'send',
+        args: {},
+        status: 'awaiting-approval',
+      },
+      { type: 'text', text: 'Pending your approval.' },
+    ]
+    const wire = partsToWireFormat(parts, messageId)
+    expect(wire.map((m) => m.role)).toEqual(['assistant'])
+    expect(wire[0]?.content).toBe('Working on it. Pending your approval.')
+    expect(wire[0]?.tool_calls?.[0]?.id).toBe('tc_pending')
   })
 })

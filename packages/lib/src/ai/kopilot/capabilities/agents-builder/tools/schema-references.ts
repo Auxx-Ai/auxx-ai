@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/tools/schema-references.ts
 
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
+import { getFieldOutputKey } from '../../../../../resources/registry/field-types'
 import type { Resource } from '../../../../../resources/registry/types'
 
 /**
@@ -87,6 +88,12 @@ export async function validateSchemaReferences(
     if (!resolvedByKey.get(key)) unresolved.push(chip)
   }
 
+  // Field chips fail for two different reasons and the rejection message has to
+  // tell them apart — "your entityDef is wrong" and "your fieldId is wrong" call
+  // for opposite corrections.
+  const fieldChipsWithBadEntity: string[] = []
+  const fieldChipsWithBadField: string[] = []
+
   for (const chip of fieldChips) {
     const payload = chip.slice('field:'.length)
     const head = payload.split('::')[0] ?? payload
@@ -95,17 +102,31 @@ export async function validateSchemaReferences(
     const fieldKey = parts[1]
     if (!entityKey || !fieldKey) {
       unresolved.push(chip)
+      fieldChipsWithBadEntity.push(chip)
       continue
     }
     const resource = resolvedByKey.get(entityKey)
     if (!resource) {
       unresolved.push(chip)
+      fieldChipsWithBadEntity.push(chip)
       continue
     }
+    // Match BOTH field-id conventions. `f.id`/`resourceFieldId` are the storage
+    // identity (CustomField.id CUID); `getFieldOutputKey` (systemAttribute ?? key)
+    // is what `list_entity_fields` returns and therefore what chip authors write.
+    // Checking only storage identity made every system-attributed field
+    // (`contact_status`, `ticket_priority`, …) permanently unresolvable.
     const found = resource.fields.some(
-      (f) => f.id === fieldKey || f.resourceFieldId === `${entityKey}:${fieldKey}`
+      (f) =>
+        f.id === fieldKey ||
+        f.key === fieldKey ||
+        getFieldOutputKey(f) === fieldKey ||
+        f.resourceFieldId === `${entityKey}:${fieldKey}`
     )
-    if (!found) unresolved.push(chip)
+    if (!found) {
+      unresolved.push(chip)
+      fieldChipsWithBadField.push(chip)
+    }
   }
 
   // Warning: a field-bearing entity mentioned in prose with no @[entity:…] chip.
@@ -142,8 +163,33 @@ export async function validateSchemaReferences(
 
   if (unresolved.length === 0) return { unresolvedReferences: [], warnings }
 
-  const slugList = allResources.map((r) => r.apiSlug).join(', ')
-  const errorMessage = `Rejected — ${unresolved.length} unresolved schema chip(s): ${unresolved.map((c) => `\`${c}\``).join(', ')}. For \`@[entity:<key>]\` chips, key must be one of the apiSlugs: ${slugList}. For \`@[field:<entityDef>:<fieldId>]\` chips, call \`list_entity_fields\` on the entityDef first and use a real field id from the response. Fix and retry.`
+  // Name the ACCEPTED forms. The previous message prescribed
+  // "call list_entity_fields and use a real field id" — the exact procedure a
+  // caller has usually already followed — which turned a rejection into a
+  // non-terminating repair loop. Only surface the guidance for the chip kind
+  // that actually failed, so a bad field id doesn't dump the whole slug list.
+  const badEntityChips = unresolved.filter((c) => c.startsWith('entity:'))
+
+  const guidance: string[] = []
+  if (badEntityChips.length > 0 || fieldChipsWithBadEntity.length > 0) {
+    const slugList = allResources.map((r) => r.apiSlug).join(', ')
+    guidance.push(
+      `These entity keys don't resolve. Key must be one of the apiSlugs (or the entity definition id): ${slugList}.`
+    )
+  }
+  if (fieldChipsWithBadField.length > 0) {
+    guidance.push(
+      `These field chips have a valid entityDef but a fieldId that doesn't exist on it: ${fieldChipsWithBadField
+        .map((c) => `\`${c}\``)
+        .join(
+          ', '
+        )}. fieldId must be the \`id\` of a field in the \`list_entity_fields\` response for that entityDef. Copy it verbatim, don't derive it from the label. Changing the entityDef between apiSlug and definition id will NOT help; both forms resolve.`
+    )
+  }
+
+  const errorMessage = `Rejected. ${unresolved.length} unresolved schema chip(s): ${unresolved
+    .map((c) => `\`${c}\``)
+    .join(', ')}. ${guidance.join(' ')} Fix and retry.`
 
   return { unresolvedReferences: unresolved, warnings, errorMessage }
 }

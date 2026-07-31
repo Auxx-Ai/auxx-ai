@@ -33,8 +33,15 @@ import { ToolSelect } from './tool-select'
  * seeded from the current live value, and Reset to default drops the literal
  * again. Tools without an example seed from a client-side JSON-Schema scaffold
  * (`scaffoldFromJsonSchema` over `outputsJsonSchema`). Literal output validates
- * against the server's Zod `outputSchema` on edit. One `repeat` response per
- * tool in v1 (arg-matched multi-response is a follow-up).
+ * against the server's Zod `outputSchema` on edit.
+ *
+ * A tool may carry SEVERAL responses, each with an optional `args` matcher
+ * (`subset`, where the configured keys must be present and deep-equal, or
+ * `exact`). Stored order is match order: the resolver returns the first whose
+ * matcher accepts the call, so a matcher-less response shadows everything after
+ * it (flagged inline). Without this, a tool could only be pinned to one frozen
+ * output for every call, which is why "order 1234 → found, 9999 → not found"
+ * previously had to be authored through Kopilot's `update_eval_case_mock`.
  *
  * `control` tools never reach the catalog; `system` (platform read) toolsets
  * sort to the bottom and collapse by default. See
@@ -42,6 +49,18 @@ import { ToolSelect } from './tool-select'
  */
 
 type ToolEntry = ToolCatalogEntry
+
+/**
+ * Does this response fire for every call to its tool?
+ *
+ * Not just "has no `args`": an `args` matcher whose `value` is `{}` is ALSO a
+ * catch-all, because `argsMatch` runs `Object.entries(value).every(...)`, and
+ * over no entries that is vacuously true, for `subset` and `exact` alike. Both
+ * shapes shadow every response beneath them, so both have to count.
+ */
+function isCatchAll(mock: SimulationToolMock): boolean {
+  return !mock.args || Object.keys(mock.args.value).length === 0
+}
 
 /**
  * Tool names referenced by `tool:<name>` chips anywhere in a procedure's draft.
@@ -124,15 +143,20 @@ export function EvalToolResponses({ agentId, target, mocks, onChange }: EvalTool
   // runtime will return.
   const isDefault = (tool: ToolEntry) => !hasMock(tool.name) && tool.exampleOutput !== undefined
 
-  const upsert = (toolName: string, output: unknown) => {
-    const existing = mocks.find((m) => m.toolName === toolName)
-    if (existing) {
-      onChange(mocks.map((m) => (m.toolName === toolName ? { ...m, output } : m)))
-    } else {
-      onChange([...mocks, { id: generateId('mock'), toolName, output, usage: 'repeat' }])
-    }
+  const mocksFor = (toolName: string) => mocks.filter((m) => m.toolName === toolName)
+
+  /** Append a new response for a tool. Stored order IS match order. */
+  const addMock = (toolName: string, output: unknown, args?: SimulationToolMock['args']) => {
+    onChange([
+      ...mocks,
+      { id: generateId('mock'), toolName, output, usage: 'repeat', ...(args ? { args } : {}) },
+    ])
   }
-  const remove = (toolName: string) => onChange(mocks.filter((m) => m.toolName !== toolName))
+  const patchMock = (mockId: string, patch: Partial<SimulationToolMock>) => {
+    onChange(mocks.map((m) => (m.id === mockId ? { ...m, ...patch } : m)))
+  }
+  const removeMock = (mockId: string) => onChange(mocks.filter((m) => m.id !== mockId))
+  const removeAllFor = (toolName: string) => onChange(mocks.filter((m) => m.toolName !== toolName))
 
   // Default: open the first non-system (capability) group; system groups and the
   // "Other" bucket stay collapsed until the user expands them.
@@ -186,11 +210,13 @@ export function EvalToolResponses({ agentId, target, mocks, onChange }: EvalTool
       key={tool.name}
       agentId={agentId}
       tool={tool}
-      mock={mocks.find((m) => m.toolName === tool.name) ?? null}
+      mocks={mocksFor(tool.name)}
       isOpen={openTool === tool.name}
       onToggle={() => setOpenTool((t) => (t === tool.name ? null : tool.name))}
-      onUpsert={(output) => upsert(tool.name, output)}
-      onRemove={() => remove(tool.name)}
+      onAdd={(output, args) => addMock(tool.name, output, args)}
+      onPatch={patchMock}
+      onRemoveMock={removeMock}
+      onRemoveAll={() => removeAllFor(tool.name)}
     />
   )
 
@@ -214,7 +240,7 @@ export function EvalToolResponses({ agentId, target, mocks, onChange }: EvalTool
         <EmptySection
           icon={<Wrench className='size-4' />}
           title={isLoading ? 'Loading tools…' : 'No tools to mock'}
-          description={isLoading ? undefined : 'This agent has no tools — add one to mock it.'}
+          description={isLoading ? undefined : 'This agent has no tools. Add one to mock it.'}
           loading={isLoading}
         />
       ) : (
@@ -300,28 +326,27 @@ function ToolGroupRow({
 interface ToolResponseRowProps {
   agentId: string
   tool: ToolEntry
-  mock: SimulationToolMock | null
+  /** Every response authored for this tool, in stored (= match) order. */
+  mocks: SimulationToolMock[]
   isOpen: boolean
   onToggle: () => void
-  onUpsert: (output: unknown) => void
-  onRemove: () => void
+  onAdd: (output: unknown, args?: SimulationToolMock['args']) => void
+  onPatch: (mockId: string, patch: Partial<SimulationToolMock>) => void
+  onRemoveMock: (mockId: string) => void
+  onRemoveAll: () => void
 }
 
 function ToolResponseRow({
   agentId,
   tool,
-  mock,
+  mocks,
   isOpen,
   onToggle,
-  onUpsert,
-  onRemove,
+  onAdd,
+  onPatch,
+  onRemoveMock,
+  onRemoveAll,
 }: ToolResponseRowProps) {
-  const utils = api.useUtils()
-  const [draft, setDraft] = useState(() => (mock ? JSON.stringify(mock.output, null, 2) : ''))
-  const [parseError, setParseError] = useState<string | null>(null)
-  const [validation, setValidation] = useState<{ error?: string; warning?: string } | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   const hasExample = tool.exampleOutput !== undefined
   // Empty-but-correctly-shaped seed, derived at render time from the entry's
   // JSON Schema — never stored. Tools without a schema author freely.
@@ -331,7 +356,171 @@ function ToolResponseRow({
   )
   const seedScaffold = scaffold !== undefined && scaffold !== null
   // No literal mock + a declared example ⇒ the runtime serves the live default.
-  const onDefault = !mock && hasExample
+  const onDefault = mocks.length === 0 && hasExample
+
+  const seedValue = hasExample ? tool.exampleOutput : seedScaffold ? scaffold : {}
+
+  const status =
+    mocks.length > 0
+      ? hasExample
+        ? `override${mocks.length > 1 ? ` · ${mocks.length}` : ''}`
+        : `mocked${mocks.length > 1 ? ` · ${mocks.length}` : ''}`
+      : hasExample
+        ? 'default'
+        : 'no response'
+
+  return (
+    <TreeRow
+      depth={1}
+      icon={<span className='size-1.5 rounded-full bg-muted-foreground/40' />}
+      title={tool.displayName}
+      secondary={
+        <span className='flex items-center gap-1.5 text-xs'>
+          <span
+            className={cn(
+              mocks.length > 0
+                ? 'text-green-600'
+                : hasExample
+                  ? 'text-blue-600'
+                  : 'text-muted-foreground'
+            )}>
+            {status}
+          </span>
+          {tool.idempotent ? <span className='text-muted-foreground/70'>· read-only</span> : null}
+        </span>
+      }
+      expandable
+      isOpen={isOpen}
+      onToggleOpen={onToggle}
+      actions={
+        mocks.length > 0 ? (
+          <TreeRowButton
+            variant='destructive'
+            tooltipText={hasExample ? 'Reset to default' : 'Clear responses'}
+            onClick={onRemoveAll}>
+            <Trash2 />
+          </TreeRowButton>
+        ) : undefined
+      }>
+      <div className='space-y-2 py-1.5 pe-2 ps-12'>
+        {onDefault ? (
+          <>
+            <div className='flex items-center justify-between gap-2'>
+              <span className='text-xs text-muted-foreground'>
+                Tool default (live) · stays in sync with the tool's example
+              </span>
+              <Button variant='outline' size='xs' onClick={() => onAdd(tool.exampleOutput)}>
+                <Sparkles />
+                Override
+              </Button>
+            </div>
+            <CodeEditor
+              language={CodeLanguage.json}
+              value={JSON.stringify(tool.exampleOutput, null, 2)}
+              readOnly
+              minHeight={120}
+            />
+          </>
+        ) : (
+          <>
+            {mocks.length === 0 ? (
+              <div className='flex flex-wrap items-center gap-2'>
+                {seedScaffold ? (
+                  <Button variant='outline' size='xs' onClick={() => onAdd(scaffold)}>
+                    <Wand2 />
+                    Scaffold
+                  </Button>
+                ) : null}
+                <Button variant='ghost' size='xs' onClick={() => onAdd({})}>
+                  Start blank
+                </Button>
+              </div>
+            ) : null}
+
+            {mocks.map((mock, idx) => (
+              <MockResponseEditor
+                key={mock.id}
+                agentId={agentId}
+                toolName={tool.name}
+                mock={mock}
+                index={idx}
+                total={mocks.length}
+                // A response is dead code when an EARLIER response for the same
+                // tool matches every call. The resolver takes the first match,
+                // so nothing below it can ever fire.
+                shadowedBy={mocks.findIndex((m, i) => i < idx && isCatchAll(m))}
+                onPatch={(patch) => onPatch(mock.id, patch)}
+                onRemove={() => onRemoveMock(mock.id)}
+              />
+            ))}
+
+            {mocks.length > 0 ? (
+              <div className='flex flex-wrap items-center justify-between gap-2 pt-0.5'>
+                <span className='min-w-0 flex-1 text-xs text-muted-foreground'>
+                  {mocks.length > 1
+                    ? 'Checked top to bottom. The first matching response wins.'
+                    : hasExample
+                      ? 'Unmatched calls fall back to the tool default.'
+                      : 'Unmatched calls fail closed.'}
+                </span>
+                <div className='flex shrink-0 items-center gap-1'>
+                  {hasExample ? (
+                    <Button variant='ghost' size='xs' onClick={onRemoveAll}>
+                      Reset to default
+                    </Button>
+                  ) : null}
+                  <Button variant='outline' size='xs' onClick={() => onAdd(seedValue)}>
+                    <Plus />
+                    Add response
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </TreeRow>
+  )
+}
+
+// ── One authored response (args matcher + output) ────────────────────────────
+
+interface MockResponseEditorProps {
+  agentId: string
+  toolName: string
+  mock: SimulationToolMock
+  index: number
+  total: number
+  /** Index of an earlier catch-all response that shadows this one, or -1. */
+  shadowedBy: number
+  onPatch: (patch: Partial<SimulationToolMock>) => void
+  onRemove: () => void
+}
+
+function MockResponseEditor({
+  agentId,
+  toolName,
+  mock,
+  index,
+  total,
+  shadowedBy,
+  onPatch,
+  onRemove,
+}: MockResponseEditorProps) {
+  const utils = api.useUtils()
+  const [draft, setDraft] = useState(() => JSON.stringify(mock.output, null, 2))
+  const [parseError, setParseError] = useState<string | null>(null)
+  const [validation, setValidation] = useState<{ error?: string; warning?: string } | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Args matcher is opt-in: an existing `args` opens it, otherwise the author
+  // reveals it with "Only when args match". A response with no matcher fires for
+  // every call — which is exactly the v1 behavior, so the default stays familiar.
+  const [argsDraft, setArgsDraft] = useState(() =>
+    mock.args ? JSON.stringify(mock.args.value, null, 2) : ''
+  )
+  const [argsOpen, setArgsOpen] = useState(() => mock.args !== undefined)
+  const [argsError, setArgsError] = useState<string | null>(null)
 
   const applyDraft = (text: string) => {
     setDraft(text)
@@ -347,16 +536,47 @@ function ToolResponseRow({
       return
     }
     setParseError(null)
-    onUpsert(parsed)
+    onPatch({ output: parsed })
 
     // Debounced schema validation against the tool's declared outputSchema.
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       void utils.eval.validateMock
-        .fetch({ agentId, toolName: tool.name, output: parsed })
+        .fetch({ agentId, toolName, output: parsed })
         .then((res) => setValidation(res.ok ? { warning: res.warning } : { error: res.error }))
         .catch(() => setValidation(null))
     }, 500)
+  }
+
+  const applyArgs = (text: string) => {
+    setArgsDraft(text)
+    if (text.trim() === '') {
+      setArgsError(null)
+      onPatch({ args: undefined })
+      return
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      setArgsError('Invalid JSON')
+      return
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      setArgsError('Matcher must be a JSON object of argument names to values')
+      return
+    }
+    setArgsError(null)
+    onPatch({
+      args: { mode: mock.args?.mode ?? 'subset', value: parsed as Record<string, unknown> },
+    })
+  }
+
+  const clearArgs = () => {
+    setArgsOpen(false)
+    setArgsDraft('')
+    setArgsError(null)
+    onPatch({ args: undefined })
   }
 
   useEffect(() => {
@@ -365,125 +585,101 @@ function ToolResponseRow({
     }
   }, [])
 
-  const seed = (value: unknown) => {
-    const text = JSON.stringify(value, null, 2)
-    applyDraft(text)
-  }
-
-  // Drop the literal mock AND the local draft — `draft` alone keeps the editor
-  // mounted, so without clearing it the row never returns to the default view.
-  const clearMock = () => {
-    setDraft('')
-    setParseError(null)
-    setValidation(null)
-    onRemove()
-  }
-
-  const status = mock
-    ? hasExample
-      ? 'override'
-      : 'mocked'
-    : hasExample
-      ? 'default'
-      : 'no response'
-
   return (
-    <TreeRow
-      depth={1}
-      icon={<span className='size-1.5 rounded-full bg-muted-foreground/40' />}
-      title={tool.displayName}
-      secondary={
-        <span className='flex items-center gap-1.5 text-xs'>
-          <span
-            className={cn(
-              mock ? 'text-green-600' : hasExample ? 'text-blue-600' : 'text-muted-foreground'
-            )}>
-            {status}
-          </span>
-          {tool.idempotent ? <span className='text-muted-foreground/70'>· read-only</span> : null}
+    <div className='space-y-1.5 rounded-md border border-border/60 p-2'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <span className='min-w-0 flex-1 text-xs text-muted-foreground'>
+          {total > 1 ? `Response ${index + 1}` : 'Response'}
+          {mock.args && !isCatchAll(mock) ? (
+            <span className='ms-1 text-muted-foreground/70'>
+              · when args {mock.args.mode}-match
+            </span>
+          ) : total > 1 ? (
+            <span className='ms-1 text-muted-foreground/70'>· any call</span>
+          ) : null}
         </span>
-      }
-      expandable
-      isOpen={isOpen}
-      onToggleOpen={onToggle}
-      actions={
-        mock ? (
-          <TreeRowButton
-            variant='destructive'
-            tooltipText={hasExample ? 'Reset to default' : 'Clear response'}
-            onClick={clearMock}>
-            <Trash2 />
-          </TreeRowButton>
-        ) : undefined
-      }>
-      <div className='space-y-2 py-1.5 pe-2 ps-12'>
-        {onDefault ? (
-          <>
-            <div className='flex items-center justify-between gap-2'>
-              <span className='text-xs text-muted-foreground'>
-                Tool default (live) — stays in sync with the tool's example
-              </span>
-              <Button variant='outline' size='xs' onClick={() => seed(tool.exampleOutput)}>
-                <Sparkles />
-                Override
+        <div className='flex shrink-0 items-center gap-1'>
+          {argsOpen ? null : (
+            <Button variant='ghost' size='xs' onClick={() => setArgsOpen(true)}>
+              Only when args match
+            </Button>
+          )}
+          {total > 1 ? (
+            <Button variant='ghost' size='xs' onClick={onRemove}>
+              <Trash2 />
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {shadowedBy >= 0 ? (
+        <Alert variant='warning'>
+          <AlertDescription>
+            Never runs: response {shadowedBy + 1} matches every call. Give that one an args matcher,
+            or move this above it.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {argsOpen ? (
+        <div className='space-y-1'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <span className='min-w-0 flex-1 text-xs text-muted-foreground'>
+              Match when the call args {mock.args?.mode === 'exact' ? 'equal' : 'contain'}:
+            </span>
+            <div className='flex shrink-0 items-center gap-1'>
+              <Button
+                variant='ghost'
+                size='xs'
+                onClick={() =>
+                  onPatch({
+                    args: {
+                      mode: mock.args?.mode === 'exact' ? 'subset' : 'exact',
+                      value: mock.args?.value ?? {},
+                    },
+                  })
+                }>
+                {mock.args?.mode === 'exact' ? 'Exact' : 'Subset'}
+              </Button>
+              <Button variant='ghost' size='xs' onClick={clearArgs}>
+                Any call
               </Button>
             </div>
-            <CodeEditor
-              language={CodeLanguage.json}
-              value={JSON.stringify(tool.exampleOutput, null, 2)}
-              readOnly
-              minHeight={120}
-            />
-          </>
-        ) : (
-          <>
-            {!mock && draft.trim() === '' ? (
-              <div className='flex flex-wrap items-center gap-2'>
-                {seedScaffold ? (
-                  <Button variant='outline' size='xs' onClick={() => seed(scaffold)}>
-                    <Wand2 />
-                    Scaffold
-                  </Button>
-                ) : null}
-                <Button variant='ghost' size='xs' onClick={() => applyDraft('{}')}>
-                  Start blank
-                </Button>
-              </div>
-            ) : null}
+          </div>
+          <CodeEditor
+            language={CodeLanguage.json}
+            value={argsDraft}
+            onChange={applyArgs}
+            minHeight={60}
+            placeholder='{ "query": "jordan.lee@example.com" }'
+          />
+          {argsError ? (
+            <Alert variant='bad'>
+              <AlertDescription>{argsError}</AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
+      ) : null}
 
-            {mock && hasExample ? (
-              <div className='flex items-center justify-between gap-2'>
-                <span className='text-xs text-muted-foreground'>Override (pinned)</span>
-                <Button variant='ghost' size='xs' onClick={clearMock}>
-                  Reset to default
-                </Button>
-              </div>
-            ) : null}
+      <CodeEditor
+        language={CodeLanguage.json}
+        value={draft}
+        onChange={applyDraft}
+        minHeight={120}
+        placeholder='{}'
+      />
 
-            {draft.trim() !== '' || mock ? (
-              <CodeEditor
-                language={CodeLanguage.json}
-                value={draft}
-                onChange={applyDraft}
-                minHeight={120}
-                placeholder='{}'
-              />
-            ) : null}
-
-            {parseError ? (
-              <Alert variant='bad'>
-                <AlertDescription>{parseError}</AlertDescription>
-              </Alert>
-            ) : validation?.error ? (
-              <Alert variant='bad'>
-                <AlertDescription>{validation.error}</AlertDescription>
-              </Alert>
-            ) : validation?.warning ? (
-              <p className='text-xs text-muted-foreground'>{validation.warning}</p>
-            ) : null}
-          </>
-        )}
-      </div>
-    </TreeRow>
+      {parseError ? (
+        <Alert variant='bad'>
+          <AlertDescription>{parseError}</AlertDescription>
+        </Alert>
+      ) : validation?.error ? (
+        <Alert variant='bad'>
+          <AlertDescription>{validation.error}</AlertDescription>
+        </Alert>
+      ) : validation?.warning ? (
+        <p className='text-xs text-muted-foreground'>{validation.warning}</p>
+      ) : null}
+    </div>
   )
 }

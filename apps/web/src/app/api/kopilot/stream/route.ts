@@ -945,8 +945,16 @@ async function runInProcessPath(params: {
     engine.interrupt()
   })
 
-  // Build session context from request
-  const sessionContext = { page, ...context }
+  // Build session context from request.
+  //
+  // `page` LAST, deliberately: it is the server's `resolvedPage`, which is what
+  // the toolset was actually resolved from (see the `registry.getTools` call and
+  // the tool-deps `sessionContext` above, which already order it this way). The
+  // client also sends its surface page inside `context`, and on the DM path
+  // `resolvedPage` is forced to `agents.dm` — so letting `context.page` win here
+  // told the model it was on one page while it held another page's tools, and it
+  // then reported the missing tools to the user as a broken connection.
+  const sessionContext = { ...context, page }
 
   // Run the engine
   const generator =

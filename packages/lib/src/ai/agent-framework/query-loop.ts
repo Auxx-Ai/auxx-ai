@@ -1182,20 +1182,34 @@ export function dropRestatedTextParts(parts: ContentPart[]): void {
 
 /**
  * Collapse every `text` part into a single canonical `text` part holding
- * the post-processed content. Placed at the index of the first text part;
- * subsequent text parts are removed. Tool_call and thinking parts are
+ * the post-processed content. Placed at the index of the LAST text part;
+ * earlier text parts are removed. Tool_call and thinking parts are
  * preserved in order.
+ *
+ * Last, not first: `finalText` is the answer the model produced AFTER its tool
+ * calls resolved. Parking it at the first text part hoisted it in front of the
+ * `tool_call` parts, so the replayed history showed the conclusion before the
+ * evidence it came from — and the model, reading its own transcript back, would
+ * contradict tool results that appear to postdate the answer.
  */
 function collapseTextParts(parts: ContentPart[], finalText: string, agentName: string): void {
-  const firstTextIdx = parts.findIndex((p) => p.type === 'text')
-  if (firstTextIdx === -1) {
+  // Manual reverse scan: `findLastIndex` needs lib es2023, which this package's
+  // tsconfig target predates.
+  let lastTextIdx = -1
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i]!.type === 'text') {
+      lastTextIdx = i
+      break
+    }
+  }
+  if (lastTextIdx === -1) {
     parts.push({ type: 'text', text: finalText, agent: agentName })
     return
   }
-  // Replace the first text part with the canonical text.
-  ;(parts[firstTextIdx] as TextPart).text = finalText
-  // Remove every other text part.
-  for (let i = parts.length - 1; i > firstTextIdx; i--) {
+  // Replace the last text part with the canonical text.
+  ;(parts[lastTextIdx] as TextPart).text = finalText
+  // Remove every earlier text part.
+  for (let i = lastTextIdx - 1; i >= 0; i--) {
     if (parts[i]!.type === 'text') {
       parts.splice(i, 1)
     }

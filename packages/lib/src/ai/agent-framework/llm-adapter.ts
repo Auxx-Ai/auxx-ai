@@ -40,6 +40,10 @@ export function createCallModel(config: LLMAdapterConfig) {
     })
 
     // Full message contents — info so they land in the per-session run log.
+    // `toolCalls`/`toolCallId` are projected too: without them an assistant
+    // message that DOES carry tool_calls reads as bare and the tool messages
+    // after it read as orphaned, which makes the log actively misleading about
+    // call/result pairing and ordering.
     logger.info('LLM messages', {
       model,
       messages: messages.map((m, i) => ({
@@ -47,6 +51,15 @@ export function createCallModel(config: LLMAdapterConfig) {
         role: m.role,
         contentLength: m.content?.length ?? 0,
         content: typeof m.content === 'string' ? m.content : '[non-string content]',
+        ...(m.tool_calls
+          ? {
+              toolCalls: m.tool_calls.map((c) => ({
+                id: c.id,
+                name: c.function?.name,
+              })),
+            }
+          : {}),
+        ...(m.tool_call_id ? { toolCallId: m.tool_call_id } : {}),
       })),
     })
 
