@@ -172,7 +172,7 @@ export function buildExecutionTree(nodes: FlowNode[], edges: FlowEdge[]): Execut
         // Check if this edge represents a fork (non-source handle like 'true', 'false', 'fail')
         // Only use edge's sourceHandle if it's not 'source', otherwise inherit parent's branchId
         const isForkHandle = edge.sourceHandle && edge.sourceHandle !== 'source'
-        const edgeBranchId = isForkHandle ? edge.sourceHandle : context.branchId
+        const edgeBranchId = isForkHandle ? (edge.sourceHandle ?? undefined) : context.branchId
 
         traverseBranch({
           nodeId: edge.target,
@@ -296,15 +296,21 @@ export function treeToExecutions(
 
     // Create mock execution for unexecuted node
     // NodeExecutionCard already handles Pending status with proper styling
-    return {
+    const pending: WorkflowNodeExecution = {
       id: `pending-${treeNode.nodeId}`,
       nodeId: treeNode.nodeId,
       nodeType: treeNode.nodeType,
       title: node?.data.title || treeNode.nodeId, // Lookup from graph
       status: NodeRunningStatus.Pending,
+      // Synthetic row — it is never persisted, so the ownership columns are blank.
+      organizationId: '',
+      workflowAppId: '',
+      workflowId: '',
+      triggeredFrom: 'WORKFLOW_RUN',
       workflowRunId: '',
       createdAt: new Date(),
-      completedAt: null,
+      createdById: null,
+      finishedAt: null,
       elapsedTime: null,
       inputs: null,
       outputs: null,
@@ -318,6 +324,7 @@ export function treeToExecutions(
         predecessorNodeIds: treeNode.predecessorNodeIds,
         ...(loopInfo ? { loopInfo } : {}),
       },
-    } as WorkflowNodeExecution
+    }
+    return pending
   })
 }

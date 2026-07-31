@@ -72,7 +72,7 @@ const findMainFunction = (
       let paramsInfo
       if (paramsMatch) {
         const paramsStart = match.index + match[0].indexOf('(') + 1
-        const paramsEnd = paramsStart + paramsMatch[1].length
+        const paramsEnd = paramsStart + (paramsMatch[1]?.length ?? 0)
         paramsInfo = { paramsStart, paramsEnd }
       }
 
@@ -125,9 +125,9 @@ const parseExistingReturnStatement = (returnStatement: string): Record<string, s
   let match
 
   while ((match = keyValueRegex.exec(objectStr)) !== null) {
-    const key = match[1].trim()
-    const value = match[2].trim()
-    mappings[key] = value
+    const key = match[1]?.trim()
+    const value = match[2]?.trim()
+    if (key && value !== undefined) mappings[key] = value
   }
 
   return mappings
@@ -180,7 +180,7 @@ const updateMainFunctionStatements = (
       // Try to map the new output name to an existing output by position
       if (index < existingOutputNames.length) {
         const existingOutputName = existingOutputNames[index]
-        const existingValue = existingMappings[existingOutputName]
+        const existingValue = existingOutputName ? existingMappings[existingOutputName] : undefined
         outputObject[output.name] = existingValue || 'undefined'
       } else {
         outputObject[output.name] = 'undefined'

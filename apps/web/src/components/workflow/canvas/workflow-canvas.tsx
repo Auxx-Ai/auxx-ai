@@ -144,7 +144,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
     const [edges, setEdges] = useEdgesState(initialEdges)
 
     // Ref for debouncing viewport changes
-    const viewportTimeoutRef = useRef<NodeJS.Timeout>()
+    const viewportTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
     // Memoize counts
     const nodeCount = useMemo(() => nodes.length, [nodes.length])
@@ -152,9 +152,10 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
 
     // Subscribe to node:updated events to sync data changes (like disabled state)
     useEffect(() => {
-      const handleNodeUpdated = ({ data }: any) => {
-        if (!data) return
-        const { nodeId, updates } = data
+      // The bus hands the handler `event.data` directly, so this IS the payload.
+      const handleNodeUpdated = (payload: { nodeId: string; updates: Partial<FlowNode> }) => {
+        if (!payload) return
+        const { nodeId, updates } = payload
 
         // If the update includes data changes (like disabled), sync to React Flow
         if (updates?.data) {
@@ -173,20 +174,25 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
 
     // Subscribe to external workflow updates
     useEffect(() => {
-      const handleExternalUpdate = (event: any) => {
+      // The bus hands the handler `event.data` directly, so this IS the payload.
+      const handleExternalUpdate = (payload: {
+        nodes?: FlowNode[]
+        edges?: FlowEdge[]
+        viewport?: Viewport
+      }) => {
         // Update nodes if provided
-        if (event.data?.nodes) {
-          setNodes(event.data.nodes)
+        if (payload.nodes) {
+          setNodes(payload.nodes)
         }
 
         // Update edges if provided
-        if (event.data?.edges) {
-          setEdges(event.data.edges)
+        if (payload.edges) {
+          setEdges(payload.edges)
         }
 
         // Update viewport if provided
-        if (event.data?.viewport && reactFlowInstance) {
-          reactFlowInstance.setViewport(event.data.viewport)
+        if (payload.viewport && reactFlowInstance) {
+          reactFlowInstance.setViewport(payload.viewport)
         }
       }
 

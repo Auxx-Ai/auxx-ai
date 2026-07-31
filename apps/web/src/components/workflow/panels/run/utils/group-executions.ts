@@ -137,6 +137,10 @@ export function groupExecutionsByBranch(
 
   while (i < topLevelExecutions.length) {
     const execution = topLevelExecutions[i]
+    if (!execution) {
+      i++
+      continue
+    }
     const metadata = execution.executionMetadata as any
     const branchId = metadata?.branchId
     const depth = metadata?.depth ?? 0
@@ -170,6 +174,7 @@ export function groupExecutionsByBranch(
 
       while (j < topLevelExecutions.length) {
         const nextExecution = topLevelExecutions[j]
+        if (!nextExecution) break
         const nextMetadata = nextExecution.executionMetadata as any
         const nextDepth = nextMetadata?.depth ?? 0
         const nextPredecessors = nextMetadata?.predecessorNodeIds || []

@@ -25,10 +25,13 @@ import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud } from '~/components/workflow/hooks'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
+import type { FieldOptions } from '~/components/workflow/ui/input-editor/get-input-component'
 import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
+  type VarEditorValue,
+  varEditorText,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
@@ -124,9 +127,9 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
     [nodeData, setInputs, showValidation, setShowValidation]
   )
   const handleFieldChange = useCallback(
-    (fieldKey: string, value: string, isConstantMode: boolean) => {
+    (fieldKey: string, value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft.data[fieldKey] = value
+        draft.data[fieldKey] = varEditorText(value)
 
         if (!draft.fieldModes) {
           draft.fieldModes = {}
@@ -140,9 +143,9 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
   )
 
   const handleResourceIdChange = useCallback(
-    (value: string, isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft.resourceId = value
+        draft.resourceId = varEditorText(value)
         if (!draft.fieldModes) {
           draft.fieldModes = {}
         }
@@ -221,13 +224,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       const hasError = showValidation && hasFieldErrorOfType(fieldPath, 'error')
 
       // Build fieldOptions with enum, fieldReference, and relationshipType embedded if applicable
-      const fieldOptions: {
-        enum?: Array<{ label: string; value: string }>
-        fieldReference?: string
-        relationshipType?: string
-        actor?: { target?: 'user' | 'group' | 'worker' | 'both'; multiple?: boolean }
-        multiSelect?: boolean
-      } = {}
+      const fieldOptions: FieldOptions = {}
       if (field.options?.options?.length) {
         fieldOptions.enum = field.options.options
       }

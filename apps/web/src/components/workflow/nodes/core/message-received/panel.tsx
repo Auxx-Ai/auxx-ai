@@ -19,6 +19,7 @@ import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '../../../ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { messageReceivedDefinition } from './schema'
 import type { MessageReceivedNodeData } from './types'
 
@@ -198,7 +199,13 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
       </Section>
 
       <OutputVariablesDisplay
-        outputVariables={messageReceivedDefinition.outputVariables?.(nodeData, nodeId) || []}
+        outputVariables={
+          messageReceivedDefinition.outputVariables?.(
+            nodeData,
+            nodeId,
+            staticOutputVariableContext
+          ) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

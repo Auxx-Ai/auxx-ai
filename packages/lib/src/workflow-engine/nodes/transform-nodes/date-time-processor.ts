@@ -973,11 +973,17 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       throw new Error('Duration must be a positive number')
     }
 
-    if (!Object.values(TimeUnit).includes(unit)) {
+    const timeUnit = Object.values(TimeUnit).find((u) => u === unit)
+    if (!timeUnit) {
       throw new Error(`Invalid time unit: ${unit}`)
     }
 
-    return { action, duration, unit, durationObject: this.createDurationObject(duration, unit) }
+    return {
+      action,
+      duration,
+      unit: timeUnit,
+      durationObject: this.createDurationObject(duration, timeUnit),
+    }
   }
 
   /**
@@ -1561,7 +1567,14 @@ export class DateTimeProcessor extends BaseNodeProcessor {
         if (!config.addSubtract) {
           errors.push('Add/subtract configuration is required')
         } else {
-          if (config.addSubtract.duration < 0) {
+          // A string duration may be a variable reference — only range-check real numbers.
+          const { duration } = config.addSubtract
+          const numericDuration = typeof duration === 'string' ? Number(duration) : duration
+          if (
+            numericDuration !== undefined &&
+            !Number.isNaN(numericDuration) &&
+            numericDuration < 0
+          ) {
             errors.push('Duration must be positive')
           }
         }

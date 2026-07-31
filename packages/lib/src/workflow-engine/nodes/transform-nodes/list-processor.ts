@@ -228,7 +228,7 @@ export class ListProcessor extends BaseNodeProcessor {
     }
 
     return list.filter((item) => {
-      const results = config.conditions.map((condition: any) => {
+      const results: boolean[] = config.conditions.map((condition: any) => {
         const fieldKey = this.resolveFilterField(condition.fieldId ?? condition.field)
         const fieldValue = this.getNestedValue(item, fieldKey)
         return this.evaluateCondition(

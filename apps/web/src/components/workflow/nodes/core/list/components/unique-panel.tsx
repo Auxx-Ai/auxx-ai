@@ -56,7 +56,7 @@ export const UniquePanel: React.FC<UniquePanelProps> = ({
 
   // Detect if the input is a primitive array (single _value field)
   const isPrimitive = useMemo(() => {
-    return fieldDefinitions.length === 1 && fieldDefinitions[0].id === '_value'
+    return fieldDefinitions.length === 1 && fieldDefinitions[0]?.id === '_value'
   }, [fieldDefinitions])
 
   const hasFieldSelected = by === 'field' && !!field

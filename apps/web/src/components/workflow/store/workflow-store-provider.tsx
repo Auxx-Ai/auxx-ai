@@ -4,7 +4,7 @@ import type { Viewport } from '@xyflow/react'
 import type React from 'react'
 import { createContext, useContext, useEffect, useMemo } from 'react'
 import { useCanvasStore } from './canvas-store'
-import { historyManager } from './history-manager'
+import { type HistoryManager, historyManager } from './history-manager'
 import { getWorkflowStores, initializeStores, resetStores, type WorkflowStores } from './index'
 
 interface WorkflowStoreContextValue {
@@ -90,30 +90,60 @@ export function useWorkflowStores() {
 }
 
 /**
+ * The public surface of {@link HistoryManager} — everything a consumer can call.
+ * Declared explicitly so the viewer-mode no-op below is checked against the full
+ * API rather than being cast into place (which used to let it omit methods that
+ * consumers really do call, e.g. `startBatch`).
+ */
+export type HistoryManagerApi = Pick<
+  HistoryManager,
+  | 'registerStore'
+  | 'unregisterStore'
+  | 'record'
+  | 'startBatch'
+  | 'endBatch'
+  | 'undo'
+  | 'redo'
+  | 'canUndo'
+  | 'canRedo'
+  | 'getHistory'
+  | 'getNavigationHistory'
+  | 'jumpToState'
+  | 'getCurrentStateIndex'
+  | 'clear'
+>
+
+/**
  * No-op history manager for read-only contexts (viewer mode)
  */
-const noopHistoryManager = {
+const noopHistoryManager: HistoryManagerApi = {
+  registerStore: () => {},
+  unregisterStore: () => {},
   record: () => {},
+  startBatch: () => {},
+  endBatch: () => {},
   undo: () => {},
   redo: () => {},
-  clear: () => {},
   canUndo: () => false,
   canRedo: () => false,
   getHistory: () => [],
-  getCurrent: () => null,
+  getNavigationHistory: () => [],
+  jumpToState: () => {},
+  getCurrentStateIndex: () => -1,
+  clear: () => {},
 }
 
 /**
  * Hook to access history manager
  * Returns no-op implementation when used outside WorkflowStoreProvider (e.g., in viewer)
  */
-export function useHistoryManager() {
+export function useHistoryManager(): HistoryManagerApi {
   const context = useContext(WorkflowStoreContext)
 
   // Return no-op history manager for read-only contexts (viewer mode)
   // This allows node components to render without throwing errors
   if (!context) {
-    return noopHistoryManager as typeof historyManager
+    return noopHistoryManager
   }
 
   return context.historyManager

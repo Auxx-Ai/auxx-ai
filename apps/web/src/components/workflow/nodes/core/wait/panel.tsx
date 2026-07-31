@@ -19,9 +19,15 @@ import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  VarEditorField,
+  type VarEditorValue,
+  varEditorText,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { waitDefinition } from './schema'
 import { DurationUnit, type WaitNodeData, WaitType } from './types'
 
@@ -38,10 +44,11 @@ const WaitNodePanelComponent: React.FC<WaitNodePanelProps> = ({ nodeId, data }) 
 
   const { inputs, setInputs } = useNodeCrud<WaitNodeData>(nodeId, data!)
 
-  const handleDurationAmountChange = (value: string, isConstant: boolean) => {
+  const handleDurationAmountChange = (value: VarEditorValue, isConstant: boolean) => {
+    const text = varEditorText(value)
     setInputs({
       ...inputs,
-      durationAmount: isConstant ? parseFloat(value) || value : value,
+      durationAmount: isConstant ? Number.parseFloat(text) || text : text,
       isDurationConstant: isConstant,
     })
   }
@@ -50,8 +57,8 @@ const WaitNodePanelComponent: React.FC<WaitNodePanelProps> = ({ nodeId, data }) 
     setInputs({ ...inputs, durationUnit: value as DurationUnit })
   }
 
-  const handleTimeChange = (value: string, isConstant: boolean) => {
-    setInputs({ ...inputs, time: value, isTimeConstant: isConstant })
+  const handleTimeChange = (value: VarEditorValue, isConstant: boolean) => {
+    setInputs({ ...inputs, time: varEditorText(value), isTimeConstant: isConstant })
   }
 
   const handleTimezoneChange = (value: string | undefined) => {
@@ -197,7 +204,9 @@ const WaitNodePanelComponent: React.FC<WaitNodePanelProps> = ({ nodeId, data }) 
 
       {/* Output Variables */}
       <OutputVariablesDisplay
-        outputVariables={waitDefinition.outputVariables?.(inputs, nodeId) || []}
+        outputVariables={
+          waitDefinition.outputVariables?.(inputs, nodeId, staticOutputVariableContext) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

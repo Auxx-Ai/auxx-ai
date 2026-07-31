@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/ui/model-parameter/model-display.tsx
 
+import type React from 'react'
 import ModelName from './model-name'
 import type { ModelItem } from './types'
 
@@ -15,7 +16,7 @@ type ModelDisplayProps = {
  * Renders either the detailed model name (when the current model is resolved)
  * or a fallback displaying the raw modelId in a subdued style.
  */
-const ModelDisplay = ({ currentModel, modelId }: ModelDisplayProps): JSX.Element => {
+const ModelDisplay = ({ currentModel, modelId }: ModelDisplayProps): React.JSX.Element => {
   return currentModel ? (
     <ModelName
       className='flex grow items-center gap-1 px-1 py-[3px]'

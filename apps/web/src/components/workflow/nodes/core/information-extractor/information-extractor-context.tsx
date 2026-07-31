@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useMemo } from 'react'
 import { useAvailableVariables } from '~/components/workflow/hooks'
 import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import type { UnifiedVariable } from '../if-else'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { informationExtractorDefinition } from './schema'
 import type {
   InformationExtractorContextValue,
@@ -108,7 +109,8 @@ export const InformationExtractorProvider: React.FC<InformationExtractorProvider
 
   // Get output variables from the node definition (single source of truth)
   const getOutputVariables = useCallback(
-    (): UnifiedVariable[] => informationExtractorDefinition.outputVariables(data, nodeId),
+    (): UnifiedVariable[] =>
+      informationExtractorDefinition.outputVariables(data, nodeId, staticOutputVariableContext),
     [data, nodeId]
   )
 

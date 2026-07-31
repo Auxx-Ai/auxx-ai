@@ -28,19 +28,19 @@ function isNextResponse(response: any): response is Response {
 // Adapter to convert Next.js Response to SSEResponse
 function adaptResponse(response: Response | SSEResponse): SSEResponse {
   if (isNextResponse(response)) {
+    // A fetch `Response.body` is a ReadableStream — it has no writer and cannot
+    // be pushed to. Callers that want to emit SSE frames must supply an
+    // SSEResponse with its own `write` (e.g. the writable half of a
+    // TransformStream), so surface the misuse instead of throwing per frame.
     return {
-      write: (data: string) => {
-        const encoder = new TextEncoder()
-        const writer = response.body?.getWriter()
-        if (writer) {
-          writer.write(encoder.encode(data))
-        }
+      write: () => {
+        logger.warn('Cannot write SSE frames to a Response body — pass an SSEResponse instead')
       },
       body: response.body,
       headers: response.headers,
     }
   }
-  return response as SSEResponse
+  return response
 }
 
 export class WorkflowExecutionEvents {
@@ -143,8 +143,8 @@ export class WorkflowExecutionEvents {
       return true
     }
 
-    // If not already waiting and not connected, set the state to waiting
-    if (currentState !== 'waiting' && currentState !== 'connected') {
+    // If not already waiting, set the state to waiting ('connected' returned above)
+    if (currentState !== 'waiting') {
       this.connectionStates.set(runId, 'waiting')
       logger.info('Set connection state to waiting', { runId, currentState })
     }

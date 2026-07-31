@@ -54,10 +54,10 @@ export function useEdgeStatusUpdater() {
     }
 
     // Subscribe to run store changes
-    const unsubscribeRun = useRunStore.subscribe((state) => {
-      updateEdgeStatuses(state.nodeExecutions, 'workflow')
-      return state.nodeExecutions
-    })
+    const unsubscribeRun = useRunStore.subscribe(
+      (state) => state.nodeExecutions,
+      (nodeExecutions) => updateEdgeStatuses(nodeExecutions, 'workflow')
+    )
 
     // Subscribe to single node run store changes
     const unsubscribeSingle = useSingleNodeRunStore.subscribe(

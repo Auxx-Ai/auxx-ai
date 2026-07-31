@@ -20,15 +20,10 @@ export enum LogicalOperator {
 }
 
 // Extended condition interface for if-else nodes
-export interface IfElseCondition extends Omit<NodeCondition, 'varType' | 'value'> {
-  key?: string
+export interface IfElseCondition extends Omit<NodeCondition, 'value'> {
   file_var?: any
   conditions?: IfElseCondition[]
-  varType?: BaseType
   value?: string | number | boolean | string[] | TiptapJSON
-  isConstant?: boolean
-  // Modern variable reference
-  variableId?: string
 }
 
 // Re-export from store types for backward compatibility
@@ -65,9 +60,18 @@ export interface IfElseExecutionResult {
  */
 export interface NodeCondition {
   id: string
-  variableId: string
+  /** Variable this condition reads. Empty until the user picks one. */
+  variableId?: string
   comparison_operator?: Operator
   value?: string | number | boolean | any[] | Record<string, any>
+  /** Whether the right-hand value is a literal rather than a variable reference */
+  isConstant?: boolean
+  /** Sub-key inside a structured variable (e.g. an address part) */
+  key?: string
+  /** Declared value type — drives which value editor is rendered */
+  varType?: BaseType
+  /** How this condition joins the previous one inside its case */
+  logical_operator?: 'and' | 'or'
 }
 
 /**
@@ -77,7 +81,7 @@ export interface NodeCase {
   id: string
   case_id: string
   logical_operator: 'and' | 'or'
-  conditions: NodeCondition[]
+  conditions: IfElseCondition[]
 }
 
 // Re-export for convenience

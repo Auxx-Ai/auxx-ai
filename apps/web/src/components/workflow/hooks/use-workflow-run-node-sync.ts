@@ -58,7 +58,7 @@ export function useWorkflowRunNodeSync() {
     }
   }, [isRunning, activeRun, getNodes, setNodes])
 
-  // Subscribe to node execution updates to sync individual node statuses
+  // Subscribe to node execution updates to sync individual node statuses.
   useEffect(() => {
     const unsubscribe = useRunStore.subscribe(
       (state) => state.nodeExecutions,
@@ -74,24 +74,13 @@ export function useWorkflowRunNodeSync() {
           const execution = nodeExecutions.get(node.id)
 
           if (execution) {
-            // Map execution status to NodeRunningStatus
-            let status: NodeRunningStatus | undefined
-
-            // The execution status should already be a NodeRunningStatus value
-            if (execution.status) {
-              status = execution.status as NodeRunningStatus
-            }
+            // The execution status is already a NodeRunningStatus value
+            const status = execution.status ?? undefined
 
             // Only update if status changed
             if (node.data._runningStatus !== status) {
               hasUpdates = true
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  _runningStatus: status,
-                },
-              }
+              return { ...node, data: { ...node.data, _runningStatus: status } }
             }
           }
 

@@ -48,7 +48,7 @@ export function extractVarIdsFromString(text: string): string[] {
   let match
 
   while ((match = varPattern.exec(text)) !== null) {
-    const varId = match[1].trim()
+    const varId = match[1]?.trim()
     if (varId) {
       varIds.push(varId)
     }
@@ -80,7 +80,7 @@ export function validateTagPattern(text: string): { isValid: boolean; invalidTag
 
   while ((match = tagPattern.exec(text)) !== null) {
     const varId = match[1]
-    if (!varId.trim()) {
+    if (!varId?.trim()) {
       invalidTags.push(match[0])
     }
   }

@@ -16,8 +16,8 @@ import { generateId } from '@auxx/utils'
 import { produce } from 'immer'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
-import type { ConditionSystemConfig } from '~/components/conditions'
-import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import type { ConditionSystemConfig, FieldDefinition, Operator } from '~/components/conditions'
+import { ConditionContainer, ConditionProvider, STANDARD_OPERATORS } from '~/components/conditions'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
@@ -35,6 +35,14 @@ import { BasePanel } from '../../shared/base/base-panel'
 import { useFindGroups } from './hooks/use-find-groups'
 import { getFindNodeOutputVariables } from './output-variables'
 import type { FindNodeData } from './types'
+
+/**
+ * `getFieldOperators` and `ResourceField.operatorOverrides` are both typed
+ * `string[]` in lib, so keep only the names the condition system knows.
+ */
+function isOperator(name: string): name is Operator {
+  return Object.hasOwn(STANDARD_OPERATORS, name)
+}
 
 interface FindPanelProps {
   nodeId: string
@@ -90,14 +98,14 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
   const groupHooks = useFindGroups(nodeData, setNodeData)
 
   // Convert filterable fields to field definitions for condition builder
-  const fieldDefinitions = useMemo(() => {
+  const fieldDefinitions = useMemo<FieldDefinition[]>(() => {
     return filterableFields.map((field) => ({
       id: toResourceFieldId(nodeData.resourceType, field.key),
       label: field.label,
       type: field.type,
       fieldType: field.fieldType,
       fieldKey: field.key,
-      operators: field.operatorOverrides || getFieldOperators(field),
+      operators: (field.operatorOverrides || getFieldOperators(field)).filter(isOperator),
       options: field.options,
       ...(field.type === BaseType.RELATION &&
         field.relationship && {
@@ -221,7 +229,10 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
                 onConditionsChange={() => {}} // No-op for grouped mode
                 onGroupsChange={groupHooks.handleGroupsChange}
                 getAvailableFields={() => fieldDefinitions}
-                getFieldDefinition={(id) => fieldDefinitions.find((f) => f.id === id)}>
+                getFieldDefinition={(id) => {
+                  const fieldId = Array.isArray(id) ? id.join('.') : id
+                  return fieldDefinitions.find((f) => f.id === fieldId)
+                }}>
                 <ConditionContainer
                   emptyStateText="Click 'Add Group' to start filtering"
                   showAddButton

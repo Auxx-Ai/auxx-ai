@@ -17,12 +17,15 @@ export interface TiptapJSON {
  */
 export interface InputEditorProps {
   // Core props
-  /** The current value - can be plain text, Tiptap JSON string, or Tiptap JSON object */
-  value?: string | TiptapJSON
-  /** Callback fired when value changes (on every keystroke) - now returns JSON object */
-  onChange?: (value: TiptapJSON) => void
-  /** Callback fired when editor loses focus - now returns JSON object */
-  onBlur?: (value: TiptapJSON) => void
+  /**
+   * The current value, in the legacy `{{variableId}}` text format —
+   * `TiptapInput` drives {@link useWorkflowVariableEditor} in string mode.
+   */
+  value?: string
+  /** Callback fired when value changes (debounced) */
+  onChange?: (value: string) => void
+  /** Callback fired when editor loses focus */
+  onBlur?: (value: string) => void
   /** Placeholder text when empty */
   placeholder?: string
   /** Whether the input is disabled */
@@ -66,12 +69,30 @@ export interface InputEditorState {
 }
 
 export type VarEditorType = 'text' | 'json' | 'html' | 'markdown' | 'code'
+
+/**
+ * A value a {@link VarEditorProps} editor can hold.
+ *
+ * In variable mode this is always the editor's string content (a variable id or
+ * Tiptap text). In constant mode it is the typed constant produced by the
+ * per-type input behind `ConstantInputAdapter` — a number for `BaseType.NUMBER`,
+ * a boolean for `BaseType.BOOLEAN`, an array for multi-select enums, an object
+ * for structured types such as ADDRESS or CURRENCY.
+ */
+export type VarEditorValue =
+  | string
+  | number
+  | boolean
+  | null
+  | VarEditorValue[]
+  | { [key: string]: VarEditorValue }
+
 export interface VarEditorProps {
   // Core props
   /** The current value - can be plain text, Tiptap JSON string, or Tiptap JSON object */
-  value?: string
+  value?: VarEditorValue
   /** Callback fired when value changes - now includes isConstantMode */
-  onChange?: (value: string, isConstantMode: boolean) => void
+  onChange?: (value: VarEditorValue, isConstantMode: boolean) => void
   /** Callback fired when editor loses focus - now returns JSON object */
   onBlur?: (value: string) => void
   /** Placeholder text when empty */

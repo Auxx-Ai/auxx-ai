@@ -5,13 +5,14 @@ import { useEffect } from 'react'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { useVarStore } from '../store/use-var-store'
 import type { EdgeMeta, NodeMeta } from '../store/var-graph'
+import type { FlowEdge, FlowNode } from '../types'
 
 /**
  * Event-driven sync bridge between ReactFlow and the variable store.
  * Replaces the old 5s polling with RAF-debounced subscription.
  */
 export function useVarStoreSync() {
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
   const updateGraph = useVarStore((s) => s.actions.updateGraph)
 
   // ReactFlow subscription — fires on any store change

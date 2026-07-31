@@ -10,6 +10,7 @@ import { useNodeAddition } from '~/components/workflow/hooks/use-node-addition'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { ConnectedInputsEditor } from './connected-inputs-editor'
 import { manualDefinition } from './schema'
 import type { ManualNodeData } from './types'
@@ -58,7 +59,9 @@ const ManualPanelComponent: React.FC<ManualPanelProps> = ({ nodeId, data }) => {
 
       {/* Available Variables */}
       <OutputVariablesDisplay
-        outputVariables={manualDefinition.outputVariables?.(nodeData, nodeId) || []}
+        outputVariables={
+          manualDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

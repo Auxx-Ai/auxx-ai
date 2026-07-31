@@ -1,7 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/registry.ts
 
-import type { NodeProps } from '@xyflow/react'
-import type { ComponentType } from 'react'
+import type { NodeTypes } from '@xyflow/react'
 import { AiNode, AiPanel } from '~/components/workflow/nodes/core/ai'
 import { AnswerNode, AnswerPanel } from '~/components/workflow/nodes/core/answer'
 import { CodeNode, CodePanel } from '~/components/workflow/nodes/core/code'
@@ -181,7 +180,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     ...listNodeDefinition,
     component: ListNode,
-    panel: ListPanel as any,
+    panel: ListPanel,
     traceRenderer: ListTraceRenderer,
   },
   {
@@ -219,36 +218,41 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
  * customNodeTypes
  * Register components with React Flow - use actual node types directly
  * This ensures each node type has its own component identity for React
+ *
+ * Typed as React Flow's own `NodeTypes`, whose props declare `data: any` — a
+ * node-type map is heterogeneous by construction, so no single `data` type can
+ * describe every entry. That is also what lets each component keep its own
+ * narrow `NodeProps<XNodeData>` without a cast here.
  */
-export const NODE_TYPES: Record<string, ComponentType<NodeProps>> = {
-  [NodeType.IF_ELSE]: IfElseNode as ComponentType<NodeProps>,
-  [NodeType.AI]: AiNode as ComponentType<NodeProps>,
-  [NodeType.CODE]: CodeNode as ComponentType<NodeProps>,
-  [NodeType.ANSWER]: AnswerNode as ComponentType<NodeProps>,
-  [NodeType.MESSAGE_RECEIVED]: MessageReceivedNode as ComponentType<NodeProps>,
-  [NodeType.WEBHOOK]: WebhookNode as ComponentType<NodeProps>,
-  [NodeType.WEBHOOK_ENDPOINT]: WebhookTriggerNode as ComponentType<NodeProps>,
-  [NodeType.SCHEDULED]: ScheduledTriggerNode as ComponentType<NodeProps>,
-  [NodeType.MANUAL]: ManualNode as ComponentType<NodeProps>,
-  [NodeType.END]: EndNode as ComponentType<NodeProps>,
-  [NodeType.NOTE]: NoteNode as ComponentType<NodeProps>,
-  [NodeType.TEXT_CLASSIFIER]: TextClassifierNode as ComponentType<NodeProps>,
-  [NodeType.INFORMATION_EXTRACTOR]: InformationExtractorNode as ComponentType<NodeProps>,
-  [NodeType.VAR_ASSIGN]: VarAssignNode as ComponentType<NodeProps>,
-  [NodeType.DATE_TIME]: DateTimeNode as ComponentType<NodeProps>,
-  [NodeType.HTTP]: HttpNode as ComponentType<NodeProps>,
-  [NodeType.WAIT]: WaitNode as ComponentType<NodeProps>,
-  [NodeType.LIST]: ListNode as ComponentType<NodeProps>,
-  [NodeType.FORMAT]: FormatNode as ComponentType<NodeProps>,
-  [NodeType.LOOP]: LoopNode as ComponentType<NodeProps>,
-  [NodeType.HUMAN_CONFIRMATION]: HumanConfirmationNode as ComponentType<NodeProps>,
-  [NodeType.FIND]: FindNode as ComponentType<NodeProps>,
-  [NodeType.CRUD]: CrudNode as ComponentType<NodeProps>,
-  [NodeType.RESOURCE_TRIGGER]: ResourceTriggerNode as ComponentType<NodeProps>,
-  [NodeType.DOCUMENT_EXTRACTOR]: DocumentExtractorNode as ComponentType<NodeProps>,
-  [NodeType.CHUNKER]: ChunkerNode as ComponentType<NodeProps>,
-  [NodeType.DATASET]: DatasetNode as ComponentType<NodeProps>,
-  [NodeType.KNOWLEDGE_RETRIEVAL]: KnowledgeRetrievalNode as ComponentType<NodeProps>,
+export const NODE_TYPES: NodeTypes = {
+  [NodeType.IF_ELSE]: IfElseNode,
+  [NodeType.AI]: AiNode,
+  [NodeType.CODE]: CodeNode,
+  [NodeType.ANSWER]: AnswerNode,
+  [NodeType.MESSAGE_RECEIVED]: MessageReceivedNode,
+  [NodeType.WEBHOOK]: WebhookNode,
+  [NodeType.WEBHOOK_ENDPOINT]: WebhookTriggerNode,
+  [NodeType.SCHEDULED]: ScheduledTriggerNode,
+  [NodeType.MANUAL]: ManualNode,
+  [NodeType.END]: EndNode,
+  [NodeType.NOTE]: NoteNode,
+  [NodeType.TEXT_CLASSIFIER]: TextClassifierNode,
+  [NodeType.INFORMATION_EXTRACTOR]: InformationExtractorNode,
+  [NodeType.VAR_ASSIGN]: VarAssignNode,
+  [NodeType.DATE_TIME]: DateTimeNode,
+  [NodeType.HTTP]: HttpNode,
+  [NodeType.WAIT]: WaitNode,
+  [NodeType.LIST]: ListNode,
+  [NodeType.FORMAT]: FormatNode,
+  [NodeType.LOOP]: LoopNode,
+  [NodeType.HUMAN_CONFIRMATION]: HumanConfirmationNode,
+  [NodeType.FIND]: FindNode,
+  [NodeType.CRUD]: CrudNode,
+  [NodeType.RESOURCE_TRIGGER]: ResourceTriggerNode,
+  [NodeType.DOCUMENT_EXTRACTOR]: DocumentExtractorNode,
+  [NodeType.CHUNKER]: ChunkerNode,
+  [NodeType.DATASET]: DatasetNode,
+  [NodeType.KNOWLEDGE_RETRIEVAL]: KnowledgeRetrievalNode,
   // Add input node types
   ...INPUT_NODE_TYPES,
 }

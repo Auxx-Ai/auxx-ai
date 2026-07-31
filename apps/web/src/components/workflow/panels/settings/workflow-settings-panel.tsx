@@ -444,9 +444,9 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
                 shareToken={workflowAppData?.shareToken}
                 webEnabled={workflowAppData?.webEnabled}
                 apiEnabled={workflowAppData?.apiEnabled}
-                accessMode={workflowAppData?.accessMode}
-                config={workflowAppData?.config}
-                rateLimit={workflowAppData?.rateLimit}
+                accessMode={workflowAppData?.accessMode ?? undefined}
+                config={workflowAppData?.config ?? undefined}
+                rateLimit={workflowAppData?.rateLimit ?? undefined}
                 hasPublishedVersion={hasPublishedVersion}
                 workflowEnabled={workflow?.enabled}
               />

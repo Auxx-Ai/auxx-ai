@@ -91,6 +91,7 @@ function computeLoopVariables(
 
   for (let index = 0; index < contexts.length; index++) {
     const context = contexts[index]
+    if (!context) continue
     const depth = context.depth || index + 1
     const varPrefix = depth === 1 ? '' : `loop${depth}`
 

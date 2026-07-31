@@ -14,14 +14,19 @@ import type {
 import { ProviderRegistryService } from '../../../providers/provider-registry-service'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
 import type { ExecutionContextManager } from '../../core/execution-context'
-import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
+import type {
+  NodeData,
+  NodeExecutionResult,
+  ValidationResult,
+  WorkflowNode,
+} from '../../core/types'
 import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
 /**
  * Configuration interface for Answer node
  */
-interface AnswerNodeData {
+interface AnswerNodeData extends NodeData {
   messageType: 'new' | 'reply' | 'replyAll'
   integrationId?: string
   recordId?: string // Format: "entityDefinitionId:id" (e.g. "thread:abc123")
@@ -67,6 +72,11 @@ export class AnswerProcessor extends BaseNodeProcessor {
     // 1. Validate required fields
     if (!config.text) {
       throw new Error('Message text is required')
+    }
+    // Every outbound message (sent or drafted) is attributed to an acting user.
+    const userId = context.userId
+    if (!userId) {
+      throw new Error('Answer node requires an acting user on the execution context')
     }
 
     // Get messageType (default to 'reply' for backward compatibility)
@@ -288,8 +298,11 @@ export class AnswerProcessor extends BaseNodeProcessor {
 
     // Draft path — runs even in dry-run mode (drafts are safe, non-destructive)
     if (mode === 'draft') {
+      if (!context.db) {
+        throw new Error('A database connection is required to save the answer as a draft')
+      }
       try {
-        const draftService = new DraftService(context.db, context.organizationId, context.userId)
+        const draftService = new DraftService(context.db, context.organizationId, userId)
 
         // resolvedText is plain text (tiptap stringified with \n line breaks).
         // Convert to simple HTML paragraphs for the draft editor (which renders bodyHtml).
@@ -440,7 +453,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
       )
 
       const sendInput: SendMessageInput = {
-        userId: context.userId,
+        userId,
         organizationId: context.organizationId,
         integrationId,
         threadId,
@@ -524,6 +537,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
 
     for (let i = 0; i < emails.length; i++) {
       const email = emails[i]
+      if (!email) continue
       const isConstant = modes?.[i] ?? false
 
       if (isConstant) {

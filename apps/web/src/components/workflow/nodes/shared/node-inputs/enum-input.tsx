@@ -19,8 +19,13 @@ interface EnumOption {
 interface EnumInputProps extends NodeInputProps {
   /** Field name */
   name: string
-  /** Enum options - can be string array or option objects */
-  options: string[] | EnumOption[]
+  /**
+   * Enum options - can be string array or option objects.
+   * Optional because `getSpecificPropsForType` returns `Record<string, any>`, which cannot
+   * satisfy a required prop through a JSX spread. Only ever selected for `BaseType.ENUM`,
+   * which is the branch that supplies options.
+   */
+  options?: string[] | EnumOption[]
   /** Placeholder text */
   placeholder?: string
   /** Default value */
@@ -42,7 +47,7 @@ export const EnumInput = createNodeInput<EnumInputProps>(
     onError,
     isLoading,
     name,
-    options,
+    options = [],
     placeholder,
     defaultValue,
     selectVariant,

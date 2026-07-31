@@ -2,6 +2,7 @@
 
 import type { TargetBranch } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import { AiModelMode } from '../ai/types'
 
 export type TextClassifierOutputMode = 'branches' | 'variable'
 
@@ -24,12 +25,11 @@ export interface TextClassifierNodeData extends BaseNodeData {
 export type TextClassifierNode = SpecificNode<'text-classifier', TextClassifierNodeData>
 
 /**
- * Model mode enum (reusing from AI node pattern)
+ * Model mode enum. Re-exported from the AI node rather than redeclared —
+ * TS enums are nominal, so a second `enum AiModelMode` with identical members
+ * is a *different, incompatible* type at every boundary the two nodes share.
  */
-export enum AiModelMode {
-  CHAT = 'chat',
-  COMPLETION = 'completion',
-}
+export { AiModelMode }
 
 /**
  * Model configuration interface

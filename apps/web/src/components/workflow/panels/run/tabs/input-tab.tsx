@@ -244,8 +244,8 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
           return nodeType === 'resource-trigger'
         })
 
-        if (resourceTriggerNode?.data?.resourceType) {
-          const resourceType = resourceTriggerNode.data.resourceType
+        const resourceType = resourceTriggerNode?.data?.resourceType
+        if (typeof resourceType === 'string' && resourceType) {
           const { resourceData, selectedResourceId, ...otherInputs } = finalInputs
 
           // Transform: move resourceData to [resourceType] key and add timestamp

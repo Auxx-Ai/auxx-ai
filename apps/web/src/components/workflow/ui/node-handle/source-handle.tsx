@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/node-handle/source-handle.tsx
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Handle } from '@xyflow/react'
+import { Handle, type HandleType } from '@xyflow/react'
 import { Plus } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback, useState } from 'react'
@@ -13,7 +13,7 @@ import {
   type HandlePosition,
   mapPosition,
 } from './handle-position-utils'
-import type { NodeHandleProps } from './types'
+import { type NodeHandleProps, NodeRunningStatus } from './types'
 
 export const NodeSourceHandle = memo(
   ({
@@ -35,6 +35,12 @@ export const NodeSourceHandle = memo(
     const [triggerOpen, setTriggerOpen] = useState(false)
 
     const connected = data._connectedSourceHandleIds?.includes(handleId)
+
+    // React Flow only understands 'source' | 'target'. Our extra `'input-output'`
+    // value (passed by nodes/inputs/form-input) is a source handle on an input
+    // node, and React Flow already treats anything that is not `'target'` as a
+    // source — so collapse it explicitly rather than leaking it into the DOM.
+    const flowHandleType: HandleType = handleType === 'target' ? 'target' : 'source'
 
     // CSS custom properties for collapsed positioning
     const handleStyle =
@@ -71,15 +77,15 @@ export const NodeSourceHandle = memo(
           style={handleStyle}>
           <Handle
             id={handleId}
-            type={handleType}
+            type={flowHandleType}
             position={mapPosition(position)}
             className={cn(
               ' z-3 !h-4 !w-4 !rounded-none !border-none !bg-transparent !outline-none',
               'after:absolute after:bg-info',
               getIndicatorClass(position),
-              nodeStatus === 'success' && 'after:bg-green-500',
-              nodeStatus === 'error' && 'after:bg-red-500',
-              nodeStatus === 'running' && 'after:bg-orange-500',
+              nodeStatus === NodeRunningStatus.Succeeded && 'after:bg-green-500',
+              nodeStatus === NodeRunningStatus.Failed && 'after:bg-red-500',
+              nodeStatus === NodeRunningStatus.Running && 'after:bg-orange-500',
               'cursor-pointer'
               // connected && 'after:opacity-0',
             )}
@@ -136,9 +142,9 @@ export const NodeSourceHandle = memo(
           'after:absolute after:bg-border',
           getIndicatorClass(position),
           'transition-all hover:scale-125',
-          nodeStatus === 'success' && 'after:bg-green-500',
-          nodeStatus === 'error' && 'after:bg-red-500',
-          nodeStatus === 'running' && 'after:bg-orange-500',
+          nodeStatus === NodeRunningStatus.Succeeded && 'after:bg-green-500',
+          nodeStatus === NodeRunningStatus.Failed && 'after:bg-red-500',
+          nodeStatus === NodeRunningStatus.Running && 'after:bg-orange-500',
           handleClassName
         )}
         style={handleStyle}

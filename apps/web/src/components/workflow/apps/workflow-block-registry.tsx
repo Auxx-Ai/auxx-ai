@@ -376,7 +376,7 @@ export class WorkflowBlockRegistry {
       // Extract {{variable}} template references
       let match: RegExpExecArray | null
       while ((match = varPattern.exec(value)) !== null) {
-        const varId = match[1].trim()
+        const varId = match[1]?.trim()
         if (varId) variables.add(varId)
       }
 

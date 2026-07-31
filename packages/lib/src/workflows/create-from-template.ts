@@ -44,8 +44,9 @@ export async function buildTemplateWorkflowData(
       graph: template.graph as any,
       triggerType: template.triggerType ?? undefined,
       entityDefinitionId: template.entityDefinitionId ?? undefined,
-      envVars: template.envVars ?? undefined,
-      variables: template.variables ?? undefined,
+      // Template rows store these as jsonb, so guard the shape rather than trust it.
+      envVars: Array.isArray(template.envVars) ? template.envVars : undefined,
+      variables: Array.isArray(template.variables) ? template.variables : undefined,
     },
     { userId }
   )

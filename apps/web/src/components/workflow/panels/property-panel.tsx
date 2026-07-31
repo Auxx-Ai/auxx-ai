@@ -5,7 +5,7 @@ import { useStore } from '@xyflow/react'
 import React, { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useDockPortal } from '~/components/global/dock-portal-provider'
-import { NodeType } from '~/components/workflow/types'
+import { isWorkflowNode, NodeType } from '~/components/workflow/types'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { useRegistryVersion } from '../hooks'
@@ -54,7 +54,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = React.memo(() => {
   const selectedNode = useStore(
     useShallow((s) => {
       const currentNode = s.nodes.find((node) => node.selected)
-      if (currentNode) {
+      // React Flow types every node's data as `Record<string, unknown>`; the
+      // guard is what recovers the `BaseNodeData` the panels are written against.
+      if (currentNode && isWorkflowNode(currentNode)) {
         return { id: currentNode.id, type: currentNode.data.type, data: currentNode.data }
       }
     })
@@ -102,12 +104,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = React.memo(() => {
       title='Properties'
       portalTarget={primaryPanelRef}
       panelType='property'>
-      <PanelComponent
-        key={selectedNode.id}
-        nodeId={selectedNode.id}
-        // @ts-expect-error - panels expect data prop but registry types it as nodeId only
-        data={selectedNode.data}
-      />
+      <PanelComponent key={selectedNode.id} nodeId={selectedNode.id} data={selectedNode.data} />
     </DockableDrawer>
   )
 })

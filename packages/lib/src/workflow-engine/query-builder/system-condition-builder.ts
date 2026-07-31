@@ -58,8 +58,12 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
   ): SQL<unknown> | undefined {
     // Handle custom fields (custom_xxx) with subquery
     const rawFieldId = Array.isArray(condition.fieldId) ? condition.fieldId[0] : condition.fieldId
-    if (rawFieldId?.startsWith('custom_')) {
-      return this.buildCustomFieldSubquery(resourceType, condition)
+    if (!rawFieldId) {
+      logger.warn(`Condition ${condition.id} has an empty field reference`)
+      return undefined
+    }
+    if (rawFieldId.startsWith('custom_')) {
+      return this.buildCustomFieldSubquery(resourceType, rawFieldId, condition)
     }
 
     // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
@@ -276,19 +280,6 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
         )
       }
 
-      case 'exists': {
-        const isStringLike = normalizedType === 'string' || normalizedType === 'enum'
-        return this.combineColumnPredicates(
-          columns,
-          (col) => (isStringLike ? and(isNotNull(col), not(eq(col, ''))) : isNotNull(col)),
-          'and'
-        )
-      }
-
-      case 'not exists': {
-        return this.combineColumnPredicates(columns, (col) => isNull(col), 'and')
-      }
-
       // ===== RELATIVE DATE =====
       case 'today':
       case 'yesterday':
@@ -322,10 +313,12 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
    */
   private combineColumnPredicates(
     columns: AnyColumn[],
-    builder: (column: AnyColumn) => SQL<unknown>,
+    builder: (column: AnyColumn) => SQL<unknown> | undefined,
     logicalMode: 'and' | 'or' = 'or'
   ): SQL<unknown> | undefined {
-    const clauses = columns.map((col) => builder(col))
+    const clauses = columns
+      .map((col) => builder(col))
+      .filter((clause): clause is SQL<unknown> => Boolean(clause))
     if (clauses.length === 0) return undefined
     if (clauses.length === 1) return clauses[0]
     return logicalMode === 'and' ? and(...clauses) : or(...clauses)
@@ -405,17 +398,20 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
    */
   private buildCustomFieldSubquery(
     resourceType: TableId,
+    fieldRef: string,
     condition: GenericCondition
   ): SQL<unknown> | undefined {
-    const customFieldId = condition.fieldId.replace(/^custom_/, '')
+    const customFieldId = fieldRef.replace(/^custom_/, '')
     const tableInfo = RESOURCE_TABLE_MAP[resourceType]
     if (!tableInfo) return undefined
 
     const resourceTable = (schema as Record<string, any>)[tableInfo.dbName]
     if (!resourceTable) return undefined
 
-    // Handle 'not exists' operator
-    if (condition.operator === 'not exists') {
+    // 'empty' means NO FieldValue row exists for this field — the write path
+    // deletes the row when a value is cleared, so an EXISTS(... value IS NULL)
+    // subquery can never match. Answer it with NOT EXISTS instead.
+    if (condition.operator === 'empty') {
       return sql`NOT EXISTS (
         SELECT 1 FROM ${schema.FieldValue}
         WHERE ${schema.FieldValue.entityId} = ${resourceTable.id}
@@ -423,10 +419,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
       )`
     }
 
-    const valueCondition = this.buildCustomFieldValueCondition(
-      condition.operator as Operator,
-      condition.value
-    )
+    const valueCondition = this.buildCustomFieldValueCondition(condition.operator, condition.value)
     if (!valueCondition) return undefined
 
     return sql`EXISTS (
@@ -497,10 +490,9 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
         return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` AND `)})`
       }
 
-      case 'exists':
-        return sql`true`
-
       case 'empty':
+        // Unreachable — buildCustomFieldSubquery short-circuits 'empty' to a
+        // bare NOT EXISTS (row) under the FieldValue write-path invariant.
         return sql`(${textValue} IS NULL OR ${textValue} = '')`
 
       case 'not empty':

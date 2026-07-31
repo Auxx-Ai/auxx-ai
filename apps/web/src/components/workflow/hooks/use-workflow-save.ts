@@ -16,6 +16,7 @@ import { useCanvasStore } from '../store/canvas-store'
 import { useTestInputStore } from '../store/test-input-store'
 import { useVarStore } from '../store/use-var-store'
 import { useWorkflowStore } from '../store/workflow-store'
+import type { FlowEdge, FlowNode } from '../types'
 import { useReadOnly } from './use-read-only'
 
 const DEBOUNCE_MS = 5000
@@ -39,7 +40,7 @@ interface PendingChanges {
  * Accumulates pending changes and saves them together via a single tRPC mutation.
  */
 export const useWorkflowSave = () => {
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
   const { isReadOnly } = useReadOnly()
   const posthog = useAnalytics()
   const pendingRef = useRef<PendingChanges>({})

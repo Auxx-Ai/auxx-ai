@@ -1,11 +1,12 @@
 // apps/web/src/components/workflow/nodes/core/code/node.tsx
 
 import { memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { CodeNode as CodeNodeType } from './types'
+import type { CodeNodeData } from './types'
 
-export const CodeNode = memo<CodeNodeType>(({ id, data, selected }) => {
+export const CodeNode = memo<NodeProps<CodeNodeData>>(({ id, data, selected }) => {
   const language = data?.code_language === 'python3' ? 'Python' : 'JavaScript'
 
   return (

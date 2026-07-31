@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/crud.ts
 
 import { database } from '@auxx/database'
+import { isActorId, toActorId } from '@auxx/types/actor'
 import {
   getRelatedEntityDefinitionId,
   RELATION_UPDATE_MODES,
@@ -9,7 +10,7 @@ import {
   type RelationUpdateMode as RelationUpdateModeType,
 } from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { normalizeToRecordIds, type RecordId, toRecordId } from '@auxx/types/resource'
+import { isRecordId, normalizeToRecordIds, type RecordId, toRecordId } from '@auxx/types/resource'
 import { isMultiRelationship } from '@auxx/utils/relationships'
 import { findCachedResource, requireCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
@@ -29,7 +30,7 @@ import {
 import type { TableId } from '../../../resources/registry/field-registry'
 import { getFieldOutputKey, type ResourceField } from '../../../resources/registry/field-types'
 import type { CustomResource } from '../../../resources/registry/types'
-import { ThreadMutationService } from '../../../threads/thread-mutation.service'
+import { ThreadMutationService, type ThreadUpdates } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
@@ -238,7 +239,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     // Return the raw resolved value (entity object, array, etc.) instead of string-converting.
     // This is critical for relation fields where we need the entity ID, not a display name.
     const exactVarMatch = value.match(/^\{\{([^}]+)\}\}$/)
-    if (exactVarMatch) {
+    if (exactVarMatch?.[1]) {
       const resolved = await contextManager.resolveVariablePath(exactVarMatch[1].trim())
       return resolved ?? value
     }
@@ -401,13 +402,14 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     }
 
     // Validate that resourceType is a system resource, entity definition type, or custom entity
-    const isSystemResource = isSystemResourceId(config.resourceType)
-    const isEntityDef = isEntityDefinitionType(config.resourceType)
-    const isCustomEntity = isCustomResourceId(config.resourceType)
+    const resourceType = config.resourceType
+    const isSystemResource = isSystemResourceId(resourceType)
+    const isEntityDef = isEntityDefinitionType(resourceType)
+    const isCustomEntity = isCustomResourceId(resourceType)
 
-    if (config.resourceType && !isSystemResource && !isEntityDef && !isCustomEntity) {
+    if (resourceType && !isSystemResource && !isEntityDef && !isCustomEntity) {
       errors.push(
-        `Unknown resource type: ${config.resourceType}. Must be a system resource, entity definition type, or custom entity UUID.`
+        `Unknown resource type: ${resourceType}. Must be a system resource, entity definition type, or custom entity UUID.`
       )
       return { valid: false, errors, warnings }
     }
@@ -415,7 +417,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     // Static field validation for system resources with CRUD configs
     // Entity definition types (contact, ticket, etc.) and custom entities are validated at runtime
     if (isSystemResource) {
-      const crudConfig = CRUD_RESOURCE_CONFIGS[config.resourceType as TableId]
+      const crudConfig = CRUD_RESOURCE_CONFIGS[resourceType]
 
       if (!crudConfig) {
         // No static config available — skip static validation, runtime will handle it
@@ -427,7 +429,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         for (const field of crudConfig.requiredFields) {
           const value = config.data?.[getFieldOutputKey(field)] ?? config.data?.[field.key]
           if (!value || (typeof value === 'string' && value.trim() === '')) {
-            errors.push(`${field.label} is required for creating ${config.resourceType}`)
+            errors.push(`${field.label} is required for creating ${resourceType}`)
           }
         }
       }
@@ -437,16 +439,13 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         for (const [fieldKey, value] of Object.entries(config.data)) {
           if (!value) continue
 
-          const field = getCrudField(config.resourceType, fieldKey)
+          const field = getCrudField(resourceType, fieldKey)
           if (!field) continue
 
           if (field.type === BaseType.ENUM) {
             const isVariable = typeof value === 'string' && value.trim().startsWith('{{')
-            if (
-              !isVariable &&
-              !isValidFieldOptionValue(config.resourceType, fieldKey, value as string)
-            ) {
-              const validValues = getFieldOptionsForResource(config.resourceType, fieldKey)
+            if (!isVariable && !isValidFieldOptionValue(resourceType, fieldKey, value as string)) {
+              const validValues = getFieldOptionsForResource(resourceType, fieldKey)
                 .map((opt: FieldOptionItem) => opt.label)
                 .join(', ')
               errors.push(`Invalid ${field.label}: "${value}". Valid values: ${validValues}`)
@@ -943,12 +942,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     const errors: string[] = []
 
     // Build unified updates object for standard fields
-    const unifiedUpdates: {
-      status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
-      subject?: string
-      assigneeId?: string | null
-      inboxId?: string
-    } = {}
+    const unifiedUpdates: ThreadUpdates = {}
 
     // Collect standard field updates
     if (data.status !== undefined && data.status !== '') {
@@ -958,11 +952,23 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       unifiedUpdates.subject = data.subject
     }
     if (data.assigneeId !== undefined) {
-      // Empty string or null means unassign
-      unifiedUpdates.assigneeId = data.assigneeId === '' ? null : data.assigneeId
+      // Empty string or null means unassign. The relation picker hands back a bare
+      // user id; ThreadMutationService parses this as an ActorId and THROWS on a
+      // bare one, so prefix it here.
+      const rawAssignee = data.assigneeId === '' ? null : String(data.assigneeId)
+      unifiedUpdates.assigneeId = rawAssignee
+        ? isActorId(rawAssignee)
+          ? rawAssignee
+          : toActorId('user', rawAssignee)
+        : null
     }
     if (data.inboxId !== undefined && data.inboxId !== '') {
-      unifiedUpdates.inboxId = data.inboxId
+      // Same shape mismatch: ThreadMutationService takes the instance half off a
+      // RecordId, so a bare inbox id would be written as an empty string.
+      const rawInbox = String(data.inboxId)
+      unifiedUpdates.inboxId = isRecordId(rawInbox as RecordId)
+        ? (rawInbox as RecordId)
+        : toRecordId('inbox', rawInbox)
     }
 
     // Execute actions in parallel

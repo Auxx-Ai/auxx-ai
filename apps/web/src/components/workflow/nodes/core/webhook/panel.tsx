@@ -26,10 +26,11 @@ import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-
 import { useNodeCrud, useReadOnly, useWebhookTestListener } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
-import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
+import { asSchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
 import { api } from '~/trpc/react'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { webhookDefinition } from './schema'
 import type { WebhookNodeData } from './types'
 import { WebhookTestEvents } from './webhook-test-events'
@@ -102,7 +103,7 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
 
   const handleSaveSchema = (schema: Record<string, unknown>) => {
     const newData = produce(nodeData, (draft) => {
-      draft.bodySchema = { enabled: true, schema: schema as SchemaRoot }
+      draft.bodySchema = { enabled: true, schema: asSchemaRoot(schema) }
     })
     setNodeData(newData)
     setIsSchemaEditorOpen(false)
@@ -308,7 +309,9 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
 
       {/* Available Variables */}
       <OutputVariablesDisplay
-        outputVariables={webhookDefinition.outputVariables?.(nodeData, nodeId) || []}
+        outputVariables={
+          webhookDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || []
+        }
         initialOpen={false}
       />
 

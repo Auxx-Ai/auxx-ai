@@ -4,16 +4,17 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
-import type { ChunkerNode as ChunkerNodeType } from './types'
+import type { ChunkerNodeData } from './types'
 
 /**
  * Chunker node component for the workflow canvas
  * Displays chunking configuration summary with VariableTag for variable references
  */
-export const ChunkerNode = memo<ChunkerNodeType>(({ id, data, selected }) => {
+export const ChunkerNode = memo<NodeProps<ChunkerNodeData>>(({ id, data, selected }) => {
   const hasContent = !!data.content
 
   // Check if fields are in variable mode (not constant)

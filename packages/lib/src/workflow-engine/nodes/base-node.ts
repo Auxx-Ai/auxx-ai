@@ -292,7 +292,7 @@ export abstract class BaseNodeProcessor implements NodeProcessor {
   protected getOptimizedContext(
     node: WorkflowNode,
     contextManager: ExecutionContextManager
-  ): Map<string, unknown> {
+  ): Promise<Map<string, unknown>> {
     const requiredVariables = this.extractRequiredVariables(node)
     return contextManager.buildOptimizedContext(requiredVariables)
   }

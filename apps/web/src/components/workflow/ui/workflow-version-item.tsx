@@ -23,7 +23,7 @@ interface WorkflowVersionItemProps {
     version: number
     createdAt: Date
     isPublished?: boolean
-    isDraft: boolean
+    isDraft?: boolean
   }
   isSelected: boolean
   onSelect: () => void

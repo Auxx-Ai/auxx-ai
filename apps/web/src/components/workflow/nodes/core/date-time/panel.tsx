@@ -20,9 +20,12 @@ import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
+  type VarEditorValue,
+  varEditorText,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
+import { staticOutputVariableContext } from '../output-variable-context'
 import {
   ACTION_OPTIONS,
   DATE_FORMAT_OPTIONS,
@@ -71,7 +74,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
           draft.format = { type: DEFAULT_FORMAT_TYPE }
           break
         case DateTimeOperation.TIME_BETWEEN:
-          draft.timeBetween = { unit: TimeUnit.DAYS }
+          draft.timeBetween = { unit: TimeUnit.DAYS, isEndDateConstant: false }
           break
         case DateTimeOperation.ROUND:
           draft.round = { direction: 'nearest', unit: TimeUnit.DAYS }
@@ -85,9 +88,9 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
   }
 
   const handleDateVariableSelect = useCallback(
-    (value: string, isConstant: boolean) => {
+    (value: VarEditorValue, isConstant: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft.inputDate = value
+        draft.inputDate = varEditorText(value)
         draft.isInputDateConstant = isConstant
       })
       setInputs(newData)
@@ -96,10 +99,10 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
   )
 
   const handleEndDateVariableSelect = useCallback(
-    (value: string, isConstant: boolean) => {
+    (value: VarEditorValue, isConstant: boolean) => {
       const newData = produce(nodeData, (draft) => {
         if (draft.timeBetween) {
-          draft.timeBetween.endDate = value
+          draft.timeBetween.endDate = varEditorText(value)
           draft.timeBetween.isEndDateConstant = isConstant
         }
       })
@@ -109,7 +112,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
   )
 
   const handleDurationChange = useCallback(
-    (value: any, isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         if (!draft.addSubtract) return
         const wasConstantMode = draft.fieldModes?.['duration'] ?? true
@@ -118,10 +121,11 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
         if (modeChanged) {
           draft.addSubtract.duration = undefined
         } else if (isConstantMode) {
-          const numValue = typeof value === 'number' ? value : parseInt(value, 10)
+          const numValue =
+            typeof value === 'number' ? value : Number.parseInt(varEditorText(value), 10)
           draft.addSubtract.duration = Number.isNaN(numValue) ? undefined : numValue
         } else {
-          draft.addSubtract.duration = value as string
+          draft.addSubtract.duration = varEditorText(value)
         }
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['duration'] = isConstantMode
@@ -132,7 +136,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
   )
 
   const handleUnitChange = useCallback(
-    (value: string, isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         if (!draft.addSubtract) return
         const wasConstantMode = draft.fieldModes?.['unit'] ?? true
@@ -141,7 +145,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
         if (modeChanged) {
           draft.addSubtract.unit = isConstantMode ? TimeUnit.DAYS : ('' as string)
         } else {
-          draft.addSubtract.unit = value
+          draft.addSubtract.unit = varEditorText(value)
         }
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['unit'] = isConstantMode
@@ -198,8 +202,13 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
               mode={VAR_MODE.PICKER}
               varType={
                 nodeData.operation === DateTimeOperation.PARSE_DATE
+                  ? BaseType.STRING
+                  : BaseType.DATE
+              }
+              allowedTypes={
+                nodeData.operation === DateTimeOperation.PARSE_DATE
                   ? [BaseType.STRING]
-                  : [BaseType.DATE, BaseType.DATETIME]
+                  : allowedDateTypes
               }
               className=''
               placeholder={
@@ -237,7 +246,8 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                 onChange={handleEndDateVariableSelect}
                 nodeId={nodeId}
                 mode={VAR_MODE.PICKER}
-                varType={[BaseType.DATE, BaseType.DATETIME]}
+                varType={BaseType.DATE}
+                allowedTypes={allowedDateTypes}
                 className=''
                 placeholder='End date'
                 isConstantMode={nodeData.timeBetween.isEndDateConstant}
@@ -252,12 +262,12 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                 disabled={isReadOnly}
               />
             )}
-            {nodeData.operation === DateTimeOperation.FORMAT && data?.format && (
+            {nodeData.operation === DateTimeOperation.FORMAT && nodeData.format && (
               <div>
                 <Select
                   value={nodeData.format.type}
                   onValueChange={(value: DateFormatType) => {
-                    const newData = produce(data, (draft) => {
+                    const newData = produce(nodeData, (draft) => {
                       if (draft.format) {
                         draft.format.type = value
                       }
@@ -291,12 +301,12 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                 </Select>
               </div>
             )}
-            {nodeData.operation === DateTimeOperation.PARSE_DATE && data?.parseDate && (
+            {nodeData.operation === DateTimeOperation.PARSE_DATE && nodeData.parseDate && (
               <div>
                 <Select
                   value={nodeData.parseDate.formatType}
                   onValueChange={(value: ParseDateFormatType) => {
-                    const newData = produce(data, (draft) => {
+                    const newData = produce(nodeData, (draft) => {
                       if (draft.parseDate) {
                         draft.parseDate.formatType = value
                       }
@@ -579,7 +589,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
             <Input
               id='timezone'
               value={nodeData.timezone || ''}
-              onChange={(e) => setInputs({ ...data, timezone: e.target.value })}
+              onChange={(e) => setInputs({ ...nodeData, timezone: e.target.value })}
               placeholder='e.g., America/New_York'
               className='mt-1'
               disabled={isReadOnly}
@@ -595,7 +605,7 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
               <Input
                 id='locale'
                 value={nodeData.locale || ''}
-                onChange={(e) => setInputs({ ...data, locale: e.target.value })}
+                onChange={(e) => setInputs({ ...nodeData, locale: e.target.value })}
                 placeholder='e.g., en-US'
                 className='mt-1'
                 disabled={isReadOnly}
@@ -608,7 +618,11 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
         </div>
       </Section>
       <OutputVariablesDisplay
-        outputVariables={dateTimeNodeDefinition.outputVariables(data, nodeId)}
+        outputVariables={dateTimeNodeDefinition.outputVariables(
+          nodeData,
+          nodeId,
+          staticOutputVariableContext
+        )}
         initialOpen={false}
       />
     </BasePanel>

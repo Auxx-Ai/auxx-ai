@@ -92,7 +92,6 @@ export const NumberInput = createNodeInput<NumberInputProps>(
     // Return just the input component without wrappers or error displays
     return (
       <NumberInputUi
-        id={inputId}
         value={value}
         onValueChange={handleValueChange}
         min={min}

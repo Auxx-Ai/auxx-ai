@@ -47,7 +47,7 @@ export const humanConfirmationNodeDataSchema = baseNodeDataSchema
   .refine(
     (data) => {
       // At least one assignee method required
-      return data.assignees?.actorIds?.length > 0 || data.assignees?.variable !== undefined
+      return (data.assignees?.actorIds?.length ?? 0) > 0 || data.assignees?.variable !== undefined
     },
     { message: 'At least one assignee is required' }
   )
@@ -81,7 +81,7 @@ export const validateHumanConfirmationConfig = (
   }
 
   // Check assignees
-  const hasActorIds = data.assignees?.actorIds?.length > 0
+  const hasActorIds = (data.assignees?.actorIds?.length ?? 0) > 0
   const hasVariable = !!data.assignees?.variable
 
   if (!hasActorIds && !hasVariable) {

@@ -1,11 +1,12 @@
 // apps/web/src/components/workflow/nodes/core/message-received/node.tsx
 
 import { memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { MessageReceivedNode as MessageReceivedNodeType } from './types'
+import type { MessageReceivedNodeData } from './types'
 
-export const MessageReceivedNode = memo<MessageReceivedNodeType>((props) => {
+export const MessageReceivedNode = memo<NodeProps<MessageReceivedNodeData>>((props) => {
   return (
     <BaseNode id={props.id} data={props.data} selected={props.selected} className='rounded-tl-none'>
       <NodeSourceHandle

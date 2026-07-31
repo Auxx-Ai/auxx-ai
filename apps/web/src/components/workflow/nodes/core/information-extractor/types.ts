@@ -71,7 +71,7 @@ export type InformationExtractorNode = SpecificNode<
 export interface InformationExtractorContextValue {
   // State
   config: InformationExtractorNodeData
-  availableVariables: Array<{ name: string; type: string; nodeId: string }>
+  availableVariables: UnifiedVariable[]
   isReadOnly: boolean
   schema: SchemaRoot | undefined
 
@@ -87,6 +87,6 @@ export interface InformationExtractorContextValue {
   updateInstruction: (enabled: boolean, text?: string) => void
 
   // Utilities
-  preprocessPrompt: (editorContent: string) => { text: string; variables: string[] }
+  // preprocessPrompt: (editorContent: string) => { text: string; variables: string[] }
   getOutputVariables: () => UnifiedVariable[]
 }

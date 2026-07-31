@@ -2,7 +2,14 @@
 
 import type { ExecutionContextManager } from './execution-context'
 import { findNodeById, getTargetsFromHandle } from './graph-navigation'
-import type { NodeExecutionResult, Workflow, WorkflowExecutionOptions, WorkflowNode } from './types'
+import type { LoopProgressUpdate } from './loop-progress-tracker'
+import type {
+  NodeExecutionResult,
+  PreprocessedNodeData,
+  Workflow,
+  WorkflowExecutionOptions,
+  WorkflowNode,
+} from './types'
 import { NodeRunningStatus } from './types'
 
 /**
@@ -14,6 +21,31 @@ export type NodeExecutionCallback = (
   contextManager: ExecutionContextManager,
   options: WorkflowExecutionOptions
 ) => Promise<NodeExecutionResult>
+
+/**
+ * The slice of a loop node processor this manager drives.
+ *
+ * The two callbacks are *injected* by {@link LoopExecutionManager.setupLoopExecution}
+ * for the duration of one loop node execution and deleted in its `finally` — that
+ * is why they are optional and mutable here. `LoopNodeProcessor` reads them back
+ * off itself (`processor.executeLoopBodyCallback`, `processor.progressCallback`).
+ */
+export interface LoopCapableProcessor {
+  executeLoopBodyCallback?: (
+    loopNode: WorkflowNode,
+    iterationContext: ExecutionContextManager
+  ) => Promise<unknown>
+  progressCallback?: (update: LoopProgressUpdate) => void | Promise<void>
+  preprocessNode(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager
+  ): Promise<PreprocessedNodeData>
+  execute(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager,
+    preprocessedData?: PreprocessedNodeData
+  ): Promise<NodeExecutionResult>
+}
 
 /**
  * Manages loop execution within workflows
@@ -54,15 +86,13 @@ export class LoopExecutionManager {
    */
   async setupLoopExecution(
     node: WorkflowNode,
-    processor: any,
+    processor: LoopCapableProcessor,
     contextManager: ExecutionContextManager,
     options: WorkflowExecutionOptions,
     workflow: Workflow
   ): Promise<NodeExecutionResult> {
-    const loopProcessor = processor as any
-
     // Inject loop body execution callback
-    loopProcessor.executeLoopBodyCallback = async (
+    processor.executeLoopBodyCallback = async (
       loopNode: WorkflowNode,
       iterationContext: ExecutionContextManager
     ) => {
@@ -70,9 +100,10 @@ export class LoopExecutionManager {
     }
 
     // Inject progress callback if available
-    if (options.onNodeComplete) {
-      loopProcessor.progressCallback = async (update: any) => {
-        const progressResult = {
+    const onNodeComplete = options.onNodeComplete
+    if (onNodeComplete) {
+      processor.progressCallback = async (update: LoopProgressUpdate) => {
+        const progressResult: NodeExecutionResult = {
           nodeId: update.nodeId,
           status: NodeRunningStatus.Running,
           output: update,
@@ -83,7 +114,7 @@ export class LoopExecutionManager {
             total: update.progress.totalIterations,
           },
         }
-        await options.onNodeComplete!(node.nodeId, progressResult, contextManager.getContext())
+        await onNodeComplete(node.nodeId, progressResult, contextManager.getContext())
       }
     }
 
@@ -95,8 +126,8 @@ export class LoopExecutionManager {
       return await processor.execute(node, contextManager, preprocessedData)
     } finally {
       // Clean up callback references to prevent memory leaks
-      delete loopProcessor.executeLoopBodyCallback
-      delete loopProcessor.progressCallback
+      delete processor.executeLoopBodyCallback
+      delete processor.progressCallback
     }
   }
 

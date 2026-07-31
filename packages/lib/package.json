@@ -1432,6 +1432,7 @@
     "@types/ldapjs": "^3.0.6",
     "@types/nodemailer": "catalog:",
     "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",

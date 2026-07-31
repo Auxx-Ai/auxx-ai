@@ -28,7 +28,14 @@ const inputVariants = cva(
 // Input component
 export interface InputProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'>,
-    VariantProps<typeof inputVariants> {}
+    VariantProps<typeof inputVariants> {
+  /**
+   * React 19 passes `ref` as an ordinary prop to function components, and it is
+   * spread onto the native `<input>` below — but `InputHTMLAttributes` does not
+   * declare it, so callers need it here to type-check.
+   */
+  ref?: React.Ref<HTMLInputElement>
+}
 
 function Input({ className, type, variant, size, ...props }: InputProps) {
   return (

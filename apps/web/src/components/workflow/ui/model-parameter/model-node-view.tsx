@@ -21,14 +21,18 @@ const modelSchema = z.object({
   provider: z.string().min(1),
   name: z.string().min(1),
   mode: z.enum(AiModelMode).default(AiModelMode.CHAT),
-  completion_params: completionParamsSchema,
+  // Optional: this view renders provider/model only, and every node's own
+  // `ModelConfig` already marks the params optional.
+  completion_params: completionParamsSchema.optional(),
 })
 
 // Alternative schema for new format (provider:model ID)
 const newModelSchema = z.object({
   id: z.string().min(1), // "provider:model" format
   mode: z.enum(AiModelMode).default(AiModelMode.CHAT),
-  completion_params: completionParamsSchema,
+  // Optional: this view renders provider/model only, and every node's own
+  // `ModelConfig` already marks the params optional.
+  completion_params: completionParamsSchema.optional(),
 })
 
 export type ModelNodeViewProps = {

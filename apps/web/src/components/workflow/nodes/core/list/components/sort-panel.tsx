@@ -109,7 +109,9 @@ export const SortPanel: React.FC<SortPanelProps> = ({ config, onChange, isReadOn
         <VarEditorFieldRow title='Null Handling' type={BaseType.STRING} className='border-t'>
           <Select
             value={nullHandling || 'last'}
-            onValueChange={handleNullHandlingChange}
+            onValueChange={(value) =>
+              handleNullHandlingChange(value === 'first' ? 'first' : 'last')
+            }
             disabled={isReadOnly}>
             <SelectTrigger variant='transparent' size='sm'>
               <SelectValue />

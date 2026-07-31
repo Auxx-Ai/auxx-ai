@@ -1,9 +1,11 @@
 // apps/web/src/components/workflow/store/workflow-store.ts
 
+import type { ProviderData } from '@auxx/lib/ai/providers/types'
 import { type Workflow, WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { Node } from '@xyflow/react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import type { FlowNode } from '../types'
 import type { HelpLineHorizontalPosition, HelpLineVerticalPosition } from '../ui/helpline/types'
 import { useCanvasStore } from './canvas-store'
 // import { useNodeStore } from './node-store'
@@ -13,8 +15,9 @@ import { historyManager } from './history-manager'
 import type { DragState, WorkflowMetadata } from './types'
 import { useVarStore } from './use-var-store'
 
+/** Shape returned by `aiIntegration.getUnifiedModelData`. */
 interface ModelData {
-  providers: any[]
+  providers: ProviderData[]
   defaultModels: Record<string, { provider: string; model: string }>
 }
 
@@ -60,9 +63,9 @@ interface WorkflowStore extends DragState {
   helpLineHorizontal: HelpLineHorizontalPosition | null
   helpLineVertical: HelpLineVerticalPosition | null
 
-  // Clipboard state
-  clipboardElements: Node[]
-  setClipboardElements: (clipboardElements: Node[]) => void
+  // Clipboard state — everything written here comes straight off the canvas.
+  clipboardElements: FlowNode[]
+  setClipboardElements: (clipboardElements: FlowNode[]) => void
 
   // Actions
   // loadWorkflow: (workflowId: string) => Promise<void>
@@ -73,7 +76,8 @@ interface WorkflowStore extends DragState {
   updateMetadata: (updates: Partial<WorkflowMetadata>) => void
   setWorkflow: (workflow: Workflow | null) => void
   clearWorkflow: () => void
-  updateTriggerType: (triggerType: WorkflowTriggerType | null) => void
+  /** `Workflow.triggerType` is non-nullable, so this cannot clear the trigger. */
+  updateTriggerType: (triggerType: WorkflowTriggerType) => void
   setWorkflowAppId: (workflowAppId: string | null) => void
 
   // State management
@@ -329,8 +333,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
             description: data.description || '',
             enabled: data.enabled || false,
             triggerType: data.triggerType || WorkflowTriggerType.MESSAGE_RECEIVED,
-            triggerConfig: data.triggerConfig || {},
-            nodes: [],
           }),
         })
 

@@ -83,6 +83,10 @@ export function convertFieldToOutputVariable(
   field: WorkflowBlockField,
   nodeId: string
 ): UnifiedVariable {
+  // Captured before the guard: `field` narrows to `never` in the invalid branch,
+  // but this function is deliberately defensive about malformed runtime input.
+  const fieldName: string | undefined = field?.name
+
   // Validate field structure
   if (!isValidWorkflowBlockField(field)) {
     console.error('[Type Mapping] Invalid field passed to convertFieldToOutputVariable:', {
@@ -92,7 +96,7 @@ export function convertFieldToOutputVariable(
     // Return a fallback variable to prevent crashes
     return createUnifiedOutputVariable({
       nodeId,
-      path: field?.name || 'unknown', // Changed from 'name' to 'path'
+      path: fieldName || 'unknown', // Changed from 'name' to 'path'
       type: BaseType.ANY,
       description: 'Invalid field definition - missing required properties',
     })

@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/panels/run/components/branch-group.tsx
 
-import { Badge } from '@auxx/ui/components/badge'
+import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
 import type React from 'react'
@@ -53,17 +53,15 @@ function formatBranchLabel(branchId: string, branchIndex?: number): string {
 /**
  * Get badge variant based on status
  */
-function getStatusVariant(
-  status?: NodeRunningStatus
-): 'default' | 'secondary' | 'success' | 'destructive' | 'warning' {
+function getStatusVariant(status?: NodeRunningStatus): BadgeVariant {
   switch (status) {
     case NodeRunningStatus.Succeeded:
-      return 'success'
+      return 'green'
     case NodeRunningStatus.Failed:
     case NodeRunningStatus.Exception:
       return 'destructive'
     case NodeRunningStatus.Running:
-      return 'warning'
+      return 'amber'
     case NodeRunningStatus.Pending:
     case NodeRunningStatus.Waiting:
     case NodeRunningStatus.Skipped:

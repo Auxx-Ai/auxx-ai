@@ -8,6 +8,7 @@ import type {
   WorkflowExecutionResult,
   WorkflowTriggerEvent,
 } from '../core/types'
+import { NodeRunningStatus } from '../core/types'
 import { WorkflowEngine } from '../core/workflow-engine'
 
 const logger = createScopedLogger('workflow-test-runner')
@@ -288,7 +289,7 @@ export class WorkflowTestRunner {
        */
       nodeCompleted: (nodeId: string) => (result: WorkflowExecutionResult) => {
         const nodeResult = result.nodeResults[nodeId]
-        return nodeResult && nodeResult.status === 'COMPLETED'
+        return nodeResult?.status === NodeRunningStatus.Succeeded
       },
 
       /**
@@ -335,31 +336,28 @@ export class WorkflowTestRunner {
       externalThreadId: 'test-thread-id',
       threadId: 'test-thread',
       integrationId: 'test-integration',
-      messageType: 'EMAIL',
       isInbound: true,
       machineMailTier: null,
       isFirstInThread: true,
-      isAIGenerated: false,
       subject: 'Test Subject',
       textHtml: '<p>Test message body</p>',
       textPlain: 'Test message body',
       internetMessageId: 'test-internet-message-id',
       snippet: 'Test message body',
-      keywords: [],
       hasAttachments: false,
-      inReplyTo: null,
-      references: null,
       isReply: false,
       historyId: null,
-      createdTime: new Date(),
-      lastModifiedTime: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
       sentAt: new Date(),
       receivedAt: new Date(),
-      threadIndex: null,
-      // internetHeaders: [],
-      folderId: null,
-      emailLabel: 'inbox',
       signatureId: null,
+      htmlBodyStorageLocationId: null,
+      attempts: 0,
+      lastAttemptAt: null,
+      providerError: null,
+      sendStatus: 'SENT',
+      sendToken: null,
       metadata: {},
       createdById: null,
       organizationId: 'test-org-id',
@@ -376,7 +374,12 @@ export class WorkflowTestRunner {
         displayName: 'Test User',
         initials: 'TU',
         isSpammer: false,
-        contactId: null,
+        isInternal: false,
+        entityInstanceId: null,
+        firstInteractionDate: null,
+        firstInteractionType: null,
+        hasReceivedMessage: false,
+        lastSentMessageAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -387,10 +390,17 @@ export class WorkflowTestRunner {
         createdAt: new Date(),
         updatedAt: new Date(),
         createdById: 'test-user-id',
+        systemUserId: null,
         type: 'TEAM',
         about: null,
         website: null,
+        handle: null,
         domains: [],
+        completedOnboarding: true,
+        demoExpiresAt: null,
+        disabledAt: null,
+        disabledReason: null,
+        disabledBy: null,
       },
     }
 

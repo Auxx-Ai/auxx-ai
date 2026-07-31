@@ -28,7 +28,10 @@ const NextStep = ({ data, nodeId }: NextStepProps) => {
   const nodeDefinition = unifiedNodeRegistry.getDefinition(data.type as any)
 
   const list = useMemo(() => {
-    let items: Array<{ branch: { id: string; name: string }; nextNodes: any[] }> = []
+    let items: Array<{
+      branch: { id: string; name: string; type?: string }
+      nextNodes: any[]
+    }> = []
     if (branches?.length) {
       items = branches.map((branch: any) => {
         const connected = connectedEdges.filter((edge) => edge.sourceHandle === branch.id)

@@ -190,23 +190,26 @@ export const validateAiData = (data: Partial<AiNodeData>): ValidationResult => {
     }
   }
 
-  // Validate temperature
-  if (
-    data.model?.completion_params?.temperature < AI_NODE_CONSTANTS.TEMPERATURE.min ||
-    data.model?.completion_params?.temperature > AI_NODE_CONSTANTS.TEMPERATURE.max
-  ) {
-    errors.push({
-      field: 'model.completion_params.temperature',
-      message: `Temperature must be between ${AI_NODE_CONSTANTS.TEMPERATURE.min} and ${AI_NODE_CONSTANTS.TEMPERATURE.max}`,
-      type: 'error',
-    })
-  } else if (data.model?.completion_params?.temperature > 0.8) {
-    // Add warning for high temperature
-    errors.push({
-      field: 'model.completion_params.temperature',
-      message: 'High temperature (>0.8) may produce more creative but less predictable results',
-      type: 'warning',
-    })
+  // Validate temperature (an unset temperature falls back to the provider default)
+  const temperature = data.model?.completion_params?.temperature
+  if (temperature !== undefined) {
+    if (
+      temperature < AI_NODE_CONSTANTS.TEMPERATURE.min ||
+      temperature > AI_NODE_CONSTANTS.TEMPERATURE.max
+    ) {
+      errors.push({
+        field: 'model.completion_params.temperature',
+        message: `Temperature must be between ${AI_NODE_CONSTANTS.TEMPERATURE.min} and ${AI_NODE_CONSTANTS.TEMPERATURE.max}`,
+        type: 'error',
+      })
+    } else if (temperature > 0.8) {
+      // Add warning for high temperature
+      errors.push({
+        field: 'model.completion_params.temperature',
+        message: 'High temperature (>0.8) may produce more creative but less predictable results',
+        type: 'warning',
+      })
+    }
   }
 
   // Validate prompt template
@@ -377,7 +380,6 @@ export const aiDefinition: NodeDefinition<AiNodeData> = {
   color: '#8B5CF6', // TRANSFORM category color
   defaultData: createAiDefaultData(),
   schema: aiSchema,
-  dataSchema: aiNodeDataSchema,
   // validate: validateAiConfig,
   validator: validateAiData,
   canRunSingle: true,

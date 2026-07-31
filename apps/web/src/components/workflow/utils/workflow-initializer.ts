@@ -82,12 +82,18 @@ export const calculateTargetBranches = (
  */
 function normalizeLegacyNodes(nodes: FlowNode[]): FlowNode[] {
   return nodes.map((node) => {
-    if (node.data?.type === 'app-trigger' && node.data?.appId && node.data?.triggerId) {
+    // `data.type` is declared as NodeType, but persisted legacy workflows can
+    // hold the pre-`appId:triggerId` literal, which is not an enum member — so
+    // widen to string before comparing rather than narrowing the comparison away.
+    const nodeType: string = node.data?.type ?? ''
+    if (nodeType === 'app-trigger' && node.data?.appId && node.data?.triggerId) {
       return {
         ...node,
         data: {
           ...node.data,
-          type: `${node.data.appId}:${node.data.triggerId}`,
+          // App trigger types are dynamic `appId:triggerId` keys, which the
+          // NodeType enum does not enumerate (same cast as node-factory.ts).
+          type: `${node.data.appId}:${node.data.triggerId}` as NodeType,
         },
       }
     }
@@ -196,8 +202,9 @@ export const initialNodes = (nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] =
   const childrenMap = nodes.reduce(
     (acc, node) => {
       if (node.parentId) {
-        if (!acc[node.parentId]) acc[node.parentId] = []
-        acc[node.parentId].push({ nodeId: node.id, nodeType: node.data.type })
+        const children = acc[node.parentId] ?? []
+        children.push({ nodeId: node.id, nodeType: node.data.type })
+        acc[node.parentId] = children
       }
       return acc
     },

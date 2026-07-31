@@ -50,6 +50,14 @@ export interface UnifiedVariable {
    */
   options?: FieldOptions
 
+  /**
+   * Allowed values for `BaseType.ENUM` variables.
+   *
+   * Sourced from a JSON Schema `enum`, which permits both strings and numbers —
+   * see `schemaToUnifiedVariable` in utils/schema-to-variable.ts.
+   */
+  enum?: (string | number)[]
+
   // ─────────────────────────────────────────────────────────────
   // STRUCTURAL TYPES
   // ─────────────────────────────────────────────────────────────

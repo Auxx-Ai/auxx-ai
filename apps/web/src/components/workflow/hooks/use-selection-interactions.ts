@@ -1,13 +1,16 @@
-import type { Node, OnSelectionChangeFunc } from '@xyflow/react'
+// apps/web/src/components/workflow/hooks/use-selection-interactions.ts
+
+import type { OnSelectionChangeFunc } from '@xyflow/react'
 import { useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import type { MouseEvent } from 'react'
 import { useCallback } from 'react'
 // import { useWorkflowStore } from '../store'
 import { storeEventBus } from '../store/event-bus'
+import type { FlowEdge, FlowNode } from '../types'
 
 export const useSelectionInteractions = () => {
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
   // const workflowStore = useWorkflowStore()
 
   const handleSelectionStart = useCallback(() => {
@@ -65,8 +68,7 @@ export const useSelectionInteractions = () => {
         draft.forEach((edge) => {
           const edgeInSelection = edgesInSelection.find((e) => e.id === edge.id)
 
-          if (edgeInSelection) edge.data._isBundled = true
-          else edge.data._isBundled = false
+          edge.data = { ...edge.data, _isBundled: Boolean(edgeInSelection) }
         })
       })
       setEdges(newEdges)
@@ -75,7 +77,7 @@ export const useSelectionInteractions = () => {
   )
 
   const handleSelectionDrag = useCallback(
-    (_: MouseEvent, nodesWithDrag: Node[]) => {
+    (_: MouseEvent, nodesWithDrag: FlowNode[]) => {
       const { nodes, setNodes } = store.getState()
 
       const newNodes = produce(nodes, (draft) => {
@@ -103,7 +105,7 @@ export const useSelectionInteractions = () => {
     setNodes(newNodes)
     const newEdges = produce(edges, (draft) => {
       draft.forEach((edge) => {
-        if (edge.data._isBundled) edge.data._isBundled = false
+        if (edge.data?._isBundled) edge.data._isBundled = false
       })
     })
     setEdges(newEdges)

@@ -5,64 +5,64 @@ import type { FlowEdge, FlowNode } from '../types'
 
 type ConnectedSourceOrTargetNodesChange = { type: string; edge: Edge }[]
 
+/** The connection metadata this helper reads off, and writes back onto, node data. */
+export interface ConnectedHandleIds {
+  _connectedSourceHandleIds: string[]
+  _connectedTargetHandleIds: string[]
+}
+
+/**
+ * Read one of the tracked handle-id arrays off a node's data.
+ * React Flow types `Node['data']` as `Record<string, unknown>`, so the value has
+ * to be narrowed rather than assumed to be a string array.
+ */
+const readHandleIds = (data: Record<string, unknown>, key: keyof ConnectedHandleIds): string[] => {
+  const value = data[key]
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
+}
+
 export const getNodesConnectedSourceOrTargetHandleIdsMap = (
   changes: ConnectedSourceOrTargetNodesChange,
   nodes: Node[]
-) => {
-  const nodesConnectedSourceOrTargetHandleIdsMap = {} as Record<string, any>
+): Record<string, ConnectedHandleIds> => {
+  const nodesConnectedSourceOrTargetHandleIdsMap: Record<string, ConnectedHandleIds> = {}
+
+  const ensureEntry = (node: Node): ConnectedHandleIds => {
+    const existing = nodesConnectedSourceOrTargetHandleIdsMap[node.id]
+    if (existing) return existing
+    const entry: ConnectedHandleIds = {
+      _connectedSourceHandleIds: readHandleIds(node.data, '_connectedSourceHandleIds'),
+      _connectedTargetHandleIds: readHandleIds(node.data, '_connectedTargetHandleIds'),
+    }
+    nodesConnectedSourceOrTargetHandleIdsMap[node.id] = entry
+    return entry
+  }
 
   changes.forEach((change) => {
     const { edge, type } = change
-    const sourceNode = nodes.find((node) => node.id === edge.source)!
-    if (sourceNode) {
-      nodesConnectedSourceOrTargetHandleIdsMap[sourceNode.id] =
-        nodesConnectedSourceOrTargetHandleIdsMap[sourceNode.id] || {
-          _connectedSourceHandleIds: [...(sourceNode?.data._connectedSourceHandleIds || [])],
-          _connectedTargetHandleIds: [...(sourceNode?.data._connectedTargetHandleIds || [])],
-        }
-    }
-
-    const targetNode = nodes.find((node) => node.id === edge.target)!
-    if (targetNode) {
-      nodesConnectedSourceOrTargetHandleIdsMap[targetNode.id] =
-        nodesConnectedSourceOrTargetHandleIdsMap[targetNode.id] || {
-          _connectedSourceHandleIds: [...(targetNode?.data._connectedSourceHandleIds || [])],
-          _connectedTargetHandleIds: [...(targetNode?.data._connectedTargetHandleIds || [])],
-        }
-    }
+    const sourceNode = nodes.find((node) => node.id === edge.source)
+    const targetNode = nodes.find((node) => node.id === edge.target)
 
     if (sourceNode) {
+      const entry = ensureEntry(sourceNode)
+
       if (type === 'remove') {
-        const index = nodesConnectedSourceOrTargetHandleIdsMap[
-          sourceNode.id
-        ]._connectedSourceHandleIds.findIndex((handleId: string) => handleId === edge.sourceHandle)
-        nodesConnectedSourceOrTargetHandleIdsMap[sourceNode.id]._connectedSourceHandleIds.splice(
-          index,
-          1
-        )
+        const index = entry._connectedSourceHandleIds.indexOf(edge.sourceHandle ?? '')
+        if (index !== -1) entry._connectedSourceHandleIds.splice(index, 1)
       }
 
-      if (type === 'add')
-        nodesConnectedSourceOrTargetHandleIdsMap[sourceNode.id]._connectedSourceHandleIds.push(
-          edge.sourceHandle || 'source'
-        )
+      if (type === 'add') entry._connectedSourceHandleIds.push(edge.sourceHandle || 'source')
     }
 
     if (targetNode) {
+      const entry = ensureEntry(targetNode)
+
       if (type === 'remove') {
-        const index = nodesConnectedSourceOrTargetHandleIdsMap[
-          targetNode.id
-        ]._connectedTargetHandleIds.findIndex((handleId: string) => handleId === edge.targetHandle)
-        nodesConnectedSourceOrTargetHandleIdsMap[targetNode.id]._connectedTargetHandleIds.splice(
-          index,
-          1
-        )
+        const index = entry._connectedTargetHandleIds.indexOf(edge.targetHandle ?? '')
+        if (index !== -1) entry._connectedTargetHandleIds.splice(index, 1)
       }
 
-      if (type === 'add')
-        nodesConnectedSourceOrTargetHandleIdsMap[targetNode.id]._connectedTargetHandleIds.push(
-          edge.targetHandle || 'target'
-        )
+      if (type === 'add') entry._connectedTargetHandleIds.push(edge.targetHandle || 'target')
     }
   })
 
@@ -78,8 +78,9 @@ export const calculateEdgeZIndex = (edge: FlowEdge, nodes: FlowNode[]): number =
   let zIndex = 0
 
   // If edge has loopId, it's inside a loop
-  if (edge.data?.loopId) {
-    const loopNode = nodes.find((n) => n.id === edge.data.loopId)
+  const loopId = edge.data?.loopId
+  if (loopId) {
+    const loopNode = nodes.find((n) => n.id === loopId)
     if (loopNode) {
       // Get loop's zIndex (default to 0 if not set)
       const loopBaseZIndex = loopNode.zIndex || 0

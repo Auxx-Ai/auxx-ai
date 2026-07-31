@@ -169,8 +169,8 @@ export function useWorkflowVariableEditor({
   const onContentChangeRef = useRef(onContentChange)
   const onContentChangeJsonRef = useRef(onContentChangeJson)
   const onBlurRef = useRef(onBlur)
-  const debounceTimeoutRef = useRef<NodeJS.Timeout>()
-  const blurTimeoutRef = useRef<NodeJS.Timeout>()
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const blurTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const rangeRef = useRef<{ from: number; to: number } | null>(null)
 
   // JSON-mode loop guard: every `setInputs` on the parent rebuilds the

@@ -98,7 +98,7 @@ export class PostgresTester {
   /**
    * Categorize PostgreSQL errors for better user feedback
    */
-  private static categorizeDbError(error: any): CredentialTestResult['error']['type'] {
+  private static categorizeDbError(error: any): NonNullable<CredentialTestResult['error']>['type'] {
     const code = error.code || ''
     const message = error.message?.toLowerCase() || ''
 

@@ -1,10 +1,11 @@
 // apps/web/src/components/workflow/hooks/use-edge-interactions.ts
 
-import type { Edge, Node } from '@xyflow/react'
 import { applyEdgeChanges, type EdgeChange, useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import { useCallback } from 'react'
 import { useNodesReadOnly } from '~/components/workflow/hooks'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
+import { getNodesConnectedSourceOrTargetHandleIdsMap } from '~/components/workflow/utils/edge-utils'
 import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
 import { useWorkflowSave } from './use-workflow-save'
 
@@ -24,7 +25,7 @@ interface ConnectionParams {
 type EdgeMouseHandler = (event: React.MouseEvent, edge: any) => void
 
 export const useEdgeInteractions = () => {
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
   const { getNodesReadOnly } = useNodesReadOnly()
   const { debouncedSave } = useWorkflowSave()
   const { saveStateToHistory } = useWorkflowHistory()
@@ -65,35 +66,6 @@ export const useEdgeInteractions = () => {
     [store, getNodesReadOnly]
   )
 
-  // Helper function to get nodes connected by edges that will be deleted
-  const getNodesConnectedSourceOrTargetHandleIdsMap = useCallback(
-    (edgeWillBeDeleted: Edge[], nodes: Node[]): Record<string, any> => {
-      const nodesConnectedMap: Record<string, any> = {}
-
-      edgeWillBeDeleted.forEach((edge) => {
-        // Track target nodes that will lose their connection
-        const targetNode = nodes.find((n) => n.id === edge.target)
-        if (targetNode) {
-          if (!nodesConnectedMap[targetNode.id]) {
-            nodesConnectedMap[targetNode.id] = {
-              _connectedSourceHandleIds: targetNode.data._connectedSourceHandleIds || [],
-              _connectedTargetHandleIds: targetNode.data._connectedTargetHandleIds || [],
-            }
-          }
-          // Remove this source from the target's connected sources
-          nodesConnectedMap[targetNode.id]._connectedSourceHandleIds = nodesConnectedMap[
-            targetNode.id
-          ]._connectedSourceHandleIds.filter(
-            (id: string) => !(id === edge.sourceHandle && edge.source === edge.source)
-          )
-        }
-      })
-
-      return nodesConnectedMap
-    },
-    []
-  )
-
   const handleEdgeDeleteByDeleteBranch = useCallback(
     (nodeId: string, branchId: string) => {
       if (getNodesReadOnly()) return
@@ -111,12 +83,12 @@ export const useEdgeInteractions = () => {
 
       // Get map of nodes that need to be updated
       const nodesConnectedSourceOrTargetHandleIdsMap = getNodesConnectedSourceOrTargetHandleIdsMap(
-        edgeWillBeDeleted,
+        edgeWillBeDeleted.map((edge) => ({ type: 'remove', edge })),
         nodes
       )
 
       // Update nodes to remove connection references
-      const newNodes = produce(nodes, (draft: Node[]) => {
+      const newNodes = produce(nodes, (draft) => {
         draft.forEach((node) => {
           if (nodesConnectedSourceOrTargetHandleIdsMap[node.id]) {
             node.data = { ...node.data, ...nodesConnectedSourceOrTargetHandleIdsMap[node.id] }
@@ -146,13 +118,7 @@ export const useEdgeInteractions = () => {
       debouncedSave()
       saveStateToHistory(WorkflowHistoryEvent.EdgeDeleteByDeleteBranch)
     },
-    [
-      getNodesReadOnly,
-      getNodesConnectedSourceOrTargetHandleIdsMap,
-      store,
-      debouncedSave,
-      saveStateToHistory,
-    ]
+    [getNodesReadOnly, store, debouncedSave, saveStateToHistory]
   )
 
   // Handle single edge deletion
@@ -191,13 +157,7 @@ export const useEdgeInteractions = () => {
       debouncedSave()
       saveStateToHistory(WorkflowHistoryEvent.EdgeDelete)
     },
-    [
-      store,
-      getNodesReadOnly,
-      debouncedSave,
-      saveStateToHistory,
-      getNodesConnectedSourceOrTargetHandleIdsMap,
-    ]
+    [store, getNodesReadOnly, debouncedSave, saveStateToHistory]
   )
 
   // Handle bulk edge deletion
@@ -245,13 +205,7 @@ export const useEdgeInteractions = () => {
       debouncedSave()
       saveStateToHistory(WorkflowHistoryEvent.EdgeDelete)
     },
-    [
-      store,
-      getNodesReadOnly,
-      debouncedSave,
-      saveStateToHistory,
-      getNodesConnectedSourceOrTargetHandleIdsMap,
-    ]
+    [store, getNodesReadOnly, debouncedSave, saveStateToHistory]
   )
 
   // Handle edge changes from ReactFlow
@@ -301,13 +255,7 @@ export const useEdgeInteractions = () => {
         }
       }
     },
-    [
-      store,
-      getNodesReadOnly,
-      debouncedSave,
-      saveStateToHistory,
-      getNodesConnectedSourceOrTargetHandleIdsMap,
-    ]
+    [store, getNodesReadOnly, debouncedSave, saveStateToHistory]
   )
 
   return {

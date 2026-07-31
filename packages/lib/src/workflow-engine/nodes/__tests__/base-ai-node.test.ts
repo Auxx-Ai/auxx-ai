@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '../../../ai/clients/base/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
-import type { NodeExecutionResult, WorkflowNode } from '../../core/types'
+import type { NodeData, NodeExecutionResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseAiNodeProcessor } from '../base-ai-node'
 import type {
@@ -49,6 +49,20 @@ class TestAiNodeProcessor extends BaseAiNodeProcessor {
   }
 }
 
+/**
+ * Builds an AI node in the shape `WorkflowGraphBuilder.transformNodes` emits:
+ * `id`/`nodeId` mirror the canvas node id and the canvas position sits in metadata.
+ */
+const aiNode = (data: Partial<NodeData>): WorkflowNode => ({
+  id: 'node_1',
+  workflowId: 'workflow_123',
+  nodeId: 'node_1',
+  name: 'Test AI Node',
+  type: WorkflowNodeType.AI,
+  data: { id: 'node_1', type: WorkflowNodeType.AI, title: 'Test AI Node', ...data },
+  metadata: { position: { x: 0, y: 0 } },
+})
+
 describe('BaseAiNodeProcessor', () => {
   let processor: TestAiNodeProcessor
   let mockContextManager: any
@@ -86,13 +100,7 @@ describe('BaseAiNodeProcessor', () => {
 
   describe('Abstract Methods', () => {
     it('should require buildMessages to be implemented', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: { prompt: 'Test prompt' },
-      }
+      const node = aiNode({ prompt: 'Test prompt' })
 
       // Should be able to call buildMessages
       expect(async () => {
@@ -101,13 +109,7 @@ describe('BaseAiNodeProcessor', () => {
     })
 
     it('should require handleResponse to be implemented', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const response: InvokeOrchestratorResponse = {
         content: 'Test response',
@@ -127,13 +129,7 @@ describe('BaseAiNodeProcessor', () => {
     })
 
     it('should require getStructuredOutputConfig to be implemented', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const config = (processor as any).getStructuredOutputConfig(node, node.data)
       expect(config).toBeUndefined() // Our test implementation returns undefined by default
@@ -147,13 +143,7 @@ describe('BaseAiNodeProcessor', () => {
     })
 
     it('should return undefined for getTools by default', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const tools = await (processor as any).getTools(
         node,
@@ -165,13 +155,7 @@ describe('BaseAiNodeProcessor', () => {
     })
 
     it('should return undefined for getToolExecutor by default', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const executor = await (processor as any).getToolExecutor(
         node,
@@ -185,13 +169,7 @@ describe('BaseAiNodeProcessor', () => {
 
   describe('Variable Storage', () => {
     it('should store AI response in standard variables', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const response: InvokeOrchestratorResponse = {
         content: 'AI generated response',
@@ -220,13 +198,7 @@ describe('BaseAiNodeProcessor', () => {
     })
 
     it('should store structured output when present', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const response: InvokeOrchestratorResponse = {
         content: 'Response',
@@ -252,13 +224,7 @@ describe('BaseAiNodeProcessor', () => {
     })
 
     it('should store tool results when present', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const response: InvokeOrchestratorResponse = {
         content: 'Response',
@@ -293,13 +259,7 @@ describe('BaseAiNodeProcessor', () => {
     })
 
     it('should use custom output variable if specified', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: { outputVariable: 'custom.output' },
-      }
+      const node = aiNode({ outputVariable: 'custom.output' })
 
       const response: InvokeOrchestratorResponse = {
         content: 'Response',
@@ -315,13 +275,7 @@ describe('BaseAiNodeProcessor', () => {
 
   describe('Error Handling', () => {
     it('should throw error if node data is missing', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: null as any,
-      }
+      const node: WorkflowNode = { ...aiNode({}), data: null as any }
 
       await expect((processor as any).executeNode(node, mockContextManager)).rejects.toThrow(
         'AI node configuration is missing'
@@ -334,13 +288,7 @@ describe('BaseAiNodeProcessor', () => {
         return undefined
       })
 
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: { prompt: 'Test' },
-      }
+      const node = aiNode({ prompt: 'Test' })
 
       await expect((processor as any).executeNode(node, mockContextManager)).rejects.toThrow(
         'Organization ID is required'
@@ -353,13 +301,7 @@ describe('BaseAiNodeProcessor', () => {
         return undefined
       })
 
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Test AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: { prompt: 'Test' },
-      }
+      const node = aiNode({ prompt: 'Test' })
 
       await expect((processor as any).executeNode(node, mockContextManager)).rejects.toThrow(
         'User ID is required'

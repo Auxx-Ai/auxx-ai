@@ -1,11 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/list/hooks/use-filter-field-resolver.ts
 
-import {
-  BaseType,
-  getFieldOperators,
-  getOperatorsForType,
-  type Operator,
-} from '@auxx/lib/workflow-engine/client'
+import type { Operator } from '@auxx/lib/conditions/client'
+import { BaseType, getFieldOperators, getOperatorsForType } from '@auxx/lib/workflow-engine/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'

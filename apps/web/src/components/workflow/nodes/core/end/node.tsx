@@ -2,17 +2,18 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import type { EndNode as EndNodeType } from './types'
+import type { EndNodeData } from './types'
 
 /**
  * Visual representation of the End node
  */
-export const EndNode = memo<EndNodeType>(({ id, data, selected, width, height }) => {
+export const EndNode = memo<NodeProps<EndNodeData>>(({ id, data, selected }) => {
   const outputCount = data?.outputs?.length || 0
 
   return (
-    <BaseNode id={id} data={data} selected={selected} width={width || 244} height='auto'>
+    <BaseNode id={id} data={data} selected={selected} width={244} height='auto'>
       <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
 
       <div className='px-3 py-2'>

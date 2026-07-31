@@ -3,7 +3,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ExecutionContextManager } from '../execution-context'
 import { StatePersistenceManager } from '../state-persistence-manager'
-import { type NodeExecutionResult, type PauseReason, WorkflowExecutionStatus } from '../types'
+import {
+  type NodeExecutionResult,
+  NodeRunningStatus,
+  type PauseReason,
+  WorkflowExecutionStatus,
+} from '../types'
 
 describe('StatePersistenceManager', () => {
   let manager: StatePersistenceManager
@@ -26,7 +31,12 @@ describe('StatePersistenceManager', () => {
   describe('saveState', () => {
     it('should save state to executionStates for all executions', () => {
       const nodeResults: Record<string, NodeExecutionResult> = {
-        'node-1': { status: 'succeeded' as any, output: { data: 'test' } },
+        'node-1': {
+          nodeId: 'node-1',
+          status: NodeRunningStatus.Succeeded,
+          output: { data: 'test' },
+          executionTime: 10,
+        },
       }
 
       const state = manager.saveState('exec-456', contextManager, nodeResults)
@@ -77,17 +87,27 @@ describe('StatePersistenceManager', () => {
       contextManager.log('INFO', 'node-1', 'Test log message')
 
       const nodeResults: Record<string, NodeExecutionResult> = {
-        'node-1': { success: true, output: { result: 'done' } },
+        'node-1': {
+          nodeId: 'node-1',
+          status: NodeRunningStatus.Succeeded,
+          output: { result: 'done' },
+          executionTime: 10,
+        },
       }
 
       const state = manager.saveState('exec-456', contextManager, nodeResults)
 
       expect(state.context.variables.testVar).toBe('testValue')
-      expect(state.context.nodeVariables['node-1'].nodeVar).toBe('nodeValue')
+      expect(state.context.nodeVariables['node-1']?.nodeVar).toBe('nodeValue')
       expect(state.visitedNodes.has('node-1')).toBe(true)
       expect(state.context.logs).toHaveLength(1)
       expect(state.context.logs[0]!.message).toBe('Test log message')
-      expect(state.nodeResults['node-1']).toEqual({ success: true, output: { result: 'done' } })
+      expect(state.nodeResults['node-1']).toEqual({
+        nodeId: 'node-1',
+        status: NodeRunningStatus.Succeeded,
+        output: { result: 'done' },
+        executionTime: 10,
+      })
     })
 
     it('should include execution tracking data when provided', () => {
@@ -462,9 +482,24 @@ describe('StatePersistenceManager', () => {
       contextManager.log('INFO', 'if-node', 'Condition evaluated to true')
 
       const nodeResults: Record<string, NodeExecutionResult> = {
-        start: { success: true, output: { initialized: true } },
-        'loop-node': { success: true, output: { iteration: 2 } },
-        'if-node': { success: true, output: { result: true } },
+        start: {
+          nodeId: 'start',
+          status: NodeRunningStatus.Succeeded,
+          output: { initialized: true },
+          executionTime: 10,
+        },
+        'loop-node': {
+          nodeId: 'loop-node',
+          status: NodeRunningStatus.Succeeded,
+          output: { iteration: 2 },
+          executionTime: 10,
+        },
+        'if-node': {
+          nodeId: 'if-node',
+          status: NodeRunningStatus.Succeeded,
+          output: { result: true },
+          executionTime: 10,
+        },
       }
 
       const trackingData = {

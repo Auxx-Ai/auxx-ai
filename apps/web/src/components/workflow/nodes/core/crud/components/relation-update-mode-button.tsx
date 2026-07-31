@@ -12,7 +12,7 @@ import type React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ModeBadge } from '~/components/shared/mode-badge'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
-import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
+import { VarEditor, varEditorText } from '~/components/workflow/ui/input-editor/var-editor'
 
 /** Mode display configuration */
 const MODE_CONFIG: Record<RelationUpdateModeType, { label: string; className: string }> = {
@@ -85,7 +85,8 @@ const RelationUpdateModeButton: React.FC<RelationUpdateModeButtonProps> = ({
   const handleClick = useCallback(() => {
     const currentIndex = RELATION_UPDATE_MODES.indexOf(mode)
     const nextIndex = (currentIndex + 1) % RELATION_UPDATE_MODES.length
-    onChange(RELATION_UPDATE_MODES[nextIndex])
+    const nextMode = RELATION_UPDATE_MODES[nextIndex]
+    if (nextMode) onChange(nextMode)
   }, [mode, onChange])
 
   /** Right-click on dynamic badge toggles the popover */
@@ -123,7 +124,7 @@ const RelationUpdateModeButton: React.FC<RelationUpdateModeButtonProps> = ({
             <VarEditor
               nodeId={nodeId}
               value={dynamicModeVar ?? ''}
-              onChange={(val) => onDynamicModeVarChange?.(val)}
+              onChange={(val) => onDynamicModeVarChange?.(varEditorText(val))}
               varType={BaseType.ENUM}
               fieldOptions={{ enum: RUNTIME_MODE_OPTIONS }}
               mode={VAR_MODE.PICKER}

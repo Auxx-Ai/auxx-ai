@@ -2,7 +2,7 @@
 
 import { WorkflowRunStatus } from '@auxx/database/enums'
 import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
-import { inferJsonSchema } from '@auxx/lib/json-schema/client'
+import { inferJsonSchema, type JsonSchema } from '@auxx/lib/json-schema/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -21,7 +21,6 @@ import { memo, useState } from 'react'
 import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
-import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import Section from '~/components/workflow/ui/section'
 import { useDemo } from '~/hooks/use-demo'
 import { useReadOnly, useRunSingleNode } from '../../hooks'
@@ -36,10 +35,15 @@ export interface SingleRunResultTabProps {
   nodeType?: string
   /** Handler for running the node */
   onRun?: () => void
-  /** Callback to store inferred schema on node data. Parent provides via useNodeCrud. */
-  onApplySchema?: (schema: SchemaRoot) => void
+  /**
+   * Callback to store the inferred schema on node data. Parent provides via
+   * useNodeCrud. Takes the plain JSON Schema document that `inferJsonSchema`
+   * and `SchemaEditorDialog` both speak — sample inference can legitimately
+   * produce a non-object root, so this is deliberately not `SchemaRoot`.
+   */
+  onApplySchema?: (schema: JsonSchema) => void
   /** Current inferred schema (if any), for showing Edit button */
-  inferredSchema?: SchemaRoot
+  inferredSchema?: JsonSchema
 }
 
 /**
@@ -358,7 +362,7 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
                 <Button
                   variant='outline'
                   size='sm'
-                  onClick={() => onApplySchema(inferJsonSchema(outputData) as SchemaRoot)}>
+                  onClick={() => onApplySchema(inferJsonSchema(outputData))}>
                   Apply as Output Schema
                 </Button>
                 {inferredSchema && (
@@ -381,15 +385,12 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
           onOpenChange={setIsSchemaEditorOpen}
           title='Structured Output'
           initial={{
-            schema: (inferredSchema as Record<string, unknown> | undefined) ?? {
-              type: 'object',
-              properties: {},
-            },
+            schema: inferredSchema ?? { type: 'object', properties: {} },
             seededFrom: inferredSchema ? 'existing' : 'empty',
           }}
           policy={{ emitRequired: true }}
           onSave={(newSchema) => {
-            onApplySchema(newSchema as SchemaRoot)
+            onApplySchema(newSchema)
           }}
         />
       )}

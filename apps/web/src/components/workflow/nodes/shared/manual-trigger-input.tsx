@@ -39,8 +39,10 @@ export function ManualTriggerInput({ inputs, errors, onChange, isLoading }: Trig
 
     // Find the manual trigger node
     const manualTrigger = nodes.find((node) => {
-      const definition = unifiedNodeRegistry.getDefinition(node.data.type)
-      return definition?.triggerType !== undefined && node.data.type === WorkflowTriggerType.MANUAL
+      const nodeType = node.data.type
+      if (typeof nodeType !== 'string') return false
+      const definition = unifiedNodeRegistry.getDefinition(nodeType)
+      return definition?.triggerType !== undefined && nodeType === WorkflowTriggerType.MANUAL
     })
 
     if (!manualTrigger) return []

@@ -17,10 +17,16 @@ import { memo, useCallback } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { VAR_MODE } from '~/components/workflow/types'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  VarEditorField,
+  type VarEditorValue,
+  varEditorText,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables/output-variables-display'
 import Section from '~/components/workflow/ui/section'
 import { BaseType } from '../if-else'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { LOOP_CONSTANTS } from './constants'
 import { loopDefinition } from './schema'
 import type { LoopNodeData } from './types'
@@ -39,8 +45,8 @@ const LoopPanelComponent: React.FC<LoopPanelProps> = ({ nodeId, data }) => {
 
   // Handle items source change
   const handleItemsSourceChange = useCallback(
-    (value: string) => {
-      setNodeData({ ...nodeData, itemsSource: value })
+    (value: VarEditorValue) => {
+      setNodeData({ ...nodeData, itemsSource: varEditorText(value) })
     },
     [nodeData, setNodeData]
   )
@@ -132,7 +138,11 @@ const LoopPanelComponent: React.FC<LoopPanelProps> = ({ nodeId, data }) => {
 
       {/* Output Variables */}
       <OutputVariablesDisplay
-        outputVariables={loopDefinition.outputVariables(nodeData, nodeId)}
+        outputVariables={loopDefinition.outputVariables(
+          nodeData,
+          nodeId,
+          staticOutputVariableContext
+        )}
         initialOpen={false}
       />
     </BasePanel>

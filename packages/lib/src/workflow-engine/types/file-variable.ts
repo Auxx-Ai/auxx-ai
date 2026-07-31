@@ -13,6 +13,8 @@ interface UnifiedVariable {
   category: string
   properties?: any
   items?: any
+  /** Flattened child entries used by the variable picker for navigation. */
+  children?: any
   example?: any
 }
 

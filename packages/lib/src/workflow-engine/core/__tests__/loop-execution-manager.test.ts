@@ -1,23 +1,74 @@
 // packages/lib/src/workflow-engine/core/__tests__/loop-execution-manager.test.ts
+import type { Mock } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../execution-context'
+import type { NodeExecutionCallback } from '../loop-execution-manager'
 import { LoopExecutionManager } from '../loop-execution-manager'
 import type {
+  NodeData,
   NodeExecutionResult,
   Workflow,
   WorkflowExecutionOptions,
   WorkflowNode,
 } from '../types'
-import { NodeRunningStatus, WorkflowNodeType } from '../types'
+import { NodeRunningStatus, WorkflowNodeType, WorkflowTriggerType } from '../types'
+
+/**
+ * Builds a node in the same shape `WorkflowGraphBuilder.transformNodes` produces:
+ * `id`/`nodeId` mirror the canvas node id and the canvas position lives in metadata.
+ */
+const createNode = (
+  nodeId: string,
+  type: WorkflowNodeType,
+  name: string,
+  data: Partial<NodeData> = {}
+): WorkflowNode => ({
+  id: nodeId,
+  workflowId: 'workflow-1',
+  nodeId,
+  type,
+  name,
+  data: { id: nodeId, type, title: name, ...data },
+  metadata: { position: { x: 0, y: 0 } },
+})
+
+/**
+ * The loop manager injects these two callbacks onto the processor for the
+ * duration of `setupLoopExecution` and deletes them again afterwards.
+ */
+interface LoopProcessorMock {
+  preprocessNode: Mock
+  execute: Mock
+  executeLoopBodyCallback?: (
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager
+  ) => Promise<unknown>
+  progressCallback?: (update: { nodeId: string; progress: unknown }) => Promise<void>
+}
+
+/**
+ * Invokes the loop-body callback the manager injects onto the processor,
+ * failing loudly rather than silently no-op'ing if it was never injected.
+ */
+const runLoopBody = (
+  processor: LoopProcessorMock,
+  node: WorkflowNode,
+  contextManager: ExecutionContextManager
+) => {
+  if (!processor.executeLoopBodyCallback) {
+    throw new Error('executeLoopBodyCallback was not injected onto the processor')
+  }
+  return processor.executeLoopBodyCallback(node, contextManager)
+}
 
 describe('LoopExecutionManager', () => {
   let manager: LoopExecutionManager
-  let executeNodeCallback: ReturnType<typeof vi.fn>
+  let executeNodeCallback: Mock<NodeExecutionCallback>
   let contextManager: ExecutionContextManager
   let mockWorkflow: Workflow
 
   beforeEach(() => {
-    executeNodeCallback = vi.fn()
+    executeNodeCallback = vi.fn<NodeExecutionCallback>()
     manager = new LoopExecutionManager(executeNodeCallback)
 
     contextManager = new ExecutionContextManager(
@@ -33,28 +84,29 @@ describe('LoopExecutionManager', () => {
 
     mockWorkflow = {
       id: 'workflow-1',
-      name: 'Test Workflow',
+      workflowId: 'workflow-1',
+      workflowAppId: 'app-1',
       organizationId: 'org-1',
+      name: 'Test Workflow',
+      enabled: true,
+      version: 1,
+      triggerType: WorkflowTriggerType.MANUAL,
       nodes: [],
       graph: {
         nodes: [],
         edges: [],
       },
-    } as Workflow
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
   })
 
   describe('setupLoopExecution', () => {
     it('should inject executeLoopBodyCallback into processor', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
       let capturedCallback: any
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Capture the callback while it exists
@@ -87,16 +139,10 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should inject progressCallback when onNodeComplete is provided', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
       let capturedProgressCallback: any
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Capture the progress callback while it exists
@@ -127,15 +173,9 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should clean up callbacks after execution', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockResolvedValue({
           nodeId: 'loop-1',
@@ -161,15 +201,9 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should clean up callbacks even if execution throws', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockRejectedValue(new Error('Execution failed')),
       }
@@ -186,16 +220,10 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should call progress callback with correct data', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
       let capturedProgressCallback: any
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Capture the progress callback
@@ -254,24 +282,18 @@ describe('LoopExecutionManager', () => {
 
   describe('executeLoopBody', () => {
     it('should throw error if workflow has no edges', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
       const workflowNoEdges = {
         ...mockWorkflow,
         graph: undefined,
-      } as Workflow
+      }
 
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Call the callback
-          return await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
+          return await runLoopBody(mockProcessor, loopNode, contextManager)
         }),
       }
 
@@ -289,13 +311,7 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should return null if no loop-start connection found', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
       const workflowNoStart = {
         ...mockWorkflow,
@@ -303,14 +319,14 @@ describe('LoopExecutionManager', () => {
           nodes: [],
           edges: [], // No edges = no loop-start connection
         },
-      } as Workflow
+      }
 
       let result: any
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
           // Call the callback and capture result
-          result = await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
+          result = await runLoopBody(mockProcessor, loopNode, contextManager)
           return {
             nodeId: 'loop-1',
             status: NodeRunningStatus.Succeeded,
@@ -334,30 +350,12 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should execute loop body nodes and return last result', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
 
       // Need end node that connects back to loop (has loop-back edge)
-      const endNode: WorkflowNode = {
-        nodeId: 'end-1',
-        type: WorkflowNodeType.END,
-        name: 'End Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const endNode = createNode('end-1', WorkflowNodeType.END, 'End Node')
 
       const workflowWithBody = {
         ...mockWorkflow,
@@ -388,7 +386,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       // Mock executeNodeCallback to return a result
       executeNodeCallback.mockImplementation(async (node: WorkflowNode) => {
@@ -401,10 +399,10 @@ describe('LoopExecutionManager', () => {
       })
 
       let result: any
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
-          result = await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
+          result = await runLoopBody(mockProcessor, loopNode, contextManager)
           return {
             nodeId: 'loop-1',
             status: NodeRunningStatus.Succeeded,
@@ -438,29 +436,11 @@ describe('LoopExecutionManager', () => {
 
   describe('executeLoopBodyNodes', () => {
     it('should stop at loop-back connection', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
-      const bodyNode1: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node 1',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode1 = createNode('body-1', WorkflowNodeType.CODE, 'Body Node 1')
 
-      const bodyNode2: WorkflowNode = {
-        nodeId: 'body-2',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node 2',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode2 = createNode('body-2', WorkflowNodeType.CODE, 'Body Node 2')
 
       const workflowWithMultipleNodes = {
         ...mockWorkflow,
@@ -491,7 +471,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       let callCount = 0
       executeNodeCallback.mockImplementation(async (node: WorkflowNode) => {
@@ -505,10 +485,10 @@ describe('LoopExecutionManager', () => {
       })
 
       let result: any
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
-          result = await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
+          result = await runLoopBody(mockProcessor, loopNode, contextManager)
           return {
             nodeId: 'loop-1',
             status: NodeRunningStatus.Succeeded,
@@ -539,21 +519,9 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should detect cycles within loop body', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
 
       // Create a cycle within loop body (not loop-back)
       const workflowWithCycle = {
@@ -578,7 +546,7 @@ describe('LoopExecutionManager', () => {
             }, // Cycle
           ],
         },
-      } as Workflow
+      }
 
       executeNodeCallback.mockResolvedValue({
         nodeId: 'body-1',
@@ -587,10 +555,10 @@ describe('LoopExecutionManager', () => {
         executionTime: 50,
       })
 
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
-          return await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
+          return await runLoopBody(mockProcessor, loopNode, contextManager)
         }),
       }
 
@@ -610,21 +578,9 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should propagate node failure errors', async () => {
-      const loopNode: WorkflowNode = {
-        nodeId: 'loop-1',
-        type: WorkflowNodeType.LOOP,
-        name: 'Test Loop',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
 
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
 
       const workflowWithBody = {
         ...mockWorkflow,
@@ -641,7 +597,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       // Mock node failure
       executeNodeCallback.mockResolvedValue({
@@ -651,10 +607,10 @@ describe('LoopExecutionManager', () => {
         executionTime: 50,
       })
 
-      const mockProcessor = {
+      const mockProcessor: LoopProcessorMock = {
         preprocessNode: vi.fn().mockResolvedValue({}),
         execute: vi.fn().mockImplementation(async () => {
-          return await mockProcessor.executeLoopBodyCallback(loopNode, contextManager)
+          return await runLoopBody(mockProcessor, loopNode, contextManager)
         }),
       }
 
@@ -674,13 +630,7 @@ describe('LoopExecutionManager', () => {
 
   describe('isLoopBackConnection', () => {
     it('should return true for loop-back edges', () => {
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
 
       const workflowWithLoopBack = {
         ...mockWorkflow,
@@ -696,7 +646,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       // Access private method via any cast for testing
       const isLoopBack = (manager as any).isLoopBackConnection(
@@ -709,13 +659,7 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should return false for non-loop-back edges', () => {
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
 
       const workflowWithoutLoopBack = {
         ...mockWorkflow,
@@ -731,7 +675,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       const isLoopBack = (manager as any).isLoopBackConnection(
         bodyNode,
@@ -745,13 +689,7 @@ describe('LoopExecutionManager', () => {
 
   describe('resolveNextNodeForLoop', () => {
     it('should return null for loop-back edges', () => {
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
 
       const workflowWithLoopBack = {
         ...mockWorkflow,
@@ -767,7 +705,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       const result: NodeExecutionResult = {
         nodeId: 'body-1',
@@ -787,13 +725,7 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should return next node for forward edges', () => {
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.CODE,
-        name: 'Body Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
 
       const workflowWithNext = {
         ...mockWorkflow,
@@ -809,7 +741,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       const result: NodeExecutionResult = {
         nodeId: 'body-1',
@@ -829,13 +761,7 @@ describe('LoopExecutionManager', () => {
     })
 
     it('should use outputHandle for routing', () => {
-      const bodyNode: WorkflowNode = {
-        nodeId: 'body-1',
-        type: WorkflowNodeType.IF_ELSE,
-        name: 'If Node',
-        data: {},
-        position: { x: 0, y: 0 },
-      }
+      const bodyNode = createNode('body-1', WorkflowNodeType.IF_ELSE, 'If Node')
 
       const workflowWithConditional = {
         ...mockWorkflow,
@@ -858,7 +784,7 @@ describe('LoopExecutionManager', () => {
             },
           ],
         },
-      } as Workflow
+      }
 
       const result: NodeExecutionResult = {
         nodeId: 'body-1',

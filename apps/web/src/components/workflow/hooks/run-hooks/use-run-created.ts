@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-created.ts
 
-import type { WorkflowRun } from '@auxx/database/types'
+import type { WorkflowRunEntity as WorkflowRun } from '@auxx/database/types'
 import { useCallback } from 'react'
 import { useCanvasStore } from '../../store/canvas-store'
 import type { ExecutionEvent } from '../../store/run-store'

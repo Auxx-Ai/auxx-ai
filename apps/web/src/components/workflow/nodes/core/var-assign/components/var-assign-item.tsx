@@ -9,7 +9,11 @@ import { Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useState } from 'react'
 import { BaseType } from '~/components/workflow/types/unified-types'
-import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  type VarEditorValue,
+  varEditorText,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
 import type { VariableAssignment } from '../types'
 import { VarTypeSelector } from './var-type-selector'
@@ -119,7 +123,8 @@ export const VarAssignItem: React.FC<VarAssignItemProps> = ({
   )
 
   const handleValueChange = useCallback(
-    (value: string | string[], modes: boolean | boolean[]) => {
+    (rawValue: VarEditorValue, modes: boolean | boolean[]) => {
+      const value = Array.isArray(rawValue) ? rawValue.map(varEditorText) : varEditorText(rawValue)
       // Determine which field to update based on isArray
       const updates = assignment.isArray
         ? {

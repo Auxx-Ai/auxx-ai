@@ -1,12 +1,11 @@
 // apps/web/src/components/workflow/apps/primitives/variables/input-editor.tsx
 
 import InputEditorUI from '~/components/workflow/ui/input-editor/input-editor'
-import type { TiptapJSON } from '~/components/workflow/ui/input-editor/types'
 
 /** Props for InputEditor component */
 interface InputEditorProps {
-  /** Current editor value in Tiptap JSON format */
-  value: TiptapJSON
+  /** Current editor value, in the `{{variableId}}` text format */
+  value: string
   /** ID of the workflow node this editor belongs to */
   nodeId: string
   /** Placeholder text for empty editor */
@@ -49,13 +48,13 @@ export const InputEditor = ({
   __hasOnBlur,
   __hasOnFocus,
 }: InputEditorProps) => {
-  const handleChange = async (value: TiptapJSON) => {
+  const handleChange = async (value: string) => {
     if (__onCallHandler && __instanceId && __hasOnChange) {
       await __onCallHandler(__instanceId, 'onChange', value)
     }
   }
 
-  const handleBlur = async (value: TiptapJSON) => {
+  const handleBlur = async (value: string) => {
     if (__onCallHandler && __instanceId && __hasOnBlur) {
       await __onCallHandler(__instanceId, 'onBlur', value)
     }

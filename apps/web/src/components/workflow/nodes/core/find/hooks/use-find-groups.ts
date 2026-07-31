@@ -130,8 +130,9 @@ export const useFindGroups = (
       const updatedConditions = group.conditions.filter((condition) => condition.id !== conditionId)
 
       // Clean up logical operators after removal
-      if (updatedConditions.length > 0) {
-        updatedConditions[0].logicalOperator = undefined
+      const firstCondition = updatedConditions[0]
+      if (firstCondition) {
+        firstCondition.logicalOperator = undefined
       }
 
       updateGroup(groupId, { conditions: updatedConditions })

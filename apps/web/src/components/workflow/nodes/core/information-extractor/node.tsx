@@ -3,15 +3,17 @@
 'use client'
 
 import { memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import ModelNodeView from '~/components/workflow/ui/model-parameter/model-node-view'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { InformationExtractorNode as InformationExtractorNodeType } from './types'
+import { AiModelMode } from '../ai/types'
+import type { InformationExtractorNodeData } from './types'
 
 /**
  * Information Extractor node visual component
  */
-export const InformationExtractorNode = memo<InformationExtractorNodeType>(
+export const InformationExtractorNode = memo<NodeProps<InformationExtractorNodeData>>(
   ({ id, data, selected = false }) => {
     const hasSchema = data.structured_output?.enabled && data.structured_output.schema
     const fieldCount = hasSchema
@@ -23,7 +25,18 @@ export const InformationExtractorNode = memo<InformationExtractorNodeType>(
         <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
 
         <div className='w-full px-3 py-2'>
-          <ModelNodeView model={data.model} />
+          {/*
+            InformationExtractorModel declares `mode` as a string-literal union and
+            `completion_params` as optional; ModelNodeView wants the AI node's
+            AiModelMode enum and a present params object. Map rather than cast.
+          */}
+          <ModelNodeView
+            model={{
+              ...data.model,
+              mode: data.model.mode === 'completion' ? AiModelMode.COMPLETION : AiModelMode.CHAT,
+              completion_params: data.model.completion_params ?? {},
+            }}
+          />
 
           {/* Schema status */}
           {data.structured_output?.enabled && (

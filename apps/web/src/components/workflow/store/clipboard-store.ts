@@ -92,7 +92,8 @@ export const useClipboardStore = create<ClipboardStore>()(
     },
 
     hasContent: () => {
-      return get().data !== null && get().data.nodes.length > 0
+      const data = get().data
+      return data !== null && data.nodes.length > 0
     },
 
     getClipboardData: () => {

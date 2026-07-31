@@ -17,6 +17,7 @@ import {
   type ExecutionState,
   JoinState, // V5: Added for join state deserialization
   NodeRunningStatus,
+  toWorkflowTriggerType,
   WorkflowPausedException,
 } from '../workflow-engine/core/types'
 // Type-only — the VALUE is loaded dynamically in `initializeEngine()` to break
@@ -39,6 +40,7 @@ import {
   type WorkflowNodeExecution,
   type WorkflowRun,
   WorkflowRunStatus,
+  type WorkflowRunStatusValue,
   type WorkflowRunWithDetails,
   type WorkflowTriggerEvent,
   WorkflowTriggerSource,
@@ -64,7 +66,31 @@ type SerializedExecutionState = {
   nodeVariables: Record<string, Record<string, any>>
   logs: any[]
   executionPath: string[]
+  /** Pre-V5 runs stored join states at the top level rather than under `context`. */
+  joinStates?: Record<string, any>
 }
+
+/**
+ * The subset of a `WorkflowRun` row that `createRun` returns. `executeWorkflowAsync`
+ * accepts this shape too — it only reads these columns.
+ */
+export type CreatedWorkflowRun = Pick<
+  WorkflowRun,
+  | 'id'
+  | 'organizationId'
+  | 'workflowAppId'
+  | 'workflowId'
+  | 'sequenceNumber'
+  | 'type'
+  | 'triggeredFrom'
+  | 'version'
+  | 'inputs'
+  | 'status'
+  | 'totalTokens'
+  | 'totalSteps'
+  | 'createdBy'
+  | 'createdAt'
+>
 
 const logger = createScopedLogger('workflow-execution-service')
 
@@ -94,7 +120,7 @@ export async function createWorkflowRun(
     mode: 'test' | 'production'
     /** Acting user, or `null`/`undefined` for a headless run (resolves to the org system user). */
     userId: string | null | undefined
-    status?: WorkflowRunStatus
+    status?: WorkflowRunStatusValue
     error?: string
     finishedAt?: Date
     elapsedTime?: number
@@ -261,25 +287,7 @@ export class WorkflowExecutionService {
     organizationId: string
     userEmail?: string
     userName?: string
-  }): Promise<
-    Pick<
-      WorkflowRun,
-      | 'id'
-      | 'organizationId'
-      | 'workflowAppId'
-      | 'workflowId'
-      | 'sequenceNumber'
-      | 'type'
-      | 'triggeredFrom'
-      | 'version'
-      | 'inputs'
-      | 'status'
-      | 'totalTokens'
-      | 'totalSteps'
-      | 'createdBy'
-      | 'createdAt'
-    >
-  > {
+  }): Promise<CreatedWorkflowRun> {
     const { workflowId, inputs, mode, userId, organizationId } = params
 
     // Get workflow with validation
@@ -309,7 +317,7 @@ export class WorkflowExecutionService {
    * Execute workflow asynchronously with optional reporter for events
    */
   async executeWorkflowAsync(
-    workflowRun: WorkflowRun,
+    workflowRun: CreatedWorkflowRun,
     reporter?: RedisWorkflowExecutionReporter,
     userEmail?: string,
     userName?: string
@@ -338,11 +346,11 @@ export class WorkflowExecutionService {
 
       // Create trigger event
       const triggerEvent: WorkflowTriggerEvent = {
-        type: workflow.triggerType || WorkflowTriggerType.MANUAL,
+        type: toWorkflowTriggerType(workflow.triggerType),
         data: workflowRun.inputs as Record<string, any>,
         timestamp: new Date(),
         organizationId: workflowRun.organizationId,
-        userId: workflowRun.createdBy,
+        userId: workflowRun.createdBy ?? undefined,
         userEmail: userEmail || undefined,
         userName: userName || undefined,
         organizationName: organization?.name || undefined,
@@ -540,8 +548,8 @@ export class WorkflowExecutionService {
             userId,
             userEmail: params.userEmail,
             userName: params.userName,
-            organizationName: params.organizationName ?? organization?.name,
-            organizationHandle: params.organizationHandle ?? organization?.handle,
+            organizationName: params.organizationName ?? organization?.name ?? undefined,
+            organizationHandle: params.organizationHandle ?? organization?.handle ?? undefined,
           },
           nodeRegistry,
           workflow,
@@ -565,6 +573,10 @@ export class WorkflowExecutionService {
           })
           .where(eq(schema.WorkflowNodeExecution.id, nodeExecution!.id))
           .returning()
+
+        if (!updatedExecution) {
+          throw new Error(`Node execution ${nodeExecution!.id} disappeared while running`)
+        }
 
         return updatedExecution
       } catch (executionError) {
@@ -1021,15 +1033,14 @@ export class WorkflowExecutionService {
       })
 
       if (cursorRun) {
-        whereConditions.push(
-          or(
-            lt(schema.WorkflowRun.createdAt, cursorRun.createdAt),
-            and(
-              eq(schema.WorkflowRun.createdAt, cursorRun.createdAt),
-              lt(schema.WorkflowRun.id, cursorRun.id)
-            )
+        const cursorBound = or(
+          lt(schema.WorkflowRun.createdAt, cursorRun.createdAt),
+          and(
+            eq(schema.WorkflowRun.createdAt, cursorRun.createdAt),
+            lt(schema.WorkflowRun.id, cursorRun.id)
           )
         )
+        if (cursorBound) whereConditions.push(cursorBound)
       }
     }
 
@@ -1057,7 +1068,7 @@ export class WorkflowExecutionService {
 
     const hasNextPage = runs.length > limit
     const items = hasNextPage ? runs.slice(0, limit) : runs
-    const nextCursor = hasNextPage ? items[items.length - 1].id : null
+    const nextCursor = hasNextPage ? (items[items.length - 1]?.id ?? null) : null
 
     return { items, nextCursor, hasNextPage }
   }

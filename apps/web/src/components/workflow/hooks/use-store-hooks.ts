@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/hooks/use-store-hooks.ts
 
 import { useMemo } from 'react'
-import { shallow } from 'zustand/shallow'
+import { useShallow } from 'zustand/react/shallow'
 import { useCanvasStore } from '../store/canvas-store'
 
 /**
@@ -10,7 +10,7 @@ import { useCanvasStore } from '../store/canvas-store'
  */
 
 // Canvas store hooks
-export const useViewport = () => useCanvasStore((state) => state.viewport, shallow)
+export const useViewport = () => useCanvasStore(useShallow((state) => state.viewport))
 
 export const useCanvasSettings = () => {
   const snapToGrid = useCanvasStore((state) => state.snapToGrid)

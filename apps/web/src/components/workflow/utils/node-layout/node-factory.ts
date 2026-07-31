@@ -78,6 +78,7 @@ export class NodeFactory {
       loopId,
       _connectedSourceHandleIds: [],
       _connectedTargetHandleIds: [],
+      selected: false,
       // Spread all merged data
       ...mergedData,
       // type must come after spread so defaultData.type can't overwrite the definition ID

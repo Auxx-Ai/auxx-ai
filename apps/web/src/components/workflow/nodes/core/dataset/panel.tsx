@@ -13,6 +13,8 @@ import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
+  type VarEditorValue,
+  varEditorText,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
@@ -45,9 +47,9 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
    * Generic handler for string field changes
    */
   const handleFieldChange = useCallback(
-    (field: StringField, value: string, isConstantMode: boolean) => {
+    (field: StringField, value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        ;(draft as Record<string, unknown>)[field] = value || undefined
+        ;(draft as Record<string, unknown>)[field] = varEditorText(value) || undefined
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode
       })
@@ -60,9 +62,11 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
    * Handle file reference change (may receive array from FileInput)
    */
   const handleFileIdChange = useCallback(
-    (value: string | string[], isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft.fileId = Array.isArray(value) ? value[0] || undefined : value || undefined
+        draft.fileId = Array.isArray(value)
+          ? varEditorText(value[0]) || undefined
+          : varEditorText(value) || undefined
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['fileId'] = isConstantMode
       })

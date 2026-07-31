@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { NodeType } from '~/components/workflow/types/node-types'
 import type { NodeDefinition, ValidationResult } from '~/components/workflow/types/registry'
 import { NodeCategory } from '~/components/workflow/types/registry'
-import type { OutputVariable } from '~/components/workflow/types/variable-types'
+import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { BaseType } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
@@ -350,7 +350,7 @@ export function extractHttpVariableIds(data: HttpNodeData): string[] {
 }
 
 // Output variables for HTTP node
-export function getHttpOutputVariables(data: HttpNodeData, nodeId: string): OutputVariable[] {
+export function getHttpOutputVariables(data: HttpNodeData, nodeId: string): UnifiedVariable[] {
   return [
     createUnifiedOutputVariable({
       nodeId,

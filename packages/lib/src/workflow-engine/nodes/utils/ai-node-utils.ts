@@ -168,7 +168,8 @@ export function extractVariableIdsFromText(text: string): string[] {
   let match
 
   while ((match = variablePattern.exec(text)) !== null) {
-    variables.push(match[1].trim())
+    const captured = match[1]
+    if (captured) variables.push(captured.trim())
   }
 
   return variables

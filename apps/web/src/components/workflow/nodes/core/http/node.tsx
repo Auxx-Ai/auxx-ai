@@ -4,10 +4,11 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import { ErrorStrategy, type HttpNode as HttpNodeType } from './types'
+import { ErrorStrategy, type HttpNodeData } from './types'
 
-export const HttpNode = memo<HttpNodeType>(({ id, data, selected }) => {
+export const HttpNode = memo<NodeProps<HttpNodeData>>(({ id, data, selected }) => {
   // Calculate total source handles based on error strategy
   const hasFailBranch = data.error_strategy === ErrorStrategy.fail
   const totalSourceHandles = hasFailBranch ? 2 : 1

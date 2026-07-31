@@ -1,6 +1,10 @@
 // apps/web/src/components/workflow/utils/variable-utils.ts
 
-import { getOperatorsForBaseType } from '@auxx/lib/conditions/client'
+import {
+  ALL_OPERATOR_KEYS,
+  getOperatorsForBaseType,
+  type Operator,
+} from '@auxx/lib/conditions/client'
 import {
   BaseType,
   isTypeCompatible as isBaseTypeCompatible,
@@ -14,6 +18,13 @@ import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@
 import type { FieldDefinition } from '~/components/conditions'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+
+/**
+ * `OperatorDefinition.key` is declared as a plain `string`, so narrow it back to
+ * the `Operator` union before it reaches a `FieldDefinition`.
+ */
+const isOperatorKey = (key: string): key is Operator =>
+  ALL_OPERATOR_KEYS.some((known) => known === key)
 
 /** Info about a single array segment within a variable ID */
 export interface ArraySegmentInfo {
@@ -181,6 +192,7 @@ export function buildVariableLabelPath(
   // Skip first segment (node ID), resolve labels for remaining segments
   for (let i = 1; i < parts.length; i++) {
     const segment = parts[i]
+    if (segment === undefined) continue
 
     // Check for bracket notation: [*], [0], [-1], [n]
     const bracketMatch = segment.match(/^(.+?)\[(.+)\]$/)
@@ -300,7 +312,9 @@ export function getVariableDisplayType(variable: UnifiedVariable): string {
 
     if (field?.relationship) {
       const targetId = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
-      const targetResource = useResourceStore.getState().resourceMap.get(targetId)
+      const targetResource = targetId
+        ? useResourceStore.getState().resourceMap.get(targetId)
+        : undefined
       return targetResource?.label || variable.label || variable.type
     }
   }
@@ -378,9 +392,12 @@ export function getVariableRelationship(variable: UnifiedVariable):
   | undefined {
   // Check options first (new unified format)
   if (variable.options?.relationship) {
+    const rel = variable.options.relationship
     return {
-      relatedEntityDefinitionId: variable.options.relationship.relatedEntityDefinitionId,
-      relationshipType: variable.options.relationship.relationshipType,
+      // RelationshipConfig stores only `inverseResourceFieldId`; the related
+      // definition id has to be derived from it.
+      relatedEntityDefinitionId: getRelatedEntityDefinitionId(rel) ?? undefined,
+      relationshipType: rel.relationshipType,
     }
   }
 
@@ -393,7 +410,7 @@ export function getVariableRelationship(variable: UnifiedVariable):
     if (field?.relationship) {
       const rel = field.relationship as RelationshipConfig
       return {
-        relatedEntityDefinitionId: getRelatedEntityDefinitionId(rel),
+        relatedEntityDefinitionId: getRelatedEntityDefinitionId(rel) ?? undefined,
         relationshipType: rel.relationshipType,
         field,
       }
@@ -437,7 +454,9 @@ export function getVariableFieldDefinition(variable: UnifiedVariable): FieldDefi
     ...variable,
     type: actualType,
     displayType,
-    operators: getOperatorsForBaseType(actualType).map((op) => op.key),
+    operators: getOperatorsForBaseType(actualType)
+      .map((op) => op.key)
+      .filter(isOperatorKey),
     options: options ? { options } : undefined,
     fieldReference: variable.fieldReference,
     targetEntityDefinitionId: relationship?.relatedEntityDefinitionId,

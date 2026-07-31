@@ -5,14 +5,15 @@
 import { getOperationGroup, OPERATION_METADATA } from '@auxx/lib/workflow-engine/constants'
 import type { FC } from 'react'
 import { memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { FormatNode as FormatNodeType } from './types'
+import type { FormatNodeData } from './types'
 
 /**
  * Format node visual component
  */
-export const FormatNode: FC<FormatNodeType> = memo((props) => {
+export const FormatNode: FC<NodeProps<FormatNodeData>> = memo((props) => {
   const { data, id, selected } = props
   const meta = OPERATION_METADATA[data.operation]
   const group = getOperationGroup(data.operation)

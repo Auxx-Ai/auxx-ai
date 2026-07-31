@@ -84,14 +84,15 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
     // Case 1: Path array (preferred) - relationship traversal
     if (Array.isArray(fieldRef)) {
-      if (fieldRef.length === 0) {
+      const [firstSegment] = fieldRef
+      if (!firstSegment) {
         logger.warn('Empty field path array')
         return undefined
       }
 
       // Single element array = direct field
       if (fieldRef.length === 1) {
-        const { fieldId: fieldKey } = parseResourceFieldId(fieldRef[0])
+        const { fieldId: fieldKey } = parseResourceFieldId(firstSegment)
         logger.debug(`Processing single-element array as direct field: ${fieldKey}`)
         return this.buildDirectFieldCondition(fieldKey, condition, context)
       }
@@ -309,10 +310,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         case 'is not':
           // NULL-correct: "not X" includes rows where the value is unset.
           return sql`(${column} IS NULL OR ${column}::date != ${String(rawValue)}::date)`
-        case 'exists':
-          return sql`${column} IS NOT NULL`
-        case 'not exists':
-          return sql`${column} IS NULL`
         case 'empty':
           return sql`${column} IS NULL`
         case 'not empty':
@@ -367,10 +364,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           if (!values.length) return undefined
           return sql`${column} NOT IN ${values.map((v) => String(v))}`
         }
-        case 'exists':
-          return sql`${column} IS NOT NULL`
-        case 'not exists':
-          return sql`${column} IS NULL`
         case 'empty':
           return sql`(${column} IS NULL OR ${column}::text = '')`
         case 'not empty':
@@ -626,8 +619,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
             ? conditions[0]
             : sql`(${sql.join(conditions, sql` AND `)})`
         }
-        case 'exists':
-          return sql`true`
         case 'not empty':
           return sql`true`
         default:
@@ -662,8 +653,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
             ? conditions[0]
             : sql`(${sql.join(conditions, sql` AND `)})`
         }
-        case 'exists':
-          return sql`true`
         case 'not empty':
           return sql`true`
         default:
@@ -749,8 +738,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         const conditions = values.map((v) => sql`${valueCol} != ${String(v)}`)
         return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` AND `)})`
       }
-      case 'exists':
-        return sql`true`
       case 'empty':
         return sql`(${valueCol} IS NULL OR ${valueCol}::text = '')`
       case 'not empty':
@@ -855,15 +842,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
   ): SQL<unknown> | undefined {
     // Keep outer table as Drizzle column reference for correct alias resolution
     const outerTableId = context.outerTable.id
-
-    // Handle 'not exists' specially - check that NO row exists for this field
-    if (operator === 'not exists') {
-      return sql`NOT EXISTS (
-        SELECT 1 FROM "FieldValue"
-        WHERE "FieldValue"."entityId" = ${outerTableId}
-          AND "FieldValue"."fieldId" = ${fieldId}
-      )`
-    }
 
     // Handle 'empty' / 'not empty' for custom fields.
     // FieldValue write-path invariant: rows are deleted when their value is
@@ -1017,11 +995,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return sql`true`
         }
 
-        case 'exists': {
-          // Field has at least one value
-          return sql`true`
-        }
-
         default: {
           logger.warn(`Operator '${operator}' not supported for optionId fields`)
           return undefined
@@ -1158,14 +1131,6 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       }
 
       // ===== EXISTENCE =====
-      case 'exists': {
-        return sql`true`
-      }
-
-      case 'not exists': {
-        return undefined
-      }
-
       case 'empty': {
         // Unreachable — outer buildTypedConditionSql short-circuits 'empty' to
         // a bare `NOT EXISTS (row)` under the FieldValue write-path invariant.

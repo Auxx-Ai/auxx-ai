@@ -55,6 +55,10 @@ export function mapFieldToVarEditorProps(params: {
 }): VarEditorMappedProps {
   const { type, format, options, acceptsVariables, variableTypes, variant, loading } = params
 
+  // `variant` arrives from the SDK schema as a loose string; the select editor
+  // only understands these two, so anything else falls back to its default.
+  const selectVariant = variant === 'transparent' || variant === 'outline' ? variant : undefined
+
   // Determine allowConstant from acceptsVariables
   // When acceptsVariables is false/undefined, render in constant-only mode
   const allowConstant = acceptsVariables !== false
@@ -166,7 +170,7 @@ export function mapFieldToVarEditorProps(params: {
         allowedTypes,
         fieldOptions: {
           enum: normalizedOptions,
-          selectVariant: variant,
+          selectVariant,
           loading,
           multiSelect: params.multi,
         },

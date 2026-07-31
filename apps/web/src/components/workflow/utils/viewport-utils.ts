@@ -1,13 +1,16 @@
 // apps/web/src/components/workflow/utils/viewport-utils.ts
 
-import type { Node, ReactFlowInstance, XYPosition } from '@xyflow/react'
+import type { Edge, Node, ReactFlowInstance, XYPosition } from '@xyflow/react'
 
 /**
- * Get the absolute position of a node, accounting for parent hierarchy
+ * Get the absolute position of a node, accounting for parent hierarchy.
+ *
+ * Generic over the instance's node/edge types so callers holding a typed
+ * `ReactFlowInstance<FlowNode, FlowEdge>` can pass it straight through.
  */
-export const getNodeAbsolutePosition = (
-  node: Node,
-  getInstance: () => ReactFlowInstance
+export const getNodeAbsolutePosition = <N extends Node, E extends Edge>(
+  node: N,
+  getInstance: () => ReactFlowInstance<N, E>
 ): XYPosition => {
   let absoluteX = node.position.x
   let absoluteY = node.position.y
@@ -34,9 +37,9 @@ export const getNodeAbsolutePosition = (
  * Center the viewport on a specific node
  * Handles nodes inside containers by calculating absolute position
  */
-export const centerOnNode = (
+export const centerOnNode = <N extends Node, E extends Edge>(
   nodeId: string,
-  getInstance: () => ReactFlowInstance,
+  getInstance: () => ReactFlowInstance<N, E>,
   options?: {
     offset?: { x: number; y: number }
     animation?: { duration: number }
@@ -101,7 +104,9 @@ export const centerOnNode = (
 /**
  * Create an event handler for centering on nodes
  */
-export const createCenterOnNodeHandler = (getInstance: () => ReactFlowInstance) => {
+export const createCenterOnNodeHandler = <N extends Node, E extends Edge>(
+  getInstance: () => ReactFlowInstance<N, E>
+) => {
   return (event: Event) => {
     const customEvent = event as CustomEvent
     const { nodeId, ...options } = customEvent.detail

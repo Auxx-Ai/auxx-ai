@@ -130,6 +130,21 @@ const TYPE_COMPATIBILITY_MAP: Record<BaseType, BaseType[]> = {
   // ARRAY is strict - only accepts arrays and ANY
   [BaseType.ARRAY]: [BaseType.ANY, BaseType.ARRAY],
 
+  // ACTOR accepts actor references and the string/reference forms of an actor id
+  [BaseType.ACTOR]: [BaseType.ANY, BaseType.ACTOR, BaseType.STRING, BaseType.REFERENCE],
+
+  // ADDRESS accepts structured address objects and a single-line string address
+  [BaseType.ADDRESS]: [
+    BaseType.ANY,
+    BaseType.ADDRESS,
+    BaseType.OBJECT,
+    BaseType.JSON,
+    BaseType.STRING,
+  ],
+
+  // TAGS accepts tag collections, plain arrays, and a single tag string
+  [BaseType.TAGS]: [BaseType.ANY, BaseType.TAGS, BaseType.ARRAY, BaseType.STRING],
+
   // NULL accepts only null and ANY
   [BaseType.NULL]: [BaseType.ANY, BaseType.NULL],
 }

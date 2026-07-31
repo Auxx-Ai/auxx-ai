@@ -2,7 +2,18 @@
 
 import { useCallback, useMemo, useRef } from 'react'
 import type { Condition, ConditionGroup, ConditionSystemConfig } from '~/components/conditions'
+import type { TargetBranch } from '~/components/workflow/types'
+import { BaseType } from '~/components/workflow/types'
 import type { IfElseCase, IfElseCondition, IfElseNodeData } from '../types'
+
+/**
+ * The condition system stores a field id that may be a relationship path.
+ * If-else conditions only ever address a single workflow variable, so a path
+ * is flattened back to the dotted id the variable index is keyed by.
+ */
+function toVariableId(fieldId: Condition['fieldId']): string {
+  return Array.isArray(fieldId) ? fieldId.join('.') : fieldId
+}
 
 interface UseIfElseConditionAdapterProps {
   nodeId: string
@@ -36,7 +47,7 @@ export const useIfElseConditionAdapter = ({
             variableId: condition.variableId,
             key: condition.key,
             isConstant: condition.isConstant,
-            numberVarType: condition.varType === 'number' ? 'number' : 'string',
+            numberVarType: condition.varType === BaseType.NUMBER ? 'number' : 'string',
             logicalOperator: condition.logical_operator === 'or' ? 'OR' : 'AND',
           })
         ),
@@ -74,12 +85,12 @@ export const useIfElseConditionAdapter = ({
           conditions: group.conditions.map(
             (condition): IfElseCondition => ({
               id: condition.id,
-              variableId: condition.fieldId,
+              variableId: toVariableId(condition.fieldId),
               comparison_operator: condition.operator as any,
               value: condition.value,
               key: condition.key,
               isConstant: condition.isConstant,
-              varType: condition.numberVarType === 'number' ? 'number' : undefined,
+              varType: condition.numberVarType === 'number' ? BaseType.NUMBER : undefined,
               logical_operator: condition.logicalOperator?.toLowerCase() as
                 | 'and'
                 | 'or'
@@ -90,13 +101,13 @@ export const useIfElseConditionAdapter = ({
       })
 
       // Update _targetBranches with case names
-      const updatedTargetBranches = [
+      const updatedTargetBranches: TargetBranch[] = [
         ...updatedGroups.map((group) => ({
           id: group.metadata?.case_id || '',
           name: group.metadata?.name || '',
-          type: 'default',
+          type: 'default' as const,
         })),
-        { id: 'false', name: 'Else' },
+        { id: 'false', name: 'Else', type: 'default' as const },
       ]
 
       setInputs({

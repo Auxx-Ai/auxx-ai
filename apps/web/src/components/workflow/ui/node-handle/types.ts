@@ -31,8 +31,9 @@ export interface NodeHandleProps {
 }
 
 export interface BlockSelectorProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  /** Omit both to let the underlying Popover manage its own open state. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   onSelect: (type: string, toolDefaultValue?: any) => void
   asChild?: boolean
   placement?: 'left' | 'right' | 'top' | 'bottom'

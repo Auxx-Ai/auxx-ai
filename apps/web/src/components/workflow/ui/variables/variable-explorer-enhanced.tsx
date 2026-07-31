@@ -187,6 +187,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
     // Return items at current navigation level (look up dynamically)
     const currentLevel = navigationStack[navigationStack.length - 1]
+    if (!currentLevel) return groups
 
     if (currentLevel.type === 'group') {
       // Look up group by ID

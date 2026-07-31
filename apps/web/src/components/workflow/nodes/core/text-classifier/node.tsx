@@ -3,17 +3,18 @@
 'use client'
 
 import { memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import ModelNodeView from '~/components/workflow/ui/model-parameter/model-node-view'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { TextClassifierNode as TextClassifierNodeType } from './types'
+import type { TextClassifierNodeData } from './types'
 import { generatePreviewElements } from './utils/preview-text'
 
 /**
  * Text classifier node visual component
  */
-export const TextClassifierNode = memo<TextClassifierNodeType>(
-  ({ id, data, selected, width, height }) => {
+export const TextClassifierNode = memo<NodeProps<TextClassifierNodeData>>(
+  ({ id, data, selected }) => {
     const categories = data?.categories || []
     const outputMode = data?.outputMode ?? 'branches'
     const isVariableMode = outputMode === 'variable'
@@ -25,13 +26,17 @@ export const TextClassifierNode = memo<TextClassifierNodeType>(
     const augmentedData = { ...data, _sourceHandleCount: totalSourceHandles }
 
     return (
-      <BaseNode id={id} data={augmentedData} selected={selected} width={width || 244} height='auto'>
+      <BaseNode id={id} data={augmentedData} selected={selected} width={244} height='auto'>
         <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId='target' />
 
         <div className='px-3 pb-2'>
           <div className='space-y-1'>
             {data?.model ? (
-              <ModelNodeView model={data.model} />
+              // ModelNodeView requires `completion_params`; TextClassifier's ModelConfig
+              // leaves it optional, so default it rather than let it arrive undefined.
+              <ModelNodeView
+                model={{ ...data.model, completion_params: data.model.completion_params ?? {} }}
+              />
             ) : (
               <div className='text-[10px] text-primary-500 truncate'>No model selected</div>
             )}

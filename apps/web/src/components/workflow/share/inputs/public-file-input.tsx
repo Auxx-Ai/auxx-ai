@@ -427,7 +427,8 @@ interface FileItemProps {
   filename: string
   mimeType: string
   size: number
-  status?: 'pending' | 'uploading' | 'failed'
+  /** Omitted for files that arrived already-uploaded via the `value` prop. */
+  status?: 'pending' | 'uploading' | 'completed' | 'failed'
   progress?: number
   error?: string
   onRemove: (id: string) => void
@@ -448,7 +449,9 @@ function FileItem({
 }: FileItemProps) {
   const isUploading = status === 'uploading'
   const isFailed = status === 'failed'
-  const isCompleted = !status
+  // An uploading file keeps `status: 'completed'` for ~500ms before it moves
+  // into `completedFiles` (where it is rendered with no status at all).
+  const isCompleted = !status || status === 'completed'
 
   return (
     <div

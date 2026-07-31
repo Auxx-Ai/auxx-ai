@@ -18,8 +18,9 @@ const Add = ({ nodeId, nodeData, sourceHandle, isParallel, branchType = 'default
   const isInsideLoop = useMemo(() => {
     let currentNode = nodes.find((n) => n.id === nodeId)
     while (currentNode) {
-      if (currentNode.parentId) {
-        const parent = nodes.find((n) => n.id === currentNode.parentId)
+      const parentId = currentNode.parentId
+      if (parentId) {
+        const parent = nodes.find((n) => n.id === parentId)
         if (parent && parent.type === 'loop') {
           return true
         }

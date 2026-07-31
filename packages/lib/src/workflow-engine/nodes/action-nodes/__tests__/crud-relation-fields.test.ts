@@ -1,9 +1,23 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/__tests__/crud-relation-fields.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorkflowNode } from '../../../core/types'
+import type { NodeData, WorkflowNode } from '../../../core/types'
 import { BaseType, WorkflowNodeType } from '../../../core/types'
 import { CrudNodeProcessor } from '../crud'
+
+/**
+ * Builds a CRUD node in the shape `WorkflowGraphBuilder.transformNodes` emits:
+ * `id`/`nodeId` mirror the canvas node id and the position sits in metadata.
+ */
+const crudNode = (nodeId: string, name: string, data: Partial<NodeData>): WorkflowNode => ({
+  id: nodeId,
+  workflowId: 'workflow_1',
+  nodeId,
+  name,
+  type: WorkflowNodeType.CRUD,
+  data: { id: nodeId, type: WorkflowNodeType.CRUD, title: name, ...data },
+  metadata: { position: { x: 0, y: 0 } },
+})
 
 /**
  * `preprocessNode` reads the resource's field list from the org cache to decide
@@ -92,21 +106,15 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
 
   describe('preprocessNode - Relation Field Transformation', () => {
     it('should transform "contact" to "contactId" for ticket create', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_1', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test Ticket',
-            contact: 'contact_abc123', // Logical field name
-            priority: 'MEDIUM',
-          },
+          title: 'Test Ticket',
+          contact: 'contact_abc123', // Logical field name
+          priority: 'MEDIUM',
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -116,21 +124,15 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     })
 
     it('should transform relation field with object value {referenceId: "xyz"}', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_2',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_2', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test Ticket',
-            contact: { referenceId: 'contact_xyz789' }, // Object format
-            priority: 'HIGH',
-          },
+          title: 'Test Ticket',
+          contact: { referenceId: 'contact_xyz789' }, // Object format
+          priority: 'HIGH',
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -142,22 +144,16 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     it('should transform RELATION fields but preserve ACTOR fields', async () => {
       // Note: "contact" is BaseType.RELATION with dbColumn="contactId" -> gets transformed
       // "assignee" is BaseType.ACTOR with dbColumn="assignedToId" -> NOT transformed (ACTOR != RELATION)
-      const node: WorkflowNode = {
-        nodeId: 'node_3',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_3', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test Ticket',
-            contact: 'contact_abc123',
-            assignee: 'user_def456',
-            priority: 'LOW',
-          },
+          title: 'Test Ticket',
+          contact: 'contact_abc123',
+          assignee: 'user_def456',
+          priority: 'LOW',
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -172,21 +168,15 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     it('should handle null relation field values', async () => {
       // Note: "contact" (BaseType.RELATION) gets transformed to "contactId"
       // "assignee" (BaseType.ACTOR) does NOT get transformed - ACTOR != RELATION
-      const node: WorkflowNode = {
-        nodeId: 'node_4',
-        name: 'Update Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_4', 'Update Ticket', {
+        resourceType: 'ticket',
+        mode: 'update',
+        resourceId: 'ticket_123',
         data: {
-          resourceType: 'ticket',
-          mode: 'update',
-          resourceId: 'ticket_123',
-          data: {
-            contact: null, // Removing contact
-            assignee: null, // Removing assignee
-          },
+          contact: null, // Removing contact
+          assignee: null, // Removing assignee
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -198,23 +188,17 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     })
 
     it('should preserve non-relation fields unchanged', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_5',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_5', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test Ticket',
-            description: 'Test Description',
-            type: 'GENERAL',
-            priority: 'MEDIUM',
-            status: 'OPEN',
-          },
+          title: 'Test Ticket',
+          description: 'Test Description',
+          type: 'GENERAL',
+          priority: 'MEDIUM',
+          status: 'OPEN',
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -227,21 +211,15 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     })
 
     it('should resolve variables in relation fields', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_6',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_6', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test Ticket',
-            contact: '{{webhook.contact}}', // Variable reference
-            priority: 'HIGH',
-          },
+          title: 'Test Ticket',
+          contact: '{{webhook.contact}}', // Variable reference
+          priority: 'HIGH',
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -253,20 +231,14 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
 
   describe('executeNode - Preprocessing Enforcement', () => {
     it('should throw error when preprocessing is not provided', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_7',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_7', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test Ticket',
-            contact: 'contact_abc123',
-          },
+          title: 'Test Ticket',
+          contact: 'contact_abc123',
         },
-      }
+      })
 
       // Call executeNode without preprocessing
       await expect(
@@ -275,20 +247,14 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     })
 
     it('should execute successfully with preprocessed data', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_8',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_8', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test Ticket',
-            contact: 'contact_abc123',
-          },
+          title: 'Test Ticket',
+          contact: 'contact_abc123',
         },
-      }
+      })
 
       // First preprocess the node
       const preprocessed = await crudProcessor.preprocessNode(node, mockContextManager)
@@ -303,29 +269,23 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
 
   describe('Integration: Full Preprocessing Flow', () => {
     it('should handle complex ticket data with all field types', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_complex',
-        name: 'Create Complex Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_complex', 'Create Complex Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            // Standard fields
-            title: 'Complex Ticket',
-            description: 'This is a test',
-            type: 'GENERAL',
-            priority: 'HIGH',
-            status: 'OPEN',
-            // Relation fields (should be transformed)
-            contact: 'contact_abc123',
-            assignee: 'user_def456',
-            // Custom fields (should be separated)
-            custom_field_789: 'Custom value',
-          },
+          // Standard fields
+          title: 'Complex Ticket',
+          description: 'This is a test',
+          type: 'GENERAL',
+          priority: 'HIGH',
+          status: 'OPEN',
+          // Relation fields (should be transformed)
+          contact: 'contact_abc123',
+          assignee: 'user_def456',
+          // Custom fields (should be separated)
+          custom_field_789: 'Custom value',
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -352,17 +312,11 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty data object', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_empty',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
-        data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {},
-        },
-      }
+      const node = crudNode('node_empty', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
+        data: {},
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -370,20 +324,14 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     })
 
     it('should handle undefined relation field value', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_undefined',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_undefined', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test',
-            contact: undefined,
-          },
+          title: 'Test',
+          contact: undefined,
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 
@@ -392,20 +340,14 @@ describe('CrudNodeProcessor - Relation Field Handling', () => {
     })
 
     it('should handle empty string relation field value', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_empty_string',
-        name: 'Create Ticket',
-        type: WorkflowNodeType.CRUD,
-        position: { x: 0, y: 0 },
+      const node = crudNode('node_empty_string', 'Create Ticket', {
+        resourceType: 'ticket',
+        mode: 'create',
         data: {
-          resourceType: 'ticket',
-          mode: 'create',
-          data: {
-            title: 'Test',
-            contact: '',
-          },
+          title: 'Test',
+          contact: '',
         },
-      }
+      })
 
       const result = await crudProcessor.preprocessNode(node, mockContextManager)
 

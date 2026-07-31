@@ -287,6 +287,8 @@ export interface WorkflowRunWithDetails extends WorkflowRun {
 }
 // Re-export database types that services will use
 export type { Workflow, WorkflowApp, WorkflowRun, WorkflowNodeExecution }
+/** Union of the WorkflowRun status literals (the same-named value export below is the enum object). */
+export type WorkflowRunStatusValue = WorkflowRunStatus
 // Re-export enums as values
 
 export {

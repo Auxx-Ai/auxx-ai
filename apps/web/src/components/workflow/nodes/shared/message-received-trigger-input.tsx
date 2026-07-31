@@ -17,6 +17,7 @@ import {
   useThread,
   useThreadList,
 } from '~/components/threads/hooks'
+import { useWorkflowTrigger } from '~/components/workflow/hooks'
 import type { TriggerInputProps } from '~/components/workflow/nodes/trigger-registry'
 import { BaseType } from '~/components/workflow/types'
 import {
@@ -33,6 +34,11 @@ import { transformThreadToWorkflowInput } from './node-inputs/thread-input'
  * Supports auto mode (select thread) and manual mode (fill fields).
  */
 export function MessageReceivedTriggerInput({ inputs, errors, onChange }: TriggerInputProps) {
+  // VarEditor needs the owning node's id for its variable picker. TriggerInputProps
+  // does not carry one, so read it from the same hook the mount site uses.
+  const { triggerNode } = useWorkflowTrigger()
+  const triggerNodeId = triggerNode?.id ?? ''
+
   const isAutoMode = inputs._isAutoMode ?? true
   const selectedThreadId = inputs._threadId as string | undefined
 
@@ -214,6 +220,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             <AutoResolvedValue value={inputs.fromEmail} />
           ) : (
             <VarEditor
+              nodeId={triggerNodeId}
               value={inputs.fromEmail || ''}
               onChange={(value) => handleManualFieldChange('fromEmail', value)}
               varType={BaseType.EMAIL}
@@ -233,6 +240,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             <AutoResolvedValue value={inputs.fromName} />
           ) : (
             <VarEditor
+              nodeId={triggerNodeId}
               value={inputs.fromName || ''}
               onChange={(value) => handleManualFieldChange('fromName', value)}
               varType={BaseType.STRING}
@@ -252,6 +260,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             <AutoResolvedValue value={inputs.ccEmails} />
           ) : (
             <VarEditor
+              nodeId={triggerNodeId}
               value={inputs.ccEmails || ''}
               onChange={(value) => handleManualFieldChange('ccEmails', value)}
               varType={BaseType.EMAIL}
@@ -271,6 +280,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             <AutoResolvedValue value={inputs.bccEmails} />
           ) : (
             <VarEditor
+              nodeId={triggerNodeId}
               value={inputs.bccEmails || ''}
               onChange={(value) => handleManualFieldChange('bccEmails', value)}
               varType={BaseType.EMAIL}
@@ -287,6 +297,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             <AutoResolvedValue value={inputs.subject} />
           ) : (
             <VarEditor
+              nodeId={triggerNodeId}
               value={inputs.subject || ''}
               onChange={(value) => handleManualFieldChange('subject', value)}
               varType={BaseType.STRING}
@@ -307,6 +318,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             <AutoResolvedValue value={inputs.body} />
           ) : (
             <VarEditor
+              nodeId={triggerNodeId}
               value={inputs.body || ''}
               onChange={(value) => handleManualFieldChange('body', value)}
               varType={BaseType.STRING}
@@ -328,6 +340,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             <AutoResolvedValue value={inputs.isInbound != null ? String(inputs.isInbound) : ''} />
           ) : (
             <VarEditor
+              nodeId={triggerNodeId}
               value={inputs.isInbound ?? true}
               onChange={(value) => handleManualFieldChange('isInbound', value)}
               varType={BaseType.BOOLEAN}
