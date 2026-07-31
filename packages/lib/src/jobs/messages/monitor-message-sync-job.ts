@@ -128,17 +128,25 @@ export const monitorMessageSyncJob = async (ctx: JobContext<MonitorMessageSyncJo
       if (state === 'completed') {
         completedCount++
         jobsToCleanUp.push(childJob) // Mark for cleanup
-      } else if (state === 'failed' || state === 'stuck') {
+      } else if (state === 'failed') {
+        // A stalled job is not a state of its own in BullMQ (it was in Bull v3): the
+        // worker returns it to `waiting`, and only after `maxStalledCount` does it land
+        // here as `failed`. So there is nothing extra to detect — see the `'unknown'`
+        // note below for the case this loop genuinely cannot terminate on.
         failedCount++
         failedJobDetails.push({
           id: childJob.id!,
-          error: childJob.failedReason || (state === 'stuck' ? 'Job stuck' : 'Unknown error'),
+          error: childJob.failedReason || 'Unknown error',
         })
-        if (state === 'stuck')
-          logger.warn(`Child job ${childJob.id} for sync job ${syncJobId} is stuck.`)
         jobsToCleanUp.push(childJob) // Mark for cleanup
       } else {
-        activeCount++ // Job is still waiting, delayed, or active
+        // Waiting, delayed, active, prioritized, waiting-children — or `'unknown'`,
+        // which `getState()` returns for a job whose hash still exists but sits in no
+        // state set. That one never becomes terminal, and the monitor reschedules
+        // itself unbounded (`attempt` is incremented but never capped), so it would
+        // keep this sync job non-terminal forever. Left as-is: capping the retries is
+        // a behavior decision, not a typecheck fix.
+        activeCount++
       }
     }
 

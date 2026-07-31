@@ -6,17 +6,18 @@ import type { ContentPart } from '../types'
 import { partsToWireFormat } from '../utils'
 
 /**
- * `partsToWireFormat(parts, messageId)` reconstructs the OpenAI / Anthropic
- * wire format from a persisted parts[] array. The model still expects an
- * assistant message followed by separate tool messages — this function
- * preserves that boundary while the persisted shape collapses everything
- * onto a single assistant message.
+ * `partsToWireFormat(parts)` reconstructs the OpenAI / Anthropic wire format from a
+ * persisted parts[] array. The model still expects an assistant message followed by
+ * separate tool messages — this function preserves that boundary while the persisted
+ * shape collapses everything onto a single assistant message.
  *
  * Returned shape: `Message[]` — one assistant Message, plus zero or more
  * trailing tool Messages (one per completed tool_call part).
+ *
+ * It took a `messageId` second argument until #1459 made the signature 1-arg without
+ * updating this file; the calls kept passing it (harmless at runtime, TS2554 to the
+ * compiler) and turned the lib ratchet red on `main`.
  */
-
-const messageId = 'msg_abc'
 
 describe('partsToWireFormat — assistant text only', () => {
   it('emits a single assistant message with concatenated text', () => {
@@ -24,7 +25,7 @@ describe('partsToWireFormat — assistant text only', () => {
       { type: 'text', text: 'Hello, ' },
       { type: 'text', text: 'world!' },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(1)
     expect(wire[0]?.role).toBe('assistant')
     expect(wire[0]?.content).toBe('Hello, world!')
@@ -33,7 +34,7 @@ describe('partsToWireFormat — assistant text only', () => {
 
   it('omits tool_calls entirely when there are no tool_call parts', () => {
     const parts: ContentPart[] = [{ type: 'text', text: 'plain reply' }]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(1)
     expect(wire[0]?.tool_calls).toBeUndefined()
   })
@@ -41,7 +42,7 @@ describe('partsToWireFormat — assistant text only', () => {
 
 describe('partsToWireFormat — empty placeholder', () => {
   it('emits nothing for an empty parts array (the iteration-1 in-progress placeholder)', () => {
-    const wire = partsToWireFormat([], messageId)
+    const wire = partsToWireFormat([])
     // An empty assistant message carries no information and is rejected by
     // OpenAI-compatible providers (Kimi: "the message ... must not be empty").
     expect(wire).toHaveLength(0)
@@ -52,13 +53,13 @@ describe('partsToWireFormat — empty placeholder', () => {
       { type: 'text', text: '' },
       { type: 'text', text: '' },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(0)
   })
 
   it('still emits a reasoning-only assistant message (Anthropic keeps thinking)', () => {
     const parts: ContentPart[] = [{ type: 'thinking', text: 'internal reasoning' }]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(1)
     expect(wire[0]?.role).toBe('assistant')
     expect(wire[0]?.reasoning_content).toContain('internal reasoning')
@@ -78,7 +79,7 @@ describe('partsToWireFormat — assistant + single tool', () => {
         output: { matches: [{ recordId: 'r1' }] },
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(2)
 
     const assistant = wire[0] as Message
@@ -123,7 +124,7 @@ describe('partsToWireFormat — multiple tool calls', () => {
         output: { messages: 12 },
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(3)
     expect(wire[0]?.role).toBe('assistant')
     expect(wire[0]?.tool_calls?.map((tc) => tc.id)).toEqual(['tc_1', 'tc_2'])
@@ -148,7 +149,7 @@ describe('partsToWireFormat — in-flight / awaiting / errored tools', () => {
         // no output yet
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     // The assistant message still carries the tool_call (the LLM client expects
     // every tool_call to have a result before being sent — so a still-running
     // tool would NOT typically be sent back to the LLM in a follow-up call.
@@ -170,7 +171,7 @@ describe('partsToWireFormat — in-flight / awaiting / errored tools', () => {
         status: 'awaiting-approval',
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     const toolMessages = wire.filter((m) => m.role === 'tool')
     expect(toolMessages).toHaveLength(0)
   })
@@ -187,7 +188,7 @@ describe('partsToWireFormat — in-flight / awaiting / errored tools', () => {
         error: 'boom',
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     const toolMsg = wire.find((m) => m.role === 'tool')
     expect(toolMsg).toBeDefined()
     expect(toolMsg?.tool_call_id).toBe('tc_1')
@@ -208,7 +209,7 @@ describe('partsToWireFormat — in-flight / awaiting / errored tools', () => {
         output: { rejected: true },
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     const toolMsg = wire.find((m) => m.role === 'tool')
     expect(toolMsg).toBeDefined()
     const parsed =
@@ -233,7 +234,7 @@ describe('partsToWireFormat — untrusted MCP output boundary', () => {
         outputBoundary: { server: 'demo', tool: 'list' },
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     const toolMsg = wire.find((m) => m.role === 'tool')
     expect(toolMsg).toBeDefined()
     const content = toolMsg?.content as string
@@ -255,7 +256,7 @@ describe('partsToWireFormat — untrusted MCP output boundary', () => {
         output: '<mcp_tool_output server="demo" tool="list">\n[]\n</mcp_tool_output>',
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     const toolMsg = wire.find((m) => m.role === 'tool')
     const content = toolMsg?.content as string
     // Exactly one fence — JSON.stringify of the already-fenced string, never double-wrapped.
@@ -275,7 +276,7 @@ describe('partsToWireFormat — untrusted MCP output boundary', () => {
         outputBoundary: { server: 'demo', tool: 'list' },
       },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     const toolMsg = wire.find((m) => m.role === 'tool')
     const parsed = JSON.parse(toolMsg?.content as string)
     expect(parsed.error).toBe('nope')
@@ -289,7 +290,7 @@ describe('partsToWireFormat — thinking parts', () => {
       { type: 'thinking', text: 'internal reasoning' },
       { type: 'text', text: 'public answer' },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(1)
     const assistant = wire[0] as Message
     // The user-visible `content` MUST NOT contain the thinking text. The wire
@@ -319,7 +320,7 @@ describe('partsToWireFormat — interleaved text/tool/text', () => {
       },
       { type: 'text', text: 'Post-tool conclusion.' },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     // Text written AFTER the last tool call is the conclusion drawn from that
     // call, so it is replayed after the tool result — not concatenated onto the
     // leading assistant message.
@@ -338,7 +339,7 @@ describe('partsToWireFormat — interleaved text/tool/text', () => {
       { type: 'text', text: 'Just ' },
       { type: 'text', text: 'prose.' },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire).toHaveLength(1)
     expect(wire[0]?.content).toBe('Just prose.')
   })
@@ -358,7 +359,7 @@ describe('partsToWireFormat — interleaved text/tool/text', () => {
       },
       { type: 'text', text: 'Pending your approval.' },
     ]
-    const wire = partsToWireFormat(parts, messageId)
+    const wire = partsToWireFormat(parts)
     expect(wire.map((m) => m.role)).toEqual(['assistant'])
     expect(wire[0]?.content).toBe('Working on it. Pending your approval.')
     expect(wire[0]?.tool_calls?.[0]?.id).toBe('tc_pending')

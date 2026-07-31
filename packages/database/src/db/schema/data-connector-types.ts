@@ -103,9 +103,15 @@ export interface ResyncPending {
  * Scheduled-trigger config (jsonb on {@link DataConnector}). Structural mirror of
  * `ScheduledTriggerConfig` from `@auxx/lib/workflows/cron-pattern` — re-declared
  * here because the database package cannot import lib (tier ordering).
+ *
+ * It is a SUPERSET of the workflow one: this column also stores `'off'`, the
+ * webhook-mode SWEEP cadence (v9 §5) that has no workflow equivalent. The
+ * connector router persists it and the sweep scheduler reads it, so a union
+ * without `'off'` is narrower than the column it describes.
  */
 export interface ScheduledTriggerConfig {
-  triggerInterval: 'minutes' | 'hours' | 'days' | 'weeks' | 'custom'
+  /** `'off'` is webhook-mode only — the delete-reconciliation sweep is opted out. */
+  triggerInterval: 'minutes' | 'hours' | 'days' | 'weeks' | 'custom' | 'off'
   timeBetweenTriggers: {
     minutes?: number | string
     hours?: number | string
