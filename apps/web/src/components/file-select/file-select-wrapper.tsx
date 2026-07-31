@@ -27,7 +27,7 @@ export function FileSelectWrapper({ children }: { children: React.ReactNode }) {
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       staleTime: 3 * 60 * 1000,
-      cacheTime: 10 * 60 * 1000,
+      gcTime: 10 * 60 * 1000, // `cacheTime` is the React Query v4 name
     }
   )
 

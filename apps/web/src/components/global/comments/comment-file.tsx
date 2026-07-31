@@ -15,7 +15,7 @@ export interface CommentFileProps {
         id: string
         name?: string
         mimeType?: string
-        size?: bigint
+        size?: number
         source: 'upload' | 'existing'
       }
     | MediaAsset

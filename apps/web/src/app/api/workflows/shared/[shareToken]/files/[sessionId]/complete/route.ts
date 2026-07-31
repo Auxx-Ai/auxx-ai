@@ -106,7 +106,7 @@ export async function POST(
     storageLocation = await storageManager.createStorageLocation({
       provider: 'S3',
       externalId: sessionData.storageKey,
-      size: BigInt(headResult.size),
+      size: headResult.size,
       mimeType: headResult.mimeType || sessionData.mimeType,
       metadata: {
         source: 'public-workflow',
@@ -136,7 +136,7 @@ export async function POST(
         kind: 'TEMP_UPLOAD',
         name: sessionData.filename,
         mimeType: headResult.mimeType || sessionData.mimeType,
-        size: BigInt(headResult.size),
+        size: headResult.size,
         isPrivate: true,
         organizationId: sessionData.organizationId,
         createdById: systemUserId,

@@ -215,7 +215,7 @@ describe('ThumbnailService', () => {
       const { database } = await import('@auxx/database')
 
       vi.mocked(database.query.MediaAsset.findFirst).mockResolvedValue(mockAsset as any)
-      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(null)
+      vi.mocked(database.query.MediaAssetVersion.findFirst).mockResolvedValue(undefined)
       mockRedisClient.get.mockResolvedValue(null)
 
       const result = await service.ensureThumbnail(source, { preset: 'avatar-64', queue: true })
@@ -259,7 +259,7 @@ describe('ThumbnailService', () => {
       // First call: findByVersionAndPreset -> null (no existing thumbnail)
       // Second call: generateWithPlaceholder -> source version lookup
       vi.mocked(database.query.MediaAssetVersion.findFirst)
-        .mockResolvedValueOnce(null) // findByVersionAndPreset
+        .mockResolvedValueOnce(undefined) // findByVersionAndPreset
         .mockResolvedValueOnce(mockSourceVersion as any) // source version lookup
 
       // Mock storage manager methods

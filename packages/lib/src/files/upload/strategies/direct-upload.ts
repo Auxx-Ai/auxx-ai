@@ -1,6 +1,7 @@
 // packages/lib/src/files/upload/strategies/direct-upload.ts
 
 import type { ProgressContext, UploadRequest, UploadResult } from '../enhanced-types'
+import { toStorageVisibility } from '../util'
 import { BaseUploadStrategy } from './base-strategy'
 
 /**
@@ -65,10 +66,10 @@ export class DirectUploadStrategy extends BaseUploadStrategy {
           externalId: storageKey,
           externalUrl: presignedUpload.url,
           credentialId: request.credentialId,
-          size: BigInt(content.length),
+          size: content.length,
           mimeType: request.mimeType,
           metadata: request.metadata,
-          visibility: request.visibility,
+          visibility: toStorageVisibility(request.visibility),
         })
 
         clearInterval(progressInterval)

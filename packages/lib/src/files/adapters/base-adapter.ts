@@ -94,6 +94,8 @@ export interface StorageLocationRef {
  */
 export interface PresignedUpload {
   url: string
+  /** HTTP verb the client must use: POST for form uploads, PUT for direct uploads. */
+  method?: 'POST' | 'PUT'
   fields?: Record<string, string>
   headers?: Record<string, string>
   expiresAt: Date
@@ -215,6 +217,10 @@ export interface StorageAdapter {
     mimeType?: string
     size?: number
     metadata?: Record<string, string>
+    /** Explicit bucket override, for providers that are bucket-addressed. */
+    bucket?: string
+    /** Routes the object to the provider's public or private bucket. */
+    visibility?: 'PUBLIC' | 'PRIVATE'
     auth?: ProviderAuth
   }): Promise<{
     etag?: string
@@ -422,6 +428,15 @@ export abstract class BaseStorageAdapter implements StorageAdapter {
     if (!capabilities[capability]) {
       throw new Error(`${this.name} does not support ${capability}`)
     }
+  }
+
+  /**
+   * Assert that this adapter does NOT support a capability, for stub method bodies.
+   * Always throws; the return type lets TypeScript see the method never falls through.
+   */
+  protected unsupportedCapability(capability: keyof StorageCapabilities): never {
+    this.requireCapability(capability)
+    throw new Error(`${this.name} does not support ${capability}`)
   }
 }
 

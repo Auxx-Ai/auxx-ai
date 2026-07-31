@@ -282,7 +282,7 @@ function toAttachmentInfo(a: AttachmentMeta) {
     fileId: a.id,
     name: a.name,
     mimeType: a.mimeType,
-    size: a.size != null ? BigInt(a.size) : null,
+    size: a.size ?? null,
   }
 }
 

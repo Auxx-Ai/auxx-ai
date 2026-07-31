@@ -445,6 +445,7 @@ describe('Unified Upload Integration Tests', () => {
       await SessionManager.completeUpload(session.id, {
         storageKey: session.storageKey,
         size: 1024 * 1024,
+        mimeType: session.mimeType,
         etag: 'test-etag-123',
       })
 

@@ -28,6 +28,8 @@ export interface FileItemProps {
   file?: FileItemType // Direct data passing
   showControls?: boolean
   showSource?: boolean // Show upload/filesystem badge
+  showProgress?: boolean // Render the inline progress fill
+  compact?: boolean // Dense layout for long queues
   onRemove?: (fileId: string) => void
   onRetry?: (fileId: string) => void
   onCancel?: (fileId: string) => void
@@ -51,6 +53,8 @@ export function FileItem({
   file: fileProp, // Accept file data directly
   showControls = true,
   showSource = false, // Show upload/filesystem badge
+  showProgress = true,
+  compact = false,
   onRemove,
   onRetry,
   onCancel,
@@ -123,18 +127,21 @@ export function FileItem({
   return (
     <div
       className={cn(
-        'group/file-item overflow-hidden relative duration-100 flex items-center gap-1 p-1 ps-2 rounded-2xl border transition-all',
+        'group/file-item overflow-hidden relative duration-100 flex items-center gap-1 rounded-2xl border transition-all',
+        compact ? 'p-0.5 ps-1.5' : 'p-1 ps-2',
         isFailed && 'border-bad-200/50 text-bad-500 bg-bad-100/50',
         status === 'deleting' && 'opacity-50 pointer-events-none', // Disable during deletion
         className
       )}>
-      <div
-        className={cn(
-          'absolute inset-0 transition-all duration-200 bg-primary-500/5 pointer-events-none',
-          isFailed && 'bg-bad-500/5'
-        )}
-        style={{ width: `${progress}%` }}
-      />
+      {showProgress && (
+        <div
+          className={cn(
+            'absolute inset-0 transition-all duration-200 bg-primary-500/5 pointer-events-none',
+            isFailed && 'bg-bad-500/5'
+          )}
+          style={{ width: `${progress}%` }}
+        />
+      )}
       <FileIcon
         mimeType={file.mimeType || (file as any).file?.type}
         className='size-4 text-gray-500 flex-shrink-0'

@@ -87,6 +87,7 @@ export type {
   UploadCallbacks,
   UploadFile,
   UploadMetrics,
+  UploadProgress,
   UploadResult,
   UploadStatus,
 } from './uploads'

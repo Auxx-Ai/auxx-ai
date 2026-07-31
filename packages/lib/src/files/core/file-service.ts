@@ -70,7 +70,7 @@ export class FileService
    * @param userId - Optional user ID for user-scoped operations
    * @param dbInstance - Database instance (defaults to main db instance)
    */
-  constructor(organizationId?: string, userId?: string, dbInstance: typeof db = db) {
+  constructor(organizationId?: string, userId?: string, dbInstance: DatabaseClient = db) {
     super(organizationId, userId, dbInstance)
   }
 
@@ -232,15 +232,7 @@ export class FileService
     const where = super.buildBaseWhereClause(conditions, includeDeleted)
     if (where) return where
 
-    if (conditions.length === 0) {
-      return sql`true`
-    }
-
-    if (conditions.length === 1) {
-      return conditions[0] as SQL
-    }
-
-    return and(...conditions)
+    return super.buildBaseWhereClause(conditions, includeDeleted) ?? sql`true`
   }
 
   /**
@@ -475,7 +467,7 @@ export class FileService
       id: string
       name: string | null
       updatedAt: Date
-      size: bigint | number | null
+      size: number | null
       folderId: string | null
     }>
   }> {
@@ -602,10 +594,10 @@ export class FileService
    * Returns the database table name used for storing file versions.
    * This is used by the Versioned mixin implementation.
    *
-   * @returns The string 'fileVersion' as a key of the database instance
+   * @returns The relational-query key for the file version table
    * @protected
    */
-  protected getVersionTableName(): keyof typeof this.db {
+  protected getVersionTableName(): string {
     return 'fileVersion'
   }
 
@@ -731,8 +723,9 @@ export class FileService
     ]
 
     const filters: SQL[] = []
-    if (searchConditions.length > 0) {
-      filters.push(or(...searchConditions))
+    const searchClause = or(...searchConditions)
+    if (searchClause) {
+      filters.push(searchClause)
     }
 
     const folderId = (options as Record<string, any>).folderId
@@ -883,7 +876,7 @@ export class FileService
     const newPath = await this.generateFilePath(normalizedTargetFolderId, file.name)
 
     return this.update(id, {
-      folderId: normalizedTargetFolderId,
+      folderId: normalizedTargetFolderId ?? undefined,
       path: newPath,
     })
   }
@@ -1051,7 +1044,7 @@ export class FileService
     id: string,
     storageLocationId: string,
     metadata: {
-      size?: bigint
+      size?: number
       mimeType?: string
       checksum?: string
     } = {}
@@ -1183,15 +1176,22 @@ export class FileService
     ext: string | string[],
     options?: { limit?: number }
   ): Promise<FolderFile[]> {
-    const extensions = Array.isArray(ext) ? ext.map((e) => e.toLowerCase()) : ext.toLowerCase()
-    const where = this.buildScopedWhere([eq(schema.FolderFile.ext, extensions)])
-    const limit = options?.limit
+    const where = Array.isArray(ext)
+      ? this.buildScopedWhere([
+          inArray(
+            schema.FolderFile.ext,
+            ext.map((e) => e.toLowerCase())
+          ),
+        ])
+      : this.buildScopedWhere([eq(schema.FolderFile.ext, ext.toLowerCase())])
 
-    return this.db
+    const query = this.db
       .select()
       .from(schema.FolderFile)
       .where(where)
       .orderBy(asc(schema.FolderFile.name))
+
+    return options?.limit === undefined ? query : query.limit(options.limit)
   }
 
   /**
@@ -1204,7 +1204,7 @@ export class FileService
    * @param minSizeBytes - Minimum file size in bytes
    * @returns Promise resolving to array of large files
    */
-  async findLargeFiles(minSizeBytes: bigint): Promise<FolderFile[]> {
+  async findLargeFiles(minSizeBytes: number): Promise<FolderFile[]> {
     const where = this.buildScopedWhere([gte(schema.FolderFile.size, minSizeBytes)])
 
     return this.db
@@ -1320,7 +1320,7 @@ export class FileService
     DownloadRef & {
       filename: string
       mimeType?: string
-      size?: bigint
+      size?: number
       expiresAt?: Date
       versionNumber: number
     }
@@ -1719,16 +1719,17 @@ export class FileService
       throw new Error(`Version ${versionNumber} not found for ${this.getEntityName()}`)
     }
 
-    const [entity] = await this.db
-      .update(schema.FolderFile)
-      .set({
-        currentVersionId: version.id,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(schema.FolderFile.id, entityId))
-      .returning()
-
-    return entity
+    return this.requireRow(
+      await this.db
+        .update(schema.FolderFile)
+        .set({
+          currentVersionId: version.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.FolderFile.id, entityId))
+        .returning(),
+      'restore version'
+    )
   }
 
   /**
@@ -1821,16 +1822,17 @@ export class FileService
       throw new Error(`Version ${versionNumber} not found for ${this.getEntityName()}`)
     }
 
-    const [result] = await this.db
-      .update(schema.FolderFile)
-      .set({
-        currentVersionId: version.id,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(schema.FolderFile.id, entityId))
-      .returning()
-
-    return result
+    return this.requireRow(
+      await this.db
+        .update(schema.FolderFile)
+        .set({
+          currentVersionId: version.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.FolderFile.id, entityId))
+        .returning(),
+      'pin version'
+    )
   }
 
   /**

@@ -31,10 +31,12 @@ export interface SessionSlice {
   sseConnections: Record<string, SSEConnectionState & { manager?: SSEConnectionManager }>
 }
 
-export const createUnifiedSessionSlice: StateCreator<UploadStore, [], [], SessionSlice> = (
-  set,
-  get
-) => ({
+export const createUnifiedSessionSlice: StateCreator<
+  UploadStore,
+  [['zustand/immer', never], ['zustand/devtools', never]],
+  [],
+  SessionSlice
+> = (set, get) => ({
   sessions: {},
   activeSessionId: null,
   sseConnections: {},
@@ -161,7 +163,7 @@ export const createUnifiedSessionSlice: StateCreator<UploadStore, [], [], Sessio
       // Clear active session if it was the closed one
       if (state.activeSessionId === sessionId) {
         const remainingSessions = Object.keys(state.sessions)
-        state.activeSessionId = remainingSessions.length > 0 ? remainingSessions[0] : null
+        state.activeSessionId = remainingSessions[0] ?? null
       }
       return state
     })

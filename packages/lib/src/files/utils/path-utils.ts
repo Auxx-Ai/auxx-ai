@@ -159,24 +159,25 @@ export function getCommonAncestorPath(paths: string[]): string {
     return '/'
   }
 
-  if (paths.length === 1) {
-    return getParentPath(paths[0])
+  const [firstPath] = paths
+  if (paths.length === 1 && firstPath !== undefined) {
+    return getParentPath(firstPath)
   }
 
   const segmentArrays = paths.map((path) => splitPath(path))
+  const [firstSegments = []] = segmentArrays
   const minLength = Math.min(...segmentArrays.map((segments) => segments.length))
 
   const commonSegments: string[] = []
 
   for (let i = 0; i < minLength; i++) {
-    const segment = segmentArrays[0][i]
-    const allMatch = segmentArrays.every((segments) => segments[i] === segment)
+    const segment = firstSegments[i]
+    if (segment === undefined) break
 
-    if (allMatch) {
-      commonSegments.push(segment)
-    } else {
-      break
-    }
+    const allMatch = segmentArrays.every((segments) => segments[i] === segment)
+    if (!allMatch) break
+
+    commonSegments.push(segment)
   }
 
   return commonSegments.length > 0 ? '/' + commonSegments.join('/') : '/'

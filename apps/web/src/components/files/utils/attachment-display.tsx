@@ -87,9 +87,7 @@ export function AttachmentDisplay({
           </span>
         </div>
         {attachment.size && (
-          <div className='text-xs text-gray-500'>
-            {formatBytes(Number(attachment.size))} {/* Convert bigint to number */}
-          </div>
+          <div className='text-xs text-gray-500'>{formatBytes(attachment.size ?? 0)}</div>
         )}
       </div>
 

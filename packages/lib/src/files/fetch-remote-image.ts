@@ -112,7 +112,7 @@ export async function fetchAndStoreRemoteImage(
       purpose,
       name,
       mimeType,
-      size: BigInt(buf.byteLength),
+      size: buf.byteLength,
       isPrivate: false,
       organizationId,
       createdById: userId,

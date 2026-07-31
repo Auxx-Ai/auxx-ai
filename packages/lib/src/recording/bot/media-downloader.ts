@@ -150,7 +150,7 @@ async function downloadAndStoreFile(params: {
         purpose: `recording-${kind.toLowerCase()}`,
         name,
         mimeType,
-        size: BigInt(buffer.length),
+        size: buffer.length,
         isPrivate: true,
         organizationId,
         createdById,

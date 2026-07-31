@@ -2,7 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
+import { eq, exists, not, sql } from 'drizzle-orm'
 import { createAttachmentService } from '../core/attachment-service'
 import { createFileService } from '../core/file-service'
 import { createMediaAssetService } from '../core/media-asset-service'
@@ -79,8 +79,9 @@ export async function deleteEntityFiles(
         // Delete from storage first
         if (deleteFromStorage && item.currentVersion?.storageLocation) {
           try {
+            const { StorageManager } = await import('../storage/storage-manager')
             const storageManager = new StorageManager(item.organizationId)
-            await storageManager.deleteFile(item.currentVersion.storageLocation)
+            await storageManager.deleteFile(item.currentVersion.storageLocation.id)
             logger.info(`Deleted ${file ? 'file' : 'asset'} from storage: ${item.id}`)
           } catch (storageError: any) {
             // Log but continue - file might already be deleted from storage
@@ -164,8 +165,9 @@ export async function deleteFilesByIds(
     try {
       if (deleteFromStorage && file.currentVersion?.storageLocation) {
         try {
+          const { StorageManager } = await import('../storage/storage-manager')
           const storageManager = new StorageManager(file.organizationId)
-          await storageManager.deleteFile(file.currentVersion.storageLocation)
+          await storageManager.deleteFile(file.currentVersion.storageLocation.id)
           logger.info(`Deleted file from storage: ${file.id}`)
         } catch (storageError: any) {
           logger.warn(`Failed to delete from storage: ${file.id}`, storageError)
@@ -236,7 +238,18 @@ export async function deleteOrphanedFiles(
   } else {
     // Fallback to DB query for cross-organization cleanup
     const files = await database.query.FolderFile.findMany({
-      where: (files, { isNull, and }) => and(isNull(files.attachment), isNull(files.deletedAt)),
+      where: (files, { and, isNull }) =>
+        and(
+          isNull(files.deletedAt),
+          not(
+            exists(
+              database
+                .select({ one: sql`1` })
+                .from(schema.Attachment)
+                .where(eq(schema.Attachment.fileId, files.id))
+            )
+          )
+        ),
     })
 
     logger.info(`Found ${files.length} orphaned files across all organizations`)
@@ -288,7 +301,14 @@ export async function deleteExpiredFiles(
       where: (files, { eq, isNull, lte, and }) =>
         and(
           eq(files.organizationId, organizationId),
-          isNull(files.attachment),
+          not(
+            exists(
+              database
+                .select({ one: sql`1` })
+                .from(schema.Attachment)
+                .where(eq(schema.Attachment.fileId, files.id))
+            )
+          ),
           lte(files.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
           isNull(files.deletedAt)
         ),
@@ -397,7 +417,7 @@ export async function cleanupFailedUpload(
       })
       if (storageLocation) {
         const storageManager = new StorageManager(organizationId)
-        await storageManager.deleteFile(storageLocation)
+        await storageManager.deleteFile(storageLocation.id)
         logger.info('Deleted file from storage')
       }
     } catch (error) {
@@ -450,12 +470,6 @@ export async function cleanupAssetThumbnails(
       const versions = await database.query.MediaAssetVersion.findMany({
         where: (versions, { eq }) => eq(versions.assetId, assetId),
         columns: { id: true },
-        with: {
-          asset: {
-            where: (assets, { eq }) => eq(assets.organizationId, asset.organizationId),
-            columns: { organizationId: true },
-          },
-        },
       })
 
       for (const version of versions) {

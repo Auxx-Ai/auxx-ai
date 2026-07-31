@@ -100,8 +100,10 @@ const renameItemSchema = z.object({
 })
 
 const getFileSystemSchema = z.object({
-  // Pagination for files
-  filesCursor: z.string().optional(),
+  // Pagination for files. The field MUST be named `cursor` — `useInfiniteQuery`
+  // injects the page param under that key, and zod strips anything else, so the
+  // previous `filesCursor` meant every `fetchNextPage()` refetched page 1.
+  cursor: z.string().optional(),
   filesLimit: z.number().min(1).max(1000).default(500),
 
   // Optional filtering
@@ -369,7 +371,7 @@ export const fileRouter = createTRPCRouter({
 
       try {
         const result = await filesystemService.getCompleteFileSystem({
-          filesCursor: input.filesCursor,
+          filesCursor: input.cursor,
           filesLimit: input.filesLimit,
           fileTypes: input.fileTypes,
           includeArchived: input.includeArchived,

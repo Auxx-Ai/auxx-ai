@@ -19,6 +19,7 @@ export interface CleanupTask {
   nextAttempt: Date
   createdAt: Date
   reason: string
+  organizationId?: string
 }
 
 /**
@@ -50,6 +51,7 @@ export class CleanupService {
       nextAttempt: new Date(), // Immediate first attempt
       createdAt: new Date(),
       reason: params.reason,
+      organizationId: params.organizationId,
     }
 
     try {

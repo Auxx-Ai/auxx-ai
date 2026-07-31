@@ -8,7 +8,7 @@
 export interface FileInfo {
   name: string
   mimeType?: string | null
-  size?: bigint | number | null
+  size?: number | null
 }
 
 export interface RangeRequest {
@@ -79,7 +79,7 @@ export function parseRangeHeader(rangeHeader: string | null): RangeRequest | nul
   if (!rangeHeader) return null
 
   const match = rangeHeader.match(/bytes=(\d+)-(\d*)?/)
-  if (!match) return null
+  if (!match?.[1]) return null
 
   const start = parseInt(match[1], 10)
   const end = match[2] ? parseInt(match[2], 10) : undefined

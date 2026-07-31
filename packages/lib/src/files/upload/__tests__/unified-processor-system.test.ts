@@ -94,11 +94,11 @@ describe('Unified Processor System', () => {
         fileName: 'test.pdf',
         mimeType: 'application/pdf',
         expectedSize: 1024,
-        entityType: 'file',
+        entityType: 'FILE',
       }
 
       expect(initConfig.organizationId).toBe('org123')
-      expect(initConfig.entityType).toBe('file')
+      expect(initConfig.entityType).toBe('FILE')
     })
 
     it('should have immutable UploadPreparedConfig structure', () => {
@@ -108,7 +108,7 @@ describe('Unified Processor System', () => {
         fileName: 'test.pdf',
         mimeType: 'application/pdf',
         expectedSize: 1024,
-        entityType: 'file',
+        entityType: 'FILE',
         provider: 'S3',
         storageKey: 'org123/file/test.pdf',
         ttlSec: 600,
@@ -121,6 +121,8 @@ describe('Unified Processor System', () => {
         uploadPlan: {
           strategy: 'single',
         },
+        visibility: 'PRIVATE',
+        bucket: 'auxx-private',
       }
 
       expect(preparedConfig.provider).toBe('S3')

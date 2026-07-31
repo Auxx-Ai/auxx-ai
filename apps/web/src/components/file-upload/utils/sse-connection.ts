@@ -28,6 +28,7 @@ export class SSEConnectionManager {
       autoConnect: true,
       reconnectAttempts: 5,
       reconnectDelay: 1000,
+      maxRetryDelay: 30000,
       heartbeatInterval: 30000,
       timeout: 120000,
       ...config,

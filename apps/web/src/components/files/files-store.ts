@@ -12,7 +12,7 @@ export interface FileItem {
   id: string // Server ID or temp ID during upload
   name: string
   type: 'file' | 'folder'
-  size?: bigint | null // Always bigint for consistency
+  size?: number | null // Matches the bigint({ mode: 'number' }) DB column
   displaySize: number // Normalized to number for consistent display
   mimeType?: string | null // Unified field name
   ext?: string | null // File extension
@@ -42,7 +42,7 @@ export interface FileItem {
 
   // Server-specific fields (only for server files)
   organizationId?: string
-  createdById?: string
+  createdById?: string | null
   currentVersionId?: string | null
   deletedAt?: Date | null
 
@@ -204,7 +204,7 @@ export interface FileSystemStore {
 
   // Tree operations (O(1) or O(log n))
   getItemPath: (itemId: string) => FileItem[] // Get full path to item
-  getItemChildren: (itemId: string) => FileItem[] // Get direct children
+  getItemChildren: (itemId: string | null) => FileItem[] // Get direct children
   getItemDescendants: (itemId: string) => FileItem[] // Get all descendants
   buildHierarchicalView: (parentId: string | null) => FileItem[] // Build hierarchical view with subRows
 
@@ -279,12 +279,12 @@ export const useFileSystemStore = create<FileSystemStore>()(
     },
 
     get currentFolderFiles() {
-      const fileIds = this.filesByParent.get(this.currentFolderId) || []
+      const fileIds: string[] = this.filesByParent.get(this.currentFolderId) || []
       return fileIds.map((id) => this.itemsById.get(id)).filter(Boolean) as FileItem[]
     },
 
     get currentFolderSubfolders() {
-      const folderIds = this.foldersByParent.get(this.currentFolderId) || []
+      const folderIds: string[] = this.foldersByParent.get(this.currentFolderId) || []
       return folderIds.map((id) => this.itemsById.get(id)).filter(Boolean) as FileItem[]
     },
 
@@ -338,7 +338,7 @@ export const useFileSystemStore = create<FileSystemStore>()(
         itemsById.set(item.id, item)
 
         // Index by parent for O(1) folder contents
-        const parentId = item.parentId
+        const parentId = item.parentId ?? null
         if (item.type === 'file') {
           if (!filesByParent.has(parentId)) {
             filesByParent.set(parentId, [])
@@ -392,7 +392,7 @@ export const useFileSystemStore = create<FileSystemStore>()(
             name: item.name,
             path: item.path,
             depth: item.depth || 0,
-            parentId: item.parentId,
+            parentId: item.parentId ?? null,
             children: [], // Will be built in a second pass
             fileCount: item.fileCount || 0,
             totalSize: BigInt(0), // Could be calculated from files
@@ -501,7 +501,7 @@ export const useFileSystemStore = create<FileSystemStore>()(
           newItemsById.delete(itemId)
 
           // Remove from parent indexes
-          const parentId = item.parentId
+          const parentId = item.parentId ?? null
           if (item.type === 'file') {
             const siblings = newFilesByParent.get(parentId) || []
             newFilesByParent.set(
@@ -553,7 +553,7 @@ export const useFileSystemStore = create<FileSystemStore>()(
         items.forEach((item) => {
           newItemsById.set(item.id, item)
 
-          const parentId = item.parentId
+          const parentId = item.parentId ?? null
           if (item.type === 'file') {
             if (!newFilesByParent.has(parentId)) {
               newFilesByParent.set(parentId, [])

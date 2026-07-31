@@ -40,7 +40,7 @@ export function AttachmentStrip({
               id: attachment.id,
               name: attachment.name,
               mimeType: attachment.mimeType,
-              size: BigInt(attachment.size || 0),
+              size: attachment.size || 0,
               source: 'existing' as const,
             }}
             showRemoveButton={true}

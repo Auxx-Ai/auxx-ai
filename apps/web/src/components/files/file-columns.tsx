@@ -86,7 +86,7 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
         if (item.type === 'folder') {
           return <ExpandableCell className='text-sm font-medium'>Folder</ExpandableCell>
         }
-        const standardType = getStandardFileType(item.mimeType, item.ext)
+        const standardType = getStandardFileType(item.mimeType ?? undefined, item.ext ?? undefined)
         return <ExpandableCell className='text-sm font-mono'>{standardType}</ExpandableCell>
       },
     },
@@ -96,7 +96,6 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
       accessorKey: 'createdAt',
       header: 'Created',
       fieldType: 'DATE',
-      columnType: 'date',
       defaultVisible: true,
       cell: ({ getValue }) => (
         <FormattedCell value={getValue()} fieldType='DATE' columnId='createdAt' />
@@ -114,8 +113,8 @@ export function createFileColumns(actions: FileColumnsActions): ExtendedColumnDe
         const displayPath = item.hierarchy?.folderPath || getDirectoryPath(fullPath)
 
         return (
-          <ExpandableCell className='text-sm text-muted-foreground font-mono' title={fullPath}>
-            {displayPath}
+          <ExpandableCell className='text-sm text-muted-foreground font-mono'>
+            <span title={fullPath}>{displayPath}</span>
           </ExpandableCell>
         )
       },

@@ -58,11 +58,20 @@ export interface BaseFileUploadEvent {
  */
 export interface UploadProgressData {
   fileId?: string
-  filename: string
+  /** Client-side temporary id, echoed back so the UI can match a row before a real id exists. */
+  tempFileId?: string
+  filename?: string
   bytesUploaded: number
   totalBytes: number
   progress: number // 0-100 percentage
   speed?: number // bytes per second
+  // Enhanced tracker metrics
+  stage?: string
+  eta?: number
+  message?: string
+  averageSpeed?: number
+  elapsedTime?: number
+  errorCount?: number
 }
 
 /**

@@ -46,7 +46,7 @@ describe('FileService create behaviour', () => {
     expect(result).toEqual(returningPayload[0])
     expect(valuesMock).toHaveBeenCalledTimes(1)
 
-    const payload = valuesMock.mock.calls[0][0]
+    const payload = valuesMock.mock.calls[0]?.[0]
     expect(payload.folderId).toBeNull()
     expect(payload.ext).toBe('jpg')
     expect(payload.path).toBe('/provided/path')
@@ -90,7 +90,7 @@ describe('FileService list behaviour', () => {
     }
 
     const scopedSpy = vi
-      .spyOn<any>(service as any, 'buildScopedWhere')
+      .spyOn(service as any, 'buildScopedWhere')
       .mockReturnValue('mock-sql' as any)
 
     const result = await service.listInFolder('folder-1', {

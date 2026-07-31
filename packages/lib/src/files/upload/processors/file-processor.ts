@@ -47,7 +47,7 @@ export class FileProcessor extends BaseProcessor {
         // omit path; let FileService generate a collision-safe one
         ext: this.extractFileExtension(session.fileName),
         mimeType: session.mimeType,
-        size: BigInt(session.expectedSize),
+        size: session.expectedSize,
         organizationId: session.organizationId,
         createdById: session.userId,
         folderId: session.metadata?.folderId,

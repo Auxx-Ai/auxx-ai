@@ -1,6 +1,6 @@
 // packages/lib/src/files/core/folder-service.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import type { FolderEntity as Folder } from '@auxx/database/types'
 import {
   and,
@@ -18,7 +18,7 @@ import {
   sql,
   sum,
 } from 'drizzle-orm'
-import { BaseService } from './base-service'
+import { BaseService, type DatabaseClient } from './base-service'
 import { FileService } from './file-service'
 import type {
   CreateFolderRequest,
@@ -49,7 +49,7 @@ export class FolderService extends BaseService<
    * @param userId - Optional user ID for created/updated records
    * @param dbInstance - Database instance to use (defaults to global db)
    */
-  constructor(organizationId?: string, userId?: string, dbInstance: Database = database) {
+  constructor(organizationId?: string, userId?: string, dbInstance: DatabaseClient = database) {
     super(organizationId, userId, dbInstance)
   }
 
@@ -72,18 +72,8 @@ export class FolderService extends BaseService<
    * Build a scoped WHERE clause that always respects organization + soft delete rules.
    */
   private buildScopedWhere(conditions: SQL[] = [], includeDeleted = false): SQL {
-    const where = super.buildBaseWhereClause(conditions, includeDeleted)
-    if (where) return where
-
-    if (conditions.length === 0) {
-      return sql`true`
-    }
-
-    if (conditions.length === 1) {
-      return conditions[0] as SQL
-    }
-
-    return and(...conditions)
+    // buildBaseWhereClause only returns undefined when there is nothing to filter on at all.
+    return super.buildBaseWhereClause(conditions, includeDeleted) ?? sql`true`
   }
 
   /**
@@ -464,14 +454,17 @@ export class FolderService extends BaseService<
 
     // Use transaction to update folder and descendant paths if necessary
     return this.getTx(async (tx) => {
-      const [updatedFolder] = await tx
-        .update(schema.Folder)
-        .set({
-          ...updateData,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.Folder.id, id))
-        .returning()
+      const updatedFolder = this.requireRow(
+        await tx
+          .update(schema.Folder)
+          .set({
+            ...updateData,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.Folder.id, id))
+          .returning(),
+        'update'
+      )
 
       // Update descendant paths if path changed
       if (updateData.path && updateData.path !== existing.path) {
@@ -560,14 +553,17 @@ export class FolderService extends BaseService<
 
     return this.getTx(async (tx) => {
       // Restore the folder
-      const [restoredFolder] = await tx
-        .update(schema.Folder)
-        .set({
-          deletedAt: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.Folder.id, id))
-        .returning()
+      const restoredFolder = this.requireRow(
+        await tx
+          .update(schema.Folder)
+          .set({
+            deletedAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.Folder.id, id))
+          .returning(),
+        'restore'
+      )
 
       // Restore all descendant folders
       await tx
@@ -842,9 +838,7 @@ export class FolderService extends BaseService<
       }),
     ])
 
-    const totalSize = files.reduce((sum, file) => {
-      return sum + (file.size || BigInt(0))
-    }, BigInt(0))
+    const totalSize = files.reduce((total, file) => total + (file.size ?? 0), 0)
 
     return {
       folder,
@@ -859,10 +853,10 @@ export class FolderService extends BaseService<
    * Get total size of all files in a folder (recursive)
    * Calculates the total size of all files in the folder and its subfolders
    * @param id - The folder ID
-   * @returns Total size in bytes as bigint
+   * @returns Total size in bytes
    * @throws Error if folder not found
    */
-  async getFolderSize(id: string): Promise<bigint> {
+  async getFolderSize(id: string): Promise<number> {
     const folder = await this.get(id)
     if (!folder) {
       throw new Error('Folder not found')
@@ -879,7 +873,7 @@ export class FolderService extends BaseService<
         )
       )
 
-    return BigInt(result[0]?.totalSize ?? BigInt(0))
+    return Number(result[0]?.totalSize ?? 0)
   }
 
   /**
@@ -1433,7 +1427,7 @@ export class FolderService extends BaseService<
    */
   async getUsage(id: string): Promise<{
     fileCount: number
-    totalSize: bigint
+    totalSize: number
     lastActivity: Date | null
     mostActiveSubfolder: { id: string; name: string } | null
   }> {
@@ -1743,9 +1737,10 @@ export class FolderService extends BaseService<
       eq(schema.Folder.name, name),
       parentId ? eq(schema.Folder.parentId, parentId) : isNull(schema.Folder.parentId),
     ]
-    return this.db.query.Folder.findFirst({
+    const match = await this.db.query.Folder.findFirst({
       where: this.buildBaseWhereClause(conditions),
     })
+    return match ?? null
   }
 
   /**
@@ -1759,7 +1754,7 @@ export class FolderService extends BaseService<
   private async updateDescendantPaths(
     folderId: string,
     newBasePath: string,
-    tx: any,
+    tx: DatabaseClient,
     oldBasePath?: string
   ): Promise<void> {
     // Get the old path to properly find descendants
@@ -1831,9 +1826,9 @@ export class FolderService extends BaseService<
    * @param tx - Database transaction instance
    */
   private async copyFolderContents(
-    sourceFolder: any,
+    sourceFolder: FolderWithRelations,
     targetFolderId: string,
-    tx: any
+    tx: DatabaseClient
   ): Promise<void> {
     // Get target folder for path calculations
     const targetFolder = await tx.query.Folder.findFirst({
@@ -1851,21 +1846,24 @@ export class FolderService extends BaseService<
 
     for (const file of sourceFiles) {
       const newPath = this.pathJoin(targetFolder.path, file.name)
-      const [newFile] = await tx
-        .insert(schema.FolderFile)
-        .values({
-          name: file.name,
-          path: newPath,
-          ext: file.ext,
-          mimeType: file.mimeType,
-          size: file.size,
-          organizationId: file.organizationId,
-          folderId: targetFolderId,
-          createdById: file.createdById,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .returning()
+      const newFile = this.requireRow(
+        await tx
+          .insert(schema.FolderFile)
+          .values({
+            name: file.name,
+            path: newPath,
+            ext: file.ext,
+            mimeType: file.mimeType,
+            size: file.size,
+            organizationId: file.organizationId,
+            folderId: targetFolderId,
+            createdById: file.createdById,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning(),
+        'copy file'
+      )
 
       // Copy all versions using FileService
       const fileService = new FileService(this.organizationId, this.userId, this.db)
@@ -1887,19 +1885,22 @@ export class FolderService extends BaseService<
       const newPath = this.pathJoin(targetFolder.path, subfolder.name)
       const newDepth = targetFolder.depth + 1
 
-      const [newSubfolder] = await tx
-        .insert(schema.Folder)
-        .values({
-          name: subfolder.name,
-          parentId: targetFolderId,
-          path: newPath,
-          depth: newDepth,
-          organizationId: subfolder.organizationId,
-          createdById: subfolder.createdById,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .returning()
+      const newSubfolder = this.requireRow(
+        await tx
+          .insert(schema.Folder)
+          .values({
+            name: subfolder.name,
+            parentId: targetFolderId,
+            path: newPath,
+            depth: newDepth,
+            organizationId: subfolder.organizationId,
+            createdById: subfolder.createdById,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning(),
+        'copy subfolder'
+      )
 
       // Recursively copy contents of this subfolder
       await this.copyFolderContents(subfolder, newSubfolder.id, tx)

@@ -186,6 +186,8 @@ export function parseFileSize(sizeStr: string): bigint | null {
   if (!match) return null
 
   const [, numStr, unit] = match
+  if (!numStr || !unit) return null
+
   const num = parseFloat(numStr)
 
   const multipliers: Record<string, number> = {

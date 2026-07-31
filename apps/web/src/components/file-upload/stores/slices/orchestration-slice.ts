@@ -341,7 +341,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     if (sessionId) {
       const session = state.sessions[sessionId]
       if (session?.callbacks?.onChange && validFileIds.length > 0) {
-        const fileStates = validFileIds.map((id) => state.files[id]).filter(Boolean)
+        const fileStates = validFileIds.map((id) => state.files[id]).filter((f) => f !== undefined)
         try {
           session.callbacks.onChange(fileStates)
         } catch (error) {
@@ -470,10 +470,10 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     const session = get().sessions[sessionId]
     if (!session || session.fileIds.length === 0) return 0
 
-    const files = session.fileIds.map((id) => get().files[id]).filter(Boolean)
+    const files = session.fileIds.map((id) => get().files[id]).filter((f) => f !== undefined)
     if (files.length === 0) return 0
 
-    return Math.round(files.reduce((sum, file) => sum + file.progress, 0) / files.length)
+    return Math.round(files.reduce((sum, file) => sum + (file.progress ?? 0), 0) / files.length)
   },
 
   /**
@@ -763,7 +763,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
       state.uploading = false
     })
 
-    const finalFiles = session.fileIds.map((id) => get().files[id]).filter(Boolean)
+    const finalFiles = session.fileIds.map((id) => get().files[id]).filter((f) => f !== undefined)
     return {
       totalFiles: finalFiles.length,
       successCount: successes.length,

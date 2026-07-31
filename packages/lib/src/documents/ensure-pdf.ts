@@ -152,7 +152,7 @@ export async function ensureDocumentPdf(params: {
         purpose: 'ORIGINAL',
         name: fileName,
         mimeType: 'application/pdf',
-        size: BigInt(buffer.length),
+        size: buffer.length,
         isPrivate: true,
         organizationId,
         createdById: actorId,

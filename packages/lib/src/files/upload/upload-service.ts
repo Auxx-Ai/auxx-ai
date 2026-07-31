@@ -53,7 +53,7 @@ export class FileUploadService {
     }
 
     // Initialize upload strategies
-    this.strategies = new Map([
+    this.strategies = new Map<UploadStrategy, UploadStrategyHandler>([
       ['direct', new DirectUploadStrategy(this.storageManager)],
       ['multipart', new MultipartUploadStrategy(this.storageManager)],
       ['presigned', new PresignedUploadStrategy(this.storageManager)],
@@ -262,7 +262,9 @@ export class FileUploadService {
     const healthChecks = await this.storageManager.performHealthCheck()
     const healthyProviders = healthChecks.filter((check) => check.healthy)
 
-    if (healthyProviders.length === 0) {
+    // Use first healthy provider as default (could be more sophisticated)
+    const [firstHealthy] = healthyProviders
+    if (!firstHealthy) {
       throw new UploadError(
         'No healthy storage providers available',
         'PROVIDER_ERROR',
@@ -270,8 +272,7 @@ export class FileUploadService {
       )
     }
 
-    // Use first healthy provider as default (could be more sophisticated)
-    return healthyProviders[0].provider
+    return firstHealthy.provider
   }
 
   // ============= Upload Execution =============

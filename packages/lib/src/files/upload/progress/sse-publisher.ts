@@ -9,6 +9,7 @@ import {
   type FileUploadEvent,
   FileUploadEventType,
   type JobUpdateData,
+  type JobUpdateEvent,
   type ProcessingProgressData,
   type SessionEventData as SessionData,
   type UploadProgressData,
@@ -334,7 +335,7 @@ export class FileUploadEventPublisher {
   /**
    * Get appropriate job event type based on status
    */
-  private getJobEventType(status: JobUpdateData['status']): FileUploadEventType {
+  private getJobEventType(status: JobUpdateData['status']): JobUpdateEvent['event'] {
     switch (status) {
       case 'queued':
         return FileUploadEventType.JOB_QUEUED

@@ -1,5 +1,5 @@
 // packages/lib/src/files/core/attachment-service.ts
-import { type Database, database as db, schema, type Transaction } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import type { AttachmentEntity as Attachment } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -17,7 +17,7 @@ import {
   sql,
 } from 'drizzle-orm'
 import type { DownloadRef } from '../adapters/base-adapter'
-import { BaseService } from './base-service'
+import { BaseService, type DatabaseClient } from './base-service'
 import type {
   AttachmentRole,
   AttachmentSearchResult,
@@ -45,7 +45,7 @@ export interface GroupedAttachmentInfo {
   fileId: string
   name: string
   mimeType?: string | null
-  size?: bigint | null
+  size?: number | null
 }
 /**
  * Authorization callback for entity access control
@@ -64,7 +64,7 @@ export interface AttachmentDownloadDescriptor {
   stream?: NodeJS.ReadableStream
   filename: string
   mimeType?: string
-  size?: bigint
+  size?: number
   expiresAt?: Date
 }
 /**
@@ -82,7 +82,7 @@ export class AttachmentService extends BaseService<
   constructor(
     organizationId?: string,
     userId?: string,
-    dbInstance: Database | Transaction = db,
+    dbInstance: DatabaseClient = db,
     private authorize?: Authorizer
   ) {
     super(organizationId, userId, dbInstance)
@@ -185,6 +185,7 @@ export class AttachmentService extends BaseService<
         fileVersionId: schema.Attachment.fileVersionId,
         assetId: schema.Attachment.assetId,
         assetVersionId: schema.Attachment.assetVersionId,
+        contentId: schema.Attachment.contentId,
         createdById: schema.Attachment.createdById,
         createdAt: schema.Attachment.createdAt,
       })
@@ -608,11 +609,11 @@ export class AttachmentService extends BaseService<
     const orgId = this.requireOrganization()
 
     // Update each attachment's sort order
-    for (let idx = 0; idx < attachmentIds.length; idx++) {
+    for (const [idx, attachmentId] of attachmentIds.entries()) {
       await this.db
         .update(schema.Attachment)
         .set({ sort: idx + 1 })
-        .where(eq(schema.Attachment.id, attachmentIds[idx]))
+        .where(eq(schema.Attachment.id, attachmentId))
     }
 
     logger.info('Reordered attachments', {
@@ -720,7 +721,7 @@ export class AttachmentService extends BaseService<
     if (attachment.fileVersionId || attachment.assetVersionId) {
       const { createStorageManager } = await import('../storage/storage-manager')
       const storageManager = createStorageManager(this.requireOrganization())
-      return storageManager.streamContent(storageLocationId)
+      return storageManager.streamFileContent(storageLocationId)
     }
     // Otherwise delegate to appropriate service for current version
     if (attachment.fileId) {
@@ -819,7 +820,7 @@ export class AttachmentService extends BaseService<
     entityId: string
   ): Promise<{
     totalAttachments: number
-    totalSize: bigint
+    totalSize: number
     attachmentsByRole: Record<string, number>
     fileAttachments: number
     assetAttachments: number
@@ -836,7 +837,7 @@ export class AttachmentService extends BaseService<
           eq(schema.Attachment.entityId, entityId)
         )
       )
-    let totalSize = BigInt(0)
+    let totalSize = 0
     const attachmentsByRole: Record<string, number> = {}
     let fileAttachments = 0
     let assetAttachments = 0
@@ -866,7 +867,7 @@ export class AttachmentService extends BaseService<
           assetAttachments++
         }
         if (version?.size) {
-          totalSize += BigInt(version.size)
+          totalSize += Number(version.size)
         }
       }
     }
@@ -1071,11 +1072,11 @@ export class AttachmentService extends BaseService<
     }
 
     // Fix sort orders
-    for (let index = 0; index < attachments.length; index++) {
+    for (const [index, target] of attachments.entries()) {
       await this.db
         .update(schema.Attachment)
         .set({ sort: index + 1 })
-        .where(eq(schema.Attachment.id, attachments[index].id))
+        .where(eq(schema.Attachment.id, target.id))
     }
 
     this.logger.info('Fixed attachment sort orders', {

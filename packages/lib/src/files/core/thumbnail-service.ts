@@ -1,12 +1,13 @@
 // packages/lib/src/files/core/thumbnail-service.ts
 
-import { type Database, database as db, schema } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { createHash } from 'crypto'
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getQueue, Queues } from '../../jobs/queues'
 import { createScopedLogger } from '../../logger'
 import { createStorageManager, type StorageManager } from '../storage/storage-manager'
+import { type DatabaseClient, requireRow } from './base-service'
 import type {
   GenerateThumbnailPayload,
   PresetKey,
@@ -29,7 +30,7 @@ export class ThumbnailService {
   constructor(
     private organizationId: string,
     private userId: string,
-    private dbClient: Database = db
+    private dbClient: DatabaseClient = db
   ) {
     // Use org-scoped StorageManager for proper credential management
     this.storageManager = createStorageManager(organizationId)
@@ -115,66 +116,94 @@ export class ThumbnailService {
   /**
    * Convert a FolderFile to MediaAsset for thumbnail generation
    */
-  private async convertFileToAsset(
-    fileVersion: any
-  ): Promise<{ id: string; currentVersionId: string }> {
-    // Check if already converted
-    const [existing] = await this.dbClient
-      .select()
-      .from(schema.MediaAsset)
-      .where(
-        and(
-          eq(schema.MediaAsset.organizationId, this.organizationId),
-          eq(schema.MediaAsset.kind, 'FILE_CONVERSION')
-          // sql`${schema.MediaAsset.metadata}->>'fileVersionId' = ${fileVersion.id}`
-        )
-      )
-      .limit(1)
+  private async convertFileToAsset(fileVersion: {
+    mimeType: string | null
+    size: number | null
+    storageLocationId: string | null
+  }): Promise<{ id: string; currentVersionId: string }> {
+    const { storageLocationId } = fileVersion
+    if (!storageLocationId) {
+      throw new Error('File version has no storage location to convert')
+    }
 
-    if (existing) {
-      return existing
+    // Reuse a previous conversion of this exact storage location. MediaAsset has no metadata
+    // column to key the conversion on, so the shared storage location is the identity.
+    const versionsForLocation = await this.dbClient.query.MediaAssetVersion.findMany({
+      where: and(
+        eq(schema.MediaAssetVersion.storageLocationId, storageLocationId),
+        isNull(schema.MediaAssetVersion.deletedAt)
+      ),
+      columns: { id: true },
+    })
+
+    if (versionsForLocation.length > 0) {
+      const existing = await this.dbClient.query.MediaAsset.findFirst({
+        where: and(
+          eq(schema.MediaAsset.organizationId, this.organizationId),
+          eq(schema.MediaAsset.kind, 'FILE_CONVERSION'),
+          isNull(schema.MediaAsset.deletedAt),
+          inArray(
+            schema.MediaAsset.currentVersionId,
+            versionsForLocation.map((v) => v.id)
+          )
+        ),
+        columns: { id: true, currentVersionId: true },
+      })
+
+      if (existing?.currentVersionId) {
+        return { id: existing.id, currentVersionId: existing.currentVersionId }
+      }
     }
 
     // Create MediaAsset from FolderFile
-    const [asset] = await this.dbClient
-      .insert(schema.MediaAsset)
-      .values({
-        organizationId: this.organizationId,
-        createdById: this.userId,
-        kind: 'FILE_CONVERSION',
-        purpose: 'ORIGINAL',
-        mimeType: fileVersion.mimeType,
-        size: fileVersion.size,
-        isPrivate: true, // Files are always private
-        // metadata: {
-        //   fileVersionId: fileVersion.id,
-        //   fileId: fileVersion.fileId,
-        // },
-        updatedAt: new Date(),
-      })
-      .returning()
+    const asset = requireRow(
+      await this.dbClient
+        .insert(schema.MediaAsset)
+        .values({
+          organizationId: this.organizationId,
+          createdById: this.userId,
+          kind: 'FILE_CONVERSION',
+          purpose: 'ORIGINAL',
+          mimeType: fileVersion.mimeType,
+          size: fileVersion.size,
+          isPrivate: true, // Files are always private
+          updatedAt: new Date(),
+        })
+        .returning(),
+      'create file-conversion asset'
+    )
 
     // Create MediaAssetVersion pointing to same storage
-    const [version] = await this.dbClient
-      .insert(schema.MediaAssetVersion)
-      .values({
-        assetId: asset.id,
-        versionNumber: 1,
-        size: fileVersion.size,
-        mimeType: fileVersion.mimeType,
-        storageLocationId: fileVersion.storageLocationId,
-        status: 'READY',
-      })
-      .returning()
+    const version = requireRow(
+      await this.dbClient
+        .insert(schema.MediaAssetVersion)
+        .values({
+          assetId: asset.id,
+          versionNumber: 1,
+          size: fileVersion.size,
+          mimeType: fileVersion.mimeType,
+          storageLocationId,
+          status: 'READY',
+        })
+        .returning(),
+      'create file-conversion asset version'
+    )
 
     // Update asset with current version
-    const [updated] = await this.dbClient
-      .update(schema.MediaAsset)
-      .set({ currentVersionId: version.id, updatedAt: new Date() })
-      .where(eq(schema.MediaAsset.id, asset.id))
-      .returning()
+    const updated = requireRow(
+      await this.dbClient
+        .update(schema.MediaAsset)
+        .set({ currentVersionId: version.id, updatedAt: new Date() })
+        .where(eq(schema.MediaAsset.id, asset.id))
+        .returning(),
+      'link file-conversion asset version'
+    )
 
-    return updated
+    if (!updated.currentVersionId) {
+      throw new Error('Failed to link file-conversion asset to its version')
+    }
+
+    return { id: updated.id, currentVersionId: updated.currentVersionId }
   }
 
   /**
@@ -286,6 +315,9 @@ export class ThumbnailService {
 
         // 2. Pinned to specific file version (convert to asset)
         if (attachment.fileVersionId) {
+          if (!attachment.fileVersion) {
+            throw new Error(`Attachment file version not found: ${attachment.fileVersionId}`)
+          }
           const mediaAsset = await this.convertFileToAsset(attachment.fileVersion)
           return {
             versionId: mediaAsset.currentVersionId!,
@@ -377,6 +409,9 @@ export class ThumbnailService {
   private async enqueueJob(payload: GenerateThumbnailPayload): Promise<string> {
     const jobId = `thumb-${payload.key}`
     const redis = await getRedisClient(true)
+    if (!redis) {
+      throw new Error('Redis is required to enqueue thumbnail jobs but is unavailable')
+    }
 
     // Check Redis cache first (prevents thundering herd)
     const cached = await redis.get(`processing:${jobId}`)
@@ -447,29 +482,37 @@ export class ThumbnailService {
 
     // Step 1: Create placeholder (fast transaction)
     const placeholder = await this.dbClient.transaction(async (tx) => {
-      const [asset] = await tx
-        .insert(schema.MediaAsset)
-        .values({
-          organizationId: this.organizationId,
-          createdById: this.userId,
-          kind: 'THUMBNAIL',
-          purpose: 'DERIVED',
-          isPrivate: params.visibility === 'PRIVATE',
-          mimeType: this.getMimeTypeForFormat(THUMBNAIL_PRESETS[params.preset as PresetKey].format),
-          updatedAt: new Date(),
-        })
-        .returning({ id: schema.MediaAsset.id })
+      const asset = requireRow(
+        await tx
+          .insert(schema.MediaAsset)
+          .values({
+            organizationId: this.organizationId,
+            createdById: this.userId,
+            kind: 'THUMBNAIL',
+            purpose: 'DERIVED',
+            isPrivate: params.visibility === 'PRIVATE',
+            mimeType: this.getMimeTypeForFormat(
+              THUMBNAIL_PRESETS[params.preset as PresetKey].format
+            ),
+            updatedAt: new Date(),
+          })
+          .returning({ id: schema.MediaAsset.id }),
+        'create thumbnail placeholder asset'
+      )
 
-      const [version] = await tx
-        .insert(schema.MediaAssetVersion)
-        .values({
-          assetId: asset.id,
-          derivedFromVersionId: params.versionId,
-          preset: params.preset,
-          versionNumber: 1,
-          status: 'PROCESSING',
-        })
-        .returning({ id: schema.MediaAssetVersion.id })
+      const version = requireRow(
+        await tx
+          .insert(schema.MediaAssetVersion)
+          .values({
+            assetId: asset.id,
+            derivedFromVersionId: params.versionId,
+            preset: params.preset,
+            versionNumber: 1,
+            status: 'PROCESSING',
+          })
+          .returning({ id: schema.MediaAssetVersion.id }),
+        'create thumbnail placeholder version'
+      )
 
       return { assetId: asset.id, versionId: version.id }
     })

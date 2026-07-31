@@ -12,7 +12,7 @@ export type ReactionType = 'like' | 'emoji'
 interface FileAttachment {
   id: string
   name: string
-  size?: bigint | number
+  size?: number
   mimeType?: string
   type: 'file' | 'asset' // 'file' = FolderFile, 'asset' = MediaAsset
 }
@@ -53,7 +53,7 @@ export type CommentAttachmentInfo = {
   fileId: string
   name: string
   mimeType?: string | null
-  size?: bigint | null
+  size?: number | null
 }
 
 export type Comment = {

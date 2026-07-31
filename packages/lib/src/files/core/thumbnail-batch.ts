@@ -40,7 +40,9 @@ export async function ensureThumbnailPresets(
         ...(perPreset?.[preset] || {}),
       }
       const res = await service.ensureThumbnail(source, { ...base, preset })
-      if (res.status === 'queued') return { preset, status: 'queued', jobId: res.jobId }
+      if (res.status === 'queued') {
+        return { preset, status: 'queued' as const, jobId: res.jobId }
+      }
       return { preset, status: res.status }
     })
   )

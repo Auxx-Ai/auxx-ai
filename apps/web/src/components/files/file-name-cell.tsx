@@ -124,7 +124,7 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
         ) : isFolder ? (
           <FolderIcon className='size-4 text-blue-600 shrink-0' />
         ) : (
-          getFileIcon(item.mimeType, item.ext, 'size-4 shrink-0')
+          getFileIcon(item.mimeType ?? undefined, item.ext ?? undefined, 'size-4 shrink-0')
         )}
 
         <div className='min-w-0 flex-1'>

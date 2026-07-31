@@ -1,7 +1,7 @@
 // packages/lib/src/files/upload/session-manager.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { getRedisClient } from '@auxx/redis'
+import { getRedisClient, type RedisClient } from '@auxx/redis'
 import { nanoid } from 'nanoid'
 import type { UploadPreparedConfig } from './init-types'
 import type { PresignedUploadSession, UploadCompletionData } from './session-types'
@@ -15,6 +15,18 @@ const logger = createScopedLogger('session-manager')
 export class SessionManager {
   private static readonly SESSION_PREFIX = 'upload:session:'
   private static readonly DEFAULT_TTL = 10 * 60 // 10 minutes
+
+  /**
+   * Resolve the Redis client. Upload sessions have no in-memory fallback, so an unavailable
+   * Redis is a hard failure rather than a silently skipped write.
+   */
+  private static async getRedis(): Promise<RedisClient> {
+    const client = await getRedisClient(true)
+    if (!client) {
+      throw new Error('Redis is required for upload sessions but is unavailable')
+    }
+    return client
+  }
 
   /**
    * Create new presigned upload session from processor config
@@ -55,7 +67,7 @@ export class SessionManager {
     }
 
     // Store in Redis with configured TTL
-    const redis = await getRedisClient(true)
+    const redis = await SessionManager.getRedis()
     await redis.setex(
       `${SessionManager.SESSION_PREFIX}${sessionId}`,
       config.ttlSec,
@@ -79,7 +91,7 @@ export class SessionManager {
    * Get existing session by ID
    */
   static async getSession(sessionId: string): Promise<PresignedUploadSession | null> {
-    const redis = await getRedisClient(true)
+    const redis = await SessionManager.getRedis()
     const data = await redis.get(`${SessionManager.SESSION_PREFIX}${sessionId}`)
     if (!data) return null
 
@@ -107,7 +119,7 @@ export class SessionManager {
     // Preserve TTL: recompute remaining time from expiresAt
     const remainingTtl = Math.max(0, Math.floor((session.expiresAt.getTime() - Date.now()) / 1000))
 
-    const redis = await getRedisClient(true)
+    const redis = await SessionManager.getRedis()
     await redis.setex(
       `${SessionManager.SESSION_PREFIX}${sessionId}`,
       remainingTtl, // ✅ Use remaining TTL, not default
@@ -119,7 +131,7 @@ export class SessionManager {
    * Delete session
    */
   static async deleteSession(sessionId: string): Promise<void> {
-    const redis = await getRedisClient(true)
+    const redis = await SessionManager.getRedis()
     await redis.del(`${SessionManager.SESSION_PREFIX}${sessionId}`)
   }
 
@@ -141,7 +153,7 @@ export class SessionManager {
     if (!session) return
 
     // Extend TTL while actively uploading
-    const redis = await getRedisClient(true)
+    const redis = await SessionManager.getRedis()
     await redis.setex(
       `${SessionManager.SESSION_PREFIX}${sessionId}`,
       SessionManager.DEFAULT_TTL,

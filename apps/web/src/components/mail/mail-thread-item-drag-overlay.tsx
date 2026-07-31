@@ -9,7 +9,8 @@ import { useStackedDragOverlay } from '~/hooks/use-stacked-drag-overlay'
  * Props for MailThreadItemDragOverlay component
  */
 interface MailThreadItemDragOverlayProps {
-  items: string[]
+  /** Only the count is used, so any item shape works. */
+  items: readonly unknown[]
   isDragging: boolean
 }
 

@@ -1,5 +1,6 @@
 // packages/lib/src/files/upload/util.ts
 import { configService } from '@auxx/credentials'
+import type { FileVisibility } from './types'
 
 /**
  * Utility functions for the unified processor system
@@ -57,6 +58,18 @@ export const deriveStorageKey = (
 }
 
 /**
+ * Map the lowercase upload-request visibility onto the uppercase storage bucket selector.
+ * The two vocabularies never matched, so passing a raw `FileVisibility` straight through
+ * silently routed public uploads into the private bucket.
+ */
+export const toStorageVisibility = (
+  visibility: FileVisibility | undefined
+): 'PUBLIC' | 'PRIVATE' | undefined => {
+  if (visibility === undefined) return undefined
+  return visibility === 'public' ? 'PUBLIC' : 'PRIVATE'
+}
+
+/**
  * Get bucket name based on file visibility
  */
 export const getBucketForVisibility = (visibility: 'PUBLIC' | 'PRIVATE'): string => {
@@ -84,7 +97,7 @@ export const getPublicCdnUrl = (storageKey: string): string => {
  * Normalize MIME type by converting to lowercase and removing parameters
  */
 export const normalizeMimeType = (mimeType: string): string => {
-  return mimeType.toLowerCase().split(';')[0].trim()
+  return (mimeType.toLowerCase().split(';')[0] ?? '').trim()
 }
 
 /**

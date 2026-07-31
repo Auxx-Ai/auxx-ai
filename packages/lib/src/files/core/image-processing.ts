@@ -95,7 +95,7 @@ async function getDomPurify() {
   if (!domPurify) {
     const { JSDOM } = await import('jsdom')
     const createDOMPurify = (await import('dompurify')).default
-    domPurify = createDOMPurify(new JSDOM('').window as unknown as Window)
+    domPurify = createDOMPurify(new JSDOM('').window)
   }
   return domPurify
 }
@@ -306,12 +306,9 @@ export async function processImage(
   const originalWidth = metadata.width || 0
   const originalHeight = metadata.height || 0
 
-  const width: 'auto' | number = presetConfig.w
-  const height: 'auto' | number = presetConfig.h
-  // Calculate target dimensions
-  // const { width, height } = presetConfig.dimensions
-  const targetWidth = width === 'auto' ? undefined : width
-  const targetHeight = height === 'auto' ? undefined : height
+  // Preset dimensions are always concrete pixel values
+  const targetWidth = presetConfig.w
+  const targetHeight = presetConfig.h
 
   // Apply auto-rotation based on EXIF orientation, then remove all metadata
   pipeline = pipeline

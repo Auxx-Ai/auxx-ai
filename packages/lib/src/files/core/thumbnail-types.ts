@@ -107,7 +107,7 @@ export interface ProcessedThumbnail {
   dimensions: { width: number; height: number }
   actualDimensions: { width: number; height: number }
   quality: number
-  fit: 'cover' | 'contain' | 'fill' | 'inside' | 'outside'
+  fit: 'cover' | 'inside' | 'contain'
   metadata: {
     originalWidth: number
     originalHeight: number
