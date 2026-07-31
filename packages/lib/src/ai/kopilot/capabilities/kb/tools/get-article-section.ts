@@ -89,12 +89,12 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
       let startLevel = Number.POSITIVE_INFINITY
       for (let i = 0; i < content.length; i++) {
         const node = content[i]
-        if (node.type !== 'block') continue
+        if (node?.type !== 'block') continue
         if (node.attrs.blockType !== 'heading') continue
         const text = extractText(node).toLowerCase()
         if (text.startsWith(headingText)) {
           startIdx = i
-          startLevel = (node.attrs.level as number | null) ?? 1
+          startLevel = node.attrs.level ?? 1
           break
         }
       }
@@ -108,9 +108,9 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
       let endIdx = content.length
       for (let i = startIdx + 1; i < content.length; i++) {
         const node = content[i]
-        if (node.type !== 'block') continue
+        if (node?.type !== 'block') continue
         if (node.attrs.blockType !== 'heading') continue
-        const lvl = (node.attrs.level as number | null) ?? 1
+        const lvl = node.attrs.level ?? 1
         if (lvl <= startLevel) {
           endIdx = i
           break
@@ -118,12 +118,12 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
       }
       const slice = content.slice(startIdx, endIdx)
       const sectionMarkdown = articleToMarkdown({ contentJson: slice })
+      const startNode = content[startIdx]
       return {
         success: true,
         output: {
           headingText: args.headingText as string,
-          startBlockId:
-            content[startIdx]?.type === 'block' ? (content[startIdx] as BlockJSON).attrs.id : null,
+          startBlockId: startNode?.type === 'block' ? startNode.attrs.id : null,
           markdown: sectionMarkdown,
           blockCount: slice.length,
         },

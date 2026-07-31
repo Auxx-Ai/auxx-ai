@@ -63,8 +63,8 @@ describe('search_knowledge chat clamp', () => {
     expect(fromTables).toContain(schema.KnowledgeBase)
     expect(fromTables).not.toContain(schema.Dataset)
     expect(searchSpy).toHaveBeenCalledTimes(1)
-    const [searchArgs] = searchSpy.mock.calls[0]
-    expect(searchArgs.datasetIds).toEqual(['ds_public'])
+    const searchArgs = searchSpy.mock.calls[0]?.[0] as { datasetIds?: string[] } | undefined
+    expect(searchArgs?.datasetIds).toEqual(['ds_public'])
   })
 
   it('without a subject (internal kopilot), searches all managed + RAG datasets', async () => {

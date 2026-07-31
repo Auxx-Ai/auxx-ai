@@ -30,7 +30,9 @@ describe.skipIf(!apiKey)('GoogleTextEmbeddingClient integration', () => {
     })
 
     expect(response.embeddings).toHaveLength(1)
-    expect(response.embeddings[0].length).toBeGreaterThan(0)
+    const [vector] = response.embeddings
+    expect(vector).toBeDefined()
+    expect(vector?.length).toBeGreaterThan(0)
     expect(response.model).toBe('gemini-embedding-001')
     expect(response.usage.prompt_tokens).toBeGreaterThan(0)
     expect(response.usage.completion_tokens).toBe(0)
@@ -45,9 +47,11 @@ describe.skipIf(!apiKey)('GoogleTextEmbeddingClient integration', () => {
     })
 
     // gemini-embedding-001 returns a valid embedding vector
-    expect(response.embeddings[0].length).toBeGreaterThan(0)
+    const [vector] = response.embeddings
+    expect(vector).toBeDefined()
+    expect(vector?.length).toBeGreaterThan(0)
     // Should be one of the valid dimension sizes
-    expect([128, 256, 512, 768, 1536, 3072]).toContain(response.embeddings[0].length)
+    expect([128, 256, 512, 768, 1536, 3072]).toContain(vector?.length)
   }, 15_000)
 })
 

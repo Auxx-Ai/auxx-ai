@@ -156,7 +156,7 @@ export class GoogleClient extends ProviderClient {
       case ModelType.TEXT_EMBEDDING:
         return new GoogleTextEmbeddingClient(
           this.getApiClient(credentials),
-          { timeout: 30000, maxRetries: 3 },
+          DEFAULT_CLIENT_CONFIG,
           this.logger
         )
 

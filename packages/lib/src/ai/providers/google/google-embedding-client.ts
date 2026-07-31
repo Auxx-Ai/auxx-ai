@@ -52,16 +52,20 @@ export class GoogleTextEmbeddingClient extends TextEmbeddingClient {
 
           for (let i = 0; i < texts.length; i += batchSize) {
             const batch = texts.slice(i, i + batchSize)
+            const [onlyText] = batch
 
-            if (batch.length === 1) {
+            if (batch.length === 1 && onlyText !== undefined) {
               // Single text embedding
-              const result = await model.embedContent(batch[0])
+              const result = await model.embedContent(onlyText)
               embeddings.push(result.embedding.values)
             } else {
-              // Batch embedding
-              const results = await model.batchEmbedContents(
-                batch.map((text) => ({ content: { parts: [{ text }] } }))
-              )
+              // Batch embedding — the SDK reads `requests` off this object and
+              // injects the model into each entry, so a bare array throws.
+              const results = await model.batchEmbedContents({
+                requests: batch.map((text) => ({
+                  content: { role: 'user', parts: [{ text }] },
+                })),
+              })
 
               for (const result of results.embeddings) {
                 embeddings.push(result.values)

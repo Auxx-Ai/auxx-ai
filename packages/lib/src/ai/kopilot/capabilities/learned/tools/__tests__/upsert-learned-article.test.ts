@@ -24,6 +24,7 @@ vi.mock('../../../../../../kb/articles/publish-article', () => ({
   publishArticle: (...args: unknown[]) => publishArticleSpy(...args),
 }))
 
+import { runTool } from '../../../../../agent-framework/__test-helpers'
 import type { ToolContext } from '../../../../../agent-framework/tool-context'
 import { createUpsertLearnedArticleTool, withRecordChip } from '../upsert-learned-article'
 
@@ -102,12 +103,12 @@ describe('validateInputs', () => {
 describe('execute — create path', () => {
   it('files the article under the category and publishes it', async () => {
     const tool = makeTool(makeFakeDb(undefined))
-    const result = await tool.execute({ ...baseArgs, category: 'policies' }, agentDeps)
+    const result = await runTool(tool, { ...baseArgs, category: 'policies' }, agentDeps)
 
     expect(result.success).toBe(true)
     expect(result.output).toMatchObject({ articleId: 'art_new', created: true, published: true })
 
-    const [, kbId, input, authorId] = createArticleSpy.mock.calls[0]
+    const [, kbId, input, authorId] = createArticleSpy.mock.calls[0] ?? []
     expect(kbId).toBe('kb_learned')
     expect(input).toMatchObject({
       articleKind: 'page',
@@ -132,7 +133,7 @@ describe('execute — update path', () => {
     const tool = makeTool(
       makeFakeDb({ id: 'art_42', homeKnowledgeBaseId: 'kb_other', articleKind: 'page' })
     )
-    const result = await tool.execute({ ...baseArgs, articleId: 'art_42' }, agentDeps)
+    const result = await runTool(tool, { ...baseArgs, articleId: 'art_42' }, agentDeps)
     expect(result.success).toBe(false)
     expect(result.error).toContain('not in the learned knowledge base')
     expect(updateArticleDraftSpy).not.toHaveBeenCalled()
@@ -142,7 +143,7 @@ describe('execute — update path', () => {
     const tool = makeTool(
       makeFakeDb({ id: 'art_pol', homeKnowledgeBaseId: 'kb_learned', articleKind: 'category' })
     )
-    const result = await tool.execute({ ...baseArgs, articleId: 'art_pol' }, agentDeps)
+    const result = await runTool(tool, { ...baseArgs, articleId: 'art_pol' }, agentDeps)
     expect(result.success).toBe(false)
     expect(result.error).toContain('category')
   })
@@ -151,12 +152,12 @@ describe('execute — update path', () => {
     const tool = makeTool(
       makeFakeDb({ id: 'art_42', homeKnowledgeBaseId: 'kb_learned', articleKind: 'page' })
     )
-    const result = await tool.execute({ ...baseArgs, articleId: 'art_42' }, agentDeps)
+    const result = await runTool(tool, { ...baseArgs, articleId: 'art_42' }, agentDeps)
 
     expect(result.success).toBe(true)
     expect(result.output).toMatchObject({ articleId: 'art_42', created: false, published: true })
 
-    const [, articleId, fields, editorId, kbId] = updateArticleDraftSpy.mock.calls[0]
+    const [, articleId, fields, editorId, kbId] = updateArticleDraftSpy.mock.calls[0] ?? []
     expect(articleId).toBe('art_42')
     expect(fields).toMatchObject({ title: 'Refund policy' })
     expect(fields.contentJson).toBeTruthy()

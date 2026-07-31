@@ -1,30 +1,29 @@
 // packages/lib/src/ai/kopilot/capabilities/kopilot/__tests__/plan-tools.test.ts
 
+import type { Database } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
+import { createToolContext, runTool } from '../../../../agent-framework/__test-helpers'
 import { KopilotContextStore } from '../../../../agent-framework/context'
 import type { ToolContext } from '../../../../agent-framework/tool-context'
-import type { PlanState } from '../../../types'
+import type { PlanState, PlanStep } from '../../../types'
 import type { GetToolDeps } from '../../types'
 import { createPlanCreateTool } from '../tools/plan-create'
 import { createPlanUpdateStepTool } from '../tools/plan-update-step'
 
-const FAKE_DEPS: GetToolDeps = () =>
-  ({
-    db: {} as never,
-    organizationId: 'org-1',
-    userId: 'user-1',
-    sessionId: 'sess-1',
-  }) as ReturnType<GetToolDeps>
+const FAKE_DEPS: GetToolDeps = () => ({
+  // Plan tools never touch the DB — they only read/write `var:plan` via ctx.context.
+  db: {} as Database,
+  organizationId: 'org-1',
+  userId: 'user-1',
+  sessionId: 'sess-1',
+  sessionContext: {},
+  capabilities: undefined,
+})
 
 /** A ToolContext carrying a real (empty) context store — plan state lives in var:plan. */
 function makeCtx(): ToolContext {
-  const baseCtx = {
-    organizationId: 'org-1',
-    userId: 'user-1',
-    sessionId: 'sess-1',
-    db: {} as never,
-  } as unknown as ToolContext
-  return { ...baseCtx, context: new KopilotContextStore({ ctx: baseCtx }) } as ToolContext
+  const baseCtx = createToolContext({ userId: 'user-1', sessionId: 'sess-1' })
+  return { ...baseCtx, context: new KopilotContextStore({ ctx: baseCtx }) }
 }
 
 describe('plan_create.execute', () => {
@@ -32,25 +31,20 @@ describe('plan_create.execute', () => {
 
   it('returns canonical plan with generated step ids and pending status, and persists var:plan', async () => {
     const ctx = makeCtx()
-    const result = await tool.execute(
+    const result = await runTool(
+      tool,
       { steps: [{ label: 'List tickets' }, { label: 'Reply to each', detail: 'send each one' }] },
       ctx
     )
 
     expect(result.success).toBe(true)
-    const plan = (
-      result.output as { plan: { steps: unknown[]; createdAt: number; updatedAt: number } }
-    ).plan
+    const plan = (result.output as { plan: PlanState }).plan
     expect(plan.steps).toHaveLength(2)
     expect(plan.createdAt).toBeTypeOf('number')
     expect(plan.updatedAt).toBe(plan.createdAt)
 
-    const [s1, s2] = plan.steps as Array<{
-      id: string
-      label: string
-      status: string
-      detail?: string
-    }>
+    const [s1, s2] = plan.steps
+    if (!s1 || !s2) throw new Error('expected two plan steps')
     expect(s1.id).toMatch(/^plan-step-/)
     expect(s2.id).toMatch(/^plan-step-/)
     expect(s1.id).not.toBe(s2.id)
@@ -64,23 +58,23 @@ describe('plan_create.execute', () => {
   })
 
   it('rejects an empty step list', async () => {
-    const result = await tool.execute({ steps: [] }, makeCtx())
+    const result = await runTool(tool, { steps: [] }, makeCtx())
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/at least one step/i)
   })
 
   it('rejects more than 30 steps', async () => {
     const steps = Array.from({ length: 31 }, (_, i) => ({ label: `Step ${i + 1}` }))
-    const result = await tool.execute({ steps }, makeCtx())
+    const result = await runTool(tool, { steps }, makeCtx())
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/exceeds max 30 steps/i)
   })
 
   it('truncates labels longer than 200 chars', async () => {
     const longLabel = 'a'.repeat(250)
-    const result = await tool.execute({ steps: [{ label: longLabel }] }, makeCtx())
+    const result = await runTool(tool, { steps: [{ label: longLabel }] }, makeCtx())
     expect(result.success).toBe(true)
-    const plan = (result.output as { plan: { steps: Array<{ label: string }> } }).plan
+    const plan = (result.output as { plan: PlanState }).plan
     expect(plan.steps[0]?.label).toHaveLength(200)
   })
 })
@@ -107,13 +101,13 @@ describe('plan_update_step.execute', () => {
   it('patches the step status by id, bumps updatedAt, and writes back', async () => {
     const ctx = await ctxWithPlan(basePlan())
     const before = Date.now()
-    const result = await tool.execute({ stepId: 's1', status: 'running' }, ctx)
+    const result = await runTool(tool, { stepId: 's1', status: 'running' }, ctx)
     const after = Date.now()
 
     expect(result.success).toBe(true)
     const plan = (result.output as { plan: PlanState }).plan
-    expect(plan.steps[0]).toEqual({ id: 's1', label: 'A', status: 'running' })
-    expect(plan.steps[1]).toEqual({ id: 's2', label: 'B', status: 'pending' }) // untouched
+    expect(plan.steps[0]).toEqual<PlanStep>({ id: 's1', label: 'A', status: 'running' })
+    expect(plan.steps[1]).toEqual<PlanStep>({ id: 's2', label: 'B', status: 'pending' }) // untouched
     expect(plan.createdAt).toBe(1000)
     expect(plan.updatedAt).toBeGreaterThanOrEqual(before)
     expect(plan.updatedAt).toBeLessThanOrEqual(after)
@@ -127,7 +121,7 @@ describe('plan_update_step.execute', () => {
       createdAt: 1000,
       updatedAt: 1000,
     })
-    const result = await tool.execute({ stepId: 's1', status: 'completed', detail: 'done' }, ctx)
+    const result = await runTool(tool, { stepId: 's1', status: 'completed', detail: 'done' }, ctx)
     expect(result.success).toBe(true)
     expect((result.output as { plan: PlanState }).plan.steps[0]).toMatchObject({
       id: 's1',
@@ -137,7 +131,8 @@ describe('plan_update_step.execute', () => {
   })
 
   it('rejects invalid status values', async () => {
-    const result = await tool.execute(
+    const result = await runTool(
+      tool,
       { stepId: 's1', status: 'bogus' },
       await ctxWithPlan(basePlan())
     )
@@ -146,7 +141,7 @@ describe('plan_update_step.execute', () => {
   })
 
   it('errors with a recoverable message when there is no active plan', async () => {
-    const result = await tool.execute({ stepId: 's1', status: 'running' }, makeCtx())
+    const result = await runTool(tool, { stepId: 's1', status: 'running' }, makeCtx())
     expect(result.success).toBe(false)
     expect(result.output).toEqual({ plan: null })
     expect(result.error).toMatch(/no active plan/i)
@@ -154,7 +149,8 @@ describe('plan_update_step.execute', () => {
 
   it('errors and attaches the current plan for an unknown stepId', async () => {
     const plan = basePlan()
-    const result = await tool.execute(
+    const result = await runTool(
+      tool,
       { stepId: 'bogus', status: 'running' },
       await ctxWithPlan(plan)
     )

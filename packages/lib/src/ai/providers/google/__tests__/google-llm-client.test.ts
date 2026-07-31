@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CLIENT_CONFIG } from '../../../clients/base/types'
 import { GoogleLLMClient } from '../google-llm-client'
+import { firstCallArg } from '../test-helpers'
 
 describe('GoogleLLMClient', () => {
   function createMockApiClient(createMock: ReturnType<typeof vi.fn>) {
@@ -47,14 +48,16 @@ describe('GoogleLLMClient', () => {
       model: 'gemini-2.5-flash',
       messages: [{ role: 'user', content: 'Say hello' }],
       response_format: 'json_schema',
-      json_schema: {
+      // Production (llm-orchestrator) always serializes the schema before it
+      // reaches the client, so the string form is what's under test.
+      json_schema: JSON.stringify({
         type: 'object',
         properties: { message: { type: 'string' } },
         required: ['message'],
-      },
+      }),
     })
 
-    const sent = createMock.mock.calls[0][0]
+    const sent = firstCallArg(createMock, 'chat.completions.create')
     expect(sent.response_format.type).toBe('json_schema')
     expect(sent.response_format.json_schema.strict).toBe(true)
     expect(sent.response_format.json_schema.schema.properties.message).toEqual({ type: 'string' })
@@ -78,7 +81,7 @@ describe('GoogleLLMClient', () => {
       parameters: { temperature: 0.5 },
     })
 
-    const sent = createMock.mock.calls[0][0]
+    const sent = firstCallArg(createMock, 'chat.completions.create')
     expect(sent.temperature).toBe(0.5)
     expect(sent.top_p).toBeDefined()
     expect(sent.max_tokens).toBeDefined()
@@ -114,6 +117,6 @@ describe('GoogleLLMClient', () => {
     } while (!result.done)
 
     expect(result.value.content).toBe('Hello')
-    expect(createMock.mock.calls[0][0].stream).toBe(true)
+    expect(firstCallArg(createMock, 'chat.completions.create').stream).toBe(true)
   })
 })

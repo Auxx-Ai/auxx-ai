@@ -11,7 +11,14 @@ export class Ok<V> {
     return this.value
   }
 
-  public get ok(): boolean {
+  /**
+   * Typed as the literal `true` (not `boolean`) on purpose: it is the
+   * discriminant that makes {@link TypedResult} a discriminated union, so
+   * `if (result.ok)` narrows to `Ok<V>` and `result.value` is `V` rather than
+   * `V | undefined`. Widening this back to `boolean` silently un-narrows every
+   * `.value` / `.error` access in the codebase.
+   */
+  public get ok(): true {
     return true
   }
 }
@@ -29,7 +36,8 @@ export class ErrorResult<E extends Error> {
     throw this.error
   }
 
-  public get ok(): boolean {
+  /** Literal `false` — see {@link Ok.ok}. */
+  public get ok(): false {
     return false
   }
 }

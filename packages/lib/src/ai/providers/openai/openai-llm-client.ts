@@ -117,7 +117,10 @@ export class OpenAILLMClient extends LLMClient {
       // Spread order matters: restParams may contain response_format from handleResponseFormat,
       // so it must come AFTER parameters to avoid model defaults overwriting structured output config
       const { parameters, ...restParams } = processedParams
-      const flattenedParams = {
+      // Untyped on purpose: this is the outbound wire payload, assembled from
+      // provider-neutral params and then pruned of keys the Chat Completions
+      // API rejects (see the deletes below).
+      const flattenedParams: Record<string, any> = {
         ...parameters, // Spread parameters (model defaults) first
         ...restParams, // Then overlay rest (includes response_format from handleResponseFormat)
         stream: true,
@@ -158,8 +161,13 @@ export class OpenAILLMClient extends LLMClient {
             : flattenedParams.response_format,
       })
 
+      // The cast picks the SDK's *streaming* `create` overload. Without it the
+      // payload's `Record<string, any>` type resolves to the non-streaming
+      // overload and the awaited value is typed `ChatCompletion` — not iterable.
       const stream = await this.createWithReasoningFallback(flattenedParams, (payload) =>
-        this.apiClient.chat.completions.create(payload as any)
+        this.apiClient.chat.completions.create(
+          payload as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming
+        )
       )
 
       for await (const chunk of stream) {
@@ -170,9 +178,9 @@ export class OpenAILLMClient extends LLMClient {
           if (finished) continue
         }
 
-        if (chunk.choices.length === 0) continue
-
         const delta = chunk.choices[0]
+        if (!delta) continue
+
         const typedDelta = delta.delta as ReasoningDelta
         const deltaContent = typedDelta.content || ''
         const deltaReasoningContent = typedDelta.reasoning_content || ''
@@ -236,7 +244,9 @@ export class OpenAILLMClient extends LLMClient {
           model: chunk.model,
           content: deltaContent,
           delta: deltaContent,
-          finishReason: finishReason,
+          // OpenAI sends `null` on every non-terminal chunk; the neutral chunk
+          // type uses absence for "not finished".
+          finishReason: finishReason ?? undefined,
           toolCalls: finishReason ? toolCalls : [],
           usage: finishReason ? finalUsage : undefined,
           reasoning_delta: deltaReasoningContent || undefined,
@@ -279,7 +289,6 @@ export class OpenAILLMClient extends LLMClient {
         model: params.model,
         content: '',
         delta: '',
-        finishReason: null,
         toolCalls: undefined,
         usage: finalUsage,
         metadata: {
@@ -308,7 +317,8 @@ export class OpenAILLMClient extends LLMClient {
     // Spread order matters: restParams may contain response_format from handleResponseFormat,
     // so it must come AFTER parameters to avoid model defaults overwriting structured output config
     const { parameters, ...restParams } = params
-    const flattenedParams = {
+    // Untyped on purpose — see the note in streamInvoke.
+    const flattenedParams: Record<string, any> = {
       ...parameters, // Spread parameters (model defaults) first
       ...restParams, // Then overlay rest (includes response_format from handleResponseFormat)
     }
@@ -343,7 +353,9 @@ export class OpenAILLMClient extends LLMClient {
     })
 
     const completion = await this.createWithReasoningFallback(flattenedParams, (payload) =>
-      this.apiClient.chat.completions.create(payload as any)
+      this.apiClient.chat.completions.create(
+        payload as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming
+      )
     )
 
     // Check for refusal (OpenAI structured outputs feature)
@@ -692,7 +704,8 @@ export class OpenAILLMClient extends LLMClient {
 
   getBaseModel(model: string): string {
     if (model.startsWith('ft:')) {
-      return model.split(':')[1]
+      // ft:<base-model>:<org>::<id> — fall back to the raw id if it's malformed.
+      return model.split(':')[1] || model
     }
     return model
   }
@@ -812,11 +825,22 @@ export class OpenAILLMClient extends LLMClient {
     }
   }
 
+  /**
+   * Rewrite multi-modal message content into OpenAI Chat Completions wire parts
+   * (`text` / `image_url` / `file`).
+   *
+   * The result is no longer provider-neutral: `content` now holds SDK payload
+   * objects, not `MultiModalContent`. It is still typed `Message[]` because the
+   * remaining pipeline steps (`clearIllegalPromptMessages`,
+   * `prepareReasoningContent`) only read `role` and `reasoning_content` and pass
+   * `content` through untouched, and the list goes straight onto the request
+   * body from there.
+   */
   private async processMultiModalContentInternal(messages: Message[]): Promise<Message[]> {
     // Process multi-modal content for OpenAI format
     return messages.map((message) => {
       if (Array.isArray(message.content)) {
-        const openAIContent = message.content.map((item) => {
+        const openAIContent: unknown[] = message.content.map((item) => {
           switch (item.type) {
             case 'text':
               return { type: 'text', text: item.data }
@@ -844,7 +868,7 @@ export class OpenAILLMClient extends LLMClient {
           }
         })
 
-        return { ...message, content: openAIContent }
+        return { ...message, content: openAIContent as MultiModalContent[] }
       }
 
       return message

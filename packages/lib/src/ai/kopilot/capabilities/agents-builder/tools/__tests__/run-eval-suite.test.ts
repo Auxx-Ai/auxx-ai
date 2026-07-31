@@ -2,7 +2,7 @@
 
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import type { AgentDeps } from '../../../../../agent-framework/types'
+import { createToolContext, runTool } from '../../../../../agent-framework/__test-helpers'
 import type { GetToolDeps } from '../../../types'
 
 // Force the auth guard to pass so we can exercise the tool's own logic.
@@ -29,7 +29,7 @@ const getDeps: GetToolDeps = () =>
     userId: 'u-1',
     sessionId: 's-1',
   }) as never
-const agentDeps: AgentDeps = { organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' }
+const ctx = createToolContext({ organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' })
 const tool = createRunEvalSuiteTool(getDeps)
 
 beforeEach(() => {
@@ -47,7 +47,7 @@ describe('run_eval_suite', () => {
   })
 
   it('starts the suite for the session agent and returns a taskNotification ref', async () => {
-    const result = await tool.execute({ useDraft: true } as never, agentDeps)
+    const result = await runTool(tool, { useDraft: true }, ctx)
     expect(result.success).toBe(true)
     expect(startMock).toHaveBeenCalledOnce()
     expect(startMock.mock.calls[0]![0]).toMatchObject({
@@ -71,7 +71,7 @@ describe('run_eval_suite', () => {
   })
 
   it('passes procedureId and filters caseIds to strings', async () => {
-    await tool.execute({ procedureId: 'p1', caseIds: ['c1', 42, '', 'c2'] } as never, agentDeps)
+    await runTool(tool, { procedureId: 'p1', caseIds: ['c1', 42, '', 'c2'] }, ctx)
     expect(startMock.mock.calls[0]![0]).toMatchObject({
       procedureId: 'p1',
       caseIds: ['c1', 'c2'],
@@ -80,7 +80,7 @@ describe('run_eval_suite', () => {
 
   it('surfaces the guard failure without starting anything', async () => {
     guardMock.mockResolvedValueOnce({ ok: false, error: 'Not allowed' })
-    const result = await tool.execute({} as never, agentDeps)
+    const result = await runTool(tool, {}, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toBe('Not allowed')
     expect(startMock).not.toHaveBeenCalled()
@@ -90,7 +90,7 @@ describe('run_eval_suite', () => {
     startMock.mockResolvedValueOnce(
       err({ code: 'EVAL_VALIDATION', message: 'No eval cases selected' })
     )
-    const result = await tool.execute({} as never, agentDeps)
+    const result = await runTool(tool, {}, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('No eval cases selected')
   })

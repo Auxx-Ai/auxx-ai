@@ -266,8 +266,8 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
           subject: t.subject,
           status: t.status,
           assigneeId: t.assigneeId,
-          lastMessageAt:
-            t.lastMessageAt instanceof Date ? t.lastMessageAt.toISOString() : t.lastMessageAt,
+          // `ThreadMeta.lastMessageAt` is already an ISO string.
+          lastMessageAt: t.lastMessageAt,
           messageCount: t.messageCount,
           isUnread: t.isUnread,
           tagIds: instanceIds,

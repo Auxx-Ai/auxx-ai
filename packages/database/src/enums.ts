@@ -532,7 +532,13 @@ export const FileVisibilityValues = ['PUBLIC', 'PRIVATE', 'INTERNAL'] as const
 
 export const INVENTORY_POLICYValues = ['CONTINUE', 'DENY'] as const
 
-export const IdentifierTypeValues = ['EMAIL', 'PHONE', 'FACEBOOK_PSID', 'INSTAGRAM_IGSID'] as const
+export const IdentifierTypeValues = [
+  'EMAIL',
+  'PHONE',
+  'FACEBOOK_PSID',
+  'INSTAGRAM_IGSID',
+  'CHAT_VISITOR',
+] as const
 
 export const InboxStatusValues = ['ACTIVE', 'ARCHIVED', 'PAUSED'] as const
 
@@ -1213,6 +1219,7 @@ export const IdentifierType = {
   PHONE: 'PHONE',
   FACEBOOK_PSID: 'FACEBOOK_PSID',
   INSTAGRAM_IGSID: 'INSTAGRAM_IGSID',
+  CHAT_VISITOR: 'CHAT_VISITOR',
 } as const
 
 export const InboxStatus = {

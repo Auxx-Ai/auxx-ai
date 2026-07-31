@@ -48,7 +48,11 @@ export class CohereTextEmbeddingClient extends TextEmbeddingClient {
             truncate: 'END', // Truncate from end if text is too long
           })
 
-          const embeddings = response.embeddings.float || []
+          // `embeddingTypes: ['float']` puts the vectors under `.float`; the SDK
+          // still types the field as the legacy bare `number[][]` union.
+          const embeddings = Array.isArray(response.embeddings)
+            ? response.embeddings
+            : (response.embeddings.float ?? [])
           const usage = this.convertCohereUsage(response.meta)
 
           return {

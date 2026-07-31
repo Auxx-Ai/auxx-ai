@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/tasks/tools/create-task.ts
 
-import { toActorId } from '@auxx/types/actor'
+import { type ActorId, toActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
 import type { AbsoluteDate, RelativeDate } from '@auxx/types/task'
 import { z } from 'zod'
 import { createTaskService } from '../../../../../tasks/task-service'
@@ -174,10 +175,13 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
       const description = args.description as string | undefined
       const deadline = args.deadline as AbsoluteDate | RelativeDate | undefined
       const priority = args.priority as 'low' | 'medium' | 'high' | undefined
-      const assigneeIds = (args.assigneeIds as string[] | undefined) ?? [
+      // Both arrays were canonicalized + brand-checked by `validateInputs`
+      // (`normalizeActorIdArrayArg` / `normalizeRecordIdArrayArg`); the engine
+      // hands `args` back as an untyped bag, so the brands are re-asserted here.
+      const assigneeIds = (args.assigneeIds as ActorId[] | undefined) ?? [
         toActorId('user', agentDeps.userId),
       ]
-      const linkedRecordIds = args.linkedRecordIds as string[] | undefined
+      const linkedRecordIds = args.linkedRecordIds as RecordId[] | undefined
 
       // Bundle-approval replay (Today/AI suggestions) tags 'ai'; every other
       // caller (live Kopilot chat, headless capture-mode prediction) is 'kopilot'.

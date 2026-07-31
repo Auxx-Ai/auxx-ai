@@ -4,6 +4,21 @@ import type { Message } from '../../clients/base/types'
 import { OpenAILLMClient } from '../openai/openai-llm-client'
 
 /**
+ * Index of the last assistant message carrying `reasoning_content`, or -1.
+ *
+ * A manual reverse scan rather than `Array.prototype.findLastIndex` — the
+ * package compiles against the shared `target: ES2022` lib, which does not
+ * declare the ES2023 array methods.
+ */
+function findLastAssistantWithReasoningIndex(messages: Message[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message?.role === 'assistant' && message.reasoning_content) return i
+  }
+  return -1
+}
+
+/**
  * DeepSeek LLM client that extends OpenAI's client.
  *
  * DeepSeek's API is OpenAI-compatible, but the `deepseek-reasoner` model
@@ -41,9 +56,7 @@ export class DeepSeekLLMClient extends OpenAILLMClient {
    *   [user, assistant(reasoning), user]              → turn closed,  strip
    */
   protected override prepareReasoningContent(messages: Message[]): Message[] {
-    const lastAssistantWithReasoningIdx = messages.findLastIndex(
-      (m) => m.role === 'assistant' && m.reasoning_content
-    )
+    const lastAssistantWithReasoningIdx = findLastAssistantWithReasoningIndex(messages)
 
     if (lastAssistantWithReasoningIdx === -1) return messages
 

@@ -205,7 +205,8 @@ function buildOutline(content: ArticleNodeJSON[]): BlockOutlineEntry[] {
       pushTable(node)
       for (const row of node.content) {
         for (const cell of row.content) {
-          for (const block of cell.content) pushBlock(block, 'tableCell', node.attrs?.id)
+          for (const block of cell.content)
+            pushBlock(block, 'tableCell', node.attrs?.id ?? undefined)
         }
       }
     }

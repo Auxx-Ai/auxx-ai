@@ -8,7 +8,7 @@ import { FieldValueService } from '../../../../../field-values/field-value-servi
 // only `errors`, the RecordId parser and types; the picker sits behind a lazy
 // `import()` inside it and is only paid for on the def-denied path.
 import { assertRecordRowsEditableWithDb } from '../../../../../resources/crud/record-row-access'
-import { getDefinitionId, type RecordId } from '../../../../../resources/resource-id'
+import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArrayArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -120,7 +120,16 @@ Example (ids match list_entity_fields output):
     },
     execute: async (args, agentDeps) => {
       const { db, capabilities } = getDeps()
-      const allRecordIds = args.recordIds as string[]
+      const rawRecordIds: unknown[] = Array.isArray(args.recordIds) ? args.recordIds : []
+      const allRecordIds = rawRecordIds.filter(isRecordId)
+      if (allRecordIds.length !== rawRecordIds.length) {
+        return {
+          success: false,
+          output: null,
+          error:
+            "Every recordIds entry must have the form '<entityDefinitionId>:<entityInstanceId>'.",
+        }
+      }
       const values = args.values as Array<{ fieldId: string; value: unknown }>
 
       // inputAmendment._approvedRecordIds filters which records to actually update
@@ -129,7 +138,8 @@ Example (ids match list_entity_fields output):
         ? allRecordIds.filter((id) => approvedIds.includes(id))
         : allRecordIds
 
-      if (recordIds.length === 0) {
+      const firstRecordId = recordIds[0]
+      if (!firstRecordId) {
         return {
           success: false,
           output: null,
@@ -178,10 +188,9 @@ Example (ids match list_entity_fields output):
         organizationId: agentDeps.organizationId,
         userId: agentDeps.userId,
         capabilities,
-        recordIds: recordIds as RecordId[],
+        recordIds,
       })
 
-      const firstRecordId = recordIds[0] as string
       const resource = await findCachedResource(
         agentDeps.organizationId,
         getDefinitionId(firstRecordId)
@@ -224,7 +233,7 @@ Example (ids match list_entity_fields output):
 
       try {
         const result = await service.setBulkValues({
-          recordIds: recordIds as `${string}:${string}`[],
+          recordIds,
           values: resolvedPairs,
         })
 

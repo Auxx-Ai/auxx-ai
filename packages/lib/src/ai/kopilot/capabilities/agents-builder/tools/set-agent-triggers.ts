@@ -155,8 +155,7 @@ has two, send all three in the call.`,
       // slugs resolve through the org resources cache so the LLM never has
       // to pass cuid-style ids.
       const resolved: Array<{ input: AgentTriggerInput; instructions?: string }> = []
-      for (let i = 0; i < rawTriggers.length; i++) {
-        const t = rawTriggers[i]
+      for (const [i, t] of rawTriggers.entries()) {
         const built = await buildTriggerInput(t, agentDeps.organizationId, i)
         if ('error' in built) return { success: false, output: null, error: built.error }
         resolved.push({ input: built.input, instructions: built.instructions })

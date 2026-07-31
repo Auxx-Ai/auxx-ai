@@ -5,6 +5,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CLIENT_CONFIG } from '../../../clients/base/types'
 import { AnthropicLLMClient, STRUCTURED_OUTPUT_TOOL_NAME } from '../anthropic-llm-client'
 
+/** Outbound payload of the first recorded `messages.create()` call. */
+function sentPayload(mock: { mock: { calls: unknown[][] } }): Record<string, any> {
+  const call = mock.mock.calls[0]
+  if (!call) throw new Error('expected messages.create() to have been called')
+  return call[0] as Record<string, any>
+}
+
 /**
  * Integration tests for the Anthropic LLM client.
  * These hit the real Anthropic API — requires ANTHROPIC_API_KEY in .env.
@@ -67,9 +74,12 @@ describe.skipIf(!apiKey)('AnthropicLLMClient integration', () => {
 
     expect(response.tool_calls).toBeDefined()
     expect(response.tool_calls!.length).toBeGreaterThan(0)
-    expect(response.tool_calls![0].function.name).toBe('get_weather')
 
-    const args = JSON.parse(response.tool_calls![0].function.arguments as string)
+    const [toolCall] = response.tool_calls ?? []
+    if (!toolCall) throw new Error('expected at least one tool call')
+    expect(toolCall.function.name).toBe('get_weather')
+
+    const args = JSON.parse(toolCall.function.arguments as string)
     expect(args.location).toBeTruthy()
   }, 15_000)
 
@@ -187,7 +197,7 @@ describe('AnthropicLLMClient sampling-parameter stripping', () => {
       parameters: { max_tokens: 32, temperature: 0, top_p: 0.9 },
     })
 
-    const sent = create.mock.calls[0][0]
+    const sent = sentPayload(create)
     expect(sent.temperature).toBeUndefined()
     expect(sent.top_p).toBeUndefined()
   })
@@ -202,7 +212,7 @@ describe('AnthropicLLMClient sampling-parameter stripping', () => {
         parameters: { max_tokens: 32, temperature: 0.7, top_p: 0.95 },
       })
 
-      const sent = create.mock.calls[0][0]
+      const sent = sentPayload(create)
       expect(sent.temperature, model).toBeUndefined()
       expect(sent.top_p, model).toBeUndefined()
     }
@@ -217,7 +227,7 @@ describe('AnthropicLLMClient sampling-parameter stripping', () => {
       parameters: { max_tokens: 32, temperature: 0.5, top_p: 0.9 },
     })
 
-    const sent = create.mock.calls[0][0]
+    const sent = sentPayload(create)
     expect(sent.temperature).toBe(0.5)
     expect(sent.top_p).toBe(0.9)
   })
@@ -274,7 +284,7 @@ describe('AnthropicLLMClient forced tool-use structured output', () => {
       json_schema: JSON.stringify(schema),
     })
 
-    const sent = create.mock.calls[0][0]
+    const sent = sentPayload(create)
     expect(sent.tools).toHaveLength(1)
     expect(sent.tools[0].name).toBe(STRUCTURED_OUTPUT_TOOL_NAME)
     expect(sent.tools[0].input_schema.type).toBe('object')
@@ -344,7 +354,7 @@ describe('AnthropicLLMClient forced tool-use structured output', () => {
       json_schema: JSON.stringify(schema),
     })
 
-    const sent = create.mock.calls[0][0]
+    const sent = sentPayload(create)
     // User tools kept as-is; no synthetic tool, no forced tool_choice.
     expect(sent.tools).toHaveLength(1)
     expect(sent.tools[0].name).toBe('get_weather')
@@ -366,7 +376,7 @@ describe('AnthropicLLMClient forced tool-use structured output', () => {
       json_schema: JSON.stringify({ type: 'string' }),
     })
 
-    const sent = create.mock.calls[0][0]
+    const sent = sentPayload(create)
     expect(sent.tools).toBeUndefined()
     expect(sent.tool_choice).toBeUndefined()
 

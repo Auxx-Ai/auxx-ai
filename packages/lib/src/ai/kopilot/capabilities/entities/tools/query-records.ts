@@ -8,6 +8,7 @@ import {
   UnifiedCrudHandler,
 } from '../../../../../resources/crud'
 import type { TableId } from '../../../../../resources/registry/field-registry'
+import type { ResourceField } from '../../../../../resources/registry/field-types'
 import type { Resource } from '../../../../../resources/registry/types'
 import { toRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -377,23 +378,23 @@ function extractKeyFields(
   let extras = 0
 
   // 1. ALWAYS include every filtered field, even if the stored value is null.
-  const filterFieldKeys = new Set(filters.map((f) => f.field.split('.')[0]))
+  const filterFieldKeys = new Set(
+    filters.map((f) => f.field.split('.')[0]).filter((k): k is string => Boolean(k))
+  )
   for (const key of filterFieldKeys) {
-    const field = resource.fields.find((f) => (f.systemAttribute ?? f.key) === key)
-    const label = field?.label ?? key
-    result[label] = data[key] ?? null
+    const field = resource.fields.find((f) => f.systemAttribute === key || f.key === key)
+    result[field?.label ?? key] = readRowValue(data, field, key) ?? null
   }
 
   // 2. Status/stage field (commonly useful)
-  const statusField = resource.fields.find(
-    (f) => f.systemAttribute === 'status' || f.key === 'status' || f.key === 'stage'
-  )
+  const statusField = resource.fields.find((f) => f.key === 'status' || f.key === 'stage')
   if (
     extras < MAX_EXTRAS &&
     statusField &&
-    !filterFieldKeys.has(statusField.systemAttribute ?? statusField.key)
+    !filterFieldKeys.has(statusField.key) &&
+    !(statusField.systemAttribute && filterFieldKeys.has(statusField.systemAttribute))
   ) {
-    const value = data[statusField.systemAttribute ?? statusField.key]
+    const value = readRowValue(data, statusField, statusField.key)
     if (value != null) {
       result[statusField.label] = value
       extras++
@@ -406,4 +407,24 @@ function extractKeyFields(
   }
 
   return result
+}
+
+/**
+ * Read one field's value out of a picker row.
+ *
+ * `RecordPickerItem.data` is the raw row, so a system resource is keyed by its
+ * DB column / field `key` (`status`), never by the namespaced `systemAttribute`
+ * (`ticket_status`). The LLM, meanwhile, may have named the field by either.
+ * Try every alias the field carries rather than committing to one.
+ */
+function readRowValue(
+  data: Record<string, unknown>,
+  field: ResourceField | undefined,
+  fallbackKey: string
+): unknown {
+  const aliases = field ? [field.systemAttribute, field.key, field.dbColumn] : [fallbackKey]
+  for (const alias of aliases) {
+    if (alias && data[alias] !== undefined) return data[alias]
+  }
+  return undefined
 }

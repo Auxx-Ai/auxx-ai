@@ -60,6 +60,7 @@ export function resolveUtilityModel(primary: ResolvedModel): ResolvedModel {
   )
 
   const cheapest = candidates[0]
+  if (!cheapest) return primary
   // Primary is already at/below the cheapest sibling → keep it.
   if (blendedCostPer1kTokens(cheapest.caps.costPer1kTokens!) >= primaryBlended) return primary
   return { provider: primary.provider, model: cheapest.id }

@@ -171,7 +171,6 @@ export class AnthropicLLMClient extends LLMClient {
                 model: params.model,
                 content: fullContent,
                 delta,
-                finishReason: null,
                 toolCalls: [],
                 metadata: {
                   chunkIndex: chunkCount,
@@ -238,7 +237,9 @@ export class AnthropicLLMClient extends LLMClient {
       // without combing through delta events.
       if (stopReason === 'max_tokens') {
         const truncatedToolNames = toolCalls
-          .filter((tc) => !isValidJson(tc.function.arguments))
+          .filter(
+            (tc) => typeof tc.function.arguments === 'string' && !isValidJson(tc.function.arguments)
+          )
           .map((tc) => tc.function.name)
         this.logger.warn('Anthropic stream truncated by max_tokens', {
           model: params.model,
@@ -434,7 +435,7 @@ export class AnthropicLLMClient extends LLMClient {
         structuredInstruction = this.createSchemaBasedInstruction(schema)
       } catch (error) {
         this.logger.warn('Failed to parse JSON schema, falling back to basic JSON', {
-          error: error.message,
+          error: error instanceof Error ? error.message : String(error),
           schema: params.json_schema,
         })
         structuredInstruction = this.createBasicJsonInstruction()
@@ -516,12 +517,14 @@ export class AnthropicLLMClient extends LLMClient {
       const updatedMessages = [...messages]
       const systemMessage = updatedMessages[systemMessageIndex]
 
-      updatedMessages[systemMessageIndex] = {
-        ...systemMessage,
-        content:
-          typeof systemMessage.content === 'string'
-            ? systemMessage.content + instruction
-            : systemMessage.content, // For multi-modal content, we'd need more complex handling
+      if (systemMessage) {
+        updatedMessages[systemMessageIndex] = {
+          ...systemMessage,
+          content:
+            typeof systemMessage.content === 'string'
+              ? systemMessage.content + instruction
+              : systemMessage.content, // For multi-modal content, we'd need more complex handling
+        }
       }
 
       return updatedMessages
@@ -831,7 +834,7 @@ export class AnthropicLLMClient extends LLMClient {
         const firstSystemMessage = systemMessages[0]
         anthropicMessages.push({
           role: 'user',
-          content: this.convertContentToAnthropicFormat(firstSystemMessage.content),
+          content: this.convertContentToAnthropicFormat(firstSystemMessage?.content ?? null),
         })
 
         // Remove the converted message from system message if there were multiple
@@ -864,7 +867,14 @@ export class AnthropicLLMClient extends LLMClient {
   /**
    * Convert content to Anthropic format (supports multi-modal)
    */
-  private convertContentToAnthropicFormat(content: string | MultiModalContent[]): any {
+  private convertContentToAnthropicFormat(content: string | MultiModalContent[] | null): any {
+    // `Message.content` is nullable: an assistant turn that only carries
+    // tool_calls has none. Those are handled by the tool_use branch above, but a
+    // null-content message with no tool_calls still reaches here — return an
+    // empty string rather than dereferencing null.
+    if (content == null) {
+      return ''
+    }
     if (typeof content === 'string') {
       return content
     }
@@ -1091,7 +1101,8 @@ export class AnthropicLLMClient extends LLMClient {
   /**
    * Extract text content from multi-modal content array
    */
-  private extractTextFromContent(content: MultiModalContent[]): string {
+  private extractTextFromContent(content: MultiModalContent[] | null): string {
+    if (!content) return ''
     return content
       .filter((item) => item.type === 'text')
       .map((item) => item.data)
@@ -1204,8 +1215,9 @@ export class AnthropicLLMClient extends LLMClient {
           if (Array.isArray(msg.content)) {
             const filteredContent = msg.content.filter((content) => content.type !== 'image')
             // Convert back to string if only text content remains
-            if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
-              return { ...msg, content: filteredContent[0].data }
+            const onlyItem = filteredContent.length === 1 ? filteredContent[0] : undefined
+            if (onlyItem?.type === 'text') {
+              return { ...msg, content: onlyItem.data }
             }
             return { ...msg, content: filteredContent }
           }
@@ -1240,8 +1252,9 @@ export class AnthropicLLMClient extends LLMClient {
                 ],
               }
             }
-            if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
-              return { ...msg, content: filteredContent[0].data }
+            const onlyItem = filteredContent.length === 1 ? filteredContent[0] : undefined
+            if (onlyItem?.type === 'text') {
+              return { ...msg, content: onlyItem.data }
             }
             return { ...msg, content: filteredContent }
           }

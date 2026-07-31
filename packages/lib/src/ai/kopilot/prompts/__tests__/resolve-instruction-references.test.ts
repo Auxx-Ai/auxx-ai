@@ -15,6 +15,7 @@ const toolCatalog: FlatToolCatalogEntry[] = [
     toolsetIconId: 'message-square',
     toolsetColor: 'teal',
     path: ['Auxx.ai', 'Comments'],
+    toolsetImplicit: false,
   },
 ]
 
@@ -24,6 +25,7 @@ const toolsetCatalog: ToolsetCatalogEntry[] = [
     label: 'Comments — Write',
     appId: 'auxx',
     isDefault: false,
+    implicit: false,
     tools: [{ name: 'create_note', displayName: 'Add note', description: 'Add a note.' }],
   },
   {
@@ -31,6 +33,7 @@ const toolsetCatalog: ToolsetCatalogEntry[] = [
     label: 'Mail — Compose',
     appId: 'auxx',
     isDefault: false,
+    implicit: false,
     tools: [
       { name: 'reply_to_thread', displayName: 'Reply to thread', description: 'Reply.' },
       {

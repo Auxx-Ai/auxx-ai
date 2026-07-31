@@ -53,8 +53,11 @@ vi.mock('../../../../../../resources/crud', () => ({
   },
 }))
 
+import type { Rung } from '@auxx/database/enums'
 import { ForbiddenError } from '../../../../../../errors'
 import type { CapabilityView } from '../../../../../../permissions/capabilities/capability-view'
+import { Level } from '../../../../../../permissions/capabilities/registry'
+import { satisfiesRung } from '../../../../../../permissions/capabilities/rung'
 import type { ToolContext } from '../../../../../agent-framework/tool-context'
 import type { AgentToolResult } from '../../../../../agent-framework/types'
 import { createCreateEntityTool } from '../create-entity'
@@ -63,10 +66,11 @@ import { createCreateEntityTool } from '../create-entity'
 function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityView {
   const yes = () => true
   const noop = () => {}
-  return {
+  const view: CapabilityView = {
     can: yes,
     has: yes,
     assert: noop,
+    areaLevel: () => Level.Full,
     canWriteEntity: yes,
     assertWriteEntity: noop,
     canEditEntity: yes,
@@ -84,8 +88,15 @@ function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityVi
     assertViewInstance: noop,
     assertEditInstance: noop,
     assertAdminInstance: noop,
+    hasDefPresence: (id: string) => view.canViewEntity(id),
+    hasRecordGrantsOn: () => false,
+    recordDefRung: (id: string) => (view.canViewEntity(id) ? 'admin' : undefined),
+    recordAccessAt: (id: string) => (view.canViewEntity(id) ? 'admin' : 'none'),
+    canDeleteRecordAt: (access: Rung) => satisfiesRung(access, 'admin'),
+    canEditRecordAt: (access: Rung) => satisfiesRung(access, 'edit'),
     ...overrides,
   }
+  return view
 }
 
 function runTool(capabilities?: CapabilityView) {

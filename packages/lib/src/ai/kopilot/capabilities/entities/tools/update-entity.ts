@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
-import { getDefinitionId } from '../../../../../resources/resource-id'
+import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -91,7 +91,14 @@ Example (ids match list_entity_fields output):
     },
     execute: async (args, agentDeps) => {
       const { db, capabilities } = getDeps()
-      const recordId = args.recordId as string
+      const recordId = args.recordId
+      if (!isRecordId(recordId)) {
+        return {
+          success: false,
+          output: null,
+          error: "recordId must have the form '<entityDefinitionId>:<entityInstanceId>'.",
+        }
+      }
 
       // The LLM may nest field values under `values` or flatten them at the top level.
       const values =

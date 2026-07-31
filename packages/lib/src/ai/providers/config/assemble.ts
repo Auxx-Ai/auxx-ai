@@ -323,8 +323,11 @@ function buildCustomConfiguration(
   const customModels: CustomModelConfiguration[] = modelConfigurations.map((mc) => ({
     model: mc.model,
     modelType: mc.modelType as ModelType,
-    credentials: undefined,
-    parameters: mc.config ? [mc.config] : [],
+    // Model rows carry params/enabled only — the BYO key lives on the CUSTOM
+    // provider record in the unified store, never on the model row.
+    credentials: {},
+    // `config` is a jsonb column, so Drizzle types it `unknown`.
+    parameters: (mc.config as Record<string, any> | null) ?? undefined,
   }))
 
   return { provider: customProvider, models: customModels }
@@ -335,22 +338,26 @@ function buildCustomConfiguration(
  * model type. Credentials live in the unified store; this display shape carries identity only.
  */
 function buildModelSettings(loadBalancingConfigs: LoadBalancingConfigModel[]): ModelSettings[] {
+  // Group on a composite key but keep the identity on the rows — model ids can
+  // themselves contain ':' (e.g. `llama3:8b`), so the key is not safely splittable.
   const modelGroups = new Map<string, LoadBalancingConfigModel[]>()
   for (const config of loadBalancingConfigs) {
-    const key = `${config.model}:${config.modelType}`
-    if (!modelGroups.has(key)) modelGroups.set(key, [])
-    modelGroups.get(key)!.push(config)
+    const key = `${config.model} ${config.modelType}`
+    const group = modelGroups.get(key)
+    if (group) group.push(config)
+    else modelGroups.set(key, [config])
   }
 
   const modelSettings: ModelSettings[] = []
-  for (const [key, configs] of modelGroups) {
-    const [model, modelType] = key.split(':')
+  for (const configs of modelGroups.values()) {
+    const [first] = configs
+    if (!first) continue
     const loadBalancingConfigurations: ModelLoadBalancingConfiguration[] = configs.map(
       (config) => ({ id: config.id, name: config.name, credentials: {} })
     )
     modelSettings.push({
-      model,
-      modelType: modelType as ModelType,
+      model: first.model,
+      modelType: first.modelType as ModelType,
       enabled: configs.every((c) => c.enabled),
       loadBalancingConfigs: loadBalancingConfigurations,
     })
@@ -516,19 +523,27 @@ function createCustomModelCapabilities(
 ): ModelCapabilities {
   return {
     provider,
+    modelId: modelName,
     displayName: modelName,
     icon: providerCapabilities?.icon || '',
     color: providerCapabilities?.color || '',
     modelType,
     fetchFrom: FetchFrom.CUSTOMIZABLE_MODEL,
-    contextLength: undefined,
-    maxTokens: undefined,
+    // 0 means "unknown" — every consumer guards on truthiness before using these.
+    contextLength: 0,
+    maxTokens: 0,
     features: [],
-    supports: {},
-    costPer1kTokens: undefined,
+    // Nothing is known about a model that isn't in the registry, so every
+    // capability stays off until the user's own registry entry says otherwise.
+    supports: {
+      streaming: false,
+      structured: false,
+      vision: false,
+      toolCalling: false,
+      systemMessages: false,
+      fileInput: false,
+    },
     deprecated: false,
-    releaseDate: undefined,
-    description: undefined,
     parameterRules: [],
-  } as ModelCapabilities
+  }
 }

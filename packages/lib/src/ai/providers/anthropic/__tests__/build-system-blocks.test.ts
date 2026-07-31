@@ -30,8 +30,7 @@ describe('buildSystemBlocks', () => {
     const input = `static-tier\n\n${SENTINEL}\n\norg-tier\n\n${SENTINEL}`
     const out = buildSystemBlocks(input)
     expect(out).toHaveLength(2)
-    expect(out[0].cache_control).toEqual({ type: 'ephemeral' })
-    expect(out[1].cache_control).toEqual({ type: 'ephemeral' })
+    expect(out.map((b) => b.cache_control)).toEqual([{ type: 'ephemeral' }, { type: 'ephemeral' }])
   })
 
   it('caps cache markers at 4 (Anthropic API limit)', () => {

@@ -85,20 +85,14 @@ export function renderSectionsToBlocks(
 
   // Mark the last block of each cached tier with an ephemeral cache marker.
   for (const tier of ['static', 'org'] as const) {
-    const lastIdx = lastIndexOf(blocks, (b) => b.stability === tier)
-    if (lastIdx >= 0) {
-      blocks[lastIdx] = { ...blocks[lastIdx], cache: { type: 'ephemeral' } }
+    const lastIdx = blocks.reduce((acc, b, i) => (b.stability === tier ? i : acc), -1)
+    const last = blocks[lastIdx]
+    if (last) {
+      blocks[lastIdx] = { ...last, cache: { type: 'ephemeral' } }
     }
   }
 
   return blocks
-}
-
-function lastIndexOf<T>(arr: readonly T[], pred: (x: T) => boolean): number {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (pred(arr[i])) return i
-  }
-  return -1
 }
 
 /**
@@ -161,7 +155,7 @@ export function summarizePromptBlocks(blocks: readonly PromptBlock[]): {
   // Cached = every block up to and including the last block carrying a cache
   // marker (the cacheable prefix), since cache breakpoints are cumulative.
   const lastCachedIdx = (() => {
-    for (let i = tiers.length - 1; i >= 0; i--) if (tiers[i].cached) return i
+    for (let i = tiers.length - 1; i >= 0; i--) if (tiers[i]?.cached) return i
     return -1
   })()
   const cachedChars =

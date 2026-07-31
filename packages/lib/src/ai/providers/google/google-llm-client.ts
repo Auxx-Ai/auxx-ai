@@ -62,7 +62,10 @@ export class GoogleLLMClient extends OpenAILLMClient {
     const normalized: Record<string, any> = {}
 
     for (const [key, value] of Object.entries(parameters)) {
-      const translated = key in PARAM_TRANSLATIONS ? PARAM_TRANSLATIONS[key] : key
+      // `undefined` means "not in the table" (pass through); an explicit `null`
+      // entry means "drop" — so this can't collapse to `?? key`.
+      const mapped = PARAM_TRANSLATIONS[key]
+      const translated = mapped === undefined ? key : mapped
       if (translated === null) continue
       if (!SUPPORTED_PARAMS.has(translated)) continue
       normalized[translated] = value

@@ -196,9 +196,8 @@ export class OpenAITTSClient extends TTSClient {
       'tts-1-hd': 0.03,
     }
 
-    const pricePerK = pricing[model] || pricing['tts-1']
+    const costPer1K = pricing[model] ?? 0.015 // tts-1 rate as the fallback
     const characters = text.length
-    const costPer1K = pricePerK
 
     return (characters / 1000) * costPer1K
   }

@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { useHotkey } from '@tanstack/react-hotkeys'
-import { Book, Bot, Building2, FileText, Inbox, Mail, User, X } from 'lucide-react'
+import { Book, Bot, Building2, FileText, Inbox, Mail, Table2, User, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
@@ -15,6 +15,8 @@ import type { SessionRef, SessionRefKind } from './types'
 const KIND_ICONS: Record<SessionRefKind, typeof Mail> = {
   thread: Mail,
   record: FileText,
+  // An entity TYPE (the records table the user is on), not one row on it.
+  resource: Table2,
   kb: Book,
   article: FileText,
   actor: User,

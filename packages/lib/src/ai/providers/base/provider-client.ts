@@ -8,6 +8,20 @@ import type { ConnectionTestResult, ProviderCredentials, ValidationResult } from
 import { ValidationUtils } from './validation'
 
 /**
+ * Constructor signature every concrete provider client exposes.
+ *
+ * `typeof ProviderClient` cannot be used for this: `ProviderClient` is abstract
+ * (so `new` on it is a type error) and its own constructor takes `capabilities`
+ * first, which subclasses supply themselves. Registries hold this type instead.
+ */
+export type ProviderClientConstructor = new (
+  organizationId: string,
+  userId: string,
+  cache?: any,
+  db?: Database
+) => ProviderClient
+
+/**
  * Abstract base class for all AI provider clients
  * Each provider must extend this class and implement the abstract methods
  */
