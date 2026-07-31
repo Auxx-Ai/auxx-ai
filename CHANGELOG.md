@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.191](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.190...auxx-v0.1.191) (2026-07-31)
+
+
+### Features
+
+* **billing:** meter sequences with a sequencesLimit plan limit ([#1448](https://github.com/Auxx-Ai/auxx-ai/issues/1448)) ([ee6aed5](https://github.com/Auxx-Ai/auxx-ai/commit/ee6aed5e1da3437ab1cdae788910100fb9c05de4))
+* **ui:** walk the list from any entity detail breadcrumb ([#1446](https://github.com/Auxx-Ai/auxx-ai/issues/1446)) ([5b066e6](https://github.com/Auxx-Ai/auxx-ai/commit/5b066e6b177c0e83beddf8a7c6c3fb1105b9c204))
+
+
+### Bug Fixes
+
+* **billing:** stop counting seeded rows against plan limits ([#1444](https://github.com/Auxx-Ai/auxx-ai/issues/1444)) ([ceade0e](https://github.com/Auxx-Ai/auxx-ai/commit/ceade0eccb39905cd033ca2fbeb2aa5ce6346ff9))
+* **channels:** answer the graph subscription handshake on post ([#1449](https://github.com/Auxx-Ai/auxx-ai/issues/1449)) ([5ce99ef](https://github.com/Auxx-Ai/auxx-ai/commit/5ce99ef15f8f5a7f89311e8212bacd4ab01544cd))
+* **channels:** report an in-flight sync instead of failing the click ([#1447](https://github.com/Auxx-Ai/auxx-ai/issues/1447)) ([1e90166](https://github.com/Auxx-Ai/auxx-ai/commit/1e90166800ac5bd8d8e015b698f4c89bfa6cbcf4))
+
 ## [0.1.190](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.189...auxx-v0.1.190) (2026-07-31)
 
 
