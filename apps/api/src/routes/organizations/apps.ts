@@ -3,6 +3,7 @@
 import { database } from '@auxx/database'
 import { getAppWithInstallationStatus, getAvailableApps, installApp } from '@auxx/lib/apps'
 import { getCachedAppBySlug, resolveAppSlug } from '@auxx/lib/cache'
+import { DemoGuard } from '@auxx/lib/demo'
 import { getInstalledApps } from '@auxx/services/app-installations'
 import { listDeployments } from '@auxx/services/app-versions'
 import {
@@ -231,6 +232,17 @@ apps.post('/:appSlug/install', requireOrganizationRole(['ADMIN', 'OWNER']), asyn
   const appSlug = c.req.param('appSlug')
   const organizationId = c.get('organizationId')
   const userId = c.get('userId')
+
+  // Demo orgs cannot install apps. Unreachable in practice (demo plans have
+  // `apiAccess: false` and `apiKey.generate` is itself demo-blocked), but the guard is
+  // cheap and this is the only non-tRPC install entry point a token could reach.
+  // Mapped explicitly: `errorMiddleware` has no AuxxError branch, so a thrown
+  // ForbiddenError would surface as a generic 500.
+  try {
+    await DemoGuard.requireNotDemo(organizationId, 'install apps')
+  } catch (error) {
+    return c.json(errorResponse('DEMO_RESTRICTED', (error as Error).message), 403)
+  }
 
   // Parse and validate request body
   const body = await c.req.json()

@@ -1,9 +1,11 @@
 // apps/web/src/app/api/demo/create-session/route.ts
 
 import { database as db, schema } from '@auxx/database'
+import { ProviderQuotaType } from '@auxx/lib/ai/providers/types'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { DEMO_SESSION_DURATION_MS, generateDemoEmail, isDemoEnabled } from '@auxx/lib/demo'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { getNumericFeatureLimit } from '@auxx/lib/permissions/types'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter/redis-rate-limiter'
 import { createScopedLogger } from '@auxx/logger'
 import { count, eq, gt } from 'drizzle-orm'
@@ -147,7 +149,7 @@ export async function POST(request: NextRequest) {
 
     // Find the Demo plan
     const [demoPlan] = await db
-      .select({ id: schema.Plan.id })
+      .select({ id: schema.Plan.id, featureLimits: schema.Plan.featureLimits })
       .from(schema.Plan)
       .where(eq(schema.Plan.name, 'Demo'))
       .limit(1)
@@ -162,6 +164,28 @@ export async function POST(request: NextRequest) {
         seats: 1,
         updatedAt: new Date(),
       })
+
+      // 7b. Realign the AI credit pool to the Demo plan.
+      //
+      // `seedAiProviderQuotas` (auth hook, step 4) writes DEFAULT_QUOTA_LIMITS[TRIAL] —
+      // 20,000 credits — into `OrganizationAiQuota` for EVERY new org, and the only code
+      // that reconciles that row with the plan's `monthlyAiCredits` is the Stripe
+      // `subscription.updated` webhook, which a demo org never receives. The row is keyed
+      // on `Organization.id`, so the subscription swap above does not touch it either.
+      // Without this write a demo session runs on the trial allowance, 4x what the Demo
+      // plan declares.
+      const demoCredits = getNumericFeatureLimit(demoPlan.featureLimits, 'monthlyAiCredits')
+      if (demoCredits != null) {
+        await db
+          .update(schema.OrganizationAiQuota)
+          .set({
+            quotaType: ProviderQuotaType.FREE,
+            quotaLimit: demoCredits,
+            quotaUsed: 0,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.OrganizationAiQuota.organizationId, organizationId))
+      }
     }
 
     // 8. Enqueue async demo data seeding job (customers, tickets, etc.)

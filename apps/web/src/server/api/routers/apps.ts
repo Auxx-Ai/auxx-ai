@@ -247,6 +247,7 @@ export const appsRouter = createTRPCRouter({
         })
         .merge(installAppRequestSchema)
     )
+    .use(notDemo('install apps'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { appSlug, type, deploymentId } = input

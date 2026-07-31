@@ -266,7 +266,7 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 0,
     workflowRunsPerMonthHard: 10,
     workflowRunsPerMonthSoft: 8,
-    monthlyAiCredits: 2_000,
+    monthlyAiCredits: 5_000,
     aiCompletionsPerMonthHard: 200,
     aiCompletionsPerMonthSoft: 160,
     aiTranscriptionsPerMonthHard: 50,
@@ -358,8 +358,13 @@ const USAGE_LIMITS = {
 
 /**
  * Trial credit override: trial users get 20,000 credits (≈ $2 of AI COGS)
- * regardless of which plan they are trialing. Read in the quota-service when a
- * trial starts.
+ * regardless of which plan they are trialing.
+ *
+ * NOTE: both constants are currently UNREFERENCED. The value that actually lands on a
+ * new org is `DEFAULT_QUOTA_LIMITS[ProviderQuotaType.TRIAL]`
+ * (packages/lib/src/ai/providers/types.ts), written unconditionally by
+ * `OrganizationSeeder.seedAiProviderQuotas`. `QuotaService` has no trial method — change
+ * that constant, not this one, until the two are reconciled.
  */
 export const TRIAL_MONTHLY_AI_CREDITS = 20_000
 export const TRIAL_AI_COMPLETIONS_HARD = 2000

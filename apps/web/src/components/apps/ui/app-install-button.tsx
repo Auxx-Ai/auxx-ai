@@ -14,9 +14,18 @@ import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { Check, ChevronDown, Code, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useDemo } from '~/hooks/use-demo'
 import { api } from '~/trpc/react'
+
+/** Copy for the demo block, shared by both install buttons. */
+const DEMO_BLOCK = {
+  title: 'Not Available in Demo',
+  description: 'Installing apps is not available in demo mode. Sign up to connect your own tools.',
+} as const
 
 /**
  * Props for AppInstallButton component
@@ -46,6 +55,8 @@ export default function AppInstallButton({
   const router = useRouter()
   const utils = api.useUtils()
   const posthog = useAnalytics()
+  const { isDemo } = useDemo()
+  const [demoDialogOpen, setDemoDialogOpen] = useState(false)
 
   // Install mutation
   const install = api.apps.install.useMutation({
@@ -71,6 +82,11 @@ export default function AppInstallButton({
    * Handle install for a specific deployment
    */
   const handleInstall = async (deploymentId: string) => {
+    // Covers the split button and every dropdown entry — both route through here.
+    if (isDemo) {
+      setDemoDialogOpen(true)
+      return
+    }
     await install.mutateAsync({
       appSlug,
       deploymentId,
@@ -180,6 +196,14 @@ export default function AppInstallButton({
           })}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <LimitReachedDialog
+        open={demoDialogOpen}
+        onOpenChange={setDemoDialogOpen}
+        icon={Download}
+        title={DEMO_BLOCK.title}
+        description={DEMO_BLOCK.description}
+      />
     </div>
   )
 }
@@ -197,6 +221,8 @@ type InlineAppInstallButtonProps = {
 export function InlineAppInstallButton({ appSlug, children }: InlineAppInstallButtonProps) {
   const { appInstallations, refreshInstallations } = useAppsContext()
   const posthog = useAnalytics()
+  const { isDemo } = useDemo()
+  const [demoDialogOpen, setDemoDialogOpen] = useState(false)
 
   const isInstalled = appInstallations.some((inst) => inst.app.slug === appSlug)
 
@@ -220,22 +246,36 @@ export function InlineAppInstallButton({ appSlug, children }: InlineAppInstallBu
   }
 
   return (
-    <Button
-      variant='outline'
-      size='sm'
-      className='h-6 text-xs'
-      onClick={(e) => {
-        e.stopPropagation()
-        install.mutate({ appSlug })
-      }}
-      loading={install.isPending}
-      loadingText='Installing...'>
-      {children ?? (
-        <>
-          <Download className='size-3' />
-          Install
-        </>
-      )}
-    </Button>
+    <>
+      <Button
+        variant='outline'
+        size='sm'
+        className='h-6 text-xs'
+        onClick={(e) => {
+          e.stopPropagation()
+          if (isDemo) {
+            setDemoDialogOpen(true)
+            return
+          }
+          install.mutate({ appSlug })
+        }}
+        loading={install.isPending}
+        loadingText='Installing...'>
+        {children ?? (
+          <>
+            <Download className='size-3' />
+            Install
+          </>
+        )}
+      </Button>
+
+      <LimitReachedDialog
+        open={demoDialogOpen}
+        onOpenChange={setDemoDialogOpen}
+        icon={Download}
+        title={DEMO_BLOCK.title}
+        description={DEMO_BLOCK.description}
+      />
+    </>
   )
 }
