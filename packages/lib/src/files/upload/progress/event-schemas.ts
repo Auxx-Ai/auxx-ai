@@ -18,11 +18,18 @@ const BaseFileUploadEventSchema = z.object({
  */
 const UploadProgressDataSchema = z.object({
   fileId: z.string().optional(),
-  filename: z.string(),
+  tempFileId: z.string().optional(),
+  filename: z.string().optional(),
   bytesUploaded: z.number().min(0),
   totalBytes: z.number().min(1),
   progress: z.number().min(0).max(100),
   speed: z.number().optional(),
+  stage: z.string().optional(),
+  eta: z.number().optional(),
+  message: z.string().optional(),
+  averageSpeed: z.number().optional(),
+  elapsedTime: z.number().optional(),
+  errorCount: z.number().optional(),
 })
 
 /**

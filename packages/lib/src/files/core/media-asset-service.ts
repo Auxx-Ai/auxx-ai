@@ -1,6 +1,6 @@
 // packages/lib/src/files/core/media-asset-service.ts
 
-import { type Database, database as db, schema } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
@@ -11,6 +11,7 @@ import {
   asc,
   desc,
   eq,
+  getTableColumns,
   gt,
   gte,
   ilike,
@@ -22,6 +23,7 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm'
+import type { PgColumn } from 'drizzle-orm/pg-core'
 import type { DownloadRef } from '../adapters/base-adapter'
 import { BaseService, type DatabaseClient } from './base-service'
 import type { ContentAccessible } from './mixins/content-accessible'
@@ -53,7 +55,10 @@ export class MediaAssetService
 {
   private _storageManager?: any
 
-  constructor(organizationId?: string, userId?: string, dbInstance: Database = db) {
+  /** Column lookup used by the dynamic filter/sort paths. */
+  private static readonly columns: Record<string, PgColumn> = getTableColumns(schema.MediaAsset)
+
+  constructor(organizationId?: string, userId?: string, dbInstance: DatabaseClient = db) {
     super(organizationId, userId, dbInstance)
   }
 
@@ -70,9 +75,10 @@ export class MediaAssetService
     const processedData = await this.processCreateData(data)
     const dbToUse = db || this.db
 
-    const [asset] = await dbToUse.insert(schema.MediaAsset).values(processedData).returning()
-
-    return asset
+    return this.requireRow(
+      await dbToUse.insert(schema.MediaAsset).values(processedData).returning(),
+      'create'
+    )
   }
 
   /**
@@ -87,9 +93,10 @@ export class MediaAssetService
     }
     filters.push(isNull(schema.MediaAsset.deletedAt))
 
-    return dbToUse.query.MediaAsset.findFirst({
+    const asset = await dbToUse.query.MediaAsset.findFirst({
       where: and(...filters),
     })
+    return asset ?? null
   }
 
   /**
@@ -104,10 +111,11 @@ export class MediaAssetService
     }
     filters.push(isNull(schema.MediaAsset.deletedAt))
 
-    return dbToUse.query.MediaAsset.findFirst({
+    const asset = await dbToUse.query.MediaAsset.findFirst({
       where: and(...filters),
       with: this.getRelationIncludes(),
     })
+    return asset ?? null
   }
 
   /**
@@ -121,16 +129,17 @@ export class MediaAssetService
       filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
     }
 
-    const [asset] = await dbToUse
-      .update(schema.MediaAsset)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(and(...filters))
-      .returning()
-
-    return asset
+    return this.requireRow(
+      await dbToUse
+        .update(schema.MediaAsset)
+        .set({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .where(and(...filters))
+        .returning(),
+      'update'
+    )
   }
 
   /**
@@ -158,23 +167,18 @@ export class MediaAssetService
 
     // Apply additional filters
     if (options.filters) {
-      Object.entries(options.filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          filters.push(eq(schema.MediaAsset[key as keyof typeof schema.MediaAsset], value))
+      for (const [key, value] of Object.entries(options.filters)) {
+        const column = MediaAssetService.columns[key]
+        if (column && value !== undefined && value !== null) {
+          filters.push(eq(column, value))
         }
-      })
+      }
     }
 
-    const orderBy =
-      options.sortOrder === 'asc'
-        ? asc(
-            schema.MediaAsset[options.sortBy as keyof typeof schema.MediaAsset] ||
-              schema.MediaAsset.createdAt
-          )
-        : desc(
-            schema.MediaAsset[options.sortBy as keyof typeof schema.MediaAsset] ||
-              schema.MediaAsset.createdAt
-          )
+    const sortColumn =
+      (options.sortBy ? MediaAssetService.columns[options.sortBy] : undefined) ??
+      schema.MediaAsset.createdAt
+    const orderBy = options.sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
 
     const items = await this.db.query.MediaAsset.findMany({
       where: and(...filters),
@@ -203,11 +207,12 @@ export class MediaAssetService
     whereFilters.push(isNull(schema.MediaAsset.deletedAt))
 
     if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          whereFilters.push(eq(schema.MediaAsset[key], value))
+      for (const [key, value] of Object.entries(filters)) {
+        const column = MediaAssetService.columns[key]
+        if (column && value !== undefined && value !== null) {
+          whereFilters.push(eq(column, value))
         }
-      })
+      }
     }
 
     const result = await this.db
@@ -412,7 +417,10 @@ export class MediaAssetService
       searchConditions.push(eq(schema.MediaAsset.kind, query.toUpperCase() as AssetKind))
     }
 
-    filters.push(or(...searchConditions))
+    const searchClause = or(...searchConditions)
+    if (searchClause) {
+      filters.push(searchClause)
+    }
 
     // Apply additional filters
     if (options?.kinds) {
@@ -612,31 +620,42 @@ export class MediaAssetService
     // Check for existing MediaAsset if requested
     // Only return existing if it has a version pointing to the same storage location
     if (options?.skipIfExists) {
-      const existing = await this.db.query.MediaAsset.findFirst({
-        where: eq(schema.MediaAsset.organizationId, file.organizationId),
-        with: {
-          currentVersion: {
-            where: (currentVersion, { eq }) =>
-              eq(currentVersion.storageLocationId, version.storageLocationId),
-          },
-        },
+      // A `where` inside `with` only filters the included relation rows, never which asset is
+      // returned, so the storage-location match has to be part of the asset's own where clause.
+      const matchingVersions = await this.db.query.MediaAssetVersion.findMany({
+        where: and(
+          eq(schema.MediaAssetVersion.storageLocationId, version.storageLocationId),
+          isNull(schema.MediaAssetVersion.deletedAt)
+        ),
+        columns: { id: true },
       })
-      // Only return if we found an asset with a matching version
-      // The where clause in 'with' only filters which version to include,
-      // not which asset to return - so we must verify currentVersion exists
-      if (existing?.currentVersion) return existing
+
+      if (matchingVersions.length > 0) {
+        const existing = await this.db.query.MediaAsset.findFirst({
+          where: and(
+            eq(schema.MediaAsset.organizationId, file.organizationId),
+            isNull(schema.MediaAsset.deletedAt),
+            inArray(
+              schema.MediaAsset.currentVersionId,
+              matchingVersions.map((v) => v.id)
+            )
+          ),
+        })
+        if (existing) return existing
+      }
     }
 
     // Use existing createWithVersion method
     const { asset } = await this.createWithVersion(
       {
         kind: options?.kind || 'DOCUMENT',
+        purpose: 'ORIGINAL',
         name: file.name,
         mimeType: file.mimeType || 'application/octet-stream',
-        size: BigInt(file.size || 0),
+        size: file.size ?? 0,
         isPrivate: true,
         organizationId: file.organizationId,
-        createdById: file.createdById,
+        createdById: file.createdById ?? undefined,
       },
       version.storageLocationId
     )
@@ -651,7 +670,7 @@ export class MediaAssetService
     id: string,
     storageLocationId: string,
     metadata: {
-      size?: bigint
+      size?: number
       mimeType?: string
     } = {}
   ): Promise<{
@@ -762,7 +781,7 @@ export class MediaAssetService
   /**
    * Get large assets (for cleanup)
    */
-  async findLargeAssets(minSizeBytes: bigint): Promise<MediaAsset[]> {
+  async findLargeAssets(minSizeBytes: number): Promise<MediaAsset[]> {
     const filters: SQL[] = []
 
     if (this.organizationId) {
@@ -965,7 +984,7 @@ export class MediaAssetService
     DownloadRef & {
       filename: string
       mimeType?: string
-      size?: bigint
+      size?: number
       expiresAt?: Date
       versionNumber: number
     }
@@ -1166,9 +1185,10 @@ export class MediaAssetService
     // Note: checksum field might need to be added to MediaAsset table or accessed via relations
     // For now, keeping the logic but this may need adjustment based on actual schema
 
-    return this.db.query.MediaAsset.findFirst({
+    const asset = await this.db.query.MediaAsset.findFirst({
       where: and(...filters),
     })
+    return asset ?? null
   }
 
   /**
@@ -1235,17 +1255,20 @@ export class MediaAssetService
       }
 
       // Create the new version
-      const [version] = await db
-        .insert(schema.MediaAssetVersion)
-        .values({
-          assetId: entityId,
-          versionNumber,
-          storageLocationId,
-          size: storageLocation.size,
-          mimeType: storageLocation.mimeType,
-          ...metadata,
-        })
-        .returning()
+      const version = this.requireRow(
+        await db
+          .insert(schema.MediaAssetVersion)
+          .values({
+            assetId: entityId,
+            versionNumber,
+            storageLocationId,
+            size: storageLocation.size,
+            mimeType: storageLocation.mimeType,
+            ...metadata,
+          })
+          .returning(),
+        'create version'
+      )
 
       // Update the entity's current version reference
       await db
@@ -1299,7 +1322,7 @@ export class MediaAssetService
       throw new Error(`${this.getEntityName()} not found`)
     }
 
-    return this.db.query.MediaAssetVersion.findFirst({
+    const version = await this.db.query.MediaAssetVersion.findFirst({
       where: and(
         eq(schema.MediaAssetVersion.assetId, entityId),
         eq(schema.MediaAssetVersion.versionNumber, versionNumber)
@@ -1308,6 +1331,7 @@ export class MediaAssetService
         storageLocation: true,
       },
     })
+    return version ?? null
   }
 
   /**
@@ -1319,16 +1343,17 @@ export class MediaAssetService
       throw new Error(`Version ${versionNumber} not found for ${this.getEntityName()}`)
     }
 
-    const [entity] = await this.db
-      .update(schema.MediaAsset)
-      .set({
-        currentVersionId: version.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.MediaAsset.id, entityId))
-      .returning()
-
-    return entity
+    return this.requireRow(
+      await this.db
+        .update(schema.MediaAsset)
+        .set({
+          currentVersionId: version.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.MediaAsset.id, entityId))
+        .returning(),
+      'restore version'
+    )
   }
 
   /**
@@ -1353,7 +1378,7 @@ export class MediaAssetService
     // Clean up thumbnails for this version before deleting
     const { ThumbnailService } = await import('./thumbnail-service')
     const thumbnailService = new ThumbnailService(
-      this.organizationId,
+      this.requireOrganization(),
       this.userId || 'system',
       this.db
     )
@@ -1370,13 +1395,14 @@ export class MediaAssetService
   async getLatestVersion(
     entityId: string
   ): Promise<(MediaAssetVersion & { storageLocation: any }) | null> {
-    return this.db.query.MediaAssetVersion.findFirst({
+    const version = await this.db.query.MediaAssetVersion.findFirst({
       where: eq(schema.MediaAssetVersion.assetId, entityId),
       with: {
         storageLocation: true,
       },
       orderBy: desc(schema.MediaAssetVersion.versionNumber),
     })
+    return version ?? null
   }
 
   /**
@@ -1387,6 +1413,9 @@ export class MediaAssetService
     const copiedVersions: MediaAssetVersion[] = []
 
     for (const sourceVersion of sourceVersions) {
+      // Versions without a storage location have no content to copy.
+      if (!sourceVersion.storageLocationId) continue
+
       const copiedVersion = await this.createVersion(
         targetEntityId,
         sourceVersion.storageLocationId,
@@ -1394,7 +1423,6 @@ export class MediaAssetService
           // Copy metadata but exclude entity-specific fields
           size: sourceVersion.size,
           mimeType: sourceVersion.mimeType,
-          checksum: sourceVersion.checksum,
         }
       )
       copiedVersions.push(copiedVersion)
@@ -1433,6 +1461,9 @@ export class MediaAssetService
       THUMBNAIL: [],
       SYSTEM_BLOB: [],
       DOCUMENT: [],
+      VIDEO: [],
+      AUDIO: [],
+      STORYBOARD: [],
     }
 
     if (!allowedConversions[from]?.includes(to)) {

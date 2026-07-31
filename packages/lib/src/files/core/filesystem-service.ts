@@ -2,9 +2,44 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count, eq, gte, inArray, isNull, lt, or, type SQL } from 'drizzle-orm'
+import { and, asc, count, eq, gte, inArray, isNull, lt, or, type SQL, sql } from 'drizzle-orm'
+import type { DatabaseClient } from './base-service'
 import { FileService } from './file-service'
 import { FolderService } from './folder-service'
+
+/**
+ * Keyset pagination cursor for the file listing.
+ *
+ * Files are ordered by `(path, name, id)`, so the cursor has to carry all three
+ * — an id-only cursor cannot express "the row after this one" in that ordering.
+ * Encoded as base64 JSON because both `path` and `name` are free-form and would
+ * collide with any delimiter.
+ */
+interface FileCursor {
+  path: string
+  name: string
+  id: string
+}
+
+function encodeFileCursor(cursor: FileCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url')
+}
+
+function decodeFileCursor(raw: string): FileCursor | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Partial<FileCursor>
+    if (
+      typeof parsed.path !== 'string' ||
+      typeof parsed.name !== 'string' ||
+      typeof parsed.id !== 'string'
+    ) {
+      return null
+    }
+    return { path: parsed.path, name: parsed.name, id: parsed.id }
+  } catch {
+    return null
+  }
+}
 
 /**
  * Breadcrumb item for navigation
@@ -23,7 +58,7 @@ export interface FileItem {
   id: string // Server ID or temp ID during upload
   name: string
   type: 'file' | 'folder'
-  size?: bigint | null // Always bigint for consistency
+  size?: number | null
   displaySize: number // Normalized to number for consistent display
   mimeType?: string | null // Unified field name
   ext?: string | null // File extension
@@ -51,7 +86,7 @@ export interface FileItem {
 
   // Server-specific fields (only for server files)
   organizationId?: string
-  createdById?: string
+  createdById?: string | null
   currentVersionId?: string | null
   deletedAt?: Date | null
 
@@ -185,7 +220,7 @@ export class FilesystemService {
   constructor(
     private organizationId: string,
     private userId: string,
-    private dbInstance = db
+    private dbInstance: DatabaseClient = db
   ) {}
 
   /**
@@ -216,8 +251,9 @@ export class FilesystemService {
     if (filesHasNextPage) {
       processedFiles = fileItems.slice(0, -1) // Remove extra item used for pagination
     }
-    const filesNextCursor = filesHasNextPage
-      ? processedFiles[processedFiles.length - 1]?.id || null
+    const lastFile = filesHasNextPage ? processedFiles[processedFiles.length - 1] : undefined
+    const filesNextCursor = lastFile
+      ? encodeFileCursor({ path: lastFile.path ?? '', name: lastFile.name, id: lastFile.id })
       : null
 
     // Get totals
@@ -278,12 +314,19 @@ export class FilesystemService {
       const fileTypeConditions: SQL[] = options.fileTypes.map((ext) =>
         eq(schema.FolderFile.ext, ext.toLowerCase().replace(/^\./, ''))
       )
-      baseConditions.push(or(...fileTypeConditions))
+      const fileTypeClause = or(...fileTypeConditions)
+      if (fileTypeClause) {
+        baseConditions.push(fileTypeClause)
+      }
     }
 
-    // Add cursor condition to base conditions if provided
-    if (options.filesCursor) {
-      baseConditions.push(eq(schema.FolderFile.id, options.filesCursor))
+    // Keyset cursor: everything strictly AFTER the cursor row in `(path, name, id)`
+    // order. Row-value comparison matches the ORDER BY below exactly.
+    const cursor = options.filesCursor ? decodeFileCursor(options.filesCursor) : null
+    if (cursor) {
+      baseConditions.push(
+        sql`(${schema.FolderFile.path}, ${schema.FolderFile.name}, ${schema.FolderFile.id}) > (${cursor.path}, ${cursor.name}, ${cursor.id})`
+      )
     }
 
     const whereClause = and(...baseConditions)
@@ -313,7 +356,9 @@ export class FilesystemService {
       .from(schema.FolderFile)
       .leftJoin(schema.Folder, eq(schema.FolderFile.folderId, schema.Folder.id))
       .where(whereClause)
-      .orderBy(asc(schema.FolderFile.path), asc(schema.FolderFile.name))
+      // `id` is the tiebreaker that makes the keyset cursor above total —
+      // without it, two files sharing a path and name would page unstably.
+      .orderBy(asc(schema.FolderFile.path), asc(schema.FolderFile.name), asc(schema.FolderFile.id))
       .limit(filesLimit + 1) // +1 for hasNextPage detection
 
     const files = await query
@@ -457,7 +502,7 @@ export class FilesystemService {
   private buildFileWhereClause(options: GetFileSystemOptions) {
     const conditions = [
       eq(schema.FolderFile.organizationId, this.organizationId),
-      eq(schema.FolderFile.deletedAt, null),
+      isNull(schema.FolderFile.deletedAt),
     ]
 
     if (!options.includeArchived) {

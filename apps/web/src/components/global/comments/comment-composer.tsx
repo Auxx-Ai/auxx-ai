@@ -39,7 +39,7 @@ import { useCommentAccess } from './use-comment-access'
 interface FileAttachment {
   id: string
   name: string
-  size?: bigint | number
+  size?: number
   mimeType?: string
   type: 'file' | 'asset' // 'file' = FolderFile, 'asset' = MediaAsset
 }
@@ -82,7 +82,7 @@ const transformAttachmentsToFileSelectItems = (attachments: CommentAttachmentInf
     id: `existing-${attachment.id}`, // Prefix to distinguish from new uploads
     name: attachment.name,
     type: 'file' as const,
-    size: attachment.size ? BigInt(attachment.size) : null,
+    size: attachment.size ?? null,
     displaySize: Number(attachment.size || 0),
     mimeType: attachment.mimeType || null,
     ext: attachment.name.includes('.') ? `.${attachment.name.split('.').pop()}` : null,

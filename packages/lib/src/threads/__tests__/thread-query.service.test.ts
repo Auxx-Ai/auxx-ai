@@ -80,7 +80,11 @@ vi.mock('@auxx/logger', async (importOriginal) => ({
   }),
 }))
 
-vi.mock('drizzle-orm', () => ({
+// Partial mock: a full replacement dies at COLLECTION the moment anything in the
+// import graph reaches a drizzle export this factory omits — `media-asset-service`
+// calls `getTableColumns` in a static initializer. See HANDOFF.md 2.8.
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
   eq: vi.fn((...args: unknown[]) => args),
   and: vi.fn((...args: unknown[]) => args),
   or: vi.fn((...args: unknown[]) => args),

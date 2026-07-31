@@ -224,7 +224,7 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
      */
     async getVersionStats(entityId: string): Promise<{
       totalVersions: number
-      totalSize: bigint
+      totalSize: number
       oldestVersion: Date | null
       newestVersion: Date | null
     }> {
@@ -233,15 +233,13 @@ export function withVersioning<T extends Constructor<BaseService<any, any, any, 
       if (versions.length === 0) {
         return {
           totalVersions: 0,
-          totalSize: BigInt(0),
+          totalSize: 0,
           oldestVersion: null,
           newestVersion: null,
         }
       }
 
-      const totalSize = versions.reduce((sum, version) => {
-        return sum + (version.size || BigInt(0))
-      }, BigInt(0))
+      const totalSize = versions.reduce((total, version) => total + (version.size ?? 0), 0)
 
       const dates = versions.map((v) => v.createdAt).sort()
 

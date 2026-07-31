@@ -159,7 +159,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               externalId: session.storageKey,
               externalUrl, // Now populated for public assets
               externalRev: headResult.etagOrRev,
-              size: BigInt(headResult.size),
+              size: headResult.size,
               mimeType: headResult.mimeType || session.mimeType,
               metadata: {
                 sessionId,

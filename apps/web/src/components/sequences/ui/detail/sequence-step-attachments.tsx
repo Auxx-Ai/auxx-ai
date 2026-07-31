@@ -95,7 +95,7 @@ export function SequenceStepAttachments({
                   id,
                   name: meta?.name ?? session?.name ?? 'Attachment',
                   mimeType: meta?.mimeType ?? session?.mimeType ?? undefined,
-                  size: BigInt(meta?.size ?? Number(session?.size ?? 0)),
+                  size: meta?.size ?? Number(session?.size ?? 0),
                   source: 'existing',
                 }}
                 showRemoveButton

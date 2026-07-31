@@ -7,6 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { Loader2, Trash2, Upload, User } from 'lucide-react'
+import type React from 'react'
 import { useCallback, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -94,7 +95,7 @@ export function AvatarUpload({
   compact = false,
   shape = 'round',
   fallback,
-}: AvatarUploadProps): JSX.Element {
+}: AvatarUploadProps): React.JSX.Element {
   const [confirm, ConfirmDialog] = useConfirm()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isRemoving, setIsRemoving] = useState(false)
@@ -110,16 +111,14 @@ export function AvatarUpload({
     // explicitly when targeting a different user (e.g. an agent's backing
     // user); the server's UserProfileProcessor authorizes it.
     entityId: targetUserId,
-    config: {
-      maxFileSize: 5 * 1024 * 1024, // 5MB
-      allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
-      maxFiles: 1,
-    },
+    maxFiles: 1,
+    maxFileSize: 5 * 1024 * 1024, // 5MB
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
     onComplete: (results) => {
       if (results.successCount > 0 && results.results?.[0]) {
         const result = results.results[0]
         onUploadComplete?.(result.metadata?.assetId || '', result.url || '')
-        setPreviewUrl(result.url)
+        setPreviewUrl(result.url ?? null)
         toastSuccess({
           title: 'Avatar updated',
           description: 'Your profile picture has been updated successfully',
@@ -139,6 +138,7 @@ export function AvatarUpload({
       if (files.length === 0) return
 
       const file = files[0]
+      if (!file) return
 
       // Client-side validation
       if (!file.type.startsWith('image/')) {

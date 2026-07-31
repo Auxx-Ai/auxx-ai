@@ -59,6 +59,8 @@ export class MultipartUploadStrategy extends BaseUploadStrategy {
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i]
+        if (!chunk) continue
+
         const partNumber = i + 1
 
         progress.updateProgress(uploadedBytes, `Uploading chunk ${partNumber}/${chunks.length}...`)

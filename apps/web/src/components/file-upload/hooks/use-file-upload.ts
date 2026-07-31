@@ -64,6 +64,10 @@ export interface UseFileUploadReturn {
     error?: string
     url?: string
     serverFileId?: string
+    /** Resolved MIME type; falls back to the raw File's type when the store has none. */
+    mimeType?: string | null
+    /** Original browser File, present until the upload settles. */
+    file?: File
   }>
   uploadSummary: {
     totalFiles: number
@@ -210,7 +214,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
       // the folder the session was born with, not the current one. Discard it so a
       // fresh session is created for the current entity. For consumers with a fixed
       // entityId (avatars, ticket attachments, ...) this branch never fires.
-      if (sessions[reusableId].entityId === entityId) {
+      if (sessions[reusableId]?.entityId === entityId) {
         sessionRef.current = reusableId
         return reusableId
       }
@@ -279,7 +283,8 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
 
   // Build arrays used by UI
   const session = activeSessionId ? sessions[activeSessionId] : undefined
-  const sessionFiles = session?.fileIds.map((id) => filesMap[id]).filter(Boolean) ?? []
+  const sessionFiles =
+    session?.fileIds.map((id) => filesMap[id]).filter((f) => f !== undefined) ?? []
   const allFiles = Object.values(filesMap)
 
   // Prefer session files; fall back to all (lets user add before session exists)
@@ -330,8 +335,8 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
       fileId: f.id,
       filename: f.name,
       url: f.url,
-      size: f.size,
-      mimeType: f.type,
+      size: f.size ?? undefined,
+      mimeType: f.mimeType ?? undefined,
       error: f.error,
       metadata: { assetId: f.serverFileId || f.id },
     }))
@@ -371,16 +376,16 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
 
     const results = (sess.fileIds || [])
       .map((fid) => store.files[fid])
-      .filter(Boolean)
+      .filter((f) => f !== undefined)
       .map((f) => ({
-        success: f!.status === 'completed',
-        fileId: f!.id,
-        filename: f!.name,
-        url: f!.url,
-        size: f!.size,
-        mimeType: f!.type,
-        error: f!.error,
-        metadata: { assetId: f!.serverFileId || f!.id },
+        success: f.status === 'completed',
+        fileId: f.id,
+        filename: f.name,
+        url: f.url,
+        size: f.size ?? undefined,
+        mimeType: f.mimeType ?? undefined,
+        error: f.error,
+        metadata: { assetId: f.serverFileId || f.id },
       }))
 
     onComplete({

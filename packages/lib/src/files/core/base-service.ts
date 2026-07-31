@@ -21,6 +21,18 @@ export type Constructor<T = {}> = new (...args: any[]) => T
 export type DatabaseClient = Database | Transaction
 
 /**
+ * Narrow a Drizzle `.returning()` / `.limit(1)` result to its single row.
+ * Throws instead of silently handing `undefined` to callers when the statement matched no rows.
+ */
+export function requireRow<T>(rows: T[], operation: string): T {
+  const row = rows[0]
+  if (!row) {
+    throw new Error(`${operation} affected no rows`)
+  }
+  return row
+}
+
+/**
  * Enhanced base class for file and asset services with generic database operations
  * Provides common CRUD operations and shared functionality with maximum code reuse
  */
@@ -47,7 +59,7 @@ export abstract class BaseService<
    * Create a service instance bound to a transaction client
    * Enables proper transactional operations across service methods
    */
-  withTx(tx: any): this {
+  withTx(tx: DatabaseClient): this {
     // Return a shallow clone bound to the transaction client
     const clone = Object.create(Object.getPrototypeOf(this))
     Object.assign(clone, this, { db: tx })
@@ -58,16 +70,16 @@ export abstract class BaseService<
    * Smart transaction helper - creates new transaction or uses existing one
    * Automatically handles nested transaction scenarios
    */
-  async getTx<T>(callback: (tx: any) => Promise<T>): Promise<T> {
+  async getTx<T>(callback: (tx: DatabaseClient) => Promise<T>): Promise<T> {
     // Check if we're already in a transaction context
     // Transaction clients don't have transaction method
-    if (typeof this.db.transaction !== 'function') {
+    const client = this.db
+    if (typeof client.transaction !== 'function') {
       // Already in transaction, use current db (which is the transaction client)
-      return callback(this.db)
-    } else {
-      // Not in transaction, create new one
-      return this.db.transaction(callback)
+      return callback(client)
     }
+    // Not in transaction, create new one
+    return client.transaction((tx) => callback(tx))
   }
 
   // ============= Abstract Methods (must be implemented by subclasses) =============
@@ -487,6 +499,13 @@ export abstract class BaseService<
     }
 
     return conditions.length > 0 ? and(...conditions) : undefined
+  }
+
+  /**
+   * Narrow a Drizzle `.returning()` result to its single row, scoped to this entity's name.
+   */
+  protected requireRow<T>(rows: T[], operation: string): T {
+    return requireRow(rows, `${this.getEntityName()} ${operation}`)
   }
 
   /**

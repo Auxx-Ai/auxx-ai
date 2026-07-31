@@ -1,6 +1,7 @@
 // packages/lib/src/files/upload/strategies/presigned-upload.ts
 
 import type { ProgressContext, UploadRequest, UploadResult } from '../enhanced-types'
+import { toStorageVisibility } from '../util'
 import { BaseUploadStrategy } from './base-strategy'
 
 /**
@@ -61,14 +62,14 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
         externalId: storageKey,
         externalUrl: presignedUpload.url,
         credentialId: request.credentialId,
-        size: BigInt(fileSize),
+        size: fileSize,
         mimeType: request.mimeType,
         metadata: {
           ...request.metadata,
           presignedUpload: true,
           uploadExpiry: presignedUpload.expiresAt,
         },
-        visibility: request.visibility,
+        visibility: toStorageVisibility(request.visibility),
       })
 
       const uploadDuration = Date.now() - startTime
@@ -149,7 +150,7 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
       provider: request.provider!,
       externalId: storageKey,
       credentialId: request.credentialId,
-      size: BigInt(fileSize),
+      size: fileSize,
       mimeType: request.mimeType,
       metadata: {
         ...request.metadata,
@@ -157,7 +158,7 @@ export class PresignedUploadStrategy extends BaseUploadStrategy {
         uploadId: multipartUpload.uploadId,
         totalParts,
       },
-      visibility: request.visibility,
+      visibility: toStorageVisibility(request.visibility),
     })
 
     return {

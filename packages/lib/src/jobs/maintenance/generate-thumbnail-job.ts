@@ -176,7 +176,7 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
           purpose: 'DERIVED',
           name: `${sourceVersion.asset?.name}-${preset}`,
           mimeType: getMimeTypeForFormat(processed.format),
-          size: BigInt(processed.size),
+          size: processed.size,
           isPrivate: visibility === 'PRIVATE',
           // parentAssetId: sourceVersion.assetId,
           // metadata: {

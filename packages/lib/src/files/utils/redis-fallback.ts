@@ -14,7 +14,12 @@ export class RedisFallback {
    * Check if sorted set operations are available on Redis client
    */
   static hasSortedSetSupport(redis: RedisClient): boolean {
-    return !!(redis.zadd && redis.zrem && redis.zrevrange && redis.zcard)
+    return (
+      typeof redis.zadd === 'function' &&
+      typeof redis.zrem === 'function' &&
+      typeof redis.zrevrange === 'function' &&
+      typeof redis.zcard === 'function'
+    )
   }
 
   /**

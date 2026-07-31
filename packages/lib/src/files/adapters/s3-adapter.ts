@@ -1,5 +1,6 @@
 // packages/lib/src/files/adapters/s3-adapter.ts
 
+import { Readable } from 'node:stream'
 import { configService } from '@auxx/credentials'
 import {
   AbortMultipartUploadCommand,
@@ -235,7 +236,7 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignDownload')
 
     try {
-      const s3Location = this.parseS3Location(loc, auth!)
+      const s3Location = this.parseS3Location(loc, auth)
       const client = this.createS3Client(auth, s3Location)
 
       const ttlSec = options.ttlSec ?? 3600
@@ -275,7 +276,7 @@ export class S3Adapter extends BaseStorageAdapter {
     auth?: ProviderAuth
   ): Promise<NodeJS.ReadableStream> {
     try {
-      const s3Location = this.parseS3Location(loc, auth!)
+      const s3Location = this.parseS3Location(loc, auth)
       const client = this.createS3Client(auth, s3Location)
 
       const command = new GetObjectCommand({
@@ -453,7 +454,7 @@ export class S3Adapter extends BaseStorageAdapter {
       const command = new PutObjectCommand({
         Bucket: bucket,
         Key: params.key,
-        Body: params.content,
+        Body: Buffer.isBuffer(params.content) ? params.content : Readable.from(params.content),
         ContentType: params.mimeType,
         ContentLength: params.size,
         Metadata: params.metadata,
@@ -711,7 +712,7 @@ export class S3Adapter extends BaseStorageAdapter {
    */
   async deleteFile(loc: StorageLocationRef, auth?: ProviderAuth): Promise<void> {
     try {
-      const s3Location = this.parseS3Location(loc, auth!)
+      const s3Location = this.parseS3Location(loc, auth)
       const client = this.createS3Client(auth, s3Location)
 
       const command = new DeleteObjectCommand({
@@ -736,8 +737,8 @@ export class S3Adapter extends BaseStorageAdapter {
     parentFolderId?: string
     auth: ProviderAuth
   }): Promise<{ id: string; name: string }> {
-    this.requireCapability('folders')
-    // This will throw since S3 has folders: false in capabilities
+    // Always throws: S3 has folders: false in capabilities
+    return this.unsupportedCapability('folders')
   }
 
   /**
@@ -752,8 +753,8 @@ export class S3Adapter extends BaseStorageAdapter {
     files: FileMetadata[]
     nextCursor?: string
   }> {
-    this.requireCapability('folders')
-    // This will throw since S3 has folders: false in capabilities
+    // Always throws: S3 has folders: false in capabilities
+    return this.unsupportedCapability('folders')
   }
 
   // ============= Versioning =============
@@ -853,7 +854,7 @@ export class S3Adapter extends BaseStorageAdapter {
   /**
    * Extract S3 bucket and key from storage location
    */
-  private parseS3Location(loc: StorageLocationRef, auth: ProviderAuth): S3Metadata {
+  private parseS3Location(loc: StorageLocationRef, auth?: ProviderAuth): S3Metadata {
     this.validateLocation(loc)
 
     // Try to get from metadata first

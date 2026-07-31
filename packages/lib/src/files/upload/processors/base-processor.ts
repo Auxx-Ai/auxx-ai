@@ -37,17 +37,10 @@ export abstract class BaseProcessor implements FileProcessor {
 
   constructor(organizationId: string) {
     this.organizationId = organizationId
-    this.initializeServices()
+    this.mediaAssetService = new MediaAssetService(organizationId)
+    this.fileService = new FileService(organizationId)
+    this.attachmentService = new AttachmentService(organizationId)
     this.logger = createScopedLogger(`base-processor`)
-  }
-
-  /**
-   * Initialize services with current database instance
-   */
-  private initializeServices() {
-    this.mediaAssetService = new MediaAssetService(this.organizationId)
-    this.fileService = new FileService(this.organizationId)
-    this.attachmentService = new AttachmentService(this.organizationId)
   }
 
   // ============= Abstract Methods =============
@@ -151,8 +144,8 @@ export abstract class BaseProcessor implements FileProcessor {
 
     // Lenient MIME check if provider returns Content-Type
     if (session.mimeType && head.mimeType) {
-      const a = head.mimeType.split(';')[0].toLowerCase()
-      const b = session.mimeType.split(';')[0].toLowerCase()
+      const a = (head.mimeType.split(';')[0] ?? '').toLowerCase()
+      const b = (session.mimeType.split(';')[0] ?? '').toLowerCase()
       if (a !== b) throw new Error(`MIME mismatch: expected ${b}, got ${a}`)
     }
   }

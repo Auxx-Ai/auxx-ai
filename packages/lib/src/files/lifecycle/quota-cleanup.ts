@@ -31,8 +31,8 @@ export async function calculateStorageUsage(organizationId: string): Promise<Sto
     .leftJoin(schema.File, eq(schema.FileVersion.fileId, schema.File.id))
     .where(and(eq(schema.File.organizationId, organizationId), isNull(schema.File.deletedAt)))
 
-  const totalUsed = result.totalSize || 0
-  const fileCount = result.count || 0
+  const totalUsed = result?.totalSize || 0
+  const fileCount = result?.count || 0
 
   // Get organization's quota limit (would need to be added to Organization model)
   // For now, using a default
@@ -145,13 +145,9 @@ export async function quotaEnforcementCleanupJob(
         name: schema.FolderFile.name,
         size: schema.FolderFile.size,
         createdAt: schema.FolderFile.createdAt,
-        currentVersion: {
-          id: schema.FileVersion.id,
-          size: schema.FileVersion.size,
-          storageLocation: {
-            id: schema.StorageLocation.id,
-          },
-        },
+        currentVersionId: schema.FileVersion.id,
+        currentVersionSize: schema.FileVersion.size,
+        storageLocationId: schema.StorageLocation.id,
       })
       .from(schema.FolderFile)
       .leftJoin(schema.FileVersion, eq(schema.FolderFile.currentVersionId, schema.FileVersion.id))
@@ -162,7 +158,7 @@ export async function quotaEnforcementCleanupJob(
           isNull(schema.StorageLocation.deletedAt)
         )
       )
-      .leftJoin(schema.Attachment, eq(schema.FolderFile.id, schema.Attachment.folderFileId))
+      .leftJoin(schema.Attachment, eq(schema.FolderFile.id, schema.Attachment.fileId))
       .where(
         and(
           eq(schema.FolderFile.organizationId, organizationId),
@@ -189,7 +185,7 @@ export async function quotaEnforcementCleanupJob(
             .where(eq(schema.FolderFile.id, file.id))
 
           result.deleted++
-          result.freedBytes += file.currentVersion?.size || 0
+          result.freedBytes += file.currentVersionSize ?? 0
 
           logger.info('Deleted file for quota enforcement', {
             fileId: file.id,
@@ -205,7 +201,7 @@ export async function quotaEnforcementCleanupJob(
       } else {
         // Dry run - just count
         result.deleted++
-        result.freedBytes += file.currentVersion?.size || 0
+        result.freedBytes += file.currentVersionSize ?? 0
       }
     }
 

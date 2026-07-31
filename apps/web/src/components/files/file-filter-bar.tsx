@@ -55,7 +55,10 @@ export function FileFilterBar({
 
     allFiles.forEach((file) => {
       if (file.isUploading) return // Already counted in uploading
-      const category = getFileCategory(file.mimeType, file.ext).toLowerCase()
+      const category = getFileCategory(
+        file.mimeType ?? undefined,
+        file.ext ?? undefined
+      ).toLowerCase()
       if (counts[category as keyof typeof counts] !== undefined) {
         ;(counts as any)[category]++
       } else {

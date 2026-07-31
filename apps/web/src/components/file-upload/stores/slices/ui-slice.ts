@@ -1,6 +1,5 @@
 // apps/web/src/components/file-upload/stores/slices/ui-slice.ts
 
-import { produce } from 'immer'
 import type { StateCreator } from 'zustand'
 import type { UploadConfig, UploadError, UploadStore } from '../types'
 
@@ -40,7 +39,12 @@ function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
-export const createUISlice: StateCreator<UploadStore, [], [], UISlice> = (set, get) => ({
+export const createUISlice: StateCreator<
+  UploadStore,
+  [['zustand/immer', never], ['zustand/devtools', never]],
+  [],
+  UISlice
+> = (set, get) => ({
   dragActive: false,
   uploading: false,
   errors: [],
@@ -60,19 +64,17 @@ export const createUISlice: StateCreator<UploadStore, [], [], UISlice> = (set, g
   },
 
   clearQueue: () => {
-    set(
-      produce((state) => {
-        // Clear all files and queue
-        state.files = {}
-        state.queue = []
+    set((state) => {
+      // Clear all files and queue
+      state.files = {}
+      state.queue = []
 
-        // Clear file references from all sessions
-        Object.values(state.sessions).forEach((session) => {
-          session.fileIds = []
-          session.updatedAt = new Date()
-        })
+      // Clear file references from all sessions
+      Object.values(state.sessions).forEach((session) => {
+        session.fileIds = []
+        session.updatedAt = new Date()
       })
-    )
+    })
   },
 
   addError: (error: Omit<UploadError, 'id' | 'timestamp'>) => {
@@ -83,34 +85,30 @@ export const createUISlice: StateCreator<UploadStore, [], [], UISlice> = (set, g
     // Ignore repeats within 60s
     if (seenAt && now - seenAt < 60_000) return
 
-    set(
-      produce((state) => {
-        state.recentErrorHashes[key] = now
-        const newError: UploadError = {
-          ...error,
-          id: generateId('error'),
-          timestamp: new Date(),
-          recoverable: !!error.recoverable,
-        }
-        state.errors.push(newError)
+    set((state) => {
+      state.recentErrorHashes[key] = now
+      const newError: UploadError = {
+        ...error,
+        id: generateId('error'),
+        timestamp: new Date(),
+        recoverable: !!error.recoverable,
+      }
+      state.errors.push(newError)
 
-        // Limit error history to prevent memory issues
-        if (state.errors.length > 50) {
-          state.errors = state.errors.slice(-50)
-        }
-      })
-    )
+      // Limit error history to prevent memory issues
+      if (state.errors.length > 50) {
+        state.errors = state.errors.slice(-50)
+      }
+    })
   },
 
   removeError: (errorId: string) => {
-    set(
-      produce((state) => {
-        const index = state.errors.findIndex((e) => e.id === errorId)
-        if (index > -1) {
-          state.errors.splice(index, 1)
-        }
-      })
-    )
+    set((state) => {
+      const index = state.errors.findIndex((e) => e.id === errorId)
+      if (index > -1) {
+        state.errors.splice(index, 1)
+      }
+    })
   },
 
   clearErrors: () => {
@@ -128,125 +126,115 @@ export const createUISlice: StateCreator<UploadStore, [], [], UISlice> = (set, g
   },
 
   reset: () => {
-    set(
-      produce((state) => {
-        // Reset all state to initial values
-        state.sessions = {}
-        state.activeSessionId = null
-        state.files = {}
-        state.queue = []
-        state.dragActive = false
-        state.uploading = false
-        state.errors = []
+    set((state) => {
+      // Reset all state to initial values
+      state.sessions = {}
+      state.activeSessionId = null
+      state.files = {}
+      state.queue = []
+      state.dragActive = false
+      state.uploading = false
+      state.errors = []
 
-        // Keep config but reset error deduplication and SSE connections
-        state.recentErrorHashes = {}
+      // Keep config but reset error deduplication and SSE connections
+      state.recentErrorHashes = {}
 
-        // Properly cleanup SSE connections
-        Object.values(state.sseConnections).forEach((connection) => {
-          connection.manager?.disconnect() // ✅ Use manager, not eventSource
-          connection.cleanup?.()
-        })
-        state.sseConnections = {}
+      // Properly cleanup SSE connections
+      Object.values(state.sseConnections).forEach((connection) => {
+        connection.manager?.disconnect() // ✅ Use manager, not eventSource
+        connection.cleanup?.()
       })
-    )
+      state.sseConnections = {}
+    })
   },
 
   cleanup: () => {
-    set(
-      produce((state) => {
-        // Close all SSE connections
-        Object.values(state.sseConnections).forEach((connection) => {
-          connection.manager?.disconnect() // ✅ Use manager, not eventSource
-          connection.cleanup?.()
-        })
-        state.sseConnections = {}
-
-        // Sessions are now runtime-only, no expiration cleanup needed
-
-        // Clear old errors (older than 1 hour)
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
-        state.errors = state.errors.filter((error) => error.timestamp > oneHourAgo)
+    set((state) => {
+      // Close all SSE connections
+      Object.values(state.sseConnections).forEach((connection) => {
+        connection.manager?.disconnect() // ✅ Use manager, not eventSource
+        connection.cleanup?.()
       })
-    )
+      state.sseConnections = {}
+
+      // Sessions are now runtime-only, no expiration cleanup needed
+
+      // Clear old errors (older than 1 hour)
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+      state.errors = state.errors.filter((error) => error.timestamp > oneHourAgo)
+    })
   },
 
   // SSE Integration methods
   updateFromSSEEvent: (event: any) => {
-    set(
-      produce((state) => {
-        switch (event.type) {
-          case 'upload-started':
-            state.uploading = true
-            break
+    set((state) => {
+      switch (event.type) {
+        case 'upload-started':
+          state.uploading = true
+          break
 
-          case 'upload-completed':
-          case 'all_uploads_completed':
-            state.uploading = false
-            break
+        case 'upload-completed':
+        case 'all_uploads_completed':
+          state.uploading = false
+          break
 
-          case 'error':
-            // Add SSE errors to error list
-            if (event.data.error) {
-              const newError: UploadError = {
-                id: generateId('sse_error'),
-                message: event.data.error,
-                timestamp: new Date(),
-                fileId: event.data.fileId,
-                sessionId: event.data.sessionId,
-                type: 'upload',
-                retryable: event.data.retryable || false,
-              }
-              state.errors.push(newError)
-            }
-            break
-
-          case 'connection-lost':
-            // Handle SSE connection issues
-            state.errors.push({
-              id: generateId('connection_error'),
-              message: 'Connection to server lost. Attempting to reconnect...',
+        case 'error':
+          // Add SSE errors to error list
+          if (event.data.error) {
+            const newError: UploadError = {
+              id: generateId('sse_error'),
+              message: event.data.error,
               timestamp: new Date(),
-              type: 'connection',
-              retryable: true,
-            })
-            break
-        }
-      })
-    )
+              fileId: event.data.fileId,
+              sessionId: event.data.sessionId,
+              type: 'upload',
+              recoverable: event.data.retryable || false,
+            }
+            state.errors.push(newError)
+          }
+          break
+
+        case 'connection-lost':
+          // Handle SSE connection issues
+          state.errors.push({
+            id: generateId('connection_error'),
+            message: 'Connection to server lost. Attempting to reconnect...',
+            timestamp: new Date(),
+            type: 'connection',
+            recoverable: true,
+          })
+          break
+      }
+    })
   },
 
   syncQueueWithSSE: (sessionId: string) => {
-    set(
-      produce((state) => {
-        // Reset upload states to sync with server
-        const session = state.sessions[sessionId]
-        if (session) {
-          // Clear any upload-related UI states when syncing
-          state.uploading = false
+    set((state) => {
+      // Reset upload states to sync with server
+      const session = state.sessions[sessionId]
+      if (session) {
+        // Clear any upload-related UI states when syncing
+        state.uploading = false
 
-          // Clear connection-related errors since we're reconnecting
-          state.errors = state.errors.filter((error) => error.type !== 'connection')
-        }
-      })
-    )
+        // Clear connection-related errors since we're reconnecting
+        state.errors = state.errors.filter((error) => error.type !== 'connection')
+      }
+    })
   },
 
   handleSSEError: (error: any, sessionId?: string) => {
-    set(
-      produce((state) => {
-        const newError: UploadError = {
-          id: generateId('sse_error'),
-          message: error.message || 'SSE connection error',
-          timestamp: new Date(),
-          sessionId,
-          recoverable: true,
-        }
-        state.errors.push(newError)
+    set((state) => {
+      const newError: UploadError = {
+        id: generateId('sse_error'),
+        message: error.message || 'SSE connection error',
+        timestamp: new Date(),
+        sessionId,
+        recoverable: true,
+      }
+      state.errors.push(newError)
 
-        // Reset upload states on SSE errors
-        state.uploading = false
-      })
-    )
+      // Reset upload states on SSE errors
+      state.uploading = false
+    })
   },
 })

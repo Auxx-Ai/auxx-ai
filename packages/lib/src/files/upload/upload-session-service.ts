@@ -203,6 +203,8 @@ export class FileUploadSession {
     }
 
     const file = this._files[fileIndex]
+    if (!file) return
+
     const updatedFile: FileInfo = {
       ...file,
       progress,

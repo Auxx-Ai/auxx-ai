@@ -200,7 +200,9 @@ describe('InboundAttachmentIngestService', () => {
         purpose: 'email-attachment',
         name: 'doc.pdf',
         mimeType: 'application/pdf',
-        size: BigInt(content.length),
+        // MediaAsset.size is bigint({ mode: 'number' }), so Drizzle wants a JS
+        // number here — the old BigInt() assertion encoded the wrong contract.
+        size: content.length,
         isPrivate: true,
         organizationId: 'org_abc',
       }),

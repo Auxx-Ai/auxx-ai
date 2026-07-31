@@ -74,7 +74,7 @@ export const FileInput = createNodeInput<FileInputProps>(
             id: item.id,
             name: item.name,
             mimeType: item.mimeType,
-            size: BigInt(item.displaySize || item.size || 0),
+            size: item.displaySize || item.size || 0,
             source: 'existing' as const,
           }
         })
@@ -82,7 +82,7 @@ export const FileInput = createNodeInput<FileInputProps>(
         id: string
         name: string
         mimeType?: string
-        size: bigint
+        size: number
         source: 'existing'
       }>
       // biome-ignore lint/correctness/useExhaustiveDependencies: fileIds is derived from node data and intentionally used

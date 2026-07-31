@@ -67,7 +67,7 @@ export function AttachmentPreview({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [filename, setFilename] = useState<string>(filenameProp || '')
   const [mimeType, setMimeType] = useState<string>(knownMimeType || '')
-  const [size, setSize] = useState<bigint | undefined>()
+  const [size, setSize] = useState<number | undefined>()
   const [expiresAt, setExpiresAt] = useState<Date | undefined>()
   const [versionNumber, setVersionNumber] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)

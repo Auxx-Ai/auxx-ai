@@ -147,7 +147,8 @@ export type UploadProgressCallback = (progress: {
 export interface StorageUsageStats {
   totalFiles: number
   totalSize: bigint
-  byProvider: Record<ProviderId, { files: number; size: bigint }>
+  /** Only providers that actually have stored locations appear here. */
+  byProvider: Partial<Record<ProviderId, { files: number; size: bigint }>>
   byOrganization: Record<string, { files: number; size: bigint }>
 }
 
@@ -303,7 +304,7 @@ export class StorageManager {
           externalId: params.key,
           externalUrl: presignedUpload.url,
           credentialId: params.credentialId,
-          size: params.size ? BigInt(params.size) : undefined,
+          size: params.size,
           mimeType: params.mimeType,
           metadata: {
             ...(params.metadata || {}),
@@ -409,7 +410,7 @@ export class StorageManager {
         externalUrl,
         externalRev: result.etag || '',
         credentialId: params.credentialId,
-        size: result.size ? BigInt(result.size) : undefined,
+        size: result.size,
         mimeType: params.mimeType,
         metadata: {
           ...(params.metadata || {}),
@@ -796,7 +797,7 @@ export class StorageManager {
       externalUrl?: string
       externalRev?: string
       credentialId?: string
-      size?: bigint
+      size?: number
       mimeType?: string
       metadata?: Record<string, any>
       bucket?: string
@@ -855,7 +856,7 @@ export class StorageManager {
     updates: {
       externalUrl?: string
       externalRev?: string
-      size?: bigint
+      size?: number
       mimeType?: string
       metadata?: Record<string, any>
     }
@@ -1764,7 +1765,7 @@ export class StorageManager {
           externalRev: result.etag || '',
           organizationId: this.organizationId,
           credentialId: params.credentialId,
-          size: result.size ? BigInt(result.size) : undefined,
+          size: result.size ? Number(result.size) : undefined,
           mimeType: undefined, // Not provided in completion
           metadata: { etag: result.etag },
         })
@@ -2124,7 +2125,7 @@ export class StorageManager {
       const stats = await storageLocationService.getStats()
 
       // Transform to match StorageUsageStats interface
-      const byProvider: Record<ProviderId, { files: number; size: bigint }> = {}
+      const byProvider: Partial<Record<ProviderId, { files: number; size: bigint }>> = {}
 
       // Convert provider stats
       for (const [provider, count] of Object.entries(stats.locationsByProvider)) {
@@ -2138,7 +2139,8 @@ export class StorageManager {
         totalFiles: stats.totalLocations,
         totalSize: stats.totalSize,
         byProvider,
-        byOrganization: {} as Record<string, { files: number; size: bigint }>, // TODO: Implement organization-based stats when available
+        // TODO: Implement organization-based stats when available
+        byOrganization: {},
       }
     } catch (error) {
       this.handleStorageError(error, 'getStorageUsage', 'UNKNOWN' as ProviderId)
@@ -2507,4 +2509,4 @@ export class StorageManager {
 // export const storageManager = new StorageManager()
 
 // Factory function to create service instances for specific organizations
-export const createStorageManager = (organizationId: string) => new StorageManager(organizationId)
+export const createStorageManager = (organizationId?: string) => new StorageManager(organizationId)

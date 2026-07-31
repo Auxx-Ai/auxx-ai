@@ -54,7 +54,7 @@ export async function renderPreviewQuotePdf(params: {
       purpose: 'PREVIEW',
       name: fileName,
       mimeType: 'application/pdf',
-      size: BigInt(buffer.length),
+      size: buffer.length,
       isPrivate: true,
       organizationId,
       createdById: actorId,

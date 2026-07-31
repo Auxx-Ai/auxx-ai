@@ -126,7 +126,7 @@ function buildConfig(overrides: Partial<UploadPreparedConfig> = {}): UploadPrepa
     fileName: 'test.pdf',
     mimeType: 'application/pdf',
     expectedSize: 1024 * 1024,
-    entityType: 'file',
+    entityType: 'FILE',
     provider: 'S3',
     storageKey: 'org123/test.pdf',
     ttlSec: 600,

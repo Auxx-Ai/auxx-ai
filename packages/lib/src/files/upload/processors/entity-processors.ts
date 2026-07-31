@@ -1,7 +1,7 @@
 // packages/lib/src/files/upload/processors/entity-processors.ts
 import { database as db, schema } from '@auxx/database'
 import type { MediaAssetEntity as MediaAsset } from '@auxx/database/types'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { getOrgCache, isAgentUser, onCacheEvent } from '../../../cache'
 import { isMember } from '../../../members'
 import { isAdminOrOwner } from '../../../members/member-queries'
@@ -137,7 +137,8 @@ export class UserProfileProcessor extends BaseAssetProcessor {
     tx: any
   ): Promise<MediaAsset | null> {
     if (!session.entityId) return null // entityId = userId for user profiles
-    return tx
+
+    const results: MediaAsset[] = await tx
       .select()
       .from(schema.MediaAsset)
       .where(
@@ -145,12 +146,13 @@ export class UserProfileProcessor extends BaseAssetProcessor {
           eq(schema.MediaAsset.kind, this.assetKind),
           eq(schema.MediaAsset.createdById, session.entityId), // For user profiles, entityId is the userId
           eq(schema.MediaAsset.organizationId, session.organizationId),
-          eq(schema.MediaAsset.deletedAt, null)
+          isNull(schema.MediaAsset.deletedAt)
         )
       )
       .orderBy(desc(schema.MediaAsset.createdAt)) // Get most recent
       .limit(1)
-      .then((results) => results[0] || null)
+
+    return results[0] ?? null
   }
   /**
    * Create new version for existing asset
@@ -167,7 +169,7 @@ export class UserProfileProcessor extends BaseAssetProcessor {
       existingAssetId,
       storageLocationId,
       {
-        size: BigInt(session.expectedSize),
+        size: session.expectedSize,
         mimeType: session.mimeType,
       }
     )

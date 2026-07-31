@@ -34,7 +34,7 @@ export function AttachmentThumbnail({
 }: AttachmentThumbnailProps) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attemptCount, setAttemptCount] = useState(0)
-  const timeoutRef = useRef<NodeJS.Timeout>()
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: attachmentId triggers reset when attachment changes
   useEffect(() => {

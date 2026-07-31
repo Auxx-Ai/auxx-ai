@@ -31,7 +31,7 @@ export interface FileState {
   tempFileId: string // consistent ID used throughout upload lifecycle
   name: string
   type: 'file' // Always 'file' for uploads
-  size?: bigint | null // Convert from number to bigint for consistency
+  size?: number | null
   displaySize: number // Computed from size for UI
   mimeType?: string | null // Renamed from 'type' field
   ext?: string | null // Computed from file name
@@ -135,6 +135,10 @@ export interface UploadError {
   sessionId?: string
   timestamp: Date
   recoverable: boolean
+  /** Coarse category; `syncQueueWithSSE` drops `'connection'` errors on reconnect. */
+  type?: 'upload' | 'connection' | 'validation'
+  /** Extra diagnostic context surfaced with the error. */
+  details?: Record<string, unknown>
 }
 
 export interface UploadConfig {
@@ -180,6 +184,8 @@ export interface UploadState {
 
   // Error State
   errors: UploadError[]
+  /** Dedupe map: error hash -> last-seen epoch ms. Suppresses repeats within 60s. */
+  recentErrorHashes: Record<string, number>
 
   // Configuration
   config: UploadConfig
@@ -222,6 +228,8 @@ export interface UploadActions {
       maxFileSize?: number
       fileExtensions?: string[]
       allowedMimeTypes?: string[]
+      /** Session to attach the files to; falls back to the uploader's session. */
+      sessionId?: string
     }
   ) => Promise<{ addedFileIds: string[]; validationErrors: string[] }>
   startUpload: () => Promise<BatchUploadResult>

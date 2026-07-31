@@ -149,9 +149,10 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
     try {
       const assetData: CreateAssetRequest = {
         kind: this.getAssetKind(session),
+        purpose: 'ORIGINAL',
         name: session.fileName,
         mimeType: session.mimeType,
-        size: BigInt(session.expectedSize),
+        size: session.expectedSize,
         isPrivate: this.isAssetPrivate(session),
         organizationId: session.organizationId,
         createdById: session.userId,

@@ -48,7 +48,7 @@ export interface CreateStorageLocationRequest {
   // Authentication (all providers can have credentials)
   credentialId?: string
   // File metadata
-  size?: bigint
+  size?: number
   mimeType?: string
   // Provider-specific metadata (e.g., S3: {bucket, region, etag}, Drive: {fileId, parentId})
   metadata?: Record<string, any>
@@ -59,7 +59,7 @@ export interface CreateStorageLocationRequest {
 export interface UpdateStorageLocationRequest {
   externalUrl?: string
   externalRev?: string
-  size?: bigint
+  size?: number
   mimeType?: string
   metadata?: Record<string, any>
 }
@@ -93,7 +93,7 @@ export interface StorageDownloadInfo {
   url: string
   filename?: string
   mimeType?: string
-  size?: bigint
+  size?: number
   expiresAt?: Date
   headers?: Record<string, string>
 }
@@ -105,7 +105,7 @@ export interface ProviderCapabilities {
   supportsSignedUrls: boolean
   supportsVersioning: boolean
   supportsMetadata: boolean
-  maxFileSize?: bigint
+  maxFileSize?: number
   allowedMimeTypes?: string[]
 }
 /**
@@ -280,6 +280,9 @@ export class StorageLocationService {
           externalRev: data.externalRev,
         })
         .returning()
+      if (!location) {
+        throw new Error('Storage location insert returned no row')
+      }
       logger.info('Storage location created successfully', { id: location.id })
       return location
     } catch (error) {
@@ -333,7 +336,7 @@ export class StorageLocationService {
       if (!result) return null
       return {
         ...result,
-        credential: result.credential.id ? result.credential : null,
+        credential: result.credential?.id ? result.credential : null,
       } as StorageLocationWithCredentials
     } catch (error) {
       logger.error('Failed to get storage location with credentials', { id, error })
@@ -357,6 +360,9 @@ export class StorageLocationService {
         .set(updateData)
         .where(eq(schema.StorageLocation.id, id))
         .returning()
+      if (!location) {
+        throw new Error(`Storage location ${id} not found`)
+      }
       logger.info('Storage location updated successfully', { id })
       return location
     } catch (error) {
@@ -629,6 +635,9 @@ export class StorageLocationService {
                 metadata: location.metadata || {},
               })
               .returning()
+            if (!result) {
+              throw new Error('Storage location insert returned no row')
+            }
             results.push(result)
           }
           return results
@@ -737,10 +746,11 @@ export class StorageLocationService {
   }> {
     try {
       // Get total count
-      const [{ totalCount }] = await db
+      const [totalCountRow] = await db
         .select({ totalCount: count() })
         .from(schema.StorageLocation)
         .where(isNull(schema.StorageLocation.deletedAt))
+      const totalCount = totalCountRow?.totalCount ?? 0
       // Get count by provider
       const providerCounts = await db
         .select({
@@ -822,8 +832,8 @@ export class StorageLocationService {
         )
       const providers = providerResults.map((item) => item.provider)
       return {
-        locationCount: stats.locationCount || 0,
-        totalSize: stats.totalSize ? BigInt(stats.totalSize) : BigInt(0),
+        locationCount: stats?.locationCount || 0,
+        totalSize: stats?.totalSize ? BigInt(stats.totalSize) : BigInt(0),
         providers,
       }
     } catch (error) {

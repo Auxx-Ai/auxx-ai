@@ -145,7 +145,7 @@ export class InboundAttachmentIngestService {
         purpose: input.inline ? 'inline-email-image' : 'email-attachment',
         name: sanitizeFilename(input.filename),
         mimeType: input.mimeType,
-        size: BigInt(input.content.length),
+        size: input.content.length,
         isPrivate: true,
         organizationId: context.organizationId,
         createdById: context.createdById ?? undefined,

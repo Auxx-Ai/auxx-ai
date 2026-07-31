@@ -116,11 +116,12 @@ export function calculateQueueStats(files: UploadFile[]): QueueStats {
   let totalProgress = 0
 
   files.forEach((file) => {
+    const overallProgress = file.progress.overallProgress
     stats.totalBytes += file.size
-    stats.uploadedBytes += Math.round((file.progress / 100) * file.size)
-    totalProgress += file.progress
+    stats.uploadedBytes += Math.round((overallProgress / 100) * file.size)
+    totalProgress += overallProgress
 
-    switch (file.status) {
+    switch (file.progress.status) {
       case 'pending':
         stats.pending++
         break
@@ -132,10 +133,6 @@ export function calculateQueueStats(files: UploadFile[]): QueueStats {
         break
       case 'completed':
         stats.completed++
-        break
-      case 'deleting':
-        // Count deleting files as processing for stats purposes
-        stats.processing++
         break
       case 'failed':
       case 'cancelled':

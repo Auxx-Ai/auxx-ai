@@ -62,12 +62,16 @@ export interface CreateFileRequest {
   path?: string
   ext?: string
   mimeType?: string
-  size?: bigint
+  size?: number
   checksum?: string
   folderId?: string
   storageLocationId?: string // Optional - only required for createWithVersion
   organizationId?: string
   createdById?: string
+  /** Preserved when copying/importing an existing file; defaults to now. */
+  createdAt?: Date
+  /** Preserved when copying/importing an existing file; defaults to now. */
+  updatedAt?: Date
 }
 /**
  * Request to update an existing FolderFile
@@ -79,7 +83,7 @@ export interface UpdateFileRequest {
   folderId?: string
   isArchived?: boolean
   mimeType?: string
-  size?: bigint
+  size?: number
 }
 /**
  * Request to create a new Folder
@@ -141,7 +145,7 @@ export interface CreateAssetRequest {
   purpose: string
   name?: string
   mimeType?: string
-  size?: bigint
+  size?: number
   isPrivate?: boolean
   storageLocationId?: string // Optional - only required for createWithVersion
   organizationId: string
@@ -155,7 +159,9 @@ export interface UpdateAssetRequest {
   name?: string
   isPrivate?: boolean
   mimeType?: string
-  size?: bigint
+  size?: number
+  /** Automatic-cleanup deadline for temporary assets. */
+  expiresAt?: Date | null
 }
 // ============= Response Types =============
 /**
@@ -266,17 +272,18 @@ export interface FileDownloadInfo {
   url?: string
   filename: string
   mimeType?: string
-  size?: bigint
+  size?: number
   expiresAt?: Date
 }
 /**
  * Asset download information
  */
 export interface AssetDownloadInfo {
-  url: string
+  /** Absent when the asset can only be streamed rather than served from a signed URL. */
+  url?: string
   filename?: string
   mimeType?: string
-  size?: bigint
+  size?: number
   expiresAt?: Date
 }
 /**
@@ -334,9 +341,20 @@ export interface FolderFileWithRelations extends FolderFile {
  * MediaAsset with populated relations
  */
 export interface MediaAssetWithRelations extends MediaAsset {
-  currentVersion?: MediaAssetVersion | null
-  versions?: MediaAssetVersion[]
+  currentVersion?:
+    | (MediaAssetVersion & {
+        storageLocation?: StorageLocation | null
+      })
+    | null
+  versions?: (MediaAssetVersion & {
+    storageLocation?: StorageLocation | null
+  })[]
   attachments?: Attachment[]
+  createdBy?: {
+    id: string
+    name: string | null
+    email: string
+  } | null
 }
 /**
  * Attachment with populated relations
@@ -344,7 +362,6 @@ export interface MediaAssetWithRelations extends MediaAsset {
 export interface AttachmentWithRelations extends Attachment {
   file?: FolderFile | null
   fileVersion?: FileVersion | null
-  fileVersionId?: string
   asset?: MediaAsset | null
   assetVersion?: MediaAssetVersion | null
 }

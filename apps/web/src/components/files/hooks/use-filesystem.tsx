@@ -122,7 +122,7 @@ export function useFilesystem() {
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       staleTime: 3 * 60 * 1000, // 3 minutes
-      cacheTime: 10 * 60 * 1000, // 10 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes — `cacheTime` is the React Query v4 name
     }
   )
 
@@ -235,7 +235,7 @@ export function useFilesystem() {
       const completedIds = results.results
         .filter((r) => r.success)
         .map((r) => r.fileId)
-        .filter(Boolean)
+        .filter((id): id is string => Boolean(id))
       if (completedIds.length > 0) {
         useUploadStore.setState((s) => {
           for (const id of completedIds) {
@@ -273,7 +273,7 @@ export function useFilesystem() {
     const currentFolderUploads =
       session?.fileIds
         .map((fileId) => uploadFiles[fileId])
-        .filter(Boolean)
+        .filter((file) => file !== undefined)
         .filter((file) => {
           // Only show uploads for current folder
           // Check both metadata.targetFolderId and parentId for compatibility
@@ -313,7 +313,7 @@ export function useFilesystem() {
     const currentFolderUploads =
       session?.fileIds
         .map((fileId) => uploadFiles[fileId])
-        .filter(Boolean)
+        .filter((file) => file !== undefined)
         .filter((file) => {
           // Check both parentId and metadata.targetFolderId for compatibility
           const uploadFolderId = file.parentId ?? file.metadata?.targetFolderId ?? null
@@ -375,7 +375,8 @@ export function useFilesystem() {
     // 1) Before the network call, patch the cache optimistically
     onMutate: async (vars: {
       items: Array<{ id: string; type: 'file' | 'folder' }>
-      targetFolderId: string
+      targetFolderId: string | null
+      position?: 'above' | 'below' | 'inside'
     }) => {
       // Cancel outgoing queries to avoid overwriting optimistic update
       await utils.file.getFileSystem.cancel(queryInput)
@@ -608,7 +609,7 @@ export function useFilesystem() {
 
         // Copy files and folders in parallel
         await Promise.all([
-          ...fileIds.map((id) => copyMutation.mutateAsync({ fileId: id, targetFolderId })),
+          ...fileIds.map((id) => copyMutation.mutateAsync({ sourceFileId: id, targetFolderId })),
           ...folderIds.map((id) =>
             copyFolderMutation.mutateAsync({ sourceFolderId: id, targetParentId: targetFolderId })
           ),
