@@ -246,7 +246,7 @@ export default function IntegrationRouting({
                 loading={syncMessages.isPending}
                 loadingText='Starting...'>
                 <RefreshCw />
-                Sync Messages
+                {integration.syncStatus === 'SYNCING' ? 'Syncing…' : 'Sync Messages'}
               </Button>
             </AdminGate>
           }>

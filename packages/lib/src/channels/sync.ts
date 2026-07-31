@@ -1,6 +1,6 @@
 // packages/lib/src/channels/sync.ts
 
-import { BadRequestError, type NotFoundError } from '../errors'
+import { AuxxError, BadRequestError } from '../errors'
 import { createScopedLogger } from '../logger'
 import { SyncMessages } from '../messages/sync-messages'
 import { Result, type TypedResult } from '../result'
@@ -17,9 +17,7 @@ export async function syncMessages(
   ctx: ChannelCtx & { userId: string },
   channelId: string,
   days: number
-): Promise<
-  TypedResult<Awaited<ReturnType<SyncMessages['sync']>>, NotFoundError | BadRequestError>
-> {
+): Promise<TypedResult<Awaited<ReturnType<SyncMessages['sync']>>, AuxxError>> {
   const validated = await validateChannelOwnership(ctx, channelId)
   if (!validated.ok) return validated
   const channel = validated.value
@@ -50,8 +48,16 @@ export async function syncMessages(
   })
 
   const syncer = new SyncMessages(ctx.db, ctx.organizationId, ctx.userId)
-  const result = await syncer.sync({ integrationId: channelId, since })
-  return Result.ok(result)
+  try {
+    const result = await syncer.sync({ integrationId: channelId, since })
+    return Result.ok(result)
+  } catch (error) {
+    // `SyncMessages.sync` throws (already-syncing, throttled, missing channel).
+    // Funnel those into the Result contract so the router maps them to a real
+    // status instead of letting an unrecognized throw become a generic 500.
+    if (error instanceof AuxxError) return Result.error(error)
+    throw error
+  }
 }
 
 /**
