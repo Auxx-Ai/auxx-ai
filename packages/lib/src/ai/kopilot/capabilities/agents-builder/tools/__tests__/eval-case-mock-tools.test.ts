@@ -7,7 +7,7 @@
 
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import type { AgentDeps } from '../../../../../agent-framework/types'
+import { createToolContext, runTool } from '../../../../../agent-framework/__test-helpers'
 import type { GetToolDeps } from '../../../types'
 
 vi.mock('../procedure-authoring-guard', () => ({
@@ -40,7 +40,7 @@ const getDeps: GetToolDeps = () =>
     userId: 'u-1',
     sessionId: 's-1',
   }) as never
-const agentDeps: AgentDeps = { organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' }
+const ctx = createToolContext({ organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' })
 
 const readTool = createGetEvalCaseTool(getDeps)
 const writeTool = createUpdateEvalCaseMockTool(getDeps)
@@ -91,7 +91,7 @@ describe('tool flags', () => {
 
 describe('get_eval_case', () => {
   it('returns config (with mocks) and read-only assertions', async () => {
-    const result = await readTool.execute({ caseId: 'c1' } as never, agentDeps)
+    const result = await runTool(readTool, { caseId: 'c1' }, ctx)
     expect(result.success).toBe(true)
     const output = result.output as {
       config: { connectorMocks: unknown[] }
@@ -105,7 +105,7 @@ describe('get_eval_case', () => {
 
   it("reads another agent's case as not-found", async () => {
     getCaseMock.mockResolvedValue(ok({ ...caseRow, agentId: 'other-agent' }))
-    const result = await readTool.execute({ caseId: 'c1' } as never, agentDeps)
+    const result = await runTool(readTool, { caseId: 'c1' }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
   })
@@ -113,14 +113,15 @@ describe('get_eval_case', () => {
 
 describe('update_eval_case_mock', () => {
   it('replaces a mock in place after schema validation', async () => {
-    const result = await writeTool.execute(
+    const result = await runTool(
+      writeTool,
       {
         caseId: 'c1',
         upsertMocks: [
           { id: 'm1', toolName: 'order_lookup', output: { id: '10427' }, usage: 'repeat' },
         ],
-      } as never,
-      agentDeps
+      },
+      ctx
     )
     expect(result.success).toBe(true)
     expect(validateMock).toHaveBeenCalledWith({
@@ -139,7 +140,8 @@ describe('update_eval_case_mock', () => {
   })
 
   it('appends a new mock with a generated id and removes by id', async () => {
-    const result = await writeTool.execute(
+    const result = await runTool(
+      writeTool,
       {
         caseId: 'c1',
         upsertMocks: [
@@ -150,8 +152,8 @@ describe('update_eval_case_mock', () => {
           },
         ],
         removeMockIds: ['m1'],
-      } as never,
-      agentDeps
+      },
+      ctx
     )
     expect(result.success).toBe(true)
     const saved = updateCaseMock.mock.calls[0]?.[0]?.patch.config.connectorMocks
@@ -167,9 +169,10 @@ describe('update_eval_case_mock', () => {
 
   it('rejects an invalid mock output without writing', async () => {
     validateMock.mockResolvedValue({ ok: false, error: 'Expected string for `status`' })
-    const result = await writeTool.execute(
-      { caseId: 'c1', upsertMocks: [{ toolName: 'order_lookup', output: {} }] } as never,
-      agentDeps
+    const result = await runTool(
+      writeTool,
+      { caseId: 'c1', upsertMocks: [{ toolName: 'order_lookup', output: {} }] },
+      ctx
     )
     expect(result.success).toBe(false)
     expect(result.error).toContain('Expected string')
@@ -177,37 +180,32 @@ describe('update_eval_case_mock', () => {
   })
 
   it('rejects unknown mock ids (replace and remove) without writing', async () => {
-    const replace = await writeTool.execute(
+    const replace = await runTool(
+      writeTool,
       {
         caseId: 'c1',
         upsertMocks: [{ id: 'nope', toolName: 'order_lookup', output: {} }],
-      } as never,
-      agentDeps
+      },
+      ctx
     )
     expect(replace.success).toBe(false)
     expect(replace.error).toContain('No mock with id "nope"')
 
-    const remove = await writeTool.execute(
-      { caseId: 'c1', removeMockIds: ['nope'] } as never,
-      agentDeps
-    )
+    const remove = await runTool(writeTool, { caseId: 'c1', removeMockIds: ['nope'] }, ctx)
     expect(remove.success).toBe(false)
     expect(remove.error).toContain('No mock with id "nope"')
     expect(updateCaseMock).not.toHaveBeenCalled()
   })
 
   it('requires at least one operation', async () => {
-    const result = await writeTool.execute({ caseId: 'c1' } as never, agentDeps)
+    const result = await runTool(writeTool, { caseId: 'c1' }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('at least one')
   })
 
   it("writes to another agent's case read as not-found", async () => {
     getCaseMock.mockResolvedValue(ok({ ...caseRow, agentId: 'other-agent' }))
-    const result = await writeTool.execute(
-      { caseId: 'c1', removeMockIds: ['m1'] } as never,
-      agentDeps
-    )
+    const result = await runTool(writeTool, { caseId: 'c1', removeMockIds: ['m1'] }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
     expect(updateCaseMock).not.toHaveBeenCalled()
@@ -215,10 +213,7 @@ describe('update_eval_case_mock', () => {
 
   it('surfaces guard failures without touching the DB', async () => {
     guardMock.mockResolvedValueOnce({ ok: false, error: 'Not allowed' })
-    const result = await writeTool.execute(
-      { caseId: 'c1', removeMockIds: ['m1'] } as never,
-      agentDeps
-    )
+    const result = await runTool(writeTool, { caseId: 'c1', removeMockIds: ['m1'] }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toBe('Not allowed')
     expect(getCaseMock).not.toHaveBeenCalled()
@@ -226,10 +221,7 @@ describe('update_eval_case_mock', () => {
 
   it('surfaces a failed save', async () => {
     updateCaseMock.mockResolvedValue(err({ code: 'EVAL_VALIDATION', message: 'Invalid config' }))
-    const result = await writeTool.execute(
-      { caseId: 'c1', removeMockIds: ['m1'] } as never,
-      agentDeps
-    )
+    const result = await runTool(writeTool, { caseId: 'c1', removeMockIds: ['m1'] }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('Invalid config')
   })

@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { ModelType } from '../../types'
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from '../google-defaults'
+import { requireGoogleModel } from '../test-helpers'
 
 describe('GOOGLE_CAPABILITIES', () => {
   it('has correct provider identity', () => {
@@ -29,12 +30,13 @@ describe('GOOGLE_CAPABILITIES', () => {
   it('has valid connection variables', () => {
     expect(GOOGLE_CAPABILITIES.connectionVariables).toHaveLength(1)
 
-    const apiKeyField = GOOGLE_CAPABILITIES.connectionVariables[0]
-    expect(apiKeyField.key).toBe('apiKey')
-    expect(apiKeyField.secret).toBe(true)
-    expect(apiKeyField.required).toBe(true)
-    expect(apiKeyField.validation?.pattern).toBe('^AIza[0-9A-Za-z-_]{35}$')
-    expect(GOOGLE_CAPABILITIES.fieldMeta.apiKey.scope).toBe('both')
+    const [apiKeyField] = GOOGLE_CAPABILITIES.connectionVariables
+    expect(apiKeyField).toBeDefined()
+    expect(apiKeyField?.key).toBe('apiKey')
+    expect(apiKeyField?.secret).toBe(true)
+    expect(apiKeyField?.required).toBe(true)
+    expect(apiKeyField?.validation?.pattern).toBe('^AIza[0-9A-Za-z-_]{35}$')
+    expect(GOOGLE_CAPABILITIES.fieldMeta.apiKey?.scope).toBe('both')
   })
 
   it('has rate limits configured', () => {
@@ -77,7 +79,7 @@ describe('GOOGLE_MODELS', () => {
     ]
 
     it.each(currentLlmModels)('%s has correct base properties', (modelId) => {
-      const model = GOOGLE_MODELS[modelId]
+      const model = requireGoogleModel(modelId)
       expect(model.provider).toBe('google')
       expect(model.modelId).toBe(modelId)
       expect(model.modelType).toBe(ModelType.LLM)
@@ -86,7 +88,7 @@ describe('GOOGLE_MODELS', () => {
     })
 
     it.each(currentLlmModels)('%s supports full LLM capabilities', (modelId) => {
-      const model = GOOGLE_MODELS[modelId]
+      const model = requireGoogleModel(modelId)
       expect(model.supports.streaming).toBe(true)
       expect(model.supports.structured).toBe(true)
       expect(model.supports.vision).toBe(true)
@@ -96,13 +98,13 @@ describe('GOOGLE_MODELS', () => {
     })
 
     it.each(currentLlmModels)('%s has thinking capabilities', (modelId) => {
-      const model = GOOGLE_MODELS[modelId]
+      const model = requireGoogleModel(modelId)
       expect(model.features).toContain('thinking')
       expect(model.parameterRestrictions?.isReasoningModel).toBe(true)
     })
 
     it.each(currentLlmModels)('%s has thinking parameter rules', (modelId) => {
-      const model = GOOGLE_MODELS[modelId]
+      const model = requireGoogleModel(modelId)
       const paramNames = model.parameterRules?.map((r) => r.name) ?? []
       expect(paramNames).toContain('temperature')
       expect(paramNames).toContain('topP')
@@ -112,11 +114,11 @@ describe('GOOGLE_MODELS', () => {
     })
 
     it.each(currentLlmModels)('%s is not deprecated', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].deprecated).toBeFalsy()
+      expect(requireGoogleModel(modelId).deprecated).toBeFalsy()
     })
 
     it.each(currentLlmModels)('%s has pricing defined', (modelId) => {
-      const model = GOOGLE_MODELS[modelId]
+      const model = requireGoogleModel(modelId)
       expect(model.costPer1kTokens).toBeDefined()
       expect(model.costPer1kTokens!.input).toBeGreaterThan(0)
       expect(model.costPer1kTokens!.output).toBeGreaterThan(0)
@@ -127,15 +129,15 @@ describe('GOOGLE_MODELS', () => {
     const deprecatedModels = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
 
     it.each(deprecatedModels)('%s is marked as deprecated', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].deprecated).toBe(true)
+      expect(requireGoogleModel(modelId).deprecated).toBe(true)
     })
 
     it.each(deprecatedModels)('%s has a replacement', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].replacement).toBeTruthy()
+      expect(requireGoogleModel(modelId).replacement).toBeTruthy()
     })
 
     it.each(deprecatedModels)('%s has deprecation notice in description', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].description).toContain('Deprecated')
+      expect(requireGoogleModel(modelId).description).toContain('Deprecated')
     })
   })
 
@@ -143,15 +145,15 @@ describe('GOOGLE_MODELS', () => {
     const retiredModels = ['gemini-1.5-pro-latest', 'gemini-1.5-flash-latest']
 
     it.each(retiredModels)('%s is marked as retired', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].retired).toBe(true)
+      expect(requireGoogleModel(modelId).retired).toBe(true)
     })
 
     it.each(retiredModels)('%s has a replacement', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].replacement).toBeTruthy()
+      expect(requireGoogleModel(modelId).replacement).toBeTruthy()
     })
 
     it.each(retiredModels)('%s is not marked as deprecated', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].deprecated).toBeFalsy()
+      expect(requireGoogleModel(modelId).deprecated).toBeFalsy()
     })
   })
 
@@ -159,17 +161,17 @@ describe('GOOGLE_MODELS', () => {
     const retiredEmbeddings = ['text-embedding-004', 'textembedding-gecko@003']
 
     it.each(retiredEmbeddings)('%s is marked as retired', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].retired).toBe(true)
+      expect(requireGoogleModel(modelId).retired).toBe(true)
     })
 
     it.each(retiredEmbeddings)('%s has a replacement', (modelId) => {
-      expect(GOOGLE_MODELS[modelId].replacement).toBe('gemini-embedding-001')
+      expect(requireGoogleModel(modelId).replacement).toBe('gemini-embedding-001')
     })
   })
 
   describe('embedding models', () => {
     it('gemini-embedding-2-preview has correct config', () => {
-      const model = GOOGLE_MODELS['gemini-embedding-2-preview']
+      const model = requireGoogleModel('gemini-embedding-2-preview')
       expect(model.modelType).toBe(ModelType.TEXT_EMBEDDING)
       expect(model.contextLength).toBe(8192)
       expect(model.features).toContain('text-embedding')
@@ -178,7 +180,7 @@ describe('GOOGLE_MODELS', () => {
     })
 
     it('gemini-embedding-001 has correct config', () => {
-      const model = GOOGLE_MODELS['gemini-embedding-001']
+      const model = requireGoogleModel('gemini-embedding-001')
       expect(model.modelType).toBe(ModelType.TEXT_EMBEDDING)
       expect(model.contextLength).toBe(2048)
       expect(model.features).toContain('text-embedding')
@@ -187,7 +189,7 @@ describe('GOOGLE_MODELS', () => {
 
     it('embedding models have no streaming/tool support', () => {
       for (const modelId of ['gemini-embedding-2-preview', 'gemini-embedding-001']) {
-        const model = GOOGLE_MODELS[modelId]
+        const model = requireGoogleModel(modelId)
         expect(model.supports.streaming).toBe(false)
         expect(model.supports.toolCalling).toBe(false)
         expect(model.supports.structured).toBe(false)
@@ -196,7 +198,7 @@ describe('GOOGLE_MODELS', () => {
 
     it('embedding models have dimension parameter rules', () => {
       for (const modelId of ['gemini-embedding-2-preview', 'gemini-embedding-001']) {
-        const model = GOOGLE_MODELS[modelId]
+        const model = requireGoogleModel(modelId)
         const dimParam = model.parameterRules?.find((r) => r.name === 'dimensions')
         expect(dimParam).toBeDefined()
         expect(dimParam!.options).toContain('768')

@@ -1,7 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/tools/__tests__/procedure-tools-ref.test.ts
 
 import { describe, expect, it } from 'vitest'
-import type { AgentDeps } from '../../../../../agent-framework/types'
+import { createToolContext, runTool } from '../../../../../agent-framework/__test-helpers'
 import type { GetToolDeps } from '../../../types'
 import { createCreateProcedureTool } from '../procedure-create'
 import { createReadProcedureTool } from '../procedure-read'
@@ -19,7 +19,7 @@ const getDeps: GetToolDeps = () =>
     sessionId: 's-1',
   }) as never
 
-const agentDeps: AgentDeps = { organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' }
+const ctx = createToolContext({ organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' })
 
 const tools = [
   ['create_procedure', createCreateProcedureTool(getDeps), { name: 'X' }],
@@ -39,7 +39,7 @@ const tools = [
 describe('procedure tools — agent-ref resolution', () => {
   for (const [name, tool, args] of tools) {
     it(`${name} refuses when no agent is in session context`, async () => {
-      const result = await tool.execute(args as never, agentDeps)
+      const result = await runTool(tool, args, ctx)
       expect(result.success).toBe(false)
       expect(result.error).toMatch(/No agent in session context/)
     })

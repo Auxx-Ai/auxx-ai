@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/deepseek/__tests__/deepseek-llm-client.test.ts
 
 import { describe, expect, it, vi } from 'vitest'
-import { DEFAULT_CLIENT_CONFIG } from '../../../clients/base/types'
+import { DEFAULT_CLIENT_CONFIG, type Message } from '../../../clients/base/types'
 import { DeepSeekLLMClient } from '../deepseek-llm-client'
 
 describe('DeepSeekLLMClient', () => {
@@ -13,6 +13,13 @@ describe('DeepSeekLLMClient', () => {
         },
       },
     } as any
+  }
+
+  /** Payload the client handed to the OpenAI-compatible SDK on its first call. */
+  function firstCallPayload(createMock: ReturnType<typeof vi.fn>): { messages: Message[] } {
+    const call = createMock.mock.calls[0]
+    if (!call) throw new Error('expected the API client to have been called')
+    return call[0]
   }
 
   it('completes a basic request using OpenAI-compatible API', async () => {
@@ -57,10 +64,11 @@ describe('DeepSeekLLMClient', () => {
     })
 
     expect(createMock).toHaveBeenCalledTimes(1)
-    const sentMessages = createMock.mock.calls[0][0].messages
-    const assistantMsg = sentMessages.find((m: any) => m.role === 'assistant')
-    expect(assistantMsg.content).toBe('4')
-    expect(assistantMsg.reasoning_content).toBeUndefined()
+    const sentMessages = firstCallPayload(createMock).messages
+    const assistantMsg = sentMessages.find((m) => m.role === 'assistant')
+    expect(assistantMsg).toBeDefined()
+    expect(assistantMsg?.content).toBe('4')
+    expect(assistantMsg?.reasoning_content).toBeUndefined()
   })
 
   it('preserves messages without reasoning_content unchanged', async () => {
@@ -82,7 +90,7 @@ describe('DeepSeekLLMClient', () => {
       ],
     })
 
-    const sentMessages = createMock.mock.calls[0][0].messages
+    const sentMessages = firstCallPayload(createMock).messages
     expect(sentMessages).toHaveLength(4)
     expect(sentMessages[0]).toEqual({ role: 'system', content: 'You are helpful.' })
     expect(sentMessages[2]).toEqual({ role: 'assistant', content: 'Hello!' })

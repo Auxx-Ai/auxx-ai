@@ -131,7 +131,7 @@ function capsWithInstance(rung: Rung, areaLevel: Level = Level.Full): Capability
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.agents]: areaLevel }) as PermissionKey[]),
     {},
-    'MEMBER',
+    'USER',
     'full',
     (id) => id,
     new Set(),

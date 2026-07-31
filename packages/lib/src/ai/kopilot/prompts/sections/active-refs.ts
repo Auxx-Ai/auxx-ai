@@ -6,6 +6,9 @@ import { ALL_MODES, type PromptSection } from './types'
 const REF_KIND_LABEL: Record<SessionRefKind, string> = {
   thread: 'thread',
   record: 'record',
+  // `resource` refs carry an entityDefinitionId — the records-table page the
+  // user is looking at, not one row on it.
+  resource: 'record type',
   kb: 'knowledge base',
   article: 'article',
   actor: 'actor',

@@ -54,6 +54,14 @@ function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityVi
     canViewEntity: yes,
     assertViewEntity: noop,
     filterViewableDefIds: (ids: string[]) => ids,
+    // Record lane (plan v3/03 P5) — all-permissive: every def is present and
+    // every row folds to `admin`.
+    hasDefPresence: yes,
+    hasRecordGrantsOn: yes,
+    recordDefRung: () => 'admin',
+    recordAccessAt: () => 'admin',
+    canDeleteRecordAt: yes,
+    canEditRecordAt: yes,
     viewAccessFor: () => undefined,
     canAdministerDef: yes,
     assertAdministerDef: noop,

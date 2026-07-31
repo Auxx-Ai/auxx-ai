@@ -5,7 +5,7 @@
 
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import type { AgentDeps } from '../../../../../agent-framework/types'
+import { createToolContext, runTool } from '../../../../../agent-framework/__test-helpers'
 import type { GetToolDeps } from '../../../types'
 
 vi.mock('../procedure-authoring-guard', () => ({
@@ -45,10 +45,10 @@ const getDeps: GetToolDeps = () =>
     userId: 'u-1',
     sessionId: 's-1',
   }) as never
-const agentDeps: AgentDeps = { organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' }
+const ctx = createToolContext({ organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' })
 
 const listTool = createListEvalCasesTool(getDeps)
-const runTool = createGetEvalRunTool(getDeps)
+const getRunTool = createGetEvalRunTool(getDeps)
 const diffTool = createGetSuiteDiffTool(getDeps)
 
 beforeEach(() => {
@@ -59,7 +59,7 @@ beforeEach(() => {
 describe('eval read tools — shared safety properties', () => {
   it.each([
     ['list_eval_cases', listTool],
-    ['get_eval_run', runTool],
+    ['get_eval_run', getRunTool],
     ['get_suite_diff', diffTool],
   ])('%s is read-only: idempotent, no approval gate', (_name, tool) => {
     expect(tool.idempotent).toBe(true)
@@ -70,11 +70,11 @@ describe('eval read tools — shared safety properties', () => {
 
   it.each([
     ['list_eval_cases', listTool, {}],
-    ['get_eval_run', runTool, { runId: 'r1' }],
+    ['get_eval_run', getRunTool, { runId: 'r1' }],
     ['get_suite_diff', diffTool, { baselineSuiteRunId: 'b', candidateSuiteRunId: 'c' }],
   ])('%s surfaces a guard failure without touching the DB', async (_name, tool, args) => {
     guardMock.mockResolvedValueOnce({ ok: false, error: 'Not allowed' })
-    const result = await tool.execute(args as never, agentDeps)
+    const result = await runTool(tool, args, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toBe('Not allowed')
     expect(listCasesMock).not.toHaveBeenCalled()
@@ -121,7 +121,7 @@ describe('list_eval_cases', () => {
       ])
     )
 
-    const result = await listTool.execute({ procedureId: 'p1' } as never, agentDeps)
+    const result = await runTool(listTool, { procedureId: 'p1' }, ctx)
     expect(result.success).toBe(true)
     expect(listCasesMock).toHaveBeenCalledWith({
       organizationId: 'org-1',
@@ -155,7 +155,7 @@ describe('get_eval_run', () => {
         error: null,
       })
     )
-    const result = await runTool.execute({ runId: 'r1' } as never, agentDeps)
+    const result = await runTool(getRunTool, { runId: 'r1' }, ctx)
     expect(result.success).toBe(true)
     expect(getRunMock).toHaveBeenCalledWith({ organizationId: 'org-1', runId: 'r1' })
     expect((result.output as { caseName: string }).caseName).toBe('Refund case')
@@ -164,7 +164,7 @@ describe('get_eval_run', () => {
 
   it('returns not-found for a cross-org run id without leaking', async () => {
     getRunMock.mockResolvedValue(ok(null))
-    const result = await runTool.execute({ runId: 'foreign' } as never, agentDeps)
+    const result = await runTool(getRunTool, { runId: 'foreign' }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
   })
@@ -202,9 +202,10 @@ describe('get_suite_diff', () => {
       })
     )
 
-    const result = await diffTool.execute(
-      { baselineSuiteRunId: 'b', candidateSuiteRunId: 'c' } as never,
-      agentDeps
+    const result = await runTool(
+      diffTool,
+      { baselineSuiteRunId: 'b', candidateSuiteRunId: 'c' },
+      ctx
     )
     expect(result.success).toBe(true)
     expect(compareMock).toHaveBeenCalledWith({
@@ -225,9 +226,10 @@ describe('get_suite_diff', () => {
     compareMock.mockResolvedValue(
       err({ code: 'SUITE_NOT_TERMINAL', message: 'Suite run is not terminal: c (running)' })
     )
-    const result = await diffTool.execute(
-      { baselineSuiteRunId: 'b', candidateSuiteRunId: 'c' } as never,
-      agentDeps
+    const result = await runTool(
+      diffTool,
+      { baselineSuiteRunId: 'b', candidateSuiteRunId: 'c' },
+      ctx
     )
     expect(result.success).toBe(false)
     expect(result.error).toContain('not terminal')

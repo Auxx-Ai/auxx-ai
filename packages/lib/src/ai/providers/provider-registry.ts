@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '../../logger'
 import { ANTHROPIC_CAPABILITIES, ANTHROPIC_MODELS } from './anthropic/anthropic-defaults'
-import type { ProviderClient } from './base/provider-client'
+import type { ProviderClient, ProviderClientConstructor } from './base/provider-client'
 import { ProviderError } from './base/types'
 import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek/deepseek-defaults'
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google/google-defaults'
@@ -47,11 +47,16 @@ export const providerPositions: string[] = [
 
 export interface ProviderRegistration {
   // Static metadata (from ModelRegistry)
-  capabilities: ProviderCapabilities
+  /**
+   * Undefined for a provider that has a client but no entry in
+   * `staticProviders`; `getProviderCapabilities` then falls back to asking the
+   * client instance itself.
+   */
+  capabilities?: ProviderCapabilities
   models: Record<string, ModelCapabilities>
 
   // Dynamic factory info (from ProviderFactory)
-  clientClass?: typeof ProviderClient
+  clientClass?: ProviderClientConstructor
   isRegistered: boolean
   lastValidated?: Date
 }
@@ -191,7 +196,7 @@ export class ProviderRegistry {
    */
   private static async loadClientClass(
     definition: ProviderDefinition
-  ): Promise<typeof ProviderClient | undefined> {
+  ): Promise<ProviderClientConstructor | undefined> {
     if (!ProviderRegistry.isServerEnvironment()) {
       logger.debug('Skipping provider load outside Node server', { providerId: definition.id })
       return undefined
@@ -289,9 +294,9 @@ export class ProviderRegistry {
   }
 
   static getAllModelsForProvider(provider: string): string[] {
-    return Object.keys(ProviderRegistry.models).filter(
-      (model) => ProviderRegistry.models[model].provider === provider
-    )
+    return Object.entries(ProviderRegistry.models)
+      .filter(([, capabilities]) => capabilities.provider === provider)
+      .map(([model]) => model)
   }
 
   static getAllModels(): Record<string, ModelCapabilities> {
@@ -320,15 +325,14 @@ export class ProviderRegistry {
   static getModelOptionsForProvider(
     provider: string
   ): Array<{ label: string; value: string; icon?: string; color?: string }> {
-    return ProviderRegistry.getAllModelsForProvider(provider).map((model) => {
-      const capabilities = ProviderRegistry.models[model]
-      return {
+    return Object.entries(ProviderRegistry.models)
+      .filter(([, capabilities]) => capabilities.provider === provider)
+      .map(([model, capabilities]) => ({
         label: capabilities.displayName,
         value: model,
         icon: capabilities.icon,
         color: capabilities.color,
-      }
-    })
+      }))
   }
 
   // ===== PROVIDER REGISTRY METHODS =====
@@ -431,10 +435,8 @@ export class ProviderRegistry {
     if (typeof window !== 'undefined' || !ProviderRegistry.isServerEnvironment()) {
       return providerId in ProviderRegistry.staticProviders
     }
-    return (
-      ProviderRegistry.providers[providerId]?.isRegistered &&
-      !!ProviderRegistry.providers[providerId]?.clientClass
-    )
+    const registration = ProviderRegistry.providers[providerId]
+    return !!registration?.isRegistered && !!registration.clientClass
   }
 
   static async getAllProviderCapabilities(): Promise<Record<string, ProviderCapabilities>> {
@@ -511,7 +513,7 @@ export class ProviderRegistry {
 
   // ===== ADDITIONAL UTILITY METHODS =====
 
-  static async register(providerId: string, clientClass: typeof ProviderClient): Promise<void> {
+  static async register(providerId: string, clientClass: ProviderClientConstructor): Promise<void> {
     await ProviderRegistry.initialize()
 
     if (ProviderRegistry.providers[providerId]) {
@@ -519,7 +521,7 @@ export class ProviderRegistry {
     }
 
     const registration: ProviderRegistration = {
-      capabilities: ProviderRegistry.staticProviders[providerId] || ({} as ProviderCapabilities),
+      capabilities: ProviderRegistry.staticProviders[providerId],
       models: ProviderRegistry.getModelsForProvider(providerId),
       clientClass,
       isRegistered: true,

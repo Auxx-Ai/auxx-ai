@@ -5,7 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { RecordPickerService } from '../../../../../resources/picker'
-import { parseRecordId } from '../../../../../resources/resource-id'
+import { isRecordId, parseRecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -94,7 +94,14 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
     },
     execute: async (args, agentDeps) => {
       const { db, capabilities } = getDeps()
-      const recordId = args.recordId as string
+      const recordId = args.recordId
+      if (!isRecordId(recordId)) {
+        return {
+          success: false,
+          output: null,
+          error: "recordId must have the form '<entityDefinitionId>:<entityInstanceId>'.",
+        }
+      }
 
       // Read enforcement (§3): the picker drops non-viewable defs, so `item` is
       // absent for a restricted record. The gate is re-applied before the

@@ -78,10 +78,19 @@ export interface PlanState {
  *
  * The active multi-step plan now lives in `var:plan` (chat v9 context store),
  * managed by the plan tools via `ctx.context` — not on domainState.
+ *
+ * The index signature is load-bearing, not laziness: the engine also stashes
+ * bare-keyed slices on this bag (`__proc_step` / `__proc` from
+ * `agents/procedures/persist`, `__context` for the context store), and every
+ * slice reader is typed against `Record<string, unknown>`. Without it a
+ * `KopilotDomainState` is not assignable to `Record<string, unknown>` at all
+ * (interfaces get no implicit index signature) and each read needs a cast.
  */
 export interface KopilotDomainState {
   /** UI context — replaced wholesale on each message via applyContext */
   context: SessionContext
   /** Human-friendly capability descriptions surfaced when the user asks what Kopilot can do */
   capabilities?: string[]
+  /** Engine-managed slices keyed by bare string constants (see above). */
+  [slice: string]: unknown
 }

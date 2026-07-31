@@ -81,7 +81,7 @@ export class OpenAIModerationClient extends ModerationClient {
     }
   }
 
-  private normalizeCategories(categories: Record<string, boolean>): Record<string, boolean> {
+  protected normalizeCategories(categories: Record<string, boolean>): Record<string, boolean> {
     // OpenAI categories are already in the correct format
     return categories
   }
@@ -224,6 +224,11 @@ export class OpenAIModerationClient extends ModerationClient {
 
     return texts.map((text, index) => {
       const result = response.results[index]
+      if (!result) {
+        throw new Error(
+          `OpenAI moderation returned ${response.results.length} results for ${texts.length} inputs`
+        )
+      }
       const customCategories = this.applyCustomThresholds(
         result.category_scores,
         categoryThresholds

@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/apps/__tests__/bridge.test.ts
 
 import { describe, expect, it, vi } from 'vitest'
+import { runTool } from '../../../../agent-framework/__test-helpers'
 import { buildAppToolDigest } from '../digest'
 
 vi.mock('../../../../../cache', () => ({
@@ -151,7 +152,7 @@ describe('createAppCapabilities — execute() posts tool event to lambda', () =>
     })
 
     const args = { timeMin: '2026-05-14T00:00:00Z', timeMax: '2026-05-14T23:59:00Z' }
-    const result = await capability.tools[0]!.execute(args, {} as never)
+    const result = await runTool(capability.tools[0]!, args)
 
     expect(result.success).toBe(true)
     expect(invokeLambdaExecutor).toHaveBeenCalledWith(

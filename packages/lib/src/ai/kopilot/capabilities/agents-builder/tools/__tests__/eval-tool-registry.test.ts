@@ -8,6 +8,7 @@
 
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentToolDefinition } from '../../../../../agent-framework/types'
 import type { GetToolDeps } from '../../../types'
 
 vi.mock('../../../../../../agents/procedures/authoring', async (importOriginal) => ({
@@ -38,7 +39,7 @@ const getDeps: GetToolDeps = () =>
 
 describe('agents-builder eval tool registry (phase 5C/5E)', () => {
   let names: string[] = []
-  let byName: Map<string, { requiresApproval?: boolean; idempotent?: boolean }>
+  let byName: Map<string, AgentToolDefinition>
 
   beforeEach(async () => {
     const capability = await createAgentsBuilderCapabilities(getDeps, 'org-1')

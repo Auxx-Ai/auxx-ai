@@ -7,6 +7,7 @@ import { isArrayReturnFieldType } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedResource } from '../../../../cache/org-cache-helpers'
+import type { FieldOptions } from '../../../../custom-fields/field-options'
 import { rowsToTypedValues } from '../../../../field-values/field-value-helpers'
 import { formatToDisplayValue, formatToRawValue } from '../../../../field-values/formatter'
 import type { FieldValueRow } from '../../../../field-values/types'
@@ -22,7 +23,7 @@ export interface EnrichedField {
   displayValue: unknown
   rawValue: unknown
   fieldType: FieldType
-  options?: Record<string, unknown>
+  options?: FieldOptions
 }
 
 /**

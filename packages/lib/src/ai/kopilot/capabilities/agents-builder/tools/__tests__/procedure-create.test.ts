@@ -2,7 +2,7 @@
 
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import type { AgentDeps } from '../../../../../agent-framework/types'
+import { createToolContext, runTool } from '../../../../../agent-framework/__test-helpers'
 import type { GetToolDeps } from '../../../types'
 
 // Force the auth guard to pass so we can exercise the tool's own logic.
@@ -33,7 +33,7 @@ const getDeps: GetToolDeps = () =>
     userId: 'u-1',
     sessionId: 's-1',
   }) as never
-const agentDeps: AgentDeps = { organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' }
+const ctx = createToolContext({ organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' })
 const tool = createCreateProcedureTool(getDeps)
 
 beforeEach(() => {
@@ -43,9 +43,10 @@ beforeEach(() => {
 
 describe('create_procedure', () => {
   it('rejects an invalid body BEFORE any DB write', async () => {
-    const result = await tool.execute(
-      { name: 'Bad', body: { steps: [{ id: 'x', kind: 'nonsense' }] } } as never,
-      agentDeps
+    const result = await runTool(
+      tool,
+      { name: 'Bad', body: { steps: [{ id: 'x', kind: 'nonsense' }] } },
+      ctx
     )
     expect(result.success).toBe(false)
     expect((result.output as { errors?: unknown[] }).errors?.length).toBeGreaterThan(0)
@@ -53,12 +54,13 @@ describe('create_procedure', () => {
   })
 
   it('rejects an opaque step on create (no prior draft to carry through)', async () => {
-    const result = await tool.execute(
+    const result = await runTool(
+      tool,
       {
         name: 'X',
         body: { steps: [{ id: 'opaque:body:#0', kind: 'opaque', label: 'code block: X' }] },
-      } as never,
-      agentDeps
+      },
+      ctx
     )
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/opaque\/read-only/)
@@ -66,10 +68,7 @@ describe('create_procedure', () => {
   })
 
   it('creates a draft (no body) and attaches it', async () => {
-    const result = await tool.execute(
-      { name: 'Refunds', whenToUse: 'refund asks' } as never,
-      agentDeps
-    )
+    const result = await runTool(tool, { name: 'Refunds', whenToUse: 'refund asks' }, ctx)
     expect(result.success).toBe(true)
     expect((result.output as { procedureId: string }).procedureId).toBe('p1')
     expect(createDraftMock).toHaveBeenCalledOnce()
@@ -83,7 +82,7 @@ describe('create_procedure', () => {
         { id: 's2', kind: 'route', outcome: 'finished' },
       ],
     }
-    const result = await tool.execute({ name: 'Greeter', body } as never, agentDeps)
+    const result = await runTool(tool, { name: 'Greeter', body }, ctx)
     expect(result.success).toBe(true)
     expect((result.output as { stepCount: number }).stepCount).toBeGreaterThan(0)
     // The DB write received a built doc (not the raw DSL).

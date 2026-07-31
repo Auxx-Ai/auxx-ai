@@ -7,6 +7,7 @@ import { createCapabilityRegistry } from '../registry'
 function tool(name: string): AgentToolDefinition {
   return {
     name,
+    displayName: name,
     description: name,
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     execute: async () => ({ success: true, output: null }),

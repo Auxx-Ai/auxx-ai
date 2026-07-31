@@ -297,8 +297,9 @@ function lookupByString(
     if (byEmail) return toActorId('user', byEmail.userId)
 
     const byName = memberIndex.byName.get(lower)
-    if (byName && byName.length === 1) {
-      return toActorId('user', byName[0].userId)
+    const onlyMember = byName?.length === 1 ? byName[0] : undefined
+    if (onlyMember) {
+      return toActorId('user', onlyMember.userId)
     }
     if (byName && byName.length > 1) {
       errors.push({
@@ -317,8 +318,9 @@ function lookupByString(
 
   if (target !== 'user' && groupIndex) {
     const byGroupName = groupIndex.byName.get(lower)
-    if (byGroupName && byGroupName.length === 1) {
-      return toActorId('group', byGroupName[0].id)
+    const onlyGroup = byGroupName?.length === 1 ? byGroupName[0] : undefined
+    if (onlyGroup) {
+      return toActorId('group', onlyGroup.id)
     }
     if (byGroupName && byGroupName.length > 1) {
       errors.push({

@@ -186,8 +186,8 @@ export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition 
             subject: t.subject || null,
             snippet: null,
             recipientSummary: null,
-            updatedAt:
-              t.lastMessageAt instanceof Date ? t.lastMessageAt.toISOString() : t.lastMessageAt,
+            // `ThreadMeta.lastMessageAt` is already an ISO string.
+            updatedAt: t.lastMessageAt,
             scheduledAt: null,
             threadId: t.id,
           })

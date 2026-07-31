@@ -10,6 +10,15 @@ const OPENAI_LLM_MODELS = Object.entries(OPENAI_MODELS).filter(
   ([_, capabilities]) => capabilities.modelType === ModelType.LLM
 )
 
+/** Registry lookup that fails loudly instead of yielding `undefined`. */
+function modelCaps(modelId: string) {
+  const capabilities = OPENAI_MODELS[modelId]
+  if (!capabilities) {
+    throw new Error(`Missing model capabilities for ${modelId}`)
+  }
+  return capabilities
+}
+
 /** Returns the strict allowlist of parameter names for a model. */
 function getAllowedParameterNames(modelId: string): Set<string> {
   const capabilities = OPENAI_MODELS[modelId]
@@ -227,7 +236,7 @@ describe('OpenAI model restrictions', () => {
   })
 
   it('GPT-5.4-pro has structured: false and restricted reasoning levels', () => {
-    const pro = OPENAI_MODELS['gpt-5.4-pro']
+    const pro = modelCaps('gpt-5.4-pro')
     expect(pro.supports.structured).toBe(false)
 
     // Only medium/high/xhigh — no none or low
@@ -236,7 +245,7 @@ describe('OpenAI model restrictions', () => {
   })
 
   it('GPT-5.3-codex has no none reasoning level', () => {
-    const codex = OPENAI_MODELS['gpt-5.3-codex']
+    const codex = modelCaps('gpt-5.3-codex')
     const reasoningRule = codex.parameterRules.find((r) => r.name === 'reasoning_effort')
     expect(reasoningRule?.options).toEqual(['low', 'medium', 'high', 'xhigh'])
     expect(reasoningRule?.options).not.toContain('none')
@@ -263,14 +272,13 @@ describe('OpenAI model restrictions', () => {
   it.each(
     O_SERIES_MODELS
   )('%s has isReasoningModel and max_completion_tokens mapping', (modelId) => {
-    const caps = OPENAI_MODELS[modelId]
-    expect(caps).toBeDefined()
+    const caps = modelCaps(modelId)
     expect(caps.parameterRestrictions?.isReasoningModel).toBe(true)
     expect(caps.parameterRestrictions?.parameterMapping?.max_tokens).toBe('max_completion_tokens')
   })
 
   it.each(O_SERIES_MODELS)('%s strips temperature/top_p via unsupportedParams', (modelId) => {
-    const caps = OPENAI_MODELS[modelId]
+    const caps = modelCaps(modelId)
     expect(caps.parameterRestrictions?.unsupportedParams).toContain('temperature')
     expect(caps.parameterRestrictions?.unsupportedParams).toContain('top_p')
   })
@@ -286,31 +294,30 @@ describe('OpenAI model restrictions', () => {
   // ── Deprecated models ──────────────────────────────────────────
 
   it.each(DEPRECATED_MODELS)('%s is marked as deprecated or retired', (modelId) => {
-    const caps = OPENAI_MODELS[modelId]
-    expect(caps).toBeDefined()
+    const caps = modelCaps(modelId)
     expect(caps.deprecated === true || caps.retired === true).toBe(true)
   })
 
   // ── GPT-5.4 pricing ────────────────────────────────────────────
 
   it('GPT-5.4 models have correct pricing', () => {
-    expect(OPENAI_MODELS['gpt-5.4'].costPer1kTokens).toEqual({
+    expect(modelCaps('gpt-5.4').costPer1kTokens).toEqual({
       input: 0.0025,
       output: 0.015,
       cachedInput: 0.00025,
       longContext: [{ over: 272000, input: 0.005, output: 0.0225, cachedInput: 0.0005 }],
     })
-    expect(OPENAI_MODELS['gpt-5.4-mini'].costPer1kTokens).toEqual({
+    expect(modelCaps('gpt-5.4-mini').costPer1kTokens).toEqual({
       input: 0.00075,
       output: 0.0045,
       cachedInput: 0.000075,
     })
-    expect(OPENAI_MODELS['gpt-5.4-nano'].costPer1kTokens).toEqual({
+    expect(modelCaps('gpt-5.4-nano').costPer1kTokens).toEqual({
       input: 0.0002,
       output: 0.00125,
       cachedInput: 0.00002,
     })
-    expect(OPENAI_MODELS['gpt-5.4-pro'].costPer1kTokens).toEqual({
+    expect(modelCaps('gpt-5.4-pro').costPer1kTokens).toEqual({
       input: 0.03,
       output: 0.18,
       longContext: [{ over: 272000, input: 0.06, output: 0.27 }],

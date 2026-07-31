@@ -88,7 +88,9 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
       // rather than hardcoding mp3.
       const resolvedType = mimeType || 'audio/webm'
       const resolvedName = filename || `audio.${this.extensionForMime(resolvedType)}`
-      return new File([audio], resolvedName, { type: resolvedType })
+      // Node's Buffer is typed `Uint8Array<ArrayBufferLike>`, which `BlobPart`
+      // rejects (it only admits ArrayBuffer-backed views). Re-view the bytes.
+      return new File([new Uint8Array(audio)], resolvedName, { type: resolvedType })
     } else {
       // Assume it's a file path - this would need proper file handling in real implementation
       throw new Error('File path audio input not supported in this implementation')

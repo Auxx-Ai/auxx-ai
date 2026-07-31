@@ -5,26 +5,35 @@ import type { BaseSpecializedClient } from '../../clients/base/base-specialized-
 import { DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import type { ConnectionTestResult, ProviderCredentials, ValidationResult } from '../base/types'
-import { type ModelCapabilities, ModelType } from '../types'
+import { FetchFrom, type ModelCapabilities, ModelType, type ProviderCapabilities } from '../types'
 import { CohereTextEmbeddingClient } from './cohere-embedding-client'
 
 // Define Cohere capabilities and models
-const COHERE_CAPABILITIES = {
+const COHERE_CAPABILITIES: ProviderCapabilities = {
   id: 'cohere',
-  name: 'Cohere',
+  displayName: 'Cohere',
   description: 'Cohere AI platform for embeddings and language models',
   icon: 'cohere',
   color: '#FF6B35',
-  supported_model_types: [ModelType.TEXT_EMBEDDING],
-  configurable: true,
-  credential_form_schema: {
-    apiKey: {
-      type: 'secret-input',
-      required: true,
+  supportedModelTypes: [ModelType.TEXT_EMBEDDING],
+  defaultModel: 'embed-english-v3.0',
+  requiresApiKey: true,
+  toolFormat: 'custom',
+  configurateMethods: ['predefined-model'],
+  connectionVariables: [
+    {
+      key: 'apiKey',
       label: 'API Key',
       placeholder: 'Enter your Cohere API key',
+      required: true,
+      secret: true,
+      description: 'Your Cohere API key from https://dashboard.cohere.com/api-keys',
     },
+  ],
+  fieldMeta: {
+    apiKey: { scope: 'both', priority: 'model-override' },
   },
+  documentationUrl: 'https://docs.cohere.com/reference/embed',
 }
 
 const COHERE_MODELS: Record<string, ModelCapabilities> = {
@@ -37,7 +46,7 @@ const COHERE_MODELS: Record<string, ModelCapabilities> = {
     contextLength: 512,
     maxTokens: 512,
     modelType: ModelType.TEXT_EMBEDDING,
-    fetchFrom: 'predefined-model' as any,
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
     features: ['high-performance', 'english-optimized'],
     supports: {
       streaming: false,
@@ -59,7 +68,7 @@ const COHERE_MODELS: Record<string, ModelCapabilities> = {
     contextLength: 512,
     maxTokens: 512,
     modelType: ModelType.TEXT_EMBEDDING,
-    fetchFrom: 'predefined-model' as any,
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
     features: ['multilingual', 'high-performance'],
     supports: {
       streaming: false,

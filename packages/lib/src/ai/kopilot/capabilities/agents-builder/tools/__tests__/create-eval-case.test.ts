@@ -8,7 +8,7 @@
 
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import type { AgentDeps } from '../../../../../agent-framework/types'
+import { createToolContext, runTool } from '../../../../../agent-framework/__test-helpers'
 import type { GetToolDeps } from '../../../types'
 
 vi.mock('../procedure-authoring-guard', () => ({
@@ -48,7 +48,7 @@ const getDeps: GetToolDeps = () =>
     userId: 'u-1',
     sessionId: 's-1',
   }) as never
-const agentDeps: AgentDeps = { organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' }
+const ctx = createToolContext({ organizationId: 'org-1', userId: 'u-1', sessionId: 's-1' })
 
 const tool = createCreateEvalCaseTool(getDeps)
 
@@ -100,7 +100,7 @@ describe('tool flags', () => {
 
 describe('agent-scoped create', () => {
   it('persists an agent-scoped case when no procedureId is given', async () => {
-    const result = await tool.execute(validArgs as never, agentDeps)
+    const result = await runTool(tool, validArgs, ctx)
     expect(result.success).toBe(true)
     expect(listProcsMock).not.toHaveBeenCalled()
     const arg = createMock.mock.calls[0]?.[0]
@@ -119,7 +119,7 @@ describe('agent-scoped create', () => {
   })
 
   it('forwards the authored shape to the shared builder', async () => {
-    await tool.execute(validArgs as never, agentDeps)
+    await runTool(tool, validArgs, ctx)
     const authored = buildMock.mock.calls[0]?.[0]
     expect(authored).toMatchObject({
       name: 'Missing order number',
@@ -131,7 +131,7 @@ describe('agent-scoped create', () => {
 
 describe('procedure-scoped create — version pinning', () => {
   it('pins the active version when published', async () => {
-    const result = await tool.execute({ ...validArgs, procedureId: 'p1' } as never, agentDeps)
+    const result = await runTool(tool, { ...validArgs, procedureId: 'p1' }, ctx)
     expect(result.success).toBe(true)
     expect(createMock.mock.calls[0]?.[0].target).toEqual({
       kind: 'agent_simulation',
@@ -147,7 +147,7 @@ describe('procedure-scoped create — version pinning', () => {
     listProcsMock.mockResolvedValue(
       ok([{ procedureId: 'p1', activeVersionId: null, draftVersionId: 'v-draft' }])
     )
-    const result = await tool.execute({ ...validArgs, procedureId: 'p1' } as never, agentDeps)
+    const result = await runTool(tool, { ...validArgs, procedureId: 'p1' }, ctx)
     expect(result.success).toBe(true)
     expect(createMock.mock.calls[0]?.[0].target.procedureVersionId).toBe('v-draft')
   })
@@ -156,7 +156,7 @@ describe('procedure-scoped create — version pinning', () => {
     listProcsMock.mockResolvedValue(
       ok([{ procedureId: 'p1', activeVersionId: null, draftVersionId: null }])
     )
-    const result = await tool.execute({ ...validArgs, procedureId: 'p1' } as never, agentDeps)
+    const result = await runTool(tool, { ...validArgs, procedureId: 'p1' }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('no version')
     expect(createMock).not.toHaveBeenCalled()
@@ -164,7 +164,7 @@ describe('procedure-scoped create — version pinning', () => {
 
   it('errors (no write) when the procedure is not attached to the agent', async () => {
     listProcsMock.mockResolvedValue(ok([{ procedureId: 'other', activeVersionId: 'v' }]))
-    const result = await tool.execute({ ...validArgs, procedureId: 'p1' } as never, agentDeps)
+    const result = await runTool(tool, { ...validArgs, procedureId: 'p1' }, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('not attached')
     expect(createMock).not.toHaveBeenCalled()
@@ -174,7 +174,7 @@ describe('procedure-scoped create — version pinning', () => {
 describe('validation + guard', () => {
   it('surfaces a builder validation failure without writing', async () => {
     buildMock.mockReturnValue(err('unknown mock tool "frobnicate"'))
-    const result = await tool.execute(validArgs as never, agentDeps)
+    const result = await runTool(tool, validArgs, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('frobnicate')
     expect(createMock).not.toHaveBeenCalled()
@@ -182,7 +182,7 @@ describe('validation + guard', () => {
 
   it('surfaces guard failures without touching the runtime or DB', async () => {
     guardMock.mockResolvedValueOnce({ ok: false, error: 'Not allowed' })
-    const result = await tool.execute(validArgs as never, agentDeps)
+    const result = await runTool(tool, validArgs, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toBe('Not allowed')
     expect(resolveCtxMock).not.toHaveBeenCalled()
@@ -191,7 +191,7 @@ describe('validation + guard', () => {
 
   it('surfaces a failed persist', async () => {
     createMock.mockResolvedValue(err({ code: 'EVAL_VALIDATION', message: 'Bad config' }))
-    const result = await tool.execute(validArgs as never, agentDeps)
+    const result = await runTool(tool, validArgs, ctx)
     expect(result.success).toBe(false)
     expect(result.error).toContain('Bad config')
   })

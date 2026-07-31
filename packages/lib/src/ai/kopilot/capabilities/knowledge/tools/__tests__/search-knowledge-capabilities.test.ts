@@ -15,6 +15,7 @@ vi.mock('../../../../../../datasets/services/search.service', () => ({
 }))
 
 import type { CapabilityView } from '../../../../../../permissions/capabilities/capability-view'
+import { Level } from '../../../../../../permissions/capabilities/registry'
 import type { ToolContext } from '../../../../../agent-framework/tool-context'
 import type { AgentToolResult } from '../../../../../agent-framework/types'
 import { createSearchKnowledgeTool } from '../search-knowledge'
@@ -58,6 +59,7 @@ function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityVi
     can: yes,
     has: yes,
     assert: noop,
+    areaLevel: () => Level.Full,
     canWriteEntity: yes,
     assertWriteEntity: noop,
     canEditEntity: yes,
@@ -66,6 +68,14 @@ function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityVi
     canViewEntity: yes,
     assertViewEntity: noop,
     filterViewableDefIds: (ids: string[]) => ids,
+    // Record lane (plan v3/03 P5) — all-permissive: every def is present and
+    // every row folds to `admin`.
+    hasDefPresence: yes,
+    hasRecordGrantsOn: yes,
+    recordDefRung: () => 'admin',
+    recordAccessAt: () => 'admin',
+    canDeleteRecordAt: yes,
+    canEditRecordAt: yes,
     viewAccessFor: () => undefined,
     canAdministerDef: yes,
     assertAdministerDef: noop,

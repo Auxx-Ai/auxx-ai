@@ -64,13 +64,27 @@ const para = (id: string, text: string): BlockJSON => ({
 const textOf = (node: ArticleNodeJSON): string =>
   node.type === 'block' ? (node.content ?? []).map((n) => n.text ?? '').join('') : `<${node.type}>`
 
+/** The node at `index`, asserted to be a leaf `block` (not a container). */
+const blockAt = (content: ArticleNodeJSON[], index: number): BlockJSON => {
+  const node = content[index]
+  if (node?.type !== 'block') throw new Error(`expected a block at index ${index}`)
+  return node
+}
+
+/** The node at `index`, asserted to exist. */
+const nodeAt = (content: ArticleNodeJSON[], index: number): ArticleNodeJSON => {
+  const node = content[index]
+  if (!node) throw new Error(`expected a node at index ${index}`)
+  return node
+}
+
 describe('markdown replace_block — pipeline integration', () => {
   it('1→1: replaces content in place, preserves the id, leaves siblings alone', () => {
     const doc = [para('a', 'first'), para('b', 'OLD body'), para('c', 'third')]
     const next = runReplace(doc, 'b', 'NEW body with **bold**.')
 
     expect(next.map((n) => n.type === 'block' && n.attrs.id)).toEqual(['a', 'b', 'c'])
-    expect(textOf(next[1])).toBe('NEW body with bold.')
+    expect(textOf(nodeAt(next, 1))).toBe('NEW body with bold.')
 
     // The diff guarantee: 'b' shows as modified, not removed+added.
     const { stats, blocks } = diffBlocks(doc, next)
@@ -110,9 +124,7 @@ describe('markdown replace_block — pipeline integration', () => {
     const doc = [para('a', 'intro'), para('b', 'plain warning text')]
     const next = runReplace(doc, 'b', ':::warn\nBack up before upgrading.\n:::')
 
-    const callout = next[1]
-    expect(callout.type).toBe('block')
-    if (callout.type !== 'block') return
+    const callout = blockAt(next, 1)
     expect(callout.attrs.id).toBe('b')
     expect(callout.attrs.blockType).toBe('callout')
     expect(callout.attrs.calloutVariant).toBe('warn')
@@ -158,8 +170,7 @@ describe('markdown replace_block — pipeline integration', () => {
     const doc = [para('b', 'see the field')]
     const next = runReplace(doc, 'b', 'Current status: @[field:ticket:status] — check it.')
 
-    const block = next[0]
-    if (block.type !== 'block') throw new Error('expected block')
+    const block = blockAt(next, 0)
     expect(block.attrs.id).toBe('b')
     const ref = (block.content ?? []).find((n) => n.type === 'reference')
     expect(ref).toBeDefined()

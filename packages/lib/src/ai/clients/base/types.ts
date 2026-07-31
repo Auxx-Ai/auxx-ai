@@ -206,6 +206,14 @@ export interface EmbeddingParams {
   model: string
   dimensions?: number
   user?: string
+  /**
+   * What the embedding is for. Providers that distinguish asymmetric embedding
+   * roles map this onto their own field — Voyage `input_type`, Cohere
+   * `inputType`, Google `taskType`. Recognized values (case-insensitive):
+   * `search` / `retrieval` (document side), `query`, `classification`,
+   * `clustering`. Anything else falls back to the provider's document default.
+   */
+  purpose?: string
 }
 
 export interface EmbeddingResponse {
@@ -220,6 +228,8 @@ export interface BatchEmbeddingParams {
   dimensions?: number
   batchSize?: number
   user?: string
+  /** See `EmbeddingParams.purpose` — forwarded to each per-batch request. */
+  purpose?: string
 }
 
 export interface BatchEmbeddingResponse {

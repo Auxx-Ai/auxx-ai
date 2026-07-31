@@ -2,18 +2,27 @@
 
 import { describe, expect, it } from 'vitest'
 import { ModelConfigService } from '../../../model-config-service'
-import { ModelType } from '../../types'
+import { type ModelCapabilities, ModelType } from '../../types'
 import { DEEPSEEK_MODELS } from '../deepseek-defaults'
 
 const DEEPSEEK_LLM_MODELS = Object.entries(DEEPSEEK_MODELS).filter(
   ([_, capabilities]) => capabilities.modelType === ModelType.LLM
 )
 
-function getAllowedParameterNames(modelId: string): Set<string> {
+/**
+ * Registry lookup that fails the test loudly when a model is missing, instead of
+ * letting every downstream assertion read as `undefined`.
+ */
+function getModel(modelId: string): ModelCapabilities {
   const capabilities = DEEPSEEK_MODELS[modelId]
   if (!capabilities) {
     throw new Error(`Missing model capabilities for ${modelId}`)
   }
+  return capabilities
+}
+
+function getAllowedParameterNames(modelId: string): Set<string> {
+  const capabilities = getModel(modelId)
 
   const names = new Set(capabilities.parameterRules.map((rule) => rule.name))
 
@@ -30,15 +39,13 @@ describe('DeepSeek model restrictions', () => {
   // ── Registration ────────────────────────────────────────────────
 
   it('registers deepseek-chat', () => {
-    const model = DEEPSEEK_MODELS['deepseek-chat']
-    expect(model).toBeDefined()
+    const model = getModel('deepseek-chat')
     expect(model.modelId).toBe('deepseek-chat')
     expect(model.provider).toBe('deepseek')
   })
 
   it('registers deepseek-reasoner', () => {
-    const model = DEEPSEEK_MODELS['deepseek-reasoner']
-    expect(model).toBeDefined()
+    const model = getModel('deepseek-reasoner')
     expect(model.modelId).toBe('deepseek-reasoner')
     expect(model.provider).toBe('deepseek')
   })
@@ -46,13 +53,13 @@ describe('DeepSeek model restrictions', () => {
   // ── Context & token limits ─────────────────────────────────────
 
   it('deepseek-chat has 128k context and 8192 max output', () => {
-    const model = DEEPSEEK_MODELS['deepseek-chat']
+    const model = getModel('deepseek-chat')
     expect(model.contextLength).toBe(128000)
     expect(model.maxTokens).toBe(8192)
   })
 
   it('deepseek-reasoner has 128k context and 64k max output', () => {
-    const model = DEEPSEEK_MODELS['deepseek-reasoner']
+    const model = getModel('deepseek-reasoner')
     expect(model.contextLength).toBe(128000)
     expect(model.maxTokens).toBe(64000)
   })
@@ -60,34 +67,34 @@ describe('DeepSeek model restrictions', () => {
   // ── Capabilities ───────────────────────────────────────────────
 
   it('both models support tool calling', () => {
-    expect(DEEPSEEK_MODELS['deepseek-chat'].supports.toolCalling).toBe(true)
-    expect(DEEPSEEK_MODELS['deepseek-reasoner'].supports.toolCalling).toBe(true)
+    expect(getModel('deepseek-chat').supports.toolCalling).toBe(true)
+    expect(getModel('deepseek-reasoner').supports.toolCalling).toBe(true)
   })
 
   it('both models support structured output', () => {
-    expect(DEEPSEEK_MODELS['deepseek-chat'].supports.structured).toBe(true)
-    expect(DEEPSEEK_MODELS['deepseek-reasoner'].supports.structured).toBe(true)
+    expect(getModel('deepseek-chat').supports.structured).toBe(true)
+    expect(getModel('deepseek-reasoner').supports.structured).toBe(true)
   })
 
   it('both models support streaming', () => {
-    expect(DEEPSEEK_MODELS['deepseek-chat'].supports.streaming).toBe(true)
-    expect(DEEPSEEK_MODELS['deepseek-reasoner'].supports.streaming).toBe(true)
+    expect(getModel('deepseek-chat').supports.streaming).toBe(true)
+    expect(getModel('deepseek-reasoner').supports.streaming).toBe(true)
   })
 
   it('neither model supports vision', () => {
-    expect(DEEPSEEK_MODELS['deepseek-chat'].supports.vision).toBe(false)
-    expect(DEEPSEEK_MODELS['deepseek-reasoner'].supports.vision).toBe(false)
+    expect(getModel('deepseek-chat').supports.vision).toBe(false)
+    expect(getModel('deepseek-reasoner').supports.vision).toBe(false)
   })
 
   // ── Pricing ────────────────────────────────────────────────────
 
   it('both models have cost per 1k tokens', () => {
-    expect(DEEPSEEK_MODELS['deepseek-chat'].costPer1kTokens).toEqual({
+    expect(getModel('deepseek-chat').costPer1kTokens).toEqual({
       input: 0.00014,
       output: 0.00028,
       cachedInput: 0.0000028,
     })
-    expect(DEEPSEEK_MODELS['deepseek-reasoner'].costPer1kTokens).toEqual({
+    expect(getModel('deepseek-reasoner').costPer1kTokens).toEqual({
       input: 0.00014,
       output: 0.00028,
       cachedInput: 0.0000028,
@@ -97,17 +104,17 @@ describe('DeepSeek model restrictions', () => {
   // ── Reasoning model restrictions ───────────────────────────────
 
   it('deepseek-reasoner is marked as reasoning model', () => {
-    const caps = DEEPSEEK_MODELS['deepseek-reasoner']
+    const caps = getModel('deepseek-reasoner')
     expect(caps.parameterRestrictions?.isReasoningModel).toBe(true)
   })
 
   it('deepseek-chat is NOT marked as reasoning model', () => {
-    const caps = DEEPSEEK_MODELS['deepseek-chat']
+    const caps = getModel('deepseek-chat')
     expect(caps.parameterRestrictions?.isReasoningModel).toBeUndefined()
   })
 
   it('deepseek-reasoner unsupported params include sampling params', () => {
-    const caps = DEEPSEEK_MODELS['deepseek-reasoner']
+    const caps = getModel('deepseek-reasoner')
     expect(caps.parameterRestrictions?.unsupportedParams).toContain('temperature')
     expect(caps.parameterRestrictions?.unsupportedParams).toContain('top_p')
     expect(caps.parameterRestrictions?.unsupportedParams).toContain('presence_penalty')
@@ -115,23 +122,21 @@ describe('DeepSeek model restrictions', () => {
   })
 
   it('deepseek-reasoner only allows max_tokens as supported param', () => {
-    const caps = DEEPSEEK_MODELS['deepseek-reasoner']
+    const caps = getModel('deepseek-reasoner')
     expect(caps.parameterRestrictions?.supportedParams).toEqual(['max_tokens'])
   })
 
   // ── Parameter rules ────────────────────────────────────────────
 
   it('deepseek-chat has temperature with max 2', () => {
-    const rule = DEEPSEEK_MODELS['deepseek-chat'].parameterRules.find(
-      (r) => r.name === 'temperature'
-    )
+    const rule = getModel('deepseek-chat').parameterRules.find((r) => r.name === 'temperature')
     expect(rule).toBeDefined()
     expect(rule?.max).toBe(2)
     expect(rule?.default).toBe(1)
   })
 
   it('deepseek-chat has all sampling parameters', () => {
-    const ruleNames = DEEPSEEK_MODELS['deepseek-chat'].parameterRules.map((r) => r.name)
+    const ruleNames = getModel('deepseek-chat').parameterRules.map((r) => r.name)
     expect(ruleNames).toContain('temperature')
     expect(ruleNames).toContain('topP')
     expect(ruleNames).toContain('frequencyPenalty')
@@ -140,12 +145,12 @@ describe('DeepSeek model restrictions', () => {
   })
 
   it('deepseek-reasoner only has maxOutputTokens parameter rule', () => {
-    const ruleNames = DEEPSEEK_MODELS['deepseek-reasoner'].parameterRules.map((r) => r.name)
+    const ruleNames = getModel('deepseek-reasoner').parameterRules.map((r) => r.name)
     expect(ruleNames).toEqual(['maxOutputTokens'])
   })
 
   it('deepseek-reasoner maxOutputTokens has correct range', () => {
-    const rule = DEEPSEEK_MODELS['deepseek-reasoner'].parameterRules.find(
+    const rule = getModel('deepseek-reasoner').parameterRules.find(
       (r) => r.name === 'maxOutputTokens'
     )
     expect(rule?.max).toBe(64000)
@@ -176,7 +181,7 @@ describe('DeepSeek model restrictions', () => {
   })
 
   it('deepseek-reasoner strips sampling params via filterParameters', () => {
-    const capabilities = DEEPSEEK_MODELS['deepseek-reasoner']
+    const capabilities = getModel('deepseek-reasoner')
     const filtered = ModelConfigService.filterParameters(
       capabilities,
       {
@@ -198,10 +203,10 @@ describe('DeepSeek model restrictions', () => {
   // ── Features ───────────────────────────────────────────────────
 
   it('deepseek-chat has chat and code features', () => {
-    expect(DEEPSEEK_MODELS['deepseek-chat'].features).toEqual(['chat', 'code'])
+    expect(getModel('deepseek-chat').features).toEqual(['chat', 'code'])
   })
 
   it('deepseek-reasoner has chat, reasoning, and code features', () => {
-    expect(DEEPSEEK_MODELS['deepseek-reasoner'].features).toEqual(['chat', 'reasoning', 'code'])
+    expect(getModel('deepseek-reasoner').features).toEqual(['chat', 'reasoning', 'code'])
   })
 })

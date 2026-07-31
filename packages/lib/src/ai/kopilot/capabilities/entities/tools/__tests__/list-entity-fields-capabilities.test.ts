@@ -53,8 +53,10 @@ vi.mock('../../../../../../cache/org-cache-helpers', () => ({
   getCachedResources: vi.fn(async () => RESOURCES),
 }))
 
+import type { Rung } from '@auxx/database/enums'
 import type { CapabilityView } from '../../../../../../permissions/capabilities/capability-view'
 import { Level } from '../../../../../../permissions/capabilities/registry'
+import { satisfiesRung } from '../../../../../../permissions/capabilities/rung'
 import type { ToolContext } from '../../../../../agent-framework/tool-context'
 import type { AgentToolResult } from '../../../../../agent-framework/types'
 import { createListEntityFieldsTool } from '../list-entity-fields'
@@ -63,7 +65,7 @@ import { createListEntityFieldsTool } from '../list-entity-fields'
 function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityView {
   const yes = () => true
   const noop = () => {}
-  return {
+  const view: CapabilityView = {
     can: yes,
     has: yes,
     assert: noop,
@@ -85,8 +87,15 @@ function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityVi
     assertViewInstance: noop,
     assertEditInstance: noop,
     assertAdminInstance: noop,
+    hasDefPresence: (id: string) => view.canViewEntity(id),
+    hasRecordGrantsOn: () => false,
+    recordDefRung: (id: string) => (view.canViewEntity(id) ? 'admin' : undefined),
+    recordAccessAt: (id: string) => (view.canViewEntity(id) ? 'admin' : 'none'),
+    canDeleteRecordAt: (access: Rung) => satisfiesRung(access, 'admin'),
+    canEditRecordAt: (access: Rung) => satisfiesRung(access, 'edit'),
     ...overrides,
   }
+  return view
 }
 
 /** Denies exactly one def, mirroring a published policy of `None` on it. */

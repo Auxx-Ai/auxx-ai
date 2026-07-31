@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { getCachedIntegrationCatalog } from '../../../../../cache/integration-catalog'
 import { DraftService } from '../../../../../drafts'
 import { MessageSenderService } from '../../../../../messages'
+import { Result } from '../../../../../result'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { resolveRecipients } from '../recipient-resolver'
@@ -212,7 +213,7 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
         integration,
         { ...agentDeps, db }
       )
-      if (!resolvedResult.ok) {
+      if (!Result.isOk(resolvedResult)) {
         return { success: false, output: null, error: resolvedResult.error.message }
       }
       const resolved = resolvedResult.value

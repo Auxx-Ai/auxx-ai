@@ -142,7 +142,7 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
         if (assigneeId) {
           updates.assigneeId = assigneeId === 'unassign' ? null : `user:${assigneeId}`
         }
-        await service.update(`thread:${threadId}`, updates)
+        await service.update(toRecordId('thread', threadId), updates)
         if (status) changes.status = status
         if (assigneeId) changes.assigneeId = assigneeId
       }

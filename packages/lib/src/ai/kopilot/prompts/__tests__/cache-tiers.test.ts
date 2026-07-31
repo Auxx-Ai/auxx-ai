@@ -46,8 +46,8 @@ describe('buildKopilotPromptBlocks', () => {
     const blocks = buildKopilotPromptBlocks(baseArgs)
     const lastStatic = blocks.map((b) => b.stability).lastIndexOf('static')
     const lastOrg = blocks.map((b) => b.stability).lastIndexOf('org')
-    if (lastStatic >= 0) expect(blocks[lastStatic].cache).toEqual({ type: 'ephemeral' })
-    if (lastOrg >= 0) expect(blocks[lastOrg].cache).toEqual({ type: 'ephemeral' })
+    if (lastStatic >= 0) expect(blocks[lastStatic]?.cache).toEqual({ type: 'ephemeral' })
+    if (lastOrg >= 0) expect(blocks[lastOrg]?.cache).toEqual({ type: 'ephemeral' })
     // Turn-tier blocks never cached
     for (const b of blocks) {
       if (b.stability === 'turn') expect(b.cache).toBeUndefined()

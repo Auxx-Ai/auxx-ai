@@ -207,10 +207,8 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
             subject: thread.subject,
             status: thread.status,
             assigneeId: thread.assigneeId,
-            lastMessageAt:
-              thread.lastMessageAt instanceof Date
-                ? thread.lastMessageAt.toISOString()
-                : thread.lastMessageAt,
+            // `ThreadMeta.lastMessageAt` is already an ISO string.
+            lastMessageAt: thread.lastMessageAt,
             messageCount: thread.messageCount,
             isUnread: thread.isUnread,
             tagIds: tagInstanceIds,

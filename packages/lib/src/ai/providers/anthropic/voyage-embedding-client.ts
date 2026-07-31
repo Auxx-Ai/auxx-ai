@@ -39,7 +39,12 @@ export class VoyageEmbeddingClient extends TextEmbeddingClient {
         async () => {
           const texts = Array.isArray(params.text) ? params.text : [params.text]
 
-          const requestBody = {
+          const requestBody: {
+            input: string[]
+            model: string
+            input_type: string
+            truncate?: boolean
+          } = {
             input: texts,
             model: params.model,
             input_type: this.getInputType(params.purpose),

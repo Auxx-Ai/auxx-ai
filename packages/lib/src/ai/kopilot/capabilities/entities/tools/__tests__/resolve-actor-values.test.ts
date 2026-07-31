@@ -29,7 +29,10 @@ const members: OrgMemberInfo[] = [
     userId: USER_ME,
     organizationId: 'org_1',
     role: 'OWNER',
-    status: 'active',
+    status: 'ACTIVE',
+    seatType: 'full',
+    onChatDuty: false,
+    permissionProfileId: null,
     user: {
       id: USER_ME,
       name: 'Me Myself',
@@ -43,7 +46,10 @@ const members: OrgMemberInfo[] = [
     userId: USER_SARAH_1,
     organizationId: 'org_1',
     role: 'USER',
-    status: 'active',
+    status: 'ACTIVE',
+    seatType: 'full',
+    onChatDuty: false,
+    permissionProfileId: null,
     user: {
       id: USER_SARAH_1,
       name: 'Sarah Chen',
@@ -57,7 +63,10 @@ const members: OrgMemberInfo[] = [
     userId: USER_SARAH_2,
     organizationId: 'org_1',
     role: 'USER',
-    status: 'active',
+    status: 'ACTIVE',
+    seatType: 'full',
+    onChatDuty: false,
+    permissionProfileId: null,
     user: {
       id: USER_SARAH_2,
       name: 'Sarah',
@@ -71,7 +80,10 @@ const members: OrgMemberInfo[] = [
     userId: USER_MARKUS,
     organizationId: 'org_1',
     role: 'ADMIN',
-    status: 'active',
+    status: 'ACTIVE',
+    seatType: 'full',
+    onChatDuty: false,
+    permissionProfileId: null,
     user: {
       id: USER_MARKUS,
       name: 'Sarah', // second "Sarah" → ambiguous on exact name
@@ -235,8 +247,8 @@ describe('resolveActorValues', () => {
     const result = await resolveActorValues({ assignee: 'Sarah' }, resource, ctx)
 
     expect(result.errors).toHaveLength(1)
-    expect(result.errors[0].reason).toBe('ambiguous')
-    expect(result.errors[0].candidates.map((c) => c.actorId)).toEqual([
+    expect(result.errors[0]?.reason).toBe('ambiguous')
+    expect(result.errors[0]?.candidates.map((c) => c.actorId)).toEqual([
       toActorId('user', USER_SARAH_2),
       toActorId('user', USER_MARKUS),
     ])
@@ -250,8 +262,8 @@ describe('resolveActorValues', () => {
     const result = await resolveActorValues({ assignee: bogus }, resource, ctx)
 
     expect(result.errors).toHaveLength(1)
-    expect(result.errors[0].reason).toBe('not_found')
-    expect(result.errors[0].candidates.length).toBeGreaterThan(0)
+    expect(result.errors[0]?.reason).toBe('not_found')
+    expect(result.errors[0]?.candidates.length ?? 0).toBeGreaterThan(0)
   })
 
   it('does not touch non-actor fields', async () => {
@@ -300,7 +312,7 @@ describe('resolveActorValues', () => {
     const result = await resolveActorValues({ team: 'me' }, resource, ctx)
 
     expect(result.errors).toHaveLength(1)
-    expect(result.errors[0].reason).toBe('not_found')
+    expect(result.errors[0]?.reason).toBe('not_found')
   })
 
   it('resolves a group by name when target is group', async () => {
@@ -347,6 +359,6 @@ describe('resolveActorValues', () => {
     )
 
     expect(result.errors).toEqual([])
-    expect(result.pairs[0].value).toBe(toActorId('user', USER_ME))
+    expect(result.pairs[0]?.value).toBe(toActorId('user', USER_ME))
   })
 })

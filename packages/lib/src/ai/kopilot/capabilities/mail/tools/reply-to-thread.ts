@@ -7,6 +7,7 @@ import { DraftService } from '../../../../../drafts'
 import { MessageQueryService, MessageSenderService } from '../../../../../messages'
 import { ParticipantService } from '../../../../../participants'
 import { getThreadLens } from '../../../../../permissions/visibility/thread-lens'
+import { Result } from '../../../../../result'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -165,13 +166,14 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
       const mode: 'draft' | 'send' = args.mode === 'send' ? 'send' : 'draft'
 
       // Kopilot acts as the invoking user (§8.1): replying/drafting requires
-      // `full` lens on the thread (§7) — sub-full viewers get a typed error.
+      // the top `read` lens on the thread (§7) — narrower viewers get a typed
+      // error. (`read` is the renamed `full`; see permissions/visibility/lens.)
       const viewer = await getCachedUserInstanceGrants(agentDeps.userId, agentDeps.organizationId)
       const lens = await getThreadLens(db, agentDeps.organizationId, viewer, threadId)
       if (lens === 'none') {
         return { success: false, output: null, error: `Thread ${threadId} not found` }
       }
-      if (lens !== 'full') {
+      if (lens !== 'read') {
         return {
           success: false,
           output: null,
@@ -210,7 +212,7 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
           integration,
           { ...agentDeps, db }
         )
-        if (!result.ok) {
+        if (!Result.isOk(result)) {
           return { success: false, output: null, error: result.error.message }
         }
         resolved = result.value

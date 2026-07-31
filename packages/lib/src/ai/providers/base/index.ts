@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/base/index.ts
 
 // Abstract base class
-export { ProviderClient } from './provider-client'
+export { ProviderClient, type ProviderClientConstructor } from './provider-client'
 // Types and interfaces
 export * from './types'
 
