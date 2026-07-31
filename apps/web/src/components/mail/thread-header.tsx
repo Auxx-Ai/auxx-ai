@@ -315,9 +315,13 @@ export function ThreadHeader() {
       <div
         data-slot='thread-header'
         className='flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-muted-50 pb-3 mask-b-from-80% mask-b-to-100% w-full'>
-        <div className='flex  w-full justify-between shrink-0 overflow-x-auto no-scrollbar '>
-          <div className='flex shrink-0 flex-col sm:flex-row sm:items-start gap-2 pt-0.5 ps-0.5'>
-            <div className='flex items-start gap-2'>
+        {/* `gap-3` is the floor, not the spacing: `justify-between` already
+            spreads the two sides while there is room, so the gap is invisible
+            until width runs out — at which point both sides are `shrink-0` and
+            would otherwise touch before the scroll kicks in. */}
+        <div className='no-scrollbar flex w-full shrink-0 items-center justify-between gap-3 overflow-x-auto'>
+          <div className='flex shrink-0 flex-col gap-2 ps-0.5 sm:flex-row sm:items-center'>
+            <div className='flex items-center gap-2'>
               <InboxPicker
                 onChange={handleInboxChange}
                 selected={thread?.inboxId ? [thread.inboxId] : undefined}
