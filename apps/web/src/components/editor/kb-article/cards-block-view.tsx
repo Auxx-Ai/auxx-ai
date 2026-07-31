@@ -51,6 +51,7 @@ export function CardsBlockView({ cards, onChange, onDeleteBlock }: CardsBlockVie
       if (oldIndex < 0 || newIndex < 0) return
       const next = [...cards]
       const [moved] = next.splice(oldIndex, 1)
+      if (!moved) return
       next.splice(newIndex, 0, moved)
       onChange(next)
     },
@@ -141,9 +142,11 @@ function SortableCard({
         className={styles.card}
         data-interactive={card.href ? 'true' : 'false'}
         data-editing={isEditing ? 'true' : undefined}
-        role='listitem'
         {...attributes}
         {...listeners}
+        // After the spread: dnd-kit's `attributes` carries `role='button'`,
+        // which silently won this slot when the role was declared above it.
+        role='listitem'
         onClick={(e) => {
           if (e.defaultPrevented) return
           onOpenChange(true)

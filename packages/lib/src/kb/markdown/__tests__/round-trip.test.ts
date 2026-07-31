@@ -3,31 +3,32 @@
 import { describe, expect, it } from 'vitest'
 import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks, parseFrontmatter } from '../md-to-blocks'
-import type { DocJSON } from '../types'
+import { blockAt, blocksOf } from '../test-helpers'
+import type { BlockAttrs, BlockJSON, BlockType, DocJSON, InlineJSON, MarkJSON } from '../types'
 
 const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
 
 function block(
-  blockType: string,
-  attrs: Record<string, unknown> = {},
-  content: unknown[] = []
-): unknown {
+  blockType: BlockType,
+  attrs: Omit<Partial<BlockAttrs>, 'blockType'> = {},
+  content: InlineJSON[] = []
+): BlockJSON {
   return { type: 'block', attrs: { blockType, ...attrs }, content }
 }
 
-const text = (s: string, marks?: unknown[]) =>
+const text = (s: string, marks?: MarkJSON[]): InlineJSON =>
   marks ? { type: 'text', text: s, marks } : { type: 'text', text: s }
 
 describe('mdToBlocks — basic blocks', () => {
   it('parses headings (clamps to 3)', () => {
     const doc = mdToDoc('# H1\n\n## H2\n\n### H3\n\n#### H4')
-    expect(doc.content.map((b) => b.attrs.blockType)).toEqual([
+    expect(blocksOf(doc.content).map((b) => b.attrs.blockType)).toEqual([
       'heading',
       'heading',
       'heading',
       'heading',
     ])
-    expect(doc.content.map((b) => b.attrs.level)).toEqual([1, 2, 3, 3])
+    expect(blocksOf(doc.content).map((b) => b.attrs.level)).toEqual([1, 2, 3, 3])
   })
 
   it('parses paragraphs as text blocks', () => {
@@ -40,7 +41,7 @@ describe('mdToBlocks — basic blocks', () => {
   it('parses bullet, numbered, and task lists', () => {
     const md = '- one\n- two\n\n1. first\n2. second\n\n- [ ] open\n- [x] done'
     const doc = mdToDoc(md)
-    const types = doc.content.map((b) => b.attrs.blockType)
+    const types = blocksOf(doc.content).map((b) => b.attrs.blockType)
     expect(types).toEqual([
       'bulletListItem',
       'bulletListItem',
@@ -49,40 +50,48 @@ describe('mdToBlocks — basic blocks', () => {
       'todoListItem',
       'todoListItem',
     ])
-    expect(doc.content[4]?.attrs.checked).toBe(false)
-    expect(doc.content[5]?.attrs.checked).toBe(true)
+    expect(blockAt(doc.content, 4).attrs.checked).toBe(false)
+    expect(blockAt(doc.content, 5).attrs.checked).toBe(true)
   })
 
   it('parses nested lists with level attribute', () => {
     const md = '- one\n  - nested\n  - also nested\n- two'
     const doc = mdToDoc(md)
-    expect(doc.content.map((b) => b.attrs.level)).toEqual([1, 2, 2, 1])
+    expect(blocksOf(doc.content).map((b) => b.attrs.level)).toEqual([1, 2, 2, 1])
   })
 
   it('parses code fences with language', () => {
     const md = '```ts\nconst x = 1\n```'
     const doc = mdToDoc(md)
-    expect(doc.content[0]?.attrs.blockType).toBe('codeBlock')
-    expect(doc.content[0]?.attrs.codeLanguage).toBe('ts')
+    expect(blockAt(doc.content, 0).attrs.blockType).toBe('codeBlock')
+    expect(blockAt(doc.content, 0).attrs.codeLanguage).toBe('ts')
     expect(doc.content[0]?.content?.[0]).toEqual({ type: 'text', text: 'const x = 1' })
   })
 
   it('parses blockquotes and dividers', () => {
     const doc = mdToDoc('> quoted\n\n---\n\ntrailing')
-    expect(doc.content.map((b) => b.attrs.blockType)).toEqual(['quote', 'divider', 'text'])
+    expect(blocksOf(doc.content).map((b) => b.attrs.blockType)).toEqual([
+      'quote',
+      'divider',
+      'text',
+    ])
   })
 })
 
 describe('mdToBlocks — directives', () => {
   it('parses callout container directives', () => {
     const doc = mdToDoc(':::tip\nBe kind.\n:::')
-    expect(doc.content[0]?.attrs.blockType).toBe('callout')
-    expect(doc.content[0]?.attrs.calloutVariant).toBe('tip')
+    expect(blockAt(doc.content, 0).attrs.blockType).toBe('callout')
+    expect(blockAt(doc.content, 0).attrs.calloutVariant).toBe('tip')
   })
 
   it('aliases note → info, warning → warn, danger → error', () => {
     const doc = mdToDoc(':::note\nA\n:::\n\n:::warning\nB\n:::\n\n:::danger\nC\n:::')
-    expect(doc.content.map((b) => b.attrs.calloutVariant)).toEqual(['info', 'warn', 'error'])
+    expect(blocksOf(doc.content).map((b) => b.attrs.calloutVariant)).toEqual([
+      'info',
+      'warn',
+      'error',
+    ])
   })
 
   it('parses embed leaf directives', () => {
@@ -94,8 +103,8 @@ describe('mdToBlocks — directives', () => {
 
   it('promotes a bare YouTube URL line to an embed', () => {
     const doc = mdToDoc('https://www.youtube.com/watch?v=abcdefg')
-    expect(doc.content[0]?.attrs.blockType).toBe('embed')
-    expect(doc.content[0]?.attrs.embedProvider).toBe('youtube')
+    expect(blockAt(doc.content, 0).attrs.blockType).toBe('embed')
+    expect(blockAt(doc.content, 0).attrs.embedProvider).toBe('youtube')
   })
 })
 
@@ -161,7 +170,7 @@ describe('mdToBlocks — frontmatter', () => {
   it('strips frontmatter when parsing', () => {
     const md = '---\ntitle: x\n---\n\n# Body'
     const doc = mdToDoc(md)
-    expect(doc.content[0]?.attrs.blockType).toBe('heading')
+    expect(blockAt(doc.content, 0).attrs.blockType).toBe('heading')
   })
 })
 
@@ -190,7 +199,7 @@ describe('blocksToMd — basic blocks', () => {
         embedProvider: 'youtube',
       }),
       block('image', { imageUrl: 'https://x.com/y.png', imageWidth: 600, imageAlign: 'left' }),
-    ] as never,
+    ],
   }
 
   it('produces expected markdown shape', () => {
@@ -223,13 +232,13 @@ describe('round-trip', () => {
         block('callout', { calloutVariant: 'warn' }, [text('Heads up.')]),
         block('quote', {}, [text('Cited.')]),
         block('divider'),
-      ] as never,
+      ],
     }
 
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
 
-    const types = (d: DocJSON) => d.content.map((b) => b.attrs.blockType)
+    const types = (d: DocJSON) => blocksOf(d.content).map((b) => b.attrs.blockType)
     expect(types(reparsed)).toEqual(types(original))
   })
 
@@ -301,7 +310,7 @@ describe('mdToBlocks — inline references', () => {
           { type: 'reference', attrs: { id: 'user:abc' } },
           text(' first.'),
         ]),
-      ] as never,
+      ],
     }
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
@@ -360,7 +369,7 @@ describe('mdToBlocks — inline references', () => {
           { type: 'reference', attrs: { id: 'field:ticket:status' } },
           text(' to closed.'),
         ]),
-      ] as never,
+      ],
     }
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
@@ -381,7 +390,7 @@ describe('mdToBlocks — inline references', () => {
           { type: 'reference', attrs: { id: 'field:ticket:assignee::user:name' } },
           text('.'),
         ]),
-      ] as never,
+      ],
     }
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)

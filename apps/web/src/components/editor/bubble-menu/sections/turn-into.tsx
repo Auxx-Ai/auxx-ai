@@ -137,7 +137,9 @@ export function TurnIntoSection({ editor, allowedBlocks = DEFAULT_BLOCKS }: Turn
   const selection = useEditorState({
     editor,
     selector: ({ editor }) => findSelectionBlocks(editor),
+    // `b` is null on the first evaluation — nothing to compare against yet.
     equalityFn: (a, b) =>
+      b !== null &&
       a.sharedType === b.sharedType &&
       a.positions.length === b.positions.length &&
       a.positions.every((p, i) => p === b.positions[i]),

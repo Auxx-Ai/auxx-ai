@@ -2,6 +2,7 @@
 
 import type { OrgSlug, UserSlug, VisitorSlug } from '@auxx/lib/placeholders/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { BaseType } from '@auxx/lib/workflow-engine/types'
 import type { FieldId } from '@auxx/types/field'
 
 /**
@@ -20,7 +21,7 @@ export function shimFieldForOrg(slug: OrgSlug): ResourceField {
     id: `org:${slug}` as FieldId,
     key: slug,
     label,
-    type: 'string',
+    type: BaseType.STRING,
     fieldType,
     required: false,
     capabilities: {
@@ -51,7 +52,7 @@ export function shimFieldForUser(slug: UserSlug): ResourceField {
     id: `user:${slug}` as FieldId,
     key: slug,
     label,
-    type: 'string',
+    type: BaseType.STRING,
     fieldType,
     required: false,
     capabilities: {
@@ -85,7 +86,7 @@ export function shimFieldForVisitor(slug: VisitorSlug): ResourceField {
     id: `visitor:${slug}` as FieldId,
     key: slug,
     label,
-    type: 'string',
+    type: BaseType.STRING,
     fieldType,
     required: false,
     capabilities: {

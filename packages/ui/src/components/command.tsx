@@ -31,7 +31,6 @@ import {
   Send,
   X,
 } from 'lucide-react'
-import type { DialogProps } from 'radix-ui'
 import * as React from 'react'
 import { radioGroupVariants } from './radio-group'
 
@@ -322,12 +321,15 @@ function CommandDialog({
   children,
   title = 'Command palette',
   description = 'Search and run commands.',
+  shouldFilter,
+  filter,
   ...props
-}: DialogProps & {
-  children?: React.ReactNode
-  title?: string
-  description?: string
-}) {
+}: React.ComponentProps<typeof Dialog> &
+  Pick<React.ComponentProps<typeof Command>, 'shouldFilter' | 'filter'> & {
+    children?: React.ReactNode
+    title?: string
+    description?: string
+  }) {
   return (
     <Dialog {...props}>
       <DialogContent className='overflow-hidden p-0' position='tc' innerClassName='p-0'>
@@ -335,7 +337,10 @@ function CommandDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <Command className='[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-8 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5'>
+        <Command
+          shouldFilter={shouldFilter}
+          filter={filter}
+          className='[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-8 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5'>
           {children}
         </Command>
       </DialogContent>

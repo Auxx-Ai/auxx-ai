@@ -19,6 +19,7 @@ import type {
   PanelJSON,
   TableCellJSON,
   TableJSON,
+  TableRowJSON,
   TabsJSON,
 } from './types'
 import { CALLOUT_VARIANTS } from './types'
@@ -174,8 +175,9 @@ function hasMergedCells(node: TableJSON): boolean {
 
 function renderGfmTable(node: TableJSON, ctx: RenderCtx): string[] {
   const rows = node.content
-  if (rows.length === 0) return []
-  const firstRowIsHeader = rows[0].content.every((c) => c.type === 'tableHeader')
+  const firstRow = rows[0]
+  if (!firstRow) return []
+  const firstRowIsHeader = firstRow.content.every((c) => c.type === 'tableHeader')
 
   const renderCellInline = (cell: TableCellJSON): string => {
     if (!cell.content || cell.content.length === 0) return ' '
@@ -203,26 +205,27 @@ function renderGfmTable(node: TableJSON, ctx: RenderCtx): string[] {
   const out: string[] = []
   let bodyStart = 0
   if (firstRowIsHeader) {
-    out.push(`| ${rows[0].content.map(renderCellInline).join(' | ')} |`)
-    out.push(`| ${rows[0].content.map(() => '---').join(' | ')} |`)
+    out.push(`| ${firstRow.content.map(renderCellInline).join(' | ')} |`)
+    out.push(`| ${firstRow.content.map(() => '---').join(' | ')} |`)
     bodyStart = 1
   } else {
     // GFM requires a header row; emit a blank header so re-import keeps the
     // structure. Re-import will produce a header-row of empty header cells.
-    const colCount = rows[0].content.length
+    const colCount = firstRow.content.length
     out.push(`| ${Array(colCount).fill(' ').join(' | ')} |`)
     out.push(`| ${Array(colCount).fill('---').join(' | ')} |`)
   }
-  for (let i = bodyStart; i < rows.length; i++) {
-    out.push(`| ${rows[i].content.map(renderCellInline).join(' | ')} |`)
+  for (const row of rows.slice(bodyStart)) {
+    out.push(`| ${row.content.map(renderCellInline).join(' | ')} |`)
   }
   return out
 }
 
 function renderHtmlTable(node: TableJSON, ctx: RenderCtx): string[] {
   const rows = node.content
-  if (rows.length === 0) return []
-  const firstRowIsHeader = rows[0].content.every((c) => c.type === 'tableHeader')
+  const firstRow = rows[0]
+  if (!firstRow) return []
+  const firstRowIsHeader = firstRow.content.every((c) => c.type === 'tableHeader')
 
   const renderCellHtml = (cell: TableCellJSON): string[] => {
     const tag = cell.type === 'tableHeader' ? 'th' : 'td'
@@ -240,7 +243,7 @@ function renderHtmlTable(node: TableJSON, ctx: RenderCtx): string[] {
     return [open, '', ...inner, '', `</${tag}>`]
   }
 
-  const renderRowHtml = (row: { content: TableCellJSON[] }): string[] => {
+  const renderRowHtml = (row: TableRowJSON): string[] => {
     const out: string[] = ['<tr>']
     for (const cell of row.content) out.push(...renderCellHtml(cell))
     out.push('</tr>')
@@ -250,10 +253,10 @@ function renderHtmlTable(node: TableJSON, ctx: RenderCtx): string[] {
   const out: string[] = ['<table>']
   if (firstRowIsHeader) {
     out.push('<thead>')
-    out.push(...renderRowHtml(rows[0]))
+    out.push(...renderRowHtml(firstRow))
     out.push('</thead>')
     out.push('<tbody>')
-    for (let i = 1; i < rows.length; i++) out.push(...renderRowHtml(rows[i]))
+    for (const row of rows.slice(1)) out.push(...renderRowHtml(row))
     out.push('</tbody>')
   } else {
     out.push('<tbody>')

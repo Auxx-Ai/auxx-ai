@@ -13,7 +13,7 @@ import {
   ConditionProvider,
   type ConditionSystemConfig,
 } from '~/components/conditions'
-import type { MailViewFormValues } from './mail-view-dialog'
+import type { MailViewFormValues } from './mail-view-form'
 
 /**
  * Component for building the filter logic for a mail view.

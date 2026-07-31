@@ -11,7 +11,7 @@ import {
   FormLabel,
 } from '@auxx/ui/components/form'
 import { useFormContext } from 'react-hook-form'
-import type { MailViewFormValues } from './mail-view-dialog'
+import type { MailViewFormValues } from './mail-view-form'
 
 export function MailViewSharingOptions() {
   const { control } = useFormContext<MailViewFormValues>()

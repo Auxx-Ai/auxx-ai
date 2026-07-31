@@ -36,7 +36,7 @@ import type {
   FormattableFieldType,
   NumberColumnFormatting,
   PhoneColumnFormatting,
-} from '../types'
+} from '../../types'
 
 /**
  * Convert NumberColumnFormatting to NumberFieldOptions
@@ -102,7 +102,7 @@ function columnToDateDisplayOptions(formatting: DateColumnFormatting | null): Da
   return {
     format: formatting?.format ?? 'medium',
     includeTime: formatting?.includeTime ?? false,
-    timeFormat: (formatting as DateFieldOptions)?.timeFormat ?? '12h',
+    timeFormat: formatting?.timeFormat ?? '12h',
   }
 }
 
@@ -117,6 +117,7 @@ function dateDisplayOptionsToColumn(
     type: 'date',
     format: opts.format ?? 'medium',
     includeTime: includeTime ?? opts.includeTime ?? false,
+    timeFormat: opts.timeFormat,
   }
 }
 

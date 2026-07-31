@@ -4,7 +4,7 @@
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
-import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
+import type { EntityRow } from '~/components/records'
 import { useRecordStore } from '~/components/resources/store/record-store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'

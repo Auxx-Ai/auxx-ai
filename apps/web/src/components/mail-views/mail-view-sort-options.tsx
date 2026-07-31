@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { useFormContext } from 'react-hook-form'
-import type { MailViewFormValues } from './mail-view-dialog'
+import type { MailViewFormValues } from './mail-view-form'
 
 export function MailViewSortOptions() {
   const { control } = useFormContext<MailViewFormValues>()

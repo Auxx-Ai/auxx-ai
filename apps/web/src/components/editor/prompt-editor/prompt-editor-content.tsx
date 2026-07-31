@@ -273,7 +273,8 @@ export const PromptEditorContent = memo(function PromptEditorContent({
         .insertContentAt(linkPopover.range, node)
         // Strip the stored link mark so the next typed character isn't linked.
         .command(({ tr }) => {
-          tr.removeStoredMark(editor.schema.marks.link)
+          const linkMark = editor.schema.marks.link
+          if (linkMark) tr.removeStoredMark(linkMark)
           return true
         })
         .run()

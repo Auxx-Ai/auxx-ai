@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/documents/document-filter-bar.tsx
 'use client'
-import type { Document } from '@auxx/database/types'
+import type { DocumentEntity } from '@auxx/database/types'
 import {
   Select,
   SelectContent,
@@ -12,7 +12,7 @@ import {
 interface DocumentFilterBarProps {
   filterValue: string
   onFilterChange: (value: string) => void
-  documents: Document[]
+  documents: DocumentEntity[]
   totalDocuments: number
 }
 export function DocumentFilterBar({

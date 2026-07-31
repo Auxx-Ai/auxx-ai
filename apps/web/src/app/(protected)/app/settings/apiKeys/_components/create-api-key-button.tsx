@@ -1,5 +1,5 @@
 'use client'
-import type { ApiKey } from '@auxx/database/types'
+import type { ApiKeyEntity } from '@auxx/database/types'
 import { Button, type ButtonProps } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -96,7 +96,7 @@ export function RevokeAPIKeyButton({
   id,
   buttonProps,
 }: {
-  id: ApiKey['id']
+  id: ApiKeyEntity['id']
   buttonProps?: ButtonProps
 }) {
   const utils = api.useUtils()

@@ -36,10 +36,10 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import {
-  useSetColumnFormatting,
   useSetColumnLabel,
   useSetColumnOrder,
   useSetColumnVisibility,
+  useSetSingleColumnFormatting,
 } from '../../stores/store-actions'
 import {
   useActiveView,
@@ -245,7 +245,7 @@ function ColumnOptionsDropdown<TData = any>({
   const columnLabels = useColumnLabels(tableId)
   const columnFormatting = useColumnFormatting(tableId)
   const setColumnLabel = useSetColumnLabel(tableId)
-  const setColumnFormatting = useSetColumnFormatting(tableId)
+  const setColumnFormatting = useSetSingleColumnFormatting(tableId)
 
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
@@ -313,9 +313,7 @@ function ColumnOptionsDropdown<TData = any>({
           fieldType={fieldType as FormattableFieldType}
           currentFormatting={columnFormatting[column.id]}
           defaultFormatting={columnDef.defaultFormatting}
-          onSave={(formatting) =>
-            setColumnFormatting({ ...columnFormatting, [column.id]: formatting })
-          }
+          onSave={(formatting) => setColumnFormatting(column.id, formatting)}
         />
       )}
     </>

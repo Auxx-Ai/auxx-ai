@@ -6,7 +6,14 @@
 // the page when the table is far above the viewport.
 
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { addColumn, addRow, removeColumn, removeRow, TableMap } from '@tiptap/pm/tables'
+import {
+  addColumn,
+  addRow,
+  removeColumn,
+  removeRow,
+  TableMap,
+  type TableRect,
+} from '@tiptap/pm/tables'
 import type { Editor } from '@tiptap/react'
 
 interface TableShape {
@@ -32,6 +39,25 @@ function readTable(editor: Editor, tablePos: number): TableShape | null {
   }
 }
 
+/**
+ * A `TableRect` covering the whole table. prosemirror-tables' add/remove
+ * row+column helpers destructure only `map` / `table` / `tableStart`, but their
+ * parameter type is the same `TableRect` that `selectedRect()` returns, so the
+ * cell bounds have to be supplied. Full-table bounds are the honest value —
+ * these calls operate on the table, not on a selection within it.
+ */
+function wholeTableRect(shape: TableShape): TableRect {
+  return {
+    left: 0,
+    top: 0,
+    right: shape.colCount,
+    bottom: shape.rowCount,
+    map: shape.map,
+    table: shape.table,
+    tableStart: shape.tableStart,
+  }
+}
+
 export function getRowCount(editor: Editor, tablePos: number): number {
   return readTable(editor, tablePos)?.rowCount ?? 0
 }
@@ -45,7 +71,7 @@ export function addRowAt(editor: Editor, tablePos: number, atIndex: number): voi
   if (!shape) return
   const clamped = Math.max(0, Math.min(atIndex, shape.rowCount))
   const tr = editor.state.tr
-  addRow(tr, { map: shape.map, table: shape.table, tableStart: shape.tableStart }, clamped)
+  addRow(tr, wholeTableRect(shape), clamped)
   editor.view.dispatch(tr)
 }
 
@@ -54,7 +80,7 @@ export function addColumnAt(editor: Editor, tablePos: number, atIndex: number): 
   if (!shape) return
   const clamped = Math.max(0, Math.min(atIndex, shape.colCount))
   const tr = editor.state.tr
-  addColumn(tr, { map: shape.map, table: shape.table, tableStart: shape.tableStart }, clamped)
+  addColumn(tr, wholeTableRect(shape), clamped)
   editor.view.dispatch(tr)
 }
 
@@ -70,7 +96,7 @@ export function removeRowAt(editor: Editor, tablePos: number, atIndex: number): 
     return
   }
   const tr = editor.state.tr
-  removeRow(tr, { map: shape.map, table: shape.table, tableStart: shape.tableStart }, atIndex)
+  removeRow(tr, wholeTableRect(shape), atIndex)
   editor.view.dispatch(tr)
 }
 
@@ -86,7 +112,7 @@ export function removeColumnAt(editor: Editor, tablePos: number, atIndex: number
     return
   }
   const tr = editor.state.tr
-  removeColumn(tr, { map: shape.map, table: shape.table, tableStart: shape.tableStart }, atIndex)
+  removeColumn(tr, wholeTableRect(shape), atIndex)
   editor.view.dispatch(tr)
 }
 
@@ -117,6 +143,7 @@ export function reorderRow(
   const rows: PMNode[] = []
   shape.table.forEach((row) => rows.push(row))
   const [moved] = rows.splice(fromIndex, 1)
+  if (!moved) return
   rows.splice(toIndex, 0, moved)
   const newTable = shape.table.type.create(shape.table.attrs, rows, shape.table.marks)
   editor.view.dispatch(
@@ -153,6 +180,10 @@ export function reorderColumn(
       return
     }
     const [movedCell] = cells.splice(fromIndex, 1)
+    if (!movedCell) {
+      newRows.push(row)
+      return
+    }
     cells.splice(toIndex, 0, movedCell)
     newRows.push(row.type.create(row.attrs, cells, row.marks))
   })

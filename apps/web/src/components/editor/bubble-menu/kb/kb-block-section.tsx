@@ -66,7 +66,9 @@ export function KBBlockSection({ editor }: KBBlockSectionProps) {
   const info = useEditorState({
     editor,
     selector: ({ editor }) => findContainingBlock(editor),
+    // `b` is null on the first evaluation — nothing to compare against yet.
     equalityFn: (a, b) =>
+      b !== null &&
       a.pos === b.pos &&
       a.blockType === b.blockType &&
       JSON.stringify(a.attrs) === JSON.stringify(b.attrs),
@@ -137,7 +139,10 @@ export function KBBlockSection({ editor }: KBBlockSectionProps) {
   return <BubbleSection>{control}</BubbleSection>
 }
 
-const BULLET_OPTIONS: { id: string; label: string; glyph: string }[] = [
+// Non-empty tuple: the `?? BULLET_OPTIONS[0]` fallback below relies on a
+// first element existing.
+type BulletOption = { id: string; label: string; glyph: string }
+const BULLET_OPTIONS: [BulletOption, ...BulletOption[]] = [
   { id: 'disc', label: 'Disc', glyph: '•' },
   { id: 'circle', label: 'Circle', glyph: '◦' },
   { id: 'square', label: 'Square', glyph: '▪' },
@@ -185,7 +190,9 @@ function BulletListStyleDropdown({
   )
 }
 
-const NUMBERED_OPTIONS: { id: string; label: string; sample: string }[] = [
+// Non-empty tuple — see BULLET_OPTIONS.
+type NumberedOption = { id: string; label: string; sample: string }
+const NUMBERED_OPTIONS: [NumberedOption, ...NumberedOption[]] = [
   { id: '1', label: 'Decimal', sample: '1.' },
   { id: 'a', label: 'Lower alpha', sample: 'a.' },
   { id: 'A', label: 'Upper alpha', sample: 'A.' },

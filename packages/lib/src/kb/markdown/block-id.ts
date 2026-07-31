@@ -34,7 +34,7 @@ export function blockIdNumber(id: string | null | undefined): number | null {
   if (!id) return null
   const m = SEQ_RE.exec(id)
   if (!m) return null
-  const n = Number.parseInt(m[1], 10)
+  const n = Number.parseInt(m[1] ?? '', 10)
   return Number.isSafeInteger(n) ? n : null
 }
 
@@ -104,7 +104,14 @@ export function reassignIds(nodes: ArticleNodeJSON[], nextId: () => string): Art
   })
   return nodes.map((node): ArticleNodeJSON => {
     if (node.type === 'block') return stampBlock(node)
-    if (node.type === 'tabs' || node.type === 'accordion') {
+    if (node.type === 'tabs') {
+      return {
+        ...node,
+        attrs: { ...node.attrs, id: nextId() },
+        content: node.content.map(stampPanel),
+      }
+    }
+    if (node.type === 'accordion') {
       return {
         ...node,
         attrs: { ...node.attrs, id: nextId() },

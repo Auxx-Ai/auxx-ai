@@ -253,7 +253,6 @@ declare module '@tiptap/core' {
 export const Table = Node.create<TableOptions>({
   name: 'table',
 
-  // @ts-expect-error
   addOptions() {
     return {
       HTMLAttributes: {},
@@ -431,7 +430,6 @@ export const Table = Node.create<TableOptions>({
           if (dispatch) {
             const selection = CellSelection.create(tr.doc, position.anchorCell, position.headCell)
 
-            // @ts-expect-error
             tr.setSelection(selection)
           }
 

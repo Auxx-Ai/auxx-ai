@@ -141,8 +141,9 @@ export function TableNodeView({ node, editor, getPos }: NodeViewProps) {
     })
     setRowRects((prev) => (rectsEqual(prev, newRowRects, 'top', 'height') ? prev : newRowRects))
 
-    if (rows.length > 0) {
-      const cells = Array.from(rows[0].querySelectorAll(':scope > th, :scope > td'))
+    const firstRow = rows[0]
+    if (firstRow) {
+      const cells = Array.from(firstRow.querySelectorAll(':scope > th, :scope > td'))
       const newColRects: ColRect[] = cells.map((cell) => {
         const r = cell.getBoundingClientRect()
         return { left: r.left - tableRect.left + offsetX, width: r.width }
@@ -295,17 +296,26 @@ export function TableNodeView({ node, editor, getPos }: NodeViewProps) {
   // edge of row `i`, except for the final boundary which sits at the bottom
   // edge of the last row. Same scheme for columns.
   const rowBoundaries: number[] = []
-  for (let i = 0; i < rowRects.length; i++) rowBoundaries.push(rowRects[i].top)
-  if (rowRects.length > 0) {
-    const last = rowRects[rowRects.length - 1]
-    rowBoundaries.push(last.top + last.height)
-  }
+  for (const rect of rowRects) rowBoundaries.push(rect.top)
+  const lastRowRect = rowRects[rowRects.length - 1]
+  if (lastRowRect) rowBoundaries.push(lastRowRect.top + lastRowRect.height)
 
   const colBoundaries: number[] = []
-  for (let i = 0; i < colRects.length; i++) colBoundaries.push(colRects[i].left)
-  if (colRects.length > 0) {
-    const last = colRects[colRects.length - 1]
-    colBoundaries.push(last.left + last.width)
+  for (const rect of colRects) colBoundaries.push(rect.left)
+  const lastColRect = colRects[colRects.length - 1]
+  if (lastColRect) colBoundaries.push(lastColRect.left + lastColRect.width)
+
+  // Drop-indicator geometry, resolved up front so the rect lookup is checked
+  // once here instead of three times inside JSX.
+  let columnDropLeft: number | null = null
+  if (dropState?.kind === 'column') {
+    const rect = colRects[dropState.index]
+    if (rect) columnDropLeft = dropState.edge === 'before' ? rect.left : rect.left + rect.width
+  }
+  let rowDropTop: number | null = null
+  if (dropState?.kind === 'row') {
+    const rect = rowRects[dropState.index]
+    if (rect) rowDropTop = dropState.edge === 'before' ? rect.top : rect.top + rect.height
   }
 
   return (
@@ -557,28 +567,22 @@ export function TableNodeView({ node, editor, getPos }: NodeViewProps) {
               ))}
             </div>
 
-            {dropState?.kind === 'column' && colRects[dropState.index] ? (
+            {columnDropLeft !== null ? (
               <div
                 className={styles.columnDropIndicator}
                 style={{
-                  left:
-                    dropState.edge === 'before'
-                      ? colRects[dropState.index].left
-                      : colRects[dropState.index].left + colRects[dropState.index].width,
+                  left: columnDropLeft,
                   height: tableHeight ? `${tableHeight}px` : undefined,
                 }}
                 aria-hidden='true'
               />
             ) : null}
 
-            {dropState?.kind === 'row' && rowRects[dropState.index] ? (
+            {rowDropTop !== null ? (
               <div
                 className={styles.rowDropIndicator}
                 style={{
-                  top:
-                    dropState.edge === 'before'
-                      ? rowRects[dropState.index].top
-                      : rowRects[dropState.index].top + rowRects[dropState.index].height,
+                  top: rowDropTop,
                   width: tableWidth ? `${tableWidth}px` : undefined,
                 }}
                 aria-hidden='true'
@@ -818,15 +822,12 @@ function PlusGlyph() {
 // React treats as a state change and re-renders, even when the values
 // haven't actually moved — which can cycle if any child of the body card
 // reacts to re-render with another DOM mutation.
-function rectsEqual<T extends { [k: string]: number }>(
-  a: T[],
-  b: T[],
-  k1: keyof T,
-  k2: keyof T
-): boolean {
+function rectsEqual<T>(a: T[], b: T[], k1: keyof T, k2: keyof T): boolean {
   if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    if (a[i][k1] !== b[i][k1] || a[i][k2] !== b[i][k2]) return false
+  for (const [i, av] of a.entries()) {
+    const bv = b[i]
+    if (!bv) return false
+    if (av[k1] !== bv[k1] || av[k2] !== bv[k2]) return false
   }
   return true
 }

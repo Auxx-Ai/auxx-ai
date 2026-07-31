@@ -12,7 +12,6 @@ export { EntityDefinitionDialog } from './entity-definition-dialog'
 export { EntityInstanceDialog } from './entity-instance-dialog'
 export { EntityRow } from './entity-row'
 export { FieldInputRow } from './field-input-row'
-export { FieldList } from './field-list'
 export { FieldTypeSelect } from './field-type-select'
 export {
   type FileOptions,

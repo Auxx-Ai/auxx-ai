@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest'
 import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
-import type { DocJSON, TableJSON } from '../types'
+import { at, cellBlockAt, tableAt } from '../test-helpers'
+import type { DocJSON } from '../types'
 
 const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
 
@@ -82,13 +83,12 @@ describe('table markdown serialization', () => {
     const original = makeSimpleTableDoc()
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
-    const table = reparsed.content[0] as TableJSON
-    expect(table.type).toBe('table')
+    const table = tableAt(reparsed.content)
     expect(table.content).toHaveLength(2)
-    expect(table.content[0].content[0].type).toBe('tableHeader')
-    expect(table.content[1].content[0].type).toBe('tableCell')
-    expect(table.content[0].content[0].content[0].content?.[0]?.text).toBe('Name')
-    expect(table.content[1].content[0].content[0].content?.[0]?.text).toBe('Alice')
+    expect(at(at(table.content, 0, 'table row').content, 0, 'table cell').type).toBe('tableHeader')
+    expect(at(at(table.content, 1, 'table row').content, 0, 'table cell').type).toBe('tableCell')
+    expect(cellBlockAt(table, 0, 0).content?.[0]?.text).toBe('Name')
+    expect(cellBlockAt(table, 1, 0).content?.[0]?.text).toBe('Alice')
   })
 
   it('preserves inline marks in cells through GFM round-trip', () => {
@@ -138,9 +138,8 @@ describe('table markdown serialization', () => {
     }
     const md = blocksToMd(original)
     const reparsed = mdToDoc(md)
-    const table = reparsed.content[0] as TableJSON
-    const cell = table.content[1].content[0]
-    const inline = cell.content[0].content ?? []
+    const table = tableAt(reparsed.content)
+    const inline = cellBlockAt(table, 1, 0).content ?? []
     expect(inline.some((n) => n.marks?.some((m) => m.type === 'bold'))).toBe(true)
     expect(inline.some((n) => n.marks?.some((m) => m.type === 'italic'))).toBe(true)
   })
@@ -189,8 +188,8 @@ describe('table markdown serialization', () => {
     const md = blocksToMd(original)
     expect(md).toContain('A \\| B')
     const reparsed = mdToDoc(md)
-    const table = reparsed.content[0] as TableJSON
-    expect(table.content[1].content[0].content[0].content?.[0]?.text).toBe('A | B')
+    const table = tableAt(reparsed.content)
+    expect(cellBlockAt(table, 1, 0).content?.[0]?.text).toBe('A | B')
   })
 
   it('renders nothing for an empty table', () => {

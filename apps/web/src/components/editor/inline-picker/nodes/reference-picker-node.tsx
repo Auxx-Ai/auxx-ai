@@ -164,8 +164,19 @@ interface ReferencePickerOptions {
   onSlashArrowRight?: () => boolean
 }
 
-function findPickerNode(state: import('@tiptap/pm/state').EditorState) {
-  let found: { pos: number; node: import('@tiptap/pm/model').Node } | null = null
+/** The open picker chip and its document position. */
+interface PickerHit {
+  pos: number
+  node: import('@tiptap/pm/model').Node
+}
+
+// The return annotation is load-bearing: without it, control-flow analysis
+// only sees `found` initialized to `null` (it can't tell that `descendants`
+// invokes the callback synchronously), infers the return type as `null`, and
+// every `picker.pos` / `picker.node` at a call site becomes an access on
+// `never`.
+function findPickerNode(state: import('@tiptap/pm/state').EditorState): PickerHit | null {
+  let found: PickerHit | null = null
   state.doc.descendants((node, pos) => {
     if (node.type.name === REFERENCE_PICKER_NODE) {
       found = { pos, node }

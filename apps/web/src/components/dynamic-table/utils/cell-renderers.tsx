@@ -230,9 +230,17 @@ export function renderDateValue(
 }
 
 /**
- * Render time-only value with optional timeFormat from field.options (flat structure)
+ * Render time-only value.
+ *
+ * Column formatting takes precedence over `field.options`, matching every other
+ * renderer here — without it the column-formatting dialog's 12h/24h control was
+ * written to the view config and then ignored at render time.
  */
-export function renderTimeValue(value: unknown, config?: CellConfig): React.ReactNode {
+export function renderTimeValue(
+  value: unknown,
+  formatting?: DateColumnFormatting,
+  config?: CellConfig
+): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
   try {
@@ -241,7 +249,7 @@ export function renderTimeValue(value: unknown, config?: CellConfig): React.Reac
       return <ExpandableCell mode='horizontal'>{String(value)}</ExpandableCell>
     }
     const opts = config?.options as DateFieldOptions | undefined
-    const timeFormat = opts?.timeFormat ?? '12h'
+    const timeFormat = formatting?.timeFormat ?? opts?.timeFormat ?? '12h'
     const formatStr = timeFormat === '24h' ? 'HH:mm' : 'h:mm a'
     return <ExpandableCell mode='horizontal'>{format(date, formatStr)}</ExpandableCell>
   } catch {
@@ -600,7 +608,8 @@ const cellRenderers: Record<string, CellRenderer> = {
     renderDateValue(value, formatting as DateColumnFormatting, config),
   DATETIME: (value, formatting, config) =>
     renderDateValue(value, { ...(formatting as DateColumnFormatting), includeTime: true }, config),
-  TIME: (value, _, config) => renderTimeValue(value, config),
+  TIME: (value, formatting, config) =>
+    renderTimeValue(value, formatting as DateColumnFormatting, config),
 
   // Numeric types - pass config for displayOptions fallback
   NUMBER: (value, formatting, config) =>

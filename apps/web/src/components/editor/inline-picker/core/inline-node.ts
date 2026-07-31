@@ -1,7 +1,7 @@
 // apps/web/src/components/editor/inline-picker/core/inline-node.ts
 
 import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import type { ExtraAttrConfig, InlineNodeBadgeProps, InlineNodeConfig } from '../types'
 import { createInlineNodeView } from './inline-node-view'
@@ -145,7 +145,7 @@ export function createInlineNode(
         // Delete node when it's selected and Delete is pressed
         Delete: () => {
           const { selection } = this.editor.state
-          if ('node' in selection && selection.node?.type.name === type) {
+          if (selection instanceof NodeSelection && selection.node.type.name === type) {
             return this.editor.commands.deleteSelection()
           }
           return false

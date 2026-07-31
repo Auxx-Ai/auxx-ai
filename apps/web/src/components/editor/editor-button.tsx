@@ -324,7 +324,8 @@ export const ListButton = ({ editor, disabled, popoverClassName }: EditorButtons
   // Track auto-formatting state
   const [autoFormatting, setAutoFormatting] = useState(false)
 
-  if (!editor) return null
+  // `useEditorState` yields null while there is no editor to select from.
+  if (!editor || !listState) return null
 
   // Try to get active state context if available
   let activeState: any = null

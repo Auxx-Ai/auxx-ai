@@ -25,7 +25,13 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    // `@auxx/lib` resolves through `source` exports, so `template-registry.ts`
+    // and its `import x from './templates/x.md'` lines are compiled as part of
+    // THIS program. lib's own `include` picks up the ambient `*.md` declaration
+    // beside them; ours cannot glob outside `apps/web`, so name the file
+    // directly rather than duplicating the declaration here.
+    "../../packages/lib/src/prompt-templates/raw-md.d.ts"
     // "../../packages/lib/src/**/*" CHANGED 2025-08-27
   ],
   "exclude": [

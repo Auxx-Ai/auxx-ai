@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest'
 import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
-import type { AccordionJSON, DocJSON } from '../types'
+import { accordionAt, blockAt, panelAt } from '../test-helpers'
+import type { DocJSON } from '../types'
 
 const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
 
@@ -65,12 +66,11 @@ describe('accordion markdown serialization', () => {
   it('round-trips allowMultiple=false', () => {
     const md = blocksToMd(makeAccordionDoc(false))
     const reparsed = mdToDoc(md)
-    const accordion = reparsed.content[0] as AccordionJSON
-    expect(accordion.type).toBe('accordion')
+    const accordion = accordionAt(reparsed.content)
     expect(accordion.attrs.allowMultiple).toBe(false)
     expect(accordion.content).toHaveLength(2)
-    expect(accordion.content[0].attrs.label).toBe('What is auxx.ai?')
-    expect(accordion.content[1].content[0].attrs.blockType).toBe('heading')
+    expect(panelAt(accordion, 0).attrs.label).toBe('What is auxx.ai?')
+    expect(blockAt(panelAt(accordion, 1).content).attrs.blockType).toBe('heading')
   })
 })
 
@@ -78,11 +78,10 @@ describe('details HTML import alias (Q6d)', () => {
   it('converts a single <details>/<summary> into an accordion', () => {
     const md = '<details><summary>Why?</summary>Because.</details>\n'
     const doc = mdToDoc(md)
-    const node = doc.content[0] as AccordionJSON
-    expect(node.type).toBe('accordion')
+    const node = accordionAt(doc.content)
     expect(node.attrs.allowMultiple).toBe(true)
     expect(node.content).toHaveLength(1)
-    expect(node.content[0].attrs.label).toBe('Why?')
+    expect(panelAt(node, 0).attrs.label).toBe('Why?')
   })
 
   it('merges consecutive <details> blocks into one accordion', () => {
@@ -92,11 +91,10 @@ describe('details HTML import alias (Q6d)', () => {
 `
     const doc = mdToDoc(md)
     expect(doc.content).toHaveLength(1)
-    const node = doc.content[0] as AccordionJSON
-    expect(node.type).toBe('accordion')
+    const node = accordionAt(doc.content)
     expect(node.content).toHaveLength(2)
-    expect(node.content[0].attrs.label).toBe('Q1')
-    expect(node.content[1].attrs.label).toBe('Q2')
+    expect(panelAt(node, 0).attrs.label).toBe('Q1')
+    expect(panelAt(node, 1).attrs.label).toBe('Q2')
   })
 
   it('serializer never re-emits <details> — converted accordion uses :::accordion', () => {

@@ -56,10 +56,10 @@ import {
   closestCenter,
   DndContext,
   type DragEndEvent,
+  type DraggableSyntheticListeners,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  type SyntheticListenerMap,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -85,7 +85,7 @@ interface OptionItemProps {
   /** Drag handle attributes (from useSortable) */
   attributes?: React.HTMLAttributes<HTMLDivElement>
   /** Drag handle listeners (from useSortable) */
-  listeners?: SyntheticListenerMap
+  listeners?: DraggableSyntheticListeners
   /** Style for transform/transition during drag */
   style?: React.CSSProperties
   /** Whether the item is being dragged (for styling) */
