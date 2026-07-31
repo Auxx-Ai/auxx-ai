@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.192](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.191...auxx-v0.1.192) (2026-07-31)
+
+
+### Features
+
+* **billing:** make dashboards available on every plan ([#1452](https://github.com/Auxx-Ai/auxx-ai/issues/1452)) ([95f6f9a](https://github.com/Auxx-Ai/auxx-ai/commit/95f6f9a93cec07161ac50bd8128266711794c29c))
+
+
+### Bug Fixes
+
+* **homepage:** start the agent run instantly and stop clipping the procedure ring ([#1450](https://github.com/Auxx-Ai/auxx-ai/issues/1450)) ([12e10f9](https://github.com/Auxx-Ai/auxx-ai/commit/12e10f90b7b7d34e91317242bc31086e0beddfbb))
+
 ## [0.1.191](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.190...auxx-v0.1.191) (2026-07-31)
 
 
