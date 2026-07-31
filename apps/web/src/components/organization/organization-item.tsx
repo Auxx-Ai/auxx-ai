@@ -17,11 +17,9 @@ import { EllipsisVertical, LogOut, Shield, ShieldAlert, Trash2, UserCircle2 } fr
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useSession } from '~/auth/auth-client'
-import { clearChannelCaches } from '~/components/channels/providers/channel-provider'
 import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
-import { clearRecordListContext } from '~/components/records/nav/record-list-context-store'
-import { clearResourceCaches } from '~/components/resources'
 import { useUser } from '~/hooks/use-user'
+import { clearSessionCaches } from '~/lib/clear-session-caches'
 import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import { DeleteOrganizationDialog } from './delete-organization-dialog'
@@ -76,9 +74,7 @@ export function OrganizationItem({
       setIsDeleteDialogOpen(false)
 
       if (isDeletingCurrentOrg) {
-        clearResourceCaches()
-        clearChannelCaches()
-        clearRecordListContext()
+        clearSessionCaches()
         await utils.invalidate()
         router.push('/organizations')
       } else {

@@ -46,6 +46,15 @@ export function SyncStatusToastManager() {
     prevCountRef.current = totalCount
   }, [syncingChannels, authErrorChannels, totalCount])
 
+  // The Toaster lives at the root layout, above the auth boundary, while this manager
+  // only mounts inside the protected app shell. Logout is a client-side nav, so without
+  // this the `duration: Infinity` toast is orphaned and keeps rendering on the login page.
+  useEffect(() => {
+    return () => {
+      sonnerToast.dismiss(SYNC_TOAST_ID)
+    }
+  }, [])
+
   return null
 }
 

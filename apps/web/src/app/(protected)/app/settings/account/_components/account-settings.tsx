@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { UAParser } from 'ua-parser-js'
 import { client } from '~/auth/auth-client'
+import { signOutAndClear } from '~/auth/sign-out'
 import { UserRegistrationInfo } from '~/components/auth/user-registration-info'
 import { SettingsSection } from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
@@ -50,7 +51,7 @@ export function AccountSettings(): JSX.Element {
    * Handle sign out - uses the same implementation as nav-user.tsx
    */
   const handleSignOut = () => {
-    client.signOut({
+    signOutAndClear({
       fetchOptions: {
         onSuccess: () => {
           router.push('/') // redirect to login page

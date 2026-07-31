@@ -44,7 +44,7 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useCallback, useEffect, useState } from 'react'
 // import { signOut } from 'next-auth/react'
-import { client } from '~/auth/auth-client' // Use the correct import for your auth library
+import { signOutAndClear } from '~/auth/sign-out'
 import { Tooltip } from '~/components/global/tooltip'
 import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
 import { PresenceDot } from '~/components/users/presence-dot'
@@ -333,7 +333,7 @@ export function NavUser({ user }: Prop) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
-                client.signOut({
+                signOutAndClear({
                   fetchOptions: {
                     onSuccess: () => {
                       posthog?.reset()
