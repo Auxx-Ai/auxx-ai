@@ -3,7 +3,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import type React from 'react'
 
-type ModelBadgeProps = { className?: string; children?: React.ReactElement | string }
+type ModelBadgeProps = { className?: string; children?: React.ReactNode }
 
 const ModelBadge = ({ className, children }: ModelBadgeProps) => {
   return (

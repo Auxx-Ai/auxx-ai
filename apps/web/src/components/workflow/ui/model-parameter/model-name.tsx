@@ -2,6 +2,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Computer, Eye, FileText, Image, MessageCircle, Settings2, Volume2 } from 'lucide-react'
+import type React from 'react'
 import { ModelCostBadge } from '~/components/ai/ui/model-cost-badge'
 import ModelBadge from './model-badge'
 import type { ModelData } from './types'
@@ -32,7 +33,7 @@ const ModelName = ({
   showContextSize,
   showCost,
   children,
-}: ModelNameProps): JSX.Element | null => {
+}: ModelNameProps): React.JSX.Element | null => {
   if (!modelItem) return null
 
   const getFeatureIcon = (feature: string) => {

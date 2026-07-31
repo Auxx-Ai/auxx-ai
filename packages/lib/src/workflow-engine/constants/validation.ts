@@ -21,7 +21,7 @@ export function createRangeValidator<T extends number = number>(
 /**
  * Creates a validator for enum values
  */
-export function createEnumValidator<T extends readonly string[]>(values: T) {
+export function createEnumValidator<T extends readonly [string, ...string[]]>(values: T) {
   return {
     values,
     validate: (value: unknown): value is T[number] => {

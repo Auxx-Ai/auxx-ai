@@ -24,6 +24,7 @@ import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
+  varEditorText,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
@@ -218,7 +219,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
                 nodeId={nodeId}
                 value={nodeData.recordId || ''}
                 onChange={(value) => {
-                  setNodeData({ ...nodeData, recordId: value })
+                  setNodeData({ ...nodeData, recordId: varEditorText(value) })
                   if (!showValidation) setShowValidation(true)
                 }}
                 varType={BaseType.RELATION}
@@ -265,7 +266,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
                   nodeId={nodeId}
                   value={nodeData.subject || ''}
                   onChange={(value) => {
-                    setNodeData({ ...nodeData, subject: value })
+                    setNodeData({ ...nodeData, subject: varEditorText(value) })
                     if (!showValidation) setShowValidation(true)
                   }}
                   varType={BaseType.STRING}
@@ -412,7 +413,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
         />
         <Field title='Attachments' className='pt-2'>
           <VarEditorField className='rounded-lg min-h-9'>
-            <VarEditor
+            <VarEditorArray
               value={nodeData.attachmentFiles || []}
               onChange={(values, modes) =>
                 setNodeData({ ...nodeData, attachmentFiles: values, attachmentFilesModes: modes })

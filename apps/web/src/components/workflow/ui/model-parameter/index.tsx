@@ -23,7 +23,7 @@ import type {
 // Model ID conversion utilities
 const splitModelId = (combinedId: string | null) => {
   if (!combinedId) return { provider: '', modelId: '' }
-  const [provider, ...modelParts] = combinedId.split(':')
+  const [provider = '', ...modelParts] = combinedId.split(':')
   return { provider, modelId: modelParts.join(':') }
 }
 
@@ -168,7 +168,10 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
         setModel({
           modelId: newModelId,
           provider: newProvider,
-          mode: (targetModel?.modelProperties?.mode as string) || 'chat',
+          // This used to read `targetModel.modelProperties.mode`, a field that has
+          // never existed on ModelData/ModelPickerItem — so it always fell through
+          // to 'chat'. Every `setModel` consumer applies the same `|| 'chat'`.
+          mode: 'chat',
           features: targetModel?.features || [],
         })
       }
@@ -205,6 +208,10 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
     }
   }
 
+  // The trigger props treat "unknown" as `undefined`; the lookups above use `null`.
+  const triggerProvider = (useDefault ? resolvedDefaultProvider : currentProvider) ?? undefined
+  const triggerModel = (useDefault ? resolvedDefaultModel : currentModel) ?? undefined
+
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <div className='relative'>
@@ -221,8 +228,8 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
               disabled: useDefault ? false : disabled,
               modelDisabled: useDefault ? false : modelDisabled,
               hasDeprecated: useDefault ? false : hasDeprecated,
-              currentProvider: useDefault ? resolvedDefaultProvider : currentProvider,
-              currentModel: useDefault ? resolvedDefaultModel : currentModel,
+              currentProvider: triggerProvider,
+              currentModel: triggerModel,
               providerName: displayProvider,
               modelId: displayModelId,
             })
@@ -232,8 +239,8 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
               isInWorkflow={isInWorkflow}
               modelDisabled={useDefault ? false : modelDisabled}
               hasDeprecated={useDefault ? false : hasDeprecated}
-              currentProvider={useDefault ? resolvedDefaultProvider : currentProvider}
-              currentModel={useDefault ? resolvedDefaultModel : currentModel}
+              currentProvider={triggerProvider}
+              currentModel={triggerModel}
               providerName={displayProvider}
               modelId={displayModelId}
             />
@@ -279,7 +286,7 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
                   {resolvedDefault ? (
                     <div className='flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2'>
                       <span className='text-xs text-foreground'>
-                        {resolvedDefaultModel?.label || resolvedDefault.model}
+                        {resolvedDefaultModel?.displayName || resolvedDefault.model}
                       </span>
                       <Badge variant='secondary' className='text-[10px] px-1.5 py-0'>
                         Default

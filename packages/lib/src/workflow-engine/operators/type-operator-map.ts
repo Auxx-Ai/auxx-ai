@@ -38,7 +38,7 @@ export const TYPE_OPERATOR_MAP: Record<BaseType, Operator[]> = {
  */
 function getOperatorKeysForType(type: BaseType): Operator[] {
   return Object.values(OPERATOR_DEFINITIONS)
-    .filter((op) => op.supportedTypes.includes(type))
+    .filter((op) => op.supportedTypes.some((supported) => supported === type))
     .map((op) => op.key as Operator)
 }
 

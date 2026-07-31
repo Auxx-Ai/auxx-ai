@@ -546,6 +546,10 @@ export class WorkflowService {
             })
             .returning()
 
+          if (!draftWorkflow) {
+            throw new Error(`Failed to create draft workflow for workflow app ${id}`)
+          }
+
           await tx
             .update(schema.WorkflowApp)
             .set({

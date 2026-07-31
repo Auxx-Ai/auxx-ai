@@ -5,6 +5,14 @@ import { BaseType } from '~/components/workflow/types'
 import { createNestedVariable } from '~/components/workflow/utils/variable-conversion'
 import { type DocumentExtractorNodeData, DocumentSourceType } from './types'
 
+/** Shape of one entry in the metadata object exposed to downstream nodes. */
+type MetadataProperty = {
+  type: BaseType
+  label?: string
+  description?: string
+  enum?: (string | number)[]
+}
+
 /**
  * Generate output variables for Document Extractor node
  * Matches backend output from DocumentExtractorNodeProcessor
@@ -20,7 +28,7 @@ export function getDocumentExtractorOutputVariables(
   const extractorEnum = ['pdf-extractor', 'docx-extractor', 'html-extractor', 'text-extractor']
 
   // Build metadata properties based on source type
-  const metadataProperties = isFileSource
+  const metadataProperties: Record<string, MetadataProperty> = isFileSource
     ? {
         fileName: {
           type: BaseType.STRING,

@@ -137,8 +137,15 @@ const preprocessed = {
   metadata: {},
 } as any
 
+/** `executeNode` is protected on the processor; drive it through a subclass. */
+class TestHumanConfirmationProcessor extends HumanConfirmationProcessor {
+  runNode(...args: Parameters<TestHumanConfirmationProcessor['executeNode']>) {
+    return this.executeNode(...args)
+  }
+}
+
 const run = (methods: { in_app: boolean; email: boolean }) =>
-  new HumanConfirmationProcessor().executeNode(
+  new TestHumanConfirmationProcessor().runNode(
     makeNode(methods),
     makeContextManager(makeMockDb()),
     preprocessed

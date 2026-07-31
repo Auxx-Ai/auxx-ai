@@ -2,9 +2,9 @@
 
 import { useReactFlow, useStoreApi } from '@xyflow/react'
 import { useCallback, useMemo } from 'react'
-import type { FlowNode } from '../store/types'
 import { useWorkflowStore } from '../store/workflow-store'
 import { useHistoryManager } from '../store/workflow-store-provider'
+import type { FlowEdge, FlowNode } from '../types'
 import {
   calculateContainerSize,
   getLayoutByDagre,
@@ -18,7 +18,7 @@ import { LAYOUT_ANIMATION, NODE_CLASSIFICATIONS } from '../utils/layout-constant
 export const useWorkflowOrganize = () => {
   const historyManager = useHistoryManager()
   const reactFlow = useReactFlow()
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
   // Get ReactFlow actions directly
   const setViewport = useCallback((viewport: any) => reactFlow.setViewport(viewport), [reactFlow])
   const fitView = useCallback((options?: any) => reactFlow.fitView(options), [reactFlow])
@@ -78,16 +78,13 @@ export const useWorkflowOrganize = () => {
 
       // Update container node sizes
       const nodesWithUpdatedSizes = nodes.map((node) => {
-        if (containerSizeChanges[node.id]) {
+        const sizeChange = containerSizeChanges[node.id]
+        if (sizeChange) {
           return {
             ...node,
-            width: containerSizeChanges[node.id].width,
-            height: containerSizeChanges[node.id].height,
-            data: {
-              ...node.data,
-              width: containerSizeChanges[node.id].width,
-              height: containerSizeChanges[node.id].height,
-            },
+            width: sizeChange.width,
+            height: sizeChange.height,
+            data: { ...node.data, width: sizeChange.width, height: sizeChange.height },
           }
         }
         return node

@@ -56,7 +56,9 @@ export function ViewerVarStoreSyncProvider({
       if (nodes.length > 0) {
         const nodeMetas: NodeMeta[] = nodes.map((n) => ({
           id: n.id,
-          type: n.data?.type || n.type || '',
+          // React Flow types `data` as Record<string, unknown>, so the node type
+          // stored on it has to be narrowed before it can stand in for `n.type`.
+          type: typeof n.data?.type === 'string' ? n.data.type : (n.type ?? ''),
           data: n.data,
           parentId: n.parentId,
         }))

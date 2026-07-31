@@ -3,6 +3,7 @@
 import { useRunStore } from '../store/run-store'
 import { useSingleNodeRunStore } from '../store/single-node-run-store'
 import { NodeRunningStatus } from '../types/node-base'
+import { toNodeRunningStatus } from '../utils/execution-status'
 
 /**
  * Hook to get the execution status of a specific node
@@ -27,14 +28,12 @@ export function useNodeStatus(nodeId: string): NodeRunningStatus | null {
 
   // Prioritize workflow execution status if available
   if (nodeExecution) {
-    // Direct return since the status should already be a NodeRunningStatus value
-    return (nodeExecution.status as NodeRunningStatus) || null
+    return nodeExecution.status ? toNodeRunningStatus(nodeExecution.status) : null
   }
 
   // Fall back to single node run status
   if (singleNodeResult) {
-    // Now that singleNodeResult uses NodeRunningStatus directly, no mapping needed
-    return singleNodeResult.status
+    return singleNodeResult.status ? toNodeRunningStatus(singleNodeResult.status) : null
   }
 
   // No execution found

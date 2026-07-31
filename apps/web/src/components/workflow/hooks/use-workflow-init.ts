@@ -10,6 +10,16 @@ import { useVarStore } from '../store/use-var-store'
 import type { EnvVar, FetchWorkflowResponse, FlowEdge, FlowNode } from '../types'
 import { initializeWorkflow } from '../utils/workflow-initializer'
 
+/**
+ * `FetchWorkflowResponse.graph.nodes` in `types/core.ts` resolves to the DOM
+ * `Node` — that file imports `Edge`/`Viewport` from React Flow but not `Node`,
+ * so the global wins. The route really returns canvas nodes; correct it here
+ * rather than trusting the declared shape.
+ */
+type FetchedWorkflow = Omit<FetchWorkflowResponse, 'graph'> & {
+  graph: { nodes: FlowNode[]; edges: FlowEdge[]; viewport: Viewport }
+}
+
 interface UseWorkflowInitOptions {
   workflowId?: string
   workflowAppId?: string
@@ -82,7 +92,7 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to load workflow')
       }
-      const workflow = (await response.json()) as FetchWorkflowResponse
+      const workflow = (await response.json()) as FetchedWorkflow
       setWorkflowData(workflow)
       // Create metadata
       const metadata: WorkflowMetadata = {

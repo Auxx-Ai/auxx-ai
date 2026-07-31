@@ -104,7 +104,9 @@ interface CycleDetectionResult {
 export class WorkflowGraphBuilder {
   private static nodeRegistry: NodeProcessorRegistry
   private static lastTransformedWorkflow: Workflow | null = null
-  private static readonly ENTRY_NODE_TYPES = new Set(Object.values(WorkflowTriggerType))
+  // Trigger types are a subset of node types, so widen for `.has(node.type)`.
+  private static readonly ENTRY_NODE_TYPES: ReadonlySet<WorkflowNodeType> =
+    new Set<WorkflowNodeType>(Object.values(WorkflowTriggerType))
 
   private static readonly UI_ONLY_TYPES = new Set(['note', 'group', 'annotation', 'comment'])
 
@@ -1114,13 +1116,15 @@ export class WorkflowGraphHelper {
     })
 
     // Find common descendants reachable from all branches
-    const firstBranchReachable = reachableFromBranch.get(fork.branchNodeIds[0])!
+    const [firstBranchId, ...otherBranchIds] = fork.branchNodeIds
+    const firstBranchReachable = firstBranchId ? reachableFromBranch.get(firstBranchId) : undefined
+    if (!firstBranchReachable) return undefined
     const commonDescendants = new Set<string>()
 
     firstBranchReachable.forEach((nodeId) => {
       let isCommon = true
-      for (const branchId of fork.branchNodeIds.slice(1)) {
-        if (!reachableFromBranch.get(branchId)!.has(nodeId)) {
+      for (const branchId of otherBranchIds) {
+        if (!reachableFromBranch.get(branchId)?.has(nodeId)) {
           isCommon = false
           break
         }

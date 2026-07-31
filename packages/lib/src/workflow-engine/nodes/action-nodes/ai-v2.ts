@@ -257,7 +257,8 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       }
 
       if (fileContents.length > 0) {
-        const lastUserMsg = messages.findLast((m) => m.role === 'user')
+        // `findLast` is ES2023; this package targets ES2022.
+        const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
         if (lastUserMsg) {
           const textContent: MultiModalContent = {
             type: 'text',
@@ -307,7 +308,8 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
     contextManager: ExecutionContextManager,
     preprocessedData?: PreprocessedNodeData
   ): Promise<Partial<NodeExecutionResult>> {
-    const config = node.data as AiNodeConfig
+    // `NodeData` carries the builder-only fields; the config is its payload half.
+    const config = node.data as unknown as AiNodeConfig
     if (!config?.toolsEnabled) {
       const gates = await this.resolveGates(node, config, contextManager)
       const result = await super.executeNode(

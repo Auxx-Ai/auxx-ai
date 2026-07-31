@@ -230,9 +230,13 @@ export class AIProcessor extends BaseNodeProcessor {
       promptLength: prompt.length,
     })
 
+    // Declared outside the try so the catch below can report its length — it used
+    // to live inside the try and threw a ReferenceError from the error handler.
+    let resolvedPrompt: string = prompt
+
     try {
       // Resolve variables in the prompt
-      const resolvedPrompt = await this.interpolateVariables(prompt, contextManager)
+      resolvedPrompt = await this.interpolateVariables(prompt, contextManager)
 
       // Generate completion
       const completion = await this.openai.chat.completions.create({
@@ -287,11 +291,11 @@ export class AIProcessor extends BaseNodeProcessor {
           temperature,
           maxTokens,
           promptLength: resolvedPrompt?.length,
-          errorType: error.constructor.name,
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
           originalError: error instanceof Error ? error.message : String(error),
           executionPhase: 'ai_api_call',
         },
-        error
+        error instanceof Error ? error : new Error(String(error))
       )
     }
   }
@@ -439,5 +443,10 @@ export class AIProcessor extends BaseNodeProcessor {
 
   private isValidModel(model: string): boolean {
     return model in OPENAI_MODELS
+  }
+
+  /** Model ids this node accepts — surfaced in the "unsupported model" error. */
+  private getSupportedModels(): string[] {
+    return Object.keys(OPENAI_MODELS)
   }
 }

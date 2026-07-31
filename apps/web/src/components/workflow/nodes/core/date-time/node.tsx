@@ -4,13 +4,14 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
-import type { DateTimeNode as DateTimeNodeType } from './types'
+import type { DateTimeNodeData } from './types'
 
 /**
  * Date Time node visual component
  */
-export const DateTimeNode = memo<DateTimeNodeType>(({ id, data, selected }) => {
+export const DateTimeNode = memo<NodeProps<DateTimeNodeData>>(({ id, data, selected }) => {
   // Generate description based on operation
   const getOperationDescription = () => {
     switch (data.operation) {

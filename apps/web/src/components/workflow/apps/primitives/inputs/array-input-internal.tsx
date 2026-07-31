@@ -138,8 +138,10 @@ export const ArrayInputInternal: React.FC<ArrayInputInternalProps> = ({
   // Read struct schema for scoped context
   const structFields = useMemo(() => {
     const arraySchema = schema?.inputs?.[name]
-    if (arraySchema?.items?.fields) {
-      return arraySchema.items.fields
+    // `catalogFieldToBlockField` stores nested struct members under `properties`
+    // (the raw manifest JSON calls them `fields`, the runtime shape does not).
+    if (arraySchema?.items?.properties) {
+      return arraySchema.items.properties
     }
     return null
   }, [schema, name])
@@ -242,7 +244,7 @@ export const ArrayInputInternal: React.FC<ArrayInputInternalProps> = ({
         return getFieldMode(scopedKey)
       }
 
-      const scopedSchema = structFields ? { inputs: structFields } : schema
+      const scopedSchema = structFields ? { inputs: structFields, outputs: {} } : schema
 
       return {
         nodeId,

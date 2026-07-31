@@ -287,9 +287,9 @@ export class EdgeManager {
         return EdgeManager.createEdge(
           {
             source: newNodeId,
-            sourceHandle: edge.sourceHandle,
+            sourceHandle: edge.sourceHandle ?? undefined,
             target: edge.target,
-            targetHandle: edge.targetHandle,
+            targetHandle: edge.targetHandle ?? undefined,
             sourceType: newNodeType,
             targetType: edge.data?.targetType || '',
             isInLoop: edge.data?.isInLoop,
@@ -303,9 +303,9 @@ export class EdgeManager {
         return EdgeManager.createEdge(
           {
             source: edge.source,
-            sourceHandle: edge.sourceHandle,
+            sourceHandle: edge.sourceHandle ?? undefined,
             target: newNodeId,
-            targetHandle: edge.targetHandle,
+            targetHandle: edge.targetHandle ?? undefined,
             sourceType: edge.data?.sourceType || '',
             targetType: newNodeType,
             isInLoop: edge.data?.isInLoop,

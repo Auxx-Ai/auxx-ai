@@ -31,6 +31,11 @@ interface ErrorHandlingProps {
   onChange: (updates: Partial<HttpNodeData>) => void
 }
 
+/** Radix's `onValueChange` hands back a bare string; narrow it before storing. */
+function isErrorStrategy(value: string): value is ErrorStrategy {
+  return (Object.values(ErrorStrategy) as string[]).includes(value)
+}
+
 export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHandlingProps) {
   const { handleEdgeDeleteByDeleteBranch } = useEdgeInteractions()
 
@@ -39,6 +44,8 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
 
   // Handle error strategy change and update target branches
   const setErrorStrategy = (newStrategy: string) => {
+    if (!isErrorStrategy(newStrategy)) return
+
     const branches =
       newStrategy === ErrorStrategy.fail
         ? [

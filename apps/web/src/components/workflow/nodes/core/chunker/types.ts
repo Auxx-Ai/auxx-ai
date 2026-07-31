@@ -16,16 +16,16 @@ export interface ChunkerNodeData extends BaseNodeData {
   /** The text content to chunk - typically from Document Extractor output */
   content?: string
 
-  /** Maximum chunk size in characters (default: 6000) */
-  chunkSize?: number
-  /** Overlap between chunks in characters (default: 500) */
-  chunkOverlap?: number
+  /** Maximum chunk size in characters (default: 6000). A string when bound to a variable. */
+  chunkSize?: number | string
+  /** Overlap between chunks in characters (default: 500). A string when bound to a variable. */
+  chunkOverlap?: number | string
   /** Custom delimiter for splitting (e.g., '\n\n') */
   delimiter?: string
-  /** Replace consecutive spaces/newlines (default: true) */
-  normalizeWhitespace?: boolean
-  /** Remove URLs and email addresses (default: false) */
-  removeUrlsAndEmails?: boolean
+  /** Replace consecutive spaces/newlines (default: true). A string when bound to a variable. */
+  normalizeWhitespace?: boolean | string
+  /** Remove URLs and email addresses (default: false). A string when bound to a variable. */
+  removeUrlsAndEmails?: boolean | string
 
   /** Track constant/variable mode per field */
   fieldModes?: Record<string, boolean>

@@ -11,7 +11,11 @@ import {
 } from '@auxx/ui/components/select'
 import type React from 'react'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  VarEditorField,
+  varEditorText,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import type { ScheduledTriggerUIConfig } from '../types'
 
 interface IntervalSelectorProps {
@@ -85,13 +89,14 @@ export const IntervalSelector: React.FC<IntervalSelectorProps> = ({
                 }
               }}
               onChange={(value, isConstantMode) => {
+                const text = varEditorText(value)
                 if (isConstantMode) {
                   // In constant mode, parse as number
-                  const numValue = parseInt(value, 10) || 1
+                  const numValue = Number.parseInt(text, 10) || 1
                   onValueChange(numValue, false)
                 } else {
                   // In variable mode, pass the variable reference as string
-                  onValueChange(value, true)
+                  onValueChange(text, true)
                 }
               }}
               varType={BaseType.NUMBER}

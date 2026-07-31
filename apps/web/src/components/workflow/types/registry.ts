@@ -3,6 +3,7 @@
 import type { WorkflowNodeExecutionEntity } from '@auxx/database/types'
 import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
+import type { BaseNodeData } from './node-base'
 import type { UnifiedOutputVariablesFunction } from './output-variables'
 
 // Simplified typing approach to avoid Zod complexity
@@ -34,10 +35,15 @@ export interface ValidationResult {
 }
 
 /**
- * Node panel component props
+ * Props every node configuration panel receives.
+ *
+ * `PropertyPanel` (workflow/panels/property-panel.tsx) is the only mount site and
+ * it always passes BOTH the selected node's id and its data — the panels have
+ * always destructured `data`, the slot type just never admitted it.
  */
-export interface NodePanelProps {
+export interface NodePanelProps<TData = BaseNodeData> {
   nodeId: string
+  data: TData
 }
 
 /**
@@ -63,7 +69,7 @@ export interface NodeDefinition<TData = any> {
   defaultData: Partial<TData> // Default data for the node (flattened structure)
   schema: any // Simplified to avoid Zod typing complexity
   component?: ComponentType<any> // The React component to render this node (for dynamic lookup)
-  panel?: ComponentType<NodePanelProps> // Panel component for the node
+  panel?: ComponentType<NodePanelProps<TData>> // Panel component for the node
   /** Optional pretty renderer for this node type's execution output ("Preview" trace tab). */
   traceRenderer?: ComponentType<TraceRendererProps>
   validator?: (data: TData) => ValidationResult // Validation function

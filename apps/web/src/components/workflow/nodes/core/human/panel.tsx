@@ -19,7 +19,12 @@ import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import type { TargetBranch } from '~/components/workflow/types'
 import { BaseType } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  VarEditorField,
+  type VarEditorValue,
+  varEditorText,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import Section from '~/components/workflow/ui/section'
 import { useUser } from '~/hooks/use-user'
@@ -28,6 +33,24 @@ import type { HumanConfirmationNodeData } from './types'
 interface HumanConfirmationNodePanelProps {
   nodeId: string
   data: HumanConfirmationNodeData
+}
+
+/**
+ * Read the actor id list back out of a VarEditor constant value.
+ *
+ * The actor input hands back a native array; older stored values arrive as the
+ * JSON string this panel writes into the editor, so both are accepted.
+ */
+function parseActorIds(value: VarEditorValue): string[] {
+  if (Array.isArray(value)) return value.map(varEditorText).filter(Boolean)
+  const text = varEditorText(value)
+  if (!text) return []
+  try {
+    const parsed: unknown = JSON.parse(text)
+    return Array.isArray(parsed) ? parsed.map(String) : [text]
+  } catch {
+    return [text]
+  }
 }
 
 /**
@@ -80,14 +103,14 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
 
     /** Parse VarEditor value back to storage format */
     const handleAssigneesChange = useCallback(
-      (value: string, isConstant: boolean) => {
+      (value: VarEditorValue, isConstant: boolean) => {
         updateInputs((draft) => {
           if (!draft.assignees) draft.assignees = {}
           if (isConstant) {
-            draft.assignees.actorIds = value ? JSON.parse(value) : []
+            draft.assignees.actorIds = parseActorIds(value)
             draft.assignees.variable = undefined
           } else {
-            draft.assignees.variable = { id: value } as any
+            draft.assignees.variable = { id: varEditorText(value) } as any
             draft.assignees.actorIds = undefined
           }
         })
@@ -268,8 +291,8 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                           draft.timeout = { duration: 24, unit: 'hours', enabled: true }
                         }
                         draft.timeout.duration = isConstant
-                          ? parseInt(value, 10) || 24
-                          : ({ id: value } as any)
+                          ? Number.parseInt(varEditorText(value), 10) || 24
+                          : ({ id: varEditorText(value) } as any)
                       }),
                     [updateInputs]
                   )}

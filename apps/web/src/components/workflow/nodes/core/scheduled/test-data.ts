@@ -83,8 +83,11 @@ function getScheduleDescription(config: ScheduledTriggerNodeData['config']): str
 function calculateNextExecution(config: ScheduledTriggerNodeData['config']): Date | null {
   if (config.triggerInterval === 'custom') return null
 
-  const value = config.timeBetweenTriggers[config.triggerInterval]
-  if (!value) return null
+  const rawValue = config.timeBetweenTriggers[config.triggerInterval]
+  // The interval may be bound to a variable, in which case there is no
+  // schedule to preview until the workflow runs.
+  const value = typeof rawValue === 'number' ? rawValue : Number(rawValue)
+  if (!value || Number.isNaN(value)) return null
 
   const now = new Date()
   let intervalMs: number

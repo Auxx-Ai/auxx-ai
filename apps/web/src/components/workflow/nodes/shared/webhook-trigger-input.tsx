@@ -2,7 +2,7 @@
 
 import { useStoreApi } from '@xyflow/react'
 import { useCallback } from 'react'
-import { CodeEditor } from '~/components/workflow/ui/code-editor'
+import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
 import Section from '~/components/workflow/ui/section'
 import type { TriggerInputProps } from '../trigger-registry'
@@ -77,24 +77,24 @@ export function WebhookTriggerInput({ inputs, errors, onChange }: TriggerInputPr
         {/* Headers */}
         <Field title='Headers' description={headersDesc}>
           <CodeEditor
+            language={CodeLanguage.json}
             value={formatValue(inputs.headers)}
             onChange={handleHeadersChange}
             readOnly={false}
             className='min-h-[100px]'
-            editorWrapperClassName='h-[100px]'
-            hideTopMenu={false}
+            minHeight={100}
           />
           {errors.headers && <p className='text-sm text-destructive'>{errors.headers}</p>}
         </Field>
 
         <Field title='Query Parameters' description={queryDesc}>
           <CodeEditor
+            language={CodeLanguage.json}
             value={formatValue(inputs.query)}
             onChange={handleQueryChange}
             readOnly={false}
             className='min-h-[100px]'
-            editorWrapperClassName='h-[100px]'
-            hideTopMenu={false}
+            minHeight={100}
           />
           {errors.query && <p className='text-sm text-destructive'>{errors.query}</p>}
         </Field>
@@ -103,12 +103,12 @@ export function WebhookTriggerInput({ inputs, errors, onChange }: TriggerInputPr
             title='Request Body'
             description='Request body as JSON (can be object, array, or primitive)'>
             <CodeEditor
+              language={CodeLanguage.json}
               value={formatValue(inputs.body)}
               onChange={handleBodyChange}
               readOnly={false}
               className='min-h-[100px]'
-              editorWrapperClassName='h-[100px]'
-              hideTopMenu={false}
+              minHeight={100}
             />
             {errors.body && <p className='text-sm text-destructive'>{errors.body}</p>}
           </Field>

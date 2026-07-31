@@ -14,6 +14,8 @@ import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
+  type VarEditorValue,
+  varEditorText,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
@@ -50,9 +52,9 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
    * Generic handler for string field changes
    */
   const handleFieldChange = useCallback(
-    (field: string, value: string, isConstantMode: boolean) => {
+    (field: string, value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        ;(draft as Record<string, unknown>)[field] = value || undefined
+        ;(draft as Record<string, unknown>)[field] = varEditorText(value) || undefined
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode
       })
@@ -65,7 +67,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
    * Handler for number field changes
    */
   const handleNumberChange = useCallback(
-    (field: 'limit' | 'similarityThreshold', value: unknown, isConstantMode: boolean) => {
+    (field: 'limit' | 'similarityThreshold', value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         const wasConstantMode = draft.fieldModes?.[field] ?? true
         const modeChanged = wasConstantMode !== isConstantMode
@@ -78,8 +80,8 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
           const numValue = typeof value === 'number' ? value : parseFloat(String(value))
           draft[field] = Number.isNaN(numValue) ? undefined : numValue
         } else {
-          // Variable mode: store as string (variable reference)
-          draft[field] = value as number
+          // Variable mode: store the variable reference as-is
+          draft[field] = varEditorText(value) || undefined
         }
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode
@@ -127,11 +129,12 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
    * Update a dataset entry
    */
   const handleDatasetChange = useCallback(
-    (index: number, datasetId: string, isConstantMode: boolean) => {
+    (index: number, datasetId: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         if (!draft.datasets) draft.datasets = []
-        if (!draft.datasets[index]) draft.datasets[index] = { datasetId: '' }
-        draft.datasets[index].datasetId = datasetId || ''
+        const entry = draft.datasets[index] ?? { datasetId: '' }
+        entry.datasetId = varEditorText(datasetId)
+        draft.datasets[index] = entry
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[`datasets.${index}.datasetId`] = isConstantMode
       })

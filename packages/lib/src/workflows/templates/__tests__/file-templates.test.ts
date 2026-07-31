@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { normalizeTemplateGraph } from '../../normalize-template-graph'
+import type { WorkflowGraph } from '../../template-graph-transformer'
 import { FILE_TEMPLATES, getFileTemplateById, isFileTemplateId } from '../index'
 
 /** A Tiptap doc is `{ type: 'doc', content: [...] }`. */
@@ -84,10 +85,12 @@ describe.each(FILE_TEMPLATES.map((t) => [t.name, t] as const))('file template: %
 
 describe('normalizeTemplateGraph', () => {
   it('converts legacy {role, text} prompts to {role, json} Tiptap docs', () => {
-    const graph = {
+    const graph: WorkflowGraph = {
       nodes: [
         {
           id: 'ai_1',
+          type: 'ai',
+          position: { x: 0, y: 0 },
           data: {
             id: 'ai_1',
             type: 'ai',
@@ -98,7 +101,7 @@ describe('normalizeTemplateGraph', () => {
       edges: [],
     }
     const result = normalizeTemplateGraph(graph)
-    const entry = result.nodes[0].data.prompt_template[0]
+    const entry = result.nodes[0]?.data.prompt_template[0]
     expect(entry.role).toBe('system')
     expect(isTiptapDoc(entry.json)).toBe(true)
     // The {{variable}} becomes an inline variable-node chip.
@@ -109,39 +112,50 @@ describe('normalizeTemplateGraph', () => {
 
   it('leaves existing json prompts untouched', () => {
     const doc = { type: 'doc', content: [{ type: 'paragraph' }] }
-    const graph = {
+    const graph: WorkflowGraph = {
       nodes: [
         {
           id: 'ai_1',
+          type: 'ai',
+          position: { x: 0, y: 0 },
           data: { id: 'ai_1', type: 'ai', prompt_template: [{ role: 'user', json: doc }] },
         },
       ],
       edges: [],
     }
     const result = normalizeTemplateGraph(graph)
-    expect(result.nodes[0].data.prompt_template[0].json).toEqual(doc)
+    expect(result.nodes[0]?.data.prompt_template[0].json).toEqual(doc)
   })
 
   it('ignores non-ai nodes', () => {
-    const graph = {
-      nodes: [{ id: 'answer_1', data: { id: 'answer_1', type: 'answer', text: '{{ai_1.text}}' } }],
+    const graph: WorkflowGraph = {
+      nodes: [
+        {
+          id: 'answer_1',
+          type: 'answer',
+          position: { x: 0, y: 0 },
+          data: { id: 'answer_1', type: 'answer', text: '{{ai_1.text}}' },
+        },
+      ],
       edges: [],
     }
     const result = normalizeTemplateGraph(graph)
-    expect(result.nodes[0].data.text).toBe('{{ai_1.text}}')
+    expect(result.nodes[0]?.data.text).toBe('{{ai_1.text}}')
   })
 
   it('does not mutate the input graph', () => {
-    const graph = {
+    const graph: WorkflowGraph = {
       nodes: [
         {
           id: 'ai_1',
+          type: 'ai',
+          position: { x: 0, y: 0 },
           data: { id: 'ai_1', type: 'ai', prompt_template: [{ role: 'system', text: 'hi' }] },
         },
       ],
       edges: [],
     }
     normalizeTemplateGraph(graph)
-    expect(graph.nodes[0].data.prompt_template[0]).toEqual({ role: 'system', text: 'hi' })
+    expect(graph.nodes[0]?.data.prompt_template[0]).toEqual({ role: 'system', text: 'hi' })
   })
 })

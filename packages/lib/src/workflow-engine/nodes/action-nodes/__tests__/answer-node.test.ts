@@ -23,7 +23,7 @@ vi.mock('../../../../resources/resource-fetcher', () => ({
  */
 function makeMockDb(cfg: {
   integrationEmail?: string
-  latestMessage?: { id: string; metadata: unknown } | null
+  latestMessage?: { id: string; machineMailTier?: 'hard' | 'soft' | null; metadata: unknown } | null
   participants?: Array<{ role: string; identifier: string }>
 }) {
   const select = vi.fn((cols?: Record<string, unknown>) => {
@@ -132,7 +132,7 @@ describe('AnswerProcessor.getLatestInboundMessage', () => {
   it('returns the message id and metadata', async () => {
     const latestMessage = {
       id: 'm1',
-      machineMailTier: 'hard',
+      machineMailTier: 'hard' as const,
       metadata: { machineMail: { tier: 'hard', reason: 'x' } },
     }
     const db = makeMockDb({ latestMessage })

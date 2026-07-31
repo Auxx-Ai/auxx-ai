@@ -37,10 +37,13 @@ export interface KnowledgeRetrievalNodeData extends BaseNodeData {
   // === Search Configuration ===
   /** Search strategy: 'vector', 'text', or 'hybrid' (default: 'hybrid') */
   searchType?: SearchType
-  /** Maximum number of results to return (default: 20) */
-  limit?: number
-  /** Minimum similarity threshold for vector search (default: 0.7, range: 0-1) */
-  similarityThreshold?: number
+  /** Maximum number of results to return (default: 20). A string when bound to a variable. */
+  limit?: number | string
+  /**
+   * Minimum similarity threshold for vector search (default: 0.7, range: 0-1).
+   * A string when bound to a variable.
+   */
+  similarityThreshold?: number | string
 
   /** Track constant/variable mode per field */
   fieldModes?: Record<string, boolean>

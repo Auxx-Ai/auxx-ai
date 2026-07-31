@@ -187,7 +187,7 @@ export class WorkflowBlockLoader {
       if (result.status === 'rejected') {
         const installation = needsRpc[idx]
         console.warn(
-          `[WorkflowBlockLoader] RPC fallback failed for ${installation.app.id}:`,
+          `[WorkflowBlockLoader] RPC fallback failed for ${installation?.app.id}:`,
           result.reason
         )
       }

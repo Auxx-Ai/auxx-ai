@@ -1,14 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/webhook/node.tsx
 
 import { type FC, memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { WebhookNode as WebhookNodeType } from './types'
+import type { WebhookNodeData } from './types'
 
 /**
  * Webhook node component
  */
-export const WebhookNode: FC<WebhookNodeType> = memo((props) => {
+export const WebhookNode: FC<NodeProps<WebhookNodeData>> = memo((props) => {
   const { id, data, selected } = props
 
   return (

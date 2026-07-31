@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/information-extractor/constants.ts
 
-import type { SchemaRoot } from './types'
+import { type SchemaRoot, Type } from '~/components/workflow/ui/json-schema-types'
 
 /**
  * Pre-built extraction templates for common use cases
@@ -17,121 +17,123 @@ export const EXTRACTION_TEMPLATES: Record<
     name: 'Customer Information',
     description: 'Extract customer contact details and basic information',
     schema: {
-      type: 'object',
+      type: Type.object,
       properties: {
         name: {
-          type: 'string',
+          type: Type.string,
           description: 'Customer full name',
         },
         email: {
-          type: 'string',
+          type: Type.string,
           description: 'Email address',
           format: 'email',
         },
         phone: {
-          type: 'string',
+          type: Type.string,
           description: 'Phone number',
         },
         company: {
-          type: 'string',
+          type: Type.string,
           description: 'Company or organization name',
         },
         address: {
-          type: 'object',
+          type: Type.object,
           description: 'Physical address',
           properties: {
-            street1: { type: 'string', description: 'Street address line 1' },
-            street2: { type: 'string', description: 'Street address line 2 (apt, suite, etc.)' },
-            city: { type: 'string', description: 'City' },
-            state: { type: 'string', description: 'State or province' },
-            zipCode: { type: 'string', description: 'ZIP or postal code' },
-            country: { type: 'string', description: 'Country' },
+            street1: { type: Type.string, description: 'Street address line 1' },
+            street2: { type: Type.string, description: 'Street address line 2 (apt, suite, etc.)' },
+            city: { type: Type.string, description: 'City' },
+            state: { type: Type.string, description: 'State or province' },
+            zipCode: { type: Type.string, description: 'ZIP or postal code' },
+            country: { type: Type.string, description: 'Country' },
           },
         },
       },
       required: ['name'],
+      additionalProperties: false,
     },
   },
   order: {
     name: 'Order Details',
     description: 'Extract e-commerce order information',
     schema: {
-      type: 'object',
+      type: Type.object,
       properties: {
         orderNumber: {
-          type: 'string',
+          type: Type.string,
           description: 'Order ID or number',
         },
         orderDate: {
-          type: 'string',
+          type: Type.string,
           description: 'Order date',
           format: 'date',
         },
         customerEmail: {
-          type: 'string',
+          type: Type.string,
           description: 'Customer email address',
           format: 'email',
         },
         shippingMethod: {
-          type: 'string',
+          type: Type.string,
           description: 'Shipping or delivery method',
         },
         items: {
-          type: 'array',
+          type: Type.array,
           description: 'List of ordered items',
           items: {
-            type: 'object',
+            type: Type.object,
             properties: {
-              name: { type: 'string', description: 'Product name' },
-              sku: { type: 'string', description: 'Product SKU or code' },
-              quantity: { type: 'number', description: 'Quantity ordered' },
-              price: { type: 'number', description: 'Unit price' },
-              total: { type: 'number', description: 'Line total' },
+              name: { type: Type.string, description: 'Product name' },
+              sku: { type: Type.string, description: 'Product SKU or code' },
+              quantity: { type: Type.number, description: 'Quantity ordered' },
+              price: { type: Type.number, description: 'Unit price' },
+              total: { type: Type.number, description: 'Line total' },
             },
           },
         },
         subtotal: {
-          type: 'number',
+          type: Type.number,
           description: 'Order subtotal before tax and shipping',
         },
         tax: {
-          type: 'number',
+          type: Type.number,
           description: 'Tax amount',
         },
         shipping: {
-          type: 'number',
+          type: Type.number,
           description: 'Shipping cost',
         },
         total: {
-          type: 'number',
+          type: Type.number,
           description: 'Total order amount',
         },
       },
       required: ['orderNumber'],
+      additionalProperties: false,
     },
   },
   sentiment: {
     name: 'Sentiment Analysis',
     description: 'Extract sentiment and emotional tone from text',
     schema: {
-      type: 'object',
+      type: Type.object,
       properties: {
         sentiment: {
-          type: 'string',
+          type: Type.string,
           enum: ['positive', 'negative', 'neutral', 'mixed'],
           description: 'Overall sentiment classification',
         },
         confidence: {
-          type: 'number',
+          type: Type.number,
           description: 'Confidence score (0-1)',
           minimum: 0,
           maximum: 1,
         },
         emotions: {
-          type: 'array',
+          type: Type.array,
           description: 'Detected emotions',
           items: {
-            type: 'string',
+            type: Type.string,
             enum: [
               'joy',
               'anger',
@@ -145,150 +147,154 @@ export const EXTRACTION_TEMPLATES: Record<
           },
         },
         keywords: {
-          type: 'array',
-          items: { type: 'string' },
+          type: Type.array,
+          items: { type: Type.string },
           description: 'Key phrases indicating sentiment',
         },
         summary: {
-          type: 'string',
+          type: Type.string,
           description: 'Brief summary of the sentiment analysis',
         },
       },
       required: ['sentiment', 'confidence'],
+      additionalProperties: false,
     },
   },
   product: {
     name: 'Product Information',
     description: 'Extract product details and specifications',
     schema: {
-      type: 'object',
+      type: Type.object,
       properties: {
         name: {
-          type: 'string',
+          type: Type.string,
           description: 'Product name or title',
         },
         brand: {
-          type: 'string',
+          type: Type.string,
           description: 'Brand or manufacturer',
         },
         category: {
-          type: 'string',
+          type: Type.string,
           description: 'Product category',
         },
         price: {
-          type: 'number',
+          type: Type.number,
           description: 'Product price',
         },
         currency: {
-          type: 'string',
+          type: Type.string,
           description: 'Price currency (USD, EUR, etc.)',
         },
         description: {
-          type: 'string',
+          type: Type.string,
           description: 'Product description',
         },
         features: {
-          type: 'array',
-          items: { type: 'string' },
+          type: Type.array,
+          items: { type: Type.string },
           description: 'Key product features',
         },
         specifications: {
-          type: 'object',
+          type: Type.object,
           description: 'Technical specifications',
-          additionalProperties: { type: 'string' },
+          additionalProperties: { type: Type.string },
         },
         availability: {
-          type: 'string',
+          type: Type.string,
           enum: ['in_stock', 'out_of_stock', 'preorder', 'discontinued'],
           description: 'Stock availability status',
         },
       },
       required: ['name'],
+      additionalProperties: false,
     },
   },
   support_ticket: {
     name: 'Support Ticket',
     description: 'Extract customer support ticket information',
     schema: {
-      type: 'object',
+      type: Type.object,
       properties: {
         issue_type: {
-          type: 'string',
+          type: Type.string,
           description: 'Type of issue (technical, billing, general inquiry, etc.)',
         },
         priority: {
-          type: 'string',
+          type: Type.string,
           enum: ['low', 'medium', 'high', 'urgent'],
           description: 'Issue priority level',
         },
         product_mentioned: {
-          type: 'string',
+          type: Type.string,
           description: 'Product or service mentioned',
         },
         problem_description: {
-          type: 'string',
+          type: Type.string,
           description: 'Summary of the problem',
         },
         customer_sentiment: {
-          type: 'string',
+          type: Type.string,
           enum: ['satisfied', 'neutral', 'frustrated', 'angry'],
           description: 'Customer emotional state',
         },
         requested_action: {
-          type: 'string',
+          type: Type.string,
           description: 'What the customer wants done',
         },
         order_reference: {
-          type: 'string',
+          type: Type.string,
           description: 'Any order or reference number mentioned',
         },
       },
       required: ['issue_type', 'problem_description'],
+      additionalProperties: false,
     },
   },
   event: {
     name: 'Event Information',
     description: 'Extract event details from text',
     schema: {
-      type: 'object',
+      type: Type.object,
       properties: {
         name: {
-          type: 'string',
+          type: Type.string,
           description: 'Event name or title',
         },
         date: {
-          type: 'string',
+          type: Type.string,
           description: 'Event date',
           format: 'date',
         },
         time: {
-          type: 'string',
+          type: Type.string,
           description: 'Event time',
         },
         location: {
-          type: 'object',
+          type: Type.object,
           properties: {
-            venue: { type: 'string', description: 'Venue name' },
-            address: { type: 'string', description: 'Street address' },
-            city: { type: 'string', description: 'City' },
-            online_link: { type: 'string', description: 'Online meeting link if virtual' },
+            venue: { type: Type.string, description: 'Venue name' },
+            address: { type: Type.string, description: 'Street address' },
+            city: { type: Type.string, description: 'City' },
+            online_link: { type: Type.string, description: 'Online meeting link if virtual' },
           },
         },
         description: {
-          type: 'string',
+          type: Type.string,
           description: 'Event description',
         },
         attendees: {
-          type: 'array',
-          items: { type: 'string' },
+          type: Type.array,
+          items: { type: Type.string },
           description: 'List of attendees or participants',
         },
         organizer: {
-          type: 'string',
+          type: Type.string,
           description: 'Event organizer',
         },
       },
       required: ['name', 'date'],
+      additionalProperties: false,
     },
   },
 }

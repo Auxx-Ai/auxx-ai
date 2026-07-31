@@ -1,9 +1,28 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/__tests__/text-classifier.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorkflowNode } from '../../../core/types'
+import type { NodeData, WorkflowNode } from '../../../core/types'
 import { WorkflowNodeType } from '../../../core/types'
 import { TextClassifierProcessor } from '../text-classifier'
+
+/**
+ * Builds a classifier node in the shape `WorkflowGraphBuilder.transformNodes`
+ * emits: `id`/`nodeId` mirror the canvas node id, position sits in metadata.
+ */
+const classifierNode = (data: Partial<NodeData>): WorkflowNode => ({
+  id: 'node_1',
+  workflowId: 'workflow_1',
+  nodeId: 'node_1',
+  name: 'Classifier',
+  type: WorkflowNodeType.TEXT_CLASSIFIER,
+  data: {
+    id: 'node_1',
+    type: WorkflowNodeType.TEXT_CLASSIFIER,
+    title: 'Classifier',
+    ...data,
+  },
+  metadata: { position: { x: 0, y: 0 } },
+})
 
 /**
  * Test suite for TextClassifierProcessor
@@ -69,20 +88,14 @@ describe('TextClassifierProcessor', () => {
 
   describe('buildMessages', () => {
     it('should build classification messages with system and user prompts', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4o-mini' },
-          text: 'Classify this text',
-          categories: [
-            { name: 'urgent', description: 'Urgent matters' },
-            { name: 'normal', description: 'Normal matters' },
-          ],
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4o-mini' },
+        text: 'Classify this text',
+        categories: [
+          { name: 'urgent', description: 'Urgent matters' },
+          { name: 'normal', description: 'Normal matters' },
+        ],
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -94,21 +107,15 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should include custom instructions in system prompt', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4o-mini' },
-          text: 'Test text',
-          categories: [{ name: 'category1', description: 'Description 1' }],
-          instruction: {
-            enabled: true,
-            text: 'Focus on sentiment analysis',
-          },
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4o-mini' },
+        text: 'Test text',
+        categories: [{ name: 'category1', description: 'Description 1' }],
+        instruction: {
+          enabled: true,
+          text: 'Focus on sentiment analysis',
         },
-      }
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -116,17 +123,11 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should interpolate variables in text', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4o-mini' },
-          text: 'Subject: {{ticket.subject}}, Body: {{ticket.body}}',
-          categories: [{ name: 'billing', description: 'Billing related' }],
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4o-mini' },
+        text: 'Subject: {{ticket.subject}}, Body: {{ticket.body}}',
+        categories: [{ name: 'billing', description: 'Billing related' }],
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -135,22 +136,16 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should interpolate variables in category descriptions', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4o-mini' },
-          text: 'Test',
-          categories: [
-            {
-              name: 'billing',
-              description: 'Questions about {{ticket.subject}}',
-            },
-          ],
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4o-mini' },
+        text: 'Test',
+        categories: [
+          {
+            name: 'billing',
+            description: 'Questions about {{ticket.subject}}',
+          },
+        ],
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -160,13 +155,7 @@ describe('TextClassifierProcessor', () => {
 
   describe('getStructuredOutputConfig', () => {
     it('should always return structured output config for classification', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = classifierNode({})
 
       const config = (processor as any).getStructuredOutputConfig(node, node.data)
 
@@ -191,16 +180,10 @@ describe('TextClassifierProcessor', () => {
 
   describe('extractRequiredVariables', () => {
     it('should extract variables from text field', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          text: 'Email: {{webhook.email}}, Subject: {{webhook.subject}}',
-          categories: [],
-        },
-      }
+      const node = classifierNode({
+        text: 'Email: {{webhook.email}}, Subject: {{webhook.subject}}',
+        categories: [],
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       expect(variables).toContain('webhook.email')
@@ -208,39 +191,27 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should extract variables from instruction field', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          text: 'Test',
-          instruction: {
-            enabled: true,
-            text: 'Consider context: {{sys.context}}',
-          },
-          categories: [],
+      const node = classifierNode({
+        text: 'Test',
+        instruction: {
+          enabled: true,
+          text: 'Consider context: {{sys.context}}',
         },
-      }
+        categories: [],
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       expect(variables).toContain('sys.context')
     })
 
     it('should extract variables from category descriptions', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          text: 'Test',
-          categories: [
-            { name: 'cat1', description: 'Related to {{product.name}}' },
-            { name: 'cat2', description: 'About {{service.type}}' },
-          ],
-        },
-      }
+      const node = classifierNode({
+        text: 'Test',
+        categories: [
+          { name: 'cat1', description: 'Related to {{product.name}}' },
+          { name: 'cat2', description: 'About {{service.type}}' },
+        ],
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       expect(variables).toContain('product.name')
@@ -248,20 +219,14 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should return unique variables only', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          text: '{{webhook.email}}',
-          instruction: {
-            enabled: true,
-            text: 'Check {{webhook.email}}',
-          },
-          categories: [],
+      const node = classifierNode({
+        text: '{{webhook.email}}',
+        instruction: {
+          enabled: true,
+          text: 'Check {{webhook.email}}',
         },
-      }
+        categories: [],
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       const emailCount = variables.filter((v: string) => v === 'webhook.email').length
@@ -271,25 +236,16 @@ describe('TextClassifierProcessor', () => {
 
   describe('validateNodeConfig', () => {
     it('should validate complete configuration', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        connections: {
-          branches: {
-            urgent: [{ targetNodeId: 'node_2', targetHandle: 'input' }],
-          },
-        },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4o-mini' },
-          text: 'Classify this',
-          categories: [
-            { name: 'urgent', description: 'Urgent matters' },
-            { name: 'normal', description: 'Normal matters' },
-          ],
-        },
-      }
+      // `node.connections` was dropped from this fixture: the workflow routes on
+      // edges now, and `validateNodeConfig` stopped reading connections with it.
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4o-mini' },
+        text: 'Classify this',
+        categories: [
+          { name: 'urgent', description: 'Urgent matters' },
+          { name: 'normal', description: 'Normal matters' },
+        ],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(true)
@@ -297,17 +253,11 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should require model provider', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { name: 'gpt-4' },
-          text: 'Test',
-          categories: [{ name: 'cat1', description: 'Desc' }],
-        },
-      }
+      const node = classifierNode({
+        model: { name: 'gpt-4' },
+        text: 'Test',
+        categories: [{ name: 'cat1', description: 'Desc' }],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -315,17 +265,11 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should require model name', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai' },
-          text: 'Test',
-          categories: [{ name: 'cat1', description: 'Desc' }],
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai' },
+        text: 'Test',
+        categories: [{ name: 'cat1', description: 'Desc' }],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -333,17 +277,11 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should require text to classify', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          text: '   ',
-          categories: [{ name: 'cat1', description: 'Desc' }],
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        text: '   ',
+        categories: [{ name: 'cat1', description: 'Desc' }],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -351,17 +289,11 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should require at least one category', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          text: 'Test',
-          categories: [],
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        text: 'Test',
+        categories: [],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -369,17 +301,11 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should require category names', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          text: 'Test',
-          categories: [{ name: '', description: 'Empty name' }],
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        text: 'Test',
+        categories: [{ name: '', description: 'Empty name' }],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -387,21 +313,15 @@ describe('TextClassifierProcessor', () => {
     })
 
     it('should validate temperature range', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: {
-            provider: 'openai',
-            name: 'gpt-4',
-            completion_params: { temperature: 5.0 },
-          },
-          text: 'Test',
-          categories: [{ name: 'cat1', description: 'Desc' }],
+      const node = classifierNode({
+        model: {
+          provider: 'openai',
+          name: 'gpt-4',
+          completion_params: { temperature: 5.0 },
         },
-      }
+        text: 'Test',
+        categories: [{ name: 'cat1', description: 'Desc' }],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -414,17 +334,11 @@ describe('TextClassifierProcessor', () => {
         description: `Category ${i}`,
       }))
 
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'Classifier',
-        type: WorkflowNodeType.TEXT_CLASSIFIER,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          text: 'Test',
-          categories,
-        },
-      }
+      const node = classifierNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        text: 'Test',
+        categories,
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.warnings).toContain(

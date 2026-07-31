@@ -8,7 +8,7 @@ import { ChevronDown, Plus, Trash2, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { BaseType } from '~/components/workflow/types/unified-types'
-import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
+import { VarEditor, varEditorText } from '~/components/workflow/ui/input-editor/var-editor'
 import {
   containsVariableReference,
   VARIABLE_PATTERN,
@@ -149,7 +149,7 @@ function ArrayItemRow({
       <div className='flex-1'>
         <VarEditor
           value={value}
-          onChange={onChange}
+          onChange={(next, isConstant) => onChange(varEditorText(next), isConstant)}
           varType={varType}
           nodeId={nodeId}
           disabled={disabled}

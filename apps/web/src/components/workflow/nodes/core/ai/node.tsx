@@ -2,11 +2,12 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import type { NodeProps } from '~/components/workflow/types'
 import ModelNodeView from '~/components/workflow/ui/model-parameter/model-node-view'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import type { AiNode as AiNodeType } from './types'
+import type { AiNodeData } from './types'
 
-export const AiNode = memo<AiNodeType>(({ id, data, selected, width, height }) => {
+export const AiNode = memo<NodeProps<AiNodeData>>(({ id, data, selected }) => {
   return (
     <BaseNode id={id} data={data} selected={selected}>
       <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />

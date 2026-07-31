@@ -21,6 +21,7 @@ function createMockNode(
     data: {
       id: 'test-node',
       type: 'format',
+      title: 'Test Format Node',
       operation,
       input,
       ...config,
@@ -30,19 +31,7 @@ function createMockNode(
 }
 
 function createMockContext(variables: Record<string, any> = {}): ExecutionContextManager {
-  const context = new ExecutionContextManager({
-    workflowRunId: 'test-run',
-    workflowId: 'test-workflow',
-    organizationId: 'test-org',
-    currentNodeId: 'test-node',
-    logger: {
-      log: () => {},
-      error: () => {},
-      warn: () => {},
-      info: () => {},
-      debug: () => {},
-    } as any,
-  })
+  const context = new ExecutionContextManager('test-workflow', 'test-run', 'test-org')
 
   Object.entries(variables).forEach(([key, value]) => {
     context.setVariable(key, value)

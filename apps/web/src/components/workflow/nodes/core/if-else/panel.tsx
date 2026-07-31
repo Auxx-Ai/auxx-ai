@@ -7,6 +7,7 @@ import { useAvailableVariables, useNodeCrud, useReadOnly } from '~/components/wo
 import { getVariableFieldDefinition } from '~/components/workflow/utils/variable-utils'
 import { OutputVariablesDisplay } from '../../../ui/output-variables'
 import { BasePanel } from '../../shared/base/base-panel'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { useIfElseConditionAdapter } from './adapters/condition-adapter'
 import { ifElseDefinition } from './schema'
 import type { IfElseNodeData } from './types'
@@ -43,8 +44,9 @@ const IfElsePanelComponent: React.FC<IfElsePanelProps> = ({ nodeId, data }) => {
   allVariablesRef.current = allVariables
 
   // Create stable field definition getter that doesn't change reference
-  const getFieldDefinition = useCallback((fieldId: string) => {
-    const variable = allVariablesRef.current.find((v) => v.id === fieldId)
+  const getFieldDefinition = useCallback((fieldId: string | string[]) => {
+    const id = Array.isArray(fieldId) ? fieldId.join('.') : fieldId
+    const variable = allVariablesRef.current.find((v) => v.id === id)
     if (!variable) return undefined
 
     // Use getVariableFieldDefinition for typed parsing (replaces parseVariable)
@@ -72,7 +74,9 @@ const IfElsePanelComponent: React.FC<IfElsePanelProps> = ({ nodeId, data }) => {
       </ConditionProvider>
 
       <OutputVariablesDisplay
-        outputVariables={ifElseDefinition.outputVariables?.(data, nodeId) || []}
+        outputVariables={
+          ifElseDefinition.outputVariables?.(data, nodeId, staticOutputVariableContext) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

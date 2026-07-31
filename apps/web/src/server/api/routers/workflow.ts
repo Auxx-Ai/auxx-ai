@@ -80,6 +80,13 @@ const createWorkflowSchema = z.object({
     })
     .optional(),
   templateId: z.string().optional(), // Optional template ID for creating from template
+  /**
+   * The caller's chosen trigger. `WorkflowService.create` reads this and falls back to
+   * MESSAGE_RECEIVED, but the field was missing from this schema — so zod stripped it and
+   * EVERY workflow was created as MESSAGE_RECEIVED regardless of what the caller asked for.
+   * When creating from a template, `templateData` is spread after `input` and wins.
+   */
+  triggerType: z.enum(WORKFLOW_TRIGGER_TYPE_VALUES).optional(),
 })
 // Update workflow schema
 const updateWorkflowSchema = z.object({

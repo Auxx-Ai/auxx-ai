@@ -11,7 +11,12 @@ import {
 } from '@auxx/ui/components/select'
 import type React from 'react'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  VarEditorField,
+  type VarEditorValue,
+  varEditorText,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import type { ListNodeData, SliceMode } from '../types'
 
 interface SlicePanelProps {
@@ -39,31 +44,34 @@ export const SlicePanel: React.FC<SlicePanelProps> = ({ config, onChange, isRead
     })
   }
 
-  const handleCountChange = (value: string, isConstant: boolean) => {
+  const handleCountChange = (value: VarEditorValue, isConstant: boolean) => {
+    const text = varEditorText(value)
     onChange({
       sliceConfig: {
         ...sliceConfig,
-        count: isConstant ? parseInt(value, 10) || value : value,
+        count: isConstant ? Number.parseInt(text, 10) || text : text,
         isCountConstant: isConstant,
       },
     })
   }
 
-  const handleStartChange = (value: string, isConstant: boolean) => {
+  const handleStartChange = (value: VarEditorValue, isConstant: boolean) => {
+    const text = varEditorText(value)
     onChange({
       sliceConfig: {
         ...sliceConfig,
-        start: isConstant ? parseInt(value, 10) || value : value,
+        start: isConstant ? Number.parseInt(text, 10) || text : text,
         isStartConstant: isConstant,
       },
     })
   }
 
-  const handleEndChange = (value: string, isConstant: boolean) => {
+  const handleEndChange = (value: VarEditorValue, isConstant: boolean) => {
+    const text = varEditorText(value)
     onChange({
       sliceConfig: {
         ...sliceConfig,
-        end: isConstant ? parseInt(value, 10) || value : value,
+        end: isConstant ? Number.parseInt(text, 10) || text : text,
         isEndConstant: isConstant,
       },
     })

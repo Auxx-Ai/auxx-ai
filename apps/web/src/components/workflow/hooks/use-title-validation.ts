@@ -2,6 +2,7 @@
 
 import { useStoreApi } from '@xyflow/react'
 import { useCallback, useState } from 'react'
+import type { FlowEdge, FlowNode } from '../types'
 import { isTitleUnique } from '../utils/unique-title-generator'
 
 /** Error types for title validation */
@@ -14,7 +15,7 @@ export type TitleErrorType = 'empty' | 'duplicate' | 'contains-dot' | null
  */
 export function useTitleValidation(nodeId: string) {
   const [titleError, setTitleError] = useState<TitleErrorType>(null)
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
 
   const validateTitle = useCallback(
     (title: string): boolean => {

@@ -51,6 +51,7 @@ import Field from '~/components/workflow/ui/field'
 import { InputEditor } from '~/components/workflow/ui/input-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { ErrorHandling } from './components'
 import { AuthDialog } from './components/auth-dialog'
 import { createWorkflowHttpFieldComponents } from './components/workflow-field-adapters'
@@ -459,7 +460,11 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
         onChange={(errorConfig) => setInputs({ ...inputs, ...errorConfig })}
       />
       <OutputVariablesDisplay
-        outputVariables={httpNodeDefinition.outputVariables?.(inputs, nodeId)}
+        outputVariables={httpNodeDefinition.outputVariables?.(
+          inputs,
+          nodeId,
+          staticOutputVariableContext
+        )}
         initialOpen={false}
       />
     </BasePanel>

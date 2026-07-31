@@ -26,7 +26,13 @@ export interface Field {
   properties?: Record<string, Field>
   items?: Field
   required?: string[]
-  additionalProperties?: boolean
+  /** `false` to forbid extra keys, or a schema every extra key must satisfy. */
+  additionalProperties?: boolean | Field
+  /** JSON Schema string format hint — 'email', 'date', 'uri', … */
+  format?: string
+  /** JSON Schema numeric bounds */
+  minimum?: number
+  maximum?: number
 }
 
 /** A root JSON Schema (always an object). */
@@ -39,3 +45,26 @@ export interface SchemaRoot extends Field {
 
 /** Max object/array nesting depth accepted by the schema editor. */
 export const JSON_SCHEMA_MAX_DEPTH = 10
+
+/**
+ * Narrow the plain JSON object the schema editor emits to a {@link SchemaRoot}.
+ *
+ * `SchemaEditorDialog.onSave` is typed as a bare `Record<string, unknown>` — it
+ * round-trips whatever JSON the user authored — while node configs store the
+ * stricter root shape. Node panels seed the editor with an object root, so the
+ * members below are present at run time; this fills them in rather than
+ * asserting they are.
+ *
+ * A non-object root (which `inferJsonSchema` can produce from an array or
+ * scalar sample) has no `properties`, and so still yields no output variables
+ * downstream — that gap is unchanged here.
+ */
+export function asSchemaRoot(schema: Record<string, unknown>): SchemaRoot {
+  return {
+    ...schema,
+    type: Type.object,
+    properties: (schema.properties as Record<string, Field> | undefined) ?? {},
+    required: (schema.required as string[] | undefined) ?? [],
+    additionalProperties: (schema.additionalProperties as boolean | undefined) ?? false,
+  }
+}

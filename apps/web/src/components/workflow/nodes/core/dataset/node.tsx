@@ -4,16 +4,17 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
-import type { DatasetNode as DatasetNodeType } from './types'
+import type { DatasetNodeData } from './types'
 
 /**
  * Dataset node component for the workflow canvas
  * Displays dataset configuration summary with VariableTag for variable references
  */
-export const DatasetNode = memo<DatasetNodeType>(({ id, data, selected }) => {
+export const DatasetNode = memo<NodeProps<DatasetNodeData>>(({ id, data, selected }) => {
   const hasDataset = !!data.datasetId
   const hasChunks = !!data.chunks
 

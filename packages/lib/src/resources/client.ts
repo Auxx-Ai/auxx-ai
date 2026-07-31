@@ -108,6 +108,7 @@ export type {
   CustomResourceId,
   DisplayFieldConfig,
   Resource,
+  ResourceId,
   SystemResource,
 } from './registry/types'
 // Resource types (system + custom)

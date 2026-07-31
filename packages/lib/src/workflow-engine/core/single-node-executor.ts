@@ -62,7 +62,8 @@ export async function executeSingleNode(
   inputs: Record<string, any>,
   context: SingleNodeExecutionContext,
   registry: NodeProcessorRegistry,
-  workflow?: { envVars?: any[] },
+  /** Workflow row; `envVars` comes straight off a jsonb column, so its shape is unverified. */
+  workflow?: { envVars?: unknown },
   db?: Database
 ): Promise<SingleNodeExecutionResult> {
   // 1. Get processor from registry
@@ -88,7 +89,7 @@ export async function executeSingleNode(
   contextManager.initializeSystemVariables()
 
   // 3.5. Initialize environment variables from workflow
-  if (workflow?.envVars) {
+  if (Array.isArray(workflow?.envVars)) {
     contextManager.initializeEnvironmentVariables(workflow.envVars)
   }
 

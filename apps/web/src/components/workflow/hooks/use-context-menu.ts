@@ -51,8 +51,9 @@ export const useContextMenu = () => {
    * Handle right-click on the pane (empty canvas area)
    * Opens the pane context menu for adding nodes
    */
+  // React Flow types `onPaneContextMenu` against the native event too.
   const handlePaneContextMenu = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent | React.MouseEvent) => {
       e.preventDefault()
 
       const container = document.querySelector('.workflow-canvas')

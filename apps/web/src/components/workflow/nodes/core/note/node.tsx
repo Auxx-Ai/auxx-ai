@@ -3,7 +3,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { cn } from '@auxx/ui/lib/utils'
-import { Handle, Position } from '@xyflow/react'
+import { Handle, type Node, type NodeProps, Position } from '@xyflow/react'
 import { produce } from 'immer'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import { memo, useCallback, useRef, useState } from 'react'
@@ -12,160 +12,163 @@ import { NodeResizer } from '~/components/workflow/ui/node-resizer'
 import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, THEME_MAP } from './constants'
 import { NoteEditor } from './editor/note-editor'
 import { NoteToolbar } from './editor/note-toolbar'
-import type { NoteNodeData, NoteNode as NoteNodeType, NoteTheme } from './types'
+import type { NoteNodeData, NoteTheme } from './types'
 
-export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height }) => {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [_isEditorFocused, setIsEditorFocused] = useState(false)
-  const [editor, setEditor] = useState<any>(null)
+/**
+ * `note` is one of only two entries in `FLOW_NODE_TYPES`, so React Flow mounts it
+ * directly — unlike every other node, which `StandardNode` renders with just
+ * `{ id, data, selected }`. That is why this uses React Flow's own `NodeProps`
+ * (it really does receive `width`/`height`) rather than the workflow-local one.
+ */
+export const NoteNode = memo<NodeProps<Node<NoteNodeData, 'note'>>>(
+  ({ id, data, selected, width, height }) => {
+    const ref = useRef<HTMLDivElement | null>(null)
+    const [_isEditorFocused, setIsEditorFocused] = useState(false)
+    const [editor, setEditor] = useState<any>(null)
 
-  const { isReadOnly } = useReadOnly()
-  // const isReadOnly = true
-  const { copied, copy } = useCopy({ toastMessage: 'Note copied to clipboard' })
-  const { inputs, setInputs } = useNodeCrud<NoteNodeData>(id, data)
-  const { handleDeleteNode, handleCopyNode, handleNodesPaste } = useNodesInteractions()
+    const { isReadOnly } = useReadOnly()
+    // const isReadOnly = true
+    const { copied, copy } = useCopy({ toastMessage: 'Note copied to clipboard' })
+    const { inputs, setInputs } = useNodeCrud<NoteNodeData>(id, data)
+    const { handleDeleteNode, handleCopyNode, handleNodesPaste } = useNodesInteractions()
 
-  // Get current user for author
-  const currentUser = 'Current User' // This should come from your auth context
+    // Get current user for author
+    const currentUser = 'Current User' // This should come from your auth context
 
-  const theme: NoteTheme = inputs?.theme || 'yellow'
-  const showAuthor = inputs?.showAuthor || false
+    const theme: NoteTheme = inputs?.theme || 'yellow'
+    const showAuthor = inputs?.showAuthor || false
 
-  const handleThemeChange = useCallback(
-    (newTheme: NoteTheme) => {
-      setInputs({ ...inputs, theme: newTheme })
-    },
-    [inputs, setInputs]
-  )
+    const handleThemeChange = useCallback(
+      (newTheme: NoteTheme) => {
+        setInputs({ ...inputs, theme: newTheme })
+      },
+      [inputs, setInputs]
+    )
 
-  const handleFontSizeChange = useCallback(
-    (size: number) => {
-      setInputs({ ...inputs, fontSize: size })
-    },
-    [inputs, setInputs]
-  )
+    const handleFontSizeChange = useCallback(
+      (size: number) => {
+        setInputs({ ...inputs, fontSize: size })
+      },
+      [inputs, setInputs]
+    )
 
-  const handleEditorChange = useCallback(
-    (content: string) => {
-      setInputs({ ...inputs, text: content })
-    },
-    [inputs, setInputs]
-  )
+    const handleEditorChange = useCallback(
+      (content: string) => {
+        setInputs({ ...inputs, text: content })
+      },
+      [inputs, setInputs]
+    )
 
-  const handleShowAuthorChange = useCallback(
-    (show: boolean) => {
-      const newData = produce(inputs, (draft) => {
-        draft.showAuthor = show
-        draft.author = show ? currentUser : ''
-      })
-      setInputs(newData)
-    },
-    [inputs, setInputs]
-  )
+    const handleShowAuthorChange = useCallback(
+      (show: boolean) => {
+        const newData = produce(inputs, (draft) => {
+          draft.showAuthor = show
+          draft.author = show ? currentUser : ''
+        })
+        setInputs(newData)
+      },
+      [inputs, setInputs]
+    )
 
-  const handleCopy = useCallback(() => {
-    // Use the copy handler from interactions hook
-    handleCopyNode(id)
-  }, [id, handleCopyNode])
+    const handleCopy = useCallback(() => {
+      // Use the copy handler from interactions hook
+      handleCopyNode(id)
+    }, [id, handleCopyNode])
 
-  const handleDuplicate = useCallback(() => {
-    // First copy the node
-    handleCopyNode(id)
-    // Then paste it with offset
-    setTimeout(() => {
-      handleNodesPaste({ x: 50, y: 50 })
-    }, 50)
-  }, [id, handleCopyNode, handleNodesPaste])
+    const handleDuplicate = useCallback(() => {
+      // First copy the node
+      handleCopyNode(id)
+      // Then paste it with offset
+      setTimeout(() => {
+        handleNodesPaste({ x: 50, y: 50 })
+      }, 50)
+    }, [id, handleCopyNode, handleNodesPaste])
 
-  const handleDelete = useCallback(() => {
-    handleDeleteNode(id)
-  }, [id, handleDeleteNode])
-  // No need for click outside effect - ReactFlow handles selection
+    const handleDelete = useCallback(() => {
+      handleDeleteNode(id)
+    }, [id, handleDeleteNode])
+    // No need for click outside effect - ReactFlow handles selection
 
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        'note-node group relative flex flex-col rounded-md border shadow-xs hover:shadow-md h-full',
-        THEME_MAP[theme].bg,
-        selected ? THEME_MAP[theme].border : 'border-black/5'
-      )}
-      style={{ width, height }}>
-      {/* Invisible handles to prevent React Flow warnings */}
-      <Handle
-        type='target'
-        position={Position.Top}
-        id='target'
-        style={{ opacity: 0, pointerEvents: 'none' }}
-        isConnectable={false}
-      />
-      <Handle
-        type='source'
-        position={Position.Bottom}
-        id='source'
-        style={{ opacity: 0, pointerEvents: 'none' }}
-        isConnectable={false}
-      />
-      <NodeResizer
-        nodeId={id}
-        selected={selected!}
-        minWidth={MIN_NOTE_WIDTH}
-        minHeight={MIN_NOTE_HEIGHT}
-      />
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'note-node group relative flex flex-col rounded-md border shadow-xs hover:shadow-md h-full',
+          THEME_MAP[theme].bg,
+          selected ? THEME_MAP[theme].border : 'border-black/5'
+        )}
+        style={{ width, height }}>
+        {/* Invisible handles to prevent React Flow warnings */}
+        <Handle
+          type='target'
+          position={Position.Top}
+          id='target'
+          style={{ opacity: 0, pointerEvents: 'none' }}
+          isConnectable={false}
+        />
+        <Handle
+          type='source'
+          position={Position.Bottom}
+          id='source'
+          style={{ opacity: 0, pointerEvents: 'none' }}
+          isConnectable={false}
+        />
+        <NodeResizer nodeId={id} minWidth={MIN_NOTE_WIDTH} minHeight={MIN_NOTE_HEIGHT} />
 
-      {/* Color bar at top */}
-      <div className={cn('h-2 shrink-0 rounded-t-md opacity-50', THEME_MAP[theme].title)} />
+        {/* Color bar at top */}
+        <div className={cn('h-2 shrink-0 rounded-t-md opacity-50', THEME_MAP[theme].title)} />
 
-      {/* Toolbar - shown when selected */}
-      {selected && !isReadOnly && (
-        <div className='absolute left-1/2 top-[-41px] -translate-x-1/2 z-10'>
-          <NoteToolbar
-            editor={editor}
-            theme={theme}
-            fontSize={inputs?.fontSize || 14}
-            showAuthor={showAuthor}
-            onThemeChange={handleThemeChange}
-            onFontSizeChange={handleFontSizeChange}
-            onCopy={handleCopy}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
-            onShowAuthorChange={handleShowAuthorChange}
-          />
+        {/* Toolbar - shown when selected */}
+        {selected && !isReadOnly && (
+          <div className='absolute left-1/2 top-[-41px] -translate-x-1/2 z-10'>
+            <NoteToolbar
+              editor={editor}
+              theme={theme}
+              fontSize={inputs?.fontSize || 14}
+              showAuthor={showAuthor}
+              onThemeChange={handleThemeChange}
+              onFontSizeChange={handleFontSizeChange}
+              onCopy={handleCopy}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+              onShowAuthorChange={handleShowAuthorChange}
+            />
+          </div>
+        )}
+        {selected && isReadOnly && (
+          <div className='absolute right-0 top-0 z-10'>
+            <Button
+              variant='ghost'
+              className='opacity-50 hover:opacity-100 hover:bg-transparent'
+              size='icon-xs'
+              onClick={() => copy(editor?.getText() || '')}>
+              {copied ? <CheckIcon /> : <CopyIcon />}
+            </Button>
+          </div>
+        )}
+
+        {/* Editor content */}
+        <div className='flex-1 overflow-hidden px-3 py-2.5 flex flex-col'>
+          <div className={cn('flex-1', selected && 'nodrag nopan nowheel cursor-text')}>
+            <NoteEditor
+              content={inputs?.text || ''}
+              onChange={handleEditorChange}
+              placeholder='Write your note...'
+              fontSize={inputs?.fontSize || 14}
+              editable={!isReadOnly}
+              theme={THEME_MAP[theme]}
+              onEditorReady={setEditor}
+              onFocus={() => setIsEditorFocused(true)}
+              onBlur={() => setIsEditorFocused(false)}
+            />
+          </div>
         </div>
-      )}
-      {selected && isReadOnly && (
-        <div className='absolute right-0 top-0 z-10'>
-          <Button
-            variant='ghost'
-            className='opacity-50 hover:opacity-100 hover:bg-transparent'
-            size='icon-xs'
-            onClick={() => copy(editor?.getText() || '')}>
-            {copied ? <CheckIcon /> : <CopyIcon />}
-          </Button>
-        </div>
-      )}
 
-      {/* Editor content */}
-      <div className='flex-1 overflow-hidden px-3 py-2.5 flex flex-col'>
-        <div className={cn('flex-1', selected && 'nodrag nopan nowheel cursor-text')}>
-          <NoteEditor
-            content={inputs?.text || ''}
-            onChange={handleEditorChange}
-            placeholder='Write your note...'
-            fontSize={inputs?.fontSize || 14}
-            editable={!isReadOnly}
-            theme={THEME_MAP[theme]}
-            onEditorReady={setEditor}
-            onFocus={() => setIsEditorFocused(true)}
-            onBlur={() => setIsEditorFocused(false)}
-          />
-        </div>
+        {/* Author display */}
+        {showAuthor && inputs?.author && <div className='p-3 pt-0 text-xs'>{inputs.author}</div>}
       </div>
-
-      {/* Author display */}
-      {showAuthor && inputs?.author && <div className='p-3 pt-0 text-xs'>{inputs.author}</div>}
-    </div>
-  )
-})
+    )
+  }
+)
 
 NoteNode.displayName = 'NoteNode'

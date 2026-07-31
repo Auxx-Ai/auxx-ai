@@ -7,7 +7,7 @@ import type React from 'react'
 import { memo, useCallback } from 'react'
 import { useAvailableBlocks, useNodeStatus, useReadOnly } from '~/components/workflow/hooks'
 import { useNodeAddition } from '~/components/workflow/hooks/use-node-addition'
-import type { NodeHandleProps } from './types'
+import { type NodeHandleProps, NodeRunningStatus } from './types'
 
 export const NodeInputHandle = memo(
   ({ id, data, handleId, handleClassName, type = 'default' }: NodeHandleProps) => {
@@ -52,9 +52,9 @@ export const NodeInputHandle = memo(
             className={cn(
               ' z-3 !h-4 !w-4 !rounded-none !border-none !bg-transparent !outline-none',
               'after:absolute after:left-[5px] after:top-1 after:h-2 after:w-0.5 after:bg-comparison-500',
-              nodeStatus === 'success' && 'after:bg-green-500',
-              nodeStatus === 'error' && 'after:bg-red-500',
-              nodeStatus === 'running' && 'after:bg-orange-500',
+              nodeStatus === NodeRunningStatus.Succeeded && 'after:bg-green-500',
+              nodeStatus === NodeRunningStatus.Failed && 'after:bg-red-500',
+              nodeStatus === NodeRunningStatus.Running && 'after:bg-orange-500',
               'cursor-pointer'
             )}
             onClick={handleClick}
@@ -93,9 +93,9 @@ export const NodeInputHandle = memo(
           'node-handle group/handle z-[1] !h-4 !w-4 !rounded-none !border-none !bg-transparent !outline-none',
           'after:absolute after:left-1.5 after:top-1 after:h-2 after:w-0.5 after:bg-border',
           'transition-all hover:scale-125',
-          nodeStatus === 'success' && 'after:bg-green-500',
-          nodeStatus === 'error' && 'after:bg-red-500',
-          nodeStatus === 'running' && 'after:bg-orange-500',
+          nodeStatus === NodeRunningStatus.Succeeded && 'after:bg-green-500',
+          nodeStatus === NodeRunningStatus.Failed && 'after:bg-red-500',
+          nodeStatus === NodeRunningStatus.Running && 'after:bg-orange-500',
           handleClassName
         )}
         isConnectable={false}>

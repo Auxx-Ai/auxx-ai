@@ -15,12 +15,14 @@ import { BookText, FileJson, Pencil } from 'lucide-react'
 import React, { useState } from 'react'
 import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
+import { asSchemaRoot, type SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import ModelParameterModal from '~/components/workflow/ui/model-parameter'
+import { ModelTypeEnum } from '~/components/workflow/ui/model-parameter/types'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import Section from '../../../ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { getTemplatesArray } from './constants'
 import {
   InformationExtractorProvider,
@@ -89,7 +91,7 @@ const InformationExtractorPanelContentComponent: React.FC<
         isRequired>
         <ModelParameterModal
           isAdvancedMode={true}
-          defaultModelType='llm'
+          defaultModelType={ModelTypeEnum.textGeneration}
           mode={config.model.mode}
           modelId={config.model.name}
           provider={config.model.provider}
@@ -106,8 +108,8 @@ const InformationExtractorPanelContentComponent: React.FC<
             updateModel({
               useDefault: false,
               provider: model.provider,
-              name: model.modelId || model.name,
-              mode: model.mode || 'chat',
+              name: model.modelId,
+              mode: model.mode === 'completion' ? 'completion' : 'chat',
               completion_params: config.model.completion_params,
             })
           }}
@@ -204,7 +206,7 @@ const InformationExtractorPanelContentComponent: React.FC<
             }}
             policy={{ emitRequired: true }}
             onSave={(newSchema) => {
-              updateStructuredOutput(true, newSchema as SchemaRoot)
+              updateStructuredOutput(true, asSchemaRoot(newSchema))
             }}
           />
         </div>
@@ -263,7 +265,11 @@ const InformationExtractorPanelContentComponent: React.FC<
         </div>
       </Section>
       <OutputVariablesDisplay
-        outputVariables={informationExtractorDefinition.outputVariables(config, nodeId)}
+        outputVariables={informationExtractorDefinition.outputVariables(
+          config,
+          nodeId,
+          staticOutputVariableContext
+        )}
         initialOpen={false}
       />
     </>

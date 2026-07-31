@@ -20,7 +20,7 @@ import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhance
 import VariableTag from '../variables/variable-tag'
 import { ConstantInputAdapter as ConstantInput } from './constant-input-adapter'
 import { useWorkflowVariableEditor } from './hooks/use-workflow-variable-editor'
-import type { VarEditorProps } from './types'
+import type { VarEditorProps, VarEditorValue } from './types'
 
 const VarEditor: React.FC<VarEditorProps> = React.memo(
   ({
@@ -45,6 +45,10 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
   }) => {
     const containerRef = useRef<HTMLDivElement>(null)
 
+    // Variable mode always holds string content (a variable id or Tiptap text);
+    // only constant mode can carry a typed non-string value.
+    const textValue = typeof value === 'string' ? value : ''
+
     // Determine if controlled
     const isControlled = controlledIsConstantMode !== undefined
 
@@ -58,10 +62,12 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
         ? controlledIsConstantMode
         : internalIsConstantMode
 
-    const [constantValue, setConstantValue] = useState(value ?? '')
+    const [constantValue, setConstantValue] = useState<VarEditorValue>(value ?? '')
 
     // Track previous constant values for each data type to allow restoration
-    const [previousConstantValues, setPreviousConstantValues] = useState<Record<string, string>>({})
+    const [previousConstantValues, setPreviousConstantValues] = useState<
+      Record<string, VarEditorValue>
+    >({})
 
     const expectedTypes = varType ? (Array.isArray(varType) ? varType : [varType]) : []
 
@@ -78,7 +84,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
       flushPendingChanges,
       isFocused,
     } = useWorkflowVariableEditor({
-      initialContent: isConstantMode ? '' : value,
+      initialContent: isConstantMode ? '' : textValue,
       onContentChange: isConstantMode ? undefined : (content) => onChange?.(content, false),
       expectedTypes: finalAllowedTypes,
       placeholder,
@@ -128,7 +134,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
         }, 0)
       } else {
         // Switching from variable to constant mode
-        let newConstantValue = ''
+        let newConstantValue: VarEditorValue = ''
 
         if (containsVariableReference(stringContent)) {
           // Current value contains variable references, use previous constant or type-appropriate default
@@ -254,18 +260,20 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
           <VariablePicker
             nodeId={nodeId}
             onVariableSelect={handleVariableSelect}
-            value={value}
+            value={textValue}
             allowedTypes={finalAllowedTypes}
             popoverWidth={400}
             popoverHeight={500}>
             <div className='w-full h-8 flex items-center'>
-              {value ? (
-                <VariableTagDropdown variableId={value} onVariableIdChange={handleVariableIdChange}>
+              {textValue ? (
+                <VariableTagDropdown
+                  variableId={textValue}
+                  onVariableIdChange={handleVariableIdChange}>
                   <VariableTagContextMenu
-                    variableId={value}
+                    variableId={textValue}
                     onVariableIdChange={handleVariableIdChange}>
                     <VariableTag
-                      variableId={value}
+                      variableId={textValue}
                       nodeId={nodeId}
                       isShort
                       onVariableIdChange={handleVariableIdChange}
@@ -326,6 +334,22 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
 )
 
 export { VarEditor }
+export type { VarEditorValue } from './types'
+
+/**
+ * Narrow a {@link VarEditorValue} to the string form a text/id field expects.
+ *
+ * Constant-mode inputs hand back the native value for their `BaseType` — a
+ * number, a boolean, an enum array, an address object — so a field stored as a
+ * string has to serialise it. This mirrors `ConstantInputAdapter`'s own
+ * content serialisation so both sides agree.
+ */
+export function varEditorText(value: VarEditorValue | undefined): string {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
 
 /**
  * @deprecated Moved to `~/components/global/forms/field-panel` as FieldPanel / FieldPanelRow.

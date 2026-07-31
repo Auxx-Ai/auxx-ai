@@ -45,7 +45,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
   onSwitch,
   isInWorkflow,
   disabled = false,
-}): JSX.Element => {
+}) => {
   const [localValue, setLocalValue] = useState(value)
   const numberInputRef = useRef<HTMLInputElement>(null)
 
@@ -104,6 +104,8 @@ const ParameterItem: FC<ParameterItemProps> = ({
 
   const handleSlideChange = (values: number[]) => {
     const num = values[0]
+    if (num === undefined) return
+
     if (!isNullOrUndefined(parameterRule.max) && num > parameterRule.max!) {
       handleInputChange(parameterRule.max)
       if (numberInputRef.current) numberInputRef.current.value = `${parameterRule.max}`

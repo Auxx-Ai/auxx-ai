@@ -102,7 +102,7 @@ export interface FieldOptions {
   /** For RELATION types - RecordIds to exclude from picker results */
   excludeIds?: RecordId[]
   /** For ACTOR type — actor picker configuration */
-  actor?: { target?: 'user' | 'group' | 'both'; multiple?: boolean }
+  actor?: { target?: 'user' | 'group' | 'worker' | 'both'; multiple?: boolean }
   /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */
   multiSelect?: boolean
   /** Allow user to create new options (for multi-select) */
@@ -151,7 +151,7 @@ export function getSpecificPropsForType(
         return { options: fieldOptions.enum || [] }
       }
       return {
-        options: fieldOptions?.enum || fieldOptions?.options || [],
+        options: fieldOptions?.enum || [],
         selectVariant: fieldOptions?.selectVariant,
         loading: fieldOptions?.loading,
       }

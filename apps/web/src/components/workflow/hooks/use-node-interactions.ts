@@ -1,16 +1,16 @@
-// apps/web/src/components/workflow/nodes/ui/node-handle/hooks/use-node-interactions.ts
+// apps/web/src/components/workflow/hooks/use-node-interactions.ts
 
 import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
 import { uniqueBy } from '@auxx/utils'
 import { generateId } from '@auxx/utils/generateId'
 import {
-  type Edge,
   getConnectedEdges,
-  type Node,
   type OnConnect,
   type OnConnectEnd,
   type OnConnectStart,
+  type OnNodeDrag,
   type OnNodesChange,
+  type ResizeParamsWithDirection,
   useReactFlow,
   useStoreApi,
 } from '@xyflow/react'
@@ -29,16 +29,12 @@ import {
 } from '~/components/workflow/nodes/unified-registry'
 import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
-import type { FlowNode } from '~/components/workflow/store/types'
-
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { getNodesConnectedSourceOrTargetHandleIdsMap } from '~/components/workflow/utils'
 import { calculateZIndex } from '~/components/workflow/utils/edge-utils'
-import {
-  LAYOUT_SPACING,
-  type ResizeParamsWithDirection,
-} from '~/components/workflow/utils/layout-constants'
+import { LAYOUT_SPACING } from '~/components/workflow/utils/layout-constants'
 import { NodeFactory } from '~/components/workflow/utils/node-layout'
 import { generateUniqueTitle } from '~/components/workflow/utils/unique-title-generator'
 import { centerOnNode } from '~/components/workflow/utils/viewport-utils'
@@ -48,11 +44,16 @@ import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
 // Variable syncing now handled automatically by VarStoreSyncProvider
 
 // Type for node mouse event handlers
-type NodeMouseHandler = (event: React.MouseEvent, node: Node) => void
-type NodeDisableHandler = (nodes?: Node[], toggle?: boolean) => void
+type NodeMouseHandler = (event: React.MouseEvent, node: FlowNode) => void
+// Callers pass whatever node shape they happen to hold; only the id is used,
+// and the nodes are re-resolved against the canvas store below.
+type NodeDisableHandler = (nodes?: { id: string }[], toggle?: boolean) => void
 
 export const useNodesInteractions = () => {
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
+  // Left on React Flow's default generics: it is only used for viewport helpers
+  // (`screenToFlowPosition`, `centerOnNode`), which are typed against them.
+  // Node lookups go through the typed store above.
   const reactFlow = useReactFlow()
   // Removed workflowStore = useWorkflowStore.getState() to avoid unstable reference
   // Call getState() directly in callbacks instead
@@ -107,7 +108,7 @@ export const useNodesInteractions = () => {
             // All nodes now use 'target' handle consistently
             const targetHandle = 'target'
 
-            const newEdge: Edge = {
+            const newEdge: FlowEdge = {
               id: generateId('edge'),
               source: connectionParams.prevNodeId,
               sourceHandle: connectionParams.prevNodeSourceHandle,
@@ -159,7 +160,7 @@ export const useNodesInteractions = () => {
 
           // Create edge from new node to next node
           if (connectionParams.nextNodeTargetHandle) {
-            const newEdge: Edge = {
+            const newEdge: FlowEdge = {
               id: generateId('edge'),
               source: newNodeId,
               sourceHandle: 'source',
@@ -174,7 +175,7 @@ export const useNodesInteractions = () => {
               },
             }
             // Calculate and set zIndex for edge
-            newEdge.zIndex = calculateZIndex(newEdge as FlowEdge, nodes as FlowNode[])
+            newEdge.zIndex = calculateZIndex(newEdge, nodes)
 
             // Update edges in ReactFlow
             setEdges([...edges, newEdge])
@@ -270,10 +271,11 @@ export const useNodesInteractions = () => {
 
       // Create ID mapping for nodes
       const idMapping: Record<string, string> = {}
-      const nodesToPaste: Node[] = []
+      const nodesToPaste: FlowNode[] = []
 
       // Paste nodes with new IDs
       clipboardElements.forEach((node) => {
+        const nodeData = node.data
         const newId = generateId()
         idMapping[node.id] = newId
 
@@ -287,7 +289,7 @@ export const useNodesInteractions = () => {
 
             // Add depth calculation
             let depth = 1
-            let currentParent: Node | undefined = parentNode
+            let currentParent: FlowNode | undefined = parentNode
             while (currentParent?.parentId) {
               depth++
               currentParent = nodes.find((n) => n.id === currentParent?.parentId)
@@ -299,16 +301,16 @@ export const useNodesInteractions = () => {
           }
         }
 
-        const newNode: Node = {
+        const newNode: FlowNode = {
           ...node,
           id: newId,
           position: { x: node.position.x + offsetX, y: node.position.y + offsetY },
           selected: true,
-          data: { ...node.data, title: generateUniqueTitle(node.data.title || 'Node', nodes) },
+          data: { ...nodeData, title: generateUniqueTitle(nodeData.title || 'Node', nodes) },
           zIndex,
         }
 
-        if (ALLOW_TRIGGER_DELETE || !unifiedNodeRegistry.isTrigger(node.data.type)) {
+        if (ALLOW_TRIGGER_DELETE || !unifiedNodeRegistry.isTrigger(nodeData.type)) {
           nodesToPaste.push(newNode)
         }
 
@@ -322,7 +324,7 @@ export const useNodesInteractions = () => {
 
       // Handle edges between pasted nodes
       const clipboardNodeIds = new Set(clipboardElements.map((n) => n.id))
-      const edgesToPaste: Edge[] = []
+      const edgesToPaste: FlowEdge[] = []
 
       // Find all edges that connect clipboard nodes
       edges.forEach((edge) => {
@@ -331,7 +333,7 @@ export const useNodesInteractions = () => {
           const targetId = idMapping[edge.target]
 
           if (sourceId && targetId) {
-            const newEdge: Edge = {
+            const newEdge: FlowEdge = {
               ...edge,
               id: `${sourceId}-${edge.sourceHandle || 'source'}-${targetId}-${edge.targetHandle || 'target'}`,
               source: sourceId,
@@ -400,8 +402,9 @@ export const useNodesInteractions = () => {
             })
             return handleDeleteNode(nodeId)
           } else {
-            if (loopChildren.length === 1) {
-              handleDeleteNode(loopChildren[0].id)
+            const onlyChild = loopChildren.length === 1 ? loopChildren[0] : undefined
+            if (onlyChild) {
+              handleDeleteNode(onlyChild.id)
               handleDeleteNode(nodeId)
               return
             }
@@ -415,19 +418,23 @@ export const useNodesInteractions = () => {
       }
 
       // Update connected edges and nodes
-      const connectedEdges = getConnectedEdges([{ id: nodeId } as Node], edges)
+      const connectedEdges = edges.filter((e) => e.source === nodeId || e.target === nodeId)
       const nodesConnectedSourceOrTargetHandleIdsMap = getNodesConnectedSourceOrTargetHandleIdsMap(
         connectedEdges.map((edge) => ({ type: 'remove', edge })),
         nodes
       )
-      const newNodes = produce(nodes, (draft: Node[]) => {
+      const newNodes = produce(nodes, (draft) => {
         draft.forEach((node) => {
-          if (nodesConnectedSourceOrTargetHandleIdsMap[node.id]) {
-            node.data = { ...node.data, ...nodesConnectedSourceOrTargetHandleIdsMap[node.id] }
+          const connectedHandleIds = nodesConnectedSourceOrTargetHandleIdsMap[node.id]
+          if (connectedHandleIds) {
+            node.data = { ...node.data, ...connectedHandleIds }
           }
 
+          // `_children` entries are `{ nodeId, nodeType }` records, so the removed
+          // child has to be matched on `child.nodeId` — comparing the record itself
+          // to the id string never matched and left stale children behind.
           if (node.id === currentNode.parentId)
-            node.data._children = node.data._children?.filter((child) => child !== nodeId)
+            node.data._children = node.data._children?.filter((child) => child.nodeId !== nodeId)
         })
         draft.splice(currentNodeIndex, 1)
       })
@@ -447,7 +454,8 @@ export const useNodesInteractions = () => {
 
       debouncedSave()
 
-      if (currentNode.data.type === 'note') saveStateToHistory(WorkflowHistoryEvent.NoteDelete)
+      if (currentNode.data.type === NodeType.NOTE)
+        saveStateToHistory(WorkflowHistoryEvent.NoteDelete)
       else saveStateToHistory(WorkflowHistoryEvent.NodeDelete)
 
       closePanel()
@@ -503,28 +511,23 @@ export const useNodesInteractions = () => {
         (edge) => edge.target === node.id
       )
 
-      const targetNodes: Node[] = []
-      for (let i = 0; i < connectedEdges.length; i++) {
-        const sourceConnectedEdges = getConnectedEdges(
-          [{ id: connectedEdges[i].source } as Node],
-          edges
-        ).filter(
+      const targetNodes: FlowNode[] = []
+      for (const connectedEdge of connectedEdges) {
+        const sourceConnectedEdges = edges.filter(
           (edge) =>
-            edge.source === connectedEdges[i].source &&
-            edge.sourceHandle === connectedEdges[i].sourceHandle
+            edge.source === connectedEdge.source && edge.sourceHandle === connectedEdge.sourceHandle
         )
-        const sourceConnection = sourceConnectedEdges
-          .map((edge) => nodes.find((n) => n.id === edge.target)!)
-          .filter(Boolean)
         // DONT DELETE NOTE:  for some reason some sourceConnectedEdges are empty, .filter(Boolean)
+        const sourceConnection = sourceConnectedEdges
+          .map((edge) => nodes.find((n) => n.id === edge.target))
+          .filter((n): n is FlowNode => Boolean(n))
         targetNodes.push(...sourceConnection)
       }
       const uniqTargetNodes = uniqueBy(targetNodes, 'id')
       if (uniqTargetNodes.length > 1) {
-        const newNodes = produce(nodes, (draft: any) => {
-          draft.forEach((n: any) => {
+        const newNodes = produce(nodes, (draft) => {
+          draft.forEach((n) => {
             if (uniqTargetNodes.some((targetNode) => n.id === targetNode.id)) {
-              n.data = n.data || {}
               n.data._inParallelHovering = true
             }
           })
@@ -546,9 +549,8 @@ export const useNodesInteractions = () => {
       if (node.data.type === NodeType.NOTE) return
 
       const { nodes, setNodes, edges, setEdges } = store.getState()
-      const newNodes = produce(nodes, (draft: any) => {
-        draft.forEach((node: any) => {
-          node.data = node.data || {}
+      const newNodes = produce(nodes, (draft) => {
+        draft.forEach((node) => {
           node.data._inParallelHovering = false
         })
       })
@@ -572,7 +574,8 @@ export const useNodesInteractions = () => {
       const { nodes, setNodes } = store.getState()
       const { x, y, width, height } = params
 
-      const currentNode = nodes.find((n) => n.id === nodeId)!
+      const currentNode = nodes.find((n) => n.id === nodeId)
+      if (!currentNode) return
 
       // Track what dimensions are actually changing
       const currentWidth = (currentNode.width ?? currentNode.data.width) as number
@@ -581,15 +584,14 @@ export const useNodesInteractions = () => {
       const heightChanged = Math.abs(height - currentHeight) > 0.5
 
       // Only validate children constraints if this is a container node with children
-      const childrenNodes = (currentNode.data._children as any)?.length
-        ? nodes.filter((n) =>
-            (currentNode.data._children as any)?.find((c: any) => c.nodeId === n.id)
-          )
+      const children = currentNode.data._children
+      const childrenNodes = children?.length
+        ? nodes.filter((n) => children.some((c) => c.nodeId === n.id))
         : []
 
       if (childrenNodes.length > 0) {
-        let rightNode: Node | undefined
-        let bottomNode: Node | undefined
+        let rightNode: FlowNode | undefined
+        let bottomNode: FlowNode | undefined
 
         childrenNodes.forEach((n) => {
           if (rightNode) {
@@ -643,8 +645,8 @@ export const useNodesInteractions = () => {
     [getNodesReadOnly, store, debouncedSave, saveStateToHistory]
   )
 
-  const handleNodeDrag = useCallback(
-    (e: any, node: Node) => {
+  const handleNodeDrag = useCallback<OnNodeDrag<FlowNode>>(
+    (e, node) => {
       if (getNodesReadOnly()) return
 
       const { nodes, setNodes } = store.getState()
@@ -679,7 +681,8 @@ export const useNodesInteractions = () => {
         // const { restrict } = handleNodeLoopChildDrag(node)
         // Single node drag - original behavior
         const newNodes = produce(nodes, (draft) => {
-          const currentNode = draft.find((n) => n.id === node.id)!
+          const currentNode = draft.find((n) => n.id === node.id)
+          if (!currentNode) return
           // if (restrict.x !== undefined) {
           //   currentNode.position.x = restrict.x
           // } else {
@@ -696,13 +699,13 @@ export const useNodesInteractions = () => {
       }
 
       // Update helplines during drag
-      handleSetHelpline(node as unknown as FlowNode)
+      handleSetHelpline(node)
     },
     [getNodesReadOnly, store, handleSetHelpline]
   )
 
-  const handleNodeDragStart = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+  const handleNodeDragStart = useCallback<OnNodeDrag<FlowNode>>(
+    (_event, node) => {
       if (getNodesReadOnly()) return
 
       // Store initial position of the dragged node
@@ -725,8 +728,8 @@ export const useNodesInteractions = () => {
     [getNodesReadOnly, store]
   )
 
-  const handleNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+  const handleNodeDragStop = useCallback<OnNodeDrag<FlowNode>>(
+    (_event, node) => {
       if (getNodesReadOnly()) return
 
       const startPos = dragNodeStartPosition.current
@@ -804,8 +807,10 @@ export const useNodesInteractions = () => {
       // Collect all edges connected to any selected node
       const connectedEdgeIds = new Set<string>()
       selectedNodeIds.forEach((selectedNodeId) => {
-        const nodeEdges = getConnectedEdges([{ id: selectedNodeId } as Node], edges)
-        nodeEdges.forEach((edge) => connectedEdgeIds.add(edge.id))
+        edges.forEach((edge) => {
+          if (edge.source === selectedNodeId || edge.target === selectedNodeId)
+            connectedEdgeIds.add(edge.id)
+        })
       })
 
       // Update edge highlighting
@@ -856,8 +861,9 @@ export const useNodesInteractions = () => {
         const connectedEdgeIds = new Set<string>()
 
         selectedNodeIds.forEach((nodeId) => {
-          const nodeEdges = getConnectedEdges([{ id: nodeId } as Node], edges)
-          nodeEdges.forEach((edge) => connectedEdgeIds.add(edge.id))
+          edges.forEach((edge) => {
+            if (edge.source === nodeId || edge.target === nodeId) connectedEdgeIds.add(edge.id)
+          })
         })
 
         const newEdges = produce(edges, (draft) => {
@@ -919,7 +925,7 @@ export const useNodesInteractions = () => {
   }, [store, isPinned])
 
   // Helper to update node connection metadata
-  const updateNodeConnectionMetadata = useCallback((nodes: Node[], edge: Edge) => {
+  const updateNodeConnectionMetadata = useCallback((nodes: FlowNode[], edge: FlowEdge) => {
     return produce(nodes, (draft) => {
       // Update source node
       const sourceNode = draft.find((n) => n.id === edge.source)
@@ -976,7 +982,7 @@ export const useNodesInteractions = () => {
         return
 
       // 6. Create edge with loop metadata
-      const newEdge: Edge = {
+      const newEdge: FlowEdge = {
         id: `${source}-${sourceHandle || 'source'}-${target}-${targetHandle || 'target'}`,
         source,
         target,
@@ -1001,15 +1007,11 @@ export const useNodesInteractions = () => {
       if (targetHandle === 'input') {
         // Update target node's input connections
         updatedNodes = produce(updatedNodes, (draft) => {
-          const targetNodeIndex = draft.findIndex((n) => n.id === target)
-          if (targetNodeIndex !== -1) {
-            const targetNode = draft[targetNodeIndex]
-            if (!targetNode.data.inputNodes) {
-              targetNode.data.inputNodes = []
-            }
-            if (!targetNode.data.inputNodes.includes(source)) {
-              targetNode.data.inputNodes.push(source)
-            }
+          const targetDraft = draft.find((n) => n.id === target)
+          if (!targetDraft) return
+          const inputNodes: string[] = targetDraft.data.inputNodes ?? []
+          if (!inputNodes.includes(source)) {
+            targetDraft.data.inputNodes = [...inputNodes, source]
           }
         })
       }
@@ -1040,12 +1042,15 @@ export const useNodesInteractions = () => {
   const handleNodeConnectStart = useCallback<OnConnectStart>(
     (_, { nodeId, handleType, handleId }) => {
       if (getNodesReadOnly()) return
+      // React Flow reports both as nullable; without a handle side there is
+      // nothing meaningful to record as the connection origin.
+      if (!nodeId || !handleType) return
 
-      const node = reactFlow.getNode(nodeId)
+      const node = store.getState().nodes.find((n) => n.id === nodeId)
       if (!node) return
 
       // Skip note nodes
-      if (node.data.type === 'note') return
+      if (node.data.type === NodeType.NOTE) return
 
       // Set connecting state
       const workflowStore = useWorkflowStore.getState()
@@ -1053,10 +1058,10 @@ export const useNodesInteractions = () => {
         nodeId,
         nodeType: node.data.type,
         handleType,
-        handleId,
+        handleId: handleId ?? undefined,
       })
     },
-    [getNodesReadOnly, reactFlow]
+    [getNodesReadOnly, store]
   )
 
   const handleNodeConnectEnd = useCallback<OnConnectEnd>(() => {
@@ -1071,15 +1076,13 @@ export const useNodesInteractions = () => {
       if (getNodesReadOnly()) return
       const { nodes: allNodes, setNodes } = store.getState()
 
-      let selectedNodes: Node[] = []
-      if (nodes) {
-        selectedNodes = nodes
-      } else {
-        selectedNodes = allNodes.filter((n) => n.selected)
-      }
+      const selectedNodes: FlowNode[] = nodes
+        ? nodes.flatMap((n) => allNodes.filter((candidate) => candidate.id === n.id))
+        : allNodes.filter((n) => n.selected)
 
       // If no nodes to disable, return
-      if (selectedNodes.length === 0) return
+      const firstSelected = selectedNodes[0]
+      if (!firstSelected) return
 
       // Check if any of the selected nodes are triggers
       if (!ALLOW_TRIGGER_DELETE) {
@@ -1097,7 +1100,7 @@ export const useNodesInteractions = () => {
       }
 
       // If toggle is undefined, use the first node's disabled state
-      const shouldDisable = toggle !== undefined ? toggle : !selectedNodes[0].data.disabled
+      const shouldDisable = toggle !== undefined ? toggle : !firstSelected.data.disabled
 
       // Update nodes
       const newNodes = produce(allNodes, (draft) => {

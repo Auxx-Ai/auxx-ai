@@ -1019,7 +1019,9 @@ const FormatPanelComponent = ({ nodeId, data }: FormatPanelProps) => {
             showSearch
             searchPlaceholder='Search operations...'>
             <Button variant='ghost' size='xs' disabled={isReadOnly}>
-              <EntityIcon iconId={selectedOption.iconId} color={selectedOption.color} size='sm' />
+              {selectedOption.iconId && (
+                <EntityIcon iconId={selectedOption.iconId} color={selectedOption.color} size='sm' />
+              )}
               {selectedOption.label}
               <ChevronsUpDown className='size-3 opacity-50' />
             </Button>

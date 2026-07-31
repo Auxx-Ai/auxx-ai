@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/shared/base/base-panel.tsx
 
+import type { JsonSchema } from '@auxx/lib/json-schema/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
@@ -64,7 +65,6 @@ import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { NodeType } from '~/components/workflow/types'
 import { BlockSelector } from '~/components/workflow/ui/block-selector'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
-import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import NextStep from '~/components/workflow/ui/next-step'
 // Specific UI imports
 import { ReplaceTrigger } from '~/components/workflow/ui/replace-trigger'
@@ -176,6 +176,14 @@ function AppSettingsTrigger({
       )}
     </div>
   )
+}
+
+/** Tab values the base panel renders — mirrors the `TabsTrigger`s below. */
+const BASE_PANEL_TABS = ['settings', 'input', 'result'] as const
+
+/** Narrows Radix's `(value: string)` callback to the panel store's tab union. */
+function isBasePanelTab(value: string): value is (typeof BASE_PANEL_TABS)[number] {
+  return (BASE_PANEL_TABS as readonly string[]).includes(value)
 }
 
 /**
@@ -332,7 +340,7 @@ export const BasePanel = memo<BasePanelProps>(
 
     // Callback to store inferred output schema on node data
     const handleApplySchema = useCallback(
-      (schema: SchemaRoot) => {
+      (schema: JsonSchema) => {
         setInputs({
           ...nodeData,
           inferredSchema: schema,
@@ -538,7 +546,12 @@ export const BasePanel = memo<BasePanelProps>(
             </div>
           </CollapseWrap>
         </DrawerHeader>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className='flex-1 flex flex-col '>
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (isBasePanelTab(value)) setActiveTab(value)
+          }}
+          className='flex-1 flex flex-col '>
           <div className='w-full border-b flex flex-col flex-1'>
             <TabsList
               variant='outline'

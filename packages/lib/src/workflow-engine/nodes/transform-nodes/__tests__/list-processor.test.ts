@@ -32,19 +32,7 @@ function createMockListNode(operation: string, config: any): WorkflowNode {
  * Create a mock execution context manager
  */
 function createMockContext(variables: Record<string, any> = {}): ExecutionContextManager {
-  const context = new ExecutionContextManager({
-    workflowRunId: 'test-run',
-    workflowId: 'test-workflow',
-    organizationId: 'test-org',
-    currentNodeId: 'test-node',
-    logger: {
-      log: () => {},
-      error: () => {},
-      warn: () => {},
-      info: () => {},
-      debug: () => {},
-    } as any,
-  })
+  const context = new ExecutionContextManager('test-workflow', 'test-run', 'test-org')
 
   // Set variables
   Object.entries(variables).forEach(([key, value]) => {

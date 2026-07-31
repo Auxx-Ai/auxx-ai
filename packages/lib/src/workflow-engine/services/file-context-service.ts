@@ -377,7 +377,8 @@ export class FileContextService {
         size: Number(entity.size) || 0,
         url,
         urlExpiresAt:
-          downloadRef.type === 'url' ? downloadRef.expiresAt : new Date(Date.now() + 3600000),
+          (downloadRef.type === 'url' ? downloadRef.expiresAt : undefined) ??
+          new Date(Date.now() + 3600000),
         nodeId,
       }
     } catch (err) {

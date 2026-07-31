@@ -3,16 +3,17 @@
 import type { ResourceFieldId } from '@auxx/types/field'
 import { type FC, memo, useMemo } from 'react'
 import { useFields } from '~/components/resources/hooks/use-field'
+import type { NodeProps } from '~/components/workflow/types'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { getIcon } from '~/components/workflow/utils/icon-helper'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import { type ListNode as ListNodeType, OPERATION_METADATA } from './types'
+import { type ListNodeData, OPERATION_METADATA } from './types'
 
 /**
  * List operations node component
  */
-export const ListNode: FC<ListNodeType> = memo((props) => {
+export const ListNode: FC<NodeProps<ListNodeData>> = memo((props) => {
   const { data, id, selected } = props
   const operation = data.operation
   const operationMeta = OPERATION_METADATA[operation]
@@ -52,8 +53,11 @@ export const ListNode: FC<ListNodeType> = memo((props) => {
         if (labels.length > 0) return `by ${labels.join(' → ')}`
         return 'by field'
       }
-      case 'join':
-        return data.joinConfig?.type || ''
+      case 'join': {
+        // JoinConfig has no `type` — it is a delimiter (+ optional field to pluck).
+        const delimiter = data.joinConfig?.delimiter
+        return delimiter === undefined ? '' : `with ${JSON.stringify(delimiter)}`
+      }
       case 'pluck': {
         const pluckField = data.pluckConfig?.field
         const flatten = data.pluckConfig?.flatten

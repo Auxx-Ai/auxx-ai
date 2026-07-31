@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/unified-registry.ts
 
 import type React from 'react'
-import type { TraceRendererProps } from '../types'
+import type { NodePanelProps, TraceRendererProps } from '../types'
 import { NodeCategory, type NodeDefinition, type ValidationResult } from '../types'
 import { getIcon } from '../utils/icon-helper'
 import { GenericAppTraceRenderer } from './shared/generic-app-trace-renderer'
@@ -313,7 +313,7 @@ class UnifiedNodeRegistry {
   /**
    * Get panel component for a node type
    */
-  getPanel(nodeType: string): React.ComponentType<{ nodeId: string }> | undefined {
+  getPanel(nodeType: string): React.ComponentType<NodePanelProps> | undefined {
     const definition = this.getDefinition(nodeType)
     return definition?.panel
   }

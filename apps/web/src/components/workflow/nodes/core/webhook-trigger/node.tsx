@@ -1,15 +1,16 @@
 // apps/web/src/components/workflow/nodes/core/webhook-trigger/node.tsx
 
 import { type FC, memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { WebhookTriggerNode as WebhookTriggerNodeType } from './types'
+import type { WebhookTriggerNodeData } from './types'
 
 /**
  * Webhook Endpoint trigger node. Shows the bound endpoint + topic in its
  * description once configured.
  */
-export const WebhookTriggerNode: FC<WebhookTriggerNodeType> = memo((props) => {
+export const WebhookTriggerNode: FC<NodeProps<WebhookTriggerNodeData>> = memo((props) => {
   const { id, data, selected } = props
 
   const desc = data.webhookEndpointName

@@ -190,6 +190,9 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
           },
         })
         .returning()
+      if (!approvalRequest) {
+        throw new Error('Failed to create approval request for manual confirmation node')
+      }
       contextManager.log(
         'INFO',
         node.nodeId,

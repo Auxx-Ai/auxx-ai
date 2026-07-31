@@ -21,12 +21,19 @@ import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/refer
 import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { useModelCapabilities, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BaseType } from '~/components/workflow/types'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  VarEditorField,
+  type VarEditorValue,
+  varEditorText,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import ModelParameterModal from '../../../ui/model-parameter'
+import { ModelTypeEnum } from '../../../ui/model-parameter/types'
 import Section from '../../../ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { PROMPT_ROLES } from './constants'
 import { aiDefinition } from './schema'
 import { ToolsSection } from './tools/tools-section'
@@ -95,7 +102,8 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
       if (!draft.prompt_template) {
         draft.prompt_template = [{ role: PromptRole.SYSTEM, json: EMPTY_PROMPT_DOC }]
       }
-      Object.assign(draft.prompt_template[index], updates)
+      const template = draft.prompt_template[index]
+      if (template) Object.assign(template, updates)
     })
     setNodeData(newData)
   }
@@ -133,11 +141,13 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   )
 
   const updateFileInput = useCallback(
-    (value: string | boolean | string[], isConstantMode?: boolean) => {
+    (value: VarEditorValue, isConstantMode?: boolean) => {
       const newData = produce(nodeData, (draft: AiNodeData) => {
         if (!draft.files) draft.files = { enabled: false, input: '', isConstant: false }
         // FileInput returns string[] of prefixed file IDs; variable picker returns a string
-        draft.files.input = Array.isArray(value) ? value.join(',') : String(value)
+        draft.files.input = Array.isArray(value)
+          ? value.map(varEditorText).join(',')
+          : varEditorText(value)
         draft.files.isConstant = isConstantMode ?? false
       })
       setNodeData(newData)
@@ -156,7 +166,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         initialOpen>
         <ModelParameterModal
           isAdvancedMode
-          defaultModelType='llm'
+          defaultModelType={ModelTypeEnum.textGeneration}
           mode={nodeData.model?.mode || AiModelMode.CHAT}
           modelId={nodeData.model?.name || ''}
           provider={nodeData.model?.provider || ''}
@@ -332,7 +342,9 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         </div>
       </Section>
       <OutputVariablesDisplay
-        outputVariables={aiDefinition.outputVariables?.(nodeData, nodeId) || []}
+        outputVariables={
+          aiDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

@@ -3,4 +3,4 @@
 export { TextClassifierNode } from './node'
 export { TextClassifierPanel } from './panel'
 export { textClassifierDefinition } from './schema'
-export type { TextClassifierConfig } from './types'
+export type { TextClassifierNodeData } from './types'

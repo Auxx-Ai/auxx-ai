@@ -2,9 +2,8 @@
 
 'use client'
 
-import type { RecordId } from '@auxx/lib/resources/client'
+import type { RecordId, ResourceId } from '@auxx/lib/resources/client'
 import { getInstanceId, toRecordId } from '@auxx/lib/resources/client'
-import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { AlertCircle, Loader2, X } from 'lucide-react'

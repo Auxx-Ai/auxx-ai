@@ -1,17 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/var-assign/node.tsx
 
 import { type FC, memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import { VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
 import { VAR_TYPE_LABELS } from './constants'
-import type { VarAssignNode as VarAssignNodeType } from './types'
+import type { VarAssignNodeData } from './types'
 
 /**
  * Variable assignment node component
  */
-export const VarAssignNode: FC<VarAssignNodeType> = memo((props) => {
-  const { data, id, selected, width } = props
+export const VarAssignNode: FC<NodeProps<VarAssignNodeData>> = memo((props) => {
+  const { data, id, selected } = props
 
   const validVariables = data.variables || []
 

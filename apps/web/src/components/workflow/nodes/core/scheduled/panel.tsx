@@ -20,6 +20,7 @@ import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { IntervalSelector } from './components/interval-selector'
 import { scheduledTriggerDefinition } from './schema'
 import type { ScheduledTriggerNodeData } from './types'
@@ -229,7 +230,13 @@ const ScheduledTriggerPanelComponent: React.FC<ScheduledTriggerPanelProps> = ({ 
 
       {/* Available Variables */}
       <OutputVariablesDisplay
-        outputVariables={scheduledTriggerDefinition.outputVariables?.(nodeData, nodeId) || []}
+        outputVariables={
+          scheduledTriggerDefinition.outputVariables?.(
+            nodeData,
+            nodeId,
+            staticOutputVariableContext
+          ) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

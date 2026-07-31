@@ -3,4 +3,4 @@
 export { VarAssignNode } from './node'
 export { VarAssignPanel } from './panel'
 export { varAssignDefinition } from './schema'
-export type { VarAssignNodeConfig, VarAssignNodeData } from './types'
+export type { VarAssignNodeData } from './types'

@@ -14,6 +14,7 @@ import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { BaseType } from '~/components/workflow/types'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { VarAssignList } from './components/var-assign-list'
 import { varAssignDefinition } from './schema'
 import type { VarAssignNodeData, VariableAssignment } from './types'
@@ -110,7 +111,9 @@ const VarAssignPanelComponent: React.FC<VarAssignPanelProps> = ({ nodeId, data }
         </div>
       </Section>
       <OutputVariablesDisplay
-        outputVariables={varAssignDefinition.outputVariables?.(nodeData, nodeId) || []}
+        outputVariables={
+          varAssignDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

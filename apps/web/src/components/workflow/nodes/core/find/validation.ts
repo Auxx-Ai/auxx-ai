@@ -56,11 +56,13 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
       })
     }
 
-    // Validate limit for findMany
-    if (data.findMode === 'findMany' && data.limit) {
-      if (data.limit < 1) {
+    // Validate limit for findMany. A variable-bound limit is a reference
+    // string that only resolves at run time, so there is nothing to check.
+    const limit = typeof data.limit === 'number' ? data.limit : Number(data.limit)
+    if (data.findMode === 'findMany' && data.limit && !Number.isNaN(limit)) {
+      if (limit < 1) {
         errors.push({ field: 'limit', message: 'Limit must be at least 1', type: 'error' })
-      } else if (data.limit > 1000) {
+      } else if (limit > 1000) {
         errors.push({ field: 'limit', message: 'Limit cannot exceed 1000', type: 'error' })
       }
     }
@@ -240,11 +242,13 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
   //   }
   // }
 
-  // Validate limit for findMany
-  if (data.findMode === 'findMany' && data.limit) {
-    if (data.limit < 1) {
+  // Validate limit for findMany. A variable-bound limit is a reference string
+  // that only resolves at run time, so there is nothing to check.
+  const limit = typeof data.limit === 'number' ? data.limit : Number(data.limit)
+  if (data.findMode === 'findMany' && data.limit && !Number.isNaN(limit)) {
+    if (limit < 1) {
       errors.push({ field: 'limit', message: 'Limit must be at least 1', type: 'error' })
-    } else if (data.limit > 1000) {
+    } else if (limit > 1000) {
       errors.push({ field: 'limit', message: 'Limit cannot exceed 1000', type: 'error' })
     }
   }

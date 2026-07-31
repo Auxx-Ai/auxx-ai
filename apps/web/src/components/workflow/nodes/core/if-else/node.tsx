@@ -6,11 +6,11 @@ import {
   operatorRequiresValue,
 } from '@auxx/lib/conditions/client'
 import { memo, useMemo } from 'react'
-import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
+import type { NodeProps } from '~/components/workflow/types'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
 import { BaseNode } from '../../shared/base/base-node'
-import type { IfElseNode as IfElseNodeType } from './types'
+import type { IfElseNodeData, NodeCondition } from './types'
 
 /**
  * Simple condition value display for node view (doesn't require context)
@@ -24,7 +24,8 @@ const ConditionValueDisplay = memo(
   }: {
     variableId?: string
     operator: Operator
-    value: string | string[] | TiptapJSON | number | boolean
+    /** Whatever the stored condition carries — `formatValue` below is total over it. */
+    value: NonNullable<NodeCondition['value']>
     nodeId?: string
   }) => {
     const operatorDef = OPERATOR_DEFINITIONS[operator]
@@ -61,7 +62,7 @@ const ConditionValueDisplay = memo(
 )
 ConditionValueDisplay.displayName = 'ConditionValueDisplay'
 
-export const IfElseNode = memo<IfElseNodeType>(({ id, data, selected }) => {
+export const IfElseNode = memo<NodeProps<IfElseNodeData>>(({ id, data, selected }) => {
   // Use flattened data structure
   const casesLength = data?.cases?.length || 0
   const cases = data?.cases || []
@@ -104,7 +105,7 @@ export const IfElseNode = memo<IfElseNodeType>(({ id, data, selected }) => {
                   <ConditionValueDisplay
                     variableId={condition.variableId}
                     operator={condition.comparison_operator || 'is'}
-                    value={condition.value || ''}
+                    value={condition.value ?? ''}
                     nodeId={id}
                   />
                   {i !== caseItem.conditions.length - 1 && (

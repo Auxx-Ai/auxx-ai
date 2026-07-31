@@ -137,6 +137,10 @@ export const VariablePicker = React.memo<VariablePickerProps>(
       [value, onChange, onVariableSelect, onOpenChange]
     )
 
+    // The explorer auto-navigates from a dot-joined variable id, which is exactly
+    // what the `valueSelector` array form spells out segment by segment.
+    const selectedVariableId = Array.isArray(value) ? value.join('.') : value
+
     // Memoize trigger click handler
     const handleTriggerClick = useCallback(() => {
       onOpenChange(!open)
@@ -162,7 +166,7 @@ export const VariablePicker = React.memo<VariablePickerProps>(
           style={popoverStyle}>
           <VariableExplorerEnhanced
             nodeId={nodeId}
-            selected={value}
+            selected={selectedVariableId}
             onVariableSelect={handleVariableSelect}
             className='h-full relative flex flex-1'
             placeholder={placeholder}

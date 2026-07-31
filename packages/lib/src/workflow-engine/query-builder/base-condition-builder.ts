@@ -7,8 +7,8 @@ import { and, or, type SQL } from 'drizzle-orm'
 
 // Import from shared conditions module
 import type {
-  ConditionGroup as BaseConditionGroup,
   Condition,
+  ConditionGroup,
   ConditionValidationResult,
   Operator,
 } from '../../conditions'
@@ -27,7 +27,7 @@ export type GenericCondition = Condition
 /**
  * Re-export ConditionGroup for backward compatibility
  */
-export type { BaseConditionGroup as ConditionGroup }
+export type { ConditionGroup }
 
 /**
  * Backward-compat alias for ConditionValidationResult
@@ -47,6 +47,12 @@ export interface DroppedCondition {
   reason: string
 }
 
+/** A condition that produced SQL, kept paired with its clause so AND/OR stays aligned. */
+interface BuiltClause {
+  condition: Condition
+  clause: SQL<unknown>
+}
+
 export abstract class BaseConditionBuilder<TContext> {
   /** Conditions dropped during the last build call. Reset on each build. */
   droppedConditions: DroppedCondition[] = []
@@ -59,44 +65,44 @@ export abstract class BaseConditionBuilder<TContext> {
       return undefined
     }
 
-    const results = conditions.map((condition) => {
+    // Keep each surviving clause paired with the condition it came from — dropping a
+    // condition must not shift the remaining clauses onto the wrong logicalOperator.
+    const built: BuiltClause[] = []
+
+    for (const condition of conditions) {
+      const fieldRef = condition.fieldId
+
       // Belt-and-suspenders: valueSource placeholders must be resolved upstream
       // via resolveConditionContext before reaching query builders.
       if (condition.valueSource) {
-        const fieldRef = condition.fieldId
         logger.warn(
           `Dropping condition with unresolved valueSource '${condition.valueSource}' — should have been substituted upstream`,
           { fieldRef }
         )
         this.droppedConditions.push({
-          fieldRef: Array.isArray(fieldRef) ? fieldRef : fieldRef,
+          fieldRef,
           reason: `unresolved valueSource: ${condition.valueSource}`,
         })
-        return undefined
+        continue
       }
 
       const sqlResult = this.conditionToSql(condition, context)
       if (!sqlResult) {
-        const fieldRef = condition.fieldId
         this.droppedConditions.push({
-          fieldRef: Array.isArray(fieldRef) ? fieldRef : fieldRef,
+          fieldRef,
           reason: `could not resolve in ${this.constructor.name}`,
         })
+        continue
       }
-      return sqlResult
-    })
 
-    const sqlClauses = results.filter((clause): clause is SQL<unknown> => Boolean(clause))
+      built.push({ condition, clause: sqlResult })
+    }
 
-    if (sqlClauses.length === 0) {
+    if (built.length === 0) {
       return undefined
     }
 
-    if (sqlClauses.length === 1) {
-      return sqlClauses[0]
-    }
-
-    return this.combineSqlClauses(sqlClauses, conditions)
+    return this.combineSqlClauses(built)
   }
 
   /**
@@ -109,8 +115,9 @@ export abstract class BaseConditionBuilder<TContext> {
       return undefined
     }
 
-    if (groups.length === 1) {
-      return this.buildWhereSql(groups[0].conditions, context)
+    const [firstGroup] = groups
+    if (groups.length === 1 && firstGroup) {
+      return this.buildWhereSql(firstGroup.conditions, context)
     }
 
     const groupClauses = groups
@@ -135,33 +142,29 @@ export abstract class BaseConditionBuilder<TContext> {
     const errors: string[] = []
 
     for (const condition of conditions) {
+      const fieldRef = condition.fieldId
+      const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
+
+      // For array paths, the source field is the first element
+      const sourceRef = Array.isArray(fieldRef) ? fieldRef[0] : fieldRef
+      if (!sourceRef) {
+        errors.push(`Condition ${condition.id} has an empty field path`)
+        continue
+      }
+
       // Check if field is allowed (handle both string and array formats)
-      if (allowedFieldIds) {
-        const fieldRef = condition.fieldId
-
-        // For array paths, validate the first element (source field)
-        const fieldToValidate = Array.isArray(fieldRef) ? fieldRef[0] : fieldRef
-
-        if (!allowedFieldIds.includes(fieldToValidate)) {
-          const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
-          errors.push(`Field '${displayRef}' is not allowed`)
-          continue
-        }
+      if (allowedFieldIds && !allowedFieldIds.includes(sourceRef)) {
+        errors.push(`Field '${displayRef}' is not allowed`)
+        continue
       }
 
       // Check if field exists (extract field key from either format)
-      const fieldRef = condition.fieldId
-      const fieldKey = Array.isArray(fieldRef)
-        ? fieldRef[0].includes(':')
-          ? parseResourceFieldId(fieldRef[0] as ResourceFieldId).fieldId
-          : fieldRef[0]
-        : fieldRef.includes(':')
-          ? parseResourceFieldId(fieldRef as ResourceFieldId).fieldId
-          : fieldRef
+      const fieldKey = sourceRef.includes(':')
+        ? parseResourceFieldId(sourceRef as ResourceFieldId).fieldId
+        : sourceRef
 
       const fieldType = this.getFieldType(fieldKey, context)
       if (!fieldType) {
-        const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
         errors.push(`Unknown field: ${displayRef}`)
         continue
       }
@@ -188,7 +191,6 @@ export abstract class BaseConditionBuilder<TContext> {
         const values = Array.isArray(condition.value) ? condition.value : [condition.value]
         for (const val of values) {
           if (typeof val === 'string' && !validValues.includes(val) && !validLabels.includes(val)) {
-            const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
             errors.push(`Invalid value '${val}' for field '${displayRef}'`)
           }
         }
@@ -272,16 +274,14 @@ export abstract class BaseConditionBuilder<TContext> {
   /**
    * Combine SQL clauses with AND/OR based on condition metadata
    */
-  protected combineSqlClauses(
-    clauses: SQL<unknown>[],
-    conditions: GenericCondition[]
-  ): SQL<unknown> {
-    let combined = clauses[0]
+  protected combineSqlClauses(built: BuiltClause[]): SQL<unknown> | undefined {
+    const [first, ...rest] = built
+    if (!first) return undefined
 
-    for (let i = 1; i < clauses.length; i++) {
-      const logicalOperator = conditions[i].logicalOperator || 'AND'
-      const clause = clauses[i]
+    let combined = first.clause
 
+    for (const { condition, clause } of rest) {
+      const logicalOperator = condition.logicalOperator || 'AND'
       combined = logicalOperator === 'OR' ? or(combined, clause)! : and(combined, clause)!
     }
 

@@ -200,7 +200,6 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
               <VariableInput
                 key={variable.id}
                 variable={variable}
-                nodes={nodes}
                 value={nodeInputs[variable.id]}
                 onChange={(value) => {
                   console.log('VariableInput changed:', variable.id, value)
@@ -268,7 +267,6 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
  */
 const VariableInput = memo(function VariableInput({
   variable,
-  nodes,
   value,
   onChange,
   onError,
@@ -276,7 +274,6 @@ const VariableInput = memo(function VariableInput({
   isLoading,
 }: {
   variable: UnifiedVariable
-  nodes: FlowNode[]
   value: any
   onChange: (value: any) => void
   onError: (fieldName: string, error: string | null) => void

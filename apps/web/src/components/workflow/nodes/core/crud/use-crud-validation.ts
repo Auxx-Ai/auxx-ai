@@ -54,7 +54,7 @@ export function useCrudValidation(nodeData: CrudNodeData) {
   const getFieldErrorMessage = useCallback(
     (fieldPath: string) => {
       const errors = getFieldErrors(fieldPath)
-      return errors.length > 0 ? errors[0].message : undefined
+      return errors[0]?.message
     },
     [getFieldErrors]
   )

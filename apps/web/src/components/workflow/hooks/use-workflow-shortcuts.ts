@@ -216,9 +216,10 @@ export function useWorkflowShortcuts() {
 
   // === ZOOM OPERATIONS ===
 
-  // Zoom In: Mod+= / Mod++
+  // Zoom In: Mod+= / Mod++ (the latter is Shift+'=' on a US layout, and has to be
+  // registered in object form — 'Mod++' parses to an empty key and never fired)
   useHotkey('Mod+=', () => rfZoomIn())
-  useHotkey('Mod++', () => rfZoomIn())
+  useHotkey({ key: '=', mod: true, shift: true }, () => rfZoomIn())
 
   // Zoom Out: Mod+-
   useHotkey('Mod+-', () => rfZoomOut())
@@ -299,6 +300,7 @@ export function useWorkflowShortcuts() {
 
   // === HELP OVERLAY ===
 
-  // Toggle Help: ?
-  useHotkey('Shift+/', () => toggleHelpOverlay())
+  // Toggle Help: ? — Shift+punctuation is layout-dependent, so it is excluded from
+  // the hotkey string union and has to be registered in object form
+  useHotkey({ key: '/', shift: true }, () => toggleHelpOverlay())
 }

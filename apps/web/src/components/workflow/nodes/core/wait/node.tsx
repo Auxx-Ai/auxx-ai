@@ -2,10 +2,11 @@
 
 import { WAIT_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { type FC, memo } from 'react'
+import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { BaseNode } from '../../shared/base/base-node'
-import { DurationUnit, type WaitNodeData, type WaitNode as WaitNodeType, WaitType } from './types'
+import { DurationUnit, type WaitNodeData, WaitType } from './types'
 
 // WaitNodeData is now defined in types.ts
 
@@ -66,7 +67,7 @@ function getDurationMs(amount: number, unit: DurationUnit): number {
 /**
  * Wait node component
  */
-export const WaitNode: FC<WaitNodeType> = memo((props) => {
+export const WaitNode: FC<NodeProps<WaitNodeData>> = memo((props) => {
   const { data, id, selected } = props
   const waitMethod = getWaitMethod(data)
 

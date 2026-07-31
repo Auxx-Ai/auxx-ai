@@ -181,6 +181,14 @@ export type StoreEvent =
   | { type: 'nodes:pasted'; data: { nodeCount: number; edgeCount: number; nodes: FlowNode[] } }
   | { type: 'drag:started'; data: { nodeIds: string[] } }
   | { type: 'drag:ended'; data: { nodeIds: string[]; duration: number } }
+  | {
+      type: 'workflow:externalUpdate'
+      data: {
+        nodes?: FlowNode[]
+        edges?: FlowEdge[]
+        viewport?: { x: number; y: number; zoom: number }
+      }
+    }
 
 /**
  * Preferences for the workflow editor

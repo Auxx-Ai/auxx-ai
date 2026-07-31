@@ -20,6 +20,8 @@ import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
+  type VarEditorValue,
+  varEditorText,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
@@ -67,13 +69,13 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
    * FileInput returns array even with allowMultiple: false, so extract first element
    */
   const handleFileChange = useCallback(
-    (value: string | string[], isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         // FileInput returns array, extract first element for single file mode
         if (Array.isArray(value)) {
-          draft.fileId = value[0] || undefined
+          draft.fileId = varEditorText(value[0]) || undefined
         } else {
-          draft.fileId = value || undefined
+          draft.fileId = varEditorText(value) || undefined
         }
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['fileId'] = isConstantMode
@@ -87,9 +89,9 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
    * Handle URL change
    */
   const handleUrlChange = useCallback(
-    (value: string, isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft.url = value
+        draft.url = varEditorText(value)
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['url'] = isConstantMode
       })
@@ -103,7 +105,11 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
    * Value comes as boolean from BooleanInput via ConstantInputAdapter
    */
   const handleOptionChange = useCallback(
-    (field: 'preserveFormatting' | 'extractImages', value: any, isConstantMode: boolean) => {
+    (
+      field: 'preserveFormatting' | 'extractImages',
+      value: VarEditorValue,
+      isConstantMode: boolean
+    ) => {
       const newData = produce(nodeData, (draft) => {
         // Value is already a boolean from BooleanInput
         draft[field] = value === true
@@ -119,9 +125,9 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
    * Handle language hint change
    */
   const handleLanguageChange = useCallback(
-    (value: string, isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft.language = value || undefined
+        draft.language = varEditorText(value) || undefined
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['language'] = isConstantMode
       })

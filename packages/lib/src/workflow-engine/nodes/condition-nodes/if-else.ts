@@ -426,14 +426,10 @@ export class IfElseProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * EXISTENCE: exists, not exists, empty, not empty
+   * EXISTENCE: empty, not empty
    */
   private evaluateExistenceOperator(resolvedValue: any, operator: Operator): boolean {
     switch (operator) {
-      case 'exists':
-        return resolvedValue !== undefined && resolvedValue !== null
-      case 'not exists':
-        return resolvedValue === undefined || resolvedValue === null
       case 'empty':
         return this.isEmpty(resolvedValue)
       case 'not empty':
@@ -515,8 +511,10 @@ export class IfElseProcessor extends BaseNodeProcessor {
     operator: Operator,
     compareValue?: any
   ): boolean {
+    // Array-category operators (contains / length …) never hold for a non-array.
+    // 'empty' / 'not empty' are existence-category and route elsewhere.
     if (!Array.isArray(resolvedValue)) {
-      return operator === 'not exists'
+      return false
     }
 
     switch (operator) {
@@ -554,8 +552,10 @@ export class IfElseProcessor extends BaseNodeProcessor {
     const isObject =
       resolvedValue !== null && typeof resolvedValue === 'object' && !Array.isArray(resolvedValue)
 
+    // Object-category operators (has key / key equals …) never hold for a
+    // non-object. 'empty' / 'not empty' are existence-category and route elsewhere.
     if (!isObject) {
-      return operator === 'not exists'
+      return false
     }
 
     switch (operator) {
@@ -567,9 +567,9 @@ export class IfElseProcessor extends BaseNodeProcessor {
         return String(compareValue) in resolvedValue
       case 'key equals': {
         // Format: "key:value"
-        const parts = String(compareValue).split(':')
-        const key = parts[0]
-        const value = parts.slice(1).join(':') // Handle values with colons
+        const [key, ...valueParts] = String(compareValue).split(':')
+        if (!key) return false
+        const value = valueParts.join(':') // Handle values with colons
         return resolvedValue[key] == value
       }
       default:

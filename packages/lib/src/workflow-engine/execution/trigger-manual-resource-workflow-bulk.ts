@@ -7,6 +7,7 @@ import { inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedResource, getCachedWorkflowApp } from '../../cache'
 import { isCustomResourceId } from '../../resources/client'
+import { RESOURCE_TABLE_MAP } from '../../resources/registry/field-registry'
 import { isSystemResourceId } from '../../resources/registry/types'
 import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
@@ -345,15 +346,16 @@ async function fetchResourcesByIds(
     return resourcesMap
   }
 
-  // Get DB table name from resource
-  const dbName = (resource as any).dbName
-  if (!dbName) {
+  // Get DB table name from the system-resource registry
+  const dbName = RESOURCE_TABLE_MAP[resourceType]?.dbName
+  const resourceTable = dbName ? (schema as Record<string, any>)[dbName] : undefined
+  if (!resourceTable) {
     logger.error('System resource missing dbName', { resourceType })
     return resourcesMap
   }
 
   // Build WHERE clause: id IN (...entityInstanceIds)
-  const whereSql = inArray(schema[dbName].id, entityInstanceIds)
+  const whereSql = inArray(resourceTable.id, entityInstanceIds)
 
   // Fetch all resources in single query
   const resources = await executeResourceQuery(

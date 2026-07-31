@@ -43,20 +43,12 @@ describe('LoopProcessor', () => {
       type: WorkflowNodeType.LOOP,
       name: 'Test Loop',
       data: {
+        id: 'loop-1',
+        type: WorkflowNodeType.LOOP,
         title: 'Process Items',
         itemsSource: '{{items}}',
         maxIterations: 10,
         accumulateResults: true,
-      },
-      config: {
-        title: 'Process Items',
-        itemsSource: '{{items}}',
-        maxIterations: 10,
-        accumulateResults: true,
-      },
-      connections: {
-        'loop-start': 'node-2',
-        source: 'node-3',
       },
     }
   })
@@ -76,9 +68,8 @@ describe('LoopProcessor', () => {
       const invalidNode = {
         ...mockNode,
         data: {
-          title: 'Invalid Loop',
-        },
-        config: {
+          id: 'loop-1',
+          type: WorkflowNodeType.LOOP,
           title: 'Invalid Loop',
         },
       }
@@ -93,10 +84,6 @@ describe('LoopProcessor', () => {
         ...mockNode,
         data: {
           ...mockNode.data,
-          maxIterations: 0,
-        },
-        config: {
-          ...mockNode.config,
           maxIterations: 0,
         },
       }

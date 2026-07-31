@@ -76,6 +76,23 @@ export interface InvokeOrchestratorResponse {
 }
 
 /**
+ * Providers return tool-call arguments either already parsed or as a raw JSON
+ * string (OpenAI-style). Normalize to an object so downstream nodes never have
+ * to guess which one they got.
+ */
+function parseToolCallArguments(args: string | Record<string, any>): Record<string, any> {
+  if (typeof args !== 'string') return args
+  try {
+    const parsed: unknown = JSON.parse(args)
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, any>)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+/**
  * Centralized function to invoke the LLM orchestrator
  *
  * This provides a consistent interface for all AI nodes to interact with the orchestrator,
@@ -138,7 +155,7 @@ export async function invokeOrchestrator(
   const formattedToolCalls = response.tool_calls?.map((toolCall) => ({
     id: toolCall.id,
     name: toolCall.function.name,
-    arguments: toolCall.function.arguments,
+    arguments: parseToolCallArguments(toolCall.function.arguments),
   }))
 
   // Format tool results if present

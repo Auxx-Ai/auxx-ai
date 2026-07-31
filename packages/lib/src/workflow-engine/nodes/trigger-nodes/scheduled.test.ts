@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../../core/execution-context'
-import type { WorkflowNode } from '../../core/types'
+import type { NodeData, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { ScheduledTriggerProcessor } from './scheduled'
 
@@ -17,6 +17,24 @@ vi.mock('@auxx/logger', async (importOriginal) => ({
     error: vi.fn(),
   }),
 }))
+
+/**
+ * Builds a scheduled-trigger node in the shape
+ * `WorkflowGraphBuilder.transformNodes` emits.
+ */
+const scheduledNode = (data: Partial<NodeData>): WorkflowNode => ({
+  id: 'node-1',
+  workflowId: 'workflow-1',
+  nodeId: 'test',
+  type: WorkflowNodeType.SCHEDULED,
+  name: 'Test Scheduled Trigger',
+  data: {
+    id: 'node-1',
+    type: WorkflowNodeType.SCHEDULED,
+    title: 'Test Scheduled Trigger',
+    ...data,
+  },
+})
 
 describe('ScheduledTriggerProcessor', () => {
   let processor: ScheduledTriggerProcessor
@@ -35,21 +53,13 @@ describe('ScheduledTriggerProcessor', () => {
 
   describe('Validation', () => {
     it('should validate interval configuration', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'hours',
-            timeBetweenTriggers: { hours: 2, isConstant: true },
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 2, isConstant: true },
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(true)
@@ -57,22 +67,14 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should validate custom cron configuration', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'custom',
-            timeBetweenTriggers: {},
-            customCron: '0 9 * * 1-5',
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'custom',
+          timeBetweenTriggers: {},
+          customCron: '0 9 * * 1-5',
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(true)
@@ -80,24 +82,16 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should handle variable references in validation', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'minutes',
-            timeBetweenTriggers: {
-              minutes: 'interval_var',
-              isConstant: false,
-            },
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'minutes',
+          timeBetweenTriggers: {
+            minutes: 'interval_var',
+            isConstant: false,
           },
-          isEnabled: true,
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(true)
@@ -105,15 +99,7 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should fail validation when config is missing', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {},
-        connections: {},
-      }
+      const node = scheduledNode({})
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
@@ -121,21 +107,13 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should fail validation for invalid interval values', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'hours',
-            timeBetweenTriggers: { hours: 0, isConstant: true },
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 0, isConstant: true },
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
@@ -144,24 +122,16 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should fail validation for empty variable references', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'minutes',
-            timeBetweenTriggers: {
-              minutes: '',
-              isConstant: false,
-            },
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'minutes',
+          timeBetweenTriggers: {
+            minutes: '',
+            isConstant: false,
           },
-          isEnabled: true,
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
@@ -170,21 +140,13 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should fail validation for missing interval value', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'days',
-            timeBetweenTriggers: { isConstant: true },
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'days',
+          timeBetweenTriggers: { isConstant: true },
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
@@ -192,22 +154,14 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should fail validation for empty custom cron', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'custom',
-            timeBetweenTriggers: {},
-            customCron: '',
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'custom',
+          timeBetweenTriggers: {},
+          customCron: '',
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
@@ -217,22 +171,14 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should fail validation for invalid cron expression', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'custom',
-            timeBetweenTriggers: {},
-            customCron: 'invalid cron',
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'custom',
+          timeBetweenTriggers: {},
+          customCron: 'invalid cron',
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
@@ -240,22 +186,14 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should fail validation for invalid timezone', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'hours',
-            timeBetweenTriggers: { hours: 1, isConstant: true },
-            timezone: 'Invalid/Timezone',
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 1, isConstant: true },
+          timezone: 'Invalid/Timezone',
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       const result = await processor.validate(node)
       expect(result.valid).toBe(false)
@@ -265,21 +203,13 @@ describe('ScheduledTriggerProcessor', () => {
 
   describe('Execution', () => {
     it('should execute successfully with constant interval', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'hours',
-            timeBetweenTriggers: { hours: 2, isConstant: true },
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 2, isConstant: true },
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       contextManager.setVariable('sys.triggerData', { scheduledTime: '2023-01-01T10:00:00Z' })
 
@@ -294,21 +224,13 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should skip execution when disabled', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'hours',
-            timeBetweenTriggers: { hours: 2, isConstant: true },
-          },
-          isEnabled: false,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 2, isConstant: true },
         },
-        connections: {},
-      }
+        isEnabled: false,
+      })
 
       const result = await (processor as any).executeNode(node, contextManager)
 
@@ -318,24 +240,16 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should resolve variable values at runtime', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'minutes',
-            timeBetweenTriggers: {
-              minutes: 'interval_var',
-              isConstant: false,
-            },
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'minutes',
+          timeBetweenTriggers: {
+            minutes: 'interval_var',
+            isConstant: false,
           },
-          isEnabled: true,
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       contextManager.setVariable('interval_var', 15)
       contextManager.setVariable('sys.triggerData', { scheduledTime: '2023-01-01T10:00:00Z' })
@@ -348,22 +262,14 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should handle custom cron expressions', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'custom',
-            timeBetweenTriggers: {},
-            customCron: '0 9 * * 1-5',
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'custom',
+          timeBetweenTriggers: {},
+          customCron: '0 9 * * 1-5',
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       contextManager.setVariable('sys.triggerData', { scheduledTime: '2023-01-01T09:00:00Z' })
 
@@ -378,24 +284,16 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should throw error for invalid variable resolution', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'minutes',
-            timeBetweenTriggers: {
-              minutes: 'invalid_var',
-              isConstant: false,
-            },
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'minutes',
+          timeBetweenTriggers: {
+            minutes: 'invalid_var',
+            isConstant: false,
           },
-          isEnabled: true,
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       contextManager.setVariable('invalid_var', 'not_a_number')
 
@@ -405,21 +303,13 @@ describe('ScheduledTriggerProcessor', () => {
     })
 
     it('should set node-specific variables for intervals', async () => {
-      const node: WorkflowNode = {
-        id: 'node-1',
-        workflowId: 'workflow-1',
-        nodeId: 'test',
-        type: WorkflowNodeType.SCHEDULED,
-        name: 'Test Scheduled Trigger',
-        data: {
-          config: {
-            triggerInterval: 'days',
-            timeBetweenTriggers: { days: 7, isConstant: true },
-          },
-          isEnabled: true,
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'days',
+          timeBetweenTriggers: { days: 7, isConstant: true },
         },
-        connections: {},
-      }
+        isEnabled: true,
+      })
 
       contextManager.setVariable('sys.triggerData', { scheduledTime: '2023-01-01T10:00:00Z' })
 

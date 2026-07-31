@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/ui/code-editor/monaco-workflow-completions.ts
 
 import type { Node } from '@xyflow/react'
-import type { editor, IDisposable, languages } from 'monaco-editor'
+import type { editor, IDisposable, IRange, languages, Position } from 'monaco-editor'
 import type { UnifiedVariable } from '~/components/workflow/types'
 import { getPathFromVariableId } from '~/components/workflow/utils/variable-utils'
 
@@ -9,6 +9,22 @@ interface CompletionContext {
   getNodes: () => Node[]
   getNodeVariables: (nodeId: string) => UnifiedVariable[]
   getCurrentNodeId?: () => string
+}
+
+/**
+ * Zero-width range at the caret — "insert here, replace nothing".
+ *
+ * Monaco DISCARDS any completion item whose `range` is unset, so every item we
+ * hand back needs one. This is the fallback for the cases where we are not
+ * replacing existing text.
+ */
+function caretRange(position: Position): IRange {
+  return {
+    startLineNumber: position.lineNumber,
+    startColumn: position.column,
+    endLineNumber: position.lineNumber,
+    endColumn: position.column,
+  }
 }
 
 /**
@@ -65,16 +81,17 @@ export function createWorkflowCompletionProvider(
 
         // Always show var suggestion if we match the pattern, even if no partial text
         if (partialMethod === '' || 'var'.startsWith(partialMethod.toLowerCase())) {
-          // Calculate the range to replace
-          const replaceRange =
+          // Calculate the range to replace — with nothing partially typed there
+          // is no word to swap out, so insert at the caret.
+          const replaceRange: IRange =
             partialMethod && word
-              ? new monaco.Range(
-                  position.lineNumber,
-                  word.startColumn,
-                  position.lineNumber,
-                  word.endColumn
-                )
-              : undefined
+              ? {
+                  startLineNumber: position.lineNumber,
+                  startColumn: word.startColumn,
+                  endLineNumber: position.lineNumber,
+                  endColumn: word.endColumn,
+                }
+              : caretRange(position)
 
           return {
             suggestions: createMethodSuggestions(monaco, replaceRange).suggestions,
@@ -88,7 +105,7 @@ export function createWorkflowCompletionProvider(
 
       // Pattern 4: User typed "$('node-id').var(" - suggest variables
       const nodeVarMatch = linePrefix.match(/\$\(['"]([^'"]+)['"]\)\.var\((['"]{0,1})([^'"]*)$/)
-      if (nodeVarMatch) {
+      if (nodeVarMatch?.[1]) {
         const nodeId = nodeVarMatch[1]
         const quoteChar = nodeVarMatch[2]
         const partialVarName = nodeVarMatch[3] || ''
@@ -114,9 +131,9 @@ export function createWorkflowCompletionProvider(
 function createNodeSuggestions(
   monaco: any,
   context: CompletionContext,
-  filter?: string,
-  position?: any,
-  model?: editor.ITextModel,
+  filter: string | undefined,
+  position: Position,
+  model: editor.ITextModel,
   quoteChar?: string
 ): languages.CompletionList {
   const nodes = context.getNodes()
@@ -137,52 +154,40 @@ function createNodeSuggestions(
       const isUpstream = currentNodeId ? isNodeUpstream(nodes, node.id, currentNodeId) : true
 
       let insertText: string
-      let range: any
+      // Left unset by the plain-insert branches below and defaulted to the
+      // caret afterwards — Monaco drops any item without a range.
+      let range: IRange | undefined
 
-      if (position && model) {
-        const lineContent = model.getLineContent(position.lineNumber)
-        const beforeCursor = lineContent.substring(0, position.column - 1)
-        const afterCursor = lineContent.substring(position.column - 1)
+      const lineContent = model.getLineContent(position.lineNumber)
+      const beforeCursor = lineContent.substring(0, position.column - 1)
+      const afterCursor = lineContent.substring(position.column - 1)
 
-        // Check what's around the cursor to determine proper replacement
-        if (quoteChar) {
-          // We have quotes, just insert the node ID
-          insertText = node.id
-          // Find the range to replace (between the quotes)
-          const startPos = beforeCursor.lastIndexOf(quoteChar) + 1
-          range = new monaco.Range(
-            position.lineNumber,
-            startPos + 1,
-            position.lineNumber,
-            position.column
-          )
-        } else if (beforeCursor.endsWith('$(') && afterCursor.startsWith("')")) {
-          // Case: $('|') where | is cursor - just insert node ID
-          insertText = node.id
-          range = new monaco.Range(
-            position.lineNumber,
-            position.column,
-            position.lineNumber,
-            position.column
-          )
-        } else if (beforeCursor.endsWith('$(') && afterCursor.startsWith(')')) {
-          // Case: $(|) where | is cursor - insert quoted node ID and position cursor after the )
-          insertText = `'${node.id}')$0` // $0 positions cursor at the end
-          range = new monaco.Range(
-            position.lineNumber,
-            position.column,
-            position.lineNumber,
-            position.column + 1 // Include the closing ) in replacement
-          )
-        } else if (beforeCursor.endsWith('$(')) {
-          // Case: $(| - insert full quoted string with closing
-          insertText = `'${node.id}')`
-        } else {
-          // Default case
-          insertText = `'${node.id}')`
+      // Check what's around the cursor to determine proper replacement
+      if (quoteChar) {
+        // We have quotes, just insert the node ID
+        insertText = node.id
+        // Find the range to replace (between the quotes)
+        const startPos = beforeCursor.lastIndexOf(quoteChar) + 1
+        range = {
+          startLineNumber: position.lineNumber,
+          startColumn: startPos + 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        }
+      } else if (beforeCursor.endsWith('$(') && afterCursor.startsWith("')")) {
+        // Case: $('|') where | is cursor - just insert node ID
+        insertText = node.id
+      } else if (beforeCursor.endsWith('$(') && afterCursor.startsWith(')')) {
+        // Case: $(|) where | is cursor - insert quoted node ID and position cursor after the )
+        insertText = `'${node.id}')$0` // $0 positions cursor at the end
+        range = {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column + 1, // Include the closing ) in replacement
         }
       } else {
-        // Fallback
+        // Case: $(| , or anything else - insert full quoted string with closing
         insertText = `'${node.id}')`
       }
 
@@ -195,7 +200,7 @@ function createNodeSuggestions(
         insertTextRules: isSnippet
           ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
           : undefined,
-        range: range,
+        range: range ?? caretRange(position),
         detail: `${nodeTitle} (${node.type})`,
         documentation: {
           value: `Access variables from **${nodeTitle}**\n\nNode ID: \`${node.id}\`\nType: ${node.type}${
@@ -214,7 +219,7 @@ function createNodeSuggestions(
 /**
  * Create suggestions for methods (currently just 'var')
  */
-function createMethodSuggestions(monaco: any, range?: any): languages.CompletionList {
+function createMethodSuggestions(monaco: any, range: IRange): languages.CompletionList {
   return {
     suggestions: [
       {
@@ -244,9 +249,9 @@ function createVariableSuggestions(
   monaco: any,
   context: CompletionContext,
   nodeId: string,
-  filter?: string,
-  position?: any,
-  model?: editor.ITextModel,
+  filter: string | undefined,
+  position: Position,
+  model: editor.ITextModel,
   quoteChar?: string
 ): languages.CompletionList {
   const variables = context.getNodeVariables(nodeId)
@@ -270,52 +275,40 @@ function createVariableSuggestions(
       const varPath = getPathFromVariableId(variable.id)
 
       let insertText: string
-      let range: any
+      // Left unset by the plain-insert branches below and defaulted to the
+      // caret afterwards — Monaco drops any item without a range.
+      let range: IRange | undefined
 
-      if (position && model) {
-        const lineContent = model.getLineContent(position.lineNumber)
-        const beforeCursor = lineContent.substring(0, position.column - 1)
-        const afterCursor = lineContent.substring(position.column - 1)
+      const lineContent = model.getLineContent(position.lineNumber)
+      const beforeCursor = lineContent.substring(0, position.column - 1)
+      const afterCursor = lineContent.substring(position.column - 1)
 
-        // Check what's around the cursor to determine proper replacement
-        if (quoteChar) {
-          // We have quotes, just insert the variable path
-          insertText = varPath
-          // Find the range to replace (between the quotes)
-          const startPos = beforeCursor.lastIndexOf(quoteChar) + 1
-          range = new monaco.Range(
-            position.lineNumber,
-            startPos + 1,
-            position.lineNumber,
-            position.column
-          )
-        } else if (beforeCursor.endsWith('.var(') && afterCursor.startsWith("')")) {
-          // Case: .var('|') where | is cursor - just insert variable path
-          insertText = varPath
-          range = new monaco.Range(
-            position.lineNumber,
-            position.column,
-            position.lineNumber,
-            position.column
-          )
-        } else if (beforeCursor.endsWith('.var(') && afterCursor.startsWith(')')) {
-          // Case: .var(|) where | is cursor - insert quoted variable path and position cursor after the )
-          insertText = `'${varPath}')$0` // $0 positions cursor at the end
-          range = new monaco.Range(
-            position.lineNumber,
-            position.column,
-            position.lineNumber,
-            position.column + 1 // Include the closing ) in replacement
-          )
-        } else if (beforeCursor.endsWith('.var(')) {
-          // Case: .var(| - insert full quoted string with closing
-          insertText = `'${varPath}')`
-        } else {
-          // Default case
-          insertText = `'${varPath}')`
+      // Check what's around the cursor to determine proper replacement
+      if (quoteChar) {
+        // We have quotes, just insert the variable path
+        insertText = varPath
+        // Find the range to replace (between the quotes)
+        const startPos = beforeCursor.lastIndexOf(quoteChar) + 1
+        range = {
+          startLineNumber: position.lineNumber,
+          startColumn: startPos + 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        }
+      } else if (beforeCursor.endsWith('.var(') && afterCursor.startsWith("')")) {
+        // Case: .var('|') where | is cursor - just insert variable path
+        insertText = varPath
+      } else if (beforeCursor.endsWith('.var(') && afterCursor.startsWith(')')) {
+        // Case: .var(|) where | is cursor - insert quoted variable path and position cursor after the )
+        insertText = `'${varPath}')$0` // $0 positions cursor at the end
+        range = {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column + 1, // Include the closing ) in replacement
         }
       } else {
-        // Fallback
+        // Case: .var(| , or anything else - insert full quoted string with closing
         insertText = `'${varPath}')`
       }
 
@@ -328,7 +321,7 @@ function createVariableSuggestions(
         insertTextRules: isSnippet
           ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
           : undefined,
-        range: range,
+        range: range ?? caretRange(position),
         detail: `${typeIcon} ${variable.type}${isRequired}`,
         documentation: {
           value: `**${variable.label}**\n\n${
@@ -349,6 +342,7 @@ function createVariableSuggestions(
           label: 'No variables available',
           kind: monaco.languages.CompletionItemKind.Text,
           insertText: "'')  // No variables available from this node",
+          range: caretRange(position),
           detail: 'This node has no output variables',
           documentation: {
             value: `The node **${nodeId}** does not produce any output variables.\n\nThis could mean:\n- The node hasn't been configured yet\n- The node type doesn't produce outputs\n- The node configuration is invalid`,
@@ -414,11 +408,9 @@ export function extractVariableReferences(code: string): Array<{
 
   let match
   while ((match = regex.exec(code)) !== null) {
-    references.push({
-      nodeId: match[1],
-      variablePath: match[2],
-      fullPath: `${match[1]}.${match[2]}`,
-    })
+    const [, nodeId, variablePath] = match
+    if (!nodeId || !variablePath) continue
+    references.push({ nodeId, variablePath, fullPath: `${nodeId}.${variablePath}` })
   }
 
   return references

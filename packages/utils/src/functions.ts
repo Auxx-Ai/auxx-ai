@@ -3,8 +3,13 @@
 /**
  * Creates a debounced version of a function that delays execution
  * until after the specified wait time has elapsed since the last call.
+ *
+ * The constraint uses `never[]` rather than `unknown[]`: parameters are
+ * contravariant, so `(...args: unknown[]) => unknown` only accepts callbacks
+ * whose parameters accept `unknown` — i.e. zero-arg ones. `never[]` accepts any
+ * signature while still letting `Parameters<T>` recover the real argument list.
  */
-export function debounce<T extends (...args: unknown[]) => unknown>(
+export function debounce<T extends (...args: never[]) => unknown>(
   fn: T,
   wait: number
 ): ((...args: Parameters<T>) => void) & { cancel: () => void } {

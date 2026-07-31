@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { textToDoc } from '../../../../tiptap'
-import type { WorkflowNode } from '../../../core/types'
+import type { NodeData, WorkflowNode } from '../../../core/types'
 import { WorkflowNodeType } from '../../../core/types'
 import { AIProcessorV2 } from '../ai-v2'
 
@@ -21,6 +21,20 @@ vi.mock('../../../../agents', () => ({
 const pt = (role: 'system' | 'user' | 'assistant', text: string) => ({
   role,
   json: textToDoc(text, { parseVariables: true }),
+})
+
+/**
+ * Builds an AI node in the shape `WorkflowGraphBuilder.transformNodes` emits:
+ * `id`/`nodeId` mirror the canvas node id and the canvas position sits in metadata.
+ */
+const aiNode = (data: Partial<NodeData>): WorkflowNode => ({
+  id: 'node_1',
+  workflowId: 'workflow_123',
+  nodeId: 'node_1',
+  name: 'AI Node',
+  type: WorkflowNodeType.AI,
+  data: { id: 'node_1', type: WorkflowNodeType.AI, title: 'AI Node', ...data },
+  metadata: { position: { x: 0, y: 0 } },
 })
 
 /**
@@ -100,19 +114,10 @@ describe('AIProcessorV2', () => {
 
   describe('buildMessages - Prompt Template Format', () => {
     it('should build messages from prompt_template array', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt_template: [
-            pt('system', 'You are a helpful assistant'),
-            pt('user', 'Hello, world!'),
-          ],
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt_template: [pt('system', 'You are a helpful assistant'), pt('user', 'Hello, world!')],
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -122,19 +127,13 @@ describe('AIProcessorV2', () => {
     })
 
     it('should interpolate variables in prompt templates', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt_template: [
-            pt('system', 'You are a helpful assistant'),
-            pt('user', 'Email: {{webhook.email}}, Subject: {{webhook.subject}}'),
-          ],
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt_template: [
+          pt('system', 'You are a helpful assistant'),
+          pt('user', 'Email: {{webhook.email}}, Subject: {{webhook.subject}}'),
+        ],
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -144,16 +143,10 @@ describe('AIProcessorV2', () => {
 
   describe('buildMessages - Legacy Format', () => {
     it('should build messages from legacy prompt field', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt: 'Write me a poem',
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt: 'Write me a poem',
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -162,17 +155,11 @@ describe('AIProcessorV2', () => {
     })
 
     it('should build messages with systemPrompt in legacy format', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          systemPrompt: 'You are a poet',
-          prompt: 'Write me a poem',
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        systemPrompt: 'You are a poet',
+        prompt: 'Write me a poem',
+      })
 
       const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
 
@@ -182,15 +169,9 @@ describe('AIProcessorV2', () => {
     })
 
     it('should throw error if no prompt configuration found', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+      })
 
       await expect(
         (processor as any).buildMessages(node, node.data, mockContextManager)
@@ -200,28 +181,16 @@ describe('AIProcessorV2', () => {
 
   describe('getStructuredOutputConfig', () => {
     it('should return undefined when structured output is disabled', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          structured_output: { enabled: false },
-        },
-      }
+      const node = aiNode({
+        structured_output: { enabled: false },
+      })
 
       const config = (processor as any).getStructuredOutputConfig(node, node.data)
       expect(config).toBeUndefined()
     })
 
     it('should return undefined when structured output is not configured', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
+      const node = aiNode({})
 
       const config = (processor as any).getStructuredOutputConfig(node, node.data)
       expect(config).toBeUndefined()
@@ -237,18 +206,12 @@ describe('AIProcessorV2', () => {
         required: ['summary', 'sentiment'],
       }
 
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          structured_output: {
-            enabled: true,
-            schema,
-          },
+      const node = aiNode({
+        structured_output: {
+          enabled: true,
+          schema,
         },
-      }
+      })
 
       const config = (processor as any).getStructuredOutputConfig(node, node.data)
       expect(config).toEqual({
@@ -260,18 +223,12 @@ describe('AIProcessorV2', () => {
 
   describe('extractRequiredVariables', () => {
     it('should extract variables from prompt_template', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          prompt_template: [
-            pt('system', 'You are a helpful assistant'),
-            pt('user', 'Email: {{webhook.email}}, Name: {{webhook.name}}'),
-          ],
-        },
-      }
+      const node = aiNode({
+        prompt_template: [
+          pt('system', 'You are a helpful assistant'),
+          pt('user', 'Email: {{webhook.email}}, Name: {{webhook.name}}'),
+        ],
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       expect(variables).toContain('webhook.email')
@@ -279,31 +236,19 @@ describe('AIProcessorV2', () => {
     })
 
     it('should extract variables from legacy prompt', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          prompt: 'Summarize: {{article.content}}',
-        },
-      }
+      const node = aiNode({
+        prompt: 'Summarize: {{article.content}}',
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       expect(variables).toContain('article.content')
     })
 
     it('should extract variables from systemPrompt', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          systemPrompt: 'Context: {{sys.context}}',
-          prompt: 'Question: {{user.question}}',
-        },
-      }
+      const node = aiNode({
+        systemPrompt: 'Context: {{sys.context}}',
+        prompt: 'Question: {{user.question}}',
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       expect(variables).toContain('sys.context')
@@ -311,19 +256,13 @@ describe('AIProcessorV2', () => {
     })
 
     it('ignores legacy context config (dead setting removed)', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          prompt_template: [pt('user', 'Hello')],
-          context: {
-            enabled: true,
-            variable_selector: ['workflow.state', 'user.preferences'],
-          },
+      const node = aiNode({
+        prompt_template: [pt('user', 'Hello')],
+        context: {
+          enabled: true,
+          variable_selector: ['workflow.state', 'user.preferences'],
         },
-      }
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       expect(variables).not.toContain('workflow.state')
@@ -331,18 +270,12 @@ describe('AIProcessorV2', () => {
     })
 
     it('should return unique variables only', () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          prompt_template: [
-            pt('system', 'Email: {{webhook.email}}'),
-            pt('user', 'Also email: {{webhook.email}}'),
-          ],
-        },
-      }
+      const node = aiNode({
+        prompt_template: [
+          pt('system', 'Email: {{webhook.email}}'),
+          pt('user', 'Also email: {{webhook.email}}'),
+        ],
+      })
 
       const variables = (processor as any).extractRequiredVariables(node)
       const emailCount = variables.filter((v: string) => v === 'webhook.email').length
@@ -352,16 +285,10 @@ describe('AIProcessorV2', () => {
 
   describe('validateNodeConfig', () => {
     it('should validate prompt_template configuration', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt_template: [pt('user', 'Hello')],
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt_template: [pt('user', 'Hello')],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(true)
@@ -369,31 +296,19 @@ describe('AIProcessorV2', () => {
     })
 
     it('should validate legacy prompt configuration', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt: 'Hello world',
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt: 'Hello world',
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(true)
     })
 
     it('should fail validation without prompt', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -401,20 +316,14 @@ describe('AIProcessorV2', () => {
     })
 
     it('should validate temperature range', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: {
-            provider: 'openai',
-            name: 'gpt-4',
-            completion_params: { temperature: 3.0 },
-          },
-          prompt: 'Hello',
+      const node = aiNode({
+        model: {
+          provider: 'openai',
+          name: 'gpt-4',
+          completion_params: { temperature: 3.0 },
         },
-      }
+        prompt: 'Hello',
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -422,20 +331,14 @@ describe('AIProcessorV2', () => {
     })
 
     it('should validate max_tokens is positive', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: {
-            provider: 'openai',
-            name: 'gpt-4',
-            completion_params: { max_tokens: -100 },
-          },
-          prompt: 'Hello',
+      const node = aiNode({
+        model: {
+          provider: 'openai',
+          name: 'gpt-4',
+          completion_params: { max_tokens: -100 },
         },
-      }
+        prompt: 'Hello',
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -443,20 +346,14 @@ describe('AIProcessorV2', () => {
     })
 
     it('should validate structured output schema', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt: 'Hello',
-          structured_output: {
-            enabled: true,
-            // Missing schema
-          },
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt: 'Hello',
+        structured_output: {
+          enabled: true,
+          // Missing schema
         },
-      }
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -464,37 +361,25 @@ describe('AIProcessorV2', () => {
     })
 
     it('should accept toolsEnabled with toolsets array', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt: 'Hello',
-          toolsEnabled: true,
-          toolsets: [{ slug: 'workflow.variable', enabled: true, source: 'manual' }],
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt: 'Hello',
+        toolsEnabled: true,
+        toolsets: [{ slug: 'workflow.variable', enabled: true, source: 'manual' }],
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(true)
     })
 
     it('should reject invalid maxIterations on a tools-enabled node', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt: 'Hello',
-          toolsEnabled: true,
-          toolsets: [],
-          maxIterations: 0,
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt: 'Hello',
+        toolsEnabled: true,
+        toolsets: [],
+        maxIterations: 0,
+      })
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
@@ -542,17 +427,11 @@ describe('AIProcessorV2', () => {
           outputHandle: 'source',
         } as any)
 
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          model: { provider: 'openai', name: 'gpt-4' },
-          prompt_template: [pt('user', 'hi')],
-          toolsEnabled: false,
-        },
-      }
+      const node = aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt_template: [pt('user', 'hi')],
+        toolsEnabled: false,
+      })
 
       await (proc as any).executeNode(node, mockContextManager)
       expect(baseSpy).toHaveBeenCalledTimes(1)

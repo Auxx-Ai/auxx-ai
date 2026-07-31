@@ -3,6 +3,7 @@
 'use client'
 
 import type { TiptapDoc } from '@auxx/lib/tiptap'
+import type { CommandProps } from '@tiptap/core'
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { useAvailableVariables } from '~/components/workflow/hooks'
@@ -86,7 +87,8 @@ interface PromptEditorContextType {
   variables: UnifiedVariable[]
   groups: VariableGroup[]
   allVariables: UnifiedVariable[]
-  nodeId?: string
+  /** Required — the provider's own props make it mandatory. */
+  nodeId: string
 
   // Event Handlers
   onBlur?: () => void
@@ -194,7 +196,7 @@ interface PromptEditorProviderProps {
  * Custom hook for expand/collapse functionality
  * Matches the existing useToggleExpend logic
  */
-const useToggleExpend = (ref: React.RefObject<HTMLDivElement>) => {
+const useToggleExpend = () => {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return { isExpanded, setIsExpanded }
@@ -252,7 +254,7 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
   const [contentHeight, setContentHeight] = useState(height || minHeight)
 
   // Expand functionality
-  const { isExpanded, setIsExpanded } = useToggleExpend(ref)
+  const { isExpanded, setIsExpanded } = useToggleExpend()
 
   // Content change handler
   const handleChange = useCallback(
@@ -292,7 +294,7 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
       editorRef.current
         .chain()
         .focus()
-        .command(({ tr }) => {
+        .command(({ tr }: CommandProps) => {
           tr.insertText(trigger)
           return true
         })

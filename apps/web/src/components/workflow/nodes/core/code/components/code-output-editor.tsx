@@ -50,14 +50,16 @@ export const CodeOutputEditor: React.FC<CodeOutputEditorProps> = ({
   const handleNameChange = (index: number, newName: string) => {
     if (isReadOnly) return
     updateOutputs((draft) => {
-      draft[index].name = newName
+      const output = draft[index]
+      if (output) output.name = newName
     })
   }
 
   const handleTypeChange = (index: number, value: string) => {
     if (isReadOnly) return
     updateOutputs((draft) => {
-      draft[index].type = value as BaseType
+      const output = draft[index]
+      if (output) output.type = value as BaseType
     })
   }
 

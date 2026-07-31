@@ -5,13 +5,10 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { storeEventBus } from './event-bus'
 import { historyManager } from './history-manager'
-import type { EdgeUpdate, FlowEdge } from './types'
+import type { EdgeUpdate, FlowEdge, HistoryOptions } from './types'
 import { useWorkflowStore } from './workflow-store'
-// import { calculateEdgeZIndex } from '../utils/edge-utils'
 
-export interface HistoryOptions {
-  skipHistory?: boolean
-}
+// import { calculateEdgeZIndex } from '../utils/edge-utils'
 
 interface EdgeStore {
   // State
@@ -236,8 +233,8 @@ export const useEdgeStore = create<EdgeStore>()(
 
         updates.forEach(({ id, data }) => {
           const edgeIndex = edges.findIndex((e) => e.id === id)
-          if (edgeIndex !== -1) {
-            const edge = edges[edgeIndex]
+          const edge = edges[edgeIndex]
+          if (edge) {
             const updatedEdge = { ...edge, data }
             edges[edgeIndex] = updatedEdge
             edgeMap.set(id, updatedEdge)

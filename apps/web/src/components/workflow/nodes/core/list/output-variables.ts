@@ -19,7 +19,7 @@ import type { ListNodeData, ListOperation } from './types'
  */
 function fieldRefToKeyPath(field: string | string[]): string {
   if (Array.isArray(field)) {
-    return field.map((rfId) => getFieldId(rfId)).join('.')
+    return field.map((rfId) => (isResourceFieldId(rfId) ? getFieldId(rfId) : rfId)).join('.')
   }
   if (isResourceFieldId(field)) {
     return getFieldId(field)

@@ -21,11 +21,20 @@ export class BranchMerger {
     const conflicts: Array<{ variable: string; values: any[] }> = []
 
     // Collect all variable changes from successful branches
-    const allChanges: Array<{ branch: string; changes: Record<string, any> }> = []
+    // A branch that never reported completedAt sorts first (treated as time 0).
+    const allChanges: Array<{
+      branch: string
+      changes: Record<string, any>
+      completedAt: number
+    }> = []
 
     for (const [branchId, result] of Object.entries(branchResults)) {
       if (result.status === 'success' && result.contextChanges) {
-        allChanges.push({ branch: branchId, changes: result.contextChanges })
+        allChanges.push({
+          branch: branchId,
+          changes: result.contextChanges,
+          completedAt: result.completedAt?.getTime() ?? 0,
+        })
       }
     }
 
@@ -33,11 +42,7 @@ export class BranchMerger {
     switch (strategy.type) {
       case 'last-write': {
         // Last branch to complete wins
-        const sortedByTime = allChanges.sort((a, b) => {
-          const timeA = branchResults[a.branch]!.completedAt.getTime()
-          const timeB = branchResults[b.branch]!.completedAt.getTime()
-          return timeA - timeB
-        })
+        const sortedByTime = allChanges.sort((a, b) => a.completedAt - b.completedAt)
 
         for (const { changes } of sortedByTime) {
           Object.assign(merged, changes)
@@ -47,11 +52,7 @@ export class BranchMerger {
 
       case 'first-write': {
         // First branch to complete wins
-        const sortedByTimeReverse = allChanges.sort((a, b) => {
-          const timeA = branchResults[a.branch]!.completedAt.getTime()
-          const timeB = branchResults[b.branch]!.completedAt.getTime()
-          return timeB - timeA
-        })
+        const sortedByTimeReverse = allChanges.sort((a, b) => b.completedAt - a.completedAt)
 
         for (const { changes } of sortedByTimeReverse) {
           Object.assign(merged, changes)

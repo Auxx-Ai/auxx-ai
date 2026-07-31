@@ -6,9 +6,13 @@ import { setupNodeRegistry } from '../nodes/registry-setup'
 import type { FlowEdge, FlowNode } from '../store/types'
 
 interface WorkflowEditorContextValue {
-  // Initial data for ReactFlow state initialization
-  getInitialNodes: () => FlowNode[]
-  getInitialEdges: () => FlowEdge[]
+  // Initial data for ReactFlow state initialization.
+  //
+  // Optional because nothing supplies them yet: the provider below hands down an
+  // empty value and both would-be consumers in `use-node-interactions.ts` are
+  // still commented out. Kept declared so the intended shape isn't lost.
+  getInitialNodes?: () => FlowNode[]
+  getInitialEdges?: () => FlowEdge[]
 }
 
 const WorkflowEditorContext = createContext<WorkflowEditorContextValue | null>(null)

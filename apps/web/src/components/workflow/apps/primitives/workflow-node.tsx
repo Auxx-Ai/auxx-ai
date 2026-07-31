@@ -44,15 +44,16 @@ interface WorkflowNodeProps {
 /**
  * Check if a React element is a WorkflowNodeHandle of specific type.
  */
-function isHandleOfType(element: any, type: 'source' | 'target'): boolean {
-  return (
-    React.isValidElement(element) &&
-    (element.type === WorkflowNodeHandle ||
-      element.type?.name === 'WorkflowNodeHandle' ||
-      // Handle serialized components from reconciler
-      (element as any)?.component === 'WorkflowNodeHandle') &&
-    element.props?.type === type
-  )
+function isHandleOfType(element: unknown, type: 'source' | 'target'): boolean {
+  if (!React.isValidElement<{ type?: string }>(element)) return false
+
+  const isHandleComponent =
+    element.type === WorkflowNodeHandle ||
+    (typeof element.type === 'function' && element.type.name === 'WorkflowNodeHandle') ||
+    // Handle serialized components from reconciler
+    (element as { component?: string }).component === 'WorkflowNodeHandle'
+
+  return isHandleComponent && element.props?.type === type
 }
 
 /**

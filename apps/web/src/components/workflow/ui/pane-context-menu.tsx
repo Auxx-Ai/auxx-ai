@@ -88,7 +88,10 @@ export const PaneContextMenu = memo(() => {
 
       await addNode({
         nodeType,
-        position: flowPosition,
+        // `position` is the placement KIND; the click coordinates go in
+        // `customPosition`, which PositionCalculator honours verbatim.
+        position: 'standalone',
+        customPosition: flowPosition,
         config,
       })
       handlePaneContextMenuClose()

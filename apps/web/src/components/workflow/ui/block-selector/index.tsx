@@ -44,13 +44,13 @@ export const BlockSelector = memo(
           const definition = unifiedNodeRegistry.getDefinition(nodeId)
           return definition ? { ...definition, nodeId } : null
         })
-        .filter(Boolean)
+        .filter((definition): definition is NonNullable<typeof definition> => definition !== null)
         .sort((a, b) => {
           // Sort by category then by name
-          if (a!.category !== b!.category) {
-            return a!.category.localeCompare(b!.category)
+          if (a.category !== b.category) {
+            return a.category.localeCompare(b.category)
           }
-          return a!.displayName.localeCompare(b!.displayName)
+          return a.displayName.localeCompare(b.displayName)
         })
     }, [availableBlocksTypes, registryVersion])
 
@@ -60,7 +60,6 @@ export const BlockSelector = memo(
       const apps: typeof availableNodes = []
 
       availableNodes.forEach((node) => {
-        if (!node) return
         // App blocks (INTEGRATION) and app triggers (TRIGGER with appId) go to "Apps" tab
         if (node.category === NodeCategory.INTEGRATION || node.defaultData?.appId) {
           apps.push(node)
@@ -77,11 +76,9 @@ export const BlockSelector = memo(
     const allNodesByCategory = useMemo(() => {
       const categories: Record<string, typeof availableNodes> = {}
       availableNodes.forEach((node) => {
-        if (!node) return
-        if (!categories[node.category]) {
-          categories[node.category] = []
-        }
-        categories[node.category].push(node)
+        const bucket = categories[node.category] ?? []
+        bucket.push(node)
+        categories[node.category] = bucket
       })
       return categories
     }, [availableNodes])
@@ -89,11 +86,9 @@ export const BlockSelector = memo(
     const nodesByCategory = useMemo(() => {
       const categories: Record<string, typeof currentNodes> = {}
       currentNodes.forEach((node) => {
-        if (!node) return
-        if (!categories[node.category]) {
-          categories[node.category] = []
-        }
-        categories[node.category].push(node)
+        const bucket = categories[node.category] ?? []
+        bucket.push(node)
+        categories[node.category] = bucket
       })
       return categories
     }, [currentNodes])
@@ -103,7 +98,7 @@ export const BlockSelector = memo(
     const displayCategories = isSearching ? allNodesByCategory : nodesByCategory
 
     const triggerClassNameResolved =
-      typeof triggerClassName === 'function' ? triggerClassName(open) : triggerClassName
+      typeof triggerClassName === 'function' ? triggerClassName(open ?? false) : triggerClassName
 
     const defaultTrigger = (
       <button
@@ -116,7 +111,7 @@ export const BlockSelector = memo(
         onClick={(e) => {
           e.stopPropagation()
           e.preventDefault()
-          onOpenChange(!open)
+          onOpenChange?.(!open)
         }}>
         <Plus className='size-4' />
       </button>
@@ -198,19 +193,19 @@ export const BlockSelector = memo(
                 <CommandGroup key={category} heading={category.toUpperCase()}>
                   {nodes.map((node) => {
                     const isAppNode =
-                      node!.category === NodeCategory.INTEGRATION || !!node!.defaultData?.appId
+                      node.category === NodeCategory.INTEGRATION || !!node.defaultData?.appId
                     return (
                       <Tooltip
-                        key={node!.nodeId}
-                        content={node!.description}
+                        key={node.nodeId}
+                        content={node.description}
                         side='right'
                         sideOffset={12}
                         className='max-w-[200px]'>
                         <div>
                           <CommandItem
-                            value={node!.nodeId}
+                            value={node.nodeId}
                             onSelect={() => {
-                              onSelect(node!.defaults?.type || node!.nodeId, node!.defaults)
+                              onSelect(node.nodeId)
                             }}
                             className='cursor-pointer data-[selected=true]:bg-primary-300/20 py-1 px-1'>
                             <span
@@ -218,10 +213,10 @@ export const BlockSelector = memo(
                                 'rounded-full size-6 flex items-center justify-center shrink-0',
                                 isAppNode && 'bg-primary-200'
                               )}
-                              style={!isAppNode ? { backgroundColor: node!.color } : undefined}>
+                              style={!isAppNode ? { backgroundColor: node.color } : undefined}>
                               {unifiedNodeRegistry.getNodeIcon(node.id, 'size-4 text-white')}
                             </span>
-                            <span>{node!.displayName}</span>
+                            <span>{node.displayName}</span>
                           </CommandItem>
                         </div>
                       </Tooltip>

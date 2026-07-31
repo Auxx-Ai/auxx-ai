@@ -126,7 +126,10 @@ export const WorkflowViewer = memo<WorkflowViewerProps>(
     const mergedOptions: Required<WorkflowViewerOptions> = {
       ...defaultOptions,
       ...options,
-      ...(theme && { theme }), // Theme prop takes precedence
+      // Theme prop takes precedence. 'system' means "no explicit override", so
+      // it falls through to the option/default theme rather than being written
+      // into `options.theme`, which only models the two concrete themes.
+      ...(theme && theme !== 'system' && { theme }),
     }
 
     // Fetch or load workflow data

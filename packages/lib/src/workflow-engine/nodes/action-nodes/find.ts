@@ -72,8 +72,8 @@ type BuiltQuery = {
 function normalizeConditionsForMailBuilder(conditions: GenericCondition[]): Condition[] {
   return conditions.map((c) => {
     // Strip resource prefix
-    const rawFieldId = Array.isArray(c.fieldId) ? c.fieldId[0] : c.fieldId
-    const fieldId = rawFieldId?.includes(':')
+    const rawFieldId = (Array.isArray(c.fieldId) ? c.fieldId[0] : c.fieldId) ?? ''
+    const fieldId = rawFieldId.includes(':')
       ? parseResourceFieldId(rawFieldId as ResourceFieldId).fieldId
       : rawFieldId
 
@@ -200,7 +200,7 @@ export class FindProcessor extends BaseNodeProcessor {
       ) {
         const values = Array.isArray(condition.value) ? condition.value : [condition.value]
         for (const val of values) {
-          if (!isValidFieldOptionValue(resourceType as TableId, condition.fieldId, String(val))) {
+          if (!isValidFieldOptionValue(resourceType as TableId, fieldId, String(val))) {
             const validValues = getFieldOptions(field)
               .map((opt) => opt.value)
               .join(', ')

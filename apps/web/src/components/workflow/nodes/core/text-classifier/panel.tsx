@@ -15,10 +15,12 @@ import type React from 'react'
 import { memo } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import ModelParameterModal from '~/components/workflow/ui/model-parameter'
+import { ModelTypeEnum } from '~/components/workflow/ui/model-parameter/types'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import Section from '~/components/workflow/ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { CategoriesList } from './components/categories-list'
 import { textClassifierDefinition } from './schema'
 import { TextClassifierProvider, useTextClassifierContext } from './text-classifier-context'
@@ -58,7 +60,7 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
         isRequired>
         <ModelParameterModal
           isAdvancedMode={true}
-          defaultModelType='llm'
+          defaultModelType={ModelTypeEnum.textGeneration}
           mode={data.model.mode}
           modelId={data.model.name}
           provider={data.model.provider}
@@ -79,7 +81,7 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
               mode: (model.mode as any) || 'chat',
             })
           }
-          completionParams={data.model.completion_params}
+          completionParams={data.model.completion_params ?? {}}
           onCompletionParamsChange={(params) =>
             updateModel({
               ...data.model,
@@ -179,7 +181,7 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
             {data.instruction.enabled && (
               <Editor
                 title={<Label className='text-sm font-medium'>Input</Label>}
-                value={data.instruction.editorContent || ''}
+                value={data.instruction.text || ''}
                 onChange={handleInstructionChange}
                 placeholder='Add custom instructions for classification...'
                 nodeId={nodeId}
@@ -191,7 +193,10 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
         </div>
       </Section>
       <OutputVariablesDisplay
-        outputVariables={textClassifierDefinition.outputVariables?.(data, nodeId) || []}
+        outputVariables={
+          textClassifierDefinition.outputVariables?.(data, nodeId, staticOutputVariableContext) ||
+          []
+        }
         initialOpen={false}
       />
     </>

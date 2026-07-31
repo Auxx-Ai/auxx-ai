@@ -3,4 +3,4 @@
 export { HttpNode } from './node'
 export { HttpNodePanel } from './panel'
 export { httpNodeDefinition } from './schema'
-export type { HttpNodeConfig, HttpNodeData } from './types'
+export type { HttpNodeData } from './types'

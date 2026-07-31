@@ -2,6 +2,7 @@
 
 import { NodeRunningStatus } from '@auxx/lib/workflow-engine/client'
 import type {
+  CoordinateExtent,
   Position,
   Edge as ReactFlowEdge,
   Node as ReactFlowNode,
@@ -177,6 +178,12 @@ export type CommonNodeType<TData extends BaseNodeData = BaseNodeData> = {
   draggable?: boolean
   deletable?: boolean
   dragging?: boolean
+  /**
+   * React Flow's node extent. Loop children are pinned to their parent with
+   * `'parent'` — see `node-factory.ts`. `null` is carried to stay assignable
+   * from React Flow's own `Node`, which permits it.
+   */
+  extent?: 'parent' | CoordinateExtent | null
   data: TData
 }
 
@@ -198,9 +205,22 @@ export type FlowEdge = Edge
 export type SelectedNode = Pick<FlowNode, 'id' | 'data'>
 
 /**
- * Node component props
+ * Props a workflow node component actually receives.
+ *
+ * React Flow only ever mounts `standard` and `note` (see `FLOW_NODE_TYPES` in
+ * nodes/shared/base/custom-node.tsx). `StandardNode` looks the real component up
+ * in the registry and renders it with exactly these three props — so a node
+ * component never sees React Flow's own `NodeProps` (no `position`, no
+ * `dragging`, no `zIndex`, and `data` is typed, not `Record<string, unknown>`).
+ *
+ * Node components should be declared `NodeProps<XNodeData>`, NOT the node-object
+ * type `SpecificNode<'x', XNodeData>`.
  */
-export type NodeProps<T extends BaseNodeData = BaseNodeData> = { id: string; data: T }
+export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
+  id: string
+  data: T
+  selected?: boolean
+}
 
 /**
  * Full node type for React Flow (legacy - use FlowNode instead)

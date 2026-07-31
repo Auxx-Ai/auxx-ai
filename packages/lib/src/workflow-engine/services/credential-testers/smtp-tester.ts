@@ -85,7 +85,9 @@ export class SmtpTester {
   /**
    * Categorize SMTP errors for better user feedback
    */
-  private static categorizeSmtpError(error: any): CredentialTestResult['error']['type'] {
+  private static categorizeSmtpError(
+    error: any
+  ): NonNullable<CredentialTestResult['error']>['type'] {
     const message = error.message?.toLowerCase() || ''
     const code = error.code?.toLowerCase() || ''
 

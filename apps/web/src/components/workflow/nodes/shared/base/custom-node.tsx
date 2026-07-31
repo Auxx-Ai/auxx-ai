@@ -1,13 +1,14 @@
 // apps/web/src/components/workflow/nodes/shared/base/custom-node.tsx
 
-import type { NodeProps } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 import { useMemo } from 'react'
 import { AppWorkflowNode } from '~/components/workflow/apps/app-workflow-node'
 import { useRegistryVersion } from '~/components/workflow/hooks'
+import type { BaseNodeData } from '~/components/workflow/types'
 import { NoteNode } from '../../core/note'
 import { unifiedNodeRegistry } from '../../unified-registry'
 
-const StandardNode = (props: NodeProps) => {
+const StandardNode = (props: NodeProps<Node<BaseNodeData>>) => {
   const nodeData = props.data
   const nodeType = nodeData.type
 

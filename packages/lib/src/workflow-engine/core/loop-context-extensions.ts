@@ -284,7 +284,7 @@ export class LoopContextManager {
     const currentIndex = loopIds.indexOf(currentLoopId)
 
     if (currentIndex > 0) {
-      return loopIds[currentIndex - 1]
+      return loopIds[currentIndex - 1] ?? null
     }
 
     return null

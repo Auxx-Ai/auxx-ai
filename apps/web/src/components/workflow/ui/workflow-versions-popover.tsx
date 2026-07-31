@@ -125,7 +125,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
   const filteredVersions = React.useMemo(() => {
     if (!searchQuery) return versions
     return versions.filter((version) =>
-      version.title.toLowerCase().includes(searchQuery.toLowerCase())
+      (version.title || version.name).toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [versions, searchQuery])
 

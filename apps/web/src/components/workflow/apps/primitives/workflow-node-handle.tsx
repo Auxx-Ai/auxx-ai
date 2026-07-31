@@ -9,6 +9,10 @@ import { useWorkflowNodeContextOptional } from './workflow-node-context'
 /** Handle type for input or output connections */
 type HandleType = 'source' | 'target'
 
+/** `Node['data']` is `Record<string, unknown>`, so re-narrow the handle-id lists. */
+const toHandleIds = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+
 /** Props for WorkflowNodeHandle component */
 interface WorkflowNodeHandleProps {
   /** Type of handle - source (output) or target (input) */
@@ -48,8 +52,8 @@ export const WorkflowNodeHandle = ({
     data: {
       ...nodeContext.nodeData,
       type: nodeContext.nodeType,
-      _connectedSourceHandleIds: nodeContext.nodeData._connectedSourceHandleIds || [],
-      _connectedTargetHandleIds: nodeContext.nodeData._connectedTargetHandleIds || [],
+      _connectedSourceHandleIds: toHandleIds(nodeContext.nodeData._connectedSourceHandleIds),
+      _connectedTargetHandleIds: toHandleIds(nodeContext.nodeData._connectedTargetHandleIds),
     },
     // SDK nodes should show add button by default
     showAdd: true,

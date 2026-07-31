@@ -113,6 +113,15 @@ export const WORKFLOW_TRIGGER_TYPE_VALUES = [
 ] as const
 
 /**
+ * Narrow a persisted trigger-type string (`Workflow.triggerType` is a nullable
+ * text column) to the `WorkflowTriggerType` enum. Unknown or missing values
+ * fall back to `MANUAL`.
+ */
+export function toWorkflowTriggerType(value: string | null | undefined): WorkflowTriggerType {
+  return WORKFLOW_TRIGGER_TYPE_VALUES.find((type) => type === value) ?? WorkflowTriggerType.MANUAL
+}
+
+/**
  * Human-readable names for workflow trigger types
  * Maps trigger type values to display names
  */
@@ -285,10 +294,16 @@ export enum NodeRunningStatus {
  * The backend will extract config by removing base node properties
  */
 export interface NodeData {
-  // Core properties (not part of config)
-  id: string
-  type: string
-  title: string
+  // Core properties (not part of config).
+  //
+  // Optional on purpose: `WorkflowGraphBuilder.cleanNodeData` strips `title`,
+  // `type`, `name`, `position`, `metadata` and `disabled` off the canvas node
+  // before assigning `WorkflowNode.data`, so no engine-side node carries them.
+  // They are declared here because the pre-clean canvas shape does, and the
+  // builder reads them off the raw node — but nothing downstream may assume them.
+  id?: string
+  type?: string
+  title?: string
   desc?: string
   description?: string
 

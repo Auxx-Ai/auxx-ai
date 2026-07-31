@@ -299,7 +299,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         appId,
         blockId,
         installationId,
-        connectionId: preprocessedData.connectionId,
+        connectionId: appData.connectionId,
         workflowContext,
         workflowInput: inputs,
         timeout: this.blockMetadata.timeout || 30000,

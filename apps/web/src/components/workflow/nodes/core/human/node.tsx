@@ -1,28 +1,33 @@
 // apps/web/src/components/workflow/nodes/core/human/node.tsx
 
+import { safeParseActorId } from '@auxx/types/actor'
 import { Bell, Clock, Mail, Users } from 'lucide-react'
 import { type FC, memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
-import type { UnifiedVariable } from '~/components/workflow/types'
+import type { NodeProps, UnifiedVariable } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import type {
-  HumanConfirmationNodeData,
-  HumanConfirmationNode as HumanConfirmationNodeType,
-} from './types'
+import type { HumanConfirmationNodeData } from './types'
 
 /**
  * Human Confirmation node component
  * Displays a node with 3 output handles for approved, denied, and timeout paths
  */
-export const HumanConfirmationNode: FC<HumanConfirmationNodeType> = memo((props) => {
+export const HumanConfirmationNode: FC<NodeProps<HumanConfirmationNodeData>> = memo((props) => {
   const { data, id, selected } = props
 
   /**
    * Get display text for assignees configuration
    */
   const getAssigneeDisplay = (assignees: HumanConfirmationNodeData['assignees']) => {
-    const userCount = assignees?.userIds?.length || 0
-    const groupCount = assignees?.groups?.length || 0
+    // Assignees are stored as a single ActorId list ("user:abc", "group:xyz");
+    // the old split userIds/groups fields no longer exist.
+    const actorIds = assignees?.actorIds ?? []
+    const userCount = actorIds.filter(
+      (actorId) => safeParseActorId(actorId)?.type === 'user'
+    ).length
+    const groupCount = actorIds.filter(
+      (actorId) => safeParseActorId(actorId)?.type === 'group'
+    ).length
 
     const parts = []
     if (userCount > 0) parts.push(`${userCount} user${userCount > 1 ? 's' : ''}`)

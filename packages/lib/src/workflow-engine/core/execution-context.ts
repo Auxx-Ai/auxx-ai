@@ -2113,12 +2113,16 @@ export class ExecutionContextManager implements ContextManager {
    * Used for URL refresh and content retrieval operations
    */
   getFileService(): FileContextService {
-    if (!this.fileService) {
-      // Import dynamically to avoid circular dependencies
-      const { FileContextService } = require('../services/file-context-service')
-      this.fileService = new FileContextService(this.context.db, this.context.organizationId)
-    }
-    return this.fileService
+    if (this.fileService) return this.fileService
+
+    // Import dynamically to avoid circular dependencies
+    const { FileContextService } = require('../services/file-context-service')
+    const service: FileContextService = new FileContextService(
+      this.context.db,
+      this.context.organizationId
+    )
+    this.fileService = service
+    return service
   }
 
   /**

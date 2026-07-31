@@ -28,6 +28,7 @@ import {
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { NodeRunningStatus } from '~/components/workflow/types'
+import { toNodeRunningStatus } from '~/components/workflow/utils/execution-status'
 import { unifiedNodeRegistry } from '../../../nodes/unified-registry'
 import { TraceRenderBoundary } from './trace-render-boundary'
 
@@ -143,12 +144,16 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
   const totalPrice = metadata?.totalPrice
 
   // Compute display status based on workflow state
-  const displayStatus = computeDisplayStatus(execution.status, workflowStatus, !!execution.error)
+  const displayStatus = computeDisplayStatus(
+    toNodeRunningStatus(execution.status),
+    workflowStatus,
+    !!execution.error
+  )
 
   const showChildren = expanded && displayStatus !== NodeRunningStatus.Pending
 
   // Raw outputs JSON — shared between the Outputs tab and the Preview fallback
-  const rawOutputs = execution.outputs && (
+  const rawOutputs = execution.outputs ? (
     <div className='relative group'>
       <Button
         variant='ghost'
@@ -162,7 +167,7 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
         {JSON.stringify(execution.outputs, null, 2)}
       </pre>
     </div>
-  )
+  ) : null
 
   return (
     <div

@@ -9,7 +9,8 @@ const logger = createScopedLogger('context-merger')
  * Conflict resolution options for context merging
  */
 export interface MergeOptions {
-  conflictResolution: 'last-wins' | 'first-wins' | 'error' | 'custom'
+  /** Mirrors `MergeStrategy['conflictResolution']`; carried for logging — `onConflict` decides. */
+  conflictResolution: NonNullable<MergeStrategy['conflictResolution']>
   onConflict: (key: string, values: any[]) => any
 }
 
@@ -129,7 +130,7 @@ export class ContextMerger {
     // Sort by completion time (earliest first)
     const sortedResults = [...branchResults]
       .filter((r) => r.status === 'success' && r.contextChanges)
-      .sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime())
+      .sort((a, b) => (a.completedAt?.getTime() ?? 0) - (b.completedAt?.getTime() ?? 0))
 
     for (const result of sortedResults) {
       if (result.contextChanges) {
@@ -165,7 +166,7 @@ export class ContextMerger {
     // Sort by completion time (latest first)
     const sortedResults = [...branchResults]
       .filter((r) => r.status === 'success' && r.contextChanges)
-      .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())
+      .sort((a, b) => (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0))
 
     // Apply changes in reverse chronological order
     for (const result of sortedResults) {

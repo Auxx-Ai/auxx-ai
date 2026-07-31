@@ -1,8 +1,9 @@
-// apps/web/src/components/workflow/utils/connection-validation.ts
+// apps/web/src/components/workflow/hooks/use-node-validation.ts
 
-import { type Connection, getOutgoers, type Node, useStoreApi } from '@xyflow/react'
+import { type Connection, type Edge, getOutgoers, useStoreApi } from '@xyflow/react'
 import { LOOP_HANDLES } from '../nodes/core/loop/constants'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
+import type { FlowEdge, FlowNode } from '../types'
 import { NodeType } from '../types/node-types'
 import { NodeCategory } from '../types/registry'
 
@@ -10,7 +11,7 @@ import { NodeCategory } from '../types/registry'
  * Hook for node validation utilities
  */
 export function useNodeValidation() {
-  const store = useStoreApi()
+  const store = useStoreApi<FlowNode, FlowEdge>()
 
   // Maximum parallel connections from a single node handle
   const PARALLEL_LIMIT = 10
@@ -18,7 +19,7 @@ export function useNodeValidation() {
   /**
    * Checks if a source node is inside a loop node
    */
-  const isNodeInsideLoop = (sourceId: string, loopId: string, nodes: Node[]): boolean => {
+  const isNodeInsideLoop = (sourceId: string, loopId: string, nodes: FlowNode[]): boolean => {
     const sourceNode = nodes.find((n) => n.id === sourceId)
     if (!sourceNode) return false
 
@@ -44,7 +45,7 @@ export function useNodeValidation() {
     sourceId: string,
     targetId: string,
     targetHandle: string,
-    nodes: Node[]
+    nodes: FlowNode[]
   ): boolean => {
     const sourceNode = nodes.find((n) => n.id === sourceId)
     if (!sourceNode) return false
@@ -129,7 +130,9 @@ export function useNodeValidation() {
    * @param connection - The connection to validate
    * @returns true if the connection is valid, false otherwise
    */
-  const isValidConnection = (connection: Connection): boolean => {
+  // React Flow's `IsValidConnection` also hands this an existing `Edge` when a
+  // connection is being reconnected, so accept both shapes.
+  const isValidConnection = (connection: Connection | Edge): boolean => {
     const { nodes, edges } = store.getState()
 
     // Basic validation
@@ -265,7 +268,7 @@ export function useNodeValidation() {
     }
 
     // Check for cycles in the graph
-    const hasCycle = (node: Node, visited = new Set<string>()): boolean => {
+    const hasCycle = (node: FlowNode, visited = new Set<string>()): boolean => {
       // Skip cycle check for loop internal connections
       if (sourceNode.data?.loopId && targetNode.data?.loopId === sourceNode.data.loopId) {
         return false // Internal loop connections are handled by loop logic

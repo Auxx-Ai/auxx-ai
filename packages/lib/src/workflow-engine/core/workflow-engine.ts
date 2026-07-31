@@ -2128,15 +2128,19 @@ export class WorkflowEngine {
         status: 'completed_from_resume',
         resumed_at: new Date().toISOString(),
       }
-      state.nodeResults[fromNodeId] = {
-        ...state.nodeResults[fromNodeId],
+      const previousResult = state.nodeResults[fromNodeId]
+      const resumedResult: NodeExecutionResult = {
+        ...previousResult,
+        nodeId: previousResult?.nodeId ?? fromNodeId,
+        executionTime: previousResult?.executionTime ?? 0,
         output: finalOutput,
         status: NodeRunningStatus.Succeeded,
       }
+      state.nodeResults[fromNodeId] = resumedResult
       logger.info('Updated node result for resumed node', {
         fromNodeId,
         finalOutput,
-        resultStatus: state.nodeResults[fromNodeId].status,
+        resultStatus: resumedResult.status,
       })
       // Always emit NODE_COMPLETED event for the resumed node
       if (reporter && workflowRunId) {

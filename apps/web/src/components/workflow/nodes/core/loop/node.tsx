@@ -12,15 +12,15 @@ import {
   useLoopProgress,
   useNodeStatus,
 } from '~/components/workflow/hooks'
-import { NodeRunningStatus, NodeType } from '~/components/workflow/types'
+import { type NodeProps, NodeRunningStatus, NodeType } from '~/components/workflow/types'
 import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import { NodeResizer } from '~/components/workflow/ui/node-resizer'
 import { unifiedNodeRegistry } from '../../unified-registry'
 import { LOOP_HANDLES } from './constants'
-import type { LoopNode as LoopNodeType } from './types'
+import type { LoopNodeData } from './types'
 
-type LoopStartProps = Pick<LoopNodeType, 'id' | 'data'>
+type LoopStartProps = Pick<NodeProps<LoopNodeData>, 'id' | 'data'>
 
 const LoopStart: FC<LoopStartProps> = memo(({ id, data }) => {
   return (
@@ -58,7 +58,7 @@ const LoopEnd: FC<LoopStartProps> = memo(({ id, data }) => {
   )
 })
 
-export const LoopNode: FC<LoopNodeType> = memo((props) => {
+export const LoopNode: FC<NodeProps<LoopNodeData>> = memo((props) => {
   const { id, data, selected } = props
   const nodeStatus = useNodeStatus(id)
   const isDisabled = data.disabled || false
@@ -153,7 +153,9 @@ export const LoopNode: FC<LoopNodeType> = memo((props) => {
       <div className='absolute top-15 left-16'>
         {!hasChildNodes && (
           <AddNodeTrigger
-            anchorNode={{ id, type: 'loop', position: props.position, data }}
+            // Position is determined by the node-addition service; AddNodeTrigger
+            // only reads `id` off the anchor.
+            anchorNode={{ id, type: 'loop', position: { x: 0, y: 0 }, data }}
             position='inside'
             parentNodeId={id}
             allowedNodeTypes={availableNextBlocks}

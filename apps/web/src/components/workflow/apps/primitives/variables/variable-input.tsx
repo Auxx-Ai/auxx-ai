@@ -1,7 +1,13 @@
 // apps/web/src/components/workflow/apps/primitives/variables/variable-input.tsx
 
+import { BaseType } from '~/components/workflow/types'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import VariableInputUI from '~/components/workflow/ui/variables/variable-input'
+
+/** App bundles hand us plain strings; keep only the ones that name a real BaseType. */
+const BASE_TYPE_VALUES = new Set<string>(Object.values(BaseType))
+const toBaseTypes = (types?: string[]): BaseType[] | undefined =>
+  types?.filter((type): type is BaseType => BASE_TYPE_VALUES.has(type))
 
 /** Props for VariableInput component */
 interface VariableInputProps {
@@ -62,7 +68,7 @@ export const VariableInput = ({
     <VariableInputUI
       variableId={variableId!}
       nodeId={nodeId}
-      allowedTypes={allowedTypes}
+      allowedTypes={toBaseTypes(allowedTypes)}
       placeholder={placeholder}
       disabled={disabled}
       className={className}

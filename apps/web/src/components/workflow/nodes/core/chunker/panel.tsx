@@ -11,6 +11,8 @@ import {
   VarEditor,
   VarEditorField,
   VarEditorFieldRow,
+  type VarEditorValue,
+  varEditorText,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
@@ -35,13 +37,13 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
    * Clears value when switching between constant/variable mode
    */
   const handleContentChange = useCallback(
-    (value: string, isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         const wasConstantMode = draft.fieldModes?.['content'] ?? false
         const modeChanged = wasConstantMode !== isConstantMode
 
         // Clear value when switching modes
-        draft.content = modeChanged ? '' : value
+        draft.content = modeChanged ? '' : varEditorText(value)
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['content'] = isConstantMode
       })
@@ -57,7 +59,7 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
    * Clears value when switching between constant/variable mode
    */
   const handleNumberChange = useCallback(
-    (field: 'chunkSize' | 'chunkOverlap', value: any, isConstantMode: boolean) => {
+    (field: 'chunkSize' | 'chunkOverlap', value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         const wasConstantMode = draft.fieldModes?.[field] ?? true
         const modeChanged = wasConstantMode !== isConstantMode
@@ -67,11 +69,12 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
           draft[field] = undefined
         } else if (isConstantMode) {
           // Constant mode: parse as number
-          const numValue = typeof value === 'number' ? value : parseInt(value, 10)
+          const numValue =
+            typeof value === 'number' ? value : Number.parseInt(varEditorText(value), 10)
           draft[field] = Number.isNaN(numValue) ? undefined : numValue
         } else {
-          // Variable mode: store as string (variable reference)
-          draft[field] = value as any
+          // Variable mode: store the variable reference as a string
+          draft[field] = varEditorText(value) || undefined
         }
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode
@@ -86,13 +89,13 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
    * Clears value when switching between constant/variable mode
    */
   const handleDelimiterChange = useCallback(
-    (value: string, isConstantMode: boolean) => {
+    (value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         const wasConstantMode = draft.fieldModes?.['delimiter'] ?? true
         const modeChanged = wasConstantMode !== isConstantMode
 
         // Clear value when switching modes
-        draft.delimiter = modeChanged ? undefined : value || undefined
+        draft.delimiter = modeChanged ? undefined : varEditorText(value) || undefined
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes['delimiter'] = isConstantMode
       })
@@ -108,7 +111,11 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
    * Clears value when switching between constant/variable mode
    */
   const handleBooleanChange = useCallback(
-    (field: 'normalizeWhitespace' | 'removeUrlsAndEmails', value: any, isConstantMode: boolean) => {
+    (
+      field: 'normalizeWhitespace' | 'removeUrlsAndEmails',
+      value: VarEditorValue,
+      isConstantMode: boolean
+    ) => {
       const newData = produce(nodeData, (draft) => {
         const wasConstantMode = draft.fieldModes?.[field] ?? true
         const modeChanged = wasConstantMode !== isConstantMode
@@ -120,8 +127,8 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
           // Constant mode: store as boolean
           draft[field] = value === true
         } else {
-          // Variable mode: store as string (variable reference)
-          draft[field] = value as any
+          // Variable mode: store the variable reference as a string
+          draft[field] = varEditorText(value) || undefined
         }
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode

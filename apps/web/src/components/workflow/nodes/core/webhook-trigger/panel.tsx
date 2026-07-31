@@ -18,6 +18,7 @@ import Field from '~/components/workflow/ui/field'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
 import { api } from '~/trpc/react'
+import { staticOutputVariableContext } from '../output-variable-context'
 import { webhookTriggerDefinition } from './schema'
 import type { WebhookTriggerNodeData } from './types'
 
@@ -116,7 +117,13 @@ const WebhookTriggerPanelComponent: React.FC<WebhookTriggerPanelProps> = ({ node
       )}
 
       <OutputVariablesDisplay
-        outputVariables={webhookTriggerDefinition.outputVariables?.(nodeData, nodeId) || []}
+        outputVariables={
+          webhookTriggerDefinition.outputVariables?.(
+            nodeData,
+            nodeId,
+            staticOutputVariableContext
+          ) || []
+        }
         initialOpen={false}
       />
     </BasePanel>

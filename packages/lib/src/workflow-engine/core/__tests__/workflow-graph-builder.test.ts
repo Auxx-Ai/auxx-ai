@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { NodeProcessorRegistry } from '../node-processor-registry'
-import { WorkflowNodeType } from '../types'
+import { NodeRunningStatus, WorkflowNodeType } from '../types'
 import { WorkflowGraphBuilder, WorkflowGraphHelper } from '../workflow-graph-builder'
 
 describe('WorkflowGraphBuilder', () => {
@@ -13,38 +13,46 @@ describe('WorkflowGraphBuilder', () => {
     // Register mock processors for testing
     nodeRegistry.registerProcessor({
       type: WorkflowNodeType.MANUAL,
-      name: 'Manual Trigger',
-      description: 'Test processor',
-      version: '1.0.0',
       preprocessNode: async () => ({ inputs: {}, metadata: {} }),
-      execute: async () => ({ status: 'success', output: {} }),
+      execute: async (node) => ({
+        nodeId: node.nodeId,
+        status: NodeRunningStatus.Succeeded,
+        output: {},
+        executionTime: 0,
+      }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
     nodeRegistry.registerProcessor({
       type: WorkflowNodeType.VARIABLE_SET,
-      name: 'Variable Set',
-      description: 'Test processor',
-      version: '1.0.0',
       preprocessNode: async () => ({ inputs: {}, metadata: {} }),
-      execute: async () => ({ status: 'success', output: {} }),
+      execute: async (node) => ({
+        nodeId: node.nodeId,
+        status: NodeRunningStatus.Succeeded,
+        output: {},
+        executionTime: 0,
+      }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
     nodeRegistry.registerProcessor({
       type: WorkflowNodeType.END,
-      name: 'End',
-      description: 'Test processor',
-      version: '1.0.0',
       preprocessNode: async () => ({ inputs: {}, metadata: {} }),
-      execute: async () => ({ status: 'success', output: {} }),
+      execute: async (node) => ({
+        nodeId: node.nodeId,
+        status: NodeRunningStatus.Succeeded,
+        output: {},
+        executionTime: 0,
+      }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
     nodeRegistry.registerProcessor({
       type: WorkflowNodeType.LOOP,
-      name: 'Loop',
-      description: 'Test processor',
-      version: '1.0.0',
       preprocessNode: async () => ({ inputs: {}, metadata: {} }),
-      execute: async () => ({ status: 'success', output: {} }),
+      execute: async (node) => ({
+        nodeId: node.nodeId,
+        status: NodeRunningStatus.Succeeded,
+        output: {},
+        executionTime: 0,
+      }),
       validate: async () => ({ valid: true, errors: [], warnings: [] }),
     })
 
@@ -150,7 +158,7 @@ describe('WorkflowGraphBuilder', () => {
       const edges = graph.edgesBySourceHandle.get('node1:source')
       expect(edges).toBeDefined()
       expect(edges?.length).toBe(1)
-      expect(edges?.[0].target).toBe('node3')
+      expect(edges?.[0]?.target).toBe('node3')
     })
 
     it('should handle chain of disabled nodes', () => {
@@ -179,7 +187,7 @@ describe('WorkflowGraphBuilder', () => {
 
       // Check bypass edge spans all disabled nodes
       const edges = graph.edgesBySourceHandle.get('node1:source')
-      expect(edges?.[0].target).toBe('node4')
+      expect(edges?.[0]?.target).toBe('node4')
     })
 
     it('should preserve edge handles during bypass', () => {
@@ -214,8 +222,8 @@ describe('WorkflowGraphBuilder', () => {
 
       const edges = graph.edgesBySourceHandle.get('node1:custom')
       expect(edges).toBeDefined()
-      expect(edges?.[0].sourceHandle).toBe('custom')
-      expect(edges?.[0].targetHandle).toBe('target')
+      expect(edges?.[0]?.sourceHandle).toBe('custom')
+      expect(edges?.[0]?.targetHandle).toBe('target')
     })
 
     it('should handle complex disabled node scenarios', () => {
@@ -302,7 +310,7 @@ describe('WorkflowGraphBuilder', () => {
       const graph = WorkflowGraphBuilder.buildGraph(workflow)
       const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
 
-      expect(transformed?.nodes[0].name).toBe('manual-ode1')
+      expect(transformed?.nodes[0]?.name).toBe('manual-ode1')
     })
 
     it('should preserve node data', () => {
@@ -329,8 +337,8 @@ describe('WorkflowGraphBuilder', () => {
       const graph = WorkflowGraphBuilder.buildGraph(workflow)
       const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
 
-      expect(transformed?.nodes[0].data.variables).toHaveLength(2)
-      expect(transformed?.nodes[0].data.variables[0]).toEqual({ name: 'var1', value: 'value1' })
+      expect(transformed?.nodes[0]?.data.variables).toHaveLength(2)
+      expect(transformed?.nodes[0]?.data.variables[0]).toEqual({ name: 'var1', value: 'value1' })
     })
 
     it('should extract metadata correctly', () => {
@@ -355,7 +363,7 @@ describe('WorkflowGraphBuilder', () => {
       const graph = WorkflowGraphBuilder.buildGraph(workflow)
       const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
 
-      expect(transformed?.nodes[0].metadata).toMatchObject({
+      expect(transformed?.nodes[0]?.metadata).toMatchObject({
         position: { x: 100, y: 200 },
         custom: 'value',
       })
@@ -498,7 +506,7 @@ describe('WorkflowGraphBuilder', () => {
 
       expect(nextNodes).toBeDefined()
       expect(nextNodes.length).toBe(1)
-      expect(nextNodes[0].nodeId).toBe('end-1')
+      expect(nextNodes[0]?.nodeId).toBe('end-1')
     })
 
     it('should register loop-start and source handles for loop nodes', () => {
@@ -536,10 +544,10 @@ describe('WorkflowGraphBuilder', () => {
       const loopExitNodes = WorkflowGraphHelper.getNextNodes(graph, 'loop-1', 'source')
 
       expect(loopStartNodes.length).toBe(1)
-      expect(loopStartNodes[0].nodeId).toBe('body-1')
+      expect(loopStartNodes[0]?.nodeId).toBe('body-1')
 
       expect(loopExitNodes.length).toBe(1)
-      expect(loopExitNodes[0].nodeId).toBe('end-1')
+      expect(loopExitNodes[0]?.nodeId).toBe('end-1')
     })
 
     it('should fallback to source handle when using invalid handle on loop node', () => {
@@ -578,7 +586,7 @@ describe('WorkflowGraphBuilder', () => {
 
       // Should fallback to 'source' handle and return end-1
       expect(nextNodes.length).toBe(1)
-      expect(nextNodes[0].nodeId).toBe('end-1')
+      expect(nextNodes[0]?.nodeId).toBe('end-1')
     })
   })
 })
