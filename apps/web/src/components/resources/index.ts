@@ -33,6 +33,8 @@ export {
   useResources,
   useViewableResources,
 } from './hooks'
+/** The resolved per-ROW verdict every record affordance gates on. */
+export type { RecordRowAccess } from './hooks/use-record-access'
 // Provider
 export { clearResourceCaches, ResourceProvider } from './providers/resource-provider'
 

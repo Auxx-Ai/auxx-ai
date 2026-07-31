@@ -70,25 +70,26 @@ interface ManualTriggerButtonProps {
   children?: ReactNode
 }
 
+/** A manually-triggerable workflow as the picker renders it. */
+interface ManualWorkflow {
+  id: string
+  name: string
+}
+
 /**
- * ManualTriggerButton component for triggering workflows on resources
+ * The query + trigger half of the manual-workflow picker, without any chrome.
+ *
+ * Kept separate from the component body so the query/trigger pair reads on its
+ * own. The submenu form lives in `workflow-submenu.tsx` (`WorkflowSubMenu`),
+ * which predates this file's involvement and is what `RecordActionsMenu` uses —
+ * a Radix `DropdownMenu` cannot nest inside a `DropdownMenuItem`, so the two
+ * genuinely are different components rather than one with a variant.
  */
-export function ManualTriggerButton({
-  // entityDefinitionId,
-  recordId,
-  buttonVariant = 'ghost',
-  buttonSize = 'icon-sm',
-  tooltipContent = 'Trigger workflow',
-  buttonClassName,
-  onSuccess,
-  children,
-}: ManualTriggerButtonProps) {
-  const { entityDefinitionId, entityInstanceId } = recordId
-    ? parseRecordId(recordId)
-    : { entityDefinitionId: '', entityInstanceId: '' }
+function useManualTrigger(recordId: RecordId, onSuccess?: () => void) {
+  const { entityDefinitionId } = recordId ? parseRecordId(recordId) : { entityDefinitionId: '' }
 
   // Store ref to selected workflow for use in onSuccess
-  const selectedWorkflowRef = useRef<{ id: string; name: string } | null>(null)
+  const selectedWorkflowRef = useRef<ManualWorkflow | null>(null)
   // Query available workflows for this entity
   const { data: workflows, isLoading: workflowsLoading } = api.workflow.getManualWorkflows.useQuery(
     { entityDefinitionId },
@@ -120,23 +121,43 @@ export function ManualTriggerButton({
       },
     })
 
+  const trigger = (workflow: ManualWorkflow) => {
+    selectedWorkflowRef.current = workflow
+    triggerWorkflow({ workflowAppId: workflow.id, recordId })
+  }
+
+  return {
+    workflows: workflows as ManualWorkflow[] | undefined,
+    isLoading: workflowsLoading || triggerLoading,
+    trigger,
+  }
+}
+
+/**
+ * ManualTriggerButton component for triggering workflows on resources
+ */
+export function ManualTriggerButton({
+  // entityDefinitionId,
+  recordId,
+  buttonVariant = 'ghost',
+  buttonSize = 'icon-sm',
+  tooltipContent = 'Trigger workflow',
+  buttonClassName,
+  onSuccess,
+  children,
+}: ManualTriggerButtonProps) {
+  const {
+    workflows,
+    isLoading,
+    trigger: handleTriggerWorkflow,
+  } = useManualTrigger(recordId, onSuccess)
+
   // Show button only if workflows exist
   const shouldShow = useMemo(() => {
     return workflows && workflows.length > 0
   }, [workflows])
 
   if (!shouldShow) return null
-
-  const isLoading = workflowsLoading || triggerLoading
-
-  /** Handle workflow selection from dropdown */
-  const handleTriggerWorkflow = (workflow: { id: string; name: string }) => {
-    selectedWorkflowRef.current = workflow
-    triggerWorkflow({
-      workflowAppId: workflow.id,
-      recordId,
-    })
-  }
 
   /** Default button trigger */
   const defaultTrigger = (

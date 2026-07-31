@@ -36,7 +36,6 @@ export {
   hasDetailViewConfig,
 } from './registry/detail-view-config'
 export type {
-  DetailViewActions,
   DetailViewConfig,
   DetailViewConfigRegistry,
   DetailViewEntityType,
@@ -56,7 +55,6 @@ export {
   hasDrawerConfig,
 } from './registry/drawer-config'
 export type {
-  DrawerActions,
   DrawerConfig,
   DrawerConfigRegistry,
   DrawerTabCardDefinition,
@@ -99,6 +97,12 @@ export {
 } from './registry/field-utils'
 // Hover-card field defaults
 export { getHoverCardFieldKeys, HOVER_CARD_FIELDS } from './registry/hover-card-fields'
+export {
+  DEFAULT_RECORD_ACTIONS,
+  getRecordActions,
+  RECORD_ACTIONS_REGISTRY,
+} from './registry/record-actions-config'
+export type { RecordActions } from './registry/record-actions-types'
 export type {
   CustomResource,
   CustomResourceId,

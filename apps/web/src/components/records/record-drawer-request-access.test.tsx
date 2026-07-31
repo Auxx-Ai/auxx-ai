@@ -83,6 +83,22 @@ vi.mock('~/components/permissions/ui/instance-share-dialog', () => ({
 }))
 vi.mock('~/components/records/record-editor-dialog', () => ({ RecordEditorDialog: () => null }))
 vi.mock('~/components/workflow/manual-trigger-button', () => ({ ManualTriggerButton: () => null }))
+vi.mock('~/components/workflow/workflow-submenu', () => ({ WorkflowSubMenu: () => null }))
+vi.mock('~/components/detail-view/components/app-record-actions', () => ({
+  AppRecordActionsSubmenu: () => null,
+}))
+vi.mock('~/components/favorites/ui/favorite-star-button', () => ({
+  FavoriteStarButton: () => null,
+}))
+vi.mock('~/hooks/use-entity-instance-operations', () => ({
+  useEntityInstanceOperations: () => ({
+    canEdit: false,
+    handleArchive: vi.fn(),
+    handleDelete: vi.fn(),
+    ConfirmDeleteDialog: () => null,
+    ConfirmArchiveDialog: () => null,
+  }),
+}))
 vi.mock('~/components/favorites/ui/favorite-toggle-menu-item', () => ({
   FavoriteToggleMenuItem: () => null,
 }))
@@ -94,6 +110,7 @@ vi.mock('~/components/resources/hooks/use-field-values', () => ({
 }))
 vi.mock('~/components/resources', () => ({
   resourceHasDetailPage: () => false,
+  useRecordLink: () => null,
   useRecord: () => ({ record: null, isLoading: false }),
   useResource: () => ({
     resource: {
@@ -150,21 +167,30 @@ beforeEach(() => {
 })
 
 describe('the drawer header pays NOTHING to render the request trigger (§8.5 / D6)', () => {
-  it('fires no preflight on open, and exactly one when the popover is opened', async () => {
+  // The trigger now lives inside the shared `RecordActionsMenu`, which makes the
+  // laziness STRICTER, not weaker: Radix does not mount `DropdownMenuContent`'s
+  // subtree until the menu is opened, so the popover's body cannot run for a
+  // member who never opens the menu at all.
+  it('fires no preflight on open, none on opening the menu, and exactly one on the item', async () => {
     render(<RecordDrawer open recordId={RECORD_ID as never} />)
+    expect(h.preflightCalls).toHaveLength(0)
 
-    const trigger = screen.getByRole('button', { name: 'Request edit access' })
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    // The item is mounted and labelled — still without asking the server.
+    const trigger = screen.getByRole('menuitem', { name: 'Request edit access' })
     expect(h.preflightCalls).toHaveLength(0)
 
     await userEvent.click(trigger)
     expect(h.preflightCalls).toEqual([{ entityDefinitionId: DEF, entityInstanceId: ROW }])
   })
 
-  it('does not mount the trigger at all for an `edit` row — and still asks nothing', () => {
+  it('does not mount the trigger at all for an `edit` row — and still asks nothing', async () => {
     h.access = 'edit'
     render(<RecordDrawer open recordId={RECORD_ID as never} />)
 
-    expect(screen.queryByRole('button', { name: /Request/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+
+    expect(screen.queryByRole('menuitem', { name: /Request/ })).not.toBeInTheDocument()
     expect(h.preflightCalls).toHaveLength(0)
   })
 })

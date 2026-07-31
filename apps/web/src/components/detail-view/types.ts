@@ -101,14 +101,18 @@ export interface DetailViewCardHeaderProps {
  * Props for DetailViewActions component
  */
 export interface DetailViewActionsProps {
-  /** Entity type for action configuration */
+  /** Entity type — resolves the offered actions via the shared `getRecordActions`. */
   entityType: string
   /** RecordId for entity operations */
   recordId: RecordId
   /** Record data */
   record: Record<string, unknown>
-  /** Detail view configuration */
-  config: DetailViewConfig
+  /**
+   * Where to land after the record is deleted. No `config` here any more: the
+   * action set moved to the one shared `record-actions-config.ts` registry, so
+   * there is nothing per-surface left to pass.
+   */
+  backUrl?: string
 }
 
 /**

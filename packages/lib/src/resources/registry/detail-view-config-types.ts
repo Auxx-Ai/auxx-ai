@@ -48,24 +48,11 @@ export interface SidebarTabDefinition {
 }
 
 /**
- * Header action capabilities for detail views
- */
-export interface DetailViewActions {
-  enableGroups?: boolean
-  enableMerge?: boolean
-  enableSpam?: boolean
-  enableArchive?: boolean
-  enableDelete?: boolean
-  enableWorkflowTrigger?: boolean
-  /** Sequences plan §17 — "Add to sequence" opens `AddToSequenceDialog` for this record. */
-  enableAddToSequence?: boolean
-}
-
-/**
  * Complete detail view configuration for an entity type
  * NOTE: Does NOT include entity metadata (label, icon, color, etc.)
  * That comes from the Resource via useResourceProperty hook.
- * This ONLY contains detail-view-specific config (tabs, actions).
+ * This ONLY contains detail-view-specific config (tabs, layout). Record ACTIONS
+ * are not here — they are one shared registry, `record-actions-config.ts`.
  */
 export interface DetailViewConfig {
   /** Entity type identifier (ModelType: 'contact', 'ticket', 'part', 'entity') */
@@ -74,8 +61,6 @@ export interface DetailViewConfig {
   mainTabs: MainTabDefinition[]
   /** Tabs shown in sidebar (Overview, Comments) */
   sidebarTabs: SidebarTabDefinition[]
-  /** Header actions */
-  actions: DetailViewActions
   /** Default main tab to select */
   defaultTab?: string
   /** Default sidebar tab to select */

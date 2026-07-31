@@ -35,12 +35,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
-    actions: {
-      enableGroups: true,
-      enableMerge: true,
-      enableSpam: true,
-      enableAddToSequence: true,
-    },
     defaultTab: 'tickets',
     defaultSidebarTab: 'overview',
     // Renders nothing when the contact has no external identities (card
@@ -63,10 +57,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
-    actions: {
-      enableArchive: true,
-      enableMerge: true,
-    },
     defaultTab: 'conversation',
     defaultSidebarTab: 'overview',
     sidebarCards: [
@@ -89,10 +79,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-    },
     defaultTab: 'inventory',
     defaultSidebarTab: 'overview',
   },
@@ -124,7 +110,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // line-items tab's own header strip — see quote-line-items-tab.tsx (money
     // MQ1 build spec §H.3: DetailViewActions only exposes generic capability
     // flags, no per-entity extension point exists yet).
-    actions: {},
     defaultTab: 'line-items',
     defaultSidebarTab: 'overview',
     sidebarCards: [
@@ -173,7 +158,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
-    actions: {},
     defaultTab: 'schedule',
     defaultSidebarTab: 'overview',
     sidebarCards: [
@@ -190,11 +174,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
-    actions: {
-      enableArchive: true,
-      enableDelete: true,
-      enableWorkflowTrigger: true,
-    },
     defaultTab: 'timeline',
     defaultSidebarTab: 'overview',
   },

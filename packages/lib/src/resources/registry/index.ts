@@ -198,7 +198,6 @@ export {
   hasDetailViewConfig,
 } from './detail-view-config'
 export type {
-  DetailViewActions,
   DetailViewConfig,
   DetailViewConfigRegistry,
   DetailViewEntityType,
@@ -211,7 +210,6 @@ export { RESOURCE_DISPLAY_CONFIG } from './display-config'
 // Re-export drawer configuration
 export { DRAWER_CONFIG_REGISTRY, getEntityDrawerConfig, hasDrawerConfig } from './drawer-config'
 export type {
-  DrawerActions,
   DrawerConfig,
   DrawerConfigRegistry,
   DrawerTabCardDefinition,
@@ -236,6 +234,12 @@ export {
   setResourceVariables,
   sortFieldsForDisplay,
 } from './field-utils'
+export {
+  DEFAULT_RECORD_ACTIONS,
+  getRecordActions,
+  RECORD_ACTIONS_REGISTRY,
+} from './record-actions-config'
+export type { RecordActions } from './record-actions-types'
 // Re-export resource computation and service
 export { computeAllResources } from './resource-registry-compute'
 export { ResourceRegistryService } from './resource-registry-service'

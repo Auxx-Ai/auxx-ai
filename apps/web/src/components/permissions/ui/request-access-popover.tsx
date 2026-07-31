@@ -45,14 +45,18 @@ export interface RequestAccessPopoverProps extends RequestAccessState {
    */
   footer?: (close: () => void) => ReactNode
   /**
-   * `inline` is a labelled button in a banner or action row; `icon` is a lock for
-   * a header slot; `menu-item` is a row inside an already-open dropdown menu.
+   * `inline` is a labelled OUTLINE button for a banner or an empty state (the
+   * not-found screen, the mail thread body) where it is the page's one CTA;
+   * `header` is the same label as a ghost button with the lock icon, for a
+   * record header's action row where an outline would out-shout Share and the
+   * favourite star beside it; `icon` is the bare lock for a tight header slot;
+   * `menu-item` is a row inside an already-open dropdown menu.
    *
    * `menu-item` prevents the menu's own `select`, so the dropdown stays open
    * behind the popover rather than unmounting the trigger the popover is
    * anchored to.
    */
-  variant?: 'inline' | 'icon' | 'menu-item'
+  variant?: 'inline' | 'header' | 'icon' | 'menu-item'
   /**
    * Notified whenever the popover opens or closes — **the lazy-preflight seam**
    * (plan v3/04 §8.5 / D6).
@@ -121,7 +125,7 @@ export function RequestAccessPopover({
     // A refusal is worth saying in a banner or an action row, where there is room
     // for a sentence. In a header's icon slot there is not, and a tooltip nobody
     // hovers is not communication — so that mount stays silent.
-    if (refusalCopy && variant === 'inline') {
+    if (refusalCopy && (variant === 'inline' || variant === 'header')) {
       return <span className='text-muted-foreground text-xs'>{refusalCopy}</span>
     }
     return null
@@ -167,6 +171,19 @@ export function RequestAccessPopover({
         <LockKeyhole />
         {label}
       </DropdownMenuItem>
+    ) : variant === 'header' ? (
+      // Ghost + the record header's shared hover treatment, which is spelled out
+      // rather than imported: `RECORD_HEADER_GHOST` lives in
+      // `components/records/record-actions-menu.tsx`, and the permissions lane
+      // must not depend on the records lane for a style token. Keep the two in
+      // step. `data-[state=open]` holds the tint while the popover is open.
+      <Button
+        variant='ghost'
+        size='sm'
+        className='hover:bg-foreground/10 data-[state=open]:bg-foreground/10'>
+        <LockKeyhole />
+        {label}
+      </Button>
     ) : (
       <Button variant='outline' size='sm'>
         {label}

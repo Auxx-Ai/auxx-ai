@@ -46,10 +46,10 @@ export function RecordRequestAccessPopover({
   entityDefinitionId: string
   entityInstanceId: string
   /**
-   * `inline` is the detail-page action row, `icon` the drawer header's lock slot,
-   * `menu-item` the table row's kebab menu.
+   * `header` is the detail-page action row, `inline` the not-found screen's CTA,
+   * `icon` the drawer header's lock slot, `menu-item` the table row's kebab menu.
    */
-  variant?: 'inline' | 'icon' | 'menu-item'
+  variant?: 'inline' | 'header' | 'icon' | 'menu-item'
   /**
    * Treat the viewer as holding nothing on this record — the full-page not-found
    * mount, where the row is not in the store and the def fallback would answer

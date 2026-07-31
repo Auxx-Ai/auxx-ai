@@ -1,198 +1,116 @@
 // apps/web/src/components/detail-view/components/detail-view-actions.tsx
 'use client'
 
-import { FeatureKey } from '@auxx/lib/permissions/client'
 import { parseRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
-import { Archive, Ban, Merge, Send, Trash2, Users, Zap } from 'lucide-react'
+import { Share2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
-import { MergeDialog } from '~/components/merge'
+import { InstanceShareAvatars } from '~/components/permissions/ui/instance-share-avatars'
+import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
+import { RECORD_HEADER_GHOST, RecordActionsMenu } from '~/components/records/record-actions-menu'
 import { useRecordAccess } from '~/components/resources'
-import { AddToSequenceDialog } from '~/components/sequences/ui/add-to-sequence-dialog'
-import { useConfirm } from '~/hooks/use-confirm'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import type { DetailViewActionsProps } from '../types'
-import { AppRecordActions } from './app-record-actions'
 
 /**
- * DetailViewActions - action buttons for the detail view header
- * Actions are enabled/disabled based on config.actions
+ * The detail page's header action cluster:
+ * `[who it's shared with + Share | Request access] [★] [⋮]`
+ *
+ * This used to be a row of eight outline buttons, five of which did nothing:
+ * Archive, Delete, Spam and Run Workflow were `console.log` stubs behind confirm
+ * dialogs that led nowhere, and Groups set a `useState` no JSX read (no
+ * group-assignment dialog exists anywhere in the app). Spam had no server
+ * mutation at all. Everything real now lives in the shared
+ * {@link RecordActionsMenu}, which the drawer and the records-table row use too,
+ * so the three surfaces can no longer disagree about what a record type offers.
+ *
+ * Three controls stay OUT of the menu, each for its own reason:
+ *
+ * - **Share**, with the shared-with avatars to its left. Both are gated on
+ *   `canShare` (an `admin` row), which also keeps the avatars' per-record query
+ *   off every other viewer — who else can see a record is not something a `read`
+ *   member should be able to enumerate.
+ * - **Request access**, because it is the one control that ADDS capability, and
+ *   burying the way out of a dead end behind a kebab is exactly backwards. It
+ *   and Share are mutually exclusive in practice: the ask only appears at `read`,
+ *   sharing only at `admin`.
+ * - **The favourite star**, because it REPORTS state (a filled star means
+ *   favourited) and state you must open a menu to read is state you may as well
+ *   not show. It is also deliberately ungated — favouriting is a personal
+ *   bookmark keyed to the viewer, not a write on the record.
+ *
+ * Both promoted items are passed to the menu as `omitItems` so they are not also
+ * offered inside it.
  */
 export function DetailViewActions({
   entityType,
   recordId,
   record,
-  config,
+  backUrl,
 }: DetailViewActionsProps) {
-  const { hasAccess } = useFeatureFlags()
-  const sequencesEnabled = hasAccess(FeatureKey.sequences)
-
-  /**
-   * **The per-ROW write gate** (plan v3/04 §10.4 / D5, plan v3/03 §5.2).
-   *
-   * This header used to ask `canEditEntity(def)` — the DEF question, which is
-   * wrong for a row in both directions since P5: a member holding `edit` on one
-   * row via a grant saw no Archive on that row's own page, and a member holding
-   * only `read` on a row of a def they otherwise edit saw Delete. The `_access`
-   * stamp riding the row is the answer, read through the same verbs the server
-   * applies.
-   *
-   * `canEdit` and `canDelete` are deliberately NOT one flag: `canDelete` is the
-   * `edit` floor **plus** (`records.delete` OR `admin`), strictly narrower.
-   *
-   * ⚠ **Merge is on `canDelete`, with Delete — not on `canEdit` with
-   * Archive/Spam.** A merge permanently removes the source rows, and the
-   * destructive half is the binding one: the server asserts the DELETE verb for
-   * the target AND every source (`assertCanDeleteRows`,
-   * `routers/record.ts:996`), which is also what `RecordRowAccess.canDelete`
-   * means by "deleted or merged away". Archive and Spam are reversible status
-   * writes and stay on the `edit` floor. Plan v3/04 §10.4 groups Merge with
-   * Archive/Spam; that grouping is wrong against the shipped mutation and is
-   * not followed here.
-   */
-  const { access, canEdit, canDelete } = useRecordAccess(recordId)
-  const [confirm, ConfirmDialog] = useConfirm()
-  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
-  const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
-  const [addToSequenceDialogOpen, setAddToSequenceDialogOpen] = useState(false)
-
-  const { actions } = config
-
-  // Check if record is in a state that prevents actions
-  const status = record.status as string | undefined
-  const isMerged = status === 'MERGED'
-  const isSpam = status === 'SPAM'
-  const isArchived = status === 'ARCHIVED'
-
-  // Don't show actions for merged records
-  if (isMerged) return null
-
-  /** Handle archive action */
-  const handleArchive = async () => {
-    const confirmed = await confirm({
-      title: 'Archive record?',
-      description: 'This record will be archived and hidden from default views.',
-      confirmText: 'Archive',
-      cancelText: 'Cancel',
-    })
-    if (confirmed) {
-      // TODO: Implement archive mutation
-      console.log('Archive:', recordId)
-    }
-  }
-
-  /** Handle delete action */
-  const handleDelete = async () => {
-    const confirmed = await confirm({
-      title: 'Delete record?',
-      description:
-        'This action cannot be undone. The record and all its data will be permanently deleted.',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (confirmed) {
-      // TODO: Implement delete mutation
-      console.log('Delete:', recordId)
-    }
-  }
-
-  /** Handle spam action */
-  const handleSpam = async () => {
-    const confirmed = await confirm({
-      title: 'Mark as spam?',
-      description: 'This record will be marked as spam.',
-      confirmText: 'Mark as Spam',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (confirmed) {
-      // TODO: Implement spam mutation
-      console.log('Spam:', recordId)
-    }
-  }
+  const router = useRouter()
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  const { access, canShare } = useRecordAccess(recordId)
+  const [shareOpen, setShareOpen] = useState(false)
 
   return (
-    <>
-      <div className='flex gap-2'>
-        {/* Ask for the next rung (plan v3/04 §8.2, mount 2). FIRST in the row on
-            purpose: everything after it is destructive-leaning, and this is the
-            one control that ADDS capability. Only at `read` — reaching this page
-            already proves it, and `edit`/`admin` have nothing left to ask for. */}
-        {access === 'read' && (
-          <GranularPermissionsGate>
-            <RecordRequestAccessPopover
-              entityDefinitionId={parseRecordId(recordId).entityDefinitionId}
-              entityInstanceId={parseRecordId(recordId).entityInstanceId}
-            />
-          </GranularPermissionsGate>
-        )}
-
-        {actions.enableGroups && (
-          <Button variant='outline' size='sm' onClick={() => setIsGroupDialogOpen(true)}>
-            <Users /> Groups
-          </Button>
-        )}
-
-        {actions.enableMerge && canDelete && (
-          <Button variant='outline' size='sm' onClick={() => setMergeDialogOpen(true)}>
-            <Merge /> Merge
-          </Button>
-        )}
-
-        {actions.enableWorkflowTrigger && (
-          <Button variant='outline' size='sm' onClick={() => console.log('Workflow:', recordId)}>
-            <Zap /> Run Workflow
-          </Button>
-        )}
-
-        {actions.enableAddToSequence && sequencesEnabled && (
-          <Button variant='outline' size='sm' onClick={() => setAddToSequenceDialogOpen(true)}>
-            <Send /> Add to sequence
-          </Button>
-        )}
-
-        {actions.enableArchive && canEdit && !isArchived && (
-          <Button variant='outline' size='sm' onClick={handleArchive}>
-            <Archive /> Archive
-          </Button>
-        )}
-
-        {actions.enableSpam && canEdit && !isSpam && (
-          <Button variant='destructive' size='sm' onClick={handleSpam}>
-            <Ban /> Spam
-          </Button>
-        )}
-
-        {actions.enableDelete && canDelete && (
-          <Button variant='destructive' size='sm' onClick={handleDelete}>
-            <Trash2 /> Delete
-          </Button>
-        )}
-
-        <AppRecordActions recordId={recordId} recordType={entityType} />
-      </div>
-
-      <ConfirmDialog />
-
-      {mergeDialogOpen && recordId && (
-        <MergeDialog
-          open={mergeDialogOpen}
-          onOpenChange={setMergeDialogOpen}
-          baseRecordIds={[recordId]}
-          onMergeComplete={() => setMergeDialogOpen(false)}
-        />
+    <div className='flex items-center gap-2'>
+      {canShare && (
+        <GranularPermissionsGate>
+          <div className='flex items-center gap-1.5'>
+            {/* Avatars lead: they are the STATE (who can see this), the button
+                is the action on it. Reading left-to-right you learn the answer
+                before you're offered the way to change it. */}
+            <InstanceShareAvatars recordId={recordId} />
+            <Button
+              variant='ghost'
+              size='sm'
+              className={RECORD_HEADER_GHOST}
+              onClick={() => setShareOpen(true)}>
+              <Share2 />
+              Share
+            </Button>
+          </div>
+        </GranularPermissionsGate>
       )}
 
-      {sequencesEnabled && addToSequenceDialogOpen && recordId && (
-        <AddToSequenceDialog
-          open={addToSequenceDialogOpen}
-          onOpenChange={setAddToSequenceDialogOpen}
-          recipientEntityInstanceIds={[parseRecordId(recordId).entityInstanceId]}
-        />
+      {/* Label follows the ladder rather than this call site: `none → "Request
+          access"`, `read → "Request edit access"`. `edit`/`admin` render nothing
+          — there is nothing left to ask for. */}
+      {access === 'read' && (
+        <GranularPermissionsGate>
+          <RecordRequestAccessPopover
+            entityDefinitionId={entityDefinitionId}
+            entityInstanceId={entityInstanceId}
+            variant='header'
+          />
+        </GranularPermissionsGate>
       )}
-    </>
+
+      <FavoriteStarButton
+        targetType='ENTITY_INSTANCE'
+        targetIds={{ entityDefinitionId, entityInstanceId }}
+        size='icon-xs'
+        className={RECORD_HEADER_GHOST}
+      />
+
+      <RecordActionsMenu
+        recordId={recordId}
+        entityType={entityType}
+        record={record}
+        surface='page'
+        omitItems={['share', 'request-access']}
+        // The record this page IS was just deleted — staying here would render
+        // the not-found screen for a row the member deleted themselves.
+        onDeleted={() => backUrl && router.push(backUrl)}
+      />
+
+      {shareOpen && (
+        <InstanceShareDialog recordId={recordId} open={shareOpen} onOpenChange={setShareOpen} />
+      )}
+    </div>
   )
 }

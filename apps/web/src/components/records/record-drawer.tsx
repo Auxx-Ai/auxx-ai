@@ -4,56 +4,28 @@
 import { formatToDisplayValue, parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
 import { getEntityDrawerConfig } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { formatDistanceToNow } from 'date-fns'
-import {
-  Archive,
-  Edit,
-  Expand,
-  Link as LinkIcon,
-  Merge,
-  MoreHorizontal,
-  Share2,
-  TextCursorInput,
-  Trash,
-  Trash2,
-} from 'lucide-react'
+import { Expand } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
-import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
+import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { ConnectorSourceBadge } from '~/components/fields/connector-source-badge'
 import { Tooltip } from '~/components/global/tooltip'
 import { CommandContext, RecordCommandActions } from '~/components/kbar/contextual'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
-import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
-import { MergeDialog } from '~/components/merge'
-import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
-import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
-import {
-  resourceHasDetailPage,
-  useRecord,
-  useRecordAccess,
-  useResource,
-} from '~/components/resources'
+import { resourceHasDetailPage, useRecord, useResource } from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
-import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
-import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { RecordActionsMenu } from './record-actions-menu'
 import { useRecordDrawerReadOnly } from './use-record-drawer-read-only'
 
 /** Props for RecordDrawer */
@@ -112,7 +84,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   )
 
   // Get drawer config for entity-type-aware actions
-  const drawerConfig = React.useMemo(() => {
+  const _drawerConfig = React.useMemo(() => {
     return entityType ? getEntityDrawerConfig(entityType, entityDefinitionId || undefined) : null
   }, [entityType, entityDefinitionId])
 
@@ -201,36 +173,23 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
 
-  // Merge dialog state
-  const [mergeDialogOpen, setMergeDialogOpen] = React.useState(false)
+  // Merge, share and delete-confirm all moved into `RecordActionsMenu`, which
+  // owns the dialogs it opens. Per-record sharing keeps its `_access` gate
+  // there (plan v3/03 §6.2) — it is a different question from `readOnly`, since
+  // an editable row that is NOT re-shareable is the common case.
 
-  // Per-record sharing (plan v3/03 §6.2). Keyed off the row's `_access` stamp,
-  // NOT off `readOnly`: a member may hold `admin` on a row and still be looking
-  // at it read-only is impossible (admin implies edit), but the reverse — an
-  // editable row that is NOT re-shareable — is the common case, so the two gates
-  // are genuinely different questions.
-  const [shareDialogOpen, setShareDialogOpen] = React.useState(false)
-  const { access, canShare } = useRecordAccess(recordId)
-
-  // Confirm dialog for delete
-  const [confirm, ConfirmDialog] = useConfirm()
-
-  // In restricted mode every mutating action is forced off — this collapses
-  // `hasMoreActions` and the standalone delete button below, matching the
-  // read-only fields (§11.4, deliverable #4).
-  const actions = React.useMemo(() => {
-    const base = drawerConfig?.actions
-    if (!readOnly) return base
-    return {
-      ...base,
-      enableEdit: false,
-      enableRename: false,
-      enableArchive: false,
-      enableLink: false,
-      enableMerge: false,
-      enableDelete: false,
-    }
-  }, [drawerConfig?.actions, readOnly])
+  /**
+   * Focus the inline title input for the Rename item.
+   *
+   * Drawer-only: nothing else in the app has a `#drawer-title-input`, which is
+   * why {@link RecordActionsMenu} takes this as a callback rather than owning
+   * it — an item whose target does not exist on a surface must not render there.
+   */
+  const handleRename = React.useCallback(() => {
+    const input = document.getElementById('drawer-title-input') as HTMLInputElement | null
+    input?.focus()
+    input?.select()
+  }, [])
 
   /** Handle close */
   const handleClose = React.useCallback(() => {
@@ -241,21 +200,6 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   const handleCreateNoteClick = React.useCallback(() => {
     setFocusComposerTrigger((prev) => prev + 1)
   }, [])
-
-  /** Handle delete with confirmation */
-  const handleDelete = React.useCallback(async () => {
-    if (!onDeleteInstance || !entityInstanceId) return
-    const confirmed = await confirm({
-      title: `Delete ${resource?.label?.toLowerCase() || 'record'}`,
-      description: 'Are you sure? This action cannot be undone.',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (confirmed) {
-      await onDeleteInstance(entityInstanceId)
-    }
-  }, [confirm, onDeleteInstance, entityInstanceId, resource?.label])
 
   /** Handle expand to full page */
   const handleExpand = React.useCallback(() => {
@@ -275,18 +219,6 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         : null,
     [cachedRecord?.createdAt]
   )
-
-  // Check if we need a "more actions" dropdown (for edit, rename, archive, link, merge)
-  const hasMoreActions =
-    actions?.enableEdit ||
-    actions?.enableRename ||
-    actions?.enableArchive ||
-    actions?.enableLink ||
-    actions?.enableMerge ||
-    // Sharing is not a WRITE on the record, so it survives `readOnly` (which
-    // forces every `enable*` above to false). Without this term a row shared at
-    // `admin` on an otherwise-uneditable def would have no dropdown to host it.
-    canShare
 
   if (!open || !recordId) return null
 
@@ -343,133 +275,31 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 />
               ))}
 
-            {/* Run workflow — hidden in restricted mode (a mutating trigger). */}
-            {!readOnly && (
-              <ManualTriggerButton
-                recordId={recordId}
-                buttonVariant='ghost'
-                buttonSize='icon-xs'
-                buttonClassName='rounded-full'
-                tooltipContent='Run workflow'
-              />
-            )}
+            {/* Everything else — run workflow, app actions, share, request
+                access, rename, merge, archive, delete — is the SHARED menu, the
+                same component the detail page and the records-table row render.
+                It resolves its own per-row gate from the `_access` stamp, which
+                is the same question `readOnly` above answers, so no extra
+                restricted-mode term is needed here.
 
-            {/* Ask for the next rung (plan v3/04 §8.2, mount 1). Only at `read`:
-                below that the drawer never opened, and at `edit`/`admin` there is
-                nothing left to ask for. Gated because an approved request writes
-                a grant the org's plan must be able to honour (§3.5 / §8.4). */}
-            {access === 'read' && entityDefinitionId && entityInstanceId && (
-              <GranularPermissionsGate>
-                <RecordRequestAccessPopover
-                  entityDefinitionId={entityDefinitionId}
-                  entityInstanceId={entityInstanceId}
-                  variant='icon'
-                />
-              </GranularPermissionsGate>
-            )}
-
-            {/* More actions dropdown */}
-            {hasMoreActions && (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button variant='ghost' size='icon-xs' className='rounded-full'>
-                    <MoreHorizontal />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align='end' className='w-48'>
-                  {actions?.enableEdit && (
-                    <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
-                      <Edit />
-                      Edit {resource?.label?.toLowerCase() || 'record'}
-                    </DropdownMenuItem>
-                  )}
-
-                  {entityDefinitionId && entityInstanceId && (
-                    <FavoriteToggleMenuItem
-                      targetType='ENTITY_INSTANCE'
-                      targetIds={{ entityDefinitionId, entityInstanceId }}
-                    />
-                  )}
-
-                  {canShare && (
-                    <GranularPermissionsGate>
-                      <DropdownMenuItem onClick={() => setShareDialogOpen(true)}>
-                        <Share2 />
-                        Share
-                      </DropdownMenuItem>
-                    </GranularPermissionsGate>
-                  )}
-
-                  {actions?.enableRename && (
-                    <DropdownMenuItem
-                      onClick={() => {
-                        // Focus the title input if it exists
-                        const input = document.getElementById(
-                          'drawer-title-input'
-                        ) as HTMLInputElement
-                        if (input) {
-                          input.focus()
-                          input.select()
-                        }
-                      }}>
-                      <TextCursorInput />
-                      Rename
-                    </DropdownMenuItem>
-                  )}
-
-                  {actions?.enableArchive && (
-                    <DropdownMenuItem
-                      onClick={() => {
-                        // Archive handled by parent via onDeleteInstance pattern
-                      }}>
-                      <Archive />
-                      Archive
-                    </DropdownMenuItem>
-                  )}
-
-                  {(actions?.enableEdit || actions?.enableRename || actions?.enableArchive) &&
-                    (actions?.enableMerge || actions?.enableLink || actions?.enableDelete) && (
-                      <DropdownMenuSeparator />
-                    )}
-
-                  {actions?.enableMerge && recordId && (
-                    <DropdownMenuItem onClick={() => setMergeDialogOpen(true)}>
-                      <Merge />
-                      Merge
-                    </DropdownMenuItem>
-                  )}
-
-                  {actions?.enableLink && (
-                    <DropdownMenuItem
-                      onClick={() => {
-                        // Link dialog is rendered via tab card (relationships card has its own link button)
-                      }}>
-                      <LinkIcon />
-                      Link {resource?.label?.toLowerCase() || 'record'}
-                    </DropdownMenuItem>
-                  )}
-
-                  {actions?.enableDelete && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant='destructive' onClick={handleDelete}>
-                        <Trash2 />
-                        Delete
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-
-            {/* Delete (if no more actions dropdown, show standalone delete button) */}
-            {!hasMoreActions && actions?.enableDelete !== false && (
-              <Tooltip content={`Delete ${resource?.label?.toLowerCase() || 'record'}`}>
-                <Button variant='outline' size='icon-xs' onClick={handleDelete}>
-                  <Trash className='text-bad-500' />
-                </Button>
-              </Tooltip>
-            )}
+                Gone with it: an Archive item and a Link item whose onClick
+                bodies were empty comments, and a standalone delete button that
+                only appeared when the dropdown didn't. */}
+            <FavoriteStarButton
+              targetType='ENTITY_INSTANCE'
+              targetIds={{ entityDefinitionId, entityInstanceId }}
+              size='icon-xs'
+              className='rounded-full'
+            />
+            <RecordActionsMenu
+              recordId={recordId}
+              entityType={entityType ?? ''}
+              record={cachedRecord}
+              surface='drawer'
+              onEdit={() => setEditDialogOpen(true)}
+              onRename={handleRename}
+              onDeleted={handleClose}
+            />
 
             {/* Expand to full page — only for types that have a detail page
                 (no catch-all route; page-less system types would 404) */}
@@ -546,31 +376,6 @@ export const RecordDrawer = React.memo(function RecordDrawer({
           }}
         />
       )}
-
-      {/* Merge Dialog */}
-      {mergeDialogOpen && recordId && (
-        <MergeDialog
-          open={mergeDialogOpen}
-          onOpenChange={setMergeDialogOpen}
-          baseRecordIds={[recordId]}
-          onMergeComplete={() => {
-            setMergeDialogOpen(false)
-            onMutationSuccess?.()
-          }}
-        />
-      )}
-
-      {/* Per-record sharing (plan v3/03 §6.2). The server re-asserts
-          `_access >= admin` on every grant write; this only decides the UI. */}
-      {shareDialogOpen && recordId && (
-        <InstanceShareDialog
-          recordId={recordId}
-          open={shareDialogOpen}
-          onOpenChange={setShareDialogOpen}
-        />
-      )}
-
-      <ConfirmDialog />
     </>
   )
 })

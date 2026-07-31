@@ -2,17 +2,21 @@
 
 // apps/web/src/components/workflow/workflow-submenu.tsx
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import {
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { Loader2, Play } from 'lucide-react'
+import { Loader2, Play, Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useRef } from 'react'
 import { createWorkflowInvalidator } from '~/components/workflow/utils/invalidate-resource'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { api } from '~/trpc/react'
 import { showWorkflowProgressToast } from './workflow-progress-toast'
@@ -35,9 +39,14 @@ interface WorkflowSubMenuProps {
  * Shows "No workflows available" if none exist.
  */
 export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
-  const { entityDefinitionId, entityInstanceId } = recordId
-    ? parseRecordId(recordId)
-    : { entityDefinitionId: '', entityInstanceId: '' }
+  const router = useRouter()
+  const { entityDefinitionId } = recordId ? parseRecordId(recordId) : { entityDefinitionId: '' }
+
+  // Running a workflow is the `view` rung, so the list itself needs no gate.
+  // CREATING one is a different action on a different area — coarse
+  // `workflows.manage`, the same key `mass-workflow-trigger-dialog` uses.
+  const { can } = useAccess()
+  const canCreateWorkflow = can(PermissionKey.workflowsManage)
 
   // Store ref to selected workflow for use in onSuccess
   const selectedWorkflowRef = useRef<{ id: string; name: string } | null>(null)
@@ -72,6 +81,18 @@ export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
         title: 'Failed to trigger workflow',
         description: error.message,
       })
+    },
+  })
+
+  // Creates a manual-trigger workflow already wired to this entity definition
+  // and drops the user into the builder — the same mutation the bulk dialog's
+  // "Create Workflow" escape hatch calls.
+  const createForResource = api.workflow.createForResource.useMutation({
+    onSuccess: (created) => {
+      if (created?.id) router.push(`/app/workflows/${created.id}`)
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to create workflow', description: error.message })
     },
   })
 
@@ -113,6 +134,22 @@ export function WorkflowSubMenu({ recordId, onSuccess }: WorkflowSubMenuProps) {
             No workflows available
           </DropdownMenuItem>
         )}
+
+        {/* Always present, so the submenu is never a dead end — an entity with
+            no manual workflows is the case where "create one" is MOST useful,
+            and it is exactly the case where the list above says nothing
+            actionable. Disabled rather than hidden without `workflows.manage`:
+            the capability exists, this member just lacks it, and a row that
+            silently vanishes teaches nothing. */}
+        {hasWorkflows ? <DropdownMenuSeparator /> : null}
+        <DropdownMenuItem
+          disabled={
+            !canCreateWorkflow || createForResource.isPending || entityDefinitionId.length === 0
+          }
+          onSelect={() => createForResource.mutate({ entityDefinitionId })}>
+          {createForResource.isPending ? <Loader2 className='animate-spin' /> : <Plus />}
+          Create workflow
+        </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )

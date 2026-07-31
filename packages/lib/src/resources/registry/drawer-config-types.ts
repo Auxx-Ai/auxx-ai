@@ -25,20 +25,6 @@ export interface DrawerTabDefinition {
 }
 
 /**
- * Drawer action capabilities
- */
-export interface DrawerActions {
-  enableMerge?: boolean
-  enableGroups?: boolean
-  enableAssign?: boolean
-  enableArchive?: boolean
-  enableDelete?: boolean
-  enableLink?: boolean
-  enableRename?: boolean
-  enableEdit?: boolean
-}
-
-/**
  * Card definition injected into base drawer tabs (overview, timeline, comments, tasks)
  */
 export interface DrawerTabCardDefinition {
@@ -76,15 +62,14 @@ export interface DrawerTabCardDefinition {
  * Complete drawer configuration for an entity type
  * NOTE: Does NOT include entity metadata (label, icon, color, etc.)
  * That comes from the Resource via useResource hook.
- * This ONLY contains drawer-specific config (tabs, actions).
+ * This ONLY contains drawer-specific config (tabs, cards). Record ACTIONS are
+ * not here — they are one shared registry, `record-actions-config.ts`.
  */
 export interface DrawerConfig {
   /** Entity type identifier (for system entities: 'contact', 'ticket', etc.) */
   entityType: string
   /** Additional tabs beyond Overview, Timeline, Comments */
   additionalTabs: DrawerTabDefinition[]
-  /** Action capabilities */
-  actions: DrawerActions
   /** Cards injected into base tabs (overview, timeline, comments, tasks). Key is tab value. */
   tabCards?: Record<string, DrawerTabCardDefinition[]>
 }
