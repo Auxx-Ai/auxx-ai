@@ -7,6 +7,7 @@ import { getAppCache } from '../cache'
 import { getOrgCache } from '../cache/singletons'
 import { countBillableChannels } from '../channels'
 import { createScopedLogger } from '../logger'
+import { countSavedViewsUsed } from '../table-views/saved-view-limits'
 import type { FeatureDefinition } from './types'
 import { FEATURE_REGISTRY_MAP, FeatureKey, parseFeatureLimits } from './types'
 
@@ -253,34 +254,29 @@ export class OverageDetectionService {
         return countBillableChannels(this.db, organizationId)
 
       case FeatureKey.workflowsLimit: {
+        // Only org-authored workflows count. A sequence compiles to a hidden,
+        // system-owned `WorkflowApp` (`ownerType = 'sequence'`) — every new org is
+        // seeded with 5 of them (`seedClientNotificationSequences`), and they are
+        // invisible in the workflows list and excluded from the create gate's
+        // `getCachedWorkflowAppCount`. Counting them here reported every fresh org
+        // as 5/3 over its workflow limit before a single workflow existed.
         const [result] = await this.db
           .select({ value: count() })
           .from(schema.WorkflowApp)
-          .where(eq(schema.WorkflowApp.organizationId, organizationId))
+          .where(
+            and(
+              eq(schema.WorkflowApp.organizationId, organizationId),
+              isNull(schema.WorkflowApp.ownerType)
+            )
+          )
         return result?.value ?? 0
       }
 
       case FeatureKey.savedViews: {
-        // Sum user-created views from both TableView and MailView, excluding default (system) views
-        const [tableResult] = await this.db
-          .select({ value: count() })
-          .from(schema.TableView)
-          .where(
-            and(
-              eq(schema.TableView.organizationId, organizationId),
-              eq(schema.TableView.isDefault, false)
-            )
-          )
-        const [mailResult] = await this.db
-          .select({ value: count() })
-          .from(schema.MailView)
-          .where(
-            and(
-              eq(schema.MailView.organizationId, organizationId),
-              eq(schema.MailView.isDefault, false)
-            )
-          )
-        return (tableResult?.value ?? 0) + (mailResult?.value ?? 0)
+        // Shared, member-created views across TableView + MailView. Delegates to the
+        // one shared counter the create gates use — see `countSavedViewsUsed` for why
+        // system-seeded views are excluded.
+        return countSavedViewsUsed(this.db, organizationId)
       }
 
       case FeatureKey.kbPublishedArticles: {

@@ -1,12 +1,11 @@
 // apps/web/src/server/api/routers/mailView.ts
 
-import { schema } from '@auxx/database'
 import { getCachedUserInstanceGrants, onCacheEvent } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 import { MailViewService } from '@auxx/lib/mail-views'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
+import { countSavedViewsUsed } from '@auxx/lib/table-views'
 import { TRPCError } from '@trpc/server'
-import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
@@ -83,15 +82,7 @@ export const mailViewRouter = createTRPCRouter({
       const featureService = new FeaturePermissionService(ctx.db)
       const viewLimit = await featureService.getLimit(organizationId, FeatureKey.savedViews)
       if (typeof viewLimit === 'number' && viewLimit >= 0) {
-        const [{ value: current }] = await ctx.db
-          .select({ value: count() })
-          .from(schema.MailView)
-          .where(
-            and(
-              eq(schema.MailView.organizationId, organizationId),
-              eq(schema.MailView.isShared, true)
-            )
-          )
+        const current = await countSavedViewsUsed(ctx.db, organizationId)
         if (current >= viewLimit) {
           throw new TRPCError({
             code: 'FORBIDDEN',
