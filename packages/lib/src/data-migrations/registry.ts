@@ -30,6 +30,7 @@ import { migration058ReopenPersonalOnboarding } from './migrations/058-reopen-pe
 import { migration060PersonalInboxMove } from './migrations/060-personal-inbox-move'
 import { migration061InboxesMemberBaselineBackfill } from './migrations/061-inboxes-member-baseline-backfill'
 import { migration063RetireMailPermissionsFeatureKey } from './migrations/063-retire-mail-permissions-feature-key'
+import { migration064SequencesLimit } from './migrations/064-sequences-limit'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -82,6 +83,7 @@ function buildRegistry(): DataMigrationDef[] {
     // and arrives via ALL_ENTITY_MIGRATIONS above; it owns 062 in the shared id
     // sequence.
     migration063RetireMailPermissionsFeatureKey,
+    migration064SequencesLimit,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

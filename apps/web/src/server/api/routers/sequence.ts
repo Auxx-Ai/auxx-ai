@@ -21,6 +21,7 @@ import { AuxxError } from '@auxx/lib/errors'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import {
   checkSequenceAccess,
+  countSequencesUsed,
   createSequence,
   createStep,
   deleteSequence,
@@ -267,6 +268,11 @@ export const sequenceRouter = createTRPCRouter({
   create: sequenceProcedure
     .input(z.object({ name: z.string().min(1), triggerType: triggerTypeSchema.optional() }))
     .mutation(async ({ ctx, input }) => {
+      await new FeaturePermissionService().requireLimit(
+        ctx.session.organizationId,
+        FeatureKey.sequencesLimit,
+        () => countSequencesUsed(ctx.db, ctx.session.organizationId)
+      )
       // integrationId stays null while drafting — the settings drawer sets the
       // mailbox and publish refuses to compile without one.
       return unwrap(

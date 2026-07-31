@@ -55,6 +55,7 @@ export enum FeatureKey {
   workerSeats = 'workerSeats',
   channels = 'channels',
   workflowsLimit = 'workflowsLimit',
+  sequencesLimit = 'sequencesLimit',
   savedViews = 'savedViews',
   kbPublishedArticles = 'kbPublishedArticles',
   knowledgeBases = 'knowledgeBases',
@@ -238,6 +239,15 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Workflows',
     group: 'Automation',
     unit: 'workflows',
+  },
+  {
+    key: FeatureKey.sequencesLimit,
+    type: 'static',
+    label: 'Sequences',
+    description:
+      'Org-authored outbound email cadences. The seeded client-notification templates are excluded — they cannot be deleted, so counting them would strand an org over its limit.',
+    group: 'Automation',
+    unit: 'sequences',
   },
   {
     key: FeatureKey.savedViews,

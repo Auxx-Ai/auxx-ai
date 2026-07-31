@@ -67,6 +67,8 @@ export { buildSequenceUnsubscribeUrl, exitActiveRunsForSequence, exitSequenceRun
 // Seed templates (client-notifications plan §4.6) — new-org path (organization-seeder.ts) +
 // existing-org backfill (scripts/backfill-client-notification-sequences.ts)
 export { SEQUENCE_SEED_TEMPLATES, seedClientNotificationSequences } from './seed-templates'
+// Plan-limit counter — shared by the create gate and OverageDetectionService
+export { countSequencesUsed } from './sequence-limits'
 export type { GetSequenceStatsInput } from './stats'
 // Stats
 export { getSequenceStats } from './stats'
