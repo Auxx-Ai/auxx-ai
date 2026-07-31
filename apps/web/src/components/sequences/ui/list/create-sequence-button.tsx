@@ -1,6 +1,7 @@
 // apps/web/src/components/sequences/ui/list/create-sequence-button.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
   SEQUENCE_TRIGGER_LABELS,
   SEQUENCE_TRIGGER_TYPES,
@@ -26,9 +27,11 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
-import { Plus } from 'lucide-react'
+import { MailPlus, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
 /**
@@ -41,9 +44,19 @@ export function CreateSequenceButton() {
   const router = useRouter()
   const utils = api.useUtils()
   const [open, setOpen] = useState(false)
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [name, setName] = useState('')
   const [triggerType, setTriggerType] = useState<SequenceTriggerType>('manual')
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const { isAtLimit, getLimit } = useFeatureFlags()
+
+  // Same query the list uses (React Query dedupes it). Seeded templates are
+  // filtered out to match `countSequencesUsed` on the server — they are
+  // undeletable, so counting them here would show a limit the user cannot act on.
+  const sequences = api.sequence.list.useQuery()
+  const used = sequences.data?.filter((s) => !s.templateKey).length ?? 0
+  const atLimit = isAtLimit(FeatureKey.sequencesLimit, used)
+  const sequenceLimit = getLimit(FeatureKey.sequencesLimit)
 
   const createSequence = api.sequence.create.useMutation({
     onSuccess: (created) => {
@@ -74,6 +87,24 @@ export function CreateSequenceButton() {
       return
     }
     createSequence.mutate({ name: trimmed, triggerType })
+  }
+
+  if (atLimit) {
+    return (
+      <>
+        <Button size='sm' onClick={() => setLimitDialogOpen(true)}>
+          <Plus />
+          New sequence
+        </Button>
+        <LimitReachedDialog
+          open={limitDialogOpen}
+          onOpenChange={setLimitDialogOpen}
+          icon={MailPlus}
+          title='Sequence Limit Reached'
+          description={`You've reached the maximum of ${sequenceLimit} sequences on your current plan.`}
+        />
+      </>
+    )
   }
 
   return (

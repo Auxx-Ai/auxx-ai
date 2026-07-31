@@ -50,6 +50,7 @@ const STATIC_LIMITS = {
     workerSeats: 0,
     channels: 1,
     workflowsLimit: 3,
+    sequencesLimit: 3,
     savedViews: 10,
     knowledgeBases: 1,
     kbPublishedArticles: 5,
@@ -63,6 +64,7 @@ const STATIC_LIMITS = {
     workerSeats: 0,
     channels: 1,
     workflowsLimit: 3,
+    sequencesLimit: 0,
     savedViews: 10,
     knowledgeBases: 1,
     kbPublishedArticles: 8,
@@ -76,6 +78,7 @@ const STATIC_LIMITS = {
     workerSeats: 2,
     channels: 3,
     workflowsLimit: 15,
+    sequencesLimit: 3,
     savedViews: 20,
     knowledgeBases: 1,
     kbPublishedArticles: 50,
@@ -89,6 +92,7 @@ const STATIC_LIMITS = {
     workerSeats: 10,
     channels: -1,
     workflowsLimit: -1,
+    sequencesLimit: 25,
     savedViews: -1,
     knowledgeBases: -1,
     kbPublishedArticles: -1,
@@ -102,6 +106,7 @@ const STATIC_LIMITS = {
     workerSeats: -1,
     channels: -1,
     workflowsLimit: -1,
+    sequencesLimit: -1,
     savedViews: -1,
     knowledgeBases: -1,
     kbPublishedArticles: -1,
@@ -135,7 +140,12 @@ const BOOLEAN_GATES = {
     dataConnectors: true,
     dashboards: false,
     dispatch: false,
-    sequences: false,
+    // Sequences is metered by `sequencesLimit`, not bundled with `dispatch` — the
+    // dispatch-triggered client-notification templates stay unreachable without the
+    // `dispatch` gate (see client-notifications-settings-page.tsx, which requires
+    // both), but manual/CRM outbound cadences are the general-purpose half and demo
+    // should show them off.
+    sequences: true,
     // Demo carried `mailPermissions: true` before plan v3/03 §7.6 folded that key
     // into this one, so the demo org keeps demoing sharing (D9).
     granularPermissions: true,
@@ -185,7 +195,8 @@ const BOOLEAN_GATES = {
     dataConnectors: true,
     dashboards: false,
     dispatch: false,
-    sequences: false,
+    // On at a metered 3 (`sequencesLimit`) — the upgrade lever into Growth's 25.
+    sequences: true,
     granularPermissions: false,
   },
   growth: {

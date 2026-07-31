@@ -7,6 +7,7 @@ import { getAppCache } from '../cache'
 import { getOrgCache } from '../cache/singletons'
 import { countBillableChannels } from '../channels'
 import { createScopedLogger } from '../logger'
+import { countSequencesUsed } from '../sequences/sequence-limits'
 import { countSavedViewsUsed } from '../table-views/saved-view-limits'
 import type { FeatureDefinition } from './types'
 import { FEATURE_REGISTRY_MAP, FeatureKey, parseFeatureLimits } from './types'
@@ -270,6 +271,13 @@ export class OverageDetectionService {
             )
           )
         return result?.value ?? 0
+      }
+
+      case FeatureKey.sequencesLimit: {
+        // Org-authored sequences only — the 5 seeded client-notification templates are
+        // undeletable, so counting them would strand every org over its cap. See
+        // `countSequencesUsed`.
+        return countSequencesUsed(this.db, organizationId)
       }
 
       case FeatureKey.savedViews: {
