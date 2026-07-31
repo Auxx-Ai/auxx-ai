@@ -8,7 +8,7 @@
     "build": "next build",
     "clean": "rm -rf .turbo node_modules .next",
     "start": "PORT=3002 node .next/standalone/apps/kb/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../node_modules/typescript7/bin/tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -43,7 +43,7 @@
     "prettier": "^3.8.1",
     "rimraf": "catalog:",
     "tailwindcss": "catalog:",
-    "typescript": "catalog:",
+    "typescript": "catalog:next-typescript",
     "vite": "catalog:",
     "vite-tsconfig-paths": "catalog:",
     "vitest": "catalog:"

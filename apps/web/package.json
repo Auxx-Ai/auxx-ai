@@ -16,7 +16,7 @@
     "clean": "rm -rf .next .open-next .turbo node_modules *.tsbuildinfo",
     "preview": "next build --turbopack && next start",
     "start": "PORT=3000 node .next/standalone/apps/web/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../node_modules/typescript7/bin/tsc --noEmit",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -205,7 +205,7 @@
     "rimraf": "catalog:",
     "tailwindcss": "catalog:",
     "ts-node": "catalog:",
-    "typescript": "catalog:",
+    "typescript": "catalog:next-typescript",
     "vite": "catalog:",
     "vite-tsconfig-paths": "catalog:",
     "vitest": "catalog:"

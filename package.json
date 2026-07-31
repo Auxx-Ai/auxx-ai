@@ -75,6 +75,7 @@
     "tsx": "catalog:",
     "turbo": "2.5.2",
     "typescript": "catalog:",
+    "typescript7": "npm:typescript@7.0.2",
     "undici-types": "^7.16.0",
     "vitest": "catalog:"
   },
