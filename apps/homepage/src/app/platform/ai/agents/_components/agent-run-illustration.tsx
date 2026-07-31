@@ -56,10 +56,19 @@ const TOOL_ICONS: Record<string, ToolPillIcon> = {
 /* Playback                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Playback starts with the first entry already on screen. `step` is a count of
+ * revealed entries, so starting at 0 leaves the run column blank for a whole
+ * dwell after every chip click — the switch reads as a stall. Every script
+ * opens on its trigger (a user message or a system line), which is exactly the
+ * thing that should be there the instant you pick an agent.
+ */
+const FIRST_STEP = 1
+
 function useRunPlayback(scripts: AgentScript[]) {
   const reduceMotion = useReducedMotion()
   const [agentIndex, setAgentIndex] = useState(0)
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState(FIRST_STEP)
   const [paused, setPaused] = useState(false)
 
   const script = scripts[agentIndex] ?? scripts[0]!
@@ -77,14 +86,21 @@ function useRunPlayback(scripts: AgentScript[]) {
 
     const timer = setTimeout(() => {
       setAgentIndex((i) => (i + 1) % scripts.length)
-      setStep(0)
+      setStep(FIRST_STEP)
     }, AGENT_HOLD_MS)
     return () => clearTimeout(timer)
   }, [step, total, paused, reduceMotion, script, scripts.length])
 
+  /**
+   * Picking an agent also lifts the hover pause. The cursor is inside the
+   * illustration by definition when you click a chip, so `onMouseEnter` has
+   * already paused playback — without this the run you just asked for sits on
+   * its first entry until you move the mouse back out of the section.
+   */
   const selectAgent = useCallback((index: number) => {
     setAgentIndex(index)
-    setStep(0)
+    setStep(FIRST_STEP)
+    setPaused(false)
   }, [])
 
   /** Scrub to the last entry belonging to a procedure line. */
