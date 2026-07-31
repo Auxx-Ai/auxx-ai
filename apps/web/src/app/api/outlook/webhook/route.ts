@@ -49,35 +49,59 @@ function verifyClientState(
 }
 
 /**
- * GET handler - Microsoft Graph subscription validation
- * During subscription setup, Microsoft sends a validationToken that must be echoed back
+ * Build the subscription-validation handshake response.
+ *
+ * Graph requires HTTP 200, `text/plain`, and the URL-decoded token as the entire
+ * body, within 10 seconds — anything else and the subscription is never created.
+ * `searchParams.get` already returns the decoded value.
+ */
+function validationResponse(validationToken: string): NextResponse {
+  logger.info('Received Microsoft Graph subscription validation request')
+  return new NextResponse(validationToken, {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain' },
+  })
+}
+
+/**
+ * GET handler - health check, plus the validation handshake for good measure.
+ *
+ * Graph itself validates over POST (see the POST handler); this branch only
+ * covers manual pokes at the endpoint.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const { searchParams } = new URL(req.url)
-  const validationToken = searchParams.get('validationToken')
-
-  if (validationToken) {
-    logger.info('Received Microsoft Graph subscription validation request')
-    // Echo back the validation token as plain text
-    return new NextResponse(validationToken, {
-      status: 200,
-      headers: { 'Content-Type': 'text/plain' },
-    })
-  }
+  const validationToken = new URL(req.url).searchParams.get('validationToken')
+  if (validationToken) return validationResponse(validationToken)
 
   // Health check if no validation token
   return NextResponse.json({ status: 'ok', timestamp: Date.now() })
 }
 
 /**
- * POST handler - Process Microsoft Graph webhook notifications
+ * POST handler - subscription validation, then change notifications.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // Graph performs the notificationUrl handshake as a POST carrying
+  // `?validationToken=` and an EMPTY body. This must be answered before any
+  // attempt to read the body — `req.json()` on an empty body throws, which used
+  // to surface as a 500 and made every subscription create/renew fail.
+  const validationToken = new URL(req.url).searchParams.get('validationToken')
+  if (validationToken) return validationResponse(validationToken)
+
   logger.info('Received Microsoft Graph webhook notification')
 
+  let body: GraphWebhookPayload
   try {
-    const body: GraphWebhookPayload = await req.json()
+    body = await req.json()
+  } catch (error) {
+    // Malformed body is the sender's bug — 400 so Graph stops retrying it.
+    logger.error('Could not parse Microsoft Graph webhook body as JSON', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return NextResponse.json({ error: 'Invalid payload format' }, { status: 400 })
+  }
 
+  try {
     if (!body || !body.value || !Array.isArray(body.value)) {
       logger.error('Invalid Microsoft Graph webhook payload format', { body })
       return NextResponse.json({ error: 'Invalid payload format' }, { status: 400 })
