@@ -2,6 +2,7 @@
 'use client'
 
 import { getDetailViewConfig, type ModelType } from '@auxx/lib/resources/client'
+import { BreadcrumbItem } from '@auxx/ui/components/breadcrumb'
 import { Button } from '@auxx/ui/components/button'
 import { Drawer, DrawerContent, DrawerHandle, DrawerTitle } from '@auxx/ui/components/drawer'
 import {
@@ -15,6 +16,7 @@ import { PanelRight } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useEffect, useMemo, useState } from 'react'
 import { NoAccess } from '~/components/permissions/ui/no-access'
+import { RecordNavButtons, RecordSwitcherList, useRecordNavContext } from '~/components/records/nav'
 import { getRecordDrillPanels } from '~/components/records/record-drill-panels'
 import {
   toRecordId,
@@ -73,6 +75,12 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
     recordId,
     enabled: !resourceLoading && canViewDefinition,
   })
+
+  // Which list this record was opened from — drives the breadcrumb switcher and
+  // the prev/next arrows. `null` until something resolves (or forever, if the
+  // record was reached from a surface with no list behind it), in which case the
+  // breadcrumb keeps its plain terminal label.
+  const navContext = useRecordNavContext(recordId)
 
   // Get config from registry based on entityType
   const config = getDetailViewConfig(entityType)
@@ -209,7 +217,23 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={plural ?? label ?? 'Records'} href={backUrl} />
-          <MainPageBreadcrumbItem title={displayName} />
+          {navContext ? (
+            <>
+              <RecordSwitcherList
+                context={navContext}
+                activeRecordId={recordId}
+                activeLabel={displayName}
+              />
+              {/* Own BreadcrumbItem: the crumb body is an <ol>, so raw buttons
+                  are invalid there. No separator — the arrows belong to the
+                  record crumb rather than forming a crumb of their own. */}
+              <BreadcrumbItem>
+                <RecordNavButtons context={navContext} />
+              </BreadcrumbItem>
+            </>
+          ) : (
+            <MainPageBreadcrumbItem title={displayName} />
+          )}
         </MainPageBreadcrumb>
       </MainPageHeader>
 

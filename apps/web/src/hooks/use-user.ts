@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo } from 'react'
 import { client as authClient } from '~/auth/auth-client'
 import { clearChannelCaches } from '~/components/channels/providers/channel-provider'
+import { clearRecordListContext } from '~/components/records/nav/record-list-context-store'
 import { clearResourceCaches } from '~/components/resources'
 import { useOrgDeepLink } from '~/hooks/use-org-deep-link'
 import {
@@ -172,6 +173,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
       setOrganizationId(newOrganizationId)
       clearResourceCaches()
       clearChannelCaches()
+      clearRecordListContext()
 
       // Persist to server
       switchOrganizationMutation.mutate(
