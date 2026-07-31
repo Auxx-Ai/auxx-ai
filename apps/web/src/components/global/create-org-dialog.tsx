@@ -35,6 +35,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { client as authClient } from '~/auth/auth-client'
 import { clearChannelCaches } from '~/components/channels/providers/channel-provider'
+import { clearRecordListContext } from '~/components/records/nav/record-list-context-store'
 import { clearResourceCaches } from '~/components/resources'
 import { api } from '~/trpc/react'
 
@@ -145,6 +146,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
       // Clear client-side caches before navigation
       clearResourceCaches()
       clearChannelCaches()
+      clearRecordListContext()
 
       // Force session cache refresh to get updated defaultOrganizationId
       await authClient.getSession({ query: { disableCookieCache: true } })

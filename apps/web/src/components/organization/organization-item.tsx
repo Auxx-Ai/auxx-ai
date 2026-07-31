@@ -19,6 +19,7 @@ import { useState } from 'react'
 import { useSession } from '~/auth/auth-client'
 import { clearChannelCaches } from '~/components/channels/providers/channel-provider'
 import { SeatTypeBadge } from '~/components/permissions/ui/seat-type-badge'
+import { clearRecordListContext } from '~/components/records/nav/record-list-context-store'
 import { clearResourceCaches } from '~/components/resources'
 import { useUser } from '~/hooks/use-user'
 import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
@@ -77,6 +78,7 @@ export function OrganizationItem({
       if (isDeletingCurrentOrg) {
         clearResourceCaches()
         clearChannelCaches()
+        clearRecordListContext()
         await utils.invalidate()
         router.push('/organizations')
       } else {

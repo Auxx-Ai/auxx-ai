@@ -16,6 +16,9 @@ import {
   useRef,
 } from 'react'
 import { MainPageLoading } from '~/components/global/main-page-states'
+// Leaf import, not the `records/nav` barrel — that barrel pulls the switcher and
+// the record editor dialog, which import back into dynamic-table.
+import { useRecordListContextPublisher } from '~/components/records/nav/use-record-list-context-publisher'
 import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import type {
@@ -27,7 +30,13 @@ import { DynamicTableFooter } from './components/dynamic-table-footer'
 import { getIconForFieldType } from './custom-field-column-factory'
 import { DynamicView } from './dynamic-view'
 import { useDefaultTablePersistence } from './hooks/use-default-table-persistence'
-import { useColumnVisibility, useTableFilters, useTableSorting } from './stores/store-selectors'
+import {
+  useActiveView,
+  useActiveViewId,
+  useColumnVisibility,
+  useTableFilters,
+  useTableSorting,
+} from './stores/store-selectors'
 import type { BulkAction, CellSelectionConfig, ExtendedColumnDef } from './types'
 
 /** Page size for the infinite query. Matches the prior records-view page size. */
@@ -102,6 +111,19 @@ export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> 
   onSelectedKanbanCardIdsChange?: (ids: Set<string>) => void
   /** Optional import page URL surfaced in the toolbar. */
   importHref?: string
+  /**
+   * Label for the list context this view publishes (see
+   * {@link useRecordListContextPublisher}). Embedded tables that are not "the
+   * definition's list" should name themselves — a contact's Tickets tab is
+   * "Tickets of Acme Corp", not "Tickets". Defaults to the active view's name.
+   */
+  listContextLabel?: string
+  /**
+   * Publish the list being shown, so a detail page opened from it can walk the
+   * same records. Default `true`; opt out for a surface that must not claim the
+   * definition's navigation context.
+   */
+  publishListContext?: boolean
 }
 
 export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
@@ -125,6 +147,8 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   selectedKanbanCardIds,
   onSelectedKanbanCardIdsChange,
   importHref,
+  listContextLabel,
+  publishListContext = true,
 }: DynamicResourceViewProps<TRow>) {
   const { resource, isLoading } = useResource(slug)
 
@@ -147,6 +171,8 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   const viewFilters = useTableFilters(tableId)
   const viewSorting = useTableSorting(tableId)
   const storeColumnVisibility = useColumnVisibility(tableId)
+  const activeView = useActiveView(tableId)
+  const activeViewId = useActiveViewId(tableId)
 
   // Baseline + store filters. Baseline stays a separate ConditionGroup so the
   // filter UI cannot see or edit it; the query layer ANDs groups together.
@@ -164,6 +190,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
 
   const {
     records,
+    recordIds: listIds,
     isLoading: instancesLoading,
     isLoadingRecords,
     isFetchingNextPage,
@@ -176,6 +203,21 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     sorting: sortingForQuery,
     limit: PAGE_SIZE,
     enabled: !!entityDefinitionId && isConfigReady,
+  })
+
+  // Publish what this view is showing — the merged filters, the sorting and the
+  // loaded ids — so a detail page opened from any row can offer prev/next and a
+  // switcher over the same list. This is the only place that holds all three
+  // together, which is why no navigation call site has to be touched.
+  useRecordListContextPublisher({
+    entityDefinitionId,
+    tableId,
+    filters: filtersForQuery,
+    sorting: sortingForQuery,
+    viewId: activeViewId,
+    label: listContextLabel ?? activeView?.name ?? resource?.plural,
+    ids: listIds,
+    enabled: publishListContext && isConfigReady,
   })
 
   const handleScrollToBottom = useCallback(() => {
