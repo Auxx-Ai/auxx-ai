@@ -14,6 +14,12 @@ interface Props<T extends FavoriteTargetType> extends Omit<ButtonProps, 'onClick
   /** Tailwind class(es) that reveal the button on hover of an ancestor group
    *  (e.g. 'group-hover/kb-item:flex') when not favorited. Omit to always show. */
   revealOnHoverClassName?: string
+  /**
+   * Key hint shown in the tooltip. Only pass it where the key is actually bound
+   * — this button appears in a dozen places and only the record surfaces bind
+   * `F`. A hint for a key that does nothing here is worse than no hint.
+   */
+  shortcut?: string
 }
 
 /** Reusable favorite/unfavorite star toggle for any favoritable target. */
@@ -22,12 +28,15 @@ export function FavoriteStarButton<T extends FavoriteTargetType>({
   targetIds,
   className,
   revealOnHoverClassName,
+  shortcut,
   ...props
 }: Props<T>) {
   const { toggle, isFavorited, isPending } = useFavoriteToggle(targetType, targetIds)
 
   return (
-    <SimpleTooltip content={isFavorited ? 'Remove from favorites' : 'Add to favorites'}>
+    <SimpleTooltip
+      content={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+      shortcut={shortcut}>
       <Button
         type='button'
         variant='ghost'

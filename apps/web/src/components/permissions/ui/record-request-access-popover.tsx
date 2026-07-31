@@ -42,6 +42,9 @@ export function RecordRequestAccessPopover({
   entityInstanceId,
   variant = 'inline',
   assumeNoAccess = false,
+  open: controlledOpen,
+  onOpenChange,
+  shortcut,
 }: {
   entityDefinitionId: string
   entityInstanceId: string
@@ -56,10 +59,25 @@ export function RecordRequestAccessPopover({
    * for a record the member demonstrably cannot reach (§8.3).
    */
   assumeNoAccess?: boolean
+  /**
+   * Optional controlled open state — how the `R` shortcut opens this popover on
+   * a surface that already renders its trigger. Omit for click-driven mounts.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Key hint for the trigger — `'R'` where `useRecordShortcuts` is mounted. */
+  shortcut?: string
 }) {
   // Owned here, not in the shell, because it is the LAZY-PREFLIGHT gate: the
-  // hook only issues its query while the popover is open (§8.5 / D6).
-  const [open, setOpen] = useState(false)
+  // hook only issues its query while the popover is open (§8.5 / D6). A
+  // controlled parent replaces this value but NOT the gate — the preflight still
+  // keys off "is it open", so opening by keyboard costs exactly what clicking does.
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const open = controlledOpen ?? uncontrolledOpen
+  const setOpen = (next: boolean) => {
+    setUncontrolledOpen(next)
+    onOpenChange?.(next)
+  }
 
   const {
     currentRung,
@@ -96,6 +114,8 @@ export function RecordRequestAccessPopover({
       isWithdrawing={isWithdrawing}
       copy={copy}
       variant={variant}
+      shortcut={shortcut}
+      open={controlledOpen}
       onOpenChange={setOpen}
     />
   )

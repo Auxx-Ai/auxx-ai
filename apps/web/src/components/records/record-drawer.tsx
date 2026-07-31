@@ -18,13 +18,23 @@ import { Tooltip } from '~/components/global/tooltip'
 import { CommandContext, RecordCommandActions } from '~/components/kbar/contextual'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
+import { useIsNestedThread } from '~/components/mail/thread-provider'
+import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
+import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
-import { resourceHasDetailPage, useRecord, useResource } from '~/components/resources'
+import {
+  resourceHasDetailPage,
+  useRecord,
+  useRecordAccess,
+  useResource,
+} from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
+import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { useRecordShortcuts } from './hooks/use-record-shortcuts'
 import { RecordActionsMenu } from './record-actions-menu'
 import { useRecordDrawerReadOnly } from './use-record-drawer-read-only'
 
@@ -211,6 +221,31 @@ export const RecordDrawer = React.memo(function RecordDrawer({
     router.push(`/app/custom/${resource.apiSlug}/${entityInstanceId}`)
   }, [resource?.apiSlug, resource?.entityType, entityInstanceId, router])
 
+  /**
+   * `R` / `F` / `W` / `Shift+S` / `E` for the record in this drawer.
+   *
+   * ⚠ **`isNestedThread` is what keeps the mailbox sane.** `mail-box.tsx` docks
+   * this drawer (the ticket drawer) BESIDE a live thread rather than over it, and
+   * mail binds `R` to reply-all, `F` to forward and `W` to its own workflow
+   * dialog. Every one of those would double-fire — `conflictBehavior: 'allow'`
+   * runs both handlers, it does not pick a winner. `NestedThreadProvider` already
+   * wraps that mount and exists for exactly this class of collision.
+   */
+  const { access } = useRecordAccess(recordId)
+  const isNestedThread = useIsNestedThread()
+  const {
+    requestAccessOpen,
+    setRequestAccessOpen,
+    shareOpen,
+    setShareOpen,
+    workflowOpen,
+    setWorkflowOpen,
+  } = useRecordShortcuts({
+    recordId,
+    enabled: !!open && !isNestedThread,
+    onExpand: resource && resourceHasDetailPage(resource) ? handleExpand : undefined,
+  })
+
   // Memoize the createdAt text to avoid recalculating on every render
   const createdAtText = React.useMemo(
     () =>
@@ -285,11 +320,41 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 Gone with it: an Archive item and a Link item whose onClick
                 bodies were empty comments, and a standalone delete button that
                 only appeared when the dropdown didn't. */}
+
+            {/* Request access is PROMOTED back out of the menu, using the `icon`
+                variant this shell always had for the drawer header's lock slot.
+                Two reasons, and only the second is new:
+
+                1. It is the one control here that ADDS capability, which is the
+                   same argument that promoted it on the detail page.
+                2. `R` has to anchor to it. Radix does not mount
+                   `DropdownMenuContent` until the menu opens, so while the
+                   trigger lived inside the kebab there was nothing on screen for
+                   a keyboard-opened popover to attach to.
+
+                ⚠ The lazy preflight (plan v3/04 §8.5 / D6) is UNCHANGED: the
+                query keys off the popover being OPEN, never off this being
+                mounted, so a member who never presses `R` or clicks still costs
+                the server nothing. */}
+            {access === 'read' && (
+              <GranularPermissionsGate>
+                <RecordRequestAccessPopover
+                  entityDefinitionId={entityDefinitionId}
+                  entityInstanceId={entityInstanceId}
+                  variant='icon'
+                  shortcut='R'
+                  open={requestAccessOpen}
+                  onOpenChange={setRequestAccessOpen}
+                />
+              </GranularPermissionsGate>
+            )}
+
             <FavoriteStarButton
               targetType='ENTITY_INSTANCE'
               targetIds={{ entityDefinitionId, entityInstanceId }}
               size='icon-xs'
               className='rounded-full'
+              shortcut='F'
             />
             <RecordActionsMenu
               recordId={recordId}
@@ -299,12 +364,16 @@ export const RecordDrawer = React.memo(function RecordDrawer({
               onEdit={() => setEditDialogOpen(true)}
               onRename={handleRename}
               onDeleted={handleClose}
+              omitItems={['request-access']}
+              // One share dialog for both paths — the menu item and `Shift+S`.
+              shareOpen={shareOpen}
+              onShareOpenChange={setShareOpen}
             />
 
             {/* Expand to full page — only for types that have a detail page
                 (no catch-all route; page-less system types would 404) */}
             {resource && resourceHasDetailPage(resource) && (
-              <Tooltip content='Open full page'>
+              <Tooltip content='Open full page' shortcut='E'>
                 <Button variant='ghost' size='icon-xs' onClick={handleExpand}>
                   <Expand />
                 </Button>
@@ -374,6 +443,18 @@ export const RecordDrawer = React.memo(function RecordDrawer({
             setEditDialogOpen(false)
             onMutationSuccess?.()
           }}
+        />
+      )}
+
+      {/* `W`'s target. The menu's "Run Workflow" submenu triggers a workflow the
+          member has already picked; the shortcut has picked nothing yet, so it
+          opens the picker — the same dialog mail's `W` opens for a thread. */}
+      {workflowOpen && (
+        <MassWorkflowTriggerDialog
+          open={workflowOpen}
+          onOpenChange={setWorkflowOpen}
+          recordIds={[recordId]}
+          onSuccess={onMutationSuccess}
         />
       )}
     </>

@@ -3,16 +3,18 @@
 
 import { parseRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { Share2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { InstanceShareAvatars } from '~/components/permissions/ui/instance-share-avatars'
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
+import { useRecordShortcuts } from '~/components/records/hooks/use-record-shortcuts'
 import { RECORD_HEADER_GHOST, RecordActionsMenu } from '~/components/records/record-actions-menu'
 import { useRecordAccess } from '~/components/resources'
+import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import type { DetailViewActionsProps } from '../types'
 
 /**
@@ -44,6 +46,12 @@ import type { DetailViewActionsProps } from '../types'
  *
  * Both promoted items are passed to the menu as `omitItems` so they are not also
  * offered inside it.
+ *
+ * This is also the detail page's ONE mount of {@link useRecordShortcuts} — `R`,
+ * `F`, `W` and `Shift+S`. It goes here rather than in the page shell because the
+ * anchors those keys need (the request trigger, the star, the share dialog) are
+ * all already rendered here, and a second mount anywhere would double-fire every
+ * key.
  */
 export function DetailViewActions({
   entityType,
@@ -54,7 +62,21 @@ export function DetailViewActions({
   const router = useRouter()
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const { access, canShare } = useRecordAccess(recordId)
-  const [shareOpen, setShareOpen] = useState(false)
+
+  /**
+   * `R` / `F` / `W` / `Shift+S` for the record this page is about. `E` is not
+   * bound — this page IS the expanded view. Mounted HERE rather than in the page
+   * shell because this component already renders every anchor the keys need:
+   * the request-access trigger, the share dialog and the favourite star.
+   */
+  const {
+    requestAccessOpen,
+    setRequestAccessOpen,
+    shareOpen,
+    setShareOpen,
+    workflowOpen,
+    setWorkflowOpen,
+  } = useRecordShortcuts({ recordId, enabled: true })
 
   return (
     <div className='flex items-center gap-2'>
@@ -72,6 +94,9 @@ export function DetailViewActions({
               onClick={() => setShareOpen(true)}>
               <Share2 />
               Share
+              <Kbd variant='outline' size='sm'>
+                ⇧S
+              </Kbd>
             </Button>
           </div>
         </GranularPermissionsGate>
@@ -86,6 +111,9 @@ export function DetailViewActions({
             entityDefinitionId={entityDefinitionId}
             entityInstanceId={entityInstanceId}
             variant='header'
+            shortcut='R'
+            open={requestAccessOpen}
+            onOpenChange={setRequestAccessOpen}
           />
         </GranularPermissionsGate>
       )}
@@ -95,6 +123,7 @@ export function DetailViewActions({
         targetIds={{ entityDefinitionId, entityInstanceId }}
         size='icon-xs'
         className={RECORD_HEADER_GHOST}
+        shortcut='F'
       />
 
       <RecordActionsMenu
@@ -110,6 +139,17 @@ export function DetailViewActions({
 
       {shareOpen && (
         <InstanceShareDialog recordId={recordId} open={shareOpen} onOpenChange={setShareOpen} />
+      )}
+
+      {/* `W`'s target. The menu's own "Run workflow" submenu triggers a chosen
+          workflow directly; the shortcut has nothing chosen yet, so it opens the
+          picker — the same dialog mail's `W` opens for a thread. */}
+      {workflowOpen && (
+        <MassWorkflowTriggerDialog
+          open={workflowOpen}
+          onOpenChange={setWorkflowOpen}
+          recordIds={[recordId]}
+        />
       )}
     </div>
   )

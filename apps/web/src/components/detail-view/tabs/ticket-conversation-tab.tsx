@@ -12,7 +12,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { MailFilterProvider } from '~/components/mail/mail-filter-context'
 import { MailThreadItem } from '~/components/mail/mail-thread-item'
 import ThreadDetails from '~/components/mail/thread-details'
-import { ThreadProvider } from '~/components/mail/thread-provider'
+import { NestedThreadProvider, ThreadProvider } from '~/components/mail/thread-provider'
 import { useThreadMutation, useTicketThreads } from '~/components/threads/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
 import type { DetailViewTabProps } from '../types'
@@ -81,12 +81,28 @@ export function TicketConversationTab({ entityInstanceId, recordId, record }: De
         />
       )}
 
-      {/* Thread detail view */}
+      {/* Thread detail view.
+
+          ⚠ **`NestedThreadProvider`** — this was the ONE embedded `ThreadDetails`
+          mount without it (`ThreadDetailsDialog` has always had it), and all
+          three things it suppresses are right here:
+
+          1. **`R` / `F`.** `ThreadDetails` binds them to reply-all and forward.
+             The ticket detail page's header binds the same two letters to
+             request-access and favourite (`useRecordShortcuts`), and
+             `conflictBehavior: 'allow'` runs BOTH handlers — it does not pick a
+             winner. On a record's own page, the record's keys win.
+          2. **The linked-ticket badge**, whose own comment calls out this exact
+             recursion: the thread's ticket IS the ticket this page is about, so
+             the picker pointed at itself.
+          3. **Overscroll containment**, which is what an embedded pane wants. */}
       <div className='flex-1 min-h-0'>
         {selectedThreadId && (
-          <ThreadProvider threadId={selectedThreadId}>
-            <ThreadDetails />
-          </ThreadProvider>
+          <NestedThreadProvider value={true}>
+            <ThreadProvider threadId={selectedThreadId}>
+              <ThreadDetails />
+            </ThreadProvider>
+          </NestedThreadProvider>
         )}
       </div>
     </div>

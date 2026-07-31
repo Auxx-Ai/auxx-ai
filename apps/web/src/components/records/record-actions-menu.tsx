@@ -10,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
@@ -74,6 +75,16 @@ export interface RecordActionsMenuProps {
    * no room to promote anything.
    */
   omitItems?: RecordActionKey[]
+  /**
+   * Optional controlled state for the share dialog this menu owns.
+   *
+   * A surface that also opens sharing by KEYBOARD (`Shift+S`, via
+   * `useRecordShortcuts`) passes its state in, so both paths drive the SAME
+   * dialog. Without it the surface would need a second `InstanceShareDialog`
+   * mount, and two dialogs over one record is one too many.
+   */
+  shareOpen?: boolean
+  onShareOpenChange?: (open: boolean) => void
   /** Extra items, rendered after the registry's custom ones and before the destructive group. */
   children?: React.ReactNode
 }
@@ -146,6 +157,8 @@ export function RecordActionsMenu({
   onLink,
   onDeleted,
   omitItems = [],
+  shareOpen: controlledShareOpen,
+  onShareOpenChange,
   children,
 }: RecordActionsMenuProps) {
   const router = useRouter()
@@ -161,8 +174,14 @@ export function RecordActionsMenu({
   const customItems = getRecordMenuActions(entityType, entityDefinitionId)
 
   const [mergeOpen, setMergeOpen] = React.useState(false)
-  const [shareOpen, setShareOpen] = React.useState(false)
+  const [uncontrolledShareOpen, setUncontrolledShareOpen] = React.useState(false)
   const [sequenceOpen, setSequenceOpen] = React.useState(false)
+
+  const shareOpen = controlledShareOpen ?? uncontrolledShareOpen
+  const setShareOpen = (next: boolean) => {
+    setUncontrolledShareOpen(next)
+    onShareOpenChange?.(next)
+  }
 
   // The REAL archive/delete path, shared with the records table. Only the
   // handlers and their dialogs are taken — NOT this hook's `canEdit`, which is
@@ -240,6 +259,9 @@ export function RecordActionsMenu({
             <DropdownMenuItem onSelect={() => router.push(fullPageLink)}>
               <Expand />
               Open full page
+              {/* `E` is bound by the DRAWER's `useRecordShortcuts` mount only —
+                  the table row has no shortcut context, so it gets no hint. */}
+              {surface === 'drawer' && <DropdownMenuShortcut>E</DropdownMenuShortcut>}
             </DropdownMenuItem>
           )}
 
@@ -248,6 +270,7 @@ export function RecordActionsMenu({
               <DropdownMenuItem onSelect={() => setShareOpen(true)}>
                 <Share2 />
                 Share
+                {surface === 'drawer' && <DropdownMenuShortcut>⇧S</DropdownMenuShortcut>}
               </DropdownMenuItem>
             </GranularPermissionsGate>
           )}
@@ -259,7 +282,7 @@ export function RecordActionsMenu({
               so it is never a dead end; app actions disables its branch. A menu
               whose rows appear and disappear by org configuration is a menu
               nobody can learn. */}
-          <WorkflowSubMenu recordId={recordId} />
+          <WorkflowSubMenu recordId={recordId} shortcut={surface === 'row' ? undefined : 'W'} />
           <AppRecordActionsSubmenu recordId={recordId} recordType={entityType} />
 
           {actions.enableAddToSequence && sequencesEnabled && access.canEdit && (
