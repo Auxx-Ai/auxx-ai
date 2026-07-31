@@ -1,7 +1,6 @@
 {
   "extends": "@auxx/typescript-config/react-library.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@auxx/ui/*": ["./src/*"]
     }

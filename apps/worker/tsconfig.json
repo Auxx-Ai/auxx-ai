@@ -5,7 +5,6 @@
     "moduleResolution": "bundler",
     "module": "esnext",
     "noEmit": true,
-    "baseUrl": ".",
     "sourceMap": true,
     "outDir": "./dist",
     "target": "ES2022",

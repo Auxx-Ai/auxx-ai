@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import ts from 'typescript'
+import { parseSync } from 'oxc-parser'
 
 const ROOT = path.resolve(process.cwd(), '../..')
 const SRC = path.resolve(process.cwd(), 'src')
@@ -19,41 +19,51 @@ const SCAN_DIRS = [path.join(ROOT, 'apps'), path.join(ROOT, 'packages')]
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo', 'coverage'])
 
+const LIB_PREFIX = '@auxx/lib/'
+
+/**
+ * Extracts `@auxx/lib/<subpath>` specifiers from a source file.
+ *
+ * Uses oxc rather than the TypeScript compiler API: TypeScript 7 removed the
+ * standalone `createSourceFile` entry point, and its replacement AST API is
+ * project-based — it only sees files a tsconfig actually includes, which would
+ * silently skip the ~89 test files that import `@auxx/lib/*` but are excluded
+ * from the app tsconfigs. Silently dropping those would generate an incomplete
+ * export map.
+ *
+ * Matching the previous AST-based behaviour exactly, this captures:
+ *   - `import ... from '<spec>'` (incl. type-only) and `import '<spec>'`
+ *   - `export ... from '<spec>'` / `export * from '<spec>'`
+ *   - `import('<spec>')` with a literal specifier
+ * and deliberately does NOT capture `require('<spec>')` or non-literal
+ * (template / computed) dynamic specifiers.
+ */
 function extractLibImports(sourceText: string, fileName: string): string[] {
-  const sf = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, false)
+  const { module } = parseSync(fileName, sourceText)
   const imports: string[] = []
 
-  function visit(node: ts.Node) {
-    // Static: import { X } from '@auxx/lib/foo'
-    // Static: export { X } from '@auxx/lib/foo'
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      const spec = node.moduleSpecifier.text
-      if (spec.startsWith('@auxx/lib/')) {
-        imports.push(spec.slice('@auxx/lib/'.length))
-      }
+  const add = (spec: string | null | undefined) => {
+    if (spec?.startsWith(LIB_PREFIX)) {
+      imports.push(spec.slice(LIB_PREFIX.length))
     }
-
-    // Dynamic: import('@auxx/lib/foo')
-    if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteral(node.arguments[0])
-    ) {
-      const spec = node.arguments[0].text
-      if (spec.startsWith('@auxx/lib/')) {
-        imports.push(spec.slice('@auxx/lib/'.length))
-      }
-    }
-
-    ts.forEachChild(node, visit)
   }
 
-  visit(sf)
+  for (const entry of module.staticImports) {
+    add(entry.moduleRequest?.value)
+  }
+
+  for (const entry of module.staticExports) {
+    for (const specifier of entry.entries) {
+      add(specifier.moduleRequest?.value)
+    }
+  }
+
+  for (const entry of module.dynamicImports) {
+    const raw = sourceText.slice(entry.moduleRequest.start, entry.moduleRequest.end)
+    const literal = /^(['"])(.*)\1$/.exec(raw)
+    if (literal) add(literal[2])
+  }
+
   return imports
 }
 

@@ -1,6 +1,7 @@
 {
   "extends": "@auxx/typescript-config/base.json",
   "compilerOptions": {
+    "types": ["node"],
     "module": "esnext",
     "moduleResolution": "bundler"
   },
