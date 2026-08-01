@@ -14,6 +14,12 @@ import type { ThreadManagerService } from '../thread-manager.service'
  * candidate row's `createdAt`, so it only ever fired when the provider happened
  * to poll within 60s of the send. Outlook polls every ~3 minutes.
  *
+ * Fixing that comparison was not enough: the SQL candidate filter only looked
+ * back 5 minutes from INGEST time, so on a measured live case (row created
+ * 06:28:02.744, echo ingested 06:34:50 — 6m47s) the candidate was never even
+ * SELECTED. That window is now 30 minutes; precision still comes from the 60s
+ * relative-skew check, not from the SQL bound.
+ *
  * These tests drive the real relational-query predicate: the fake `db` below
  * invokes the `where` / `orderBy` callbacks the service passes and evaluates
  * them against in-memory rows, so a wrong predicate fails here the same way it
@@ -246,9 +252,31 @@ describe('reconcileIncomingSync — Strategy 2 time window', () => {
     expect(result).toEqual({ isReconciled: true, existingMessageId: 'msg-local' })
   })
 
-  it('does not reconcile an echo ingested 10 minutes later (outside the SQL window)', async () => {
+  it('reconciles an echo ingested 6m47s after the send (the measured live failure)', async () => {
+    // Our row was created at 06:28:02.744 and the echo ingested at 06:34:50 — a
+    // 6m47s gap. The old SQL window was 5 minutes measured from INGEST time, so the
+    // candidate was never SELECTED and the corrected skew check never ran. This is
+    // the regression guard for that window.
+    const db = createDb([localSentRow()], [{ id: 'thread-1', externalId: 'ext-real' }])
+    ingestAt(6 * 60 + 47)
+
+    const result = await createService(db).reconcileIncomingSync(sentItemsEcho())
+
+    expect(result).toEqual({ isReconciled: true, existingMessageId: 'msg-local' })
+  })
+
+  it('reconciles an echo ingested 25 minutes after the send (inside the widened window)', async () => {
+    const db = createDb([localSentRow()], [{ id: 'thread-1', externalId: 'ext-real' }])
+    ingestAt(25 * 60)
+
+    const result = await createService(db).reconcileIncomingSync(sentItemsEcho())
+
+    expect(result).toEqual({ isReconciled: true, existingMessageId: 'msg-local' })
+  })
+
+  it('does not reconcile an echo ingested 45 minutes later (outside the SQL window)', async () => {
     const db = createDb([localSentRow()], [])
-    ingestAt(600)
+    ingestAt(45 * 60)
 
     const result = await createService(db).reconcileIncomingSync(sentItemsEcho())
 

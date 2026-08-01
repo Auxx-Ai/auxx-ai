@@ -50,6 +50,32 @@ import {
 
 const logger = createScopedLogger('outlook-provider')
 
+/** Custom `x-` header `sendMessage` stamps with our own `Message.id`. */
+const ECHOED_MESSAGE_ID_HEADER = 'x-auxxai-message-id'
+
+/**
+ * Reads our own `Message.id` back off a Graph message's `internetMessageHeaders`.
+ *
+ * Deliberately case-insensitive: Graph does not guarantee the casing it returns a
+ * custom header in, only that it round-trips the `x-` prefixed name. First
+ * occurrence wins.
+ *
+ * Kept out of `MACHINE_MAIL_HEADER_ALLOWLIST` on purpose — that allowlist defines
+ * the input contract of `detectMachineMail`, and this value is transient
+ * (reconciliation only), never persisted into `metadata.headers`.
+ */
+function pickEchoedMessageId(
+  entries: Array<{ name?: string | null; value?: string | null }> | undefined
+): string | null {
+  if (!entries?.length) return null
+  for (const entry of entries) {
+    if (entry?.name?.toLowerCase().trim() !== ECHOED_MESSAGE_ID_HEADER) continue
+    const value = entry.value?.trim()
+    if (value) return value
+  }
+  return null
+}
+
 /** Microsoft Graph /$batch endpoint limit. */
 const GRAPH_BATCH_LIMIT = 20
 const OUTLOOK_MAX_PAGE_SIZE = 999
@@ -350,6 +376,21 @@ export class OutlookProvider
         name: 'X-AuxxAi-Message',
         value: 'true',
       })
+      // Correlation key for the Sent Items copy. `/me/sendMail` returns no id and Graph
+      // mints its own `Message-ID`, so without this the copy that syncs back shares NO
+      // identifier with the row we just wrote — it stored a second time, in a forked
+      // thread (plans/channels/outlook/outbound-duplicate-and-fork.md). Verified
+      // 2026-08-01: Graph strips every transport header off the copy but PRESERVES our
+      // `x-` headers, so this survives the round trip where `Message-ID` cannot.
+      // `Message.id`, never `sendToken` — the token is an idempotency capability and
+      // this header is readable by every recipient. Read back in
+      // `convertMessagesToMessageData` as `MessageData.echoedMessageId`.
+      if (options.internalMessageId) {
+        message.internetMessageHeaders.push({
+          name: 'X-AuxxAi-Message-Id',
+          value: options.internalMessageId,
+        })
+      }
       // RFC 3834 loop prevention for automated sends (machine-mail plan Phase 2). Graph
       // only accepts `x-` custom headers (see the List-Unsubscribe note below), so
       // `Auto-Submitted` can't ride along — but X-Auto-Response-Suppress is Microsoft's
@@ -879,6 +920,9 @@ export class OutlookProvider
             isInbound: isInbound,
             inReplyTo: threading.inReplyTo ?? null,
             references: threading.references ?? null,
+            // Transient — read by the reconciler off `messageData`, deliberately NOT
+            // merged into `metadata.headers` below.
+            echoedMessageId: pickEchoedMessageId(message.internetMessageHeaders),
             metadata: {
               conversationId: message.conversationId,
               parentFolderId: message.parentFolderId,

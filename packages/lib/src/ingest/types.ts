@@ -61,6 +61,19 @@ export interface MessageData {
   labelIds?: string[]
   inReplyTo?: string | null
   references?: string | null
+  /**
+   * Our own `Message.id`, echoed back by the provider on the Sent-folder copy of a
+   * message we sent, via the `X-AuxxAi-Message-Id` header.
+   *
+   * Microsoft Graph mints its own `Message-ID` and returns nothing from
+   * `/me/sendMail`, so a Sent Items copy shares no identifier with the row we
+   * created — it used to reconcile only by a subject-and-time heuristic, and
+   * otherwise arrived as a duplicate in a forked thread. Custom `x-` headers are
+   * the one thing Graph both accepts on send and preserves on the copy (verified
+   * 2026-08-01: the copy came back carrying `X-AuxxAi-Message` and nothing else),
+   * so this is an exact, latency-independent correlation key.
+   */
+  echoedMessageId?: string | null
   threadIndex?: string | null
   folderId?: string | null
   internetHeaders?: JsonArray | null
