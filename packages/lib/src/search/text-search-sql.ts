@@ -115,8 +115,32 @@ const TRIGRAM_THRESHOLD = sql.raw('0.3')
  * How much a name hit outweighs a document hit. `ts_rank_cd` returns small
  * fractions, so this is what keeps "the record actually called Acme" above "a
  * record whose blob mentions Acme".
+ *
+ * Exported so a domain that composes its own rank out of these parts —
+ * `mail-query/thread-search-sql.ts` does — weights the trigram arm with the same
+ * number rather than retyping `2`.
  */
-const TRIGRAM_WEIGHT = sql.raw('2')
+export const TRIGRAM_WEIGHT = sql.raw('2')
+
+/**
+ * `ts_rank_cd`'s normalization flag `32`: "divide the rank by itself + 1".
+ *
+ * 🔴 **This is the only thing that makes a cover-density score comparable across
+ * two columns of different length.** Unnormalized `ts_rank_cd` is ~0.1 per cover
+ * and is NOT divided by document length, so it grows without bound in a long
+ * document: measured on the dev org, `ts_rank_cd` over `Thread."searchText"`
+ * reaches **9.3** for `order` and 3.1 for `invoice`, while the same expression
+ * over `Thread."subject"` caps at **0.3** — a 30x scale gap that has nothing to
+ * do with relevance and everything to do with the corpus being longer. Any fixed
+ * weight blending those two raw numbers is a guess that the longer column wins.
+ *
+ * Flag 32 maps `r` to `r / (r + 1)`, which is strictly increasing (so it never
+ * reorders rows within one arm) and bounded on `[0, 1)` (so a weight on ANOTHER
+ * arm can be derived against a known supremum instead of guessed). Verified
+ * against the database: `ts_rank_cd(…, 32)` returns exactly `r / (r + 1)`
+ * (`0.1 → 0.09090909`, `0.3 → 0.23076923`).
+ */
+export const TS_RANK_SATURATING = sql.raw('32')
 
 /**
  * `to_tsvector(config, COALESCE(document, ''))` — the indexed expression.
@@ -134,9 +158,26 @@ export function textSearchQuery(query: string): SQL {
   return sql`plainto_tsquery(${TS_CONFIG}, ${query})`
 }
 
-/** The full-text half of the score: `ts_rank_cd(document, query)`. */
-export function textSearchDocumentScore(query: string, cols: TextSearchColumns): SQL<number> {
-  return sql<number>`ts_rank_cd(${textSearchDocument(cols)}, ${textSearchQuery(query)})`
+/**
+ * The full-text half of the score: `ts_rank_cd(document, query)`.
+ *
+ * @param normalization - an optional `ts_rank_cd` normalization flag, e.g.
+ *   {@link TS_RANK_SATURATING}. Omitted by default, and deliberately so: the
+ *   record binding's score is projected raw to the picker and pinned by test, and
+ *   a domain with a single document column has nothing to make it comparable
+ *   *to*. Pass one only when two differently-sized corpora are being blended.
+ */
+export function textSearchDocumentScore(
+  query: string,
+  cols: TextSearchColumns,
+  normalization?: SQL
+): SQL<number> {
+  const document = textSearchDocument(cols)
+  const parsed = textSearchQuery(query)
+  if (!normalization) {
+    return sql<number>`ts_rank_cd(${document}, ${parsed})`
+  }
+  return sql<number>`ts_rank_cd(${document}, ${parsed}, ${normalization})`
 }
 
 /** The fuzzy half of the score: `similarity(rank, q)`, `pg_trgm`. */
@@ -242,8 +283,16 @@ export function textSearchPredicate(query: string, cols: TextSearchColumns): SQL
  * Note that {@link textSearchTrigramMatch} deliberately did **not** change this:
  * `%` is a *match* operator, not a score, so the fuzzy arm's indexability fix
  * left {@link textSearchRank} — and therefore this cursor and the `ORDER BY` it
- * mirrors — byte-identical. Any future change that touches the score must touch
- * both, which is why they are one function.
+ * mirrors — identical. Any future change that touches the score must touch both,
+ * which is why the rank is built by one function and the comparison by another
+ * ({@link textSearchKeyset}); neither is restated anywhere.
+ *
+ * ⚠️ "Identical" means *identical modulo placeholder ordinals*, which is the only
+ * form achievable: the rank appears twice, so Drizzle numbers the first copy's
+ * parameters `$1…` and the second's from wherever the score left off. The
+ * expressions are the same and each slot receives the same term — the tests
+ * normalize `$\d+` before comparing and pin the params array separately. Do not
+ * "fix" a rendered-SQL test by making the two copies share ordinals.
  *
  * @param score - the last row's combined score, from the previous page's cursor
  * @param id - the last row's id, the tie-break
@@ -254,6 +303,34 @@ export function textSearchCursor(
   score: number,
   id: string
 ): SQL {
-  const rank = textSearchRank(query, cols)
-  return sql`(${rank} < ${score} OR (${rank} = ${score} AND ${cols.id} < ${id}))`
+  return textSearchKeyset(textSearchRank(query, cols), cols.id, score, id)
+}
+
+/**
+ * The keyset filter for an ARBITRARY rank expression — the shape
+ * {@link textSearchCursor} is made of, exposed so a domain that composes its own
+ * score can reuse the shape without restating the comparison.
+ *
+ * 🔴 **Pass the expression the `ORDER BY` uses, from the same function call.**
+ * The whole hazard this module exists to prevent is a cursor and an `ORDER BY`
+ * that disagree — which does not error, it skips and duplicates rows on page 2.
+ * Taking the rank as a *parameter* rather than rebuilding it from columns is what
+ * lets `mail-query/thread-search-sql.ts` bind a rank this module knows nothing
+ * about (it carries a subject arm records have no equivalent for) and still be
+ * structurally incapable of drifting from its own ordering: `threadSearchCursor`
+ * calls `threadSearchRank`, the same function `ORDER BY` calls.
+ *
+ * @param rank - the ordering expression, rendered twice (a `WHERE` cannot see a
+ *   `SELECT` alias, so the recomputation is unavoidable)
+ * @param id - the tie-break column
+ * @param score - the last row's score, from the previous page's cursor
+ * @param cursorId - the last row's id
+ */
+export function textSearchKeyset(
+  rank: SQL<number>,
+  id: TextSearchRef,
+  score: number,
+  cursorId: string
+): SQL {
+  return sql`(${rank} < ${score} OR (${rank} = ${score} AND ${id} < ${cursorId}))`
 }

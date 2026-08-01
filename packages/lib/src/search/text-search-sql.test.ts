@@ -21,7 +21,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type TextSearchColumns,
+  TS_RANK_SATURATING,
   textSearchCursor,
+  textSearchDocumentScore,
+  textSearchKeyset,
   textSearchPredicate,
   textSearchRank,
   textSearchTrigramMatch,
@@ -104,6 +107,28 @@ describe('textSearchRank', () => {
   })
 })
 
+describe('textSearchDocumentScore', () => {
+  it('emits no normalization argument by default, so the record score is unchanged', () => {
+    // The optional flag was added for mail's two-corpus rank. Records project
+    // this score raw to the picker, and a stray third argument would silently
+    // rescale every record relevance score in the product.
+    const { sql: text } = render(textSearchDocumentScore('acme', COLS))
+    expect(text).toBe(
+      `ts_rank_cd(to_tsvector('english', COALESCE(ei."searchText", '')), plainto_tsquery('english', $1))`
+    )
+  })
+
+  it('appends the saturating flag when asked', () => {
+    // Flag 32 is `r / (r + 1)`. Verified against the database rather than the
+    // docs: ts_rank_cd(…, 32) returns 0.09090909 for a raw 0.1 and 0.23076923
+    // for a raw 0.3 — exactly r/(r+1) in both cases.
+    const { sql: text } = render(textSearchDocumentScore('acme', COLS, TS_RANK_SATURATING))
+    expect(text).toBe(
+      `ts_rank_cd(to_tsvector('english', COALESCE(ei."searchText", '')), plainto_tsquery('english', $1), 32)`
+    )
+  })
+})
+
 describe('textSearchTrigramMatch', () => {
   it('ANDs the indexable % operator with the explicit threshold', () => {
     const { sql: text, params } = render(textSearchTrigramMatch('acme', COLS))
@@ -131,6 +156,17 @@ describe('textSearchCursor', () => {
     expect(text).toContain(rank)
     expect(text).toContain(`AND ei."id" < `)
     expect(params).toEqual(['acme', 'acme', 0.75, 'acme', 'acme', 0.75, 'inst_9'])
+  })
+
+  it('is textSearchKeyset over textSearchRank — one definition, not two', () => {
+    // The structural version of the assertion above: the cursor is not merely
+    // *similar* to the keyset shape applied to the rank, it IS that, so a change
+    // to either can only ever move both.
+    const composed = render(textSearchKeyset(textSearchRank('acme', COLS), COLS.id, 0.75, 'inst_9'))
+    const direct = render(textSearchCursor('acme', COLS, 0.75, 'inst_9'))
+
+    expect(direct.sql).toBe(composed.sql)
+    expect(direct.params).toEqual(composed.params)
   })
 
   it('carries no match operator — the cursor is a score comparison, not a filter', () => {
