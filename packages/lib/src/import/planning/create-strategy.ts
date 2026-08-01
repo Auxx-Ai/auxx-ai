@@ -35,6 +35,10 @@ export async function createStrategy(
     })
     .returning()
 
+  if (!result) {
+    throw new Error('Failed to create import plan strategy')
+  }
+
   return {
     id: result.id,
     importPlanId: result.importPlanId,

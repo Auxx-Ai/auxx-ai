@@ -21,6 +21,10 @@ export async function createPlan(db: Database, jobId: string): Promise<ImportPla
     })
     .returning()
 
+  if (!result) {
+    throw new Error('Failed to create import plan')
+  }
+
   return {
     id: result.id,
     importJobId: result.importJobId,

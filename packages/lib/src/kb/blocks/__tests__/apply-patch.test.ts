@@ -1,7 +1,7 @@
 // packages/lib/src/kb/blocks/__tests__/apply-patch.test.ts
 
 import { describe, expect, it } from 'vitest'
-import type { ArticleNodeJSON, BlockJSON } from '../../markdown/types'
+import type { ArticleNodeJSON, BlockJSON, TableJSON, TabsJSON } from '../../markdown/types'
 import { applyPatch, PatchError } from '../apply-patch'
 
 const block = (id: string, text = ''): BlockJSON => ({
@@ -15,6 +15,31 @@ const heading = (id: string, level: number, text: string): BlockJSON => ({
   attrs: { id, blockType: 'heading', level },
   content: [{ type: 'text', text }],
 })
+
+function expectTabs(node: ArticleNodeJSON | undefined): TabsJSON {
+  expect(node?.type).toBe('tabs')
+  if (!node || node.type !== 'tabs') throw new Error('expected a tabs node')
+  return node
+}
+
+function expectTable(node: ArticleNodeJSON | undefined): TableJSON {
+  expect(node?.type).toBe('table')
+  if (!node || node.type !== 'table') throw new Error('expected a table node')
+  return node
+}
+
+function expectBlock(node: ArticleNodeJSON | undefined): BlockJSON {
+  expect(node?.type).toBe('block')
+  if (!node || node.type !== 'block') throw new Error('expected a block node')
+  return node
+}
+
+function expectAt<T>(items: readonly T[], index: number): T {
+  const item = items[index]
+  expect(item).toBeDefined()
+  if (item === undefined) throw new Error(`expected item at index ${index}`)
+  return item
+}
 
 describe('applyPatch — insert', () => {
   it('inserts at start', () => {
@@ -95,10 +120,8 @@ describe('applyPatch — insert', () => {
       anchor: { at: 'startOf', containerId: 'p1' },
       blocks: [block('new')],
     })
-    const tabs = out.content[0]
-    if (tabs.type === 'tabs') {
-      expect(tabs.content[0].content.map((b) => b.attrs.id)).toEqual(['new', 'b-in'])
-    }
+    const tabs = expectTabs(out.content[0])
+    expect(expectAt(tabs.content, 0).content.map((b) => b.attrs.id)).toEqual(['new', 'b-in'])
   })
 
   it('inserts inside a panel via endOf', () => {
@@ -120,10 +143,8 @@ describe('applyPatch — insert', () => {
       anchor: { at: 'endOf', containerId: 'p1' },
       blocks: [block('new')],
     })
-    const tabs = out.content[0]
-    if (tabs.type === 'tabs') {
-      expect(tabs.content[0].content.map((b) => b.attrs.id)).toEqual(['b-in', 'new'])
-    }
+    const tabs = expectTabs(out.content[0])
+    expect(expectAt(tabs.content, 0).content.map((b) => b.attrs.id)).toEqual(['b-in', 'new'])
   })
 
   it('inserts before a block that lives inside a panel', () => {
@@ -145,10 +166,8 @@ describe('applyPatch — insert', () => {
       anchor: { at: 'before', blockId: 'b' },
       blocks: [block('new')],
     })
-    const tabs = out.content[0]
-    if (tabs.type === 'tabs') {
-      expect(tabs.content[0].content.map((b) => b.attrs.id)).toEqual(['a', 'new', 'b', 'c'])
-    }
+    const tabs = expectTabs(out.content[0])
+    expect(expectAt(tabs.content, 0).content.map((b) => b.attrs.id)).toEqual(['a', 'new', 'b', 'c'])
   })
 
   it('throws on missing anchor block', () => {
@@ -230,12 +249,10 @@ describe('applyPatch — replace', () => {
       blockId: 'b1',
       block: heading('ignored-id', 1, 'New title'),
     })
-    const first = out.content[0]
-    if (first.type === 'block') {
-      expect(first.attrs.id).toBe('b1')
-      expect(first.attrs.blockType).toBe('heading')
-      expect(first.attrs.level).toBe(1)
-    }
+    const first = expectBlock(out.content[0])
+    expect(first.attrs.id).toBe('b1')
+    expect(first.attrs.blockType).toBe('heading')
+    expect(first.attrs.level).toBe(1)
   })
 
   it('replaces a block inside a table cell', () => {
@@ -255,12 +272,12 @@ describe('applyPatch — replace', () => {
       blockId: 'cell-b',
       block: heading('x', 2, 'new'),
     })
-    const table = out.content[0]
-    if (table.type === 'table') {
-      const replaced = table.content[0].content[0].content[0]
-      expect(replaced.attrs.id).toBe('cell-b')
-      expect(replaced.attrs.blockType).toBe('heading')
-    }
+    const table = expectTable(out.content[0])
+    const row = expectAt(table.content, 0)
+    const cell = expectAt(row.content, 0)
+    const replaced = expectAt(cell.content, 0)
+    expect(replaced.attrs.id).toBe('cell-b')
+    expect(replaced.attrs.blockType).toBe('heading')
   })
 })
 
@@ -272,11 +289,9 @@ describe('applyPatch — updateText', () => {
       blockId: 'b1',
       content: [{ type: 'text', text: 'new text' }],
     })
-    const first = out.content[0]
-    if (first.type === 'block') {
-      expect(first.content?.[0]).toMatchObject({ type: 'text', text: 'new text' })
-      expect(first.attrs.blockType).toBe('text')
-    }
+    const first = expectBlock(out.content[0])
+    expect(first.content?.[0]).toMatchObject({ type: 'text', text: 'new text' })
+    expect(first.attrs.blockType).toBe('text')
   })
 })
 
@@ -296,11 +311,9 @@ describe('applyPatch — updateAttrs', () => {
         id?: string
       },
     })
-    const first = out.content[0]
-    if (first.type === 'block') {
-      expect(first.attrs.id).toBe('cb1')
-      expect(first.attrs.calloutVariant).toBe('warn')
-    }
+    const first = expectBlock(out.content[0])
+    expect(first.attrs.id).toBe('cb1')
+    expect(first.attrs.calloutVariant).toBe('warn')
   })
 })
 
@@ -327,10 +340,8 @@ describe('applyPatch — delete', () => {
       },
     ]
     const out = applyPatch(doc, { op: 'delete', blockIds: ['b'] })
-    const tabs = out.content[0]
-    if (tabs.type === 'tabs') {
-      expect(tabs.content[0].content.map((b) => b.attrs.id)).toEqual(['a', 'c'])
-    }
+    const tabs = expectTabs(out.content[0])
+    expect(expectAt(tabs.content, 0).content.map((b) => b.attrs.id)).toEqual(['a', 'c'])
   })
 
   it('throws on missing block', () => {
