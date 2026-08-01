@@ -189,6 +189,79 @@ function instanceAccessDefError(key: string): ForbiddenError {
   )
 }
 
+/**
+ * The keys {@link getByIds} admits — the HYDRATION carve-out, and deliberately
+ * wider than {@link MAIL_READ_EXEMPT_KEYS}.
+ *
+ * `kb` and `dataset` are instance-access resources that live in their own
+ * tables, and `RecordPickerService` both resolves them from those tables and
+ * gates them per row through `canViewInstance` (`admitSystemRows`) — the same
+ * authority `kb.list` filters on. So for a hydration read they have exactly one
+ * access authority, which is what the blanket refusal was protecting.
+ *
+ * They are NOT added to the general read arm: the paginated list/search paths
+ * run through `getResources` / `querySystemResourceIdsPaged`, which have no
+ * instance-access filter. Admitting them there would leak the org's whole KB
+ * list. `signature`, `snippet`, `dashboard`, `workflow` and `agent` stay refused
+ * everywhere — they are not statically pickable, so there is no system-table
+ * path to gate in the first place.
+ */
+const HYDRATION_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAccessKey>([
+  ...MAIL_READ_EXEMPT_KEYS,
+  'kb',
+  'dataset',
+])
+
+/**
+ * {@link assertNotInstanceAccessDefForRead} as a FILTER rather than an assert —
+ * `getByIds` drops unroutable ids instead of failing the call.
+ *
+ * A hydration batch is not one caller's request: the client's record-store
+ * batcher collects ids from every component that mounted in the same tick and
+ * sends them as one query. Throwing for a single unroutable def therefore takes
+ * every unrelated record down with it — which is exactly what a `kb:` id in the
+ * batch did to the articles and contacts beside it. `RecordPickerService`
+ * already answers "an id you cannot reach" by omitting it, and the client models
+ * the gap (`missingIds` → `setNotFound`), so omission is the consistent answer
+ * here too.
+ *
+ * The TARGETED procedures keep the throw: a caller that named one record is owed
+ * a real error, not a silent empty.
+ */
+async function filterHydratableRecordIds(
+  organizationId: string,
+  recordIds: RecordId[]
+): Promise<RecordId[]> {
+  const kept: RecordId[] = []
+  // Resolved lazily and once — a batch of plain record defs never touches it.
+  let resources: Awaited<ReturnType<typeof getCachedResources>> | undefined
+
+  for (const recordId of recordIds) {
+    const { entityDefinitionId } = parseRecordId(recordId)
+
+    // The bare slug form ('kb', 'signature') decides without the cache.
+    if (isInstanceAccessKey(entityDefinitionId)) {
+      if (HYDRATION_EXEMPT_KEYS.has(entityDefinitionId)) kept.push(recordId)
+      continue
+    }
+
+    // A def UUID or apiSlug still has to resolve — the client sends both forms.
+    resources ??= await getCachedResources(organizationId)
+    const entityType = resources.find(
+      (r) =>
+        r.id === entityDefinitionId ||
+        r.entityDefinitionId === entityDefinitionId ||
+        r.apiSlug === entityDefinitionId
+    )?.entityType
+    if (entityType && isInstanceAccessKey(entityType) && !HYDRATION_EXEMPT_KEYS.has(entityType)) {
+      continue
+    }
+    kept.push(recordId)
+  }
+
+  return kept
+}
+
 /** The def part of each RecordId, for {@link assertNotInstanceAccessDef}. */
 function recordIdDefParts(recordIds: string[]): string[] {
   return recordIds.map((id) => parseRecordId(id as RecordId).entityDefinitionId)
@@ -514,6 +587,9 @@ export const recordRouter = createTRPCRouter({
   /**
    * Get multiple records by IDs (batch)
    * Used for hydrating relationship field values
+   *
+   * Unroutable defs are FILTERED, not refused — see
+   * {@link filterHydratableRecordIds} for why a shared batch must not fail whole.
    */
   getByIds: capabilityProcedure
     .input(
@@ -523,14 +599,15 @@ export const recordRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
-      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts(input.items))
+      const items = await filterHydratableRecordIds(organizationId, input.items as RecordId[])
+      if (items.length === 0) return {}
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
           capabilities: ctx.capabilities,
           requestPath: true,
         })
-        return await handler.getByIds(input.items as RecordId[])
+        return await handler.getByIds(items)
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         throw new TRPCError({

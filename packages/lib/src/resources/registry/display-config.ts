@@ -68,6 +68,20 @@ export interface ResourceDisplayConfig {
 
   /** Relations to include in query (for secondary info that needs related data) */
   withRelations?: Record<string, any>
+
+  /**
+   * Rows this table never exposes through the picker, as `column → excluded
+   * values`. Applied by `fetchResourcesDirect` to EVERY picker path — list,
+   * search and by-ids hydration alike.
+   *
+   * This exists because "which rows of this table are addressable" is a property
+   * of the table, not of one caller: `kb` rows of `kind: 'source'` are hidden
+   * containers owned by `KnowledgeSource` and are already filtered out of
+   * `listKnowledgeBases`, whose comment names pickers as a place they must never
+   * reach. Encoding it only in that one query left the picker free to surface
+   * them the moment a second read path opened.
+   */
+  neverPickable?: Record<string, readonly string[]>
 }
 
 /**
@@ -242,6 +256,13 @@ export const RESOURCE_DISPLAY_CONFIG: Partial<Record<TableId, ResourceDisplayCon
     defaultSortField: 'updatedAt',
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct',
+    // `source` only — NOT `learned`. Source KBs are internal containers with no
+    // UI of their own. The `learned` KB (AI Memory) is a real, member-facing
+    // knowledge base with its own card on the KB landing page; it is absent from
+    // `listKnowledgeBases` because that query backs the standard-KB grid, not
+    // because it is secret. Excluding it here would make the AI Memory KB
+    // unresolvable anywhere it is referenced.
+    neverPickable: { kind: ['source'] },
   },
 
   visit: {

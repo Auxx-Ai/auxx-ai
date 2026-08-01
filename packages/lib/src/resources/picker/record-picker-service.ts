@@ -1,9 +1,23 @@
 // packages/lib/src/resources/picker/record-picker-service.ts
 
 import { type Database, schema } from '@auxx/database'
+import type { Rung } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
-import { and, asc, desc, eq, gt, ilike, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  lt,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm'
 import {
   getCachedEntityDefId,
   getCachedResource,
@@ -13,7 +27,11 @@ import {
 import { BadRequestError, ForbiddenError } from '../../errors'
 import { getRecordIdentitiesForRecords } from '../../identity'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
-import { isDeclaredInstanceDomain } from '../../permissions/capabilities/instance-access'
+import {
+  type InstanceAccessKey,
+  isDeclaredInstanceDomain,
+  isInstanceAccessKey,
+} from '../../permissions/capabilities/instance-access'
 import {
   type RecordVisibilityScope,
   recordAccessRankSql,
@@ -61,6 +79,47 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('record-picker-service')
+
+/**
+ * An instance-access resource the picker can serve from its OWN table — i.e. a
+ * key that is simultaneously a blob-lane {@link InstanceAccessKey} and a
+ * statically-pickable system table. Today that is exactly `kb` and `dataset`.
+ *
+ * Derived, never listed: `signature` and `snippet` are instance-access too, but
+ * they carry no `RESOURCE_DISPLAY_CONFIG` entry, so `fetchResourcesFromDb`
+ * cannot query them by hand and this returns `undefined` for them — which is
+ * what keeps them refused at the router while these two are admitted.
+ */
+function systemTableInstanceAccessKey(entityDefinitionId: string): InstanceAccessKey | undefined {
+  if (!isInstanceAccessKey(entityDefinitionId)) return undefined
+  if (!RESOURCE_TABLE_MAP[entityDefinitionId as unknown as TableId]) return undefined
+  if (!RESOURCE_DISPLAY_CONFIG[entityDefinitionId as unknown as TableId]) return undefined
+  return entityDefinitionId
+}
+
+/**
+ * A row's instance-access rung, read off the composed capability blob.
+ *
+ * The three predicates are already on {@link CapabilityView} (and already
+ * intersected across run-as/invoker by its combining wrapper), so this walks
+ * them highest-first rather than adding a fourth method that would have to
+ * re-derive the same intersection. `undefined` ⇒ not viewable ⇒ the row drops.
+ *
+ * The vocabulary lines up on purpose: instance access uses `CONFIG_SCALE_RUNGS`
+ * (`none|read|edit|admin`), the same ladder `_access` is judged on by
+ * `canEditRecordAt` / `canDeleteRecordAt` and by `useRecordAccess` on the
+ * client, so a stamped `kb` row gets correct row affordances for free.
+ */
+function instanceRung(
+  capabilities: CapabilityView,
+  key: InstanceAccessKey,
+  instanceId: string
+): Rung | undefined {
+  if (capabilities.canAdminInstance(key, instanceId)) return 'admin'
+  if (capabilities.canEditInstance(key, instanceId)) return 'edit'
+  if (capabilities.canViewInstance(key, instanceId)) return 'read'
+  return undefined
+}
 
 /**
  * The slice of Drizzle's relational query builder the dynamic picker paths use.
@@ -335,6 +394,13 @@ export class RecordPickerService {
           if (searchConditions.length > 0) {
             conditions.push(or(...searchConditions)!)
           }
+        }
+
+        // Rows this table never exposes through the picker (e.g. `kind: 'source'`
+        // knowledge bases). Applied before caller filters so no caller can opt out.
+        for (const [fieldKey, excluded] of Object.entries(displayConfig.neverPickable ?? {})) {
+          const column = table[fieldKey]
+          if (column && excluded.length > 0) conditions.push(notInArray(column, [...excluded]))
         }
 
         // Apply custom filters
@@ -760,6 +826,10 @@ export class RecordPickerService {
     // for the ones that survive so the per-row predicate + `_access` stamp ride
     // the fetch below. Unauthorized ids DROP SILENTLY from the batch — the
     // caller's map simply has no entry — matching `getById`'s non-enumeration.
+    //
+    // System tables answer `{ arm: 'all' }` here and are gated one layer down
+    // instead — see {@link admitSystemRows} for why the instance-access ones
+    // (`kb`, `dataset`) need that and where their per-row policy actually lives.
     const scopes = new Map<string, RecordVisibilityScope>()
     if (this.capabilities) {
       for (const defId of [...grouped.keys()]) {
@@ -808,7 +878,7 @@ export class RecordPickerService {
                 undefined,
                 { id: ids }
               )
-              for (const item of fetched) {
+              for (const item of this.admitSystemRows(tableId, fetched)) {
                 // Re-key to caller's UUID prefix so the result map lookup matches.
                 const key = toRecordId(originalKey, item.id) as RecordId
                 result[key] = { ...item, recordId: key }
@@ -847,13 +917,49 @@ export class RecordPickerService {
             undefined,
             { id: ids }
           )
-          for (const item of fetched) result[item.recordId] = item
+          for (const item of this.admitSystemRows(resolvedId as TableId, fetched)) {
+            result[item.recordId] = item
+          }
         }
       })
     )
 
     await this.attachRecordSources(result)
     return result
+  }
+
+  /**
+   * **The per-row gate for system-table rows** — the half of §5.1/§5.2 that
+   * `fetchResourcesFromDb` cannot express.
+   *
+   * The EntityInstance path narrows in SQL (`scope.where`) and stamps `_access`
+   * from the grantee-union rank in the same projection. A system table has
+   * neither: its rows carry no `ResourceAccess` grant rows to correlate against,
+   * and `recordScope` says so by answering `{ arm: 'all' }`. For the
+   * instance-access keys among them (`kb`, `dataset`) that would be a leak — the
+   * whole org's knowledge bases to any member — so the fetch is filtered here,
+   * in memory, against the same authority `kb.list` uses (`canViewInstance`).
+   *
+   * Rows the member cannot view DROP SILENTLY, matching this method's answer for
+   * every other unreachable id. Non-instance-access system tables (`user`,
+   * `article`, `participant`) pass through untouched: they genuinely have no
+   * per-row policy in this lane.
+   *
+   * `capabilities: undefined` ⇒ internal caller ⇒ no enforcement, the same
+   * convention `recordScope` and `fetchEntityInstancesByIds` follow.
+   */
+  private admitSystemRows(tableId: TableId, fetched: RecordPickerItem[]): RecordPickerItem[] {
+    const key = systemTableInstanceAccessKey(tableId)
+    const capabilities = this.capabilities
+    if (!key || !capabilities) return fetched
+
+    const admitted: RecordPickerItem[] = []
+    for (const item of fetched) {
+      const access = instanceRung(capabilities, key, item.id)
+      if (!access) continue
+      admitted.push({ ...item, _access: access })
+    }
+    return admitted
   }
 
   /**
@@ -967,6 +1073,17 @@ export class RecordPickerService {
     // wrong answer, and `none` is the right one: the lens lives in `mail-query/`,
     // so from the record lane's point of view no thread row is reachable.
     if (isMailLensTableId(entityDefinitionId)) return { arm: 'none' }
+    // ⚠ `{ arm: 'all' }` for a system table is NOT "everyone sees everything" for
+    // the instance-access ones (`kb`, `dataset`). Their policy is real, it just
+    // is not SQL: it lives in the composed capability blob, so
+    // `getResourcesByIds` filters those rows through {@link instanceRung} AFTER
+    // the fetch. The arm stays `all` because this union expresses a WHERE
+    // predicate and there is none to give.
+    //
+    // That filter is on the by-ids (hydration) path only. `getResources` — the
+    // paginated list path — is still unfiltered for these keys, which is safe
+    // solely because `record.ts` refuses them there. Widen that guard and this
+    // has to grow a list arm first.
     if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) return { arm: 'all' }
     // Arms 1 and 4 are decided in memory, before any def normalization or
     // grantee resolution — see `UnifiedCrudHandler.recordScope` for why.
