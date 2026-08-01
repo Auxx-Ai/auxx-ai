@@ -67,6 +67,20 @@ type ProviderSendResult = {
   labelIds?: string[]
 }
 
+/**
+ * `Message.metadata` merge that records the provider's own error text under
+ * `providerErrorRaw`.
+ *
+ * `providerError` holds the sanitized, user-facing string; the actionable
+ * provider text (e.g. Graph's `InvalidInternetMessageHeader: … should start with
+ * 'x-'`) used to survive only in a log line. This is a jsonb `||` merge, not an
+ * assignment — the surrounding update statements do not read the existing
+ * metadata, so overwriting the column would drop the reconciler's bookkeeping.
+ */
+function providerErrorRawMerge(raw: string) {
+  return sql`coalesce(${schema.Message.metadata}, '{}'::jsonb) || jsonb_build_object('providerErrorRaw', ${raw}::text)`
+}
+
 /** Providers where "recipient" means an email address — suppression + List-Unsubscribe
  * apply here and nowhere else (chat/SMS/social DMs have no unsubscribe concept). */
 const EMAIL_PROVIDER_TYPES: ReadonlySet<string> = new Set([
@@ -325,6 +339,14 @@ export class MessageSenderService {
         reconcileThread: capabilities.requiresSendReconciliation,
       })
 
+      // A provider failure that does NOT throw lands here: the reconciler wrote
+      // `sendStatus = FAILED` + the sanitized `providerError` and replaced
+      // `metadata` wholesale, so the provider's own text has to be merged back
+      // in afterwards or it is lost to log rotation.
+      if (!sendResult.success) {
+        await this.persistProviderErrorRaw(composed.id, sendResult.metadata?.providerErrorRaw)
+      }
+
       // Realtime: publish `message:created` for the freshly sent message so
       // open tabs see the outbound row land without waiting for the post-send
       // sync re-import. The post-send sync emits `message:updated` later for
@@ -393,6 +415,8 @@ export class MessageSenderService {
       // — the stale-PENDING sweeper covers that case.)
       if (composed?.id) {
         try {
+          const { extractProviderErrorText } = await import('../providers/error-normalization')
+          const raw = extractProviderErrorText(error)
           await (this.db ?? db)
             .update(schema.Message)
             .set({
@@ -401,6 +425,7 @@ export class MessageSenderService {
               lastAttemptAt: new Date(),
               attempts: sql`${schema.Message.attempts} + 1`,
               updatedAt: new Date(),
+              ...(raw ? { metadata: providerErrorRawMerge(raw) } : {}),
             })
             .where(eq(schema.Message.id, composed.id))
         } catch (markError) {
@@ -746,7 +771,7 @@ export class MessageSenderService {
       }
     } catch (error: any) {
       // Import error normalizer
-      const { ErrorNormalizer, NormalizedEmailError } = await import(
+      const { ErrorNormalizer, NormalizedEmailError, extractProviderErrorText } = await import(
         '../providers/error-normalization'
       )
       // Determine provider type for normalization
@@ -784,14 +809,34 @@ export class MessageSenderService {
         success: false,
         error: userMessage,
         timestamp: new Date(),
-        // `ProviderSendResponse` carries only `error`; the structured code and
-        // retryability ride along in `metadata` (nothing reads them off the
-        // response today — they exist for the failure log / future retry logic).
+        // `ProviderSendResponse` carries only `error`, which is the sanitized
+        // user-facing string. The structured code, retryability and the
+        // provider's own error text ride along in `metadata`; the caller lifts
+        // `providerErrorRaw` into `Message.metadata` after reconciliation.
         metadata: {
           errorCode: normalizedError.code,
           retryable: normalizedError.details?.retryable,
+          providerErrorRaw: extractProviderErrorText(error),
         },
       }
+    }
+  }
+  /**
+   * Merges the provider's own error text into `Message.metadata.providerErrorRaw`.
+   * Best-effort — a failure here must never mask the send failure it describes.
+   */
+  private async persistProviderErrorRaw(messageId: string, raw: unknown): Promise<void> {
+    if (typeof raw !== 'string' || !raw) return
+    try {
+      await (this.db ?? db)
+        .update(schema.Message)
+        .set({ metadata: providerErrorRawMerge(raw) })
+        .where(eq(schema.Message.id, messageId))
+    } catch (error) {
+      logger.warn('Failed to persist raw provider error', {
+        messageId,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
   /**
@@ -1103,8 +1148,13 @@ export class MessageSenderService {
           with: { participant: true },
           orderBy: [asc(schema.MessageParticipant.role)],
         },
+        // NOTE: no `signature` relation here. `Message.signatureId` points at an
+        // `EntityInstance` now, and the old `Message.signature` relation was
+        // removed with the `Signature` table (see
+        // `database/src/db/relations/messaging.ts`). Naming a relation Drizzle
+        // does not have throws `Cannot read properties of undefined (reading
+        // 'referencedTable')` and takes down retry for every provider.
         from: true,
-        signature: true,
       },
     })
     if (!row) {
@@ -1331,7 +1381,7 @@ export class MessageSenderService {
       }
     } catch (error: any) {
       // Use existing error normalization
-      const { ErrorNormalizer, NormalizedEmailError } = await import(
+      const { ErrorNormalizer, NormalizedEmailError, extractProviderErrorText } = await import(
         '../providers/error-normalization'
       )
       const providerType = (provider as any).getProviderName?.() || 'unknown'
@@ -1356,12 +1406,16 @@ export class MessageSenderService {
         provider: providerType,
         messageId: params.messageId,
       })
-      // Update message with error - don't throw, let processRetryResult handle it
+      // Update message with error - don't throw, let processRetryResult handle it.
+      // The provider's own text is merged into metadata rather than assigned, so
+      // the earlier reconciliation bookkeeping survives the retry.
+      const raw = extractProviderErrorText(error)
       await db
         .update(schema.Message)
         .set({
           sendStatus: 'FAILED' as any,
           providerError: normalizedError.message,
+          ...(raw ? { metadata: providerErrorRawMerge(raw) } : {}),
         })
         .where(eq(schema.Message.id, params.messageId))
       // Return failure response instead of throwing
@@ -1369,7 +1423,7 @@ export class MessageSenderService {
         success: false,
         error: normalizedError.message,
         timestamp: new Date(),
-        metadata: { error: normalizedError },
+        metadata: { error: normalizedError, providerErrorRaw: raw },
       }
     }
   }

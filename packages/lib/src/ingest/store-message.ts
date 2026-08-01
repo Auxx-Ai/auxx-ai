@@ -29,6 +29,7 @@ import { findOrCreateParticipantRecord } from './participants/find-or-create'
 import { determineIdentifierType, normalizeIdentifier } from './participants/normalize'
 import { extractInternetMessageId } from './reconciliation/extract-internet-message-id'
 import { reconcileMessage } from './reconciliation/reconcile-message'
+import { resolveThreadId } from './threads/resolve-thread'
 import { updateThreadMetadataEfficient } from './threads/update-metadata'
 import type { IntegrationSettings, MessageData, ParticipantInputData } from './types'
 
@@ -374,58 +375,113 @@ export async function storeMessage(
       if (participant?.id) currentMessageParticipantIds.push(participant.id)
     }
 
+    // Thread resolution (thread-splitting plan §Phase 3). Runs BEFORE the
+    // transaction — the lookups are read-only and must not extend the window a
+    // write connection is held. `null` (the case for Gmail and for every message
+    // whose conversation key we already know) means "keep today's behaviour":
+    // the upsert on `(integrationId, externalId)` below is untouched.
+    const resolvedThread = await resolveThreadId(ctx, messageData)
+
     // Core write set in one transaction: thread upsert → message upsert →
     // latestMessageId → MessageParticipant links. One pool acquire, atomic.
     // Participant upserts stay OUTSIDE — they publish realtime events and
     // create contacts, which must not run inside a transaction holding a
     // connection against the 30s idle-in-transaction timeout.
     const txResult = await ctx.db.transaction(async (tx) => {
-      const threadData = await tx
-        .insert(schema.Thread)
-        .values({
-          externalId: messageData.externalThreadId,
-          integrationId: messageData.integrationId,
-          organizationId: messageData.organizationId,
-          inboxId: resolvedInboxId,
-          subject: messageData.subject ?? 'No Subject',
-          status: newThreadStatus,
-          firstMessageAt: messageData.sentAt,
-          lastMessageAt: messageData.sentAt,
-          messageCount: 1,
-          participantCount: currentMessageParticipantIds.length,
-        })
-        .onConflictDoUpdate({
-          target: [schema.Thread.integrationId, schema.Thread.externalId],
-          set: {
-            subject: messageData.subject || undefined,
-            inboxId: resolvedInboxId ?? undefined,
-          },
-        })
-        .returning({
-          id: schema.Thread.id,
-          inboxId: schema.Thread.inboxId,
-          status: schema.Thread.status,
-          assigneeId: schema.Thread.assigneeId,
-          messageCount: schema.Thread.messageCount,
-          firstMessageAt: schema.Thread.firstMessageAt,
-          lastMessageAt: schema.Thread.lastMessageAt,
-          participantCount: schema.Thread.participantCount,
-        })
-
-      // `INSERT … ON CONFLICT DO UPDATE … RETURNING` always yields exactly one
-      // row (unlike DO NOTHING, which returns none on a conflict), so this is a
-      // shape assertion, not a recoverable case. Throwing rolls the whole write
-      // set back rather than proceeding with a half-built thread.
-      const thread = threadData[0]
-      if (!thread) {
-        throw new Error(
-          `Thread upsert returned no row for externalThreadId ${messageData.externalThreadId} (integration ${messageData.integrationId})`
-        )
+      const threadColumns = {
+        id: schema.Thread.id,
+        inboxId: schema.Thread.inboxId,
+        status: schema.Thread.status,
+        assigneeId: schema.Thread.assigneeId,
+        messageCount: schema.Thread.messageCount,
+        firstMessageAt: schema.Thread.firstMessageAt,
+        lastMessageAt: schema.Thread.lastMessageAt,
+        participantCount: schema.Thread.participantCount,
       }
 
-      const isNewThread =
-        (thread.messageCount ?? 0) === 1 &&
-        thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
+      // Resolved path: the message joins a thread we already have, under a
+      // conversation key the Thread row does not carry. `Thread.externalId`
+      // stays the canonical/first key — the incoming key is recorded in
+      // `ThreadExternalKey` below instead. The `set` mirrors the
+      // `onConflictDoUpdate` set of the fallback branch exactly.
+      let thread = resolvedThread
+        ? (
+            await tx
+              .update(schema.Thread)
+              .set({
+                subject: messageData.subject || undefined,
+                inboxId: resolvedInboxId ?? undefined,
+              })
+              .where(eq(schema.Thread.id, resolvedThread.threadId))
+              .returning(threadColumns)
+          )[0]
+        : undefined
+
+      // True only when the UPDATE above actually matched. A resolved thread that
+      // vanished between the read and the write degrades to the untouched
+      // fallback upsert rather than failing the ingest.
+      const joinedResolvedThread = !!thread
+
+      if (!thread) {
+        const threadData = await tx
+          .insert(schema.Thread)
+          .values({
+            externalId: messageData.externalThreadId,
+            integrationId: messageData.integrationId,
+            organizationId: messageData.organizationId,
+            inboxId: resolvedInboxId,
+            subject: messageData.subject ?? 'No Subject',
+            status: newThreadStatus,
+            firstMessageAt: messageData.sentAt,
+            lastMessageAt: messageData.sentAt,
+            messageCount: 1,
+            participantCount: currentMessageParticipantIds.length,
+          })
+          .onConflictDoUpdate({
+            target: [schema.Thread.integrationId, schema.Thread.externalId],
+            set: {
+              subject: messageData.subject || undefined,
+              inboxId: resolvedInboxId ?? undefined,
+            },
+          })
+          .returning(threadColumns)
+
+        // `INSERT … ON CONFLICT DO UPDATE … RETURNING` always yields exactly one
+        // row (unlike DO NOTHING, which returns none on a conflict), so this is a
+        // shape assertion, not a recoverable case. Throwing rolls the whole write
+        // set back rather than proceeding with a half-built thread.
+        thread = threadData[0]
+        if (!thread) {
+          throw new Error(
+            `Thread upsert returned no row for externalThreadId ${messageData.externalThreadId} (integration ${messageData.integrationId})`
+          )
+        }
+      }
+
+      // Newness is EXPLICIT on the resolved branch. The `messageCount === 1 &&
+      // firstMessageAt === sentAt` inference below only holds for the upsert —
+      // an existing thread being joined that happens to hold a single message
+      // would read as brand-new and mis-fire `isFirstInThread`, `thread:created`
+      // and the unread-count deltas.
+      const isNewThread = joinedResolvedThread
+        ? false
+        : (thread.messageCount ?? 0) === 1 &&
+          thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
+
+      // Record the incoming conversation key so the NEXT message in a forked
+      // conversation resolves at rung 1, without needing a resolvable parent of
+      // its own. This is what makes a merge stick. Idempotent by the unique
+      // index on `(integrationId, externalId)`.
+      if (messageData.externalThreadId && messageData.integrationId) {
+        await tx
+          .insert(schema.ThreadExternalKey)
+          .values({
+            threadId: thread.id,
+            integrationId: messageData.integrationId,
+            externalId: messageData.externalThreadId,
+          })
+          .onConflictDoNothing()
+      }
 
       // Gmail parity: a thread with any INBOX message belongs in the inbox.
       // Reopen an ARCHIVED personal-channel thread when this message carries

@@ -21,6 +21,12 @@ import {
   type ParticipantInputData, // Use this for participant info
 } from '../../email/email-storage' // Adjust path
 import { pickMachineMailHeaders } from '../../ingest/filtering/machine-mail'
+// Named `deriveTextFromHtml`, not `htmlToPlainText`, on purpose: `@auxx/utils`
+// (imported above) exports an `htmlToPlainText` that is a naive regex chain — it
+// strips tags but leaves <style>/<script> CONTENTS inline and mangles tables.
+// Distinct names keep an autoimport from silently swapping in the wrong one.
+import { deriveSnippet, deriveTextFromHtml } from '../../ingest/html-to-plain-text'
+import { pickThreadingHeaders } from '../../ingest/threading-headers'
 import {
   type ChannelProvider,
   type MessageListResult,
@@ -332,19 +338,13 @@ export class OutlookProvider
         importance: 'normal',
         internetMessageHeaders: [],
       }
-      // Add threading headers (but note: these don't guarantee threading in Outlook)
-      if (options.inReplyTo) {
-        message.internetMessageHeaders.push({
-          name: 'In-Reply-To',
-          value: options.inReplyTo,
-        })
-      }
-      if (options.references) {
-        message.internetMessageHeaders.push({
-          name: 'References',
-          value: options.references,
-        })
-      }
+      // In-Reply-To / References are deliberately NOT pushed here, even though
+      // `options.inReplyTo`/`options.references` are populated for every reply.
+      // Graph accepts ONLY `x-`-prefixed names in `internetMessageHeaders` and returns
+      // 400 InvalidInternetMessageHeader for anything else — it rejects the request
+      // rather than dropping the header, so pushing them failed EVERY Outlook reply.
+      // Outbound threading therefore has to come from `/createReply`
+      // (see plans/channels/outlook/thread-splitting.md §Phase 5).
       // Add custom headers
       message.internetMessageHeaders.push({
         name: 'X-AuxxAi-Message',
@@ -364,17 +364,18 @@ export class OutlookProvider
       // Microsoft Graph's `message` resource docs are explicit: "Add custom headers only
       // when creating a message, and name them starting with 'x-'"
       // (learn.microsoft.com/graph/api/resources/message — internetMessageHeaders section).
-      // `List-Unsubscribe`/`List-Unsubscribe-Post` don't have an `x-` prefix, so Graph is
-      // expected to reject or silently drop them; the In-Reply-To/References headers above
-      // already push non-`x-` names today (comment above already flags they're best-effort
-      // and not guaranteed), but a rejected send is a much worse outcome than a missing
-      // threading hint. Deliverability headers matter most for ESP bulk sends anyway —
-      // Outlook 1:1 mail isn't the link-wrapping/bulk-sender-reputation case this protects
-      // against. Revisit if Graph ever allows standard RFC 5322 header names.
-      // IMPORTANT: For proper reply threading, consider using:
-      // - conversationId if available
-      // - Or use /reply endpoint instead of /sendMail for replies
-      // This is a known Outlook limitation - headers alone don't guarantee threading
+      // `List-Unsubscribe`/`List-Unsubscribe-Post` don't have an `x-` prefix, and Graph
+      // rejects the whole request with 400 InvalidInternetMessageHeader rather than
+      // dropping the offending header — confirmed in production 2026-08-01, where the
+      // In-Reply-To header this file used to push failed every single Outlook reply.
+      // Deliverability headers matter most for ESP bulk sends anyway — Outlook 1:1 mail
+      // isn't the link-wrapping/bulk-sender-reputation case this protects against.
+      // Revisit if Graph ever allows standard RFC 5322 header names.
+      // IMPORTANT: outbound reply threading now has NO header-based mechanism at all.
+      // The remaining option is `POST /me/messages/{id}/createReply` + `/send`, which
+      // also returns a real message id and conversationId (unlike /sendMail, which
+      // returns neither — see the `id: undefined` return below).
+      // Tracked in plans/channels/outlook/thread-splitting.md §Phase 5.
       // Handle attachments with size-aware logic
       if (options.attachments && options.attachments.length > 0) {
         const _MAX_INLINE_SIZE = 3 * 1024 * 1024 // 3MB for inline attachments
@@ -622,8 +623,12 @@ export class OutlookProvider
     })
     try {
       const storedDeltaLink = (this.integration?.metadata as any)?.graphDeltaLink
+      // Keep this list byte-identical to `messageSelectFields` in `importMessages` —
+      // both paths feed the same `convertMessagesToMessageData` converter, so a field
+      // present in one and missing from the other silently changes what gets stored
+      // depending on which sync path ingested the message.
       const selectFields =
-        'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
+        'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,bodyPreview,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
 
       // The `message:received` workflow-trigger gate reads `ctx.isInitialSync`
       // to distinguish live/incremental inbound from a first-connect
@@ -824,6 +829,33 @@ export class OutlookProvider
           ) {
             // Treat Trash as Inbox for now, maybe add TRASH label later
           }
+          // Graph hands us exactly ONE body in ONE format. When it is HTML there is
+          // no text/plain alternative to fall back on, so derive one — every
+          // downstream text consumer (AI compose, learned extraction, chat API,
+          // search corpus) reads `textPlain` first and Outlook would otherwise be
+          // blank. Pure CPU on a path that already holds the full body in memory.
+          const isHtmlBody = message.body?.contentType?.toLowerCase() === 'html'
+          const bodyContent = message.body?.content || undefined
+          const textHtml = isHtmlBody ? bodyContent : undefined
+          const textPlain = isHtmlBody
+            ? textHtml
+              ? deriveTextFromHtml(textHtml)
+              : undefined
+            : bodyContent
+
+          // RFC 5322 parentage. Graph's `conversationId` is not stable across a
+          // send→reply round-trip (Microsoft's own guidance is never to thread on
+          // it), so these are what keep a forked conversation in one thread.
+          const threading = pickThreadingHeaders(message.internetMessageHeaders)
+          const machineMailHeaders = pickMachineMailHeaders(message.internetMessageHeaders)
+          // Stays `undefined` when nothing matched, exactly as before — do not
+          // collapse this to a bare `{...a, ...b}`, which would start persisting an
+          // empty `headers: {}` on every header-less message.
+          const persistedHeaders =
+            machineMailHeaders || threading.inReplyTo || threading.references
+              ? { ...machineMailHeaders, ...threading }
+              : undefined
+
           // Construct MessageData
           return {
             externalId: message.id,
@@ -841,24 +873,23 @@ export class OutlookProvider
             bcc: bccInputs,
             replyTo: replyToInputs,
             hasAttachments: message.hasAttachments || false,
-            textHtml:
-              message.body?.contentType?.toLowerCase() === 'html'
-                ? message.body?.content
-                : undefined,
-            textPlain:
-              message.body?.contentType?.toLowerCase() === 'text'
-                ? message.body?.content
-                : undefined,
-            snippet: message.bodyPreview || '',
+            textHtml,
+            textPlain,
+            snippet: message.bodyPreview || (textPlain ? deriveSnippet(textPlain) : ''),
             isInbound: isInbound,
+            inReplyTo: threading.inReplyTo ?? null,
+            references: threading.references ?? null,
             metadata: {
               conversationId: message.conversationId,
               parentFolderId: message.parentFolderId,
               isRead: message.isRead,
               inferenceClassification: message.inferenceClassification,
               // Full headers stay unpersisted (large); machine-mail detection only
-              // needs this allowlisted subset (machine-mail plan Phase 1).
-              headers: pickMachineMailHeaders(message.internetMessageHeaders),
+              // needs this allowlisted subset (machine-mail plan Phase 1). The
+              // threading pair is merged in on top: it costs nothing, makes a
+              // thread split debuggable after the fact, and lets a future repair
+              // pass work on already-ingested mail.
+              headers: persistedHeaders,
             },
             keywords: message.categories || [], // Use categories as keywords
             labelIds: [], // Outlook uses folder IDs, not labels like Gmail
@@ -1527,8 +1558,9 @@ export class OutlookProvider
 
     const allMessages: GraphMessage[] = []
     let failedCount = 0
+    // Keep byte-identical to `selectFields` in `syncMessages` — see the note there.
     const messageSelectFields =
-      'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
+      'id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,replyTo,receivedDateTime,sentDateTime,body,bodyPreview,internetMessageId,parentFolderId,isRead,hasAttachments,categories,internetMessageHeaders,inferenceClassification'
 
     // Fetch messages in batches using Graph /$batch endpoint
     for (let i = 0; i < externalIds.length; i += GRAPH_BATCH_LIMIT) {

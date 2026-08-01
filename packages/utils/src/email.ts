@@ -200,6 +200,12 @@ export function normalizeMessageId(messageId: string | undefined): string | unde
 /**
  * Simple HTML to plain text converter
  * Converts basic HTML tags to text equivalents
+ *
+ * ⚠️ Naive by design and only safe for HTML we generated ourselves (the outbound
+ * `multipart/alternative` text part it was written for). It strips tags with a
+ * regex, so `<style>`/`<script>` CONTENTS survive as inline text and tables are
+ * mangled. Do NOT use it on arbitrary inbound mail — use `deriveTextFromHtml`
+ * from `@auxx/lib/ingest`, which runs `html-to-text` properly.
  */
 export function htmlToPlainText(html: string): string {
   return html

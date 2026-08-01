@@ -1,33 +1,17 @@
 // packages/lib/src/ingest/threads/get.ts
 
-import type { MessageEntity as Message, ThreadEntity as Thread } from '@auxx/database/types'
+import type { ThreadEntity as Thread } from '@auxx/database/types'
 import type { IngestContext } from '../context'
 
-/**
- * Load all messages in a thread with participant details. Used by the
- * web app to render a thread view — order by sentAt ascending.
- */
-export async function getThreadMessages(ctx: IngestContext, threadId: string): Promise<Message[]> {
-  try {
-    const messages = await ctx.db.query.Message.findMany({
-      where: (messages, { eq }) => eq(messages.threadId, threadId),
-      orderBy: (messages, { asc }) => [asc(messages.sentAt)],
-      with: {
-        from: true,
-        replyTo: true,
-        participants: {
-          orderBy: (participants, { asc }) => [asc(participants.role)],
-          with: { participant: true },
-        },
-        attachments: true,
-      },
-    })
-    return messages as Message[]
-  } catch (error) {
-    ctx.logger.error('Error getting thread messages:', { error, threadId })
-    throw error
-  }
-}
+// `getThreadMessages` used to live here. It requested an `attachments` relation
+// that `messageRelations` does not declare — attachments moved to the polymorphic
+// canonical `Attachment` table keyed by `(entityType, entityId)`, so there is no
+// relation to name. Drizzle resolved it to `undefined` and threw
+// `Cannot read properties of undefined (reading 'referencedTable')` on every call.
+// It had no callers (not even through its `EmailStorage` wrapper), which is why
+// nothing ever surfaced it. Deleted rather than repaired. Read message
+// attachments via `MessageQueryService` / `MessageAttachmentService`, which query
+// `Attachment` joined to `MediaAsset` directly.
 
 /** Fetch a single thread scoped to an organization, with minimal relations. */
 export async function getThread(
