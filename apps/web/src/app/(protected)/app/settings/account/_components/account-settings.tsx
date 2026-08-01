@@ -48,9 +48,12 @@ export function AccountSettings(): React.JSX.Element {
 
   const canEditEmail = (user?.providers?.length ?? 0) === 0
 
-  // The device line reads the SESSION row's user agent — `session` here is
-  // better-auth's `{ user, session }` envelope, not the session row itself.
-  const userAgent = new UAParser(session?.session.userAgent ?? '')
+  // The device line reads the SESSION row's user agent. `customSession` in
+  // auth/server.ts returns `{ ...session, user }`, so the session row is
+  // FLATTENED onto the top level — there is no `.session` sub-object at
+  // runtime, even though the client types still describe better-auth's default
+  // `{ user, session }` envelope. Hence the narrow cast.
+  const userAgent = new UAParser((session as { userAgent?: string } | null)?.userAgent ?? '')
 
   /**
    * Handle sign out - uses the same implementation as nav-user.tsx

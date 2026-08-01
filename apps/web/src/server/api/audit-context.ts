@@ -11,7 +11,13 @@ interface AuditableCtx {
   session: {
     user: { id: string }
     organizationId?: string | null
-    session?: { id?: string; token?: string } | null
+    /**
+     * The Session ROW id, flat on the session object — `customSession` in
+     * auth/server.ts returns `{ ...session, user }`, so there is no nested
+     * `.session` here (reading one silently wrote `sessionId: null` on every
+     * audit row until 2026-08-01).
+     */
+    id?: string | null
   }
 }
 
@@ -60,7 +66,7 @@ export function recordAuditFromCtx(
     context: {
       ipAddress: clientIp(ctx.headers),
       userAgent: ctx.headers?.get('user-agent') ?? null,
-      sessionId: ctx.session.session?.id ?? null,
+      sessionId: ctx.session.id ?? null,
     },
   })
 }
