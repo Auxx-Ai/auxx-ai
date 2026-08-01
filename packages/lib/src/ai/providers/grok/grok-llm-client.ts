@@ -15,4 +15,6 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
  * the DeepSeek pattern (strip prior-turn reasoning) vs the Kimi pattern
  * (preserve all) to match what xAI accepts.
  */
-export class GrokLLMClient extends OpenAILLMClient {}
+export class GrokLLMClient extends OpenAILLMClient {
+  protected static override clientName = 'Grok-LLM'
+}

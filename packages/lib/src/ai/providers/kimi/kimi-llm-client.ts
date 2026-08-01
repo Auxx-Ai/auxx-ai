@@ -15,6 +15,8 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
  * in multi-turn conversations.
  */
 export class KimiLLMClient extends OpenAILLMClient {
+  protected static override clientName = 'Kimi-LLM'
+
   /** Kimi requires reasoning_content on all assistant messages — preserve everything. */
   protected override prepareReasoningContent(messages: Message[]): Message[] {
     return messages

@@ -30,6 +30,8 @@ function findLastAssistantWithReasoningIndex(messages: Message[]): number {
  * (the Kimi behavior), switch this override to simply `return messages`.
  */
 export class ZaiLLMClient extends OpenAILLMClient {
+  protected static override clientName = 'Zai-LLM'
+
   /**
    * Z.AI's API only documents legacy JSON mode
    * (`response_format: { type: 'json_object' }`), not strict Structured Outputs

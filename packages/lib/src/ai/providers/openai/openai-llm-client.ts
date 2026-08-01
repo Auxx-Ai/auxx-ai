@@ -37,6 +37,16 @@ interface ReasoningDelta {
  * OpenAI specialized LLM client with production features
  */
 export class OpenAILLMClient extends LLMClient {
+  /**
+   * Label this client reports in errors, operation logs, and circuit-breaker state.
+   *
+   * Every OpenAI-compatible provider (DeepSeek, Groq, Qwen, …) subclasses this client
+   * without its own constructor, so each one MUST override this or its failures get
+   * reported as OpenAI failures — e.g. a DeepSeek 402 surfacing as
+   * `OpenAI-LLM invoke failed: Insufficient Balance`, sending you to the wrong dashboard.
+   */
+  protected static clientName = 'OpenAI-LLM'
+
   private tokenizer?: any // tiktoken encoding - lazy loaded
 
   constructor(
@@ -44,7 +54,9 @@ export class OpenAILLMClient extends LLMClient {
     config: ClientConfig,
     logger?: Logger
   ) {
-    super(config, 'OpenAI-LLM', logger)
+    // new.target is the concrete subclass being constructed, so this picks up the
+    // subclass's override without every subclass needing to redeclare a constructor.
+    super(config, (new.target as typeof OpenAILLMClient).clientName, logger)
   }
 
   async invoke(params: LLMInvokeParams): Promise<LLMResponse> {

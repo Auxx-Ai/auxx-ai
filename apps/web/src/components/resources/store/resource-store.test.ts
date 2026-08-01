@@ -29,10 +29,32 @@ const idField = {
   isAppOwned: true,
 } as unknown as ResourceField
 
+/**
+ * A system-attributed field, as the Kopilot agents-builder addresses it:
+ * canonical ref is `def_orders:cf_2`, static key is `status`, and the
+ * systemAttribute — the form `list_entity_fields` reports — is `order_status`.
+ */
+const statusField = {
+  id: 'cf_2',
+  key: 'status',
+  label: 'Status',
+  type: 'string',
+  capabilities: {
+    filterable: true,
+    sortable: true,
+    creatable: true,
+    updatable: true,
+    configurable: true,
+  },
+  resourceFieldId: toResourceFieldId('def_orders', 'cf_2'),
+  systemAttribute: 'order_status',
+} as unknown as ResourceField
+
 const ordersResource = {
   id: 'def_orders',
   type: 'custom',
   apiSlug: 'shopify_orders',
+  entityType: 'shopify_order',
   entityDefinitionId: 'def_orders',
   organizationId: 'org_1',
   label: 'Order',
@@ -40,7 +62,7 @@ const ordersResource = {
   icon: 'box',
   color: 'blue',
   isVisible: true,
-  fields: [idField],
+  fields: [idField, statusField],
   display: {
     primaryDisplayField: null,
     secondaryDisplayField: null,
@@ -86,6 +108,35 @@ describe('getFieldByRef', () => {
     expect(getResourceStoreState().getFieldByRef(null)).toBeUndefined()
     expect(getResourceStoreState().getFieldByRef(undefined)).toBeUndefined()
   })
+
+  // Alias spellings. The agents-builder writes persona chips the way
+  // `list_entity_fields` reports fields (apiSlug def half + systemAttribute
+  // field half), and the server accepts that form — so the badge renderers
+  // behind useField have to resolve it too, or every AI-authored field chip
+  // renders as an unknown-field badge.
+  it('resolves an apiSlug def half against a canonical field half', () => {
+    const field = getResourceStoreState().getFieldByRef('shopify_orders:cf_1')
+    expect(field?.resourceFieldId).toBe('def_orders:cf_1')
+  })
+
+  it('resolves an entityType def half against a static key field half', () => {
+    const field = getResourceStoreState().getFieldByRef('shopify_order:status')
+    expect(field?.resourceFieldId).toBe('def_orders:cf_2')
+  })
+
+  it('resolves a systemAttribute field half under every def spelling', () => {
+    for (const ref of [
+      'def_orders:order_status',
+      'shopify_orders:order_status',
+      'shopify_order:order_status',
+    ]) {
+      expect(getResourceStoreState().getFieldByRef(ref)?.resourceFieldId).toBe('def_orders:cf_2')
+    }
+  })
+
+  it('does not resolve a systemAttribute against the wrong definition', () => {
+    expect(getResourceStoreState().getFieldByRef('def_missing:order_status')).toBeUndefined()
+  })
 })
 
 describe('useField', () => {
@@ -102,5 +153,11 @@ describe('useField', () => {
   it('returns undefined for an unresolvable ref', () => {
     const { result } = renderHook(() => useField('shopify_orders:@app:shopify:missing'))
     expect(result.current).toBeUndefined()
+  })
+
+  it('resolves an apiSlug + systemAttribute ref the same as the concrete one', () => {
+    const { result } = renderHook(() => useField('shopify_orders:order_status'))
+    expect(result.current?.resourceFieldId).toBe('def_orders:cf_2')
+    expect(result.current?.label).toBe('Status')
   })
 })

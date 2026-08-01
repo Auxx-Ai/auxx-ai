@@ -33,6 +33,8 @@ function findLastAssistantWithReasoningIndex(messages: Message[]): number {
  * tool-calling cycle.
  */
 export class QwenLLMClient extends OpenAILLMClient {
+  protected static override clientName = 'Qwen-LLM'
+
   /**
    * DashScope's compatible-mode endpoint only documents legacy JSON mode
    * (`response_format: { type: 'json_object' }`), not strict Structured Outputs

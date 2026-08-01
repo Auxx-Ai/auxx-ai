@@ -17,6 +17,8 @@ const STRICT_JSON_SCHEMA_MODELS = new Set(['openai/gpt-oss-20b', 'openai/gpt-oss
  * calling all work through the base client.
  */
 export class GroqLLMClient extends OpenAILLMClient {
+  protected static override clientName = 'Groq-LLM'
+
   /**
    * Groq only supports strict Structured Outputs on the `openai/gpt-oss-*`
    * models — every other model (e.g. llama-3.3-70b-versatile) only offers
