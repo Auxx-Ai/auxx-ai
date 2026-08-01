@@ -143,6 +143,7 @@ describe('per-iteration billing — IterationUsage on metadata + event', () => {
   it('multi-iteration turn (tool → text) produces two iteration entries', async () => {
     const search: AgentToolDefinition = {
       name: 'search',
+      displayName: 'Search',
       description: 's',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => ({ success: true, output: { hits: [] } }),
@@ -219,6 +220,7 @@ describe('per-iteration billing — IterationUsage on metadata + event', () => {
   it('pause path emits assistant-message-paused with iterations so billing fires before suspension', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,

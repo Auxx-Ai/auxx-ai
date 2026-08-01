@@ -5,6 +5,7 @@
 import type { FieldType } from '@auxx/database/types'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { isAiEligible } from '@auxx/lib/custom-fields/client'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import type { AiOptions } from '@auxx/types/custom-field'
 import {
@@ -178,7 +179,8 @@ function HeaderCellOptionsDropdown<TData>({
   pinnedColumnId: string | null
   setPinnedColumn: (columnId: string | null) => void
   effectiveFieldType: FieldType | undefined
-  terminalDefaultFormatting: Record<string, unknown> | undefined
+  /** The terminal field's `options`, used as the formatting dialog's defaults. */
+  terminalDefaultFormatting: FieldOptions | undefined
   aiMenuEnabled: boolean
   aiField: { id: FieldId; fieldType: FieldType } | null
   aiFieldRef: FieldReference | null
@@ -547,10 +549,10 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
     if (isPathColumn) {
       const terminal = pathFields[pathFields.length - 1]
       if (!terminal || terminal.isSystem) return null
-      return terminal.resourceFieldId
+      return terminal.resourceFieldId ?? null
     }
     if (!directField || directField.isSystem) return null
-    return directField.resourceFieldId
+    return directField.resourceFieldId ?? null
   }, [isPathColumn, pathFields, directField])
 
   // ─── DATA-CONNECTOR OWNED LOCK ─────────────────────────────────────────────

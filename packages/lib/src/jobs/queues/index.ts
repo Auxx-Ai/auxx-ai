@@ -74,9 +74,9 @@ export function getQueue(queueName: Queues): Queue {
 export async function closeAllQueues(): Promise<void> {
   const closePromises: Promise<void>[] = []
 
-  for (const queueName of Object.keys(queueCache)) {
+  for (const [queueName, queue] of Object.entries(queueCache)) {
     logger.info(`Closing queue: ${queueName}`)
-    closePromises.push(queueCache[queueName].close())
+    closePromises.push(queue.close())
   }
 
   await Promise.all(closePromises)

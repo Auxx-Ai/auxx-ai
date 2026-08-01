@@ -22,3 +22,18 @@ export interface PlanFormData {
   minSeats: number
   maxSeats: number
 }
+
+/**
+ * Normalize a feature-limit list for the plan write API.
+ *
+ * Reads can legitimately carry `'+'` — `Plan.featureLimits` is untyped `jsonb` and
+ * legacy rows persist the normalized unlimited marker (consumers such as
+ * `overage-detection-service` still handle both). The `admin.plans.create`/`update`
+ * inputs accept only `number | boolean`, where **-1** is unlimited, so `'+'` must be
+ * mapped back before submit or saving a legacy plan is rejected by validation.
+ */
+export function toWritableFeatureLimits(
+  limits: FeatureDefinition[]
+): { key: string; limit: number | boolean }[] {
+  return limits.map(({ key, limit }) => ({ key, limit: limit === '+' ? -1 : limit }))
+}

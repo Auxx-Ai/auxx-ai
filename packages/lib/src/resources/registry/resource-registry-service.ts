@@ -7,9 +7,10 @@ import {
   ModelTypeMeta,
   ModelTypeValues,
 } from '@auxx/database/enums'
-import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { type RelationshipConfig, SELECT_OPTION_COLORS } from '@auxx/types/custom-field'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { ENTITY_DEFINITION_TYPES, isEntityDefinitionType } from '@auxx/types/resource'
+import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { mapFieldTypeToBaseType } from '../../workflow-engine/utils/field-type-mapper'
 import { RESOURCE_DISPLAY_CONFIG } from './display-config'
 import { resolveEntityDefTypeId } from './entity-def-resolver'
@@ -183,7 +184,10 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
     return {
       id: field.id,
       name: field.label || field.key,
-      type: field.fieldType,
+      // `fieldType` (the storage FieldType) is optional on `ResourceField`; every
+      // static display field declares one, so the BaseType fallback only fires
+      // for a registry entry that forgot it.
+      type: field.fieldType ?? field.type,
     }
   }
 
@@ -328,7 +332,7 @@ export class ResourceRegistryService {
 
     // Static registry IDs — fields for these types always route to fieldsByModelType
     // so the system resource picks them up (e.g., thread's CustomField-backed thread_tags)
-    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+    const staticRegistryIds = new Set<string>(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
 
     for (const field of customFields as CustomFieldRecord[]) {
       if (field.entityDefinitionId && !staticRegistryIds.has(field.modelType)) {
@@ -433,7 +437,7 @@ export class ResourceRegistryService {
     })
 
     // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
-    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+    const staticRegistryIds = new Set<string>(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
     const filteredEntityDefs = (entityDefinitions as EntityDefinitionWithFields[]).filter(
       (def) => !def.entityType || !staticRegistryIds.has(def.entityType)
     )
@@ -492,7 +496,7 @@ export class ResourceRegistryService {
     if (!entityDef) return null
 
     // Filter out EntityDefinitions that overlap with static registry resources (e.g., thread)
-    const staticRegistryIds = new Set(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
+    const staticRegistryIds = new Set<string>(RESOURCE_TABLE_REGISTRY.map((r) => r.id))
     if (entityDef.entityType && staticRegistryIds.has(entityDef.entityType)) return null
 
     // Merge static field metadata for entity-definition types
@@ -894,6 +898,9 @@ export class ResourceRegistryService {
 
       if (staticField) {
         matchedAttributes.add(dbField.systemAttribute!)
+        // Hoisted so the ternary below narrows: spreading `a ?? b` inline keeps
+        // `undefined` in the union and makes every property optional.
+        const baseRelationship = dbField.relationship ?? staticField.relationship
         // Identity stays the DB CustomField row id (`dbField.id`/`dbField.resourceFieldId`)
         // so it matches `FieldValue.fieldId` — values, columns, and store keys all agree on
         // one id. We adopt the static field's display/behaviour metadata only. Resolution by
@@ -922,16 +929,15 @@ export class ResourceRegistryService {
           },
           // Merge relationship config — DB object exists but inverseResourceFieldId may be null
           // when the seeder linker couldn't resolve it. Fall back to static definition.
-          relationship:
-            dbField.relationship || staticField.relationship
-              ? {
-                  ...(dbField.relationship ?? staticField.relationship),
-                  inverseResourceFieldId:
-                    dbField.relationship?.inverseResourceFieldId ??
-                    staticField.relationship?.inverseResourceFieldId ??
-                    null,
-                }
-              : undefined,
+          relationship: baseRelationship
+            ? {
+                ...baseRelationship,
+                inverseResourceFieldId:
+                  dbField.relationship?.inverseResourceFieldId ??
+                  staticField.relationship?.inverseResourceFieldId ??
+                  null,
+              }
+            : undefined,
         }
       }
 
@@ -1030,7 +1036,10 @@ export class ResourceRegistryService {
           ? rawOptions?.options?.map((o) => ({
               value: o.value,
               label: o.label,
-              color: o.color,
+              // `options` is untyped jsonb — keep only palette colors so an
+              // off-palette value can't reach the badge renderer (which would
+              // silently fall back to gray anyway).
+              color: SELECT_OPTION_COLORS.find((c) => c === o.color),
               targetTimeInStatus: o.targetTimeInStatus,
               celebration: o.celebration,
             }))
@@ -1072,7 +1081,14 @@ export class ResourceRegistryService {
         // dialogs via `options.showInDialogs` (set at field-creation time). Undefined
         // when never set — see use-field-view.ts for the default-hidden fallback.
         showInDialogs: (field.options as { showInDialogs?: boolean } | null)?.showInDialogs,
-        systemAttribute: field.systemAttribute ?? undefined,
+        // `CustomField.systemAttribute` is a free-text column; anything outside
+        // the registered vocabulary is drift and is dropped rather than typed
+        // through. `isSystemField` above still reads the raw column, so a
+        // drifted row stays a system field — it just carries no attribute.
+        systemAttribute:
+          field.systemAttribute && isSystemAttribute(field.systemAttribute)
+            ? field.systemAttribute
+            : undefined,
 
         // App ownership — surfaced so consumers can reason about ownership
         // (e.g. the v5 chat fence) and the UI knows the field is app-managed.

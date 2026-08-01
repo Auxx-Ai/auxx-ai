@@ -56,7 +56,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         uploadId: session.uploadId,
         partNumber,
         size,
-        ttlSec: session.ttlSec,
+        // NOTE: `StorageManager.generatePartUploadUrl` takes no `ttlSec` and does not
+        // forward one to the adapter, so part URLs use the S3 adapter's 3600s default
+        // rather than `session.ttlSec`.
         credentialId: session.credentialId,
       })
 

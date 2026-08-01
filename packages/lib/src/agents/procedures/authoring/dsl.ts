@@ -70,14 +70,17 @@ const STEP_KINDS: ReadonlySet<string> = new Set([
 const ROUTE_OUTCOMES: ReadonlySet<string> = new Set(['finished', 'handoff', 'switch'])
 
 /** Allowed property keys per step kind — anything else is "unknown property". */
-const ALLOWED_KEYS: Record<string, ReadonlySet<string>> = {
-  instruction: new Set(['id', 'kind', 'text']),
-  condition: new Set(['id', 'kind', 'cases', 'else']),
-  route_terminal: new Set(['id', 'kind', 'outcome']),
-  route_switch: new Set(['id', 'kind', 'outcome', 'switchToProcedureId']),
-  call: new Set(['id', 'kind', 'subProcedureId']),
-  opaque: new Set(['id', 'kind', 'label']),
-}
+// `satisfies` rather than a `Record<string, …>` annotation: the key set is
+// closed, and an index signature would make every lookup `| undefined` under
+// `noUncheckedIndexedAccess` even though each one names a literal member.
+const ALLOWED_KEYS = {
+  instruction: new Set<string>(['id', 'kind', 'text']),
+  condition: new Set<string>(['id', 'kind', 'cases', 'else']),
+  route_terminal: new Set<string>(['id', 'kind', 'outcome']),
+  route_switch: new Set<string>(['id', 'kind', 'outcome', 'switchToProcedureId']),
+  call: new Set<string>(['id', 'kind', 'subProcedureId']),
+  opaque: new Set<string>(['id', 'kind', 'label']),
+} satisfies Record<string, ReadonlySet<string>>
 
 // ── runtime validator ────────────────────────────────────────────────────────
 

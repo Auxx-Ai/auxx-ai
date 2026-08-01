@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/settings/general/_components/notification-preferences.tsx
 'use client'
 
+import type React from 'react'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 
@@ -11,7 +12,7 @@ import { SettingsFieldRow } from '~/components/settings/settings-field-row'
  * rest of the NOTIFICATION scope (emailDigest, future keys) stays UI-less by design. Values
  * are stored per-user via the settings service.
  */
-export function NotificationPreferences(): JSX.Element {
+export function NotificationPreferences(): React.JSX.Element {
   return (
     <div className='space-y-2'>
       <h2 className='text-sm font-medium leading-none'>Notifications</h2>

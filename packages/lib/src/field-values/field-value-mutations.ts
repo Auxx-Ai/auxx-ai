@@ -84,6 +84,7 @@ import {
   syncInverseRelationshipsBulk,
 } from './relationship-sync'
 import { type ValidationContext, validateSelfReferentialChange } from './relationship-validators'
+import { toFieldType } from './stored-field-type'
 import {
   type BulkSnapshotWrite,
   preloadSnapshotCache,
@@ -266,7 +267,9 @@ async function validateRelationshipValue(
     newValue: TypedFieldValueInput | TypedFieldValueInput[] | null
   }
 ): Promise<void> {
-  const relationship = params.field.options?.relationship as RelationshipConfig | undefined
+  const relationship = (params.field.options as Record<string, unknown> | null)?.relationship as
+    | RelationshipConfig
+    | undefined
   if (!relationship) return
 
   // Only validate self-referential relationships
@@ -1254,8 +1257,15 @@ function buildMatchInClause(
  * so the read-filter-insert sequence runs atomically without needing a
  * per-column unique index. Released automatically at transaction commit.
  */
+/**
+ * Take the per-(entity, field) advisory lock for the current transaction.
+ *
+ * Typed to the one method it uses: callers pass the handle from
+ * `db.transaction(...)`, which is a `PgTransaction` and is not assignable to the
+ * pooled `Database`.
+ */
 async function acquireFieldValueLock(
-  tx: FieldValueContext['db'],
+  tx: Pick<FieldValueContext['db'], 'execute'>,
   entityId: string,
   fieldId: string
 ): Promise<void> {
@@ -1899,9 +1909,12 @@ export async function setValueWithBuiltIn(
   // 2. Normalize systemAttribute / ResourceFieldId forms to a real FieldId —
   // parity with the bulk paths (setValuesForEntity/applyBulk run resolveFieldIds),
   // so single-field writes accept the same identifiers as setBulk.
-  const [{ fieldId }] = await resolveFieldIds(ctx.organizationId, [
+  // `resolveFieldIds` maps 1:1 over its input, so the single-element request always
+  // yields a single-element result; fall back to the raw id rather than crash.
+  const [resolved] = await resolveFieldIds(ctx.organizationId, [
     { fieldId: rawFieldId, value: null },
   ])
+  const fieldId = resolved?.fieldId ?? rawFieldId
 
   // Get field definition (cached)
   const field = await getField(ctx, fieldId)
@@ -1923,7 +1936,7 @@ export async function setValueWithBuiltIn(
   const entityType = resource?.entityType ?? null
 
   // 3. Validate and convert raw value to typed input using FieldValueValidator
-  const coercedValue = await validateAndConvertValue(ctx, value, field.type, field)
+  const coercedValue = await validateAndConvertValue(ctx, value, toFieldType(field.type), field)
 
   // 3.5. Per-field pre-hooks: fire BEFORE the null-delete branch so guards can
   // observe clear-attempts (`newValue === null`). Hooks may transform the
@@ -2215,7 +2228,7 @@ export async function setValuesForEntity(
     // Pre-batch validate all relationships (fills cache for later)
     const fieldTypes = customs.map((c) => {
       const field = ctx.fieldCache.get(c.fieldId)
-      return field?.type ?? 'TEXT'
+      return field ? toFieldType(field.type) : 'TEXT'
     })
     await preBatchValidateRelationships(
       ctx,

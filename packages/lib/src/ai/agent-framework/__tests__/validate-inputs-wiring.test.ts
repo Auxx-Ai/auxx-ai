@@ -63,6 +63,7 @@ describe('validateInputs wiring — non-approval (read) tool', () => {
       tools: [
         {
           name: 'lookup',
+          displayName: 'Lookup',
           description: 'lookup',
           parameters: {
             type: 'object',
@@ -131,7 +132,7 @@ describe('validateInputs wiring — non-approval (read) tool', () => {
   })
 
   it('rewrites args before execute when validateInputs returns ok with new args', async () => {
-    let receivedArgs: Record<string, unknown> | null = null
+    const receivedArgs: Record<string, unknown>[] = []
     const lookup = makeToolCall('call_1', 'lookup', { recordId: 'contacts:def_id:inst_id' })
 
     let turnIdx = 0
@@ -149,6 +150,7 @@ describe('validateInputs wiring — non-approval (read) tool', () => {
       tools: [
         {
           name: 'lookup',
+          displayName: 'Lookup',
           description: 'lookup',
           parameters: { type: 'object', properties: { recordId: { type: 'string' } } },
           validateInputs: async (args) => {
@@ -163,7 +165,7 @@ describe('validateInputs wiring — non-approval (read) tool', () => {
             return { ok: true, args }
           },
           execute: async (args) => {
-            receivedArgs = args
+            receivedArgs.push(args)
             return { success: true, output: { ran: true } }
           },
         },
@@ -194,8 +196,8 @@ describe('validateInputs wiring — non-approval (read) tool', () => {
 
     await drain(engine.submitMessage('go'))
 
-    expect(receivedArgs).not.toBeNull()
-    expect((receivedArgs as Record<string, unknown>).recordId).toBe('def_id:inst_id')
+    expect(receivedArgs).toHaveLength(1)
+    expect(receivedArgs[0]?.recordId).toBe('def_id:inst_id')
   })
 })
 
@@ -219,6 +221,7 @@ describe('validateInputs wiring — approval-required tool, pre-pause', () => {
       tools: [
         {
           name: 'writer',
+          displayName: 'Writer',
           description: 'writer',
           parameters: {
             type: 'object',
@@ -299,6 +302,7 @@ describe('validateInputs wiring — approval-required tool, pre-pause', () => {
       tools: [
         {
           name: 'writer',
+          displayName: 'Writer',
           description: 'writer',
           parameters: { type: 'object', properties: { target: { type: 'string' } } },
           requiresApproval: true,

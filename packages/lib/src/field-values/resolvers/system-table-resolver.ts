@@ -9,7 +9,10 @@ import type { RecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedAgentsByUserIds, getCachedMembersByUserIds, getOrgCache } from '../../cache'
 import type { FieldOptions } from '../../custom-fields/field-options'
-import { RESOURCE_DISPLAY_CONFIG } from '../../resources/registry/display-config'
+import {
+  type JoinScopingConfig,
+  RESOURCE_DISPLAY_CONFIG,
+} from '../../resources/registry/display-config'
 import { RESOURCE_TABLE_MAP, type TableId } from '../../resources/registry/field-registry'
 import { toRecordId } from '../../resources/resource-id'
 import type { FieldValueContext } from '../field-value-helpers'
@@ -109,7 +112,10 @@ async function queryWithJoinScoping(
   table: any,
   entityIds: string[],
   selectedColumns: Record<string, any>,
-  joinScoping: NonNullable<(typeof RESOURCE_DISPLAY_CONFIG)[TableId]['joinScoping']>
+  // The exported type, not an index into the config object: `RESOURCE_DISPLAY_CONFIG`
+  // declares 26 `TableId` keys and holds 13, so indexing it to recover a type breaks
+  // as soon as the declaration is corrected to `Partial<Record<TableId, …>>`.
+  joinScoping: JoinScopingConfig
 ): Promise<Record<string, any>[]> {
   const jt = (schema as any)[joinScoping.joinTable]
   if (!jt) return []

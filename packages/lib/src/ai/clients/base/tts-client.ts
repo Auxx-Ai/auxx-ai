@@ -182,8 +182,9 @@ export abstract class TTSClient extends BaseSpecializedClient {
       return Buffer.alloc(0)
     }
 
-    if (buffers.length === 1) {
-      return buffers[0]
+    const [only] = buffers
+    if (buffers.length === 1 && only) {
+      return only
     }
 
     return Buffer.concat(buffers)

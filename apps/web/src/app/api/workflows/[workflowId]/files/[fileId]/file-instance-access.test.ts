@@ -153,11 +153,13 @@ const fileRow = {
   expiresAt: null,
   uploadSource: 'USER',
   metadata: {},
+  // Mirrors the route's projection. `File` has no `url` column (and no `mimeType` —
+  // the route selects `File.type` under the `mimeType` alias), so a `url` here would
+  // be fabricating a column the real query can never return.
   file: {
     name: 'secret.pdf',
     mimeType: 'application/pdf',
     size: 1234,
-    url: 'https://s3.example/private/secret.pdf',
   },
 }
 
@@ -214,7 +216,7 @@ describe('GET /api/workflows/[workflowId]/files/[fileId] — the §2.4 file hole
     expect(res.status).toBe(200)
     expect(select).toHaveBeenCalledTimes(1)
     await expect(res.json()).resolves.toMatchObject({
-      file: { url: fileRow.file.url, filename: 'secret.pdf' },
+      file: { filename: 'secret.pdf', mimeType: 'application/pdf', size: 1234 },
     })
   })
 

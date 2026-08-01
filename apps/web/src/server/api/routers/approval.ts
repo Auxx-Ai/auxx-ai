@@ -29,10 +29,14 @@ import {
   publicProcedure,
 } from '~/server/api/trpc'
 
+// `maxRequests`, NOT `maxTokens`/`refillRate` — `RateLimiterConfig` has no such
+// fields, so `config.maxRequests` read `undefined`, the bucket capacity became
+// `NaN`, and `acquire()` returned false on the FIRST call: every public
+// approve/reject-by-token link 429'd. The refill rate is derived
+// (`maxRequests / perInterval`), so 10 per minute needs only these two.
 const approvalPublicRateLimiter = new RedisRateLimiter({
   name: 'approval-public',
-  maxTokens: 10,
-  refillRate: 10,
+  maxRequests: 10,
   perInterval: 60_000,
 })
 

@@ -24,13 +24,24 @@ import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 /**
  * Maps each cache key to its accessor type.
  * This drives the return type of orgCache.from(orgId, key).
+ *
+ * NOTE: this is a strict SUBSET of {@link OrgCacheKeyName} — `from()` is typed
+ * against `keyof OrgCacheAccessorMap`, so only the keys listed here are
+ * reachable through the fluent accessor. Every other key is read with
+ * `getOrgCache().get(orgId, key)`. Adding a key here also means adding it to
+ * the shape lists in `OrgCacheService.createDefaultAccessor` (or giving its
+ * provider a `createAccessor`), otherwise the declared accessor and the one
+ * constructed at runtime disagree.
  */
 export interface OrgCacheAccessorMap {
   // Array-shaped
   resources: ResourceAccessor
   members: ArrayAccessor<OrgMemberInfo>
   inboxes: ArrayAccessor<Inbox>
-  overages: ArrayAccessor<Overage>
+
+  // `Overage` is keyed by `key`, not `id`, so it cannot back an ArrayAccessor
+  // (whose `byId` would always miss). Exposed as the whole array instead.
+  overages: ScalarAccessor<Overage[]>
 
   // Record-shaped
   entityDefs: RecordAccessor<string>

@@ -364,7 +364,6 @@ function renderInstructionsAsText(
   references: (id: string) => string
 ): string | null {
   if (!instructions) return null
-  if (typeof instructions === 'string') return instructions.length > 0 ? instructions : null
   const text = docToText(instructions, { references })
   return text.length > 0 ? text : null
 }
@@ -381,9 +380,16 @@ function asKind(value: unknown): TriggerKind | null {
  * and the tail is enough for the next iteration's chain-of-thought to land.
  */
 function stripStaleThinkingForStorage(messages: SessionMessage[]): SessionMessage[] {
-  const lastIdx = messages.findLastIndex(
-    (m) => m.role === 'assistant' && m.parts.some((p) => p.type === 'thinking')
-  )
+  // Hand-rolled reverse scan: `Array.prototype.findLastIndex` is ES2023 and the
+  // repo's `target` is ES2022, so it is not in the ambient lib.
+  let lastIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.role === 'assistant' && m.parts.some((p) => p.type === 'thinking')) {
+      lastIdx = i
+      break
+    }
+  }
   if (lastIdx === -1) return messages
   return messages.map((m, i) => {
     if (i >= lastIdx || m.role !== 'assistant') return m

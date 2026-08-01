@@ -112,7 +112,7 @@ export const entityDefinitionRouter = createTRPCRouter({
         ctx.session.organizationId,
         FeatureKey.entities,
         async () => {
-          const [{ value }] = await ctx.db
+          const [row] = await ctx.db
             .select({ value: count() })
             .from(schema.EntityDefinition)
             .where(
@@ -122,7 +122,7 @@ export const entityDefinitionRouter = createTRPCRouter({
                 isNull(schema.EntityDefinition.archivedAt)
               )
             )
-          return value
+          return row?.value ?? 0
         }
       )
 
@@ -299,7 +299,7 @@ export const entityDefinitionRouter = createTRPCRouter({
       const featureService = new FeaturePermissionService(ctx.db)
       const limit = await featureService.getLimit(ctx.session.organizationId, FeatureKey.entities)
       if (typeof limit === 'number') {
-        const [{ value: currentCount }] = await ctx.db
+        const [currentCountRow] = await ctx.db
           .select({ value: count() })
           .from(schema.EntityDefinition)
           .where(
@@ -309,6 +309,7 @@ export const entityDefinitionRouter = createTRPCRouter({
               isNull(schema.EntityDefinition.archivedAt)
             )
           )
+        const currentCount = currentCountRow?.value ?? 0
         const newCount = currentCount + input.templateIds.length
         if (newCount > limit) {
           throw new ForbiddenError(

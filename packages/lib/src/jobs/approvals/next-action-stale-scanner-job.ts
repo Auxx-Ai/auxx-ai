@@ -311,7 +311,14 @@ async function filterTerminalStage(args: {
     return args.candidates
   }
 
-  const stageField = args.resource.fields.find((f) => f.systemAttribute === 'stage')
+  // Match on the field KEY, not `systemAttribute`: `'stage'` is not a member of
+  // `SystemAttribute`, so the old `f.systemAttribute === 'stage'` comparison was
+  // never true and this filter never dropped anything. The three scanned slugs
+  // key their pipeline field `stage` (deal template) or `status`
+  // (lead template, and the ticket system field `ticket_status`).
+  const stageField =
+    args.resource.fields.find((f) => f.key === 'stage') ??
+    args.resource.fields.find((f) => f.key === 'status')
   if (!stageField) return args.candidates
 
   const options = stageField.options?.options ?? []

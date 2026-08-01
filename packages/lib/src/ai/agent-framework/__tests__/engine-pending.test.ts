@@ -44,6 +44,7 @@ function buildEngine(opts: {
   if (opts.approvalToolName) {
     tools.push({
       name: opts.approvalToolName,
+      displayName: opts.approvalToolName,
       description: 'approval-gated tool',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -135,7 +136,7 @@ describe('AgentEngine — pending approval (parts-based)', () => {
     expect(state.pendingToolCall?.messageId).toBeDefined()
     expect(typeof state.pendingToolCall?.partIndex).toBe('number')
     // The legacy `assistantMessage` field is gone.
-    expect((state.pendingToolCall as Record<string, unknown>).assistantMessage).toBeUndefined()
+    expect(state.pendingToolCall).not.toHaveProperty('assistantMessage')
 
     // The assistant message exists in state.messages with the paused part.
     const { part } = getPendingMessageAndPart(

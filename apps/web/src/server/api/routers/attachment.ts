@@ -115,7 +115,9 @@ export const attachmentRouter = createTRPCRouter({
       )
 
       const attachments = await Promise.all(input.ids.map((id) => attachmentService.get(id)))
-      const validAttachments = attachments.filter(Boolean)
+      // Type predicate, not `filter(Boolean)` — the latter keeps `| null` in the
+      // element type, so every field read below was `possibly null`.
+      const validAttachments = attachments.filter((a): a is NonNullable<typeof a> => a !== null)
 
       // Enrich with asset or file data
       const enriched = await Promise.all(

@@ -1,11 +1,20 @@
 // packages/lib/src/agents/procedures/__tests__/conversation.test.ts
 
 import { describe, expect, it } from 'vitest'
-import type { SessionMessage } from '../../../ai/agent-framework/types'
+import type { ContentPart, SessionMessage } from '../../../ai/agent-framework/types'
 import { sessionMessagesToConversation } from '../conversation'
 
-const msg = (m: Partial<SessionMessage> & { role: SessionMessage['role'] }) =>
-  m as unknown as SessionMessage
+/**
+ * Deliberately looser than `SessionMessage`: `extractMessageText` reads a string
+ * `content` off ANY role — `AssistantSessionMessage` does not declare one, but
+ * persisted history does carry it — and these fixtures exercise exactly that
+ * branch. Only the two fields the function reads are modelled.
+ */
+const msg = (m: {
+  role: SessionMessage['role']
+  content?: string
+  parts?: ContentPart[]
+}): SessionMessage => m as unknown as SessionMessage
 
 describe('sessionMessagesToConversation', () => {
   it('keeps user + assistant turns, reading string content', () => {

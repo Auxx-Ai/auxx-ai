@@ -173,6 +173,16 @@ export async function executePollingTrigger(ctx: JobContext<PollingTriggerJobDat
     await cancelInvalidPollingScheduler(workflowAppId, 'Organization not found')
     return { skipped: true, reason: 'Organization not found' }
   }
+  // `Organization.handle` is nullable and `getInstallationDeployment` matches the
+  // installation's org by handle. Skip this cycle rather than cancelling the
+  // scheduler — a handle can be set later.
+  if (!org.handle) {
+    logger.warn('Organization has no handle; skipping polling cycle', {
+      workflowAppId,
+      organizationId,
+    })
+    return { skipped: true, reason: 'Organization has no handle' }
+  }
 
   // 5. Invoke Lambda with polling trigger type
   let pollResult: { events: Record<string, unknown>[]; state: Record<string, unknown> }
@@ -223,8 +233,8 @@ export async function executePollingTrigger(ctx: JobContext<PollingTriggerJobDat
       organizationId,
       organizationHandle: org.handle,
       userId: undefined,
-      userEmail: undefined,
-      userName: undefined,
+      userEmail: null,
+      userName: null,
       userConnection: (connections as any).userConnection,
       organizationConnection: (connections as any).organizationConnection,
     })

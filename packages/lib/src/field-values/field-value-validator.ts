@@ -279,7 +279,7 @@ export class FieldValueValidator {
         select: { id: true, organizationId: true },
       })
 
-      const entitiesByid = new Map(
+      const entitiesByid = new Map<string, { id: string; organizationId: string }>(
         entities.map((e: { id: string; organizationId: string }) => [e.id, e])
       )
 

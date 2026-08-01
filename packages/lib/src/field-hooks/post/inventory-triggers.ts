@@ -9,7 +9,12 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
-import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
+import { toFieldType } from '../../field-values/stored-field-type'
+import {
+  type FieldValueUpdateEntry,
+  getRealtimeService,
+  publishFieldValueUpdates,
+} from '../../realtime'
 import type { EntityTriggerHandler, FieldTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:inventory')
@@ -132,7 +137,7 @@ export const recalculateStockStatus: FieldTriggerHandler = async (event) => {
     await setValueWithType(ctx, {
       recordId: partRecordId,
       fieldId: statusField.id,
-      fieldType: statusField.type,
+      fieldType: toFieldType(statusField.type),
       value: { type: 'option', optionId: status },
     })
 
@@ -225,7 +230,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
     setValueWithType(ctx, {
       recordId,
       fieldId: qohField.id,
-      fieldType: qohField.type,
+      fieldType: toFieldType(qohField.type),
       value: { type: 'number', value: qoh },
     }),
   ]
@@ -235,7 +240,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
       setValueWithType(ctx, {
         recordId,
         fieldId: statusField.id,
-        fieldType: statusField.type,
+        fieldType: toFieldType(statusField.type),
         value: { type: 'option', optionId: status },
       })
     )
@@ -245,10 +250,10 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
 
   // Publish all updates in one batched call
   const realtimeService = getRealtimeService()
-  const entries = [
+  const entries: FieldValueUpdateEntry[] = [
     {
       key: buildFieldValueKey(recordId, qohField.id as FieldId),
-      value: { type: 'number' as const, value: qoh },
+      value: { type: 'number', value: qoh },
     },
   ]
 

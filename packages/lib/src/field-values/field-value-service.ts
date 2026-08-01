@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/field-value-service.ts
 
-import { type Database, database } from '@auxx/database'
+import { type Database, database, type Transaction } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
@@ -76,7 +76,12 @@ export class FieldValueService {
   constructor(
     private readonly organizationId: string,
     private readonly userId?: string,
-    db: Database = database,
+    /**
+     * Pooled connection or an open `Transaction` — `merge-service.ts` constructs
+     * the service inside `db.transaction(...)` so its field-value writes join the
+     * caller's transaction. See {@link FieldValueContext.db}.
+     */
+    db: Database | Transaction = database,
     socketId?: string,
     options: FieldValueServiceOptions = {}
   ) {

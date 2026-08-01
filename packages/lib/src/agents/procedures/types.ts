@@ -119,7 +119,14 @@ export type LocalAttribute = { name: string; dataType: FieldType; options?: Fiel
  */
 export type SubProcedure = { id: SubProcedureId; name: string; entryStepId: StepId }
 
-export interface CompiledProcedure {
+/**
+ * A type ALIAS, not an interface, for the same reason as {@link TiptapDoc}:
+ * only an alias gets an implicit index signature, and `ProcedureVersion.compiled`
+ * is a generic `jsonb().$type<Record<string, unknown>>()` column (`@auxx/database`
+ * is tier 1 and cannot see this type). An interface here forces an
+ * `as unknown as` at the write boundary.
+ */
+export type CompiledProcedure = {
   entryStepId: StepId
   /** Shared by the main body AND every sub-procedure — one flat map. */
   steps: Record<StepId, ProcedureStep>

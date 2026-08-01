@@ -67,20 +67,20 @@ vi.mock('../discovery', () => ({
   registerDcrClient: (...a: unknown[]) => registerDcrClient(...a),
 }))
 
-const saveMcpConnection = vi.fn(async () => {
+const saveMcpConnection = vi.fn(async (..._a: unknown[]) => {
   const { ok } = await import('neverthrow')
   return ok('cred-1')
 })
-const deleteMcpConnection = vi.fn(async () => undefined)
+const deleteMcpConnection = vi.fn(async (..._a: unknown[]) => undefined)
 vi.mock('../connections', () => ({
   saveMcpConnection: (...a: unknown[]) => saveMcpConnection(...a),
   deleteMcpConnection: (...a: unknown[]) => deleteMcpConnection(...a),
 }))
 
-const syncMcpTools = vi.fn(async () => ({ ok: true, toolCount: 1 }))
+const syncMcpTools = vi.fn(async (..._a: unknown[]) => ({ ok: true, toolCount: 1 }))
 vi.mock('../sync', () => ({ syncMcpTools: (...a: unknown[]) => syncMcpTools(...a) }))
 
-const ensureCuratedMcpServer = vi.fn(async () => ({ serverId: 'srv-curated' }))
+const ensureCuratedMcpServer = vi.fn(async (..._a: unknown[]) => ({ serverId: 'srv-curated' }))
 vi.mock('../templates/ensure', () => ({
   ensureCuratedMcpServer: (...a: unknown[]) => ensureCuratedMcpServer(...a),
 }))

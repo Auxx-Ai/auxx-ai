@@ -39,6 +39,24 @@ interface SegmentListResponse {
 export class SegmentService {
   constructor(private db: Database) {}
 
+  /** Resolve a caller-supplied sort key to a real DocumentSegment column (defaults to position). */
+  private static getSegmentSortColumn(sortBy: string) {
+    switch (sortBy) {
+      case 'content':
+        return schema.DocumentSegment.content
+      case 'createdAt':
+        return schema.DocumentSegment.createdAt
+      case 'updatedAt':
+        return schema.DocumentSegment.updatedAt
+      case 'tokenCount':
+        return schema.DocumentSegment.tokenCount
+      case 'indexStatus':
+        return schema.DocumentSegment.indexStatus
+      default:
+        return schema.DocumentSegment.position
+    }
+  }
+
   /**
    * Get segment by ID
    */
@@ -305,11 +323,10 @@ export class SegmentService {
         whereConditions.push(or(...searchConditions)!)
       }
 
-      // Build orderBy
-      const orderByClause =
-        sortOrder === 'desc'
-          ? desc(schema.DocumentSegment[sortBy as keyof typeof schema.DocumentSegment])
-          : asc(schema.DocumentSegment[sortBy as keyof typeof schema.DocumentSegment])
+      // Build orderBy from an allow-list — `sortBy` is a free-form string and indexing the table
+      // object with it can land on a non-column member (or nothing at all).
+      const sortColumn = SegmentService.getSegmentSortColumn(sortBy)
+      const orderByClause = sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn)
 
       const [segments, totalCountResult] = await Promise.all([
         this.db

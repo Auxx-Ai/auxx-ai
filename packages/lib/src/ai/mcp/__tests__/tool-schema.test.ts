@@ -19,7 +19,7 @@ vi.mock('@auxx/database', () => ({
   schema: { McpInstallation: {} },
 }))
 
-const onCacheEvent = vi.fn(async () => {})
+const onCacheEvent = vi.fn(async (..._a: unknown[]) => {})
 vi.mock('../../../cache/invalidate', () => ({
   onCacheEvent: (...a: unknown[]) => onCacheEvent(...a),
 }))

@@ -24,7 +24,7 @@ import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page
 import { api } from '~/trpc/react'
 import { FeaturesListEditor } from '../_components/features-list-editor'
 import { PlanDetailsCard } from '../_components/plan-details-card'
-import type { PlanFormData } from '../_components/plan-form-types'
+import { type PlanFormData, toWritableFeatureLimits } from '../_components/plan-form-types'
 
 export default function PlanEditPage() {
   const params = useParams()
@@ -132,6 +132,10 @@ function PlanEditForm({ plan }: { plan: any }) {
       ...data,
       monthlyPrice: Math.round(data.monthlyPrice * 100),
       annualPrice: Math.round(data.annualPrice * 100),
+      featureLimits: toWritableFeatureLimits(data.featureLimits),
+      trialFeatureLimits: data.trialFeatureLimits
+        ? toWritableFeatureLimits(data.trialFeatureLimits)
+        : null,
     })
   }
 

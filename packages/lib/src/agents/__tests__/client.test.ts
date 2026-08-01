@@ -80,7 +80,7 @@ describe('buildCatalogTreeFromInstallations', () => {
     const app = tree.find((n) => n.id === 'app:shopify') as CatalogContainerNode
     const toolset = app.children[0] as CatalogToolsetNode
     expect(toolset.implicit).toBe(false)
-    const [node] = toolset.children
+    const node = toolset.children[0]!
     expect(node.kind).toBe('tool')
     expect(node.name).toBe('shopify_find_shopify_order')
     expect(node.label).toBe('Find Shopify order')
@@ -133,7 +133,7 @@ describe('buildCatalogTreeFromInstallations', () => {
     ])
     const app = tree.find((n) => n.id === 'app:shopify') as CatalogContainerNode
     expect(app).toBeDefined()
-    const [leaf] = app.children
+    const leaf = app.children[0]!
     expect(leaf.kind).toBe('toolset')
     expect((leaf as CatalogToolsetNode).implicit).toBe(true)
   })

@@ -1,6 +1,12 @@
 // packages/lib/src/agents/agent-version-service.ts
 
-import type { AgentPolicyClampEntry } from '@auxx/database'
+import type {
+  AgentPolicyClampEntry,
+  AgentToolBindings,
+  AppAccountBinding,
+  KnowledgeEntry,
+  ToolsetEntry,
+} from '@auxx/database'
 import { type AgentVersionEntity, database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { fromDatabase } from '@auxx/services/shared/utils'
@@ -265,10 +271,18 @@ export async function restoreAgentVersion(input: {
         .update(schema.Agent)
         .set({
           prompt: target.prompt,
-          toolsets: target.toolsets,
-          knowledge: target.knowledge,
-          appAccounts: target.appAccounts,
-          toolRestrictions: target.toolRestrictions,
+          // The four behavior columns are declared GENERIC on `AgentVersion`
+          // (`unknown[]` / `Record<string, unknown>`) but SHAPED on `Agent`, so a
+          // restore has to re-narrow at this boundary. Same posture as
+          // `procedures/mention-reconcile.ts`. The `AgentVersion` JSDoc's
+          // rationale ("`@auxx/database` can't see lib's types") is stale — all
+          // four types are declared in `database/.../schema/agent.ts`, which
+          // `agent-version.ts` already imports; mirroring `Agent`'s `$type<>()`
+          // there would remove these.
+          toolsets: target.toolsets as ToolsetEntry[],
+          knowledge: target.knowledge as KnowledgeEntry[],
+          appAccounts: target.appAccounts as Record<string, AppAccountBinding>,
+          toolRestrictions: target.toolRestrictions as AgentToolBindings,
           modelId: target.modelId,
           permissionProfileId,
           hasUnpublishedChanges: dirty,

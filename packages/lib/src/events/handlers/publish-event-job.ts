@@ -143,6 +143,13 @@ export const EventHandlers: IEventsHandlers = {
   'integration:connected': [createAuditLog],
   'integration:connection_failed': [createAuditLog],
   'shopify:connected': [createAuditLog],
+
+  // Recording AI results — persisted + realtime-published by the recording
+  // pipeline itself; nothing fans out from the bus yet.
+  'recording:ai.summary_ready': [],
+  'recording:ai.chapters_ready': [],
+  'recording:ai.insights_ready': [],
+  'recording:ai.failed': [],
 }
 
 export const publishEventJob = async (job: Job<AuxxEvent>) => {

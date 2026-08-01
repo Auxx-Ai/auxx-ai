@@ -21,7 +21,12 @@ export interface TranscribeRecordingJobData {
  * Fetch the transcript from the bot provider and store it in the database.
  * Enqueued when the provider sends a `transcript.done` webhook.
  */
-export const transcribeRecordingJob = async (ctx: JobContext<TranscribeRecordingJobData>) => {
+// The return type is spelled out rather than inferred: `processTranscript`'s
+// `ProcessTranscriptResult` is module-private in `recording/transcription`, so an
+// inferred signature here references a type it cannot name (TS4023).
+export const transcribeRecordingJob = async (
+  ctx: JobContext<TranscribeRecordingJobData>
+): Promise<{ transcriptId: string }> => {
   const job = ctx.job
   const { recordingId, organizationId } = job.data
 

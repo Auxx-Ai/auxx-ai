@@ -109,8 +109,13 @@ export class OrganizationCacheService {
     return this.getSingle(orgId, key)
   }
 
-  /** Fluent accessor for a single cache key */
-  from<K extends OrgCacheKeyName>(orgId: string, key: K): OrgCacheAccessorMap[K] {
+  /**
+   * Fluent accessor for a single cache key.
+   *
+   * Only keys declared in {@link OrgCacheAccessorMap} are reachable here — the
+   * rest of `OrgCacheDataMap` is read with {@link OrgCacheService.get}.
+   */
+  from<K extends keyof OrgCacheAccessorMap>(orgId: string, key: K): OrgCacheAccessorMap[K] {
     const dataFn = () => this.get(orgId, key)
     const provider = this.providers.get(key)
 
@@ -126,13 +131,16 @@ export class OrganizationCacheService {
     key: K,
     dataFn: () => Promise<OrgCacheDataMap[K]>
   ): unknown {
-    const ARRAY_KEYS: OrgCacheKeyName[] = ['resources', 'members', 'inboxes', 'overages']
+    const ARRAY_KEYS: OrgCacheKeyName[] = ['resources', 'members', 'inboxes']
     const NESTED_RECORD_KEYS: OrgCacheKeyName[] = ['customFields']
     const SCALAR_KEYS: OrgCacheKeyName[] = [
       'systemUser',
       'subscription',
       'orgProfile',
       'features',
+      // `Overage` has no `id`, so an ArrayAccessor's `byId` could never match —
+      // hand the whole array back instead (mirrors `OrgCacheAccessorMap`).
+      'overages',
       'hasPermissionGrants',
       'restrictedEntityDefIds',
       'governingInstanceIds',

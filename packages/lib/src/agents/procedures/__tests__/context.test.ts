@@ -12,9 +12,13 @@ import type { ProcedureFrame } from '../types'
 // `buildSubjectFieldResolver` (the shared helper readProcedureRef now goes through)
 // is mirrored faithfully so it routes back through the mocked `buildResolveVarSource`.
 const { resolveMap } = vi.hoisted(() => ({ resolveMap: {} as Record<string, unknown> }))
-vi.mock('../../bindings/resolve', () => {
+vi.mock('../../bindings/resolve', async (importOriginal) => {
+  // Partial mock (HANDOFF §2.8): the two overrides below win, and anything the
+  // import graph reaches for later still resolves off the real module.
   const buildResolveVarSource = vi.fn(
-    () => async (source: { kind: string; ref: string | string[] }) =>
+    // Arity mirrors the real `(ctx) => (source, subject) => …`; only `source.ref`
+    // is consulted here.
+    (_ctx: ToolContext) => async (source: { kind: string; ref: string | string[] }) =>
       resolveMap[Array.isArray(source.ref) ? source.ref.join('|') : source.ref]
   )
   const buildSubjectFieldResolver = (ctx: ToolContext) => {
@@ -22,13 +26,17 @@ vi.mock('../../bindings/resolve', () => {
       const overlay = ctx.evalFieldResolver
       return (ref: unknown) => overlay(ref as never)
     }
-    const resolve = buildResolveVarSource(ctx as never)
+    const resolve = buildResolveVarSource(ctx)
     return async (ref: string | string[]) => {
       if (!ctx.subject) return undefined
       return resolve({ kind: 'var', ref })
     }
   }
-  return { buildResolveVarSource, buildSubjectFieldResolver }
+  return {
+    ...(await importOriginal<typeof import('../../bindings/resolve')>()),
+    buildResolveVarSource,
+    buildSubjectFieldResolver,
+  }
 })
 
 const ctx = {} as ToolContext

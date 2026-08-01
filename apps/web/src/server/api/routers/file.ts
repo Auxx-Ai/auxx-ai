@@ -24,8 +24,12 @@ const logger = createScopedLogger('api/file')
 // Input schemas
 const listFilesSchema = z.object({
   folderId: z.string().nullable().optional(),
-  search: z.string().optional(),
+  // No `search` here: `FileService.listInFolder` has no text filter, so a
+  // `search` field would be silently dropped (it was, until 2026-07-31). Use
+  // the `search` procedure below, which runs the relevance-scored query.
   fileTypes: z.array(z.string()).optional(),
+  // Opaque cursor over `FileService.list`'s offset pagination — the service is
+  // offset-based, so the cursor is the stringified next offset.
   cursor: z.string().optional(),
   limit: z.number().min(1).max(100).default(50),
   sortBy: z.enum(['name', 'size', 'createdAt', 'updatedAt']).default('name'),
@@ -73,13 +77,18 @@ const findByMimeTypeSchema = z.object({
 
 const createVersionSchema = z.object({
   fileId: z.string(),
-  versionNumber: z.string(),
-  comment: z.string().optional(),
+  // The version to snapshot content from. Omitted → the file's current version.
+  // `FileVersion.versionNumber` is assigned by the service (last + 1); it is not
+  // client-supplied, and the table carries no comment/author columns.
+  storageLocationId: z.string().optional(),
 })
 
-const restoreVersionSchema = z.object({
+// `FileVersion` is addressed by its integer `versionNumber` within a file, not
+// by row id — `FileService.getVersion/restoreVersion/deleteVersion` all take
+// `(fileId, versionNumber)`.
+const versionRefSchema = z.object({
   fileId: z.string(),
-  versionId: z.string(),
+  versionNumber: z.number().int().positive(),
 })
 
 const moveItemsSchema = z.object({
@@ -151,24 +160,26 @@ export const fileRouter = createTRPCRouter({
       const fileService = createFileService(organizationId, userId)
 
       try {
+        const offset = input.cursor ? Number.parseInt(input.cursor, 10) || 0 : 0
         const result = await fileService.listInFolder(input.folderId || null, {
           limit: input.limit,
-          cursor: input.cursor,
+          offset,
           sortBy: input.sortBy,
           sortOrder: input.sortOrder,
           fileTypes: input.fileTypes,
           includeArchived: input.includeArchived,
-          search: input.search,
         })
+
+        const nextCursor = result.hasMore ? String(offset + result.items.length) : null
 
         logger.info('Files listed successfully', {
           folderId: input.folderId,
           count: result.items.length,
-          hasNextPage: result.hasNextPage,
-          nextCursor: result.nextCursor,
+          hasNextPage: result.hasMore,
+          nextCursor,
         })
 
-        return result
+        return { ...result, hasNextPage: result.hasMore, nextCursor }
       } catch (error) {
         logger.error('Failed to list files', { error, input })
         throw new TRPCError({
@@ -187,7 +198,9 @@ export const fileRouter = createTRPCRouter({
       const fileService = createFileService(organizationId, userId)
 
       try {
-        const file = await fileService.getById(input.fileId)
+        // `getWithRelations`, not `getById` — the latter has never existed on
+        // `FileService`, so this procedure threw `TypeError` for every caller.
+        const file = await fileService.getWithRelations(input.fileId)
 
         if (!file) {
           throw new TRPCError({
@@ -221,21 +234,30 @@ export const fileRouter = createTRPCRouter({
       const fileService = createFileService(organizationId, userId)
 
       try {
-        const results = await fileService.search(input.query, {
-          folderId: input.folderId,
+        // `SearchOptions` has no `folderId` — the service scores across the whole
+        // org — so the folder filter is applied to the results here rather than
+        // being passed in and silently ignored.
+        const offset = input.cursor ? Number.parseInt(input.cursor, 10) || 0 : 0
+        const matches = await fileService.search(input.query, {
           fileTypes: input.fileTypes,
-          cursor: input.cursor,
+          offset,
           limit: input.limit,
         })
+        const items =
+          input.folderId === undefined
+            ? matches
+            : matches.filter((match) => match.file.folderId === input.folderId)
+        const hasNextPage = matches.length === input.limit
+        const nextCursor = hasNextPage ? String(offset + matches.length) : null
 
         logger.info('File search completed', {
           query: input.query,
-          resultCount: results.items.length,
-          hasNextPage: results.hasNextPage,
-          nextCursor: results.nextCursor,
+          resultCount: items.length,
+          hasNextPage,
+          nextCursor,
         })
 
-        return results
+        return { items, hasNextPage, nextCursor }
       } catch (error) {
         logger.error('File search failed', { error, input })
         throw new TRPCError({
@@ -625,7 +647,9 @@ export const fileRouter = createTRPCRouter({
       const fileService = createFileService(organizationId, userId)
 
       try {
-        const file = await fileService.archive(input.fileId)
+        // `FileService` has no `archive` method (this threw `TypeError` for every
+        // caller); archiving is the `isArchived` flag on the row.
+        const file = await fileService.update(input.fileId, { isArchived: true })
 
         logger.info('File archived successfully', { fileId: input.fileId })
         return file
@@ -730,11 +754,16 @@ export const fileRouter = createTRPCRouter({
       const fileService = createFileService(organizationId, userId)
 
       try {
-        const version = await fileService.createVersion(input.fileId, {
-          versionNumber: input.versionNumber,
-          comment: input.comment,
-          createdById: userId,
-        })
+        const storageLocationId =
+          input.storageLocationId ??
+          (await fileService.getCurrentVersion(input.fileId))?.storageLocationId
+        if (!storageLocationId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'File has no stored content to version',
+          })
+        }
+        const version = await fileService.createVersion(input.fileId, storageLocationId)
 
         logger.info('File version created successfully', {
           fileId: input.fileId,
@@ -753,18 +782,18 @@ export const fileRouter = createTRPCRouter({
 
   /** Restore to specific version */
   restoreVersion: permissionProcedure(PermissionKey.filesManage)
-    .input(restoreVersionSchema)
+    .input(versionRefSchema)
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
       const fileService = createFileService(organizationId, userId)
 
       try {
-        const file = await fileService.restoreVersion(input.fileId, input.versionId)
+        const file = await fileService.restoreVersion(input.fileId, input.versionNumber)
 
         logger.info('File version restored successfully', {
           fileId: input.fileId,
-          versionId: input.versionId,
+          versionNumber: input.versionNumber,
         })
 
         return file
@@ -779,18 +808,21 @@ export const fileRouter = createTRPCRouter({
 
   /** Delete a specific version */
   deleteVersion: permissionProcedure(PermissionKey.filesManage)
-    .input(restoreVersionSchema)
+    .input(versionRefSchema)
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
       const fileService = createFileService(organizationId, userId)
 
       try {
-        await fileService.deleteVersion(input.versionId)
+        // Was `deleteVersion(input.versionId)` — one argument, so the version id
+        // landed in the `entityId` slot and `versionNumber` was `undefined`;
+        // every call threw "file not found".
+        await fileService.deleteVersion(input.fileId, input.versionNumber)
 
         logger.info('File version deleted successfully', {
           fileId: input.fileId,
-          versionId: input.versionId,
+          versionNumber: input.versionNumber,
         })
 
         return { success: true }

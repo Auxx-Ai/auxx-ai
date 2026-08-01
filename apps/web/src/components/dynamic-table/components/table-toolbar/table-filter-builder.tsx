@@ -15,11 +15,21 @@ import {
   ConditionContainer,
   ConditionProvider,
   type ConditionSystemConfig,
+  type Operator,
+  STANDARD_OPERATORS,
 } from '~/components/conditions'
 import { Tooltip } from '~/components/global/tooltip'
 
 /** Stable empty array to avoid re-renders */
 const EMPTY_CONDITIONS: Condition[] = []
+
+/**
+ * `getFieldOperators` and `ResourceField.operatorOverrides` are both typed
+ * `string[]` in lib, so keep only the names the condition system knows.
+ */
+function isOperator(name: string): name is Operator {
+  return Object.hasOwn(STANDARD_OPERATORS, name)
+}
 
 /** Creates an empty filter group for initial state */
 const createEmptyGroup = (): ConditionGroup => ({
@@ -96,7 +106,7 @@ export function TableFilterBuilder({
       type: field.type,
       fieldType: field.fieldType,
       fieldKey: field.key,
-      operators: field.operatorOverrides || getFieldOperators(field),
+      operators: (field.operatorOverrides || getFieldOperators(field)).filter(isOperator),
       options: field.options,
     }))
   }, [filterableFields])

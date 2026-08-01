@@ -126,7 +126,7 @@ export default function PersonalOnboardingPage() {
       y: 0,
       transition: {
         duration: 0.5,
-        ease: 'easeOut',
+        ease: 'easeOut' as const,
       },
     },
   }
@@ -152,7 +152,7 @@ export default function PersonalOnboardingPage() {
                 <motion.div variants={itemVariants} className='flex justify-center'>
                   <AvatarUpload
                     variant='translucent'
-                    currentAvatarUrl={userData.image}
+                    currentAvatarUrl={userData.image ?? undefined}
                     className='pb-6'
                   />
                 </motion.div>

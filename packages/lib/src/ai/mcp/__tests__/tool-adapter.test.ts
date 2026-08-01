@@ -9,13 +9,15 @@ vi.mock('../auth', () => ({
     return ok({ endpoint: 'https://x/mcp', headers: {} })
   },
 }))
-const callToolMock = vi.fn(async () => ({ text: 'tool said hi', isError: false }))
+const callToolMock = vi.fn(
+  async (..._a: unknown[]): Promise<McpCallResult> => ({ text: 'tool said hi', isError: false })
+)
 vi.mock('../client', () => ({ mcpCallTool: (...a: unknown[]) => callToolMock(...a) }))
 vi.mock('../rate-limiter', () => ({ checkAndCountMcpCall: async () => ({ allowed: true }) }))
 vi.mock('../connections', () => ({ markMcpConnectionFailed: vi.fn(async () => {}) }))
 
 import { buildMcpAgentTools, mcpToolName, wrapMcpOutput } from '../tool-adapter'
-import type { CachedMcpServer } from '../types'
+import type { CachedMcpServer, McpCallResult } from '../types'
 
 function makeServer(overrides: Partial<CachedMcpServer> = {}): CachedMcpServer {
   return {

@@ -5,11 +5,16 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FieldTriggerJobEvent } from '../../events/types'
+import type { CachedRecordRule, RecordRuleBatchContext } from '../../record-rules/types'
 
 const h = vi.hoisted(() => ({
   getCachedRecordRules: vi.fn(),
   getAllCachedCustomFields: vi.fn(),
-  fireRecordRulesBatch: vi.fn(async () => {}),
+  // Declare the real parameters — a zero-arity spy types `mock.calls[n]` as the
+  // empty tuple, so destructuring the recorded arguments below reads as an error.
+  fireRecordRulesBatch: vi.fn(
+    async (_rules: CachedRecordRule[], _ctx: RecordRuleBatchContext) => {}
+  ),
 }))
 
 vi.mock('../../cache', () => ({
@@ -107,7 +112,7 @@ describe('handleFieldTriggerJob — native record-rule dispatch', () => {
     await handleFieldTriggerJob(event(['def_vp:i1']))
     const [rules] = h.fireRecordRulesBatch.mock.calls[0]!
     expect(rules).toHaveLength(1)
-    expect(rules[0].id).toBe('system:mfg-vendor-part-unit-price')
+    expect(rules[0]?.id).toBe('system:mfg-vendor-part-unit-price')
   })
 
   it('does not fire when the org has no native rule on the field', async () => {

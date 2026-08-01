@@ -15,6 +15,7 @@ import { format } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { and, count, eq, gte } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../cache'
+import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import {
   expandOccurrences,
@@ -39,6 +40,9 @@ export function todayLocalDate(timezone: string): string {
  * same local-date/UTC-instant convention `recurrence/expand.ts` uses internally. */
 function localDateStartUtc(dateIso: string, timezone: string): Date {
   const [year, month, day] = dateIso.split('-').map(Number)
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new BadRequestError(`Malformed local date: ${dateIso} (expected YYYY-MM-DD)`)
+  }
   return fromZonedTime(new Date(year, month - 1, day), timezone)
 }
 

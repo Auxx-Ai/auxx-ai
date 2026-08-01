@@ -182,7 +182,11 @@ export const customFieldRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const allFields = await getAllCachedCustomFields(organizationId)
-      return allFields.filter((f) => input.fieldIds.includes(f.id))
+      // `FieldId` is a branded string, so `FieldId[].includes(string)` does not
+      // type-check. A plain `Set<string>` compares in the widening direction and
+      // is O(1) per row besides.
+      const requestedIds = new Set<string>(input.fieldIds)
+      return allFields.filter((f) => requestedIds.has(f.id))
     }),
 
   /**

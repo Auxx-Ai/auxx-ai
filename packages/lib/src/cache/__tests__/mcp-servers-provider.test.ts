@@ -113,6 +113,6 @@ describe('mcpServersProvider', () => {
     })
 
     const [server] = await mcpServersProvider.compute('org-1', db)
-    expect(server.needsReconnect).toBe(true)
+    expect(server?.needsReconnect).toBe(true)
   })
 })

@@ -265,19 +265,23 @@ export const searchRouter = createTRPCRouter({
               fieldKeys: ['title', 'tag_emoji', 'tag_color'],
             }
           )
+          // `ListAllItem.fieldValues` is `Record<string, unknown>` — narrow to a
+          // string instead of assuming, so a non-text value can never reach
+          // `.toLowerCase()`.
+          const asString = (value: unknown): string | null =>
+            typeof value === 'string' ? value : null
+          const tagTitle = (item: (typeof result.items)[number]) =>
+            asString(item.fieldValues.title) ?? item.displayName ?? ''
           const filteredTags = result.items
-            .filter((item) => {
-              const title = item.fieldValues.title ?? item.displayName ?? ''
-              return !query || title.toLowerCase().includes(query.toLowerCase())
-            })
+            .filter((item) => !query || tagTitle(item).toLowerCase().includes(query.toLowerCase()))
             .slice(0, 10)
           suggestions.push(
             ...filteredTags.map((item) => ({
               type: 'tag',
-              value: item.fieldValues.title ?? item.displayName ?? '',
-              label: item.fieldValues.title ?? item.displayName ?? '',
-              emoji: item.fieldValues.tag_emoji ?? null,
-              color: item.fieldValues.tag_color ?? null,
+              value: tagTitle(item),
+              label: tagTitle(item),
+              emoji: asString(item.fieldValues.tag_emoji),
+              color: asString(item.fieldValues.tag_color),
             }))
           )
           break

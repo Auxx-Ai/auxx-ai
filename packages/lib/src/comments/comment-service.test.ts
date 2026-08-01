@@ -4,6 +4,8 @@ import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ForbiddenError } from '../errors'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
+import { PermissionKey } from '../permissions/capabilities/registry'
+import { satisfiesRung } from '../permissions/capabilities/rung'
 import { toRecordId } from '../resources/resource-id'
 
 const {
@@ -48,9 +50,14 @@ const organizationId = 'org_1'
 const userId = 'user_1'
 
 function structuralCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityView {
+  // Read the def gates through the overrides so the record lane below derives
+  // from the SAME answers the caller configured — a denied def stays denied all
+  // the way down instead of being hardcoded back open.
+  const canViewEntity = overrides.canViewEntity ?? (() => true)
+  const has = overrides.has ?? (() => true)
   return {
     can: () => true,
-    has: () => true,
+    has,
     assert: () => undefined,
     areaLevel: () => 0,
     canWriteEntity: () => true,
@@ -58,9 +65,22 @@ function structuralCapabilities(overrides: Partial<CapabilityView> = {}): Capabi
     canEditEntity: () => true,
     assertEditEntity: () => undefined,
     filterEditableDefIds: (ids) => ids,
-    canViewEntity: () => true,
+    canViewEntity,
     assertViewEntity: () => undefined,
     filterViewableDefIds: (ids) => ids,
+    // Record lane (plan v3/03 §5.2–5.3). This stub holds no per-record
+    // `ResourceAccess` grants, so the row-effective rung is just the def rung:
+    // viewable and editable but not administrable ⇒ `edit`.
+    hasDefPresence: (id) => canViewEntity(id),
+    hasRecordGrantsOn: () => false,
+    recordDefRung: (id) => (canViewEntity(id) ? 'edit' : undefined),
+    recordAccessAt: (id) => (canViewEntity(id) ? 'edit' : 'none'),
+    // Mirrors `canRecordVerbAtRung(caps, access, recordsDelete)`: an `edit`
+    // floor, then the key — which this stub's `has` answers.
+    canDeleteRecordAt: (access) =>
+      satisfiesRung(access, 'edit') &&
+      (has(PermissionKey.recordsDelete) || satisfiesRung(access, 'admin')),
+    canEditRecordAt: (access) => satisfiesRung(access, 'edit'),
     viewAccessFor: () => undefined,
     canAdministerDef: () => false,
     assertAdministerDef: () => undefined,

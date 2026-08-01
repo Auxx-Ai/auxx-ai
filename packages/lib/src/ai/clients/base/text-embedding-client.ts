@@ -106,9 +106,11 @@ export abstract class TextEmbeddingClient extends BaseSpecializedClient {
     let norm2 = 0
 
     for (let i = 0; i < embedding1.length; i++) {
-      dotProduct += embedding1[i] * embedding2[i]
-      norm1 += embedding1[i] * embedding1[i]
-      norm2 += embedding2[i] * embedding2[i]
+      const a = embedding1[i] ?? 0
+      const b = embedding2[i] ?? 0
+      dotProduct += a * b
+      norm1 += a * a
+      norm2 += b * b
     }
 
     norm1 = Math.sqrt(norm1)

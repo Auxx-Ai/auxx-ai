@@ -21,8 +21,8 @@ interface TableContentSkeletonProps {
  * Generate realistic column widths for skeleton
  */
 function generateColumnWidths(count: number): number[] {
-  const baseWidths = [180, 140, 200, 120, 160, 140, 180, 120]
-  return Array.from({ length: count }, (_, i) => baseWidths[i % baseWidths.length])
+  const baseWidths = [180, 140, 200, 120, 160, 140, 180, 120] as const
+  return Array.from({ length: count }, (_, i) => baseWidths[i % baseWidths.length] ?? 150)
 }
 
 /**

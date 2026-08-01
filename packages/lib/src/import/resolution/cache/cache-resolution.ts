@@ -43,6 +43,12 @@ export async function cacheResolution(
     })
     .returning()
 
+  if (!result) {
+    throw new Error(
+      `Failed to cache value resolution for import job property ${input.jobPropertyId}`
+    )
+  }
+
   return {
     id: result.id,
     importJobPropertyId: result.importJobPropertyId,

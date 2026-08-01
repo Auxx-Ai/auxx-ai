@@ -61,8 +61,14 @@ export interface CodeBlockMapEntry {
  *   prose by inline `subprocedure:<id>` badges (NOT inline nodes).
  * - `codeBlocks` — named JS snippets; **referenced** from prose by inline
  *   `code:<id>` badges (NOT inline nodes).
+ *
+ * A type ALIAS, not an interface, on purpose: only an alias gets an implicit
+ * index signature, and without one a `TiptapDoc` is not assignable to the
+ * `jsonb().$type<Record<string, unknown>>()` columns it is persisted into
+ * (`ProcedureVersion.doc`). An interface here forces an `as` at every read and
+ * write boundary — see `procedures/queries.ts`.
  */
-export interface TiptapDoc {
+export type TiptapDoc = {
   type: 'doc'
   content?: TiptapNode[]
   /** Declared scratch variables, lifted verbatim into `CompiledProcedure.localAttributes`. */

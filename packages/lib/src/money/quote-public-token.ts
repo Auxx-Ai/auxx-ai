@@ -8,12 +8,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
 import { and, eq, gt } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
-import type {
-  DiscountType,
-  PdfPhotoRef,
-  QuotePdfContact,
-  QuotePdfLineItem,
-} from '../documents/payload'
+import type { PdfPhotoRef, QuotePdfContact, QuotePdfLineItem } from '../documents/payload'
 import type {
   DocumentBrandingSettings,
   DocumentBusinessSettings,
@@ -24,6 +19,7 @@ import { UnifiedCrudHandler } from '../resources/crud'
 import { getPaymentAccount } from './payments/account-state'
 import { resolveQuoteDeposit } from './payments/deposit'
 import { isPaymentsConnected } from './public-token'
+import type { DiscountType } from './types'
 
 /**
  * The public `/quote/{token}` capability-token machinery (v5 build spec 01 — client-facing
@@ -277,7 +273,7 @@ export async function getPublicQuotePayload(token: string): Promise<PublicQuoteP
   // does keeps the displayed deposit amount byte-identical to what gets charged.
   const storedTotal = storedTotalTyped ? (extractValue(storedTotalTyped) as number) : payload.total
 
-  const todayIso = new Date().toISOString().split('T')[0]
+  const todayIso = new Date().toISOString().slice(0, 10)
   const isExpired = !!payload.validUntil && payload.validUntil < todayIso
 
   const [{ depositAmount }, account, pendingDeposit, succeededDeposit] = await Promise.all([

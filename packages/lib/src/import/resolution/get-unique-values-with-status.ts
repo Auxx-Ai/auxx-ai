@@ -118,7 +118,7 @@ function deriveEffectiveStatus(
   if (!isOverridden || !overrideValues?.length) {
     return originalStatus
   }
-  if (overrideValues[0].type === 'skip') {
+  if (overrideValues[0]?.type === 'skip') {
     return 'skip'
   }
   return 'valid'

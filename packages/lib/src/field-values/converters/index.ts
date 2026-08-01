@@ -1,7 +1,7 @@
 // packages/lib/src/field-values/converters/index.ts
 
-import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-value'
+import type { StoredFieldType } from '../stored-field-type'
 
 // Re-export field options types from centralized location
 export type {
@@ -75,10 +75,14 @@ import { selectConverter } from './select'
 import { textConverter } from './text'
 
 /**
- * Map of all converters keyed by FieldType.
+ * Map of all converters keyed by the field types `CustomField.type` can hold.
  * This is the key routing table for all formatting.
+ *
+ * Keyed by `StoredFieldType` rather than `FieldType` so the legacy `PHONE`
+ * member the pg enum still carries keeps a converter — indexing with a plain
+ * `FieldType` remains sound because `FieldType` is a subset.
  */
-export const converters: Record<FieldType, FieldValueConverter> = {
+export const converters: Record<StoredFieldType, FieldValueConverter> = {
   // Text family - all store as valueText in database
   TEXT: textConverter,
   EMAIL: textConverter,

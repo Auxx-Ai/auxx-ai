@@ -8,9 +8,12 @@ export const GET = createSsePollRoute({
   getRedisKey: ({ installationId, triggerId }) =>
     `app-trigger-test:${installationId}:${triggerId}:events`,
   authorize: async (session, params, db) => {
+    const { installationId } = params
+    if (!installationId) return false
+
     const installation = await db.query.AppInstallation.findFirst({
       where: and(
-        eq(AppInstallation.id, params.installationId),
+        eq(AppInstallation.id, installationId),
         eq(AppInstallation.organizationId, session.user.defaultOrganizationId)
       ),
       columns: { id: true },

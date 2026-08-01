@@ -172,6 +172,7 @@ describe('query-loop parts builder', () => {
   it('text → tool → text produces interleaved parts in order', async () => {
     const lookup: AgentToolDefinition = {
       name: 'lookup',
+      displayName: 'Lookup',
       description: 'l',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => ({ success: true, output: { rows: 7 } }),
@@ -219,18 +220,21 @@ describe('query-loop parts builder', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'a',
+        displayName: 'A',
         description: 'a',
         parameters: { type: 'object', properties: {} },
         execute: noopExecute,
       },
       {
         name: 'b',
+        displayName: 'B',
         description: 'b',
         parameters: { type: 'object', properties: {} },
         execute: noopExecute,
       },
       {
         name: 'c',
+        displayName: 'C',
         description: 'c',
         parameters: { type: 'object', properties: {} },
         execute: noopExecute,
@@ -259,6 +263,7 @@ describe('query-loop parts builder', () => {
   it('interleaved thinking + tools: thinking precedes the tool that consumed it', async () => {
     const lookup: AgentToolDefinition = {
       name: 'lookup',
+      displayName: 'Lookup',
       description: 'l',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: noopExecute,

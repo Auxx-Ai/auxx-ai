@@ -8,8 +8,10 @@ import {
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
+import { BadRequestError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
 import { convertToCronPattern, type ScheduledTriggerConfig } from '../workflows/cron-pattern'
+import { parseScheduledTriggerConfig } from './agent-trigger-config'
 
 const logger = createScopedLogger('agent-trigger-service')
 
@@ -386,7 +388,12 @@ export class AgentTriggerService {
   }
 
   private async upsertScheduledScheduler(row: AgentTriggerEntity): Promise<void> {
-    const config = row.config as ScheduledTriggerConfig
+    const config = parseScheduledTriggerConfig(row.config)
+    if (!config) {
+      throw new BadRequestError(
+        `Scheduled trigger ${row.id} has no usable schedule config (missing or invalid triggerInterval).`
+      )
+    }
     const pattern = convertToCronPattern(config)
     const schedulerId = scheduledSchedulerId(row.id)
 

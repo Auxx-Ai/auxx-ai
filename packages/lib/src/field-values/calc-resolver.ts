@@ -1,7 +1,7 @@
 // packages/lib/src/field-values/calc-resolver.ts
 
 import type { FieldType } from '@auxx/database/types'
-import { parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import { normalizeFieldRef, parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import { getCalcOptions, getEffectiveFieldType } from '../custom-fields/calc'
@@ -71,8 +71,11 @@ export async function resolveCalcForRecord(
   // Index by terminal fieldId via parseResourceFieldId — no manual splits.
   const byFieldId = new Map<string, (typeof values)[number]>()
   for (const v of values) {
-    const tail = Array.isArray(v.fieldRef) ? v.fieldRef[v.fieldRef.length - 1]! : v.fieldRef
-    const { fieldId } = parseResourceFieldId(tail)
+    // Every ref handed to `batchGetValues` above was built by `toResourceFieldId`,
+    // so the terminal hop is always entity-qualified — normalize back to the
+    // `ResourceFieldId` the result echoes rather than the wider `FieldReference`.
+    const tail = normalizeFieldRef(params.recordId, v.fieldRef)
+    const { fieldId } = parseResourceFieldId(Array.isArray(tail) ? tail[tail.length - 1]! : tail)
     byFieldId.set(fieldId, v)
   }
 

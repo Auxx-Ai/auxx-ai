@@ -289,7 +289,7 @@ export function useCalendarEvents(
 
       let end = start
       if (config.endDateFieldId && endField) {
-        const endRaw = formatToRawValue(stored(config.endDateFieldId), endField.fieldType)
+        const endRaw = formatToRawValue(stored(config.endDateFieldId), endField.fieldType ?? 'DATE')
         const endValue = Array.isArray(endRaw) ? endRaw[0] : endRaw
         if (endValue != null) {
           const candidateEnd = new Date(endValue as string)
@@ -299,7 +299,10 @@ export function useCalendarEvents(
 
       let color: string | undefined
       if (config.colorFieldId && colorField) {
-        const colorRaw = formatToRawValue(stored(config.colorFieldId), colorField.fieldType)
+        const colorRaw = formatToRawValue(
+          stored(config.colorFieldId),
+          colorField.fieldType ?? 'SINGLE_SELECT'
+        )
         // SINGLE_SELECT values are arrays (standing repo gotcha) — raw[0] ?? null.
         const colorValue = Array.isArray(colorRaw) ? (colorRaw[0] ?? null) : colorRaw
         const option = colorField.options?.options?.find(

@@ -1,5 +1,7 @@
 // apps/web/src/components/dynamic-table/utils/cell-renderers.tsx
 
+import { FieldTypeValues } from '@auxx/database/enums'
+import type { FieldType } from '@auxx/database/types'
 import {
   type BooleanFieldOptions,
   type CurrencyFieldOptions,
@@ -598,6 +600,13 @@ export function renderTextValue(value: unknown): React.ReactNode {
 }
 
 /**
+ * Fallback renderer, used for `TEXT` and for any field/pseudo type without an
+ * entry below. Held separately so the fallback stays statically non-optional
+ * under `noUncheckedIndexedAccess`.
+ */
+const TEXT_CELL_RENDERER: CellRenderer = (value) => renderTextValue(value)
+
+/**
  * Field type to renderer mapping.
  * All renderers wrap their output in ExpandableCell, which owns padding,
  * row height, and the expand-on-select behavior.
@@ -704,7 +713,7 @@ const cellRenderers: Record<string, CellRenderer> = {
   },
 
   // Default text
-  TEXT: (value) => renderTextValue(value),
+  TEXT: (value) => TEXT_CELL_RENDERER(value),
 }
 
 /**
@@ -713,9 +722,17 @@ const cellRenderers: Record<string, CellRenderer> = {
  * @param value - The value (TypedFieldValue or raw)
  * @param fieldType - The field type for proper extraction
  */
+/**
+ * `renderCellValue` also accepts pseudo-types (e.g. `'ITEMS'`) that the lib
+ * converter registry does not know — `getConverter` throws on those.
+ */
+function isFieldType(type: string): type is FieldType {
+  return (FieldTypeValues as readonly string[]).includes(type)
+}
+
 function unwrapValue(value: unknown, fieldType: string): unknown {
   if (value === null || value === undefined) return null
-  return formatToRawValue(value, fieldType)
+  return isFieldType(fieldType) ? formatToRawValue(value, fieldType) : value
 }
 
 /**
@@ -734,13 +751,13 @@ export function renderCellValue(
   const actualValue = unwrapValue(value, type)
 
   // Get renderer for field type, fallback to TEXT
-  const renderer = cellRenderers[type] ?? cellRenderers.TEXT
-  return renderer?.(actualValue, formatting, config)
+  const renderer = cellRenderers[type] ?? TEXT_CELL_RENDERER
+  return renderer(actualValue, formatting, config)
 }
 
 /**
  * Get appropriate renderer for a field type
  */
 export function getRenderer(fieldType: string): CellRenderer {
-  return cellRenderers[fieldType] ?? cellRenderers.TEXT
+  return cellRenderers[fieldType] ?? TEXT_CELL_RENDERER
 }

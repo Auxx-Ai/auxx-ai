@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/relationship-validators.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
 import { and, eq } from 'drizzle-orm'
 
@@ -10,7 +10,7 @@ import { and, eq } from 'drizzle-orm'
 
 /** Context for validation operations */
 export interface ValidationContext {
-  db: Database
+  db: Database | Transaction
   organizationId: string
 }
 
@@ -53,14 +53,15 @@ export async function hasCircularReference(
     visited.add(currentId)
 
     // Get parent of current entity
-    const parentValue = await ctx.db.query.FieldValue.findFirst({
-      where: and(
-        eq(schema.FieldValue.entityId, currentId),
-        eq(schema.FieldValue.fieldId, parentFieldId),
-        eq(schema.FieldValue.organizationId, ctx.organizationId)
-      ),
-      columns: { relatedEntityId: true },
-    })
+    const parentValue: { relatedEntityId: string | null } | undefined =
+      await ctx.db.query.FieldValue.findFirst({
+        where: and(
+          eq(schema.FieldValue.entityId, currentId),
+          eq(schema.FieldValue.fieldId, parentFieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        ),
+        columns: { relatedEntityId: true },
+      })
 
     currentId = parentValue?.relatedEntityId ?? null
   }
@@ -90,14 +91,15 @@ export async function calculateDepth(
   let currentId: string | null = entityId
 
   while (currentId) {
-    const parentValue = await ctx.db.query.FieldValue.findFirst({
-      where: and(
-        eq(schema.FieldValue.entityId, currentId),
-        eq(schema.FieldValue.fieldId, parentFieldId),
-        eq(schema.FieldValue.organizationId, ctx.organizationId)
-      ),
-      columns: { relatedEntityId: true },
-    })
+    const parentValue: { relatedEntityId: string | null } | undefined =
+      await ctx.db.query.FieldValue.findFirst({
+        where: and(
+          eq(schema.FieldValue.entityId, currentId),
+          eq(schema.FieldValue.fieldId, parentFieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        ),
+        columns: { relatedEntityId: true },
+      })
 
     currentId = parentValue?.relatedEntityId ?? null
     if (currentId) depth++
@@ -177,14 +179,15 @@ async function getMaxDescendantDepth(
     let currentId: string | null = descendantId
 
     while (currentId && currentId !== entityId) {
-      const parentValue = await ctx.db.query.FieldValue.findFirst({
-        where: and(
-          eq(schema.FieldValue.entityId, currentId),
-          eq(schema.FieldValue.fieldId, parentFieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
-        ),
-        columns: { relatedEntityId: true },
-      })
+      const parentValue: { relatedEntityId: string | null } | undefined =
+        await ctx.db.query.FieldValue.findFirst({
+          where: and(
+            eq(schema.FieldValue.entityId, currentId),
+            eq(schema.FieldValue.fieldId, parentFieldId),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          ),
+          columns: { relatedEntityId: true },
+        })
 
       currentId = parentValue?.relatedEntityId ?? null
       depth++

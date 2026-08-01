@@ -121,7 +121,10 @@ describe('parseContextRef', () => {
     })
 
     it('treats the array form as a FieldPath', () => {
-      const path = ['contact:company', 'company:name'] as FieldPath
+      const path: FieldPath = [
+        'contact:company' as ResourceFieldId,
+        'company:name' as ResourceFieldId,
+      ]
       expect(parseContextRef(path)).toEqual({ kind: 'field', ref: path })
     })
 

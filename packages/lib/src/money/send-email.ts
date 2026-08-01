@@ -233,7 +233,9 @@ export async function prepareDocumentEmail(
     senderUserId: userId,
     recordIdsByRoot,
   }
-  let contentHtml = await resolvePlaceholdersInHtml(snippet.contentHtml, placeholderCtx)
+  // `Snippet.contentHtml` is nullable — an org that cleared the seeded system snippet
+  // sends an empty body plus the appended link, rather than crashing the resolver.
+  let contentHtml = await resolvePlaceholdersInHtml(snippet.contentHtml ?? '', placeholderCtx)
 
   // ─── Step 3b: append the pay-online link (money MP1 build spec §J, invoice only) ───────
   // Appended at prepare time rather than a snippet placeholder — the generic field-token

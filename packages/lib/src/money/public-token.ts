@@ -8,12 +8,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
 import { and, eq, gt } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
-import type {
-  DiscountType,
-  PdfPhotoRef,
-  QuotePdfContact,
-  QuotePdfLineItem,
-} from '../documents/payload'
+import type { PdfPhotoRef, QuotePdfContact, QuotePdfLineItem } from '../documents/payload'
 import type {
   DocumentBrandingSettings,
   DocumentBusinessSettings,
@@ -24,6 +19,7 @@ import { getOrganizationSetting } from '../settings/settings-service'
 import { getPaymentAccount } from './payments/account-state'
 import { getInvoiceDepositApplied } from './payments/allocation-reads'
 import { resolvePartialPaymentBounds } from './payments/partial'
+import type { DiscountType } from './types'
 
 /**
  * The public `/pay/{token}` capability-token machinery (money MP1 build spec §H/§I). Kept

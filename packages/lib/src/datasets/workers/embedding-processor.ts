@@ -64,7 +64,9 @@ export class EmbeddingProcessor {
           },
         })
         .from(schema.DocumentSegment)
-        .leftJoin(schema.Document, eq(schema.DocumentSegment.documentId, schema.Document.id))
+        // DocumentSegment.documentId is a NOT NULL FK — an inner join is the same row set and
+        // keeps `document` non-nullable for the reads below.
+        .innerJoin(schema.Document, eq(schema.DocumentSegment.documentId, schema.Document.id))
         .where(
           and(
             inArray(schema.DocumentSegment.id, segmentIds),
@@ -277,7 +279,8 @@ export class EmbeddingProcessor {
           },
         })
         .from(schema.DocumentSegment)
-        .leftJoin(schema.Document, eq(schema.DocumentSegment.documentId, schema.Document.id))
+        // NOT NULL FK — see processBatchEmbedding.
+        .innerJoin(schema.Document, eq(schema.DocumentSegment.documentId, schema.Document.id))
         .where(eq(schema.DocumentSegment.id, segmentId))
         .limit(1)
 
@@ -562,7 +565,7 @@ export class EmbeddingProcessor {
       )
 
       return {
-        total: totalCount.count,
+        total: totalCount?.count ?? 0,
         indexed: statusMap.INDEXED || 0,
         pending: statusMap.PENDING || 0,
         error: statusMap.ERROR || 0,

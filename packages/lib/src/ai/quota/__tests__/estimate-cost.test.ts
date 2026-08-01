@@ -34,7 +34,11 @@ vi.mock('../../providers/provider-registry', () => ({
 describe('estimateUsageCostUsd', () => {
   it('returns undefined for unpriced models', () => {
     expect(
-      estimateUsageCostUsd('openai', 'unknown', { prompt_tokens: 100, completion_tokens: 10 })
+      estimateUsageCostUsd('openai', 'unknown', {
+        prompt_tokens: 100,
+        completion_tokens: 10,
+        total_tokens: 110,
+      })
     ).toBeUndefined()
   })
 
@@ -42,6 +46,7 @@ describe('estimateUsageCostUsd', () => {
     const cost = estimateUsageCostUsd('anthropic', 'sonnet-like', {
       prompt_tokens: 1000,
       completion_tokens: 1000,
+      total_tokens: 2000,
       cached_input_tokens: 1000,
       cache_write_tokens: 1000,
     })
@@ -53,6 +58,7 @@ describe('estimateUsageCostUsd', () => {
     const cost = estimateUsageCostUsd('openai', 'gpt-nano-like', {
       prompt_tokens: 2000, // 1k cached + 1k uncached
       completion_tokens: 1000,
+      total_tokens: 3000,
       cached_input_tokens: 1000,
     })
     expect(cost).toBeCloseTo(0.00005 + 0.000005 + 0.0004, 10)
@@ -62,6 +68,7 @@ describe('estimateUsageCostUsd', () => {
     const cost = estimateUsageCostUsd('openai', 'gpt-legacy', {
       prompt_tokens: 2000,
       completion_tokens: 0,
+      total_tokens: 2000,
       cached_input_tokens: 1000,
     })
     // 1k uncached at 0.001 + 1k cached at 0.1x
@@ -72,6 +79,7 @@ describe('estimateUsageCostUsd', () => {
     const cost = estimateUsageCostUsd('google', 'tiered', {
       prompt_tokens: 100_000,
       completion_tokens: 1000,
+      total_tokens: 101_000,
     })
     expect(cost).toBeCloseTo(100 * 0.00125 + 0.01, 10)
   })
@@ -80,6 +88,7 @@ describe('estimateUsageCostUsd', () => {
     const cost = estimateUsageCostUsd('google', 'tiered', {
       prompt_tokens: 300_000,
       completion_tokens: 1000,
+      total_tokens: 301_000,
       cached_input_tokens: 100_000,
     })
     // total input 300k (google semantics: prompt excludes cached → 300k + 100k = 400k > 200k)

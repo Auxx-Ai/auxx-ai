@@ -17,14 +17,14 @@ import type { CompiledProcedure } from './types'
  * Functional data access for v9 procedures (Drizzle + neverthrow). Mirrors
  * `@auxx/services` `ai-agent-sessions/session-queries`, but lives in lib so it
  * can speak the rich procedure contract directly — `doc` is a {@link TiptapDoc}
- * and `compiled` a {@link CompiledProcedure}, cast to the generic jsonb columns
- * at the DB boundary. The KB `Article`/`ArticleRevision` create/publish/revert
+ * and `compiled` a {@link CompiledProcedure}. Both are type ALIASES so they
+ * carry an implicit index signature and satisfy the generic
+ * `jsonb().$type<Record<string, unknown>>()` columns without a cast at the DB
+ * boundary. The KB `Article`/`ArticleRevision` create/publish/revert
  * shape, reframed for `Procedure`/`ProcedureVersion`.
  *
  * See plans/chat/v9/phase-0-schema-types-compiler.md §6.
  */
-
-type Jsonb = Record<string, unknown>
 
 // ── Procedure (standalone) ──────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ export async function createProcedureTx(tx: Transaction, input: CreateProcedureT
       organizationId,
       procedureId: procedure.id,
       versionNumber: null,
-      doc: (doc ?? {}) as Jsonb,
+      doc: doc ?? { type: 'doc', content: [] },
     })
     .returning()
   if (!draft) throw new Error('Failed to insert draft version')
@@ -192,7 +192,7 @@ export async function writeDraftDocTx(
 ) {
   await tx
     .update(schema.ProcedureVersion)
-    .set({ doc: input.doc as Jsonb })
+    .set({ doc: input.doc })
     .where(eq(schema.ProcedureVersion.id, input.draftVersionId))
   await tx
     .update(schema.Procedure)
@@ -471,12 +471,13 @@ export async function publishProcedure(input: {
         }
       }
 
-      const [{ next }] = await tx
+      const [nextRow] = await tx
         .select({
           next: sql<number>`COALESCE(MAX(${schema.ProcedureVersion.versionNumber}), 0) + 1`,
         })
         .from(schema.ProcedureVersion)
         .where(eq(schema.ProcedureVersion.procedureId, procedureId))
+      const next = nextRow?.next
 
       const [published] = await tx
         .insert(schema.ProcedureVersion)
@@ -485,8 +486,8 @@ export async function publishProcedure(input: {
           procedureId,
           versionNumber: next ?? 1,
           label: label ?? null,
-          doc: doc as Jsonb,
-          compiled: compiled as unknown as Jsonb,
+          doc,
+          compiled,
           whenToUse: procedure.whenToUse,
           triggerExamples: procedure.triggerExamples,
           ruleset: procedure.ruleset,

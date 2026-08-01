@@ -9,6 +9,7 @@ import { and, eq } from 'drizzle-orm'
 import { KopilotContextStore } from '../ai/agent-framework/context/context-store'
 import type { ToolContext } from '../ai/agent-framework/tool-context'
 import type { AgentToolDefinition } from '../ai/agent-framework/types'
+import { executeToolWithProgress } from '../ai/agent-framework/utils'
 import {
   createActorCapabilities,
   createAppCapabilities,
@@ -171,7 +172,11 @@ export async function approveBundle(
     }
 
     try {
-      const result = await tool.execute(resolvedArgs, ctx)
+      // `execute` may return a streaming generator (app tools with
+      // `streaming: true`). Apply-time has no SSE channel, so drain it without
+      // an `onProgress` sink — a bare `await` would hand back the generator
+      // object un-started and report every streaming action as failed.
+      const result = await executeToolWithProgress(tool, resolvedArgs, ctx)
       if (result.success) {
         outcomes.push({
           localIndex: action.localIndex,
@@ -493,6 +498,9 @@ async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentT
     sessionId: ctx.sessionId ?? ctx.traceId ?? 'approval',
     signal: ctx.signal,
     turnId: ctx.turnId ?? ctx.traceId,
+    // Apply-time replay has no UI surface, so there are no active references to
+    // resolve. Empty (not absent): `findRef` dereferences this unconditionally.
+    sessionContext: {},
     capabilities,
   })
   const registry = createCapabilityRegistry()

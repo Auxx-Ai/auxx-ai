@@ -2,6 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getInstanceId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
 import { and, eq } from 'drizzle-orm'
 import { AgentEngine } from '../ai/agent-framework/engine'
@@ -14,7 +15,7 @@ import type {
   LLMCallParams,
   LLMStreamEvent,
 } from '../ai/agent-framework/types'
-import { sessionMessagesToWire } from '../ai/agent-framework/utils'
+import { executeToolWithProgress, sessionMessagesToWire } from '../ai/agent-framework/utils'
 import type { Message } from '../ai/clients/base/types'
 import {
   createActorCapabilities,
@@ -56,8 +57,10 @@ const OPEN_TASKS_CAP = 5
  * for the bundle. Send-mode calls of the same tools are approval-gated and
  * captured by the engine instead.
  */
+const SOFT_TOOL_NAMES = new Set(['reply_to_thread', 'start_new_conversation'])
+
 function isSoftCall(toolName: string, args: Record<string, unknown>): boolean {
-  if (toolName === 'reply_to_thread' || toolName === 'start_new_conversation') {
+  if (SOFT_TOOL_NAMES.has(toolName)) {
     return args.mode !== 'send'
   }
   return false
@@ -197,6 +200,11 @@ export async function runHeadlessSuggestion(
     sessionId: headlessTraceId,
     signal: undefined,
     turnId: headlessTraceId,
+    // Headless runs have no UI surface, so there are no active references to
+    // resolve. Empty (not absent): `findRef` dereferences this unconditionally
+    // in `list_articles` / `get_article_section`, so an omitted key is a
+    // TypeError inside the tool, not a graceful "no active ref".
+    sessionContext: {},
     // Doc 19 §2.3 — the bundle owner's own view bounds every tool read/write.
     // See `resolveCaptureRunPrincipal` for why this is a human view and not an
     // `AgentVersion.permissionPolicy`.
@@ -255,8 +263,13 @@ export async function runHeadlessSuggestion(
   // Soft-tool side channel: capture draft-mode write tool results via a wrapper
   // (cheaper than rewalking state.messages after the run).
   const softActions: ProposedAction[] = []
-  const wrappedTools = tools.map((t) => wrapWithSoftCapture(t, softActions))
-  const agentTools: AgentToolDefinition[] = wrappedTools
+  // Only the two soft-capable mail tools get wrapped. Wrapping everything used
+  // to collapse streaming tools (app tools with `streaming: true`) into a
+  // buffered `await`, which hands the engine an un-started generator object
+  // instead of a result — see `wrapWithSoftCapture`.
+  const agentTools: AgentToolDefinition[] = tools.map((t) =>
+    SOFT_TOOL_NAMES.has(t.name) ? wrapWithSoftCapture(t, softActions) : t
+  )
 
   const agent = buildHeadlessAgent({ tools: agentTools, prompt })
   const domainConfig = buildHeadlessDomainConfig({ agent, model, provider })
@@ -334,6 +347,10 @@ export interface HeadlessRunDeps {
  * The wrapper preserves the original execute return so the engine sees the
  * normal tool result and the model can chain on `draftId`. Whether a call is
  * "soft" is decided per-invocation by `isSoftCall(toolName, args)`.
+ *
+ * Only applied to {@link SOFT_TOOL_NAMES} — both are buffered mail tools, so
+ * draining through `executeToolWithProgress` (no `onProgress` sink) is exactly
+ * the old `await`, and no streaming tool ever passes through here.
  */
 function wrapWithSoftCapture(
   tool: AgentToolDefinition,
@@ -342,7 +359,7 @@ function wrapWithSoftCapture(
   return {
     ...tool,
     execute: async (args, ctx) => {
-      const result = await tool.execute(args, ctx)
+      const result = await executeToolWithProgress(tool, args, ctx)
       if (result.success && isSoftCall(tool.name, args)) {
         sink.push({
           // localIndex is rewritten in mergeActions; placeholder here.
@@ -458,8 +475,11 @@ async function buildHeadlessPrompt(params: BuildPromptParams): Promise<string> {
       includeCompleted: false,
       limit: 25,
     })
+    // `references` is `RecordId[]` — branded `"<defId>:<instanceId>"` strings,
+    // not objects. `r.entityInstanceId` was always `undefined`, so this filter
+    // matched nothing and the "## Open tasks" block never rendered.
     const linked = taskResult.tasks.filter((t) =>
-      t.references.some((r) => r.entityInstanceId === params.entity.id)
+      t.references.some((r) => getInstanceId(r) === params.entity.id)
     )
     linked.sort((a, b) => {
       const aD = a.deadline?.getTime() ?? Number.POSITIVE_INFINITY

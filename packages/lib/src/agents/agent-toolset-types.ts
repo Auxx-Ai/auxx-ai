@@ -3,8 +3,13 @@
 /**
  * Shape of `Agent.toolsets[].config` (jsonb). Stored as `{}` by default; reader
  * tolerates extra/unknown keys. Single source of truth for writers + readers.
+ *
+ * A type ALIAS, not an interface: `ToolsetEntry.config` is declared
+ * `Record<string, unknown>` in `@auxx/database` (tier 1, which cannot see this
+ * type), and only an alias carries the implicit index signature that makes it
+ * assignable there. An interface forces an `as` at every write.
  */
-export interface AgentToolsetConfig {
+export type AgentToolsetConfig = {
   /**
    * Allow-list of registered tool names enabled inside this toolset for this
    * agent. Present on implicit toolsets (MCP servers, ungrouped app tools);

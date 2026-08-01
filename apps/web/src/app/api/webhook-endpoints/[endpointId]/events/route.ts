@@ -10,9 +10,12 @@ import { createSsePollRoute } from '~/lib/sse/create-sse-poll-route'
 export const GET = createSsePollRoute({
   getRedisKey: ({ endpointId }) => `webhook-endpoint:${endpointId}:events`,
   authorize: async (session, params, db) => {
+    const { endpointId } = params
+    if (!endpointId) return false
+
     const endpoint = await db.query.WebhookEndpoint.findFirst({
       where: and(
-        eq(WebhookEndpoint.id, params.endpointId),
+        eq(WebhookEndpoint.id, endpointId),
         eq(WebhookEndpoint.organizationId, session.user.defaultOrganizationId)
       ),
       columns: { id: true },

@@ -115,12 +115,15 @@ export async function updateValueResolution(
   const newIsValid = !isSkip // Valid if not skipped
 
   // Build resolved values from override
+  // `skip` is an `OverrideValue` type with no `ResolvedValue` counterpart, so it
+  // never reaches the persisted jsonb — the whole-cell skip above already emptied
+  // the list, and a `skip` mixed in behind a non-skip first entry is dropped here
+  // rather than written out as an unknown `type`.
   const resolvedValues: ResolvedValue[] = isSkip
     ? [] // Empty for skip
-    : input.overrideValues.map((ov) => ({
-        type: ov.type,
-        value: ov.id ?? ov.value,
-      }))
+    : input.overrideValues.flatMap((ov) =>
+        ov.type === 'skip' ? [] : [{ type: ov.type, value: ov.id ?? ov.value }]
+      )
 
   // Store original values for revert (only if not already overridden)
   const existingOverride = existingResolution?.userOverride as UserOverrideData | null

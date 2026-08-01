@@ -2,6 +2,8 @@
 
 'use client'
 
+import type { FieldType } from '@auxx/database/types'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 import type { FieldPath } from '@auxx/types/field'
@@ -119,10 +121,10 @@ export function createCustomFieldColumns<T extends { id: string }>(
   return fields
     .map((item) => {
       let columnId: string
-      let fieldType: string | undefined
+      let fieldType: FieldType | undefined
       let label: string
       let isPath = false
-      let cellOptions: unknown
+      let cellOptions: FieldOptions | undefined
       let canSort = true
       let canFilter = true
       let isCustomField = true

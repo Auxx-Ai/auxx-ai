@@ -11,7 +11,7 @@
 import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
-import { parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import { isResourceFieldId, parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm'
@@ -242,7 +242,7 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
     .filter(Boolean)
     .map((f) => f!.id)
   const woValues = await handler.getFieldValues(workOrderRecordId, woFieldIds)
-  const get = (f?: { id: string }) => (f ? firstTyped(woValues.get(f.id)) : undefined)
+  const get = (f?: { id: string } | null) => (f ? firstTyped(woValues.get(f.id)) : undefined)
 
   const numberTyped = get(cf.work_order_number)
   const descriptionTyped = get(cf.work_order_description)
@@ -308,8 +308,9 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
     })
     for (const row of values) {
       const { entityInstanceId } = parseRecordId(row.recordId)
-      const fieldId =
-        typeof row.fieldRef === 'string' ? parseResourceFieldId(row.fieldRef).fieldId : undefined
+      const fieldId = isResourceFieldId(row.fieldRef)
+        ? parseResourceFieldId(row.fieldRef).fieldId
+        : undefined
       const typed = firstTyped(row.value ?? undefined)
       if (!fieldId || !typed) continue
       const fields = lineValuesByInstance.get(entityInstanceId) ?? new Map()
@@ -320,7 +321,7 @@ export async function getMyVisitDetail(input: GetMyVisitDetailInput): Promise<My
 
   const lines: MyVisitDetailLine[] = lineInstanceIds.map((lineInstanceId) => {
     const fields = lineValuesByInstance.get(lineInstanceId)
-    const lget = (f?: { id: string }) => (f ? fields?.get(f.id) : undefined)
+    const lget = (f?: { id: string } | null) => (f ? fields?.get(f.id) : undefined)
     const nameTyped = lget(lineCf.line_item_name)
     const lineDescriptionTyped = lget(lineCf.line_item_description)
     const qtyTyped = lget(lineCf.line_item_qty)

@@ -49,7 +49,12 @@ export const ticketSequenceRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const { scope } = input
 
-      const setData: Record<string, unknown> = { updatedAt: new Date() }
+      // Typed against the table's insert shape rather than
+      // `Record<string, unknown>`, so each assignment below is checked and the
+      // object stays usable in `.set()` / `.values()`. `updatedAt` is `notNull`
+      // with no DB default, so it is supplied at each call site instead of here
+      // — through a `Partial` it would read as optional and fail the insert.
+      const setData: Partial<typeof schema.RecordSequence.$inferInsert> = {}
       if (input.prefix !== undefined) setData.prefix = input.prefix
       if (input.paddingLength !== undefined) setData.paddingLength = input.paddingLength
       if (input.usePrefix !== undefined) setData.usePrefix = input.usePrefix
@@ -73,7 +78,7 @@ export const ticketSequenceRouter = createTRPCRouter({
       if (existing) {
         const [updated] = await ctx.db
           .update(schema.RecordSequence)
-          .set(setData)
+          .set({ ...setData, updatedAt: new Date() })
           .where(eq(schema.RecordSequence.id, existing.id))
           .returning()
         return updated
@@ -82,10 +87,11 @@ export const ticketSequenceRouter = createTRPCRouter({
       const [created] = await ctx.db
         .insert(schema.RecordSequence)
         .values({
+          ...setData,
           organizationId,
           scope,
           currentNumber: 0,
-          ...setData,
+          updatedAt: new Date(),
         })
         .returning()
       return created

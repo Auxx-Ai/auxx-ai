@@ -39,7 +39,7 @@ interface FeatureLimitsCardProps {
 
 const BOOLEAN_FEATURES = FEATURE_REGISTRY.filter((f) => f.type === 'boolean')
 const STATIC_FEATURES = FEATURE_REGISTRY.filter((f) => f.type === 'static')
-const ALL_KNOWN_KEYS = new Set(FEATURE_REGISTRY.map((f) => f.key))
+const ALL_KNOWN_KEYS = new Set<string>(FEATURE_REGISTRY.map((f) => f.key))
 
 function getUsageGroups() {
   return USAGE_METRICS.map((metric) => {

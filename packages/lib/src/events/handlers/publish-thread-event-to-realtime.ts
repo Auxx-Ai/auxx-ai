@@ -2,7 +2,6 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { getRealtimeService, rooms } from '../../realtime'
 import type {
@@ -48,8 +47,7 @@ export const THREAD_REALTIME_EVENT_TYPES = new Set<AuxxEvent['type']>([
  * `createEventJob` skips them so the inserted `id` and `createdAt` can be
  * included in the Pusher payload (downstream clients dedupe on `id`).
  */
-export const publishThreadEventToRealtime = async (job: Job<AuxxEvent>) => {
-  const event = job.data
+export const publishThreadEventToRealtime = async ({ data: event }: { data: AuxxEvent }) => {
   if (!THREAD_REALTIME_EVENT_TYPES.has(event.type)) return
 
   const typed = event as RealtimeThreadEvent

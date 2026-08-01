@@ -56,6 +56,15 @@ function fakeCaps(viewable: string[]): CapabilityView {
     canViewEntity: (id) => set.has(id),
     assertViewEntity: () => {},
     filterViewableDefIds: (ids) => ids.filter((id) => set.has(id)),
+    // Record-level ladder: this fake has no per-record ResourceAccess grants,
+    // so def presence tracks `viewable` and every rung derives from it. No case
+    // below calls these — they exist so the stub cannot drift off the interface.
+    hasDefPresence: (id) => set.has(id),
+    hasRecordGrantsOn: () => false,
+    recordDefRung: (id) => (set.has(id) ? 'read' : undefined),
+    recordAccessAt: (id) => (set.has(id) ? 'read' : 'none'),
+    canDeleteRecordAt: () => false,
+    canEditRecordAt: () => false,
     viewAccessFor: () => undefined,
     canAdministerDef: () => false,
     canViewInstance: (_k, id) => set.has(id),
@@ -65,7 +74,7 @@ function fakeCaps(viewable: string[]): CapabilityView {
     assertViewInstance: () => {},
     assertEditInstance: () => {},
     assertAdminInstance: () => {},
-  } as CapabilityView
+  }
 }
 
 /** A published snapshot whose `definitions` map names exactly these defs. */

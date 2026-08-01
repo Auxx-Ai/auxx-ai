@@ -7,7 +7,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { legacyActionTextToDoc } from '../../record-rules/client'
 import type { SyncChangeManifest } from '../../record-rules/sync-manifest-types'
-import type { CachedRecordRule } from '../../record-rules/types'
+import type {
+  CachedRecordRule,
+  RecordRuleBatchContext,
+  RecordRuleBatchEvent,
+} from '../../record-rules/types'
 
 const h = vi.hoisted(() => ({
   getRunManifest: vi.fn<() => Promise<SyncChangeManifest | null>>(),
@@ -19,7 +23,9 @@ const h = vi.hoisted(() => ({
     { id: 'fld_status', key: 'fld_status', systemAttribute: null },
     { id: 'fld_priority', key: 'fld_priority', systemAttribute: null },
   ]),
-  fireRecordRulesBatch: vi.fn(async () => {}),
+  fireRecordRulesBatch: vi.fn<
+    (rules: CachedRecordRule[], ctx: RecordRuleBatchContext) => Promise<void>
+  >(async () => {}),
   fetchResourceSnapshots: vi.fn(async () => new Map()),
 }))
 
@@ -89,10 +95,18 @@ beforeEach(() => {
   h.claimImportManifestConsumed.mockResolvedValue(true)
 })
 
+/** Arguments of the first fireRecordRulesBatch call, asserted present. */
+function firstCall(): [CachedRecordRule[], RecordRuleBatchContext] {
+  const call = h.fireRecordRulesBatch.mock.calls[0]
+  if (!call) throw new Error('fireRecordRulesBatch was never called')
+  return call
+}
+
 /** First event of the first fireRecordRulesBatch call. */
-function firstEvent() {
-  const ctx = h.fireRecordRulesBatch.mock.calls[0]?.[1] as { events: any[] } | undefined
-  return ctx?.events[0]
+function firstEvent(): RecordRuleBatchEvent {
+  const event = firstCall()[1].events[0]
+  if (!event) throw new Error('fireRecordRulesBatch was called with an empty event batch')
+  return event
 }
 
 describe('handleSyncRecordRules', () => {
@@ -111,7 +125,7 @@ describe('handleSyncRecordRules', () => {
     await handleSyncRecordRules(connectorEvent() as never)
 
     expect(h.fireRecordRulesBatch).toHaveBeenCalledTimes(1)
-    const [rules, ctx] = h.fireRecordRulesBatch.mock.calls[0] as [any[], any]
+    const [rules, ctx] = firstCall()
     expect(rules).toHaveLength(1)
     expect(ctx).toMatchObject({ source: 'sync', entityDefinitionId: 'def_1' })
     expect(ctx.events).toHaveLength(1)

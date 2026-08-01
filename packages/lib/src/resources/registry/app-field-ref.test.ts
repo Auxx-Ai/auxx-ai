@@ -5,6 +5,7 @@ import {
   isAppFieldRef,
   parseAppFieldRef,
   toAppFieldRef,
+  toFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
@@ -47,7 +48,7 @@ describe('@app: ref grammar', () => {
 
 describe('fieldMatchesRef / resolveFieldRef', () => {
   const idField = field({
-    id: 'cf_1',
+    id: toFieldId('cf_1'),
     resourceFieldId: toResourceFieldId('def_orders', 'cf_1'),
     appFieldKey: 'id',
     appInstallationId: 'inst_1',

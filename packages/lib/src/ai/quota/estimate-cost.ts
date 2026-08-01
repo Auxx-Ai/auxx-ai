@@ -53,7 +53,11 @@ export function estimateUsageCostUsd(
 
   // Providers bill the whole call at the tier its total input size lands in.
   const totalInput = uncachedInput + cachedInput + cacheWrite
-  const tier = price.longContext?.findLast((t) => totalInput > t.over) ?? price
+  // `longContext` is ascending by `over`, so the LAST matching tier is the one that bills.
+  let tier: { input: number; output: number; cachedInput?: number; cacheWrite?: number } = price
+  for (const candidate of price.longContext ?? []) {
+    if (totalInput > candidate.over) tier = candidate
+  }
 
   const readPrice = tier.cachedInput ?? tier.input * mult.read
   const writePrice = tier.cacheWrite ?? tier.input * mult.write

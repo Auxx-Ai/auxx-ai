@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { memo } from 'react'
 import { useTableConfig } from '../context/table-config-context'
 import { useColumnFormatting } from '../stores/store-selectors'
@@ -16,7 +17,7 @@ import { renderCellValue } from '../utils/cell-renderers'
  */
 export interface CellConfig {
   /** Field options - select options array OR flat display options (decimals, format, currencyCode, …) */
-  options?: Record<string, unknown>
+  options?: FieldOptions
   /** Items for ItemsCellView (groups, sources, etc.) */
   items?: Array<{ id: string; [key: string]: unknown }>
   /** Render function for ItemsCellView */

@@ -88,7 +88,9 @@ export async function executeRow(
       })
       .where(eq(schema.ImportPlanRow.id, planRowId))
 
-    return { rowIndex, success: true, recordId: resultId }
+    // `ExecuteRowContext` carries `targetTable`, not an entityDefinitionId, so
+    // there is nothing to build a full `RecordId` from — report the instance id.
+    return { rowIndex, success: true, instanceId: resultId }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 

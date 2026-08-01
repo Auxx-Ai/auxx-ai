@@ -38,7 +38,7 @@ function resolveInverseReferences(resources: Resource[]): Resource[] {
       const ref = relationship.inverseResourceFieldId
       // Already a real CUID-based ResourceFieldId (both parts are long IDs) — skip
       const [left, right] = (ref as string).split(':')
-      if (left.length > 20 && right.length > 20) continue
+      if ((left?.length ?? 0) > 20 && (right?.length ?? 0) > 20) continue
 
       // Static format like 'contact:tickets' — resolve to actual resourceFieldId
       const resolved = fieldKeyToResourceFieldId.get(ref as string)

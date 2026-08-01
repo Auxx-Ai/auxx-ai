@@ -117,7 +117,8 @@ export const sendMidTrialEmailsJob = async (ctx: JobContext) => {
           // Send mid-trial email
           await enqueueEmailJob('mid-trial', {
             recipient: { email: org.ownerEmail, name: org.ownerName || 'there' },
-            organizationName: org.organizationName,
+            // `Organization.name` is nullable and this lands in email copy.
+            organizationName: org.organizationName ?? 'your organization',
             daysRemaining,
             dashboardUrl: `${WEBAPP_URL}/dashboard`,
             integrationsUrl: `${WEBAPP_URL}/settings/channels`,

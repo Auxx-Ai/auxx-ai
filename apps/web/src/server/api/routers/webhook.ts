@@ -4,8 +4,29 @@ import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, permissionProcedure, protectedProcedure } from '../trpc'
 
-// Create a zod schema for validating event types
+// Derived rather than imported: `@auxx/lib/webhooks/types` re-exports the
+// `WEBHOOK_EVENT_TYPES` value but not the `WebhookEventType` type that its own
+// `CreateWebhookParams`/`UpdateWebhookParams` are declared against.
+type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[keyof typeof WEBHOOK_EVENT_TYPES]
+
+// Create a zod schema for validating event types.
 const eventTypeSchema = z.enum([...(Object.values(WEBHOOK_EVENT_TYPES) as [string, ...string[]])])
+
+const WEBHOOK_EVENT_TYPE_VALUES = new Set<string>(Object.values(WEBHOOK_EVENT_TYPES))
+const isWebhookEventType = (value: string): value is WebhookEventType =>
+  WEBHOOK_EVENT_TYPE_VALUES.has(value)
+
+/**
+ * Narrow the parsed `string[]` to the `WebhookEventType[]` the service params
+ * declare. `eventTypeSchema` widens to `string` (the tuple cast above throws the
+ * literals away), so without this the payload was structurally wrong for
+ * `CreateWebhookParams`/`UpdateWebhookParams`. Zod has already rejected anything
+ * outside the set, so the filter never drops a value at runtime — it only tells
+ * the compiler what zod enforced. Kept here rather than in the schema so the
+ * client-facing input type stays `string[]`.
+ */
+const toEventTypes = (eventTypes: string[]): WebhookEventType[] =>
+  eventTypes.filter(isWebhookEventType)
 
 export const webhookRouters = createTRPCRouter({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -20,7 +41,10 @@ export const webhookRouters = createTRPCRouter({
     const service = new WebhookService(organizationId, ctx.db)
     const result = await service.byId({ id: input.id, organizationId })
 
-    if (!result.success) {
+    // `TypedResult`'s discriminant is `ok`, not `success`. `result.success` was
+    // always `undefined`, so this threw `result.error` (itself `undefined` on the
+    // Ok branch) for EVERY caller — `webhook.byId` never returned a webhook.
+    if (!result.ok) {
       throw result.error
     }
 
@@ -44,7 +68,9 @@ export const webhookRouters = createTRPCRouter({
       await new FeaturePermissionService(ctx.db).requireAccess(organizationId, FeatureKey.webhooks)
 
       const service = new WebhookService(organizationId, ctx.db)
-      const result = await service.createWebhook({ params: { ...input, organizationId } })
+      const result = await service.createWebhook({
+        params: { ...input, eventTypes: toEventTypes(input.eventTypes), organizationId },
+      })
 
       return result.unwrap()
     }),
@@ -71,7 +97,9 @@ export const webhookRouters = createTRPCRouter({
         throw webhookResult.error
       }
 
-      const result = await service.updateWebhook({ params: input })
+      const result = await service.updateWebhook({
+        params: { ...input, eventTypes: toEventTypes(input.eventTypes) },
+      })
 
       // if (!result.ok) {
       //   throw result.error

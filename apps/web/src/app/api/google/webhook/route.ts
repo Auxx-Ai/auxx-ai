@@ -46,17 +46,17 @@ async function verifyGoogleWebhook(req: NextRequest): Promise<boolean> {
 
     const publicKey = await getSigningKey(decoded.header.kid)
     logger.info('WEBAPP_URL:', WEBAPP_URL)
+
+    // Audience might need adjustment depending on how push endpoint is configured
+    // Check Google Cloud console for Pub/Sub push subscription details if needed.
+    // Often it's the push endpoint URL or a service account email.
+    const audience: [string, ...string[]] = [WEBAPP_URL, AUDIENCE]
+    const serviceAccountEmail = configService.get<string>('GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL')
+    if (serviceAccountEmail) audience.push(serviceAccountEmail)
+
     const verified = jwt.verify(token, publicKey, {
       algorithms: ['RS256'],
-      // Audience might need adjustment depending on how push endpoint is configured
-      // Check Google Cloud console for Pub/Sub push subscription details if needed.
-      // Often it's the push endpoint URL or a service account email.
-      audience: [
-        WEBAPP_URL,
-        // 'https://auxx.ai',
-        AUDIENCE,
-        configService.get<string>('GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL'),
-      ].filter(Boolean), // Allow multiple valid audiences
+      audience, // Allow multiple valid audiences
       issuer: ['https://accounts.google.com', 'googleidtoken.googleapis.com'], // Valid issuers
     }) as jwt.JwtPayload // Type assertion
 

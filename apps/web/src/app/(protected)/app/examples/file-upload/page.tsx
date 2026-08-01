@@ -52,7 +52,7 @@ function BasicUploadExample({
         </p>
       </div>
       <FileQueueManager
-        entityType='article:attachment'
+        entityType='ARTICLE'
         // Note: entityId is optional - omitting it will create generic upload session
         onComplete={onComplete}
         onError={onError}
@@ -78,7 +78,7 @@ function MinimalUploadExample({
 }) {
   return (
     <FileQueueManager
-      entityType='article:attachment'
+      entityType='ARTICLE'
       onComplete={onComplete}
       onError={onError}
       fileItemComponent={MinimalFileItem}
@@ -138,7 +138,7 @@ function FileSelectExample() {
           maxFiles={5}
           maxFileSize={10 * 1024 * 1024} // 10MB
           fileExtensions={['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx']}
-          entityType='article:attachment'
+          entityType='ARTICLE'
           onChange={handleFilesChange}
           onUploadComplete={handleUploadComplete}
           onError={handleError}
@@ -155,12 +155,12 @@ function FileSelectExample() {
                 <div key={file.id} className='flex items-center gap-3 text-sm bg-white p-2 rounded'>
                   <span className='font-medium'>{file.name}</span>
                   <Badge variant='outline'>{file.source}</Badge>
-                  {file.uploadStatus && (
-                    <Badge variant={file.uploadStatus === 'completed' ? 'default' : 'secondary'}>
-                      {file.uploadStatus}
+                  {file.status && (
+                    <Badge variant={file.status === 'completed' ? 'default' : 'secondary'}>
+                      {file.status}
                     </Badge>
                   )}
-                  <span className='text-gray-500'>{(file.size / 1024).toFixed(1)} KB</span>
+                  <span className='text-gray-500'>{(file.displaySize / 1024).toFixed(1)} KB</span>
                 </div>
               ))}
             </div>
@@ -189,22 +189,22 @@ function FileSelectExample() {
           placeholder='Select one file'
         />
 
-        {singleFile.length > 0 && (
+        {singleFile[0] && (
           <div className='p-4 bg-green-50 border border-green-200 rounded-lg'>
             <h5 className='font-medium text-green-800 mb-2'>Selected File:</h5>
             <div className='bg-white p-3 rounded'>
               <div className='flex items-center gap-3'>
                 <span className='font-medium'>{singleFile[0].name}</span>
                 <Badge variant='outline'>{singleFile[0].source}</Badge>
-                {singleFile[0].uploadStatus && (
-                  <Badge
-                    variant={singleFile[0].uploadStatus === 'completed' ? 'default' : 'secondary'}>
-                    {singleFile[0].uploadStatus}
+                {singleFile[0].status && (
+                  <Badge variant={singleFile[0].status === 'completed' ? 'default' : 'secondary'}>
+                    {singleFile[0].status}
                   </Badge>
                 )}
               </div>
               <p className='text-sm text-gray-500 mt-1'>
-                Size: {(singleFile[0].size / 1024).toFixed(1)} KB | Type: {singleFile[0].type}
+                Size: {(singleFile[0].displaySize / 1024).toFixed(1)} KB | Type:{' '}
+                {singleFile[0].type}
               </p>
             </div>
           </div>
@@ -263,22 +263,8 @@ function FileSelectExample() {
           <FileSelectDialog
             onFilesSelected={(files) => {
               console.log('Dialog selected files:', files)
-              // Convert FileItem[] to FileSelectItem[] for display
-              const selectItems: FileSelectItem[] = files.map((file) => ({
-                id: file.id,
-                name: file.name,
-                size: file.displaySize,
-                type: file.mimeType || '',
-                source: 'existing',
-                url: (file as any).url,
-                serverFileId: file.id,
-                mimeType: file.mimeType || undefined,
-                path: file.path,
-                createdAt: file.createdAt,
-                updatedAt: file.updatedAt,
-                parentId: file.parentId,
-              }))
-              setMultipleFiles((prev) => [...prev, ...selectItems])
+              // FileSelectItem is an alias of FileItem — no conversion needed
+              setMultipleFiles((prev) => [...prev, ...files])
             }}
             allowMultiple={true}
             maxSelection={3}
@@ -289,23 +275,8 @@ function FileSelectExample() {
           <FileSelectDialog
             onFilesSelected={(files) => {
               console.log('Single dialog selected file:', files[0])
-              if (files[0]) {
-                const selectItem: FileSelectItem = {
-                  id: files[0].id,
-                  name: files[0].name,
-                  size: files[0].displaySize,
-                  type: files[0].mimeType || '',
-                  source: 'existing',
-                  url: (files[0] as any).url,
-                  serverFileId: files[0].id,
-                  mimeType: files[0].mimeType || undefined,
-                  path: files[0].path,
-                  createdAt: files[0].createdAt,
-                  updatedAt: files[0].updatedAt,
-                  parentId: files[0].parentId,
-                }
-                setSingleFile([selectItem])
-              }
+              const [selected] = files
+              if (selected) setSingleFile([selected])
             }}
             allowMultiple={false}
             title='Select Single File'
@@ -333,7 +304,7 @@ function FileSelectExample() {
             maxFiles={3}
             maxFileSize={5 * 1024 * 1024} // 5MB
             fileTypes={['.jpg', '.png', '.pdf']}
-            entityType='article:attachment'
+            entityType='ARTICLE'
             onSelect={(files) => {
               console.log('FileSelectPicker selected files:', files)
               setMultipleFiles((prev) => [...prev, ...files])
@@ -555,7 +526,7 @@ function DatasetUploadExample({
       <Separator />
 
       <FileQueueManager
-        entityType='dataset'
+        entityType='DATASET'
         entityId='cme2h4pbu0000tdvnpr8deyig'
         onComplete={onComplete}
         onError={onError}

@@ -180,7 +180,8 @@ export const useSelectionStore = create<SelectionStore>()(
               const start = Math.min(lastIndex, currentIndex)
               const end = Math.max(lastIndex, currentIndex)
               for (let i = start; i <= end; i++) {
-                newSelection[allRowIds[i]] = true
+                const id = allRowIds[i]
+                if (id !== undefined) newSelection[id] = true
               }
               newLastIndex = currentIndex
             }

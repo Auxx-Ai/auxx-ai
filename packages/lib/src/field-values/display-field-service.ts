@@ -170,8 +170,8 @@ export class DisplayFieldService {
             if (single?.type === 'json') {
               const json = single.value as Record<string, unknown>
               if (typeof json?.ref === 'string') {
-                const match = (json.ref as string).match(/^asset:(.+)$/)
-                if (match) assetIdsToThumbnail.push(match[1])
+                const assetId = (json.ref as string).match(/^asset:(.+)$/)?.[1]
+                if (assetId) assetIdsToThumbnail.push(assetId)
               }
             }
           }

@@ -1005,8 +1005,8 @@ export async function* agentQueryLoop(
     // Same-tool failure streak detector.
     const allFailed = toolResults.results.length > 0 && toolResults.results.every((r) => !r.success)
     const distinctNames = new Set(toolResults.results.map((r) => r.toolName))
-    if (allFailed && distinctNames.size === 1) {
-      const onlyName = [...distinctNames][0]
+    const onlyName = distinctNames.size === 1 ? [...distinctNames][0] : undefined
+    if (allFailed && onlyName) {
       if (failingToolName === onlyName) {
         failingToolStreak++
       } else {

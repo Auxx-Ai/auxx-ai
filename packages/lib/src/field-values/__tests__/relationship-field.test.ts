@@ -7,6 +7,17 @@ import {
   isRelationshipFieldValueArray,
 } from '../relationship-field'
 
+/**
+ * The pre-`recordId` persisted shape that `extractRelationshipRecordIds` still
+ * accepts (see its "Legacy format" branch). Deliberately NOT
+ * `RelationshipFieldValue` — that type only carries `recordId`, and annotating
+ * these fixtures with it claims the current shape while testing the old one.
+ */
+type LegacyRelationshipValue = Omit<RelationshipFieldValue, 'recordId'> & {
+  relatedEntityId: string
+  relatedEntityDefinitionId: string
+}
+
 describe('extractRelationshipRecordIds', () => {
   it('handles null/undefined', () => {
     expect(extractRelationshipRecordIds(null)).toEqual([])
@@ -14,7 +25,7 @@ describe('extractRelationshipRecordIds', () => {
   })
 
   it('handles single RelationshipFieldValue object', () => {
-    const val: RelationshipFieldValue = {
+    const val: LegacyRelationshipValue = {
       type: 'relationship',
       relatedEntityId: 'abc-123',
       relatedEntityDefinitionId: 'resource-1',
@@ -31,7 +42,7 @@ describe('extractRelationshipRecordIds', () => {
   })
 
   it('handles array of RelationshipFieldValue objects', () => {
-    const vals: RelationshipFieldValue[] = [
+    const vals: LegacyRelationshipValue[] = [
       {
         type: 'relationship',
         relatedEntityId: 'a',

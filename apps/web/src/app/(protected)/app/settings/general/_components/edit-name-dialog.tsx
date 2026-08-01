@@ -22,6 +22,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import type React from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useDehydratedStateContext } from '~/providers/dehydrated-state-provider'
@@ -50,7 +51,7 @@ export function EditNameDialog({
   currentName,
   isOpen,
   onOpenChange,
-}: EditNameDialogProps): JSX.Element | null {
+}: EditNameDialogProps): React.JSX.Element | null {
   if (!isOpen) return null
 
   const { patchUser } = useDehydratedStateContext()

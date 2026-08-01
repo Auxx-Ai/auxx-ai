@@ -259,13 +259,15 @@ function VisibleColumnsStack() {
       <CommandSeparator />
       <CommandGroup>
         {stages.map((stage) => {
-          const isVisible = columnSettings[stage.value]?.isVisible !== false
+          // Keyed by the option's `id` — that is what KanbanView/KanbanColumn
+          // read `columnSettings` with.
+          const isVisible = columnSettings[stage.id]?.isVisible !== false
           return (
             <CommandCheckboxItem
-              key={stage.value}
-              value={stage.value}
+              key={stage.id}
+              value={stage.id}
               checked={isVisible}
-              onCheckedChange={(checked) => handleToggleColumn(stage.value, checked)}
+              onCheckedChange={(checked) => handleToggleColumn(stage.id, checked)}
               variant='switch'>
               <div className='flex items-center gap-2'>
                 {stage.color && (
@@ -308,7 +310,7 @@ function AddCardFieldStack() {
   const filteredFields = useMemo(() => {
     if (!search) return availableFields
     const query = search.toLowerCase()
-    return availableFields.filter((f) => f.name.toLowerCase().includes(query))
+    return availableFields.filter((f) => (f.name ?? f.label).toLowerCase().includes(query))
   }, [availableFields, search])
 
   /** Handle adding a field */

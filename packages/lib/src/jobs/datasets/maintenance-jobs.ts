@@ -110,8 +110,18 @@ export const cleanupDatasetJob = async (ctx: JobContext<DatasetCleanupJobData>) 
       if (documentIds.length > 0) {
         await db
           .update(schema.DocumentSegment)
+          // `DocumentSegment` has no `embedding` column — vectors live in the
+          // five per-dimension columns. Drizzle silently drops unknown keys
+          // from an UPDATE set, so the old `{ embedding: null }` wrote nothing
+          // but `updatedAt` and left every vector in place.
           .set({
-            embedding: null,
+            embedding_512: null,
+            embedding_768: null,
+            embedding_1024: null,
+            embedding_1536: null,
+            embedding_3072: null,
+            embeddingModel: null,
+            embeddingDimension: null,
             updatedAt: new Date(),
           })
           .where(

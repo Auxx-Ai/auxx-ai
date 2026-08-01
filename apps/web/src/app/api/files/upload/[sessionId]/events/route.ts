@@ -74,7 +74,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
           // Cleanup on close
           request.signal.addEventListener('abort', () => {
-            subscriber.unsubscribe()
+            subscriber.unsubscribe(statusChannel)
             subscriber.quit()
             controller.close()
           })

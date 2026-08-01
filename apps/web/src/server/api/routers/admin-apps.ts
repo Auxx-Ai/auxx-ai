@@ -21,7 +21,17 @@ import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { invalidateBuildCacheForDeveloperAccount } from '~/server/lib/invalidate-build-cache'
 
+// Must mirror `export-apps.ts`'s per-connection projection. `z.object` STRIPS
+// unknown keys, so every field the exporter writes and this schema omits is
+// silently dropped before `importApps` ever sees it — `key`,
+// `connectionVariables`, `authApply` and `baseUrlTemplate` were all missing.
+// `key` mattered most: the importer falls back to `'default'`, and it matches
+// the upsert on `(appId, key, major)`, so a multi-method app collapsed all of
+// its connection definitions onto one row.
 const connectionDefinitionSchema = z.object({
+  // `.default(null)` rather than required, so an export produced before the
+  // exporter emitted `key` still validates.
+  key: z.string().nullable().default(null),
   connectionType: z.string(),
   label: z.string(),
   description: z.string().nullable(),
@@ -34,6 +44,9 @@ const connectionDefinitionSchema = z.object({
   oauth2TokenRequestAuthMethod: z.string().nullable(),
   oauth2RefreshTokenIntervalSeconds: z.number().nullable(),
   oauth2Features: z.record(z.string(), z.unknown()).nullable(),
+  connectionVariables: z.array(z.any()).nullish(),
+  authApply: z.any().nullish(),
+  baseUrlTemplate: z.string().nullish(),
 })
 
 const appSchema = z.object({

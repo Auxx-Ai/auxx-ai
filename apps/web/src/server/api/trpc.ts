@@ -267,7 +267,15 @@ const auxxErrorMiddleware = t.middleware(async ({ next }) => {
  */
 export const notDemo = (action: string) =>
   t.middleware(async ({ ctx, next }) => {
-    const session = (ctx as { session: { organizationId: string; isSuperAdmin?: boolean } }).session
+    // `notDemo` is only ever chained onto `protectedProcedure`, which has already
+    // thrown UNAUTHORIZED for a missing session and enriched it with
+    // `organizationId` / `isSuperAdmin`. The base `Context` type cannot express
+    // that, hence the cast — but it must keep the `| null` the base type carries.
+    const session = ctx.session as {
+      organizationId: string
+      isSuperAdmin: boolean
+    } | null
+    if (!session) return next()
     const { DemoGuard } = await import('@auxx/lib/demo')
     await DemoGuard.requireNotDemo(session.organizationId, action, session.isSuperAdmin)
     return next()
@@ -355,6 +363,12 @@ export const protectedProcedure = t.procedure
           user: ctx.session.user,
           organizationId: ctx.session.user.defaultOrganizationId,
           userId: ctx.session.user.id,
+          // `isSuperAdmin` lives on the USER, not on the better-auth session row
+          // (`customSession` returns `{ ...session, user }`). Lifting it here is
+          // what every `ctx.session.isSuperAdmin` reader already assumes — before
+          // this it read `undefined` everywhere, silently disabling every
+          // super-admin bypass (system-owned workflows, the demo guard).
+          isSuperAdmin: ctx.session.user.isSuperAdmin === true,
         },
       },
     })

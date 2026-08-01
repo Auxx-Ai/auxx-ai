@@ -2,6 +2,7 @@
 
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { SortDirection, TaskSortField } from '@auxx/lib/tasks/client'
+import type { ActorId } from '@auxx/types/actor'
 import {
   endOfWeek,
   isPast,
@@ -19,6 +20,18 @@ import {
  */
 export type TaskGroupVariant = 'danger' | 'warning' | 'default' | 'muted' | 'success'
 
+/** Deadline period buckets used when grouping uncompleted tasks. */
+type DeadlinePeriodId = 'overdue' | 'today' | 'tomorrow' | 'this-week' | 'upcoming' | 'no-date'
+
+/** Deadline buckets for the legacy single-level grouping (adds a completed bucket). */
+type DeadlineGroupId = DeadlinePeriodId | 'completed'
+
+/** Relative-date buckets used when grouping by `createdAt` / `completedAt`. */
+type DatePeriodId = 'today' | 'yesterday' | 'this-week' | 'last-week' | 'this-month' | 'older'
+
+/** Priority buckets, including the synthetic bucket for tasks with no priority. */
+type PriorityGroupId = 'high' | 'medium' | 'low' | 'none'
+
 /**
  * Task group structure for UI rendering (period-level grouping)
  */
@@ -27,10 +40,10 @@ export interface TaskGroup {
   title: string
   variant: TaskGroupVariant
   tasks: TaskWithRelations[]
-  /** Optional metadata (e.g., user image for assignee groups) */
+  /** Optional metadata (e.g., the assignee this group belongs to) */
   meta?: {
-    userImage?: string | null
-    userId?: string | null
+    /** Set on assignee groups; the header resolves it to a name/avatar. */
+    actorId?: ActorId
   }
 }
 
@@ -148,7 +161,7 @@ function groupUncompletedByDeadline(
   tasks: TaskWithRelations[],
   direction: SortDirection
 ): TaskGroup[] {
-  const groups: Record<string, TaskWithRelations[]> = {
+  const groups: Record<DeadlinePeriodId, TaskWithRelations[]> = {
     overdue: [],
     today: [],
     tomorrow: [],
@@ -178,7 +191,7 @@ function groupUncompletedByDeadline(
     }
   }
 
-  const periodConfig: Array<{ id: string; title: string; variant: TaskGroupVariant }> = [
+  const periodConfig: Array<{ id: DeadlinePeriodId; title: string; variant: TaskGroupVariant }> = [
     { id: 'overdue', title: 'Overdue', variant: 'danger' },
     { id: 'today', title: 'Today', variant: 'warning' },
     { id: 'tomorrow', title: 'Tomorrow', variant: 'default' },
@@ -203,7 +216,7 @@ function groupUncompletedByDeadline(
  * Group completed tasks by completedAt date.
  */
 function groupCompletedTasks(tasks: TaskWithRelations[], direction: SortDirection): TaskGroup[] {
-  const groups: Record<string, TaskWithRelations[]> = {
+  const groups: Record<DatePeriodId, TaskWithRelations[]> = {
     today: [],
     yesterday: [],
     'this-week': [],
@@ -235,7 +248,7 @@ function groupCompletedTasks(tasks: TaskWithRelations[], direction: SortDirectio
     }
   }
 
-  const periodConfig: Array<{ id: string; title: string }> = [
+  const periodConfig: Array<{ id: DatePeriodId; title: string }> = [
     { id: 'today', title: 'Today' },
     { id: 'yesterday', title: 'Yesterday' },
     { id: 'this-week', title: 'This Week' },
@@ -260,7 +273,7 @@ function groupCompletedTasks(tasks: TaskWithRelations[], direction: SortDirectio
  * Group tasks by deadline period.
  */
 function groupByDeadline(tasks: TaskWithRelations[], direction: SortDirection): TaskGroup[] {
-  const groups: Record<string, TaskWithRelations[]> = {
+  const groups: Record<DeadlineGroupId, TaskWithRelations[]> = {
     overdue: [],
     today: [],
     tomorrow: [],
@@ -296,7 +309,7 @@ function groupByDeadline(tasks: TaskWithRelations[], direction: SortDirection): 
     }
   }
 
-  const periodConfig: Array<{ id: string; title: string; variant: TaskGroupVariant }> = [
+  const periodConfig: Array<{ id: DeadlineGroupId; title: string; variant: TaskGroupVariant }> = [
     { id: 'overdue', title: 'Overdue', variant: 'danger' },
     { id: 'today', title: 'Today', variant: 'warning' },
     { id: 'tomorrow', title: 'Tomorrow', variant: 'default' },
@@ -320,50 +333,45 @@ function groupByDeadline(tasks: TaskWithRelations[], direction: SortDirection): 
 }
 
 /**
- * Group tasks by assignee.
+ * Group tasks by their first assignee.
+ *
+ * `TaskWithRelations.assignments` is a list of opaque `ActorId` strings
+ * (`"user:abc123"`), so display names cannot be resolved here — the group
+ * carries `meta.actorId` and the header resolves it. Groups are therefore
+ * ordered by actor id, with unassigned pinned to the end for `asc`.
  */
 function groupByAssignee(tasks: TaskWithRelations[], direction: SortDirection): TaskGroup[] {
-  const grouped = new Map<string | null, TaskWithRelations[]>()
+  const grouped = new Map<ActorId | null, TaskWithRelations[]>()
 
   for (const task of tasks) {
-    const firstAssignee = task.assignments[0]?.assignedTo ?? null
-    const key = firstAssignee?.id ?? null
+    const key = task.assignments[0] ?? null
 
-    if (!grouped.has(key)) {
-      grouped.set(key, [])
+    const bucket = grouped.get(key)
+    if (bucket) {
+      bucket.push(task)
+    } else {
+      grouped.set(key, [task])
     }
-    grouped.get(key)!.push(task)
   }
 
   const entries = Array.from(grouped.entries())
 
-  // Sort groups alphabetically, with unassigned at end
-  entries.sort(([aKey, aTasks], [bKey, bTasks]) => {
+  // Sort groups by actor id, with unassigned at the end
+  entries.sort(([aKey], [bKey]) => {
     if (aKey === null) return direction === 'asc' ? 1 : -1
     if (bKey === null) return direction === 'asc' ? -1 : 1
 
-    const aName =
-      aTasks[0]?.assignments.find((a) => a.assignedTo.id === aKey)?.assignedTo.name ?? ''
-    const bName =
-      bTasks[0]?.assignments.find((a) => a.assignedTo.id === bKey)?.assignedTo.name ?? ''
-
-    const cmp = aName.localeCompare(bName)
+    const cmp = aKey.localeCompare(bKey)
     return direction === 'asc' ? cmp : -cmp
   })
 
-  return entries.map(([userId, groupTasks]) => {
-    const user = groupTasks[0]?.assignments.find((a) => a.assignedTo.id === userId)?.assignedTo
-    return {
-      id: userId ?? 'unassigned',
-      title: user?.name ?? user?.email ?? 'Unassigned',
-      variant: 'default' as const,
-      tasks: groupTasks,
-      meta: {
-        userImage: user?.image ?? null,
-        userId,
-      },
-    }
-  })
+  return entries.map(([actorId, groupTasks]) => ({
+    id: actorId ?? 'unassigned',
+    title: actorId ? '' : 'Unassigned',
+    variant: 'default' as const,
+    tasks: groupTasks,
+    ...(actorId ? { meta: { actorId } } : {}),
+  }))
 }
 
 /**
@@ -374,7 +382,7 @@ function groupByDate(
   field: 'createdAt' | 'completedAt',
   direction: SortDirection
 ): TaskGroup[] {
-  const groups: Record<string, TaskWithRelations[]> = {
+  const groups: Record<DatePeriodId, TaskWithRelations[]> = {
     today: [],
     yesterday: [],
     'this-week': [],
@@ -407,7 +415,7 @@ function groupByDate(
     }
   }
 
-  const periodConfig: Array<{ id: string; title: string }> = [
+  const periodConfig: Array<{ id: DatePeriodId; title: string }> = [
     { id: 'today', title: 'Today' },
     { id: 'yesterday', title: 'Yesterday' },
     { id: 'this-week', title: 'This Week' },
@@ -432,7 +440,7 @@ function groupByDate(
  * Group tasks by priority.
  */
 function groupByPriority(tasks: TaskWithRelations[], direction: SortDirection): TaskGroup[] {
-  const groups: Record<string, TaskWithRelations[]> = {
+  const groups: Record<PriorityGroupId, TaskWithRelations[]> = {
     high: [],
     medium: [],
     low: [],
@@ -448,7 +456,7 @@ function groupByPriority(tasks: TaskWithRelations[], direction: SortDirection): 
     }
   }
 
-  const priorityConfig: Array<{ id: string; title: string; variant: TaskGroupVariant }> = [
+  const priorityConfig: Array<{ id: PriorityGroupId; title: string; variant: TaskGroupVariant }> = [
     { id: 'high', title: 'High Priority', variant: 'danger' },
     { id: 'medium', title: 'Medium Priority', variant: 'warning' },
     { id: 'low', title: 'Low Priority', variant: 'default' },

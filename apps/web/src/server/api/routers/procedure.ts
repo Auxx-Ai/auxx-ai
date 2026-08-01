@@ -48,6 +48,26 @@ const triggerExampleSchema = z.object({
 })
 
 /**
+ * Boundary shape for the authored procedure document.
+ *
+ * Deliberately structural rather than exhaustive: the prose tree carries
+ * editor-specific attributes lib does not model, so unknown keys pass through
+ * (`.loose()`) and the node arrays stay untyped. What it DOES enforce is the
+ * `type: 'doc'` discriminant, which `z.record(z.string(), z.unknown())` did not
+ * — that schema parsed any object and the value then had to be asserted
+ * `as TiptapDoc` on the way into `updateDraftDoc`.
+ */
+const tiptapDocSchema: z.ZodType<TiptapDoc> = z
+  .object({
+    type: z.literal('doc'),
+    content: z.array(z.any()).optional(),
+    localAttributes: z.array(z.any()).optional(),
+    subProcedures: z.array(z.any()).optional(),
+    codeBlocks: z.array(z.any()).optional(),
+  })
+  .loose()
+
+/**
  * Org-level standalone procedures (v9). The editor autosaves the DRAFT version's
  * `doc` + the procedure's trigger DEFAULTS here; `publish` snapshots an immutable
  * version and repoints the active pointer; `revert` repoints to an older version.
@@ -123,7 +143,7 @@ export const procedureRouter = createTRPCRouter({
         whenToUse: z.string().optional(),
         triggerExamples: z.array(triggerExampleSchema).optional(),
         ruleset: z.array(z.unknown()).optional(),
-        doc: z.record(z.string(), z.unknown()).optional(),
+        doc: tiptapDocSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -150,10 +170,7 @@ export const procedureRouter = createTRPCRouter({
         )
       }
       if (doc !== undefined) {
-        unwrap(
-          await updateDraftDoc({ organizationId, procedureId: id, doc: doc as TiptapDoc }),
-          'update draft doc'
-        )
+        unwrap(await updateDraftDoc({ organizationId, procedureId: id, doc }), 'update draft doc')
         // A draft doc edit can add/remove `tool:`/record chips — fan the
         // `'procedure'` tag out to every agent this procedure is attached to.
         await reconcileProcedureMentionsForAllAgents(organizationId, id)

@@ -57,7 +57,7 @@ import {
 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -347,65 +347,34 @@ export default function OrganizationDetailsPage() {
     return 'text-blue-500'
   }
 
+  /** Build a usage stat card from the metric matching `metricKey`, or null when absent */
+  const buildUsageCard = (
+    title: string,
+    icon: ReactNode,
+    metricKey: string
+  ): StatCardData | null => {
+    const metric = usage?.metrics.find((m) => m.metric === metricKey)
+    if (!metric) return null
+    return {
+      title,
+      icon,
+      body: metric.unlimited ? metric.current : `${metric.current} / ${metric.hardLimit}`,
+      description: (
+        <span className={getUsageColor(metric.percentUsed, metric.unlimited)}>
+          {metric.unlimited ? 'Unlimited' : `${metric.percentUsed}%`}
+        </span>
+      ),
+      color: 'text-blue-500',
+    }
+  }
+
   /** Usage stat cards for the second StatCards row */
   const usageCards: StatCardData[] = usage
     ? [
-        {
-          title: 'Emails',
-          icon: <Mail className='size-4' />,
-          body: usage.metrics[0].unlimited
-            ? usage.metrics[0].current
-            : `${usage.metrics[0].current} / ${usage.metrics[0].hardLimit}`,
-          description: (
-            <span
-              className={getUsageColor(usage.metrics[0].percentUsed, usage.metrics[0].unlimited)}>
-              {usage.metrics[0].unlimited ? 'Unlimited' : `${usage.metrics[0].percentUsed}%`}
-            </span>
-          ),
-          color: 'text-blue-500',
-        },
-        {
-          title: 'Workflows',
-          icon: <Workflow className='size-4' />,
-          body: usage.metrics[1].unlimited
-            ? usage.metrics[1].current
-            : `${usage.metrics[1].current} / ${usage.metrics[1].hardLimit}`,
-          description: (
-            <span
-              className={getUsageColor(usage.metrics[1].percentUsed, usage.metrics[1].unlimited)}>
-              {usage.metrics[1].unlimited ? 'Unlimited' : `${usage.metrics[1].percentUsed}%`}
-            </span>
-          ),
-          color: 'text-blue-500',
-        },
-        {
-          title: 'AI Completions',
-          icon: <Bot className='size-4' />,
-          body: usage.metrics[2].unlimited
-            ? usage.metrics[2].current
-            : `${usage.metrics[2].current} / ${usage.metrics[2].hardLimit}`,
-          description: (
-            <span
-              className={getUsageColor(usage.metrics[2].percentUsed, usage.metrics[2].unlimited)}>
-              {usage.metrics[2].unlimited ? 'Unlimited' : `${usage.metrics[2].percentUsed}%`}
-            </span>
-          ),
-          color: 'text-blue-500',
-        },
-        {
-          title: 'API Calls',
-          icon: <Code className='size-4' />,
-          body: usage.metrics[3].unlimited
-            ? usage.metrics[3].current
-            : `${usage.metrics[3].current} / ${usage.metrics[3].hardLimit}`,
-          description: (
-            <span
-              className={getUsageColor(usage.metrics[3].percentUsed, usage.metrics[3].unlimited)}>
-              {usage.metrics[3].unlimited ? 'Unlimited' : `${usage.metrics[3].percentUsed}%`}
-            </span>
-          ),
-          color: 'text-blue-500',
-        },
+        buildUsageCard('Emails', <Mail className='size-4' />, 'outboundEmails'),
+        buildUsageCard('Workflows', <Workflow className='size-4' />, 'workflowRuns'),
+        buildUsageCard('AI Completions', <Bot className='size-4' />, 'aiCompletions'),
+        buildUsageCard('API Calls', <Code className='size-4' />, 'apiCalls'),
         {
           title: 'Storage',
           icon: <HardDrive className='size-4' />,
@@ -419,7 +388,7 @@ export default function OrganizationDetailsPage() {
           ),
           color: 'text-blue-500',
         },
-      ]
+      ].filter((card): card is StatCardData => card !== null)
     : []
 
   return (

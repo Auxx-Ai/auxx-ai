@@ -62,9 +62,11 @@ export async function getRawDataAsArray(db: Database, jobId: string): Promise<st
     Array.from({ length: maxColumn + 1 }, () => '')
   )
 
-  // Fill in values
+  // Fill in values. `result` was sized from a scan of these same cells, so every
+  // rowIndex is in range — the guard only satisfies `noUncheckedIndexedAccess`.
   for (const cell of cells) {
-    result[cell.rowIndex][cell.columnIndex] = cell.value
+    const row = result[cell.rowIndex]
+    if (row) row[cell.columnIndex] = cell.value
   }
 
   return result

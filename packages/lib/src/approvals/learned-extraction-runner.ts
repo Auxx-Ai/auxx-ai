@@ -123,6 +123,11 @@ export async function runLearnedExtraction(
     sessionId: headlessTraceId,
     signal: undefined,
     turnId: headlessTraceId,
+    // Extraction runs have no UI surface, so there are no active references to
+    // resolve. Empty (not absent): `findRef` dereferences this unconditionally
+    // in `list_articles` / `get_article_section`, so an omitted key is a
+    // TypeError inside the tool, not a graceful "no active ref".
+    sessionContext: {},
     // Doc 19 §2.3 — the knowledge / KB read tools and the learned write door are
     // all bounded by the bundle owner's own view.
     capabilities: principal.capabilities,

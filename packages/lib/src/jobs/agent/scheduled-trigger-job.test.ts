@@ -55,12 +55,19 @@ beforeEach(() => {
   createSession.mockResolvedValue({ isErr: () => false, value: { id: 'sess1' } })
 })
 
+/** First `createSession` call's argument, asserted present. */
+function firstSessionArg() {
+  const call = createSession.mock.calls[0]
+  if (!call) throw new Error('createSession was never called')
+  return call[0]
+}
+
 describe('executeAgentScheduledTrigger', () => {
   it('reads the scheduler id off ctx.job.opts and passes it through', async () => {
     const result = await executeAgentScheduledTrigger(ctx('sched-9'))
     expect(result).toEqual({ success: true, sessionId: 'sess1' })
     expect(createSession).toHaveBeenCalledOnce()
-    expect(createSession.mock.calls[0][0].triggerContext).toMatchObject({
+    expect(firstSessionArg().triggerContext).toMatchObject({
       kind: 'scheduled',
       schedulerId: 'sched-9',
     })
@@ -69,7 +76,7 @@ describe('executeAgentScheduledTrigger', () => {
 
   it('falls back to a null scheduler id when repeatJobKey is absent', async () => {
     await executeAgentScheduledTrigger(ctx())
-    expect(createSession.mock.calls[0][0].triggerContext.schedulerId).toBeNull()
+    expect(firstSessionArg().triggerContext.schedulerId).toBeNull()
   })
 
   it('skips and returns when the agent is archived', async () => {

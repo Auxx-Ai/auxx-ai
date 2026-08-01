@@ -87,8 +87,12 @@ function buildCrudConfig(resourceType: TableId): ResourceCrudConfig {
  *
  * Note: Thread is action-based (update only) - threads are created via email sync,
  * not through CRUD operations. See thread-fields.ts for action field details.
+ *
+ * Partial by design: only the resource types listed here get static CRUD
+ * validation. Everything else falls through to runtime validation, so every
+ * read of this map must handle a missing entry.
  */
-export const CRUD_RESOURCE_CONFIGS: Record<TableId, ResourceCrudConfig> = {
+export const CRUD_RESOURCE_CONFIGS: Partial<Record<TableId, ResourceCrudConfig>> = {
   // contact: buildCrudConfig('contact'),
   // ticket: buildCrudConfig('ticket'),
   // thread: buildCrudConfig('thread'), // Action-based: update only (no create/delete)

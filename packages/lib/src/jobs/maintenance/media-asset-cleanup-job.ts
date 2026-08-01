@@ -210,7 +210,7 @@ export const getMediaAssetCleanupStats = async (organizationId: string, maxAgeHo
         )
       )
 
-    const expiredCount = expiredCountResult.count
+    const expiredCount = expiredCountResult?.count ?? 0
 
     // Count total assets with expiration set
     const [assetsWithExpirationResult] = await db
@@ -224,7 +224,7 @@ export const getMediaAssetCleanupStats = async (organizationId: string, maxAgeHo
         )
       )
 
-    const assetsWithExpirationCount = assetsWithExpirationResult.count
+    const assetsWithExpirationCount = assetsWithExpirationResult?.count ?? 0
 
     return {
       expiredAssets: expiredCount,

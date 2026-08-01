@@ -16,6 +16,7 @@ import {
   Smartphone,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import type React from 'react'
 import { useState } from 'react'
 import { UAParser } from 'ua-parser-js'
 import { client } from '~/auth/auth-client'
@@ -37,7 +38,7 @@ import { TwoFactorDialog } from './two-factor-dialog'
  * Account (email, provider, last login), Security (password, passkeys, 2FA), and
  * the active session.
  */
-export function AccountSettings(): JSX.Element {
+export function AccountSettings(): React.JSX.Element {
   const router = useRouter()
   const { user } = useUser()
   const { isDemo } = useDemo()

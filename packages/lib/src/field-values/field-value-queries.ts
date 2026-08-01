@@ -30,6 +30,7 @@ import {
   type FieldValueContext,
   getField,
   getFieldInfoFromRegistry,
+  normalizeFieldReference,
   rowsToTypedValues,
   rowToTypedValue,
   validateFieldReferences,
@@ -43,6 +44,7 @@ import {
   resolveVirtualFields,
   type SystemFieldDescriptor,
 } from './resolvers'
+import { toFieldType } from './stored-field-type'
 import type {
   BatchFieldValueResult,
   BatchGetValuesInput,
@@ -107,7 +109,7 @@ export async function getValue(
 
   return rowsToTypedValues(
     rows as unknown as FieldValueRow[],
-    field.type,
+    toFieldType(field.type),
     isArrayReturnFieldType(field.type, field.options as FieldOptions | undefined)
   )
 }
@@ -502,7 +504,9 @@ interface CategorizedFields {
  * to the EntityInstance resolver instead of the (empty) FieldValue query.
  */
 function isEntityInstanceColumn(dbColumn: string): boolean {
-  return Boolean((schema.EntityInstance as Record<string, unknown>)[dbColumn])
+  // `dbColumn` holds the drizzle property name (`createdAt`, not `created_at`),
+  // which is exactly how columns are keyed on the table object.
+  return dbColumn in schema.EntityInstance
 }
 
 /**
@@ -837,7 +841,7 @@ async function resolveFieldReference(
   ref: FieldReference
 ): Promise<TypedFieldValueResult[]> {
   // Normalize to path (direct field becomes single-element path)
-  const path: FieldPath = isFieldPath(ref) ? ref : [ref]
+  const path: FieldPath = normalizeFieldReference(ref)
 
   if (path.length === 0) {
     return []
@@ -848,8 +852,7 @@ async function resolveFieldReference(
   const traversalMaps: Map<RecordId, RecordId[]>[] = []
 
   // Process all hops except the last (which is the terminal field)
-  for (let depth = 0; depth < path.length - 1; depth++) {
-    const resourceFieldId = path[depth]
+  for (const resourceFieldId of path.slice(0, -1)) {
     const relationshipMap = await fetchRelationshipHop(ctx, currentRecordIds, resourceFieldId)
 
     traversalMaps.push(relationshipMap)
@@ -867,8 +870,10 @@ async function resolveFieldReference(
     }
   }
 
-  // Fetch terminal field values
-  const terminalResourceFieldId = path[path.length - 1]
+  // Fetch terminal field values. `FieldPath` is a non-empty tuple so the last hop
+  // always exists — `path[0]` is the type-level witness (index 0 is required on the
+  // tuple, a computed index is not).
+  const terminalResourceFieldId = path.at(-1) ?? path[0]
   const { entityDefinitionId: terminalEntityId, fieldId: terminalFieldId } =
     parseResourceFieldId(terminalResourceFieldId)
 
@@ -1287,16 +1292,31 @@ async function resolveNameFieldValues(
     const firstNameTyped = firstNameValues.get(recordId)
     const lastNameTyped = lastNameValues.get(recordId)
 
+    // Both sources were fetched as TEXT above, so anything else is a misconfigured
+    // NAME field rather than a value to coerce.
     const firstName =
-      firstNameTyped && !Array.isArray(firstNameTyped) ? (firstNameTyped.value as string) : ''
+      firstNameTyped && !Array.isArray(firstNameTyped) && firstNameTyped.type === 'text'
+        ? firstNameTyped.value
+        : ''
     const lastName =
-      lastNameTyped && !Array.isArray(lastNameTyped) ? (lastNameTyped.value as string) : ''
+      lastNameTyped && !Array.isArray(lastNameTyped) && lastNameTyped.type === 'text'
+        ? lastNameTyped.value
+        : ''
 
     if (firstName || lastName) {
+      // NAME is composed, not stored — there is no FieldValue row behind it, so the
+      // row identity/timestamps every other TypedFieldValue carries are synthesised
+      // from the NAME field itself.
       result.set(recordId, {
+        id: '',
+        entityId: parseRecordId(recordId).entityInstanceId,
+        fieldId: nameFieldId,
+        sortKey: '',
+        createdAt: '',
+        updatedAt: '',
         type: 'json',
         value: { firstName, lastName },
-      } as TypedFieldValue)
+      })
     }
   }
 

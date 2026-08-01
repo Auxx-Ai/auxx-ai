@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { getConnectionOptions } from '@auxx/redis'
-import { type FlowJob, type FlowOpts, FlowProducer } from 'bullmq'
+import { type FlowJob, FlowProducer } from 'bullmq'
 import type { Queues } from './types'
 
 const logger = createScopedLogger('flow-producer')
@@ -46,7 +46,12 @@ export interface FlowJobDefinition<T = any> {
   name: string
   queue: Queues
   data: T
-  opts?: FlowOpts
+  /**
+   * Per-job options, forwarded verbatim to `FlowJob.opts`. NOT bullmq's
+   * `FlowOpts` — that is the flow-level `{ queuesOptions }` bag and carries
+   * none of `attempts` / `backoff` / `removeOnComplete`.
+   */
+  opts?: FlowJob['opts']
   children?: FlowJobDefinition[]
 }
 

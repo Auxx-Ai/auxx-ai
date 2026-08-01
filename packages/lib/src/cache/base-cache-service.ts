@@ -383,8 +383,10 @@ export class BaseCacheService {
         logger.debug(`Tag set members:[${tagSetKey}]`, { keys, count: keys?.length ?? 0 })
 
         if (keys && keys.length > 0) {
-          // Delete all the cache entries
-          await client.del(...keys)
+          // Delete all the cache entries. `RedisClient.del` takes ONE argument
+          // (`string | string[]`) — spreading here would silently drop every
+          // key but the first.
+          await client.del(keys)
           invalidatedCount = keys.length
           logger.debug(`Deleted ${keys.length} Redis keys for tag:[${tag}]`, { keys })
         }
@@ -467,7 +469,7 @@ export class BaseCacheService {
               }
             }
 
-            await client.del(...keysToDelete)
+            await client.del(keysToDelete)
             invalidatedCount += keysToDelete.length
 
             if (this.isDevelopment) {
@@ -531,7 +533,7 @@ export class BaseCacheService {
           const keys = result[1]
 
           if (keys.length > 0) {
-            await client.del(...keys)
+            await client.del(keys)
             redisKeysCleared += keys.length
           }
         } while (cursor !== '0')

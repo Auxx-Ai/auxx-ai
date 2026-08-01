@@ -362,7 +362,7 @@ export class SearchService {
       // Build base where conditions
       const baseConds = [
         eq(schema.DatasetSearchQuery.organizationId, organizationId),
-        gte(schema.DatasetSearchQuery.createdAt, fromDate.toISOString()),
+        gte(schema.DatasetSearchQuery.createdAt, fromDate),
       ] as any[]
       if (datasetIds && datasetIds.length > 0) {
         baseConds.push(inArray(schema.DatasetSearchQuery.datasetId, datasetIds))
@@ -572,10 +572,7 @@ export class SearchService {
     const conds = [
       eq(schema.DatasetSearchQuery.organizationId, organizationId),
       ilike(schema.DatasetSearchQuery.query, `%${query}%`),
-      gte(
-        schema.DatasetSearchQuery.createdAt,
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      ),
+      gte(schema.DatasetSearchQuery.createdAt, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
     ] as any[]
     if (datasetIds && datasetIds.length > 0) {
       conds.push(inArray(schema.DatasetSearchQuery.datasetId, datasetIds))

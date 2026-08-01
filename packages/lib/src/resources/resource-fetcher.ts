@@ -4,6 +4,7 @@ import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getEntityInstance } from '@auxx/services/entity-instances'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { toFieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, type SQL, sql } from 'drizzle-orm'
 import { getCachedResourceFields } from '../cache'
@@ -15,6 +16,7 @@ import {
 } from './registry/field-registry'
 import { getFieldOutputKey, type ResourceField } from './registry/field-types'
 import { isCustomResourceId } from './registry/types'
+import { requireColumn, resolveSchemaTable } from './schema-table'
 import { BaseType } from './types'
 
 const logger = createScopedLogger('resource-fetcher')
@@ -239,7 +241,7 @@ export async function fetchResourceById(
     return null
   }
 
-  const whereSql = eq(schema[tableInfo.dbName].id, entityInstanceId)
+  const whereSql = eq(requireColumn(resolveSchemaTable(tableInfo.dbName), 'id'), entityInstanceId)
   return executeResourceQuery(
     resourceType as TableId,
     organizationId,
@@ -360,6 +362,17 @@ export async function fetchResourceWithRelationships(
 
     const rel = fieldDef.relationship
     const targetResourceType = getRelatedEntityDefinitionId(rel as RelationshipConfig)
+
+    // No `inverseResourceFieldId` ⇒ no resolvable target, so there is nothing to
+    // hydrate. Same answer as a non-relationship field rather than a throw:
+    // the caller asked for a relationship the config cannot resolve.
+    if (!targetResourceType) {
+      logger.warn('Relationship has no resolvable target entity', {
+        relFieldName,
+        resourceType,
+      })
+      return { relFieldName, value: undefined }
+    }
 
     switch (rel.relationshipType) {
       case 'belongs_to':
@@ -546,7 +559,10 @@ async function fetchHasManySystemResource(
   const tableName = RESOURCE_TABLE_MAP[targetResourceType]?.dbName
   if (!tableName) return []
 
-  const whereSql = eq(schema[tableName][reciprocalField.dbColumn], parentRecordId)
+  const whereSql = eq(
+    requireColumn(resolveSchemaTable(tableName), reciprocalField.dbColumn),
+    parentRecordId
+  )
   return executeResourceQuery(targetResourceType, organizationId, { where: whereSql }, 'findMany')
 }
 
@@ -595,7 +611,7 @@ async function fetchHasManyCustomEntity(
       const fieldValues: Record<string, any> = {}
 
       for (const value of instance.values ?? []) {
-        const fieldName = fieldIdToName.get(value.fieldId)
+        const fieldName = fieldIdToName.get(toFieldId(value.fieldId))
         if (fieldName) {
           fieldValues[fieldName] = extractFieldValueScalar(value)
         }

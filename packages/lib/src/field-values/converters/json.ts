@@ -105,9 +105,13 @@ export const jsonConverter: FieldValueConverter = {
 }
 
 /**
- * NAME field value structure
+ * NAME field value structure.
+ *
+ * A type alias rather than an `interface` on purpose: only aliases get an implicit
+ * index signature, and this shape is stored in — and read back out of — the
+ * `Record<string, unknown>` that a `json` TypedFieldValue carries.
  */
-export interface NameValue {
+export type NameValue = {
   firstName?: string
   lastName?: string
 }
@@ -241,7 +245,7 @@ export const nameConverter: FieldValueConverter = {
  * `{ ref }` shape (plans/dispatch/37b-scouting-quote-photos.md §2): existing bare
  * `{ ref }` rows keep working, and every reader that only needs `.ref` is unaffected.
  */
-export interface FileValue {
+export type FileValue = {
   /** "asset:<id>" or "file:<id>" */
   ref: string
   /** Optional caption rendered under the photo thumbnail. */

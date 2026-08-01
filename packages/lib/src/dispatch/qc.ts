@@ -42,10 +42,11 @@ export async function createQcItemTemplate(
   organizationId: string,
   input: CreateQcItemTemplateInput
 ): Promise<QcItemTemplateRow> {
-  const [{ maxSortOrder }] = await database
+  const [maxRow] = await database
     .select({ maxSortOrder: max(schema.QcItemTemplate.sortOrder) })
     .from(schema.QcItemTemplate)
     .where(eq(schema.QcItemTemplate.organizationId, organizationId))
+  const maxSortOrder = maxRow?.maxSortOrder ?? null
 
   const [created] = await database
     .insert(schema.QcItemTemplate)
@@ -420,10 +421,11 @@ export async function addMyAdhocQcItem(
 ): Promise<VisitQcItemRow> {
   await loadOwnVisit(organizationId, userId, input.visitId)
 
-  const [{ maxSortOrder }] = await database
+  const [maxRow] = await database
     .select({ maxSortOrder: max(schema.VisitQcItem.sortOrder) })
     .from(schema.VisitQcItem)
     .where(eq(schema.VisitQcItem.visitId, input.visitId))
+  const maxSortOrder = maxRow?.maxSortOrder ?? null
 
   const [created] = await database
     .insert(schema.VisitQcItem)

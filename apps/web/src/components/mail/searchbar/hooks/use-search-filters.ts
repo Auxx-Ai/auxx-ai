@@ -1,9 +1,13 @@
 // apps/web/src/components/mail/searchbar/hooks/use-search-filters.ts
 'use client'
 
-import type { SearchCondition } from '@auxx/lib/mail-query/client'
 import { SEARCH_SCOPE_FIELD_ID } from '@auxx/lib/mail-views/client'
 import { useMemo } from 'react'
+// The store holds `~/components/searchbar/types` conditions, whose `operator` is
+// the narrow `Operator` union. `@auxx/lib/mail-query`'s same-named type widens it
+// to `string`, so annotating with that one re-labels the store's own data and
+// breaks every consumer that needs an `Operator` (e.g. `buildConditionGroups`).
+import type { SearchCondition } from '~/components/searchbar/types'
 import { selectHasActiveConditions, selectHasNonDefaultScope, useSearchStore } from '../store'
 
 /**

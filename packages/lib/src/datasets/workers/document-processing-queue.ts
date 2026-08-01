@@ -132,16 +132,19 @@ export class DocumentProcessingQueue {
       // Process in batches to avoid overwhelming the embedding service
       for (let i = 0; i < segments.length; i += batchSize) {
         const batch = segments.slice(i, i + batchSize)
+        const first = batch[0]
+        if (!first) continue
 
         const jobData: EmbeddingGenerationJobData = {
-          organizationId: batch[0].organizationId,
-          datasetId: batch[0].datasetId,
+          organizationId: first.organizationId,
+          datasetId: first.datasetId,
           userId: options?.userId,
           segmentIds: batch.map((s) => s.segmentId),
           batchSize,
           embeddingConfig: {
-            model: options?.modelName || 'text-embedding-ada-002',
-            provider: (options?.modelProvider as any) || 'openai',
+            // `modelId` is the "<provider>:<model>" composite EmbeddingProcessor reads back — a
+            // separate `model`/`provider` pair here was silently dropped by the consumer.
+            modelId: `${options?.modelProvider || 'openai'}:${options?.modelName || 'text-embedding-ada-002'}`,
             normalize: true,
           },
           retryConfig: { maxRetries: 3, retryDelay: 2000, exponentialBackoff: true },
@@ -156,7 +159,7 @@ export class DocumentProcessingQueue {
           jobData,
           {
             priority: options?.priority || 0,
-            jobId: `embed-batch-${batch[0].datasetId}-${i}-${Date.now()}`,
+            jobId: `embed-batch-${first.datasetId}-${i}-${Date.now()}`,
             removeOnComplete: 100,
             removeOnFail: 50,
             attempts: 3,
@@ -170,8 +173,8 @@ export class DocumentProcessingQueue {
       logger.info('Embedding generation jobs queued', {
         segmentCount: segments.length,
         batchCount: jobs.length,
-        datasetId: segments[0].datasetId,
-        organizationId: segments[0].organizationId,
+        datasetId: segments[0]?.datasetId,
+        organizationId: segments[0]?.organizationId,
       })
 
       return jobs

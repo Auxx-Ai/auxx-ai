@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { BatchExecutionResult, RowExecutionResult } from '../types/execution'
 import type { StrategyType } from '../types/plan'
+import { buildImportRecordId } from '../utils/resource-id'
 
 const logger = createScopedLogger('execute-batch')
 
@@ -90,7 +91,8 @@ export async function executeBatch(
           results.push({
             rowIndex: record.rowIndex,
             success: true,
-            recordId: created.id,
+            instanceId: created.id,
+            recordId: buildImportRecordId(ctx.entityDefinitionId, created.id),
           })
           succeeded++
         } else {
@@ -146,7 +148,9 @@ export async function executeBatch(
       results.push({
         rowIndex: record.rowIndex,
         success: true,
-        recordId: resultId,
+        instanceId: resultId,
+        // `skip` (and an `update` with no existing record) leaves `resultId` unset.
+        recordId: resultId ? buildImportRecordId(ctx.entityDefinitionId, resultId) : undefined,
       })
       succeeded++
     } catch (error) {

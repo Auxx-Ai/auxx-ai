@@ -5,7 +5,7 @@ import { ResourcePermission } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
 import type { CapabilityView } from '../capabilities/capability-view'
 import type { InstanceAccessKey } from '../capabilities/instance-access'
-import { Area, areaCeilingLevel, Level, type PermissionKey } from '../capabilities/registry'
+import { Area, areaCeilingLevel, Level } from '../capabilities/registry'
 import { permissionToRung } from '../capabilities/rung'
 import { emptyAgentPolicy, legacyFullAgentPolicy } from './agent-policy'
 import { type ClampDefinition, clampAgentPolicyToPublisher } from './agent-policy-clamp'
@@ -66,6 +66,7 @@ function publisher(spec: PublisherSpec): CapabilityView {
     recordDefRung: (id) => permissionToRung(defRung(id)),
     recordAccessAt: (id) => permissionToRung(defRung(id)),
     canDeleteRecordAt: notNeeded,
+    canEditRecordAt: notNeeded,
     viewAccessFor: () => ResourcePermission.view,
     canAdministerDef: (id) => defRung(id) === 'admin',
     assertAdministerDef: notNeeded,

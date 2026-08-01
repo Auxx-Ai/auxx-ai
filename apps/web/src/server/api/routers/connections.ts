@@ -401,9 +401,9 @@ export const connectionsRouter = createTRPCRouter({
       }
 
       const { organizationId } = ctx.session
-      const { secrets, metadata } = input.data
-        ? splitSensitiveFields(input.data)
-        : { secrets: {}, metadata: undefined }
+      const split: { secrets: Record<string, unknown>; metadata?: Record<string, unknown> } =
+        input.data ? splitSensitiveFields(input.data) : { secrets: {} }
+      const { secrets, metadata } = split
 
       // Drop any masked echo (an unchanged secret submitted as the `HIDDEN_VALUE` sentinel) so it's
       // never written as a literal — mergeSecrets then keeps the existing stored value.

@@ -123,9 +123,21 @@ export const dispatchResourceWorkflows = async (
   }
   const { triggerType, entityDefinitionId } = match
 
+  // A handful of payloads (`integration:connection_failed`) fire before a
+  // session is resolved and carry no org id. None of them map to a resource
+  // trigger, so this is unreachable today — but workflow lookup is org-scoped
+  // and must never run unscoped.
+  const organizationId = event.data.organizationId
+  if (!organizationId) {
+    logger.debug('Event has no organizationId; skipping workflow dispatch', {
+      eventType: event.type,
+    })
+    return
+  }
+
   // 2. Query workflows via org cache
   const matchingApps = await getCachedWorkflowAppsByTrigger({
-    organizationId: event.data.organizationId,
+    organizationId,
     triggerType,
     entityDefinitionId,
   })
@@ -152,7 +164,7 @@ export const dispatchResourceWorkflows = async (
     return
   }
 
-  const resourceData = await fetchResource(recordId, event.data.organizationId)
+  const resourceData = await fetchResource(recordId, organizationId)
   if (!resourceData) {
     logger.warn('Resource not found, skipping workflows', {
       recordId,

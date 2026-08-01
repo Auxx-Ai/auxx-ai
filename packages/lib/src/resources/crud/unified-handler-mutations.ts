@@ -1,7 +1,8 @@
 // packages/lib/src/resources/crud/unified-handler-mutations.ts
 
 import type { Database, schema } from '@auxx/database'
-import { FieldType } from '@auxx/database/enums'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
   createEntityInstance,
@@ -191,15 +192,15 @@ function isValuePresent(value: unknown): boolean {
 function coerceDefault(raw: unknown, fieldType: FieldType | undefined): unknown {
   if (typeof raw !== 'string') return raw
   switch (fieldType) {
-    case FieldType.NUMBER:
-    case FieldType.CURRENCY: {
+    case FieldTypeEnum.NUMBER:
+    case FieldTypeEnum.CURRENCY: {
       const n = Number.parseFloat(raw)
       return Number.isFinite(n) ? n : undefined
     }
-    case FieldType.CHECKBOX:
+    case FieldTypeEnum.CHECKBOX:
       return raw === 'true' || raw === '1'
-    case FieldType.MULTI_SELECT:
-    case FieldType.TAGS:
+    case FieldTypeEnum.MULTI_SELECT:
+    case FieldTypeEnum.TAGS:
       return [raw]
     default:
       return raw

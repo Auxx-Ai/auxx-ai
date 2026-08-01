@@ -45,7 +45,7 @@ function caps() {
   return new CapabilitySet(
     new Set(expandLevelsToKeys({ [Area.records]: Level.Edit })),
     { [OPEN_DEF]: ResourcePermission.edit },
-    'MEMBER',
+    'USER',
     'full',
     (id) => id,
     new Set([RESTRICTED_DEF]),

@@ -35,7 +35,10 @@ import { buildPublishEntry, setValuesForEntity } from '../field-value-mutations'
 const mockedGetCachedFieldMap = getCachedFieldMap as unknown as ReturnType<typeof vi.fn>
 const mockedGetCachedResource = getCachedResource as unknown as ReturnType<typeof vi.fn>
 const mockedGetOrgCache = getOrgCache as unknown as ReturnType<typeof vi.fn>
-const mockedPublish = publishFieldValueUpdates as unknown as ReturnType<typeof vi.fn>
+// `vi.mocked` (rather than a cast to a bare `Mock`) keeps the real parameter
+// tuple, so the recorded `entries` below destructure as `FieldValueUpdateEntry[]`
+// instead of `any`.
+const mockedPublish = vi.mocked(publishFieldValueUpdates)
 
 // =============================================================================
 // buildPublishEntry — pure shaping helper, unit-tested directly.
@@ -334,6 +337,6 @@ describe('setValuesForEntity realtime batching', () => {
     expect(mockedPublish).toHaveBeenCalledTimes(1)
     const [, , entries] = mockedPublish.mock.calls[0]!
     expect(entries).toHaveLength(1)
-    expect(entries[0].key).toBe(buildFieldValueKey(recordId, 'field-text' as FieldId))
+    expect(entries[0]?.key).toBe(buildFieldValueKey(recordId, 'field-text' as FieldId))
   })
 })

@@ -127,7 +127,9 @@ function computeDefaultColumnPinning(
 
   // Add all columns up to and including the last pinned one
   for (let i = 0; i <= lastPinnedIndex; i++) {
-    const columnId = resolveColumnId(columns[i])
+    const column = columns[i]
+    if (!column) continue
+    const columnId = resolveColumnId(column)
     if (columnId) {
       pinnedColumnIds.push(columnId)
     }
@@ -196,7 +198,8 @@ function cloneCalendarConfig(calendar: CalendarViewConfig): CalendarViewConfig {
     endDateFieldId: calendar.endDateFieldId,
     colorFieldId: calendar.colorFieldId,
     primaryFieldId: calendar.primaryFieldId,
-    cardFields: calendar.cardFields ? [...calendar.cardFields] : undefined,
+    // `cardFields` has a zod `.default([])`, so the parsed shape is always an array.
+    cardFields: [...(calendar.cardFields ?? [])],
   }
 }
 

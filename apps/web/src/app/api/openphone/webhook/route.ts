@@ -238,17 +238,8 @@ function convertOpenPhoneWebhookEventToMessageData(
       return null // Cannot process without sender
     }
 
-    const fromParticipant = { address: fromNumber }
-    const toParticipant = { address: toNumber }
-
-    const attachments = (messagePayload.attachments || []).map((att: OpenPhoneAttachment) => ({
-      id: att.id,
-      filename: att.file_name,
-      mimeType: att.content_type,
-      size: att.size_bytes,
-      inline: false,
-      contentLocation: att.url,
-    }))
+    const fromParticipant = { identifier: fromNumber }
+    const toParticipant = { identifier: toNumber }
 
     const messageData: MessageData = {
       externalId: externalId,
@@ -265,8 +256,13 @@ function convertOpenPhoneWebhookEventToMessageData(
       cc: [],
       bcc: [],
       replyTo: [],
-      hasAttachments: attachments.length > 0,
-      attachments: attachments,
+      // OpenPhone has no inbound attachment ingestor, so no MessageAttachment rows
+      // are ever created and `providerAttachments` is never populated. Mirrors
+      // OpenPhoneProvider.convertToMessageData — `hasAttachments` is a workflow
+      // trigger filter, so claiming true fires attachment rules for bytes that were
+      // never fetched. The raw payload (including each attachment's `url`) is
+      // retained in `metadata.openphone_webhook_event_data` for a future backfill.
+      hasAttachments: false,
       textPlain: messagePayload.body,
       snippet: messagePayload.body?.substring(0, 100),
       isInbound: isInbound,

@@ -54,12 +54,14 @@ describe('query-loop validation-error branch — sibling tool_call orphan regres
       tools: [
         {
           name: 'auto_tool',
+          displayName: 'Auto tool',
           description: 'auto',
           parameters: { type: 'object', properties: { x: { type: 'number' } }, required: ['x'] },
           execute: async () => ({ success: true, output: { ok: true } }),
         },
         {
           name: 'risky_tool',
+          displayName: 'Risky tool',
           description: 'approval',
           parameters: {
             type: 'object',

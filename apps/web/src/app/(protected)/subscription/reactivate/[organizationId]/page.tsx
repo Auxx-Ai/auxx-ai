@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertIcon, AlertTitle } from '@auxx/ui/compone
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertTriangle, Building, CheckCircle2, Clock } from 'lucide-react'
 import Link from 'next/link'
