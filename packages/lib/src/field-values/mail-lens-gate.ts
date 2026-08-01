@@ -224,6 +224,104 @@ export async function resolveMailLensGate(
 }
 
 /**
+ * The gate for a SINGLE-host read — `getValue` / `getValues`. `null` when it does
+ * not apply, on exactly the same two triggers as {@link resolveMailLensGate}.
+ */
+export interface MailHostGate {
+  /**
+   * The host is withheld in full: a `message` (refused outright — see
+   * {@link MAIL_DEF_KEYS}), or a thread the viewer holds below `metadata`.
+   * Return the caller's empty answer without issuing the read, so nothing about
+   * the row — not even its existence — is observable.
+   */
+  hidden: boolean
+  /**
+   * Whether the viewer's lens on this host admits the field. **Synchronous**:
+   * the whole `fieldId | fieldKey → Lens` map is built once when the gate is,
+   * so `getValues` can filter a result set of unknown size without a lookup per
+   * field. Accepts either the stored row id or the static key, because
+   * `getValue`/`getValues` are keyed on `FieldValue.fieldId` while the
+   * classification is keyed on the resource field's `key`.
+   */
+  admitsField(fieldId: string): boolean
+}
+
+/** The one shared "withheld" answer — no per-call allocation, no I/O. */
+const WITHHELD_HOST: MailHostGate = { hidden: true, admitsField: () => false }
+
+/**
+ * {@link resolveMailLensGate}'s single-entity sibling, for the two reads that
+ * take one `recordId` instead of a list.
+ *
+ * `getValue` / `getValues` read `FieldValue` rows only — they never reach
+ * `resolveSystemTableFields` or the virtual-field resolvers, so what they expose
+ * on a thread today is the `FieldValue`-backed slice (`tags`, the `visit*`
+ * visitor telemetry) rather than `subject` or `body`. They are gated anyway, and
+ * with the *same* classification: they are not router-exposed today, and the
+ * next router that exposes them must not have to rediscover that
+ * `hasDefPresence` authorizes nothing for `thread`. The two functions share the
+ * `FieldValue.fieldId` keyspace with the batch path, so a divergent answer here
+ * would be a second mechanism to keep in sync.
+ *
+ * **Cost.** Nothing when it does not apply: the applicability test is one
+ * `Map.get` on the parsed def part, no I/O, so every non-mail caller
+ * (`UnifiedCrudHandler.getFieldValues`, `captureEventData`, the dispatch and
+ * money readers, the geocoding stale-write guard, and `field-value-mutations`'
+ * own re-reads) is byte-identical. When it DOES apply: one cached
+ * `userInstanceGrants` read, one single-id {@link getThreadLensBatch} `Thread`
+ * query, and one cache-only `findCachedResource` — **per call**, since a
+ * single-entity read has nothing to amortise across. That is accepted rather
+ * than cached: no caller reaches this on a thread host today (thread and message
+ * are blocked from the generic record path), so there is no N+1 to solve, and a
+ * cache here would be a guess.
+ */
+export async function resolveMailHostGate(
+  ctx: FieldValueContext,
+  recordId: RecordId
+): Promise<MailHostGate | null> {
+  // Same trigger as the batch gate: no capabilities ⇒ internal caller.
+  if (!ctx.capabilities) return null
+
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  const kind = MAIL_DEF_KEYS.get(entityDefinitionId) ?? null
+  if (kind === null) return null
+  if (kind === MESSAGE_DEF) return WITHHELD_HOST
+
+  // Fail closed on a capability-scoped call with no viewer, exactly as the batch
+  // gate does — a caller that half-configured enforcement gets nothing.
+  const lens: Lens = ctx.userId
+    ? ((
+        await getThreadLensBatch(
+          ctx.db,
+          ctx.organizationId,
+          await getCachedUserInstanceGrants(ctx.userId, ctx.organizationId),
+          [entityInstanceId]
+        )
+      ).get(entityInstanceId) ?? 'none')
+    : 'none'
+
+  // `metadata` is where a thread becomes visible at all; below it the whole host
+  // is withheld rather than blanked field by field.
+  if (!satisfiesRung(lens, 'metadata')) return WITHHELD_HOST
+
+  const resource = await findCachedResource(ctx.organizationId, entityDefinitionId)
+  const minLensByFieldKey = new Map<string, Lens>()
+  for (const field of resource?.fields ?? []) {
+    const need = threadFieldMinLens(field.key)
+    minLensByFieldKey.set(field.id, need)
+    minLensByFieldKey.set(field.key, need)
+  }
+
+  return {
+    hidden: false,
+    // An unresolvable field id is unclassified, and unclassified means
+    // `identity` — the same default {@link threadFieldMinLens} applies, so a
+    // field added tomorrow hides from `metadata` viewers instead of leaking.
+    admitsField: (fieldId) => satisfiesRung(lens, minLensByFieldKey.get(fieldId) ?? 'identity'),
+  }
+}
+
+/**
  * The minimum lens each requested reference needs, keyed by {@link refKey}.
  *
  * A PATH is keyed on its first hop: that hop is the only segment that reads
