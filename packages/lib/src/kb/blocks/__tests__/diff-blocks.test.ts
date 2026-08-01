@@ -17,6 +17,13 @@ const block = (id: string, text = ''): BlockJSON => ({
   content: text ? [{ type: 'text', text }] : [],
 })
 
+function expectAt<T>(items: readonly T[], index: number): T {
+  const item = items[index]
+  expect(item).toBeDefined()
+  if (item === undefined) throw new Error(`expected item at index ${index}`)
+  return item
+}
+
 describe('diffBlocks — top level', () => {
   it('detects added / removed / unchanged', () => {
     const before: ArticleNodeJSON[] = [block('a', 'one'), block('b', 'two')]
@@ -48,7 +55,7 @@ describe('diffBlocks — top level', () => {
     const { blocks, stats } = diffBlocks(before, after)
 
     expect(blocks).toHaveLength(1)
-    const d = blocks[0]
+    const d = expectAt(blocks, 0)
     expect(d.status).toBe('modified')
     expect(d.prevBlock).toBeDefined()
     // 'quick' deleted, 'slow' inserted; surrounding words unchanged.
@@ -126,8 +133,9 @@ describe('diffBlocks — top level', () => {
       content: [{ type: 'text', text: 'hello', marks: [{ type: 'bold' }] }],
     }
     const { blocks } = diffBlocks([before], [after])
-    expect(blocks[0].status).toBe('modified')
-    expect(blocks[0].inline).toEqual([])
+    const diff = expectAt(blocks, 0)
+    expect(diff.status).toBe('modified')
+    expect(diff.inline).toEqual([])
   })
 })
 
@@ -156,8 +164,9 @@ describe('diffBlocks — nested containers', () => {
     const { blocks, stats } = diffBlocks(before, after)
 
     expect(blocks).toHaveLength(1)
-    expect(blocks[0].status).toBe('modified')
-    expect(blocks[0].children?.map((c) => [c.status, c.id])).toEqual([['modified', 'leaf']])
+    const diff = expectAt(blocks, 0)
+    expect(diff.status).toBe('modified')
+    expect(diff.children?.map((c) => [c.status, c.id])).toEqual([['modified', 'leaf']])
     // The container itself defers to its children for counting.
     expect(stats.modified).toBe(1)
   })
@@ -166,15 +175,17 @@ describe('diffBlocks — nested containers', () => {
     const before: ArticleNodeJSON[] = [accordion('ac', [block('x', 'old')])]
     const after: ArticleNodeJSON[] = [accordion('ac', [block('x', 'new')])]
     const { blocks } = diffBlocks(before, after)
-    expect(blocks[0].children?.[0].status).toBe('modified')
+    const diff = expectAt(blocks, 0)
+    expect(expectAt(diff.children ?? [], 0).status).toBe('modified')
   })
 
   it('recurses into a table cell', () => {
     const before: ArticleNodeJSON[] = [table('tbl', [block('cellblk', 'v1')])]
     const after: ArticleNodeJSON[] = [table('tbl', [block('cellblk', 'v2')])]
     const { blocks } = diffBlocks(before, after)
-    expect(blocks[0].status).toBe('modified')
-    expect(blocks[0].children?.map((c) => [c.status, c.id])).toEqual([['modified', 'cellblk']])
+    const diff = expectAt(blocks, 0)
+    expect(diff.status).toBe('modified')
+    expect(diff.children?.map((c) => [c.status, c.id])).toEqual([['modified', 'cellblk']])
   })
 })
 
@@ -190,8 +201,10 @@ describe('diffBlockList — single slot (cell / panel)', () => {
       ['modified', 'c'],
     ])
     // The removed block carries its old side; the modified one carries inline spans.
-    expect(diffs[1].block).toMatchObject({ attrs: { id: 'b' } })
-    expect(diffs[2].inline?.some((s) => s.type === 'ins' && s.text === 'edited')).toBe(true)
+    expect(expectAt(diffs, 1).block).toMatchObject({ attrs: { id: 'b' } })
+    expect(expectAt(diffs, 2).inline?.some((s) => s.type === 'ins' && s.text === 'edited')).toBe(
+      true
+    )
   })
 
   it('treats null / empty slot content as an empty list', () => {

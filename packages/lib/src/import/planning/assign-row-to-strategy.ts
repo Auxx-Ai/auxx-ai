@@ -33,6 +33,10 @@ export async function assignRowToStrategy(
     })
     .returning()
 
+  if (!result) {
+    throw new Error('Failed to assign import row to strategy')
+  }
+
   return {
     id: result.id,
     importPlanStrategyId: result.importPlanStrategyId,

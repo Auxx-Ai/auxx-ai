@@ -198,7 +198,13 @@ function applyMove(
     const missing = blockIds.filter((id) => !plucked.has(id))
     throw new PatchError(`blocks not found: ${missing.join(', ')}`, 'block_not_found')
   }
-  const orderedBlocks = blockIds.map((id) => plucked.get(id)!)
+  const orderedBlocks = blockIds.map((id) => {
+    const block = plucked.get(id)
+    if (!block) {
+      throw new PatchError(`block '${id}' not found`, 'block_not_found')
+    }
+    return block
+  })
   // Containers can only land at the top level. Reject if the resolved
   // anchor would put them inside a panel or table cell.
   const hasContainer = orderedBlocks.some((n) => n.type !== 'block')
@@ -325,8 +331,10 @@ function mutateBlockById(
     const idx = arr.findIndex((b) => b.attrs.id === blockId)
     if (idx < 0) return arr
     foundNested = true
+    const existing = arr[idx]
+    if (!existing) return arr
     const out = [...arr]
-    out[idx] = transform(arr[idx])
+    out[idx] = transform(existing)
     return out
   })
   if (!foundNested) {

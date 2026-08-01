@@ -57,7 +57,8 @@ const NUMBER_PATTERN = `(\\d+|${TEXT_NUMBER_PATTERN})`
 /**
  * Parse a number from either digit string or text ("3" or "three" → 3)
  */
-function parseNumber(value: string): number {
+function parseNumber(value: string | undefined): number {
+  if (value === undefined) return 0
   const num = parseInt(value, 10)
   if (!Number.isNaN(num)) return num
   return TEXT_NUMBERS[value.toLowerCase()] ?? 0
@@ -142,7 +143,8 @@ function getDaysUntilEndOfWeek(baseDate: Date): number {
 /**
  * Get full weekday name from abbreviation or full name
  */
-function getWeekdayName(input: string): string {
+function getWeekdayName(input: string | undefined): string {
+  if (input === undefined) return ''
   return WEEKDAY_FULL_NAMES[input.toLowerCase()] || input
 }
 
@@ -279,8 +281,8 @@ export const DATE_PATTERNS: DatePattern[] = [
     id: 'next-weekday',
     pattern: new RegExp(`\\bnext\\s+(${WEEKDAY_PATTERN})\\b`, 'i'),
     extractor: (match, baseDate) => {
-      const dayName = match[1].toLowerCase()
-      const targetDay = WEEKDAY_MAP[dayName]
+      const dayName = match[1]?.toLowerCase()
+      const targetDay = dayName === undefined ? undefined : WEEKDAY_MAP[dayName]
       if (targetDay === undefined) return { days: 7 }
       const days = getDaysUntilWeekday(targetDay, baseDate, true)
       return { days }
@@ -299,8 +301,8 @@ export const DATE_PATTERNS: DatePattern[] = [
     id: 'this-weekday',
     pattern: new RegExp(`\\bthis\\s+(${WEEKDAY_PATTERN})\\b`, 'i'),
     extractor: (match, baseDate) => {
-      const dayName = match[1].toLowerCase()
-      const targetDay = WEEKDAY_MAP[dayName]
+      const dayName = match[1]?.toLowerCase()
+      const targetDay = dayName === undefined ? undefined : WEEKDAY_MAP[dayName]
       if (targetDay === undefined) return { days: 0 }
       const days = getDaysUntilWeekday(targetDay, baseDate, false)
       return { days: days > 0 ? days : 0 }
@@ -319,8 +321,8 @@ export const DATE_PATTERNS: DatePattern[] = [
     id: 'by-weekday',
     pattern: new RegExp(`\\b(?:by|on|due)\\s+(${WEEKDAY_PATTERN})\\b`, 'i'),
     extractor: (match, baseDate) => {
-      const dayName = match[1].toLowerCase()
-      const targetDay = WEEKDAY_MAP[dayName]
+      const dayName = match[1]?.toLowerCase()
+      const targetDay = dayName === undefined ? undefined : WEEKDAY_MAP[dayName]
       if (targetDay === undefined) return { days: 7 }
       const days = getDaysUntilWeekday(targetDay, baseDate, false)
       return { days }
@@ -340,8 +342,8 @@ export const DATE_PATTERNS: DatePattern[] = [
     id: 'standalone-weekday',
     pattern: /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
     extractor: (match, baseDate) => {
-      const dayName = match[1].toLowerCase()
-      const targetDay = WEEKDAY_MAP[dayName]
+      const dayName = match[1]?.toLowerCase()
+      const targetDay = dayName === undefined ? undefined : WEEKDAY_MAP[dayName]
       if (targetDay === undefined) return { days: 7 }
       const days = getDaysUntilWeekday(targetDay, baseDate, false)
       return { days }
@@ -541,8 +543,8 @@ export const DATE_PATTERNS: DatePattern[] = [
     id: 'last-weekday',
     pattern: new RegExp(`\\blast\\s+(${WEEKDAY_PATTERN})\\b`, 'i'),
     extractor: (match, baseDate) => {
-      const dayName = match[1].toLowerCase()
-      const targetDay = WEEKDAY_MAP[dayName]
+      const dayName = match[1]?.toLowerCase()
+      const targetDay = dayName === undefined ? undefined : WEEKDAY_MAP[dayName]
       if (targetDay === undefined) return { days: -7 }
       const currentDay = baseDate.getDay()
       let daysSince = currentDay - targetDay

@@ -13,6 +13,15 @@ export interface PlanWithEstimates {
   estimates: PlanEstimates
 }
 
+function getPlannedCount(statistics: unknown): number {
+  if (typeof statistics !== 'object' || statistics === null || Array.isArray(statistics)) {
+    return 0
+  }
+
+  const planned = (statistics as Record<string, unknown>).planned
+  return typeof planned === 'number' && Number.isFinite(planned) && planned >= 0 ? planned : 0
+}
+
 /**
  * Get import plan with calculated estimates.
  *
@@ -46,7 +55,7 @@ export async function getPlanWithEstimates(
   let withErrors = 0
 
   for (const strategy of plan.strategies) {
-    const count = strategy.rowCount ?? 0
+    const count = getPlannedCount(strategy.statistics)
     switch (strategy.strategy) {
       case 'create':
         toCreate = count
@@ -56,7 +65,7 @@ export async function getPlanWithEstimates(
         break
       case 'skip':
         toSkip = count
-        withErrors = strategy.errorCount ?? 0
+        withErrors = count
         break
     }
   }

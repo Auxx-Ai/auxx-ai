@@ -72,36 +72,40 @@ function diffLevel(oldNodes: ArticleNodeJSON[], newNodes: ArticleNodeJSON[]): Bl
 
   while (oi < oldNodes.length || nj < newNodes.length) {
     const anchor = li < lcs.length ? lcs[li] : undefined
+    const oldNode = oldNodes[oi]
+    const oldId = oldIds[oi]
+    const newNode = newNodes[nj]
+    const newId = newIds[nj]
 
     // Old block that isn't the next stable anchor → removed, or the source
     // slot of a moved block (emitted at its new position, so skip here).
-    if (oi < oldNodes.length && oldIds[oi] !== anchor) {
-      if (newMap.has(oldIds[oi])) {
+    if (oldNode && oldId !== undefined && oldId !== anchor) {
+      if (newMap.has(oldId)) {
         oi++
         continue
       }
-      result.push({ status: 'removed', id: oldIds[oi], block: oldNodes[oi] })
+      result.push({ status: 'removed', id: oldId, block: oldNode })
       oi++
       continue
     }
 
     // New block that isn't the next anchor → added, or a moved block's
     // destination (present on both sides but out of stable order).
-    if (nj < newNodes.length && newIds[nj] !== anchor) {
-      const prev = oldMap.get(newIds[nj])
+    if (newNode && newId !== undefined && newId !== anchor) {
+      const prev = oldMap.get(newId)
       if (prev) {
-        result.push(classify(prev, newNodes[nj], true))
+        result.push(classify(prev, newNode, true))
         nj++
         continue
       }
-      result.push({ status: 'added', id: newIds[nj], block: newNodes[nj] })
+      result.push({ status: 'added', id: newId, block: newNode })
       nj++
       continue
     }
 
     // Both sit on the stable anchor.
-    if (anchor !== undefined) {
-      result.push(classify(oldNodes[oi], newNodes[nj], false))
+    if (anchor !== undefined && oldNode && newNode) {
+      result.push(classify(oldNode, newNode, false))
       oi++
       nj++
       li++
@@ -193,22 +197,35 @@ function lcsIds(a: string[], b: string[]): string[] {
   const m = b.length
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
   for (let i = n - 1; i >= 0; i--) {
+    const row = dp[i]
+    const nextRow = dp[i + 1]
+    if (!row || !nextRow) throw new Error('invalid LCS table')
     for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+      const next = nextRow[j + 1] ?? 0
+      const below = nextRow[j] ?? 0
+      const right = row[j + 1] ?? 0
+      row[j] = a[i] === b[j] ? next + 1 : Math.max(below, right)
     }
   }
   const seq: string[] = []
   let i = 0
   let j = 0
   while (i < n && j < m) {
-    if (a[i] === b[j]) {
-      seq.push(a[i])
+    const aId = a[i]
+    const bId = b[j]
+    if (aId === undefined || bId === undefined) break
+    if (aId === bId) {
+      seq.push(aId)
       i++
       j++
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      i++
     } else {
-      j++
+      const below = dp[i + 1]?.[j] ?? 0
+      const right = dp[i]?.[j + 1] ?? 0
+      if (below >= right) {
+        i++
+      } else {
+        j++
+      }
     }
   }
   return seq
