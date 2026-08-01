@@ -20,6 +20,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   store: {} as Record<string, Array<Record<string, any>>>,
   seq: 0,
+  /** Table whose INSERT should blow up, standing in for a table the migration has not created yet. */
+  failInsertOn: null as string | null,
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -162,6 +164,9 @@ function insertChain(table: string) {
   let updateSet: Record<string, unknown> = {}
 
   const run = () => {
+    if (h.failInsertOn === table) {
+      throw new Error(`relation "${table}" does not exist`)
+    }
     const out: Array<Record<string, any>> = []
     for (const value of values) {
       const existing = target.length
@@ -294,6 +299,7 @@ const aliasKeysFor = (threadId: string) =>
     .sort()
 
 beforeEach(() => {
+  h.failInsertOn = null
   h.store = {
     Integration: [
       { id: OUTLOOK, provider: 'outlook', deletedAt: null, metadata: {} },
@@ -389,6 +395,41 @@ describe('storeMessage — Outlook conversationId fork (thread-splitting plan)',
 
     const threadId = rows('Thread')[0]?.id
     expect(aliasKeysFor(threadId)).toEqual(['convA'])
+  })
+
+  // Regression: this exact failure took down ingest for EVERY provider in dev when
+  // the code ran before migration 0323 created the table. The alias write used to
+  // live inside the write transaction, and Postgres aborts the whole transaction on
+  // any statement error — so the message was rolled back too. A missing alias must
+  // cost us thread merging, never the message.
+  it('still stores the message when the alias write fails', async () => {
+    const c = ctx()
+    h.failInsertOn = 'ThreadExternalKey'
+
+    await expect(
+      storeMessage(c, messageData({ internetMessageId: '<survives@x>' }))
+    ).resolves.toBeDefined()
+
+    expect(messages()).toHaveLength(1)
+    expect(rows('Thread')).toHaveLength(1)
+    expect(rows('ThreadExternalKey')).toHaveLength(0)
+    expect(c.logger.error).toHaveBeenCalled()
+  })
+
+  it('falls back to the conversation key when the alias table is unreadable', async () => {
+    const c = ctx()
+    h.failInsertOn = 'ThreadExternalKey'
+
+    await storeMessage(c, messageData({ internetMessageId: '<a@x>' }))
+    await storeMessage(
+      c,
+      messageData({ externalThreadId: 'convA', internetMessageId: '<b@x>', isInbound: true })
+    )
+
+    // Both still land on one thread via the unchanged `(integrationId, externalId)`
+    // upsert — i.e. exactly the behaviour that shipped before the alias table.
+    expect(rows('Thread')).toHaveLength(1)
+    expect(messages()).toHaveLength(2)
   })
 })
 

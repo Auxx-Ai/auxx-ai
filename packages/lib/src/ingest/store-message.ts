@@ -46,6 +46,51 @@ function deriveThreadStatusFromLabels(labelIds: string[]): ThreadStatusValue {
 }
 
 /**
+ * Records the provider conversation key this message arrived under as an alias of
+ * `threadId`, so the NEXT message in a forked conversation resolves at rung 1
+ * without needing a resolvable parent of its own. This is what makes a merge stick.
+ * Idempotent via the unique index on `(integrationId, externalId)`.
+ *
+ * Runs AFTER the write transaction commits, and swallows its own failures, for a
+ * reason that is easy to get wrong: Postgres aborts an entire transaction on any
+ * statement error, so a `try/catch` around this INSERT *inside* the transaction
+ * would not save it — every later statement would fail with "current transaction
+ * is aborted" and the message would still be lost. Keeping it inside cost us a
+ * real outage: when the code shipped before `0323` created the table, the alias
+ * INSERT rolled back the whole write set and ingest failed for EVERY provider,
+ * not just Outlook.
+ *
+ * A missing alias is cheap — thread resolution simply falls back to the provider
+ * conversation key, i.e. the behaviour that shipped before the alias table. A lost
+ * message is not. Never let this fail ingestion.
+ */
+async function recordThreadExternalKey(
+  ctx: IngestContext,
+  messageData: MessageData,
+  threadId: string
+): Promise<void> {
+  if (!messageData.externalThreadId || !messageData.integrationId) return
+
+  try {
+    await ctx.db
+      .insert(schema.ThreadExternalKey)
+      .values({
+        threadId,
+        integrationId: messageData.integrationId,
+        externalId: messageData.externalThreadId,
+      })
+      .onConflictDoNothing()
+  } catch (error) {
+    ctx.logger.error('Failed to record thread external key; thread merging may not stick', {
+      threadId,
+      integrationId: messageData.integrationId,
+      externalThreadId: messageData.externalThreadId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
  * Store a single inbound/outbound message with full ingest pipeline:
  * reconciliation → participants → thread upsert → message upsert →
  * message-participant links → thread metadata update.
@@ -468,20 +513,8 @@ export async function storeMessage(
         : (thread.messageCount ?? 0) === 1 &&
           thread.firstMessageAt?.getTime() === messageData.sentAt.getTime()
 
-      // Record the incoming conversation key so the NEXT message in a forked
-      // conversation resolves at rung 1, without needing a resolvable parent of
-      // its own. This is what makes a merge stick. Idempotent by the unique
-      // index on `(integrationId, externalId)`.
-      if (messageData.externalThreadId && messageData.integrationId) {
-        await tx
-          .insert(schema.ThreadExternalKey)
-          .values({
-            threadId: thread.id,
-            integrationId: messageData.integrationId,
-            externalId: messageData.externalThreadId,
-          })
-          .onConflictDoNothing()
-      }
+      // NOTE: the `ThreadExternalKey` alias write deliberately does NOT live in
+      // this transaction — see `recordThreadExternalKey` after the commit.
 
       // Gmail parity: a thread with any INBOX message belongs in the inbox.
       // Reopen an ARCHIVED personal-channel thread when this message carries
@@ -632,6 +665,8 @@ export async function storeMessage(
       return { thread, isNewThread, messageRecord, flippedUserIds, didReopen }
     })
     const { thread, isNewThread, messageRecord, flippedUserIds, didReopen } = txResult
+
+    await recordThreadExternalKey(ctx, messageData, thread.id)
 
     // Reply-detection hook (Sequences plan §3.3/Phase 2; client-notifications plan §4.4 gates
     // it on `Sequence.exitOnReply`) — an inbound message on a thread with an active
