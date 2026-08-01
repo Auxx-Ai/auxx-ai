@@ -26,6 +26,7 @@ import type {
   StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
 import { CustomFieldCell } from './components/custom-field-cell'
+import { DroppedFiltersNotice } from './components/dropped-filters-notice'
 import { DynamicTableFooter } from './components/dynamic-table-footer'
 import { getIconForFieldType } from './custom-field-column-factory'
 import { DynamicView } from './dynamic-view'
@@ -199,6 +200,8 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   const {
     records,
     recordIds: listIds,
+    droppedConditions,
+    droppedConditionCount,
     isLoading: instancesLoading,
     isLoadingRecords,
     isFetchingNextPage,
@@ -396,6 +399,13 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
               {records.length}{' '}
               {records.length === 1 ? resource.label.toLowerCase() : resource.plural.toLowerCase()}
               {hasNextPage && <span className='ml-2'>(more available)</span>}
+              {/* Sits next to the count on purpose: the count is exactly what a
+                  dropped filter inflates. Renders nothing in the normal case. */}
+              <DroppedFiltersNotice
+                droppedConditions={droppedConditions}
+                droppedConditionCount={droppedConditionCount}
+                fields={resource.fields}
+              />
             </div>
             {isFetchingNextPage && (
               <div className='flex items-center gap-2'>

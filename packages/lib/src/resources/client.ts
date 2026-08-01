@@ -18,6 +18,10 @@ export {
   type EntityDefinitionType,
   isEntityDefinitionType,
 } from '@auxx/types/resource'
+// Filter diagnostics returned by `record.listFiltered`. Type-only re-export, so
+// the server-side module it lives in is erased and never enters a client bundle
+// (same treatment as the picker types below).
+export type { DroppedFilterNotice } from './crud/unified-handler-queries'
 export type { MergeFieldInput, MergeFieldResult } from './merge/client'
 // Merge utilities (client-safe)
 export { mergeFieldValue } from './merge/client'

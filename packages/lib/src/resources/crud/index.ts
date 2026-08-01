@@ -23,6 +23,7 @@ export { UnifiedCrudHandler } from './unified-handler'
 // Mutation utilities (for advanced use cases)
 export type { CreateEntityResult, MutationContext } from './unified-handler-mutations'
 export type {
+  DroppedFilterNotice,
   ListAllFieldInfo,
   ListAllInput,
   ListAllItem,
@@ -38,6 +39,7 @@ export {
   getTableSchema,
   isSystemResource,
   listAll,
+  MAX_REPORTED_DROPPED_CONDITIONS,
   queryEntityInstanceIdsPaged,
   querySystemResourceIdsPaged,
   resolveEntityId,
