@@ -9,7 +9,17 @@ import type {
 } from './types'
 
 /** Registration key meaning "applies to every page". */
-const GLOBAL_PAGE = '__global__'
+export const GLOBAL_PAGE = '__global__'
+
+/**
+ * Lookup key meaning "this run has no page surface" — headless/autonomous runs
+ * (approvals, learned extraction), live chat, and any Kopilot request that
+ * didn't send a `page`. Resolves to the `__global__` capability only, which is
+ * exactly what a page-less run should see. Prefer this over inventing a page
+ * name: an unregistered string resolves to the same set *by accident* and reads
+ * like scoping while doing nothing.
+ */
+export const NO_PAGE = '__none__'
 
 type AdditionFragment = NonNullable<PageCapability['systemPromptAddition']>
 type CapabilitiesFragment = NonNullable<PageCapability['capabilities']>
@@ -146,12 +156,24 @@ export function createCapabilityRegistry(): CapabilityRegistry {
       return rendered.length > 0 ? rendered.join('\n\n') : undefined
     },
 
-    getCapabilitiesSummary(ctx?: SystemPromptAdditionContext): string[] {
-      const resolveCtx: SystemPromptAdditionContext = ctx ?? { toolNames: new Set() }
+    getCapabilitiesSummary(page: string | undefined, ctx: SystemPromptAdditionContext): string[] {
+      // Page-scoped exactly like `getTools` / `getSystemPromptAddition`: global
+      // bullets plus this page's. Summing over every registered page instead
+      // advertised capabilities whose tools were never bound for the active
+      // page — e.g. KB article editing on a mail turn.
       const all: string[] = []
-      for (const capability of pages.values()) {
-        for (const fragment of capability.capabilities) {
-          all.push(...resolveCapabilities(fragment, resolveCtx))
+      const global = pages.get(GLOBAL_PAGE)
+      if (global) {
+        for (const fragment of global.capabilities) {
+          all.push(...resolveCapabilities(fragment, ctx))
+        }
+      }
+      // Guard the global key so a caller passing `__global__` as the page
+      // doesn't render every global bullet twice.
+      const scoped = page && page !== GLOBAL_PAGE ? pages.get(page) : undefined
+      if (scoped) {
+        for (const fragment of scoped.capabilities) {
+          all.push(...resolveCapabilities(fragment, ctx))
         }
       }
       return all

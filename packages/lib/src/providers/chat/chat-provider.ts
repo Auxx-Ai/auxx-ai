@@ -8,6 +8,7 @@ import { getCachedAgentById, getOrgCache } from '../../cache'
 import { enqueueChatTurn } from '../../chat/agent/enqueue-chat-turn'
 import { publishChatMessageCreated, publishChatMessageReceiptUpdated } from '../../chat/realtime'
 import type { ChatAttachment } from '../../chat/types'
+import { updateThreadSearchText } from '../../mail-query/thread-search-text'
 import { getRealtimeService } from '../../realtime'
 import { publishMessageUpdated } from '../../realtime/publish-helpers'
 import { Result, type TypedResult } from '../../result'
@@ -324,7 +325,12 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
             .where(eq(schema.Message.id, finalId))
         }
 
-        // Bump thread: lift WAITING → OPEN, update counters/latest.
+        // Bump thread: lift WAITING → OPEN, update counters/latest, then refresh
+        // the ranked-search corpus (`mail-query/thread-search-text.ts`). This
+        // path bumps counters with a Drizzle `update()` rather than the raw-SQL
+        // recompute the email paths splice the corpus into, so it needs the
+        // explicit call; without it a chat thread would be findable by subject
+        // but never by message content.
         await tx
           .update(schema.Thread)
           .set({
@@ -334,6 +340,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
             status: ThreadStatus.OPEN,
           })
           .where(eq(schema.Thread.id, thread.id))
+        await updateThreadSearchText(tx, thread.id)
 
         return { messageRowId: finalId }
       })

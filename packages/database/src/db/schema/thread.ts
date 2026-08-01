@@ -110,6 +110,22 @@ export const Thread = pgTable(
      * Shape: see `ThreadMergeData` in `@auxx/lib/threads/types`.
      */
     mergeData: jsonb(),
+    /**
+     * Denormalized free-text corpus for ranked search: the thread's message
+     * bodies, HTML-stripped, whitespace-collapsed and **bounded**.
+     *
+     * Maintained by `mail-query/thread-search-text.ts`, which is the single
+     * definition of the expression — the two thread-metadata recomputes and the
+     * one-time backfill all compose it. Subject is deliberately NOT in here: the
+     * mail lens grants subject visibility (`identity`) and body visibility
+     * (`read`) separately, and a blended column would let a subject-only viewer
+     * match on body text.
+     *
+     * The bound is not optional: `to_tsvector` **errors** past 1 MB of input
+     * ("string is too long for tsvector"), which would fail the write rather than
+     * degrade the search.
+     */
+    searchText: text(),
   },
   (table) => [
     uniqueIndex('Thread_integrationId_externalId_key').using(
@@ -163,6 +179,32 @@ export const Thread = pgTable(
         table.id.desc().nullsFirst()
       )
       .where(sql`"mergedIntoThreadId" IS NULL`),
+    // ── Ranked free-text search (retrieval plan step 3.1) ────────────────────
+    // Org-scoped composite GIN, the same strategy migration 0058 uses for
+    // EntityInstance. `organizationId` leads because every mail query filters on
+    // it, which is what lets one index serve both the scope and the match.
+    //
+    // ⚠️ The `to_tsvector(...)` expression must stay byte-identical to the one
+    // `search/text-search-sql.ts` emits (`'english'::regconfig`, `COALESCE(x,'')`)
+    // — a differing config or a dropped COALESCE silently stops matching the
+    // index expression and forces a sequential scan.
+    index('Thread_org_searchText_gin_idx').using(
+      'gin',
+      table.organizationId,
+      sql`to_tsvector('english'::regconfig, COALESCE("searchText", ''))`
+    ),
+    index('Thread_org_subject_gin_idx').using(
+      'gin',
+      table.organizationId,
+      sql`to_tsvector('english'::regconfig, COALESCE("subject", ''))`
+    ),
+    // Backs the trigram (typo-tolerance) arm. `gin_trgm_ops` only serves the
+    // `%` / `<->` operators, never a bare `similarity(a,b) > k` call.
+    index('Thread_org_subject_trgm_idx').using(
+      'gin',
+      table.organizationId,
+      table.subject.op('gin_trgm_ops')
+    ),
   ]
 )
 

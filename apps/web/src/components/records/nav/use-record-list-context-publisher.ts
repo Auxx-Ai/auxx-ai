@@ -10,6 +10,8 @@ interface UseRecordListContextPublisherOptions {
   tableId: string
   /** The merged filters actually sent to `record.listFiltered`. */
   filters: ConditionGroup[] | undefined
+  /** The free-text `search` actually sent alongside them (plan decision 0.3). */
+  search?: string
   sorting: Array<{ id: string; desc: boolean }> | undefined
   viewId: string | null
   label: string | undefined
@@ -38,6 +40,7 @@ export function useRecordListContextPublisher({
   entityDefinitionId,
   tableId,
   filters,
+  search,
   sorting,
   viewId,
   label,
@@ -52,6 +55,7 @@ export function useRecordListContextPublisher({
       {
         entityDefinitionId,
         filters: filters ?? EMPTY_FILTERS,
+        search,
         sorting: sorting ?? EMPTY_SORTING,
         tableId,
         viewId,
@@ -59,5 +63,5 @@ export function useRecordListContextPublisher({
       },
       ids
     )
-  }, [capture, enabled, entityDefinitionId, filters, sorting, tableId, viewId, label, ids])
+  }, [capture, enabled, entityDefinitionId, filters, search, sorting, tableId, viewId, label, ids])
 }

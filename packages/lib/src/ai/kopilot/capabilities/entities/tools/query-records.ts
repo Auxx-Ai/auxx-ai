@@ -14,6 +14,7 @@ import { toRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+import { blockedEntityError } from '../shared/ai-entity-visibility'
 import {
   convertToConditionGroup,
   type QueryWarning,
@@ -116,6 +117,7 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
       'Inspect `warnings[]` before trusting the result — each entry means a filter was rejected and dropped. `returned_count` is items in this page, `total_matching` is the full count.',
     description: `Query entity records with field-level filters, sorting, and pagination.
 Use list_entity_fields first to discover available fields and their valid option values.
+Email threads and messages are NOT record types here — this tool rejects them. Use find_threads / get_thread_detail instead.
 
 Response shape:
 - returned_count: number of items in this page
@@ -229,6 +231,11 @@ Examples:
           output: null,
           error: `Entity type "${key}" not found. Check the entity catalog in your system prompt for available types.`,
         }
+      }
+      // Threads/messages carry a per-member lens that exists only in the mail
+      // query layer; this path applies none, so it refuses rather than answering.
+      if (resolution.kind === 'blocked') {
+        return { success: false, output: null, error: blockedEntityError(key) }
       }
       const resource = resolution.resource
       if (resolution.kind === 'normalized') {

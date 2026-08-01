@@ -98,6 +98,12 @@ function buildEntityPrompt({ toolNames }: SystemPromptAdditionContext): string {
     )
   }
 
+  if (has('search_entities') || has('query_records')) {
+    bullets.push(
+      `- **Email threads and messages are not records.** The record tools reject them — conversations live behind \`find_threads\` / \`get_thread_detail\`. If those aren't available here, say so rather than querying an entity called "threads" or "messages".`
+    )
+  }
+
   if (has('search_entities') && has('list_entity_fields') && has('query_records')) {
     bullets.push(
       `- **Relational query** (e.g. "contacts at Google"): \`search_entities\` Google → \`list_entity_fields\` for contact → \`query_records\` filtering on the company field.`

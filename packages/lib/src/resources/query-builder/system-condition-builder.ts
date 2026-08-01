@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/query-builder/system-condition-builder.ts
+// packages/lib/src/resources/query-builder/system-condition-builder.ts
 
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -25,9 +25,9 @@ import {
   sql,
 } from 'drizzle-orm'
 import type { Operator } from '../../conditions/operator-definitions'
-import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../../resources/registry'
-import type { TableId } from '../../resources/registry/field-registry'
-import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
+import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../registry'
+import type { TableId } from '../registry/field-registry'
+import { type FieldOptionItem, getFieldOptions } from '../registry/option-helpers'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'
 

@@ -215,14 +215,20 @@ export interface RecordStoreState {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Create a stable key for list cache
+ * Create a stable key for list cache.
+ *
+ * `search` is part of the key, not decoration: it is a separate query axis from
+ * `filters` (plan decision 0.3), so leaving it out would let a searched list and
+ * the unsearched list of the same definition collide on one cache entry — the
+ * table would render whichever landed first.
  */
 export function createListKey(
   entityDefinitionId: string,
   filters: ConditionGroup[],
-  sorting: Array<{ id: string; desc: boolean }>
+  sorting: Array<{ id: string; desc: boolean }>,
+  search?: string
 ): string {
-  const config = JSON.stringify({ f: filters, s: sorting })
+  const config = JSON.stringify({ f: filters, s: sorting, q: search ?? '' })
   // Simple hash for shorter keys
   let hash = 5381
   for (let i = 0; i < config.length; i++) {

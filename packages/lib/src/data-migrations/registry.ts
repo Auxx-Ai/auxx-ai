@@ -34,6 +34,8 @@ import { migration064SequencesLimit } from './migrations/064-sequences-limit'
 import { migration065DashboardsAllPlans } from './migrations/065-dashboards-all-plans'
 import { migration066DemoMonthlyAiCredits } from './migrations/066-demo-monthly-ai-credits'
 import { migration067ClearDeadLearnedStamps } from './migrations/067-clear-dead-learned-stamps'
+import { migration068WidenEntitySearchText } from './migrations/068-widen-entity-search-text'
+import { migration069BackfillThreadSearchText } from './migrations/069-backfill-thread-search-text'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -90,6 +92,8 @@ function buildRegistry(): DataMigrationDef[] {
     migration065DashboardsAllPlans,
     migration066DemoMonthlyAiCredits,
     migration067ClearDeadLearnedStamps,
+    migration068WidenEntitySearchText,
+    migration069BackfillThreadSearchText,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

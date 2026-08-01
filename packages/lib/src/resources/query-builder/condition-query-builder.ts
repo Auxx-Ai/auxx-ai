@@ -1,11 +1,15 @@
-// packages/lib/src/workflow-engine/query-builder/condition-query-builder.ts
+// packages/lib/src/resources/query-builder/condition-query-builder.ts
 
 // Re-export for backward compatibility
 // Existing code can continue using ConditionQueryBuilder.buildWhereSql(...)
 
 import type { SQL } from 'drizzle-orm'
-import type { TableId } from '../../resources/registry/field-registry'
-import type { ConditionGroup, GenericCondition } from './base-condition-builder'
+import type { TableId } from '../registry/field-registry'
+import type {
+  ConditionGroup,
+  ConditionQueryResult,
+  GenericCondition,
+} from './base-condition-builder'
 import { systemConditionBuilder } from './system-condition-builder'
 
 /**
@@ -24,13 +28,27 @@ export class ConditionQueryBuilder {
   }
 
   /**
-   * Build grouped SQL clauses from condition groups
+   * Build grouped SQL clauses from condition groups.
+   *
+   * Silently widens the result set when a condition can't be built — use
+   * {@link buildGroupedQueryWithDiagnostics} anywhere that must be a failure.
    */
   static buildGroupedQuery(
     groups: ConditionGroup[],
     resourceType: TableId
   ): SQL<unknown> | undefined {
     return systemConditionBuilder.buildGroupedQuery(groups, resourceType)
+  }
+
+  /**
+   * Build grouped SQL clauses, returning the dropped conditions alongside the
+   * clause instead of discarding them.
+   */
+  static buildGroupedQueryWithDiagnostics(
+    groups: ConditionGroup[],
+    resourceType: TableId
+  ): ConditionQueryResult {
+    return systemConditionBuilder.buildGroupedQueryWithDiagnostics(groups, resourceType)
   }
 
   /**
@@ -91,4 +109,4 @@ export class ConditionQueryBuilder {
 }
 
 // Re-export types
-export type { GenericCondition, ConditionGroup }
+export type { GenericCondition, ConditionGroup, ConditionQueryResult }

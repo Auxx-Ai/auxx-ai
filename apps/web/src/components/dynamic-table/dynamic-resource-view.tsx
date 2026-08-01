@@ -71,6 +71,13 @@ export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> 
    * Always applied; never visible to the filter UI; not user-removable.
    */
   baselineFilter?: ConditionGroup
+  /**
+   * Free-text search — a separate query axis from filters (plan decision 0.3),
+   * passed straight through to `record.listFiltered`. Never merged into
+   * `baselineFilter`: merging is what compiled the typed text to `ILIKE '%q%'`
+   * instead of the ranked predicate. Also never visible to the filter UI.
+   */
+  search?: string
   /** Render the primary-column cell body for a row. */
   primaryCellRender: (row: TRow) => ReactNode
   /** Optional per-field column overrides applied on top of the generic column. */
@@ -131,6 +138,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   slug,
   tableId: tableIdProp,
   baselineFilter,
+  search,
   primaryCellRender,
   columnOverrides,
   cellSelection,
@@ -200,6 +208,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   } = useRecordList<TRow>({
     entityDefinitionId: entityDefinitionId ?? '',
     filters: filtersForQuery,
+    search,
     sorting: sortingForQuery,
     limit: PAGE_SIZE,
     enabled: !!entityDefinitionId && isConfigReady,
@@ -213,6 +222,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     entityDefinitionId,
     tableId,
     filters: filtersForQuery,
+    search,
     sorting: sortingForQuery,
     viewId: activeViewId,
     label: listContextLabel ?? activeView?.name ?? resource?.plural,

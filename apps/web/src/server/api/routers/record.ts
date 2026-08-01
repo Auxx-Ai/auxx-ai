@@ -607,6 +607,7 @@ export const recordRouter = createTRPCRouter({
       }
       return result
     } catch (error: any) {
+      if (isAuxxError(error)) throw error
       if (error instanceof TRPCError) throw error
       if (error.message?.includes('not found')) {
         throw new TRPCError({
@@ -673,6 +674,13 @@ export const recordRouter = createTRPCRouter({
         entityDefinitionId: z.string(),
         /** Filter groups (optional) */
         filters: z.array(conditionGroupSchema).optional(),
+        /**
+         * Free-text search from the records search bar. A separate axis from
+         * `filters` (plan decision 0.3) — conditions narrow, this IS the search.
+         * Ranked (`tsvector` + trigram) and, when no `sorting` is given, it also
+         * supplies the ordering.
+         */
+        search: z.string().max(200).optional(),
         /** Sort configuration (optional) */
         sorting: z
           .array(
@@ -701,6 +709,7 @@ export const recordRouter = createTRPCRouter({
       return handler.listFiltered({
         entityDefinitionId: input.entityDefinitionId,
         filters: input.filters,
+        search: input.search,
         sorting: input.sorting,
         limit: input.limit,
         cursor: input.cursor,

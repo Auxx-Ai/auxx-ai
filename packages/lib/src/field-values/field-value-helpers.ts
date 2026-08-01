@@ -18,7 +18,7 @@ import {
 import { getFieldId, isFieldPath, isResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
@@ -29,6 +29,7 @@ import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-fie
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
 import type { InverseFieldInfo } from './relationship-sync'
+import { isSearchTextIndexedFieldType, updateSearchText } from './search-text'
 import type { CachedField, FieldReference, FieldValueRow } from './types'
 
 // Re-export for convenience
@@ -1020,7 +1021,15 @@ export async function maybeUpdateDisplayValue(
     }
   }
 
-  if (!column) return
+  if (!column) {
+    // Not a display field — but its value may still be part of the search
+    // corpus (`search-text.ts`). Refreshing here is what lets a query name a
+    // company, a city or a status the record was never *titled* with.
+    if (isSearchTextIndexedFieldType(field.type)) {
+      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+    }
+    return
+  }
 
   // Compute display value
   let displayValue: string | null = null
@@ -1167,23 +1176,6 @@ async function queueAvatarThumbnail(
     // Non-critical — avatar will show fallback icon until retry
     console.warn('[avatar] Failed to queue avatar thumbnail', { assetId, error })
   }
-}
-
-/**
- * Update searchText on EntityInstance by concatenating displayName and secondaryDisplayValue.
- * Called when primary or secondary display field values change.
- */
-export async function updateSearchText(
-  db: Database,
-  entityInstanceId: string,
-  organizationId: string
-): Promise<void> {
-  await db.execute(sql`
-    UPDATE "EntityInstance"
-    SET "searchText" = TRIM(CONCAT_WS(' ', "displayName", "secondaryDisplayValue"))
-    WHERE id = ${entityInstanceId}
-      AND "organizationId" = ${organizationId}
-  `)
 }
 
 // =============================================================================

@@ -7,6 +7,7 @@ import { getDefinitionId, isRecordId } from '../../../../../resources/resource-i
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { blockedEntityError, isAiBlockedDefKey } from '../shared/ai-entity-visibility'
 
 /** Full success output of `update_entity` — the updated record and human-readable field labels. */
 const UpdateEntityOutput = z.object({
@@ -45,6 +46,7 @@ export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
       }
     },
     description: `Update field values on an entity instance.
+Email threads and messages are NOT record types here — this tool rejects them. Use update_thread instead.
 
 REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
 entity's type in the current turn, call it first. Do NOT guess field ids from prior
@@ -100,6 +102,17 @@ Example (ids match list_entity_fields output):
         }
       }
 
+      // Mail-lens block (step 0.1, write half): `thread:<id>` / `message:<id>`
+      // would write through `UnifiedCrudHandler`, whose `canEditEntity('thread')`
+      // is the same unconditional pass-through the read path had to route around.
+      // Keyed on the parsed def id, so every spelling the model might use is one
+      // test — `validateInputs` has already folded `threads:<id>` / `Thread:<id>`
+      // onto the def id, and this runs before any resource read or write.
+      const definitionId = getDefinitionId(recordId)
+      if (isAiBlockedDefKey(definitionId)) {
+        return { success: false, output: null, error: blockedEntityError(definitionId, 'write') }
+      }
+
       // The LLM may nest field values under `values` or flatten them at the top level.
       const values =
         (args.values as Record<string, unknown>) ??
@@ -114,7 +127,7 @@ Example (ids match list_entity_fields output):
         }
       }
 
-      const resource = await findCachedResource(agentDeps.organizationId, getDefinitionId(recordId))
+      const resource = await findCachedResource(agentDeps.organizationId, definitionId)
 
       if (resource) {
         const { unknownKeys, validIds } = validateFieldKeys(Object.keys(values), resource)

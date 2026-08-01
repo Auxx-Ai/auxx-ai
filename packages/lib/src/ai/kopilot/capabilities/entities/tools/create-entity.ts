@@ -1,12 +1,14 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/create-entity.ts
 
 import { z } from 'zod'
-import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
+import { getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { UnprocessableEntityError } from '../../../../../errors'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { blockedEntityError, isAiVisibleResource } from '../shared/ai-entity-visibility'
+import { resolveEntity } from '../shared/record-filters'
 
 /** Full success output of `create_entity` — the new record's id. */
 const CreateEntityOutput = z.object({
@@ -41,6 +43,7 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
       }
     },
     description: `Create a new entity instance.
+Email threads and messages are NOT record types here — this tool rejects them. Threads arrive by email; you cannot create one.
 
 REQUIRED BEFORE CALLING: Call \`search_entities\` with the proposed values (name,
 email, SKU, etc.) scoped to this \`entityDefinitionId\` to check for duplicates.
@@ -126,16 +129,38 @@ Example (ids match list_entity_fields output):
         }
       }
 
-      const resource = await findCachedResource(agentDeps.organizationId, key)
-      if (!resource) {
+      // Resolve first, judge second (step 0.1, write half). `resolveEntity` is
+      // the same resolver `query_records` uses, so `thread`, `threads`, `Threads`
+      // and `messages` all collapse onto one def key before the block is tested —
+      // and the refusal lands before any handler is constructed. A plain slug
+      // comparison here would have missed the plural form, which is the exact
+      // shape the production read-path failure took.
+      const resolution = await resolveEntity(agentDeps.organizationId, key)
+      if (resolution.kind === 'blocked') {
+        return { success: false, output: null, error: blockedEntityError(key, 'write') }
+      }
+      if (resolution.kind === 'ambiguous') {
+        return {
+          success: false,
+          output: null,
+          error: `Entity "${key}" is ambiguous. Did you mean: ${resolution.candidates.join(', ')}?`,
+        }
+      }
+      if (resolution.kind === 'not_found') {
         const allResources = await getCachedResources(agentDeps.organizationId)
-        const validSlugs = allResources.map((r) => r.apiSlug).join(', ')
+        // Suggest only AI-visible slugs — these lists are where the model learns
+        // its entity vocabulary, and an unfiltered one hands it "threads".
+        const validSlugs = allResources
+          .filter(isAiVisibleResource)
+          .map((r) => r.apiSlug)
+          .join(', ')
         return {
           success: false,
           output: null,
           error: `Entity type "${key}" not found. Use one of these apiSlugs: ${validSlugs}.`,
         }
       }
+      const resource = resolution.resource
 
       const entityDefId = resource.entityDefinitionId ?? resource.id
 

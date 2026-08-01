@@ -165,7 +165,12 @@ export function useRecordNavContext(recordId: RecordId): RecordNavContext | null
   const descriptorKey = useMemo(
     () =>
       descriptor
-        ? JSON.stringify([descriptor.entityDefinitionId, descriptor.filters, descriptor.sorting])
+        ? JSON.stringify([
+            descriptor.entityDefinitionId,
+            descriptor.filters,
+            descriptor.search ?? '',
+            descriptor.sorting,
+          ])
         : null,
     [descriptor]
   )
@@ -205,6 +210,9 @@ export function useRecordNavContext(recordId: RecordId): RecordNavContext | null
       .fetch({
         entityDefinitionId: descriptor.entityDefinitionId,
         filters: descriptor.filters.length > 0 ? descriptor.filters : undefined,
+        // Carried, not derived: `search` is its own axis, so omitting it here
+        // would page the unsearched list under a searched descriptor.
+        search: descriptor.search || undefined,
         sorting: descriptor.sorting.length > 0 ? descriptor.sorting : undefined,
         limit: offset === 0 ? COLD_PAGE_SIZE : PAGE_SIZE,
         offset,

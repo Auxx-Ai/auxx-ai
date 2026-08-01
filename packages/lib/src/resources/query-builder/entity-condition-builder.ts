@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/query-builder/entity-condition-builder.ts
+// packages/lib/src/resources/query-builder/entity-condition-builder.ts
 
 import type { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -10,9 +10,9 @@ import type { RecordId } from '@auxx/types/resource'
 import { getInstanceId } from '@auxx/types/resource'
 import { type SQL, sql } from 'drizzle-orm'
 import type { Operator } from '../../conditions/operator-definitions'
-import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
-import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
-import { BaseType } from '../core/types'
+import { getFieldOutputKey, type ResourceField } from '../registry/field-types'
+import { type FieldOptionItem, getFieldOptions } from '../registry/option-helpers'
+import { BaseType } from '../types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'
 

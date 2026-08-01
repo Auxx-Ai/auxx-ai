@@ -11,6 +11,11 @@ import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
 import { FormattedFieldSchema, formatEnrichedFields } from '../format-enriched-fields'
+import {
+  blockedEntityError,
+  isAiBlockedResource,
+  isAiVisibleResource,
+} from '../shared/ai-entity-visibility'
 
 const MAX_RESULTS = 25
 
@@ -90,7 +95,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     usageNotes:
       'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5.',
     description:
-      'Search for records by name or text across all entity types, or within a specific entity type. Returns matching records with display names. If you know the entity type, pass entityDefinitionId for faster results.',
+      'Search for records by name or text across all entity types, or within a specific entity type. Returns matching records with display names. If you know the entity type, pass entityDefinitionId for faster results. Email threads and messages are not records — this tool rejects them; use find_threads / get_thread_detail instead.',
     parameters: {
       type: 'object',
       properties: {
@@ -158,12 +163,21 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
         // Scoped search — single entity type
         const resource = await findCachedResource(agentDeps.organizationId, key)
         if (!resource) {
-          const validSlugs = allResources.map((r) => r.apiSlug).join(', ')
+          const validSlugs = allResources
+            .filter(isAiVisibleResource)
+            .map((r) => r.apiSlug)
+            .join(', ')
           return {
             success: false,
             output: null,
             error: `Entity type "${key}" not found. Use one of these apiSlugs: ${validSlugs}.`,
           }
+        }
+        // Threads/messages carry a per-member lens that exists only in the mail
+        // query layer; the picker's direct-fetch path applies none, so this
+        // refuses instead of answering with unlensed rows.
+        if (isAiBlockedResource(resource)) {
+          return { success: false, output: null, error: blockedEntityError(key) }
         }
         searchParams = {
           query: query ?? '',
@@ -172,8 +186,8 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
         }
       } else {
         // Global search — every entity type the principal has PRESENCE on. Layer
-        // the per-user def grant (§3) on top of the org-wide `isVisible` UI flag;
-        // they are independent.
+        // the per-user def grant (§3) on top of the AI-visible set; they are
+        // independent.
         //
         // `hasDefPresence`, not `canViewEntity` (plan v3/03 §6.1): a def reached
         // only through per-record grants belongs in the search SCOPE, because the
@@ -182,17 +196,27 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
         // here would drop such a def before that partition ever runs, so a record
         // shared with the principal would be unfindable. This widens the scope,
         // never the answer.
-        const visibleDefIds = allResources
-          .filter(
-            (r) =>
-              r.isVisible !== false &&
-              (!capabilities || capabilities.hasDefPresence(r.entityDefinitionId ?? r.id))
-          )
+        //
+        // The AI-visible test is the same reasoning one level up. It used to be
+        // the bare `isVisible !== false` sidebar flag, which discarded a
+        // nav-hidden def *before* that partition too — undoing the per-row work
+        // directly below for exactly the user it was written for. So a def the
+        // principal holds record grants on stays in scope regardless of the
+        // curated set; the blocked defs (thread/message) never do, whatever the
+        // grants say, because `isAiVisibleResource` refuses them first.
+        const searchableDefIds = allResources
+          .filter((r) => {
+            const defId = r.entityDefinitionId ?? r.id
+            if (isAiBlockedResource(r)) return false
+            if (!capabilities) return isAiVisibleResource(r)
+            if (!capabilities.hasDefPresence(defId)) return false
+            return isAiVisibleResource(r) || capabilities.hasRecordGrantsOn(defId)
+          })
           .map((r) => r.entityDefinitionId ?? r.id)
 
         searchParams = {
           query: query ?? '',
-          entityDefinitionIds: visibleDefIds,
+          entityDefinitionIds: searchableDefIds,
           limit,
         }
       }

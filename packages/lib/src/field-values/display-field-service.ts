@@ -5,7 +5,7 @@ import { batchUpdateDisplayValues, clearDisplayValues } from '@auxx/services/ent
 import type { TypedFieldValue } from '@auxx/types'
 import { toResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getCachedResource } from '../cache'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { CustomResource } from '../resources/registry/types'
@@ -18,6 +18,7 @@ import {
 import { batchGetRelatedDisplayNames } from './field-value-helpers'
 import { FieldValueService } from './field-value-service'
 import { formatToDisplayValue } from './formatter'
+import { updateSearchTextForEntityDefinition } from './search-text'
 
 const BATCH_SIZE = 100
 
@@ -206,14 +207,13 @@ export class DisplayFieldService {
   /**
    * Update searchText for all instances of an entity definition.
    * Called after batch recalculating primary or secondary display fields.
+   *
+   * Delegates to `search-text.ts` so the corpus has exactly one definition —
+   * this used to carry its own copy of the display-fields-only expression,
+   * which is how the two drifted apart in the first place.
    */
   private async updateSearchTextForEntityDefinition(entityDefinitionId: string): Promise<void> {
-    await this.db.execute(sql`
-      UPDATE "EntityInstance"
-      SET "searchText" = TRIM(CONCAT_WS(' ', "displayName", "secondaryDisplayValue"))
-      WHERE "entityDefinitionId" = ${entityDefinitionId}
-        AND "organizationId" = ${this.organizationId}
-    `)
+    await updateSearchTextForEntityDefinition(this.db, this.organizationId, entityDefinitionId)
   }
 
   /**

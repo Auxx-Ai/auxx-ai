@@ -5,6 +5,7 @@ import { ThreadStatus } from '@auxx/database/enums'
 import type { ThreadEntity as Thread } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { threadSearchTextAssignmentSql } from '../mail-query/thread-search-text'
 import { type ThreadContext, ThreadState } from './types/message-sending.types'
 
 /** Scoped logger instance for thread manager operations */
@@ -308,7 +309,13 @@ export class ThreadManagerService {
   }
 
   /**
-   * Efficient thread metadata update using aggregate SQL
+   * Efficient thread metadata update using aggregate SQL.
+   *
+   * Also refreshes `searchText`, the ranked-search corpus
+   * (`mail-query/thread-search-text.ts`). It rides on this statement rather than
+   * getting its own hook because this function already runs on every outbound
+   * send, every reconciliation and both sides of a thread merge — so the corpus
+   * stays correct for exactly as long as `messageCount` does.
    */
   async updateThreadMetadata(threadId: string): Promise<void> {
     try {
@@ -348,7 +355,8 @@ export class ThreadManagerService {
             JOIN "Message" m ON mp."messageId" = m.id
             WHERE m."threadId" = ${threadId}
               AND mp."participantId" IS NOT NULL
-          ), 0)
+          ), 0),
+          ${sql.raw(threadSearchTextAssignmentSql('t'))}
         WHERE t.id = ${threadId}
       `)
 

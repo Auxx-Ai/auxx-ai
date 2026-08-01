@@ -14,6 +14,11 @@ import type { Condition, ConditionGroup as MailConditionGroup } from '../../../c
 import { buildConditionGroupsQuery } from '../../../mail-query/condition-query-builder'
 import { getAutomationVisibility } from '../../../permissions/visibility/automation-visibility'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
+import type {
+  ConditionGroup,
+  GenericCondition,
+} from '../../../resources/query-builder/base-condition-builder'
+import { ConditionQueryBuilder } from '../../../resources/query-builder/condition-query-builder'
 import {
   getFieldOperators,
   getFieldOptions,
@@ -35,8 +40,6 @@ import type {
   WorkflowNode,
 } from '../../core/types'
 import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import type { ConditionGroup, GenericCondition } from '../../query-builder/base-condition-builder'
-import { ConditionQueryBuilder } from '../../query-builder/condition-query-builder'
 import { BaseNodeProcessor } from '../base-node'
 
 interface FindNodeData {
@@ -903,7 +906,9 @@ export class FindProcessor extends BaseNodeProcessor {
     const fields = await getCachedResourceFields(organizationId, resourceType)
 
     // Import EntityConditionBuilder
-    const { entityConditionBuilder } = await import('../../query-builder/entity-condition-builder')
+    const { entityConditionBuilder } = await import(
+      '../../../resources/query-builder/entity-condition-builder'
+    )
 
     // Pre-fetch related entity fields for relationship path conditions
     const relatedEntityFields: Record<string, any[]> = {}

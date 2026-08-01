@@ -148,7 +148,7 @@ export function createKopilotDomainConfig(
 
   const resolvedToolNames = new Set(resolvedTools.map((t) => t.name))
   const capabilities =
-    capabilityRegistry?.getCapabilitiesSummary({ toolNames: resolvedToolNames }) ?? []
+    capabilityRegistry?.getCapabilitiesSummary(page, { toolNames: resolvedToolNames }) ?? []
   const toolsetPromptAdditions =
     capabilityRegistry && page
       ? (capabilityRegistry.getSystemPromptAddition(page, { toolNames: resolvedToolNames }) ?? '')

@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/query-builder/base-condition-builder.ts
+// packages/lib/src/resources/query-builder/base-condition-builder.ts
 
 import { createScopedLogger } from '@auxx/logger'
 import type { ResourceFieldId } from '@auxx/types/field'
@@ -13,8 +13,8 @@ import type {
   Operator,
 } from '../../conditions'
 import { operatorRequiresValue } from '../../conditions'
-import { type FieldOptionItem, labelToValue } from '../../resources/registry/option-helpers'
-import { BaseType } from '../core/types'
+import { type FieldOptionItem, labelToValue } from '../registry/option-helpers'
+import { BaseType } from '../types'
 
 const logger = createScopedLogger('base-condition-builder')
 
@@ -35,39 +35,153 @@ export type { ConditionGroup }
  */
 export type ValidationResult = ConditionValidationResult
 
+export type DroppedConditionReason =
+  /** The builder had no way to turn this field/operator/value combination into SQL. */
+  | 'unresolved-field-or-operator'
+  /** `valueSource` was not substituted upstream by `resolveConditionContext`. */
+  | 'unresolved-value-source'
+
+/** A single condition the builder could not turn into SQL. */
+export interface DroppedCondition {
+  conditionId: string
+  /** The condition's `fieldId` — an array for relationship paths. */
+  fieldRef: string | string[]
+  operator: string
+  reason: DroppedConditionReason
+  /** Which builder gave up, or which `valueSource` was left unresolved. */
+  detail?: string
+}
+
 /**
- * Abstract base class for condition builders
- * Implements shared logic for SQL generation, validation, and description
+ * Outcome of a condition build: the WHERE fragment plus enough information to
+ * tell "the caller asked for no filter" apart from "every filter the caller
+ * asked for was silently dropped".
+ *
+ * Both cases produce `sql: undefined` — an unfiltered query. That is correct
+ * for the records list, saved views, dashboard widgets and the workflow Find
+ * node (a stored view naming a retired field still renders), and *wrong* for an
+ * AI tool, which must refuse rather than answer a different question. The
+ * discriminant is {@link allConditionsDropped}; the builder itself never throws.
+ */
+export interface ConditionQueryResult {
+  /** The WHERE fragment, or `undefined` when nothing survived. */
+  sql: SQL<unknown> | undefined
+  /** Total number of conditions across every input group, before building. */
+  requestedConditions: number
+  /** Every condition that produced no SQL, in input order. */
+  droppedConditions: DroppedCondition[]
+  /**
+   * `true` only when at least one condition was requested and *none* of them
+   * produced SQL. `false` for the genuine no-filter case.
+   */
+  allConditionsDropped: boolean
+}
+
+/**
+ * Abstract base class for condition builders.
+ * Implements shared logic for SQL generation, validation, and description.
+ *
+ * Stateless by design: every build call returns its own
+ * {@link ConditionQueryResult}, so concurrent callers of the exported singletons
+ * (`entityConditionBuilder`, `systemConditionBuilder`) can never read each
+ * other's diagnostics.
  *
  * @template TContext - The context type needed by the specific builder
  *                      (e.g., TableId for system, EntityQueryContext for entities)
  */
-export interface DroppedCondition {
-  fieldRef: string | string[]
-  reason: string
-}
-
-/** A condition that produced SQL, kept paired with its clause so AND/OR stays aligned. */
-interface BuiltClause {
-  condition: Condition
-  clause: SQL<unknown>
-}
-
 export abstract class BaseConditionBuilder<TContext> {
-  /** Conditions dropped during the last build call. Reset on each build. */
-  droppedConditions: DroppedCondition[] = []
-
   /**
-   * Build WHERE SQL from flat conditions array
+   * Build WHERE SQL from a flat conditions array.
+   *
+   * Thin projection of {@link buildWhereSqlWithDiagnostics} — the clause only.
+   * Dropped conditions widen the result set silently, which is the intended
+   * behaviour for UI surfaces but not for AI tools.
    */
   buildWhereSql(conditions: GenericCondition[], context: TContext): SQL<unknown> | undefined {
-    if (conditions.length === 0) {
-      return undefined
+    return this.buildWhereSqlWithDiagnostics(conditions, context).sql
+  }
+
+  /**
+   * Build WHERE SQL from grouped conditions.
+   *
+   * Thin projection of {@link buildGroupedQueryWithDiagnostics} — the clause
+   * only. Prefer the diagnostics variant anywhere a dropped filter must be a
+   * visible failure rather than a wider result set.
+   */
+  buildGroupedQuery(groups: ConditionGroup[], context: TContext): SQL<unknown> | undefined {
+    return this.buildGroupedQueryWithDiagnostics(groups, context).sql
+  }
+
+  /**
+   * Build WHERE SQL from a flat conditions array, with drop diagnostics.
+   *
+   * A flat array carries no group, so the single combining operator is derived
+   * from the conditions themselves: `OR` when any condition after the first
+   * asks for it, `AND` otherwise. See {@link combineSqlClauses} for why the
+   * operator is per-set rather than per-condition.
+   */
+  buildWhereSqlWithDiagnostics(
+    conditions: GenericCondition[],
+    context: TContext
+  ): ConditionQueryResult {
+    const droppedConditions: DroppedCondition[] = []
+    const sql = this.buildClauseForConditions(
+      conditions,
+      this.deriveFlatOperator(conditions),
+      context,
+      droppedConditions
+    )
+
+    return this.toResult(sql, conditions.length, droppedConditions)
+  }
+
+  /**
+   * Build WHERE SQL from grouped conditions, with drop diagnostics.
+   *
+   * Groups are combined with `AND` at the top level; conditions *inside* a group
+   * are combined with that group's own `logicalOperator`.
+   */
+  buildGroupedQueryWithDiagnostics(
+    groups: ConditionGroup[],
+    context: TContext
+  ): ConditionQueryResult {
+    const droppedConditions: DroppedCondition[] = []
+    const requestedConditions = groups.reduce((total, group) => total + group.conditions.length, 0)
+
+    const groupClauses: SQL<unknown>[] = []
+    for (const group of groups) {
+      const clause = this.buildClauseForConditions(
+        group.conditions,
+        group.logicalOperator || 'AND',
+        context,
+        droppedConditions
+      )
+      if (clause) groupClauses.push(clause)
     }
 
-    // Keep each surviving clause paired with the condition it came from — dropping a
-    // condition must not shift the remaining clauses onto the wrong logicalOperator.
-    const built: BuiltClause[] = []
+    const sql =
+      groupClauses.length === 0
+        ? undefined
+        : groupClauses.length === 1
+          ? groupClauses[0]
+          : and(...groupClauses)
+
+    return this.toResult(sql, requestedConditions, droppedConditions)
+  }
+
+  /**
+   * Turn one set of conditions into a single clause, appending anything that
+   * could not be built to `dropped`.
+   */
+  private buildClauseForConditions(
+    conditions: GenericCondition[],
+    logicalOperator: 'AND' | 'OR',
+    context: TContext,
+    dropped: DroppedCondition[]
+  ): SQL<unknown> | undefined {
+    if (conditions.length === 0) return undefined
+
+    const clauses: SQL<unknown>[] = []
 
     for (const condition of conditions) {
       const fieldRef = condition.fieldId
@@ -79,56 +193,59 @@ export abstract class BaseConditionBuilder<TContext> {
           `Dropping condition with unresolved valueSource '${condition.valueSource}' — should have been substituted upstream`,
           { fieldRef }
         )
-        this.droppedConditions.push({
+        dropped.push({
+          conditionId: condition.id,
           fieldRef,
-          reason: `unresolved valueSource: ${condition.valueSource}`,
+          operator: condition.operator,
+          reason: 'unresolved-value-source',
+          detail: condition.valueSource,
         })
         continue
       }
 
       const sqlResult = this.conditionToSql(condition, context)
       if (!sqlResult) {
-        this.droppedConditions.push({
+        dropped.push({
+          conditionId: condition.id,
           fieldRef,
-          reason: `could not resolve in ${this.constructor.name}`,
+          operator: condition.operator,
+          reason: 'unresolved-field-or-operator',
+          detail: this.constructor.name,
         })
         continue
       }
 
-      built.push({ condition, clause: sqlResult })
+      clauses.push(sqlResult)
     }
 
-    if (built.length === 0) {
-      return undefined
-    }
+    return this.combineSqlClauses(clauses, logicalOperator)
+  }
 
-    return this.combineSqlClauses(built)
+  /** Assemble the public result shape, deriving {@link ConditionQueryResult.allConditionsDropped}. */
+  private toResult(
+    sql: SQL<unknown> | undefined,
+    requestedConditions: number,
+    droppedConditions: DroppedCondition[]
+  ): ConditionQueryResult {
+    return {
+      sql,
+      requestedConditions,
+      droppedConditions,
+      allConditionsDropped:
+        requestedConditions > 0 && droppedConditions.length === requestedConditions,
+    }
   }
 
   /**
-   * Build WHERE SQL from grouped conditions
+   * Single combining operator for a flat (group-less) condition array.
+   *
+   * The first condition's own `logicalOperator` has never had a meaning — it
+   * joins nothing — so only conditions after the first are consulted.
    */
-  buildGroupedQuery(groups: ConditionGroup[], context: TContext): SQL<unknown> | undefined {
-    this.droppedConditions = []
-
-    if (groups.length === 0) {
-      return undefined
-    }
-
-    const [firstGroup] = groups
-    if (groups.length === 1 && firstGroup) {
-      return this.buildWhereSql(firstGroup.conditions, context)
-    }
-
-    const groupClauses = groups
-      .map((group) => this.buildWhereSql(group.conditions, context))
-      .filter((clause): clause is SQL<unknown> => Boolean(clause))
-
-    if (groupClauses.length === 0) {
-      return undefined
-    }
-
-    return groupClauses.length === 1 ? groupClauses[0] : and(...groupClauses)
+  private deriveFlatOperator(conditions: GenericCondition[]): 'AND' | 'OR' {
+    return conditions.some((condition, index) => index > 0 && condition.logicalOperator === 'OR')
+      ? 'OR'
+      : 'AND'
   }
 
   /**
@@ -146,11 +263,21 @@ export abstract class BaseConditionBuilder<TContext> {
       const displayRef = Array.isArray(fieldRef) ? fieldRef.join(' → ') : fieldRef
 
       // For array paths, the source field is the first element
-      const sourceRef = Array.isArray(fieldRef) ? fieldRef[0] : fieldRef
-      if (!sourceRef) {
+      const rawSourceRef = Array.isArray(fieldRef) ? fieldRef[0] : fieldRef
+      if (!rawSourceRef) {
         errors.push(`Condition ${condition.id} has an empty field path`)
         continue
       }
+
+      // Legacy dot notation ('company.name') is a relationship path, exactly as
+      // conditionToSql treats it — only the source hop lives in this context.
+      const isRelationshipPath = Array.isArray(fieldRef)
+        ? fieldRef.length > 1
+        : rawSourceRef.includes('.')
+      const sourceRef =
+        isRelationshipPath && !Array.isArray(fieldRef)
+          ? (rawSourceRef.split('.')[0] as string)
+          : rawSourceRef
 
       // Check if field is allowed (handle both string and array formats)
       if (allowedFieldIds && !allowedFieldIds.includes(sourceRef)) {
@@ -183,8 +310,11 @@ export abstract class BaseConditionBuilder<TContext> {
         }
       }
 
-      // Validate option values if applicable
-      const fieldOptions = this.getFieldOptions(fieldKey, context)
+      // Validate option values if applicable. Skipped for relationship paths:
+      // the value belongs to the *terminal* field, whose options this context
+      // doesn't hold — checking it against the source hop's options would
+      // reject every valid multi-hop filter.
+      const fieldOptions = isRelationshipPath ? undefined : this.getFieldOptions(fieldKey, context)
       if (fieldOptions && fieldOptions.length > 0 && condition.value) {
         const validValues = fieldOptions.map((opt) => opt.value)
         const validLabels = fieldOptions.map((opt) => opt.label)
@@ -272,20 +402,21 @@ export abstract class BaseConditionBuilder<TContext> {
   // ─────────────────────────────────────────────────────────────────
 
   /**
-   * Combine SQL clauses with AND/OR based on condition metadata
+   * Combine SQL clauses with a single operator for the whole set.
+   *
+   * This deliberately does **not** left-fold per-condition operators the way
+   * this builder used to (`a AND b OR c` → `(a AND b) OR c`). Under a left fold
+   * the meaning of a clause depends on which conditions before it survived, so
+   * dropping one silently re-associates the rest — the same rule the mail
+   * builder settled on in `mail-query/condition-query-builder.ts:201`.
    */
-  protected combineSqlClauses(built: BuiltClause[]): SQL<unknown> | undefined {
-    const [first, ...rest] = built
-    if (!first) return undefined
-
-    let combined = first.clause
-
-    for (const { condition, clause } of rest) {
-      const logicalOperator = condition.logicalOperator || 'AND'
-      combined = logicalOperator === 'OR' ? or(combined, clause)! : and(combined, clause)!
-    }
-
-    return combined
+  protected combineSqlClauses(
+    clauses: SQL<unknown>[],
+    logicalOperator: 'AND' | 'OR'
+  ): SQL<unknown> | undefined {
+    if (clauses.length === 0) return undefined
+    if (clauses.length === 1) return clauses[0]
+    return logicalOperator === 'OR' ? or(...clauses)! : and(...clauses)!
   }
 
   /**

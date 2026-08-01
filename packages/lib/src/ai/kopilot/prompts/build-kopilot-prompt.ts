@@ -39,6 +39,12 @@ export interface BuildKopilotPromptArgs {
   currentUser: CurrentUserInfo | null
   integrations: IntegrationCatalogEntry[]
   toolsetPromptAdditions: string
+  /**
+   * IANA zone for the `now` section's clock (e.g. `Europe/Berlin`). Omit ⇒
+   * `UTC`. See `sections/now.ts` — no org-level zone is stored today, and the
+   * per-user `User.preferredTimezone` doesn't reach this layer yet.
+   */
+  timezone?: string | null
   /** Master sentinel or undefined → master persona; agent → agent persona. */
   agentConfig?: ResolvedAgentConfig
   /**
@@ -168,6 +174,7 @@ function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
     tools: args.tools,
     toolNames: new Set(args.tools.map((t) => t.name)),
     currentUser: args.currentUser,
+    timezone: args.timezone,
     integrations: args.integrations,
     entityCatalog: args.entityCatalog,
     kbCatalog: args.kbCatalog ?? [],

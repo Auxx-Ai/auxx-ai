@@ -55,6 +55,22 @@ export type {
 } from './picker'
 // Record picker service (server-side)
 export { RecordPickerService } from './picker'
+// Condition query builders (WHERE/ORDER BY SQL for generic record queries)
+export {
+  BaseConditionBuilder,
+  type ConditionGroup,
+  ConditionQueryBuilder,
+  type ConditionQueryResult,
+  type DroppedCondition,
+  type DroppedConditionReason,
+  EntityConditionBuilder,
+  type EntityQueryContext,
+  entityConditionBuilder,
+  type GenericCondition,
+  SystemConditionBuilder,
+  systemConditionBuilder,
+  type ValidationResult,
+} from './query-builder'
 // Type exports
 export type {
   CustomResource,

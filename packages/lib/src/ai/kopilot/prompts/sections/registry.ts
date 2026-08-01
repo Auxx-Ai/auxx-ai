@@ -17,6 +17,7 @@ import { kbCatalog } from './kb-catalog'
 import { masterCapabilities } from './master-capabilities'
 import { masterPersona } from './master-persona'
 import { membersVsContacts } from './members-vs-contacts'
+import { nowSection } from './now'
 import { runModeBanner } from './run-mode-banner'
 import { toolBlock } from './tool-block'
 import { toolsetAdditions } from './toolset-additions'
@@ -66,6 +67,7 @@ export const SYSTEM_PROMPT_SECTIONS: readonly PromptSection[] = [
 
   // ─── Tier 3 — per-turn ────────────────────────────────────────────────
   triggerFired,
+  nowSection, // the turn's clock — tier 3 is mandatory, a cached tier freezes the date
   contextSection,
   activeRefs,
   agentProcedureStep, // active procedure step (top frame only) + breadcrumb; stability: 'turn'

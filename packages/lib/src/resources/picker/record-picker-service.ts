@@ -10,6 +10,7 @@ import {
   getCachedResources,
   getOrgCache,
 } from '../../cache'
+import { ForbiddenError } from '../../errors'
 import { getRecordIdentitiesForRecords } from '../../identity'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { isDeclaredInstanceDomain } from '../../permissions/capabilities/instance-access'
@@ -33,6 +34,15 @@ import {
   type TableId,
 } from '../registry'
 import { parseRecordId, toRecordId } from '../resource-id'
+import {
+  RECORD_SEARCH_COLUMNS_EI,
+  recordSearchCursor,
+  recordSearchNameScore,
+  recordSearchPredicate,
+  recordSearchRank,
+  recordSearchTextScore,
+} from '../search/record-search-sql'
+import { isMailLensTableId, MAIL_LENS_REFUSAL } from './mail-lens-tables'
 import { RecordPickerCacheService } from './record-picker-cache'
 import type {
   GetResourceByIdInput,
@@ -109,6 +119,10 @@ export class RecordPickerService {
       return this.getEntityInstances(resource, limit, cursor, search)
     }
 
+    // Step 0.1 — refused BEFORE the picker cache, not just before the query: a
+    // cached thread page is the same disclosure as a fresh one.
+    if (isMailLensTableId(entityDefinitionId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
+
     // Validate table exists in registry for system resources
     if (!RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
       throw new Error(`Unknown table: ${entityDefinitionId}`)
@@ -162,6 +176,9 @@ export class RecordPickerService {
       return this.getEntityInstanceById(resource, id)
     }
 
+    // Step 0.1 — refused before the picker cache, as in `getResources`.
+    if (isMailLensTableId(entityDefinitionId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
+
     // Validate table for system resources
     if (!RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
       throw new Error(`Unknown table: ${entityDefinitionId}`)
@@ -191,6 +208,12 @@ export class RecordPickerService {
   /**
    * Fetch resources from database using registry config
    * Handles both direct and join-based organization scoping
+   *
+   * **The choke point for step 0.1.** Every `TableId`-driven multi-row read in
+   * this service funnels through here, so the mail-lens refusal is asserted here
+   * rather than at each of the three call sites. Callers that fan out over the
+   * whole registry pre-filter instead (see {@link searchGlobalUnion}) so the
+   * refusal is never something they have to catch.
    */
   private async fetchResourcesFromDb(
     tableId: TableId,
@@ -199,6 +222,7 @@ export class RecordPickerService {
     search: string | undefined,
     filters: Record<string, any> | undefined
   ): Promise<PaginatedResourcesResult> {
+    if (isMailLensTableId(tableId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
     const tableName = tableConfig.dbName
@@ -439,11 +463,16 @@ export class RecordPickerService {
 
   /**
    * Fetch single resource from database
+   *
+   * The single-row twin of {@link fetchResourcesFromDb}'s choke point: holding a
+   * thread id is not a lens, so an id-addressed read is refused for the same
+   * reason an enumeration is (step 0.1).
    */
   private async fetchSingleResourceFromDb(
     tableId: TableId,
     id: string
   ): Promise<RecordPickerItem | null> {
+    if (isMailLensTableId(tableId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
     const tableName = tableConfig.dbName
@@ -670,6 +699,12 @@ export class RecordPickerService {
     const grouped = new Map<string, string[]>()
     for (const recordId of recordIds) {
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      // Step 0.1 — thread/message ids DROP from the batch rather than throwing.
+      // A batch is a hydration call for ids the caller already holds (a
+      // relationship value, an `_access` stamp); one unreachable id must not
+      // fail the other ninety-nine, and silent omission is already this
+      // method's documented answer for an id the member cannot reach.
+      if (isMailLensTableId(entityDefinitionId)) continue
       if (!grouped.has(entityDefinitionId)) grouped.set(entityDefinitionId, [])
       grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }
@@ -811,6 +846,11 @@ export class RecordPickerService {
    * Reverse-resolve an EntityDefinition UUID to a system TableId via the
    * entityDefs org cache. Returns undefined if no entityType matches a known
    * TableId (i.e. the UUID belongs to a custom EntityInstance-backed entity).
+   *
+   * Also returns undefined for the mail-lens tables (step 0.1): this is the one
+   * place a caller can reach a `TableId` by a UUID it never typed, so leaving it
+   * open would let a `thread` EntityDefinition id walk back into the direct
+   * fetch by a route the slug guards never see.
    */
   private async reverseEntityDefToTableId(
     entityDefinitionId: string
@@ -820,6 +860,7 @@ export class RecordPickerService {
       ([, defId]) => defId === entityDefinitionId
     )?.[0]
     if (!entityType) return undefined
+    if (isMailLensTableId(entityType)) return undefined
     return RESOURCE_TABLE_MAP[entityType as TableId] ? (entityType as TableId) : undefined
   }
 
@@ -875,6 +916,11 @@ export class RecordPickerService {
     // No member ⇒ no grantee union to resolve ⇒ internal caller semantics, the
     // same answer `capabilities: undefined` gets.
     if (!this.userId) return { arm: 'all' }
+    // Step 0.1 — `{ arm: 'all' }` for a `TableId` is the record lane admitting it
+    // has no per-row policy for system tables. For mail content that is the
+    // wrong answer, and `none` is the right one: the lens lives in `mail-query/`,
+    // so from the record lane's point of view no thread row is reachable.
+    if (isMailLensTableId(entityDefinitionId)) return { arm: 'none' }
     if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) return { arm: 'all' }
     // Arms 1 and 4 are decided in memory, before any def normalization or
     // grantee resolution — see `UnifiedCrudHandler.recordScope` for why.
@@ -1055,19 +1101,12 @@ export class RecordPickerService {
     // Build cursor pagination filter for search results
     let cursorFilter = sql``
     if (cursor && cursorId) {
-      cursorFilter = sql`AND (
-        (COALESCE(similarity(ei."displayName", ${trimmedQuery}), 0) * 2 + COALESCE(ts_rank_cd(
-          to_tsvector('english', COALESCE(ei."searchText", '')),
-          plainto_tsquery('english', ${trimmedQuery})
-        ), 0)) < ${cursorScore}
-        OR (
-          (COALESCE(similarity(ei."displayName", ${trimmedQuery}), 0) * 2 + COALESCE(ts_rank_cd(
-            to_tsvector('english', COALESCE(ei."searchText", '')),
-            plainto_tsquery('english', ${trimmedQuery})
-          ), 0)) = ${cursorScore}
-          AND ei.id < ${cursorId}
-        )
-      )`
+      cursorFilter = sql`AND ${recordSearchCursor(
+        trimmedQuery,
+        cursorScore,
+        cursorId,
+        RECORD_SEARCH_COLUMNS_EI
+      )}`
     }
 
     // Execute full-text search with GIN indexes
@@ -1086,31 +1125,19 @@ export class RecordPickerService {
           ed."icon" as "entityIcon",
           ed."color" as "entityColor",
           -- Full-text search score on searchText
-          ts_rank_cd(
-            to_tsvector('english', COALESCE(ei."searchText", '')),
-            plainto_tsquery('english', ${trimmedQuery})
-          ) as text_score,
+          ${recordSearchTextScore(trimmedQuery, RECORD_SEARCH_COLUMNS_EI)} as text_score,
           -- Trigram similarity on displayName (for typo tolerance)
-          similarity(ei."displayName", ${trimmedQuery}) as name_score,
-          -- Combined score for ranking
-          (COALESCE(similarity(ei."displayName", ${trimmedQuery}), 0) * 2 + COALESCE(ts_rank_cd(
-            to_tsvector('english', COALESCE(ei."searchText", '')),
-            plainto_tsquery('english', ${trimmedQuery})
-          ), 0)) as combined_score
+          ${recordSearchNameScore(trimmedQuery, RECORD_SEARCH_COLUMNS_EI)} as name_score,
+          -- Combined score for ranking — ONE definition, shared with the cursor
+          -- filter above and with the mail binding (search/text-search-sql.ts).
+          ${recordSearchRank(trimmedQuery, RECORD_SEARCH_COLUMNS_EI)} as combined_score
         FROM "EntityInstance" ei
         JOIN "EntityDefinition" ed ON ei."entityDefinitionId" = ed.id
         WHERE
           ei."organizationId" = ${this.organizationId}
           AND ei."archivedAt" IS NULL
-          AND (
-            -- Full-text match on searchText
-            to_tsvector('english', COALESCE(ei."searchText", '')) @@ plainto_tsquery('english', ${trimmedQuery})
-            -- OR trigram match on displayName (fuzzy)
-            OR similarity(ei."displayName", ${trimmedQuery}) > 0.3
-            -- OR ILIKE fallback for short queries
-            OR ei."displayName" ILIKE ${`%${trimmedQuery}%`}
-            OR ei."secondaryDisplayValue" ILIKE ${`%${trimmedQuery}%`}
-          )
+          -- tsvector match OR trigram (fuzzy) OR ILIKE fallback for short queries
+          AND ${recordSearchPredicate(trimmedQuery, RECORD_SEARCH_COLUMNS_EI)}
           ${entityDefFilter}
           ${visibilityFilter}
           ${cursorFilter}
@@ -1381,7 +1408,15 @@ export class RecordPickerService {
     limit: number,
     startTime: number
   ): Promise<GlobalSearchResult> {
-    const tableIds = Object.keys(RESOURCE_TABLE_MAP) as TableId[]
+    // Step 0.1 — the mail-content tables are dropped from the fan-out BEFORE the
+    // per-kind cap is computed, so excluding them widens the remaining buckets
+    // instead of silently shortening the page with legs that would only throw.
+    // This is the entry point the decision was written for: `thread` is a
+    // registered system resource table, so the global record search had a thread
+    // leg served by the plain `ilike` direct fetch with no mail lens at all.
+    const tableIds = (Object.keys(RESOURCE_TABLE_MAP) as TableId[]).filter(
+      (tableId) => !isMailLensTableId(tableId)
+    )
     const kindCount = tableIds.length + 1 // +1 for EntityInstance bucket
     const perKindCap = Math.max(1, Math.ceil(limit / kindCount))
 
@@ -1553,12 +1588,7 @@ export class RecordPickerService {
         FROM "EntityInstance" ei
         WHERE ei."organizationId" = ${this.organizationId}
           AND ei."archivedAt" IS NULL
-          AND (
-            to_tsvector('english', COALESCE(ei."searchText", '')) @@ plainto_tsquery('english', ${trimmedQuery})
-            OR similarity(ei."displayName", ${trimmedQuery}) > 0.3
-            OR ei."displayName" ILIKE ${`%${trimmedQuery}%`}
-            OR ei."secondaryDisplayValue" ILIKE ${`%${trimmedQuery}%`}
-          )
+          AND ${recordSearchPredicate(trimmedQuery, RECORD_SEARCH_COLUMNS_EI)}
           ${visibility}
         ORDER BY ei."updatedAt" DESC, ei.id DESC
         LIMIT ${limit}

@@ -26,6 +26,7 @@ import {
   buildToolDigest,
   needsApproval,
   parseToolArgs,
+  previewArgs,
   previewValue,
   stableStringify,
   type ToolExecResult,
@@ -480,8 +481,9 @@ export async function* agentQueryLoop(
       turnId,
       agent: agent.name,
       tools: toolCalls.map((tc) => ({
+        toolCallId: tc.id,
         name: tc.function.name,
-        args: previewValue(parseToolArgs(tc)),
+        args: previewArgs(parseToolArgs(tc)),
       })),
     })
 
@@ -681,9 +683,11 @@ export async function* agentQueryLoop(
         if (!r.ok) {
           logger.info('applyToolRestrictions refused approval-required call', {
             turnId,
+            toolCallId: approvalTool.id,
             agent: agent.name,
             tool: approvalTool.function.name,
             error: r.error,
+            args: previewArgs(approvalArgs),
           })
           ;(parts[approvalPartIndex] as ToolCallPart).status = 'error'
           ;(parts[approvalPartIndex] as ToolCallPart).error = r.error
@@ -725,9 +729,11 @@ export async function* agentQueryLoop(
         if (!v.ok) {
           logger.info('validateInputs rejected approval-required call', {
             turnId,
+            toolCallId: approvalTool.id,
             agent: agent.name,
             tool: approvalTool.function.name,
             error: v.error,
+            args: previewArgs(approvalArgs),
           })
           ;(parts[approvalPartIndex] as ToolCallPart).status = 'error'
           ;(parts[approvalPartIndex] as ToolCallPart).error = v.error
@@ -761,8 +767,11 @@ export async function* agentQueryLoop(
         }
         if (v.warnings?.length) {
           logger.info('validateInputs warnings (pre-pause)', {
+            turnId,
+            toolCallId: approvalTool.id,
             tool: approvalTool.function.name,
             warnings: v.warnings,
+            args: previewArgs(approvalArgs),
           })
         }
         approvalArgs = v.args
@@ -1317,9 +1326,12 @@ async function* executeToolCalls(
           error: r.error,
         }
         logger.info('applyToolRestrictions refused call', {
+          turnId: ctx.turnId,
+          toolCallId: toolCall.id,
           agent: agentName,
           tool: toolName,
           error: r.error,
+          args: previewArgs(args),
         })
         results.push({
           toolCallId: toolCall.id,
@@ -1346,7 +1358,14 @@ async function* executeToolCalls(
           agent: agentName,
           error: v.error,
         }
-        logger.info('validateInputs rejected', { agent: agentName, tool: toolName, error: v.error })
+        logger.info('validateInputs rejected', {
+          turnId: ctx.turnId,
+          toolCallId: toolCall.id,
+          agent: agentName,
+          tool: toolName,
+          error: v.error,
+          args: previewArgs(args),
+        })
         results.push({
           toolCallId: toolCall.id,
           toolName,
@@ -1358,9 +1377,12 @@ async function* executeToolCalls(
       }
       if (v.warnings?.length) {
         logger.info('validateInputs warnings', {
+          turnId: ctx.turnId,
+          toolCallId: toolCall.id,
           agent: agentName,
           tool: toolName,
           warnings: v.warnings,
+          args: previewArgs(args),
         })
       }
       args = v.args
@@ -1450,6 +1472,8 @@ async function* executeToolCalls(
       }
 
       logger.info('Tool result', {
+        turnId: ctx.turnId,
+        toolCallId: toolCall.id,
         agent: agentName,
         tool: toolName,
         success: result.success,

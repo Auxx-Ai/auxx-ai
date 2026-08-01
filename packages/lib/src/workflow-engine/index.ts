@@ -9,6 +9,19 @@ export type {
 } from '../resources/picker'
 // Record picker service
 export { RecordPickerService } from '../resources/picker'
+// Query builder exports
+export {
+  BaseConditionBuilder,
+  type ConditionGroup,
+  ConditionQueryBuilder,
+  EntityConditionBuilder,
+  type EntityQueryContext,
+  entityConditionBuilder,
+  type GenericCondition,
+  SystemConditionBuilder,
+  systemConditionBuilder,
+  type ValidationResult,
+} from '../resources/query-builder'
 // Constants
 export * from './constants'
 export { CancellationManager } from './core/cancellation-manager'
@@ -67,19 +80,6 @@ export { IfElseProcessor } from './nodes/condition-nodes/if-else'
 export { EndProcessor } from './nodes/flow-nodes/end'
 // Node processors
 export { MessageReceivedProcessor } from './nodes/trigger-nodes/message-received'
-// Query builder exports
-export {
-  BaseConditionBuilder,
-  type ConditionGroup,
-  ConditionQueryBuilder,
-  EntityConditionBuilder,
-  type EntityQueryContext,
-  entityConditionBuilder,
-  type GenericCondition,
-  SystemConditionBuilder,
-  systemConditionBuilder,
-  type ValidationResult,
-} from './query-builder'
 // Rate limiting
 export {
   type CheckWorkflowRateLimitOptions,

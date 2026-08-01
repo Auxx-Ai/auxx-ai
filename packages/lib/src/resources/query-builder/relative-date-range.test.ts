@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/query-builder/relative-date-range.test.ts
+// packages/lib/src/resources/query-builder/relative-date-range.test.ts
 
 import { describe, expect, it } from 'vitest'
 import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'

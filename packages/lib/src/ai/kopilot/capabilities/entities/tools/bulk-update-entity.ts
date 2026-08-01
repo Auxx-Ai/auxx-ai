@@ -12,6 +12,7 @@ import { getDefinitionId, isRecordId } from '../../../../../resources/resource-i
 import { getKnownDefIds, normalizeRecordIdArrayArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { blockedEntityError, isAiBlockedDefKey } from '../shared/ai-entity-visibility'
 
 /** Full success output of `bulk_update_entity` — record counts and updated field labels. */
 const BulkUpdateEntityOutput = z.object({
@@ -55,6 +56,7 @@ export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefin
       }
     },
     description: `Update the same field values on multiple entity instances at once. All records must be the same entity type.
+Email threads and messages are NOT record types here — this tool rejects the whole batch if any id names one. Use update_thread instead.
 
 REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
 entity's type in the current turn, call it first. Do NOT guess field ids from prior
@@ -130,6 +132,25 @@ Example (ids match list_entity_fields output):
             "Every recordIds entry must have the form '<entityDefinitionId>:<entityInstanceId>'.",
         }
       }
+      // Mail-lens block (step 0.1, write half). Judged on the parsed def id of
+      // every REQUESTED id — before the approval filter, before the row gate,
+      // before any read — so no spelling and no approval subset can slip one
+      // through.
+      //
+      // ONE blocked id refuses the WHOLE call, matching the malformed-id check
+      // directly above (which rejects the batch outright rather than dropping the
+      // bad entry) and the row gate below, which fails whole for the same reason:
+      // a bulk write that silently skipped part of its input is not something the
+      // model or the user can reason about.
+      const blockedId = allRecordIds.find((id) => isAiBlockedDefKey(getDefinitionId(id)))
+      if (blockedId) {
+        return {
+          success: false,
+          output: null,
+          error: blockedEntityError(getDefinitionId(blockedId), 'write'),
+        }
+      }
+
       const values = args.values as Array<{ fieldId: string; value: unknown }>
 
       // inputAmendment._approvedRecordIds filters which records to actually update

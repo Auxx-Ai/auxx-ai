@@ -17,6 +17,13 @@ import { finalizeKopilotKbTurn, revertKopilotKbTurn } from './tools/write-helper
 export const KB_PAGE = 'kb'
 const GLOBAL_PAGE = '__global__'
 
+/**
+ * The block-CRUD write tools. The "rewrite and restructure" bullet is only
+ * honest while at least one of these survived runtime filtering — the KB reads
+ * alone can't edit anything.
+ */
+const KB_WRITE_TOOL_NAMES = ['insert_blocks', 'replace_block', 'delete_blocks', 'move_blocks']
+
 const logger = createScopedLogger('kb-capability-lifecycle')
 
 export function createKbCapabilities(getDeps: GetToolDeps): PageCapability {
@@ -41,7 +48,10 @@ export function createKbCapabilities(getDeps: GetToolDeps): PageCapability {
       'Top-level containers (table, tabs, accordion) are addressable by id like any block — the outline shows a row for each. delete_blocks(containerId) removes one; move_blocks reorders it at the top level. Containers cannot move into a panel or table cell. To swap a container, delete it and insert the replacement.',
       'Never invent block ids — use the ones from get_article. Never invent slugs — look them up via list_articles. Edits go to the draft; the user publishes manually.',
     ].join('\n\n'),
-    capabilities: ['Read, rewrite, and restructure the active knowledge-base article'],
+    capabilities: ({ toolNames }) =>
+      KB_WRITE_TOOL_NAMES.some((name) => toolNames.has(name))
+        ? ['Read, rewrite, and restructure the active knowledge-base article']
+        : [],
     lifecycle: {
       // A KB turn runs a turn-scoped transaction against the active article: the
       // first write captures a pre-turn snapshot in Redis and locks the article;

@@ -34,6 +34,8 @@ import {
 } from '../field-values/relationship-queries'
 import { createScopedLogger } from '../logger'
 import type { MailViewer } from '../permissions/visibility/context'
+import { tokenizeFreeText } from './free-text-terms'
+import { threadBodySearchPredicate, threadSubjectSearchPredicate } from './thread-search-sql'
 import {
   buildMailVisibilityPredicate,
   buildSearchScopes,
@@ -47,27 +49,79 @@ const logger = createScopedLogger('condition-query-builder')
  * when every operand is undefined) onto this builder's own sentinel (`null`).
  *
  * Both are falsy, so the `.filter(Boolean)` call sites in `buildGroupQuery` /
- * `buildConditionGroupsQuery` behave identically — this is a type-level
- * normalization at the drizzle boundary, not a change to which clauses survive.
+ * `buildConditionGroupsQueryWithDiagnostics` behave identically — this is a
+ * type-level normalization at the drizzle boundary, not a change to which
+ * clauses survive.
  */
 function toClause(built: SQL<unknown> | undefined): SQL<unknown> | null {
   return built ?? null
 }
 
+/** Why a condition produced no SQL. */
+export type DroppedConditionReason =
+  /** `fieldId` is not one this builder knows how to dispatch. */
+  | 'unknown-field'
+  /** The field builder ran but the operator/value combination yielded no clause. */
+  | 'unsupported-operator-or-value'
+  /** `valueSource` was not substituted upstream by `resolveConditionContext`. */
+  | 'unresolved-value-source'
+  /** The field builder threw. */
+  | 'build-error'
+
+/** A single condition the builder could not turn into SQL. */
+export interface DroppedCondition {
+  conditionId: string
+  fieldId: string
+  operator: string
+  reason: DroppedConditionReason
+  /** Present for `build-error` only — the thrown message. */
+  detail?: string
+}
+
 /**
- * Build Drizzle WHERE condition from ConditionGroup[].
+ * Outcome of a condition-group build: the WHERE clause plus enough information
+ * to tell "the caller asked for no filter" apart from "every filter the caller
+ * asked for was silently dropped".
+ *
+ * Both cases produce the same `sql` (the bare `baseScope` — the viewer's whole
+ * visible mailbox). That is correct for the mail list, saved views, unread
+ * counts and the workflow Find node, and *wrong* for an AI tool, which must
+ * refuse rather than answer a different question. The discriminant is
+ * `allConditionsDropped`; the builder itself never throws.
+ */
+export interface ConditionGroupsQueryResult {
+  /** The WHERE clause. Always includes the mandatory base scope + visibility. */
+  sql: SQL<unknown>
+  /** Total number of conditions across every input group, before building. */
+  requestedConditions: number
+  /** Every condition that produced no SQL, in input order. */
+  droppedConditions: DroppedCondition[]
+  /**
+   * `true` only when at least one condition was requested and *none* of them
+   * produced SQL — i.e. `sql` is the unfiltered base scope while the caller
+   * asked to filter. `false` for the genuine no-filter case (`groups: []`, or
+   * groups whose `conditions` arrays are empty).
+   */
+  allConditionsDropped: boolean
+}
+
+/**
+ * Build Drizzle WHERE condition from ConditionGroup[], with drop diagnostics.
  * Groups are combined with AND at the top level.
  *
  * Every query declares its `viewer` (mail-permissions §5.1): the mandatory
  * visibility predicate is AND-ed into the base scope, and content-bearing
  * conditions (subject/body/freeText) are additionally scoped per §5.3 so a
  * filter can't be used to probe content the viewer may not read.
+ *
+ * Prefer this over {@link buildConditionGroupsQuery} anywhere a dropped filter
+ * must be a visible failure rather than a wider result set.
  */
-export function buildConditionGroupsQuery(
+export function buildConditionGroupsQueryWithDiagnostics(
   groups: ConditionGroup[],
   organizationId: string,
   viewer: MailViewer
-): SQL<unknown> {
+): ConditionGroupsQueryResult {
   // Hide soft-merged threads from every list view. The corresponding partial
   // index on Thread keeps this filter free for the hot pagination path.
   const visibility = buildMailVisibilityPredicate(viewer)
@@ -78,19 +132,54 @@ export function buildConditionGroupsQuery(
   )!
 
   if (groups.length === 0) {
-    return baseScope
+    return {
+      sql: baseScope,
+      requestedConditions: 0,
+      droppedConditions: [],
+      allConditionsDropped: false,
+    }
   }
 
+  const requestedConditions = groups.reduce((sum, group) => sum + group.conditions.length, 0)
+  const droppedConditions: DroppedCondition[] = []
+
   const scopes = buildSearchScopes(viewer)
-  const groupConditions = groups.map((group) => buildGroupQuery(group, organizationId, scopes))
+  const groupConditions = groups.map((group) =>
+    buildGroupQuery(group, organizationId, scopes, droppedConditions)
+  )
   const validConditions = groupConditions.filter(Boolean) as SQL<unknown>[]
 
+  // `requestedConditions > 0` is what keeps the genuine no-filter case
+  // (empty groups) reported as "not dropped" — the UI callers depend on it.
+  const allConditionsDropped = requestedConditions > 0 && validConditions.length === 0
+
   if (validConditions.length === 0) {
-    return baseScope
+    return { sql: baseScope, requestedConditions, droppedConditions, allConditionsDropped }
   }
 
   // Groups combined with AND
-  return and(baseScope, ...validConditions)!
+  return {
+    sql: and(baseScope, ...validConditions)!,
+    requestedConditions,
+    droppedConditions,
+    allConditionsDropped,
+  }
+}
+
+/**
+ * Build Drizzle WHERE condition from ConditionGroup[].
+ *
+ * Thin projection of {@link buildConditionGroupsQueryWithDiagnostics} — the
+ * clause only. Dropped conditions widen the result set silently, which is the
+ * intended behaviour for UI surfaces (a stored view naming a retired field
+ * still renders) but not for AI tools.
+ */
+export function buildConditionGroupsQuery(
+  groups: ConditionGroup[],
+  organizationId: string,
+  viewer: MailViewer
+): SQL<unknown> {
+  return buildConditionGroupsQueryWithDiagnostics(groups, organizationId, viewer).sql
 }
 
 /**
@@ -99,10 +188,11 @@ export function buildConditionGroupsQuery(
 function buildGroupQuery(
   group: ConditionGroup,
   organizationId: string,
-  scopes: MailSearchScopes
+  scopes: MailSearchScopes,
+  dropped: DroppedCondition[]
 ): SQL<unknown> | null {
   const conditions = group.conditions
-    .map((c) => buildConditionQuery(c, organizationId, scopes))
+    .map((c) => buildConditionQuery(c, organizationId, scopes, dropped))
     .filter(Boolean) as SQL<unknown>[]
 
   if (conditions.length === 0) return null
@@ -124,85 +214,135 @@ function withScope(
 }
 
 /**
- * Build query for a single Condition.
+ * Sentinel returned by {@link dispatchConditionQuery} for a `fieldId` this
+ * builder has no case for. Distinct from `null`, which means "known field, but
+ * this operator/value produced no clause" — the two are different failures and
+ * the diagnostics report them separately.
+ */
+const UNKNOWN_FIELD = Symbol('unknown-field')
+
+/**
+ * Build query for a single Condition, recording a {@link DroppedCondition} on
+ * `dropped` whenever no SQL comes out.
  */
 function buildConditionQuery(
   condition: Condition,
   organizationId: string,
-  scopes: MailSearchScopes
+  scopes: MailSearchScopes,
+  dropped: DroppedCondition[]
 ): SQL<unknown> | null {
+  const { fieldId, operator, value, metadata } = condition
+  const record = (reason: DroppedConditionReason, detail?: string) => {
+    dropped.push({
+      conditionId: condition.id,
+      fieldId: String(fieldId),
+      operator: String(operator),
+      reason,
+      ...(detail ? { detail } : {}),
+    })
+  }
+
   // Belt-and-suspenders: valueSource must be resolved upstream via
   // resolveConditionContext before reaching this builder.
   if (condition.valueSource) {
     logger.warn(
       `Dropping condition with unresolved valueSource '${condition.valueSource}' (${condition.fieldId}) — should be substituted upstream`
     )
+    record('unresolved-value-source')
     return null
   }
 
-  const { fieldId, operator, value, metadata } = condition
   const op = operator as Operator
 
+  let built: SQL<unknown> | null | typeof UNKNOWN_FIELD
   try {
-    switch (fieldId) {
-      case 'tag':
-        return buildTagQuery(op, value, organizationId)
-      case 'assignee':
-        return buildAssigneeQuery(op, value)
-      case 'inbox':
-        return buildInboxQuery(op, value)
-      case 'status':
-        return buildStatusQuery(op, value)
-      case 'date':
-        return buildDateQuery(op, value, metadata?.field)
-      case 'sender':
-        return buildSenderQuery(op, value)
-      case 'from':
-        return buildFromQuery(op, value)
-      case 'to':
-        return buildToQuery(op, value)
-      case 'subject':
-        return withScope(buildSubjectQuery(op, value), scopes.subject)
-      case 'body':
-        return withScope(buildBodyQuery(op, value), scopes.body)
-      case 'before':
-        return buildBeforeQuery(op, value)
-      case 'after':
-        return buildAfterQuery(op, value)
-      case 'ticket':
-        return buildTicketQuery(op, value)
-      case 'hasAttachments':
-        return buildHasAttachmentsQuery(op, value)
-      case 'sharedWithMe':
-        return buildSharedWithMeQuery(op, value, scopes.sharedThreadIds)
-      case 'freeText':
-        return buildFreeTextQuery(op, value, scopes)
-      case 'hasDraft':
-        return buildHasDraftQuery(op, value)
-      case 'sent':
-        return buildSentQuery(op, value)
-      // Direct-column fields (needed by find node)
-      case 'id':
-        return buildDirectColumnQuery(op, value, Thread.id)
-      case 'externalId':
-        return buildDirectColumnQuery(op, value, Thread.externalId)
-      case 'messageCount':
-        return buildDirectNumberColumnQuery(op, value, Thread.messageCount)
-      case 'firstMessageAt':
-        return buildDateQuery(op, value, 'firstMessageAt')
-      case 'closedAt':
-        return buildDateQuery(op, value, 'closedAt')
-      case 'createdAt':
-        return buildDateQuery(op, value, 'createdAt')
-      case 'lastMessageAt':
-        return buildDateQuery(op, value, 'lastMessageAt')
-      default:
-        logger.warn(`Unknown fieldId: ${fieldId}`)
-        return null
-    }
+    built = dispatchConditionQuery(fieldId, op, value, metadata, organizationId, scopes)
   } catch (error: any) {
     logger.error(`Error building condition for ${fieldId}`, { error: error.message })
+    record('build-error', error?.message)
     return null
+  }
+
+  if (built === UNKNOWN_FIELD) {
+    logger.warn(`Unknown fieldId: ${fieldId}`)
+    record('unknown-field')
+    return null
+  }
+  if (built === null) {
+    record('unsupported-operator-or-value')
+    return null
+  }
+  return built
+}
+
+/**
+ * Dispatch a condition onto its field builder. Returns `UNKNOWN_FIELD` for an
+ * unrecognized `fieldId`, `null` when the field builder declined the
+ * operator/value, and the clause otherwise. Throws whatever a field builder
+ * throws — the caller converts that into a `build-error` drop.
+ */
+function dispatchConditionQuery(
+  fieldId: Condition['fieldId'],
+  op: Operator,
+  value: unknown,
+  metadata: Condition['metadata'],
+  organizationId: string,
+  scopes: MailSearchScopes
+): SQL<unknown> | null | typeof UNKNOWN_FIELD {
+  switch (fieldId) {
+    case 'tag':
+      return buildTagQuery(op, value, organizationId)
+    case 'assignee':
+      return buildAssigneeQuery(op, value)
+    case 'inbox':
+      return buildInboxQuery(op, value)
+    case 'status':
+      return buildStatusQuery(op, value)
+    case 'date':
+      return buildDateQuery(op, value, metadata?.field)
+    case 'sender':
+      return buildSenderQuery(op, value)
+    case 'from':
+      return buildFromQuery(op, value)
+    case 'to':
+      return buildToQuery(op, value)
+    case 'subject':
+      return withScope(buildSubjectQuery(op, value), scopes.subject)
+    case 'body':
+      return withScope(buildBodyQuery(op, value), scopes.body)
+    case 'before':
+      return buildBeforeQuery(op, value)
+    case 'after':
+      return buildAfterQuery(op, value)
+    case 'ticket':
+      return buildTicketQuery(op, value)
+    case 'hasAttachments':
+      return buildHasAttachmentsQuery(op, value)
+    case 'sharedWithMe':
+      return buildSharedWithMeQuery(op, value, scopes.sharedThreadIds)
+    case 'freeText':
+      return buildFreeTextQuery(op, value, scopes)
+    case 'hasDraft':
+      return buildHasDraftQuery(op, value)
+    case 'sent':
+      return buildSentQuery(op, value)
+    // Direct-column fields (needed by find node)
+    case 'id':
+      return buildDirectColumnQuery(op, value, Thread.id)
+    case 'externalId':
+      return buildDirectColumnQuery(op, value, Thread.externalId)
+    case 'messageCount':
+      return buildDirectNumberColumnQuery(op, value, Thread.messageCount)
+    case 'firstMessageAt':
+      return buildDateQuery(op, value, 'firstMessageAt')
+    case 'closedAt':
+      return buildDateQuery(op, value, 'closedAt')
+    case 'createdAt':
+      return buildDateQuery(op, value, 'createdAt')
+    case 'lastMessageAt':
+      return buildDateQuery(op, value, 'lastMessageAt')
+    default:
+      return UNKNOWN_FIELD
   }
 }
 
@@ -817,40 +957,68 @@ function buildSharedWithMeQuery(
 
 /**
  * Build free text search query.
- * Searches across subject and body fields. Each half carries its own §5.3
- * scope: subject matches count only on subject-visible threads, body matches
- * only on full-visible threads.
+ *
+ * Searches across the subject and the thread's message-body corpus. Each half
+ * carries its own §5.3 scope: subject matches count only on subject-visible
+ * threads (`identity`), body matches only on content-visible ones (`read`).
+ * **That gradation is why there are two blocks and two bindings** — a single
+ * blended predicate would let a subject-only viewer match on body text.
+ *
+ * **The query is tokenized: every term must match, each one in the subject OR
+ * in the body corpus.** Before step 2.2 this matched the whole query as one
+ * substring (`%order refund%`), so any multi-word query returned zero rows
+ * unless those exact words appeared adjacent in that exact order — a bug the
+ * mail search box and the ⌘K palette hit as hard as the AI does, since both feed
+ * this same `freeText contains` condition. Terms may land in *different*
+ * messages of the same thread; the unit of the answer is the thread.
+ *
+ * **Each block now comes from the shared ranked builder**
+ * (`mail-query/thread-search-sql.ts` → `search/text-search-sql.ts`), so mail and
+ * records share one ranking formula, one OR-block shape and one index strategy.
+ * The predicate is stemmed (`refund` finds `refunds`) and typo-tolerant on the
+ * subject, and it is served by the org-scoped composite GIN indexes added in
+ * migration `0320_thread_search_text.sql` — measured on the dev org, a two-term
+ * query (`order refund`) went from 2,004 ms — a sequential scan with one
+ * correlated `EXISTS` over `Message` per term — to 138 ms on a `BitmapOr` of
+ * four index scans.
+ *
+ * **Two behaviour changes fall out of that, and both are deliberate:**
+ * - Matching is by stemmed *word*, not substring, so `fund` no longer matches
+ *   `refund`. Restoring that would mean an `ILIKE '%q%'` arm, which makes the
+ *   whole OR block unindexable and returns the query to a sequential scan.
+ * - Recall over bodies is capped by the corpus, not the formula — see the bounds
+ *   in `thread-search-text.ts` (measured at 98.6% of unbounded recall).
  */
 function buildFreeTextQuery(
   operator: Operator,
   value: any,
   scopes: MailSearchScopes
 ): SQL<unknown> | null {
-  if (!value) return null
+  if (value === null || value === undefined || value === '') return null
 
-  const { Message } = schema
-  const searchTerm = `%${value}%`
+  const terms = tokenizeFreeText(String(value))
+  if (terms.length === 0) return null
 
-  const subjectMatch = withScope(ilike(Thread.subject, searchTerm), scopes.subject)
-  const bodyMatch = withScope(
-    exists(
-      db
-        .select({ id: sql`1` })
-        .from(Message)
-        .where(
-          and(
-            eq(Message.threadId, Thread.id),
-            or(ilike(Message.textPlain, searchTerm), ilike(Message.textHtml, searchTerm))
-          )
-        )
-    ),
-    scopes.body
-  )
+  const termClauses: SQL<unknown>[] = []
+  for (const term of terms) {
+    const subjectMatch = withScope(threadSubjectSearchPredicate(term), scopes.subject)
+    const bodyMatch = withScope(threadBodySearchPredicate(term), scopes.body)
 
-  // Search in subject OR body (textPlain / textHtml). Both halves are built from
-  // a non-null `ilike` / `exists`, so `withScope` always returns a clause here.
-  if (!subjectMatch || !bodyMatch) return subjectMatch ?? bodyMatch
-  return toClause(or(subjectMatch, bodyMatch))
+    // Term matches in the subject OR in the body corpus. Both halves are built
+    // from a non-null predicate, so `withScope` always returns a clause here;
+    // the fallback only guards a future scope change.
+    const clause =
+      !subjectMatch || !bodyMatch
+        ? (subjectMatch ?? bodyMatch)
+        : toClause(or(subjectMatch, bodyMatch))
+    if (clause) termClauses.push(clause)
+  }
+
+  if (termClauses.length === 0) return null
+  if (termClauses.length === 1) return termClauses[0] ?? null
+  // Every term must match — AND, not OR. An OR would rank-lessly return every
+  // thread mentioning any one word, which at mailbox scale is "everything".
+  return toClause(and(...termClauses))
 }
 
 /**

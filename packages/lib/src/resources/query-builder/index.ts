@@ -1,9 +1,12 @@
-// packages/lib/src/workflow-engine/query-builder/index.ts
+// packages/lib/src/resources/query-builder/index.ts
 
 // Base class and types
 export {
   BaseConditionBuilder,
   type ConditionGroup,
+  type ConditionQueryResult,
+  type DroppedCondition,
+  type DroppedConditionReason,
   type GenericCondition,
   type ValidationResult,
 } from './base-condition-builder'

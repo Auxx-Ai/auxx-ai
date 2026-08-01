@@ -4,6 +4,11 @@ import { z } from 'zod'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import {
+  blockedEntityError,
+  isAiBlockedResource,
+  isAiVisibleResource,
+} from '../shared/ai-entity-visibility'
 import { buildListEntityFieldsOutput } from './list-entity-fields-output'
 
 /** Full success output of `list_entity_fields` — field definitions + create-time summaries. */
@@ -118,6 +123,14 @@ Response shape:
 
       const resource = await findCachedResource(agentDeps.organizationId, key)
 
+      // Mail-lens block: handing back the thread schema is what teaches the model
+      // to call `query_records({entity:"threads"})` next. Refuse with the tool it
+      // should have used. This is a routing answer, not a disclosure one, so —
+      // unlike the denial below — it names the real reason.
+      if (resource && isAiBlockedResource(resource)) {
+        return { success: false, output: null, error: blockedEntityError(key) }
+      }
+
       // Read enforcement (§3): the schema IS the disclosure, so a def the
       // principal can't view must read exactly like a def that doesn't exist —
       // same error, and a suggestion list filtered to viewable defs so the two
@@ -130,7 +143,11 @@ Response shape:
       if (!resource || denied) {
         const allResources = await getCachedResources(agentDeps.organizationId)
         const validSlugs = allResources
-          .filter((r) => !capabilities || capabilities.canViewEntity(r.entityDefinitionId ?? r.id))
+          .filter(
+            (r) =>
+              isAiVisibleResource(r) &&
+              (!capabilities || capabilities.canViewEntity(r.entityDefinitionId ?? r.id))
+          )
           .map((r) => r.apiSlug)
           .join(', ')
         return {

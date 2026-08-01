@@ -12,6 +12,7 @@ import { getDefaultOperatorForType } from '~/components/conditions/utils'
 import { SearchBarShell } from '~/components/searchbar/searchbar-shell'
 import type { SearchFieldDefinition, SearchSuggestion } from '~/components/searchbar/types'
 import {
+  RECORDS_FREE_TEXT_FIELD,
   selectDisplayText,
   selectHasActiveConditions,
   useRecordsSearchActions,
@@ -26,7 +27,9 @@ interface RecordsSearchBarProps {
 /** Convert ResourceField[] to SearchFieldDefinition[] for suggestions */
 function toSearchFields(fields: ResourceField[]): SearchFieldDefinition[] {
   return fields
-    .filter((f) => f.capabilities.filterable && !f.capabilities.hidden && f.id !== 'displayName')
+    .filter(
+      (f) => f.capabilities.filterable && !f.capabilities.hidden && f.id !== RECORDS_FREE_TEXT_FIELD
+    )
     .map((f) => ({
       id: f.id,
       label: f.label,
@@ -35,9 +38,16 @@ function toSearchFields(fields: ResourceField[]): SearchFieldDefinition[] {
     }))
 }
 
-/** Synthetic field definition for free-text search on displayName */
+/**
+ * Synthetic field definition backing the free-text chip.
+ *
+ * It exists so the typed text renders and edits like every other chip; it is
+ * NOT a filter. `RecordsView` pulls this condition back out via
+ * `splitRecordSearch` and sends it as `record.listFiltered`'s `search` param,
+ * which is what reaches the ranked predicate instead of `ILIKE '%q%'`.
+ */
 const DISPLAY_NAME_FIELD: FieldDefinition = {
-  id: 'displayName',
+  id: RECORDS_FREE_TEXT_FIELD,
   label: 'Name',
   type: BaseType.STRING,
   fieldType: 'TEXT' as FieldType,
@@ -56,8 +66,8 @@ function toConditionFields(fields: ResourceField[]): FieldDefinition[] {
       operators: f.operators as Operator[] | undefined,
     }))
 
-  // Ensure displayName is always present for free-text search
-  if (!mapped.some((f) => f.id === 'displayName')) {
+  // Ensure the free-text field is always present so the typed chip renders
+  if (!mapped.some((f) => f.id === RECORDS_FREE_TEXT_FIELD)) {
     mapped.unshift(DISPLAY_NAME_FIELD)
   }
 
@@ -163,7 +173,7 @@ export function RecordsSearchBar({ entityDefinitionId, fields }: RecordsSearchBa
         suggestions={suggestions}
         onSuggestionSelect={handleSuggestionSelect}
         onSearch={() => {}}
-        freeTextField='displayName'
+        freeTextField={RECORDS_FREE_TEXT_FIELD}
         freeTextOperator={'contains' as Operator}
         placeholder='Search records...'
         showFilterButton={false}

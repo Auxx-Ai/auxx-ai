@@ -182,6 +182,23 @@ export {
   validateSelfReferentialChange,
   validateSelfReferentialDelete,
 } from './relationship-validators'
+// EntityInstance.searchText corpus (field-type policy, bounds, refresh helpers)
+export {
+  isSearchTextIndexedFieldType,
+  SEARCH_TEXT_ADDRESS_KEYS,
+  SEARCH_TEXT_INDEXED_FIELD_TYPES,
+  SEARCH_TEXT_JSON_FIELD_TYPES,
+  SEARCH_TEXT_MAX_VALUES,
+  SEARCH_TEXT_NAME_KEYS,
+  SEARCH_TEXT_OPTION_FIELD_TYPES,
+  SEARCH_TEXT_TEXT_FIELD_TYPES,
+  SEARCH_TEXT_TOTAL_LIMIT,
+  SEARCH_TEXT_VALUE_LIMIT,
+  searchTextExpressionSql,
+  updateSearchText,
+  updateSearchTextForEntityDefinition,
+  updateSearchTextForInstances,
+} from './search-text'
 // Typed column match (shared between write-path dedup and read-path lookup)
 export { type TypedColumnMatch, typedColumnMatch } from './typed-column-match'
 // Service types

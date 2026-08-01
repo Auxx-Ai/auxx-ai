@@ -38,6 +38,12 @@ Approval-gated. Pass \`threadId\` and \`body\`.
 ## Hard rules from mail toolset
 - Always check the active thread before replying.
 
+## Current date and time
+
+Right now it is **Wednesday, 4 March 2026, 09:07** in timezone **UTC**. Today's date in ISO 8601 is \`2026-03-04\`.
+
+This clock is authoritative. Resolve every relative date phrase — "today", "yesterday", "last week", "this month", "in the last 3 days" — against it, never against a date from your training data or from a timestamp in retrieved content. When a tool takes a date, pass ISO 8601 (\`YYYY-MM-DD\`) computed from the date above.
+
 ## Context
 Current page: /thread/abc123
 
@@ -173,6 +179,12 @@ Approval-gated. Pass \`threadId\` and \`body\`.
 ## Hard rules from mail toolset
 - Always check the active thread before replying.
 
+## Current date and time
+
+Right now it is **Wednesday, 4 March 2026, 09:07** in timezone **UTC**. Today's date in ISO 8601 is \`2026-03-04\`.
+
+This clock is authoritative. Resolve every relative date phrase — "today", "yesterday", "last week", "this month", "in the last 3 days" — against it, never against a date from your training data or from a timestamp in retrieved content. When a tool takes a date, pass ISO 8601 (\`YYYY-MM-DD\`) computed from the date above.
+
 ## Context
 Current page: /thread/abc123
 
@@ -189,5 +201,7 @@ If the user names something that doesn't match any reference here, fall back to 
 
 ## Who you're helping
 
-The **caller**: Markus <markus@auxx-lift.com> — actorId \`user:u_42\`, role admin. Mention them in prose as \`[Markus](auxx://actor/user:u_42)\`."
+The **caller**: Markus <markus@auxx-lift.com> — actorId \`user:u_42\`, role admin. Mention them in prose as \`[Markus](auxx://actor/user:u_42)\`.
+
+"me", "my", "mine", "assigned to me" and "I" all mean this person — resolve them to actorId \`user:u_42\` when calling a tool. Never guess a different member."
 `;

@@ -971,6 +971,17 @@ export class UnifiedCrudHandler {
   async listFiltered(params: {
     entityDefinitionId: string
     filters?: ConditionGroup[]
+    /**
+     * Free-text search — a separate axis from `filters` (plan decision 0.3):
+     * conditions narrow, the typed text IS the search. Ranked and typo-tolerant
+     * on the EntityInstance path.
+     *
+     * **Ignored on the system-resource path** (`thread`, `message`, `user`, …):
+     * those tables have no `searchText` corpus and no ranked binding yet, so a
+     * `search` passed with a `TableId` narrows nothing. Step 3.1 gives mail its
+     * own binding; until then, do not pass it for system resources.
+     */
+    search?: string
     sorting?: Array<{ id: string; desc: boolean }>
     limit?: number
     /** Pagination offset. `cursor.offset` wins when both are given. */
@@ -1022,6 +1033,7 @@ export class UnifiedCrudHandler {
         : entityDefinitionId,
       organizationId: this.organizationId,
       filters: filters as ConditionGroup[],
+      search: params.search,
       sorting,
       limit,
       offset,

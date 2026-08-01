@@ -107,10 +107,10 @@ describe('capability registry — capabilities summary', () => {
       },
     })
 
-    const all = r.getCapabilitiesSummary({ toolNames: new Set(['alpha', 'beta']) })
+    const all = r.getCapabilitiesSummary('focus', { toolNames: new Set(['alpha', 'beta']) })
     expect(all).toEqual(['alpha bullet', 'beta bullet'])
 
-    const alphaOnly = r.getCapabilitiesSummary({ toolNames: new Set(['alpha']) })
+    const alphaOnly = r.getCapabilitiesSummary('focus', { toolNames: new Set(['alpha']) })
     expect(alphaOnly).toEqual(['alpha bullet'])
   })
 
@@ -122,6 +122,44 @@ describe('capability registry — capabilities summary', () => {
       capabilities: ['static bullet'],
     })
 
-    expect(r.getCapabilitiesSummary({ toolNames: new Set(['alpha']) })).toEqual(['static bullet'])
+    expect(r.getCapabilitiesSummary('focus', { toolNames: new Set(['alpha']) })).toEqual([
+      'static bullet',
+    ])
+  })
+
+  it('renders global bullets plus the active page, never another page', () => {
+    const r = createCapabilityRegistry()
+    r.register({ page: '__global__', tools: [tool('g')], capabilities: ['global bullet'] })
+    r.register({ page: 'kb', tools: [tool('k')], capabilities: ['kb bullet'] })
+    r.register({ page: 'mail', tools: [tool('m')], capabilities: ['mail bullet'] })
+
+    const names = new Set(['g', 'k', 'm'])
+    expect(r.getCapabilitiesSummary('mail', { toolNames: names })).toEqual([
+      'global bullet',
+      'mail bullet',
+    ])
+    expect(r.getCapabilitiesSummary('kb', { toolNames: names })).toEqual([
+      'global bullet',
+      'kb bullet',
+    ])
+  })
+
+  it('falls back to global-only for an unknown or absent page', () => {
+    const r = createCapabilityRegistry()
+    r.register({ page: '__global__', tools: [tool('g')], capabilities: ['global bullet'] })
+    r.register({ page: 'kb', tools: [tool('k')], capabilities: ['kb bullet'] })
+
+    const names = new Set(['g', 'k'])
+    expect(r.getCapabilitiesSummary('__none__', { toolNames: names })).toEqual(['global bullet'])
+    expect(r.getCapabilitiesSummary(undefined, { toolNames: names })).toEqual(['global bullet'])
+  })
+
+  it('does not double-render globals when the page IS the global key', () => {
+    const r = createCapabilityRegistry()
+    r.register({ page: '__global__', tools: [tool('g')], capabilities: ['global bullet'] })
+
+    expect(r.getCapabilitiesSummary('__global__', { toolNames: new Set(['g']) })).toEqual([
+      'global bullet',
+    ])
   })
 })

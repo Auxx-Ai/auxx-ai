@@ -22,6 +22,12 @@ interface UseRecordListOptions {
   entityDefinitionId: string
   /** Filter conditions - pass undefined or stable reference, NOT [] */
   filters?: ConditionGroup[]
+  /**
+   * Free-text search — a separate axis from {@link filters} (plan decision 0.3).
+   * Conditions narrow; this IS the search, and the server ranks by relevance
+   * unless `sorting` is set.
+   */
+  search?: string
   /** Sorting config - pass undefined or stable reference, NOT [] */
   sorting?: Array<{ id: string; desc: boolean }>
   /** Items per page */
@@ -71,6 +77,7 @@ interface UseRecordListResult<T = RecordMeta> {
 export function useRecordList<T extends RecordMeta = RecordMeta>({
   entityDefinitionId: rawEntityDefinitionId,
   filters,
+  search,
   sorting,
   limit = 50,
   enabled = true,
@@ -85,8 +92,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
   // Create stable list key for store caching
   const listKey = useMemo(
-    () => createListKey(entityDefinitionId, stableFilters, stableSorting),
-    [entityDefinitionId, stableFilters, stableSorting]
+    () => createListKey(entityDefinitionId, stableFilters, stableSorting, search),
+    [entityDefinitionId, stableFilters, stableSorting, search]
   )
 
   // ─── SELECTORS ─────────────────────────────────────────────────────
@@ -108,10 +115,11 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     () => ({
       entityDefinitionId,
       filters: stableFilters.length > 0 ? stableFilters : undefined,
+      search: search || undefined,
       sorting: stableSorting.length > 0 ? stableSorting : undefined,
       limit,
     }),
-    [entityDefinitionId, stableFilters, stableSorting, limit]
+    [entityDefinitionId, stableFilters, search, stableSorting, limit]
   )
 
   const {

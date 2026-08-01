@@ -4,6 +4,7 @@ import { schema } from '@auxx/database'
 import { and, eq, isNull, type SQL, sql } from 'drizzle-orm'
 import type { Operator } from '../conditions/operator-definitions'
 import type { Condition, ConditionGroup } from '../conditions/types'
+import { escapeLikePattern, tokenizeFreeText } from './free-text-terms'
 
 const { Draft } = schema
 
@@ -209,13 +210,34 @@ function buildDraftDateCondition(operator: Operator, value: any, field?: string)
 
 /**
  * Build free text search condition for drafts.
+ *
+ * **Tokenized on the same rules as thread search**
+ * (`free-text-terms.ts`): every term must match, each one in the draft's subject
+ * OR its body text, quoted phrases held together, LIKE wildcards escaped. Before
+ * this, `list_drafts` matched the whole query as one substring — so
+ * "order refund" found nothing unless those two words happened to be adjacent,
+ * the same bug thread search carried until retrieval-plan step 2.2.
+ *
+ * Still `ILIKE` over jsonb paths rather than the ranked/indexed predicate the
+ * thread builder now uses, and deliberately so: `Draft` holds 14 rows on the dev
+ * DB (a draft is one user's unsent message, deleted on send), so there is nothing
+ * an index or a maintained corpus would buy — and both would have to be
+ * justified against a jsonb column with no measured shape.
  */
 function buildDraftFreeTextCondition(operator: Operator, value: any): SQL | null {
-  if (!value) return null
+  if (value === null || value === undefined || value === '') return null
+
+  const terms = tokenizeFreeText(String(value))
+  if (terms.length === 0) return null
 
   const subjectPath = sql`${Draft.content}->>'subject'`
   const bodyTextPath = sql`${Draft.content}->>'bodyText'`
-  const searchTerm = '%' + value + '%'
 
-  return sql`(${subjectPath} ILIKE ${searchTerm} OR ${bodyTextPath} ILIKE ${searchTerm})`
+  const termClauses = terms.map((term) => {
+    const searchTerm = `%${escapeLikePattern(term)}%`
+    return sql`(${subjectPath} ILIKE ${searchTerm} OR ${bodyTextPath} ILIKE ${searchTerm})`
+  })
+
+  // Every term must match — AND, not OR.
+  return sql`(${sql.join(termClauses, sql` AND `)})`
 }

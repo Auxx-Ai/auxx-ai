@@ -17,11 +17,15 @@ vi.mock('../../../cache', () => ({
   getOrgCache: vi.fn(() => ({ get: vi.fn(async () => ({})) })),
 }))
 
-vi.mock('../../../workflow-engine/query-builder/entity-condition-builder', () => ({
+vi.mock('../../query-builder/entity-condition-builder', () => ({
   entityConditionBuilder: {
-    buildGroupedQuery: vi.fn(() => undefined),
+    buildGroupedQueryWithDiagnostics: vi.fn(() => ({
+      sql: undefined,
+      requestedConditions: 0,
+      droppedConditions: [],
+      allConditionsDropped: false,
+    })),
     buildOrderBySql: vi.fn(() => undefined),
-    droppedConditions: [],
   },
 }))
 

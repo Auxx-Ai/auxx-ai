@@ -89,6 +89,12 @@ export interface PromptCtx {
   readonly tools: readonly AgentToolDefinition[]
   readonly toolNames: ReadonlySet<string>
   readonly currentUser: CurrentUserInfo | null
+  /**
+   * IANA zone the `now` section states the clock in (e.g. `Europe/Berlin`).
+   * Absent/invalid ⇒ `UTC`. Nothing populates it yet — see `sections/now.ts`
+   * for what exists in the schema and what a real zone would cost to wire.
+   */
+  readonly timezone?: string | null
   readonly integrations: readonly IntegrationCatalogEntry[]
   readonly entityCatalog: readonly EntityCatalogEntry[]
   /** Published KB articles ToC — browse-first knowledge retrieval. */
