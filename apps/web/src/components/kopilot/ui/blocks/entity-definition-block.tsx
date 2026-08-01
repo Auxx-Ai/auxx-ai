@@ -20,12 +20,13 @@ export function EntityDefinitionBlock({ data }: BlockRendererProps<EntityDefinit
         hasFooter={false}>
         <div className='divide-y'>
           {fields.map((field, i) => {
-            // Wait until at least the label has streamed in. Index keys stay
-            // stable so completed fields don't remount when a later field's
-            // label finally arrives.
+            // Wait until at least the label has streamed in. The key is the
+            // index, not `field.id` — the id streams in (and streams in
+            // truncated) after the label, so keying on it would remount the
+            // row on every delta.
             if (!field.label) return null
             return (
-              <div key={field.id ?? i} className='flex items-start gap-2 px-1.5 py-1.5'>
+              <div key={i} className='flex items-start gap-2 px-1.5 py-1.5'>
                 <div className='min-w-0 flex-1'>
                   <div className='flex items-center gap-2 text-sm'>
                     <span className='truncate font-medium'>{field.label}</span>

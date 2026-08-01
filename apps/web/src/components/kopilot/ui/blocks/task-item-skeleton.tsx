@@ -7,6 +7,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import { Check, CircleDashed } from 'lucide-react'
+import { parseBlockDate } from './block-date'
 import type { TaskSnapshotData } from './block-schemas'
 
 /**
@@ -31,6 +32,7 @@ interface TaskItemSkeletonProps {
  */
 export function TaskItemSkeleton({ snapshot, isDeleted }: TaskItemSkeletonProps) {
   const isCompleted = !!snapshot.completedAt
+  const deadline = parseBlockDate(snapshot.deadline)
   return (
     <div className={cn(TASK_ROW_WRAPPER, (isCompleted || isDeleted) && 'opacity-60')}>
       {isCompleted ? (
@@ -48,9 +50,9 @@ export function TaskItemSkeleton({ snapshot, isDeleted }: TaskItemSkeletonProps)
             )}>
             {snapshot.title}
           </span>
-          {snapshot.deadline && (
+          {deadline && (
             <span className='flex-shrink-0 text-xs leading-6 text-muted-foreground'>
-              {format(new Date(snapshot.deadline), 'MMM d, yyyy')}
+              {format(deadline, 'MMM d, yyyy')}
             </span>
           )}
         </div>

@@ -10,6 +10,7 @@ import { motion } from 'motion/react'
 import { useSearchParams } from 'next/navigation'
 import { useThread } from '~/components/threads/hooks/use-thread'
 import { BlockCard } from './block-card'
+import { parseBlockDate } from './block-date'
 import type { BlockRendererProps } from './block-registry'
 import type { ThreadListData, ThreadSnapshotData } from './block-schemas'
 import { useStreamSafeIds } from './use-stream-safe-ids'
@@ -69,8 +70,9 @@ function ThreadListRow({ threadId, snapshot }: ThreadListRowProps) {
   const subject = thread?.subject ?? snapshot?.subject ?? null
   const status = thread?.status
   const sender = snapshot?.sender
-  // `ThreadMeta.lastMessageAt` is already an ISO string in the store.
-  const lastMessageAt = thread?.lastMessageAt ?? snapshot?.lastMessageAt
+  // `ThreadMeta.lastMessageAt` is an ISO string in the store; the snapshot's is
+  // a raw streamed string that can still be a truncated prefix.
+  const lastMessageAt = parseBlockDate(thread?.lastMessageAt ?? snapshot?.lastMessageAt)
   const isUnread = thread?.isUnread ?? snapshot?.isUnread
   const messageCount = thread?.messageCount
   const showDeleted = !thread && !!snapshot && isNotFound
@@ -110,7 +112,7 @@ function ThreadListRow({ threadId, snapshot }: ThreadListRowProps) {
             <>
               {sender && <span>·</span>}
               <span className='shrink-0'>
-                {formatDistanceToNowStrict(new Date(lastMessageAt), { addSuffix: true })}
+                {formatDistanceToNowStrict(lastMessageAt, { addSuffix: true })}
               </span>
             </>
           )}
