@@ -11,6 +11,10 @@
 > field/entity triggers, conditions/actions, and sync-change events for connector/import writes)
 > lives in **`entity-events-architecture-guide.md`**. This guide covers the data model + read/write
 > path; that one covers "when X changes, do Y".
+>
+> **Companion — the conversation layer.** Inboxes and contacts are EntityInstances, and threads
+> link to records via `Thread.primaryEntityInstanceId`. How mail actually arrives, gets stored, and
+> is gated per viewer lives in **`channels-mail-architecture-guide.md`**.
 
 ---
 
