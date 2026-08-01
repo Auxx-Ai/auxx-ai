@@ -10,6 +10,11 @@ export {
   type GenericCondition,
   type ValidationResult,
 } from './base-condition-builder'
+// System field-reference canonicalization (runs before the system builder)
+export {
+  canonicalizeSystemConditions,
+  canonicalizeSystemFieldRef,
+} from './canonicalize-system-fields'
 // Backward compatibility (deprecated)
 export { ConditionQueryBuilder } from './condition-query-builder'
 

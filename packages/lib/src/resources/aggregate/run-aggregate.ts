@@ -31,6 +31,7 @@ import { ForbiddenError, UnprocessableEntityError } from '../../errors'
 import { BaseType } from '../../workflow-engine/core/types'
 import { extractRequiredRelatedEntities } from '../crud/unified-handler-queries'
 import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
+import { canonicalizeSystemConditions } from '../query-builder/canonicalize-system-fields'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
@@ -376,8 +377,20 @@ async function prepareAggregate(
       })
     }
   } else if (filters.length) {
+    // The filter surfaces address a field on a system resource by the org's
+    // merged `CustomField` cuid, while `SystemConditionBuilder` resolves against
+    // `RESOURCE_FIELD_REGISTRY[tableId]`, which is keyed by the STATIC key. Left
+    // untranslated every such condition dropped — and on an aggregate a dropped
+    // filter does not narrow, so the widget reported a number that was too HIGH.
+    //
+    // `rootFields` is the merged field set for exactly this resource, already
+    // loaded above, so this adds no I/O; the call is pure and idempotent (stored
+    // widgets hold either shape). Unresolvable refs come back unchanged on
+    // purpose, so they still land in `droppedConditions` below rather than being
+    // compiled into a confidently wrong lookup.
+    const canonicalFilters = canonicalizeSystemConditions(filters, rootDefId as TableId, rootFields)
     const built = systemConditionBuilder.buildGroupedQueryWithDiagnostics(
-      filters,
+      canonicalFilters,
       rootDefId as TableId
     )
     conditionsWhere = built.sql
