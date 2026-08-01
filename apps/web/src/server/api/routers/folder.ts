@@ -98,7 +98,9 @@ export const folderRouter = createTRPCRouter({
       const folderService = createFolderService(organizationId, userId)
 
       try {
-        const folder = await folderService.getById(input.folderId)
+        // `getWithRelations`, not `getById` — the latter has never existed on
+        // `FolderService`, so this procedure threw `TypeError` for every caller.
+        const folder = await folderService.getWithRelations(input.folderId)
 
         if (!folder) {
           throw new TRPCError({
@@ -233,10 +235,14 @@ export const folderRouter = createTRPCRouter({
       const folderService = createFolderService(organizationId, userId)
 
       try {
-        const results = await folderService.search(input.query, {
-          parentId: input.parentId,
-          limit: input.limit,
-        })
+        // `SearchOptions` has no `parentId` — the service scores across the whole
+        // org — so the parent filter is applied to the results here rather than
+        // being passed in and silently ignored.
+        const matches = await folderService.search(input.query, { limit: input.limit })
+        const results =
+          input.parentId === undefined
+            ? matches
+            : matches.filter((match) => match.folder.parentId === input.parentId)
 
         logger.info('Folder search completed', {
           query: input.query,
@@ -262,7 +268,17 @@ export const folderRouter = createTRPCRouter({
       const folderService = createFolderService(organizationId, userId)
 
       try {
-        const stats = await folderService.getStats(input.folderId)
+        // `FolderService.getStats()` takes NO arguments and reports ORG-WIDE
+        // folder totals — the `folderId` passed here was dropped, so this
+        // procedure returned the same numbers for every folder. Per-folder
+        // stats come from the size/count helpers.
+        const [totalSize, deepFileCount, directFileCount, subfolderCount] = await Promise.all([
+          folderService.getFolderSize(input.folderId),
+          folderService.getDeepFileCount(input.folderId),
+          folderService.getDirectFileCount(input.folderId),
+          folderService.getSubfolderCount(input.folderId),
+        ])
+        const stats = { totalSize, deepFileCount, directFileCount, subfolderCount }
 
         logger.info('Folder stats retrieved successfully', {
           folderId: input.folderId,
@@ -348,7 +364,10 @@ export const folderRouter = createTRPCRouter({
       try {
         const folder = await folderService.create({
           name: input.name,
-          parentId: input.parentId,
+          // `CreateFolderRequest.parentId` is `?: string`; a root-level folder is
+          // the absent case, and Drizzle writes NULL for an omitted column either
+          // way, so `null` and `undefined` are the same insert.
+          parentId: input.parentId ?? undefined,
           organizationId,
           createdById: userId,
         })
@@ -378,6 +397,12 @@ export const folderRouter = createTRPCRouter({
       const folderService = createFolderService(organizationId, userId)
 
       try {
+        // KNOWN TYPE GAP (not silenced on purpose): `UpdateFolderRequest.parentId`
+        // is `?: string` in `packages/lib/src/files/core/types.ts`, but
+        // `FolderService.update` distinguishes `undefined` ("leave the parent
+        // alone") from `null` ("move to root") — coercing `null` to `undefined`
+        // here would silently break move-to-root. The declaration is what is
+        // wrong; it needs to be `parentId?: string | null`.
         const folder = await folderService.update(input.folderId, {
           name: input.name,
           parentId: input.parentId,

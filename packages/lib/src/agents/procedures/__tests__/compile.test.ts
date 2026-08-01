@@ -289,8 +289,11 @@ describe('compileProcedure', () => {
     const { errors, warnings, compiled } = compileProcedure(
       doc([prose('body')], { subProcedures: [sub('orphan', 'Orphan', [prose('x')])] })
     )
-    // Unreferenced building blocks are kept on purpose — a warning, not an error.
-    expect(errors?.some((e) => e.code === 'UNCALLED_SUBPROCEDURE')).toBeFalsy()
+    // Unreferenced building blocks are kept on purpose — a warning, not an
+    // error. `UNCALLED_SUBPROCEDURE` is not a member of `CompileError['code']`,
+    // so probing `errors` for it is a tautology the compiler now rejects;
+    // asserting NO error at all is the stronger form of "does not block publish".
+    expect(errors).toBeUndefined()
     expect(warnings?.some((w) => w.code === 'UNCALLED_SUBPROCEDURE')).toBe(true)
     // …and the sub-procedure is still compiled into the published output.
     expect(compiled.subProcedures.orphan).toBeDefined()

@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/search-text.ts
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { sql } from 'drizzle-orm'
 
@@ -297,7 +297,7 @@ export function searchTextExpressionSql(alias = 'ei'): string {
  * flush, which is a worse trade at this volume.
  */
 export async function updateSearchText(
-  db: Database,
+  db: Database | Transaction,
   entityInstanceId: string,
   organizationId: string
 ): Promise<void> {
@@ -316,7 +316,7 @@ export async function updateSearchText(
  * one related record is renamed.
  */
 export async function updateSearchTextForInstances(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   entityInstanceIds: readonly string[]
 ): Promise<void> {
@@ -339,7 +339,7 @@ export async function updateSearchTextForInstances(
  * `secondaryDisplayValue` in bulk.
  */
 export async function updateSearchTextForEntityDefinition(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   entityDefinitionId: string
 ): Promise<void> {

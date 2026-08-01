@@ -127,6 +127,12 @@ function createNestedVariable(config: {
    * For when the variable IS a resource, not a field ON a resource.
    */
   resourceId?: string
+  /**
+   * Select options carried down from the parent config — the recursive call
+   * below spreads a whole property/item config back in, so this level accepts
+   * the same shape its children declare.
+   */
+  options?: { options: Array<{ label: string; value: string }> }
   properties?: Record<
     string,
     {

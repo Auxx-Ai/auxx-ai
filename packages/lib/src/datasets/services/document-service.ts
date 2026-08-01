@@ -93,6 +93,13 @@ export class DocumentService {
         })
         .returning({ id: schema.Document.id })
 
+      if (!createdDocument) {
+        throw new DocumentProcessingError('Failed to create document', {
+          datasetId: input.datasetId,
+          filename: input.filename,
+        })
+      }
+
       // Fetch the created document with relations
       const document = await this.getById(createdDocument.id, organizationId)
 

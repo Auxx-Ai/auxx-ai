@@ -1,9 +1,10 @@
 // packages/lib/src/custom-fields/check-unique-value-typed.ts
 
 import type { ModelType } from '@auxx/database'
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import type { TypedFieldValueInput } from '@auxx/types'
 import { and, eq, ne, sql } from 'drizzle-orm'
+import { parseRecordId } from '../resources/resource-id'
 
 /**
  * Input for checking if a value is unique for a field
@@ -26,7 +27,7 @@ export interface CheckUniqueValueTypedInput {
  */
 export async function checkUniqueValueTyped(
   input: CheckUniqueValueTypedInput,
-  db: Database = database
+  db: Database | Transaction = database
 ): Promise<boolean> {
   const { fieldId, value, organizationId, modelType, entityDefinitionId, excludeEntityId } = input
 
@@ -63,7 +64,13 @@ export async function checkUniqueValueTyped(
       valueCondition = eq(schema.FieldValue.optionId, value.optionId)
       break
     case 'relationship':
-      valueCondition = eq(schema.FieldValue.relatedEntityId, value.relatedEntityId)
+      // The input carries a RecordId (`entityDefinitionId:entityInstanceId`); the
+      // column stores the bare instance id. Mirrors `typedColumnMatch`, which is
+      // the canonical (column, value) mapping for the write path.
+      valueCondition = eq(
+        schema.FieldValue.relatedEntityId,
+        parseRecordId(value.recordId).entityInstanceId
+      )
       break
     case 'json':
       // JSON fields are not typically unique, but support it anyway

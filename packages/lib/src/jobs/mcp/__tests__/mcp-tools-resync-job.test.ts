@@ -74,10 +74,7 @@ describe('mcpToolsResyncJob', () => {
       },
     ]
 
-    const result = (await mcpToolsResyncJob(makeJob())) as {
-      success: boolean
-      stats: Record<string, number>
-    }
+    const result = await mcpToolsResyncJob(makeJob())
 
     expect(result.success).toBe(true)
     expect(result.stats.installationsScanned).toBe(3)
@@ -100,17 +97,14 @@ describe('mcpToolsResyncJob', () => {
     ]
     state.syncResults = { b: { ok: false, error: 'network down' } }
 
-    const result = (await mcpToolsResyncJob(makeJob())) as { stats: Record<string, number> }
+    const result = await mcpToolsResyncJob(makeJob())
     expect(result.stats.synced).toBe(1)
     expect(result.stats.failed).toBe(1)
     expect(syncCalls).toHaveLength(2)
   })
 
   it('does nothing when there are no installations', async () => {
-    const result = (await mcpToolsResyncJob(makeJob())) as {
-      success: boolean
-      stats: Record<string, number>
-    }
+    const result = await mcpToolsResyncJob(makeJob())
     expect(result.success).toBe(true)
     expect(result.stats.installationsScanned).toBe(0)
     expect(syncCalls).toHaveLength(0)

@@ -84,11 +84,13 @@ export async function resolveReferences(
       continue
     }
 
-    // Plain FieldId (no colon) → scope to the record's entity.
-    // Anything else → keyToFieldRef discriminates ResourceFieldId vs FieldPath.
-    const ref: ResourceFieldId | FieldPath = isPlainFieldId(fieldKey)
-      ? toResourceFieldId(entityDefinitionId, toFieldId(fieldKey))
-      : (keyToFieldRef(fieldKey) as ResourceFieldId | FieldPath)
+    // `keyToFieldRef` discriminates ResourceFieldId vs FieldPath off the raw key
+    // (`fieldKeys` is a bare `string[]`, not yet a `FieldReference`); a plain
+    // FieldId (no colon) then gets scoped to the record's entity.
+    const parsedKey = keyToFieldRef(fieldKey)
+    const ref: ResourceFieldId | FieldPath = isPlainFieldId(parsedKey)
+      ? toResourceFieldId(entityDefinitionId, parsedKey)
+      : parsedKey
 
     // Terminal id (last hop) — used by the AI-to-AI guard below.
     const terminalRfId = isFieldPath(ref) ? ref[ref.length - 1]! : ref

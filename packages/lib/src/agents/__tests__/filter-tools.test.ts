@@ -8,6 +8,7 @@ import type { ResolvedAgentConfig } from '../resolve-agent-config'
 function tool(name: string, slug?: string): AgentToolDefinition {
   return {
     name,
+    displayName: name,
     description: `${name} description`,
     parameters: { type: 'object', properties: {} },
     execute: async () => ({ success: true, output: {} }),
@@ -23,6 +24,7 @@ const masterEmpty: ResolvedAgentConfig = {
   prompt: null,
   description: null,
   toolsets: [],
+  knowledge: [],
   appAccounts: {},
   toolRestrictions: {},
   modelId: null,
@@ -43,6 +45,7 @@ function agent(
       enabledTools:
         t.enabledTools === undefined || t.enabledTools === null ? null : new Set(t.enabledTools),
     })),
+    knowledge: [],
     appAccounts: {},
     toolRestrictions: {},
     modelId: null,

@@ -91,7 +91,7 @@ async function resolveFile(
       const asset = await assetService.get(id)
       if (!asset) return null
       const content = await assetService.getContent(id)
-      return { content, name: asset.name, mimeType: asset.mimeType, size: asset.size }
+      return { content, name: asset.name ?? id, mimeType: asset.mimeType, size: asset.size }
     }
 
     // sourceType === 'file' — fall through with the extracted id
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     )
 
-    return new Response(downloadResponse.buffer, {
+    return new Response(new Uint8Array(downloadResponse.buffer), {
       status: downloadResponse.status,
       headers: downloadResponse.headers,
     })

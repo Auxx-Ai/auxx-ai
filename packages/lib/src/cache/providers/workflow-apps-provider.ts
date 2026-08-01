@@ -1,5 +1,6 @@
 // packages/lib/src/cache/providers/workflow-apps-provider.ts
 
+import type { Database } from '@auxx/database'
 import { ArrayAccessor } from '../accessors'
 import type { CacheProvider } from '../org-cache-provider'
 
@@ -126,8 +127,12 @@ function dehydrateWorkflowApp(app: {
 }
 
 /** Computes all workflow apps with published workflows for an organization */
-export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
-  async compute(orgId, db) {
+// `satisfies` rather than an annotation: `CacheProvider.createAccessor` is
+// optional and returns `any`, so annotating would erase both the fact that this
+// provider HAS an accessor and the accessor's real shape (which the test and
+// `WorkflowAppsAccessor` both depend on).
+export const workflowAppsProvider = {
+  async compute(orgId: string, db: Database) {
     const apps = await db.query.WorkflowApp.findMany({
       where: (t, { eq }) => eq(t.organizationId, orgId),
       with: {
@@ -271,4 +276,4 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
       },
     })
   },
-}
+} satisfies CacheProvider<CachedWorkflowApp[]>

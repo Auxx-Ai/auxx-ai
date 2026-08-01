@@ -6,6 +6,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
+import { toFieldType } from '../field-values/stored-field-type'
 import { NotificationService } from '../notifications/notification-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { batchReadSystemValues } from './billing-projection'
@@ -243,7 +244,7 @@ async function applyOptionalLineSelections(params: {
     await fieldValueService.setValueWithType({
       recordId: toRecordId(lineItemDefId, lineInstanceId),
       fieldId: optionalSelectedField.id,
-      fieldType: optionalSelectedField.type,
+      fieldType: toFieldType(optionalSelectedField.type),
       value: { type: 'boolean', value: nextSelected },
     })
   }

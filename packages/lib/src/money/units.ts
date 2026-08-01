@@ -193,7 +193,9 @@ function extractLeadingNumber(text: string): [number, string] | null {
   const match = text.match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d+\.\d+|\.\d+|\d+)/)
   if (!match) return null
 
-  const token = match[1]
+  // The pattern is `^(…)` — group 1 spans the whole match, and `RegExpMatchArray[0]`
+  // is declared non-optional, so this is the same token without an unchecked index.
+  const token = match[0]
   const remainder = text.slice(token.length).trim()
 
   const mixed = token.match(/^(\d+)\s+(\d+)\/(\d+)$/)

@@ -16,8 +16,18 @@ import {
   ConditionContainer,
   ConditionProvider,
   type ConditionSystemConfig,
+  type Operator,
+  STANDARD_OPERATORS,
 } from '~/components/conditions'
 import { TaskSortSelect } from './task-sort-select'
+
+/**
+ * `TaskFilterFieldDefinition.operators` is typed `string[]` in lib, so keep
+ * only the names the condition system knows.
+ */
+function isOperator(name: string): name is Operator {
+  return Object.hasOwn(STANDARD_OPERATORS, name)
+}
 
 /**
  * Props for TaskFilterBar component
@@ -106,9 +116,12 @@ export function TaskFilterBar({
         label: field.label,
         type: field.type,
         fieldType: field.fieldType,
-        operators: field.operators,
+        operators: field.operators.filter(isOperator),
         description: field.description,
-        options: field.options,
+        // `TaskFilterFieldDefinition.options` is a bare `SelectOption[]`, but
+        // `FieldDefinition.options` is a `FieldOptions` envelope — the select
+        // pickers read `fieldOptions.options`, so it has to be wrapped.
+        options: field.options ? { options: field.options } : undefined,
       })),
     []
   )

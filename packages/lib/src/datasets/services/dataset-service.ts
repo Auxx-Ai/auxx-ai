@@ -513,12 +513,13 @@ export class DatasetService {
         organizationId,
       })
 
-      // Get file records
+      // Get the uploaded media assets. Uploads land in MediaAsset — `Document.mediaAssetId` is
+      // what links a dataset document back to its bytes (see files/upload/processors/dataset.ts).
       const files = fileIds.length
-        ? await this.db.query.File.findMany({
+        ? await this.db.query.MediaAsset.findMany({
             where: and(
-              eq(schema.File.organizationId, organizationId),
-              inArray(schema.File.id, fileIds)
+              eq(schema.MediaAsset.organizationId, organizationId),
+              inArray(schema.MediaAsset.id, fileIds)
             ),
           })
         : []
@@ -547,12 +548,14 @@ export class DatasetService {
             {
               title: this.extractTitleFromFilename(file.name || 'Untitled'),
               filename: file.name || 'untitled',
-              mimeType: file.mimeType ?? undefined,
-              size: file.size,
+              mimeType: file.mimeType ?? 'application/octet-stream',
+              size: file.size ?? 0,
               datasetId: dataset.id,
               uploadedById: userId,
-              fileId: file.id,
-              checksum: file.checksum ?? '',
+              mediaAssetId: file.id,
+              // MediaAsset carries no content hash; the asset id is the dedupe key that keeps the
+              // same upload from being added to a dataset twice.
+              checksum: file.id,
               originalPath: undefined, // No original path for file uploads
               processingOptions: {
                 chunkSettings: datasetChunkSettings,
@@ -575,12 +578,11 @@ export class DatasetService {
               userId,
               {
                 priority: options?.documentProcessingPriority || 1,
-                fileId: file.id,
+                mediaAssetId: file.id,
                 fileName: file.name || 'untitled',
-                filePath: file.storageKey,
-                fileSize: file.size,
-                mimeType: file.mimeType,
-                documentType,
+                fileSize: file.size ?? 0,
+                mimeType: file.mimeType ?? undefined,
+                documentType: document.type,
                 chunkingOptions: options?.chunkingOptions
                   ? {
                       strategy:
@@ -588,13 +590,13 @@ export class DatasetService {
                       chunkSize: options.chunkingOptions.chunkSize || datasetChunkSettings.size,
                       chunkOverlap:
                         options.chunkingOptions.chunkOverlap || datasetChunkSettings.overlap,
-                      preserveFormatting: options.chunkingOptions.preserveFormatting || false,
+                      preserveStructure: options.chunkingOptions.preserveFormatting || false,
                     }
                   : {
                       strategy: datasetChunkSettings.strategy,
                       chunkSize: datasetChunkSettings.size,
                       chunkOverlap: datasetChunkSettings.overlap,
-                      preserveFormatting: false,
+                      preserveStructure: false,
                     },
               }
             )
@@ -662,9 +664,11 @@ export class DatasetService {
       const trimmedSearch = filters.search.trim()
       if (trimmedSearch) {
         const searchTerm = `%${trimmedSearch}%`
-        conditions.push(
-          or(ilike(schema.Dataset.name, searchTerm), ilike(schema.Dataset.description, searchTerm))
+        const searchCondition = or(
+          ilike(schema.Dataset.name, searchTerm),
+          ilike(schema.Dataset.description, searchTerm)
         )
+        if (searchCondition) conditions.push(searchCondition)
       }
     }
 
@@ -689,7 +693,9 @@ export class DatasetService {
       conditions.push(notInArray(schema.Dataset.id, [...filters.excludeIds]))
     }
 
-    return conditions.length === 1 ? conditions[0]! : and(...conditions)
+    // `conditions` always holds at least the organization predicate, so `and()` can never see an
+    // all-undefined argument list here.
+    return conditions.length === 1 ? conditions[0]! : and(...conditions)!
   }
 
   /**

@@ -42,16 +42,31 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return new Response('Not found', { status: 404 })
     }
 
-    const { InboundAttachmentAccessService } = await import('@auxx/lib/email')
-    const attachmentAccessService = new InboundAttachmentAccessService()
+    // Resolve the stored MIME type from the attachment's asset version rather than
+    // from the DownloadRef: `mimeType` lives only on the ref's `stream` arm, and the
+    // S3 path always returns `{ type: 'url' }` — so reading it off the ref left this
+    // guard permanently false and served every MIME type inline.
+    const { database: db, schema } = await import('@auxx/database')
+    const { and, eq } = await import('drizzle-orm')
 
-    const downloadRef = await attachmentAccessService.getInlineViewUrl({
-      attachmentId,
-      organizationId,
-    })
+    const [assetVersion] = await db
+      .select({ mimeType: schema.MediaAssetVersion.mimeType })
+      .from(schema.Attachment)
+      .innerJoin(
+        schema.MediaAssetVersion,
+        eq(schema.MediaAssetVersion.id, schema.Attachment.assetVersionId)
+      )
+      .where(
+        and(
+          eq(schema.Attachment.id, attachmentId),
+          eq(schema.Attachment.organizationId, organizationId)
+        )
+      )
+      .limit(1)
 
-    // Reject unsafe MIME types for inline rendering — redirect to download instead
-    if (downloadRef.mimeType && !SAFE_INLINE_MIME_TYPES.has(downloadRef.mimeType)) {
+    // Fail closed: anything not known-safe redirects to the download route.
+    const mimeType = assetVersion?.mimeType
+    if (!mimeType || !SAFE_INLINE_MIME_TYPES.has(mimeType)) {
       return new Response(null, {
         status: 302,
         headers: {
@@ -60,6 +75,14 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         },
       })
     }
+
+    const { InboundAttachmentAccessService } = await import('@auxx/lib/email')
+    const attachmentAccessService = new InboundAttachmentAccessService()
+
+    const downloadRef = await attachmentAccessService.getInlineViewUrl({
+      attachmentId,
+      organizationId,
+    })
 
     if (downloadRef.type === 'url' && downloadRef.url) {
       return new Response(null, {

@@ -101,7 +101,7 @@ export const datasetRouter = createTRPCRouter({
       FeatureKey.datasets,
       FeatureKey.datasetsLimit,
       async () => {
-        const [{ value }] = await ctx.db
+        const [row] = await ctx.db
           .select({ value: count() })
           .from(schema.Dataset)
           .where(
@@ -110,7 +110,7 @@ export const datasetRouter = createTRPCRouter({
               eq(schema.Dataset.isManaged, false)
             )
           )
-        return value
+        return row?.value ?? 0
       }
     )
 
@@ -142,7 +142,7 @@ export const datasetRouter = createTRPCRouter({
       if (!dataset) return null
       // Include additional stats if requested
       if (input.includeStats) {
-        const [{ dc, ts }] = await ctx.db
+        const [stats] = await ctx.db
           .select({ dc: count(), ts: sum(schema.Document.size).mapWith(Number) })
           .from(schema.Document)
           .where(
@@ -153,8 +153,8 @@ export const datasetRouter = createTRPCRouter({
           )
         return {
           ...dataset,
-          documentCount: Number(dc || 0),
-          totalSize: BigInt(Math.floor((ts as number) || 0)),
+          documentCount: Number(stats?.dc || 0),
+          totalSize: BigInt(Math.floor(stats?.ts || 0)),
         }
       }
       return dataset
@@ -171,7 +171,7 @@ export const datasetRouter = createTRPCRouter({
       }
       ctx.capabilities.assertViewInstance('dataset', input.datasetId)
       // Get document processing statistics
-      const [{ total }] = await ctx.db
+      const [totalRow] = await ctx.db
         .select({ total: count() })
         .from(schema.Document)
         .where(
@@ -180,7 +180,7 @@ export const datasetRouter = createTRPCRouter({
             eq(schema.Document.organizationId, organizationId)
           )
         )
-      const [{ processed }] = await ctx.db
+      const [processedRow] = await ctx.db
         .select({ processed: count() })
         .from(schema.Document)
         .where(
@@ -212,9 +212,9 @@ export const datasetRouter = createTRPCRouter({
         activeJobs: statusCounts.PROCESSING || 0,
         completedJobs: statusCounts.INDEXED || 0,
         failedJobs: statusCounts.FAILED || 0,
-        totalDocuments: Number(total || 0),
-        processedDocuments: Number(processed || 0),
-        estimatedTimeRemaining: statusCounts.PROCESSING > 0 ? '5-10 minutes' : null,
+        totalDocuments: Number(totalRow?.total || 0),
+        processedDocuments: Number(processedRow?.processed || 0),
+        estimatedTimeRemaining: (statusCounts.PROCESSING ?? 0) > 0 ? '5-10 minutes' : null,
       }
     }),
   /**
@@ -380,7 +380,7 @@ export const datasetRouter = createTRPCRouter({
       scope.excludeIds?.length ? notInArray(schema.Dataset.id, scope.excludeIds) : undefined,
       scope.includeIds ? inArray(schema.Dataset.id, scope.includeIds) : undefined
     )
-    const [{ totalCount }] = await ctx.db
+    const [totalCountRow] = await ctx.db
       .select({ totalCount: count() })
       .from(schema.Dataset)
       .where(userDatasetFilter)
@@ -389,11 +389,11 @@ export const datasetRouter = createTRPCRouter({
       .from(schema.Dataset)
       .where(userDatasetFilter)
       .groupBy(schema.Dataset.status)
-    const [{ docSum }] = await ctx.db
+    const [docSumRow] = await ctx.db
       .select({ docSum: sum(schema.Dataset.documentCount).mapWith(Number) })
       .from(schema.Dataset)
       .where(userDatasetFilter)
-    const [{ sizeSum }] = await ctx.db
+    const [sizeSumRow] = await ctx.db
       .select({ sizeSum: sum(schema.Dataset.totalSize).mapWith(Number) })
       .from(schema.Dataset)
       .where(userDatasetFilter)
@@ -406,10 +406,10 @@ export const datasetRouter = createTRPCRouter({
       {} as Record<string, number>
     )
     return {
-      total: Number(totalCount || 0),
+      total: Number(totalCountRow?.totalCount || 0),
       byStatus,
-      totalDocuments: Number(docSum || 0),
-      totalSize: BigInt(Math.floor((sizeSum as number) || 0)),
+      totalDocuments: Number(docSumRow?.docSum || 0),
+      totalSize: BigInt(Math.floor(sizeSumRow?.sizeSum || 0)),
     }
   }),
   /**

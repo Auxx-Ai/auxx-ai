@@ -1,7 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/__tests__/find-threads.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ToolContext } from '../../../../../agent-framework/types'
+import type { ToolContext } from '../../../../../agent-framework/tool-context'
 import type { GetToolDeps } from '../../../types'
 import { buildThreadConditions, createFindThreadsTool } from '../find-threads'
 

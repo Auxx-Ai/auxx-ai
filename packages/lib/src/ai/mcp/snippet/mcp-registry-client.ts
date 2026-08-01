@@ -71,7 +71,7 @@ function pickRemote(
   remotes: RegistryServer['remotes']
 ): Pick<RegistryRemoteHit, 'url' | 'transport' | 'requiredHeaders'> | null {
   if (!remotes?.length) return null
-  const requiredHeaders = (r: RegistryServer['remotes'][number]) =>
+  const requiredHeaders = (r: NonNullable<RegistryServer['remotes']>[number]) =>
     (r.headers ?? []).filter((h) => h.isRequired && !h.isSecret && h.name).map((h) => h.name!)
 
   const http = remotes.find((r) => r.type === 'streamable-http' && r.url)

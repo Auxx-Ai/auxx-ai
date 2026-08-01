@@ -11,7 +11,12 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { buildFieldValueRow, setValueWithType } from '../../field-values/field-value-mutations'
-import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
+import { toFieldType } from '../../field-values/stored-field-type'
+import {
+  type FieldValueUpdateEntry,
+  getRealtimeService,
+  publishFieldValueUpdates,
+} from '../../realtime'
 import type { EntityTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:bom-movement')
@@ -478,7 +483,7 @@ async function batchRecalculateQoH(
 
   // 3. Batch write QoH + stock_status (2 queries: 1 bulk delete + 1 bulk insert)
   const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-  const realtimeEntries: Array<{ key: string; value: unknown }> = []
+  const realtimeEntries: FieldValueUpdateEntry[] = []
 
   const insertRows: Array<typeof schema.FieldValue.$inferInsert> = []
 
@@ -584,7 +589,7 @@ async function clearAdjustSubpartsFlag(
   await setValueWithType(ctx, {
     recordId,
     fieldId: flagField.id,
-    fieldType: flagField.type,
+    fieldType: toFieldType(flagField.type),
     value: { type: 'boolean', value: false },
   })
 }

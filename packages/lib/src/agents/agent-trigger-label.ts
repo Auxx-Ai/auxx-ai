@@ -2,6 +2,7 @@
 
 import cronstrue from 'cronstrue'
 import type { ScheduledTriggerConfig } from '../workflows/cron-pattern'
+import { parseScheduledTriggerConfig } from './agent-trigger-config'
 
 /**
  * Derives a human-readable label for a trigger row. The agent UI calls
@@ -34,8 +35,10 @@ function baseLabel(trigger: {
   config: Record<string, unknown>
 }): string {
   switch (trigger.kind) {
-    case 'scheduled':
-      return scheduledLabel(trigger.config as ScheduledTriggerConfig)
+    case 'scheduled': {
+      const config = parseScheduledTriggerConfig(trigger.config)
+      return config ? scheduledLabel(config) : 'Schedule'
+    }
     case 'event':
       if (trigger.entityDefinitionId && trigger.triggerType) {
         return `On ${trigger.entityDefinitionId}:${trigger.triggerType}`

@@ -10,7 +10,7 @@ import type { ResourceField } from '../field-types'
 export const PAYMENT_METHOD_OPTIONS = [
   { label: 'Cash', value: 'cash', color: 'green' },
   { label: 'Check', value: 'check', color: 'blue' },
-  { label: 'Card', value: 'card', color: 'violet' },
+  { label: 'Card', value: 'card', color: 'purple' },
   { label: 'Bank transfer', value: 'bank', color: 'teal' },
   { label: 'Other', value: 'other', color: 'gray' },
 ] as const

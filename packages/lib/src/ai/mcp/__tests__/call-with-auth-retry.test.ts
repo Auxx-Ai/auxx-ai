@@ -41,7 +41,7 @@ vi.mock('../client', () => ({
   mcpCallTool: async () => {
     const outcome = state.callOutcomes.shift() ?? 'ok'
     if (outcome === 'ok') return { text: 'result', isError: false }
-    if (outcome === 'auth') throw new McpAuthError('401', {})
+    if (outcome === 'auth') throw new McpAuthError('401', { status: 401 })
     throw outcome
   },
 }))

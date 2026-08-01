@@ -4,6 +4,7 @@ import type { RowSelectionState } from '@tanstack/react-table'
 import { useShallow } from 'zustand/react/shallow'
 import { useSelectionStore } from '../stores/selection-store'
 import type { CellSelectionState } from '../types'
+import { isSingleCell } from '../utils/range'
 
 // ============================================================================
 // STABLE REFERENCES (prevent unnecessary re-renders)
@@ -37,9 +38,19 @@ export function useLastSelectedIndex(tableId: string): number | null {
 // CELL SELECTION SELECTORS
 // ============================================================================
 
-/** Get selected cell for table */
+/**
+ * Get the selected cell for a table.
+ * `range` is the source of truth; this is the 1×1 shim, mirroring the store's
+ * own `getSelectedCell`.
+ */
 export function useSelectedCell(tableId: string): CellSelectionState | null {
-  return useSelectionStore((state) => state.tables[tableId]?.selectedCell ?? null)
+  return useSelectionStore(
+    useShallow((state) => {
+      const range = state.tables[tableId]?.range
+      if (!range || !isSingleCell(range)) return null
+      return { rowId: range.focus.rowId, columnId: range.focus.columnId }
+    })
+  )
 }
 
 /** Get editing cell for table */

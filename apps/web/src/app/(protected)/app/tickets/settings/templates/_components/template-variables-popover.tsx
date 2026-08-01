@@ -117,7 +117,7 @@ const getVariableGroups = (templateType: string): VariableGroup[] => {
       ]
 
     case 'TICKET_CLOSED':
-      baseGroups[0].items.push({
+      baseGroups[0]?.items.push({
         id: 'ticket-closed',
         label: 'Closed At',
         value: '{{ticket.closedAt}}',

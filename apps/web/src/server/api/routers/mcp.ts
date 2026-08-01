@@ -124,7 +124,18 @@ async function getServerEndpoint(serverId: string): Promise<string | null> {
 async function getAuthPosture(
   serverId: string,
   organizationId: string,
-  connectionType: 'oauth2-code' | 'secret' | 'none' | null
+  // The full `McpServerSummary['connectionType']` union from the org cache.
+  // `client-credentials` and `hosted-provision` were missing here; they take the
+  // `!== 'secret'` branch below and report `authPosture: null`, which is the
+  // behaviour they already had — naming them keeps the caller type-checked so a
+  // future vocabulary addition shows up here instead of silently widening.
+  connectionType:
+    | 'oauth2-code'
+    | 'client-credentials'
+    | 'secret'
+    | 'hosted-provision'
+    | 'none'
+    | null
 ): Promise<{
   authPosture: 'oauth' | 'bearer' | 'headers' | 'none' | null
   authHeaderName: string | null

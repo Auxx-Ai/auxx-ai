@@ -212,7 +212,7 @@ export const agentRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const args = input ?? {}
+      const args: Partial<NonNullable<typeof input>> = input ?? {}
 
       // Full — no instance exists yet to key on, so the coarse `agentsManage`
       // rung is the gate. That rung is never derived from instance grants, so a

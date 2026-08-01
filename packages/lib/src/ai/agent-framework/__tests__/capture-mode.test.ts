@@ -105,6 +105,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'create',
         parameters: { type: 'object', properties: { title: { type: 'string' } }, required: [] },
         requiresApproval: true,
@@ -112,6 +113,7 @@ describe('AgentEngine — capture mode', () => {
       },
       {
         name: 'spawn_work_item',
+        displayName: 'Spawn work item',
         description: 'spawn',
         parameters: { type: 'object', properties: { name: { type: 'string' } }, required: [] },
         requiresApproval: true,
@@ -153,6 +155,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'risky_tool',
+        displayName: 'Risky tool',
         description: 'r',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresApproval: true,
@@ -178,6 +181,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'search_entities',
+        displayName: 'Search entities',
         description: 's',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => {
@@ -187,6 +191,7 @@ describe('AgentEngine — capture mode', () => {
       },
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresApproval: true,
@@ -233,6 +238,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'list_threads',
+        displayName: 'List threads',
         description: 'l',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => {
@@ -242,6 +248,7 @@ describe('AgentEngine — capture mode', () => {
       },
       {
         name: 'search_entities',
+        displayName: 'Search entities',
         description: 's',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => {
@@ -251,6 +258,7 @@ describe('AgentEngine — capture mode', () => {
       },
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: { type: 'object', properties: { title: { type: 'string' } }, required: [] },
         requiresApproval: true,
@@ -297,6 +305,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: { type: 'object', properties: { title: { type: 'string' } }, required: [] },
         requiresApproval: true,
@@ -343,6 +352,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'transition_stage',
+        displayName: 'Transition stage',
         description: 't',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresApproval: true,
@@ -372,6 +382,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: { type: 'object', properties: { title: { type: 'string' } }, required: [] },
         requiresApproval: true,
@@ -380,6 +391,7 @@ describe('AgentEngine — capture mode', () => {
       },
       {
         name: 'update_task',
+        displayName: 'Update task',
         description: 'u',
         parameters: {
           type: 'object',
@@ -430,6 +442,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: {
           type: 'object',
@@ -473,6 +486,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresApproval: true,
@@ -515,6 +529,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'flaky',
+        displayName: 'Flaky',
         description: 'f',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresApproval: true,
@@ -548,6 +563,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresApproval: true,
@@ -574,6 +590,7 @@ describe('AgentEngine — capture mode', () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
+        displayName: 'Create task',
         description: 'c',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresApproval: true,

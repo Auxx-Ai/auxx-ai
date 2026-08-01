@@ -77,6 +77,7 @@ function buildEngine(turns: ScriptedTurn[]) {
 
   const writer: AgentToolDefinition = {
     name: 'writer',
+    displayName: 'Writer',
     description: 'an approval-gated tool that pauses the turn',
     parameters: { type: 'object', properties: {}, required: [] },
     requiresApproval: true,

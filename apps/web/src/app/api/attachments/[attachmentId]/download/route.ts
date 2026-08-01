@@ -50,10 +50,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (downloadRef.type === 'stream' && downloadRef.stream) {
       const buffer = await streamToBuffer(downloadRef.stream)
 
-      return new Response(buffer, {
+      // `DownloadRef`'s stream arm carries no filename, so fall back to the id.
+      return new Response(new Uint8Array(buffer), {
         headers: {
           'Content-Type': downloadRef.mimeType || 'application/octet-stream',
-          'Content-Disposition': `attachment; filename="${downloadRef.filename}"`,
+          'Content-Disposition': `attachment; filename="${attachmentId}"`,
           'Content-Length': buffer.length.toString(),
         },
       })

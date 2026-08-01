@@ -30,7 +30,7 @@ export function convertConditionsToFilterProps(conditions: Condition[]): TaskFil
       case 'priority':
         if (condition.operator === 'in' && Array.isArray(condition.value)) {
           result.priority = condition.value as TaskPriority[]
-        } else if (condition.operator === 'equals' && condition.value) {
+        } else if (condition.operator === 'is' && condition.value) {
           result.priority = [condition.value as TaskPriority]
         }
         break

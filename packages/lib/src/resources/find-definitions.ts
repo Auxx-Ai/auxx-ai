@@ -71,8 +71,11 @@ function buildFindConfig(resourceType: TableId): ResourceFindConfig {
 /**
  * Resource configurations for find operations
  * Built from the unified resource field registry
+ *
+ * Partial by design: entity-definition-backed types (contact, ticket, part, …)
+ * are validated at runtime instead, so reads must handle a missing entry.
  */
-export const FIND_RESOURCE_CONFIGS: Record<TableId, ResourceFindConfig> = {
+export const FIND_RESOURCE_CONFIGS: Partial<Record<TableId, ResourceFindConfig>> = {
   // contact: buildFindConfig('contact'),
   ticket: buildFindConfig('ticket'),
   user: buildFindConfig('user'),

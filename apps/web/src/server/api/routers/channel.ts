@@ -728,7 +728,10 @@ export const channelRouter = createTRPCRouter({
       const { userId, organizationId } = ctx.session
 
       const syncer = new SyncMessages(ctx.db, organizationId, userId)
-      return await syncer.sync({ integrationId, since })
+      // `SyncInputProps.since` is a `Date` and `SyncMessages` calls
+      // `since.toISOString()` — passing the raw ISO string through threw
+      // `since.toISOString is not a function` on any call that supplied it.
+      return await syncer.sync({ integrationId, since: since ? new Date(since) : undefined })
     }),
 
   /**
@@ -867,7 +870,10 @@ export const channelRouter = createTRPCRouter({
         type: imapProviderKey,
         connectionDefinitionId: await resolveChannelDefinitionId(ctx.db, imapProviderKey),
         name: `IMAP - ${input.email}`,
-        ...splitSensitiveFields(credentialData as Record<string, unknown>),
+        // Spread into a `Record` rather than casting: `ImapCredentialData` is an
+        // `interface`, and interfaces get no implicit index signature, so
+        // `as Record<string, unknown>` is a TS2352 rather than a widening.
+        ...splitSensitiveFields({ ...credentialData }),
       })
       if (created.isErr()) {
         throw new TRPCError({
@@ -893,6 +899,12 @@ export const channelRouter = createTRPCRouter({
           updatedAt: new Date(),
         })
         .returning()
+      if (!integration) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to create IMAP integration',
+        })
+      }
 
       const linkResult = await linkChannelToInbox(
         { db: ctx.db, organizationId },

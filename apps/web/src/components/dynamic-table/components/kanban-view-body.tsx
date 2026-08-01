@@ -22,7 +22,6 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   const { tableId, isLoading, entityDefinitionId } = useTableConfig<TData>()
   const { table } = useTableInstance<TData>()
   const {
-    selectFields,
     customFields,
     onCardClick,
     onAddCard,
@@ -50,11 +49,21 @@ export function KanbanViewBody<TData extends KanbanRow>() {
   // Effective column order
   const effectiveColumnOrder = localColumnOrder ?? kanbanConfig?.columnOrder ?? []
 
-  // Get groupBy field
+  // Get groupBy field. Sourced from `customFields` rather than the context's
+  // narrow `selectFields` projection ({id,name,options}) because KanbanView
+  // needs the full field definition. Kept to the same eligibility rule
+  // `selectFields` applies: an active SINGLE_SELECT.
   const groupByField = useMemo(() => {
-    if (!kanbanConfig?.groupByFieldId || !selectFields) return null
-    return selectFields.find((f) => f.id === kanbanConfig.groupByFieldId) ?? null
-  }, [kanbanConfig?.groupByFieldId, selectFields])
+    if (!kanbanConfig?.groupByFieldId) return null
+    return (
+      customFields.find(
+        (f) =>
+          f.id === kanbanConfig.groupByFieldId &&
+          f.fieldType === 'SINGLE_SELECT' &&
+          f.active !== false
+      ) ?? null
+    )
+  }, [kanbanConfig?.groupByFieldId, customFields])
 
   // Derive primaryFieldId from viewConfig or resource - convert to ResourceFieldId
   const primaryFieldId = useMemo(() => {
@@ -74,29 +83,21 @@ export function KanbanViewBody<TData extends KanbanRow>() {
 
   // Handle column reorder with optimistic updates
   const handleColumnReorder = useCallback(
-    (newColumnOrder: string[]) => {
+    async (newColumnOrder: string[]) => {
       setLocalColumnOrder(newColumnOrder)
       updateKanbanConfig({ columnOrder: newColumnOrder })
     },
     [updateKanbanConfig]
   )
 
-  // If no valid kanban config, don't render
-  if (!kanbanConfig || !groupByField) {
-    return (
-      <div className='flex items-center justify-center h-64 text-muted-foreground'>
-        Kanban view requires a valid groupBy field configuration.
-      </div>
-    )
-  }
-
-  // Build effective config with optimistic column order
+  // Build effective config with optimistic column order. `groupByFieldId` is
+  // taken from the resolved field so the config satisfies KanbanViewConfig.
   const effectiveConfig = useMemo(
-    () => ({
-      ...kanbanConfig,
-      columnOrder: effectiveColumnOrder,
-    }),
-    [kanbanConfig, effectiveColumnOrder]
+    () =>
+      kanbanConfig && groupByField
+        ? { ...kanbanConfig, groupByFieldId: groupByField.id, columnOrder: effectiveColumnOrder }
+        : null,
+    [kanbanConfig, groupByField, effectiveColumnOrder]
   )
 
   // Queue fetch for groupByField values (kanban grouping requires these)
@@ -116,6 +117,17 @@ export function KanbanViewBody<TData extends KanbanRow>() {
       }))
     )
   }, [kanbanConfig?.groupByFieldId, entityDefinitionId, table])
+
+  // If no valid kanban config, don't render. Placed AFTER every hook — an early
+  // return above them changes the hook count between renders and React throws
+  // "rendered fewer hooks than expected" the moment the config becomes valid.
+  if (!effectiveConfig || !groupByField || !entityDefinitionId) {
+    return (
+      <div className='flex items-center justify-center h-64 text-muted-foreground'>
+        Kanban view requires a valid groupBy field configuration.
+      </div>
+    )
+  }
 
   // Get data from table rows
   const data = table.getRowModel().rows.map((row) => row.original) as TData[]

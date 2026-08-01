@@ -2,27 +2,27 @@
 
 'use client'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import type { ActorId } from '@auxx/types/actor'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import type { TaskGroupVariant } from '../utils/group-tasks'
 
 /**
  * Props for TasksListHeader component
  */
 interface TasksListHeaderProps {
-  /** Group title (e.g., "Today", "Overdue", user name) */
+  /** Group title (e.g., "Today", "Overdue"). Empty for assignee groups. */
   title: string
   /** Number of tasks in this group */
   count: number
   /** Visual variant for urgency/type indication */
   variant?: TaskGroupVariant
-  /** Optional metadata (e.g., user image for assignee groups) */
+  /** Optional metadata (the assignee this group belongs to) */
   meta?: {
-    userImage?: string | null
-    userId?: string | null
+    actorId?: ActorId
   }
   /** Whether the group is collapsed */
   isCollapsed: boolean
@@ -55,18 +55,14 @@ export function TasksListHeader({
 
   return (
     <div className='flex items-center gap-2 pb-1'>
-      {/* Avatar for assignee groups */}
-      {meta?.userImage !== undefined && (
-        <Avatar className='size-5'>
-          <AvatarImage src={meta.userImage ?? undefined} />
-          <AvatarFallback className='text-xs'>{title.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
+      {/* Assignee groups resolve their own name/avatar from the actor id */}
+      {meta?.actorId ? (
+        <ActorBadge actorId={meta.actorId} size='sm' />
+      ) : (
+        <Badge variant='pill' size='sm' className={cn(variantClass)}>
+          {title}
+        </Badge>
       )}
-
-      {/* Title Badge */}
-      <Badge variant='pill' size='sm' className={cn(variantClass)}>
-        {title}
-      </Badge>
 
       {/* Task Count */}
       <span className='text-xs text-muted-foreground'>

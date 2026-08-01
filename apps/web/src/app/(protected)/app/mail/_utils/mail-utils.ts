@@ -72,23 +72,23 @@ export function parseMailboxContext(pathname: string): MailboxContext {
       break
     case 'tag':
       contextType = 'tag'
-      contextId = pathSegments[4] // Tag ID from path
+      contextId = pathSegments[4] ?? '' // Tag ID from path
       break
     case 'view':
       contextType = 'view'
-      contextId = pathSegments[4] // View ID from path
+      contextId = pathSegments[4] ?? '' // View ID from path
       break
     case 'inboxes':
       if (pathSegments[4] === 'all') {
         contextType = 'all_inboxes'
       } else {
         contextType = 'specific_inbox'
-        contextId = pathSegments[4] // Inbox ID from path
+        contextId = pathSegments[4] ?? '' // Inbox ID from path
       }
       break
     case 'personal':
       contextType = 'personal_channel'
-      contextId = pathSegments[4] // Personal inbox ID from path
+      contextId = pathSegments[4] ?? '' // Personal inbox ID from path
       break
     default:
       // Fallback for unknown context types
@@ -126,7 +126,8 @@ export function constructTabNavigationPath(currentPathname: string, newStatusSlu
 
   // Search backwards for the status slug
   for (let i = basePathSegments.length - 1; i >= 0; i--) {
-    if (isValidStatusSlug(basePathSegments[i])) {
+    const segment = basePathSegments[i]
+    if (segment && isValidStatusSlug(segment)) {
       statusIndex = i
       break
     }

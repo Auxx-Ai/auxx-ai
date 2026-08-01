@@ -44,9 +44,10 @@ export function DndDebugOverlay({
     const rects: DebugRect[] = []
 
     // Get draggable rectangles
-    draggableNodes.forEach((node, id) => {
-      if (node.current) {
-        const rect = node.current.getBoundingClientRect()
+    draggableNodes.forEach((draggable, id) => {
+      const element = draggable?.node.current
+      if (element) {
+        const rect = element.getBoundingClientRect()
         rects.push({
           id: String(id),
           rect,
@@ -73,6 +74,10 @@ export function DndDebugOverlay({
   }, [enabled, active, over, droppableContainers, draggableNodes])
 
   if (!enabled) return null
+
+  // `active.rect` holds the pre-drag rect plus the transform-adjusted one; the
+  // translated rect is what the collision detection actually compares against.
+  const activeRect = active?.rect.current.translated ?? active?.rect.current.initial ?? null
 
   return (
     <div className='fixed inset-0 pointer-events-none z-[9999]'>
@@ -143,17 +148,17 @@ export function DndDebugOverlay({
         <div className='absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-sm font-mono'>
           <div>Active: {active.id}</div>
           <div>Over: {over.id}</div>
-          {active.rect.current && over.rect && (
+          {activeRect && over.rect && (
             <div>
               Distance:{' '}
               {Math.round(
                 Math.sqrt(
-                  (active.rect.current.left +
-                    active.rect.current.width / 2 -
+                  (activeRect.left +
+                    activeRect.width / 2 -
                     (over.rect.left + over.rect.width / 2)) **
                     2 +
-                    (active.rect.current.top +
-                      active.rect.current.height / 2 -
+                    (activeRect.top +
+                      activeRect.height / 2 -
                       (over.rect.top + over.rect.height / 2)) **
                       2
                 )

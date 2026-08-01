@@ -57,13 +57,16 @@ export function RowDndProvider<TData>({ children }: RowDndProviderProps<TData>) 
         (id) => table.getState().rowSelection[id]
       )
 
-      const itemsToDrag = selectedRowIds.map((id) => table.getRow(id))
+      // Store the underlying rows, not TanStack `Row` wrappers: every consumer
+      // of `activeDragItems` (`canDrop`, `dragPreview`, `onDrop`) is typed and
+      // written against `TData`.
+      const itemsToDrag = selectedRowIds.map((id) => table.getRow(id).original)
       if (!selectedRowIds.includes(activeId)) {
-        itemsToDrag.push(table.getRow(activeId))
+        itemsToDrag.push(table.getRow(activeId).original)
       }
 
       setActiveDragItems(itemsToDrag)
-      dragDropConfig?.onDragStart?.(itemsToDrag.map((r) => r.original))
+      dragDropConfig?.onDragStart?.(itemsToDrag)
     },
     [table, setActiveDragItems, dragDropConfig]
   )
@@ -72,7 +75,7 @@ export function RowDndProvider<TData>({ children }: RowDndProviderProps<TData>) 
   const handleRowDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event
-      const dragged = (activeDragItems ?? []).map((r) => r.original)
+      const dragged = activeDragItems ?? []
 
       if (!over) {
         dragDropConfig?.onDragCancel?.()

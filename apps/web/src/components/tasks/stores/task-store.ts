@@ -17,13 +17,20 @@ const BATCH_DELAY = 50
 const MAX_BATCH_SIZE = 100
 
 /**
+ * Completion timestamp, mirroring `TaskWithRelations['completedAt']` — the
+ * store caches wire entities, and superjson deserializes those to real `Date`s.
+ * The ISO string only exists on the mutation input (`z.string().datetime()`).
+ */
+export type TaskCompletedAt = Date | null
+
+/**
  * Pending completion state for optimistic updates
  */
 interface PendingCompletion {
-  /** New completion state (Date ISO string or null) */
-  completedAt: string | null
+  /** New completion state */
+  completedAt: TaskCompletedAt
   /** Original completion state for rollback */
-  originalCompletedAt: string | null
+  originalCompletedAt: TaskCompletedAt
   /** Timestamp when the change was initiated */
   timestamp: number
   /** Version for race condition handling */
@@ -83,7 +90,7 @@ interface TaskStoreState {
    * Set optimistic completion state for a task.
    * Returns the version number for race condition handling.
    */
-  setOptimisticCompletion: (taskId: string, completedAt: string | null) => number
+  setOptimisticCompletion: (taskId: string, completedAt: TaskCompletedAt) => number
 
   /**
    * Confirm a pending completion (on mutation success).
@@ -101,7 +108,7 @@ interface TaskStoreState {
    * Get the effective completion state for a task.
    * Returns pending optimistic state if exists, otherwise stored state.
    */
-  getEffectiveCompletedAt: (taskId: string) => string | null | undefined
+  getEffectiveCompletedAt: (taskId: string) => TaskCompletedAt | undefined
 
   /**
    * Check if a task has a pending completion change.

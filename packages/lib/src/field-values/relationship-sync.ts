@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/relationship-sync.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { RelationshipType } from '@auxx/types/custom-field'
 import { generateKeyBetween, nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { and, eq, inArray, sql } from 'drizzle-orm'
@@ -11,7 +11,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 
 /** Context required for all sync operations */
 export interface RelationshipSyncContext {
-  db: Database
+  db: Database | Transaction
   organizationId: string
 }
 

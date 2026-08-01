@@ -16,8 +16,7 @@ export function resolveDomain(rawValue: string, _config: ResolutionConfig): Reso
 
   // Extract domain from email
   if (trimmed.includes('@')) {
-    const parts = trimmed.split('@')
-    domain = parts[parts.length - 1]
+    domain = trimmed.slice(trimmed.lastIndexOf('@') + 1)
   }
 
   // Extract domain from URL

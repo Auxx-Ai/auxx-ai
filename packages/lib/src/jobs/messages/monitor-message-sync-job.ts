@@ -2,6 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import type { MessageSyncCompleteEvent, MessageSyncFailedEvent } from '../../events/types'
@@ -218,7 +219,7 @@ export const monitorMessageSyncJob = async (ctx: JobContext<MonitorMessageSyncJo
       await Promise.all(
         jobsToCleanUp.map((childJob) => {
           logger.debug(`Removing child job ${childJob.id} for sync job ${syncJobId}`)
-          return childJob.remove().catch((err) => {
+          return childJob.remove().catch((err: unknown) => {
             // Log error but don't fail the monitor job because cleanup failed
             logger.error(
               `Failed to remove child job ${childJob.id} during cleanup for sync job ${syncJobId}`,

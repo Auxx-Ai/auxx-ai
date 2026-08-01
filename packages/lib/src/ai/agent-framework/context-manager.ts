@@ -65,11 +65,16 @@ export function estimateMessageTokens(messages: SessionMessage[]): number {
  * context that wastes tokens.
  */
 export function stripStaleThinkingParts(messages: SessionMessage[]): SessionMessage[] {
-  const lastIdx = messages.findLastIndex(
-    (m) =>
-      m.role === 'assistant' &&
-      (m as AssistantSessionMessage).parts?.some((p) => p.type === 'thinking')
-  )
+  // Hand-rolled reverse scan: `Array.prototype.findLastIndex` is ES2023 and the
+  // repo's `target` is ES2022, so it is not in the ambient lib.
+  let lastIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.role === 'assistant' && m.parts?.some((p) => p.type === 'thinking')) {
+      lastIdx = i
+      break
+    }
+  }
   if (lastIdx === -1) return messages
   return messages.map((msg, i) => {
     if (i >= lastIdx || msg.role !== 'assistant') return msg

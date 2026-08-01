@@ -270,10 +270,7 @@ export async function getThumbnailCleanupStats(organizationId?: string): Promise
             eq(schema.MediaAssetVersion.status, 'FAILED'),
             and(
               eq(schema.MediaAssetVersion.status, 'PROCESSING'),
-              lt(
-                schema.MediaAssetVersion.createdAt,
-                new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-              )
+              lt(schema.MediaAssetVersion.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000))
             )
           ),
           organizationId ? eq(schema.MediaAsset.organizationId, organizationId) : sql`1=1`,
@@ -291,10 +288,7 @@ export async function getThumbnailCleanupStats(organizationId?: string): Promise
       .where(
         and(
           isNotNull(schema.MediaAssetVersion.derivedFromVersionId),
-          lt(
-            schema.MediaAssetVersion.deletedAt,
-            new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-          ),
+          lt(schema.MediaAssetVersion.deletedAt, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
           organizationId ? eq(schema.MediaAsset.organizationId, organizationId) : sql`1=1`,
           or(eq(schema.MediaAsset.kind, 'THUMBNAIL'), eq(schema.MediaAsset.purpose, 'DERIVED'))
         )

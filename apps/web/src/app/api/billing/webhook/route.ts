@@ -21,8 +21,13 @@ import { type NextRequest, NextResponse } from 'next/server'
  */
 const logger = createScopedLogger('billing-webhook')
 
-/** Structural slice of a Stripe event — avoids pulling the `stripe` dep into web. */
-type StripeWebhookEvent = { id: string; type: string; data: { object: Record<string, unknown> } }
+/**
+ * Structural slice of a Stripe event — avoids pulling the `stripe` dep into web.
+ * `data.object` stays `unknown`: Stripe's real union of resource interfaces has no
+ * index signature, so `Record<string, unknown>` would reject every concrete event.
+ * Callers narrow the fields they actually read.
+ */
+type StripeWebhookEvent = { id: string; type: string; data: { object: unknown } }
 
 /**
  * Append a billing audit row from a Stripe webhook. No user/request context — the
@@ -44,7 +49,7 @@ function auditStripeBilling(
     actorType: 'integration',
     actorId: null,
     targetType,
-    targetId: (event.data.object.id as string | undefined) ?? null,
+    targetId: (event.data.object as { id?: string }).id ?? null,
     metadata: { provider: 'stripe', eventId: event.id, eventType: event.type, ...extraMetadata },
     context: { ipAddress: null, userAgent: null, sessionId: null },
   })

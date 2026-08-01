@@ -105,7 +105,7 @@ const pathToStep: Record<string, 1 | 2 | 3 | 4> = {
 /**
  * Maps step numbers to route paths
  */
-const stepToPath: Record<number, string> = {
+const stepToPath: Record<1 | 2 | 3 | 4, string> = {
   1: '/onboarding/personal',
   2: '/onboarding/organization',
   3: '/onboarding/connections',

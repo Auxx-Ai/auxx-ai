@@ -268,7 +268,7 @@ export const ArticleKind = {
     { value: 'page', label: 'Page', color: 'blue' },
     { value: 'category', label: 'Category', color: 'purple' },
     { value: 'header', label: 'Section Header', color: 'gray' },
-    { value: 'tab', label: 'Tab', color: 'cyan' },
+    { value: 'tab', label: 'Tab', color: 'teal' },
     { value: 'link', label: 'Link', color: 'amber' },
   ] satisfies FieldOptionItem[],
 } as const
@@ -370,7 +370,7 @@ export const StockStatus = {
 
   values: [
     { value: 'out_of_stock', label: 'Out of Stock', color: 'red' },
-    { value: 'low_stock', label: 'Low Stock', color: 'yellow' },
+    { value: 'low_stock', label: 'Low Stock', color: 'amber' },
     { value: 'in_stock', label: 'In Stock', color: 'green' },
   ] satisfies FieldOptionItem[],
 } as const

@@ -131,6 +131,7 @@ describe('AgentDomainConfig.transformToolResult — live tool-call path', () => 
   it('rewrites the LLM-visible tool message after onToolResult', async () => {
     const sentinelTool: AgentToolDefinition = {
       name: 'emit_sentinel',
+      displayName: 'Emit sentinel',
       description: 't',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => ({ success: true, output: { _patch: 42 } }),
@@ -163,6 +164,7 @@ describe('AgentDomainConfig.transformToolResult — live tool-call path', () => 
   it('runs after onToolResult, with state mining already applied', async () => {
     const sentinelTool: AgentToolDefinition = {
       name: 'emit',
+      displayName: 'Emit',
       description: 't',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => ({ success: true, output: { delta: 1 } }),
@@ -194,6 +196,7 @@ describe('AgentDomainConfig.transformToolResult — live tool-call path', () => 
   it('flips success → false when the transform returns a recoverable error', async () => {
     const sentinelTool: AgentToolDefinition = {
       name: 'emit',
+      displayName: 'Emit',
       description: 't',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => ({ success: true, output: { _patch: 1 } }),
@@ -225,6 +228,7 @@ describe('AgentDomainConfig.transformToolResult — approval resume path', () =>
   it('rewrites the tool message when an approved tool returns a sentinel', async () => {
     const approvalTool: AgentToolDefinition = {
       name: 'risky',
+      displayName: 'Risky',
       description: 't',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -261,6 +265,7 @@ describe('AgentEngineConfig overrides — kopilot cap lifts', () => {
     let calls = 0
     const approvalTool: AgentToolDefinition = {
       name: 'risky',
+      displayName: 'Risky',
       description: 't',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -295,6 +300,7 @@ describe('AgentEngineConfig overrides — kopilot cap lifts', () => {
   it('with the framework default (5), the 6th approval surfaces a turn-error', async () => {
     const approvalTool: AgentToolDefinition = {
       name: 'risky',
+      displayName: 'Risky',
       description: 't',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,

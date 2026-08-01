@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: 'Quote not found' }, { status: 404 })
   }
 
-  return new NextResponse(result.buffer, {
+  return new NextResponse(new Uint8Array(result.buffer), {
     headers: {
       'Content-Type': result.contentType,
       'Content-Disposition': `attachment; filename="${result.filename}"`,

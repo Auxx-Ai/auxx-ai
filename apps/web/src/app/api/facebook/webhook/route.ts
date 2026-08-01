@@ -4,6 +4,7 @@ import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
+import type { FacebookIntegrationMetadata } from '@auxx/lib/providers'
 import { metaPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             event,
             integration.id,
             integration.organizationId,
-            integration.metadata as unknown as Record<string, any> | null // Pass metadata
+            integration.metadata as Partial<FacebookIntegrationMetadata> | null // Pass metadata
           )
           if (messageData) {
             try {
@@ -165,7 +166,7 @@ function convertWebhookEventToMessageData(
   event: any,
   integrationId: string,
   organizationId: string,
-  integrationMetadata: { pageName: string } | null
+  integrationMetadata: Partial<FacebookIntegrationMetadata> | null
 ): MessageData | null {
   try {
     const senderPsid = event.sender.id
@@ -173,12 +174,12 @@ function convertWebhookEventToMessageData(
     const timestamp = event.timestamp
     const message = event.message
     const messageId = message.mid
-    const pageName = integrationMetadata?.pageName as string | undefined
+    const pageName = integrationMetadata?.pageName
     // Determine direction
     // This assumes webhooks only receive messages sent TO the page
     const isInbound = true // Webhook messages are typically inbound
-    const fromParticipant = { name: undefined, address: senderPsid } // Name might be fetched later
-    const toParticipant = { name: pageName, address: recipientPageId }
+    const fromParticipant = { name: undefined, identifier: senderPsid } // Name might be fetched later
+    const toParticipant = { name: pageName, identifier: recipientPageId }
     const text = message.text
     const attachments = (message.attachments || []).map((att: any) => ({
       filename: att.payload?.title || att.type || 'attachment',
@@ -207,8 +208,12 @@ function convertWebhookEventToMessageData(
       cc: [],
       bcc: [],
       replyTo: [],
-      hasAttachments: attachments.length > 0,
-      attachments: attachments,
+      // Facebook has no inbound attachment ingestor, so no MessageAttachment rows
+      // are ever created and `providerAttachments` is never populated. Mirrors
+      // FacebookProvider.convertToMessageData — `hasAttachments` is a workflow
+      // trigger filter, so claiming true fires attachment rules for bytes that
+      // were never fetched. The `attachments` local still drives the snippet fallback.
+      hasAttachments: false,
       textPlain: text,
       snippet: text ? text.substring(0, 100) : attachments[0]?.filename || '',
       isInbound: isInbound,

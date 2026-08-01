@@ -1,6 +1,6 @@
 // packages/lib/src/permissions/visibility/thread-lens.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import type { MailViewer, ThreadVisibilityInput, UserInstanceGrants } from './context'
 import { hasContactGrants, isAutomationViewer, isSystemViewer } from './context'
@@ -18,7 +18,7 @@ import type { Lens } from './lens'
  * (`effectiveLensBatch`) or filter in SQL (`buildMailVisibilityPredicate`).
  */
 export async function getThreadLensBatch(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   viewer: MailViewer,
   threadIds: string[]
@@ -111,7 +111,7 @@ export async function getThreadLensBatch(
 
 /** Single-thread convenience over {@link getThreadLensBatch}. */
 export async function getThreadLens(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   viewer: MailViewer,
   threadId: string
@@ -148,7 +148,7 @@ export interface LoadedThreadFacts {
  * from a preloaded row and both callers here resolve a real member.
  */
 export async function getLoadedThreadLens(
-  db: Database,
+  db: Database | Transaction,
   viewer: UserInstanceGrants,
   thread: LoadedThreadFacts
 ): Promise<Lens> {

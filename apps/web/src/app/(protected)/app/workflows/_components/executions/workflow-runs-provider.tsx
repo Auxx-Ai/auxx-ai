@@ -58,7 +58,9 @@ export function WorkflowRunsProvider({ children, workflowId }: WorkflowRunsProvi
     const params: {
       workflowAppId: string
       limit: number
-      status?: typeof filter.status
+      // 'all' is the filter-bar's "no status filter" sentinel and is dropped below,
+      // never sent — the endpoint takes a real WorkflowRunStatus or nothing.
+      status?: Exclude<typeof filter.status, 'all'>
       startDate?: Date
       endDate?: Date
     } = { workflowAppId: workflowId, limit: 50 }

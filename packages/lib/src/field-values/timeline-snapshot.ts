@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/timeline-snapshot.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { type ActorId, toActorId } from '@auxx/types/actor'
@@ -38,7 +38,7 @@ const logger = createScopedLogger('timeline-snapshot')
 // =============================================================================
 
 export interface SnapshotContext {
-  db: Database
+  db: Database | Transaction
   organizationId: string
   /**
    * Optional preloaded cache data; bulk callers should pass these once per
@@ -339,7 +339,7 @@ async function collectAndResolveRefs(
 }
 
 async function batchFetchRelatedDisplayNames(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   recordIds: RecordId[]
 ): Promise<Map<string, string | null>> {

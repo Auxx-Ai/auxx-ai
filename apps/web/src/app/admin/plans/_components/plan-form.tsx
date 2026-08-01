@@ -18,7 +18,7 @@ import { useForm } from 'react-hook-form'
 import { FeatureLimitsCard } from '~/app/admin/_components/features'
 import { api } from '~/trpc/react'
 import { FeaturesListEditor } from './features-list-editor'
-import type { PlanFormData } from './plan-form-types'
+import { type PlanFormData, toWritableFeatureLimits } from './plan-form-types'
 import { StripeSync } from './stripe-sync'
 
 /**
@@ -113,6 +113,10 @@ export function PlanForm({ plan }: PlanFormProps) {
       ...data,
       monthlyPrice: Math.round(data.monthlyPrice * 100),
       annualPrice: Math.round(data.annualPrice * 100),
+      featureLimits: toWritableFeatureLimits(data.featureLimits),
+      trialFeatureLimits: data.trialFeatureLimits
+        ? toWritableFeatureLimits(data.trialFeatureLimits)
+        : null,
     }
 
     if (isEditMode) {

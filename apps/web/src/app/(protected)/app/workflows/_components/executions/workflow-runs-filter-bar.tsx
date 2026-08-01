@@ -1,6 +1,6 @@
 // apps/web/src/app/(protected)/app/workflows/_components/executions/workflow-runs-filter-bar.tsx
 'use client'
-import type { WorkflowRunStatus } from '@auxx/database/enums'
+import type { WorkflowRunStatus } from '@auxx/database/types'
 import { type DateRange, DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import {
   Select,
@@ -65,9 +65,8 @@ export function WorkflowRunsFilterBar({ filter, setFilter }: WorkflowRunsFilterB
       {/* Status Filter */}
       <Select value={filter.status} onValueChange={handleStatusChange}>
         <SelectTrigger
-          className='w-[140px]'
           size='sm'
-          className='bg-transparent hover:bg-accent hover:text-accent-foreground border-0'>
+          className='w-[140px] bg-transparent hover:bg-accent hover:text-accent-foreground border-0'>
           <SelectValue placeholder='Status' />
         </SelectTrigger>
         <SelectContent>

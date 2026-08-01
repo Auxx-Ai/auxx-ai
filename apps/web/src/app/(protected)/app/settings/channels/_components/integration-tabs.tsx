@@ -116,7 +116,7 @@ export default function IntegrationTabs() {
   const integrationStatus = getIntegrationStatus({
     enabled: integration.enabled,
     requiresReauth,
-    lastAuthError: integration.lastAuthError,
+    lastAuthError: integration.lastAuthError ?? undefined,
     lastSyncedAt: integration.lastSyncedAt!,
     syncStatus: integration.syncStatus,
   })
@@ -133,8 +133,8 @@ export default function IntegrationTabs() {
               status={integrationStatus}
               syncStage={integration.syncStage}
               pendingImportCount={integration.pendingImportCount}
-              lastSyncAt={integration.lastSyncedAt}
-              lastError={integration.lastAuthError}
+              lastSyncAt={integration.lastSyncedAt ?? undefined}
+              lastError={integration.lastAuthError ?? undefined}
               size='sm'
             />
             <TabsList>
@@ -150,9 +150,9 @@ export default function IntegrationTabs() {
               integration={{
                 id: integration.id,
                 provider: integration.provider,
-                email: integration.email,
+                email: integration.email ?? undefined,
                 name: integration.name!,
-                lastAuthError: integration.lastAuthError,
+                lastAuthError: integration.lastAuthError ?? undefined,
                 lastAuthErrorAt: integration.lastAuthErrorAt!,
                 requiresReauth: true,
                 metadata: integration.metadata,

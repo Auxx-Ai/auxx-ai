@@ -149,7 +149,7 @@ const LOCAL_ATTR_PREFIX = 'var:'
  * `var:` ref on `.` / `[`), so this is a single flat key. `name` is expected to
  * be a plain identifier; a name containing `.`/`[` would nest (authoring contract).
  */
-export function scopedVar(frame: ProcedureFrame, name: string): string {
+export function scopedVar(frame: ProcedureFrame, name: string): `var:${string}` {
   return `var:__la:${frame.procedureVersionId}:${name}`
 }
 

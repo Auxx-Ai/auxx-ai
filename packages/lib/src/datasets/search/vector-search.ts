@@ -195,8 +195,11 @@ export class VectorSearchService {
 
     // 3. Search each group in parallel against its own pgvector dimension column
     const searchPromises = groups.map(async (g, i) => {
+      // `embeddings` is a 1:1 Promise.all over `groups`, so this is always defined.
+      const embedding = embeddings[i]
+      if (!embedding) return []
       return PostgreSQLVectorDB.searchByVectorMultiDataset(
-        embeddings[i],
+        embedding,
         g.datasets.map((d) => d.id),
         g.dimension,
         {

@@ -21,7 +21,7 @@ interface UsageLimitsCardProps {
 }
 
 /** All known feature keys for filtering custom limits */
-const ALL_KNOWN_KEYS = new Set(FEATURE_REGISTRY.map((f) => f.key))
+const ALL_KNOWN_KEYS = new Set<string>(FEATURE_REGISTRY.map((f) => f.key))
 
 /** Get usage feature pairs grouped by metric */
 function getUsageGroups() {

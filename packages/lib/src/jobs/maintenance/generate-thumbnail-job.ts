@@ -166,9 +166,10 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
     // Create asset and version using MediaAssetService
     const mediaAssetService = new MediaAssetService(orgId, userId, db)
 
-    let avatarResolved: Awaited<ReturnType<typeof updateEntityAvatarIfApplicable>> = null
-
-    await db.transaction(async (tx) => {
+    // Returned OUT of the transaction rather than captured in an outer `let`:
+    // TypeScript's control-flow analysis does not see assignments made inside a
+    // callback, so a mutable capture narrows to `null` at the post-commit check.
+    const avatarResolved = await db.transaction(async (tx): Promise<AvatarResolution | null> => {
       // Create thumbnail asset with version using the service
       const { asset, version } = await mediaAssetService.createWithVersion(
         {
@@ -230,10 +231,10 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
         preset,
       })
 
-      // Update entity avatar URLs if applicable (avatar-128). Capture the
-      // result so we can fire realtime updates AFTER the tx commits — see
+      // Update entity avatar URLs if applicable (avatar-128). Carried out of
+      // the tx so we can fire realtime updates AFTER it commits — see the
       // docstring on updateEntityAvatarIfApplicable for why.
-      avatarResolved = await updateEntityAvatarIfApplicable({
+      const resolvedAvatar = await updateEntityAvatarIfApplicable({
         tx,
         orgId,
         sourceVersion,
@@ -251,6 +252,8 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
           preset,
         })
       }
+
+      return resolvedAvatar
     })
 
     // Clear processing cache
@@ -261,7 +264,11 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
 
     // Post-commit: push the resolved avatar CDN URL to any listening clients.
     if (avatarResolved) {
-      await publishAvatarResolved({ orgId, ...avatarResolved })
+      await publishAvatarResolved({
+        orgId,
+        cdnUrl: avatarResolved.cdnUrl,
+        instances: avatarResolved.instances,
+      })
     }
   } catch (error) {
     // Clear processing cache regardless of outcome
@@ -411,6 +418,15 @@ async function updateKBLogoIfApplicable(params: {
 }
 
 /**
+ * Affected instances + the resolved CDN URL from an avatar-128 thumbnail run,
+ * carried out of the transaction so the realtime publish happens post-commit.
+ */
+interface AvatarResolution {
+  cdnUrl: string
+  instances: Array<{ entityInstanceId: string; entityDefinitionId: string }>
+}
+
+/**
  * Updates EntityInstance.avatarUrl when an avatar-128 preset thumbnail is generated.
  * Follows the KB logo callback pattern: looks up which EntityInstances reference
  * the source asset via their avatar field, then sets avatarUrl to the public CDN URL.
@@ -427,10 +443,7 @@ async function updateEntityAvatarIfApplicable(params: {
   sourceVersion: any
   storageLocation: any
   preset: string
-}): Promise<{
-  cdnUrl: string
-  instances: Array<{ entityInstanceId: string; entityDefinitionId: string }>
-} | null> {
+}): Promise<AvatarResolution | null> {
   const { tx, orgId, sourceVersion, storageLocation, preset } = params
   if (preset !== 'avatar-128') return null
 

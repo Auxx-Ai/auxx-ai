@@ -2,7 +2,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
-import { getFieldId, isFieldPath, toResourceFieldIds } from '@auxx/types/field'
+import { getFieldId, isFieldPath, isResourceFieldId, toResourceFieldIds } from '@auxx/types/field'
 import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { touchEntityActivity } from '../../entity-instances/activity'
@@ -11,6 +11,13 @@ import { FieldValueService } from '../../field-values/field-value-service'
 import { parseRecordId, type RecordId } from '../resource-id'
 import { mergeFieldValue } from './merge'
 import type { MergeEntitiesInput, MergeEntitiesResult } from './types'
+
+/** Narrow an untyped jsonb `options` column to the object shape merges expect. */
+function asOptionsObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
 
 /**
  * Service for merging multiple entity instances into a single target.
@@ -215,7 +222,7 @@ export class EntityMergeService {
     tx: Transaction,
     entityDefinitionId: string
   ): Promise<Array<{ id: string; type: string; options: Record<string, unknown> | null }>> {
-    return await tx
+    const rows = await tx
       .select({
         id: schema.CustomField.id,
         type: schema.CustomField.type,
@@ -228,6 +235,10 @@ export class EntityMergeService {
           eq(schema.CustomField.organizationId, this.organizationId)
         )
       )
+
+    // `CustomField.options` is jsonb, so Drizzle hands it back as `unknown`.
+    // Only an object shape is usable by `mergeFieldValue`.
+    return rows.map((row) => ({ ...row, options: asOptionsObject(row.options) }))
   }
 
   /**
@@ -264,10 +275,15 @@ export class EntityMergeService {
         valuesByRecord.set(v.recordId, new Map())
       }
 
-      // Extract fieldId from fieldRef (handles both direct and path references)
-      const fieldId = isFieldPath(v.fieldRef)
-        ? getFieldId(v.fieldRef[v.fieldRef.length - 1])
-        : getFieldId(v.fieldRef)
+      // Extract fieldId from fieldRef (handles both direct and path references).
+      // A bare `FieldId` is already the id — running it through `getFieldId`
+      // would find no colon and yield the empty string, silently dropping the
+      // field from the merge.
+      const leafRef = isFieldPath(v.fieldRef)
+        ? // `FieldPath` is a non-empty tuple, so `[0]` is the type-safe floor.
+          (v.fieldRef[v.fieldRef.length - 1] ?? v.fieldRef[0])
+        : v.fieldRef
+      const fieldId = isResourceFieldId(leafRef) ? getFieldId(leafRef) : leafRef
 
       // EXPLICIT CONVERSION: TypedFieldValue → raw value
       const field = fields.find((f) => f.id === fieldId)

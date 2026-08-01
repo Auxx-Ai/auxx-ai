@@ -146,9 +146,5 @@ export function isDirectIdRelationLookup(value: unknown): value is {
   targetTable: string
   searchValue: string
 } {
-  return (
-    isPendingRelationLookup(value) &&
-    '__isDirectId' in value &&
-    (value as Record<string, unknown>).__isDirectId === true
-  )
+  return isPendingRelationLookup(value) && value.__isDirectId === true
 }

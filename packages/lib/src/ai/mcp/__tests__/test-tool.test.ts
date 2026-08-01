@@ -26,7 +26,7 @@ vi.mock('../client', () => ({
   },
 }))
 
-const markFailed = vi.fn(async () => {})
+const markFailed = vi.fn(async (..._a: unknown[]) => {})
 vi.mock('../connections', () => ({
   markMcpConnectionFailed: (...a: unknown[]) => markFailed(...a),
 }))

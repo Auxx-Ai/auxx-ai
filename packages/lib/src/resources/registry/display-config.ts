@@ -32,7 +32,7 @@ export interface JoinScopingConfig {
  * Display configuration for system resources
  * Uses field IDs that reference actual ResourceField definitions
  */
-export interface SystemResourceDisplayConfig {
+export interface ResourceDisplayConfig {
   /** Field key to use as primary identifier (e.g., 'email', 'number') */
   identifierField: string
 
@@ -74,7 +74,7 @@ export interface SystemResourceDisplayConfig {
  * Display configuration for each resource type
  * Maps TableId → Display Configuration
  */
-export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfig> = {
+export const RESOURCE_DISPLAY_CONFIG: Record<TableId, ResourceDisplayConfig> = {
   ticket: {
     identifierField: 'number',
     primaryDisplayFieldId: 'title',

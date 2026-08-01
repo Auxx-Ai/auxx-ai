@@ -3,7 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
-import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, ilike, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
 import {
   getCachedEntityDefId,
   getCachedResource,
@@ -35,6 +35,12 @@ import {
 } from '../registry'
 import { parseRecordId, toRecordId } from '../resource-id'
 import {
+  type DynamicRow,
+  type DynamicTable,
+  requireColumn,
+  resolveSchemaTable,
+} from '../schema-table'
+import {
   RECORD_SEARCH_COLUMNS_EI,
   recordSearchCursor,
   recordSearchNameScore,
@@ -55,6 +61,32 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('record-picker-service')
+
+/**
+ * The slice of Drizzle's relational query builder the dynamic picker paths use.
+ * `db.query` is keyed by table name and `dbName` is only known at runtime, so
+ * the builder is looked up by string and asserted against this narrow shape.
+ */
+interface DynamicQueryBuilder {
+  findMany(config: {
+    where?: (table: DynamicTable) => SQL | undefined
+    orderBy?: (table: DynamicTable) => SQL[]
+    limit?: number
+    with?: Record<string, unknown>
+  }): Promise<DynamicRow[]>
+  findFirst(config: {
+    where?: (table: DynamicTable) => SQL | undefined
+  }): Promise<DynamicRow | undefined>
+}
+
+/** Resolve a registry `dbName` to its relational query builder. */
+function resolveQueryBuilder(db: Database, dbName: string): DynamicQueryBuilder {
+  const builder = (db.query as Record<string, unknown>)[dbName]
+  if (!builder) {
+    throw new Error(`No relational query builder for table: ${dbName}`)
+  }
+  return builder as DynamicQueryBuilder
+}
 
 /**
  * Resolve display fields for EntityInstance-backed picker items.
@@ -227,14 +259,13 @@ export class RecordPickerService {
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
     const tableName = tableConfig.dbName
 
-    // Get Drizzle table reference
-    const table = schema[tableName as keyof typeof schema]
-
     // Determine organization scoping strategy
     const scopingStrategy = displayConfig.orgScopingStrategy || 'direct'
 
     // Build query based on scoping strategy
     if (scopingStrategy === 'join' && displayConfig.joinScoping) {
+      // Get Drizzle table reference (the join path builds SQL by hand)
+      const table = resolveSchemaTable(tableName)
       return this.fetchResourcesWithJoin(
         tableId,
         table,
@@ -245,15 +276,7 @@ export class RecordPickerService {
         filters
       )
     } else {
-      return this.fetchResourcesDirect(
-        tableId,
-        table,
-        displayConfig,
-        limit,
-        cursor,
-        search,
-        filters
-      )
+      return this.fetchResourcesDirect(tableId, displayConfig, limit, cursor, search, filters)
     }
   }
 
@@ -263,12 +286,11 @@ export class RecordPickerService {
    */
   private async fetchResourcesDirect(
     tableId: TableId,
-    table: any,
     displayConfig: ResourceDisplayConfig,
     limit: number,
     cursor: string | null | undefined,
     search: string | undefined,
-    filters: Record<string, any> | undefined
+    filters: Record<string, unknown> | undefined
   ): Promise<PaginatedResourcesResult> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const tableName = tableConfig.dbName
@@ -276,13 +298,14 @@ export class RecordPickerService {
     const sortDirection = displayConfig.defaultSortDirection || 'desc'
 
     // Execute query using relational API
-    const items = await this.db.query[tableName].findMany({
-      where: (table, { eq, and, or, ilike, inArray, gt, lt }) => {
+    const items = await resolveQueryBuilder(this.db, tableName).findMany({
+      where: (table) => {
         const conditions: SQL[] = []
 
         // Organization scoping
-        if ('organizationId' in table) {
-          conditions.push(eq(table.organizationId, this.organizationId))
+        const orgColumn = table.organizationId
+        if (orgColumn) {
+          conditions.push(eq(orgColumn, this.organizationId))
         }
 
         // Cursor pagination
@@ -290,11 +313,13 @@ export class RecordPickerService {
           const [sortValue, id] = cursor.split('|')
           if (sortValue && id) {
             const comparison = sortDirection === 'desc' ? lt : gt
+            const sortColumn = requireColumn(table, sortField)
+            const idColumn = requireColumn(table, 'id')
 
             conditions.push(
               or(
-                comparison(table[sortField], sortValue),
-                and(eq(table[sortField], sortValue), comparison(table.id, id))
+                comparison(sortColumn, sortValue),
+                and(eq(sortColumn, sortValue), comparison(idColumn, id))
               )!
             )
           }
@@ -303,7 +328,7 @@ export class RecordPickerService {
         // Search across configured fields
         if (search?.trim()) {
           const searchConditions = displayConfig.searchFields.map((fieldKey: string) =>
-            ilike(table[fieldKey], `%${search.trim()}%`)
+            ilike(requireColumn(table, fieldKey), `%${search.trim()}%`)
           )
           if (searchConditions.length > 0) {
             conditions.push(or(...searchConditions)!)
@@ -313,21 +338,22 @@ export class RecordPickerService {
         // Apply custom filters
         if (filters) {
           Object.entries(filters).forEach(([fieldKey, value]) => {
-            if (value !== undefined && value !== null && table[fieldKey]) {
-              if (Array.isArray(value)) {
-                conditions.push(inArray(table[fieldKey], value))
-              } else {
-                conditions.push(eq(table[fieldKey], value))
-              }
+            // Filters are caller-supplied, so an unknown key is skipped, not fatal.
+            const column = table[fieldKey]
+            if (value === undefined || value === null || !column) return
+            if (Array.isArray(value)) {
+              conditions.push(inArray(column, value))
+            } else {
+              conditions.push(eq(column, value))
             }
           })
         }
 
         return conditions.length > 0 ? and(...conditions) : undefined
       },
-      orderBy: (table, { asc, desc }) => {
+      orderBy: (table) => {
         const orderFn = sortDirection === 'desc' ? desc : asc
-        return [orderFn(table[sortField]), orderFn(table.id)]
+        return [orderFn(requireColumn(table, sortField)), orderFn(requireColumn(table, 'id'))]
       },
       limit: limit + 1,
       // Include relations if configured (for secondary info that needs related data)
@@ -357,47 +383,45 @@ export class RecordPickerService {
    */
   private async fetchResourcesWithJoin(
     tableId: TableId,
-    table: any,
+    table: DynamicTable,
     displayConfig: ResourceDisplayConfig,
     limit: number,
     cursor: string | null | undefined,
     search: string | undefined,
-    filters: Record<string, any> | undefined
+    filters: Record<string, unknown> | undefined
   ): Promise<PaginatedResourcesResult> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const joinConfig = displayConfig.joinScoping!
-    const joinTable = schema[joinConfig.joinTable as keyof typeof schema]
+    const joinTable = resolveSchemaTable(joinConfig.joinTable)
 
     const conditions: SQL[] = []
+    const idColumn = requireColumn(table, 'id')
 
     // Organization scoping via join table
-    conditions.push(eq(joinTable[joinConfig.joinOrgKey], this.organizationId))
+    conditions.push(eq(requireColumn(joinTable, joinConfig.joinOrgKey), this.organizationId))
 
     // Additional conditions from config (e.g., userType = 'USER')
     if (joinConfig.additionalConditions) {
       Object.entries(joinConfig.additionalConditions).forEach(([key, value]) => {
         // Apply condition directly - column existence is guaranteed by config
-        conditions.push(eq(table[key], value))
+        conditions.push(eq(requireColumn(table, key), value))
       })
     }
 
     // Cursor pagination
     const sortField = displayConfig.defaultSortField || 'updatedAt'
     const sortDirection = displayConfig.defaultSortDirection || 'desc'
+    const sortColumn = requireColumn(table, sortField)
 
     if (cursor) {
       const [sortValue, id] = cursor.split('|')
       if (sortValue && id) {
         const comparison = sortDirection === 'desc' ? '<' : '>'
-        const eqComparison = sortDirection === 'desc' ? '<' : '>'
 
         conditions.push(
           or(
-            sql`${table[sortField]} ${sql.raw(comparison)} ${sortValue}`,
-            and(
-              sql`${table[sortField]} = ${sortValue}`,
-              sql`${table.id} ${sql.raw(eqComparison)} ${id}`
-            )
+            sql`${sortColumn} ${sql.raw(comparison)} ${sortValue}`,
+            and(sql`${sortColumn} = ${sortValue}`, sql`${idColumn} ${sql.raw(comparison)} ${id}`)
           )!
         )
       }
@@ -406,7 +430,7 @@ export class RecordPickerService {
     // Search across configured fields
     if (search?.trim()) {
       const searchConditions = displayConfig.searchFields.map((fieldKey: string) =>
-        ilike(table[fieldKey], `%${search.trim()}%`)
+        ilike(requireColumn(table, fieldKey), `%${search.trim()}%`)
       )
       if (searchConditions.length > 0) {
         conditions.push(or(...searchConditions)!)
@@ -416,12 +440,13 @@ export class RecordPickerService {
     // Apply custom filters
     if (filters) {
       Object.entries(filters).forEach(([fieldKey, value]) => {
-        if (value !== undefined && value !== null && table[fieldKey]) {
-          if (Array.isArray(value)) {
-            conditions.push(inArray(table[fieldKey], value))
-          } else {
-            conditions.push(eq(table[fieldKey], value))
-          }
+        // Filters are caller-supplied, so an unknown key is skipped, not fatal.
+        const column = table[fieldKey]
+        if (value === undefined || value === null || !column) return
+        if (Array.isArray(value)) {
+          conditions.push(inArray(column, value))
+        } else {
+          conditions.push(eq(column, value))
         }
       })
     }
@@ -429,20 +454,28 @@ export class RecordPickerService {
     // Execute query with join
     const orderByClause =
       sortDirection === 'desc'
-        ? [desc(table[sortField]), desc(table.id)]
-        : [asc(table[sortField]), asc(table.id)]
+        ? [desc(sortColumn), desc(idColumn)]
+        : [asc(sortColumn), asc(idColumn)]
 
-    const items = await this.db
+    // Drizzle cannot type a join whose tables are only known at runtime; the row
+    // is keyed by table name, each value being that table's column bag.
+    const items = (await this.db
       .select()
       .from(joinTable)
-      .innerJoin(table, eq(joinTable[joinConfig.joinSourceKey], table[joinConfig.mainTableKey]))
+      .innerJoin(
+        table,
+        eq(
+          requireColumn(joinTable, joinConfig.joinSourceKey),
+          requireColumn(table, joinConfig.mainTableKey)
+        )
+      )
       .where(and(...conditions))
       .orderBy(...orderByClause)
-      .limit(limit + 1)
+      .limit(limit + 1)) as Array<Record<string, DynamicRow>>
 
     // Extract main table data from join result
     const tableName = tableConfig.dbName
-    const extractedItems = items.map((row: any) => row[tableName])
+    const extractedItems = items.map((row) => row[tableName]).filter((row) => row !== undefined)
 
     // Generate next cursor
     let nextCursor: string | null = null
@@ -476,45 +509,53 @@ export class RecordPickerService {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
     const tableName = tableConfig.dbName
-    const table = schema[tableName as keyof typeof schema]
 
     const scopingStrategy = displayConfig.orgScopingStrategy || 'direct'
 
-    let item: any = null
+    let item: DynamicRow | undefined
 
     if (scopingStrategy === 'join' && displayConfig.joinScoping) {
       // Fetch with join
       const joinConfig = displayConfig.joinScoping
-      const joinTable = schema[joinConfig.joinTable as keyof typeof schema]
+      const table = resolveSchemaTable(tableName)
+      const joinTable = resolveSchemaTable(joinConfig.joinTable)
 
       const conditions: SQL[] = [
-        eq(table.id, id),
-        eq(joinTable[joinConfig.joinOrgKey], this.organizationId),
+        eq(requireColumn(table, 'id'), id),
+        eq(requireColumn(joinTable, joinConfig.joinOrgKey), this.organizationId),
       ]
 
       if (joinConfig.additionalConditions) {
         Object.entries(joinConfig.additionalConditions).forEach(([key, value]) => {
           // Apply condition directly - column existence is guaranteed by config
-          conditions.push(eq(table[key], value))
+          conditions.push(eq(requireColumn(table, key), value))
         })
       }
 
-      const [result] = await this.db
+      // Runtime-resolved join tables (see `fetchResourcesWithJoin`).
+      const [result] = (await this.db
         .select()
         .from(joinTable)
-        .innerJoin(table, eq(joinTable[joinConfig.joinSourceKey], table[joinConfig.mainTableKey]))
+        .innerJoin(
+          table,
+          eq(
+            requireColumn(joinTable, joinConfig.joinSourceKey),
+            requireColumn(table, joinConfig.mainTableKey)
+          )
+        )
         .where(and(...conditions))
-        .limit(1)
+        .limit(1)) as Array<Record<string, DynamicRow>>
 
-      item = result ? result[tableName] : null
+      item = result ? result[tableName] : undefined
     } else {
       // Fetch with direct scoping using relational API
-      item = await this.db.query[tableName].findFirst({
-        where: (table, { eq, and }) => {
-          const conditions: SQL[] = [eq(table.id, id)]
+      item = await resolveQueryBuilder(this.db, tableName).findFirst({
+        where: (table) => {
+          const conditions: SQL[] = [eq(requireColumn(table, 'id'), id)]
 
-          if ('organizationId' in table) {
-            conditions.push(eq(table.organizationId, this.organizationId))
+          const orgColumn = table.organizationId
+          if (orgColumn) {
+            conditions.push(eq(orgColumn, this.organizationId))
           }
 
           return and(...conditions)
@@ -664,8 +705,8 @@ export class RecordPickerService {
       displayName: string | null
       secondaryDisplayValue: string | null
       avatarUrl: string | null
-      createdAt: string
-      updatedAt: string
+      createdAt: Date
+      updatedAt: Date
     }
   ): RecordPickerItem {
     const { displayName, secondaryInfo } = resolveEntityDisplay(
@@ -746,7 +787,7 @@ export class RecordPickerService {
         if (isCustomResourceId(resolvedId)) {
           // Custom entity - fetch EntityInstances by IDs
           const resource = await getCachedResource(this.organizationId, resolvedId)
-          if (!resource) {
+          if (!resource || !isCustomResource(resource)) {
             // Reverse-lookup: a UUID prefix that doesn't resolve through the
             // resource cache may still belong to a system-table-backed
             // EntityDefinition (e.g. article — its EntityDefinition row is

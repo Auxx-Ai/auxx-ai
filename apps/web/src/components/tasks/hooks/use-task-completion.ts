@@ -81,13 +81,15 @@ export function useTaskCompletion() {
    */
   const toggleCompletion = useCallback(
     (taskId: string, currentlyCompleted: boolean) => {
-      // Set optimistic state and get version
-      const completedAt = currentlyCompleted ? null : new Date().toISOString()
+      // Set optimistic state and get version. The store caches wire entities,
+      // where `completedAt` is a Date; the mutation input is an ISO string
+      // (`z.string().datetime()`), so only the wire value is serialized.
+      const completedAt = currentlyCompleted ? null : new Date()
       const version = setOptimisticCompletion(taskId, completedAt)
       mutationVersionsRef.current.set(taskId, version)
 
       // Fire mutation - use unified update
-      if (currentlyCompleted) {
+      if (completedAt === null) {
         // Reopen
         updateTask.mutate({
           id: taskId,
@@ -98,7 +100,7 @@ export function useTaskCompletion() {
         // Complete
         updateTask.mutate({
           id: taskId,
-          completedAt: new Date().toISOString(),
+          completedAt: completedAt.toISOString(),
           completedById: userId,
         })
       }

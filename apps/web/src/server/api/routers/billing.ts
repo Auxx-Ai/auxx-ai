@@ -930,10 +930,19 @@ export const billingRouter = createTRPCRouter({
         // Get organization stats
         const stats = await getOrganizationStats(ctx.db, organizationId)
 
+        // `Organization` has no `ownerEmail` column — this field read `undefined`
+        // for every caller. The owner's address is `User.email` joined on
+        // `Organization.createdById`, the same derivation `admin-service` and the
+        // trial maintenance jobs use.
+        const owner = await ctx.db.query.User.findFirst({
+          where: (users, { eq }) => eq(users.id, organization.createdById),
+          columns: { email: true },
+        })
+
         return {
           organizationId: organization.id,
           organizationName: organization.name,
-          ownerEmail: organization.ownerEmail,
+          ownerEmail: owner?.email ?? null,
           isEligibleForReactivation,
           deletionScheduledDate: deletionDate,
           hoursUntilDeletion,

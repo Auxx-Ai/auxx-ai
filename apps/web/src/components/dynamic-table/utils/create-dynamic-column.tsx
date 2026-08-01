@@ -12,7 +12,7 @@ import { decodeColumnId } from './column-id'
  * The cell and header components handle metadata fetching at render time,
  * so we only need to provide the structural wrapper.
  */
-export function createDynamicFieldColumn<T extends { id: string }>(
+export function createDynamicFieldColumn<T>(
   columnId: string,
   entityDefinitionId: string
 ): ExtendedColumnDef<T> {
@@ -34,11 +34,16 @@ export function createDynamicFieldColumn<T extends { id: string }>(
       isCustomField: !isPath,
       isDynamicColumn: true, // Flag for debugging/identification
     },
-    cell: ({ row }) => (
-      <CustomFieldCell
-        recordId={toRecordId(entityDefinitionId, row.original.id)}
-        columnId={columnId}
-      />
-    ),
+    cell: ({ row }) => {
+      // `DynamicView` is generic over `TData extends object`, so the row shape
+      // is not statically known to carry an id. Every real caller supplies
+      // records that do; degrade to an empty cell rather than minting a
+      // `entityDefinitionId:undefined` RecordId if one ever does not.
+      const rowId = (row.original as { id?: unknown }).id
+      if (typeof rowId !== 'string') return null
+      return (
+        <CustomFieldCell recordId={toRecordId(entityDefinitionId, rowId)} columnId={columnId} />
+      )
+    },
   }
 }

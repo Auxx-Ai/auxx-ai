@@ -178,7 +178,9 @@ async function findEligibleOrganizations(
 
     const orgData: OrganizationToDelete = {
       organizationId: org.organizationId,
-      organizationName: org.organizationName,
+      // `Organization.name` is nullable; these strings reach deletion-warning
+      // email copy, so fall back rather than rendering "null".
+      organizationName: org.organizationName ?? 'your organization',
       ownerEmail: org.ownerEmail,
       trialEnd: org.trialEnd,
       trialConversionStatus: org.trialConversionStatus || 'EXPIRED_WITHOUT_CONVERSION',

@@ -20,7 +20,7 @@ interface UseReconciledColumnsOptions<T> {
  * Creates dynamic column definitions for any field IDs in columnOrder
  * that don't have existing definitions.
  */
-export function useReconciledColumns<T extends { id: string }>({
+export function useReconciledColumns<T>({
   columns,
   columnOrder,
   entityDefinitionId,

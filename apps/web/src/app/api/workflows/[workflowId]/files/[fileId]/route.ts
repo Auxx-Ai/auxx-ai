@@ -99,11 +99,16 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         expiresAt: schema.WorkflowFile.expiresAt,
         uploadSource: schema.WorkflowFile.uploadSource,
         metadata: schema.WorkflowFile.metadata,
+        // `File` has neither a `mimeType` nor a `url` column. `File.type` is the
+        // legacy MIME column; the canonical MIME + URL live on
+        // `FileVersion.mimeType` / `StorageLocation.externalUrl`, reachable only by
+        // joining `FileVersion` on `fileId` (there is no `File.currentVersionId`).
+        // Left as the direct columns because nothing writes `WorkflowFile` — see
+        // the note on GET below.
         file: {
           name: schema.File.name,
-          mimeType: schema.File.mimeType,
+          mimeType: schema.File.type,
           size: schema.File.size,
-          url: schema.File.url,
         },
       })
       .from(schema.WorkflowFile)
@@ -134,7 +139,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         filename: workflowFile.file.name || 'unnamed',
         mimeType: workflowFile.file.mimeType || 'application/octet-stream',
         size: workflowFile.file.size,
-        url: workflowFile.file.url,
         nodeId: workflowFile.nodeId,
         uploadedAt: workflowFile.uploadedAt.toISOString(),
         expiresAt: workflowFile.expiresAt?.toISOString(),

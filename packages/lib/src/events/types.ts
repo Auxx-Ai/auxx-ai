@@ -150,6 +150,21 @@ export type TicketUnassignedEvent = AuxxEventGeneric<
     eventData: Record<string, unknown>
   }
 >
+/**
+ * A reply was recorded on a ticket. Registered as a direct-match agent trigger
+ * (`ALLOWED_DIRECT_EVENT_TYPES`) and a webhook event (`WEBHOOK_EVENTS`); it has
+ * no emitter yet, so the handler chain below is currently dormant.
+ */
+export type TicketReplyCreatedEvent = AuxxEventGeneric<
+  'ticket:reply:created',
+  {
+    recordId: RecordId
+    relatedRecordId?: RecordId
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
 export type MessageReceivedEvent = AuxxEventGeneric<
   'message:received',
   {
@@ -948,6 +963,7 @@ export type AuxxEvent =
   | TicketStatusChangedEvent
   | TicketAssignedEvent
   | TicketUnassignedEvent
+  | TicketReplyCreatedEvent
   | MessageReceivedEvent
   | MessageSentEvent
   | MessageFailedEvent
@@ -1028,6 +1044,7 @@ export interface IEventsHandlers {
   'ticket:status:changed': EventHandler<TicketStatusChangedEvent>[]
   'ticket:assignee:added': EventHandler<TicketAssignedEvent>[]
   'ticket:assignee:removed': EventHandler<TicketUnassignedEvent>[]
+  'ticket:reply:created': EventHandler<TicketReplyCreatedEvent>[]
   'messages:sync:pending': EventHandler<MessageSyncPendingEvent>[]
   'messages:sync:processing': EventHandler<MessageSyncProcessingEvent>[]
   'messages:sync:complete': EventHandler<MessageSyncCompleteEvent>[]

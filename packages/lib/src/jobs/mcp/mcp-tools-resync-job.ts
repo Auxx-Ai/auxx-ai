@@ -16,7 +16,7 @@ export interface McpToolsResyncJobData {
 }
 
 /** Re-sync run statistics. */
-interface ResyncStats {
+export interface ResyncStats {
   installationsScanned: number
   synced: number
   failed: number

@@ -49,7 +49,13 @@ export function DragDropRow<TData>({
   const { activeDragItems } = useViewMetadata<TData>()
 
   const canDragThis = dragDropConfig.canDrag?.(row.original) ?? true
-  const isCurrentlyDragging = activeDragItems?.some((item: any) => item.id === row.id) ?? false
+  // `activeDragItems` holds the underlying rows (TData), so compare against
+  // `row.original` — identity first, then the id the default `getRowId` uses.
+  const isCurrentlyDragging =
+    activeDragItems?.some(
+      (item) =>
+        item === row.original || String((item as { id?: unknown } | null)?.id) === String(row.id)
+    ) ?? false
 
   const canAcceptDrop = useMemo(() => {
     if (!dragDropConfig.enabled || !dragDropConfig.canDrop || !activeDragItems?.length) {

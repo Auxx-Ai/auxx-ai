@@ -10,10 +10,8 @@
 export const BUILDER_MODEL = resolveBuilderModel()
 
 function resolveBuilderModel(): { provider: string; model: string } {
-  const override = process.env.BUILDER_MODEL_OVERRIDE
-  if (override && override.includes(':')) {
-    const [provider, ...modelParts] = override.split(':')
-    return { provider, model: modelParts.join(':') }
-  }
+  const [provider, ...modelParts] = process.env.BUILDER_MODEL_OVERRIDE?.split(':') ?? []
+  const model = modelParts.join(':')
+  if (provider && model) return { provider, model }
   return { provider: 'anthropic', model: 'claude-sonnet-4-6' }
 }

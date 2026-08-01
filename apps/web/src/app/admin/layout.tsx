@@ -13,6 +13,7 @@ import { AdminAppSidebar } from './_components/app-sidebar'
 
 export const metadata: Metadata = {
   title: {
+    default: 'Auxx.ai Admin',
     template: '%s | Auxx.ai Admin',
   },
 }
@@ -47,22 +48,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   try {
     dehydratedState = await dehydrationService.getState(session.user.id)
   } catch (error) {
+    // Matches `(protected)/layout.tsx`. The previous hand-rolled fallback omitted
+    // `timestamp` and every required `DehydratedEnvironment` field (appUrl, cdnUrl,
+    // turnstileSiteKey, …), so the shared chrome it feeds would read `undefined`.
     console.error('Failed to fetch dehydrated state for admin:', error)
-    // Provide empty state as fallback for admin
-    dehydratedState = {
-      user: {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-      },
-      organizations: [],
-      organizationId: null,
-      environment: {
-        nodeEnv: process.env.NODE_ENV || 'development',
-        isDevelopment: process.env.NODE_ENV === 'development',
-      },
-      settingsCatalog: {},
-    }
+    redirect('/error?message=failed-to-load-state')
   }
 
   // Admin sidebar persists its own open/width under `admin_sidebar*` cookies (independent of

@@ -85,15 +85,11 @@ export default function TeamOnboardingPage() {
   }
   // Update invite email
   const updateInviteEmail = (index: number, email: string) => {
-    const updated = [...invites]
-    updated[index].email = email
-    setInvites(updated)
+    setInvites((prev) => prev.map((invite, i) => (i === index ? { ...invite, email } : invite)))
   }
   // Update invite role
   const updateInviteRole = (index: number, role: OrganizationRole) => {
-    const updated = [...invites]
-    updated[index].role = role
-    setInvites(updated)
+    setInvites((prev) => prev.map((invite, i) => (i === index ? { ...invite, role } : invite)))
   }
   // Copy invite link
   const copyInviteLink = async () => {

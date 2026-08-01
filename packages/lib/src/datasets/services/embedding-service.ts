@@ -127,13 +127,17 @@ export class EmbeddingService {
         wasChunked = chunkingResult.wasChunked
       }
 
-      // Generate embeddings
-      const response = await client.batchInvoke({
+      // Generate embeddings. `batchInvoke` is optional on TextEmbeddingClient — providers that
+      // don't override it fall back to the base class's per-request batching.
+      const batchParams = {
         texts: processedTexts,
         model,
         dimensions: validatedOptions?.dimensions,
         batchSize: validatedOptions?.batchSize,
-      })
+      }
+      const response = client.batchInvoke
+        ? await client.batchInvoke(batchParams)
+        : await client.defaultBatchInvoke(batchParams)
 
       // Aggregate chunked embeddings if necessary
       let finalEmbeddings = response.embeddings
@@ -311,8 +315,8 @@ export class EmbeddingService {
     const mapping: { originalIndex: number; chunkIndices: number[] }[] = []
     let wasChunked = false
 
-    for (let i = 0; i < texts.length; i++) {
-      const result = await SmartChunkingService.chunkText(texts[i], {
+    for (const [i, text] of texts.entries()) {
+      const result = await SmartChunkingService.chunkText(text, {
         provider,
         model,
         ...chunkingOptions,
@@ -344,29 +348,29 @@ export class EmbeddingService {
     texts: string[]
   ): number[][] {
     return mapping.map(({ chunkIndices }) => {
-      if (chunkIndices.length === 1) {
-        return embeddings[chunkIndices[0]]
+      const chunkEmbeddings = chunkIndices.map((idx) => embeddings[idx] ?? [])
+      const first = chunkEmbeddings[0] ?? []
+      if (chunkEmbeddings.length === 1) {
+        return first
       }
 
       // Weighted average by text length (token count proxy)
-      const chunkEmbeddings = chunkIndices.map((idx) => embeddings[idx])
       const chunkWeights = chunkIndices.map((idx) => Math.max(1, texts[idx]?.length || 1))
-      const dimensions = chunkEmbeddings[0].length
-      const averaged = new Array(dimensions).fill(0)
+      const dimensions = first.length
+      const averaged: number[] = new Array<number>(dimensions).fill(0)
       let totalWeight = 0
 
-      for (let i = 0; i < chunkEmbeddings.length; i++) {
-        const weight = chunkWeights[i]
-        const embedding = chunkEmbeddings[i]
+      for (const [i, embedding] of chunkEmbeddings.entries()) {
+        const weight = chunkWeights[i] ?? 1
         totalWeight += weight
 
         for (let d = 0; d < dimensions; d++) {
-          averaged[d] += embedding[d] * weight
+          averaged[d] = (averaged[d] ?? 0) + (embedding[d] ?? 0) * weight
         }
       }
 
       for (let d = 0; d < dimensions; d++) {
-        averaged[d] /= totalWeight
+        averaged[d] = (averaged[d] ?? 0) / totalWeight
       }
 
       return averaged

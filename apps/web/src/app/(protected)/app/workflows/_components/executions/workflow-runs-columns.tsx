@@ -251,7 +251,6 @@ export const createWorkflowRunsColumns = (
     header: 'Created',
     icon: CalendarClock,
     fieldType: 'DATETIME',
-    columnType: 'date',
     accessorFn: (row) => row.createdAt,
     cell: ({ getValue }) => (
       <FormattedCell value={getValue()} fieldType='DATETIME' columnId='createdAt' />

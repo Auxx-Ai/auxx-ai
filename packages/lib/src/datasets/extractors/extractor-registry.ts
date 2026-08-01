@@ -1,19 +1,30 @@
 // packages/lib/src/datasets/extractors/extractor-registry.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { ExtractorInfo } from '../types/extractor.types'
+import type { ExtractionOptions, ExtractorInfo } from '../types/extractor.types'
 import type { BaseExtractor } from './base-extractor'
 
 const logger = createScopedLogger('extractor-registry')
 
+/**
+ * Concrete constructor shape of a registered extractor. `typeof BaseExtractor` cannot be used
+ * here — BaseExtractor is abstract, so it is not newable and every call site had to cast.
+ */
+export type ExtractorConstructor = new (
+  fileContent: Buffer,
+  identifier?: string,
+  cacheKey?: string,
+  options?: ExtractionOptions
+) => BaseExtractor
+
 export class ExtractorRegistry {
-  private static extractors = new Map<string, typeof BaseExtractor>()
+  private static extractors = new Map<string, ExtractorConstructor>()
   private static initialized = false
 
   /**
    * Register an extractor
    */
-  static register(extractorClass: typeof BaseExtractor): void {
+  static register(extractorClass: ExtractorConstructor): void {
     // Create a temporary instance to get metadata
     const tempInstance = new (extractorClass as any)('temp', undefined, undefined)
     const name = tempInstance.getName()
@@ -25,7 +36,7 @@ export class ExtractorRegistry {
   /**
    * Get all registered extractors
    */
-  static getAll(): Map<string, typeof BaseExtractor> {
+  static getAll(): Map<string, ExtractorConstructor> {
     ExtractorRegistry.ensureInitialized()
     return new Map(ExtractorRegistry.extractors)
   }
@@ -76,7 +87,7 @@ export class ExtractorRegistry {
   /**
    * Get the best extractor for a file type
    */
-  static getBestExtractor(mimeType: string, extension: string): typeof BaseExtractor | null {
+  static getBestExtractor(mimeType: string, extension: string): ExtractorConstructor | null {
     const compatible = ExtractorRegistry.getCompatibleExtractors(mimeType, extension)
 
     if (compatible.length === 0) {
@@ -95,7 +106,7 @@ export class ExtractorRegistry {
   /**
    * Get extractor by name
    */
-  static getExtractor(name: string): typeof BaseExtractor | null {
+  static getExtractor(name: string): ExtractorConstructor | null {
     ExtractorRegistry.ensureInitialized()
     return ExtractorRegistry.extractors.get(name) || null
   }

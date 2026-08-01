@@ -243,8 +243,9 @@ export abstract class LLMClient extends BaseSpecializedClient {
           if (Array.isArray(msg.content)) {
             const filteredContent = msg.content.filter((content) => content.type !== 'image')
             // Convert back to string if only text content remains
-            if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
-              return { ...msg, content: filteredContent[0].data }
+            const [onlyContent] = filteredContent
+            if (filteredContent.length === 1 && onlyContent?.type === 'text') {
+              return { ...msg, content: onlyContent.data }
             }
             return { ...msg, content: filteredContent }
           }
@@ -279,8 +280,9 @@ export abstract class LLMClient extends BaseSpecializedClient {
                 ],
               }
             }
-            if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
-              return { ...msg, content: filteredContent[0].data }
+            const [onlyContent] = filteredContent
+            if (filteredContent.length === 1 && onlyContent?.type === 'text') {
+              return { ...msg, content: onlyContent.data }
             }
             return { ...msg, content: filteredContent }
           }

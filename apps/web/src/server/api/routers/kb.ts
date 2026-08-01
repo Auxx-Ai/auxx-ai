@@ -275,11 +275,11 @@ export const knowledgeBaseRouter = createTRPCRouter({
       FeatureKey.knowledgeBase,
       FeatureKey.knowledgeBases,
       async () => {
-        const [{ value }] = await ctx.db
+        const [row] = await ctx.db
           .select({ value: count() })
           .from(schema.KnowledgeBase)
           .where(eq(schema.KnowledgeBase.organizationId, organizationId))
-        return value
+        return row?.value ?? 0
       }
     )
     const result = await getKBService(ctx).createKnowledgeBase(input, ctx.session.user.id)
@@ -555,7 +555,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
         FeatureKey.kbPublishedArticles
       )
       if (typeof articleLimit === 'number' && articleLimit >= 0) {
-        const [{ value: current }] = await ctx.db
+        const [currentRow] = await ctx.db
           .select({ value: count() })
           .from(schema.Article)
           .where(
@@ -565,7 +565,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
             )
           )
         const cascadeTotal = input.ancestorIds.length + 1
-        if (current + cascadeTotal > articleLimit) {
+        if ((currentRow?.value ?? 0) + cascadeTotal > articleLimit) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: `You have reached your published article limit (${articleLimit}). Upgrade your plan to publish more articles.`,

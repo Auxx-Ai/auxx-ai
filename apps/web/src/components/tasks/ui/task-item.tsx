@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { RecordId } from '@auxx/lib/resources/client'
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { ActorId } from '@auxx/types/actor'
 import { Badge } from '@auxx/ui/components/badge'
@@ -98,7 +99,7 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
                   items={task.references}
                   renderItem={(recordId) => (
                     <RecordBadge
-                      recordId={recordId as string}
+                      recordId={recordId as RecordId}
                       showIcon
                       variant='default'
                       size='sm'

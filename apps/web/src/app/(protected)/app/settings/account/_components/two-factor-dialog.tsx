@@ -18,6 +18,7 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { QrCode, ShieldCheck, ShieldOff } from 'lucide-react'
+import type React from 'react'
 import { useState } from 'react'
 import QRCode from 'react-qr-code'
 import { client } from '~/auth/auth-client'
@@ -25,7 +26,7 @@ import { client } from '~/auth/auth-client'
 /**
  * Component for managing two-factor authentication - enable/disable 2FA and QR code display
  */
-export function TwoFactorDialog(): JSX.Element {
+export function TwoFactorDialog(): React.JSX.Element {
   const { data: session } = client.useSession()
   const [isPendingTwoFa, setIsPendingTwoFa] = useState<boolean>(false)
   const [twoFaPassword, setTwoFaPassword] = useState<string>('')
@@ -72,7 +73,6 @@ export function TwoFactorDialog(): JSX.Element {
     if (session?.user.twoFactorEnabled) {
       // Disable 2FA
       await client.twoFactor.disable({
-        //@ts-expect-error
         password: twoFaPassword,
         fetchOptions: {
           onError(context) {

@@ -19,10 +19,9 @@ export default function CustomerSourcesCard({ customer }: CustomerSourcesCardPro
   // Group sources by type for display
   const groupedSources: Record<string, any[]> = sources.reduce(
     (acc: Record<string, any[]>, source: any) => {
-      if (!acc[source.source]) {
-        acc[source.source] = []
-      }
-      acc[source.source].push(source)
+      const group = acc[source.source] ?? []
+      group.push(source)
+      acc[source.source] = group
       return acc
     },
     {}

@@ -40,8 +40,10 @@ export const snapTopLeftToCursor: Modifier = ({ transform, activeNodeRect, dragg
 // We just need to nullify the initial grab offset.
 export const snapToCursorSimple: Modifier = ({ activatorEvent, draggingNodeRect, transform }) => {
   if (draggingNodeRect && activatorEvent) {
-    const initialX = 'clientX' in activatorEvent ? activatorEvent.clientX : 0
-    const initialY = 'clientY' in activatorEvent ? activatorEvent.clientY : 0
+    // `'clientX' in e` narrows to `Event & Record<'clientX', unknown>`; `instanceof`
+    // gives real types and still covers PointerEvent (it extends MouseEvent).
+    const initialX = activatorEvent instanceof MouseEvent ? activatorEvent.clientX : 0
+    const initialY = activatorEvent instanceof MouseEvent ? activatorEvent.clientY : 0
 
     const offsetX = initialX - draggingNodeRect.left
     const offsetY = initialY - draggingNodeRect.top

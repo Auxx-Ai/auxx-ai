@@ -105,6 +105,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('pause writes status=awaiting-approval on the right part', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -129,6 +130,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('approve mutates that part to status=completed with output (same messageId, same partIndex)', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -158,6 +160,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('reject mutates that part to status=rejected with synthetic output (same messageId, same partIndex)', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -187,6 +190,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('subsequent parts append to the same messageId after resume', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -230,6 +234,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('approve when the tool throws mutates the part to status=error with the message', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -258,6 +263,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('pause persists a system approval message alongside the assistant message', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -294,6 +300,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('approve flips the system approval message to status=approved', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -322,6 +329,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('reject flips the system approval message to status=rejected', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,
@@ -350,6 +358,7 @@ describe('parts-based resume — in-place mutation invariants', () => {
   it('does NOT create a duplicate tool_call part on the same toolCallId after resume', async () => {
     const writer: AgentToolDefinition = {
       name: 'writer',
+      displayName: 'Writer',
       description: 'w',
       parameters: { type: 'object', properties: {}, required: [] },
       requiresApproval: true,

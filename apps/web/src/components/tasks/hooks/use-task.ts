@@ -1,6 +1,8 @@
 // apps/web/src/components/tasks/hooks/use-task.ts
 
 import type { TaskWithRelations } from '@auxx/lib/tasks'
+import type { TRPCClientErrorLike } from '@trpc/client'
+import type { AppRouter } from '~/server/api/root'
 import { api } from '~/trpc/react'
 import { useTaskStore } from '../stores/task-store'
 
@@ -18,7 +20,8 @@ interface UseTaskOptions {
 interface UseTaskResult {
   task: TaskWithRelations | null
   isLoading: boolean
-  error: Error | null
+  /** tRPC's error shape — structurally distinct from `Error`, though the runtime value is one. */
+  error: TRPCClientErrorLike<AppRouter> | null
 }
 
 /**

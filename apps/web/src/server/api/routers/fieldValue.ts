@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/fieldValue.ts
 
 import { schema } from '@auxx/database'
+import { FieldType } from '@auxx/database/enums'
 import { FieldValueService } from '@auxx/lib/field-values'
 import type { FieldReference } from '@auxx/types/field'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
@@ -249,7 +250,10 @@ export const fieldValueRouter = createTRPCRouter({
       z.object({
         recordId: z.string(), // RecordId format
         fieldId: fieldIdSchema,
-        fieldType: z.string(),
+        // `AddValueInput.fieldType` is the `FieldType` enum, not a free string —
+        // validating it here rejects a bogus type at the boundary instead of
+        // letting it reach the value writer.
+        fieldType: z.enum(FieldType),
         value: typedValueInputSchema,
         position: z
           .union([z.literal('start'), z.literal('end'), z.object({ after: z.string() })])

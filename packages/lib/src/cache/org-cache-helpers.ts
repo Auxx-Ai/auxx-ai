@@ -318,7 +318,8 @@ export async function getCachedAgentsByUserIds(
 ): Promise<CachedAgent[]> {
   const agents = await getOrgCache().get(orgId, 'agents')
   const idSet = new Set(userIds)
-  return agents.filter((a) => idSet.has(a.userId))
+  // `userId` is nullable — an agent with no backing user can never match.
+  return agents.filter((a) => a.userId !== null && idSet.has(a.userId))
 }
 
 /**

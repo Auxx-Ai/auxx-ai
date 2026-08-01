@@ -3,6 +3,7 @@
 'use client'
 
 import { isAiEligible } from '@auxx/lib/custom-fields/client'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { AiOptions } from '@auxx/types/custom-field'
 import type { FieldId, FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
@@ -22,7 +23,7 @@ interface CustomFieldCellProps {
   /** Column ID - can be ResourceFieldId or encoded FieldPath (with ::) */
   columnId: string
   /** @deprecated Field options - now fetched via useField hook for reactivity */
-  options?: unknown
+  options?: FieldOptions
 }
 
 /**

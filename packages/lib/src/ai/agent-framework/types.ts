@@ -128,8 +128,15 @@ export interface IterationUsage {
   finishReason?: string
 }
 
-/** Per-turn metadata persisted on an assistant message. */
-export interface AssistantMessageMetadata {
+/**
+ * Per-turn metadata persisted on an assistant message.
+ *
+ * Declared as a type alias, not an interface, so it stays assignable to
+ * `BaseSessionMessage['metadata']` (`Record<string, unknown>`) — an interface
+ * has no implicit index signature and would make `AssistantSessionMessage` an
+ * illegal extension of its own base.
+ */
+export type AssistantMessageMetadata = {
   /** Last agent that produced parts on this turn (responder, by convention). */
   agent?: string
   modelId?: string
@@ -141,6 +148,11 @@ export interface AssistantMessageMetadata {
   captured?: boolean
   /** Per-LLM-call billing breakdown. One entry per agent iteration. */
   iterations?: IterationUsage[]
+  /**
+   * Source `Message.id` when this turn was replayed from thread history by
+   * `buildCatchupMessages` — the dedup key that keeps replay idempotent.
+   */
+  messageId?: string
 }
 
 /**

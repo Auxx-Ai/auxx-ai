@@ -292,7 +292,9 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
   for (const lineInstanceId of lineInstanceIds) {
     const lineRecordId = toRecordId('line_item', lineInstanceId)
     const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
-    const get = (f?: { id: string }) => (f ? firstTyped(values.get(f.id)) : undefined)
+    // `bySystemAttributes` yields `CustomFieldEntity | null` per key — a field the
+    // org has not materialised is `null`, not absent — so accept both.
+    const get = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
 
     const nameTyped = get(lineCf.line_item_name)
     const descriptionTyped = get(lineCf.line_item_description)

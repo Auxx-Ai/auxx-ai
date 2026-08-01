@@ -122,7 +122,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             event,
             integration.id,
             integration.organizationId,
-            integration.metadata as unknown as Record<string, any> | null
+            integration.metadata as Partial<InstagramIntegrationMetadata> | null
           )
 
           if (messageData) {
@@ -166,7 +166,7 @@ function convertInstagramWebhookEventToMessageData(
   event: any,
   integrationId: string,
   organizationId: string,
-  integrationMetadata: Partial<InstagramIntegrationMetadata>
+  integrationMetadata: Partial<InstagramIntegrationMetadata> | null
 ): MessageData | null {
   try {
     const senderIgsid = event.sender.id
@@ -181,8 +181,8 @@ function convertInstagramWebhookEventToMessageData(
     // Directionality: Webhook always receives messages sent TO the business account
     const isInbound = true
 
-    const fromParticipant = { name: undefined, address: senderIgsid } // Sender is the user (IGSID)
-    const toParticipant = { name: igUsername, address: recipientIgbid } // Recipient is the business (IGBID)
+    const fromParticipant = { name: undefined, identifier: senderIgsid } // Sender is the user (IGSID)
+    const toParticipant = { name: igUsername, identifier: recipientIgbid } // Recipient is the business (IGBID)
 
     const text = message.text
     const attachments = (message.attachments || []).map((att: any) => ({
@@ -218,15 +218,18 @@ function convertInstagramWebhookEventToMessageData(
       cc: [],
       bcc: [],
       replyTo: [],
-      hasAttachments: attachments.length > 0,
-      attachments: attachments,
+      // Instagram has no inbound attachment ingestor, so no MessageAttachment rows
+      // are ever created and `providerAttachments` is never populated. Mirrors
+      // InstagramProvider.convertToMessageData — `hasAttachments` is a workflow
+      // trigger filter, so claiming true fires attachment rules for bytes that
+      // were never fetched. The `attachments` local still drives the snippet fallback.
+      hasAttachments: false,
       textPlain: text,
       snippet: text ? text.substring(0, 100) : attachments[0]?.filename || '',
       isInbound: isInbound,
       metadata: { event: event },
       keywords: [],
       labelIds: [],
-      emailLabel: EmailLabel.inbox,
     }
 
     return messageData

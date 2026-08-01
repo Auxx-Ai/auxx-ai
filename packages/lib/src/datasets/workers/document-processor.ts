@@ -11,6 +11,7 @@ import { DocumentEventType, type DocumentExecutionReporter } from '../events'
 import { ExtractorFactory } from '../extractors/extractor-factory'
 import { TextChunker } from '../processors/text-chunker'
 import { DocumentService } from '../services/document-service'
+import type { ExtractorMetadata } from '../types/extractor.types'
 import type { DocumentProcessingJobData, WorkerJobResult } from '../types/worker.types'
 
 const logger = createScopedLogger('document-processor')
@@ -408,7 +409,14 @@ export class DocumentProcessor {
   /**
    * Extract content from document file
    */
-  private static async extractContent(jobData: DocumentProcessingJobData) {
+  private static async extractContent(jobData: DocumentProcessingJobData): Promise<{
+    success: boolean
+    content?: string
+    /** Extractor-supplied metadata — open-ended (`imageOnly`, `extractorUsed`, …). */
+    metadata?: ExtractorMetadata
+    wordCount?: number
+    error?: string
+  }> {
     const { documentId, fileName, mimeType, extractorConfig } = jobData
     try {
       // Get file content from MediaAsset

@@ -301,7 +301,10 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
       }
 
       const override = columnOverrides?.(field)
-      return override ? { ...base, ...override } : base
+      // `ExtendedColumnDef` is a union (TanStack's `ColumnDef` arms), and a
+      // spread of a union widens into a shape that matches no single arm —
+      // `Object.assign` keeps the intersection instead.
+      return override ? Object.assign({}, base, override) : base
     },
     [entityDefinitionId, columnOverrides]
   )

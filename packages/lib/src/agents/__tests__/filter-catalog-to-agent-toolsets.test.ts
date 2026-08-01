@@ -58,6 +58,7 @@ function agentConfig(selections: AgentToolsetSelection[]): ResolvedAgentConfig {
       slug: s.slug,
       enabledTools: s.enabledTools == null ? null : new Set(s.enabledTools),
     })),
+    knowledge: [],
     appAccounts: {},
     toolRestrictions: {},
     modelId: null,

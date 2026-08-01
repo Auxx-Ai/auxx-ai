@@ -57,7 +57,7 @@ describe('classifyProcedure', () => {
   it('constrains the structured-output enum to the candidate ids ∪ null', async () => {
     invokeMock.mockResolvedValue({ structured_output: { procedureId: 'p-cancel' } })
     await classifyProcedure(conversation, candidates, deps)
-    const req = invokeMock.mock.calls[0][0]
+    const req = invokeMock.mock.calls[0]![0]
     expect(req.structuredOutput.enabled).toBe(true)
     expect(req.structuredOutput.schema.properties.procedureId.enum).toEqual([
       'p-cancel',
@@ -82,7 +82,7 @@ describe('classifyProcedure', () => {
       ],
       deps
     )
-    const sys = invokeMock.mock.calls[0][0].messages[0].content
+    const sys = invokeMock.mock.calls[0]![0].messages[0].content
     expect(sys).toContain('Use when:')
     expect(sys).toContain('please cancel my plan')
     expect(sys).toContain('Avoid when:')

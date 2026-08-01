@@ -132,7 +132,11 @@ export async function executeStrategy(
           .update(schema.ImportPlanRow)
           .set({
             status: rowResult.success ? 'completed' : 'failed',
-            resultRecordId: rowResult.recordId,
+            // The column has always held the bare instance id (`executeRow` writes
+            // the same thing). `rowResult.recordId` is now the branded
+            // `<defId>:<instanceId>` form, so read `instanceId` to keep the
+            // persisted value unchanged.
+            resultRecordId: rowResult.instanceId,
             errorMessage: rowResult.error,
             executedAt: new Date(),
             updatedAt: new Date(),

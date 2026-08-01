@@ -114,7 +114,6 @@ export function coerceForPaste(
     case 'TEXT':
     case 'EMAIL':
     case 'URL':
-    case 'PHONE':
     case 'PHONE_INTL':
     case 'ADDRESS':
     case 'RICH_TEXT': {

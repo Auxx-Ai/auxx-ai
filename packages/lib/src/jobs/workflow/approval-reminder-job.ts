@@ -62,6 +62,14 @@ export async function approvalReminderJob(ctx: JobContext<ApprovalReminderJobDat
       })
       return
     }
+    // `expiresAt` is nullable. A reminder is a countdown against a deadline —
+    // `sendReminderNotifications` derives its whole "time remaining" string from
+    // it — so a request with no deadline has nothing to remind against. (The
+    // comparison below used to swallow this case by coercing `null` to 0.)
+    if (!approvalRequest.expiresAt) {
+      logger.info('Approval has no expiry, skipping reminder', { approvalRequestId })
+      return
+    }
     // Check if already expired
     if (approvalRequest.expiresAt < new Date()) {
       logger.info('Approval already expired, skipping reminder', {
@@ -84,7 +92,9 @@ export async function approvalReminderJob(ctx: JobContext<ApprovalReminderJobDat
     logger.info('Approval reminder sent', {
       approvalRequestId,
       reminderNumber,
-      assigneeCount: approvalRequest.assigneeUsers.length + approvalRequest.assigneeGroups.length,
+      assigneeCount:
+        (approvalRequest.assigneeUsers?.length ?? 0) +
+        (approvalRequest.assigneeGroups?.length ?? 0),
     })
   } catch (error) {
     logger.error('Failed to send approval reminder', {

@@ -25,7 +25,9 @@ const CreateSessionSchema = z.object({
   fileName: z.string().min(1),
   mimeType: z.string(),
   expectedSize: z.number().positive(),
-  provider: z.enum(['S3', 'GOOGLE_DRIVE', 'DROPBOX', 'ONEDRIVE', 'BOX', 'Local']).optional(),
+  // Must stay a subset of `ProviderId` — there is no 'Local' adapter, so accepting
+  // it here only turned a 400 into a "No adapter available for provider" 500.
+  provider: z.enum(['S3', 'GOOGLE_DRIVE', 'DROPBOX', 'ONEDRIVE', 'BOX']).optional(),
   entityType: z.enum(ENTITY_TYPES),
   entityId: z.string().optional(),
   metadata: z.record(z.string(), z.any()).optional(),
@@ -177,9 +179,10 @@ export async function POST(request: NextRequest) {
         metadata: { sessionId: uploadSession.id },
       })
 
+      // `partPresignEndpoint` is not part of the persisted session — the client
+      // reads it off the response body below, so persisting it was a no-op.
       await SessionManager.updateSession(uploadSession.id, {
         uploadId: multipart.uploadId,
-        partPresignEndpoint: `/api/files/upload/${uploadSession.id}/parts`,
         uploadMethod: 'PUT',
       })
 

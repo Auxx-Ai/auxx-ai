@@ -310,7 +310,7 @@ function MailboxInner({
         contextType,
         contextId,
         statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
-        userId,
+        userId: userId ?? undefined,
         personalInboxIds,
       },
       searchConditions
@@ -523,10 +523,7 @@ function MailboxInner({
                   size='sm'
                   className='h-7 rounded-lg'
                   onClick={() => openCompose()}>
-                  Compose{' '}
-                  <Kbd size='sm' shortcut='c'>
-                    c
-                  </Kbd>
+                  Compose <Kbd size='sm'>c</Kbd>
                 </Button>
               </div>
             }>

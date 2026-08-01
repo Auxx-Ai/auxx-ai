@@ -128,63 +128,62 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     let storageLocationId: string
 
     try {
-      await db.transaction(
-        async (tx) => {
-          // 2.1 Build external URL for public assets (avatars, KB logos, etc.)
-          let externalUrl = ''
-          try {
-            if (session.visibility === 'PUBLIC') {
-              externalUrl = await storageManager.buildExternalUrl(
-                session.provider,
-                session.storageKey,
-                session.credentialId,
-                {
-                  bucket: session.bucket,
-                  visibility: session.visibility,
-                }
-              )
-            }
-          } catch (urlErr) {
-            logger.warn('Failed to build external URL', {
-              sessionId,
-              storageKey: session.storageKey,
-              error: String(urlErr),
-            })
+      // The transaction returns the StorageLocation id so it is definitely assigned
+      // on the success path (the catch below returns, so nothing reads it on failure).
+      storageLocationId = await db.transaction(async (tx) => {
+        // 2.1 Build external URL for public assets (avatars, KB logos, etc.)
+        let externalUrl = ''
+        try {
+          if (session.visibility === 'PUBLIC') {
+            externalUrl = await storageManager.buildExternalUrl(
+              session.provider,
+              session.storageKey,
+              session.credentialId,
+              {
+                bucket: session.bucket,
+                visibility: session.visibility,
+              }
+            )
           }
+        } catch (urlErr) {
+          logger.warn('Failed to build external URL', {
+            sessionId,
+            storageKey: session.storageKey,
+            error: String(urlErr),
+          })
+        }
 
-          // 2.2 Create/Upsert StorageLocation
-          const storageLocation = await storageManager.createStorageLocation(
-            {
-              provider: session.provider,
-              externalId: session.storageKey,
-              externalUrl, // Now populated for public assets
-              externalRev: headResult.etagOrRev,
-              size: headResult.size,
-              mimeType: headResult.mimeType || session.mimeType,
-              metadata: {
-                sessionId,
-                uploader: session.userId,
-                originalFileName: session.fileName,
-                originalEtag: completion.etag,
-                originalSize: completion.size,
-              },
-              credentialId: session.credentialId,
-              bucket: session.bucket,
-              visibility: session.visibility,
+        // 2.2 Create/Upsert StorageLocation
+        const storageLocation = await storageManager.createStorageLocation(
+          {
+            provider: session.provider,
+            externalId: session.storageKey,
+            externalUrl, // Now populated for public assets
+            externalRev: headResult.etagOrRev,
+            size: headResult.size,
+            mimeType: headResult.mimeType || session.mimeType,
+            metadata: {
+              sessionId,
+              uploader: session.userId,
+              originalFileName: session.fileName,
+              originalEtag: completion.etag,
+              originalSize: completion.size,
             },
-            { tx }
-          )
+            credentialId: session.credentialId,
+            bucket: session.bucket,
+            visibility: session.visibility,
+          },
+          { tx }
+        )
 
-          storageLocationId = storageLocation.id
+        // 2.3 Let processor create Asset/File/Attachment with same TX
+        result = await processor.process(session, storageLocation.id, { tx })
 
-          // 2.3 Let processor create Asset/File/Attachment with same TX
-          result = await processor.process(session, storageLocation.id, { tx })
+        // 2.4 Optionally persist domain outbox event
+        // await tx.outboxEvent.create({ ... })
 
-          // 2.4 Optionally persist domain outbox event
-          // await tx.outboxEvent.create({ ... })
-        },
-        { timeout: 10000 }
-      ) // Keep transaction short
+        return storageLocation.id
+      })
     } catch (err) {
       // ============= COMPENSATION: S3 CLEANUP =============
       try {

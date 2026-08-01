@@ -3,6 +3,7 @@
 import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
 import { resolveMcpConnectionForRuntime } from './connections'
+import type { CachedMcpServer } from './types'
 
 export interface McpRequestContext {
   endpoint: string
@@ -16,6 +17,23 @@ export interface McpRequestContext {
 export interface McpAuthErrorResult {
   code: 'SERVER_NOT_FOUND' | 'CONNECTION_ERROR'
   message: string
+}
+
+/**
+ * Narrow the cached server's `connectionType` to the three values MCP actually persists.
+ *
+ * `CachedMcpServer.connectionType` is typed off the generic ConnectionDefinition vocabulary
+ * (which also has `client-credentials` and `hosted-provision`), but every MCP write path
+ * (`createCustomMcpServer`, `updateMcpServer`, the curated templates) only ever stores
+ * `oauth2-code`, `secret` or `none`. Anything else would be a foreign definition attached to an
+ * MCP server; treat it as `secret` — "a credential is required and bearered", which is what the
+ * runtime already did for those values before this narrowing.
+ */
+function toMcpConnectionType(
+  connectionType: CachedMcpServer['connectionType']
+): 'oauth2-code' | 'secret' | 'none' {
+  if (connectionType === 'oauth2-code' || connectionType === 'none') return connectionType
+  return connectionType === null ? 'none' : 'secret'
 }
 
 /** Extract `{key}` placeholder names from a template string (local copy — avoids cross-pkg import). */
@@ -57,7 +75,7 @@ export async function buildMcpRequestContext(opts: {
   const resolved = await resolveMcpConnectionForRuntime({
     mcpServerId: opts.mcpServerId,
     organizationId: opts.organizationId,
-    connectionType: server.connectionType ?? 'none',
+    connectionType: toMcpConnectionType(server.connectionType),
   })
   if (resolved.isErr()) {
     return err({ code: 'CONNECTION_ERROR', message: resolved.error.message })

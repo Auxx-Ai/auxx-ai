@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/batch-existing-values.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { isArrayReturnFieldType, type TypedFieldValue } from '@auxx/types'
 import { and, asc, eq, inArray } from 'drizzle-orm'
@@ -30,7 +30,7 @@ export type ExistingFieldValuesMap = Map<
  * an empty inner map for entities that have no rows for any of the fields.
  */
 export async function batchGetExistingFieldValues(
-  ctx: { db: Database; organizationId: string },
+  ctx: { db: Database | Transaction; organizationId: string },
   entityIds: string[],
   fieldIds: string[],
   fieldById: Map<string, CachedField>

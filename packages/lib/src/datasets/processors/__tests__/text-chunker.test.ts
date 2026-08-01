@@ -27,7 +27,7 @@ describe('TextChunker', () => {
       })
 
       expect(chunks.length).toBe(1)
-      expect(chunks[0].content).toBe(content)
+      expect(chunks[0]?.content).toBe(content)
     })
 
     it('should return empty array for empty content', async () => {
@@ -69,7 +69,7 @@ describe('TextChunker', () => {
       })
 
       // Should break at paragraph boundary
-      expect(chunks[0].content).toBe('First paragraph with some content here.')
+      expect(chunks[0]?.content).toBe('First paragraph with some content here.')
     })
 
     it('should prefer sentence breaks when no paragraph breaks available', async () => {
@@ -80,7 +80,7 @@ describe('TextChunker', () => {
       })
 
       // First chunk should end at a sentence boundary
-      expect(chunks[0].content).toMatch(/\.$/)
+      expect(chunks[0]?.content).toMatch(/\.$/)
     })
 
     it('should use custom delimiter when specified', async () => {
@@ -96,7 +96,7 @@ describe('TextChunker', () => {
       })
 
       // Should break at delimiter - first chunk ends with ---
-      expect(chunks[0].content).toMatch(/---$/)
+      expect(chunks[0]?.content).toMatch(/---$/)
       expect(chunks.length).toBeGreaterThanOrEqual(2)
     })
 
@@ -110,7 +110,7 @@ describe('TextChunker', () => {
       })
 
       // First chunk should end at the delimiter (position 400), not continue to 1000
-      expect(chunks[0].content).toBe('A'.repeat(400))
+      expect(chunks[0]?.content).toBe('A'.repeat(400))
     })
 
     it('should respect delimiter with multiple occurrences in window', async () => {

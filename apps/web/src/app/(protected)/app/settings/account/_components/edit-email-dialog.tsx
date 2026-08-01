@@ -18,6 +18,7 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { TooltipError } from '@auxx/ui/components/tooltip'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { AlertCircle, Mail } from 'lucide-react'
+import type React from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -60,7 +61,7 @@ export function EditEmailDialog({
   isOpen,
   onOpenChange,
   onSuccess,
-}: EditEmailDialogProps): JSX.Element | null {
+}: EditEmailDialogProps): React.JSX.Element | null {
   // Avoid initializing form/resolver until dialog is opened
   if (!isOpen) return null
 

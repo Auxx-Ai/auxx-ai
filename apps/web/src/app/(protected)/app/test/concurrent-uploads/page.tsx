@@ -37,7 +37,7 @@ function AvatarUploadSection() {
   const [uploadedFile, setUploadedFile] = useState<string | null>(null)
 
   const fileSelect = useFileSelect({
-    entityType: 'AVATAR',
+    entityType: 'USER_PROFILE',
     maxFiles: 1,
     maxFileSize: 2 * 1024 * 1024, // 2MB
     fileExtensions: ['.jpg', '.jpeg', '.png', '.webp'],
@@ -178,7 +178,7 @@ function DocumentUploadSection() {
  */
 function ImageGallerySection() {
   const fileSelect = useFileSelect({
-    entityType: 'MEDIA',
+    entityType: 'FILE',
     maxFiles: 10,
     maxFileSize: 5 * 1024 * 1024, // 5MB
     fileExtensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],

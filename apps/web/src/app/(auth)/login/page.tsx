@@ -23,14 +23,15 @@ const resolveRedirectTarget = (value: string | string[] | undefined): string => 
   const defaultRedirect = '/app'
   if (!value) return defaultRedirect
   const candidate = Array.isArray(value) ? value[0] : value
+  if (!candidate) return defaultRedirect
 
   // Allow relative paths
-  if (candidate!.startsWith('/') && !candidate!.startsWith('//') && !candidate!.includes('..')) {
+  if (candidate.startsWith('/') && !candidate.startsWith('//') && !candidate.includes('..')) {
     return candidate
   }
 
   // Allow external URLs to trusted domains (for cross-app redirects like developer portal)
-  if (candidate!.startsWith('http://') || candidate!.startsWith('https://')) {
+  if (candidate.startsWith('http://') || candidate.startsWith('https://')) {
     try {
       const url = new URL(candidate)
       if (isTrustedHostname(url.hostname)) {

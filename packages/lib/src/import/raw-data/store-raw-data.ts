@@ -22,11 +22,12 @@ export async function storeRawData(
   rows: string[][],
   onProgress?: (processed: number, total: number) => void
 ): Promise<void> {
-  if (rows.length === 0) {
+  const [firstRow] = rows
+  if (!firstRow) {
     return
   }
 
-  const columnCount = rows[0].length
+  const columnCount = firstRow.length
   let processedRows = 0
 
   // Process in batches to avoid memory issues
@@ -42,8 +43,7 @@ export async function storeRawData(
       valueHash: string
     }> = []
 
-    for (let rowOffset = 0; rowOffset < batchRows.length; rowOffset++) {
-      const row = batchRows[rowOffset]
+    for (const [rowOffset, row] of batchRows.entries()) {
       const rowIndex = batchStart + rowOffset
 
       for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
@@ -79,11 +79,12 @@ export async function storeRawDataChunk(
   rows: string[][],
   startRowIndex: number
 ): Promise<void> {
-  if (rows.length === 0) {
+  const [firstRow] = rows
+  if (!firstRow) {
     return
   }
 
-  const columnCount = rows[0].length
+  const columnCount = firstRow.length
 
   const insertData: Array<{
     importJobId: string
@@ -93,8 +94,7 @@ export async function storeRawDataChunk(
     valueHash: string
   }> = []
 
-  for (let rowOffset = 0; rowOffset < rows.length; rowOffset++) {
-    const row = rows[rowOffset]
+  for (const [rowOffset, row] of rows.entries()) {
     const rowIndex = startRowIndex + rowOffset
 
     for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {

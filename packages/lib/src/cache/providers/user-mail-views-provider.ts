@@ -26,9 +26,12 @@ export const userMailViewsProvider: CacheProvider<CachedMailView[]> = {
       isDefault: v.isDefault,
       isPinned: v.isPinned,
       isShared: v.isShared,
-      filterGroups: v.filterGroups as unknown[],
+      // The API vocabulary is `filterGroups`; the column is `filters`
+      // (`mail-view-service.ts` maps the same way on both read and write).
+      // Reading `v.filterGroups` here was always `undefined`.
+      filterGroups: (v.filters as unknown[] | null) ?? [],
       sortField: v.sortField,
-      sortDirection: v.sortDirection,
+      sortDirection: v.sortDirection === 'asc' ? 'asc' : v.sortDirection === 'desc' ? 'desc' : null,
       organizationId: v.organizationId,
       userId: v.userId,
       createdAt: v.createdAt instanceof Date ? v.createdAt.toISOString() : String(v.createdAt),

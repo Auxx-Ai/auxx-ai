@@ -355,7 +355,7 @@ function AddCardFieldStack() {
   const filteredFields = useMemo(() => {
     if (!search) return availableFields
     const query = search.toLowerCase()
-    return availableFields.filter((f) => f.name.toLowerCase().includes(query))
+    return availableFields.filter((f) => (f.name ?? f.label).toLowerCase().includes(query))
   }, [availableFields, search])
 
   /** Handle adding a field */

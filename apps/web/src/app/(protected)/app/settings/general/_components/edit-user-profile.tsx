@@ -5,6 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { Edit } from 'lucide-react'
+import type React from 'react'
 import { useState } from 'react'
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
 import { TimezoneSettings } from '~/components/settings/timezone-settings'
@@ -13,7 +14,7 @@ import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
 import { EditNameDialog } from './edit-name-dialog'
 import { NotificationPreferences } from './notification-preferences'
 
-export function EditUserProfileForm(): JSX.Element {
+export function EditUserProfileForm(): React.JSX.Element {
   const { user } = useUser()
   const dehydratedUser = useDehydratedUser()
   const [nameDialogOpen, setNameDialogOpen] = useState(false)

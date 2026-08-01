@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/field-value-helpers.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import {
@@ -9,13 +9,26 @@ import {
   type TypedFieldValue,
   type TypedFieldValueInput,
 } from '@auxx/types'
-import { type ActorId, isActorId, parseActorId, toActorId } from '@auxx/types/actor'
+import {
+  type ActorId,
+  type ActorIdType,
+  isActorId,
+  parseActorId,
+  toActorId,
+} from '@auxx/types/actor'
 import {
   getInverseFieldId,
   type RelationshipConfig,
   type RelationshipType,
 } from '@auxx/types/custom-field'
-import { getFieldId, isFieldPath, isResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
+import {
+  type FieldPath,
+  getFieldId,
+  isFieldPath,
+  isResourceFieldId,
+  parseResourceFieldId,
+} from '@auxx/types/field'
+import type { ActorFieldValue } from '@auxx/types/field-value'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -24,12 +37,14 @@ import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { getRealtimeService, rooms } from '../realtime'
+import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
 import type { InverseFieldInfo } from './relationship-sync'
 import { isSearchTextIndexedFieldType, updateSearchText } from './search-text'
+import { toFieldType } from './stored-field-type'
 import type { CachedField, FieldReference, FieldValueRow } from './types'
 
 // Re-export for convenience
@@ -44,7 +59,14 @@ export type { InverseFieldInfo, CachedField }
  * Passed to all mutation and query functions for dependency injection.
  */
 export interface FieldValueContext {
-  db: Database
+  /**
+   * Accepts a `Transaction` as well as the pooled `Database` — callers such as
+   * `resources/merge/merge-service.ts` run field-value writes inside a transaction,
+   * and `setBulkValues`/`addValues` rebuild this context around their own `tx`.
+   * The two differ only by `$client` (`Connection = NodePgDatabase & { $client }`),
+   * which nothing reachable from this context touches.
+   */
+  db: Database | Transaction
   organizationId: string
   userId?: string
   /** Pusher socket ID of the originating client — used for self-event exclusion in realtime sync. */
@@ -103,7 +125,7 @@ const EMPTY_BYPASS: ReadonlySet<SystemAttribute> = new Set()
 export function createFieldValueContext(
   organizationId: string,
   userId?: string,
-  db: Database = database,
+  db: Database | Transaction = database,
   socketId?: string,
   options: CreateFieldValueContextOptions = {}
 ): FieldValueContext {
@@ -228,6 +250,11 @@ export async function getInverseInfoFromField(
 
   // Target = entity with inverse field
   const targetEntityDefinitionId = inverseField.entityDefinitionId
+
+  // `CustomField.entityDefinitionId` is nullable — table-backed system resources carry
+  // none. Both halves are needed to build the RecordIds the inverse rows are written
+  // under, so a field missing one has no inverse to sync.
+  if (!sourceEntityDefinitionId || !targetEntityDefinitionId) return null
 
   // Default to 'has_many' if not specified (valid RelationshipType)
   const inverseRelationshipType: RelationshipType =
@@ -389,6 +416,13 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
       }
       // Fallback for empty actor
       return { ...base, type: 'actor', actorType: 'user', id: '', actorId: '' as ActorId }
+    case 'computed':
+      // CALC is the only `computed` field type and it is never persisted, so a
+      // FieldValue row can't carry one — and `TypedFieldValue` has no arm for it.
+      // Reaching here means a caller invented a row for a computed field.
+      throw new Error(
+        `[rowToTypedValue] Field type ${fieldType} is computed and has no stored value.`
+      )
   }
 }
 
@@ -579,6 +613,21 @@ export async function validateAndConvertValue(
 }
 
 /**
+ * Narrow an `ActorId` prefix to the kinds an ACTOR field value can hold.
+ *
+ * `ActorIdType` also carries `profile:`, which addresses a `PermissionProfile` as an
+ * additive ResourceAccess grantee — never a record value. `ActorFieldValue.actorType`
+ * and its zod schema both list four kinds, so a `profile:` id is rejected here rather
+ * than converted into an `actorType` the validator would refuse one step later.
+ */
+function toActorFieldType(type: ActorIdType): ActorFieldValue['actorType'] {
+  if (type === 'profile') {
+    throw new BadRequestError('Actor fields cannot reference a permission profile')
+  }
+  return type
+}
+
+/**
  * Validate single value using appropriate Zod schema.
  * Each field type has its own validation logic.
  */
@@ -718,7 +767,7 @@ export async function validateSingleValue(
         // Check if it's an ActorId format (e.g., "user:abc123" or "group:xyz789")
         if (isActorId(value)) {
           const { type: actorType, id } = parseActorId(value as ActorId)
-          return { type: 'actor', actorType, id }
+          return { type: 'actor', actorType: toActorFieldType(actorType), id }
         }
         // Plain string without prefix - assume user type with raw ID
         return { type: 'actor', actorType: 'user', id: value }
@@ -736,7 +785,7 @@ export async function validateSingleValue(
         // Parse id if it's in ActorId format (e.g., "user:abc123")
         if (isActorId(id)) {
           const parsed = parseActorId(id as ActorId)
-          return { type: 'actor', actorType: parsed.type, id: parsed.id }
+          return { type: 'actor', actorType: toActorFieldType(parsed.type), id: parsed.id }
         }
         return { type: 'actor', actorType, id }
       }
@@ -829,7 +878,7 @@ export async function preBatchValidateRelationships(
  * Lightweight single-column query — used when a display field is a RELATIONSHIP type.
  */
 export async function getRelatedDisplayName(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   recordId: RecordId
 ): Promise<string | null> {
@@ -847,7 +896,7 @@ export async function getRelatedDisplayName(
  * Returns a Map of entityInstanceId → displayName.
  */
 export async function batchGetRelatedDisplayNames(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
   recordIds: RecordId[]
 ): Promise<Map<string, string | null>> {
@@ -1059,9 +1108,8 @@ export async function maybeUpdateDisplayValue(
             displayValue = json.url
           } else if (typeof json?.ref === 'string') {
             // FILE field: { ref: "asset:abc123" } — queue avatar thumbnail
-            const match = (json.ref as string).match(/^asset:(.+)$/)
-            if (match) {
-              const assetId = match[1]
+            const assetId = (json.ref as string).match(/^asset:(.+)$/)?.[1]
+            if (assetId) {
               // Set null interim — thumbnail callback will set the CDN URL
               displayValue = null
               // Fire-and-forget: queue thumbnail generation in background
@@ -1084,9 +1132,11 @@ export async function maybeUpdateDisplayValue(
       }
     } else {
       // Use centralized formatter for display value computation
-      displayValue = formatToDisplayValue(typedValue, field.type, field.options as any) as
-        | string
-        | null
+      displayValue = formatToDisplayValue(
+        typedValue,
+        toFieldType(field.type),
+        field.options as any
+      ) as string | null
     }
   }
 
@@ -1223,6 +1273,26 @@ export async function getFieldTypeMapByDefinition(
 const MAX_PATH_DEPTH = 5
 
 /**
+ * Normalize a {@link FieldReference} into a {@link FieldPath}.
+ *
+ * `FieldReference` also admits a bare `FieldId` — a field cuid with no
+ * entity-definition half — but every consumer of the normalized path immediately
+ * calls `parseResourceFieldId`, which for a colon-less string `console.error`s and
+ * returns `{ entityDefinitionId: <the whole id>, fieldId: '' }`. That resolves the
+ * reference against an entity that cannot exist instead of failing, so unqualified
+ * references are rejected here with a message that names the actual problem.
+ */
+export function normalizeFieldReference(ref: FieldReference): FieldPath {
+  if (isFieldPath(ref)) return ref
+  if (!isResourceFieldId(ref)) {
+    throw new BadRequestError(
+      `Field reference "${ref}" is not entity-qualified — expected "<entityDefinitionId>:<fieldId>"`
+    )
+  }
+  return [ref]
+}
+
+/**
  * Validate all field references before fetching.
  * Throws descriptive errors for invalid paths.
  */
@@ -1231,15 +1301,15 @@ export async function validateFieldReferences(
   fieldReferences: FieldReference[]
 ): Promise<void> {
   for (const ref of fieldReferences) {
-    const path = isFieldPath(ref) ? ref : [ref]
+    const path = normalizeFieldReference(ref)
 
     // Enforce max depth limit
     if (path.length > MAX_PATH_DEPTH) {
       throw new Error(`Path exceeds maximum depth of ${MAX_PATH_DEPTH} hops (got ${path.length})`)
     }
 
-    for (let i = 0; i < path.length; i++) {
-      const { entityDefinitionId, fieldId } = parseResourceFieldId(path[i])
+    for (const [i, step] of path.entries()) {
+      const { entityDefinitionId, fieldId } = parseResourceFieldId(step)
       const resource = await findCachedResource(organizationId, entityDefinitionId)
 
       if (!resource) {

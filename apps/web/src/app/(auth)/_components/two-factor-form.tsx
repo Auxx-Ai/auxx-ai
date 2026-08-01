@@ -60,7 +60,7 @@ function TwoFactorForm(_props: Props) {
     try {
       const { data, error } = await client.twoFactor.verifyTotp({ code: otp })
       if (error) {
-        setError(error.message)
+        setError(error.message ?? 'Verification failed')
         // Clear the OTP on error to prevent loops
         setOtp('')
       }

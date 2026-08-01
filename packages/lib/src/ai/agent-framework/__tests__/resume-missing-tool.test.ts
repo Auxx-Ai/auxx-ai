@@ -73,6 +73,7 @@ function makeConfig(
 
 const writer: AgentToolDefinition = {
   name: 'writer',
+  displayName: 'Writer',
   description: 'w',
   parameters: { type: 'object', properties: {}, required: [] },
   requiresApproval: true,
@@ -122,8 +123,7 @@ describe('resume against a toolset missing the paused tool', () => {
     // Critical: the message now projects a matching tool_result — no dangling
     // tool_use, so the next provider call won't 400.
     const wire = partsToWireFormat(msg.parts)
-    const assistant = wire[0]
-    expect(assistant.tool_calls?.some((t) => t.id === toolCallId)).toBe(true)
+    expect(wire[0]?.tool_calls?.some((t) => t.id === toolCallId)).toBe(true)
     const toolResult = wire.find((w) => w.role === 'tool' && w.tool_call_id === toolCallId)
     expect(toolResult).toBeDefined()
   })
