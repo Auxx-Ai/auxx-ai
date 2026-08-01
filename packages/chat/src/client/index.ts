@@ -22,6 +22,7 @@
  * wires it through the actual transport layer.
  */
 
+import type { AuxxChatCommand } from '../identify'
 import { API_URL, WIDGET_URL } from '../shared/env'
 import { dispatchIdentityChanged } from '../shared/identity'
 import { clearStoredPassport } from '../transport/passport'
@@ -45,11 +46,8 @@ interface BootState {
   containerSelector?: string
 }
 
-declare global {
-  interface Window {
-    AuxxChat?: unknown
-  }
-}
+// `window.AuxxChat` is declared once, in `../identify` — the module that owns
+// the embed queue. Re-declaring it here diverged the two shapes.
 
 let state: BootState | null = null
 
@@ -61,13 +59,9 @@ function ensureBrowser(): void {
 
 function pushAttributes(attributes: Record<string, unknown>): void {
   if (!Object.keys(attributes).length) return
-  const queue = (window.AuxxChat ??= [] as unknown[])
-  if (Array.isArray(queue)) {
-    queue.push(['identify', attributes])
-  } else {
-    const handle = queue as { push?: (cmd: unknown) => void }
-    handle.push?.(['identify', attributes])
-  }
+  // Either the pre-boot array or the installed handler — both take `push`.
+  const queue = (window.AuxxChat ??= [] as AuxxChatCommand[])
+  queue.push(['identify', attributes])
 
   // Mirror onto __AUXX_CONFIG__ so `buildUserDataEnvelope()` can ship the
   // non-sensitive bag alongside the JWT for phase-4 resolution.

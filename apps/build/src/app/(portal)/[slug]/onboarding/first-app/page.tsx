@@ -61,8 +61,13 @@ export default function OnboardingAppPage() {
   // Create mutation
   const createApp = api.apps.create.useMutation({
     onSuccess: (data) => {
-      // Add the new app to dehydrated state immediately
-      addApp(data.app)
+      // Add the new app to dehydrated state immediately.
+      // `hasOauth`/`hasBundle` are nullable columns; the cached shape treats absent as off.
+      addApp({
+        ...data.app,
+        hasOauth: data.app.hasOauth ?? false,
+        hasBundle: data.app.hasBundle ?? false,
+      })
       // Invalidate developer account's first app query
       utils.developerAccounts.getFirstApp.invalidate({ slug: developerSlug })
       // Redirect to the new app (no need for router.refresh() since we updated state)

@@ -146,7 +146,8 @@ export interface LoadedChatWidget {
     title: string
     subtitle: string | null
     primaryColor: string
-    headerColor: string
+    /** Nullable in the schema: null means "derive the band from the brand tint hue". */
+    headerColor: string | null
     logoLight: string | null
     logoDark: string | null
     position: string

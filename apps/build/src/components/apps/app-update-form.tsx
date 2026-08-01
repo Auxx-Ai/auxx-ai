@@ -57,14 +57,21 @@ const iconMap = {
   Package,
 } as const
 
+/** Marketplace category values, kept as literals so the form type matches the mutation input */
+const appCategoryValues = constants.appCategories.map((c) => c.value)
+
+type AppCategory = (typeof appCategoryValues)[number]
+
+/** Narrow a stored category string (nullable, free-form in the DB) to a known category */
+function isAppCategory(value: string | null | undefined): value is AppCategory {
+  return !!value && (appCategoryValues as readonly string[]).includes(value)
+}
+
 /** Form validation schema */
 const appUpdateSchema = z.object({
   title: z.string().min(1, 'App name is required'),
   description: z.string().optional().or(z.literal('')),
-  category: z
-    .enum(constants.appCategories.map((c) => c.value) as [string, ...string[]])
-    .nullable()
-    .optional(),
+  category: z.enum(appCategoryValues).optional(),
   contentOverview: z
     .string()
     .refine((val) => !val || val.length === 0 || val.length >= 100, {
@@ -127,6 +134,27 @@ const appUpdateSchema = z.object({
 })
 
 type AppUpdateFormData = z.infer<typeof appUpdateSchema>
+
+/**
+ * Pull the per-field validation messages that the server's tRPC `errorFormatter`
+ * attaches to Zod failures at `error.data.fieldErrors`. Returns an empty map for
+ * any other kind of error.
+ */
+function getFieldErrors(error: unknown): Record<string, string> {
+  if (!(error instanceof Error) || !('data' in error)) return {}
+
+  const data = error.data
+  if (typeof data !== 'object' || data === null || !('fieldErrors' in data)) return {}
+
+  const fieldErrors = data.fieldErrors
+  if (typeof fieldErrors !== 'object' || fieldErrors === null) return {}
+
+  const messages: Record<string, string> = {}
+  for (const [field, message] of Object.entries(fieldErrors)) {
+    if (typeof message === 'string') messages[field] = message
+  }
+  return messages
+}
 
 interface AppUpdateFormProps {
   appSlug: string
@@ -208,7 +236,7 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
       reset({
         title: fullApp.title,
         description: fullApp.description || '',
-        category: fullApp.category as any,
+        category: isAppCategory(fullApp.category) ? fullApp.category : undefined,
         contentOverview: fullApp.contentOverview || '',
         contentHowItWorks: fullApp.contentHowItWorks || '',
         contentConfigure: fullApp.contentConfigure || '',
@@ -231,22 +259,28 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
         ...data,
       })
     } catch (error) {
-      const fieldErrors = error?.data?.fieldErrors
+      const fieldErrors = getFieldErrors(error)
 
-      if (fieldErrors && Object.keys(fieldErrors).length) {
+      if (Object.keys(fieldErrors).length > 0) {
         // Set field-specific errors
-        Object.entries(fieldErrors).forEach(([field, message]) => {
+        for (const [field, message] of Object.entries(fieldErrors)) {
           setError(field as keyof AppUpdateFormData, {
             type: 'manual',
             message,
           })
-        })
+        }
 
         toastError({
           title: 'Validation failed',
           description: 'Please check the form for errors',
         })
+        return
       }
+
+      toastError({
+        title: 'Failed to save app',
+        description: error instanceof Error ? error.message : 'Please try again',
+      })
     }
   }
 
@@ -311,8 +345,8 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
                       // Radix can emit a spurious empty value on mount (notably under
                       // StrictMode's double-mount), which would clobber the loaded
                       // category. Ignore empty emissions — a real selection is never ''.
-                      if (!value) return
-                      setValue('category', value as any, { shouldDirty: true })
+                      if (!isAppCategory(value)) return
+                      setValue('category', value, { shouldDirty: true })
                     }}>
                     <SelectTrigger id='app-category'>
                       <SelectValue placeholder='Select a category...' />

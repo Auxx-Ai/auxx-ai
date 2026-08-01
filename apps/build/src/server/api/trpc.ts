@@ -3,7 +3,6 @@
 
 import { database } from '@auxx/database'
 import { initTRPC, TRPCError } from '@trpc/server'
-import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch'
 import SuperJSON from 'superjson'
 import { ZodError } from 'zod'
 import { getLocalSession } from '~/lib/auth'
@@ -11,13 +10,13 @@ import { getLocalSession } from '~/lib/auth'
 /**
  * Create context for tRPC requests
  */
-export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
+export async function createTRPCContext(opts: { headers: Headers }) {
   const session = await getLocalSession()
 
   return {
     db: database,
     session: session ? { userId: session.userId, userEmail: session.email } : null,
-    headers: opts.req.headers,
+    headers: opts.headers,
   }
 }
 

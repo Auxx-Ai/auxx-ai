@@ -250,7 +250,12 @@ export const appsRouter = createTRPCRouter({
       })
       await invalidateAppCatalog()
 
-      return result.value
+      // Only the 'review' branch can auto-approve; normalise so the client always
+      // gets the flag instead of a union it has to discriminate.
+      return {
+        app: result.value.app,
+        autoApproved: 'autoApproved' in result.value ? result.value.autoApproved : false,
+      }
     }),
 
   /**

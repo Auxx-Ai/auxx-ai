@@ -1,10 +1,21 @@
 {
   "extends": "@auxx/typescript-config/base.json",
   "compilerOptions": {
-    "rootDir": "./src",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "target": "ES2022"
+    "target": "ES2022",
+    // This package is never built: it has no build script, no `dist`, and its
+    // package.json `exports` points directly at `./src/index.ts` — vitest
+    // consumes the TypeScript sources as-is. Nothing declares it in a
+    // "references" array either, so `composite` (inherited from
+    // @auxx/typescript-config/base.json) buys no incremental consumer; it only
+    // enforces "list every file in the program". src/globals.d.ts and
+    // src/setup/per-test-setup.ts import @auxx/database's schema and relations,
+    // which pulls ~40 database source files into the program that this
+    // package's `include` cannot match — each one was a TS6307. The matching
+    // explicit "rootDir": "./src" turned each of those into a TS6059 as well.
+    // Same reasoning as packages/lib.
+    "composite": false
   },
   "include": ["./src/**/*"],
   "exclude": ["node_modules", "dist"]

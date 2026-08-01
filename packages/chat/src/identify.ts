@@ -17,11 +17,18 @@ export interface IdentifyPayload {
   externalId?: string
 }
 
-type IdentifyCommand = ['identify', IdentifyPayload]
-type AuxxChatCommand = IdentifyCommand
-type AuxxChatHandle =
+/**
+ * What an embedder actually pushes. Their bag is untyped at the call site (it
+ * comes from their app), so the queue accepts any object and `normalize()`
+ * keeps only the string claims we understand.
+ */
+export type IdentifyInput = IdentifyPayload | Record<string, unknown>
+
+export type AuxxChatCommand = ['identify', IdentifyInput]
+
+export type AuxxChatHandle =
   | AuxxChatCommand[]
-  | { push: (command: AuxxChatCommand) => void; identify: (payload: IdentifyPayload) => void }
+  | { push: (command: AuxxChatCommand) => void; identify: (payload: IdentifyInput) => void }
 
 declare global {
   interface Window {
@@ -79,13 +86,13 @@ export function installIdentifyQueue(channelId: string): void {
 
   window.AuxxChat = {
     push: dispatch,
-    identify: (payload: IdentifyPayload) => dispatch(['identify', payload]),
+    identify: (payload: IdentifyInput) => dispatch(['identify', payload]),
   }
 
   for (const cmd of queue) dispatch(cmd)
 }
 
-function normalize(payload: IdentifyPayload | null | undefined): IdentifyPayload | null {
+function normalize(payload: IdentifyInput | null | undefined): IdentifyPayload | null {
   if (!payload || typeof payload !== 'object') return null
   const name = trimmed(payload.name)
   const email = trimmed(payload.email)

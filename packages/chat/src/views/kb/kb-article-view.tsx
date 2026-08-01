@@ -183,7 +183,8 @@ function wireTabs(root: HTMLElement): () => void {
       else if (event.key === 'Home') nextIndex = 0
       else if (event.key === 'End') nextIndex = buttons.length - 1
       const next = buttons[nextIndex]
-      const targetId = next?.getAttribute('data-target')
+      if (!next) return
+      const targetId = next.getAttribute('data-target')
       if (!targetId) return
       event.preventDefault()
       activateTab(container, targetId)

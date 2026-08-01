@@ -52,52 +52,11 @@ export function createWorker<T extends Record<string, JobHandler>>(
     logger.error(`Worker error on queue ${queue}:`, { error: error.message })
   })
 
-  // Lock renewal failure handling with integration recovery
-  worker.on('lockRenewalFailed', async (jobId: string, error: Error) => {
-    logger.warn('Lock renewal failed', { jobId, queue, error: error.message })
-
-    // Attempt to recover integration state for polling sync jobs
-    try {
-      const job = await Job.fromId(worker, jobId)
-
-      if (job?.data?.integrationId) {
-        const { integrationId } = job.data
-
-        // Dynamic imports to avoid circular dependencies
-        const { recoverProcessingBatch, getImportCacheSize } = await import(
-          '@auxx/lib/email/polling-import-cache'
-        )
-        const { database: db, schema } = await import('@auxx/database')
-        const { and, eq, inArray } = await import('drizzle-orm')
-
-        const recovered = await recoverProcessingBatch(integrationId)
-        const cacheSize = await getImportCacheSize(integrationId)
-
-        const resetStage = cacheSize > 0 ? 'MESSAGES_IMPORT_PENDING' : 'MESSAGE_LIST_FETCH_PENDING'
-
-        await db
-          .update(schema.Integration)
-          .set({ syncStage: resetStage, syncStageStartedAt: null, updatedAt: new Date() })
-          .where(
-            and(
-              eq(schema.Integration.id, integrationId),
-              inArray(schema.Integration.syncStage, ['MESSAGE_LIST_FETCH', 'MESSAGES_IMPORT'])
-            )
-          )
-
-        logger.info('Recovered integration after lock loss', {
-          integrationId,
-          recoveredFromProcessing: recovered,
-          cacheSize,
-          resetStage,
-        })
-      }
-    } catch (err) {
-      // Best-effort — stale check will catch it in 15 minutes
-      logger.error('Failed to recover integration after lock loss', {
-        jobId,
-        error: (err as Error).message,
-      })
+  // Lock renewal failure handling with integration recovery.
+  // BullMQ emits this with a single argument: the ids of every job whose lock could not be renewed.
+  worker.on('lockRenewalFailed', (jobIds: string[]) => {
+    for (const jobId of jobIds) {
+      void recoverIntegrationAfterLockLoss(worker, queue, jobId)
     }
   })
 
@@ -132,4 +91,60 @@ export function createWorker<T extends Record<string, JobHandler>>(
   })
 
   return worker
+}
+
+/**
+ * Best-effort recovery of a polling-sync integration whose job lost its lock.
+ *
+ * Resets the integration's sync stage so the stale-check doesn't have to wait 15 minutes.
+ * Never throws — a failure here is logged and left to the stale check.
+ */
+async function recoverIntegrationAfterLockLoss(
+  worker: Worker,
+  queue: Queues,
+  jobId: string
+): Promise<void> {
+  logger.warn('Lock renewal failed', { jobId, queue })
+
+  try {
+    const job = await Job.fromId(worker, jobId)
+    const integrationId: string | undefined = job?.data?.integrationId
+
+    if (!integrationId) return
+
+    // Dynamic imports to avoid circular dependencies
+    const { recoverProcessingBatch, getImportCacheSize } = await import(
+      '@auxx/lib/email/polling-import-cache'
+    )
+    const { database: db, schema } = await import('@auxx/database')
+    const { and, eq, inArray } = await import('drizzle-orm')
+
+    const recovered = await recoverProcessingBatch(integrationId)
+    const cacheSize = await getImportCacheSize(integrationId)
+
+    const resetStage = cacheSize > 0 ? 'MESSAGES_IMPORT_PENDING' : 'MESSAGE_LIST_FETCH_PENDING'
+
+    await db
+      .update(schema.Integration)
+      .set({ syncStage: resetStage, syncStageStartedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.Integration.id, integrationId),
+          inArray(schema.Integration.syncStage, ['MESSAGE_LIST_FETCH', 'MESSAGES_IMPORT'])
+        )
+      )
+
+    logger.info('Recovered integration after lock loss', {
+      integrationId,
+      recoveredFromProcessing: recovered,
+      cacheSize,
+      resetStage,
+    })
+  } catch (err) {
+    // Best-effort — stale check will catch it in 15 minutes
+    logger.error('Failed to recover integration after lock loss', {
+      jobId,
+      error: (err as Error).message,
+    })
+  }
 }

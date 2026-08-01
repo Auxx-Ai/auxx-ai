@@ -44,20 +44,24 @@ export function AttachButton({ channelId, inflight, onChange, disabled }: Attach
     async (files: FileList | File[]) => {
       const list = Array.from(files)
       if (list.length === 0) return
-      const additions: InflightAttachment[] = list.map((f) => ({
-        localId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: f.name,
-        size: f.size,
-        type: f.type,
-        objectUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
+      // Pair each File with its own placeholder row up front — indexing two
+      // parallel arrays later can't be proven in-bounds and buys nothing.
+      const pending = list.map((file) => ({
+        file,
+        att: {
+          localId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          objectUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+        } satisfies InflightAttachment,
       }))
-      const start = [...inflight, ...additions]
+      const start = [...inflight, ...pending.map((p) => p.att)]
       onChange(start)
       const next = [...start]
 
       await Promise.all(
-        additions.map(async (att, i) => {
-          const file = list[i]
+        pending.map(async ({ file, att }) => {
           try {
             const { passport } = await getChatPassport(channelId)
             const fd = new FormData()

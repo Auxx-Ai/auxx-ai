@@ -1,7 +1,13 @@
 {
   "extends": "@auxx/typescript-config/base.json",
   "compilerOptions": {
-    "outDir": "./dist"
+    "outDir": "./dist",
+    // apps/api pulls in .tsx sources transitively (@auxx/email's react-email
+    // templates, @auxx/lib's react-pdf documents). Without `jsx` those modules
+    // fail to parse (TS6142) and everything behind them degrades to `any`,
+    // which silently suppresses real errors in this app's own code. Matches
+    // packages/email, packages/lib and apps/worker.
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

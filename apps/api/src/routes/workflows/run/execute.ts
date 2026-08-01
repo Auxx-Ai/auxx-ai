@@ -1,6 +1,7 @@
 // apps/api/src/routes/workflows/run/execute.ts
 
 import { database } from '@auxx/database'
+import { WorkflowRunStatus } from '@auxx/database/enums'
 import { createUsageGuard } from '@auxx/lib/usage'
 import {
   RedisWorkflowExecutionReporter,
@@ -23,6 +24,28 @@ const logger = createScopedLogger('workflow-run-execute')
  * POST /api/v1/workflows/run
  */
 const executeRoute = new Hono()
+
+/**
+ * `@auxx/database/types` exports a *type* named `WorkflowRunStatus` alongside the
+ * *const* of the same name in `/enums`, so derive the union off the const here
+ * rather than importing both under one identifier.
+ */
+type WorkflowRunStatusValue = (typeof WorkflowRunStatus)[keyof typeof WorkflowRunStatus]
+
+/**
+ * Statuses a `WorkflowRun` never leaves. `WAITING` is deliberately excluded — a
+ * run parked on a human-approval step is still live and must keep polling until
+ * the caller's timeout.
+ */
+const TERMINAL_RUN_STATUSES: readonly WorkflowRunStatusValue[] = [
+  WorkflowRunStatus.SUCCEEDED,
+  WorkflowRunStatus.FAILED,
+  WorkflowRunStatus.STOPPED,
+]
+
+function isTerminalRunStatus(status: WorkflowRunStatusValue | undefined): boolean {
+  return status !== undefined && TERMINAL_RUN_STATUSES.includes(status)
+}
 
 /**
  * Extract API key from Authorization header
@@ -201,11 +224,7 @@ async function handleBlockingExecution(
       finalRun = updatedRun
 
       // Check if workflow completed
-      if (
-        updatedRun.status === 'completed' ||
-        updatedRun.status === 'failed' ||
-        updatedRun.status === 'cancelled'
-      ) {
+      if (isTerminalRunStatus(updatedRun.status)) {
         break
       }
     }
@@ -294,11 +313,7 @@ async function handleStreamingExecution(
           columns: { status: true },
         })
 
-        if (
-          run?.status === 'completed' ||
-          run?.status === 'failed' ||
-          run?.status === 'cancelled'
-        ) {
+        if (isTerminalRunStatus(run?.status)) {
           break
         }
 

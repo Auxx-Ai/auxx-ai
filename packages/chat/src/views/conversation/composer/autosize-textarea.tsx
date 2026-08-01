@@ -53,22 +53,24 @@ interface SizingInfo {
   borderSize: number
 }
 
+/** `borderTopWidth` -> `border-top-width`, the form `CSSStyleDeclaration` APIs take. */
+function toCssProperty(key: string): string {
+  return key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)
+}
+
 function applyHiddenStyles(element: HTMLTextAreaElement): void {
-  Object.keys(HIDDEN_TEXTAREA_STYLE).forEach((key) => {
-    element.style.setProperty(key, HIDDEN_TEXTAREA_STYLE[key]!, 'important')
-  })
+  for (const [key, value] of Object.entries(HIDDEN_TEXTAREA_STYLE)) {
+    element.style.setProperty(key, value, 'important')
+  }
 }
 
 function getSizingInfo(element: HTMLTextAreaElement): SizingInfo | null {
   const computedStyle = window.getComputedStyle(element)
   if (!computedStyle) return null
-  const sizingStyle = SIZING_STYLE_KEYS.reduce(
-    (acc, key) => {
-      acc[key] = computedStyle.getPropertyValue(key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`))
-      return acc
-    },
-    {} as Record<string, string>
-  )
+  const sizingStyle: Record<string, string> = {}
+  for (const key of SIZING_STYLE_KEYS) {
+    sizingStyle[key] = computedStyle.getPropertyValue(toCssProperty(key))
+  }
   if (sizingStyle.boxSizing === '') return null
   const paddingSize =
     parseFloat(sizingStyle.paddingBottom || '0') + parseFloat(sizingStyle.paddingTop || '0')
@@ -95,16 +97,17 @@ function calculateHeight(
     hiddenTextarea.setAttribute('aria-hidden', 'true')
     applyHiddenStyles(hiddenTextarea)
   }
-  if (!hiddenTextarea.parentNode) document.body.appendChild(hiddenTextarea)
-  Object.keys(info.sizingStyle).forEach((key) => {
-    ;(hiddenTextarea!.style as Record<string, string>)[key] = info.sizingStyle[key]!
-  })
-  applyHiddenStyles(hiddenTextarea)
+  const sizer = hiddenTextarea
+  if (!sizer.parentNode) document.body.appendChild(sizer)
+  for (const [key, val] of Object.entries(info.sizingStyle)) {
+    sizer.style.setProperty(toCssProperty(key), val)
+  }
+  applyHiddenStyles(sizer)
 
-  hiddenTextarea.value = value || 'x'
-  let contentHeight = getScrollHeight(hiddenTextarea, info)
-  hiddenTextarea.value = 'x'
-  const rowHeight = hiddenTextarea.scrollHeight - info.paddingSize
+  sizer.value = value || 'x'
+  let contentHeight = getScrollHeight(sizer, info)
+  sizer.value = 'x'
+  const rowHeight = sizer.scrollHeight - info.paddingSize
 
   let minHeight = rowHeight * minRows
   if (info.sizingStyle.boxSizing === 'border-box') {
@@ -119,7 +122,9 @@ function calculateHeight(
   return Math.min(maxHeight, contentHeight)
 }
 
-interface AutosizeTextareaProps extends Omit<JSX.HTMLAttributes<HTMLTextAreaElement>, 'style'> {
+// `JSX.HTMLAttributes` is the element-agnostic base and has no `value` — the
+// textarea-specific attribute set is what carries `value` / `rows` / `wrap`.
+interface AutosizeTextareaProps extends Omit<JSX.IntrinsicElements['textarea'], 'style'> {
   minRows?: number
   maxRows?: number
   cacheMeasurements?: boolean
