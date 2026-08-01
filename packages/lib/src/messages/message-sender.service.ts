@@ -1358,6 +1358,10 @@ export class MessageSenderService {
         : params.threadContext.externalId
       const result: ProviderSendResult = await provider.sendMessage({
         messageId: params.internetMessageId, // Use original Message-ID
+        // Same `Message` row as the original attempt, so a retried Outlook send still
+        // carries `X-AuxxAi-Message-Id` and its Sent Items copy reconciles onto this
+        // row instead of duplicating into a forked thread.
+        internalMessageId: params.messageId,
         from: params.participants.from.identifier,
         to: params.participants.to.map((p: any) => p.identifier),
         cc: params.participants.cc?.map((p: any) => p.identifier),

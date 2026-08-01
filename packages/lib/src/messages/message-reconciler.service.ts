@@ -128,6 +128,61 @@ export class MessageReconcilerService {
   }> {
     // Check multiple strategies to find recently sent messages
 
+    // Strategy 0: Check by the echoed `Message.id` (exact, and the cheapest).
+    //
+    // We stamp `X-AuxxAi-Message-Id: <our Message.id>` on every outbound message.
+    // Microsoft Graph strips every transport header from the Sent Items copy but
+    // preserves custom `x-` names (verified 2026-08-01: the copy came back carrying
+    // only `X-AuxxAi-Message`), so when the provider reads that header back into
+    // `echoedMessageId` we have an EXACT primary-key correlation — no subject
+    // guessing, no time window, no dependence on the poll interval. That is why it
+    // runs before Strategy 1.
+    //
+    // Two guards, because a header is attacker-controllable input, not our own state:
+    //   - `organizationId` scope: an id lifted from another tenant must never
+    //     resolve. This is a security boundary, not a nicety.
+    //   - `sendToken IS NOT NULL`: only a message WE sent can have a Sent-folder
+    //     echo. Without this, a spoofed header could graft an arbitrary inbound
+    //     message onto any row in the org.
+    // A miss on either guard (or a bogus id) falls through to the strategies below
+    // rather than failing the ingest.
+    const byEchoedId = messageData.echoedMessageId
+      ? await this.db.query.Message.findFirst({
+          // Every predicate here is a guard, because the id arrives in a header and
+          // headers are attacker-controllable. The org and integration both come
+          // from the INGESTING side, never from the header, so a forged id cannot
+          // reach another tenant or another channel — an echo always arrives on the
+          // same integration that sent it. `sendToken IS NOT NULL` means only a
+          // message WE sent can be a reconcile target, so a forged header cannot
+          // graft inbound mail onto an arbitrary row.
+          where: (messages, { eq, and, isNotNull }) =>
+            and(
+              eq(messages.id, messageData.echoedMessageId!),
+              eq(messages.organizationId, messageData.organizationId),
+              eq(messages.integrationId, messageData.integrationId),
+              isNotNull(messages.sendToken)
+            ),
+          columns: {
+            id: true,
+            sendToken: true,
+            threadId: true,
+          },
+        })
+      : null
+
+    if (byEchoedId) {
+      logger.info('Found sent message by echoed X-AuxxAi-Message-Id, reconciling', {
+        messageId: byEchoedId.id,
+        externalId: messageData.externalId,
+      })
+
+      await this.mergeIncomingProviderData(byEchoedId.id, messageData)
+      return {
+        isReconciled: true,
+        existingMessageId: byEchoedId.id,
+      }
+    }
+
     // Strategy 1: Check by internetMessageId (most reliable)
     const byMessageId = messageData.internetMessageId
       ? await this.db.query.Message.findFirst({
@@ -177,7 +232,15 @@ export class MessageReconcilerService {
           eq(messages.subject, messageData.subject || ''),
           inArray(messages.sendStatus, [SendStatus.PENDING, SendStatus.SENT]),
           isNotNull(messages.sendToken),
-          gte(messages.createdAt, new Date(Date.now() - 300000)) // Within last 5 minutes
+          // 30 minutes, measured from INGEST time. This only bounds the scan — it is
+          // NOT the precision control. Precision comes from the `< 60000` relative-skew
+          // check against `recentlySent.createdAt` below, plus the integration /
+          // `sendToken` / subject predicates and `orderBy desc(createdAt)`.
+          // The previous 5 minutes was too short: Outlook polls every ~5-7 minutes, and
+          // a measured live case had our row created at 06:28:02.744 and the echo
+          // ingested at 06:34:50 — a 6m47s gap, so the candidate was never even
+          // SELECTED and the skew check never got to run.
+          gte(messages.createdAt, new Date(Date.now() - 30 * 60 * 1000))
         ),
       orderBy: (messages, { desc }) => [desc(messages.createdAt)],
       columns: {

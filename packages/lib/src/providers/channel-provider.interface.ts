@@ -43,6 +43,27 @@ export interface SendMessageOptions {
   messageId?: string // Provider-specific ID for outgoing message if available
   externalThreadId?: string // Link to existing thread if applicable
 
+  /**
+   * Row id of the freshly composed `Message` (already committed by
+   * `MessageComposerService` before the provider is called).
+   *
+   * Outlook stamps it on the wire as `X-AuxxAi-Message-Id`. Microsoft Graph
+   * returns nothing from `/me/sendMail` and mints its own `Message-ID`, so the
+   * Sent Items copy that syncs back otherwise shares NO identifier with the row
+   * we created — it duplicated into a forked thread. Custom `x-` headers are the
+   * one thing Graph both accepts on send and preserves on the copy, so echoing
+   * this id back is an exact, latency-independent correlation key
+   * (`MessageData.echoedMessageId`).
+   *
+   * `Message.id` deliberately, NOT `sendToken`: the token is an idempotency
+   * capability and must never leave our systems on a header every recipient can
+   * read. The row id is an opaque cuid with no capability attached.
+   *
+   * Also consumed by chat providers that write side rows after the composer
+   * commits (see `SendMessageParams.internalMessageId`).
+   */
+  internalMessageId?: string
+
   // Attachments
   attachmentIds?: string[] // References to stored attachments (used by our system)
   attachments?: AttachmentFile[] // Direct attachment objects (used by providers)
