@@ -273,7 +273,9 @@ export function MappingFieldPicker({
             seedType={sourceFieldType ?? inferFieldType(sourcePath, sourceType, sourceFormat)}
             onBack={() => setView('pick')}
             onCreated={(fieldRef) => {
-              onAssign(fieldRef)
+              // Optional like the pick path above — quick-create is only reachable via
+              // `canCreate`, which no caller sets without also passing `onAssign`.
+              onAssign?.(fieldRef)
               onOpenChange(false)
             }}
           />
@@ -290,14 +292,11 @@ function useFieldTypeGroups(): OptionGroup[] {
       Object.entries(FIELD_TYPE_GROUPS)
         .map(([groupName, types]) => ({
           label: groupName,
-          options: types
-            .filter((type) => type !== FieldType.RELATIONSHIP)
-            .map((type) => {
-              const opt = fieldTypeOptions[type]
-              if (!opt) return null
-              return { value: type, label: opt.label, iconId: opt.iconId }
-            })
-            .filter((o): o is Option => o !== null),
+          options: types.flatMap<Option>((type) => {
+            if (type === FieldType.RELATIONSHIP) return []
+            const opt = fieldTypeOptions[type]
+            return opt ? [{ value: type, label: opt.label, iconId: opt.iconId }] : []
+          }),
         }))
         .filter((g) => g.options.length > 0),
     []

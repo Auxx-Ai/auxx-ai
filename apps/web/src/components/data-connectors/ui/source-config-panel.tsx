@@ -13,11 +13,14 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { type FieldEntry, readFieldNodes, seedDefaults } from '~/components/global/schema-form'
 import { BaseType } from '~/components/workflow/types'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 import { RecordKeyValueEditor, RequestEditorBlock, RevealChip } from './request-editors'
 
-type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
+type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
+
+/** `FieldType` is a const object, not a TS enum — its value union has to be spelled out. */
+type FieldTypeValue = (typeof FieldType)[keyof typeof FieldType]
 
 interface SourceConfigPanelProps {
   connector: Connector
@@ -180,7 +183,7 @@ function AppConfigSource({ connector }: { connector: Connector }) {
 }
 
 /** Map a JSON-Schema config node to the platform `FieldType` that renders it. */
-function fieldTypeFor(entry: FieldEntry): FieldType {
+function fieldTypeFor(entry: FieldEntry): FieldTypeValue {
   switch (entry.node.type) {
     case 'boolean':
       return FieldType.CHECKBOX
@@ -193,7 +196,7 @@ function fieldTypeFor(entry: FieldEntry): FieldType {
 }
 
 /** The row-label icon's base type for a given field type. */
-function baseTypeFor(fieldType: FieldType): BaseType {
+function baseTypeFor(fieldType: FieldTypeValue): BaseType {
   if (fieldType === FieldType.CHECKBOX) return BaseType.BOOLEAN
   if (fieldType === FieldType.NUMBER) return BaseType.NUMBER
   return BaseType.STRING

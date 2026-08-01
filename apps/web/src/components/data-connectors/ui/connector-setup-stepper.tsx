@@ -258,9 +258,11 @@ export function ConnectorSetupStepper({ connector }: ConnectorSetupStepperProps)
 
   // Guard: if the active step was filtered out (sample drops once streams load),
   // fall back to the first incomplete step in the current order.
-  const current = stepOrder.includes(active)
+  // `'run'` is the terminal fallback: only 'sample' is ever filtered out of STEPS, so
+  // `stepOrder` always ends with 'run' (same assumption as the `active` initializer).
+  const current: SetupStepId = stepOrder.includes(active)
     ? active
-    : (stepOrder.find((id) => !doneById[id]) ?? stepOrder[stepOrder.length - 1])
+    : (stepOrder.find((id) => !doneById[id]) ?? stepOrder[stepOrder.length - 1] ?? 'run')
 
   // A step is unlocked once every step before it is done.
   const isUnlocked = (id: SetupStepId) => {

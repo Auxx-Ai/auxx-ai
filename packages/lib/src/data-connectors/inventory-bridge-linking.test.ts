@@ -5,8 +5,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  updateSpy: vi.fn(async () => ({})),
-  createSpy: vi.fn(async () => ({})),
+  // Params mirror `UnifiedCrudHandler.update/create` so `mock.calls[n]` destructures
+  // as the real tuple instead of an empty one.
+  updateSpy: vi.fn(async (_recordId: string, _values: Record<string, unknown>) => ({})),
+  createSpy: vi.fn(async (_defId: string, _values: Record<string, unknown>) => ({})),
   requireDefId: vi.fn(async () => 'def_part'),
   getDefId: vi.fn(async () => 'def_mv'),
   resolveSource: vi.fn(),
@@ -131,7 +133,7 @@ describe('linkInventorySource', () => {
     })
 
     expect(h.createSpy).toHaveBeenCalledTimes(1)
-    const [, values] = h.createSpy.mock.calls[0]
+    const [, values] = h.createSpy.mock.calls[0]! // guarded by the call-count assertion above
     expect(values).toMatchObject({
       stock_movement_type: 'adjust',
       stock_movement_quantity: 70,
@@ -166,7 +168,7 @@ describe('applyPendingInventoryDelta', () => {
 
     expect(h.advanceCAS).toHaveBeenCalledWith(db, 'lnk_1', 10, 6)
     expect(h.createSpy).toHaveBeenCalledTimes(1)
-    const [, values] = h.createSpy.mock.calls[0]
+    const [, values] = h.createSpy.mock.calls[0]! // guarded by the call-count assertion above
     expect(values).toMatchObject({
       stock_movement_type: 'sale',
       stock_movement_quantity: -4,

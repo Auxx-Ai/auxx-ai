@@ -30,7 +30,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { useConnectorSyncRealtime } from '../hooks/use-connector-sync-realtime'
 import { resolveSyncStatus } from '../lib/resolve-sync-status'
@@ -47,7 +47,7 @@ import { asConnectorStatus, asRunStatus } from './connector-status'
 import { ConnectorStatusLine } from './connector-status-line'
 import { SampleReviewBanner } from './sample-review-banner'
 
-type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
+type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 
 interface ConnectorDetailViewProps {
   connector: Connector

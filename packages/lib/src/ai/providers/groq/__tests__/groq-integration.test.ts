@@ -4,6 +4,7 @@
 // Skipped when GROQ_API_KEY is not set.
 // Adding a model to GROQ_MODELS auto-generates tests.
 
+import { canRunLiveApi } from '../../../../test/live-api'
 import {
   DEFAULT_CLIENT_CONFIG,
   type LLMStreamChunk,
@@ -80,7 +81,7 @@ function buildParams(entry: TestModelEntry, overrides: Record<string, any> = {})
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY
 
-describe.skipIf(!GROQ_API_KEY)('Groq Integration Tests', () => {
+describe.skipIf(!canRunLiveApi(GROQ_API_KEY))('Groq Integration Tests', () => {
   let client: GroqLLMClient
 
   beforeAll(async () => {

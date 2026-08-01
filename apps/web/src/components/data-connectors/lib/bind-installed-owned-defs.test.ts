@@ -1,7 +1,8 @@
 // apps/web/src/components/data-connectors/lib/bind-installed-owned-defs.test.ts
 
 import { describe, expect, it } from 'vitest'
-import type { DraftMapping, DraftStream, FieldMapping } from '../stores/connector-draft-store'
+import type { FieldMapping } from '../hooks/use-stream-mutations'
+import type { DraftMapping, DraftStream } from '../stores/connector-draft-store'
 import {
   bindInstalledOwnedDefs,
   type InstallResultLike,

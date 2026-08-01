@@ -7,6 +7,7 @@
 import { toResourceFieldId } from '@auxx/types/field'
 import { stableHash } from '@auxx/utils/hash'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeSyncCtx } from '../__test-helpers'
 import type { DecodedMapping } from '../service'
 import type { ProjectedRecord, SyncCtx } from './types'
 
@@ -86,26 +87,10 @@ const update = vi.fn().mockResolvedValue(undefined)
 const getFieldValues = vi.fn()
 
 function makeCtx(): SyncCtx {
-  return {
-    db: {} as never,
-    orgId: 'org1',
-    connector: { id: 'dc1', credentialId: 'cred1' } as SyncCtx['connector'],
-    runId: 'run1',
+  return makeSyncCtx({
     crud: { update, create, getFieldValues } as never,
     ownedCrud: { update, create, getFieldValues } as never,
-    counters: {
-      fetched: 0,
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      archived: 0,
-      deleted: 0,
-      failed: 0,
-      relationshipWarnings: 0,
-      errorSample: [],
-    } as SyncCtx['counters'],
-    touchedDefs: new Set<string>(),
-  }
+  })
 }
 
 beforeEach(() => {

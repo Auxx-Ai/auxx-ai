@@ -1,5 +1,6 @@
 // packages/lib/src/data-connectors/sink-source-record.test.ts
 
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResourceField } from '../resources'
 import type { ConnectorRecord } from './connectors/types'
@@ -43,7 +44,7 @@ function mapping(over: Partial<DecodedMapping> & { id?: string }): DecodedMappin
   }
 }
 
-function relField(over: Partial<ResourceField> & { id: string }): ResourceField {
+function relField(over: Omit<Partial<ResourceField>, 'id'> & { id: string }): ResourceField {
   return {
     key: over.id,
     label: over.id,
@@ -51,6 +52,7 @@ function relField(over: Partial<ResourceField> & { id: string }): ResourceField 
     fieldType: 'RELATIONSHIP',
     capabilities: {} as ResourceField['capabilities'],
     ...over,
+    id: toFieldId(over.id),
   } as ResourceField
 }
 
@@ -68,7 +70,7 @@ describe('sinkSourceRecord — relationship edge resolution', () => {
     fieldsByDef.orderDef = [
       relField({
         id: 'cf_lineItems',
-        resourceFieldId: 'orderDef:cf_lineItems',
+        resourceFieldId: toResourceFieldId('orderDef', 'cf_lineItems'),
         appFieldKey: 'lineItems',
         relationship: {
           relationshipType: 'has_many',

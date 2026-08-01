@@ -6,6 +6,7 @@ import type { DataConnectorSyncEvent } from '@auxx/lib/realtime'
 import { useCallback } from 'react'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { asConnectorStatus } from '../ui/connector-status'
 
 type ConnectorStatusData = RouterOutputs['dataConnector']['getStatus']
 
@@ -60,7 +61,9 @@ function mergeProgress(
 ): ConnectorStatusData {
   return {
     ...prev,
-    status: data.connectorStatus,
+    // The frame carries the raw DB column value (typed `string` on the event) — normalize
+    // it to the lifecycle union the cached `getStatus` shape declares, as the event doc says.
+    status: asConnectorStatus(data.connectorStatus),
     lastSyncedAt: data.lastSyncedAt ? new Date(data.lastSyncedAt) : prev.lastSyncedAt,
     perStream: data.perStream,
     latestRun: prev.latestRun

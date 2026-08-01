@@ -2,6 +2,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { describe, expect, it, vi } from 'vitest'
+import { canRunLiveApi } from '../../../../test/live-api'
 import { DEFAULT_CLIENT_CONFIG } from '../../../clients/base/types'
 import { AnthropicLLMClient, STRUCTURED_OUTPUT_TOOL_NAME } from '../anthropic-llm-client'
 
@@ -19,7 +20,7 @@ function sentPayload(mock: { mock: { calls: unknown[][] } }): Record<string, any
 
 const apiKey = process.env.ANTHROPIC_API_KEY
 
-describe.skipIf(!apiKey)('AnthropicLLMClient integration', () => {
+describe.skipIf(!canRunLiveApi(apiKey))('AnthropicLLMClient integration', () => {
   function createClient() {
     const anthropic = new Anthropic({ apiKey: apiKey! })
     return new AnthropicLLMClient(anthropic, {

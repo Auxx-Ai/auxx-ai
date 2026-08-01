@@ -2,6 +2,7 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { describe, expect, it } from 'vitest'
+import { canRunLiveApi } from '../../../../test/live-api'
 import { DEFAULT_CLIENT_CONFIG } from '../../../clients/base/types'
 import { GoogleTextEmbeddingClient } from '../google-embedding-client'
 
@@ -12,7 +13,7 @@ import { GoogleTextEmbeddingClient } from '../google-embedding-client'
 
 const apiKey = process.env.GOOGLE_API_KEY
 
-describe.skipIf(!apiKey)('GoogleTextEmbeddingClient integration', () => {
+describe.skipIf(!canRunLiveApi(apiKey))('GoogleTextEmbeddingClient integration', () => {
   function createClient() {
     const genAI = new GoogleGenerativeAI(apiKey!)
     return new GoogleTextEmbeddingClient(genAI, {

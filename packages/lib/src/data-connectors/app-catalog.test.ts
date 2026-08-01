@@ -13,6 +13,27 @@ import {
   overlayDeclaredFieldTypes,
 } from './app-catalog'
 
+/**
+ * Walk a JSON-schema tree by dotted path and return the node there, failing loudly
+ * when a segment is missing. Keeps the schema assertions below free of the
+ * `Record<string, …>` casts that only ever hid a typo in the path.
+ */
+function nodeAt(root: unknown, path: string): Record<string, unknown> {
+  let current: unknown = root
+  const walked: string[] = []
+  for (const segment of path.split('.')) {
+    if (typeof current !== 'object' || current === null) {
+      throw new Error(`not an object at "${walked.join('.')}" while walking "${path}"`)
+    }
+    current = (current as Record<string, unknown>)[segment]
+    walked.push(segment)
+  }
+  if (typeof current !== 'object' || current === null) {
+    throw new Error(`no schema node at "${path}"`)
+  }
+  return current as Record<string, unknown>
+}
+
 describe('buildSchemaFromFieldPaths', () => {
   it('nests dotted + array paths into an object/array schema with scalar leaf types', () => {
     const schema = buildSchemaFromFieldPaths([
@@ -136,11 +157,10 @@ describe('appCatalogStreamSchema', () => {
         shipping_address: { street1: '123 Main St', city: 'Austin', country: 'US' },
       },
     })
-    const props = (result.sourceSchema as { properties: Record<string, Record<string, unknown>> })
-      .properties
-    expect(props.shipping_address['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
+    const addr = nodeAt(result.sourceSchema, 'properties.shipping_address')
+    expect(addr['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
     // Components survive in the schema — only the CLIENT flatten stops descending.
-    expect(props.shipping_address.properties).toHaveProperty('city')
+    expect(addr.properties).toHaveProperty('city')
   })
 })
 
@@ -166,12 +186,12 @@ describe('overlayDeclaredFieldTypes', () => {
       { fieldKey: 'a', sourcePath: 'customer.address', type: 'ADDRESS_STRUCT', name: 'A' },
       { fieldKey: 'b', sourcePath: 'line_items[].ship', type: 'ADDRESS_STRUCT', name: 'B' },
     ])
-    const props = schema.properties as Record<string, Record<string, Record<string, unknown>>>
-    expect(props.customer.properties.address['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
-    const itemProps = (
-      props.line_items.items as { properties: Record<string, Record<string, unknown>> }
-    ).properties
-    expect(itemProps.ship['x-auxx-fieldType']).toBe('ADDRESS_STRUCT')
+    expect(nodeAt(schema, 'properties.customer.properties.address')['x-auxx-fieldType']).toBe(
+      'ADDRESS_STRUCT'
+    )
+    expect(nodeAt(schema, 'properties.line_items.items.properties.ship')['x-auxx-fieldType']).toBe(
+      'ADDRESS_STRUCT'
+    )
   })
 
   it('stamps non-struct declared types on scalar leaves, ignores absent paths', () => {
@@ -184,10 +204,9 @@ describe('overlayDeclaredFieldTypes', () => {
       { fieldKey: 'price', sourcePath: 'price', type: 'CURRENCY', name: 'Price' },
       { fieldKey: 'gone', sourcePath: 'missing', type: 'ADDRESS_STRUCT', name: 'Gone' },
     ])
-    const props = schema.properties as Record<string, Record<string, unknown>>
-    expect(props.name['x-auxx-fieldType']).toBe('TEXT')
-    expect(props.price['x-auxx-fieldType']).toBe('CURRENCY')
-    expect(props).not.toHaveProperty('missing')
+    expect(nodeAt(schema, 'properties.name')['x-auxx-fieldType']).toBe('TEXT')
+    expect(nodeAt(schema, 'properties.price')['x-auxx-fieldType']).toBe('CURRENCY')
+    expect(nodeAt(schema, 'properties')).not.toHaveProperty('missing')
   })
 
   it('never stamps a non-struct type on a branch (object or array-of-objects)', () => {
@@ -207,11 +226,10 @@ describe('overlayDeclaredFieldTypes', () => {
       { fieldKey: 'lines', sourcePath: 'line_items', type: 'JSON', name: 'Lines' },
       { fieldKey: 'tags', sourcePath: 'tags', type: 'TAGS', name: 'Tags' },
     ])
-    const props = schema.properties as Record<string, Record<string, unknown>>
     // Branches keep exploding — no stamp; an array of SCALARS is a value leaf — stamped.
-    expect(props.customer).not.toHaveProperty('x-auxx-fieldType')
-    expect(props.line_items).not.toHaveProperty('x-auxx-fieldType')
-    expect(props.tags['x-auxx-fieldType']).toBe('TAGS')
+    expect(nodeAt(schema, 'properties.customer')).not.toHaveProperty('x-auxx-fieldType')
+    expect(nodeAt(schema, 'properties.line_items')).not.toHaveProperty('x-auxx-fieldType')
+    expect(nodeAt(schema, 'properties.tags')['x-auxx-fieldType']).toBe('TAGS')
   })
 })
 

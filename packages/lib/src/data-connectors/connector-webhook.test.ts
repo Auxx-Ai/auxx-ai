@@ -46,8 +46,11 @@ const {
     fetchFn: vi.fn(),
     deleteWhere: vi.fn(),
     resolveRelationships: vi.fn(),
-    foldRunManifest: vi.fn(async () => {}),
-    publishSyncRecordsChanged: vi.fn(async () => {}),
+    // Both are called with the real arity (`(db, runId, fragment)` /
+    // `(db, args)`) — declare a rest param so the pass-through mock factory
+    // below can forward whatever it receives.
+    foldRunManifest: vi.fn(async (..._a: unknown[]) => {}),
+    publishSyncRecordsChanged: vi.fn(async (..._a: unknown[]) => {}),
   }
 })
 

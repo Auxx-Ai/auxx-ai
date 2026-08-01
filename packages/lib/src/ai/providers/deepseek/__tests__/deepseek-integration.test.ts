@@ -4,6 +4,7 @@
 // Skipped when DEEPSEEK_API_KEY is not set.
 // Adding a model to DEEPSEEK_MODELS auto-generates tests.
 
+import { canRunLiveApi } from '../../../../test/live-api'
 import {
   DEFAULT_CLIENT_CONFIG,
   type LLMStreamChunk,
@@ -80,7 +81,7 @@ function buildParams(entry: TestModelEntry, overrides: Record<string, any> = {})
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
 
-describe.skipIf(!DEEPSEEK_API_KEY)('DeepSeek Integration Tests', () => {
+describe.skipIf(!canRunLiveApi(DEEPSEEK_API_KEY))('DeepSeek Integration Tests', () => {
   let client: DeepSeekLLMClient
 
   beforeAll(async () => {

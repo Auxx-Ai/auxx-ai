@@ -8,7 +8,11 @@ import type { InventoryBridgeLinkEntity } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  createSpy: vi.fn(async () => ({ recordId: 'rec_mv' })),
+  // Params mirror `UnifiedCrudHandler.create` so `mock.calls[n]` destructures as the
+  // real tuple instead of an empty one.
+  createSpy: vi.fn(async (_defId: string, _values: Record<string, unknown>) => ({
+    recordId: 'rec_mv',
+  })),
   getSystemUser: vi.fn(async () => 'sys_user'),
   getCachedEntityDefId: vi.fn(async (_org: string, slug: string) =>
     slug === 'part' ? 'def_part' : slug === 'stock_movement' ? 'def_mv' : undefined
@@ -123,7 +127,7 @@ describe('runInventoryBridgePass', () => {
 
     expect(h.advanceCAS).toHaveBeenCalledWith(db, 'lnk_1', 10, 7)
     expect(h.createSpy).toHaveBeenCalledTimes(1)
-    const [defId, values] = h.createSpy.mock.calls[0]
+    const [defId, values] = h.createSpy.mock.calls[0]! // guarded by the call-count assertion above
     expect(defId).toBe('def_mv')
     expect(values).toMatchObject({
       stock_movement_part: 'def_part:part_1',

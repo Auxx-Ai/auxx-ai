@@ -98,6 +98,9 @@ export async function upsertInventoryBridgeLink(
       },
     })
     .returning()
+  // `insert … onConflictDoUpdate … returning()` always yields exactly one row; the
+  // guard exists so the entity contract stays non-optional without an assertion.
+  if (!row) throw new Error('Failed to upsert the inventory bridge link')
   return row
 }
 

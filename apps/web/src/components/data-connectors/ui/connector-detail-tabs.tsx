@@ -9,7 +9,7 @@ import { CircleHelp, Clock, Layers, Plug } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { useConnectorCommit } from '../hooks/use-connector-commit'
 import { useConnectorDraftSync } from '../hooks/use-connector-draft-sync'
 import { ConnectionSection } from './connection-section'
@@ -22,7 +22,7 @@ import { StreamDetailBar } from './stream-detail-bar'
 import { StreamGuideDialog } from './stream-guide-dialog'
 import { StreamsSection } from './streams-section'
 
-type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
+type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 
 const CONNECTOR_TABS = ['connection', 'streams', 'schedule'] as const
 type ConnectorTab = (typeof CONNECTOR_TABS)[number]

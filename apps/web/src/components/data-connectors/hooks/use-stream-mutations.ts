@@ -4,11 +4,15 @@
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { api } from '~/trpc/react'
+import type { PaginationSpec } from '../lib/describe-pagination'
 
 /**
  * The request fields the stream config UI edits and persists — a subset of the
  * engine's `StreamRequestConfig`. The canonical client shape the draft store + commit
  * diff hold for a stream's request config.
+ *
+ * Keys outside this subset (`backfillWindow`, `webhookTrigger`) still round-trip: every
+ * writer merges onto the draft's full `requestConfig` through `Record<string, unknown>`.
  */
 export type UiRequestConfig = {
   path?: string
@@ -16,6 +20,8 @@ export type UiRequestConfig = {
   headers?: Record<string, string>
   params?: Record<string, unknown>
   body?: Record<string, unknown>
+  /** Written by `PaginationSection`'s "Use this" apply; `requestConfigSchema` accepts it. */
+  pagination?: PaginationSpec
 }
 
 /** Per-field merge strategy. Folded into each binding entry (absent ⇒ 'overwrite'). */

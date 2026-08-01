@@ -424,7 +424,8 @@ export async function resolveSoleAppConnection(
     userId: null,
   })
   if (result.isErr()) return null
-  return result.value.length === 1 ? result.value[0].id : null
+  const [sole] = result.value
+  return result.value.length === 1 && sole ? sole.id : null
 }
 
 /**

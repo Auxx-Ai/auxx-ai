@@ -421,7 +421,9 @@ function findSchemaNode(root: MutableSchemaNode, sourcePath: string): MutableSch
   for (const rawSeg of sourcePath.split('.').filter(Boolean)) {
     const isArray = rawSeg.endsWith('[]')
     const seg = isArray ? rawSeg.slice(0, -2) : rawSeg
-    const child = node?.properties?.[seg]
+    // Annotated: `node` is reassigned from `child` below, so leaving `child`'s type to
+    // inference makes the two mutually circular and TS falls back to implicit `any`.
+    const child: MutableSchemaNode | undefined = node?.properties?.[seg]
     if (!child) return null
     // An array property carries its element shape under `items` — descend into it so a
     // path segment like `line_items[]` lands on the element, not the array container.

@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/knowledge/agent-scope-actions.tsx
 'use client'
 
+import type { AgentScopeMode } from '@auxx/lib/agents/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { Ban, Check, Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
@@ -11,7 +12,12 @@ export interface AgentScopeActionsProps {
   effectiveMode: EffectiveScopeMode
   /** `true` when a `source='mention'` knowledge entry covers this record. */
   isMentionLocked: boolean
-  onSetMode: (mode: EffectiveScopeMode) => void
+  /**
+   * Receives only *storable* modes. `effectiveMode` may be an `inherited_*`
+   * variant, but clicking always writes an explicit row (or clears it with
+   * `'none'`) — the `inherited_*` variants are never emitted here.
+   */
+  onSetMode: (mode: AgentScopeMode | 'none') => void
 }
 
 /**
@@ -34,7 +40,7 @@ export function AgentScopeActions({
   onSetMode,
 }: AgentScopeActionsProps) {
   const isContainer = kind === 'container'
-  const includeMode: EffectiveScopeMode = isContainer ? 'include_descendants' : 'include_one'
+  const includeMode: AgentScopeMode = isContainer ? 'include_descendants' : 'include_one'
 
   const isExplicitExcluded = effectiveMode === 'exclude'
   const isExplicitIncluded =

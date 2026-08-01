@@ -4,6 +4,7 @@
 // Skipped when OPENAI_API_KEY is not set (never runs in CI).
 // Tests a representative subset of models to avoid rate limiting.
 
+import { canRunLiveApi } from '../../../../test/live-api'
 import {
   DEFAULT_CLIENT_CONFIG,
   type LLMStreamChunk,
@@ -123,7 +124,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 2000): 
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 
-describe.skipIf(!OPENAI_API_KEY)('OpenAI Integration Tests', () => {
+describe.skipIf(!canRunLiveApi(OPENAI_API_KEY))('OpenAI Integration Tests', () => {
   let client: OpenAILLMClient
 
   beforeAll(async () => {
