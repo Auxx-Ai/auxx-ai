@@ -246,6 +246,24 @@ frames pin a `procedureVersionId` for the whole run; `buildEffectiveAgentRuntime
 is the single construction site for production, builder, chat, and eval
 runtimes. `docs/kopilot-architecture-guide.md` covers the engine underneath.
 
+## Channels & Mail
+
+**Before touching channels, inboxes, threads/messages, mail sync, or anything
+that reads mail, read `docs/channels-mail-architecture-guide.md`.** It documents
+that a "channel" IS the `Integration` row (there is no `Channel` table), the
+three inbound doors (webhook push, two-phase polling, SES forwarding) and how
+they converge on one ingest path, the thread-resolution ladder, the outbound
+composer→sender→reconciler path, and the four-rung **mail lens**.
+
+Short version: an inbox is an `EntityInstance` on either the `inbox` (shared) or
+`personal_inbox` def, and one channel links to exactly one inbox; visibility is
+`none < metadata < identity < read` derived per viewer — **never gate mail on
+admin rank**; every list path must apply `buildMailVisibilityPredicate`, and its
+answer must match `getThreadLens`'s for the same thread; channel manage-authority
+is per-channel (`requireChannelManageAccess`), not the coarse `channelsManage`
+key; ingest must never throw and disconnect is a soft delete, so every channel
+query needs `isNull(Integration.deletedAt)`.
+
 ## Database Models — LEGACY
 
 Existing models extend `BaseModel`. Do NOT add new model classes; put query code

@@ -27,6 +27,11 @@ backend (Ably, raw WebSocket, etc.) could drop in without touching consumers.
 > mutation carries the publisher's `socket_id` so the originator is excluded from
 > its own echo.
 
+> **Companion — what publishes the mail events.** The `orgInbox` room and its
+> `thread:*` / `message:*` / `inbox:syncCompleted` / `mail:batch` events are produced
+> by the channels/mail pipeline (including the sync-batch suppression that collapses a
+> backfill into one event per inbox). See **`channels-mail-architecture-guide.md`**.
+
 ---
 
 ## 1. Why an abstraction at all

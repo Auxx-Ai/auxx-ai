@@ -18,6 +18,11 @@ only the app-author slice.
 > shared dialog + OAuth-popup transport (`plans/connections/unify-connect-dialogs.md`)
 > and made safe to edit without leaking or clobbering stored secrets
 > (`plans/connections/edit-connection-secret-safety.md`). This guide describes the result.
+>
+> **Companion — the biggest consumer.** Every mail/messaging channel is an `Integration` row
+> pointing at a `Credential` here, connected through this flow plus a post-connect hook, and
+> knocked into `requiresReauth` by the provider auth-error handler. See
+> **`channels-mail-architecture-guide.md`**.
 
 ---
 
