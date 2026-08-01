@@ -60,6 +60,15 @@ const CONTACT_ID = 'cnt_cuid0000000000000000000'
  */
 const INBOX_DEF_UUID = 'edf_inbox0000000000000000000'
 const INBOX_API_SLUG = 'inboxes'
+
+/**
+ * The two instance-access resources that live in their OWN tables and are
+ * therefore admitted on the hydration arm — `RecordPickerService` filters them
+ * per row through `canViewInstance`. Unlike `signature`, they have no
+ * `EntityDefinition` row at all, so only the bare-slug form exists.
+ */
+const KB_ID = 'kb_cuid00000000000000000000'
+const DATASET_ID = 'dst_cuid0000000000000000000'
 const INBOX_ID = 'ibx_cuid0000000000000000000'
 const PERSONAL_INBOX_DEF_UUID = 'edf_pinbox000000000000000000'
 const PERSONAL_INBOX_ID = 'pib_cuid0000000000000000000'
@@ -92,7 +101,10 @@ const { handler, cache, identity, fieldValues } = vi.hoisted(() => ({
 }))
 
 vi.mock('@auxx/lib/resources', () => ({
-  RESOURCE_TABLE_REGISTRY: [],
+  // `kb` and `dataset` are real entries — `entityDefinitionIdSchema` validates
+  // against this registry, so an empty stub would reject them at the ZOD layer
+  // and the guard assertions below would never run.
+  RESOURCE_TABLE_REGISTRY: [{ id: 'kb' }, { id: 'dataset' }],
   UnifiedCrudHandler: class {
     getById = handler.getById
     getByIds = handler.getByIds
@@ -236,7 +248,10 @@ const PROCEDURES: [
   keyof typeof handler | null,
 ][] = [
   ['getById', (c, d) => c.getById({ recordId: `${d}:${SIGNATURE_ID}` }), 'getById'],
-  ['getByIds', (c, d) => c.getByIds({ items: [`${d}:${SIGNATURE_ID}`] }), 'getByIds'],
+  // `getByIds` is deliberately ABSENT: it is the one procedure that FILTERS
+  // rather than refuses, because its batch is assembled from unrelated callers.
+  // Its (equally strict) contract lives in the dedicated describe below —
+  // "the HYDRATION arm filters instead of refusing".
   ['search (scoped)', (c, d) => c.search({ entityDefinitionId: d, query: 'a' }), 'search'],
   [
     'lookupByField',
@@ -423,12 +438,6 @@ describe('record router — the guard sits OUTSIDE the try (403, never 500)', ()
     ).rejects.toMatchObject({ cause: { name: 'ForbiddenError', statusCode: 403 } })
   })
 
-  it('getByIds surfaces 403, not a 500', async () => {
-    await expect(caller().getByIds({ items: [`signature:${SIGNATURE_ID}`] })).rejects.toMatchObject(
-      { cause: { name: 'ForbiddenError', statusCode: 403 } }
-    )
-  })
-
   it('search surfaces 403, not a 500', async () => {
     await expect(
       caller().search({ entityDefinitionId: SIGNATURE_DEF_UUID, query: 'a' })
@@ -604,15 +613,81 @@ describe('record router — the MAIL READ arm lets inbox defs through', () => {
     expect(handler.getByIds).toHaveBeenCalledTimes(1)
   })
 
-  it('a signature in that same mixed batch still poisons it', async () => {
-    // The exemption is TWO NAMED DEFS, not "instance-access defs are fine on
-    // reads now". If this ever passes, the carve-out has been widened.
+  it('a signature in that same mixed batch is DROPPED, not poisoning it', async () => {
+    // Was: "still poisons it". The poisoning was the bug — one unroutable id
+    // taking every unrelated record in the batch with it. The exemption is still
+    // exactly as narrow; what changed is the failure MODE, from "403 the call"
+    // to "omit the id". The assertion that matters is the second one: the
+    // signature must never reach the handler.
+    await expect(
+      caller().getByIds({ items: [`inbox:${INBOX_ID}`, `signature:${SIGNATURE_ID}`] })
+    ).resolves.toBeDefined()
+    expect(handler.getByIds).toHaveBeenCalledWith([`inbox:${INBOX_ID}`])
+  })
+})
+
+/**
+ * `record.getByIds` — the HYDRATION arm, and the only procedure on this router
+ * that filters instead of refusing.
+ *
+ * Its input is not one caller's request: the client's record-store batcher
+ * collects ids from every component that mounted in the same tick
+ * (`use-record-batch-fetcher.ts`). Throwing for one unroutable def therefore
+ * denied every unrelated record beside it — which is what a `kb:` id did to the
+ * articles and contacts on `/app/kb`.
+ *
+ * The closure is NOT weakened by this: a refused def still never reaches
+ * `UnifiedCrudHandler`, so nothing about it is readable. Only the shape of the
+ * denial changed, from a thrown 403 to an omitted key — which is already this
+ * path's answer for any id the member cannot reach.
+ *
+ * `kb` and `dataset` go further and are ADMITTED here, because
+ * `RecordPickerService.admitSystemRows` gates them per row through
+ * `canViewInstance` — the same authority `kb.list` filters on. They stay refused
+ * on every other procedure, where no such filter exists.
+ */
+describe('record router — the HYDRATION arm filters instead of refusing', () => {
+  it('a batch that is ONLY a refused def resolves empty and never calls the handler', async () => {
+    await expect(caller().getByIds({ items: [`signature:${SIGNATURE_ID}`] })).resolves.toEqual({})
+    expect(handler.getByIds).not.toHaveBeenCalled()
+  })
+
+  it('…by the def UUID form too, not just the bare slug', async () => {
+    await expect(
+      caller().getByIds({ items: [`${SIGNATURE_DEF_UUID}:${SIGNATURE_ID}`] })
+    ).resolves.toEqual({})
+    expect(handler.getByIds).not.toHaveBeenCalled()
+  })
+
+  it('an ordinary def in the same batch survives the signature beside it', async () => {
     await expect(
       caller().getByIds({
-        items: [`inbox:${INBOX_ID}`, `signature:${SIGNATURE_ID}`],
+        items: [`${CONTACT_DEF_UUID}:${CONTACT_ID}`, `signature:${SIGNATURE_ID}`],
       })
-    ).rejects.toMatchObject(FORBIDDEN)
-    expect(handler.getByIds).not.toHaveBeenCalled()
+    ).resolves.toBeDefined()
+    expect(handler.getByIds).toHaveBeenCalledWith([`${CONTACT_DEF_UUID}:${CONTACT_ID}`])
+  })
+
+  it('kb and dataset ARE admitted — the picker gates them per row', async () => {
+    await expect(
+      caller().getByIds({ items: [`kb:${KB_ID}`, `dataset:${DATASET_ID}`] })
+    ).resolves.toBeDefined()
+    expect(handler.getByIds).toHaveBeenCalledWith([`kb:${KB_ID}`, `dataset:${DATASET_ID}`])
+  })
+
+  it('…and are still refused everywhere else, where nothing gates them', async () => {
+    // The carve-out is one procedure wide. `getById` and the list/search paths
+    // route through `getResources` / `querySystemResourceIdsPaged`, which have
+    // no instance-access filter — admitting `kb` there would hand every member
+    // the org's whole KB list.
+    await expect(caller().getById({ recordId: `kb:${KB_ID}` })).rejects.toMatchObject(FORBIDDEN)
+    await expect(caller().listAll({ entityDefinitionId: 'kb' })).rejects.toMatchObject(FORBIDDEN)
+    await expect(caller().listFiltered({ entityDefinitionId: 'kb' })).rejects.toMatchObject(
+      FORBIDDEN
+    )
+    await expect(caller().search({ entityDefinitionId: 'kb', query: 'a' })).rejects.toMatchObject(
+      FORBIDDEN
+    )
   })
 })
 
