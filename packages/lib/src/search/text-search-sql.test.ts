@@ -20,6 +20,9 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 
 import {
+  type KeysetTerm,
+  keysetAfter,
+  keysetOrderBy,
   type TextSearchColumns,
   TS_RANK_SATURATING,
   textSearchCursor,
@@ -175,5 +178,59 @@ describe('textSearchCursor', () => {
     // rows, silently and only on ties.
     const { sql: text } = render(textSearchCursor('acme', COLS, 0.75, 'inst_9'))
     expect(text).not.toContain(' % ')
+  })
+})
+
+describe('keysetOrderBy / keysetAfter', () => {
+  /** `rank DESC, updatedAt DESC, id ASC` — the records list's ordering, in miniature. */
+  const TERMS: KeysetTerm[] = [
+    { expr: sql.raw('r'), direction: 'desc' },
+    { expr: sql.raw('u'), direction: 'desc' },
+    { expr: sql.raw('i'), direction: 'asc' },
+  ]
+
+  it('renders each term with its OWN direction', () => {
+    const rendered = keysetOrderBy(TERMS).map((clause) => render(clause).sql)
+    expect(rendered).toEqual(['r desc', 'u desc', 'i asc'])
+  })
+
+  it('nests the comparison, and flips the operator per direction', () => {
+    // The `>` on the last term is the whole reason this is not a DESC-only
+    // helper: the records list tie-breaks `id ASC`, and a `<` there would page
+    // backwards through every block of equal rank — silently, and only on ties.
+    const { sql: text } = render(keysetAfter(TERMS, [0.5, 'T', 'x']))
+    expect(text).toBe('(r < $1 OR (r = $2 AND (u < $3 OR (u = $4 AND i > $5))))')
+  })
+
+  it('binds one cursor value per term, in term order', () => {
+    const { params } = render(keysetAfter(TERMS, [0.5, 'T', 'x']))
+    expect(params).toEqual([0.5, 0.5, 'T', 'T', 'x'])
+  })
+
+  it('degenerates to a bare comparison for a single term', () => {
+    expect(render(keysetAfter(TERMS.slice(0, 1), [0.5])).sql).toBe('r < $1')
+  })
+
+  it('refuses a value list that does not match the terms', () => {
+    // The failure this guards is not a crash — it is a cursor that compares the
+    // wrong column against the wrong value and pages plausibly-but-wrongly.
+    expect(() => keysetAfter(TERMS, [0.5, 'T'])).toThrow(/one cursor value per ordering term/)
+    expect(() => keysetAfter([], [])).toThrow(/one cursor value per ordering term/)
+  })
+
+  it('is what textSearchKeyset is built from — one comparison in the codebase', () => {
+    const rank = textSearchRank('acme', COLS)
+    const direct = render(textSearchKeyset(rank, COLS.id, 0.75, 'inst_9'))
+    const composed = render(
+      keysetAfter(
+        [
+          { expr: rank, direction: 'desc' },
+          { expr: COLS.id, direction: 'desc' },
+        ],
+        [0.75, 'inst_9']
+      )
+    )
+    expect(direct.sql).toBe(composed.sql)
+    expect(direct.params).toEqual(composed.params)
   })
 })

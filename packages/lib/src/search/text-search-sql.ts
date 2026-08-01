@@ -18,7 +18,7 @@
 // is the ranking formula, the OR-block predicate, the keyset cursor, and the
 // index strategy — nothing that decides who may read a row.
 
-import { type SQL, sql } from 'drizzle-orm'
+import { asc, bindIfParam, desc, type SQL, sql } from 'drizzle-orm'
 import type { PgColumn } from 'drizzle-orm/pg-core'
 
 /**
@@ -320,6 +320,14 @@ export function textSearchCursor(
  * structurally incapable of drifting from its own ordering: `threadSearchCursor`
  * calls `threadSearchRank`, the same function `ORDER BY` calls.
  *
+ * It is the two-part specialization of {@link keysetAfter} — `(rank DESC, id DESC)`
+ * — and nothing more. A domain whose `ORDER BY` has a third tier (records keep
+ * `updatedAt DESC` under the rank, because most rows score 0 on trigram and an
+ * unbroken tie pages erratically) must NOT reach for this: pairing a two-part
+ * cursor with a three-part ordering is the silent skip/duplicate this whole module
+ * is written to prevent. Build a {@link KeysetTerm} list instead and render both
+ * halves from it.
+ *
  * @param rank - the ordering expression, rendered twice (a `WHERE` cannot see a
  *   `SELECT` alias, so the recomputation is unavoidable)
  * @param id - the tie-break column
@@ -332,5 +340,117 @@ export function textSearchKeyset(
   score: number,
   cursorId: string
 ): SQL {
-  return sql`(${rank} < ${score} OR (${rank} = ${score} AND ${id} < ${cursorId}))`
+  return keysetAfter(
+    [
+      { expr: rank, direction: 'desc' },
+      { expr: id, direction: 'desc' },
+    ],
+    [score, cursorId]
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE GENERIC N-PART KEYSET
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A sort direction, in the two forms an ORDER BY can take. */
+export type KeysetDirection = 'asc' | 'desc'
+
+/**
+ * One term of a keyset ordering: an expression and the direction it is sorted
+ * in.
+ *
+ * 🔴 **A term list is the SINGLE definition of an ordering.** {@link keysetOrderBy}
+ * renders it as the `ORDER BY` and {@link keysetAfter} renders it as the cursor
+ * predicate, so the two cannot disagree — which is the entire failure mode this
+ * shape exists to make unrepresentable. A cursor whose comparison does not match
+ * its own `ORDER BY` does not error: it silently skips rows and repeats others,
+ * and only on the pages where the leading term ties.
+ *
+ * Build the list once, hand the SAME array to both functions, and never restate
+ * either half.
+ *
+ * @typeParam E - narrowed by domain bindings so a caller can also project the
+ *   expression (`terms[0].expr`) into its `SELECT` without rebuilding it — the
+ *   `SELECT`, the `ORDER BY` and the cursor then share one object.
+ */
+export interface KeysetTerm<E extends TextSearchRef = TextSearchRef> {
+  /** The ordering expression. */
+  expr: E
+  /** Its direction in the `ORDER BY`. */
+  direction: KeysetDirection
+}
+
+/**
+ * The `ORDER BY` clauses for a term list, in order.
+ *
+ * Pair with {@link keysetAfter} over the same array. Nothing may be appended to
+ * the result — an extra tie-break the cursor does not know about reintroduces
+ * exactly the disagreement the shared list prevents, so the *last* term must
+ * already be unique (a primary key).
+ */
+export function keysetOrderBy(terms: readonly KeysetTerm[]): SQL[] {
+  return terms.map((term) => (term.direction === 'desc' ? desc(term.expr) : asc(term.expr)))
+}
+
+/**
+ * The "strictly after the cursor row" predicate for a term list — the lexicographic
+ * comparison, nested rather than flattened:
+ *
+ * ```sql
+ * (a < a0 OR (a = a0 AND (b < b0 OR (b = b0 AND c > c0))))
+ * ```
+ *
+ * Each term's operator follows its OWN direction (`<` for `desc`, `>` for `asc`),
+ * which is why the mixed `rank DESC, updatedAt DESC, id ASC` ordering the records
+ * list uses is expressible at all. A `desc`-only keyset paired with an ascending
+ * tie-break skips and duplicates within every tied block.
+ *
+ * ⚠️ **Every term must be NOT NULL.** Postgres orders `NULL` first under `DESC`
+ * and last under `ASC`, but `NULL < x` is `NULL` — so a nullable term makes the
+ * comparison unsatisfiable for exactly the rows the `ORDER BY` places at the
+ * boundary. The record binding's terms are a `COALESCE`d score and two `NOT NULL`
+ * columns.
+ *
+ * 🔴 **Values are bound through Drizzle's own {@link bindIfParam}, and that is
+ * not a stylistic choice — it is what keeps a `timestamp` cursor correct.** A
+ * term backed by a `PgColumn` gets that column's driver encoding, exactly as
+ * `eq()` would; a term backed by a raw `SQL` expression falls through to a plain
+ * parameter. Interpolating the value directly (`sql`${expr} < ${value}`) skips
+ * the encoder and is wrong for dates.
+ *
+ * The trap, measured on this repo's `EntityInstance.updatedAt`
+ * (`timestamp` **without** time zone): Drizzle reads such a column as UTC
+ * (`PgTimestamp.mapFromDriverValue`), while node-postgres' *default* parser reads
+ * the same bytes as **local** time. Round-tripping a cursor value therefore only
+ * works if it stays inside Drizzle's mapping on the way out AND the way back in.
+ * A stored `05:20:16.787` comes back from Drizzle as `05:20:16.787Z` and from raw
+ * `pg` as `12:20:16.787Z` — feed the second one to a keyset and the cursor lands
+ * hours away from the row it names, matching nothing or everything. (Observed
+ * while benchmarking: the sweep paged forever until the bench harness was made to
+ * mirror Drizzle's parser.) Anything reading rows outside Drizzle — a raw
+ * `db.execute`, a hand-written `pg` query — must normalize before building a
+ * cursor value.
+ *
+ * @param terms - the SAME array handed to {@link keysetOrderBy}
+ * @param values - the previous page's last row, one value per term, in term order
+ */
+export function keysetAfter(terms: readonly KeysetTerm[], values: readonly unknown[]): SQL {
+  if (terms.length === 0 || terms.length !== values.length) {
+    throw new Error(
+      `keysetAfter: expected one cursor value per ordering term (got ${values.length} for ${terms.length})`
+    )
+  }
+
+  const build = (index: number): SQL => {
+    const term = terms[index]
+    if (!term) throw new Error(`keysetAfter: missing ordering term at index ${index}`)
+    const { expr, direction } = term
+    const op = sql.raw(direction === 'desc' ? '<' : '>')
+    const value = bindIfParam(values[index], expr)
+    if (index === terms.length - 1) return sql`${expr} ${op} ${value}`
+    return sql`(${expr} ${op} ${value} OR (${expr} = ${value} AND ${build(index + 1)}))`
+  }
+
+  return build(0)
 }

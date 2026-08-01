@@ -103,9 +103,25 @@ export function recordSearchPredicate(
 }
 
 /**
- * The record relevance score. Use as `desc(recordSearchRank(q))` — and keep
- * `updatedAt DESC, id DESC` under it, because most rows score 0 on trigram and
- * an unbroken tie pages erratically.
+ * The record relevance score. Use as `desc(recordSearchRank(q))` — and keep a
+ * recency tier under it, because most rows score 0 on trigram and an unbroken tie
+ * pages erratically.
+ *
+ * ⚠️ **The two ranked record surfaces do NOT agree on the tiers below the rank,
+ * and both spellings are load-bearing.**
+ *
+ * - The **records list** (`crud/unified-handler-queries.ts`) orders
+ *   `rank DESC, updatedAt DESC, id ASC`. That last tier is **ASC**, not DESC — it
+ *   is the `asc(EntityInstance.id)` that lane has always appended as its
+ *   deterministic tie-break. Anything reasoning about this ordering (a cursor, a
+ *   resumable scan, an "is this page stable" argument) that assumes DESC
+ *   throughout walks every tied block backwards.
+ * - The **picker** (`picker/record-picker-service.ts`) orders
+ *   `combined_score DESC, "updatedAt" DESC, id DESC`.
+ *
+ * An ordering is therefore only safe to pair with a cursor when the cursor was
+ * written against that surface's exact tier list *and* directions — see
+ * {@link recordSearchCursor}.
  */
 export function recordSearchRank(
   query: string,
@@ -114,7 +130,30 @@ export function recordSearchRank(
   return textSearchRank(query, cols)
 }
 
-/** The keyset filter for a `score|id` cursor over ranked record results. */
+/**
+ * The keyset filter for a **two-part** `(score DESC, id DESC)` cursor over ranked
+ * record results.
+ *
+ * 🔴 **Two parts. Only ever pair it with a two-part `ORDER BY`.** A keyset that
+ * disagrees with its own ordering does not error — it silently skips rows and
+ * repeats others, and only inside a block of equal scores, which here is *most*
+ * of a result set: every row matching only the `ILIKE` fallback scores 0 on
+ * trigram. So the failure is common and invisible, not a corner case.
+ *
+ * ⚠️ **`record-picker-service.ts` currently pairs this with a THREE-part ordering**
+ * (`combined_score DESC, ei."updatedAt" DESC, ei.id DESC`) while advancing the
+ * cursor on `(score, id)` alone. Inside a tied-score block that admits rows the
+ * `ORDER BY` places *after* the page (skips) and re-admits rows it placed before
+ * it (duplicates). Noticed while measuring the records-list keyset; not fixed
+ * here because it is a separate surface with its own paging contract. The fix is
+ * a three-term `keysetOrderBy` / `keysetAfter` pair
+ * (`search/text-search-sql.ts`) with the picker's own directions —
+ * `[rank desc, updatedAt desc, id desc]` — rendering both halves from one array.
+ *
+ * The **records list** does not use this at all: it pages by `OFFSET` on purpose
+ * (see `queryEntityInstanceIdsPaged`, which records why a keyset was measured and
+ * rejected there).
+ */
 export function recordSearchCursor(
   query: string,
   score: number,
