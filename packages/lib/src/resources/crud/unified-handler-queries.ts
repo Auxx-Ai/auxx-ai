@@ -600,6 +600,53 @@ function describeFilterProblems(
  * `hasMore` comes from the `limit + 1` probe row, never from `offset + ids.length < total`
  * — the probe stays honest under concurrent inserts/deletes, a stored total drifts.
  *
+ * ## 🔴 `OFFSET` is deliberate here. Keyset pagination was tried and REJECTED.
+ *
+ * The ranked-search case (`search` set, no explicit `sorting`) is the obvious
+ * candidate for a keyset cursor: the rank is recomputed over the whole matched
+ * set on every page, and `OFFSET` makes Postgres produce and discard rows it has
+ * already sorted. **It was implemented, measured against live Postgres, and
+ * backed out.** Do not re-attempt it without new information — specifically,
+ * without the rewrite named at the bottom of this comment.
+ *
+ * A correct three-part `(rank DESC, updatedAt DESC, id ASC)` keyset — cursor and
+ * `ORDER BY` rendered from one term list via `keysetOrderBy` / `keysetAfter` in
+ * `search/text-search-sql.ts` — was **slower than `OFFSET` at every depth and
+ * every scale measured**, on the dev database:
+ *
+ * | matched | depth   | OFFSET | KEYSET  |
+ * |---------|---------|--------|---------|
+ * | 1,161   | 0       | 16 ms  | 15 ms   |
+ * | 1,161   | 1,000   | 16 ms  | 24 ms   |
+ * | 92,526  | 0       | 133 ms | 135 ms  |
+ * | 92,526  | 50,000  | 155 ms | 214 ms  |
+ * | 370,096 | 150,000 | 889 ms | 1208 ms |
+ *
+ * (Correctness was never the problem: full sweeps over 1,161 and 92,526 matched
+ * rows — with 778- and 62,067-row blocks of *tied* rank — reproduced the offset
+ * sequence exactly, no skips, no duplicates.)
+ *
+ * `EXPLAIN ANALYZE` says why, and it is the opposite of the usual keyset story.
+ * The rank is a computed expression, so no index can serve the ordering and the
+ * **scan + rank evaluation dominates** — 138 ms of a 165 ms page at 92k rows.
+ * Against that the `OFFSET` skip is nearly free: the rows are already sorted, so
+ * discarding 50,000 of them costs ~16 ms, showing up only as a full
+ * `external merge Disk: 3496kB` sort instead of a `top-N heapsort Memory: 32kB`.
+ * The keyset does buy that sort back — but its `WHERE` recomputes `similarity()`
+ * + `ts_rank_cd()` **twice more per candidate row** (once for the `<` arm, once
+ * for the `=` arm), costing ~70 ms at the same scale. Net loss.
+ *
+ * Worse, the loss **grows with depth**, for the same reason the three-part key
+ * was needed at all: most rows score 0 on trigram, so a deep cursor lands inside
+ * the huge zero-score tie block, where `rank < r0` is false for every row and the
+ * `rank = r0` arm therefore always runs.
+ *
+ * The only version that could win computes the rank **once** — a materialized CTE
+ * or `OFFSET 0` subquery projecting the score, with the keyset filtering on the
+ * alias — which caps the win at the sort difference (~15% at 92k rows / depth
+ * 50k) and is a different query shape from this one. Measure that before
+ * reopening; a keyset bolted onto the current shape is a regression.
+ *
  * @returns `ids` (length ≤ limit), `hasMore`, and `total` only when `includeTotal`.
  */
 export async function queryEntityInstanceIdsPaged(params: {
