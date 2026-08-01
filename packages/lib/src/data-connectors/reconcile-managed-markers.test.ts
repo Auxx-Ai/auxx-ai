@@ -4,10 +4,11 @@
 // (the FK set-null only covers connector deletion). Owned mappings are skipped;
 // the keep-set is the union of currently-mapped concrete CustomField.ids per def.
 
-import { toResourceFieldId } from '@auxx/types/field'
+import { getFieldId, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DecodedMapping } from './service'
 import type { SyncCtx } from './sinks/types'
+import type { FieldMapping } from './types'
 
 // Capture the keep-set passed to notInArray while keeping real drizzle behavior.
 const notInArrayIds: string[][] = []
@@ -59,6 +60,20 @@ function makeCtx(): SyncCtx {
   } as unknown as SyncCtx
 }
 
+/**
+ * One bound field. `expression`/`sourceFields` mirror the degenerate single-token
+ * form the mapping UI writes for a plain field→field binding; this pass reads only
+ * `targetFieldRef`, but the row it stands in for always carries all three.
+ */
+function binding(targetFieldRef: ResourceFieldId, sourcePath = 'src'): FieldMapping {
+  return {
+    id: `fm_${getFieldId(targetFieldRef)}`,
+    targetFieldRef,
+    expression: `{${sourcePath}}`,
+    sourceFields: { [sourcePath]: sourcePath },
+  }
+}
+
 function mapping(over: Partial<DecodedMapping>): DecodedMapping {
   return {
     row: { id: 'm1' },
@@ -87,7 +102,7 @@ describe('reconcileManagedMarkers', () => {
   it('clears markers and keeps only currently-mapped fields (drops fieldA)', async () => {
     // Mapping now only writes fieldB → keep-set = [fieldB]; fieldA's marker clears.
     resolveConnectorFieldRef.mockResolvedValue(toResourceFieldId('def1', 'fieldB'))
-    const m = mapping({ fieldMappings: [{ targetFieldRef: toResourceFieldId('def1', 'fieldB') }] })
+    const m = mapping({ fieldMappings: [binding(toResourceFieldId('def1', 'fieldB'))] })
 
     await reconcileManagedMarkers(makeCtx(), [{ syncMode: 'incremental', mappings: [m] }])
 
@@ -99,7 +114,7 @@ describe('reconcileManagedMarkers', () => {
   it('skips owned mappings entirely (no UPDATE)', async () => {
     const m = mapping({
       targetMode: 'owned',
-      fieldMappings: [{ targetFieldRef: toResourceFieldId('def1', 'fieldB') }],
+      fieldMappings: [binding(toResourceFieldId('def1', 'fieldB'))],
     })
 
     await reconcileManagedMarkers(makeCtx(), [{ syncMode: 'snapshot', mappings: [m] }])
@@ -112,7 +127,7 @@ describe('reconcileManagedMarkers', () => {
     // A currently-mapped ref that can't resolve (e.g. unbound @app: connection)
     // must NOT wipe the def's markers — the keep-set view is incomplete.
     resolveConnectorFieldRef.mockResolvedValue(null)
-    const m = mapping({ fieldMappings: [{ targetFieldRef: toResourceFieldId('def1', 'fieldB') }] })
+    const m = mapping({ fieldMappings: [binding(toResourceFieldId('def1', 'fieldB'))] })
 
     await reconcileManagedMarkers(makeCtx(), [{ syncMode: 'incremental', mappings: [m] }])
 
@@ -124,8 +139,8 @@ describe('reconcileManagedMarkers', () => {
     resolveConnectorFieldRef
       .mockResolvedValueOnce(toResourceFieldId('def1', 'fieldA'))
       .mockResolvedValueOnce(null)
-    const m1 = mapping({ fieldMappings: [{ targetFieldRef: toResourceFieldId('def1', 'fieldA') }] })
-    const m2 = mapping({ fieldMappings: [{ targetFieldRef: toResourceFieldId('def1', 'fieldB') }] })
+    const m1 = mapping({ fieldMappings: [binding(toResourceFieldId('def1', 'fieldA'))] })
+    const m2 = mapping({ fieldMappings: [binding(toResourceFieldId('def1', 'fieldB'))] })
 
     await reconcileManagedMarkers(makeCtx(), [{ syncMode: 'incremental', mappings: [m1, m2] }])
 
@@ -145,8 +160,8 @@ describe('reconcileManagedMarkers', () => {
     resolveConnectorFieldRef
       .mockResolvedValueOnce(toResourceFieldId('def1', 'fieldA'))
       .mockResolvedValueOnce(toResourceFieldId('def1', 'fieldB'))
-    const m1 = mapping({ fieldMappings: [{ targetFieldRef: toResourceFieldId('def1', 'fieldA') }] })
-    const m2 = mapping({ fieldMappings: [{ targetFieldRef: toResourceFieldId('def1', 'fieldB') }] })
+    const m1 = mapping({ fieldMappings: [binding(toResourceFieldId('def1', 'fieldA'))] })
+    const m2 = mapping({ fieldMappings: [binding(toResourceFieldId('def1', 'fieldB'))] })
 
     await reconcileManagedMarkers(makeCtx(), [{ syncMode: 'incremental', mappings: [m1, m2] }])
 

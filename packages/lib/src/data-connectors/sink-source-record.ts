@@ -13,6 +13,7 @@ import {
   getFieldId,
   isAppFieldRef,
   isFieldPath,
+  isResourceFieldId,
   keyToFieldRef,
   parseAppFieldRef,
   type ResourceFieldId,
@@ -71,7 +72,9 @@ async function resolveEdge(
   // which matches a connector-provisioned RELATIONSHIP field's AUTO-GENERATED id by its
   // `appFieldKey`), so display + sync never diverge. Then use the field's REAL id.
   const ownerDef =
-    !isAppFieldRef(lastSeg) && lastSeg.includes(':') ? getFieldDefinitionId(lastSeg) : parentDef
+    !isAppFieldRef(lastSeg) && isResourceFieldId(lastSeg)
+      ? getFieldDefinitionId(lastSeg)
+      : parentDef
   const fields = await getFields(ownerDef)
   const field = resolveFieldRef(fields, ownerDef, lastSeg)?.field
   // Fall back to the authored id when nothing resolves (shouldn't happen post-install):

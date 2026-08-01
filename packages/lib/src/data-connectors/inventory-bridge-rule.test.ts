@@ -3,13 +3,16 @@
 // are mocked; the db is unused (store fns are stubbed).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CachedRecordRule } from '../record-rules/types'
 
 const h = vi.hoisted(() => ({
   findManaged: vi.fn(),
   createManaged: vi.fn(async () => ({ id: 'rule_new' })),
   deleteForDef: vi.fn(async () => 1),
   onCacheEvent: vi.fn(async () => {}),
-  getCachedRecordRules: vi.fn(async () => []),
+  // Typed to the real cache return so a fixture that isn't a rule row is a type error
+  // (a bare `async () => []` infers `never[]` and rejects every `mockResolvedValue`).
+  getCachedRecordRules: vi.fn(async (): Promise<CachedRecordRule[]> => []),
 }))
 
 vi.mock('../record-rules', () => ({
@@ -30,6 +33,23 @@ import {
 
 const db = {} as never
 const ORG = 'org_1'
+
+/** A cached rule row as `getCachedRecordRules` serves it; override what the case reads. */
+function rule(over: Partial<CachedRecordRule> = {}): CachedRecordRule {
+  return {
+    id: 'rule_1',
+    organizationId: ORG,
+    entityDefinitionId: 'def_variants',
+    fieldId: 'fld_qty',
+    name: 'Inventory deduction',
+    on: 'decreased',
+    condition: [],
+    actions: [{ type: 'native', handler: 'deductInventory' }],
+    enabled: true,
+    managed: 'inventory',
+    ...over,
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -92,9 +112,9 @@ describe('removeInventoryDeductionRule', () => {
 describe('listInventorySourceRules', () => {
   it('projects only managed inventory rules with a fieldId', async () => {
     h.getCachedRecordRules.mockResolvedValue([
-      { entityDefinitionId: 'def_variants', fieldId: 'fld_qty', managed: 'inventory' },
-      { entityDefinitionId: 'def_other', fieldId: 'fld_x', managed: null },
-      { entityDefinitionId: 'def_nofield', fieldId: null, managed: 'inventory' },
+      rule({ id: 'r_ok', entityDefinitionId: 'def_variants', fieldId: 'fld_qty' }),
+      rule({ id: 'r_unmanaged', entityDefinitionId: 'def_other', fieldId: 'fld_x', managed: null }),
+      rule({ id: 'r_nofield', entityDefinitionId: 'def_nofield', fieldId: null }),
     ])
     const r = await listInventorySourceRules(ORG)
     expect(r).toEqual([{ sourceDefId: 'def_variants', quantityFieldId: 'fld_qty' }])

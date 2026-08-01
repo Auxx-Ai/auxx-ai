@@ -4,6 +4,7 @@
 // OpenAI-compatible endpoint. Skipped when GOOGLE_API_KEY is not set.
 // Adding a model to GOOGLE_MODELS auto-generates tests.
 
+import { canRunLiveApi } from '../../../../test/live-api'
 import {
   DEFAULT_CLIENT_CONFIG,
   type LLMStreamChunk,
@@ -82,7 +83,7 @@ function buildParams(entry: TestModelEntry, overrides: Record<string, any> = {})
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY
 
-describe.skipIf(!GOOGLE_API_KEY)('Google Integration Tests', () => {
+describe.skipIf(!canRunLiveApi(GOOGLE_API_KEY))('Google Integration Tests', () => {
   let client: GoogleLLMClient
 
   beforeAll(async () => {

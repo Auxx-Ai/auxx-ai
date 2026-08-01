@@ -168,12 +168,11 @@ function PaginationTooltip({
 /** Shallow spec equality — pagination specs are flat records of scalars. */
 function samePaginationSpec(a?: PaginationSpec, b?: PaginationSpec): boolean {
   if (!a || !b) return false
-  const ka = Object.keys(a).sort()
-  const kb = Object.keys(b).sort()
-  if (ka.length !== kb.length) return false
-  return ka.every(
-    (k, i) => k === kb[i] && (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k]
-  )
+  const byKey = ([x]: [string, unknown], [y]: [string, unknown]) => x.localeCompare(y)
+  const ea = Object.entries(a).sort(byKey)
+  const eb = Object.entries(b).sort(byKey)
+  if (ea.length !== eb.length) return false
+  return ea.every(([k, v], i) => k === eb[i]?.[0] && v === eb[i]?.[1])
 }
 
 /** Pull a numeric page-size from common limit-style query params, for the size row. */

@@ -3,9 +3,38 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
-import { api } from '~/trpc/react'
-import { type CommitPlan, diffConnectorDraft, isEmptyPlan } from '../lib/connector-commit-diff'
+import { api, type RouterInputs } from '~/trpc/react'
+import {
+  type CommitPlan,
+  type ConnectorUpdatePatch,
+  diffConnectorDraft,
+  isEmptyPlan,
+} from '../lib/connector-commit-diff'
 import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
+
+type ConnectorUpdateInput = RouterInputs['dataConnector']['update']
+
+/**
+ * Widen the plan's connector patch into the `dataConnector.update` input.
+ *
+ * The draft holds `scheduleConfig` as an opaque `Record<string, unknown>` by design:
+ * `schedule-section` builds a real cadence and widens it on the way into the store, and
+ * `connector-commit-diff` is deliberately field-generic — it passes the blob through
+ * untouched (locked in by its own test, which uses a partial cadence). This mutation is
+ * the only place the blob meets the structured type, so the reconciliation belongs here.
+ * Asserting is safe rather than lax: `scheduleConfigSchema` validates the payload
+ * server-side, so a malformed blob still fails loudly instead of being silently dropped.
+ * `scheduleConfig` is re-attached only when the patch carries it, so an untouched
+ * schedule stays absent from the payload.
+ */
+function toConnectorUpdateInput(id: string, patch: ConnectorUpdatePatch): ConnectorUpdateInput {
+  const { scheduleConfig, ...rest } = patch
+  const input: ConnectorUpdateInput = { ...rest, id }
+  if ('scheduleConfig' in patch) {
+    input.scheduleConfig = scheduleConfig as ConnectorUpdateInput['scheduleConfig']
+  }
+  return input
+}
 
 /**
  * The commit/flush engine (plan §5) — the ONLY place connector configuration is
@@ -38,7 +67,9 @@ export function useConnectorCommit() {
       // 1. Connector-level + per-stream config — independent, fire in parallel.
       const independent: Array<Promise<unknown>> = []
       if (plan.connectorUpdate) {
-        independent.push(update.mutateAsync({ id: connectorId, ...plan.connectorUpdate }))
+        independent.push(
+          update.mutateAsync(toConnectorUpdateInput(connectorId, plan.connectorUpdate))
+        )
       }
       for (const r of plan.streamRenames) {
         independent.push(

@@ -224,10 +224,14 @@ export function classifyStreamRequestChange(
   return { level: levelFor(reasons), reasons }
 }
 
-/** Pick the higher of two impact levels (for merging an escalating pending state). */
-export function maxLevel(
-  a: StructuralChangeLevel,
-  b: StructuralChangeLevel
-): StructuralChangeLevel {
+/**
+ * Pick the higher of two impact levels (for merging an escalating pending state).
+ * Generic so the result stays within the levels actually passed in — merging two
+ * `ResyncPending.level`s (`'rebackfill' | 'rebind'`) can never produce `'cosmetic'`.
+ */
+export function maxLevel<A extends StructuralChangeLevel, B extends StructuralChangeLevel>(
+  a: A,
+  b: B
+): A | B {
   return LEVEL_RANK[a] >= LEVEL_RANK[b] ? a : b
 }

@@ -3,6 +3,7 @@
 // no-ops unlinked variants, and never throws on a bad link. Heavy deps are mocked; the fake db
 // answers the cell + linked-part reads (drizzle column refs are undefined under vitest).
 
+import { toRecordId } from '@auxx/types/resource'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => {
@@ -10,7 +11,12 @@ const h = vi.hoisted(() => {
     cell: null as number | null,
     linkedPart: null as string | null,
     getLink: vi.fn(),
-    deduct: vi.fn(async () => ({ outcome: 'movement', delta: 3 })),
+    // Params mirror `deductVariantInventory(db, input)` so `mock.calls[n]`
+    // destructures as the real tuple instead of an empty one.
+    deduct: vi.fn(async (_db: unknown, _input: Record<string, unknown>) => ({
+      outcome: 'movement',
+      delta: 3,
+    })),
     getSystemUser: vi.fn(async () => 'sys_user'),
     getCachedEntityDefId: vi.fn(async (_org: string, slug: string) =>
       slug === 'part' ? 'def_part' : slug === 'stock_movement' ? 'def_mv' : undefined
@@ -97,10 +103,10 @@ describe('deductInventory native handler', () => {
   it('fires the deduction core for a linked variant with the current cell + edge part', async () => {
     h.getLink.mockResolvedValue(link())
 
-    await handler({ recordIds: ['def_variants:var_1'], organizationId: ORG })
+    await handler({ recordIds: [toRecordId('def_variants', 'var_1')], organizationId: ORG })
 
     expect(h.deduct).toHaveBeenCalledTimes(1)
-    const [, arg] = h.deduct.mock.calls[0]
+    const [, arg] = h.deduct.mock.calls[0]! // guarded by the call-count assertion above
     expect(arg).toMatchObject({
       organizationId: ORG,
       dataConnectorId: 'dc_1',
@@ -114,14 +120,14 @@ describe('deductInventory native handler', () => {
 
   it('no-ops an unlinked variant (no InventoryBridgeLink)', async () => {
     h.getLink.mockResolvedValue(undefined)
-    await handler({ recordIds: ['def_variants:var_1'], organizationId: ORG })
+    await handler({ recordIds: [toRecordId('def_variants', 'var_1')], organizationId: ORG })
     expect(h.deduct).not.toHaveBeenCalled()
   })
 
   it('early-returns when the org has no part/movement def', async () => {
     h.getCachedEntityDefId.mockResolvedValue(undefined)
     h.getLink.mockResolvedValue(link())
-    await handler({ recordIds: ['def_variants:var_1'], organizationId: ORG })
+    await handler({ recordIds: [toRecordId('def_variants', 'var_1')], organizationId: ORG })
     expect(h.deduct).not.toHaveBeenCalled()
   })
 
@@ -129,7 +135,7 @@ describe('deductInventory native handler', () => {
     h.getLink.mockResolvedValue(link())
     h.deduct.mockRejectedValue(new Error('boom'))
     await expect(
-      handler({ recordIds: ['def_variants:var_1'], organizationId: ORG })
+      handler({ recordIds: [toRecordId('def_variants', 'var_1')], organizationId: ORG })
     ).resolves.toBeUndefined()
   })
 })

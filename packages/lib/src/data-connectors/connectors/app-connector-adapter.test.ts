@@ -15,7 +15,7 @@ import { decodeCursor } from './app-connector-state'
 import { type ConnectorRecord, type ConnectorYield, isConnectorCheckpoint } from './types'
 
 const invokeLambdaExecutor = vi.fn()
-const prepareLambdaContext = vi.fn((x: unknown) => x)
+const prepareLambdaContext = vi.fn((...args: unknown[]) => args[0])
 const resolveAppConnectionForRuntime = vi.fn()
 
 const RESOLVED_METADATA = { shopDomain: 'acme.myshopify.com' }

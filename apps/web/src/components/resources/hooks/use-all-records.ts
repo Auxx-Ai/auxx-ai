@@ -6,7 +6,7 @@ import { toRecordId } from '@auxx/lib/resources/client'
 import type { FieldId } from '@auxx/types/field'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import {
   buildFieldValueKey,
   type CustomFieldValueState,
@@ -42,9 +42,7 @@ export interface FieldInfo {
 }
 
 /** Element shape of `api.record.listAll`'s `data.items` — what `appendRecord` expects. */
-export type AllRecordsItem = NonNullable<
-  ReturnType<typeof api.record.listAll.useQuery>['data']
->['items'][number]
+export type AllRecordsItem = NonNullable<RouterOutputs['record']['listAll']>['items'][number]
 
 /**
  * Result from useAllRecords hook

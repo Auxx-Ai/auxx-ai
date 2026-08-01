@@ -1,5 +1,6 @@
 // packages/lib/src/data-connectors/map-record.test.ts
 
+import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
 import type { ConnectorRecord } from './connectors/types'
 import { mapRecord } from './map-record'
@@ -37,7 +38,7 @@ describe('mapRecord', () => {
       fieldMappings: [
         {
           id: 'e1',
-          targetFieldRef: 'def1:total',
+          targetFieldRef: toResourceFieldId('def1', 'total'),
           expression: '{total_price}',
           sourceFields: { total_price: 'total_price' },
         },
@@ -58,7 +59,12 @@ describe('mapRecord', () => {
       id: 'li',
       rootPath: 'line_items[]',
       fieldMappings: [
-        { id: 'e1', targetFieldRef: 'def1:sku', expression: '{sku}', sourceFields: { sku: 'sku' } },
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'sku'),
+          expression: '{sku}',
+          sourceFields: { sku: 'sku' },
+        },
       ],
     })
 
@@ -88,7 +94,7 @@ describe('mapRecord', () => {
         // rootPath 'customer') → target field 'contact_email', flagged `match`.
         {
           id: 'e1',
-          targetFieldRef: 'def1:contact_email',
+          targetFieldRef: toResourceFieldId('def1', 'contact_email'),
           expression: '{email}',
           sourceFields: { email: 'email' },
           identityRole: { kind: 'match', normalize: 'email' },
@@ -114,7 +120,7 @@ describe('mapRecord', () => {
         // EVALUATED expression, not an arbitrary single `sourceFields` path.
         {
           id: 'e1',
-          targetFieldRef: 'def1:order_key',
+          targetFieldRef: toResourceFieldId('def1', 'order_key'),
           expression: 'concat({store}, "-", {order_no})',
           sourceFields: { store: 'store', order_no: 'order_no' },
           identityRole: { kind: 'match', normalize: 'none' },
@@ -137,7 +143,7 @@ describe('mapRecord', () => {
       fieldMappings: [
         {
           id: 'e1',
-          targetFieldRef: 'def1:title',
+          targetFieldRef: toResourceFieldId('def1', 'title'),
           expression: '{title}',
           sourceFields: { title: 'title' },
         },
@@ -166,7 +172,12 @@ describe('mapRecord', () => {
       parentMappingId: 'order',
       relationshipFieldKey: 'line_items',
       fieldMappings: [
-        { id: 'e1', targetFieldRef: 'def1:sku', expression: '{sku}', sourceFields: { sku: 'sku' } },
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'sku'),
+          expression: '{sku}',
+          sourceFields: { sku: 'sku' },
+        },
       ],
     })
 
@@ -373,13 +384,13 @@ describe('mapRecord', () => {
       fieldMappings: [
         {
           id: 'e1',
-          targetFieldRef: 'def1:total',
+          targetFieldRef: toResourceFieldId('def1', 'total'),
           expression: '{total_price}',
           sourceFields: { total_price: 'total_price' },
         },
         {
           id: 'conn',
-          targetFieldRef: 'def1:@app:shopify:storeDomain',
+          targetFieldRef: toResourceFieldId('def1', '@app:shopify:storeDomain'),
           expression: '',
           sourceFields: {},
           connectionMetaKey: 'shopDomain',

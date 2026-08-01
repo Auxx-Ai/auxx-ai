@@ -10,7 +10,8 @@
 // applies the returned bindings through the connector draft store.
 
 import { parseAppFieldRef, toAppFieldRef } from '@auxx/types/field'
-import type { DraftMapping, DraftStream, FieldMapping } from '../stores/connector-draft-store'
+import type { FieldMapping } from '../hooks/use-stream-mutations'
+import type { DraftMapping, DraftStream } from '../stores/connector-draft-store'
 
 /** One owned record type the connector declares — mirrors `dataConnector.ownedTargets`. */
 export interface OwnedTargetMeta {

@@ -247,10 +247,13 @@ export function appConnectorAdapter(
       // response — a finite batch + flat cursor. The adapter sends the FLAT app state
       // (`{ cursor, updatedSince }`), NOT the engine-shaped `{ backfillCursor, watermark }`,
       // so the app reads `state.cursor`/`state.updatedSince` per the SDK contract.
-      async function invokePage(flat: {
+      // An arrow const, not a hoisted `function` declaration: a declaration can be
+      // called before the `if (!catalog) throw` above runs, so TS refuses to carry that
+      // narrowing into its body and `catalog.id` reads as possibly-null.
+      const invokePage = async (flat: {
         cursor: unknown
         updatedSince?: string
-      }): Promise<AppExecuteResult> {
+      }): Promise<AppExecuteResult> => {
         const result = await invokeLambdaExecutor({
           caller: 'data-connector',
           payload: {

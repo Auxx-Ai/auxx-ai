@@ -46,6 +46,7 @@ function mockDb(
 const catalogWithBinding: CatalogDataConnector = {
   id: 'shopify.core',
   label: 'Shopify Core Data',
+  description: null,
   requiresConnection: true,
   iconKey: null,
   configJsonSchema: {},

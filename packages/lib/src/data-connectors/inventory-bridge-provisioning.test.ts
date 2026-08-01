@@ -45,7 +45,7 @@ describe('provisionInventoryBridge', () => {
     const r = await provisionInventoryBridge(db, ORG, INPUT)
 
     expect(h.createField).toHaveBeenCalledTimes(1)
-    const [fieldInput] = h.createField.mock.calls[0]
+    const [fieldInput] = h.createField.mock.calls[0]! // guarded by the call-count assertion above
     expect(fieldInput).toMatchObject({
       organizationId: ORG,
       entityDefinitionId: 'def_variants',

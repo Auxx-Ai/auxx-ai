@@ -7,6 +7,7 @@
 
 import { toResourceFieldId } from '@auxx/types/field'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeSyncCtx } from '../__test-helpers'
 import type { DecodedMapping } from '../service'
 import type { ProjectedRecord, SyncCtx } from './types'
 
@@ -95,28 +96,13 @@ function makeDb() {
 }
 
 function makeCtx(over: Partial<SyncCtx> = {}): SyncCtx {
-  return {
+  return makeSyncCtx({
     db: makeDb() as never,
-    orgId: 'org1',
-    connector: { id: 'dc1', credentialId: 'cred1' } as SyncCtx['connector'],
-    runId: 'run1',
     crud: { update, create, getFieldValues } as never,
     ownedCrud: { update, create, getFieldValues } as never,
-    counters: {
-      fetched: 0,
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      archived: 0,
-      deleted: 0,
-      failed: 0,
-      relationshipWarnings: 0,
-      errorSample: [],
-    } as SyncCtx['counters'],
-    touchedDefs: new Set<string>(),
     connectionMeta: { shopDomain: 'us.myshopify.com' },
     ...over,
-  }
+  })
 }
 
 beforeEach(() => {

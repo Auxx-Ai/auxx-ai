@@ -24,7 +24,8 @@ type SourceItem = {
   name: string
   description: string
   categories: string[]
-  iconKey: string | null
+  /** Template/app icon keys are optional at the source (`iconKey?: string`), so both empty forms land here. */
+  iconKey: string | null | undefined
 } & (
   | { kind: 'builtin'; type: 'generic-rest' }
   | { kind: 'template'; templateId: string; requiresConnection: boolean }

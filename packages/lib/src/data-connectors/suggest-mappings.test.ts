@@ -2,13 +2,16 @@
 // Tier 2 mapping suggester (create-sync-flow §3.2): scalar-leaf extraction from a
 // source schema + the name/type heuristic that proposes source→field bindings.
 
+import { toFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
 import { collectSchemaLeaves } from '../json-schema'
 import type { ResourceField } from '../resources'
 import { suggestFieldMappings } from './suggest-mappings'
 
 /** Minimal writable target field; override `capabilities`/`fieldType` per case. */
-function field(partial: Partial<ResourceField> & { id: string; key: string }): ResourceField {
+function field(
+  partial: Omit<Partial<ResourceField>, 'id'> & { id: string; key: string }
+): ResourceField {
   return {
     label: partial.key,
     type: 'string',
@@ -20,6 +23,7 @@ function field(partial: Partial<ResourceField> & { id: string; key: string }): R
       configurable: true,
     },
     ...partial,
+    id: toFieldId(partial.id),
   } as ResourceField
 }
 

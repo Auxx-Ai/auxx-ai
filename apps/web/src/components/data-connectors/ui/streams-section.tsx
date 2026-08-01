@@ -9,10 +9,10 @@ import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { ArrowRight, Layers, Plus, Table2, Trash2 } from 'lucide-react'
 import { useResources } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 
-type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
-type Stream = NonNullable<ReturnType<typeof api.dataConnector.listStreams.useQuery>['data']>[number]
+type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
+type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 
 interface StreamsSectionProps {
   connector: Connector

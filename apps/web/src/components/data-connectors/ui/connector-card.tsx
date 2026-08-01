@@ -13,7 +13,7 @@ import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ListCard } from '@auxx/ui/components/list-card'
 import { Cable, FileText, FlaskConical, Pause, Play, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { AppIcon } from '~/components/apps/ui/app-icon'
+import { VisualIcon } from '~/components/icons/ui/visual-icon'
 import {
   useBulkMode,
   useIsPending,
@@ -132,9 +132,13 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
         pendingLabel={pendingLabel}
         title={connector.name}
         icon={
-          <AppIcon
-            iconId={iconIdForType(connector.type)}
+          // `AppIcon` is just `VisualIcon fit='contain'`, but `AppIconProps` doesn't
+          // declare `fallbackIconId` — same direct-VisualIcon shape as the sibling
+          // `ConnectorGlyph` in connector-breadcrumb-switcher.
+          <VisualIcon
+            value={iconIdForType(connector.type)}
             fallbackIconId={DEFAULT_CONNECTOR_ICON_ID}
+            fit='contain'
             size='sm'
           />
         }

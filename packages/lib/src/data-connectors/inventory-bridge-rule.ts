@@ -70,6 +70,7 @@ export async function ensureInventoryDeductionRule(
     actions: [{ type: 'native', handler: DEDUCT_INVENTORY_HANDLER }],
     managed: INVENTORY_MANAGED_MARKER,
   })
+  if (!row) throw new Error('Failed to create the managed inventory deduction rule')
   await onCacheEvent('record-rule.changed', { orgId: organizationId })
   return { id: row.id, created: true }
 }

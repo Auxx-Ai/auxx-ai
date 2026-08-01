@@ -240,20 +240,30 @@ export function useMappingActions({
     })
   }
 
+  // Narrow a `FieldReference` to exactly `[relationship, target]`. `FieldPath` is
+  // `[ResourceFieldId, ...ResourceFieldId[]]`, so a `length === 2` check alone leaves the
+  // second segment optional to the compiler — destructure and test it to get both segments
+  // as defined values. Toasts + returns null on a multi-hop (or non-path) ref.
+  const asSingleHop = (ref: FieldReference): [ResourceFieldId, ResourceFieldId] | null => {
+    if (isFieldPath(ref) && ref.length === 2) {
+      const [rel, targetRef] = ref
+      if (targetRef) return [rel, targetRef]
+    }
+    toastError({
+      title: 'Multi-hop links not supported yet',
+      description: 'Pick a field one relationship away from this record.',
+    })
+    return null
+  }
+
   // Bind a leaf ACROSS a relationship (unified picker §2/§4): drill the target graph to a
   // field on a related def — e.g. `email → Contact.Email`. Desugars to a FLAT contributing
   // child mapping (`rootPath ''` reads THIS mapping's subtree), reusing one child per
   // drilled relationship. v1 is single-hop (a 2-segment FieldPath).
   const assignDrilled = (node: SourceTreeNode, _field: ResourceField, ref: FieldReference) => {
-    if (!isFieldPath(ref) || ref.length !== 2) {
-      toastError({
-        title: 'Multi-hop links not supported yet',
-        description: 'Pick a field one relationship away from this record.',
-      })
-      return
-    }
-    const rel = ref[0]
-    const targetRef = ref[1]
+    const hop = asSingleHop(ref)
+    if (!hop) return
+    const [rel, targetRef] = hop
     const relatedDefId = getFieldDefinitionId(targetRef)
     const relKey = fieldRefToKey(rel)
     if (sourceToEntry.has(node.path)) {
@@ -329,17 +339,6 @@ export function useMappingActions({
   // child (a target a relationship away). Picking a target moves the entry to its desired
   // home, preserving the expression. The flat child is REUSED per relationship (shared with
   // drilled leaf binds) and GC'd when its last entry leaves.
-
-  const asSingleHop = (ref: FieldReference): [ResourceFieldId, ResourceFieldId] | null => {
-    if (!isFieldPath(ref) || ref.length !== 2) {
-      toastError({
-        title: 'Multi-hop links not supported yet',
-        description: 'Pick a field one relationship away from this record.',
-      })
-      return null
-    }
-    return [ref[0], ref[1]]
-  }
 
   // Upsert a (re-homed) formula entry into the flat child for `rel`, creating it if absent.
   const upsertFormulaIntoRelChild = (rel: ResourceFieldId, entry: FieldMapping) => {

@@ -29,7 +29,7 @@ import {
   scheduledConfigFromState,
   scheduledStateFromConfig,
 } from '~/components/global/schedule'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import {
   getConnectorDraftState,
   selectIsDirty,
@@ -43,7 +43,7 @@ import {
 } from './webhook-signal-section'
 import { WebhookSteeringSection } from './webhook-steering-section'
 
-type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
+type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 
 type SyncBehavior = 'manual' | 'scheduled' | 'webhook'
 type BackfillWindowSpan = 'all' | 'last_90_days' | 'last_12_months'

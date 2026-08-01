@@ -655,7 +655,7 @@ export async function persistStreamState(
 // ── DataConnectorItem (the durable binding) ───────────────────────────────────
 
 /** Count bound items for a connector via SQL `count()` (G7 — O(1), not select-all). */
-export async function countConnectorItems(db: Database, dataConnectorId: string): Promise<number> {
+export async function countConnectorItems(db: DbOrTx, dataConnectorId: string): Promise<number> {
   const [row] = await db
     .select({ n: count() })
     .from(schema.DataConnectorItem)

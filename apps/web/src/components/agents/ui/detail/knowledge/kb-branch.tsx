@@ -17,7 +17,7 @@ import {
 import { useMemo, useState } from 'react'
 import { RecordPicker } from '~/components/pickers/record-picker/record-picker'
 import { useRecord } from '~/components/resources/hooks/use-record'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import { AgentScopeActions } from './agent-scope-actions'
 import { deriveEffectiveMode } from './derive-scope-mode'
@@ -119,7 +119,7 @@ interface KbArticlesProps {
   kbRecordId: string
 }
 
-type ArticleListItem = NonNullable<ReturnType<typeof api.kb.getArticles.useQuery>['data']>[number]
+type ArticleListItem = NonNullable<RouterOutputs['kb']['getArticles']>[number]
 
 function KbArticles({ kbId, agent, mutations, depth, kbRecordId }: KbArticlesProps) {
   const { data: articles, isLoading } = api.kb.getArticles.useQuery(
@@ -131,9 +131,9 @@ function KbArticles({ kbId, agent, mutations, depth, kbRecordId }: KbArticlesPro
     if (!articles) return []
     // Archived articles aren't useful as scope targets — keep them out of
     // the tree so the agent picker doesn't surface decommissioned content.
-    const visible = articles.filter(
-      (a) => !('archivedAt' in a) || (a as { archivedAt?: Date | null }).archivedAt == null
-    )
+    // The list payload carries the archive state as `status` (`flattenForList`
+    // never projects the Article row's `archivedAt` column).
+    const visible = articles.filter((a) => a.status !== 'ARCHIVED')
     return buildArticleTree(visible)
   }, [articles])
 

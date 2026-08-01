@@ -427,11 +427,7 @@ export async function materializeConnectorTargets(
   // ── Provision `provision`-hint fields onto each mapping's existing def ─────────
   const fieldIdsByDef = new Map<string, Record<string, string>>()
   for (const row of pendingRows) {
-    // Raw-row `fieldMappings` are the DB mirror shape (plain-string refs); cast to the
-    // engine `FieldMapping` — `provisionSpecsForMapping` only reads `.provision`.
-    const fields = provisionSpecsForMapping({
-      fieldMappings: row.fieldMappings as unknown as FieldMapping[],
-    })
+    const fields = provisionSpecsForMapping({ fieldMappings: row.fieldMappings })
     if (fields.length === 0) continue
 
     const result = await provisionTarget(db, organizationId, dataConnectorId, {

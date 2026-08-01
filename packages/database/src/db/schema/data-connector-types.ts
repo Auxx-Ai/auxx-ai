@@ -8,12 +8,27 @@
 import type { FieldType } from '../../types'
 
 /**
+ * Structural re-declaration of `ResourceFieldId` from `@auxx/types/field`
+ * (`${entityDefinitionId}:${fieldId}`). `@auxx/types` depends on `@auxx/database`,
+ * so importing it here would be a cycle — but TypeScript brands are STRUCTURAL, so
+ * this alias IS the same type as far as assignability goes. Declaring it (instead of
+ * a bare `string`) is what lets a `FieldMapping` read off the column flow straight
+ * into the engine without a cast.
+ */
+type ResourceFieldId = string & { readonly __brand: 'ResourceFieldId' }
+
+/**
  * Connector kind — text-backed (not a pgEnum) so new connectors ship without an
  * enum-alter migration. Built-in ids plus the `app:${slug}` template literal, so
  * it can't be a fixed `as const` array. Mirrors {@link KnowledgeSourceType}.
  * Defined alongside the connector registry in sub-plan 03.
+ *
+ * MUST stay in sync with the engine `DataConnectorType` in
+ * `@auxx/lib/data-connectors/types` — `'fixture'` is a registered built-in
+ * (`connectors/registry.ts`) that the connector router accepts, so a union without
+ * it is narrower than the column it describes.
  */
-export type DataConnectorType = 'generic-rest' | `app:${string}`
+export type DataConnectorType = 'generic-rest' | 'fixture' | `app:${string}`
 
 /**
  * Pagination contract for a generic-REST endpoint. Refined in sub-plan 05a.
@@ -200,6 +215,12 @@ export interface StreamRequestConfig {
     deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
     deleteExternalIdPath?: string
     resultShape?: 'single' | 'collection'
+    /**
+     * Coalesce same-record steer bursts (ms). Copied verbatim from the app catalog's
+     * `webhookTrigger` on install/restamp (`installAppConnector` / `restampWebhookBindings`)
+     * and read by the app-trigger dispatch job to key the delayed BullMQ steer job.
+     */
+    debounceMs?: number
   }
 }
 
@@ -217,11 +238,12 @@ export interface FieldMapping {
   /**
    * Canonical `ResourceFieldId` reference to the target field — concrete
    * (`${entityDefinitionId}:${fieldId}`) or the late-bound `@app:` form. `null` =
-   * unassigned draft / provisioned field awaiting its concrete ref. Branded
-   * `ResourceFieldId` in the engine `FieldMapping` (`@auxx/lib/data-connectors/types`);
-   * a plain string here (this package can't import tier-1 `@auxx/types`).
+   * unassigned draft / provisioned field awaiting its concrete ref. Every write path
+   * (the connector router's `resourceFieldIdSchema`, `toResourceFieldId`,
+   * `toAppFieldRef`) produces a branded ref, so the column is branded here too —
+   * see {@link ResourceFieldId} for why re-declaring the brand is sound.
    */
-  targetFieldRef: string | null
+  targetFieldRef: ResourceFieldId | null
   expression: string
   sourceFields: Record<string, string>
   /**
@@ -255,6 +277,10 @@ export interface FieldMapping {
     icon?: string
     isHidden?: boolean
     appFieldKey?: string
+    /** Predefined select options to provision (SINGLE_SELECT / MULTI_SELECT / TAGS). */
+    options?: Array<{ value: string; label?: string; color?: string }>
+    /** Sub-field set to provision for an ADDRESS_STRUCT field. */
+    addressComponents?: string[]
   }
 }
 
