@@ -26,7 +26,10 @@ import type { CapabilityView } from '../../permissions/capabilities/capability-v
 import { textSearchPredicate, textSearchRank } from '../../search/text-search-sql'
 import { BaseType } from '../../workflow-engine/core/types'
 import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
-import type { DroppedCondition } from '../query-builder/base-condition-builder'
+import type {
+  DroppedCondition,
+  DroppedConditionReason,
+} from '../query-builder/base-condition-builder'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
@@ -86,6 +89,41 @@ export interface ListFilteredInput {
 }
 
 /**
+ * Upper bound on {@link ListFilteredResult.droppedConditions}. A pathological
+ * filter set (a stored view against a wholesale-renamed resource, a generated
+ * `in` fan-out) must not put an unbounded array on every list response — the
+ * payload is a diagnostic, not a data channel. `droppedConditionCount` stays
+ * exact past the cap so a UI never *undercounts* what it is warning about.
+ *
+ * 25 is far above any hand-built filter set; the filter UI tops out around a
+ * dozen conditions.
+ */
+export const MAX_REPORTED_DROPPED_CONDITIONS = 25
+
+/**
+ * A filter condition the query builder could not turn into SQL, in the shape a
+ * **client** is allowed to see.
+ *
+ * Deliberately narrower than the internal {@link DroppedCondition}: `detail` is
+ * dropped, because it carries builder internals (the builder class name via
+ * `this.constructor.name`, or the raw unresolved `valueSource` token) that say
+ * nothing to a user and everything to someone probing the server. What survives
+ * is what a UI needs to name the offender — the caller's own `conditionId` (so a
+ * filter chip can be highlighted), the `fieldId` the caller itself sent, its
+ * operator, and a coarse reason. No SQL, no column names, no table names.
+ */
+export interface DroppedFilterNotice {
+  /** The condition's `id`, exactly as the caller sent it. */
+  conditionId: string
+  /** The condition's `fieldId` — an array for relationship paths. Caller-supplied. */
+  fieldRef: string | string[]
+  /** The condition's operator, as sent. */
+  operator: string
+  /** Why it produced no SQL. Coarse by design — see {@link DroppedConditionReason}. */
+  reason: DroppedConditionReason
+}
+
+/**
  * Result from listFiltered query
  */
 export interface ListFilteredResult {
@@ -98,6 +136,56 @@ export interface ListFilteredResult {
   total?: number
   /** Whether more results exist, derived from a `limit + 1` probe row */
   hasMore: boolean
+  /**
+   * Filter conditions the builder could not compile, and therefore **did not
+   * apply**. Present only when at least one was dropped; `undefined` means every
+   * requested condition made it into the `WHERE` clause.
+   *
+   * **A non-empty list means this page is WIDER than the caller asked for.** The
+   * query lane fails open on purpose — a stored view naming a retired field must
+   * still render — but that made the failure invisible by construction, which is
+   * how KB free-text search, the KB Tag/Status/Kind filters, unfiltered dashboard
+   * thread widgets and an unknown operator compiling to `eq(col, value)` all hid
+   * in plain sight. This field is the observability channel for that whole class;
+   * the AI boundary still *refuses* instead, via {@link inspectFilterConditions}.
+   *
+   * Purely additive: a caller that ignores it gets byte-identical behaviour.
+   * Capped at {@link MAX_REPORTED_DROPPED_CONDITIONS} — read
+   * {@link droppedConditionCount} for the true total.
+   */
+  droppedConditions?: DroppedFilterNotice[]
+  /**
+   * How many conditions were dropped in total, uncapped. Equals
+   * `droppedConditions.length` unless the cap truncated the list. Present exactly
+   * when {@link droppedConditions} is.
+   */
+  droppedConditionCount?: number
+}
+
+/** The caller-facing projection of a build's drop diagnostics, or `{}` when clean. */
+type DroppedConditionReport = Pick<
+  ListFilteredResult,
+  'droppedConditions' | 'droppedConditionCount'
+>
+
+/**
+ * Project internal builder diagnostics onto the caller-facing subset, bounded.
+ *
+ * Spread into a list result: `{ ids, hasMore, ...reportDroppedConditions(dropped) }`.
+ * An empty input yields `{}`, so the two absent keys never appear on a clean
+ * response and no existing consumer sees a shape change.
+ */
+function reportDroppedConditions(dropped: DroppedCondition[]): DroppedConditionReport {
+  if (dropped.length === 0) return {}
+  return {
+    droppedConditionCount: dropped.length,
+    droppedConditions: dropped.slice(0, MAX_REPORTED_DROPPED_CONDITIONS).map((d) => ({
+      conditionId: d.conditionId,
+      fieldRef: d.fieldRef,
+      operator: d.operator,
+      reason: d.reason,
+    })),
+  }
 }
 
 /**
@@ -178,6 +266,12 @@ async function buildEntityInstanceQueryParts(params: {
 }): Promise<{
   whereClause: SQL<unknown> | undefined
   orderByClauses: SQL<unknown>[] | undefined
+  /**
+   * Conditions that produced no SQL. Returned rather than only logged so the
+   * paged query can hand them to its caller — see
+   * {@link ListFilteredResult.droppedConditions}.
+   */
+  dropped: DroppedCondition[]
 }> {
   const { organizationId, entityDefinitionId, filters, sorting } = params
   const search = params.search?.trim() || undefined
@@ -191,7 +285,9 @@ async function buildEntityInstanceQueryParts(params: {
     // in production" has to be a query on `droppedCount` / `droppedConditions`,
     // not a grep. This path deliberately proceeds: the records list and stored
     // views must still render when a filter names a retired field. The AI
-    // boundary escalates instead, via `inspectFilterConditions`.
+    // boundary escalates instead, via `inspectFilterConditions`, and the UI gets
+    // the same diagnostics back on the response (`dropped`, below) so a list can
+    // say it widened rather than leaving it to whoever reads the logs.
     logger.warn('Dropped filter conditions', {
       entityDefinitionId,
       organizationId,
@@ -224,7 +320,7 @@ async function buildEntityInstanceQueryParts(params: {
         ? [desc(recordSearchRank(search)), desc(schema.EntityInstance.updatedAt)]
         : undefined
 
-  return { whereClause, orderByClauses }
+  return { whereClause, orderByClauses, dropped: built.droppedConditions }
 }
 
 /**
@@ -451,10 +547,10 @@ export async function queryEntityInstanceIdsPaged(params: {
    * predicate is added and the query is byte-identical to the pre-P5 one.
    */
   visibilityWhere?: SQL
-}): Promise<{ ids: string[]; total?: number; hasMore: boolean }> {
+}): Promise<ListFilteredResult> {
   const { db, entityDefinitionId, organizationId, filters, sorting, limit, offset } = params
 
-  const { whereClause, orderByClauses } = await buildEntityInstanceQueryParts({
+  const { whereClause, orderByClauses, dropped } = await buildEntityInstanceQueryParts({
     organizationId,
     entityDefinitionId,
     filters,
@@ -495,6 +591,9 @@ export async function queryEntityInstanceIdsPaged(params: {
     ids: idsResult.slice(0, limit).map((r) => r.id),
     ...(countResult ? { total: Number(countResult[0]?.count ?? 0) } : {}),
     hasMore: idsResult.length > limit,
+    // `total` and `ids` both describe a WIDER set than the caller asked for when
+    // this is non-empty. Reported, not thrown — see the field's JSDoc.
+    ...reportDroppedConditions(dropped),
   }
 }
 
@@ -593,7 +692,7 @@ export async function querySystemResourceIdsPaged(params: {
   search?: string
   /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
   includeTotal?: boolean
-}): Promise<{ ids: string[]; total?: number; hasMore: boolean }> {
+}): Promise<ListFilteredResult> {
   const { db, tableId, organizationId, filters, sorting, limit, offset } = params
 
   assertNotMailLensTable(tableId)
@@ -603,7 +702,7 @@ export async function querySystemResourceIdsPaged(params: {
     throw new Error(`Unknown table: ${tableId}`)
   }
 
-  const whereClause = buildSystemWhereClause(tableId, organizationId, filters)
+  const { sql: whereClause, dropped } = buildSystemWhereClause(tableId, organizationId, filters)
   const { searchWhere, searchOrderBy } = buildSystemSearchParts(tableId, params.search)
   const baseWhere = and(eq(tableSchema.organizationId, organizationId), whereClause, searchWhere)
 
@@ -639,6 +738,11 @@ export async function querySystemResourceIdsPaged(params: {
     ids: idsResult.slice(0, limit).map((r: { id: string }) => r.id),
     ...(countResult ? { total: Number(countResult[0]?.count ?? 0) } : {}),
     hasMore: idsResult.length > limit,
+    // Identical shape to the EntityInstance twin above — the two paths must not
+    // report the same failure differently, or a UI has to branch on which lane
+    // served it. This is the lane where the KB articles table's Tag/Status/Kind
+    // filters currently drop (cuid vs registry key), so it is not hypothetical.
+    ...reportDroppedConditions(dropped),
   }
 }
 
@@ -670,7 +774,7 @@ export async function countSystemResource(params: {
     throw new Error(`Unknown table: ${tableId}`)
   }
 
-  const whereClause = buildSystemWhereClause(tableId, organizationId, filters)
+  const { sql: whereClause } = buildSystemWhereClause(tableId, organizationId, filters)
   const { searchWhere } = buildSystemSearchParts(tableId, params.search)
 
   const result = await db
@@ -726,12 +830,17 @@ function buildSystemSearchParts(
  * System-table twin of the entity WHERE build: same fail-open (a dropped
  * condition widens rather than errors, because stored views must still render)
  * and the same structured warn so the rate is queryable.
+ *
+ * Returns the diagnostics alongside the clause rather than discarding them — the
+ * old signature computed the full drop list, logged it, and then returned only
+ * `.sql`, which is precisely why every fail-open on this lane had to be found by
+ * accident. Callers surface it as {@link ListFilteredResult.droppedConditions}.
  */
 function buildSystemWhereClause(
   tableId: TableId,
   organizationId: string,
   filters: ConditionGroup[]
-): SQL<unknown> | undefined {
+): { sql: SQL<unknown> | undefined; dropped: DroppedCondition[] } {
   const built = systemConditionBuilder.buildGroupedQueryWithDiagnostics(filters, tableId)
 
   if (built.droppedConditions.length > 0) {
@@ -745,7 +854,7 @@ function buildSystemWhereClause(
     })
   }
 
-  return built.sql
+  return { sql: built.sql, dropped: built.droppedConditions }
 }
 
 /**

@@ -974,6 +974,14 @@ export class UnifiedCrudHandler {
    * `COUNT(*)` runs on the first page only (or when `includeTotal` is forced), so an
    * infinite scroll doesn't pay a count per tick — see plan v3/02 §2.2.
    *
+   * **This lane fails open on a filter it cannot compile** — the condition is
+   * dropped and the query runs wider — because saved views, the mail list, unread
+   * counts and the workflow Find node all depend on `baseScope` for the genuine
+   * empty-filter case. That is deliberate, but it used to be *invisible*. Both
+   * branches below now return {@link ListFilteredResult.droppedConditions}, so a
+   * caller can say "1 filter was ignored" instead of quietly showing more rows.
+   * Ignoring the field leaves behaviour byte-identical.
+   *
    * @param params - Filter parameters
    */
   async listFiltered(params: {

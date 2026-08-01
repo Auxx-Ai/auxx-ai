@@ -666,6 +666,19 @@ export const recordRouter = createTRPCRouter({
    *
    * One call = one page (`LIMIT n + 1 OFFSET m`); `hasMore` is the probe row.
    * `total` comes back on the first page only — the client keeps it.
+   *
+   * **`droppedConditions` / `droppedConditionCount` ride on the page** whenever a
+   * filter could not be compiled into SQL. They are optional and additive: this
+   * lane fails open by design (a saved view naming a retired field still
+   * renders), so the page is simply *wider* than the caller asked for and no
+   * error is raised. A surface that wants to be honest about that renders the
+   * notice; a surface that ignores it behaves exactly as before. The AI boundary
+   * does the opposite and refuses — see `inspectFilterConditions` in
+   * `@auxx/lib/resources`.
+   *
+   * The payload is the caller's own `conditionId` / `fieldId` / `operator` plus a
+   * coarse reason, capped at `MAX_REPORTED_DROPPED_CONDITIONS`. No SQL, no column
+   * or table names, no builder internals.
    */
   listFiltered: capabilityProcedure
     .input(

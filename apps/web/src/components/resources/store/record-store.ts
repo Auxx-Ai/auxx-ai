@@ -4,6 +4,7 @@ import '~/lib/immer-config' // Enables Map/Set support for immer
 import type { Rung } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import {
+  type DroppedFilterNotice,
   parseRecordId,
   type RecordId,
   type RecordSourceChip,
@@ -75,6 +76,16 @@ interface ListCache {
   fetchedAt: number
   /** Presence marker for "more pages exist" (the real cursor is the page offset) */
   nextCursor: string | null
+  /**
+   * Filters the server could not compile and therefore did NOT apply, from
+   * `record.listFiltered`. Cached alongside the ids on purpose: this cache is
+   * served *instead of* the query for 5 minutes, so leaving the notice on the
+   * query response alone would make the warning vanish on the next mount while
+   * the list stayed just as wrong.
+   */
+  droppedConditions?: DroppedFilterNotice[]
+  /** Uncapped total behind {@link ListCache.droppedConditions}. */
+  droppedConditionCount?: number
 }
 
 export interface RecordStoreState {

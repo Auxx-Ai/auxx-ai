@@ -34,7 +34,7 @@ import {
   rowToTypedValue,
   validateFieldReferences,
 } from './field-value-helpers'
-import { resolveMailLensGate } from './mail-lens-gate'
+import { resolveMailHostGate, resolveMailLensGate } from './mail-lens-gate'
 import {
   batchFetchSystemRelationships,
   isVirtualField,
@@ -75,6 +75,16 @@ export async function getValue(
   cachedField?: CachedField
 ): Promise<TypedFieldValue | TypedFieldValue[] | null> {
   const { entityInstanceId } = parseRecordId(params.recordId)
+
+  // MAIL enforcement — the single-host twin of the gate `batchGetValues` applies
+  // (see {@link resolveMailHostGate}). `thread` / `message` are
+  // `NON_RECORD_DEF_SLUGS`, so the def-presence test this path's siblings rely on
+  // passes them for every member. `null` is already this function's "no value"
+  // answer, so a withheld host or field blanks rather than throws — every caller
+  // (the mutation re-reads, the geocoding stale-write guard, the dispatch and
+  // money readers) already handles it. Non-mail hosts short-circuit with no I/O.
+  const mailGate = await resolveMailHostGate(ctx, params.recordId)
+  if (mailGate && (mailGate.hidden || !mailGate.admitsField(params.fieldId))) return null
 
   // Use cached field if provided (avoids redundant CustomField join)
   const field = cachedField ?? (await getField(ctx, params.fieldId))
@@ -125,6 +135,13 @@ export async function getValues(
 ): Promise<Map<string, TypedFieldValue | TypedFieldValue[]>> {
   const { entityInstanceId } = parseRecordId(params.recordId)
 
+  // MAIL enforcement — see {@link getValue}. `params.fieldIds` is optional, so
+  // this path can be asked for EVERY field a thread has; the per-field test runs
+  // over the grouped results below rather than over the request. An empty Map is
+  // already the legal "nothing stored" answer, so a withheld host blanks.
+  const mailGate = await resolveMailHostGate(ctx, params.recordId)
+  if (mailGate?.hidden) return new Map()
+
   const query = ctx.db
     .select()
     .from(schema.FieldValue)
@@ -151,6 +168,8 @@ export async function getValues(
 
   // Convert and store results
   for (const [fieldId, fieldRows] of groupedByField) {
+    // FIELD visibility: drop values above the viewer's lens on this thread.
+    if (mailGate && !mailGate.admitsField(fieldId)) continue
     const fieldType = fieldRows[0]!.CustomField.type as FieldType
     const fieldOptions = fieldRows[0]!.CustomField.options as FieldOptions | undefined
     const fieldValueRows = fieldRows.map((r) => r.FieldValue as unknown as FieldValueRow)

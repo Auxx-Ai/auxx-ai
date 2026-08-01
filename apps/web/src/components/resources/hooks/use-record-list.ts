@@ -1,7 +1,7 @@
 // apps/web/src/components/resources/hooks/use-record-list.ts
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { toRecordId } from '@auxx/lib/resources/client'
+import { type DroppedFilterNotice, toRecordId } from '@auxx/lib/resources/client'
 import { useCallback, useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import {
@@ -16,6 +16,9 @@ import { useNormalizedDefinitionId } from '../utils/normalize-record-id'
 
 /** Stable empty array for default return */
 const EMPTY_IDS: string[] = []
+
+/** Stable empty array so a clean list never hands consumers a fresh identity. */
+const EMPTY_DROPPED: DroppedFilterNotice[] = []
 
 interface UseRecordListOptions {
   /** EntityDefinition UUID. Alias forms (entityType/apiSlug) are normalized internally. */
@@ -39,6 +42,18 @@ interface UseRecordListOptions {
 interface UseRecordListResult<T = RecordMeta> {
   /** Record IDs for current page - rows use useRecord(id) individually */
   recordIds: string[]
+  /**
+   * Filter conditions the server could not compile and therefore did NOT apply.
+   * Empty in the normal case.
+   *
+   * **Non-empty means this list is WIDER than the filters say it is.** The query
+   * lane fails open on purpose so a saved view naming a retired field still
+   * renders; this is the channel that stops that being invisible. Render it
+   * quietly — it is not an error state and there is nothing for the user to fix.
+   */
+  droppedConditions: DroppedFilterNotice[]
+  /** Uncapped total behind {@link droppedConditions} (the array is server-capped). */
+  droppedConditionCount: number
   /** Resolved records from record store (may be partial while loading) */
   records: T[]
   /** True if records are still being fetched */
@@ -173,6 +188,10 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
       total: data.pages[0]?.total ?? allIds.length,
       fetchedAt: Date.now(),
       nextCursor,
+      // Same story as `total`: every page carries the identical drop diagnostics
+      // (they come from the same filter build), so the first page is the source.
+      droppedConditions: data.pages[0]?.droppedConditions,
+      droppedConditionCount: data.pages[0]?.droppedConditionCount,
     })
 
     // Queue record fetches for IDs not in cache
@@ -215,6 +234,16 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   )
   const total = cachedList?.total ?? data?.pages?.[0]?.total ?? 0
 
+  // Read through the store cache exactly like `ids`/`total` do — the cache is
+  // served INSTEAD of the query for 5 minutes, so sourcing this from `data` alone
+  // would drop the warning on remount while the list stayed just as wide.
+  const droppedConditions =
+    (cachedList ? cachedList.droppedConditions : data?.pages?.[0]?.droppedConditions) ??
+    EMPTY_DROPPED
+  const droppedConditionCount =
+    (cachedList ? cachedList.droppedConditionCount : data?.pages?.[0]?.droppedConditionCount) ??
+    droppedConditions.length
+
   // ─── RESOLVE RECORDS FROM RECORD STORE ─────────────────────────────────
   // Subscribe to record cache for this entity definition
   const recordCache = useRecordStore((s) => s.records[entityDefinitionId])
@@ -245,6 +274,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
   return {
     recordIds,
+    droppedConditions,
+    droppedConditionCount,
     records,
     isLoadingRecords,
     listKey,
