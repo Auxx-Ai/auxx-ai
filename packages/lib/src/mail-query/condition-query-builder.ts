@@ -291,6 +291,11 @@ function dispatchConditionQuery(
 ): SQL<unknown> | null | typeof UNKNOWN_FIELD {
   switch (fieldId) {
     case 'tag':
+    // `tags` is the key `THREAD_FIELDS` declares (and therefore what every
+    // registry-driven filter surface sends); `tag` is this builder's own older
+    // name, still emitted by `context-to-conditions`. Both mean the same
+    // filter.
+    case 'tags':
       return buildTagQuery(op, value, organizationId)
     case 'assignee':
       return buildAssigneeQuery(op, value)

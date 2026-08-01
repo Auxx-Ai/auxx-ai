@@ -1,11 +1,22 @@
 // apps/web/src/components/workflow/nodes/core/find/validation.ts
 
 import { isCustomResourceId } from '@auxx/lib/resources/client'
-import { FIND_RESOURCE_CONFIGS, getOperatorsForType } from '@auxx/lib/workflow-engine/client'
 import { createFindNodeDefaultData, type FindNodeData, type ValidationResult } from './types'
 
 /**
- * Validation function following the same pattern as other nodes
+ * Validation function following the same pattern as other nodes.
+ *
+ * Deliberately does **not** check field references. This function only receives
+ * `data`, so the only vocabulary available to it is the static
+ * `FIND_RESOURCE_CONFIGS[type].filterableFields` — which cannot see the org's
+ * `CustomField` rows, and therefore rejects fields the panel itself offers.
+ * (A ~180-line commented-out attempt at exactly that lived here until
+ * 2026-08-01; it was removed rather than revived, because reviving it would
+ * reintroduce a third field vocabulary alongside the panel's merged
+ * `fieldDefinitions` and the server's canonicalized refs.)
+ *
+ * Field validation belongs to `FindProcessor.validateNodeConfig`, which reads
+ * the same canonical references the query builders do.
  */
 export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => {
   const errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }> = []
@@ -68,178 +79,6 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
 
     return { isValid: errors.filter((e) => e.type === 'error').length === 0, errors }
   }
-
-  // System resource validation using FIND_RESOURCE_CONFIGS
-  // const resourceConfig = FIND_RESOURCE_CONFIGS[data.resourceType]
-  // if (!resourceConfig) {
-  //   errors.push({ field: 'resourceType', message: 'Invalid resource type', type: 'error' })
-  //   return { isValid: false, errors }
-  // }
-
-  // Validate conditions using generic validation
-  // if (data.conditions && resourceConfig) {
-  //   data.conditions.forEach((condition, index) => {
-  //     // Find the field definition for this condition
-  //     // FieldPath (relation drill-down) — skip static field validation,
-  //     // the field was selected from a valid resource via the picker
-  //     if (Array.isArray(condition.fieldId)) {
-  //       return
-  //     }
-
-  //     // ResourceFieldId: extract bare key for comparison
-  //     const bareKey =
-  //       typeof condition.fieldId === 'string' && condition.fieldId.includes(':')
-  //         ? condition.fieldId.split(':')[1]
-  //         : condition.fieldId
-
-  //     const fieldDef = resourceConfig.filterableFields.find((field) => field.key === bareKey)
-
-  //     if (!fieldDef) {
-  //       errors.push({
-  //         field: `conditions.${index}.fieldId`,
-  //         message: `Field "${condition.fieldId}" is not available for resource type "${data.resourceType}"`,
-  //         type: 'error',
-  //       })
-  //       return
-  //     }
-
-  //     // Convert to the format expected by validateCondition
-  //     const fieldDefinition = {
-  //       id: fieldDef.key,
-  //       label: fieldDef.label,
-  //       type: fieldDef.type,
-  //       operators: getOperatorsForType(fieldDef.type, fieldDef.operatorOverrides),
-  //       options: fieldDef.options,
-  //     } as const
-
-  //     const conditionValidation = validateCondition(condition, fieldDefinition)
-  //     if (!conditionValidation.isValid) {
-  //       conditionValidation.errors.forEach((error) => {
-  //         errors.push({
-  //           field: `conditions.${index}`,
-  //           message: error,
-  //           type: 'error',
-  //         })
-  //       })
-  //     }
-
-  //     // Additional validation for enum fields
-  //     if (fieldDef.type === 'enum' && fieldDef.options?.length && condition.value) {
-  //       const value = String(condition.value)
-  //       if (!['empty', 'not empty', 'exists', 'not exists'].includes(condition.operator)) {
-  //         // Check if value matches any value in the options
-  //         const validValues = fieldDef.options.map((opt) => opt.value)
-  //         if (!validValues.includes(value)) {
-  //           const validLabels = fieldDef.options.map((opt) => opt.label).join(', ')
-  //           errors.push({
-  //             field: `conditions.${index}.value`,
-  //             message: `Value "${value}" is not a valid option for field "${fieldDef.label}". Valid values: ${validLabels}`,
-  //             type: 'error',
-  //           })
-  //         }
-  //       }
-  //     }
-
-  //     // Validate operator is supported for the field
-  //     const validOperators = getOperatorsForType(fieldDef.type, fieldDef.operatorOverrides)
-  //     if (condition.operator && !validOperators.includes(condition.operator)) {
-  //       errors.push({
-  //         field: `conditions.${index}.operator`,
-  //         message: `Operator "${condition.operator}" is not supported for field "${fieldDef.label}"`,
-  //         type: 'error',
-  //       })
-  //     }
-  //   })
-  // }
-
-  // Validate condition groups using generic validation
-  // if (data.conditionGroups && resourceConfig) {
-  //   data.conditionGroups.forEach((group, groupIndex) => {
-  //     // Validate each condition in the group
-  //     group.conditions.forEach((condition, conditionIndex) => {
-  //       // FieldPath (relation drill-down) — skip static field validation
-  //       if (Array.isArray(condition.fieldId)) {
-  //         return
-  //       }
-
-  //       // ResourceFieldId: extract bare key for comparison
-  //       const bareKey =
-  //         typeof condition.fieldId === 'string' && condition.fieldId.includes(':')
-  //           ? condition.fieldId.split(':')[1]
-  //           : condition.fieldId
-
-  //       // Find the field definition for this condition
-  //       const fieldDef = resourceConfig.filterableFields.find((field) => field.key === bareKey)
-
-  //       if (!fieldDef) {
-  //         errors.push({
-  //           field: `conditionGroups.${groupIndex}.conditions.${conditionIndex}.fieldId`,
-  //           message: `Field "${condition.fieldId}" is not available for resource type "${data.resourceType}"`,
-  //           type: 'error',
-  //         })
-  //         return
-  //       }
-
-  //       // Convert to the format expected by validateCondition
-  //       const fieldDefinition = {
-  //         id: fieldDef.key,
-  //         label: fieldDef.label,
-  //         type: fieldDef.type,
-  //         operators: getOperatorsForType(fieldDef.type, fieldDef.operatorOverrides),
-  //         options: fieldDef.options,
-  //       }
-
-  //       const conditionValidation = validateCondition(condition, fieldDefinition)
-  //       if (!conditionValidation.isValid) {
-  //         conditionValidation.errors.forEach((error) => {
-  //           errors.push({
-  //             field: `conditionGroups.${groupIndex}.conditions.${conditionIndex}`,
-  //             message: error,
-  //             type: 'error',
-  //           })
-  //         })
-  //       }
-
-  //       // Additional validation for enum fields
-  //       if (fieldDef.type === 'enum' && fieldDef.options?.length && condition.value) {
-  //         const value = String(condition.value)
-  //         if (!['empty', 'not empty', 'exists', 'not exists'].includes(condition.operator)) {
-  //           const validValues = fieldDef.options.map((opt) => opt.value)
-  //           if (!validValues.includes(value)) {
-  //             const validLabels = fieldDef.options.map((opt) => opt.label).join(', ')
-  //             errors.push({
-  //               field: `conditionGroups.${groupIndex}.conditions.${conditionIndex}.value`,
-  //               message: `Value "${value}" is not a valid option for field "${fieldDef.label}". Valid values: ${validLabels}`,
-  //               type: 'error',
-  //             })
-  //           }
-  //         }
-  //       }
-
-  //       // Validate operator is supported for the field
-  //       const validOperators = getOperatorsForType(fieldDef.type, fieldDef.operatorOverrides)
-  //       if (condition.operator && !validOperators.includes(condition.operator)) {
-  //         errors.push({
-  //           field: `conditionGroups.${groupIndex}.conditions.${conditionIndex}.operator`,
-  //           message: `Operator "${condition.operator}" is not supported for field "${fieldDef.label}"`,
-  //           type: 'error',
-  //         })
-  //       }
-  //     })
-  //   })
-  // }
-
-  // Validate orderBy field
-  // if (data.orderBy) {
-  //   const sortableField = resourceConfig.sortableFields.find((f) => f.key === data.orderBy!.field)
-  //   if (!sortableField) {
-  //     errors.push({
-  //       field: 'orderBy.field',
-  //       message: `Field ${data.orderBy.field} is not sortable for ${resourceConfig.label}`,
-  //       type: 'error',
-  //     })
-  //   }
-  // }
 
   // Validate limit for findMany. A variable-bound limit is a reference string
   // that only resolves at run time, so there is nothing to check.

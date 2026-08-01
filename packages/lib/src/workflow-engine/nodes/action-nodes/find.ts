@@ -11,13 +11,19 @@ import {
   requireCachedEntityDefId,
 } from '../../../cache'
 import type { Condition, ConditionGroup as MailConditionGroup } from '../../../conditions/types'
-import { buildConditionGroupsQuery } from '../../../mail-query/condition-query-builder'
+import { buildConditionGroupsQueryWithDiagnostics } from '../../../mail-query/condition-query-builder'
 import { getAutomationVisibility } from '../../../permissions/visibility/automation-visibility'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
 import type {
   ConditionGroup,
   GenericCondition,
 } from '../../../resources/query-builder/base-condition-builder'
+// Narrow import path on purpose: the `query-builder` barrel re-exports builders
+// that pull in `@auxx/database`, and this module only needs the pure rewriter.
+import {
+  canonicalizeSystemConditions,
+  canonicalizeSystemFieldRef,
+} from '../../../resources/query-builder/canonicalize-system-fields'
 import { ConditionQueryBuilder } from '../../../resources/query-builder/condition-query-builder'
 import {
   getFieldOperators,
@@ -113,6 +119,72 @@ function normalizeGroupsForMailBuilder(groups: ConditionGroup[]): MailConditionG
     ...g,
     conditions: normalizeConditionsForMailBuilder(g.conditions),
   }))
+}
+
+/**
+ * Fold the legacy flat `conditions[]` into a single group so the node has
+ * exactly one filter path through every lane.
+ *
+ * The combining operator reproduces `BaseConditionBuilder.deriveFlatOperator`
+ * — `OR` when any condition *after the first* asks for it, `AND` otherwise —
+ * so the folded group builds the same SQL as the `buildWhereSql` call it
+ * replaces. Groups, when present, always win: that is the pre-existing
+ * precedence `validateNodeConfig` already warns about.
+ */
+function foldFlatConditions(
+  conditions: GenericCondition[],
+  conditionGroups: ConditionGroup[]
+): ConditionGroup[] {
+  if (conditionGroups.length > 0) return conditionGroups
+  if (conditions.length === 0) return []
+
+  return [
+    {
+      id: 'flat',
+      conditions,
+      logicalOperator: conditions.some(
+        (condition, index) => index > 0 && condition.logicalOperator === 'OR'
+      )
+        ? 'OR'
+        : 'AND',
+    },
+  ]
+}
+
+/** One dropped condition, flattened out of either builder's diagnostics shape. */
+interface DroppedRef {
+  ref: string
+  reason: string
+}
+
+/**
+ * Message for a build that silently discarded a filter.
+ *
+ * A workflow acts on the result, so a dropped condition is a failure rather
+ * than a notice: dropping widens an AND group and narrows an OR group, and
+ * there is no human reading a warning mid-run. Mirrors the `UnprocessableEntity`
+ * the AI count tools raise, except that this node fails on *any* drop — it has
+ * no channel to report a partial one.
+ *
+ * Deliberately omits each drop's internal `detail` (the builder class name, or
+ * a field builder's thrown message): a workflow run log is user-visible.
+ */
+function describeDroppedConditions(resourceType: string, drops: DroppedRef[]): string {
+  const described = drops.map((drop) => `${drop.ref} (${drop.reason})`).join(', ')
+  return `Cannot filter ${resourceType} by: ${described}`
+}
+
+/**
+ * CUID2 shape, as `CustomField.id` is minted.
+ *
+ * Narrower than `isCustomResourceId` on purpose: this asks "is this reference a
+ * field cuid?", and no static registry key can match it — every one of them is
+ * either short or camelCase.
+ */
+const CUID_FIELD_REF = /^[a-z][a-z0-9]{19,}$/
+
+function isCuidFieldRef(fieldRef: string): boolean {
+  return CUID_FIELD_REF.test(fieldRef)
 }
 
 /**
@@ -516,34 +588,40 @@ export class FindProcessor extends BaseNodeProcessor {
         resourceType = await requireCachedEntityDefId(organizationId, resourceType)
       }
 
+      // Fold the legacy flat array into a group, then rewrite every field
+      // reference into the form the builders resolve — both BEFORE validation,
+      // so preflight and the build agree by construction rather than by
+      // coincidence. That equivalence is the invariant #1478 had to restore for
+      // `inspectFilterConditions`; this node had the same divergence.
+      //
+      // The entity lane is skipped: `entityConditionBuilder` resolves a cuid
+      // natively, and `RESOURCE_FIELD_REGISTRY` has no slice for an
+      // entityDefinitionId, so canonicalizing there would rewrite every field
+      // to `custom_<cuid>`.
+      const foldedGroups = foldFlatConditions(conditions, conditionGroups)
+      const conditionGroupsToBuild = isCustomResourceId(resourceType)
+        ? foldedGroups
+        : canonicalizeSystemConditions(foldedGroups, resourceType as TableId, resource.fields)
+
       // Validate conditions using dynamic fields (pass cached resource for UUID matching)
-      const flatConditionErrors = this.validateConditionValues(
-        resourceType,
-        conditions,
-        resource.fields
-      )
-      const groupConditionErrors: string[] = []
-      for (const group of conditionGroups) {
-        const groupErrors = this.validateConditionValues(
-          resourceType,
-          group.conditions,
-          resource.fields
+      const allValidationErrors: string[] = []
+      for (const group of conditionGroupsToBuild) {
+        allValidationErrors.push(
+          ...this.validateConditionValues(resourceType, group.conditions, resource.fields)
         )
-        groupConditionErrors.push(...groupErrors)
       }
 
-      const allValidationErrors = [...flatConditionErrors, ...groupConditionErrors]
       if (allValidationErrors.length > 0) {
         throw new Error(`Invalid conditions: ${allValidationErrors.join(', ')}`)
       }
 
-      const totalConditions =
-        conditions.length +
-        conditionGroups.reduce((total, group) => total + group.conditions.length, 0)
+      const totalConditions = conditionGroupsToBuild.reduce(
+        (total, group) => total + group.conditions.length,
+        0
+      )
 
       contextManager.log('DEBUG', node.nodeId, `Executing ${findMode} query for ${resourceType}`, {
-        flatConditions: conditions.length,
-        groups: conditionGroups.length,
+        groups: conditionGroupsToBuild.length,
         totalConditions,
         orderBy,
         limit,
@@ -553,21 +631,13 @@ export class FindProcessor extends BaseNodeProcessor {
       let result
       let resultCount: number
 
-      console.log('🔍 [FindProcessor] Executing query', {
-        findMode,
-        resourceType,
-        organizationId,
-        isCustomResource: isCustomResourceId(resourceType),
-      })
-
       if (isCustomResourceId(resourceType)) {
         // Handle custom entity query
         const queryResult = await this.executeCustomEntityQuery(
           resourceType,
           organizationId,
           db,
-          conditions,
-          conditionGroups,
+          conditionGroupsToBuild,
           orderBy,
           limit,
           findMode
@@ -579,8 +649,8 @@ export class FindProcessor extends BaseNodeProcessor {
         // cross-table joins (sender, recipients, body, tags, attachments, etc.)
         const queryResult = await this.executeThreadQuery(
           organizationId,
-          conditions,
-          conditionGroups,
+          conditionGroupsToBuild,
+          resource.fields,
           orderBy,
           limit,
           findMode
@@ -591,8 +661,8 @@ export class FindProcessor extends BaseNodeProcessor {
         // Handle other system resource queries (message, user, dataset, etc.)
         const query = this.buildQuery(
           resourceType as TableId,
-          conditions,
-          conditionGroups,
+          conditionGroupsToBuild,
+          resource.fields,
           orderBy,
           limit
         )
@@ -615,13 +685,6 @@ export class FindProcessor extends BaseNodeProcessor {
         }
       }
 
-      console.log('🔍 [FindProcessor] Query executed', {
-        findMode,
-        resourceType,
-        resultCount,
-        resultType: Array.isArray(result) ? 'array' : typeof result,
-      })
-
       contextManager.log(
         'INFO',
         node.nodeId,
@@ -636,7 +699,7 @@ export class FindProcessor extends BaseNodeProcessor {
         query_info: {
           resource_type: resourceType,
           find_mode: findMode,
-          flat_conditions_applied: conditions.length,
+          flat_conditions_applied: conditionGroups.length > 0 ? 0 : conditions.length,
           groups_applied: conditionGroups.length,
           total_conditions: totalConditions,
           order_by: orderBy?.field,
@@ -712,91 +775,52 @@ export class FindProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Build database query from conditions and groups using ConditionQueryBuilder
-   * Note: This is only for system resources - custom entities use executeCustomEntityQuery
+   * Build the database query for a system resource from already-canonicalized
+   * condition groups.
+   *
+   * Custom entities take `executeCustomEntityQuery` and threads take
+   * `executeThreadQuery`; this covers the rest.
+   *
+   * @throws When the builder dropped any condition — see
+   *         {@link describeDroppedConditions}.
    */
   private buildQuery(
     resourceType: TableId,
-    conditions: GenericCondition[],
     conditionGroups: ConditionGroup[],
+    fields: ResourceField[],
     orderBy?: FindNodeData['orderBy'],
     limit?: number
   ): BuiltQuery {
-    let whereClause: SQL<unknown> | undefined
+    const { sql: whereClause, droppedConditions } =
+      ConditionQueryBuilder.buildGroupedQueryWithDiagnostics(conditionGroups, resourceType)
 
-    console.log('🔍 [FindProcessor] Building query', {
-      resourceType,
-      hasGroups: conditionGroups.length > 0,
-      groupCount: conditionGroups.length,
-      flatConditionCount: conditions.length,
-      orderBy,
-      limit,
-    })
-
-    if (conditionGroups.length > 0) {
-      console.log('🔍 [FindProcessor] Building grouped query with groups:', {
-        groups: conditionGroups.map((g, i) => ({
-          index: i,
-          logicalOp: g.logicalOperator,
-          conditionCount: g.conditions.length,
-          conditions: g.conditions.map((c) => {
-            const fId = Array.isArray(c.fieldId) ? c.fieldId[0] : c.fieldId
-            return {
-              fieldId: c.fieldId,
-              operator: c.operator,
-              value: c.value,
-              isCustomField: fId?.startsWith('custom_') ?? false,
-            }
-          }),
-        })),
-      })
-      whereClause = this.buildGroupedQuery(conditionGroups, resourceType)
-    } else if (conditions.length > 0) {
-      console.log('🔍 [FindProcessor] Building flat query with conditions:', {
-        conditions: conditions.map((c) => {
-          const fId = Array.isArray(c.fieldId) ? c.fieldId[0] : c.fieldId
-          return {
-            fieldId: c.fieldId,
-            operator: c.operator,
-            value: c.value,
-            isCustomField: fId?.startsWith('custom_') ?? false,
-          }
-        }),
-      })
-      whereClause = ConditionQueryBuilder.buildWhereSql(conditions, resourceType)
+    if (droppedConditions.length > 0) {
+      throw new Error(
+        describeDroppedConditions(
+          resourceType,
+          droppedConditions.map((dropped) => ({
+            ref: Array.isArray(dropped.fieldRef) ? dropped.fieldRef.join(' → ') : dropped.fieldRef,
+            reason: dropped.reason,
+          }))
+        )
+      )
     }
 
+    // An unresolvable sort still no-ops silently — sort is deliberately not a
+    // reporting channel (carried forward from #1478).
     const orderByClause = orderBy
       ? ConditionQueryBuilder.buildOrderBySql(
-          orderBy.field,
+          canonicalizeSystemFieldRef(orderBy.field, resourceType, fields),
           orderBy.direction || 'asc',
           resourceType
         )
       : undefined
 
-    const builtQuery = {
+    return {
       where: whereClause,
       orderBy: orderByClause,
       limit,
     }
-
-    console.log('🔍 [FindProcessor] Query built', {
-      hasWhereClause: !!whereClause,
-      hasOrderBy: !!orderByClause,
-      limit,
-    })
-
-    return builtQuery
-  }
-
-  /**
-   * Build query from condition groups
-   */
-  private buildGroupedQuery(
-    groups: ConditionGroup[],
-    resourceType: TableId
-  ): SQL<unknown> | undefined {
-    return ConditionQueryBuilder.buildGroupedQuery(groups, resourceType)
   }
 
   /**
@@ -824,42 +848,54 @@ export class FindProcessor extends BaseNodeProcessor {
   /**
    * Execute thread query using the dedicated mail condition builder.
    * Supports cross-table joins for sender, recipients, body, tags, attachments, etc.
+   *
+   * `conditionGroups` arrives canonicalized against `THREAD_FIELDS`, which is
+   * the vocabulary the mail builder already shares (`subject`, `status`,
+   * `inbox`, `assignee`, `ticket`, `from`, `to`, `body`, …), so a cuid-addressed
+   * materialized field lands on the static key the builder dispatches on.
+   *
+   * A genuinely custom field on a thread canonicalizes to `custom_<cuid>`,
+   * which is **meaningless to the mail builder** — it drops, and the drop now
+   * fails the node. Do not "fix" that by teaching the mail builder a `custom_`
+   * prefix: that would be a `FieldValue` read outside the mail lens.
+   *
+   * @throws When the builder dropped any condition.
    */
   private async executeThreadQuery(
     organizationId: string,
-    conditions: GenericCondition[],
     conditionGroups: ConditionGroup[],
+    fields: ResourceField[],
     orderBy: FindNodeData['orderBy'] | undefined,
     limit: number | undefined,
     findMode: 'findOne' | 'findMany'
   ): Promise<{ results: any[] | any; count: number }> {
     // Normalize conditions: strip fieldId prefix, unwrap { referenceId }, extract .id
-    const normalizedGroups =
-      conditionGroups.length > 0
-        ? normalizeGroupsForMailBuilder(conditionGroups)
-        : conditions.length > 0
-          ? [
-              {
-                id: 'flat',
-                conditions: normalizeConditionsForMailBuilder(conditions),
-                logicalOperator: 'AND' as const,
-              },
-            ]
-          : []
+    const normalizedGroups = normalizeGroupsForMailBuilder(conditionGroups)
 
     // Build WHERE clause via mail builder (includes org scoping internally).
     // Configured automation reads as AUTOMATION_SYSTEM (§8.2): full on org
     // inboxes, zero access to personal inboxes.
-    const whereClause = buildConditionGroupsQuery(
+    const { sql: whereClause, droppedConditions } = buildConditionGroupsQueryWithDiagnostics(
       normalizedGroups,
       organizationId,
       await getAutomationVisibility(organizationId)
     )
 
+    // A dropped mail condition leaves `sql` as the bare base scope — the whole
+    // visible mailbox — which for a workflow is the worst available outcome.
+    if (droppedConditions.length > 0) {
+      throw new Error(
+        describeDroppedConditions(
+          'thread',
+          droppedConditions.map((dropped) => ({ ref: dropped.fieldId, reason: dropped.reason }))
+        )
+      )
+    }
+
     // Build ORDER BY (fall back to SystemConditionBuilder for column resolution)
     const orderByClause = orderBy
       ? ConditionQueryBuilder.buildOrderBySql(
-          this.stripFieldPrefix(orderBy.field),
+          canonicalizeSystemFieldRef(orderBy.field, 'thread', fields),
           orderBy.direction || 'asc',
           'thread'
         )
@@ -887,7 +923,6 @@ export class FindProcessor extends BaseNodeProcessor {
     resourceType: string,
     organizationId: string,
     db: Database,
-    conditions: GenericCondition[],
     conditionGroups: ConditionGroup[],
     orderBy: FindNodeData['orderBy'] | undefined,
     limit: number | undefined,
@@ -930,14 +965,17 @@ export class FindProcessor extends BaseNodeProcessor {
       relatedEntityFields,
     }
 
-    // Build WHERE clause using EntityConditionBuilder
-    let whereClause: SQL<unknown> | undefined
-
-    if (conditionGroups.length > 0) {
-      whereClause = entityConditionBuilder.buildGroupedQuery(conditionGroups, entityContext)
-    } else if (conditions.length > 0) {
-      whereClause = entityConditionBuilder.buildWhereSql(conditions, entityContext)
-    }
+    // Build WHERE clause using EntityConditionBuilder.
+    //
+    // Unlike the system and thread lanes, a drop here is NOT failed — this lane
+    // resolves cuids natively, so it never had the field-vocabulary mismatch
+    // those two do, and it was deliberately left alone. Its remaining drops
+    // (an operator the entity builder can't build) still widen silently;
+    // that is a known gap, not an oversight.
+    const whereClause =
+      conditionGroups.length > 0
+        ? entityConditionBuilder.buildGroupedQuery(conditionGroups, entityContext)
+        : undefined
 
     // Build ORDER BY clause
     let orderByClause: SQL<unknown>[] | undefined
@@ -1061,6 +1099,21 @@ export class FindProcessor extends BaseNodeProcessor {
     const warnings: string[] = []
     const config = node.data as unknown as FindNodeData
 
+    /**
+     * Report a field the static `FIND_RESOURCE_CONFIGS` slice doesn't know.
+     *
+     * Design time has no `organizationId`, so a `CustomField` cuid can't be
+     * resolved here at all — erroring on a reference the panel itself offered
+     * would be worse than not checking it. Everything else stays an error.
+     */
+    const pushUnknownField = (fieldId: string, message: string) => {
+      if (isCuidFieldRef(fieldId)) {
+        warnings.push(`${message} (custom field — validated at runtime)`)
+      } else {
+        errors.push(message)
+      }
+    }
+
     // Validate resource type
     if (!config.resourceType) {
       errors.push('Resource type is required')
@@ -1108,7 +1161,13 @@ export class FindProcessor extends BaseNodeProcessor {
             getFieldOutputKey(f) === flatFieldId || f.key === flatFieldId || f.id === flatFieldId
         )
         if (!field) {
-          errors.push(
+          // A cuid-shaped ref is a field the panel legitimately offered — a
+          // materialized or truly-custom `CustomField` — and is unresolvable
+          // here by construction: `validateNodeConfig` has no `organizationId`
+          // and so cannot load the merged fields. Warn, exactly like the
+          // `custom_` branch above. A plainly-named unknown field stays an error.
+          pushUnknownField(
+            flatFieldId,
             `Flat Condition ${index + 1}: Invalid field "${flatFieldId}" for ${config.resourceType}`
           )
         } else {
@@ -1194,7 +1253,8 @@ export class FindProcessor extends BaseNodeProcessor {
               f.id === groupFieldId
           )
           if (!field) {
-            errors.push(
+            pushUnknownField(
+              groupFieldId,
               `Group ${groupIndex + 1}, Condition ${condIndex + 1}: Invalid field "${groupFieldId}" for ${config.resourceType}`
             )
           } else {
