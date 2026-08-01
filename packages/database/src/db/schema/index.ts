@@ -180,6 +180,7 @@ export * from './task-assignment'
 export * from './task-reference'
 export * from './thread'
 export * from './thread-entity-link'
+export * from './thread-external-key'
 export * from './thread-participant'
 export * from './thread-read-status'
 // export * from './tags-on-thread' // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field

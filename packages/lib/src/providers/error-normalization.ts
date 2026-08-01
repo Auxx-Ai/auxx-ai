@@ -26,7 +26,54 @@ export enum EmailErrorCode {
   // General
   INVALID_RECIPIENTS = 'INVALID_RECIPIENTS',
   INVALID_MESSAGE_FORMAT = 'INVALID_MESSAGE_FORMAT',
+  /** The provider rejected an internet (RFC 5322) message header outright. */
+  INVALID_MESSAGE_HEADER = 'INVALID_MESSAGE_HEADER',
   UNKNOWN = 'UNKNOWN',
+}
+
+/** Cap on persisted raw provider text — enough for a Graph body, not a log dump. */
+const MAX_RAW_PROVIDER_ERROR_LENGTH = 2000
+
+function stringifyBody(body: unknown): string | undefined {
+  if (typeof body === 'string') return body
+  if (!body || typeof body !== 'object') return undefined
+  try {
+    return JSON.stringify(body)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Best-effort raw provider error text, for persisting alongside the sanitized
+ * user-facing message.
+ *
+ * The normalized `message` is written for humans and the provider's own text —
+ * the one line that says *why* the send was refused (e.g. Graph's
+ * `InvalidInternetMessageHeader: … should start with 'x-'`) — used to exist only
+ * in a log line. This pulls that text back out of the thrown error (unwrapping a
+ * `NormalizedEmailError` if that is what it is handed) so a failed send is
+ * diagnosable from the database.
+ */
+export function extractProviderErrorText(error: unknown): string | undefined {
+  if (!error) return undefined
+  if (typeof error === 'string') return error.slice(0, MAX_RAW_PROVIDER_ERROR_LENGTH) || undefined
+
+  const wrapper = error as Record<string, any>
+  // A NormalizedEmailError carries the provider's own error on `originalError`.
+  const source: Record<string, any> = wrapper.originalError ?? wrapper
+
+  const parts: string[] = []
+  const message = typeof source.message === 'string' ? source.message : undefined
+  if (message) parts.push(message)
+
+  const bodyText = stringifyBody(source.body ?? source.responseBody ?? source.response?.body)
+  if (bodyText && bodyText !== message) parts.push(bodyText)
+
+  if (parts.length === 0 && typeof wrapper.message === 'string') parts.push(wrapper.message)
+
+  const text = parts.join(' | ').trim()
+  return text ? text.slice(0, MAX_RAW_PROVIDER_ERROR_LENGTH) : undefined
 }
 
 export class NormalizedEmailError extends Error {
@@ -161,6 +208,23 @@ export class ErrorNormalizer {
       )
     }
 
+    // Rejected internet message header. Graph accepts ONLY `x-`-prefixed names in
+    // `internetMessageHeaders` and answers 400 `InvalidInternetMessageHeader` —
+    // it rejects the whole request rather than dropping the header. This must
+    // stay ahead of the UNKNOWN fallthrough, which discards the one line that
+    // names the offending header.
+    const graphCode = typeof error?.code === 'string' ? error.code : ''
+    const bodyText = stringifyBody(error?.body ?? error?.responseBody ?? error?.response?.body)
+    if (/invalidinternetmessageheader/i.test(`${graphCode} ${bodyText ?? ''} ${message}`)) {
+      const raw = extractProviderErrorText(error) ?? message
+      return new NormalizedEmailError(
+        EmailErrorCode.INVALID_MESSAGE_HEADER,
+        `Outlook rejected a message header: ${raw}`,
+        error,
+        { provider: 'outlook', retryable: false }
+      )
+    }
+
     return new NormalizedEmailError(EmailErrorCode.UNKNOWN, `Outlook error: ${message}`, error, {
       provider: 'outlook',
       retryable: false,
@@ -188,6 +252,9 @@ export class ErrorNormalizer {
 
       case EmailErrorCode.INVALID_RECIPIENTS:
         return 'One or more recipient email addresses are invalid.'
+
+      case EmailErrorCode.INVALID_MESSAGE_HEADER:
+        return 'The email provider refused a header on this message, so nothing was sent. Retrying will not help until the message is rebuilt — please report this with the message ID.'
 
       case EmailErrorCode.ATTACHMENT_ENCODING_FAILED:
         return `Failed to process attachment${error.details?.filename ? ` "${error.details.filename}"` : ''}. Please try removing and re-adding the file.`

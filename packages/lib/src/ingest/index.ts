@@ -43,6 +43,8 @@ export { PERSONAL_EMAIL_DOMAINS } from './domain/personal-domains'
 export { matchesFilterEntry } from './filtering/matches-filter'
 export { shouldIgnoreMessage } from './filtering/should-ignore'
 export { storeIgnoredMessage } from './filtering/store-ignored'
+// Body text
+export { deriveSnippet, deriveTextFromHtml } from './html-to-plain-text'
 // Participants
 export {
   calculateDisplayName,
@@ -57,8 +59,13 @@ export { isSimilarSubject } from './reconciliation/is-similar-subject'
 export { mergeProviderData } from './reconciliation/merge-provider-data'
 export { reconcileMessage } from './reconciliation/reconcile-message'
 export { storeMessage } from './store-message'
+// Threading headers
+export type { ThreadingHeaders } from './threading-headers'
+export { parentMessageIdCandidates, pickThreadingHeaders } from './threading-headers'
 // Threads
-export { getThread, getThreadMessages } from './threads/get'
+export { getThread } from './threads/get'
+export type { ResolvedThread } from './threads/resolve-thread'
+export { resolveThreadId } from './threads/resolve-thread'
 export { updateThreadMetadataEfficient } from './threads/update-metadata'
 // Types
 export type {

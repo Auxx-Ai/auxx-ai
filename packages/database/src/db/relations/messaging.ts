@@ -24,6 +24,7 @@ import {
   // Tag, // Only used by TagsOnThread relations (deprecated)
   // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
+  ThreadExternalKey,
   ThreadParticipant,
   ThreadReadStatus,
   User,
@@ -76,7 +77,19 @@ export const threadRelations = relations(Thread, ({ one, many }) => ({
   }),
   participants: many(ThreadParticipant),
   labels: many(LabelsOnThread),
+  externalKeys: many(ThreadExternalKey),
   // tags: many(TagsOnThread), // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
+}))
+
+export const threadExternalKeyRelations = relations(ThreadExternalKey, ({ one }) => ({
+  thread: one(Thread, {
+    fields: [ThreadExternalKey.threadId],
+    references: [Thread.id],
+  }),
+  integration: one(Integration, {
+    fields: [ThreadExternalKey.integrationId],
+    references: [Integration.id],
+  }),
 }))
 
 export const labelRelations = relations(Label, ({ one, many }) => ({

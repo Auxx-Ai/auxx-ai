@@ -14,7 +14,7 @@ import {
   ParticipantRole as ParticipantRoleEnum,
   ThreadStatus,
 } from '@auxx/database/enums'
-import type { MessageEntity as Message, ThreadEntity as Thread } from '@auxx/database/types'
+import type { ThreadEntity as Thread } from '@auxx/database/types'
 import {
   archiveThreadsByMessageExternalIds,
   batchStoreMessages,
@@ -23,7 +23,6 @@ import {
   deleteMessagesByExternalIds,
   ensureContactsForRecipients,
   getThread,
-  getThreadMessages,
   type IngestContext,
   type IntegrationSettings,
   markThreadsSpamByMessageExternalIds,
@@ -247,11 +246,6 @@ export class MessageStorageService {
   async getThread(threadId: string, organizationId: string): Promise<Thread | null> {
     const ctx = await this.resolveCtx(organizationId)
     return getThread(ctx, { threadId, organizationId })
-  }
-
-  async getThreadMessages(threadId: string): Promise<Message[]> {
-    const ctx = await this.resolveCtx(this.defaultOrganizationId)
-    return getThreadMessages(ctx, threadId)
   }
 
   private async resolveCtx(organizationId?: string): Promise<IngestContext> {

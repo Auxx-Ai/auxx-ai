@@ -37,6 +37,7 @@ import { migration067ClearDeadLearnedStamps } from './migrations/067-clear-dead-
 import { migration068WidenEntitySearchText } from './migrations/068-widen-entity-search-text'
 import { migration069BackfillThreadSearchText } from './migrations/069-backfill-thread-search-text'
 import { migration070BackfillArticleSearchText } from './migrations/070-backfill-article-search-text'
+import { migration071BackfillOutlookPlainText } from './migrations/071-backfill-outlook-plain-text'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -96,6 +97,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration068WidenEntitySearchText,
     migration069BackfillThreadSearchText,
     migration070BackfillArticleSearchText,
+    migration071BackfillOutlookPlainText,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))
