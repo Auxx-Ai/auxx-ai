@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.1.193](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.192...auxx-v0.1.193) (2026-08-01)
+
+
+### Features
+
+* **demo:** block app installs and realign the demo credit pool ([#1458](https://github.com/Auxx-Ai/auxx-ai/issues/1458)) ([f7fcc8c](https://github.com/Auxx-Ai/auxx-ai/commit/f7fcc8ce7e886f4309d1e314ec0ba3c9dc7cbef7))
+
+
+### Bug Fixes
+
+* **ai:** clear the kopilot and provider type errors and the bugs they were hiding ([#1457](https://github.com/Auxx-Ai/auxx-ai/issues/1457)) ([ee376df](https://github.com/Auxx-Ai/auxx-ai/commit/ee376dfb8f943d5616ebd7e815408da411f11992))
+* **ai:** meter streamed llm usage and repair the ai memory pipeline ([#1465](https://github.com/Auxx-Ai/auxx-ai/issues/1465)) ([181ac85](https://github.com/Auxx-Ai/auxx-ai/commit/181ac85b05d536ea06c5f6fca0aa185af56dce27))
+* **channels:** dismiss the sync toast on logout ([#1462](https://github.com/Auxx-Ai/auxx-ai/issues/1462)) ([c79e628](https://github.com/Auxx-Ai/auxx-ai/commit/c79e6281b08e7b98242fd09c1e6496917075e128))
+* clear 1671 type errors and the live defects they were hiding ([#1485](https://github.com/Auxx-Ai/auxx-ai/issues/1485)) ([2d7a8ce](https://github.com/Auxx-Ai/auxx-ai/commit/2d7a8ce5d354dd3ea9cf646168c68c2111b568f2))
+* **conditions:** resolve system-resource filter fields addressed by cuid ([#1478](https://github.com/Auxx-Ai/auxx-ai/issues/1478)) ([b0a75db](https://github.com/Auxx-Ai/auxx-ai/commit/b0a75db2baf52fb55119bcaf994e30aafbdcd9cf))
+* **dashboard:** stop offering mail-lens sources and degrade stored ones cleanly ([#1483](https://github.com/Auxx-Ai/auxx-ai/issues/1483)) ([3aaabc4](https://github.com/Auxx-Ai/auxx-ai/commit/3aaabc4a8f2fcfb29c164771d66ceda76abdd4f0))
+* **data-connectors:** clear both directories' type errors and the drift behind them ([#1466](https://github.com/Auxx-Ai/auxx-ai/issues/1466)) ([05bca06](https://github.com/Auxx-Ai/auxx-ai/commit/05bca06dd7198691df432d8ce0482e3dea368182))
+* **demo:** unlock dashboards for demo orgs and drop the empty single-tab bar ([#1460](https://github.com/Auxx-Ai/auxx-ai/issues/1460)) ([33588e4](https://github.com/Auxx-Ai/auxx-ai/commit/33588e464e4586a69cc6188fabef8a2fc9ea3282))
+* **email:** repair the mailer's log calls, expiry rendering and transport types ([#1468](https://github.com/Auxx-Ai/auxx-ai/issues/1468)) ([c0c846e](https://github.com/Auxx-Ai/auxx-ai/commit/c0c846e5c35d5e7a4c5a3d28a132108bcb88034d))
+* **files:** correct the file subsystem's types and the bugs they were hiding ([#1456](https://github.com/Auxx-Ai/auxx-ai/issues/1456)) ([5d7047f](https://github.com/Auxx-Ai/auxx-ai/commit/5d7047f37b9c901236bbd400ae03fa488834f727))
+* harden rate limiter and rule tests ([#1472](https://github.com/Auxx-Ai/auxx-ai/issues/1472)) ([df6dedd](https://github.com/Auxx-Ai/auxx-ai/commit/df6dedde394b143675d9204785ec63bdaf5dca06))
+* **import:** drop unsafe casts in import events and rule tests ([#1474](https://github.com/Auxx-Ai/auxx-ai/issues/1474)) ([c0e3d10](https://github.com/Auxx-Ai/auxx-ai/commit/c0e3d10f4264c4bed7913204085a006175be8cae))
+* **ingest:** never let the thread-alias write roll back a message ([#1477](https://github.com/Auxx-Ai/auxx-ai/issues/1477)) ([c2e5a37](https://github.com/Auxx-Ai/auxx-ai/commit/c2e5a37b75c0c547d6b7cac546720704f4e1acfc))
+* **kopilot:** repair field chips, page context, and wire ordering ([#1459](https://github.com/Auxx-Ai/auxx-ai/issues/1459)) ([aa07939](https://github.com/Auxx-Ai/auxx-ai/commit/aa0793900b7a625d27b6c81d4bec63271ffb709e))
+* **kopilot:** stop invalid streamed dates from crashing block renderers ([#1490](https://github.com/Auxx-Ai/auxx-ai/issues/1490)) ([faec6a4](https://github.com/Auxx-Ai/auxx-ai/commit/faec6a4e6149934d61b8abfc6b01da56a6050a64))
+* **mail:** raise the bulk thread update cap and bound its fan-out ([#1469](https://github.com/Auxx-Ai/auxx-ai/issues/1469)) ([e50bd00](https://github.com/Auxx-Ai/auxx-ai/commit/e50bd006046682278afc6bfbe6470871e6ff527f))
+* **messages:** compare the sent-echo window against the candidate, not now() ([#1479](https://github.com/Auxx-Ai/auxx-ai/issues/1479)) ([f6ba7f1](https://github.com/Auxx-Ai/auxx-ai/commit/f6ba7f1a795f06cf8712ced351fd72736fdfefce))
+* **messaging:** clear the channel/messaging type errors and the bugs they were hiding ([#1461](https://github.com/Auxx-Ai/auxx-ai/issues/1461)) ([4033885](https://github.com/Auxx-Ai/auxx-ai/commit/40338854174440884e688791f1389e40461556fc))
+* **outlook:** correlate the sent-items echo by an x- header, exactly ([#1482](https://github.com/Auxx-Ai/auxx-ai/issues/1482)) ([9e68ed8](https://github.com/Auxx-Ai/auxx-ai/commit/9e68ed835dcfba98d22767bd53bbee58f277b677))
+* **outlook:** unblock sends, derive plain text, keep conversations in one thread ([#1476](https://github.com/Auxx-Ai/auxx-ai/issues/1476)) ([51c02a3](https://github.com/Auxx-Ai/auxx-ai/commit/51c02a31bd30d71cb9c1d65c30d8d6d6bafc537e))
+* **permissions:** close mail-lens holes in generic resource paths ([#1473](https://github.com/Auxx-Ai/auxx-ai/issues/1473)) ([d974249](https://github.com/Auxx-Ai/auxx-ai/commit/d97424916d1aa61ec47847f7c2a7a4a90211777b))
+* report dropped filter conditions + gate single-host field-value reads ([#1475](https://github.com/Auxx-Ai/auxx-ai/issues/1475)) ([331f280](https://github.com/Auxx-Ai/auxx-ai/commit/331f2808845c8379a6776086780defb0925fa730))
+* resolve KB, planning, and date parser type errors ([#1471](https://github.com/Auxx-Ai/auxx-ai/issues/1471)) ([ff895ff](https://github.com/Auxx-Ai/auxx-ai/commit/ff895ff5f1a24ff61c39f3acd17f404e27779829))
+* **resources:** report dropped filters on counts, aggregates and the AI boundary ([#1481](https://github.com/Auxx-Ai/auxx-ai/issues/1481)) ([31bef83](https://github.com/Auxx-Ai/auxx-ai/commit/31bef8343b281d8308cdf7c8a805521560384ab0))
+* **search:** close retrieval fail-opens and add index-backed ranked search ([#1470](https://github.com/Auxx-Ai/auxx-ai/issues/1470)) ([96db557](https://github.com/Auxx-Ai/auxx-ai/commit/96db5576958251293b9dc2c4ead82a1d8e61baad))
+* **search:** rank mail subject hits above body hits ([#1480](https://github.com/Auxx-Ai/auxx-ai/issues/1480)) ([1fd8c66](https://github.com/Auxx-Ai/auxx-ai/commit/1fd8c66b326d2a5448288cd67b881871e014e662))
+* **types:** clear 1021 apps/web type errors and the live defects behind them ([#1486](https://github.com/Auxx-Ai/auxx-ai/issues/1486)) ([04cc106](https://github.com/Auxx-Ai/auxx-ai/commit/04cc1067df6de4a14759ced8f2a5c9fab7c55cab))
+* **types:** clear the remaining type errors outside lib and web ([#1487](https://github.com/Auxx-Ai/auxx-ai/issues/1487)) ([8a490c9](https://github.com/Auxx-Ai/auxx-ai/commit/8a490c95b2ca0294eacdc1c9eb12700228740d53))
+* **types:** clear web import suppressors and burn down editor/kb errors ([#1455](https://github.com/Auxx-Ai/auxx-ai/issues/1455)) ([c1e1850](https://github.com/Auxx-Ai/auxx-ai/commit/c1e1850a68e069d3da35579b77852e9d49e87932))
+* **types:** repair three stale comparisons and unblock the lib ratchet ([#1463](https://github.com/Auxx-Ai/auxx-ai/issues/1463)) ([3235a0b](https://github.com/Auxx-Ai/auxx-ai/commit/3235a0b7ddaa124beb7639a5e0a9a9c83e3a327e))
+* **workflow:** clear the workflow type errors and the bugs they were hiding ([#1453](https://github.com/Auxx-Ai/auxx-ai/issues/1453)) ([9927d04](https://github.com/Auxx-Ai/auxx-ai/commit/9927d04c5bdf419022bdf3a7691021b1367e5ac1))
+* **workflow:** fail the find node on a dropped filter instead of widening it ([#1489](https://github.com/Auxx-Ai/auxx-ai/issues/1489)) ([6d1c45d](https://github.com/Auxx-Ai/auxx-ai/commit/6d1c45dc42ec809a9c5bac1d461e03dbc33a8aaf))
+
 ## [0.1.192](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.191...auxx-v0.1.192) (2026-07-31)
 
 
