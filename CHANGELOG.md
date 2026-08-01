@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.194](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.193...auxx-v0.1.194) (2026-08-01)
+
+
+### Bug Fixes
+
+* resolve aliased field refs and report concrete LLM client names ([#1492](https://github.com/Auxx-Ai/auxx-ai/issues/1492)) ([8469903](https://github.com/Auxx-Ai/auxx-ai/commit/84699035c12f365fa14d7c0b2d9b1edb46818622))
+
 ## [0.1.193](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.192...auxx-v0.1.193) (2026-08-01)
 
 
