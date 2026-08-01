@@ -67,7 +67,7 @@ import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operati
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { RecordDrawer } from './record-drawer'
-import { searchConditionsToGroup, useRecordsSearchStore } from './records-search-store'
+import { splitRecordSearch, useRecordsSearchStore } from './records-search-store'
 import { RecordsSearchBar } from './records-searchbar'
 
 /**
@@ -216,10 +216,16 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   const [printProgressOpen, setPrintProgressOpen] = useState(false)
 
   // Search bar conditions are records-specific (one global store).
-  // DynamicResourceView can't import this store; we feed it the merged
-  // ConditionGroup as a baselineFilter on every render.
+  // DynamicResourceView can't import this store, so we hand it the two axes
+  // separately: the narrowing conditions as a baselineFilter, and the typed free
+  // text as `search`. Splitting them here is plan decision 0.3 — merged, the
+  // typed text compiled to `displayName ILIKE '%q%'`; split, it reaches the
+  // ranked tsvector + trigram predicate.
   const searchConditions = useRecordsSearchStore((s) => s.conditions)
-  const searchGroup = useMemo(() => searchConditionsToGroup(searchConditions), [searchConditions])
+  const { search, group: searchGroup } = useMemo(
+    () => splitRecordSearch(searchConditions),
+    [searchConditions]
+  )
 
   const fieldMap = useResourceStore((state) => state.fieldMap)
 
@@ -880,6 +886,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       viewRef={viewRef}
       slug={slug}
       baselineFilter={searchGroup ?? undefined}
+      search={search}
       primaryCellRender={primaryCellRender}
       cellSelection={cellSelectionConfig}
       bulkActions={bulkActions}

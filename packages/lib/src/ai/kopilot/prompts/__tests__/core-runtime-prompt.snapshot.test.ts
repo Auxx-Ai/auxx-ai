@@ -1,6 +1,6 @@
 // packages/lib/src/ai/kopilot/prompts/__tests__/core-runtime-prompt.snapshot.test.ts
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   fixtureCurrentUser,
   fixtureDomainState,
@@ -28,6 +28,17 @@ const baseArgs = {
 }
 
 describe('buildCoreRuntimePrompt snapshot', () => {
+  // The `now` section reads the wall clock, so the snapshot is only stable
+  // against a frozen one. UTC is the rendered zone either way (no caller zone
+  // is threaded), so the host machine's zone doesn't leak in.
+  beforeAll(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-04T09:07:00.000Z'))
+  })
+  afterAll(() => {
+    vi.useRealTimers()
+  })
+
   it('renders identical interactive prompt', () => {
     const out = buildCoreRuntimePrompt({ ...baseArgs, runMode: 'interactive' })
     expect(out).toMatchSnapshot()

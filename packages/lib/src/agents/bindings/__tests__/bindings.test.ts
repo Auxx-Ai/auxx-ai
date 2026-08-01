@@ -4,6 +4,22 @@ import type { ResourceFieldId, VarSource } from '@auxx/types/field'
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '../../../ai/agent-framework/tool-context'
 import type { AgentToolDefinition } from '../../../ai/agent-framework/types'
+
+// An override keyed by an unbound tool is silently never read, so `effective.ts`
+// logs it. Capture the log so "visible" is actually asserted. Partial mock —
+// `@auxx/logger/run-log` imports sink helpers from this barrel at load time, so
+// a full replacement breaks whichever test file loads it first.
+const logWarn = vi.hoisted(() => vi.fn())
+vi.mock('@auxx/logger', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/logger')>()),
+  createScopedLogger: () => ({
+    error: vi.fn(),
+    warn: logWarn,
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
+}))
+
 import { computeEffectiveBindings } from '../effective'
 import { projectBindingSchemas } from '../project-schema'
 
@@ -56,6 +72,27 @@ describe('computeEffectiveBindings', () => {
 
   it('omits tools with no bindings', () => {
     expect(computeEffectiveBindings([tool('noop')])).toEqual({})
+  })
+
+  it('warns (does not throw) when an override names a tool that is not bound', () => {
+    logWarn.mockClear()
+    const effective = computeEffectiveBindings([tool('orders')], {
+      odrers: { region: { kind: 'const', value: 'EU' } },
+    })
+    expect(effective).toEqual({})
+    expect(logWarn).toHaveBeenCalledTimes(1)
+    expect(logWarn.mock.calls[0]?.[1]).toMatchObject({
+      unreadToolNames: ['odrers'],
+      unreadToolCount: 1,
+    })
+  })
+
+  it('stays silent when every override key names a bound tool', () => {
+    logWarn.mockClear()
+    computeEffectiveBindings([tool('orders')], {
+      orders: { region: { kind: 'const', value: 'EU' } },
+    })
+    expect(logWarn).not.toHaveBeenCalled()
   })
 })
 

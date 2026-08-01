@@ -5,7 +5,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedResources } from '../cache'
 import type { Resource } from '../resources/registry/types'
 import type { FieldValueContext } from './field-value-helpers'
-import { updateSearchText } from './field-value-helpers'
+import { updateSearchTextForInstances } from './search-text'
 
 /**
  * Describes a dependency: when entity X's displayName changes,
@@ -149,9 +149,9 @@ export async function cascadeDependentDisplayNames(
         )
       )
 
-    // Update searchText for each dependent instance
-    for (const id of instanceIds) {
-      await updateSearchText(ctx.db, id, ctx.organizationId)
-    }
+    // Refresh the search corpus for every dependent instance in one statement —
+    // a rename on a widely-referenced record can fan out to thousands of rows,
+    // and the old per-id loop issued one round-trip each.
+    await updateSearchTextForInstances(ctx.db, ctx.organizationId, instanceIds)
   }
 }

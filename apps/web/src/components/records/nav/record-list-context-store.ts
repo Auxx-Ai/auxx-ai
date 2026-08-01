@@ -19,6 +19,13 @@ import { createListKey } from '~/components/resources/store/record-store'
 export interface RecordListDescriptor {
   entityDefinitionId: string
   filters: ConditionGroup[]
+  /**
+   * The search bar's free text, when the list was searched. A separate axis from
+   * `filters` (plan decision 0.3), so it has to be carried separately or
+   * `loadMore` pages the UNsearched list and prev/next walks off into records
+   * the user never saw.
+   */
+  search?: string
   sorting: Array<{ id: string; desc: boolean }>
   /** `entity-${entityDefinitionId}` for the records table; embedded surfaces differ. */
   tableId: string
@@ -54,7 +61,8 @@ function descriptorKey(descriptor: RecordListDescriptor): string {
   const listKey = createListKey(
     descriptor.entityDefinitionId,
     descriptor.filters,
-    descriptor.sorting
+    descriptor.sorting,
+    descriptor.search
   )
   return `${listKey}|${descriptor.viewId ?? ''}|${descriptor.label}`
 }

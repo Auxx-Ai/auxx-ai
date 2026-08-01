@@ -1,0 +1,1 @@
+CREATE INDEX "EntityInstance_org_secondaryDisplayValue_trgm_idx" ON "EntityInstance" USING gin ("organizationId","secondaryDisplayValue" gin_trgm_ops);

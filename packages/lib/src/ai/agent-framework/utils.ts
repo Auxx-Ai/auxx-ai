@@ -115,18 +115,32 @@ export function validateRequiredParams(
   return required.filter((param: string) => !(param in args))
 }
 
+/** Leaf-string clip length shared by `previewValue` and `previewArgs`. */
+const PREVIEW_MAX_STRING = 200
+/** Array item cap shared by `previewValue` and `previewArgs`. */
+const PREVIEW_MAX_ARRAY_ITEMS = 20
+/** Total content budget (chars) shared by `previewValue` and `previewArgs`. */
+const PREVIEW_MAX_CHARS = 600
+/** Nesting depth beyond which `previewArgs` collapses a branch to a marker. */
+const PREVIEW_MAX_DEPTH = 6
+
 /**
  * Compact-stringify a value for log lines. Truncates each leaf string and the
  * final serialized form so logs stay readable when tool args / outputs carry
  * large payloads (e.g. message bodies, embeddings, file blobs).
+ *
+ * Returns a **string** — use {@link previewArgs} when the value should stay a
+ * queryable object in the log sink.
  */
-export function previewValue(value: unknown, maxLength = 600): string {
+export function previewValue(value: unknown, maxLength = PREVIEW_MAX_CHARS): string {
   let serialized: string
   try {
     serialized = JSON.stringify(value, (_key, v) => {
-      if (typeof v === 'string' && v.length > 200) return `${v.slice(0, 200)}…`
-      if (Array.isArray(v) && v.length > 20) {
-        return [...v.slice(0, 20), `…(+${v.length - 20})`]
+      if (typeof v === 'string' && v.length > PREVIEW_MAX_STRING) {
+        return `${v.slice(0, PREVIEW_MAX_STRING)}…`
+      }
+      if (Array.isArray(v) && v.length > PREVIEW_MAX_ARRAY_ITEMS) {
+        return [...v.slice(0, PREVIEW_MAX_ARRAY_ITEMS), `…(+${v.length - PREVIEW_MAX_ARRAY_ITEMS})`]
       }
       return v
     })
@@ -137,6 +151,114 @@ export function previewValue(value: unknown, maxLength = 600): string {
     return `${serialized.slice(0, maxLength)}…(+${serialized.length - maxLength})`
   }
   return serialized
+}
+
+/** Mutable char budget threaded through one `previewArgs` walk. */
+interface PreviewBudget {
+  remaining: number
+}
+
+/**
+ * Recursively bound a value's *leaves* — leaf strings clipped, arrays capped,
+ * depth capped, cycles marked — while spending a shared char budget. Unlike
+ * `previewValue` the structure survives: objects stay objects.
+ */
+function boundLeaves(
+  value: unknown,
+  budget: PreviewBudget,
+  depth: number,
+  seen: WeakSet<object>
+): unknown {
+  if (value === null || value === undefined) return value
+
+  switch (typeof value) {
+    case 'string': {
+      const clipped =
+        value.length > PREVIEW_MAX_STRING ? `${value.slice(0, PREVIEW_MAX_STRING)}…` : value
+      const room = budget.remaining
+      if (room <= 0) return `…(+${clipped.length})`
+      if (clipped.length <= room) {
+        budget.remaining = room - clipped.length
+        return clipped
+      }
+      budget.remaining = 0
+      return `${clipped.slice(0, room)}…(+${clipped.length - room})`
+    }
+    case 'number':
+    case 'boolean':
+      budget.remaining -= String(value).length
+      return value
+    case 'bigint':
+      budget.remaining -= String(value).length
+      return `${value}`
+    case 'function':
+      return '[Function]'
+    case 'symbol':
+      return value.toString()
+  }
+
+  if (value instanceof Date) {
+    const iso = value.toISOString()
+    budget.remaining -= iso.length
+    return iso
+  }
+  if (seen.has(value as object)) return '[Circular]'
+  if (depth >= PREVIEW_MAX_DEPTH) return '[…]'
+
+  seen.add(value as object)
+  try {
+    if (Array.isArray(value)) {
+      const out: unknown[] = []
+      for (const item of value.slice(0, PREVIEW_MAX_ARRAY_ITEMS)) {
+        if (budget.remaining <= 0) {
+          out.push(`…(+${value.length - out.length})`)
+          return out
+        }
+        out.push(boundLeaves(item, budget, depth + 1, seen))
+      }
+      if (value.length > PREVIEW_MAX_ARRAY_ITEMS) {
+        out.push(`…(+${value.length - PREVIEW_MAX_ARRAY_ITEMS})`)
+      }
+      return out
+    }
+
+    const out: Record<string, unknown> = {}
+    const entries = Object.entries(value as Record<string, unknown>)
+    for (const [idx, [key, val]] of entries.entries()) {
+      if (budget.remaining <= 0) {
+        out.truncated = `…(+${entries.length - idx} keys)`
+        break
+      }
+      budget.remaining -= key.length
+      out[key] = boundLeaves(val, budget, depth + 1, seen)
+    }
+    return out
+  } finally {
+    seen.delete(value as object)
+  }
+}
+
+/**
+ * Bounded **object** projection of tool arguments for structured log fields.
+ *
+ * Same bounds as {@link previewValue} — leaf strings clipped at 200 chars,
+ * arrays at 20 items, ~600 chars of content overall — but applied to the leaves
+ * instead of to a serialized string, so the result stays a real object. That is
+ * what makes `args.<field>` a filterable field in the log sink rather than one
+ * opaque JSON-encoded blob you can only full-text match.
+ */
+export function previewArgs(
+  args: Record<string, unknown> | undefined,
+  maxChars = PREVIEW_MAX_CHARS
+): Record<string, unknown> {
+  if (!args) return {}
+  const bounded = boundLeaves(args, { remaining: maxChars }, 0, new WeakSet())
+  // `args` is an object, so `boundLeaves` returns one — the guard is for the
+  // degenerate cases (a provider handing us an array / primitive as "args").
+  if (bounded && typeof bounded === 'object' && !Array.isArray(bounded)) {
+    return bounded as Record<string, unknown>
+  }
+  return { value: bounded }
 }
 
 /**

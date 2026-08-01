@@ -12,7 +12,7 @@ import {
   toFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
-import { and, asc, eq, isNull, type SQL, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm'
 import {
   findCachedResource,
   getCachedEntityDefId,
@@ -23,11 +23,12 @@ import type { ConditionGroup } from '../../conditions'
 import { FieldValueService, formatToRawValue } from '../../field-values'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { BaseType } from '../../workflow-engine/core/types'
+import type { DroppedCondition } from '../query-builder/base-condition-builder'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
-} from '../../workflow-engine/query-builder/entity-condition-builder'
-import { systemConditionBuilder } from '../../workflow-engine/query-builder/system-condition-builder'
+} from '../query-builder/entity-condition-builder'
+import { systemConditionBuilder } from '../query-builder/system-condition-builder'
 import {
   getFieldOutputKey,
   RESOURCE_TABLE_MAP,
@@ -37,6 +38,7 @@ import {
 import type { TableId } from '../registry/field-registry'
 import type { ResourceRegistryService } from '../registry/resource-registry-service'
 import { type RecordId, toRecordId } from '../resource-id'
+import { recordSearchPredicate, recordSearchRank } from '../search/record-search-sql'
 
 const logger = createScopedLogger('unified-handler-queries')
 
@@ -51,6 +53,13 @@ export interface ListFilteredInput {
   entityDefinitionId: string
   /** Filter groups (optional) */
   filters?: ConditionGroup[]
+  /**
+   * Free-text search from the search bar — a separate axis from {@link filters},
+   * not a condition (plan decision 0.3). Conditions narrow the search; this IS
+   * the search. Ranked + typo-tolerant; only meaningful for EntityInstance-backed
+   * definitions (system tables have no `searchText` corpus).
+   */
+  search?: string
   /** Sort configuration (optional) */
   sorting?: Array<{ id: string; desc: boolean }>
   /** Limit per request (default: 100) */
@@ -143,22 +152,96 @@ export function extractRequiredRelatedEntities(
  * Internal: build the context, WHERE clause, and ORDER BY clauses for an entity-instance
  * query. Shared between the paged and count-only helpers so we don't duplicate field
  * resolution + related-entity lookups.
+ *
+ * `search` is the free-text half of the records search bar, kept OUT of
+ * `filters` on purpose (plan decision 0.3): conditions **narrow**, the typed text
+ * **is** the search. It is `AND`-ed into the WHERE clause — never OR-ed with the
+ * filters — and, when the user has not picked a sort column, it also supplies the
+ * default ordering.
  */
 async function buildEntityInstanceQueryParts(params: {
   organizationId: string
   entityDefinitionId: string
   filters: ConditionGroup[]
   sorting: Array<{ id: string; desc: boolean }>
+  /** Free-text query from the search bar. Blank/whitespace is treated as absent. */
+  search?: string
 }): Promise<{
   whereClause: SQL<unknown> | undefined
   orderByClauses: SQL<unknown>[] | undefined
 }> {
   const { organizationId, entityDefinitionId, filters, sorting } = params
+  const search = params.search?.trim() || undefined
 
+  const context = await buildEntityQueryContext(organizationId, entityDefinitionId, filters)
+
+  const built = entityConditionBuilder.buildGroupedQueryWithDiagnostics(filters, context)
+
+  if (built.droppedConditions.length > 0) {
+    // Structured, not a JSON.stringify'd sentence — "how often does this happen
+    // in production" has to be a query on `droppedCount` / `droppedConditions`,
+    // not a grep. This path deliberately proceeds: the records list and stored
+    // views must still render when a filter names a retired field. The AI
+    // boundary escalates instead, via `inspectFilterConditions`.
+    logger.warn('Dropped filter conditions', {
+      entityDefinitionId,
+      organizationId,
+      droppedCount: built.droppedConditions.length,
+      requestedConditions: built.requestedConditions,
+      allConditionsDropped: built.allConditionsDropped,
+      droppedConditions: built.droppedConditions,
+    })
+  }
+
+  // Search NARROWS. `and()` drops `undefined`, so a filter-less search and a
+  // search-less filter both fall out of the same expression.
+  const whereClause = search ? and(built.sql, recordSearchPredicate(search)) : built.sql
+
+  // An explicit column sort beats relevance [decision, plan §3.3b]: sorting by
+  // name and watching rows reorder by score would read as a bug. Rank is the
+  // DEFAULT ordering, not an override.
+  //
+  // `updatedAt DESC` sits under rank (matching the picker) because rank ties are
+  // the common case, not the exception — every row that matches only the ILIKE
+  // fallback scores 0. The caller appends `id ASC` as the final tie-break.
+  const orderByClauses =
+    sorting.length > 0
+      ? entityConditionBuilder.buildOrderBySql(
+          sorting[0].id,
+          sorting[0].desc ? 'desc' : 'asc',
+          context
+        )
+      : search
+        ? [desc(recordSearchRank(search)), desc(schema.EntityInstance.updatedAt)]
+        : undefined
+
+  return { whereClause, orderByClauses }
+}
+
+/**
+ * Resolve the fields + related-entity fields an {@link EntityQueryContext} needs
+ * for a given filter set. Shared by the query path and the AI-boundary
+ * preflight so both see exactly the same field universe.
+ */
+async function buildEntityQueryContext(
+  organizationId: string,
+  entityDefinitionId: string,
+  filters: ConditionGroup[]
+): Promise<EntityQueryContext> {
   // Get fields for this entity from org cache
   const fields = await getCachedResourceFields(organizationId, entityDefinitionId)
 
-  // Inject displayName as a virtual field for free-text search (denormalized column).
+  // Inject `displayName` as a virtual filterable/sortable field — it is a
+  // denormalized column on `EntityInstance`, not a `FieldValue` row, so it has no
+  // entry in the resource-fields cache.
+  //
+  // This USED to be how the records search bar got its free text into SQL
+  // (`displayName contains` → `ILIKE '%q%'`). Step 2.4 moved that onto the
+  // `search` param, but the field STAYS: `displayName contains` is still a
+  // legitimate explicit filter, it is what the KB articles table and any stored
+  // view carrying such a condition still emit, and dropping it would fail OPEN —
+  // the condition would be discarded and the list would silently widen.
+
   const fieldsWithDisplayName = fields.some((f) => f.key === 'displayName')
     ? fields
     : [
@@ -194,36 +277,129 @@ async function buildEntityInstanceQueryParts(params: {
     relatedEntityFields[relatedEntityId] = relatedFields
   }
 
-  const context: EntityQueryContext = {
+  return {
     fields: fieldsWithDisplayName,
     outerTable: schema.EntityInstance,
     relatedEntityFields,
   }
+}
 
-  const whereClause = entityConditionBuilder.buildGroupedQuery(filters, context)
+// ─────────────────────────────────────────────────────────────────────────────
+// AI-BOUNDARY PREFLIGHT
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (entityConditionBuilder.droppedConditions.length > 0) {
-    logger.warn(
-      `Dropped ${entityConditionBuilder.droppedConditions.length} filter condition(s): ${JSON.stringify(entityConditionBuilder.droppedConditions)}`
+/**
+ * What a filter set does when it reaches the query builder, without running the
+ * query. Every field is diagnostic — nothing here changes the SQL.
+ */
+export interface FilterConditionReport {
+  /** Total conditions across every group. */
+  requestedConditions: number
+  /**
+   * Conditions the builder could not turn into SQL. **A non-empty list means
+   * the query would return MORE rows than the caller asked for** — the fail-open.
+   */
+  dropped: DroppedCondition[]
+  /** `true` when conditions were requested and none of them produced SQL. */
+  allConditionsDropped: boolean
+  /**
+   * `validateConditionGroups` output — unknown field, missing operator, missing
+   * value, invalid option value. A condition can appear here without being
+   * dropped (it built, but into something the caller didn't mean).
+   */
+  validationErrors: string[]
+  /**
+   * Caller-facing sentence, present **only** when something is wrong.
+   * `undefined` ⇒ every requested condition made it into the WHERE clause and
+   * the result set is honest.
+   */
+  message?: string
+}
+
+/**
+ * Preflight a filter set at an AI tool boundary.
+ *
+ * The records list, stored views and dashboard widgets deliberately fail open —
+ * a view naming a retired field still renders, just wider. An AI tool must not:
+ * a dropped filter turns "3 open tickets" into "all 6,470 tickets" with no
+ * signal that the filter was ignored. Call this before running the query and
+ * return `message` as a tool error when it is set.
+ *
+ * Dispatches on {@link isSystemResource}, so the same call covers entity
+ * definitions and system tables.
+ *
+ * @param params.entityDefinitionId - Entity definition id, or a system `TableId`
+ */
+export async function inspectFilterConditions(params: {
+  organizationId: string
+  entityDefinitionId: string
+  filters: ConditionGroup[]
+}): Promise<FilterConditionReport> {
+  const { organizationId, entityDefinitionId, filters } = params
+
+  const { built, validation } = isSystemResource(entityDefinitionId)
+    ? {
+        built: systemConditionBuilder.buildGroupedQueryWithDiagnostics(
+          filters,
+          entityDefinitionId as TableId
+        ),
+        validation: systemConditionBuilder.validateConditionGroups(
+          filters,
+          entityDefinitionId as TableId
+        ),
+      }
+    : await (async () => {
+        const context = await buildEntityQueryContext(organizationId, entityDefinitionId, filters)
+        return {
+          built: entityConditionBuilder.buildGroupedQueryWithDiagnostics(filters, context),
+          validation: entityConditionBuilder.validateConditionGroups(filters, context),
+        }
+      })()
+
+  const dropped = built.droppedConditions
+  const validationErrors = validation.valid ? [] : validation.errors
+
+  return {
+    requestedConditions: built.requestedConditions,
+    dropped,
+    allConditionsDropped: built.allConditionsDropped,
+    validationErrors,
+    message: describeFilterProblems(dropped, validationErrors),
+  }
+}
+
+/**
+ * One sentence an LLM can act on: which filters were ignored, and why.
+ * `undefined` when there is nothing to report.
+ */
+function describeFilterProblems(
+  dropped: DroppedCondition[],
+  validationErrors: string[]
+): string | undefined {
+  if (dropped.length === 0 && validationErrors.length === 0) return undefined
+
+  const parts: string[] = []
+
+  if (dropped.length > 0) {
+    const names = dropped
+      .map((d) => {
+        const ref = Array.isArray(d.fieldRef) ? d.fieldRef.join('.') : d.fieldRef
+        return `'${ref}' ${d.operator}`
+      })
+      .join(', ')
+    parts.push(
+      `${dropped.length} filter condition(s) could not be applied and were ignored: ${names}. ` +
+        `Running this query would return records that do NOT match them.`
     )
-    if (process.env.NODE_ENV === 'development') {
-      console.error(
-        `[entity-query] Filter conditions dropped:`,
-        entityConditionBuilder.droppedConditions
-      )
-    }
   }
 
-  const orderByClauses =
-    sorting.length > 0
-      ? entityConditionBuilder.buildOrderBySql(
-          sorting[0].id,
-          sorting[0].desc ? 'desc' : 'asc',
-          context
-        )
-      : undefined
+  if (validationErrors.length > 0) {
+    parts.push(`Filter validation: ${validationErrors.join('; ')}.`)
+  }
 
-  return { whereClause, orderByClauses }
+  parts.push('Call list_entity_fields to check field ids and operators, then retry.')
+
+  return parts.join(' ')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -248,6 +424,12 @@ export async function queryEntityInstanceIdsPaged(params: {
   sorting: Array<{ id: string; desc: boolean }>
   limit: number
   offset: number
+  /**
+   * Free-text search (plan step 2.4). ANDs the ranked predicate into `baseWhere`
+   * — which the page query AND the `COUNT(*)` share, so `total` describes the
+   * searched set — and, absent an explicit `sorting`, orders by relevance.
+   */
+  search?: string
   /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
   includeTotal?: boolean
   /**
@@ -268,6 +450,7 @@ export async function queryEntityInstanceIdsPaged(params: {
     entityDefinitionId,
     filters,
     sorting,
+    search: params.search,
   })
 
   const baseWhere = and(
@@ -308,12 +491,18 @@ export async function queryEntityInstanceIdsPaged(params: {
 
 /**
  * Count-only variant for entity instances. Skips the id fetch entirely.
+ *
+ * Takes the same `search` as {@link queryEntityInstanceIdsPaged} so a caller
+ * counting "how many rows would this list show" cannot silently count the
+ * unsearched set.
  */
 export async function countEntityInstances(params: {
   db: Database
   entityDefinitionId: string
   organizationId: string
   filters: ConditionGroup[]
+  /** Free-text search, ANDed into the WHERE clause exactly as the page query does. */
+  search?: string
 }): Promise<number> {
   const { db, entityDefinitionId, organizationId, filters } = params
 
@@ -322,6 +511,7 @@ export async function countEntityInstances(params: {
     entityDefinitionId,
     filters,
     sorting: [],
+    search: params.search,
   })
 
   const result = await db
@@ -361,7 +551,7 @@ export async function querySystemResourceIdsPaged(params: {
     throw new Error(`Unknown table: ${tableId}`)
   }
 
-  const whereClause = systemConditionBuilder.buildGroupedQuery(filters, tableId)
+  const whereClause = buildSystemWhereClause(tableId, organizationId, filters)
   const baseWhere = and(eq(tableSchema.organizationId, organizationId), whereClause)
 
   const orderByClauses =
@@ -415,7 +605,7 @@ export async function countSystemResource(params: {
     throw new Error(`Unknown table: ${tableId}`)
   }
 
-  const whereClause = systemConditionBuilder.buildGroupedQuery(filters, tableId)
+  const whereClause = buildSystemWhereClause(tableId, organizationId, filters)
 
   const result = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -423,6 +613,32 @@ export async function countSystemResource(params: {
     .where(and(eq(tableSchema.organizationId, organizationId), whereClause))
 
   return Number(result[0]?.count ?? 0)
+}
+
+/**
+ * System-table twin of the entity WHERE build: same fail-open (a dropped
+ * condition widens rather than errors, because stored views must still render)
+ * and the same structured warn so the rate is queryable.
+ */
+function buildSystemWhereClause(
+  tableId: TableId,
+  organizationId: string,
+  filters: ConditionGroup[]
+): SQL<unknown> | undefined {
+  const built = systemConditionBuilder.buildGroupedQueryWithDiagnostics(filters, tableId)
+
+  if (built.droppedConditions.length > 0) {
+    logger.warn('Dropped filter conditions', {
+      tableId,
+      organizationId,
+      droppedCount: built.droppedConditions.length,
+      requestedConditions: built.requestedConditions,
+      allConditionsDropped: built.allConditionsDropped,
+      droppedConditions: built.droppedConditions,
+    })
+  }
+
+  return built.sql
 }
 
 /**

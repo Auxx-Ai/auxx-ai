@@ -28,6 +28,7 @@ import {
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
 import { enrichEntitiesWithFieldValues } from '../ai/kopilot/capabilities/entities/enrich-entity-fields'
+import { NO_PAGE } from '../ai/kopilot/capabilities/registry'
 import { createMcpCapabilities } from '../ai/mcp'
 import {
   findCachedResource,
@@ -227,7 +228,10 @@ export async function runHeadlessSuggestion(
   registry.register(
     await createMcpCapabilities({ organizationId: input.organizationId, autonomous: true })
   )
-  const tools = registry.getTools('mail')
+  // Headless runs have no page surface — every capability registered above is
+  // `__global__`, so this resolves to the same set the old literal `'mail'`
+  // (never a registered page) resolved to by accident.
+  const tools = registry.getTools(NO_PAGE)
 
   // 4. Build the prompt — entity fields, tasks, sanitized event payload.
   const prompt = await buildHeadlessPrompt({

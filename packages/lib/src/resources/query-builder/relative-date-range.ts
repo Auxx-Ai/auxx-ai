@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/query-builder/relative-date-range.ts
+// packages/lib/src/resources/query-builder/relative-date-range.ts
 
 import type { Operator } from '../../conditions/operator-definitions'
 

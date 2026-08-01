@@ -29,12 +29,12 @@ import {
 } from '../../dashboards/client'
 import { UnprocessableEntityError } from '../../errors'
 import { BaseType } from '../../workflow-engine/core/types'
+import { extractRequiredRelatedEntities } from '../crud/unified-handler-queries'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
-} from '../../workflow-engine/query-builder/entity-condition-builder'
-import { systemConditionBuilder } from '../../workflow-engine/query-builder/system-condition-builder'
-import { extractRequiredRelatedEntities } from '../crud/unified-handler-queries'
+} from '../query-builder/entity-condition-builder'
+import { systemConditionBuilder } from '../query-builder/system-condition-builder'
 import { isValidTableId, type TableId } from '../registry/field-registry'
 import { getFieldOutputKey, type ResourceField } from '../registry/field-types'
 import { aggregateCacheKey } from './cache-key'
@@ -346,13 +346,19 @@ async function prepareAggregate(
       outerTable: schema.EntityInstance,
       relatedEntityFields,
     }
-    conditionsWhere = filters.length
-      ? entityConditionBuilder.buildGroupedQuery(filters, context)
-      : undefined
-    if (entityConditionBuilder.droppedConditions.length > 0) {
-      logger.warn(
-        `Dropped ${entityConditionBuilder.droppedConditions.length} widget filter condition(s)`
-      )
+    const built = entityConditionBuilder.buildGroupedQueryWithDiagnostics(filters, context)
+    conditionsWhere = built.sql
+    if (built.droppedConditions.length > 0) {
+      // Structured so "how often is a widget filter silently ignored" is a query.
+      // A widget deliberately still renders (wider) rather than erroring.
+      logger.warn('Dropped widget filter conditions', {
+        organizationId,
+        entityDefinitionId: rootDefId,
+        droppedCount: built.droppedConditions.length,
+        requestedConditions: built.requestedConditions,
+        allConditionsDropped: built.allConditionsDropped,
+        droppedConditions: built.droppedConditions,
+      })
     }
   } else {
     conditionsWhere = filters.length

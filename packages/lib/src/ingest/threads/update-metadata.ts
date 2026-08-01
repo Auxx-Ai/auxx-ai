@@ -2,13 +2,19 @@
 
 import { schema } from '@auxx/database'
 import { eq, sql } from 'drizzle-orm'
+import { threadSearchTextAssignmentSql } from '../../mail-query/thread-search-text'
 import { getRealtimeService, publishThreadUpdated } from '../../realtime'
 import type { IngestContext } from '../context'
 
 /**
  * Single-query recompute of Thread.messageCount / firstMessageAt / lastMessageAt
- * / latestMessageId / participantCount for a thread. Non-critical — errors are
- * logged and swallowed so ingest can continue.
+ * / latestMessageId / participantCount / searchText for a thread. Non-critical —
+ * errors are logged and swallowed so ingest can continue.
+ *
+ * `searchText` (the ranked-search corpus, `mail-query/thread-search-text.ts`)
+ * rides on this statement rather than getting its own maintenance hook: this
+ * function already runs on every inbound message and every message delete, so
+ * the corpus stays correct for exactly as long as `messageCount` does.
  *
  * After the recompute, re-reads the affected columns and publishes a
  * `thread:updated` patch on the inbox channel so other tabs see the metadata
@@ -57,7 +63,8 @@ export async function updateThreadMetadataEfficient(
           JOIN "Message" m ON mp."messageId" = m.id
           WHERE m."threadId" = ${threadId}
             AND mp."participantId" IS NOT NULL
-        ), 0)
+        ), 0),
+        ${sql.raw(threadSearchTextAssignmentSql('t'))}
       WHERE t.id = ${threadId}
     `)
     ctx.logger.debug('Efficiently updated thread metadata', { threadId })

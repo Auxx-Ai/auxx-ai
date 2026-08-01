@@ -12,6 +12,7 @@ import {
 } from '../../../../../conditions/operator-definitions'
 import { getFieldOptions } from '../../../../../resources/registry/option-helpers'
 import type { Resource } from '../../../../../resources/registry/types'
+import { isAiBlockedResource } from './ai-entity-visibility'
 
 /**
  * Shared entity-filter grammar for Kopilot record tools.
@@ -77,16 +78,29 @@ export const QueryWarningSchema = z.object({
  * Tries exact match first (id / entityType / apiSlug), then falls back to
  * case-insensitive match on apiSlug / label / plural, with naive singular-
  * plural normalization (trailing 's').
+ *
+ * `blocked` is returned for defs the generic record path refuses
+ * ({@link isAiBlockedResource} — `thread` / `message`, whose content is governed
+ * by the mail lens). The check runs on the **resolved** resource, after every
+ * naming has collapsed to one identity, so `thread`, `threads`, `Threads` and the
+ * `threads` apiSlug are all covered by one rule. Callers must handle this kind —
+ * that is the point of it being a resolution outcome rather than a per-tool
+ * string comparison.
  */
 export type EntityResolution =
   | { kind: 'exact'; resource: Resource }
   | { kind: 'normalized'; resource: Resource }
+  | { kind: 'blocked'; resource: Resource }
   | { kind: 'ambiguous'; candidates: string[] }
   | { kind: 'not_found' }
 
 export async function resolveEntity(orgId: string, key: string): Promise<EntityResolution> {
   const exact = await findCachedResource(orgId, key)
-  if (exact) return { kind: 'exact', resource: exact }
+  if (exact) {
+    return isAiBlockedResource(exact)
+      ? { kind: 'blocked', resource: exact }
+      : { kind: 'exact', resource: exact }
+  }
 
   const all = await getCachedResources(orgId)
   const lower = key.toLowerCase()
@@ -108,10 +122,17 @@ export async function resolveEntity(orgId: string, key: string): Promise<EntityR
     )
   })
 
-  if (matches.length === 1) return { kind: 'normalized', resource: matches[0]! }
-  if (matches.length > 1) {
-    return { kind: 'ambiguous', candidates: matches.map((r) => r.apiSlug) }
+  // A fuzzy match onto a blocked def must not read as "not found" — the model
+  // needs to be told which tool to call instead. It also must not shadow a real
+  // record type that happens to fuzzy-match the same word, so the allowed
+  // candidates are resolved first and the block only answers when none survive.
+  const allowed = matches.filter((r) => !isAiBlockedResource(r))
+  if (allowed.length === 1) return { kind: 'normalized', resource: allowed[0]! }
+  if (allowed.length > 1) {
+    return { kind: 'ambiguous', candidates: allowed.map((r) => r.apiSlug) }
   }
+  const blocked = matches.find((r) => isAiBlockedResource(r))
+  if (blocked) return { kind: 'blocked', resource: blocked }
   return { kind: 'not_found' }
 }
 

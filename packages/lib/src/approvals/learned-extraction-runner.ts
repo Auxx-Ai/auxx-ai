@@ -21,6 +21,7 @@ import {
   createLearnedKbCapabilities,
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
+import { NO_PAGE } from '../ai/kopilot/capabilities/registry'
 import { getCachedKbCatalog } from '../cache/org-cache-helpers'
 import { renderKbCatalog } from '../kb/catalog/render-kb-catalog'
 import { Result, type TypedResult } from '../result'
@@ -134,7 +135,10 @@ export async function runLearnedExtraction(
   registry.register(createKnowledgeCapabilities(getDeps))
   registry.register(createKbReadCapabilities(getDeps))
   registry.register(createLearnedKbCapabilities(getDeps))
-  const tools = registry.getTools('mail')
+  // No page surface — all three capabilities above register as `__global__`,
+  // so this resolves to the same set the old literal `'mail'` (never a
+  // registered page) resolved to by accident.
+  const tools = registry.getTools(NO_PAGE)
 
   const [provider, ...modelParts] = input.modelId.split(':')
   const model = modelParts.join(':')

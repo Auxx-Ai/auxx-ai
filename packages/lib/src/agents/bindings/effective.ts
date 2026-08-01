@@ -1,8 +1,11 @@
 // packages/lib/src/agents/bindings/effective.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { VarSource } from '@auxx/types/field'
 import type { AgentToolDefinition } from '../../ai/agent-framework/types'
 import type { ToolBindingMap } from './types'
+
+const logger = createScopedLogger('agent-bindings')
 
 /**
  * Compute the **effective** binding map (plans/chat/v8 phase-4):
@@ -36,5 +39,29 @@ export function computeEffectiveBindings(
     }
     if (Object.keys(perTool).length > 0) result[tool.name] = perTool
   }
+  warnOnUnreadOverrides(tools, overrides)
   return result
+}
+
+/**
+ * An override keyed by a tool name that isn't in `tools` is never read, so the
+ * admin's pre-bound inputs silently stop applying — a typo, a renamed tool, or
+ * a toolset the agent no longer has enabled all look identical from the config
+ * UI. Deliberately a warning and not a throw: a stale key must not take a live
+ * agent down. Tool names go in a structured field so the log is queryable.
+ */
+function warnOnUnreadOverrides(
+  tools: ReadonlyArray<Pick<AgentToolDefinition, 'name' | 'inputBindings'>>,
+  overrides: ToolBindingMap
+): void {
+  const overrideNames = Object.keys(overrides)
+  if (overrideNames.length === 0) return
+  const bound = new Set(tools.map((t) => t.name))
+  const unread = overrideNames.filter((name) => !bound.has(name))
+  if (unread.length === 0) return
+  logger.warn('Tool binding overrides name tools that are not bound for this run', {
+    unreadToolNames: unread,
+    unreadToolCount: unread.length,
+    boundToolCount: bound.size,
+  })
 }

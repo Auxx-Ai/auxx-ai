@@ -135,8 +135,31 @@ export const EntityInstance = pgTable(
         table.lastSuggestionScanAt
       )
       .where(sql`"archivedAt" IS NULL`),
-    // Note: GIN index for searchText full-text search should be added via raw SQL:
-    // CREATE INDEX "EntityInstance_search_idx" ON "EntityInstance" USING gin (to_tsvector('english', COALESCE("searchText", '')));
+    // Free-text search, third arm: `secondaryDisplayValue ILIKE '%q%'`.
+    //
+    // `gin_trgm_ops` serves `~~*` (ILIKE) as well as `%`, so this makes the
+    // fallback arm of `textSearchPredicate` (packages/lib/src/search/
+    // text-search-sql.ts) index-servable. That matters far more than the arm
+    // itself: the predicate is an OR block, and Postgres builds it as a
+    // `BitmapOr` of one index scan per arm — a single arm with no index
+    // condition forces it to abandon the *other* indexes too and filter the
+    // whole org+def slice row by row. Measured on a 400k-row copy with a 100k
+    // slice: 125 ms without this index, 32 ms with it, identical result set.
+    //
+    // Org-scoped composite to match the two GIN indexes from migration 0058
+    // (which is also where `pg_trgm` and `btree_gin` are installed — `btree_gin`
+    // is what lets `organizationId` lead a GIN index).
+    index('EntityInstance_org_secondaryDisplayValue_trgm_idx').using(
+      'gin',
+      table.organizationId,
+      table.secondaryDisplayValue.op('gin_trgm_ops')
+    ),
+    // Note: the org-scoped GIN indexes for the other two search arms
+    // (`EntityInstance_org_searchText_gin_idx` on
+    // `to_tsvector('english', COALESCE("searchText", ''))` and
+    // `EntityInstance_org_displayName_trgm_idx`) live in migration 0058 and are
+    // deliberately NOT declared here — Drizzle's snapshot never held them, so
+    // re-declaring them now would generate a duplicate CREATE INDEX.
     // Note: Partial indexes on metadata fields should be added via raw SQL:
     // CREATE UNIQUE INDEX "EntityInstance_mailgunMessageId_key" ON "EntityInstance" (("metadata"->>'mailgunMessageId')) WHERE "metadata"->>'mailgunMessageId' IS NOT NULL;
     // CREATE INDEX "EntityInstance_internalReference_idx" ON "EntityInstance" (("metadata"->>'internalReference')) WHERE "metadata"->>'internalReference' IS NOT NULL;

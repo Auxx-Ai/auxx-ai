@@ -128,11 +128,13 @@ export interface CapabilityRegistry {
   /** Get system prompt addition for a page, resolving any functional additions against the runtime tool set */
   getSystemPromptAddition(page: string, ctx: SystemPromptAdditionContext): string | undefined
   /**
-   * Get a combined human-friendly capabilities summary for the user.
-   * Pass the resolved tool name set so functional `capabilities` arrays can
-   * gate bullets on tool survival.
+   * Get a combined human-friendly capabilities summary for a page — the
+   * `__global__` bullets plus that page's, matching how `getTools` and
+   * `getSystemPromptAddition` resolve. Pass `undefined` (or an unregistered
+   * page) for global-only. The resolved tool name set gates functional
+   * `capabilities` arrays on tool survival.
    */
-  getCapabilitiesSummary(ctx?: SystemPromptAdditionContext): string[]
+  getCapabilitiesSummary(page: string | undefined, ctx: SystemPromptAdditionContext): string[]
   /** Names of global tools the page chose to exclude — for debugging / logging */
   getExcludedGlobalToolNames(page: string): string[]
   /**

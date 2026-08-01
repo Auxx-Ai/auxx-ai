@@ -11,6 +11,7 @@ import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
 import { FormattedFieldSchema, formatEnrichedFields } from '../format-enriched-fields'
+import { blockedEntityError, isAiBlockedDefKey } from '../shared/ai-entity-visibility'
 
 const logger = createScopedLogger('kopilot-get-entity')
 
@@ -103,6 +104,15 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
         }
       }
 
+      // Mail-lens block: `thread:<id>` / `message:<id>` reach the picker's
+      // direct-fetch path, which applies no lens (the gradations live only in
+      // `mail-query/`). `validateInputs` has already canonicalized `threads:<id>`
+      // and `Thread:<id>` onto the def id, so one key test covers every spelling.
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      if (isAiBlockedDefKey(entityDefinitionId)) {
+        return { success: false, output: null, error: blockedEntityError(entityDefinitionId) }
+      }
+
       // Read enforcement (§3): the picker drops non-viewable defs, so `item` is
       // absent for a restricted record. The gate is re-applied before the
       // direct-DB fallback below so a restricted def can't leak through it.
@@ -115,7 +125,6 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
       const items = await pickerService.getResourcesByIds([recordId])
       const item = items[recordId]
 
-      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       const canView = !capabilities || capabilities.canViewEntity(entityDefinitionId)
 
       if (item) {

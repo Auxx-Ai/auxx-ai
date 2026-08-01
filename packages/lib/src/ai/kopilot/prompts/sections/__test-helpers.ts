@@ -15,6 +15,7 @@ export function makeCtx(overrides: Partial<PromptCtx> & { runMode: RunMode }): P
     tools: overrides.tools ?? [],
     toolNames: overrides.toolNames ?? new Set((overrides.tools ?? []).map((t) => t.name)),
     currentUser: overrides.currentUser ?? null,
+    timezone: overrides.timezone,
     integrations: overrides.integrations ?? [],
     entityCatalog: overrides.entityCatalog ?? [],
     domainState: overrides.domainState ?? { context: {} },

@@ -20,6 +20,7 @@ import {
   createTaskCapabilities,
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
+import { NO_PAGE } from '../ai/kopilot/capabilities/registry'
 import { createMcpCapabilities } from '../ai/mcp'
 import { AuxxError, ConflictError, ForbiddenError, NotFoundError } from '../errors'
 import { appendLearnedProvenance } from '../kb/learned/provenance'
@@ -518,7 +519,10 @@ async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentT
   registry.register(
     await createMcpCapabilities({ organizationId: ctx.organizationId, autonomous: false })
   )
-  return new Map(registry.getTools('mail').map((t) => [t.name, t]))
+  // Apply-time runs have no page surface — every capability registered above is
+  // `__global__`, so this resolves to the same set the old literal `'mail'`
+  // (never a registered page) resolved to by accident.
+  return new Map(registry.getTools(NO_PAGE).map((t) => [t.name, t]))
 }
 
 function actionDependsOnFailed(action: ProposedAction, failed: Set<number>): boolean {
