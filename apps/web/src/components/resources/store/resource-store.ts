@@ -1,9 +1,14 @@
 // apps/web/src/components/resources/store/resource-store.ts
 
 import type { CustomResource, Resource, ResourceField } from '@auxx/lib/resources/client'
-import { isCustomResource, resolveFieldRef } from '@auxx/lib/resources/client'
+import { isCustomResource, resolveFieldRef, resolveStaticPrefix } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
-import { parseAppFieldRef, parseResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import {
+  parseAppFieldRef,
+  parseResourceFieldId,
+  toFieldId,
+  toResourceFieldId,
+} from '@auxx/types/field'
 import { deepEqual, shallowEqual } from '@auxx/utils/objects'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -344,6 +349,52 @@ function staticKeyAliasId(
   const { entityDefinitionId, fieldId } = parseResourceFieldId(canonicalKey)
   if (field.key === fieldId) return undefined
   return toResourceFieldId(entityDefinitionId, field.key)
+}
+
+/**
+ * Resolve the ALIAS spellings of a `ResourceFieldId` that `fieldMap` cannot key
+ * directly, both halves independently:
+ *
+ * 1. Definition half — `entityType` / `apiSlug` → canonical entityDefinitionId
+ *    (`definitionIdByPrefix`). `fieldMap` is keyed by the canonical id only.
+ * 2. Field half — a `systemAttribute` (`ticket_status`). `fieldMap` registers a
+ *    field under its row id and its static `key` (`status`), never under the
+ *    systemAttribute; that spelling only exists in `systemAttributeByDef`.
+ *
+ * Both are the shapes external authors use — the Kopilot agents-builder, the
+ * SDK, and imports address fields the way `list_entity_fields` reports them
+ * (`getFieldOutputKey` = `systemAttribute ?? key`), and the server accepts them
+ * interchangeably with the canonical form.
+ *
+ * The systemAttribute lookup is deliberately scoped to the resolved definition
+ * and never falls back to the bare `systemAttributeMap`: a by-name lookup for a
+ * shared attribute (`inbox_name` is on both `inbox` and `personal_inbox`)
+ * returns the OTHER definition's field. Returns undefined when the ref is
+ * already canonical, unknown, or a late-bound `@app:` ref (`getFieldByRef`
+ * resolves those against the effective resource instead).
+ */
+function resolveAliasedFieldRef(
+  state: Pick<ResourceStoreState, 'fieldMap' | 'definitionIdByPrefix' | 'systemAttributeByDef'>,
+  ref: ResourceFieldId
+): ResourceField | undefined {
+  // Split on the FIRST colon only — the field half may itself contain colons.
+  const colonIndex = ref.indexOf(':')
+  if (colonIndex === -1) return undefined
+  const defSegment = ref.slice(0, colonIndex)
+  const fieldHalf = ref.slice(colonIndex + 1)
+  if (fieldHalf.startsWith('@app:')) return undefined
+
+  const canonicalDef =
+    resolveStaticPrefix(defSegment) ?? state.definitionIdByPrefix.get(defSegment) ?? defSegment
+
+  // Alias def half with an already-resolvable field half (row id or static key).
+  if (canonicalDef !== defSegment) {
+    const byDef = state.fieldMap[toResourceFieldId(canonicalDef, toFieldId(fieldHalf))]
+    if (byDef) return byDef
+  }
+
+  const attrRef = state.systemAttributeByDef[`${canonicalDef}:${fieldHalf}`]
+  return attrRef ? state.fieldMap[attrRef] : undefined
 }
 
 /**
@@ -716,6 +767,14 @@ export const useResourceStore = create<ResourceStoreState>()(
       // stable reference (keeps the field hooks granular).
       const direct = get().fieldMap[ref as ResourceFieldId]
       if (direct) return direct
+      // Alias forms. External authors (the Kopilot agents-builder, the SDK, imports)
+      // address fields the way `list_entity_fields` reports them — an apiSlug or
+      // entityType def half, and a systemAttribute field half (`tickets:ticket_status`).
+      // The server treats those as interchangeable with the canonical row-id form
+      // (`getFieldOutputKey`), so resolve them here rather than letting every caller
+      // render an unknown field. `@app:` refs keep their encoding for the branch below.
+      const aliased = resolveAliasedFieldRef(get(), ref as ResourceFieldId)
+      if (aliased) return aliased
       // Late-bound `@app:` ref → resolve to the now-created column by appFieldKey. The
       // def segment is an apiSlug (connector refs) OR a real def id (binding refs);
       // getEffectiveResource accepts both (resourceMap is keyed by id + apiSlug) and
