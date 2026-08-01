@@ -100,7 +100,10 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
       return {
         // Keep the original tRPC shape, but override `message` and `data`.
         ...shape,
-        message: 'Validation error',
+        // Surface the first issue's message — it's what lands in an error toast
+        // (`error.message`), and "Validation error" tells the user nothing.
+        // Forms still read the per-field map in `data.fieldErrors`.
+        message: zodError.issues[0]?.message ?? 'Validation error',
         data: {
           ...shape.data,
           // Expose a neat `fieldErrors` object to the client.
