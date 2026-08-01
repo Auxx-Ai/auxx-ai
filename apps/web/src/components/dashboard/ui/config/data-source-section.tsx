@@ -31,10 +31,12 @@ export function DataSourceSection({
   /** Whether any field-bound setting is set (drives the reset confirm). */
   hasDependentConfig: boolean
   /**
-   * Drop `thread` / `message` from the offer list. Set by the record-list body:
-   * listing thread ROWS through the generic record path is refused server-side
-   * (the mail lens lives in `mail-query/` only), so offering it would only ever
-   * produce a widget that renders a permission error.
+   * Drop `thread` / `message` from the offer list. Set by **every** data widget
+   * body (via `DataSourceBlock`): both generic server paths a widget can take
+   * refuse mail tables — rows through `record.listFiltered`
+   * (`assertNotMailLensTable`) and aggregates through `prepareAggregate` — because
+   * the metadata/subject/body lens lives only in `mail-query/`. Offering one
+   * would produce a widget that can only render the unavailable state.
    */
   excludeMailLensTables?: boolean
   onSelectSource: (source: WidgetSource) => void

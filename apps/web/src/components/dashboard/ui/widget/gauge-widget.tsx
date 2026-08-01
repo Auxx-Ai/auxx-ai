@@ -17,8 +17,14 @@ import { useKpiData } from '../../hooks/use-kpi-data'
 import { useMetricFieldMeta } from '../../hooks/use-metric-field'
 import { seriesColors } from '../../lib/chart-palettes'
 import { formatMetricValue } from '../../lib/format-value'
+import { isForbiddenSourceError, isMailLensSource } from '../../lib/widget-source'
 import { WidgetDroppedFilters } from './widget-dropped-filters'
-import { WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
+import {
+  WidgetDataSourceUnavailable,
+  WidgetError,
+  WidgetSkeleton,
+  WidgetUnconfigured,
+} from './widget-states'
 
 const GAUGE_CONFIG: ChartConfig = { value: { label: 'Value' } }
 
@@ -36,6 +42,9 @@ export function GaugeWidget({
   const { data, isLoading, isError, error } = useKpiData(config, widgetId)
   const meta = useMetricFieldMeta(config.metric, config.valueFormat)
 
+  // Before every other branch — the query is disabled for a mail source, so
+  // `data` never arrives and the tile would hold a skeleton indefinitely.
+  if (isMailLensSource(config.source)) return <WidgetDataSourceUnavailable />
   // A gauge also needs a target (`rangeMax`) before it can draw its arc.
   if (!isChartConfigured(config) || config.rangeMax == null) {
     return (
@@ -46,7 +55,13 @@ export function GaugeWidget({
     )
   }
   if (isLoading && !data) return <WidgetSkeleton variant='value' />
-  if (isError) return <WidgetError message={error?.message} />
+  if (isError) {
+    return isForbiddenSourceError(error) ? (
+      <WidgetDataSourceUnavailable detail='The data source behind this widget can no longer be aggregated.' />
+    ) : (
+      <WidgetError message={error?.message} />
+    )
+  }
   if (!data) return <WidgetSkeleton variant='value' />
 
   const min = config.rangeMin ?? 0

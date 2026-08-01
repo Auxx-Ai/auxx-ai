@@ -69,7 +69,15 @@ function hasDependentConfig(config: DataWidgetConfig): boolean {
 
 // ── Shared blocks ────────────────────────────────────────────────────────────
 
-/** Source picker; renders nothing else until a source is chosen. */
+/**
+ * Source picker; renders nothing else until a source is chosen.
+ *
+ * `excludeMailLensTables` is set for EVERY data widget kind, not just the record
+ * list that first needed it. `thread` / `message` are refused by both generic
+ * server paths a widget can take — rows (`record.listFiltered`) and aggregates
+ * (`prepareAggregate`) — so offering either would only ever build a widget that
+ * renders the "data source unavailable" state.
+ */
 function DataSourceBlock({
   config,
   onReset,
@@ -81,6 +89,7 @@ function DataSourceBlock({
     <DataSourceSection
       source={config.source}
       hasDependentConfig={hasDependentConfig(config)}
+      excludeMailLensTables
       onSelectSource={onReset}
     />
   )
@@ -614,14 +623,11 @@ function RecordListBody({
     <>
       <Section title='Data' icon={<Database className='size-3.5' />} collapsible={false}>
         <Panel>
-          <DataSourceSection
-            source={config.source}
-            hasDependentConfig={
-              (config.columns?.length ?? 0) > 0 || !!config.sort || !!config.filters?.length
-            }
-            excludeMailLensTables
-            onSelectSource={onReset}
-          />
+          {/* The shared block, not a second call site: its `hasDependentConfig`
+              already covers columns/sort/filters, and routing every kind through
+              one component is what keeps the mail-lens exclusion from being set
+              on some bodies and forgotten on others. */}
+          <DataSourceBlock config={config} onReset={onReset} />
           {source && (
             <>
               <ColumnsRow

@@ -18,8 +18,14 @@ import { Info, Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { useKpiData } from '../../hooks/use-kpi-data'
 import { useMetricFieldMeta } from '../../hooks/use-metric-field'
 import { computeTrendDelta, formatMetricValue, formatTrendPercent } from '../../lib/format-value'
+import { isForbiddenSourceError, isMailLensSource } from '../../lib/widget-source'
 import { WidgetDroppedFilters } from './widget-dropped-filters'
-import { WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
+import {
+  WidgetDataSourceUnavailable,
+  WidgetError,
+  WidgetSkeleton,
+  WidgetUnconfigured,
+} from './widget-states'
 
 export function KpiWidget({
   config,
@@ -35,6 +41,9 @@ export function KpiWidget({
   const { data, isLoading, isError, error } = useKpiData(config, widgetId)
   const meta = useMetricFieldMeta(config.metric, config.valueFormat)
 
+  // Before every other branch — the query is disabled for a mail source, so
+  // `data` never arrives and the tile would hold a skeleton indefinitely.
+  if (isMailLensSource(config.source)) return <WidgetDataSourceUnavailable />
   if (!isChartConfigured(config)) {
     return (
       <WidgetUnconfigured
@@ -44,7 +53,13 @@ export function KpiWidget({
     )
   }
   if (isLoading && !data) return <WidgetSkeleton variant='value' />
-  if (isError) return <WidgetError message={error?.message} />
+  if (isError) {
+    return isForbiddenSourceError(error) ? (
+      <WidgetDataSourceUnavailable detail='The data source behind this widget can no longer be aggregated.' />
+    ) : (
+      <WidgetError message={error?.message} />
+    )
+  }
   if (!data) return <WidgetSkeleton variant='value' />
 
   const value = formatMetricValue(data.value, config.metric.op, meta)
