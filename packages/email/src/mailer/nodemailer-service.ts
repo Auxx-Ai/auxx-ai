@@ -135,7 +135,7 @@ export class NodemailerService {
         hasText: !!mailOptions.text,
         hasHtml: !!mailOptions.html,
         from: mailOptions.from,
-        fieldCount: Object.keys(mailOptions).filter((k) => mailOptions[k] !== undefined).length,
+        fieldCount: Object.values(mailOptions).filter((v) => v !== undefined).length,
       })
 
       const info = await this.transporter.sendMail(mailOptions)

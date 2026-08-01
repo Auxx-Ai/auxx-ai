@@ -90,8 +90,15 @@ export class TransportFactory {
       throw new Error('Invalid SYSTEM_FROM_EMAIL: must contain a valid domain')
     }
 
+    const apiKey = configService.get<string>('MAILGUN_API_KEY')
+    if (!apiKey) {
+      // Same shape as the `sendingDomain` guard above: fail at construction rather
+      // than handing the client an `undefined` key it only chokes on at send time.
+      throw new Error('MAILGUN_API_KEY is not configured')
+    }
+
     const auth = {
-      api_key: configService.get<string>('MAILGUN_API_KEY'),
+      api_key: apiKey,
       domain: sendingDomain,
     }
 

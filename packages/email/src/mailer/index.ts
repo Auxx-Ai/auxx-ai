@@ -143,7 +143,10 @@ export const sendEmail = async (options: SendEmailDataProps): Promise<boolean> =
       throw new Error(result.error || 'Failed to send email')
     }
 
-    return result
+    // Unreachable unless `success` — the guard above throws — so this is always
+    // `true`. Returned as the boolean the signature (and all 29 wrappers) declare,
+    // rather than leaking the `EmailResult` object callers cannot see through it.
+    return result.success
   } catch (error) {
     logger.error('Error sending system email:', { error })
     throw error
@@ -170,7 +173,7 @@ export const sendVerificationEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendVerificationEmail')
+    logger.error('Error in sendVerificationEmail', { error })
     throw error
   }
 }
@@ -201,7 +204,7 @@ export const sendEmailChangeVerificationEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendEmailChangeVerificationEmail')
+    logger.error('Error in sendEmailChangeVerificationEmail', { error })
     throw error
   }
 }
@@ -226,7 +229,7 @@ export const sendResetPasswordEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendResetPasswordEmail')
+    logger.error('Error in sendResetPasswordEmail', { error })
     throw error
   }
 }
@@ -249,7 +252,7 @@ export const sendPasswordResetNotifyEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendPasswordResetNotifyEmail')
+    logger.error('Error in sendPasswordResetNotifyEmail', { error })
     throw error
   }
 }
@@ -274,7 +277,7 @@ export const sendWelcomeEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendWelcomeEmail')
+    logger.error('Error in sendWelcomeEmail', { error })
     throw error
   }
 }
@@ -307,7 +310,7 @@ export const sendBillingEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendBillingEmail')
+    logger.error('Error in sendBillingEmail', { error })
     throw error
   }
 }
@@ -334,7 +337,7 @@ export const sendSystemEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendSystemEmail')
+    logger.error('Error in sendSystemEmail', { error })
     throw error
   }
 }
@@ -365,7 +368,7 @@ export const sendDeveloperInviteEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendDeveloperInviteEmail')
+    logger.error('Error in sendDeveloperInviteEmail', { error })
     throw error
   }
 }
@@ -421,7 +424,7 @@ export const sendVisitDispatchedEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendVisitDispatchedEmail')
+    logger.error('Error in sendVisitDispatchedEmail', { error })
     throw error
   }
 }
@@ -490,7 +493,7 @@ export const sendVisitRescheduledEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendVisitRescheduledEmail')
+    logger.error('Error in sendVisitRescheduledEmail', { error })
     throw error
   }
 }
@@ -542,7 +545,7 @@ export const sendVisitCanceledEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendVisitCanceledEmail')
+    logger.error('Error in sendVisitCanceledEmail', { error })
     throw error
   }
 }
@@ -601,7 +604,7 @@ export const sendVisitReassignedEmail = async ({
 
     return await sendEmail({ to: email, subject: formatSubject(subject), html, text })
   } catch (error) {
-    logger.error(error, 'Error in sendVisitReassignedEmail')
+    logger.error('Error in sendVisitReassignedEmail', { error })
     throw error
   }
 }
@@ -635,7 +638,7 @@ export const sendVisitDailyDigestEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendVisitDailyDigestEmail')
+    logger.error('Error in sendVisitDailyDigestEmail', { error })
     throw error
   }
 }
@@ -666,7 +669,7 @@ export const sendInviteEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendInviteEmail')
+    logger.error('Error in sendInviteEmail', { error })
     throw error
   }
 }
@@ -711,7 +714,7 @@ export const sendJoinOrganizationEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendJoinOrganizationEmail')
+    logger.error('Error in sendJoinOrganizationEmail', { error })
     throw error
   }
 }
@@ -729,7 +732,7 @@ export const sendApprovalRequestEmail = async ({
   workflowName: string
   message?: string
   approvalUrl: string
-  expiresAt: Date
+  expiresAt: string
 }): Promise<boolean> => {
   try {
     const html = await render(
@@ -744,7 +747,7 @@ export const sendApprovalRequestEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendApprovalRequestEmail')
+    logger.error('Error in sendApprovalRequestEmail', { error })
     throw error
   }
 }
@@ -766,7 +769,7 @@ export const sendApprovalReminderEmail = async ({
   approvalUrl: string
   reminderNumber: number
   timeRemaining: string
-  expiresAt: Date
+  expiresAt: string
 }): Promise<boolean> => {
   try {
     const html = await render(
@@ -797,7 +800,7 @@ export const sendApprovalReminderEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendApprovalReminderEmail')
+    logger.error('Error in sendApprovalReminderEmail', { error })
     throw error
   }
 }
@@ -817,10 +820,16 @@ export const sendSubscriptionWelcomeEmail = async ({
   dashboardUrl?: string
 }): Promise<boolean> => {
   try {
+    // The templates key off `'ANNUAL'`, this signature (and the job payload) use
+    // lowercase — so passing it through made `billingCycle === 'ANNUAL'` false for
+    // every caller and told annual subscribers "Billing Cycle: Monthly", in both
+    // the HTML and text versions. Latent today: nothing enqueues this email.
+    const cycle = billingCycle === 'annual' ? 'ANNUAL' : 'MONTHLY'
+
     const html = await render(
-      await SubscriptionWelcomeEmail({ name, planName, billingCycle, dashboardUrl })
+      await SubscriptionWelcomeEmail({ name, planName, billingCycle: cycle, dashboardUrl })
     )
-    const text = SubscriptionWelcomeText({ name, planName, billingCycle, dashboardUrl })
+    const text = SubscriptionWelcomeText({ name, planName, billingCycle: cycle, dashboardUrl })
 
     return await sendEmail({
       to: email,
@@ -829,7 +838,7 @@ export const sendSubscriptionWelcomeEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendSubscriptionWelcomeEmail')
+    logger.error('Error in sendSubscriptionWelcomeEmail', { error })
     throw error
   }
 }
@@ -859,7 +868,7 @@ export const sendTrialStartedEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendTrialStartedEmail')
+    logger.error('Error in sendTrialStartedEmail', { error })
     throw error
   }
 }
@@ -889,7 +898,7 @@ export const sendTrialEndingEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendTrialEndingEmail')
+    logger.error('Error in sendTrialEndingEmail', { error })
     throw error
   }
 }
@@ -917,7 +926,7 @@ export const sendTrialExpiredEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendTrialExpiredEmail')
+    logger.error('Error in sendTrialExpiredEmail', { error })
     throw error
   }
 }
@@ -949,7 +958,7 @@ export const sendSubscriptionCancelledEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendSubscriptionCancelledEmail')
+    logger.error('Error in sendSubscriptionCancelledEmail', { error })
     throw error
   }
 }
@@ -983,7 +992,7 @@ export const sendPaymentFailedEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendPaymentFailedEmail')
+    logger.error('Error in sendPaymentFailedEmail', { error })
     throw error
   }
 }
@@ -1013,7 +1022,7 @@ export const sendTrialDeletionWarningEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendTrialDeletionWarningEmail')
+    logger.error('Error in sendTrialDeletionWarningEmail', { error })
     throw error
   }
 }
@@ -1043,7 +1052,7 @@ export const sendTrialDeletionFinalEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendTrialDeletionFinalEmail')
+    logger.error('Error in sendTrialDeletionFinalEmail', { error })
     throw error
   }
 }
@@ -1093,7 +1102,7 @@ export const sendGettingStartedEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendGettingStartedEmail')
+    logger.error('Error in sendGettingStartedEmail', { error })
     throw error
   }
 }
@@ -1147,7 +1156,7 @@ export const sendMidTrialEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendMidTrialEmail')
+    logger.error('Error in sendMidTrialEmail', { error })
     throw error
   }
 }
@@ -1203,7 +1212,7 @@ export const sendTrialConversionEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendTrialConversionEmail')
+    logger.error('Error in sendTrialConversionEmail', { error })
     throw error
   }
 }
@@ -1241,7 +1250,7 @@ export const sendPaymentReceiptEmail = async ({
       text,
     })
   } catch (error) {
-    logger.error(error, 'Error in sendPaymentReceiptEmail')
+    logger.error('Error in sendPaymentReceiptEmail', { error })
     throw error
   }
 }
